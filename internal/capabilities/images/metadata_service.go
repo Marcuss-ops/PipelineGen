@@ -1,13 +1,14 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
 )
@@ -61,7 +62,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 	// know the source type), but the default must never be "generated"
 	// for retrieved images because that produces metadata_json.origin
 	// = "generated" and diverges from asset.Origin.
-	sourceType := string(asset.ClassifyImageOrigin(generator, ""))
+	sourceType := string(detail.ClassifyImageOrigin(generator, ""))
 	if val, ok := ctx.Value(SourceTypeKey).(string); ok && val != "" {
 		sourceType = val
 	}
@@ -177,7 +178,7 @@ func (m *MetadataService) uploadImageMetadata(ctx context.Context, style, subjec
 }
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
-func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
+func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*detail.ImageAsset) {
 	m.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
 	if m.metaWriter == nil {
 		m.log.Warn("UploadBatchMetadata: metadata writer not configured")

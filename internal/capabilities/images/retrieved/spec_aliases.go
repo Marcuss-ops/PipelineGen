@@ -3,7 +3,7 @@ package retrieved
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // RetrievalSearchOptions contains options for image retrieval searches.
@@ -17,8 +17,8 @@ type RetrievalSearchOptions struct {
 // RetrievalSearchResult represents a candidate found by a retrieval provider.
 type RetrievalSearchResult struct {
 	AssetID       string
-	Origin        asset.ImageOrigin
-	Provider      asset.ImageProvider
+	Origin        detail.ImageOrigin
+	Provider      detail.ImageProvider
 	Name          string
 	PreviewURL    string
 	ImageURL      string
@@ -47,7 +47,7 @@ type SearchRequest struct {
 
 // SearchResponse represents a response from the SearchServicePort.
 type SearchResponse struct {
-	Assets     []asset.ImageAsset
+	Assets     []detail.ImageAsset
 	Result     *RetrievalSearchResult
 	Results    []RetrievalSearchResult
 	SubService string

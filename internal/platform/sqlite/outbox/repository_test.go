@@ -25,10 +25,11 @@
 package outbox
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )

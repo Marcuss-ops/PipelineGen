@@ -46,7 +46,7 @@ const percheckImageAssetInvariantsRuleLabel = "percheck_image_asset_invariants"
 // operational scripts (bash / Python / YAML) which live at the
 // top-level `<root>/scripts/` are also unaffected from a noise
 // perspective: only `.go` files in nested `scripts/` subdirs are
-// scanned, and the canonical fact-table of `&asset.ImageAsset{`
+// scanned, and the canonical fact-table of `&detail.ImageAsset{`
 // literals is gated to non-scripts paths.
 var imageAssetSkipDirs = map[string]bool{
 	".git":         true,

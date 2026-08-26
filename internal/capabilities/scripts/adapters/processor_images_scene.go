@@ -39,11 +39,12 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -112,8 +113,8 @@ func generateSceneImage(
 	gen ImageGenService,
 	plan *scriptpkg.ResolvedGenerationPlan,
 	sceneName, sceneText, query, cleanedSubject, language string,
-) (*domainasset.ImageAsset, error) {
-	var asset *domainasset.ImageAsset
+) (*detail.ImageAsset, error) {
+	var asset *detail.ImageAsset
 	var err error
 	if smartGen, ok := any(gen).(smartImageGenService); ok {
 		// Prefer the AI-generated image path so the scene
@@ -142,7 +143,7 @@ func generateSceneImage(
 			var fallback *ImageResult
 			fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
 			if err == nil && fallback != nil {
-				asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
+				asset = &detail.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 			} else {
 				asset = nil
 			}
@@ -151,7 +152,7 @@ func generateSceneImage(
 		var fallback *ImageResult
 		fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
 		if err == nil && fallback != nil {
-			asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
+			asset = &detail.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 		}
 	}
 	return asset, err
@@ -172,7 +173,7 @@ func fallbackSceneText(sceneText string, i int) string {
 // fallback → empty string. This is the canonical operator-facing
 // URL field that downstream consumers (PostProcessResult, dashboards,
 // stock-pipeline finalizer) read.
-func canonicalSceneImageURL(asset *domainasset.ImageAsset) string {
+func canonicalSceneImageURL(asset *detail.ImageAsset) string {
 	if asset == nil {
 		return ""
 	}

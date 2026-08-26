@@ -1,6 +1,7 @@
 package backfill
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"flag"
@@ -8,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // runTextTracksAlignCues backfills timed cues for already-translated
@@ -55,7 +56,7 @@ func RunTextTracksAlignCues(args []string) error {
 	}
 
 	for _, id := range assetIDs {
-		_, srcCues, err := root.Repos.TextTrackRepo.FindReady(cli.CmdContext(), id, *sourceLang, asset.TextTrackTranscript)
+		_, srcCues, err := root.Repos.TextTrackRepo.FindReady(cli.CmdContext(), id, *sourceLang, detail.TextTrackTranscript)
 		if err != nil {
 			return fmt.Errorf("%s: read source cues: %w", id, err)
 		}
@@ -68,9 +69,9 @@ func RunTextTracksAlignCues(args []string) error {
 			return fmt.Errorf("%s: list tracks: %w", id, err)
 		}
 
-		byLang := map[string][]asset.TimedCue{*sourceLang: srcCues}
+		byLang := map[string][]detail.TimedCue{*sourceLang: srcCues}
 		for _, track := range tracks {
-			if track.TextKind != asset.TextTrackTranscript || track.Status != asset.TextTrackReady || !track.IsCurrent {
+			if track.TextKind != detail.TextTrackTranscript || track.Status != detail.TextTrackReady || !track.IsCurrent {
 				continue
 			}
 			if track.LanguageCode == *sourceLang {

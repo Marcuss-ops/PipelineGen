@@ -5,6 +5,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"errors"
@@ -15,27 +16,27 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 
 type fakeTextTrackRepo struct {
 	mu          sync.Mutex
-	tracks      map[string]*asset.TextTrack
+	tracks      map[string]*detail.TextTrack
 	upsertCalls int32
 	findCalls   int32
 }
 
 func newFakeRepo() *fakeTextTrackRepo {
-	return &fakeTextTrackRepo{tracks: map[string]*asset.TextTrack{}}
+	return &fakeTextTrackRepo{tracks: map[string]*detail.TextTrack{}}
 }
 
-func key(assetID, lang string, kind asset.TextTrackKind) string {
+func key(assetID, lang string, kind detail.TextTrackKind) string {
 	return assetID + "|" + lang + "|" + string(kind)
 }
 
-func (f *fakeTextTrackRepo) UpsertBatch(_ context.Context, tracks []asset.TextTrack) error {
+func (f *fakeTextTrackRepo) UpsertBatch(_ context.Context, tracks []detail.TextTrack) error {
 	atomic.AddInt32(&f.upsertCalls, int32(len(tracks)))
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -50,7 +51,7 @@ func (f *fakeTextTrackRepo) UpsertBatch(_ context.Context, tracks []asset.TextTr
 	return nil
 }
 
-func (f *fakeTextTrackRepo) Find(_ context.Context, assetID, lang string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (f *fakeTextTrackRepo) Find(_ context.Context, assetID, lang string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	atomic.AddInt32(&f.findCalls, 1)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -62,10 +63,10 @@ func (f *fakeTextTrackRepo) Find(_ context.Context, assetID, lang string, kind a
 	return &clone, nil
 }
 
-func (f *fakeTextTrackRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextTrack, error) {
+func (f *fakeTextTrackRepo) ListByAsset(_ context.Context, assetID string) ([]detail.TextTrack, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]asset.TextTrack, 0)
+	out := make([]detail.TextTrack, 0)
 	for _, t := range f.tracks {
 		if t.AssetID == assetID {
 			out = append(out, *t)
@@ -74,24 +75,24 @@ func (f *fakeTextTrackRepo) ListByAsset(_ context.Context, assetID string) ([]as
 	return out, nil
 }
 
-func (f *fakeTextTrackRepo) FindReady(_ context.Context, assetID, lang string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (f *fakeTextTrackRepo) FindReady(_ context.Context, assetID, lang string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	t, ok := f.tracks[key(assetID, lang, kind)]
-	if !ok || t.Status != asset.TextTrackReady {
+	if !ok || t.Status != detail.TextTrackReady {
 		return nil, nil, nil
 	}
 	clone := *t
 	return &clone, nil, nil
 }
 
-func (f *fakeTextTrackRepo) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (f *fakeTextTrackRepo) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	langs := []string{}
 	seen := map[string]bool{}
 	for _, t := range f.tracks {
-		if t.AssetID == assetID && t.TextKind == kind && t.Status == asset.TextTrackReady {
+		if t.AssetID == assetID && t.TextKind == kind && t.Status == detail.TextTrackReady {
 			if !seen[t.LanguageCode] {
 				langs = append(langs, t.LanguageCode)
 				seen[t.LanguageCode] = true
@@ -104,16 +105,16 @@ func (f *fakeTextTrackRepo) ListReadyLanguages(_ context.Context, assetID string
 // FindCurrentForTranslation (PR-CATALOG-MULTILINGUA step 4): lookup
 // is_current=1 + status=READY row matching the canonical 5-tuple.
 // Returns (nil, nil) on miss.
-func (f *fakeTextTrackRepo) FindCurrentForTranslation(_ context.Context, assetID string, kind asset.TextTrackKind, targetLang, sourceTextHash, translationModel, modelVersion, promptVersion string) (*asset.TextTrack, error) {
+func (f *fakeTextTrackRepo) FindCurrentForTranslation(_ context.Context, assetID string, kind detail.TextTrackKind, targetLang, sourceTextHash, translationModel, modelVersion, promptVersion string) (*detail.TextTrack, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	t, ok := f.tracks[key(assetID, targetLang, kind)]
-	if !ok || !t.IsCurrent || t.Status != asset.TextTrackReady {
+	if !ok || !t.IsCurrent || t.Status != detail.TextTrackReady {
 		return nil, nil
 	}
-	// Compute the canonical 5-tuple SHA-256 via asset.TranslationKey
+	// Compute the canonical 5-tuple SHA-256 via detail.TranslationKey
 	// and compare against the persisted row's translation_key.
-	expected := asset.TranslationKey(
+	expected := detail.TranslationKey(
 		sourceTextHash,
 		targetLang,
 		translationModel,
@@ -130,7 +131,7 @@ func (f *fakeTextTrackRepo) FindCurrentForTranslation(_ context.Context, assetID
 // InsertTranslationWithAuditPredecessor (PR-CATALOG-MULTILINGUA
 // step 4): flip prior is_current=1 row to is_current=0 then insert
 // the new row with is_current=1.
-func (f *fakeTextTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, track asset.TextTrack) error {
+func (f *fakeTextTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, track detail.TextTrack) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	k := key(track.AssetID, track.LanguageCode, track.TextKind)
@@ -228,16 +229,16 @@ func newTestMaterializer(t *testing.T, repo *fakeTextTrackRepo, tr translation.T
 	return m
 }
 
-func seedSourceTrack(repo *fakeTextTrackRepo, assetID, srcLang string, kind asset.TextTrackKind, sourceVersion, text string) {
+func seedSourceTrack(repo *fakeTextTrackRepo, assetID, srcLang string, kind detail.TextTrackKind, sourceVersion, text string) {
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
-	repo.tracks[key(assetID, srcLang, kind)] = &asset.TextTrack{
+	repo.tracks[key(assetID, srcLang, kind)] = &detail.TextTrack{
 		ID:                 100,
 		AssetID:            assetID,
 		LanguageCode:       srcLang,
 		TextKind:           kind,
 		TextContent:        text,
-		SourceType:         asset.TextSourceWhisper,
+		SourceType:         detail.TextSourceWhisper,
 		SourceLanguageCode: srcLang,
 		IsOriginal:         true,
 		Provider:           "whisper",
@@ -245,7 +246,7 @@ func seedSourceTrack(repo *fakeTextTrackRepo, assetID, srcLang string, kind asse
 		ModelVersion:       "v3",
 		TextHash:           ComputeSourceTextHash(text),
 		SourceVersion:      sourceVersion,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
@@ -259,7 +260,7 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 	ob := &fakeOutbox{}
 	srcVer := "src-v1"
 	const srcText = "hello world"
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, srcVer, srcText)
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, srcVer, srcText)
 
 	// PR-CATALOG-MULTILINGUA step 4: pre-populate the IT row with
 	// the full translation_key matching the resolver config
@@ -267,15 +268,15 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 	// promptVersion="prompt-v1"). Without this, the new gate
 	// (FindCurrentForTranslation) would miss and retranslate IT.
 	srcTextHash := ComputeSourceTextHash(srcText)
-	expectedKey := asset.TranslationKey(srcTextHash, "it", "", "model-v1", "prompt-v1")
+	expectedKey := detail.TranslationKey(srcTextHash, "it", "", "model-v1", "prompt-v1")
 
-	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
+	repo.tracks[key("asset-1", "it", detail.TextTrackTranscript)] = &detail.TextTrack{
 		ID:                 200,
 		AssetID:            "asset-1",
 		LanguageCode:       "it",
-		TextKind:           asset.TextTrackTranscript,
+		TextKind:           detail.TextTrackTranscript,
 		TextContent:        "[it] hello world",
-		SourceType:         asset.TextSourceTranslation,
+		SourceType:         detail.TextSourceTranslation,
 		SourceLanguageCode: "en",
 		IsOriginal:         false,
 		Provider:           "fake",
@@ -286,14 +287,14 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 		SourceVersion:      srcVer,
 		TranslationKey:     expectedKey,
 		IsCurrent:          true,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", srcTextHash, asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcTextHash, detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -306,12 +307,12 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 	if len(rep.CreatedLanguages) != 1 || rep.CreatedLanguages[0] != "es" {
 		t.Fatalf("expected created=[es], got %v", rep.CreatedLanguages)
 	}
-	existing, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	existing, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
 	if existing == nil || existing.TextContent != "[it] hello world" {
 		t.Fatalf("expected IT row to be untouched, got %+v", existing)
 	}
-	esRow, _ := repo.Find(ctx, "asset-1", "es", asset.TextTrackTranscript)
-	if esRow == nil || esRow.Status != asset.TextTrackReady {
+	esRow, _ := repo.Find(ctx, "asset-1", "es", detail.TextTrackTranscript)
+	if esRow == nil || esRow.Status != detail.TextTrackReady {
 		t.Fatalf("expected ES row READY, got %+v", esRow)
 	}
 	if esRow.TextContent != "[es] hello world" {
@@ -329,15 +330,15 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
 	srcVer := "src-v2"
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, srcVer, "hello world v2")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, srcVer, "hello world v2")
 
-	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
+	repo.tracks[key("asset-1", "it", detail.TextTrackTranscript)] = &detail.TextTrack{
 		ID:                 200,
 		AssetID:            "asset-1",
 		LanguageCode:       "it",
-		TextKind:           asset.TextTrackTranscript,
+		TextKind:           detail.TextTrackTranscript,
 		TextContent:        "[it] hello world v1 (stale)",
-		SourceType:         asset.TextSourceTranslation,
+		SourceType:         detail.TextSourceTranslation,
 		SourceLanguageCode: "en",
 		IsOriginal:         false,
 		Provider:           "fake",
@@ -345,7 +346,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 		ModelVersion:       "model-v1",
 		TextHash:           ComputeSourceTextHash("[it] hello world v1 (stale)"),
 		SourceVersion:      "src-v1",
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 		CreatedAt:          time.Now().Add(-time.Hour),
 		UpdatedAt:          time.Now().Add(-time.Hour),
 	}
@@ -353,7 +354,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
 	srcHash := ComputeSourceTextHash("hello world v2")
-	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -363,7 +364,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 	if len(rep.RetranslatedLanguages) != 1 || rep.RetranslatedLanguages[0] != "it" {
 		t.Fatalf("expected retranslated=[it], got %v", rep.RetranslatedLanguages)
 	}
-	existing, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	existing, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
 	if existing == nil {
 		t.Fatal("expected IT row to exist after retranslate")
 	}
@@ -373,7 +374,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 	if existing.SourceVersion != srcVer {
 		t.Fatalf("expected IT source_version=%q, got %q", srcVer, existing.SourceVersion)
 	}
-	if existing.Status != asset.TextTrackReady {
+	if existing.Status != detail.TextTrackReady {
 		t.Fatalf("expected IT status=READY, got %s", existing.Status)
 	}
 }
@@ -384,7 +385,7 @@ func TestMaterialize_ConcurrentSameKey_NoCorruption(t *testing.T) {
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es", "fr"}, "model-v1", "prompt-v1")
 
@@ -397,7 +398,7 @@ func TestMaterialize_ConcurrentSameKey_NoCorruption(t *testing.T) {
 		idx := i
 		go func() {
 			defer wg.Done()
-			_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+			_, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 			if err != nil {
 				if idx == 0 {
 					err1 = err
@@ -414,11 +415,11 @@ func TestMaterialize_ConcurrentSameKey_NoCorruption(t *testing.T) {
 	}
 
 	for _, lang := range []string{"it", "es", "fr"} {
-		row, _ := repo.Find(ctx, "asset-1", lang, asset.TextTrackTranscript)
+		row, _ := repo.Find(ctx, "asset-1", lang, detail.TextTrackTranscript)
 		if row == nil {
 			t.Fatalf("expected %s row to exist", lang)
 		}
-		if row.Status != asset.TextTrackReady {
+		if row.Status != detail.TextTrackReady {
 			t.Fatalf("expected %s status=READY, got %s", lang, row.Status)
 		}
 	}
@@ -433,7 +434,7 @@ func TestMaterialize_NoSourceTrack_Terminal(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", "abc123", asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", "abc123", detail.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoSourceTrack, got nil")
 	}
@@ -452,14 +453,14 @@ func TestMaterialize_SourceNotReady_Terminal(t *testing.T) {
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 	repo.mu.Lock()
-	repo.tracks[key("asset-1", "en", asset.TextTrackTranscript)].Status = asset.TextTrackPending
+	repo.tracks[key("asset-1", "en", detail.TextTrackTranscript)].Status = detail.TextTrackPending
 	repo.mu.Unlock()
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), detail.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrTrackNotReady, got nil")
 	}
@@ -467,7 +468,7 @@ func TestMaterialize_SourceNotReady_Terminal(t *testing.T) {
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected *ErrTrackNotReady, got %T: %v", err, err)
 	}
-	if typed.CurrentStatus != asset.TextTrackPending {
+	if typed.CurrentStatus != detail.TextTrackPending {
 		t.Fatalf("expected CurrentStatus=PENDING, got %s", typed.CurrentStatus)
 	}
 }
@@ -479,7 +480,7 @@ func TestMaterialize_EmptyAssetID_Terminal(t *testing.T) {
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
-	_, err := m.Materialize(ctx, "", "en", "abc", asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "", "en", "abc", detail.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrInvalidMaterializeRequest, got nil")
 	}
@@ -498,11 +499,11 @@ func TestMaterialize_TranslationFailure_RecordedInReport(t *testing.T) {
 		},
 	}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: expected nil error (per-language failures are in report), got %v", err)
 	}
@@ -529,16 +530,16 @@ func TestMaterialize_OutboxFailure_ReturnsError(t *testing.T) {
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{hook: func() error { return errors.New("simulated outbox down") }}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), detail.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected error from outbox failure, got nil")
 	}
-	itRow, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
-	if itRow == nil || itRow.Status != asset.TextTrackReady {
+	itRow, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
+	if itRow == nil || itRow.Status != detail.TextTrackReady {
 		t.Fatalf("expected IT row to be READY before outbox emit, got %+v", itRow)
 	}
 }
@@ -549,11 +550,11 @@ func TestMaterialize_ExcludesSourceLanguage(t *testing.T) {
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -585,22 +586,22 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	// Pre-populate IT row with translation_key matching the
 	// resolver's 5-tuple (source_text_hash + target_lang +
 	// translation_model + model_version + prompt_version).
 	const srcText = "hello world"
 	srcHash := ComputeSourceTextHash(srcText)
-	expectedKey := asset.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
+	expectedKey := detail.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
 
-	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
+	repo.tracks[key("asset-1", "it", detail.TextTrackTranscript)] = &detail.TextTrack{
 		ID:                 200,
 		AssetID:            "asset-1",
 		LanguageCode:       "it",
-		TextKind:           asset.TextTrackTranscript,
+		TextKind:           detail.TextTrackTranscript,
 		TextContent:        "[it] hello world",
-		SourceType:         asset.TextSourceTranslation,
+		SourceType:         detail.TextSourceTranslation,
 		SourceLanguageCode: "en",
 		IsOriginal:         false,
 		Provider:           "ollama",
@@ -611,7 +612,7 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 		SourceVersion:      "src-v1",
 		TranslationKey:     expectedKey,
 		IsCurrent:          true,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 	}
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
@@ -619,7 +620,7 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 	// diff-matches the pre-populated row's translation_key:
 	m = newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "ollama-qwen", "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -634,7 +635,7 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 	}
 	// IT row's content must be untouched — godlike/07 honest lock:
 	// reuse never silently overrides.
-	existing, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	existing, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
 	if existing == nil || existing.TextContent != "[it] hello world" {
 		t.Fatalf("expected IT row content to be untouched, got %+v", existing)
 	}
@@ -650,12 +651,12 @@ func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testi
 	repo := newFakeRepo()
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"}, "ollama-qwen", "model-v1", "prompt-v1")
 
 	srcHash := ComputeSourceTextHash("hello world")
-	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -670,14 +671,14 @@ func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testi
 	// The persisted IT row MUST carry the resolver-computed
 	// translation_key + IsCurrent=true. The fake repo
 	// enforces this via InsertTranslationWithAuditPredecessor.
-	itRow, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	itRow, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
 	if itRow == nil {
 		t.Fatal("expected IT row to be persisted after translation_key miss")
 	}
 	if !itRow.IsCurrent {
 		t.Fatalf("expected IT row is_current=true, got %v", itRow.IsCurrent)
 	}
-	wantKey := asset.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
+	wantKey := detail.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
 	if itRow.TranslationKey != wantKey {
 		t.Fatalf("expected IT translation_key=%q, got %q", wantKey, itRow.TranslationKey)
 	}
@@ -740,18 +741,18 @@ func TestMaterialize_OllamaFallbackUnderArgos_PersistsHonestFingerprint(t *testi
 	repo := newFakeRepo()
 	tr := &ollamaFallbackTranslator{}
 	ob := &fakeOutbox{}
-	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+	seedSourceTrack(repo, "asset-1", "en", detail.TextTrackTranscript, "src-v1", "hello world")
 
 	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"},
 		translation.ArgosTranslationModel, translation.ArgosTranslationModelVersion, "prompt-v1")
 
 	srcHash := ComputeSourceTextHash("hello world")
-	_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
 
-	itRow, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	itRow, _ := repo.Find(ctx, "asset-1", "it", detail.TextTrackTranscript)
 	if itRow == nil {
 		t.Fatal("expected it row to be persisted")
 	}
@@ -761,7 +762,7 @@ func TestMaterialize_OllamaFallbackUnderArgos_PersistsHonestFingerprint(t *testi
 	if itRow.ModelVersion != "gemma4:e4b" {
 		t.Fatalf("model_version=%q, want %q (honest Ollama model, not the Argos token)", itRow.ModelVersion, "gemma4:e4b")
 	}
-	wantKey := asset.TranslationKey(srcHash, "it", translation.ProviderOllama, "gemma4:e4b", "prompt-v1")
+	wantKey := detail.TranslationKey(srcHash, "it", translation.ProviderOllama, "gemma4:e4b", "prompt-v1")
 	if itRow.TranslationKey != wantKey {
 		t.Fatalf("translation_key=%q, want %q", itRow.TranslationKey, wantKey)
 	}

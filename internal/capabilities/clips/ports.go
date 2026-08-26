@@ -16,11 +16,12 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"io"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -131,8 +132,8 @@ type ClipRepositoryPort interface {
 	Upsert(ctx context.Context, clip *asset.Asset) error
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
-	ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error)
-	GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error)
+	ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error)
+	GetFolder(ctx context.Context, folderID string) (*detail.ClipFolder, error)
 	GetFolderChildren(ctx context.Context, parentID string) ([]*asset.Asset, error)
 	ListByFolderID(ctx context.Context, folderID string) ([]*asset.Asset, error)
 	ListByFolderPath(ctx context.Context, folderPath string) ([]*asset.Asset, error)
@@ -159,7 +160,7 @@ type VoiceoverRepositoryPort interface {
 // *imagesrepo.ImagesRepository. Only ListAll is exposed because Cleanup()
 // is the only callsite.
 type ImageRepositoryPort interface {
-	ListAll(ctx context.Context) ([]*asset.ImageAsset, error)
+	ListAll(ctx context.Context) ([]*detail.ImageAsset, error)
 }
 
 // ClipDriveUploaderPort is the canonical narrow surface of

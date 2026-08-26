@@ -1,6 +1,7 @@
 package autotag
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -19,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
@@ -30,7 +31,7 @@ var videoFramePercentages = []float64{0.0, 0.25, 0.50, 0.75, 1.0}
 
 type Service struct {
 	db          *sql.DB
-	repo        asset.Repository
+	repo        detail.Repository
 	vlmClient   *vlm.Client
 	committer   persistence.AssetCommitter
 	enrichState enrichment.EnrichStateMachinePort
@@ -50,7 +51,7 @@ type Service struct {
 // required by the auto-tagging workflow.
 type ServiceDeps struct {
 	DB            *sql.DB
-	Repo          asset.Repository
+	Repo          detail.Repository
 	VLMClient     *vlm.Client
 	Committer     persistence.AssetCommitter
 	EnrichState   enrichment.EnrichStateMachinePort

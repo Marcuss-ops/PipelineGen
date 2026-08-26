@@ -1,6 +1,7 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,14 +10,14 @@ import (
 	"strings"
 
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
 
-func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*detail.ImageAsset, error) {
 	// PR C9 (July 2026): replace silent-fake `extractSubjectAndTags` stub
 	// with the typed SubjectTagsService port. On error we log a warning
 	// and fall back to empty values (the caller still has its own
@@ -67,7 +68,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	generator := imageGeneratorLabel(source)
-	provider := asset.ClassifyImageProvider(source, generator)
+	provider := detail.ClassifyImageProvider(source, generator)
 	// PR-IMG-RETRIEVER-PROVIDER-FIX (July 2026): when source is a
 	// URL (imageGeneratorLabel returns "web-download") the canonical
 	// classifier cannot resolve a concrete provider (provider =
@@ -84,22 +85,22 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// canonical non-"unknown" provider. AI-generated, upload-origin,
 	// and Drive short-circuit callers are unaffected because their
 	// initial classification already returns a concrete provider.
-	if provider == asset.ProviderUnknown {
+	if provider == detail.ProviderUnknown {
 		if v, ok := ctx.Value(RetrieverKey).(string); ok {
 			retriever := strings.TrimSpace(v)
-			if retriever != "" && retriever != string(asset.ProviderUnknown) {
-				provider = asset.ClassifyImageProvider(retriever, imageGeneratorLabel(retriever))
+			if retriever != "" && retriever != string(detail.ProviderUnknown) {
+				provider = detail.ClassifyImageProvider(retriever, imageGeneratorLabel(retriever))
 			}
 		}
 	}
-	origin := asset.ClassifyImageOrigin(source, generator)
+	origin := detail.ClassifyImageOrigin(source, generator)
 	width, height := decodeImageDimensions(content)
 
 	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
 	// now non-fatal. On error we log a warning and continue with
 	// metaResult=nil — the image is still downloaded to disk, uploaded
 	// to Drive, and persisted in SQLite. The caller still gets a valid
-	// *asset.ImageAsset back. Pre-PR this was a hard failure that
+	// *detail.ImageAsset back. Pre-PR this was a hard failure that
 	// deleted the downloaded file and aborted the entire ingest.
 	metaResult, err := s.meta.tagImageMetadata(ctx, description, style, generator, hash, localPath, width, height)
 	if err != nil {
@@ -135,10 +136,10 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// metadata JSON and media_assets.provider aligned for DDG, Wikipedia,
 	// SearXNG and the other retrieved providers.
 	builderSource := source
-	if provider != asset.ProviderUnknown {
+	if provider != detail.ProviderUnknown {
 		builderSource = string(provider)
 	}
-	builder := asset.NewCanonicalImageMetadataBuilder(builderSource, generator).
+	builder := detail.NewCanonicalImageMetadataBuilder(builderSource, generator).
 		WithBaseInfo(description, style, hash, tags, width, height).
 		WithGenerator(generator)
 	if metaResult != nil && metaResult.Payload != nil {
@@ -150,7 +151,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	metaJSONStr, builtOrigin, builtProvider := builder.Build()
 	// Ensure the subject slug survives in metadata_json so that
 	// ListImagesBySubject can find cached images by subject_id.
-	metaJSONStr = asset.AppendImageMetadataField(metaJSONStr, "subject_id", slug)
+	metaJSONStr = detail.AppendImageMetadataField(metaJSONStr, "subject_id", slug)
 	metaJSON := []byte(metaJSONStr)
 	// The builder is the SSOT for origin/provider; align the asset
 	// record so that MetadataJSON.origin matches asset.Origin.
@@ -161,7 +162,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	if !skipDrive {
 		deliveryStatus = "delivery_pending"
 	}
-	result := &asset.ImageAsset{
+	result := &detail.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relativePath,

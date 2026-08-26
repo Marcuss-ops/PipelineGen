@@ -1,10 +1,11 @@
 package catalogsync
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type portConformanceRepository struct{}
@@ -12,7 +13,7 @@ type portConformanceRepository struct{}
 func (portConformanceRepository) GetClip(context.Context, string) (*asset.Asset, error) {
 	return nil, nil
 }
-func (portConformanceRepository) ListFolders(context.Context, string) ([]*asset.ClipFolder, error) {
+func (portConformanceRepository) ListFolders(context.Context, string) ([]*detail.ClipFolder, error) {
 	return nil, nil
 }
 func (portConformanceRepository) DeleteFolder(context.Context, string) error { return nil }

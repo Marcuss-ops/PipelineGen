@@ -6,23 +6,23 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *asset.ClipFolder) error {
+func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *detail.ClipFolder) error {
 	mBytes, err := json.Marshal(folder)
 	if err != nil {
 		return err
 	}
-	var assetsFolder asset.ClipFolder
+	var assetsFolder detail.ClipFolder
 	if err := json.Unmarshal(mBytes, &assetsFolder); err != nil {
 		return err
 	}
 	return r.AssetStoreSQLite.UpsertFolder(ctx, &assetsFolder)
 }
 
-func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
+func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*detail.ClipFolder, error) {
 	folder, err := r.AssetStoreSQLite.GetFolder(ctx, folderID)
 	if err != nil {
 		return nil, err
@@ -31,12 +31,12 @@ func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*asse
 		return nil, nil
 	}
 	mBytes, _ := json.Marshal(folder)
-	var mFolder asset.ClipFolder
+	var mFolder detail.ClipFolder
 	_ = json.Unmarshal(mBytes, &mFolder)
 	return &mFolder, nil
 }
 
-func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
+func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string) (*detail.ClipFolder, error) {
 	folder, err := r.AssetStoreSQLite.GetFolderByVideoID(ctx, videoID)
 	if err != nil {
 		return nil, err
@@ -45,15 +45,15 @@ func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string
 		return nil, nil
 	}
 	mBytes, _ := json.Marshal(folder)
-	var mFolder asset.ClipFolder
+	var mFolder detail.ClipFolder
 	_ = json.Unmarshal(mBytes, &mFolder)
 	return &mFolder, nil
 }
 
-func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string) (*asset.ClipFolder, error) {
+func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string) (*detail.ClipFolder, error) {
 	query := "SELECT id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at FROM clip_folders WHERE folder_path = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderPath)
-	var folder asset.ClipFolder
+	var folder detail.ClipFolder
 	var createdAt, updatedAt string
 	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
 		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
@@ -70,15 +70,15 @@ func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string
 	return &folder, nil
 }
 
-func (r *ClipsRepository) ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error) {
+func (r *ClipsRepository) ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error) {
 	folders, err := r.AssetStoreSQLite.ListFolders(ctx, source)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*asset.ClipFolder, len(folders))
+	out := make([]*detail.ClipFolder, len(folders))
 	for i, f := range folders {
 		mBytes, _ := json.Marshal(f)
-		var mFolder asset.ClipFolder
+		var mFolder detail.ClipFolder
 		_ = json.Unmarshal(mBytes, &mFolder)
 		out[i] = &mFolder
 	}

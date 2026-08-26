@@ -1,10 +1,11 @@
 // PR12b integration test: verifies that artlist.SearchService.UpsertClip,
-// when wired with an asset.Repository via SetAssetRepo, routes through
+// when wired with an detail.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (assets.ClipsRepository) observe the
 // same row data.
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
@@ -20,7 +21,7 @@ import (
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
-func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
+func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo detail.Repository) {
 	t.Helper()
 	db = drive.NewMigratedTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })

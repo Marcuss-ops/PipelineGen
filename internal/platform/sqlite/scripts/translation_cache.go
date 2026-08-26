@@ -17,12 +17,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"sync"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -189,7 +188,7 @@ func (c *Cache) Set(ctx context.Context, sourceText, targetLanguage, translatedT
 	}
 
 	key := cacheKey(sourceText, targetLanguage)
-	sourceHash := hashutil.SHA256String(sourceText)
+	sourceHash := digest.SHA256String(sourceText)
 
 	// Store in L1 (in-memory) with TTL
 	c.mu.Lock()

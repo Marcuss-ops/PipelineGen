@@ -39,6 +39,7 @@
 package enrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"

@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -49,7 +49,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		&fakePublisher{},
 	)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -82,7 +82,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		&fakePublisher{},
 	)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -111,7 +111,7 @@ func TestProcessRenditions_ProxyFailureIsTerminal(t *testing.T) {
 	)
 
 	rawPath := writeStagedFileForTest(t, "staged-video")
-	_, err := p.processRenditions(ctx, &asset.ProcessInput{
+	_, err := p.processRenditions(ctx, &detail.ProcessInput{
 		ID:        "proxy-failure",
 		Name:      "proxy failure",
 		OutputDir: filepath.Join(tmp, "out"),
@@ -139,7 +139,7 @@ func TestProcessorPassesDefaultNormalizePolicyWithoutCodecOverride(t *testing.T)
 		nil, &fakePublisher{},
 	)
 
-	_, err := p.Process(ctx, &asset.ProcessInput{
+	_, err := p.Process(ctx, &detail.ProcessInput{
 		ID: "default-policy", Name: "default policy", LocalPath: localPath,
 		OutputDir: filepath.Join(t.TempDir(), "out"),
 	})
@@ -174,7 +174,7 @@ func TestProcessorPreservesResolvedEncoderPolicyDuringNormalization(t *testing.T
 		nil, &fakePublisher{},
 	)
 
-	_, err := p.Process(ctx, &asset.ProcessInput{
+	_, err := p.Process(ctx, &detail.ProcessInput{
 		ID: "policy-preserved", Name: "policy test", LocalPath: localPath,
 		OutputDir: filepath.Join(t.TempDir(), "out"),
 	})
@@ -212,7 +212,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	)
 
 	// Case 1: StreamCopy is true but persisted clips still normalize.
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:         "clip-1",
 		Name:       "test clip",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -229,7 +229,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	ff.normalizeCalled = false
 	p.videoCfg.FPSNum, p.videoCfg.FPSDen = 60, 1
 
-	result, err = p.Process(ctx, &asset.ProcessInput{
+	result, err = p.Process(ctx, &detail.ProcessInput{
 		ID:         "clip-2",
 		Name:       "test clip 2",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -259,7 +259,7 @@ func TestProcessor_NormalizeFalseSkipsFFmpeg(t *testing.T) {
 	ff := &fakeFFmpeg{}
 	p := newProcessorForLocalPathTest(t, ff)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-normfalse",
 		Name:      "test clip",
 		LocalPath: localPath,
@@ -297,7 +297,7 @@ func TestProcessor_SkipPublishSkipsPublisher(t *testing.T) {
 		pub,
 	)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:          "clip-nopub",
 		Name:        "test clip",
 		LocalPath:   localPath,
@@ -354,7 +354,7 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 	)
 
 	// FolderID set = upload stage reached per processor.Process Step 4 logic.
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-e2e",
 		Name:      "e2e test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -447,7 +447,7 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 		pub,
 	)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-e2e-publish-fail",
 		Name:      "e2e publish fail clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -516,7 +516,7 @@ func TestProcess_LocalPathPreservedOnProcessStepFailure(t *testing.T) {
 	}
 	p := newProcessorForLocalPathTest(t, ff)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-processfail",
 		Name:      "test clip",
 		LocalPath: localPath, // <-- gateway field set: caller-owned staged path
@@ -552,7 +552,7 @@ func TestProcess_LocalPathPreservedOnHashStepFailure(t *testing.T) {
 	ff := &fakeFFmpeg{normalizeAsDir: true} // <-- forces hashStep MD5File failure
 	p := newProcessorForLocalPathTest(t, ff)
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-hashfail",
 		Name:      "test clip",
 		LocalPath: localPath,
@@ -586,7 +586,7 @@ func TestProcess_LocalPathPreservedOnHappyPath(t *testing.T) {
 
 	p := newProcessorForLocalPathTest(t, &fakeFFmpeg{}) // standard WriteFile path
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-happy",
 		Name:      "test clip",
 		LocalPath: localPath,
@@ -623,7 +623,7 @@ func TestProcess_AtomicNormalize_ReplacesReadOnlyOutput(t *testing.T) {
 	localPath := writeStagedFileForTest(t, "staged-bytes")
 	p := newProcessorForLocalPathTest(t, &fakeFFmpeg{})
 
-	result, err := p.Process(ctx, &asset.ProcessInput{
+	result, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        id,
 		Name:      name,
 		LocalPath: localPath,
@@ -658,7 +658,7 @@ func TestProcessor_HonorsExplicitFilename(t *testing.T) {
 		nil, pub,
 	)
 
-	_, err := p.Process(ctx, &asset.ProcessInput{
+	_, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-explicit-name",
 		Name:      "ignored human name",
 		Filename:  "yt_abc123_0_30_v1_slug.mp4",
@@ -689,7 +689,7 @@ func TestProcessor_HonorsExplicitDestination(t *testing.T) {
 		nil, pub,
 	)
 
-	_, err := p.Process(ctx, &asset.ProcessInput{
+	_, err := p.Process(ctx, &detail.ProcessInput{
 		ID:          "clip-explicit-dest",
 		Name:        "explicit dest clip",
 		Filename:    "yt_abc123_0_30_v1_slug.mp4",
@@ -726,7 +726,7 @@ func TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID(t *testi
 		nil, pub,
 	)
 
-	_, err := p.Process(ctx, &asset.ProcessInput{
+	_, err := p.Process(ctx, &detail.ProcessInput{
 		ID:        "clip-legacy",
 		Name:      "legacy clip",
 		LocalPath: localPath,

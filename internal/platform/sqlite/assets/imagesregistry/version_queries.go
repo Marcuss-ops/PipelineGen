@@ -7,12 +7,13 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -123,6 +124,6 @@ func (a *versionRepositoryAdapter) Append(ctx context.Context, v *asset.Version)
 
 // VersionRepository returns the VersionRepository adapter for the
 // LOCAL AssetStoreSQLite.
-func (s *AssetStoreSQLite) VersionRepository() asset.VersionRepository {
+func (s *AssetStoreSQLite) VersionRepository() detail.VersionRepository {
 	return &versionRepositoryAdapter{store: s}
 }

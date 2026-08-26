@@ -5,11 +5,12 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strconv"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"net/http"
 
@@ -120,7 +121,7 @@ func (oh *OpsHandler) FolderStatus(c *gin.Context) {
 		clipList, _ = repo.ListByFolderPath(ctx, folder.FolderPath)
 	}
 
-	stats := asset.ClipFolderStats{}
+	stats := detail.ClipFolderStats{}
 	for _, clip := range clipList {
 		stats.ClipCount++
 		if clip.DriveLink() != "" || clip.DownloadLink() != "" {

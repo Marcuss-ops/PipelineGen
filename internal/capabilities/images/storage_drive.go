@@ -1,12 +1,13 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -16,7 +17,7 @@ import (
 
 // UploadToStyleDrive uploads an image to Drive in a style-based subfolder
 // via the canonical delivery.Publisher.Publish canal.
-func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *asset.ImageAsset, style string) (string, string, error) {
+func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *detail.ImageAsset, style string) (string, string, error) {
 	if s.publisher == nil {
 		return "", "", fmt.Errorf("publisher not configured")
 	}
@@ -41,10 +42,10 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 	webLink := result.WebViewLink
 
 	prompt := imgAsset.Description
-	generator := string(asset.ProviderNVIDIA)
-	if d, ok := asset.DefaultProviderRegistry().Match(imgAsset.SourceURL); ok && d.Origin == asset.ImageOriginGenerated {
+	generator := string(detail.ProviderNVIDIA)
+	if d, ok := asset.DefaultProviderRegistry().Match(imgAsset.SourceURL); ok && d.Origin == detail.ImageOriginGenerated {
 		generator = string(d.ID)
-	} else if d, ok := asset.DefaultProviderRegistry().Match(prompt); ok && d.Origin == asset.ImageOriginGenerated {
+	} else if d, ok := asset.DefaultProviderRegistry().Match(prompt); ok && d.Origin == detail.ImageOriginGenerated {
 		generator = string(d.ID)
 	} else if gen := imgAsset.ImageMetadata().Generator; gen != "" {
 		generator = gen
@@ -110,7 +111,7 @@ func (s *ImageStorageService) syncFolderRecursive(ctx context.Context, folderID,
 		if err == nil && existing != nil {
 			continue
 		}
-		imgAsset := &asset.ImageAsset{
+		imgAsset := &detail.ImageAsset{
 			SubjectID:    textutil.Slugify(file.Name),
 			Hash:         "drive_" + file.ID,
 			PathRel:      "",
@@ -133,7 +134,7 @@ func (s *ImageStorageService) aiImageDriveRootForSource(source, style string) st
 	if s == nil || s.cfg == nil {
 		return ""
 	}
-	if !asset.IsAIImageSource(source) {
+	if !detail.IsAIImageSource(source) {
 		return ""
 	}
 	styleFolders := map[string]string{

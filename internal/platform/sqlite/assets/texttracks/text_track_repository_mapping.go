@@ -1,7 +1,7 @@
 // Package assets — text_track_repository_mapping.go
 //
 // TextTrackRepositorySQLite scan helpers. The reader-side projection
-// from `asset_text_tracks` rows into domain `asset.TextTrack` values.
+// from `asset_text_tracks` rows into domain `detail.TextTrack` values.
 //
 // PR-CATALOG-MULTILINGUA step 2 (July 2026): the SELECT/INSERT
 // projections now carry the new source_track_id (FK back to the
@@ -16,7 +16,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -26,7 +26,7 @@ type textTrackScanner interface {
 }
 
 // scanTextTrack reads a single row from the asset_text_tracks
-// SELECT projection into a domain asset.TextTrack value.
+// SELECT projection into a domain detail.TextTrack value.
 //
 // The caller passes either an *sql.Row (single-row QueryRowContext)
 // or an *sql.Rows (iteration with QueryContext). The behaviour
@@ -34,8 +34,8 @@ type textTrackScanner interface {
 // mapping are bound together so a future maintainer who adds a
 // column MUST update this function AND every place that constructs
 // the SELECT projection (see text_track_repository_lookup.go).
-func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
-	var t asset.TextTrack
+func scanTextTrack(s textTrackScanner) (*detail.TextTrack, error) {
+	var t detail.TextTrack
 	var (
 		id             int64
 		assetID        string
@@ -80,9 +80,9 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 	t.ID = id
 	t.AssetID = assetID
 	t.LanguageCode = languageCode
-	t.TextKind = asset.TextTrackKind(textKind)
+	t.TextKind = detail.TextTrackKind(textKind)
 	t.TextContent = textContent
-	t.SourceType = asset.TextTrackSource(sourceType)
+	t.SourceType = detail.TextTrackSource(sourceType)
 	t.SourceLanguageCode = sourceLangCode
 	t.IsOriginal = isOriginal == 1
 	t.Provider = provider
@@ -106,7 +106,7 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 		v := confidence.Float64
 		t.Confidence = &v
 	}
-	t.Status = asset.TextTrackStatus(status)
+	t.Status = detail.TextTrackStatus(status)
 
 	if createdAtStr != "" {
 		if parsed := timeutil.ParseRFC3339(createdAtStr); !parsed.IsZero() {
@@ -132,6 +132,6 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 // scanTextTrack. It exists so callers (ListByAsset) can pass the
 // rows-loop iterator directly without the overhead of an
 // intermediate textTrackScanner interface assertion.
-func scanTextTrackRows(rows *sql.Rows) (*asset.TextTrack, error) {
+func scanTextTrackRows(rows *sql.Rows) (*detail.TextTrack, error) {
 	return scanTextTrack(rows)
 }

@@ -6,12 +6,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
 // RenderVariantRepositorySQLite is the SQLite-backed implementation of
-// asset.RenderVariantRepository (migrations/sqlite/219_asset_render_variants.sql).
+// detail.RenderVariantRepository (migrations/sqlite/219_asset_render_variants.sql).
 type RenderVariantRepositorySQLite struct {
 	db  *sql.DB
 	log *zap.Logger
@@ -27,9 +27,9 @@ func NewRenderVariantRepository(db *sql.DB, log *zap.Logger) (*RenderVariantRepo
 	return &RenderVariantRepositorySQLite{db: db, log: log}, nil
 }
 
-var _ asset.RenderVariantRepository = (*RenderVariantRepositorySQLite)(nil)
+var _ detail.RenderVariantRepository = (*RenderVariantRepositorySQLite)(nil)
 
-func (r *RenderVariantRepositorySQLite) Upsert(ctx context.Context, v *asset.RenderVariant) error {
+func (r *RenderVariantRepositorySQLite) Upsert(ctx context.Context, v *detail.RenderVariant) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -121,14 +121,14 @@ func (r *RenderVariantRepositorySQLite) Upsert(ctx context.Context, v *asset.Ren
 	return nil
 }
 
-func (r *RenderVariantRepositorySQLite) FindCurrent(ctx context.Context, sourceClipID, languageCode string) (*asset.RenderVariant, error) {
+func (r *RenderVariantRepositorySQLite) FindCurrent(ctx context.Context, sourceClipID, languageCode string) (*detail.RenderVariant, error) {
 	row := r.db.QueryRowContext(ctx, renderVariantSelect+`
 		WHERE source_clip_id = ? AND language_code = ? AND is_current = 1`,
 		sourceClipID, languageCode)
 	return scanRenderVariant(row)
 }
 
-func (r *RenderVariantRepositorySQLite) FindByFingerprint(ctx context.Context, sourceClipID, languageCode, fingerprint string) (*asset.RenderVariant, error) {
+func (r *RenderVariantRepositorySQLite) FindByFingerprint(ctx context.Context, sourceClipID, languageCode, fingerprint string) (*detail.RenderVariant, error) {
 	row := r.db.QueryRowContext(ctx, renderVariantSelect+`
 		WHERE source_clip_id = ? AND language_code = ? AND fingerprint = ?
 		ORDER BY id DESC LIMIT 1`,
@@ -136,7 +136,7 @@ func (r *RenderVariantRepositorySQLite) FindByFingerprint(ctx context.Context, s
 	return scanRenderVariant(row)
 }
 
-func (r *RenderVariantRepositorySQLite) ListBySourceClip(ctx context.Context, sourceClipID string) ([]asset.RenderVariant, error) {
+func (r *RenderVariantRepositorySQLite) ListBySourceClip(ctx context.Context, sourceClipID string) ([]detail.RenderVariant, error) {
 	rows, err := r.db.QueryContext(ctx, renderVariantSelect+`
 		WHERE source_clip_id = ?
 		ORDER BY id DESC`, sourceClipID)
@@ -145,7 +145,7 @@ func (r *RenderVariantRepositorySQLite) ListBySourceClip(ctx context.Context, so
 	}
 	defer rows.Close()
 
-	var list []asset.RenderVariant
+	var list []detail.RenderVariant
 	for rows.Next() {
 		v, err := scanRenderVariant(rows)
 		if err != nil {
@@ -165,8 +165,8 @@ const renderVariantSelect = `
 	       status, validation_error, is_current, created_at, updated_at
 	FROM asset_render_variants`
 
-func scanRenderVariant(s interface{ Scan(dest ...any) error }) (*asset.RenderVariant, error) {
-	var v asset.RenderVariant
+func scanRenderVariant(s interface{ Scan(dest ...any) error }) (*detail.RenderVariant, error) {
+	var v detail.RenderVariant
 	var (
 		statusStr    string
 		isCurrentInt int
@@ -187,7 +187,7 @@ func scanRenderVariant(s interface{ Scan(dest ...any) error }) (*asset.RenderVar
 		}
 		return nil, err
 	}
-	v.Status = asset.RenderVariantStatus(statusStr)
+	v.Status = detail.RenderVariantStatus(statusStr)
 	v.IsCurrent = isCurrentInt == 1
 	v.CreatedAt = parseSQLiteTime(createdStr)
 	v.UpdatedAt = parseSQLiteTime(updatedStr)

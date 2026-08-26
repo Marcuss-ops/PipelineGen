@@ -17,6 +17,7 @@
 package usecase_test
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"reflect"
@@ -28,7 +29,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // stubTranslationPort is a translation.TranslationPort spy that
@@ -82,8 +83,8 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 
 	// ── 2. Runtime guarantee: spy is never invoked ─────────────────
 	reader := &stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
-			"clip-A:en": makeTrack("clip-A", "en", "hello world", asset.TextTrackReady),
+		tracks: map[string]*detail.TextTrack{
+			"clip-A:en": makeTrack("clip-A", "en", "hello world", detail.TextTrackReady),
 		},
 		readyLanguages: map[string][]string{
 			"clip-A": {"en"},
@@ -127,7 +128,7 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 
 	// Path 2: missing-track path (textTrackReader returns nil).
 	readerEmpty := &stubTextTrackReader{
-		tracks:         map[string]*asset.TextTrack{},
+		tracks:         map[string]*detail.TextTrack{},
 		readyLanguages: map[string][]string{},
 	}
 	b2 := scripts.NewClipSourceBuilder(stubClips, nil, zap.NewNop())
@@ -185,8 +186,8 @@ func TestClipSourceBuilder_MissingTranscriptFailsClosedForMixedBatch(t *testing.
 	)
 
 	reader := &stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
-			validID + ":en": makeTrack(validID, "en", "valid transcript", asset.TextTrackReady),
+		tracks: map[string]*detail.TextTrack{
+			validID + ":en": makeTrack(validID, "en", "valid transcript", detail.TextTrackReady),
 		},
 	}
 	stubClips := &stubClipsResolver{
@@ -225,11 +226,11 @@ func TestClipSourceBuilder_MissingTranscriptFailsClosedForMixedBatch(t *testing.
 // only uses TextTrackTranscript). A future refactor that adds
 // kind-aware lookups should switch to a struct key.
 type stubTextTrackReader struct {
-	tracks         map[string]*asset.TextTrack
+	tracks         map[string]*detail.TextTrack
 	readyLanguages map[string][]string
 }
 
-func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	key := assetID + ":" + languageCode
 	if track, ok := s.tracks[key]; ok {
 		return track, nil, nil
@@ -237,7 +238,7 @@ func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode
 	return nil, nil, nil
 }
 
-func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, _ detail.TextTrackKind) ([]string, error) {
 	if langs, ok := s.readyLanguages[assetID]; ok {
 		return langs, nil
 	}
@@ -246,11 +247,11 @@ func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID stri
 
 // makeTrack is a tiny constructor for a READY TextTrack used by
 // the stub reader.
-func makeTrack(assetID, languageCode, text string, status asset.TextTrackStatus) *asset.TextTrack {
-	return &asset.TextTrack{
+func makeTrack(assetID, languageCode, text string, status detail.TextTrackStatus) *detail.TextTrack {
+	return &detail.TextTrack{
 		AssetID:       assetID,
 		LanguageCode:  languageCode,
-		TextKind:      asset.TextTrackTranscript,
+		TextKind:      detail.TextTrackTranscript,
 		TextContent:   text,
 		TextHash:      "hash-" + assetID + "-" + languageCode,
 		SourceVersion: "v1.0",

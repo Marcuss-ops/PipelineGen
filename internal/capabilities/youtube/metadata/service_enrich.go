@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // GenerateClipMetadata is the canonical application-layer entry
@@ -218,7 +218,7 @@ type CanonicalClipEnrichment struct {
 	QualityScore    float64
 	Tags            []string
 	SearchText      string
-	TextTracks      []asset.TextTrack
+	TextTracks      []detail.TextTrack
 }
 
 // Compile-time assertion: MetadataService is a pure MetadataAnalyzer.
@@ -270,15 +270,15 @@ func ComposeCanonicalClipEnrichment(md youtubetypes.CanonicalClipMetadata) Canon
 		SearchText:      searchText,
 	}
 	if md.CleanTranscript != "" {
-		enrichment.TextTracks = []asset.TextTrack{
+		enrichment.TextTracks = []detail.TextTrack{
 			{
 				AssetID:      assetID,
 				LanguageCode: md.OriginalLanguage,
-				TextKind:     asset.TextTrackTranscript,
+				TextKind:     detail.TextTrackTranscript,
 				TextContent:  md.CleanTranscript,
-				SourceType:   asset.TextSourceProvided,
+				SourceType:   detail.TextSourceProvided,
 				IsOriginal:   true,
-				Status:       asset.TextTrackReady,
+				Status:       detail.TextTrackReady,
 			},
 		}
 	}

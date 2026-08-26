@@ -11,7 +11,7 @@ import (
 
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 var (
@@ -240,7 +240,7 @@ func (s *StockService) getTranscript(ctx context.Context, video YouTubeVideo, du
 
 func clockString(ms int64) string { return time.UnixMilli(ms).UTC().Format("15:04:05") }
 
-func TranscriptFromBundle(bundle *asset.ResolvedTextBundle) *Transcript {
+func TranscriptFromBundle(bundle *detail.ResolvedTextBundle) *Transcript {
 	if bundle == nil || bundle.IsEmpty() {
 		return nil
 	}
@@ -251,7 +251,7 @@ func TranscriptFromBundle(bundle *asset.ResolvedTextBundle) *Transcript {
 	}
 }
 
-func bundleToCues(in []asset.TimedCue) []TranscriptCue {
+func bundleToCues(in []detail.TimedCue) []TranscriptCue {
 	out := make([]TranscriptCue, 0, len(in))
 	for _, cue := range in {
 		out = append(out, TranscriptCue{StartMs: cue.StartMs, EndMs: cue.EndMs, Text: cue.Text})

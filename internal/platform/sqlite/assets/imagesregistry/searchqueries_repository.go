@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -28,7 +28,7 @@ func (r *SearchQueriesRepository) DB() *sql.DB {
 // â”€â”€ Search Queries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Upsert creates or updates a search query.
-func (r *SearchQueriesRepository) Upsert(ctx context.Context, q *asset.SearchQuery) error {
+func (r *SearchQueriesRepository) Upsert(ctx context.Context, q *detail.SearchQuery) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	if q.CreatedAt == "" {
 		q.CreatedAt = now
@@ -67,7 +67,7 @@ func (r *SearchQueriesRepository) Upsert(ctx context.Context, q *asset.SearchQue
 }
 
 // ListAll returns all search queries, active first.
-func (r *SearchQueriesRepository) ListAll(ctx context.Context) ([]*asset.SearchQuery, error) {
+func (r *SearchQueriesRepository) ListAll(ctx context.Context) ([]*detail.SearchQuery, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, query, category, drive_folder_id, min_score, max_results,
 			check_interval, last_run_at, last_video_published_at, is_active,
@@ -83,7 +83,7 @@ func (r *SearchQueriesRepository) ListAll(ctx context.Context) ([]*asset.SearchQ
 }
 
 // ListActive returns all active search queries.
-func (r *SearchQueriesRepository) ListActive(ctx context.Context) ([]*asset.SearchQuery, error) {
+func (r *SearchQueriesRepository) ListActive(ctx context.Context) ([]*detail.SearchQuery, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, query, category, drive_folder_id, min_score, max_results,
 			check_interval, last_run_at, last_video_published_at, is_active,
@@ -100,7 +100,7 @@ func (r *SearchQueriesRepository) ListActive(ctx context.Context) ([]*asset.Sear
 }
 
 // GetByID retrieves a single search query by ID.
-func (r *SearchQueriesRepository) GetByID(ctx context.Context, id string) (*asset.SearchQuery, error) {
+func (r *SearchQueriesRepository) GetByID(ctx context.Context, id string) (*detail.SearchQuery, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, query, category, drive_folder_id, min_score, max_results,
 			check_interval, last_run_at, last_video_published_at, is_active,
@@ -129,7 +129,7 @@ func (r *SearchQueriesRepository) UpdateLastRun(ctx context.Context, id string, 
 // â”€â”€ Search Query Results â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // InsertResult records a processed video for a search query.
-func (r *SearchQueriesRepository) InsertResult(ctx context.Context, res *asset.SearchQueryResult) error {
+func (r *SearchQueriesRepository) InsertResult(ctx context.Context, res *detail.SearchQueryResult) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO search_query_results (query_id, video_id, video_title, channel_name, published_at, processed_at, score)
 		VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
@@ -152,7 +152,7 @@ func (r *SearchQueriesRepository) IsVideoProcessed(ctx context.Context, videoID 
 }
 
 // ListResultsByQuery returns all results for a specific query.
-func (r *SearchQueriesRepository) ListResultsByQuery(ctx context.Context, queryID string) ([]*asset.SearchQueryResult, error) {
+func (r *SearchQueriesRepository) ListResultsByQuery(ctx context.Context, queryID string) ([]*detail.SearchQueryResult, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT query_id, video_id, video_title, channel_name, published_at, processed_at, score
 		FROM search_query_results
@@ -168,8 +168,8 @@ func (r *SearchQueriesRepository) ListResultsByQuery(ctx context.Context, queryI
 
 // â”€â”€ Scanners â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-func scanQueries(rows *sql.Rows) ([]*asset.SearchQuery, error) {
-	var results []*asset.SearchQuery
+func scanQueries(rows *sql.Rows) ([]*detail.SearchQuery, error) {
+	var results []*detail.SearchQuery
 	for rows.Next() {
 		q, err := scanQueryFields(rows)
 		if err != nil {
@@ -180,14 +180,14 @@ func scanQueries(rows *sql.Rows) ([]*asset.SearchQuery, error) {
 	return results, rows.Err()
 }
 
-func scanQuery(row *sql.Row) (*asset.SearchQuery, error) {
+func scanQuery(row *sql.Row) (*detail.SearchQuery, error) {
 	return scanQueryFields(row)
 }
 
 func scanQueryFields(scanner interface {
 	Scan(dest ...any) error
-}) (*asset.SearchQuery, error) {
-	q := &asset.SearchQuery{}
+}) (*detail.SearchQuery, error) {
+	q := &detail.SearchQuery{}
 	var lastRunAt, lastVideoPubAt, createdAt, updatedAt sql.NullString
 	err := scanner.Scan(&q.ID, &q.Query, &q.Category, &q.DriveFolderID,
 		&q.MinScore, &q.MaxResults, &q.CheckInterval,
@@ -203,8 +203,8 @@ func scanQueryFields(scanner interface {
 	return q, nil
 }
 
-func scanResults(rows *sql.Rows) ([]*asset.SearchQueryResult, error) {
-	var results []*asset.SearchQueryResult
+func scanResults(rows *sql.Rows) ([]*detail.SearchQueryResult, error) {
+	var results []*detail.SearchQueryResult
 	for rows.Next() {
 		r, err := scanResult(rows)
 		if err != nil {
@@ -217,8 +217,8 @@ func scanResults(rows *sql.Rows) ([]*asset.SearchQueryResult, error) {
 
 func scanResult(scanner interface {
 	Scan(dest ...any) error
-}) (*asset.SearchQueryResult, error) {
-	r := &asset.SearchQueryResult{}
+}) (*detail.SearchQueryResult, error) {
+	r := &detail.SearchQueryResult{}
 	var publishedAt, processedAt sql.NullString
 	err := scanner.Scan(&r.QueryID, &r.VideoID, &r.VideoTitle, &r.ChannelName,
 		&publishedAt, &processedAt, &r.Score)

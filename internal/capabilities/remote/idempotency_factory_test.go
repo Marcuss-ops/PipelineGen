@@ -6,7 +6,7 @@
 //
 // Per Commit D user-spec literal: "Aggiungi un test unit con fake `HashFunc`".
 // The test fake asserts the typed-port contract:
-//  1. Any `func(string) string` value satisfies hashutil.HashFunc
+//  1. Any `func(string) string` value satisfies digest.HashFunc
 //     (structural typing on function types — Go-idiomatic).
 //  2. The fake-injected path produces fake byte-patterns in derived
 //     keys (NOT the real SHA-256 hex).
@@ -20,20 +20,20 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // testFakeHasher returns "FAKE:<input>" for every call. Exercises the
 // Commit D typed-port contract — any func(string) string satisfying
-// hashutil.HashFunc must work, no explicit "implements" clause required.
+// digest.HashFunc must work, no explicit "implements" clause required.
 func testFakeHasher(s string) string {
 	return "FAKE:" + s
 }
 
 // Compile-time assertion (godlike/06 typed-port ownership):
-// `testFakeHasher` must satisfy `hashutil.HashFunc`. If HashFunc is ever
+// `testFakeHasher` must satisfy `digest.HashFunc`. If HashFunc is ever
 // converted to an interface with methods, this file fails to build.
-var _ hashutil.HashFunc = testFakeHasher
+var _ digest.HashFunc = testFakeHasher
 
 // TestMakeArtifactIdempotencyKey_FakeHash_ProducesFakeBytes pins the
 // Commit D injection contract: a FAKE hasher wired into the constructor
@@ -104,7 +104,7 @@ func TestMakeArtifactIdempotencyKey_PanicOnNilHash(t *testing.T) {
 			t.Error("expected panic on nil HashFunc (godlike/07 fail-closed)")
 		}
 	}()
-	_ = remote.MakeArtifactIdempotencyKey(hashutil.HashFunc(nil))
+	_ = remote.MakeArtifactIdempotencyKey(digest.HashFunc(nil))
 }
 
 // TestMakeCompleteJobIdempotencyKey_FakeHash_ProducesFakeBytes —
@@ -166,11 +166,11 @@ func TestMakeCompleteJobIdempotencyKey_PanicOnNilHash(t *testing.T) {
 			t.Error("expected panic on nil HashFunc (godlike/07 fail-closed)")
 		}
 	}()
-	_ = remote.MakeCompleteJobIdempotencyKey(hashutil.HashFunc(nil))
+	_ = remote.MakeCompleteJobIdempotencyKey(digest.HashFunc(nil))
 }
 
 func TestArtifactIdempotencyKey_DefaultMatchesInjectedHasher(t *testing.T) {
-	derive := remote.MakeArtifactIdempotencyKey(hashutil.SHA256String)
+	derive := remote.MakeArtifactIdempotencyKey(digest.SHA256String)
 	want := derive("j-1", "a-1", "h-1")
 	if got := remote.ArtifactIdempotencyKey("j-1", "a-1", "h-1"); got != want {
 		t.Fatalf("legacy artifact key = %q, injected default = %q; compatibility drift", got, want)
@@ -178,7 +178,7 @@ func TestArtifactIdempotencyKey_DefaultMatchesInjectedHasher(t *testing.T) {
 }
 
 func TestCompleteJobIdempotencyKey_DefaultMatchesInjectedHasher(t *testing.T) {
-	derive := remote.MakeCompleteJobIdempotencyKey(hashutil.SHA256String)
+	derive := remote.MakeCompleteJobIdempotencyKey(digest.SHA256String)
 	want := derive("j-1", 2, "h-1")
 	if got := remote.CompleteJobIdempotencyKey("j-1", 2, "h-1"); got != want {
 		t.Fatalf("legacy complete-job key = %q, injected default = %q; compatibility drift", got, want)
@@ -231,7 +231,7 @@ func TestCompleteJobIdempotencyKey_LegacyFreeFunction_StillWorks(t *testing.T) {
 // contract for the artifact idempotency key. The key is SHA-256 of the
 // colon-joined triple "jobID:artifactID:sha256Hex", computed through the
 // full delegation chain (ArtifactIdempotencyKey → defaultArtifactKey →
-// MakeArtifactIdempotencyKey → hashutil.SHA256String → kernel/digest). The
+// MakeArtifactIdempotencyKey → digest.SHA256String → kernel/digest). The
 // golden literal was produced by the pre-migration implementation
 // (sha256.Sum256); a drift anywhere in that chain fails loudly.
 func TestArtifactIdempotencyKey_GoldenOldNew(t *testing.T) {
@@ -244,7 +244,7 @@ func TestArtifactIdempotencyKey_GoldenOldNew(t *testing.T) {
 		t.Fatalf("idempotency key length = %d, want 64", len(got))
 	}
 	// The injected default must match the legacy free function.
-	derive := remote.MakeArtifactIdempotencyKey(hashutil.SHA256String)
+	derive := remote.MakeArtifactIdempotencyKey(digest.SHA256String)
 	if injected := derive("j-1", "a-1", "h-1"); injected != got {
 		t.Fatalf("injected default = %q, legacy free function = %q; drift", injected, got)
 	}

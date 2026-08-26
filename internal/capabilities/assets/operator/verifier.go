@@ -1,5 +1,9 @@
 package operator
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "context"
 
 // IndexVerifier is the application-layer port for a live Qdrant

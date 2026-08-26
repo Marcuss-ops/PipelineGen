@@ -35,9 +35,10 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // defaultImageWidth is the canonical smart-image width (Commit 6
@@ -85,7 +86,7 @@ type imagePrewarmer interface {
 // When ImageGenService implements it, the fanout prefers the
 // Drive-backed AI path over the fallback SearchAndDownload.
 type smartImageGenService interface {
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*domainasset.ImageAsset, error)
+	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error)
 }
 
 // imageSceneOutcome is the INTERNAL goroutine-buffer outcome used by

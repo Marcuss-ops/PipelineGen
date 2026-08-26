@@ -10,6 +10,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,12 +27,12 @@ import (
 // Returns a canned bundle (or error) for every FetchSegmentSubtitles
 // call.
 type stubSubtitles struct {
-	bundle *asset.ResolvedTextBundle
+	bundle *detail.ResolvedTextBundle
 	err    error
 	calls  int
 }
 
-func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*asset.ResolvedTextBundle, error) {
+func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*detail.ResolvedTextBundle, error) {
 	s.calls++
 	return s.bundle, s.err
 }
@@ -40,12 +41,12 @@ func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ 
 // Returns a canned TranscriptResult (or error) for every
 // TranscribeAudioWithDetection call.
 type stubWhisper struct {
-	result asset.TranscriptResult
+	result detail.TranscriptResult
 	err    error
 	calls  int
 }
 
-func (s *stubWhisper) TranscribeAudioWithDetection(_ context.Context, _ string) (asset.TranscriptResult, error) {
+func (s *stubWhisper) TranscribeAudioWithDetection(_ context.Context, _ string) (detail.TranscriptResult, error) {
 	s.calls++
 	return s.result, s.err
 }
@@ -91,7 +92,7 @@ func TestAcquireService_Priority2_LocalVTT(t *testing.T) {
 	assert.Equal(t, "Hello world\nGoodbye world", result.PlainText)
 	assert.Len(t, result.Cues, 2, "two cues parsed from VTT")
 	assert.Equal(t, "en", result.LanguageCode)
-	assert.Equal(t, asset.TextTrackSource("local_file"), result.SourceType)
+	assert.Equal(t, detail.TextTrackSource("local_file"), result.SourceType)
 	assert.Equal(t, vttPath, result.SourcePath)
 
 	// Priority 3+4 and 5 must NOT be called.
@@ -107,16 +108,16 @@ func TestAcquireService_Priority3Plus4_YouTubeSubs(t *testing.T) {
 	clipPath := filepath.Join(dir, "clip.mp4")
 	require.NoError(t, os.WriteFile(clipPath, []byte("fake"), 0o644))
 
-	cues := []asset.TimedCue{
+	cues := []detail.TimedCue{
 		{StartMs: 0, EndMs: 1000, Text: "sub line 1"},
 		{StartMs: 1000, EndMs: 2000, Text: "sub line 2"},
 	}
 	subs := &stubSubtitles{
-		bundle: &asset.ResolvedTextBundle{
+		bundle: &detail.ResolvedTextBundle{
 			LanguageCode: "it",
 			PlainText:    "sub line 1\nsub line 2",
 			Cues:         cues,
-			SourceType:   asset.TextSourceYouTubeSubtitle,
+			SourceType:   detail.TextSourceYouTubeSubtitle,
 			IsOriginal:   true,
 			Provider:     "youtube",
 		},
@@ -136,7 +137,7 @@ func TestAcquireService_Priority3Plus4_YouTubeSubs(t *testing.T) {
 
 	assert.Equal(t, 3, result.Priority, "priority should be 3 (YouTube subs)")
 	assert.Equal(t, "it", result.LanguageCode)
-	assert.Equal(t, asset.TextSourceYouTubeSubtitle, result.SourceType)
+	assert.Equal(t, detail.TextSourceYouTubeSubtitle, result.SourceType)
 	assert.Equal(t, "sub line 1\nsub line 2", result.PlainText)
 	assert.Len(t, result.Cues, 2)
 
@@ -155,7 +156,7 @@ func TestAcquireService_Priority5_Whisper(t *testing.T) {
 	confidence := 0.92
 	subs := &stubSubtitles{bundle: nil} // valid "not found"
 	whisp := &stubWhisper{
-		result: asset.TranscriptResult{
+		result: detail.TranscriptResult{
 			Text:             "Whisper transcribed text",
 			DetectedLanguage: "en",
 			Confidence:       &confidence,
@@ -175,7 +176,7 @@ func TestAcquireService_Priority5_Whisper(t *testing.T) {
 
 	assert.Equal(t, 5, result.Priority, "priority should be 5 (Whisper)")
 	assert.Equal(t, "en", result.LanguageCode)
-	assert.Equal(t, asset.TextSourceWhisper, result.SourceType)
+	assert.Equal(t, detail.TextSourceWhisper, result.SourceType)
 	assert.Equal(t, "Whisper transcribed text", result.PlainText)
 	require.NotNil(t, result.Confidence)
 	assert.InDelta(t, 0.92, *result.Confidence, 0.001)
@@ -192,7 +193,7 @@ func TestAcquireService_AllFail(t *testing.T) {
 	require.NoError(t, os.WriteFile(clipPath, []byte("fake"), 0o644))
 
 	subs := &stubSubtitles{bundle: nil}
-	whisp := &stubWhisper{result: asset.TranscriptResult{Text: ""}} // empty result = not found
+	whisp := &stubWhisper{result: detail.TranscriptResult{Text: ""}} // empty result = not found
 	svc, err := NewAcquireService(subs, whisp, zap.NewNop())
 	require.NoError(t, err)
 

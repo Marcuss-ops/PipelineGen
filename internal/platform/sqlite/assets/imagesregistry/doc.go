@@ -90,3 +90,7 @@
 // that legitimately needs an rg-gate exception. Today: zero
 // allowlist markers in the production tree.
 package imagesregistry
+
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)

@@ -1,9 +1,10 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -66,7 +67,7 @@ import (
 // to implement the new method — same compile-time behaviour under
 // the new name. The same pattern as
 // qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
-var _ asset.SourceVersionQuerier = (*ClipsRepository)(nil)
+var _ detail.SourceVersionQuerier = (*ClipsRepository)(nil)
 
 // MediaAssetColumns is the canonical SELECT projection used by every
 // Get / List / Search / Resolve path in this package. The projection
@@ -189,10 +190,10 @@ func (r *ClipsRepository) Canonical() *ClipsRepository {
 
 func (r *ClipsRepository) SoftDeleteFilter() string {
 	// Phase 4 unification (June 2026): thin-wrapper that delegates
-	// to the canonical asset.SoftDeleteFilter — the single SSOT for
+	// to the canonical detail.SoftDeleteFilter — the single SSOT for
 	// the soft-delete SQL fragment. PR 1 (Lifecycle state SSOT)
 	// semantics live on the canonical function in domain/asset.
-	return asset.SoftDeleteFilter()
+	return detail.SoftDeleteFilter()
 }
 
 func (r *ClipsRepository) Log() *zap.Logger { return r.log }

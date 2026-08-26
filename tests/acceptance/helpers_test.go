@@ -11,6 +11,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -28,22 +29,22 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
-// ── in-memory asset.TextTrackRepository stub ─────────────────────────
+// ── in-memory detail.TextTrackRepository stub ─────────────────────────
 
 type inMemRepo struct {
 	mu     sync.Mutex
-	tracks map[string]*asset.TextTrack
+	tracks map[string]*detail.TextTrack
 }
 
 func newInMemRepo() *inMemRepo {
-	return &inMemRepo{tracks: map[string]*asset.TextTrack{}}
+	return &inMemRepo{tracks: map[string]*detail.TextTrack{}}
 }
 
-func (r *inMemRepo) key(t asset.TextTrack) string {
+func (r *inMemRepo) key(t detail.TextTrack) string {
 	return fmt.Sprintf("%s|%s|%s", t.AssetID, t.LanguageCode, t.TextKind)
 }
 
-func (r *inMemRepo) UpsertBatch(_ context.Context, ts []asset.TextTrack) error {
+func (r *inMemRepo) UpsertBatch(_ context.Context, ts []detail.TextTrack) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, t := range ts {
@@ -53,18 +54,18 @@ func (r *inMemRepo) UpsertBatch(_ context.Context, ts []asset.TextTrack) error {
 	return nil
 }
 
-func (r *inMemRepo) FindReady(_ context.Context, assetID, lang string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r *inMemRepo) FindReady(_ context.Context, assetID, lang string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	t, ok := r.tracks[fmt.Sprintf("%s|%s|%s", assetID, lang, kind)]
-	if !ok || t.Status != asset.TextTrackReady {
+	if !ok || t.Status != detail.TextTrackReady {
 		return nil, nil, nil
 	}
 	dup := *t
 	return &dup, nil, nil
 }
 
-func (r *inMemRepo) Find(_ context.Context, assetID, lang string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *inMemRepo) Find(_ context.Context, assetID, lang string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	t, ok := r.tracks[fmt.Sprintf("%s|%s|%s", assetID, lang, kind)]
@@ -75,10 +76,10 @@ func (r *inMemRepo) Find(_ context.Context, assetID, lang string, kind asset.Tex
 	return &dup, nil
 }
 
-func (r *inMemRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextTrack, error) {
+func (r *inMemRepo) ListByAsset(_ context.Context, assetID string) ([]detail.TextTrack, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]asset.TextTrack, 0)
+	out := make([]detail.TextTrack, 0)
 	for _, t := range r.tracks {
 		if t.AssetID == assetID {
 			out = append(out, *t)
@@ -87,12 +88,12 @@ func (r *inMemRepo) ListByAsset(_ context.Context, assetID string) ([]asset.Text
 	return out, nil
 }
 
-func (r *inMemRepo) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (r *inMemRepo) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	seen := map[string]struct{}{}
 	for _, t := range r.tracks {
-		if t.AssetID == assetID && t.TextKind == kind && t.Status == asset.TextTrackReady {
+		if t.AssetID == assetID && t.TextKind == kind && t.Status == detail.TextTrackReady {
 			seen[t.LanguageCode] = struct{}{}
 		}
 	}
@@ -103,15 +104,15 @@ func (r *inMemRepo) ListReadyLanguages(_ context.Context, assetID string, kind a
 	return out, nil
 }
 
-func (r *inMemRepo) FindCurrentForTranslation(_ context.Context, assetID string, kind asset.TextTrackKind, lang, srcHash, model, modelVer, promptVer string) (*asset.TextTrack, error) {
+func (r *inMemRepo) FindCurrentForTranslation(_ context.Context, assetID string, kind detail.TextTrackKind, lang, srcHash, model, modelVer, promptVer string) (*detail.TextTrack, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	wantKey := asset.TranslationKey(srcHash, lang, model, modelVer, promptVer)
+	wantKey := detail.TranslationKey(srcHash, lang, model, modelVer, promptVer)
 	for _, t := range r.tracks {
 		if t.AssetID != assetID || t.LanguageCode != lang || t.TextKind != kind {
 			continue
 		}
-		if t.TranslationKey == wantKey && t.IsCurrent && t.Status == asset.TextTrackReady {
+		if t.TranslationKey == wantKey && t.IsCurrent && t.Status == detail.TextTrackReady {
 			dup := *t
 			return &dup, nil
 		}
@@ -121,7 +122,7 @@ func (r *inMemRepo) FindCurrentForTranslation(_ context.Context, assetID string,
 
 // InsertTranslationWithAuditPredecessor mirrors the SQL semantics:
 // idempotency check, flip is_current=1 predecessor, insert new is_current=1.
-func (r *inMemRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t asset.TextTrack) error {
+func (r *inMemRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t detail.TextTrack) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, existing := range r.tracks {
@@ -140,7 +141,7 @@ func (r *inMemRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t a
 	}
 	t.IsCurrent = true
 	if t.Status == "" {
-		t.Status = asset.TextTrackReady
+		t.Status = detail.TextTrackReady
 	}
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = time.Now().UTC()
@@ -151,7 +152,7 @@ func (r *inMemRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t a
 	return nil
 }
 
-var _ asset.TextTrackRepository = (*inMemRepo)(nil)
+var _ detail.TextTrackRepository = (*inMemRepo)(nil)
 
 // ── mock translation.TranslationPort ──────────────────────────────────
 
@@ -281,13 +282,13 @@ func sha256Hex(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func newSourceTrack(assetID, lang, kind, content string) asset.TextTrack {
+func newSourceTrack(assetID, lang, kind, content string) detail.TextTrack {
 	now := time.Now().UTC()
 	hash := sha256Hex(content)
-	return asset.TextTrack{
-		AssetID: assetID, LanguageCode: lang, TextKind: asset.TextTrackKind(kind),
+	return detail.TextTrack{
+		AssetID: assetID, LanguageCode: lang, TextKind: detail.TextTrackKind(kind),
 		TextContent:        content,
-		SourceType:         asset.TextSourceProvided,
+		SourceType:         detail.TextSourceProvided,
 		SourceLanguageCode: lang,
 		IsOriginal:         true,
 		Provider:           "provided",
@@ -297,7 +298,7 @@ func newSourceTrack(assetID, lang, kind, content string) asset.TextTrack {
 		TextHash:           hash,
 		SourceTextHash:     hash,
 		IsCurrent:          true,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
@@ -309,7 +310,7 @@ func newSourceTrack(assetID, lang, kind, content string) asset.TextTrack {
 // production copy-replaces-via-append behaviour at Materialize
 // entry (materializer.go) ensures the sentinel never reaches
 // translation time because every test supplies a per-call override.
-func newMaterializer(t *testing.T, repo asset.TextTrackRepository, tx translation.TranslationPort, ob texttracks.OutboxEnqueuer) *texttracks.Materializer {
+func newMaterializer(t *testing.T, repo detail.TextTrackRepository, tx translation.TranslationPort, ob texttracks.OutboxEnqueuer) *texttracks.Materializer {
 	t.Helper()
 	cfg := texttracks.ResolverConfig{
 		SourceLanguage:          "en",

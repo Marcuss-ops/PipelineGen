@@ -4,6 +4,7 @@
 package mediaenrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -14,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/google/uuid"
@@ -39,15 +40,15 @@ func (r *AssetReader) Exists(ctx context.Context, assetID string) (bool, error) 
 	return n > 0, err
 }
 
-type TextTrackReader struct{ repo asset.TextTrackRepository }
+type TextTrackReader struct{ repo detail.TextTrackRepository }
 
-func NewTextTrackReader(repo asset.TextTrackRepository) (*TextTrackReader, error) {
+func NewTextTrackReader(repo detail.TextTrackRepository) (*TextTrackReader, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("media enrichment text reader: repository is required")
 	}
 	return &TextTrackReader{repo: repo}, nil
 }
-func (r *TextTrackReader) Find(ctx context.Context, assetID, language string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *TextTrackReader) Find(ctx context.Context, assetID, language string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	return r.repo.Find(ctx, assetID, language, kind)
 }
 
@@ -62,7 +63,7 @@ func NewRecoveryCommitter(db *sql.DB, outboxRepo *outboxevents.Repository, targe
 	return &RecoveryCommitter{db: db, outbox: outboxRepo}, nil
 }
 
-func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, language string, tracks []asset.TextTrack, projection string) error {
+func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, language string, tracks []detail.TextTrack, projection string) error {
 	if len(tracks) == 0 {
 		return nil
 	}
@@ -88,10 +89,10 @@ func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, la
 		var existingStatus, existingContent string
 		err := tx.QueryRowContext(ctx, `SELECT id,status,text_content FROM asset_text_tracks WHERE asset_id=? AND language_code=? AND text_kind=? AND is_current=1 LIMIT 1`, track.AssetID, track.LanguageCode, track.TextKind).Scan(&existingID, &existingStatus, &existingContent)
 		switch {
-		case err == nil && (existingStatus != string(asset.TextTrackReady) || strings.TrimSpace(existingContent) == ""):
-			_, err = tx.ExecContext(ctx, `UPDATE asset_text_tracks SET text_content=?,source_type=?,source_language_code=?,is_original=?,provider=?,model_name=?,model_version=?,prompt_version=?,text_hash=?,source_version=?,translation_key=?,status=?,updated_at=datetime('now') WHERE id=?`, track.TextContent, track.SourceType, track.SourceLanguageCode, boolInt(track.IsOriginal), track.Provider, track.ModelName, track.ModelVersion, track.PromptVersion, track.TextHash, sourceVersion, track.TranslationKey, string(asset.TextTrackReady), existingID)
+		case err == nil && (existingStatus != string(detail.TextTrackReady) || strings.TrimSpace(existingContent) == ""):
+			_, err = tx.ExecContext(ctx, `UPDATE asset_text_tracks SET text_content=?,source_type=?,source_language_code=?,is_original=?,provider=?,model_name=?,model_version=?,prompt_version=?,text_hash=?,source_version=?,translation_key=?,status=?,updated_at=datetime('now') WHERE id=?`, track.TextContent, track.SourceType, track.SourceLanguageCode, boolInt(track.IsOriginal), track.Provider, track.ModelName, track.ModelVersion, track.PromptVersion, track.TextHash, sourceVersion, track.TranslationKey, string(detail.TextTrackReady), existingID)
 		case err == sql.ErrNoRows:
-			_, err = tx.ExecContext(ctx, `INSERT INTO asset_text_tracks (asset_id,language_code,text_kind,text_content,source_type,source_language_code,is_original,provider,model_name,model_version,prompt_version,text_hash,source_version,translation_key,is_current,source_track_id,source_text_hash,confidence,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NULL,'',NULL,?,datetime('now'),datetime('now'))`, track.AssetID, track.LanguageCode, track.TextKind, track.TextContent, track.SourceType, track.SourceLanguageCode, boolInt(track.IsOriginal), track.Provider, track.ModelName, track.ModelVersion, track.PromptVersion, track.TextHash, sourceVersion, track.TranslationKey, string(asset.TextTrackReady))
+			_, err = tx.ExecContext(ctx, `INSERT INTO asset_text_tracks (asset_id,language_code,text_kind,text_content,source_type,source_language_code,is_original,provider,model_name,model_version,prompt_version,text_hash,source_version,translation_key,is_current,source_track_id,source_text_hash,confidence,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NULL,'',NULL,?,datetime('now'),datetime('now'))`, track.AssetID, track.LanguageCode, track.TextKind, track.TextContent, track.SourceType, track.SourceLanguageCode, boolInt(track.IsOriginal), track.Provider, track.ModelName, track.ModelVersion, track.PromptVersion, track.TextHash, sourceVersion, track.TranslationKey, string(detail.TextTrackReady))
 		case err == nil:
 			// A READY canonical track wins over historical recovery text.
 			err = nil

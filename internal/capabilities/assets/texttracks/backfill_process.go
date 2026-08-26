@@ -22,6 +22,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -29,7 +30,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // assetContentHash returns the canonical content fingerprint for
@@ -154,7 +155,7 @@ func (s *BackfillService) ProcessAsset(
 	// no timed segments. Prefer a fresh timed acquisition from the repaired
 	// local video before materialization; plain text alone is not subtitle
 	// readiness.
-	if err == nil && opts.TextKind == asset.TextTrackTranscript && s.acquirer != nil {
+	if err == nil && opts.TextKind == detail.TextTrackTranscript && s.acquirer != nil {
 		_, timedCues, cueErr := s.repo.FindReady(ctx, assetItem.ID, opts.SourceLanguage, opts.TextKind)
 		if cueErr == nil && len(timedCues) == 0 {
 			acquired, acqErr := s.tryAcquire(ctx, assetItem, opts)
@@ -217,7 +218,7 @@ func (s *BackfillService) ProcessAsset(
 	// Step 5: generate ASS subtitle artifacts if this asset requires subtitles.
 	// Skip when the caller materializes subtitles itself (SkipSubtitleMaterialization)
 	// so the same ASS is never generated twice in one pipeline run.
-	if asset.RequiresSubtitles(string(assetItem.Source)) && opts.TextKind == asset.TextTrackTranscript && !opts.SkipSubtitleMaterialization {
+	if detail.RequiresSubtitles(string(assetItem.Source)) && opts.TextKind == detail.TextTrackTranscript && !opts.SkipSubtitleMaterialization {
 		languages := append([]string{opts.SourceLanguage}, opts.TargetLanguages...)
 		// Acquisition may resolve to a different language than the
 		// requested one (for example, the first available YouTube/Whisper

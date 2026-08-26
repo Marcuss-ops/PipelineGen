@@ -20,6 +20,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -38,7 +39,7 @@ import (
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
 	ClipsRepo     appclips.ClipRepositoryPort
-	AssetRepo     asset.Repository
+	AssetRepo     detail.Repository
 	VoiceoverRepo appclips.VoiceoverRepositoryPort
 	ImagesRepo    appclips.ImageRepositoryPort
 }
@@ -48,7 +49,7 @@ type SearchDeps struct {
 // the orchestrator Deps.
 type SearchHandler struct {
 	clipsRepo     appclips.ClipRepositoryPort
-	assetRepo     asset.Repository
+	assetRepo     detail.Repository
 	voiceoverRepo appclips.VoiceoverRepositoryPort
 	imagesRepo    appclips.ImageRepositoryPort
 }

@@ -7,9 +7,9 @@ binding-resolved scene before downstream rendering.
 | Field | Value |
 |---|---|
 | Pipeline scope | Clip pre-planning (asset selection + binding + redaction) |
-| Related conduct | `internal/application/scripts/usecase/generate_one_usecase.go` |
+| Related conduct | `internal/capabilities/scripts/usecase/generate_one_usecase.go` |
 | Companion runtime docs | `docs/operations/capacity-sweep.md`, `docs/operations/youtube-live-testing-runbook.md` |
-| Godlike/05 SSOT pointer | `internal/application/scripts/usecase` |
+| Godlike/05 SSOT pointer | `internal/capabilities/scripts/usecase` |
 | Godlike/06 SSOT pointer | one owner per stage (cited below) |
 | Godlike/07 NO-FAKE-AVAILABILITY | every stage failures closed; no silent no-op |
 
@@ -57,7 +57,7 @@ threads the typed struct through all downstream stages.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/usecase/generate_one_usecase.go`, `internal/application/scripts/usecase/engine_prompt.go` |
+| **Primary code paths** | `internal/capabilities/scripts/usecase/generate_one_usecase.go`, `internal/capabilities/scripts/usecase/engine_prompt.go` |
 | **Godlike contract** | godlike/07: payload validation is fail-closed — unknown fields, missing topic, or empty source text MUST abort the chain before stage 2. |
 | **Inputs** | typed payload with `Topic`, `SourceText`, `SlotHints`, target duration |
 | **Outputs** | hydrated request struct passed to stage 2 (`ClipPlanner.Plan`) |
@@ -90,7 +90,7 @@ typed envelope carrying candidates, scores, and source hints.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/usecase/source_resolver_search.go` (orchestration), `internal/application/assets/search/ports.go` (`SearchResult` port), `internal/domain/asset/search_core.go` (`SearchResult` type), `internal/capabilities/scripts/dto/curation_types.go` (`SearchResultInfo`) |
+| **Primary code paths** | `internal/capabilities/scripts/usecase/source_resolver_search.go` (orchestration), `internal/capabilities/assets/search/ports.go` (`SearchResult` port), `internal/kernel/asset/detail/search_core.go` (`SearchResult` type), `internal/capabilities/scripts/dto/curation_types.go` (`SearchResultInfo`) |
 | **Godlike contract** | godlike/06 SSOT: `assets/search/ports.go` is the only canonical search port; alternative search wrappers MUST route through it. godlike/07: empty result set is a typed failure, not a silent pass. |
 | **Inputs** | `ClipPlan` slots |
 | **Outputs** | `SearchResult` with `[]Candidate` + scores |
@@ -107,7 +107,7 @@ seed-hash so reproducible sample sets can be re-derived.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/usecase/clip_sampler_impl.go` (orchestration), `internal/capabilities/assets/providers/stock/fingerprint.go` (`Sampler` struct + `NewSampler(seedHex string)`) |
+| **Primary code paths** | `internal/capabilities/scripts/usecase/clip_sampler_impl.go` (orchestration), `internal/capabilities/assets/providers/stock/fingerprint.go` (`Sampler` struct + `NewSampler(seedHex string)`) |
 | **Godlike contract** | godlike/06 SSOT: the canonical Sampler lives in the provider package (not in any application script). Seeding MUST be deterministic and content-addressed (SHA-256 over `(plan, slot, source_text)`). godlike/07: under-sampling (candidates < limit) is a typed failure, not a downgrade to a smaller set. |
 | **Inputs** | `SearchResult` per slot |
 | **Outputs** | `[]Sample` per slot with provenance back to the candidates |
@@ -134,7 +134,7 @@ layer. Future consolidation is an open follow-up.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/clipview/types.go` (`CandidateView`), `internal/application/scripts/usecase/output_sanitizer.go` |
+| **Primary code paths** | `internal/capabilities/assets/providerassets/providerasset.go` (`CandidateView`), `internal/capabilities/scripts/usecase/output_sanitizer.go` |
 | **Godlike contract** | godlike/06 SSOT: `clipview.CandidateView` is the SOLE owner of the model-facing projection; nowhere else in the codebase may emit a candidate-shaped struct that includes `AssetRef` / `SlotRef` / `DriveLink`. godlike/07: any unredacted projection reaching the Generator is a fail-closed event. |
 | **Inputs** | candidate projections from stage 4 + raw model text from stage 6 |
 | **Outputs** | cleaned candidate projections (no asset_id, no drive_link) + scrubbed text |
@@ -151,7 +151,7 @@ unit testing.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/domain/generation/generator.go` (`Generator` interface), `internal/platform/ollama/generate.go` (`Generator` Ollama impl), `internal/application/scripts/usecase/generate_one_usecase.go` (orchestrator invocation) |
+| **Primary code paths** | `internal/capabilities/scripts/generation/generator.go` (`Generator` interface), `internal/platform/ollama/generate.go` (`Generator` Ollama impl), `internal/capabilities/scripts/usecase/generate_one_usecase.go` (orchestrator invocation) |
 | **Godlike contract** | godlike/06 SSOT: there is one Generator contract (`domain/generation/generator.go`); alternative generation backends MUST implement it. godlike/07: every Generator call MUST return a typed result; raw text without a typed envelope is reject. |
 | **Inputs** | redacted candidate projections from stage 5 |
 | **Outputs** | generated typed envelope (per the Generator contract) |

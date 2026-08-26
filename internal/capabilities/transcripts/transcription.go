@@ -25,7 +25,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Transcriber is the canonical godlike/06 SSOT narrow port.
@@ -39,7 +39,7 @@ type TextTrack struct {
 	LanguageCode string
 	Confidence   *float64
 	IsEmpty      bool
-	Cues         []asset.TimedCue
+	Cues         []detail.TimedCue
 }
 
 // ErrTranscriberNotWired is the construction-time typed sentinel
@@ -53,7 +53,7 @@ var ErrTranscriberNotImplemented = fmt.Errorf("transcription: canonical Transcri
 // WhisperTranscriber is the narrow platform port required by WhisperAdapter.
 // Concrete process/Whisper implementations live outside the capability.
 type WhisperTranscriber interface {
-	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
+	TranscribeAudioWithDetection(ctx context.Context, localPath string) (detail.TranscriptResult, error)
 }
 
 // WhisperAdapter is the canonical Transcriber impl.
@@ -72,7 +72,7 @@ func NewWhisperAdapter(inner WhisperTranscriber) (*WhisperAdapter, error) {
 
 // Transcribe returns the phase-1 typed sentinel. Phase 2 will
 // delegate to inner.TranscribeAudioWithDetection and project the
-// asset.TranscriptResult into the package-local TextTrack DTO.
+// detail.TranscriptResult into the package-local TextTrack DTO.
 // The canonical impl at the infrastructure layer already fails
 // closed (godlike/07 no-fake-availability); phase 2 surfaces its
 // typed errors at this boundary.

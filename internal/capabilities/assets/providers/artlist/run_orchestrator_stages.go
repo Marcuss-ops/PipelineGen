@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
@@ -8,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
@@ -17,7 +18,7 @@ import (
 
 type clipWork struct {
 	item         RunTagItem
-	processInput *asset.ProcessInput
+	processInput *detail.ProcessInput
 	stagedAsset  *acquisition.PrepareContext
 }
 
@@ -129,7 +130,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			outputDir = layout.BaseDir()
 		}
 		rootFolderID := defaults.String(req.RootFolderID, o.svc.cfg.Drive.ArtlistFolder())
-		processInput := &asset.ProcessInput{
+		processInput := &detail.ProcessInput{
 			ID:              item.ClipID,
 			Name:            item.Name,
 			SourceURL:       sourceURL,
@@ -298,22 +299,22 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 				if lang == "" {
 					lang = "und"
 				}
-				hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
-				track := asset.TextTrack{
+				hash := detail.TextHash(transcript, lang, detail.TextTrackTranscript)
+				track := detail.TextTrack{
 					AssetID:            arg.w.item.ClipID,
 					LanguageCode:       lang,
-					TextKind:           asset.TextTrackTranscript,
+					TextKind:           detail.TextTrackTranscript,
 					TextContent:        transcript,
-					SourceType:         asset.TextSourceWhisper,
+					SourceType:         detail.TextSourceWhisper,
 					SourceLanguageCode: lang,
 					IsOriginal:         true,
 					ModelName:          "tiny",
 					TextHash:           hash,
-					SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
+					SourceVersion:      detail.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
 					IsCurrent:          true,
-					Status:             asset.TextTrackReady,
+					Status:             detail.TextTrackReady,
 				}
-				if err := o.svc.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+				if err := o.svc.textTrackRepo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
 					o.svc.log.Warn("artlist transcript persist failed",
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))

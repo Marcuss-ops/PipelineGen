@@ -19,6 +19,7 @@ package wiring
 // is a legitimate no-op: there is nothing to burn subtitles onto.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -34,7 +35,7 @@ import (
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -111,7 +112,7 @@ func (c *inlineRenderChild) finish(ctx context.Context, result any, renderErr er
 // EnqueueLocalizedRender calls (the fan-out fires per language in parallel).
 type localizedRenderEnqueuerAdapter struct {
 	svc    localizedLocalizer
-	tracks asset.TextTrackRepository
+	tracks detail.TextTrackRepository
 	cues   texttracks.TimedCueWriter
 	cfg    LocalizedRenderEnqueuerConfig
 	log    *zap.Logger
@@ -123,7 +124,7 @@ type localizedRenderEnqueuerAdapter struct {
 	// the complete set under the lock.
 	cueMu       sync.Mutex
 	childMu     sync.Mutex
-	cueState    map[string]map[string][]asset.TimedCue
+	cueState    map[string]map[string][]detail.TimedCue
 	assets      cliprender.AssetResolver
 	material    cliprender.AssetMaterializer
 	transcript  cliprender.TranscriptResolver
@@ -132,7 +133,7 @@ type localizedRenderEnqueuerAdapter struct {
 	renderGate  chan struct{}
 }
 
-func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
+func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
 	if cfg.Concurrency < 1 {
 		cfg.Concurrency = localization.DefaultRenderConcurrency
 	}
@@ -157,7 +158,7 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.Text
 		cues:        cues,
 		cfg:         cfg,
 		log:         log,
-		cueState:    make(map[string]map[string][]asset.TimedCue),
+		cueState:    make(map[string]map[string][]detail.TimedCue),
 		assets:      assets,
 		material:    material,
 		transcript:  transcript,
@@ -381,7 +382,7 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 	if a.tracks == nil {
 		return false, fmt.Errorf("localized render: text track repository not wired")
 	}
-	track, cues, err := a.tracks.FindReady(ctx, assetID, sourceLang, asset.TextTrackTranscript)
+	track, cues, err := a.tracks.FindReady(ctx, assetID, sourceLang, detail.TextTrackTranscript)
 	if err != nil {
 		return false, fmt.Errorf("localized render: find source subtitles for %q: %w", assetID, err)
 	}
@@ -415,13 +416,13 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 			return false, fmt.Errorf("localized render: generate/persist subtitles for %q: %w", assetID, err)
 		}
 		generated = true
-		track, cues, err = a.tracks.FindReady(ctx, assetID, sourceLang, asset.TextTrackTranscript)
+		track, cues, err = a.tracks.FindReady(ctx, assetID, sourceLang, detail.TextTrackTranscript)
 		if err != nil || track == nil || len(cues) == 0 || invalidSubtitleText(track.TextContent, cues) {
 			return false, fmt.Errorf("localized render: generated subtitles for %q were not readable from database", assetID)
 		}
 	}
 	if targetLang != sourceLang {
-		target, targetCues, err := a.tracks.FindReady(ctx, assetID, targetLang, asset.TextTrackTranscript)
+		target, targetCues, err := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
 		if err != nil {
 			return false, fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, err)
 		}
@@ -432,7 +433,7 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 	return generated, nil
 }
 
-func invalidSubtitleText(trackText string, cues []asset.TimedCue) bool {
+func invalidSubtitleText(trackText string, cues []detail.TimedCue) bool {
 	text := strings.ToLower(strings.TrimSpace(trackText))
 	if strings.Contains(text, "clip description:") || strings.Contains(text, "write a ") || strings.Contains(text, "source text:") {
 		return true

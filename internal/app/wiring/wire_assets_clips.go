@@ -16,7 +16,7 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -33,7 +33,7 @@ type ClipsRepositoryDeps struct {
 	ClipsRepo     *sqassets.ClipsRepository
 	VoiceoverRepo *sqassets.VoiceoversRepository
 	ImageRepo     *imagesrepo.ImagesRepository
-	AssetRepo     asset.Repository
+	AssetRepo     detail.Repository
 }
 
 // ClipsCapabilityDeps contains only the concrete ports consumed by the clips
@@ -43,7 +43,7 @@ type ClipsCapabilityDeps struct {
 	Repositories       ClipsRepositoryDeps
 	ArtifactService    *artifacts.Service
 	AssetTreeService   *assettree.Service
-	MediaProcessor     asset.Processor
+	MediaProcessor     detail.Processor
 	Publisher          delivery.Publisher
 	ClipIndexerService *clipindexer.Service
 }

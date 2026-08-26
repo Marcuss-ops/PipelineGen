@@ -63,7 +63,7 @@ var hardcodedENScopeFiles = []string{
 	"internal/capabilities/youtube/ports/ports.go",
 	"internal/platform/youtube/subtitles.go",
 	"internal/platform/youtube/ports.go",
-	"internal/kernel/asset/text_track_repository.go",
+	"internal/kernel/asset/detail/text_track_repository.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_schema.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_queries.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_lookup.go",

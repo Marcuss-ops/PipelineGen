@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -114,7 +114,7 @@ func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
 // SHA256 is stable for the same text regardless of call path.
 func buildVoiceoverID(textHash string, language Language, folderID string) string {
 	data := fmt.Sprintf("%s:%s:%s", textHash, language, folderID)
-	return "vo_" + hashutil.SHA256Bytes([]byte(data))[:16]
+	return "vo_" + digest.SHA256Bytes([]byte(data))[:16]
 }
 
 // SanitizeBasename validates and sanitizes a voiceover basename.

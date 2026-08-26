@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -17,7 +18,7 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -372,16 +373,16 @@ func (s *stubPublisherForArtlist) ResolveFolder(ctx context.Context, req deliver
 type fakeMediaProcessor struct {
 	called bool
 	err    error
-	result *asset.ProcessResult
-	inputs []*asset.ProcessInput
+	result *detail.ProcessResult
+	inputs []*detail.ProcessInput
 }
 
-func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (f *fakeMediaProcessor) Process(ctx context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	f.called = true
 	f.inputs = append(f.inputs, input)
 
 	if f.err != nil {
-		return &asset.ProcessResult{
+		return &detail.ProcessResult{
 			ID:     input.ID,
 			Status: "failed",
 			Error:  f.err.Error(),
@@ -392,7 +393,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessIn
 		return f.result, nil
 	}
 
-	return &asset.ProcessResult{
+	return &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.Name + ".mp4",
 		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",

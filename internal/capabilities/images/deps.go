@@ -10,6 +10,7 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"

@@ -13,6 +13,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"testing"
@@ -33,18 +34,18 @@ func TestInvalidation_SourceHashChange_FlipsAuditPredecessor(t *testing.T) {
 
 	srcV1 := "winter arc opening scene"
 	srcV1Hash := sha256Hex(srcV1)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV1)}); err != nil {
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV1)}); err != nil {
 		t.Fatalf("seed v1: %v", err)
 	}
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, asset.TextTrackTranscript, []string{"it", "es"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, detail.TextTrackTranscript, []string{"it", "es"}); err != nil {
 		t.Fatalf("Materialize v1: %v", err)
 	}
 
 	predecessorIDs := map[string]int64{}
 	allV1, _ := repo.ListByAsset(ctx, assetID)
 	for _, tk := range allV1 {
-		if tk.LanguageCode != srcLang && tk.TextKind == asset.TextTrackTranscript {
+		if tk.LanguageCode != srcLang && tk.TextKind == detail.TextTrackTranscript {
 			predecessorIDs[tk.LanguageCode] = tk.ID
 			if !tk.IsCurrent {
 				t.Fatalf("predecessor %s should be IsCurrent=true before invalidation", tk.LanguageCode)
@@ -61,9 +62,9 @@ func TestInvalidation_SourceHashChange_FlipsAuditPredecessor(t *testing.T) {
 		t.Fatalf("test invariant: v2 must differ from v1 (collision in fixture)")
 	}
 
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		func() asset.TextTrack {
-			s := newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV2)
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		func() detail.TextTrack {
+			s := newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV2)
 			s.SourceTextHash = srcV2Hash
 			s.TextHash = srcV2Hash
 			return s
@@ -72,7 +73,7 @@ func TestInvalidation_SourceHashChange_FlipsAuditPredecessor(t *testing.T) {
 		t.Fatalf("seed v2: %v", err)
 	}
 
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, asset.TextTrackTranscript, []string{"it", "es"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, detail.TextTrackTranscript, []string{"it", "es"}); err != nil {
 		t.Fatalf("Materialize v2: %v", err)
 	}
 
@@ -87,7 +88,7 @@ func TestInvalidation_SourceHashChange_FlipsAuditPredecessor(t *testing.T) {
 			continue
 		}
 		curCount[tk.LanguageCode]++
-		wantKey := asset.TranslationKey(srcV2Hash, tk.LanguageCode, "stub-model", "v1", "p1")
+		wantKey := detail.TranslationKey(srcV2Hash, tk.LanguageCode, "stub-model", "v1", "p1")
 		if tk.TranslationKey == wantKey {
 			currentHasNewKey[tk.LanguageCode] = true
 		}
@@ -144,19 +145,19 @@ func TestInvalidation_ObsoleteTranslationsLoseCurrent(t *testing.T) {
 	)
 	srcV1 := "first cut"
 	srcV1Hash := sha256Hex(srcV1)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV1)}); err != nil {
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV1)}); err != nil {
 		t.Fatalf("seed v1: %v", err)
 	}
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, asset.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, detail.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
 		t.Fatalf("Materialize v1: %v", err)
 	}
 
 	srcV2 := "second cut"
 	srcV2Hash := sha256Hex(srcV2)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		func() asset.TextTrack {
-			s := newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV2)
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		func() detail.TextTrack {
+			s := newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV2)
 			s.SourceTextHash = srcV2Hash
 			s.TextHash = srcV2Hash
 			return s
@@ -164,7 +165,7 @@ func TestInvalidation_ObsoleteTranslationsLoseCurrent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed v2: %v", err)
 	}
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, asset.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, detail.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
 		t.Fatalf("Materialize v2: %v", err)
 	}
 

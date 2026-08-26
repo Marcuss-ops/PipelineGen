@@ -18,12 +18,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Find returns a single text track for the given (asset, language, kind)
 // triple. Returns (nil, nil) when no row exists.
-func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	if assetID == "" {
 		return nil, fmt.Errorf("text_track_repository.Find: AssetID is required")
 	}
@@ -77,7 +77,7 @@ func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, la
 // domain-level "filter to READY" decision is owned by this method
 // so callers (resolver) MUST NOT re-implement a status-check
 // inline.
-func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID string, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	if assetID == "" {
 		return nil, nil, fmt.Errorf("text_track_repository.FindReady: AssetID is required")
 	}
@@ -97,7 +97,7 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 		 WHERE asset_id = ? AND language_code = ? AND text_kind = ?
 		   AND is_current = 1
 		   AND status = ?`,
-		assetID, languageCode, string(kind), string(asset.TextTrackReady),
+		assetID, languageCode, string(kind), string(detail.TextTrackReady),
 	)
 
 	t, err := scanTextTrack(row)
@@ -128,7 +128,7 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 //
 // PR-CATALOG-MULTILINGUA step 2 (July 2026): the SELECT projection
 // includes the new text_hash column added by migration 156. The
-// current TimedCue struct (asset.TimedCue = {StartMs, EndMs, Text})
+// current TimedCue struct (detail.TimedCue = {StartMs, EndMs, Text})
 // does NOT carry TextHash on the wire yet — the column is read so
 // it lands in the row memory and is discarded. A future step adds
 // a TimedCue.TextHash field + a Method that surfaces the segment
@@ -137,7 +137,7 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 //
 // Caller MUST pass a valid track_id (the FK ON DELETE CASCADE
 // ensures orphan rows are impossible).
-func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trackID int64) ([]asset.TimedCue, error) {
+func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trackID int64) ([]detail.TimedCue, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT start_ms, end_ms, text, text_hash
 		 FROM asset_text_track_segments
@@ -150,9 +150,9 @@ func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trac
 	}
 	defer rows.Close()
 
-	var cues []asset.TimedCue // nil when no rows (matches domain port contract)
+	var cues []detail.TimedCue // nil when no rows (matches domain port contract)
 	for rows.Next() {
-		var c asset.TimedCue
+		var c detail.TimedCue
 		var segHash string
 		if scanErr := rows.Scan(&c.StartMs, &c.EndMs, &c.Text, &segHash); scanErr != nil {
 			return nil, fmt.Errorf("findCuesForTrackID: scan: %w", scanErr)
@@ -187,7 +187,7 @@ func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trac
 // fail-closed status/hash verification (READY + text-hash match against the
 // plan) is the adapter's responsibility (composition root), NOT this read
 // path — a raw PK fetch must not hide rows from forensic callers.
-func (r *TextTrackRepositorySQLite) FindByID(ctx context.Context, trackID int64) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r *TextTrackRepositorySQLite) FindByID(ctx context.Context, trackID int64) (*detail.TextTrack, []detail.TimedCue, error) {
 	if trackID <= 0 {
 		return nil, nil, fmt.Errorf("text_track_repository.FindByID: TrackID is required")
 	}
@@ -228,7 +228,7 @@ func (r *TextTrackRepositorySQLite) FindByID(ctx context.Context, trackID int64)
 // godlike/06 SSOT: this is the SOLE canonical "what READY languages
 // does this clip have?" query. The require_all_before_video policy
 // gate and the video pipeline's backfill CLI consume it.
-func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	if assetID == "" {
 		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: AssetID is required")
 	}
@@ -237,7 +237,7 @@ func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, asse
 		 FROM asset_text_tracks
 		 WHERE asset_id = ? AND text_kind = ? AND status = ?
 		 ORDER BY language_code ASC`,
-		assetID, string(kind), string(asset.TextTrackReady),
+		assetID, string(kind), string(detail.TextTrackReady),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: query: %w", err)
@@ -260,7 +260,7 @@ func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, asse
 
 // ListByAsset returns all text tracks for the given asset, ordered by
 // language_code, text_kind. Returns an empty slice when no tracks exist.
-func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID string) ([]asset.TextTrack, error) {
+func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID string) ([]detail.TextTrack, error) {
 	if assetID == "" {
 		return nil, fmt.Errorf("text_track_repository.ListByAsset: AssetID is required")
 	}
@@ -284,7 +284,7 @@ func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID str
 	}
 	defer rows.Close()
 
-	tracks := make([]asset.TextTrack, 0)
+	tracks := make([]detail.TextTrack, 0)
 	for rows.Next() {
 		t, scanErr := scanTextTrackRows(rows)
 		if scanErr != nil {
@@ -308,7 +308,7 @@ func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID str
 // godlike/06 SSOT — the lookup predicate is owned here:
 //   - WHERE on (asset_id, language_code, text_kind) — the lookup key.
 //   - AND translation_key = ? — the request fingerprint (5-tuple
-//     SHA-256 computed INTERNALLY via asset.TranslationKey — the
+//     SHA-256 computed INTERNALLY via detail.TranslationKey — the
 //     caller passes the natural 5-tuple inputs, NOT a precomputed
 //     hash, so the canonical formula has exactly one owner).
 //   - AND is_current = 1 — split-brain guard via the partial UNIQUE
@@ -318,19 +318,19 @@ func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID str
 //
 // Caller passes the natural 5-tuple inputs (no precomputed
 // translation_key). The repo computes the key via
-// asset.TranslationKey; off-port callers that want to reuse the
+// detail.TranslationKey; off-port callers that want to reuse the
 // precomputed key directly should compose via the SQL projection
 // instead of inlining the predicate (godlike/06).
 func (r *TextTrackRepositorySQLite) FindCurrentForTranslation(
 	ctx context.Context,
 	assetID string,
-	kind asset.TextTrackKind,
+	kind detail.TextTrackKind,
 	targetLanguageCode string,
 	sourceTextHash string,
 	translationModel string,
 	modelVersion string,
 	promptVersion string,
-) (*asset.TextTrack, error) {
+) (*detail.TextTrack, error) {
 	if assetID == "" {
 		return nil, fmt.Errorf("text_track_repository.FindCurrentForTranslation: AssetID is required")
 	}
@@ -345,7 +345,7 @@ func (r *TextTrackRepositorySQLite) FindCurrentForTranslation(
 	// canonical SSOT formula (matches the inputs consumed by
 	// InsertTranslationWithAuditPredecessor → no fingerprint drift
 	// between the lookup and the persistence path).
-	translationKey := asset.TranslationKey(
+	translationKey := detail.TranslationKey(
 		sourceTextHash,
 		targetLanguageCode,
 		translationModel,
@@ -366,7 +366,7 @@ func (r *TextTrackRepositorySQLite) FindCurrentForTranslation(
 		 WHERE asset_id = ? AND language_code = ? AND text_kind = ?
 		   AND translation_key = ? AND is_current = 1
 		   AND status = ?`,
-		assetID, targetLanguageCode, string(kind), translationKey, string(asset.TextTrackReady),
+		assetID, targetLanguageCode, string(kind), translationKey, string(detail.TextTrackReady),
 	)
 
 	t, err := scanTextTrack(row)

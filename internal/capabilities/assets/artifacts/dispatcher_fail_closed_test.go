@@ -12,6 +12,7 @@
 package artifacts
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"sync/atomic"
@@ -21,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // pr7StubDispatcher satisfies the production
@@ -46,7 +46,7 @@ func (r *pr7StubDispatcher) EnqueueAndRestore(_ context.Context, _ string) error
 }
 
 // EnqueueAndDelete takes a string assetID. PR 7 sites don't invoke
-// delete; soft-delete lands on the asset.Repository narrow port.
+// delete; soft-delete lands on the detail.Repository narrow port.
 func (r *pr7StubDispatcher) EnqueueAndDelete(_ context.Context, _ string) error {
 	return nil
 }

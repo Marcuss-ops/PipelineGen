@@ -31,6 +31,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,7 +42,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // stubEnqueuer is a thin MaterializeEnqueuer stub: records every
@@ -130,7 +131,7 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 		hashVal = "abc123def456"
 		lang    = "en"
 	)
-	kinds := []asset.TextTrackKind{asset.TextTrackTranscript}
+	kinds := []detail.TextTrackKind{detail.TextTrackTranscript}
 
 	if err := f.EnqueueMaterializeOne(
 		context.Background(), assetID, lang, hashVal, kinds,
@@ -166,8 +167,8 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 	if ps.SourceTextHash != hashVal {
 		t.Fatalf("SourceTextHash = %q, want %q", ps.SourceTextHash, hashVal)
 	}
-	if len(ps.TextKinds) != 1 || ps.TextKinds[0] != string(asset.TextTrackTranscript) {
-		t.Fatalf("TextKinds = %v, want [%q]", ps.TextKinds, asset.TextTrackTranscript)
+	if len(ps.TextKinds) != 1 || ps.TextKinds[0] != string(detail.TextTrackTranscript) {
+		t.Fatalf("TextKinds = %v, want [%q]", ps.TextKinds, detail.TextTrackTranscript)
 	}
 	if ps.TargetLanguages != nil && len(ps.TargetLanguages) > 0 {
 		// omitempty: nil target_languages is absent in the
@@ -208,7 +209,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 		assetID   string
 		lang      string
 		hash      string
-		kinds     []asset.TextTrackKind
+		kinds     []detail.TextTrackKind
 		wantField string
 	}{
 		{
@@ -216,7 +217,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 			assetID:   "",
 			lang:      "en",
 			hash:      "h",
-			kinds:     []asset.TextTrackKind{asset.TextTrackTranscript},
+			kinds:     []detail.TextTrackKind{detail.TextTrackTranscript},
 			wantField: "asset_id",
 		},
 		{
@@ -224,7 +225,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 			assetID:   "a",
 			lang:      "",
 			hash:      "h",
-			kinds:     []asset.TextTrackKind{asset.TextTrackTranscript},
+			kinds:     []detail.TextTrackKind{detail.TextTrackTranscript},
 			wantField: "source_language",
 		},
 		{
@@ -232,7 +233,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 			assetID:   "a",
 			lang:      "en",
 			hash:      "",
-			kinds:     []asset.TextTrackKind{asset.TextTrackTranscript},
+			kinds:     []detail.TextTrackKind{detail.TextTrackTranscript},
 			wantField: "source_text_hash",
 		},
 		{
@@ -277,7 +278,7 @@ func TestFanOut_EnqueueMaterializeOne_BrokerErrorWrapped(t *testing.T) {
 
 	err := f.EnqueueMaterializeOne(
 		context.Background(), "asset-x", "en", "hash",
-		[]asset.TextTrackKind{asset.TextTrackTranscript},
+		[]detail.TextTrackKind{detail.TextTrackTranscript},
 	)
 	if err == nil {
 		t.Fatal("expected wrapped broker error, got nil")
@@ -305,10 +306,10 @@ func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 	stub := &stubEnqueuer{}
 	f := NewMaterializeFanOut(stub, nil)
 
-	kinds := []asset.TextTrackKind{
-		asset.TextTrackTranscript,
-		asset.TextTrackDescription,
-		asset.TextTrackSummary,
+	kinds := []detail.TextTrackKind{
+		detail.TextTrackTranscript,
+		detail.TextTrackDescription,
+		detail.TextTrackSummary,
 	}
 	if err := f.EnqueueMaterializeOne(
 		context.Background(), "asset-multi", "en", "h", kinds,
@@ -367,13 +368,13 @@ func TestFanOut_EnqueueMaterializeOne_ActiveKeyCollapsedAcrossKinds(t *testing.T
 	)
 	if err := f.EnqueueMaterializeOne(
 		context.Background(), assetID, "en", hashVal,
-		[]asset.TextTrackKind{asset.TextTrackTranscript},
+		[]detail.TextTrackKind{detail.TextTrackTranscript},
 	); err != nil {
 		t.Fatalf("first enqueue error: %v", err)
 	}
 	if err := f.EnqueueMaterializeOne(
 		context.Background(), assetID, "en", hashVal,
-		[]asset.TextTrackKind{asset.TextTrackDescription, asset.TextTrackSummary},
+		[]detail.TextTrackKind{detail.TextTrackDescription, detail.TextTrackSummary},
 	); err != nil {
 		t.Fatalf("second enqueue error: %v", err)
 	}

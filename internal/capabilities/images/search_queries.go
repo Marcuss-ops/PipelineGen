@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -27,7 +27,7 @@ import (
 // returns typed ErrImageNotFound on 404, ErrImageInvalidResponse on corrupt
 // bodies, and ErrImageTransient on 429/5xx/timeout. Binary content passes
 // via bytes.NewReader, not string(body).
-func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*detail.ImageAsset, error) {
 	if slug == "" {
 		slug = textutil.Slugify(prompt)
 	}
@@ -46,7 +46,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 
 	// Download and ingest with retry on transient errors (429, 5xx, timeout).
 	// Uses bytes.NewReader for binary content — no string(body) conversion.
-	var imgAsset *asset.ImageAsset
+	var imgAsset *detail.ImageAsset
 	err := retry.Do(ctx, func() error {
 		// Context check inside retry loop: abort immediately if cancelled.
 		if ctx.Err() != nil {
@@ -98,7 +98,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}
 
 	// Metadata enrichment — surface failure rather than silently ignoring it.
-	updatedJSON := asset.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
+	updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
 	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
 		s.log.Error("SearchWebImage: UpdateImageMetadata failed", zap.Error(updateErr))
 		return imgAsset, fmt.Errorf("update image metadata: %w", updateErr)

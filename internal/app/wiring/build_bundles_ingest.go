@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	voservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
@@ -33,7 +33,7 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter images.Ima
 	for i, p := range filter.Providers {
 		providers[i] = string(p)
 	}
-	dbRows, err := a.repo.ListImages(ctx, asset.RepositoryListFilter{
+	dbRows, err := a.repo.ListImages(ctx, detail.RepositoryListFilter{
 		SubjectID: filter.SubjectID,
 		Origins:   filter.Origins,
 		Providers: providers,

@@ -26,14 +26,9 @@ infrastructure_embeddings:
   rationale: Text-embedding adapters (HTTP sidecar, Ollama, Python subprocess, SigLIP cross-modal).
   migrated_from: internal/infrastructure/embeddings
 
-infrastructure_files:
+infrastructure_filesystem:
   owner: internal/platform/filesystem
-  rationale: Filesystem utilities remaining after the 2026-08-24 split (JSON I/O, folder-name normalization, foldermemory, metadataexport).
-  note: copy/cache/pathutil/scanner/hashutil moved to internal/platform/filesystem.
-
-platform_filesystem:
-  owner: internal/platform/filesystem
-  rationale: Filesystem path/hash/copy/cache/scanner primitives plus the kernel workspace I/O adapters (OS, HTTPFetcher, NewManager).
+  rationale: Filesystem utilities (JSON I/O, folder-name normalization, foldermemory, metadataexport) plus kernel workspace I/O adapters (OS, HTTPFetcher, NewManager).
 
 infrastructure_process:
   owner: internal/platform/process
@@ -41,24 +36,24 @@ infrastructure_process:
   rule: ONLY place where os/exec is allowed.
 
 infrastructure_ai:
-  owner: internal/infrastructure/ai
-  sub_dirs: [ai/reranker, ai/vlm, ai/images]
+  owner: internal/platform/ai
+  sub_dirs: [ai/classifier, ai/reranker, ai/vlm]
 
 
 infrastructure_media:
-  owner: internal/infrastructure/media/processor
-  rationale: yt-dlp, ffmpeg, download, normalization, temporary filesystem.
-  migrated_from: internal/media/mediaasset
+  owner: internal/platform/media
+  rationale: Rust media execution executor (rustexec/VideoProcessor) + processor/render subzones. P1-PLATFORM-ALIGNMENT 2026-08-26: KEEP at platform/media; ffmpeg absorbed into rustexec.
+  migrated_from: [internal/media/mediaasset, internal/infrastructure/media]
 
 infrastructure_jobs:
-  owner: internal/infrastructure/jobs
+  owner: internal/platform/jobs
   rationale: Local in-process broker (replaces internal/application/jobbroker/local).
   target_subdirs: [jobs/local]
   decomposed_into:
     jobs_local:
-      owner: internal/infrastructure/jobs/local
+      owner: internal/platform/jobs/local
     jobs_remote_clients:
-      owner: internal/infrastructure/remote
+      owner: internal/platform/remote
       clients:
         - assettransferclient   # HTTP client for asset transfer (worker side)
         - jobbrokerclient       # HTTP client for job broker (worker side)

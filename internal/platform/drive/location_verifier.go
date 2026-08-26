@@ -25,7 +25,7 @@ import (
 
 // AssetStoreLookup is the narrow surface the LocationVerifier needs
 // from the asset store. Declared locally so the drive package does
-// not depend on the full asset.Service surface.
+// not depend on the full detail.Service surface.
 type AssetStoreLookup interface {
 	// GetAsset returns the full asset details including locations.
 	// Returns nil, nil when no asset with the given ID exists.

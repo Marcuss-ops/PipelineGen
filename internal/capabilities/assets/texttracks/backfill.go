@@ -42,13 +42,14 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // MediaAssetLister is the narrow port the BackfillService uses to
@@ -75,9 +76,9 @@ type MediaAssetLister interface {
 // leaf files compose deps that declare here.
 type BackfillService struct {
 	clips           MediaAssetLister
-	repo            asset.TextTrackRepository // Fase 5: used by tryAcquire to save acquired source tracks
+	repo            detail.TextTrackRepository // Fase 5: used by tryAcquire to save acquired source tracks
 	cues            TimedCueWriter            // new field to save cues/segments to DB
-	subArtRepo      asset.SubtitleArtifactRepository
+	subArtRepo      detail.SubtitleArtifactRepository
 	subMaterializer *SubtitleArtifactMaterializer
 	materializer    *Materializer
 	acquirer        *AcquireService // Fase 5: optional source-text acquisition
@@ -101,9 +102,9 @@ type BackfillServiceDeps struct {
 // BackfillDataDeps — persistence-layer ports.
 type BackfillDataDeps struct {
 	Clips      MediaAssetLister
-	Repo       asset.TextTrackRepository
+	Repo       detail.TextTrackRepository
 	Cues       TimedCueWriter
-	SubArtRepo asset.SubtitleArtifactRepository
+	SubArtRepo detail.SubtitleArtifactRepository
 }
 
 // BackfillPipelineDeps — processing pipeline ports.
@@ -173,7 +174,7 @@ type BackfillOptions struct {
 	Source          string
 	SourceLanguage  string
 	TargetLanguages []string
-	TextKind        asset.TextTrackKind
+	TextKind        detail.TextTrackKind
 	OnlyMissing     bool
 	Limit           int
 	AssetIDs        []string

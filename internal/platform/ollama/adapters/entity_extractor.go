@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
@@ -234,7 +234,7 @@ func selectedEntityModel() string {
 	return defaultEntityModel
 }
 
-func entityResultFromAnalysis(result *asset.EntityExtractionResult) *script.EntityResult {
+func entityResultFromAnalysis(result *detail.EntityExtractionResult) *script.EntityResult {
 	if result == nil {
 		return &script.EntityResult{}
 	}

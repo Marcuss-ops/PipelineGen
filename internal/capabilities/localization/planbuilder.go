@@ -10,16 +10,17 @@ package localization
 //
 // godlike/06 SSOT (one canonical owner per fact): the plan references text
 // tracks by (ID, SHA256) — never embedded text. The builder resolves those
-// references through the narrow TrackResolver port; asset.TextTrack stays the
+// references through the narrow TrackResolver port; detail.TextTrack stays the
 // owner of the text content.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // SourceInput is the resolved source-clip identity a plan-builder needs. Every
@@ -64,7 +65,7 @@ type TrackRef struct {
 // its canonical (TrackID, SHA256) reference. Fail-closed: no READY track is a
 // typed error, never a silent zero reference.
 type TrackResolver interface {
-	ResolveTrack(ctx context.Context, assetID string, language string, kind asset.TextTrackKind) (*TrackRef, error)
+	ResolveTrack(ctx context.Context, assetID string, language string, kind detail.TextTrackKind) (*TrackRef, error)
 }
 
 // PlanBuilder builds the fingerprinted, priority-ordered []LocalizedClipPlan
@@ -107,7 +108,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 		return nil, fmt.Errorf("localization: plan builder: languages is required")
 	}
 
-	transcript, err := b.tracks.ResolveTrack(ctx, source.AssetID, source.SourceLanguage, asset.TextTrackTranscript)
+	transcript, err := b.tracks.ResolveTrack(ctx, source.AssetID, source.SourceLanguage, detail.TextTrackTranscript)
 	if err != nil {
 		return nil, fmt.Errorf("localization: plan builder: resolve source transcript (%s/%s): %w", source.AssetID, source.SourceLanguage, err)
 	}
@@ -132,7 +133,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 		// translated transcript track.
 		subtitle := transcript
 		if lang != source.SourceLanguage {
-			subtitle, err = b.tracks.ResolveTrack(ctx, source.AssetID, lang, asset.TextTrackTranscript)
+			subtitle, err = b.tracks.ResolveTrack(ctx, source.AssetID, lang, detail.TextTrackTranscript)
 			if err != nil {
 				return nil, fmt.Errorf("localization: plan builder: resolve subtitle track (%s/%s): %w", source.AssetID, lang, err)
 			}

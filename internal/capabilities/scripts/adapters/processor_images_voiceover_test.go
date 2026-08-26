@@ -36,7 +36,7 @@ import (
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -120,10 +120,10 @@ func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneNa
 	return &adapterspkg.ImageResult{SourceURL: "http://search/" + sceneName}, nil
 }
 
-func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
 	f.genCalls.Add(1)
 	f.lastPrompts = append([]string(nil), prompts...)
-	return &asset.ImageAsset{
+	return &detail.ImageAsset{
 		SourceURL:   "google-slides/" + subject + ".png",
 		DriveFileID: "drive-" + subject,
 	}, nil

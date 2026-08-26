@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"sync"
@@ -120,7 +121,7 @@ type textTrackPipelineFixture struct {
 //
 //	texttracks.MaterializeEnqueuer := *appjobs.Service (compile-time pin)
 //	texttracks.OutboxEnqueuer       := *outboxevents.Repository
-//	asset.TextTrackRepository       := *texttracks.TextTrackRepositorySQLite
+//	detail.TextTrackRepository       := *texttracks.TextTrackRepositorySQLite
 //	translation.TranslationPort     := *stubPipelineTranslator
 //	job.JobBroker                   := *sqljobs.SQLiteStore
 //	job.Dispatcher.Register         := *texttracks.MaterializeJobHandler
@@ -226,19 +227,19 @@ func newTextTrackPipelineFixture(t *testing.T, collection string) *textTrackPipe
 }
 
 // seedSourceTrackEn materializes a READY English source track for
-// (asset.TextTrackTranscript). Required pre-Materialize so the
+// (detail.TextTrackTranscript). Required pre-Materialize so the
 // resolver's FindSourceTrack returns a non-nil READY row (the
 // materializer's terminal ErrTrackNotReady would otherwise fire on
 // any textTrackMaterialize call).
 func seedSourceTrackEn(t *testing.T, fx *textTrackPipelineFixture, assetID, sourceText, sourceVersion string) {
 	t.Helper()
-	if err := fx.TTRepo.UpsertBatch(context.Background(), []asset.TextTrack{
+	if err := fx.TTRepo.UpsertBatch(context.Background(), []detail.TextTrack{
 		{
 			AssetID:            assetID,
 			LanguageCode:       "en",
-			TextKind:           asset.TextTrackTranscript,
+			TextKind:           detail.TextTrackTranscript,
 			TextContent:        sourceText,
-			SourceType:         asset.TextSourceProvided,
+			SourceType:         detail.TextSourceProvided,
 			SourceLanguageCode: "en",
 			IsOriginal:         true,
 			Provider:           "stub",
@@ -246,7 +247,7 @@ func seedSourceTrackEn(t *testing.T, fx *textTrackPipelineFixture, assetID, sour
 			ModelVersion:       "model-v1",
 			TextHash:           texttracks.ComputeSourceTextHash(sourceText),
 			SourceVersion:      sourceVersion,
-			Status:             asset.TextTrackReady,
+			Status:             detail.TextTrackReady,
 		},
 	}); err != nil {
 		t.Fatalf("seedSourceTrackEn must succeed: %v", err)

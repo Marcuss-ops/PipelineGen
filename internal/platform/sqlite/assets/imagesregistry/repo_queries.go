@@ -10,13 +10,14 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -130,7 +131,7 @@ func (a *assetRepositoryAdapter) FindByExternalRef(ctx context.Context, provider
 // store. Caller-side promotion to legacy *asset.AssetStoreSQLite (via
 // HYBRID embed) keeps backward compatibility for composition roots
 // that haven't migrated yet.
-func (s *AssetStoreSQLite) AssetRepository() asset.Repository {
+func (s *AssetStoreSQLite) AssetRepository() detail.Repository {
 	return &assetRepositoryAdapter{store: s}
 }
 
@@ -139,12 +140,12 @@ func (s *AssetStoreSQLite) AssetRepository() asset.Repository {
 // not AssetRepository()).
 //
 // Step 1 fix (June 2026): the type-assertion in
-// asset.Service.Repository() casts s.store.(assetStoreAdapter) and
+// detail.Service.Repository() casts s.store.(assetStoreAdapter) and
 // calls a.Repository(). Before this shadow method, AssetStoreSQLite
 // only exposed AssetRepository() — the interface match failed
 // silently (typed-nil), causing "AssetRepo is required but not wired"
 // at every YouTube service composition.
-func (s *AssetStoreSQLite) Repository() asset.Repository {
+func (s *AssetStoreSQLite) Repository() detail.Repository {
 	return s.AssetRepository()
 }
 

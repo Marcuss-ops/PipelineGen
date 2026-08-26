@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ErrTranslationFailed is the canonical terminal sentinel for a
@@ -27,7 +27,7 @@ import (
 type ErrTranslationFailed struct {
 	AssetID       string
 	TargetLang    string
-	TextKind      asset.TextTrackKind
+	TextKind      detail.TextTrackKind
 	Cause         error
 	AttemptedText string
 }
@@ -71,9 +71,9 @@ func (e *ErrUnsupportedLanguage) Is(target error) bool {
 type ErrTrackNotReady struct {
 	AssetID            string
 	SourceLanguage     string
-	TextKind           asset.TextTrackKind
-	CurrentStatus      asset.TextTrackStatus
-	AvailableStatuses  []asset.TextTrackStatus
+	TextKind           detail.TextTrackKind
+	CurrentStatus      detail.TextTrackStatus
+	AvailableStatuses  []detail.TextTrackStatus
 	AvailableLanguages []string
 }
 
@@ -94,7 +94,7 @@ func (e *ErrTrackNotReady) Is(target error) bool {
 type ErrNoSourceTrack struct {
 	AssetID        string
 	SourceLanguage string
-	TextKind       asset.TextTrackKind
+	TextKind       detail.TextTrackKind
 }
 
 func (e *ErrNoSourceTrack) Error() string {

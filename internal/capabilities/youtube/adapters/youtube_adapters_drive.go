@@ -40,7 +40,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -175,16 +175,16 @@ func NewFolderMemoryAdapter(svc *foldermemory.Service) youtubeports.FolderMemory
 	return &FolderMemoryAdapter{inner: svc}
 }
 
-func (a *FolderMemoryAdapter) LoadManifest(manifestPath string) (*asset.ClipManifest, error) {
+func (a *FolderMemoryAdapter) LoadManifest(manifestPath string) (*detail.ClipManifest, error) {
 	return a.inner.LoadManifest(manifestPath)
 }
-func (a *FolderMemoryAdapter) SaveManifest(manifestPath string, manifest *asset.ClipManifest) error {
+func (a *FolderMemoryAdapter) SaveManifest(manifestPath string, manifest *detail.ClipManifest) error {
 	return a.inner.SaveManifest(manifestPath, manifest)
 }
-func (a *FolderMemoryAdapter) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error {
+func (a *FolderMemoryAdapter) UpdateManifestTXT(folder *detail.ClipFolder, manifest *detail.ClipManifest) error {
 	return a.inner.UpdateManifestTXT(folder, manifest)
 }
-func (a *FolderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats {
+func (a *FolderMemoryAdapter) ComputeManifestStats(manifest *detail.ClipManifest) detail.ClipFolderStats {
 	return a.inner.ComputeManifestStats(manifest)
 }
 

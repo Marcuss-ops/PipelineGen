@@ -98,6 +98,7 @@
 package wiring
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 
@@ -230,7 +231,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Step 5a — Operator Console: admin-facing read-only API for the
-	// operator console binary. Registered after assets (needs asset.Service)
+	// operator console binary. Registered after assets (needs detail.Service)
 	// and before late bindings (no cross-step state dependency).
 	if err := registerOperatorAdminAPI(registry, log, cfg, root); err != nil {
 		return nil, fmt.Errorf("wire registry: operator-admin-api: %w", err)

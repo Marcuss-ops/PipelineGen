@@ -1,11 +1,18 @@
-// Package scan — legacy hotspot growth ratchet (Cleanup Day 2026-08-23).
+// Package scan — registered hotspot growth ratchet (Cleanup Day 2026-08-23;
+// generalized 2026-08-26 to cover the whole carry-forward debt surface).
 //
-// Registered hotspots under migration-only legacy roots must never gain new
+// Every hotspot registered in package_hotspots.json must never gain new
 // production files. Any count above the committed baseline is a hard violation
 // regardless of the global max-files-per-package cap. This is a separate scan
 // from ScanPackagesForMode because that scanner only checks growth for packages
-// that already exceed the global cap (65). Most legacy hotspots sit well under
-// 65 files, so their growth was invisible until this ratchet was introduced.
+// that already exceed the global cap (65). Most registered hotspots sit well
+// under 65 files (e.g. stockpipeline at 63 vs its 63-file baseline), so their
+// growth was invisible until this ratchet fired on the full registry.
+//
+// After the legacy roots were deleted (2026-08-25) the ratchet no longer filters
+// by legacy-root membership: the registered hotspot registry is itself the
+// carry-forward debt surface, so growth above any committed baseline fails
+// closed.
 package structure
 
 import (
@@ -21,9 +28,9 @@ import (
 const legacyHotspotRatchetRule = "percheck_legacy_hotspot_growth"
 
 // ScanLegacyHotspotGrowth enforces a non-increasing file-count ratchet for every
-// hotspot registered in package_hotspots.json that lives under a legacy
-// migration root. Growth is a hard error regardless of whether the package
-// exceeds the 65-file emergency ceiling.
+// hotspot registered in package_hotspots.json. Growth is a hard error regardless
+// of whether the package exceeds the 65-file emergency ceiling and regardless of
+// which internal root the package lives under.
 func ScanLegacyHotspotGrowth(root string, pol *policy.Policy, r *report.Report) {
 	registry, err := loadPackageHotspotRegistry(root)
 	if err != nil {
@@ -32,9 +39,6 @@ func ScanLegacyHotspotGrowth(root string, pol *policy.Policy, r *report.Report) 
 		return
 	}
 	if registry == nil || len(registry.Hotspots) == 0 {
-		return
-	}
-	if len(pol.LegacyInternalRoots) == 0 {
 		return
 	}
 
@@ -73,18 +77,10 @@ func ScanLegacyHotspotGrowth(root string, pol *policy.Policy, r *report.Report) 
 		return nil
 	})
 
-	legacySet := make(map[string]bool, len(pol.LegacyInternalRoots))
-	for _, lr := range pol.LegacyInternalRoots {
-		legacySet["internal/"+strings.Trim(lr, "/")] = true
-	}
-
-	// Check every registered hotspot that lives in a legacy root.
+	// Check every registered hotspot.
 	for pkg, count := range pkgCounts {
 		h, registered := hotspots[pkg]
 		if !registered {
-			continue
-		}
-		if !isUnderLegacyRoot(pkg, legacySet) {
 			continue
 		}
 		if count > h.BaselineFiles {
@@ -96,21 +92,10 @@ func ScanLegacyHotspotGrowth(root string, pol *policy.Policy, r *report.Report) 
 				Rule:         legacyHotspotRatchetRule,
 				Severity:     "error",
 				Note: fmt.Sprintf(
-					"legacy hotspot %s grew from %d to %d production files; owner=%s deadline=%s — legacy files must never increase after Cleanup Day",
+					"registered hotspot %s grew from %d to %d production files; owner=%s deadline=%s — carry-forward debt must never increase",
 					pkg, h.BaselineFiles, count, h.Owner, h.Deadline,
 				),
 			})
 		}
 	}
-}
-
-// isUnderLegacyRoot returns true when the package slug is directly under a
-// registered legacy migration root.
-func isUnderLegacyRoot(pkg string, legacySet map[string]bool) bool {
-	for legacy := range legacySet {
-		if pkg == legacy || strings.HasPrefix(pkg, legacy+"/") {
-			return true
-		}
-	}
-	return false
 }

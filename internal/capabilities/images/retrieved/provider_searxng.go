@@ -8,6 +8,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -46,7 +47,7 @@ func NewSearXNGProvider(bridge StorageBridge, client httpDoer, log *zap.Logger, 
 	}
 }
 
-func (p *SearXNGProvider) Name() asset.ImageProvider { return asset.ProviderSearXNG }
+func (p *SearXNGProvider) Name() detail.ImageProvider { return detail.ProviderSearXNG }
 
 func (p *SearXNGProvider) Healthy(ctx context.Context) error {
 	if p.baseURL == "" {
@@ -73,8 +74,8 @@ func (p *SearXNGProvider) Search(ctx context.Context, query string, opts Retriev
 	}
 	results := p.bridge.SearchSearXNGImagesMany(ctx, query, limit)
 	for i := range results {
-		results[i].Provider = asset.ProviderSearXNG
-		results[i].Origin = asset.ImageOriginRetrieved
+		results[i].Provider = detail.ProviderSearXNG
+		results[i].Origin = detail.ImageOriginRetrieved
 		if strings.TrimSpace(results[i].PageURL) == "" {
 			results[i].PageURL = results[i].PreviewURL
 		}

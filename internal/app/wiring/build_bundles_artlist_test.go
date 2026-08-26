@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
@@ -285,30 +285,30 @@ func TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil(t *testing.T) {
 
 // ---------- ART-002 P0 (July 2026): composition happy-path regression ----------
 //
-// stubTextTrackRepoForArtlistComposition is a minimal asset.TextTrackRepository
+// stubTextTrackRepoForArtlistComposition is a minimal detail.TextTrackRepository
 // double that lets the Artlist wiring happy-path test pass the mandatory
 // TextTrackRepo gate without persisting real rows.
 type stubTextTrackRepoForArtlistComposition struct{}
 
-func (s *stubTextTrackRepoForArtlistComposition) UpsertBatch(_ context.Context, _ []asset.TextTrack) error {
+func (s *stubTextTrackRepoForArtlistComposition) UpsertBatch(_ context.Context, _ []detail.TextTrack) error {
 	return nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) Find(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, error) {
+func (s *stubTextTrackRepoForArtlistComposition) Find(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) ListByAsset(_ context.Context, _ string) ([]asset.TextTrack, error) {
+func (s *stubTextTrackRepoForArtlistComposition) ListByAsset(_ context.Context, _ string) ([]detail.TextTrack, error) {
 	return nil, nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) FindReady(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (s *stubTextTrackRepoForArtlistComposition) FindReady(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (s *stubTextTrackRepoForArtlistComposition) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return nil, nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _ string, _ string, _ string, _ string, _ string) (*asset.TextTrack, error) {
+func (s *stubTextTrackRepoForArtlistComposition) FindCurrentForTranslation(_ context.Context, _ string, _ detail.TextTrackKind, _ string, _ string, _ string, _ string, _ string) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (s *stubTextTrackRepoForArtlistComposition) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+func (s *stubTextTrackRepoForArtlistComposition) InsertTranslationWithAuditPredecessor(_ context.Context, _ detail.TextTrack) error {
 	return nil
 }
 

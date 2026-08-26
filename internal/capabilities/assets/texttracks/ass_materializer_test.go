@@ -1,11 +1,12 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -13,7 +14,7 @@ func TestSubtitleMaterializerPublishesAndPersistsPerClipDriveReference(t *testin
 	repo := &subtitleArtifactRepoRecorder{}
 	publisher := &subtitlePublisherRecorder{}
 	materializer := NewSubtitleArtifactMaterializer(repo, t.TempDir(), publisher)
-	cues := []asset.TimedCue{
+	cues := []detail.TimedCue{
 		{StartMs: 0, EndMs: 3280, Text: "hello"},
 		{StartMs: 3280, EndMs: 3289, Text: "short cue"},
 	}
@@ -56,7 +57,7 @@ func TestSubtitleMaterializerPublishesAndPersistsPerClipDriveReference(t *testin
 			t.Errorf("%s filename = %q", tc.assetID, req.Filename)
 		}
 		got := repo.byAsset[tc.assetID]
-		if got.DriveFileID != tc.fileID || got.DriveURL == "" || got.Status != asset.SubtitleStatusReady {
+		if got.DriveFileID != tc.fileID || got.DriveURL == "" || got.Status != detail.SubtitleStatusReady {
 			t.Errorf("%s artifact Drive state = %+v", tc.assetID, got)
 		}
 		if filepath.Dir(got.LocalPath) == "" {
@@ -66,18 +67,18 @@ func TestSubtitleMaterializerPublishesAndPersistsPerClipDriveReference(t *testin
 }
 
 type subtitleArtifactRepoRecorder struct {
-	byAsset map[string]asset.SubtitleArtifact
+	byAsset map[string]detail.SubtitleArtifact
 }
 
-func (r *subtitleArtifactRepoRecorder) Upsert(_ context.Context, artifact *asset.SubtitleArtifact) error {
+func (r *subtitleArtifactRepoRecorder) Upsert(_ context.Context, artifact *detail.SubtitleArtifact) error {
 	if r.byAsset == nil {
-		r.byAsset = make(map[string]asset.SubtitleArtifact)
+		r.byAsset = make(map[string]detail.SubtitleArtifact)
 	}
 	r.byAsset[artifact.AssetID] = *artifact
 	return nil
 }
 
-func (r *subtitleArtifactRepoRecorder) FindCurrent(_ context.Context, assetID, _ string, _ asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
+func (r *subtitleArtifactRepoRecorder) FindCurrent(_ context.Context, assetID, _ string, _ detail.SubtitleFormat) (*detail.SubtitleArtifact, error) {
 	artifact, ok := r.byAsset[assetID]
 	if !ok {
 		return nil, nil
@@ -85,12 +86,12 @@ func (r *subtitleArtifactRepoRecorder) FindCurrent(_ context.Context, assetID, _
 	return &artifact, nil
 }
 
-func (r *subtitleArtifactRepoRecorder) ListByAsset(_ context.Context, assetID string) ([]asset.SubtitleArtifact, error) {
+func (r *subtitleArtifactRepoRecorder) ListByAsset(_ context.Context, assetID string) ([]detail.SubtitleArtifact, error) {
 	artifact, ok := r.byAsset[assetID]
 	if !ok {
 		return nil, nil
 	}
-	return []asset.SubtitleArtifact{artifact}, nil
+	return []detail.SubtitleArtifact{artifact}, nil
 }
 
 type subtitlePublisherRecorder struct {

@@ -1,7 +1,7 @@
 // Package youtube — whisper_transcriber.go: concrete WhisperTranscriber
 // adapter that spawns the Python bridge script
 // (scripts/bridges/whisper_transcriber.py) via subprocess and
-// returns the typed asset.TranscriptResult.
+// returns the typed detail.TranscriptResult.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026).
 //
@@ -12,7 +12,7 @@
 // it) and falls back to CPU int8 otherwise. The adapter:
 //  1. Spawns the Python script with the local path as argv[1].
 //  2. Reads stdout (JSON) and parses it into
-//     asset.TranscriptResult.
+//     detail.TranscriptResult.
 //  3. Stderr is captured for the error path (the chain falls
 //     through to the next priority or surfaces a typed
 //     error).
@@ -35,6 +35,7 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -46,7 +47,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ErrWhisperBridgeUnavailable is returned at construction
@@ -124,7 +125,7 @@ func (a *WhisperTranscriberAdapter) TranscribeAudio(ctx context.Context, localPa
 
 // TranscribeAudioWithDetection is the typed-result sibling
 // (Fase 1.b). Spawns the Python script, parses the JSON
-// output, and returns the canonical asset.TranscriptResult.
+// output, and returns the canonical detail.TranscriptResult.
 //
 // Returns:
 //
@@ -136,9 +137,9 @@ func (a *WhisperTranscriberAdapter) TranscribeAudio(ctx context.Context, localPa
 // godlike/07 fail-closed: errors propagate verbatim. The
 // caller (AcquireService priority 5) checks `det.Text != ""`
 // before accepting the result.
-func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error) {
+func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Context, localPath string) (detail.TranscriptResult, error) {
 	if localPath == "" {
-		return asset.TranscriptResult{}, fmt.Errorf("whisper.TranscribeAudioWithDetection: localPath is empty")
+		return detail.TranscriptResult{}, fmt.Errorf("whisper.TranscribeAudioWithDetection: localPath is empty")
 	}
 
 	// Subprocess with a bounded timeout (godlike/07
@@ -157,7 +158,7 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 			zap.String("local_path", localPath),
 			zap.String("stderr", stderr.String()),
 			zap.Error(err))
-		return asset.TranscriptResult{}, fmt.Errorf("whisper subprocess: %w (stderr: %s)", err, stderr.String())
+		return detail.TranscriptResult{}, fmt.Errorf("whisper subprocess: %w (stderr: %s)", err, stderr.String())
 	}
 
 	var res struct {
@@ -173,10 +174,10 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 		Error string `json:"error"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
-		return asset.TranscriptResult{}, fmt.Errorf("whisper: parse JSON output: %w (raw: %s)", err, stdout.String())
+		return detail.TranscriptResult{}, fmt.Errorf("whisper: parse JSON output: %w (raw: %s)", err, stdout.String())
 	}
 	if res.Error != "" {
-		return asset.TranscriptResult{}, fmt.Errorf("whisper: script error: %s", res.Error)
+		return detail.TranscriptResult{}, fmt.Errorf("whisper: script error: %s", res.Error)
 	}
 
 	// Normalize the detected language. Empty input collapses
@@ -194,16 +195,16 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 		confPtr = &c
 	}
 
-	cues := make([]asset.TimedCue, len(res.Cues))
+	cues := make([]detail.TimedCue, len(res.Cues))
 	for i, c := range res.Cues {
-		cues[i] = asset.TimedCue{
+		cues[i] = detail.TimedCue{
 			StartMs: c.StartMs,
 			EndMs:   c.EndMs,
 			Text:    c.Text,
 		}
 	}
 
-	return asset.TranscriptResult{
+	return detail.TranscriptResult{
 		Text:             res.Text,
 		DetectedLanguage: lang,
 		Confidence:       confPtr,

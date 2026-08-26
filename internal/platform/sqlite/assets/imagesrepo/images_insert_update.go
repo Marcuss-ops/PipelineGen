@@ -11,10 +11,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -32,7 +33,7 @@ import (
 // in the dedicated columns; callers that don't populate them get the
 // DEFAULT ” (unclassified) and are eligible for FASE 4 backfill to
 // promote them to a canonical territory.
-func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
+func (r *ImagesRepository) AddImage(ctx context.Context, img *detail.ImageAsset) (int64, error) {
 	if r != nil && r.canonicalCommit != nil {
 		return r.canonicalCommit(ctx, img)
 	}
@@ -101,19 +102,19 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 // matching detail table with best-effort field mapping. Caller can call
 // UpsertGeneratedDetails / UpsertRetrievedDetails subsequently to
 // refine the row with full provenance.
-func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID string, img *asset.ImageAsset) error {
+func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID string, img *detail.ImageAsset) error {
 	if r == nil || img == nil {
 		return nil
 	}
 	switch img.Origin {
-	case asset.ImageOriginGenerated:
-		return r.UpsertGeneratedDetails(ctx, &asset.GeneratedImageDetail{
+	case detail.ImageOriginGenerated:
+		return r.UpsertGeneratedDetails(ctx, &detail.GeneratedImageDetail{
 			AssetID:    assetID,
 			SourceHash: img.Hash,
 			Model:      string(img.Provider),
 		})
-	case asset.ImageOriginRetrieved:
-		return r.UpsertRetrievedDetails(ctx, &asset.RetrievedImageDetail{
+	case detail.ImageOriginRetrieved:
+		return r.UpsertRetrievedDetails(ctx, &detail.RetrievedImageDetail{
 			AssetID:        assetID,
 			SourceImageURL: img.SourceURL,
 			License:        img.License,
@@ -124,7 +125,7 @@ func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID st
 }
 
 // UpsertGeneratedDetails writes per-asset provenance for an AI-generated image.
-func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *asset.GeneratedImageDetail) error {
+func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *detail.GeneratedImageDetail) error {
 	if d == nil {
 		return nil
 	}
@@ -150,7 +151,7 @@ func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *asset.
 }
 
 // UpsertRetrievedDetails writes per-asset provenance for a web-retrieved image.
-func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *asset.RetrievedImageDetail) error {
+func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *detail.RetrievedImageDetail) error {
 	if d == nil {
 		return nil
 	}

@@ -9,9 +9,9 @@
 //  2. TestAggregateVLMResponses_DeterministicDedup_SortedEntities
 //     → entities same contract.
 //  3. TestAggregateVLMResponses_CapAtMaxVisibleItems
-//     → actions + entities truncate at asset.MaxVisibleItems.
+//     → actions + entities truncate at detail.MaxVisibleItems.
 //  4. TestAggregateVLMResponses_TruncatesVisualSummaryAtMaxChars
-//     → VisualSummaryText truncated at asset.MaxVisualSummaryChars.
+//     → VisualSummaryText truncated at detail.MaxVisualSummaryChars.
 //  5. TestAggregateVLMResponses_PrefersLongestRawDescription
 //     → the LONGEST RawDescription wins (not first or last).
 //  6. TestAggregateVLMResponses_NilSliceSafe
@@ -52,7 +52,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // `_ = strconv.Itoa` is referenced through `fmtActionName` so the
@@ -106,15 +106,15 @@ func (v *fakeVLMClient) Infer(_ context.Context, imagePath string) (*VLMInferenc
 // (the narrowed Upsert+Get port). Tracks every Get/Upsert call.
 type fakeRepoWriter struct {
 	mu          sync.Mutex
-	existing    *asset.VisualSummary
-	upserted    []asset.VisualSummary
+	existing    *detail.VisualSummary
+	upserted    []detail.VisualSummary
 	upsertErr   error
 	getErr      error
 	getCalls    int32
 	upsertCalls int32
 }
 
-func (r *fakeRepoWriter) Get(_ context.Context, assetID string) (*asset.VisualSummary, error) {
+func (r *fakeRepoWriter) Get(_ context.Context, assetID string) (*detail.VisualSummary, error) {
 	atomic.AddInt32(&r.getCalls, 1)
 	if r.getErr != nil {
 		return nil, r.getErr
@@ -129,7 +129,7 @@ func (r *fakeRepoWriter) Get(_ context.Context, assetID string) (*asset.VisualSu
 	return nil, nil
 }
 
-func (r *fakeRepoWriter) Upsert(_ context.Context, summary asset.VisualSummary) error {
+func (r *fakeRepoWriter) Upsert(_ context.Context, summary detail.VisualSummary) error {
 	atomic.AddInt32(&r.upsertCalls, 1)
 	if r.upsertErr != nil {
 		return r.upsertErr
@@ -175,7 +175,7 @@ func TestAggregateVLMResponses_DeterministicDedup_SortedEntities(t *testing.T) {
 
 // TestAggregateVLMResponses_CapAtMaxVisibleItems pins the audit-stable
 // cap. Generate 33 actions; verify the output has exactly
-// asset.MaxVisibleItems=32 (deterministic order preserved; the first
+// detail.MaxVisibleItems=32 (deterministic order preserved; the first
 // 32 in alphabetical order).
 func TestAggregateVLMResponses_CapAtMaxVisibleItems(t *testing.T) {
 	t.Parallel()
@@ -187,13 +187,13 @@ func TestAggregateVLMResponses_CapAtMaxVisibleItems(t *testing.T) {
 		objs = append(objs, fmtActionName(i))
 	}
 	sort.Strings(objs) // expected output: first 32 alphabetically
-	wantPrefix := objs[:asset.MaxVisibleItems]
+	wantPrefix := objs[:detail.MaxVisibleItems]
 
 	in := []*VLMInferenceResponse{{VisualObjects: objs}}
 	_, actions, _ := AggregateVLMResponses(in)
 
-	require.Len(t, actions, asset.MaxVisibleItems,
-		"actions must cap at asset.MaxVisibleItems (got %d)", len(actions))
+	require.Len(t, actions, detail.MaxVisibleItems,
+		"actions must cap at detail.MaxVisibleItems (got %d)", len(actions))
 	// Filled-from-sorted assertion: the first MaxVisibleItems sorted
 	// actions should be the result.
 	assert.True(t, sliceStartsWith(actions, wantPrefix),
@@ -202,15 +202,15 @@ func TestAggregateVLMResponses_CapAtMaxVisibleItems(t *testing.T) {
 
 // TestAggregateVLMResponses_TruncatesVisualSummaryAtMaxChars pins
 // that the visual_summary_text is truncated at
-// asset.MaxVisualSummaryChars (512). Generate 600-char description;
+// detail.MaxVisualSummaryChars (512). Generate 600-char description;
 // verify output length == 512.
 func TestAggregateVLMResponses_TruncatesVisualSummaryAtMaxChars(t *testing.T) {
 	t.Parallel()
-	long := strings.Repeat("x", asset.MaxVisualSummaryChars+100)
+	long := strings.Repeat("x", detail.MaxVisualSummaryChars+100)
 	in := []*VLMInferenceResponse{{RawDescription: long}}
 	text, _, _ := AggregateVLMResponses(in)
-	require.Len(t, text, asset.MaxVisualSummaryChars,
-		"VisualSummaryText must cap at asset.MaxVisualSummaryChars")
+	require.Len(t, text, detail.MaxVisualSummaryChars,
+		"VisualSummaryText must cap at detail.MaxVisualSummaryChars")
 }
 
 // TestAggregateVLMResponses_PrefersLongestRawDescription pins the
@@ -328,9 +328,9 @@ func TestVisualSummaryService_RunJob_HappyPath_UpsertsRow(t *testing.T) {
 	require.Equal(t, 2, result.FrameCount, "FrameCount mirrors sampler output (2 fake frames)")
 	assert.Equal(t, []string{"throw_punch"}, result.VisibleActions)
 	assert.Equal(t, []string{"ROUND_1"}, result.VisibleEntities)
-	require.True(t, len(result.VisualSummaryText) <= asset.MaxVisualSummaryChars,
+	require.True(t, len(result.VisualSummaryText) <= detail.MaxVisualSummaryChars,
 		"summary length (%d) must fit MaxVisualSummaryChars (%d)",
-		len(result.VisualSummaryText), asset.MaxVisualSummaryChars)
+		len(result.VisualSummaryText), detail.MaxVisualSummaryChars)
 
 	// Upsert was fired exactly once.
 	assert.Equal(t, int32(1), atomic.LoadInt32(&repo.upsertCalls),
@@ -339,9 +339,9 @@ func TestVisualSummaryService_RunJob_HappyPath_UpsertsRow(t *testing.T) {
 	assert.Equal(t, int32(2), atomic.LoadInt32(&vlm.calls),
 		"VLM must fire once per extracted frame")
 
-	// SourceHash populated via asset.ComputeSourceHash.
+	// SourceHash populated via detail.ComputeSourceHash.
 	require.NotEmpty(t, result.SourceHash)
-	expected := asset.ComputeSourceHash(
+	expected := detail.ComputeSourceHash(
 		[]string{"throw_punch"}, []string{"ROUND_1"},
 		"llava-1.6-7b", "2026-07-13", "vlm-sampler/v1.0.0", 2,
 	)
@@ -355,7 +355,7 @@ func TestVisualSummaryService_RunJob_HappyPath_UpsertsRow(t *testing.T) {
 func TestVisualSummaryService_RunJob_SupersedeGateActive_ReturnsExisting(t *testing.T) {
 	t.Parallel()
 	// Pre-seed a row whose SourceHash matches what RunJob will compute.
-	prospectiveHash := asset.ComputeSourceHash(
+	prospectiveHash := detail.ComputeSourceHash(
 		[]string{"throw_punch"},
 		[]string{"ROUND_7"},
 		"llava-1.6-7b",
@@ -363,7 +363,7 @@ func TestVisualSummaryService_RunJob_SupersedeGateActive_ReturnsExisting(t *test
 		"vlm-sampler/v1.0.0",
 		1, // 1 frame sampled
 	)
-	existing := &asset.VisualSummary{
+	existing := &detail.VisualSummary{
 		AssetID:              "ast-supersede",
 		VisualSummaryText:    "pre-existing caption",
 		VisibleActions:       []string{"throw_punch"},

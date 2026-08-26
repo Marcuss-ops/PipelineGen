@@ -11,7 +11,7 @@ package images
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ListImagesByOrigin returns all image media_assets rows with the
@@ -30,7 +30,7 @@ import (
 // transitively via s.Repo().ListImagesByOrigin). Future cross-cutting
 // concerns (caching, metrics, additional filtering) can be added in
 // one place — the handler does not bypass the service.
-func (s *Service) ListImagesByOrigin(ctx context.Context, origin asset.ImageOrigin, limit int) ([]asset.ImageAsset, error) {
+func (s *Service) ListImagesByOrigin(ctx context.Context, origin detail.ImageOrigin, limit int) ([]detail.ImageAsset, error) {
 	if s == nil {
 		return nil, nil
 	}

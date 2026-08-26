@@ -1,6 +1,7 @@
 package processor
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"os"
@@ -14,14 +15,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Processor orchestrates download via yt-dlp or HTTP, optional ffmpeg
 // normalization, perceptual deduplication, file hashing, and canonical
 // Drive upload via delivery.Publisher. It implements the canonical
-// domain/asset.Processor contract directly.
+// domain/detail.Processor contract directly.
 //
 // F2.8 (June 2026): the legacy `driveUploader *drive.Uploader` field
 // is REMOVED. Every Drive write goes through delivery.Publisher.Publish —
@@ -60,7 +61,7 @@ type Processor struct {
 	artifactCache capcache.Cache
 }
 
-var _ asset.Processor = (*Processor)(nil)
+var _ detail.Processor = (*Processor)(nil)
 
 // ArtlistDownloader is the narrow port for Artlist-clip downloads
 // routed through the canonical downloader.Resolver. Nil-safe: when
@@ -146,13 +147,13 @@ func NewProcessor(
 // It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
 // checks for perceptual duplicates, computes the file hash, and uploads to
 // Drive via the canonical delivery.Publisher.
-func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	if input == nil {
-		err := fmt.Errorf("asset.ProcessInput is required")
-		return &asset.ProcessResult{Status: "failed", Error: err.Error()}, err
+		err := fmt.Errorf("detail.ProcessInput is required")
+		return &detail.ProcessResult{Status: "failed", Error: err.Error()}, err
 	}
 
-	result := &asset.ProcessResult{
+	result := &detail.ProcessResult{
 		ID:     input.ID,
 		Status: "failed",
 	}
@@ -237,7 +238,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		result.Renditions = renditions
 
 		// The mezzanine is the canonical processed output.
-		mezzanine := p.findRendition(renditions, asset.RenditionKindMezzanine)
+		mezzanine := p.findRendition(renditions, detail.RenditionKindMezzanine)
 		if mezzanine == nil {
 			if input.LocalPath == "" {
 				_ = os.Remove(actualRawPath)
@@ -356,7 +357,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// + update cumulative Drive metadata.json" is gone.
 	//
 	// DestinationKey defaulting: input has no Destination field today
-	// (asset.ProcessInput is the canonical DTO and is owned by the
+	// (detail.ProcessInput is the canonical DTO and is owned by the
 	// domain layer — adding Destination is a follow-up wave when a
 	// non-artlist caller emerges). The processor's canonical caller
 	// is the artlist ingest pipeline, so DestinationArtlist is the
@@ -496,7 +497,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 // FolderID from drifting a reprocess upload into the wrong Drive folder
 // (reprocess folder-alignment, August 2026) — the clip's real folder is
 // resolved from the registry PathBuilder instead.
-func (p *Processor) resolvePublishDestination(input *asset.ProcessInput) (delivery.DestinationKey, string) {
+func (p *Processor) resolvePublishDestination(input *detail.ProcessInput) (delivery.DestinationKey, string) {
 	dest := strings.TrimSpace(input.Destination)
 	if dest == "" {
 		return delivery.DestinationArtlist, input.FolderID
@@ -505,7 +506,7 @@ func (p *Processor) resolvePublishDestination(input *asset.ProcessInput) (delive
 }
 
 // findRendition returns the first rendition with the given kind, or nil.
-func (p *Processor) findRendition(renditions []asset.RenditionOutput, kind asset.RenditionKind) *asset.RenditionOutput {
+func (p *Processor) findRendition(renditions []detail.RenditionOutput, kind detail.RenditionKind) *detail.RenditionOutput {
 	for i := range renditions {
 		if renditions[i].Kind == kind {
 			return &renditions[i]
@@ -515,7 +516,7 @@ func (p *Processor) findRendition(renditions []asset.RenditionOutput, kind asset
 }
 
 // setupDirectories creates temp and save directories, returning their paths.
-func (p *Processor) setupDirectories(input *asset.ProcessInput) (tmpDir, saveDir string) {
+func (p *Processor) setupDirectories(input *detail.ProcessInput) (tmpDir, saveDir string) {
 	tmpDir = filepath.Join(p.dataDir, p.tempDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		// Fallback to os.TempDir() so the rest of the pipeline can

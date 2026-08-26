@@ -44,7 +44,7 @@ import (
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // SyncCommand is the canonical typed input to GenerateSync. PR-GODOBJ-3
@@ -72,7 +72,7 @@ type SyncCommand struct {
 // here (the sync path persists through IngestImage directly; the
 // manifest is needed only for the async finalizer's Sender-side
 // upload cycle).
-func GenerateSync(ctx context.Context, svc *GenerationService, cmd SyncCommand) (*asset.ImageAsset, error) {
+func GenerateSync(ctx context.Context, svc *GenerationService, cmd SyncCommand) (*detail.ImageAsset, error) {
 	cleanPrompt := pickImagePrompt(cmd.Subject, cmd.Topic, cmd.Prompts)
 	if cleanPrompt == "" {
 		return nil, fmt.Errorf("missing image prompt")

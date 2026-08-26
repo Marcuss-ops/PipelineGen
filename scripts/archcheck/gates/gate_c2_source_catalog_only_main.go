@@ -35,10 +35,12 @@ var canonicalIdentSuffixes = map[string]bool{
 	"ClipDrive": true, "Image": true, "Generated": true, "SoundEffect": true,
 }
 
-var allowlist = map[string]bool{
-	"internal/application/assets/artifacts/source_resolver.go":  true,
-	"internal/capabilities/scripts/adapters/source_registry.go": true,
-}
+// allowlist is empty as of WAVE-22-C2-C closure (2026-08-26): the
+// migration-only roots (internal/application, internal/api) were deleted,
+// so no source-kind dispatch remains outside the canonical registry
+// (internal/capabilities/scripts/adapters/source_registry.go). The gate now
+// enforces the target-zero state directly from the code scan.
+var allowlist = map[string]bool{}
 
 type violationRow struct {
 	file, nodeKind, match string

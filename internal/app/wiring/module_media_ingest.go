@@ -16,7 +16,7 @@ import (
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -75,7 +75,7 @@ func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName st
 // verify read surface.
 type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
-	Assets            *asset.Service
+	Assets            *detail.Service
 	DriveUploader     *driveutil.Uploader
 	Lifecycle         driveutil.FileLifecycle
 	Publisher         delivery.Publisher
@@ -171,5 +171,5 @@ func isAIImageIngestSource(req *ingest.Request) bool {
 	if req == nil {
 		return false
 	}
-	return asset.IsAIImageSource(req.Source)
+	return detail.IsAIImageSource(req.Source)
 }

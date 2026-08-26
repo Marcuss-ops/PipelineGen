@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
@@ -20,7 +20,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 	now := time.Now().UTC()
-	for _, folder := range []*asset.ClipFolder{
+	for _, folder := range []*detail.ClipFolder{
 		{
 			ID:         "folder_row_keep",
 			Source:     "artlist",

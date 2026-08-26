@@ -10,6 +10,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -20,16 +21,16 @@ import (
 // means "no constraint on that dimension").
 type ImageFilter struct {
 	SubjectID string
-	Origins   []asset.ImageOrigin
+	Origins   []detail.ImageOrigin
 	Tags      []string
 	// Origines (territory) — empty = no origin constraint.
 	// Multi-origin filters let callers ask for "retrieved OR
 	// generated" in a single query.
-	Origines []asset.ImageOrigin
+	Origines []detail.ImageOrigin
 
 	// Providers — empty = no provider constraint. Multi-provider
 	// filters compose with Origines (AND).
-	Providers []asset.ImageProvider
+	Providers []detail.ImageProvider
 
 	// Slug is the EXACT subject slug to match. Empty = no slug
 	// constraint. Pattern (Glob/Regex) search is NOT a catalog
@@ -115,15 +116,15 @@ func (f ImageFilter) EffectiveLimit() int {
 func (f ImageFilter) Normalised() ImageFilter {
 	out := f
 	if len(out.Origines) > 0 {
-		out.Origines = make([]asset.ImageOrigin, len(out.Origines))
+		out.Origines = make([]detail.ImageOrigin, len(out.Origines))
 		for i, o := range out.Origines {
-			out.Origines[i] = asset.ImageOrigin(strings.ToLower(string(o)))
+			out.Origines[i] = detail.ImageOrigin(strings.ToLower(string(o)))
 		}
 	}
 	if len(out.Providers) > 0 {
-		out.Providers = make([]asset.ImageProvider, len(out.Providers))
+		out.Providers = make([]detail.ImageProvider, len(out.Providers))
 		for i, p := range out.Providers {
-			out.Providers[i] = asset.ImageProvider(strings.ToLower(string(p)))
+			out.Providers[i] = detail.ImageProvider(strings.ToLower(string(p)))
 		}
 	}
 	if out.Slug != "" {
@@ -137,9 +138,9 @@ func (f ImageFilter) Normalised() ImageFilter {
 
 // FilterByOrigin returns a filter that constrains exactly one
 // territory. Optional providers list narrows further.
-func FilterByOrigin(origin asset.ImageOrigin, providers ...asset.ImageProvider) ImageFilter {
+func FilterByOrigin(origin detail.ImageOrigin, providers ...detail.ImageProvider) ImageFilter {
 	return ImageFilter{
-		Origines:  []asset.ImageOrigin{origin},
+		Origines:  []detail.ImageOrigin{origin},
 		Providers: providers,
 	}
 }
@@ -151,7 +152,7 @@ func FilterBySlug(slug string) ImageFilter {
 }
 
 // FilterByStyle returns a filter that constrains StyleID.
-func FilterByStyle(styleID string, providers ...asset.ImageProvider) ImageFilter {
+func FilterByStyle(styleID string, providers ...detail.ImageProvider) ImageFilter {
 	return ImageFilter{
 		StyleIDs:  []string{styleID},
 		Providers: providers,

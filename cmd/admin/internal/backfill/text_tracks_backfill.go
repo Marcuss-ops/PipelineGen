@@ -67,6 +67,7 @@
 package backfill
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"encoding/json"
@@ -79,7 +80,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // textTracksBackfillDeps groups parsed CLI flags. Pure data; the
@@ -169,7 +170,7 @@ func RunTextTracksBackfill(args []string) error {
 		return err
 	}
 
-	textKind := asset.TextTrackKind(deps.TextKind)
+	textKind := detail.TextTrackKind(deps.TextKind)
 	if !isKnownTextTrackKind(textKind) {
 		return fmt.Errorf("text-tracks-backfill: unknown --text-kind %q (allowed: transcript, description, summary, title, keywords)", deps.TextKind)
 	}

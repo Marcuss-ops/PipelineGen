@@ -1,6 +1,7 @@
 package imagesregistry
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"time"
@@ -164,15 +165,15 @@ func commitClipTextAndIndexEvent_validatePolicy(cmd localized.CommitLocalizedCli
 	readyLangs := make(map[string]bool)
 	hasTranscriptReady := false
 	for _, t := range cmd.TextTracks {
-		if t.TextKind != asset.TextTrackTranscript {
+		if t.TextKind != detail.TextTrackTranscript {
 			continue
 		}
-		if t.Status != asset.TextTrackReady {
+		if t.Status != detail.TextTrackReady {
 			continue
 		}
-		if t.SourceType != asset.TextSourceProvided &&
-			t.SourceType != asset.TextSourceYouTubeSubtitle &&
-			t.SourceType != asset.TextSourceWhisper {
+		if t.SourceType != detail.TextSourceProvided &&
+			t.SourceType != detail.TextSourceYouTubeSubtitle &&
+			t.SourceType != detail.TextSourceWhisper {
 			continue
 		}
 		if !t.IsOriginal {
@@ -186,7 +187,7 @@ func commitClipTextAndIndexEvent_validatePolicy(cmd localized.CommitLocalizedCli
 		return &localized.ErrClipLocaleNotReady{
 			AssetID:     cmd.Clip.ID,
 			Reason:      "no transcript-origin READY track (provided/youtube_subtitle/whisper text_kind=transcript status=READY) in command.TextTracks",
-			MissingKind: asset.TextTrackTranscript,
+			MissingKind: detail.TextTrackTranscript,
 		}
 	}
 
@@ -201,7 +202,7 @@ func commitClipTextAndIndexEvent_validatePolicy(cmd localized.CommitLocalizedCli
 			return &localized.ErrClipLocaleNotReady{
 				AssetID:      cmd.Clip.ID,
 				Reason:       "missing READY translations for one or more PreferredLanguages",
-				MissingKind:  asset.TextTrackTranscript,
+				MissingKind:  detail.TextTrackTranscript,
 				MissingCodes: missing,
 			}
 		}

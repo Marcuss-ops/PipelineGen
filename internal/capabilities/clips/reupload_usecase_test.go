@@ -17,6 +17,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"os"
@@ -26,7 +27,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -34,7 +35,7 @@ import (
 // These pin the test fakes to the canonical delivery + clips ports so
 // future port drift surfaces at compile time, not at first test run.
 //
-// NB: asset.Repository is intentionally NOT asserted — the F2.9 fake
+// NB: detail.Repository is intentionally NOT asserted — the F2.9 fake
 // stubs only Get (the one method ReuploadUseCase calls on it).
 // Asserting the full Repository would force 7 dead stub methods onto
 // the fake; the full Repository surface is owned by
@@ -91,10 +92,10 @@ type fakeReuploadAssetRepo struct {
 	err  error
 }
 
-// Get is the one asset.Repository method ReuploadUseCase actually
+// Get is the one detail.Repository method ReuploadUseCase actually
 // calls. The remaining 7 methods are zero-value stubs that satisfy
 // the interface signature so the fake can be passed as
-// asset.Repository at the NewReuploadUseCase call site. They are
+// detail.Repository at the NewReuploadUseCase call site. They are
 // never invoked by the F2.9 happy/fail-path audit pins; callers
 // that grow ReuploadUseCase to use them should add real stubs here.
 func (r *fakeReuploadAssetRepo) Get(ctx context.Context, id string) (*asset.Asset, error) {

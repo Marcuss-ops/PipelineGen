@@ -24,6 +24,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -38,7 +39,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // step6to9_SubtitlesDriveWriter is the canonical owner of Steps 6-9.
@@ -82,7 +83,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	localPath string,
 	fileHash string,
 	policyVer string,
-) (*asset.ResolvedTextBundle, error) {
+) (*detail.ResolvedTextBundle, error) {
 	// txtPath is the canonical transcript file path referenced by a
 	// CROSS-PACKAGE consumer — clipindexer.lookupTranscriptPath reads
 	// `local_path -> TrimSuffix(Ext) + ".txt"` for Qdrant transcript
@@ -97,7 +98,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// the SOLE canonical entry point that handlers call. Subtitle
 	// fetcher errors are logged + swallowed so the chain falls
 	// through to Whisper; Whisper errors are returned verbatim.
-	var bundle *asset.ResolvedTextBundle
+	var bundle *detail.ResolvedTextBundle
 	if u.media.TextTrackResolver != nil {
 		var acqErr error
 		bundle, acqErr = u.media.TextTrackResolver.AcquireSegmentText(ctx, TextTrackAcquireRequest{
@@ -280,14 +281,14 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			CreatedAt:   time.Now().UTC(),
 		}
 
-		var tracks []asset.TextTrack
+		var tracks []detail.TextTrack
 		if len(cmd.Segment.Texts) > 0 && u.media.TextTrackResolver != nil {
 			tracks = append(tracks,
 				u.media.TextTrackResolver.MaterializePayloadTexts(clipID, cmd.Segment.Texts)...)
 		}
 		if bundle != nil && !bundle.IsEmpty() {
 			tracks = append(tracks,
-				bundleToTextTracks(clipID, bundle, asset.TextTrackTranscript)...)
+				bundleToTextTracks(clipID, bundle, detail.TextTrackTranscript)...)
 		}
 
 		var timedTracks []localized.TimedTextTrack
@@ -409,7 +410,7 @@ func (u *ProcessYouTubeSegmentUseCase) analyzeClipForCommit(
 	clipID string,
 	startSec int,
 	endSec int,
-	bundle *asset.ResolvedTextBundle,
+	bundle *detail.ResolvedTextBundle,
 ) (ytmetadata.CanonicalClipEnrichment, error) {
 	if u.metadata.MetadataService == nil {
 		return ytmetadata.CanonicalClipEnrichment{}, nil

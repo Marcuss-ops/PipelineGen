@@ -1,6 +1,7 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -71,7 +72,7 @@ func defaultLicenseAndAuthor(ctx context.Context, source string) (license, autho
 }
 
 // SearchAndDownload searches for an image locally and via web APIs.
-func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*detail.ImageAsset, error) {
 	out, err := s.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
 	if err != nil {
 		return nil, err
@@ -93,7 +94,7 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 // intentionally a narrow diagnostic/canary seam: acquisition, validation,
 // persistence, cache and metadata updates remain identical to the default
 // fallback path.
-func (s *ImageStorageService) SearchAndDownloadDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider) (*SearchResult, error) {
+func (s *ImageStorageService) SearchAndDownloadDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider detail.ImageProvider) (*SearchResult, error) {
 	if provider == "" {
 		return s.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
 	}
@@ -103,7 +104,7 @@ func (s *ImageStorageService) SearchAndDownloadDetailedFromProvider(ctx context.
 	return s.searchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags, provider)
 }
 
-func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider) (*SearchResult, error) {
+func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider detail.ImageProvider) (*SearchResult, error) {
 	slug := textutil.Slugify(subjectSlug)
 	if slug == "" {
 		slug = textutil.Slugify(query)
@@ -181,7 +182,7 @@ func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, sub
 	return nil, fmt.Errorf("singleflight: unexpected result type")
 }
 
-func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject, provider asset.ImageProvider) (*SearchResult, error) {
+func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject, provider detail.ImageProvider) (*SearchResult, error) {
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query), zap.String("lang", lang))
 	wikiTitle, qid, _ := s.searchWikidata(query, lang)
 	finalQuery := query
@@ -222,9 +223,9 @@ func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context
 		if wikiURL != "" {
 			pageURL = wikiURL
 		}
-		updatedJSON := asset.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, pageURL, source, query)
+		updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, pageURL, source, query)
 		if finalQuery != "" && finalQuery != query {
-			updatedJSON = asset.AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
+			updatedJSON = detail.AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
 		}
 		if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
 			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))

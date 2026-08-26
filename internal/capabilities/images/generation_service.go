@@ -55,7 +55,7 @@ package images
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -111,7 +111,7 @@ func (g *GenerationService) GenerateSmartImage(
 	width, height int,
 	model string,
 	skipDrive bool,
-) (*asset.ImageAsset, error) {
+) (*detail.ImageAsset, error) {
 	assetOut, err := GenerateSync(ctx, g, SyncCommand{
 		Subject:   subject,
 		Topic:     topic,

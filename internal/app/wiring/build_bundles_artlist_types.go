@@ -27,7 +27,7 @@ import (
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Pattern 0 compile-time pins (AGENTS.md): canonical DIRECT receivers
@@ -67,11 +67,11 @@ type artlistProviders struct {
 // All fields are canonical SQLite-backed repos + adapters wrapped
 // through the composition-root adapter layer (godlike/06 SSOT).
 // AssetProcRepo / AssetVerRepo are INTERFACES (the methods on
-// *assets.AssetStoreSQLite return asset.ProcessingRepository /
-// asset.VersionRepository respectively).
+// *assets.AssetStoreSQLite return detail.ProcessingRepository /
+// detail.VersionRepository respectively).
 type artlistRepositories struct {
-	AssetProcRepo asset.ProcessingRepository
-	AssetVerRepo  asset.VersionRepository
+	AssetProcRepo detail.ProcessingRepository
+	AssetVerRepo  detail.VersionRepository
 	// RunsAdapter holds the canonical composition-root runs adapter (single
 	// translation site between the artlist.RunRepository port and the
 	// artlist.ArtlistRunsRepository concrete). The struct type is

@@ -68,7 +68,7 @@ import (
 // owner of the Asset.Metadata name-spaced key whitelist
 // (godlike/06 SSOT). ONLY this file declares the
 // alphabet.
-const metadataKeyCanonicalPath = "internal/kernel/asset/metadata_registry.go"
+const metadataKeyCanonicalPath = "internal/kernel/asset/detail/metadata_registry.go"
 
 // metadataKeyScannerSkipDirs mirrors the standard
 // skip-dir set (`percheck_player_client_centralization` +
@@ -132,7 +132,7 @@ const metadataKeyScannerRule = "percheck_metadata_registry"
 
 // metadataKeyScannerNote is the violation Note
 // string for unregistered name-spaced keys.
-const metadataKeyScannerNote = "forbidden name-spaced Asset.Metadata key outside canonical registry (`internal/kernel/asset/metadata_registry.go`); godlike/06 SSOT requires every `provider.*` style key to be declared in `allowedMetadataKeys` with `Owner` + `Type` before being written or read; bare keys (no dot) are residue-allowed for the migration window (file a follow-up PR to migrate them to the name-spaced surface via the typed-strip pipeline)"
+const metadataKeyScannerNote = "forbidden name-spaced Asset.Metadata key outside canonical registry (`internal/kernel/asset/detail/metadata_registry.go`); godlike/06 SSOT requires every `provider.*` style key to be declared in `allowedMetadataKeys` with `Owner` + `Type` before being written or read; bare keys (no dot) are residue-allowed for the migration window (file a follow-up PR to migrate them to the name-spaced surface via the typed-strip pipeline)"
 
 // metadataKeyWarn is the centralized WARN-bucket
 // emitter for residue-accounting. Mirrors assetStateWarn

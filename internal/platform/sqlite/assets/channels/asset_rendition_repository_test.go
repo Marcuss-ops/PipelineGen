@@ -4,11 +4,12 @@
 package channels
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,10 +119,10 @@ func TestAssetRenditionRepository_CreateRoundTrip(t *testing.T) {
 	seedRenditionMediaAsset(t, db, "asset-001")
 	locID := seedRenditionLocation(t, db, "asset-001")
 
-	rendition := &asset.AssetRendition{
+	rendition := &detail.AssetRendition{
 		AssetID:    "asset-001",
 		LocationID: &locID,
-		Kind:       asset.RenditionKindProxy,
+		Kind:       detail.RenditionKindProxy,
 		Container:  "mp4",
 		Codec:      "h264",
 		Width:      1920,
@@ -145,7 +146,7 @@ func TestAssetRenditionRepository_CreateRoundTrip(t *testing.T) {
 	assert.Equal(t, "asset-001", got.AssetID)
 	require.NotNil(t, got.LocationID)
 	assert.Equal(t, locID, *got.LocationID)
-	assert.Equal(t, asset.RenditionKindProxy, got.Kind)
+	assert.Equal(t, detail.RenditionKindProxy, got.Kind)
 	assert.Equal(t, "mp4", got.Container)
 	assert.Equal(t, "h264", got.Codec)
 	assert.Equal(t, 1920, got.Width)
@@ -168,9 +169,9 @@ func TestAssetRenditionRepository_ListByAsset(t *testing.T) {
 
 	seedRenditionMediaAsset(t, db, "asset-002")
 
-	_, err = repo.Create(ctx, &asset.AssetRendition{AssetID: "asset-002", Kind: asset.RenditionKindMaster})
+	_, err = repo.Create(ctx, &detail.AssetRendition{AssetID: "asset-002", Kind: detail.RenditionKindMaster})
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, &asset.AssetRendition{AssetID: "asset-002", Kind: asset.RenditionKindProxy})
+	_, err = repo.Create(ctx, &detail.AssetRendition{AssetID: "asset-002", Kind: detail.RenditionKindProxy})
 	require.NoError(t, err)
 
 	renditions, err := repo.ListByAsset(ctx, "asset-002")
@@ -188,7 +189,7 @@ func TestAssetRenditionRepository_ListByLocation(t *testing.T) {
 	seedRenditionMediaAsset(t, db, "asset-003")
 	locID := seedRenditionLocation(t, db, "asset-003")
 
-	_, err = repo.Create(ctx, &asset.AssetRendition{AssetID: "asset-003", LocationID: &locID, Kind: asset.RenditionKindMaster})
+	_, err = repo.Create(ctx, &detail.AssetRendition{AssetID: "asset-003", LocationID: &locID, Kind: detail.RenditionKindMaster})
 	require.NoError(t, err)
 
 	renditions, err := repo.ListByLocation(ctx, locID)
@@ -205,9 +206,9 @@ func TestAssetRenditionRepository_CreateWithoutLocation(t *testing.T) {
 
 	seedRenditionMediaAsset(t, db, "asset-006")
 
-	id, err := repo.Create(ctx, &asset.AssetRendition{
+	id, err := repo.Create(ctx, &detail.AssetRendition{
 		AssetID:   "asset-006",
-		Kind:      asset.RenditionKindMaster,
+		Kind:      detail.RenditionKindMaster,
 		Container: "mp4",
 		Codec:     "h264",
 	})
@@ -228,9 +229,9 @@ func TestAssetRenditionRepository_CreateRejectsInvalidKind(t *testing.T) {
 
 	seedRenditionMediaAsset(t, db, "asset-005")
 
-	_, err = repo.Create(ctx, &asset.AssetRendition{
+	_, err = repo.Create(ctx, &detail.AssetRendition{
 		AssetID: "asset-005",
-		Kind:    asset.RenditionKind("invalid"),
+		Kind:    detail.RenditionKind("invalid"),
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid Kind")
@@ -245,19 +246,19 @@ func TestAssetRenditionRepository_UpdateAndDelete(t *testing.T) {
 
 	seedRenditionMediaAsset(t, db, "asset-004")
 
-	id, err := repo.Create(ctx, &asset.AssetRendition{AssetID: "asset-004", Kind: asset.RenditionKindMaster})
+	id, err := repo.Create(ctx, &detail.AssetRendition{AssetID: "asset-004", Kind: detail.RenditionKindMaster})
 	require.NoError(t, err)
 
 	rend, err := repo.Get(ctx, id)
 	require.NoError(t, err)
-	rend.Kind = asset.RenditionKindProxy
+	rend.Kind = detail.RenditionKindProxy
 	rend.Width = 1280
 	rend.Height = 720
 	require.NoError(t, repo.Update(ctx, rend))
 
 	got, err := repo.Get(ctx, id)
 	require.NoError(t, err)
-	assert.Equal(t, asset.RenditionKindProxy, got.Kind)
+	assert.Equal(t, detail.RenditionKindProxy, got.Kind)
 	assert.Equal(t, 1280, got.Width)
 	assert.Equal(t, 720, got.Height)
 

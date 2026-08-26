@@ -15,12 +15,13 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -44,9 +45,9 @@ import (
 
 const ClipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 
-// SoftDeleteFilter delegates to the canonical asset.SoftDeleteFilter (PR 1 Lifecycle state SSOT; Phase 4 unification thin wrapper).
+// SoftDeleteFilter delegates to the canonical detail.SoftDeleteFilter (PR 1 Lifecycle state SSOT; Phase 4 unification thin wrapper).
 func SoftDeleteFilter() string {
-	return asset.SoftDeleteFilter()
+	return detail.SoftDeleteFilter()
 }
 
 // buildMediaAssetQuery constructs a SELECT query for the canonical

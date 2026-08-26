@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ type countingTextTrackRepo struct {
 	calls int32
 }
 
-func (c *countingTextTrackRepo) UpsertBatch(_ context.Context, _ []asset.TextTrack) error {
+func (c *countingTextTrackRepo) UpsertBatch(_ context.Context, _ []detail.TextTrack) error {
 	atomic.AddInt32(&c.calls, 1)
 	return nil
 }

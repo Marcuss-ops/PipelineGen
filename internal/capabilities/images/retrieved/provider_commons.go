@@ -1,6 +1,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -19,8 +20,8 @@ func NewWikimediaCommonsProvider(bridge StorageBridge, log *zap.Logger) *Wikimed
 	return &WikimediaCommonsProvider{bridge: bridge, log: log}
 }
 
-func (p *WikimediaCommonsProvider) Name() asset.ImageProvider {
-	return asset.ProviderWikimediaCommons
+func (p *WikimediaCommonsProvider) Name() detail.ImageProvider {
+	return detail.ProviderWikimediaCommons
 }
 
 func (p *WikimediaCommonsProvider) Healthy(_ context.Context) error { return nil }
@@ -33,8 +34,8 @@ func (p *WikimediaCommonsProvider) Search(ctx context.Context, query string, _ R
 	if hit.PreviewURL == "" || hit.License == "" {
 		return nil, nil
 	}
-	hit.Provider = asset.ProviderWikimediaCommons
-	hit.Origin = asset.ImageOriginRetrieved
+	hit.Provider = detail.ProviderWikimediaCommons
+	hit.Origin = detail.ImageOriginRetrieved
 	return []RetrievalSearchResult{hit}, nil
 }
 

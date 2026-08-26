@@ -34,11 +34,12 @@ package usecase_test
 //     (BCP-47 canonical; empty → "und").
 //
 // Drift from any of the above MUST FAIL the test, not regress silently.
-// All assertions use the asset.TextTrack field shape (TextHash,
+// All assertions use the detail.TextTrack field shape (TextHash,
 // SourceVersion) defined in internal/kernel/asset/text_track.go and
 // the canonical hash factory in internal/kernel/asset/text_track_hashes.go.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"testing"
@@ -48,7 +49,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Stubs (in-memory mocks) ──────────────────────────────────────────────
@@ -56,15 +57,15 @@ import (
 // stubRepo is the minimal TextTrackRepository used by the chain tests.
 // Stores rows in-memory; ListByAsset filters by assetID.
 type stubRepo struct {
-	rows []asset.TextTrack
+	rows []detail.TextTrack
 }
 
-func (s *stubRepo) UpsertBatch(_ context.Context, tracks []asset.TextTrack) error {
+func (s *stubRepo) UpsertBatch(_ context.Context, tracks []detail.TextTrack) error {
 	s.rows = append(s.rows, tracks...)
 	return nil
 }
 
-func (s *stubRepo) Find(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (s *stubRepo) Find(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].LanguageCode == languageCode &&
@@ -84,12 +85,12 @@ func (s *stubRepo) Find(_ context.Context, assetID, languageCode string, kind as
 // changed from `(*TextTrack, error)` to `(*TextTrack, []TimedCue, error)`
 // to match the canonical port surface. The timed cues are returned
 // alongside the track (nil here, since the stub stores no cues).
-func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].LanguageCode == languageCode &&
 			s.rows[i].TextKind == kind &&
-			s.rows[i].Status == asset.TextTrackReady {
+			s.rows[i].Status == detail.TextTrackReady {
 			return &s.rows[i], nil, nil
 		}
 	}
@@ -99,13 +100,13 @@ func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, ki
 // ListReadyLanguages returns the sorted set of language codes
 // for which a READY track exists. PR-PY-CLIPS-CORRETTE-TRADOTTE
 // Fase 4 (July 2026): added to satisfy the canonical port surface.
-func (s *stubRepo) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (s *stubRepo) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	seen := map[string]struct{}{}
 	var out []string
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].TextKind == kind &&
-			s.rows[i].Status == asset.TextTrackReady {
+			s.rows[i].Status == detail.TextTrackReady {
 			if _, ok := seen[s.rows[i].LanguageCode]; !ok {
 				seen[s.rows[i].LanguageCode] = struct{}{}
 				out = append(out, s.rows[i].LanguageCode)
@@ -115,8 +116,8 @@ func (s *stubRepo) ListReadyLanguages(_ context.Context, assetID string, kind as
 	return out, nil
 }
 
-func (s *stubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextTrack, error) {
-	var out []asset.TextTrack
+func (s *stubRepo) ListByAsset(_ context.Context, assetID string) ([]detail.TextTrack, error) {
+	var out []detail.TextTrack
 	for _, r := range s.rows {
 		if r.AssetID == assetID {
 			out = append(out, r)
@@ -132,17 +133,17 @@ func (s *stubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextT
 // FindReady + ListReadyLanguages + Save (no LookupBeforeTranslate
 // gate). Both new methods mirror the null-write contract of
 // p1fStubRepo / fakeTextTrackRepo (see materializer_test.go).
-func (s *stubRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+func (s *stubRepo) FindCurrentForTranslation(_ context.Context, _ string, _ detail.TextTrackKind, _, _, _, _, _ string) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (s *stubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+func (s *stubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ detail.TextTrack) error {
 	return nil
 }
 
 // stubSubtitles records FetchSegmentSubtitles invocations and returns
 // a deterministic bundle.
 type stubSubtitles struct {
-	bundle *asset.ResolvedTextBundle
+	bundle *detail.ResolvedTextBundle
 	err    error
 	calls  int
 }
@@ -150,7 +151,7 @@ type stubSubtitles struct {
 func (s *stubSubtitles) SliceSubtitles(_ context.Context, _ string, _, _ int, _ string) error {
 	return nil
 }
-func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*asset.ResolvedTextBundle, error) {
+func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*detail.ResolvedTextBundle, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, s.err
@@ -172,7 +173,7 @@ type stubTranscriber struct {
 	// det overrides the legacy `text` field for the typed
 	// TranscribeAudioWithDetection method (Fase 1.b). nil means
 	// the stub returns TranscriptResult{Text: text, DetectedLanguage: ""}.
-	det *asset.TranscriptResult
+	det *detail.TranscriptResult
 }
 
 func (s *stubTranscriber) TranscribeAudio(_ context.Context, _ string) (string, error) {
@@ -183,21 +184,21 @@ func (s *stubTranscriber) TranscribeAudio(_ context.Context, _ string) (string, 
 	return s.text, nil
 }
 
-func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (asset.TranscriptResult, error) {
+func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (detail.TranscriptResult, error) {
 	s.calls++
 	if s.err != nil {
-		return asset.TranscriptResult{}, s.err
+		return detail.TranscriptResult{}, s.err
 	}
 	if s.det != nil {
 		return *s.det, nil
 	}
-	return asset.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
+	return detail.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
 }
 
 // Compile-time guarantees that the stubs satisfy the ports the
 // resolver depends on.
 var (
-	_ asset.TextTrackRepository           = (*stubRepo)(nil)
+	_ detail.TextTrackRepository           = (*stubRepo)(nil)
 	_ youtubeports.SubtitleFetcherPort    = (*stubSubtitles)(nil)
 	_ youtubeports.WhisperTranscriberPort = (*stubTranscriber)(nil)
 )
@@ -234,8 +235,8 @@ func TestAcquireSegmentText_PayloadWins(t *testing.T) {
 	if bundle.LanguageCode != "en" {
 		t.Fatalf("LanguageCode = %q, want %q", bundle.LanguageCode, "en")
 	}
-	if bundle.SourceType != asset.TextSourceProvided {
-		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, asset.TextSourceProvided)
+	if bundle.SourceType != detail.TextSourceProvided {
+		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, detail.TextSourceProvided)
 	}
 	if !bundle.IsOriginal {
 		t.Fatal("IsOriginal should be true for a payload-provided transcript")
@@ -263,14 +264,14 @@ func TestAcquireSegmentText_PayloadEmptyLanguageCoercedToUnd(t *testing.T) {
 }
 
 func TestAcquireSegmentText_DBWinsWhenPayloadEmpty(t *testing.T) {
-	repo := &stubRepo{rows: []asset.TextTrack{
+	repo := &stubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:      "yt_phase1a_003",
 			LanguageCode: "it",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "Ciao dal DB",
-			Status:       asset.TextTrackReady,
-			SourceType:   asset.TextSourceYouTubeSubtitle,
+			Status:       detail.TextTrackReady,
+			SourceType:   detail.TextSourceYouTubeSubtitle,
 			IsOriginal:   true,
 		},
 	}}
@@ -291,13 +292,13 @@ func TestAcquireSegmentText_DBWinsWhenPayloadEmpty(t *testing.T) {
 }
 
 func TestAcquireSegmentText_SubtitlesWinAndWhisperNotCalled(t *testing.T) {
-	subs := &stubSubtitles{bundle: &asset.ResolvedTextBundle{
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
 		LanguageCode: "es",
 		PlainText:    "Hola mundo",
-		Cues: []asset.TimedCue{
+		Cues: []detail.TimedCue{
 			{StartMs: 0, EndMs: 2000, Text: "Hola"},
 		},
-		SourceType: asset.TextSourceYouTubeSubtitle,
+		SourceType: detail.TextSourceYouTubeSubtitle,
 		IsOriginal: true,
 		Provider:   "yt-dlp",
 	}}
@@ -347,8 +348,8 @@ func TestAcquireSegmentText_WhisperFallbackWhenOthersEmpty(t *testing.T) {
 	if bundle.LanguageCode != "und" {
 		t.Fatalf("Whisper with empty DetectedLanguage should normalize to %q, got %q", "und", bundle.LanguageCode)
 	}
-	if bundle.SourceType != asset.TextSourceWhisper {
-		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, asset.TextSourceWhisper)
+	if bundle.SourceType != detail.TextSourceWhisper {
+		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, detail.TextSourceWhisper)
 	}
 	if trans.calls != 1 {
 		t.Fatalf("Whisper should be called exactly once, got %d", trans.calls)
@@ -361,7 +362,7 @@ func TestAcquireSegmentText_WhisperFallbackWhenOthersEmpty(t *testing.T) {
 // via the canonical bcp47.Normalize helper).
 func TestAcquireSegmentText_WhisperDetectsLanguage(t *testing.T) {
 	subs := &stubSubtitles{bundle: nil}
-	trans := &stubTranscriber{det: &asset.TranscriptResult{
+	trans := &stubTranscriber{det: &detail.TranscriptResult{
 		Text:             "Buongiorno a tutti",
 		DetectedLanguage: "IT", // uppercase → normalize to "it"
 	}}
@@ -386,12 +387,12 @@ func TestAcquireSegmentText_WhisperDetectsLanguage(t *testing.T) {
 // segments (asset_text_track_segments) instead of degrading to plain
 // text with no timing (which broke SRT/VTT/ASS generation).
 func TestAcquireSegmentText_WhisperPropagatesCues(t *testing.T) {
-	cues := []asset.TimedCue{
+	cues := []detail.TimedCue{
 		{StartMs: 0, EndMs: 1200, Text: "Hello"},
 		{StartMs: 1200, EndMs: 2400, Text: "world"},
 	}
 	subs := &stubSubtitles{bundle: nil} // valid "not found" → fall through to Whisper
-	trans := &stubTranscriber{det: &asset.TranscriptResult{
+	trans := &stubTranscriber{det: &detail.TranscriptResult{
 		Text:             "Hello world",
 		DetectedLanguage: "en",
 		Cues:             cues,
@@ -409,8 +410,8 @@ func TestAcquireSegmentText_WhisperPropagatesCues(t *testing.T) {
 	if bundle == nil {
 		t.Fatal("bundle should not be nil")
 	}
-	if bundle.SourceType != asset.TextSourceWhisper {
-		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, asset.TextSourceWhisper)
+	if bundle.SourceType != detail.TextSourceWhisper {
+		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, detail.TextSourceWhisper)
 	}
 	if bundle.LanguageCode != "en" {
 		t.Fatalf("LanguageCode = %q, want %q", bundle.LanguageCode, "en")
@@ -515,13 +516,13 @@ func TestAcquireSegmentText_NoCertaintySilentlyDegrades(t *testing.T) {
 // PreferredLanguages and falls through to Whisper when the
 // surface doesn't match.
 func TestAcquireSegmentText_SubtitleLanguageNotInPreferredFallsThrough(t *testing.T) {
-	subs := &stubSubtitles{bundle: &asset.ResolvedTextBundle{
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
 		LanguageCode: "en",
 		PlainText:    "English subs",
-		SourceType:   asset.TextSourceYouTubeSubtitle,
+		SourceType:   detail.TextSourceYouTubeSubtitle,
 		IsOriginal:   true,
 	}}
-	trans := &stubTranscriber{det: &asset.TranscriptResult{
+	trans := &stubTranscriber{det: &detail.TranscriptResult{
 		Text:             "Texto en español",
 		DetectedLanguage: "es",
 	}}
@@ -538,8 +539,8 @@ func TestAcquireSegmentText_SubtitleLanguageNotInPreferredFallsThrough(t *testin
 	if bundle == nil {
 		t.Fatal("Whisper should fire after subtitle-language filter rejection; got nil bundle")
 	}
-	if bundle.SourceType != asset.TextSourceWhisper {
-		t.Fatalf("expected Whisper (SourceType=%q), got %q", asset.TextSourceWhisper, bundle.SourceType)
+	if bundle.SourceType != detail.TextSourceWhisper {
+		t.Fatalf("expected Whisper (SourceType=%q), got %q", detail.TextSourceWhisper, bundle.SourceType)
 	}
 	if bundle.LanguageCode != "es" {
 		t.Fatalf("Whisper DetectedLanguage=es should normalize to %q, got %q", "es", bundle.LanguageCode)
@@ -629,17 +630,17 @@ func TestResolveOriginal_RejectsMalformedLanguage(t *testing.T) {
 }
 
 func TestResolveLanguage_DBFindsReady(t *testing.T) {
-	repo := &stubRepo{rows: []asset.TextTrack{
+	repo := &stubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:      "yt_phase1b_005",
 			LanguageCode: "it",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "Ciao",
-			Status:       asset.TextTrackReady,
+			Status:       detail.TextTrackReady,
 		},
 	}}
 	resolver := newTestResolver(repo, nil, nil)
-	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_005", "it", asset.TextTrackTranscript)
+	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_005", "it", detail.TextTrackTranscript)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -652,17 +653,17 @@ func TestResolveLanguage_IgnoresNonReady(t *testing.T) {
 	// godlike/07: PENDING/FAILED rows are not authoritative. The
 	// resolver must NOT surface a non-READY row even when the row
 	// exists (Fase 4 video-pipeline contract).
-	repo := &stubRepo{rows: []asset.TextTrack{
+	repo := &stubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:      "yt_phase1b_006",
 			LanguageCode: "it",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "PENDING",
-			Status:       asset.TextTrackPending,
+			Status:       detail.TextTrackPending,
 		},
 	}}
 	resolver := newTestResolver(repo, nil, nil)
-	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_006", "it", asset.TextTrackTranscript)
+	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_006", "it", detail.TextTrackTranscript)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -672,18 +673,18 @@ func TestResolveLanguage_IgnoresNonReady(t *testing.T) {
 }
 
 func TestResolveBestAvailable_PicksFirst(t *testing.T) {
-	repo := &stubRepo{rows: []asset.TextTrack{
+	repo := &stubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:      "yt_phase1b_007",
 			LanguageCode: "es",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "Hola",
-			Status:       asset.TextTrackReady,
+			Status:       detail.TextTrackReady,
 		},
 	}}
 	resolver := newTestResolver(repo, nil, nil)
 	row, err := resolver.ResolveBestAvailable(context.Background(), "yt_phase1b_007",
-		[]string{"it", "es", "fr"}, asset.TextTrackTranscript)
+		[]string{"it", "es", "fr"}, detail.TextTrackTranscript)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -693,10 +694,10 @@ func TestResolveBestAvailable_PicksFirst(t *testing.T) {
 }
 
 func TestResolveBestAvailable_EmptyListReturnsNil(t *testing.T) {
-	resolver := newTestResolver(&stubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_phase1b_008", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "x", Status: asset.TextTrackReady},
+	resolver := newTestResolver(&stubRepo{rows: []detail.TextTrack{
+		{AssetID: "yt_phase1b_008", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "x", Status: detail.TextTrackReady},
 	}}, nil, nil)
-	row, err := resolver.ResolveBestAvailable(context.Background(), "yt_phase1b_008", nil, asset.TextTrackTranscript)
+	row, err := resolver.ResolveBestAvailable(context.Background(), "yt_phase1b_008", nil, detail.TextTrackTranscript)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -731,18 +732,18 @@ func TestMaterializePayloadTexts_AllFourKinds(t *testing.T) {
 		if r.SourceVersion == "" {
 			t.Fatalf("SourceVersion empty for TextKind=%s (canonical factory MUST be called)", r.TextKind)
 		}
-		if r.Status != asset.TextTrackReady {
+		if r.Status != detail.TextTrackReady {
 			t.Fatalf("Status for TextKind=%s = %q, want READY", r.TextKind, r.Status)
 		}
 	}
 	// Verify text_kind coverage exactly matches the input.
-	seen := map[asset.TextTrackKind]bool{}
+	seen := map[detail.TextTrackKind]bool{}
 	for _, r := range rows {
 		seen[r.TextKind] = true
 	}
-	for _, k := range []asset.TextTrackKind{
-		asset.TextTrackTranscript, asset.TextTrackTitle,
-		asset.TextTrackSummary, asset.TextTrackDescription,
+	for _, k := range []detail.TextTrackKind{
+		detail.TextTrackTranscript, detail.TextTrackTitle,
+		detail.TextTrackSummary, detail.TextTrackDescription,
 	} {
 		if !seen[k] {
 			t.Fatalf("missing row for TextKind=%s", k)
@@ -777,7 +778,7 @@ func TestMaterializePayloadTexts_HashesAreStableAcrossCalls(t *testing.T) {
 func TestSave_DefaultsEmptyLanguageToUnd(t *testing.T) {
 	repo := &stubRepo{}
 	resolver := newTestResolver(repo, nil, nil)
-	if err := resolver.Save(context.Background(), "yt_phase1a_009", "x", asset.TextSourceProvided, ""); err != nil {
+	if err := resolver.Save(context.Background(), "yt_phase1a_009", "x", detail.TextSourceProvided, ""); err != nil {
 		t.Fatalf("Save err: %v", err)
 	}
 	if len(repo.rows) != 1 {
@@ -790,7 +791,7 @@ func TestSave_DefaultsEmptyLanguageToUnd(t *testing.T) {
 
 func TestSave_RejectsEmptySource(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, nil, nil)
-	err := resolver.Save(context.Background(), "yt_phase1a_010", "x", asset.TextTrackSource(""), "en")
+	err := resolver.Save(context.Background(), "yt_phase1a_010", "x", detail.TextTrackSource(""), "en")
 	if err == nil {
 		t.Fatal("expected typed error for empty Source")
 	}
@@ -812,9 +813,9 @@ func TestSaveMany_NilSliceIsNoOp(t *testing.T) {
 func TestSaveMany_PopulatesBatches(t *testing.T) {
 	repo := &stubRepo{}
 	resolver := newTestResolver(repo, nil, nil)
-	rows := []asset.TextTrack{
-		{AssetID: "c1", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "a", Status: asset.TextTrackReady, TextHash: "h1"},
-		{AssetID: "c1", LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextContent: "b", Status: asset.TextTrackReady, TextHash: "h2"},
+	rows := []detail.TextTrack{
+		{AssetID: "c1", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "a", Status: detail.TextTrackReady, TextHash: "h1"},
+		{AssetID: "c1", LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextContent: "b", Status: detail.TextTrackReady, TextHash: "h2"},
 	}
 	if err := resolver.SaveMany(context.Background(), rows); err != nil {
 		t.Fatalf("SaveMany err: %v", err)

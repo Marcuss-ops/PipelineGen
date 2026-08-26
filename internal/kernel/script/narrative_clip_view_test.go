@@ -41,7 +41,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -62,7 +62,7 @@ func TestNarrativeClipView_NewForSlot_PopulatesFourAllowedFields(t *testing.T) {
 		TranscriptSnippet: "Pacquiao mostra mobilità nel primo round",
 		DurationMs:        9999, // deliberately different from the proj duration
 	}
-	summary := &asset.VisualSummary{
+	summary := &detail.VisualSummary{
 		VisualSummaryText:    "Opening round footwork jab",
 		VisibleActions:       []string{"jab", "footwork"},
 		VisibleEntities:      []string{"boxer_1", "ring"},
@@ -328,7 +328,7 @@ func TestNarrativeClipView_ConstructorScrubsClipCandidateInfraFields(t *testing.
 	view, err := scriptpkg.NewNarrativeClipViewForSlot(
 		"slot-2",
 		candidate,
-		&asset.VisualSummary{
+		&detail.VisualSummary{
 			VisualSummaryText: "ok visual summary",
 		},
 		"ok transcript text",

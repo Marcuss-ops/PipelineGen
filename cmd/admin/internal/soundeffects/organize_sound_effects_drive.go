@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -76,7 +78,7 @@ func RunOrganizeSoundEffectsDrive(args []string) error {
 			family = classification[file.Name].Family
 		}
 		if family == "" {
-			family = asset.ClassifySoundEffect(file.Name, "", nil).Family
+			family = detail.ClassifySoundEffect(file.Name, "", nil).Family
 		}
 		if family == "" {
 			family = "misc"
@@ -137,7 +139,7 @@ func loadSoundEffectDriveClassification(ctx context.Context, db *sql.DB) (map[st
 		_ = json.Unmarshal([]byte(metadataJSON), &metadata)
 		family, _ := metadata["sfx_family"].(string)
 		if family == "" {
-			family = asset.ClassifySoundEffect(name, "", nil).Family
+			family = detail.ClassifySoundEffect(name, "", nil).Family
 		}
 		entry := soundEffectDriveAsset{Family: strings.ToLower(strings.TrimSpace(family))}
 		if driveID != "" {

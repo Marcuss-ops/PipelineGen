@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"database/sql"
 
 	"go.uber.org/zap"
@@ -9,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
@@ -134,21 +135,21 @@ type ArtlistPortDeps struct {
 
 // ArtlistDomainDeps groups the cross-cutting domain services.
 type ArtlistDomainDeps struct {
-	MediaProcessor    asset.Processor
+	MediaProcessor    detail.Processor
 	AssetDestResolver asset.Resolver
 	JobsSvc           *appjobs.Service
 }
 
 // ArtlistRepoDeps groups the asset lifecycle repositories.
 type ArtlistRepoDeps struct {
-	AssetProcRepo       asset.ProcessingRepository
-	AssetVerRepo        asset.VersionRepository
-	LocationRepository  asset.LocationRepository
-	RenditionRepository asset.RenditionRepository
+	AssetProcRepo       detail.ProcessingRepository
+	AssetVerRepo        detail.VersionRepository
+	LocationRepository  detail.LocationRepository
+	RenditionRepository detail.RenditionRepository
 	// TextTrackRepo persists audio transcripts for downloaded clips.
 	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
 	// July 2026); NewService rejects nil with ErrTextTrackRepoUnavailable.
-	TextTrackRepo asset.TextTrackRepository
+	TextTrackRepo detail.TextTrackRepository
 }
 
 // ArtlistFinalizerDeps groups the transactional finalizer dependencies.

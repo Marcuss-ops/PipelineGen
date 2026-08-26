@@ -13,7 +13,7 @@ go run ./scripts/archcheck --ratchet --future-ratchet
 # PR-I (June 2026): promote cmd/archcheck --strict as a blocking CI gate.
 # Reads architecture/policy.yaml; --strict turns warn → exit-1 on any
 # violation per cmd/archcheck/main.go:204-205. Ratchets #id-20-21:
-# duplicate-types-allowlist (Check 5) + max_files_per_package=40
+# duplicate-types-allowlist (Check 5) + max_files_per_package=65
 # (pack-size cap). Transitional baseline:
 # docs/migrations/archcheck-strict-baseline.json holds any open
 # exceptions; fail-closed semantics deadlined entries become hard

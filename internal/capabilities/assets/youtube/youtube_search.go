@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -109,7 +109,7 @@ func fileReadable(path string) bool {
 
 // SearchCatalog searches the local catalog with structured filters.
 func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
-	var req asset.AdvancedSearchRequest
+	var req detail.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
 	if c.Request.Method == "GET" {

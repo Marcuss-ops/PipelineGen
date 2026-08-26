@@ -28,6 +28,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"

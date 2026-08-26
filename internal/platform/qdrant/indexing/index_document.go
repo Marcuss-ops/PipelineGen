@@ -64,6 +64,7 @@
 package indexing
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -342,12 +343,12 @@ type IndexedMetadata struct {
 
 	// VisibleActions is the union of action verbs the VLM identified
 	// across all sampled frames (deduplicated, deterministic order, capped
-	// at asset.MaxVisibleItems=32).
+	// at detail.MaxVisibleItems=32).
 	VisibleActions []string
 
 	// VisibleEntities is the union of named entities the VLM identified
 	// across all sampled frames (deduplicated, deterministic order, capped
-	// at asset.MaxVisibleItems=32).
+	// at detail.MaxVisibleItems=32).
 	VisibleEntities []string
 
 	// VisualPreprocessingVersion is the canonical

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -34,7 +34,7 @@ func wireMediaProcessor(
 	publisher delivery.Publisher,
 	log *zap.Logger,
 	mediaConfig mediaexec.ExecutionConfig,
-) (asset.Processor, error) {
+) (detail.Processor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
 		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
 		return nil, nil

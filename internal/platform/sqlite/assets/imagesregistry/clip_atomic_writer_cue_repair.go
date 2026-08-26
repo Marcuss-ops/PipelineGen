@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {
@@ -46,7 +46,7 @@ func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID,
 	return nil
 }
 
-func (w *ClipAtomicWriterAdapter) ReplaceTranscriptCues(ctx context.Context, assetID string, byLang map[string][]asset.TimedCue) error {
+func (w *ClipAtomicWriterAdapter) ReplaceTranscriptCues(ctx context.Context, assetID string, byLang map[string][]detail.TimedCue) error {
 	if w == nil || w.db == nil {
 		return fmt.Errorf("ReplaceTranscriptCues: adapter not wired")
 	}
@@ -97,7 +97,7 @@ func (w *ClipAtomicWriterAdapter) ReplaceTranscriptCues(ctx context.Context, ass
 		if !ok {
 			return fmt.Errorf("ReplaceTranscriptCues: missing READY transcript %s", lang)
 		}
-		cues := append([]asset.TimedCue(nil), byLang[lang]...)
+		cues := append([]detail.TimedCue(nil), byLang[lang]...)
 		sort.SliceStable(cues, func(i, j int) bool { return cues[i].StartMs < cues[j].StartMs })
 		for i, c := range cues {
 			if c.StartMs < 0 || c.EndMs <= c.StartMs {

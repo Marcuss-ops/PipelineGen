@@ -4,12 +4,13 @@
 package enrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type HistoricalText struct {
@@ -26,10 +27,10 @@ type AssetReader interface {
 	Exists(context.Context, string) (bool, error)
 }
 type TextTrackReader interface {
-	Find(context.Context, string, string, asset.TextTrackKind) (*asset.TextTrack, error)
+	Find(context.Context, string, string, detail.TextTrackKind) (*detail.TextTrack, error)
 }
 type RecoveryCommitter interface {
-	CommitRecoveredText(context.Context, string, string, []asset.TextTrack, string) error
+	CommitRecoveredText(context.Context, string, string, []detail.TextTrack, string) error
 }
 type RecoveryService struct {
 	assets    AssetReader
@@ -74,12 +75,12 @@ func (s *RecoveryService) RecoverAsset(ctx context.Context, assetID, language st
 		return RecoveryResult{AssetID: assetID}, nil
 	}
 	result := RecoveryResult{AssetID: assetID}
-	tracks := make([]asset.TextTrack, 0, 2)
+	tracks := make([]detail.TextTrack, 0, 2)
 	for _, candidate := range []struct {
-		kind asset.TextTrackKind
+		kind detail.TextTrackKind
 		text string
 	}{
-		{asset.TextTrackDescription, historical.Description}, {asset.TextTrackSearchText, historical.SearchText},
+		{detail.TextTrackDescription, historical.Description}, {detail.TextTrackSearchText, historical.SearchText},
 	} {
 		text := strings.TrimSpace(candidate.text)
 		if text == "" {
@@ -89,11 +90,11 @@ func (s *RecoveryService) RecoverAsset(ctx context.Context, assetID, language st
 		if findErr != nil {
 			return RecoveryResult{}, fmt.Errorf("read existing %s: %w", candidate.kind, findErr)
 		}
-		if existing != nil && existing.Status == asset.TextTrackReady && strings.TrimSpace(existing.TextContent) != "" {
+		if existing != nil && existing.Status == detail.TextTrackReady && strings.TrimSpace(existing.TextContent) != "" {
 			result.SkippedBetter++
 			continue
 		}
-		tracks = append(tracks, asset.TextTrack{AssetID: assetID, LanguageCode: language, TextKind: candidate.kind, TextContent: text, SourceType: asset.TextSourceQdrantRecovery, SourceLanguageCode: language, IsOriginal: true, Provider: "qdrant", ModelName: historical.Projection, TextHash: asset.TextHash(text, language, candidate.kind), Status: asset.TextTrackReady, IsCurrent: true})
+		tracks = append(tracks, detail.TextTrack{AssetID: assetID, LanguageCode: language, TextKind: candidate.kind, TextContent: text, SourceType: detail.TextSourceQdrantRecovery, SourceLanguageCode: language, IsOriginal: true, Provider: "qdrant", ModelName: historical.Projection, TextHash: detail.TextHash(text, language, candidate.kind), Status: detail.TextTrackReady, IsCurrent: true})
 	}
 	if len(tracks) == 0 {
 		return result, nil

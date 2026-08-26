@@ -22,7 +22,7 @@ package images
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // GeneratedSearchServicePort is the structural port for
@@ -30,10 +30,10 @@ import (
 // satisfies this interface via ListImagesByOrigin.
 type GeneratedSearchServicePort interface {
 	// ListImagesByOrigin returns all media_assets rows where
-	// origin matches the supplied asset.ImageOrigin. Used as
+	// origin matches the supplied detail.ImageOrigin. Used as
 	// the canonical read-only entry for generated-territory
 	// search. Mirrors the parent images.service.go façade.
-	ListImagesByOrigin(ctx context.Context, origin asset.ImageOrigin, limit int) ([]asset.ImageAsset, error)
+	ListImagesByOrigin(ctx context.Context, origin detail.ImageOrigin, limit int) ([]detail.ImageAsset, error)
 }
 
 // GeneratedSearchServiceAdapter wraps a port for callers that

@@ -31,11 +31,12 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
@@ -139,7 +140,7 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 	assetID string,
 	sourceLanguage string,
 	sourceTextHash string,
-	kinds []asset.TextTrackKind,
+	kinds []detail.TextTrackKind,
 ) error {
 	if assetID == "" {
 		return &ErrInvalidMaterializeRequest{
@@ -215,7 +216,7 @@ func (f *MaterializeFanOut) EnqueueAcquireOne(
 	ctx context.Context,
 	assetID string,
 	sourceLanguage string,
-	kinds []asset.TextTrackKind,
+	kinds []detail.TextTrackKind,
 ) error {
 	if assetID == "" {
 		return &ErrInvalidMaterializeRequest{Field: "asset_id", Reason: "asset_id is required"}

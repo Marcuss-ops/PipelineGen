@@ -5,6 +5,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -119,7 +120,7 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 // shared registry when requested. The empty provider preserves the normal
 // fan-out behavior. Explicit selection is used by live canaries and keeps
 // provider verification independent from whichever fallback wins first.
-func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Context, query, lang string, provider asset.ImageProvider) (imgURL, source, pageURL string) {
+func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Context, query, lang string, provider detail.ImageProvider) (imgURL, source, pageURL string) {
 	if provider != "" {
 		s.log.Info("explicit retrieved provider selected", zap.String("provider", string(provider)), zap.String("query", query))
 		if s.retrievalRegistry == nil {

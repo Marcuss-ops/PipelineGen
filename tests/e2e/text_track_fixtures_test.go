@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,6 +94,6 @@ CREATE TABLE IF NOT EXISTS asset_text_track_segments (
 // Fase 1.b (PR-PY-CLIPS-CORRETTE-TRADOTTE): the legacy
 // `Resolver.Resolve(ctx, clipID, payloadTexts)` is RETIRED. The
 // migration uses the typed methods:
-//   - ResolveOriginal (priority 1) returns *asset.ResolvedTextBundle
-//   - ResolveBestAvailable (priority 2) returns *asset.TextTrack
+//   - ResolveOriginal (priority 1) returns *detail.ResolvedTextBundle
+//   - ResolveBestAvailable (priority 2) returns *detail.TextTrack
 //   - A non-existent clip returns (nil, nil) from ResolveBestAvailable

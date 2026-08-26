@@ -3,7 +3,7 @@
 // phase. The capability (internal/capabilities/scripts) owns the port;
 // THIS file (composition root) owns the mechanics:
 //
-//   - asset registry lookup (canonical asset.Service)
+//   - asset registry lookup (canonical detail.Service)
 //   - media-type gate (only audio / sound_effect assets are accepted)
 //   - local copy reuse + Drive download into scratch (delegates to the
 //     single CanonicalAssetMaterializer — no second materialization path)
@@ -16,6 +16,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -34,7 +35,7 @@ import (
 // Drive download into scratch. Delegates to the single
 // CanonicalAssetMaterializer — no second download path.
 type audioAssetSourceAdapter struct {
-	assets    *asset.Service
+	assets    *detail.Service
 	canonical *drivepkg.CanonicalAssetMaterializer
 }
 

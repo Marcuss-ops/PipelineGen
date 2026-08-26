@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,7 @@ func TestE2E_TextTrackMaterializeJobPipeline_HappyPath(t *testing.T) {
 	require.NoError(t,
 		fx.FanOut.EnqueueMaterializeOne(
 			ctx, assetID, "en", srcHash,
-			[]asset.TextTrackKind{asset.TextTrackTranscript},
+			[]detail.TextTrackKind{detail.TextTrackTranscript},
 		),
 		"EnqueueMaterializeOne must succeed (broker surfaces ActiveKey dedup + lifecycle)")
 
@@ -53,23 +54,23 @@ func TestE2E_TextTrackMaterializeJobPipeline_HappyPath(t *testing.T) {
 	require.Equal(t, 1, res["kind_count"], "handler result kind_count must equal 1")
 
 	// ── 3. asset_text_tracks state: source unchanged + new READY rows for [it, es, fr]. ──
-	source, err := fx.TTRepo.Find(ctx, assetID, "en", asset.TextTrackTranscript)
+	source, err := fx.TTRepo.Find(ctx, assetID, "en", detail.TextTrackTranscript)
 	require.NoError(t, err)
 	require.NotNil(t, source, "source track must remain readable (READ preservation)")
 	require.Equal(t, sourceText, source.TextContent,
 		"source text_content MUST NOT be modified by Materialize")
-	require.Equal(t, asset.TextTrackReady, source.Status,
+	require.Equal(t, detail.TextTrackReady, source.Status,
 		"source status MUST remain READY post-Materialize")
 	require.True(t, source.IsOriginal,
 		"source IsOriginal MUST remain true (provided source)")
 
 	for _, lang := range []string{"it", "es", "fr"} {
-		row, findErr := fx.TTRepo.Find(ctx, assetID, lang, asset.TextTrackTranscript)
+		row, findErr := fx.TTRepo.Find(ctx, assetID, lang, detail.TextTrackTranscript)
 		require.NoError(t, findErr, "Find %s must succeed", lang)
 		require.NotNil(t, row, "%s text_track row MUST exist post-Materialize", lang)
-		require.Equal(t, asset.TextTrackReady, row.Status,
+		require.Equal(t, detail.TextTrackReady, row.Status,
 			"%s row MUST be READY post-Materialize", lang)
-		require.Equal(t, asset.TextSourceTranslation, row.SourceType,
+		require.Equal(t, detail.TextSourceTranslation, row.SourceType,
 			"%s row MUST be source=translation", lang)
 		require.Equal(t, "en", row.SourceLanguageCode,
 			"%s row MUST record source_language=%q", lang, "en")
@@ -97,7 +98,7 @@ func TestE2E_TextTrackMaterializeJobPipeline_HappyPath(t *testing.T) {
 		"outbox payload_json must be valid JSON")
 	require.Equal(t, assetID, envelope["asset_id"],
 		"outbox payload asset_id MUST equal the asset ID")
-	require.Equal(t, string(asset.TextTrackTranscript), envelope["kind"],
+	require.Equal(t, string(detail.TextTrackTranscript), envelope["kind"],
 		"outbox payload kind MUST equal 'transcript'")
 	require.Equal(t, "asset.text.materialize complete", envelope["reason"],
 		"outbox payload reason MUST be the canonical literal")
@@ -144,11 +145,11 @@ func TestE2E_TextTrackMaterializeJobPipeline_BrokerIdempotency(t *testing.T) {
 	// ── Enqueue TWICE with identical ActiveKey. Broker dedups at the row level. ──
 	require.NoError(t, fx.FanOut.EnqueueMaterializeOne(
 		ctx, assetID, "en", srcHash,
-		[]asset.TextTrackKind{asset.TextTrackTranscript},
+		[]detail.TextTrackKind{detail.TextTrackTranscript},
 	), "first EnqueueMaterializeOne must succeed")
 	require.NoError(t, fx.FanOut.EnqueueMaterializeOne(
 		ctx, assetID, "en", srcHash,
-		[]asset.TextTrackKind{asset.TextTrackTranscript},
+		[]detail.TextTrackKind{detail.TextTrackTranscript},
 	), "second EnqueueMaterializeOne must succeed (silently collapses to existing job)")
 
 	// ── Exactly 1 jobs row (ActiveKey collapse). ──
@@ -289,13 +290,13 @@ func TestE2E_TextTrackMaterializeJobPipeline_OutboxEmissionSingle(t *testing.T) 
 	// existing track's ModelVersion != materializer's "model-v1"). This
 	// drives the CreatedLanguages + RetranslatedLanguages aggregation
 	// path; the materializer should still emit a single asset.index.requested.
-	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []asset.TextTrack{
+	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []detail.TextTrack{
 		{
 			AssetID:            assetID,
 			LanguageCode:       "it",
-			TextKind:           asset.TextTrackTranscript,
+			TextKind:           detail.TextTrackTranscript,
 			TextContent:        "[it] stale (old model) text",
-			SourceType:         asset.TextSourceTranslation,
+			SourceType:         detail.TextSourceTranslation,
 			SourceLanguageCode: "en",
 			IsOriginal:         false,
 			Provider:           "stub",
@@ -303,14 +304,14 @@ func TestE2E_TextTrackMaterializeJobPipeline_OutboxEmissionSingle(t *testing.T) 
 			ModelVersion:       "model-v0-stale",
 			TextHash:           "sha256:it_stale",
 			SourceVersion:      "src-v1",
-			Status:             asset.TextTrackReady,
+			Status:             detail.TextTrackReady,
 		},
 	}), "seed stale IT row must succeed")
 
 	srcHash := texttracks.ComputeSourceTextHash(sourceText)
 	require.NoError(t, fx.FanOut.EnqueueMaterializeOne(
 		ctx, assetID, "en", srcHash,
-		[]asset.TextTrackKind{asset.TextTrackTranscript},
+		[]detail.TextTrackKind{detail.TextTrackTranscript},
 	))
 	res := dispatchMostRecentMaterialize(t, fx)
 

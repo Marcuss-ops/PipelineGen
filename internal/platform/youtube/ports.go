@@ -14,9 +14,10 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // TimedEntry represents a parsed subtitle cue. The values are in seconds.
@@ -53,7 +54,7 @@ type SubtitleFetcher interface {
 	FetchFullVTT(ctx context.Context, videoURL string) ([]TimedEntry, error)
 	SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error
 	// FetchSegmentSubtitles returns the canonical typed subtitle
-	// track for [startSec, endSec] as an asset.ResolvedTextBundle
+	// track for [startSec, endSec] as an detail.ResolvedTextBundle
 	// (plaintext + per-cue timings + detected language). This is the
 	// typed surface used by TextTrackResolver.AcquireSegmentText
 	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a, July 2026).
@@ -63,7 +64,7 @@ type SubtitleFetcher interface {
 	// Cues + empty PlainText is a valid "no subtitles" signal (NOT an
 	// error). Fetch and parse errors are typed (network, VTT
 	// malformed) and propagated verbatim.
-	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
+	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*detail.ResolvedTextBundle, error)
 }
 
 // TranscriptResult is the canonical Whisper transcription output.
@@ -108,10 +109,10 @@ type WhisperTranscriber interface {
 	// Implementations MUST:
 	//   - Normalize DetectedLanguage to BCP-47 (lang or lang-region).
 	//   - Collapse unknown/empty DetectedLanguage to "und".
-	//   - Return (asset.TranscriptResult{Text: ""}, nil) on empty
+	//   - Return (detail.TranscriptResult{Text: ""}, nil) on empty
 	//     transcription (NOT an error — caller falls through).
 	//   - Return a typed error only on I/O / model failures.
-	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
+	TranscribeAudioWithDetection(ctx context.Context, localPath string) (detail.TranscriptResult, error)
 }
 
 // ClipFiles is the on-disk media-file manager: writes metadata, writes

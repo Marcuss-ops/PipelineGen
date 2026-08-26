@@ -23,7 +23,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -53,7 +53,7 @@ func newAssetRegisterService(
 	cfg *config.Config,
 	log *zap.Logger,
 	clipsRepo *assetsrepo.ClipsRepository,
-	textTrackRepo asset.TextTrackRepository,
+	textTrackRepo detail.TextTrackRepository,
 	driveUploader *driveutil.Uploader,
 	lifecycle driveutil.FileLifecycle,
 	assetTreeSvc *assettree.Service,

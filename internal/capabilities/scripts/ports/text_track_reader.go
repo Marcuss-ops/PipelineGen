@@ -14,7 +14,7 @@
 // legacy path available until operators flip the cutover.
 //
 // godlike/06 SSOT (one canonical owner per fact): this interface is
-// a SUB-INTERFACE of `asset.TextTrackRepository`. The concrete
+// a SUB-INTERFACE of `detail.TextTrackRepository`. The concrete
 // `*TextTrackRepositorySQLite` (in
 // `internal/platform/sqlite/assets/`) satisfies both
 // surfaces; the split is purely a wiring-boundary concern so the
@@ -30,9 +30,10 @@
 package ports
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // TextTrackReader is the canonical read surface for the video
@@ -57,9 +58,9 @@ import (
 //
 // Implementations:
 //   - Production: *asset.TextTrackRepositorySQLite (via the
-//     `asset.TextTrackRepository` sub-interface).
+//     `detail.TextTrackRepository` sub-interface).
 //   - Tests: a hand-rolled stub mapping (asset, language, kind) →
-//     *asset.TextTrack, optionally returning (nil, nil) for
+//     *detail.TextTrack, optionally returning (nil, nil) for
 //     not-found cases.
 type TextTrackReader interface {
 	// FindReady returns the READY text track for the given
@@ -76,18 +77,18 @@ type TextTrackReader interface {
 	// no per-segment timing). cues is populated when the
 	// source is a parsed VTT (YouTube subtitles) and was
 	// persisted into asset_text_track_segments.
-	FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error)
+	FindReady(ctx context.Context, assetID string, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error)
 
 	// ListReadyLanguages returns the sorted set of language
 	// codes for which a READY track exists for the given
 	// (asset, kind). Returns an empty slice (not nil) when no
 	// READY tracks exist.
-	ListReadyLanguages(ctx context.Context, assetID string, kind asset.TextTrackKind) ([]string, error)
+	ListReadyLanguages(ctx context.Context, assetID string, kind detail.TextTrackKind) ([]string, error)
 }
 
 // Compile-time assertion: the canonical production reader
 // `*TextTrackRepositorySQLite` satisfies TextTrackReader via
-// the asset.TextTrackRepository sub-interface. This is the
+// the detail.TextTrackRepository sub-interface. This is the
 // AGENTS.md Pattern 0 build-time lock: a future signature drift
 // in TextTrackReader surfaces as a build failure here, not as
 // a runtime nil-method-call panic.
@@ -95,7 +96,7 @@ type TextTrackReader interface {
 // Note: the assertion is in the ports/ package (not in the
 // infrastructure/ package) because the ports/ package is the
 // canonical consumer of TextTrackReader. Drift in the
-// `asset.TextTrackRepository` sub-surface (which is the impl
+// `detail.TextTrackRepository` sub-surface (which is the impl
 // side) surfaces here as a build failure at the wire boundary
 // — the canonical "drift detector" location per godlike/06.
-var _ TextTrackReader = (asset.TextTrackRepository)(nil)
+var _ TextTrackReader = (detail.TextTrackRepository)(nil)

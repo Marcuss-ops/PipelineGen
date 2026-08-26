@@ -64,6 +64,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
@@ -71,7 +72,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // TextTrackResolver bundles the DB lookup, YouTube subtitle + Whisper
@@ -88,7 +89,7 @@ type TextTrackResolver struct {
 	// Repo is the canonical SQL TextTrackRepository. nil-tolerance
 	// matches the rest of the youtube package: a nil Repo skips
 	// priority 2 silently (no DB lookup) and SaveMany is a no-op.
-	Repo asset.TextTrackRepository
+	Repo detail.TextTrackRepository
 	// Subtitles is the OPTIONAL YouTube subtitle port (priority 3+4).
 	// nil -> priority skipped; AcquireSegmentText falls through to
 	// Whisper directly. Set at composition in build_bundles_domain_media.go.
@@ -161,7 +162,7 @@ type TextTrackAcquireRequest struct {
 //
 // godlike/06 SSOT: this is the SOLE canonical payload-priority
 // surface. No handler may re-implement the priority-1 logic inline.
-func (r *TextTrackResolver) ResolveOriginal(ctx context.Context, clipID string, payloadTexts []youtubetypes.LocalizedClipText) (*asset.ResolvedTextBundle, error) {
+func (r *TextTrackResolver) ResolveOriginal(ctx context.Context, clipID string, payloadTexts []youtubetypes.LocalizedClipText) (*detail.ResolvedTextBundle, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -182,7 +183,7 @@ func (r *TextTrackResolver) ResolveOriginal(ctx context.Context, clipID string, 
 			zap.String("language", lang),
 			zap.String("source_type", string(sourceOrProvided(t.SourceType))))
 	}
-	return &asset.ResolvedTextBundle{
+	return &detail.ResolvedTextBundle{
 		LanguageCode:       lang,
 		SourceLanguageCode: sourceLangOf(t, lang, t.IsOriginal),
 		PlainText:          t.Transcript,
@@ -199,7 +200,7 @@ func (r *TextTrackResolver) ResolveOriginal(ctx context.Context, clipID string, 
 // ResolveLanguage is the canonical "single language + kind lookup"
 // method (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026).
 //
-// Returns the canonical *asset.TextTrack for the given
+// Returns the canonical *detail.TextTrack for the given
 // (asset, language, kind) triple, READY-only (PENDING/FAILED rows
 // are treated as not-found per the Fase 4 video-pipeline contract).
 // Returns (nil, nil) when no row exists OR when the language is
@@ -214,7 +215,7 @@ func (r *TextTrackResolver) ResolveOriginal(ctx context.Context, clipID string, 
 // asset.Normalize helper (here, NOT in the leaf). Empty input
 // collapses to "und" and the orchestrator returns (nil, nil) (the
 // orchestrator does NOT substitute "en" — godlike/07).
-func (r *TextTrackResolver) ResolveLanguage(ctx context.Context, clipID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *TextTrackResolver) ResolveLanguage(ctx context.Context, clipID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	if r == nil || r.Repo == nil {
 		return nil, nil
 	}
@@ -258,7 +259,7 @@ func (r *TextTrackResolver) ResolveLanguage(ctx context.Context, clipID, languag
 // (not failed) so a partially-valid
 // cfg.Media.Multilingual.Languages list doesn't break
 // the chain.
-func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID string, preferredLanguages []string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID string, preferredLanguages []string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	if r == nil || r.Repo == nil {
 		return nil, nil
 	}
@@ -322,7 +323,7 @@ func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID str
 //
 // godlike/06 SSOT: this is the SOLE canonical chain. Handlers MUST
 // NOT reimplement priority 3-5 inline (audit 2026-07-11 §2.b).
-func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrackAcquireRequest) (*asset.ResolvedTextBundle, error) {
+func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrackAcquireRequest) (*detail.ResolvedTextBundle, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -339,7 +340,7 @@ func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrac
 
 	// Priority 2: DB READY transcript via preferred-languages
 	// fan-out (typed method).
-	row, err := r.ResolveBestAvailable(ctx, req.ClipID, req.PreferredLanguages, asset.TextTrackTranscript)
+	row, err := r.ResolveBestAvailable(ctx, req.ClipID, req.PreferredLanguages, detail.TextTrackTranscript)
 	if err != nil {
 		return nil, err
 	}
@@ -436,12 +437,12 @@ func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrac
 					zap.String("local_path", req.LocalPath),
 					zap.String("language", lang))
 			}
-			return &asset.ResolvedTextBundle{
+			return &detail.ResolvedTextBundle{
 				LanguageCode:       lang,
 				SourceLanguageCode: lang,
 				PlainText:          det.Text,
 				Cues:               det.Cues,
-				SourceType:         asset.TextSourceWhisper,
+				SourceType:         detail.TextSourceWhisper,
 				IsOriginal:         true,
 				Provider:           "whisper",
 				ModelName:          "",

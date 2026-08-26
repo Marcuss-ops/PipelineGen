@@ -50,7 +50,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
 // canonicalTriple is the canonical test triple used across the 9

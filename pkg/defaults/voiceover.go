@@ -1,5 +1,8 @@
 package defaults
 
+import (
+)
+
 // VoiceoverConfig is the canonical SSOT for voiceover generation
 // defaults. Pre-fix scattered literals this SSOT replaces (June
 // 2026, Step 4 PR2 — DRIFT-DEFAULTS-VOICEOVER):

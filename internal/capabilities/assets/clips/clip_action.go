@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -19,7 +19,7 @@ import (
 // ActionDeps contains only the collaborators consumed by the three action
 // endpoints. Use cases are constructed in internal/app, never in transport.
 type ActionDeps struct {
-	AssetRepo       asset.Repository
+	AssetRepo       detail.Repository
 	DriveAdmin      appclips.ClipDriveUploaderPort
 	DuplicateFinder *duplicates.Finder
 	DownloadUC      *appclips.DownloadUseCase
@@ -29,7 +29,7 @@ type ActionDeps struct {
 
 // ActionHandler owns the publication and duplicate-query HTTP endpoints.
 type ActionHandler struct {
-	assetRepo       asset.Repository
+	assetRepo       detail.Repository
 	driveAdmin      appclips.ClipDriveUploaderPort
 	duplicateFinder *duplicates.Finder
 	downloadUC      *appclips.DownloadUseCase

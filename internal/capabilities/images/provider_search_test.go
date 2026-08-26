@@ -1,6 +1,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"sync"
 	"sync/atomic"
@@ -32,7 +33,7 @@ func (f *resolverSearcherFake) Search(ctx context.Context, _ ImageFilter) ([]Ima
 		}
 	}
 	return []ImageSearchResult{{
-		AssetID: "img-1", Origin: string(asset.ImageOriginRetrieved), Provider: "wikipedia",
+		AssetID: "img-1", Origin: string(detail.ImageOriginRetrieved), Provider: "wikipedia",
 		Name: "Elon Musk", PreviewURL: "https://img.example/elon.jpg", SourcePageURL: "https://source.example/elon",
 		Width: 1200, Height: 800, Score: 1,
 	}}, nil

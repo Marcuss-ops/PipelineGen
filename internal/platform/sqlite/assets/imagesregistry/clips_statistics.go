@@ -1,6 +1,7 @@
 package imagesregistry
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"errors"
@@ -66,7 +67,7 @@ var ErrEmptySource = errors.New("assets.CountBySource: source is required (godli
 //     counted (true "indexed" metric, not
 //     "online" metric; callers wanting
 //     the latter compose with
-//     asset.SoftDeleteFilter())
+//     detail.SoftDeleteFilter())
 //
 // Returns ErrEmptySource when source=="" so the caller surfaces a
 // probe FAILURE rather than over-reporting "everything".
@@ -186,7 +187,7 @@ func (r *ClipsRepository) CountPersistedSince(ctx context.Context, source string
 }
 
 // _ interface pin — ClipsRepository embeds *AssetStoreSQLite which
-// already satisfies asset.SourceVersionQuerier (PR 11 followup)
+// already satisfies detail.SourceVersionQuerier (PR 11 followup)
 // via clips_repository.go. No additional pin needed here; this
 // note guards against the regression where a future refactor splits
 // *ClipsRepository away from the embedded struct.

@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -25,7 +26,7 @@ func NewImageStoreAdapter(repo *imagesrepo.ImagesRepository, imagesDir string) l
 }
 
 func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	asset := &asset.ImageAsset{
+	asset := &detail.ImageAsset{
 		Hash:         stripKindPrefix(rec.ID),
 		SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 		PathRel:      relImagePath(a.imagesDir, rec.LocalPath),
@@ -49,8 +50,8 @@ func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*artifacts.Medi
 	if err != nil || record == nil {
 		return nil, err
 	}
-	// record is *asset.ImageAsset at this point; convert to MediaRecord
-	var img *asset.ImageAsset = record
+	// record is *detail.ImageAsset at this point; convert to MediaRecord
+	var img *detail.ImageAsset = record
 	return imageAssetToMediaRecord(img, a.imagesDir), nil
 }
 
@@ -123,7 +124,7 @@ func (a *imageStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) er
 	return a.repo.Delete(ctx, stripKindPrefix(id))
 }
 
-func imageAssetToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageAssetToMediaRecord(img *detail.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}
@@ -227,7 +228,7 @@ func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath str
 			source = s
 		}
 	}
-	metaJSON, _, _ := asset.NewCanonicalImageMetadataBuilder(source, source).
+	metaJSON, _, _ := detail.NewCanonicalImageMetadataBuilder(source, source).
 		WithExtra(payload).
 		WithProvenance("", "", source, "").
 		Build()

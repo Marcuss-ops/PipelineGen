@@ -34,6 +34,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
@@ -42,7 +43,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -65,7 +66,7 @@ type ArtlistBundle struct {
 	// MediaExec is the resolved media contract supplied by the composition root.
 	MediaExec     mediaexec.ExecutionConfig
 	DB            *storage.SQLiteDB
-	Assets        *asset.Service
+	Assets        *detail.Service
 	ClipsRepo     *assets.ClipsRepository
 	DriveClient   *gdrive.Service
 	DriveUploader *driveup.Uploader
@@ -80,14 +81,14 @@ type ArtlistBundle struct {
 	ClipResolver       *ClipResolverRecommendAdapter
 	AssetIndexService  *assetindex.Service
 	ClipIndexerService *clipindexer.Service
-	MediaProcessor     asset.Processor
+	MediaProcessor     detail.Processor
 	Jobs               *JobsBundle
 	CatalogSyncService *catalogsync.Service
 	// TextTrackRepo persists audio transcripts for downloaded clips.
 	// Wired into Artlist so every clip can be transcribed and the
 	// transcript stored in asset_text_tracks (PR-ARTLIST-MANDATORY-
 	// TRANSCRIPTION, July 2026).
-	TextTrackRepo asset.TextTrackRepository
+	TextTrackRepo detail.TextTrackRepository
 }
 
 // ArtlistWiring holds the Artlist module
@@ -125,7 +126,7 @@ type ArtlistWiring struct {
 	LicenseRepo asset.LicenseRepository
 	ReleaseRepo asset.ReleaseRepository
 	// RenditionRepo exposes the asset rendition repository. Wired in WireArtlist.
-	RenditionRepo asset.RenditionRepository
+	RenditionRepo detail.RenditionRepository
 }
 
 // StockBundle is the capability bundle for the stock-pipeline module.

@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // TestEdgeTTS_WordBoundariesComeFromSameSynthesisStream pins the single-pass
@@ -37,7 +37,7 @@ func TestEdgeTTS_WordBoundariesComeFromSameSynthesisStream(t *testing.T) {
 		ID:       "vo-stream",
 		JobID:    "job-stream",
 		Text:     text,
-		TextHash: TextHash(files.SHA256String(text)),
+		TextHash: TextHash(digest.SHA256String(text)),
 		Language: "en",
 		Voice:    "en-US-RogerNeural",
 		Filename: "scene-0.mp3",

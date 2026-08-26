@@ -1,5 +1,5 @@
 // PR12b integration test: verifies that youtube.Service.dispatchOrIndex
-// routes through the canonical asset.Repository.Upsert writer and emits the
+// routes through the canonical detail.Repository.Upsert writer and emits the
 // asset.upserted outbox event atomically.
 //
 // Per PR1.6 (June 2026) the triple persistence fallback
@@ -15,6 +15,7 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"testing"
@@ -22,15 +23,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema
-// and registers teardown. Returns the canonical asset.Repository wrapper
+// and registers teardown. Returns the canonical detail.Repository wrapper
 // (the SOLE writer in PR1.6).
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo detail.Repository) {
 	t.Helper()
 	db = drive.NewMigratedTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })

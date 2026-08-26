@@ -45,6 +45,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strconv"
@@ -55,7 +56,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -434,7 +435,7 @@ func TestClipResolution_P0C_DriveFileIDFallback(t *testing.T) {
 	// fallback dispatch would also fail this test).
 	builder := NewClipSourceBuilder(resolver, nil, nil)
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
+		tracks: map[string]*detail.TextTrack{
 			internalID + ":en": makeTrack(internalID, "en", "fallback fixture transcript"),
 		},
 	})

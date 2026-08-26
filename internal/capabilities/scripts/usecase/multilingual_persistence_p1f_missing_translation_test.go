@@ -23,6 +23,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"testing"
@@ -30,7 +31,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Group 3: Missing translation policy (TextTrackResolver) ─────────────
@@ -94,17 +95,17 @@ func TestMissingTranslation_AvailableLanguagesSurfaced(t *testing.T) {
 	t.Parallel()
 
 	// Asset has en+es+it READY (no fr, no de).
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_p1f_avail_001", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "English from DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_avail_001", LanguageCode: "es", TextKind: asset.TextTrackTranscript, TextContent: "Español del DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_avail_001", LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextContent: "Italiano dal DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
+		{AssetID: "yt_p1f_avail_001", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "English from DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
+		{AssetID: "yt_p1f_avail_001", LanguageCode: "es", TextKind: detail.TextTrackTranscript, TextContent: "Español del DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
+		{AssetID: "yt_p1f_avail_001", LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextContent: "Italiano dal DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
 	}}
 
 	// The TextTrackReader surface (Fase 4) is what builds the
 	// ErrTextTrackNotReady error. The test uses the
 	// repository directly to verify the ListReadyLanguages
 	// output is what the error would carry.
-	got, err := repo.ListReadyLanguages(context.Background(), "yt_p1f_avail_001", asset.TextTrackTranscript)
+	got, err := repo.ListReadyLanguages(context.Background(), "yt_p1f_avail_001", detail.TextTrackTranscript)
 	require.NoError(t, err, "ListReadyLanguages MUST succeed")
 	require.NotNil(t, got, "ListReadyLanguages MUST return a non-nil slice")
 
@@ -121,7 +122,7 @@ func TestMissingTranslation_AvailableLanguagesSurfaced(t *testing.T) {
 		AssetID:            "yt_p1f_avail_001",
 		RequestedLanguage:  "fr",
 		AvailableLanguages: got,
-		MissingKind:        asset.TextTrackTranscript,
+		MissingKind:        detail.TextTrackTranscript,
 	}
 	errMsg := typed.Error()
 	// The error message MUST include every available language
@@ -208,8 +209,8 @@ func TestMissingTranslation_NormalizeEmptyLanguageToUnd(t *testing.T) {
 	// And the resolver's ResolveLanguage method MUST honor
 	// the canonical "und" → "not found" path (no DB probe
 	// with "und", no silent substitution).
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_p1f_empty_001", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "English from DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
+		{AssetID: "yt_p1f_empty_001", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "English from DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
 	}}
 	resolver := newP1FResolver(repo, &p1fStubSubtitles{}, &p1fStubTranscriber{})
 
@@ -217,7 +218,7 @@ func TestMissingTranslation_NormalizeEmptyLanguageToUnd(t *testing.T) {
 	// probe (the resolver does NOT scan all rows for the
 	// asset).
 	row, err := resolver.ResolveLanguage(context.Background(),
-		"yt_p1f_empty_001", "", asset.TextTrackTranscript)
+		"yt_p1f_empty_001", "", detail.TextTrackTranscript)
 	require.NoError(t, err)
 	assert.Nil(t, row,
 		"ResolveLanguage with empty targetLang MUST return nil (no silent substitution to \"en\" or any default)")

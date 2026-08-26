@@ -10,6 +10,10 @@
 // strings like `"status": "pending"` are not in scope.
 package fixture
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 // assetShim is declared in check_12_payload_mapper_status.go (same
 // `fixture` package). It is intentionally NOT redeclared here so the
 // fixture compiles — only the badBuildPayload function below lives in

@@ -96,7 +96,7 @@ import (
 // the MediaTransformer contract (interface + TransformSpec +
 // RenditionSet DTOs). The gate inspects this file but the
 // inspection is read-only — the gate does NOT modify the file.
-const mediaTransformerCanonicalPath = "internal/kernel/asset/processor.go"
+const mediaTransformerCanonicalPath = "internal/kernel/asset/detail/processor.go"
 
 // mediaTransformerTargetTypes lists the DTO struct names that
 // the gate inspects. Both names are matched exactly

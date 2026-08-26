@@ -155,12 +155,12 @@ const qdrantImportBanRule = "percheck_qdrant_index_import_ban"
 // operator can fix the violation without archaeology. Three
 // concrete handles:
 //
-//  1. The canonical asset finalizer that emits the outbox event:
-//     internal/application/assets/finalizer/asset_finalizer_outbox.go
-//     ::(*AssetTxFinalizer).insertOutboxEvent. The caller threads
-//     the user's tx so the canonical SQL UPSERT into outbox_events
-//     commits ATOMICALLY with the media_assets row (QDRANT-002
-//     atomicity invariant).
+//  1. The canonical asset committer that emits the outbox event:
+//     internal/capabilities/assets/persistence/committer.go
+//     (persistence.AssetCommitter). The caller threads the user's
+//     tx so the canonical SQL UPSERT into outbox_events commits
+//     ATOMICALLY with the media_assets row (QDRANT-002 atomicity
+//     invariant).
 //
 //  2. The canonical outbox consumer (i.e. THE legitimate
 //     application-side caller of qdrant.IndexClip +
@@ -185,7 +185,7 @@ const qdrantImportBanRule = "percheck_qdrant_index_import_ban"
 // because the canonical surface is outbox-mediated. godlike/06
 // SSOT forbids direct apply-layer → infra-layer writes except via
 // the canonical outbox consumer.
-const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/application/assets/finalizer/asset_finalizer_outbox.go::(*AssetTxFinalizer).insertOutboxEvent) THEN the canonical consumer at internal/capabilities/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/capabilities/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
+const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/capabilities/assets/persistence/committer.go::persistence.AssetCommitter) THEN the canonical consumer at internal/capabilities/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/capabilities/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
 
 // qdrantImportBanWarnBucket is the centralized residue-emitter.
 // Mirrors assetStateWarn + percheck_binder_scene_field_writes's

@@ -28,3 +28,13 @@ package digest
 // SHA256HexLength is the canonical length, in hex characters, of a SHA-256
 // digest (256 bits / 4 bits per hex char).
 const SHA256HexLength = 64
+
+// HashFunc is the canonical typed port for SHA-256-style string hashing
+// (previously owned by internal/capabilities/remote/hashutil). It is a
+// `func(s string) string` so any byte-stable string hasher (e.g. the
+// canonical digest.SHA256String) satisfies it without an explicit
+// implements clause — Go's structural typing on function types.
+//
+// godlike/07 fail-closed contract: callers that take a HashFunc MUST
+// reject nil at construction time (panic-on-missing-dep convention).
+type HashFunc func(s string) string

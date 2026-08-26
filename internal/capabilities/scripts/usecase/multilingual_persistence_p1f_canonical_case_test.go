@@ -15,6 +15,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 
@@ -22,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Group 2: DB-hit canonical case (TextTrackResolver) ──────────────────
@@ -67,17 +68,17 @@ func TestCanonicalCase_UseSavedTrack_ByteEquivalentToDBRow(t *testing.T) {
 	originalText := "Il match Pacquiao vs Broner inizia con la fase di studio, trascrizione italiana dal DB."
 	originalLang := "it"
 	originalSrcLang := "en"
-	originalHash := asset.TextHash(originalText, originalLang, asset.TextTrackTranscript)
-	originalSrcVer := asset.SourceVersion(originalHash, originalSrcLang, originalLang, "yt-dlp", "yt-auto", "v1", "")
+	originalHash := detail.TextHash(originalText, originalLang, detail.TextTrackTranscript)
+	originalSrcVer := detail.SourceVersion(originalHash, originalSrcLang, originalLang, "yt-dlp", "yt-auto", "v1", "")
 
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:            "yt_p1f_byte_001",
 			LanguageCode:       originalLang,
-			TextKind:           asset.TextTrackTranscript,
+			TextKind:           detail.TextTrackTranscript,
 			TextContent:        originalText,
-			Status:             asset.TextTrackReady,
-			SourceType:         asset.TextSourceYouTubeSubtitle,
+			Status:             detail.TextTrackReady,
+			SourceType:         detail.TextSourceYouTubeSubtitle,
 			SourceLanguageCode: originalSrcLang,
 			IsOriginal:         true,
 			Provider:           "yt-dlp",
@@ -102,7 +103,7 @@ func TestCanonicalCase_UseSavedTrack_ByteEquivalentToDBRow(t *testing.T) {
 		"bundle.PlainText MUST match the DB row byte-equivalent (no re-derivation)")
 
 	// SourceType byte-equivalent.
-	assert.Equal(t, asset.TextSourceYouTubeSubtitle, bundle.SourceType,
+	assert.Equal(t, detail.TextSourceYouTubeSubtitle, bundle.SourceType,
 		"bundle.SourceType MUST match the DB row byte-equivalent (provenance preserved)")
 
 	// Provider byte-equivalent (the DB row's Provider propagates).
@@ -138,10 +139,10 @@ func TestCanonicalCase_PreferredLanguagesFanOut_PicksFirstMatch(t *testing.T) {
 	t.Parallel()
 
 	// Asset has it+en+es READY tracks (3 languages in DB).
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_p1f_fanout_001", LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextContent: "italiano dal DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_fanout_001", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "english from DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_fanout_001", LanguageCode: "es", TextKind: asset.TextTrackTranscript, TextContent: "español del DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
+		{AssetID: "yt_p1f_fanout_001", LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextContent: "italiano dal DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
+		{AssetID: "yt_p1f_fanout_001", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "english from DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
+		{AssetID: "yt_p1f_fanout_001", LanguageCode: "es", TextKind: detail.TextTrackTranscript, TextContent: "español del DB", Status: detail.TextTrackReady, SourceType: detail.TextSourceYouTubeSubtitle, IsOriginal: true},
 	}}
 
 	resolver := newP1FResolver(repo, &p1fStubSubtitles{}, &p1fStubTranscriber{})

@@ -7,7 +7,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Script-domain stub types ────────────────────────────────────────────────
@@ -26,5 +26,5 @@ type ScriptDriveFolderSuggestion struct {
 
 // EntityScriptExtractor is the interface for extracting entities from script text.
 type EntityScriptExtractor interface {
-	ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, maxEntities int, model string) (*asset.FullEntityAnalysis, error)
+	ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, maxEntities int, model string) (*detail.FullEntityAnalysis, error)
 }

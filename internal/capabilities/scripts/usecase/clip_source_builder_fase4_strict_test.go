@@ -53,6 +53,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"
@@ -60,7 +61,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Stubs ───────────────────────────────────────────────────────────────
@@ -70,11 +71,11 @@ import (
 // "no READY track for any (asset, lang, kind) triple".
 type fase4EmptyReader struct{}
 
-func (fase4EmptyReader) FindReady(_ context.Context, _, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (fase4EmptyReader) FindReady(_ context.Context, _, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, nil
 }
 
-func (fase4EmptyReader) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (fase4EmptyReader) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return nil, nil
 }
 
@@ -85,11 +86,11 @@ func (fase4EmptyReader) ListReadyLanguages(_ context.Context, _ string, _ asset.
 // godlike/07 structured-payload contract).
 type fase4AvailableLangReader struct{}
 
-func (fase4AvailableLangReader) FindReady(_ context.Context, _, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (fase4AvailableLangReader) FindReady(_ context.Context, _, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, nil
 }
 
-func (fase4AvailableLangReader) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (fase4AvailableLangReader) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return []string{"es", "fr"}, nil
 }
 
@@ -100,16 +101,16 @@ func (fase4AvailableLangReader) ListReadyLanguages(_ context.Context, _ string, 
 // error to the caller per godlike/07 typed-error contract).
 type fase4ErrorReader struct{}
 
-func (fase4ErrorReader) FindReady(_ context.Context, _, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (fase4ErrorReader) FindReady(_ context.Context, _, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, errors.New("simulated repo failure")
 }
 
-func (fase4ErrorReader) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (fase4ErrorReader) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return nil, errors.New("simulated repo failure")
 }
 
 // fase4PositiveReader is a TextTrackReader stub that returns a
-// READY *asset.TextTrack for the canonical (asset, "en",
+// READY *detail.TextTrack for the canonical (asset, "en",
 // Transcript) lookup. Used by phase 4 + phase 5 to assert the
 // positive pin: text-track reader content surfaces into the
 // assembled sourceText WITHOUT any metadata_json read.
@@ -117,22 +118,22 @@ type fase4PositiveReader struct {
 	text map[string]string // assetID -> transcript text
 }
 
-func (r *fase4PositiveReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	if text, ok := r.text[assetID]; ok && kind == asset.TextTrackTranscript {
-		return &asset.TextTrack{
+func (r *fase4PositiveReader) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
+	if text, ok := r.text[assetID]; ok && kind == detail.TextTrackTranscript {
+		return &detail.TextTrack{
 			AssetID:       assetID,
 			LanguageCode:  languageCode,
-			TextKind:      asset.TextTrackTranscript,
+			TextKind:      detail.TextTrackTranscript,
 			TextContent:   text,
 			TextHash:      "fase4-" + assetID,
 			SourceVersion: "v1",
-			Status:        asset.TextTrackReady,
+			Status:        detail.TextTrackReady,
 		}, nil, nil
 	}
 	return nil, nil, nil
 }
 
-func (r *fase4PositiveReader) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (r *fase4PositiveReader) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return []string{"en"}, nil
 }
 
@@ -167,8 +168,8 @@ func TestFase4_ResolveTranscript_NilReader_ReturnsErrTextTrackNotReady(t *testin
 		if typed.RequestedLanguage != "en" {
 			t.Fatalf("typed.RequestedLanguage = %q, want %q", typed.RequestedLanguage, "en")
 		}
-		if typed.MissingKind != asset.TextTrackTranscript {
-			t.Fatalf("typed.MissingKind = %q, want %q", typed.MissingKind, asset.TextTrackTranscript)
+		if typed.MissingKind != detail.TextTrackTranscript {
+			t.Fatalf("typed.MissingKind = %q, want %q", typed.MissingKind, detail.TextTrackTranscript)
 		}
 		// AvailableLanguages MUST be nil for the nil-reader branch
 		// — listReadyLanguagesBestEffort short-circuits when
@@ -243,8 +244,8 @@ func TestFase4_ResolveTranscript_NonReadyTrack_ReturnsErrTextTrackNotReady(t *te
 	if typed.RequestedLanguage != "en" {
 		t.Fatalf("typed.RequestedLanguage = %q, want %q", typed.RequestedLanguage, "en")
 	}
-	if typed.MissingKind != asset.TextTrackTranscript {
-		t.Fatalf("typed.MissingKind = %q, want %q", typed.MissingKind, asset.TextTrackTranscript)
+	if typed.MissingKind != detail.TextTrackTranscript {
+		t.Fatalf("typed.MissingKind = %q, want %q", typed.MissingKind, detail.TextTrackTranscript)
 	}
 	wantAvail := []string{"es", "fr"}
 	if len(typed.AvailableLanguages) != len(wantAvail) {

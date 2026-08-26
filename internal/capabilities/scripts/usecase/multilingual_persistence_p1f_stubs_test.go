@@ -16,6 +16,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"sync"
@@ -25,24 +26,24 @@ import (
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Shared P1F test stubs ──────────────────────────────────────────────────────
 
 type p1fStubRepo struct {
 	mu   sync.Mutex
-	rows []asset.TextTrack
+	rows []detail.TextTrack
 }
 
-func (s *p1fStubRepo) UpsertBatch(_ context.Context, tracks []asset.TextTrack) error {
+func (s *p1fStubRepo) UpsertBatch(_ context.Context, tracks []detail.TextTrack) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.rows = append(s.rows, tracks...)
 	return nil
 }
 
-func (s *p1fStubRepo) Find(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (s *p1fStubRepo) Find(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.rows {
@@ -58,14 +59,14 @@ func (s *p1fStubRepo) Find(_ context.Context, assetID, languageCode string, kind
 // FindReady is the canonical Fase 1.b READY-only lookup. The
 // stub returns the row when status=READY and ignores
 // PENDING/FAILED rows (matches the production contract).
-func (s *p1fStubRepo) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (s *p1fStubRepo) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].LanguageCode == languageCode &&
 			s.rows[i].TextKind == kind &&
-			s.rows[i].Status == asset.TextTrackReady {
+			s.rows[i].Status == detail.TextTrackReady {
 			return &s.rows[i], nil, nil
 		}
 	}
@@ -74,7 +75,7 @@ func (s *p1fStubRepo) FindReady(_ context.Context, assetID, languageCode string,
 
 // ListReadyLanguages returns the sorted set of language
 // codes for which a READY track exists.
-func (s *p1fStubRepo) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (s *p1fStubRepo) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	seen := map[string]struct{}{}
@@ -82,7 +83,7 @@ func (s *p1fStubRepo) ListReadyLanguages(_ context.Context, assetID string, kind
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].TextKind == kind &&
-			s.rows[i].Status == asset.TextTrackReady {
+			s.rows[i].Status == detail.TextTrackReady {
 			if _, ok := seen[s.rows[i].LanguageCode]; !ok {
 				seen[s.rows[i].LanguageCode] = struct{}{}
 				out = append(out, s.rows[i].LanguageCode)
@@ -92,10 +93,10 @@ func (s *p1fStubRepo) ListReadyLanguages(_ context.Context, assetID string, kind
 	return out, nil
 }
 
-func (s *p1fStubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextTrack, error) {
+func (s *p1fStubRepo) ListByAsset(_ context.Context, assetID string) ([]detail.TextTrack, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []asset.TextTrack
+	var out []detail.TextTrack
 	for _, r := range s.rows {
 		if r.AssetID == assetID {
 			out = append(out, r)
@@ -111,18 +112,18 @@ func (s *p1fStubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.Te
 // path, so the stub does not need to honour the 6-tuple
 // translation_key lookup. The presence of the method is
 // what matters — it lets the compile-time
-// `var _ asset.TextTrackRepository = (*p1fStubRepo)(nil)`
+// `var _ detail.TextTrackRepository = (*p1fStubRepo)(nil)`
 // assertion at the bottom of this file pass.
 func (s *p1fStubRepo) FindCurrentForTranslation(
 	_ context.Context,
 	_ string,
-	_ asset.TextTrackKind,
+	_ detail.TextTrackKind,
 	_ string,
 	_ string,
 	_ string,
 	_ string,
 	_ string,
-) (*asset.TextTrack, error) {
+) (*detail.TextTrack, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return nil, nil
@@ -159,7 +160,7 @@ func (s *p1fStubRepo) FindCurrentForTranslation(
 // exercise a different contract MUST NOT rely on this stub; it
 // belongs in a dedicated port test that mocks the implementation,
 // not the audit-trail-aware seam.
-func (s *p1fStubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, track asset.TextTrack) error {
+func (s *p1fStubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, track detail.TextTrack) error {
 	if track.AssetID == "" || track.LanguageCode == "" || track.TextKind == "" || track.TranslationKey == "" {
 		return fmt.Errorf("p1fStubRepo.InsertTranslationWithAuditPredecessor: AssetID, LanguageCode, TextKind, TranslationKey are all required (caller bug)")
 	}
@@ -200,7 +201,7 @@ func (s *p1fStubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t
 	// caller's payload.
 	track.IsCurrent = true
 	if track.Status == "" {
-		track.Status = asset.TextTrackReady
+		track.Status = detail.TextTrackReady
 	}
 	if track.ID == 0 {
 		track.ID = int64(len(s.rows) + 1000) // deterministic test id (mirrors materializer_test.go:146)
@@ -219,7 +220,7 @@ func (s *p1fStubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, t
 // resolver did NOT consult subtitles for a fr request with no
 // source material (Group 3).
 type p1fStubSubtitles struct {
-	bundle *asset.ResolvedTextBundle
+	bundle *detail.ResolvedTextBundle
 	err    error
 	calls  int
 }
@@ -227,7 +228,7 @@ type p1fStubSubtitles struct {
 func (s *p1fStubSubtitles) SliceSubtitles(_ context.Context, _ string, _, _ int, _ string) error {
 	return nil
 }
-func (s *p1fStubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*asset.ResolvedTextBundle, error) {
+func (s *p1fStubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*detail.ResolvedTextBundle, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, s.err
@@ -244,7 +245,7 @@ type p1fStubTranscriber struct {
 	text  string
 	err   error
 	calls int
-	det   *asset.TranscriptResult
+	det   *detail.TranscriptResult
 }
 
 func (s *p1fStubTranscriber) TranscribeAudio(_ context.Context, _ string) (string, error) {
@@ -255,21 +256,21 @@ func (s *p1fStubTranscriber) TranscribeAudio(_ context.Context, _ string) (strin
 	return s.text, nil
 }
 
-func (s *p1fStubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (asset.TranscriptResult, error) {
+func (s *p1fStubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (detail.TranscriptResult, error) {
 	s.calls++
 	if s.err != nil {
-		return asset.TranscriptResult{}, s.err
+		return detail.TranscriptResult{}, s.err
 	}
 	if s.det != nil {
 		return *s.det, nil
 	}
-	return asset.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
+	return detail.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
 }
 
 // Compile-time guarantees that the stubs satisfy the ports the
 // resolver depends on.
 var (
-	_ asset.TextTrackRepository           = (*p1fStubRepo)(nil)
+	_ detail.TextTrackRepository           = (*p1fStubRepo)(nil)
 	_ youtubeports.SubtitleFetcherPort    = (*p1fStubSubtitles)(nil)
 	_ youtubeports.WhisperTranscriberPort = (*p1fStubTranscriber)(nil)
 )

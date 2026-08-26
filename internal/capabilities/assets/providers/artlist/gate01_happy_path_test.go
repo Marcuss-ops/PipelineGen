@@ -16,6 +16,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"sync"
 	"testing"
@@ -25,7 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
@@ -38,15 +39,15 @@ import (
 // values.
 type successMediaProcessor struct {
 	mu     sync.Mutex
-	inputs []*asset.ProcessInput
+	inputs []*detail.ProcessInput
 }
 
-func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (f *successMediaProcessor) Process(_ context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, input)
 	f.mu.Unlock()
 
-	return &asset.ProcessResult{
+	return &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
@@ -339,7 +340,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 	require.Len(t, inputs, 2)
 
 	// Order is non-deterministic (parallel processing) — check both are present.
-	byID := map[string]*asset.ProcessInput{}
+	byID := map[string]*detail.ProcessInput{}
 	for _, inp := range inputs {
 		byID[inp.ID] = inp
 	}
@@ -511,4 +512,4 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 }
 
 // Compile-time: successMediaProcessor satisfies the Processor port.
-var _ asset.Processor = (*successMediaProcessor)(nil)
+var _ detail.Processor = (*successMediaProcessor)(nil)

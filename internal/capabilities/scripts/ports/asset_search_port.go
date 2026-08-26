@@ -53,6 +53,10 @@
 // has never been invoked.
 package ports
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "context"
 
 // AssetSearchPort is the canonical semantic asset discovery surface.

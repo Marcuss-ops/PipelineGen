@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"testing"
@@ -32,7 +33,7 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	}
 
 	// Fase 1.b typed method: ResolveOriginal returns a non-nil
-	// *asset.ResolvedTextBundle on payload hit. The legacy envelope
+	// *detail.ResolvedTextBundle on payload hit. The legacy envelope
 	// shape (result.Found/Transcript/LanguageCode/Source) is
 	// replaced by bundle field access (PlainText/LanguageCode/SourceType).
 	bundle, err := fx.Resolver.ResolveOriginal(ctx, clipID, payloadTexts)
@@ -43,7 +44,7 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 		"Priority 1: transcript must match payload text")
 	require.Equal(t, "en", bundle.LanguageCode,
 		"Priority 1: language must match payload language_code")
-	require.Equal(t, asset.TextSourceProvided, bundle.SourceType,
+	require.Equal(t, detail.TextSourceProvided, bundle.SourceType,
 		"Priority 1: source must be 'provided' (from payload)")
 
 	// ── Save persists to asset_text_tracks ────────────────────────
@@ -52,14 +53,14 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	require.NoError(t, err, "Save must succeed")
 
 	// Verify DB row.
-	track, err := fx.TTRepo.Find(ctx, clipID, "en", asset.TextTrackTranscript)
+	track, err := fx.TTRepo.Find(ctx, clipID, "en", detail.TextTrackTranscript)
 	require.NoError(t, err, "Find must not error")
 	require.NotNil(t, track, "asset_text_tracks row must exist after Save")
 	require.Equal(t, "Broner yells at Pacquiao — stop worrying about Floyd", track.TextContent,
 		"text_content must match saved transcript")
-	require.Equal(t, asset.TextSourceProvided, track.SourceType,
+	require.Equal(t, detail.TextSourceProvided, track.SourceType,
 		"source_type must be 'provided'")
-	require.Equal(t, asset.TextTrackReady, track.Status,
+	require.Equal(t, detail.TextTrackReady, track.Status,
 		"status must be READY")
 	require.True(t, track.IsOriginal,
 		"is_original must be true for provided text")
@@ -68,7 +69,7 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	// Resolver defaults to "en" for DB lookup when no payload texts
 	// are provided. Since we saved with "en", this will find it.
 	// Fase 1.b: ResolveBestAvailable is the canonical typed lookup.
-	row2, err := fx.Resolver.ResolveBestAvailable(ctx, clipID, []string{"en"}, asset.TextTrackTranscript)
+	row2, err := fx.Resolver.ResolveBestAvailable(ctx, clipID, []string{"en"}, detail.TextTrackTranscript)
 	require.NoError(t, err, "ResolveBestAvailable from DB must not error")
 	require.NotNil(t, row2,
 		"Priority 2: resolver must find transcript in DB")
@@ -80,7 +81,7 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	// ── Empty payload + empty DB → nil row ────────────────────────
 	// Fase 1.b: a non-existent clipID returns (nil, nil) from
 	// ResolveBestAvailable (no DB row, no payload, no Whisper).
-	row3, err := fx.Resolver.ResolveBestAvailable(ctx, "yt_nonexistent_clip", []string{"en"}, asset.TextTrackTranscript)
+	row3, err := fx.Resolver.ResolveBestAvailable(ctx, "yt_nonexistent_clip", []string{"en"}, detail.TextTrackTranscript)
 	require.NoError(t, err, "ResolveBestAvailable for missing clip must not error")
 	require.Nil(t, row3,
 		"Resolver must return nil for clip with no payload and no DB row")
@@ -114,23 +115,23 @@ func TestE2E_TextTrack_MultilingualSearchText(t *testing.T) {
 	// Insert text tracks: en (same as main transcript — will be
 	// deduplicated by youtubeStrategy) + it (different — will be
 	// concatenated into search_text).
-	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []asset.TextTrack{
+	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []detail.TextTrack{
 		{
 			AssetID:      clipID,
 			LanguageCode: "en",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "English transcript: Broner yells at Pacquiao during press conference",
-			SourceType:   asset.TextSourceProvided,
+			SourceType:   detail.TextSourceProvided,
 			IsOriginal:   true,
-			Status:       asset.TextTrackReady,
+			Status:       detail.TextTrackReady,
 		},
 		{
 			AssetID:      clipID,
 			LanguageCode: "it",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "Trascrizione italiana: Broner urla contro Pacquiao durante la conferenza stampa",
-			SourceType:   asset.TextSourceTranslation,
-			Status:       asset.TextTrackReady,
+			SourceType:   detail.TextSourceTranslation,
+			Status:       detail.TextTrackReady,
 		},
 	}), "UpsertBatch must succeed for en + it text tracks")
 
@@ -177,14 +178,14 @@ func TestE2E_TextTrack_SourceVersionHash(t *testing.T) {
 		"empty tracks must return base hash unchanged")
 
 	// Empty slice → same hash.
-	hash0b := clipwriter.ComputeContentHashWithTextTracks(baseHash, []asset.TextTrack{})
+	hash0b := clipwriter.ComputeContentHashWithTextTracks(baseHash, []detail.TextTrack{})
 	require.Equal(t, baseHash, hash0b,
 		"empty track slice must return base hash unchanged")
 
 	// With tracks → different hash.
-	tracks := []asset.TextTrack{
-		{LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
-		{LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextHash: "sha256:it_transcript_hash"},
+	tracks := []detail.TextTrack{
+		{LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
+		{LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextHash: "sha256:it_transcript_hash"},
 	}
 	hash1 := clipwriter.ComputeContentHashWithTextTracks(baseHash, tracks)
 	require.NotEqual(t, baseHash, hash1,
@@ -193,17 +194,17 @@ func TestE2E_TextTrack_SourceVersionHash(t *testing.T) {
 		"computed hash must not be empty")
 
 	// Same tracks in reversed order → same hash (determinism).
-	tracksReversed := []asset.TextTrack{
-		{LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextHash: "sha256:it_transcript_hash"},
-		{LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
+	tracksReversed := []detail.TextTrack{
+		{LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextHash: "sha256:it_transcript_hash"},
+		{LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
 	}
 	hash2 := clipwriter.ComputeContentHashWithTextTracks(baseHash, tracksReversed)
 	require.Equal(t, hash1, hash2,
 		"hash must be deterministic regardless of track order")
 
 	// Single track → different from two tracks.
-	singleTrack := []asset.TextTrack{
-		{LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
+	singleTrack := []detail.TextTrack{
+		{LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextHash: "sha256:en_transcript_hash"},
 	}
 	hash3 := clipwriter.ComputeContentHashWithTextTracks(baseHash, singleTrack)
 	require.NotEqual(t, hash1, hash3,
@@ -250,15 +251,15 @@ func TestE2E_TextTrack_Backfill(t *testing.T) {
 	// ── Backfill: add text tracks retroactively ───────────────────
 	// Languages must match index_languages ("en,it") so the
 	// youtubeStrategy includes them in search_text.
-	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []asset.TextTrack{
+	require.NoError(t, fx.TTRepo.UpsertBatch(ctx, []detail.TextTrack{
 		{
 			AssetID:      clipID,
 			LanguageCode: "it",
-			TextKind:     asset.TextTrackTranscript,
+			TextKind:     detail.TextTrackTranscript,
 			TextContent:  "Trascrizione italiana: Broner grida contro Pacquiao",
-			SourceType:   asset.TextSourceTranslation,
+			SourceType:   detail.TextSourceTranslation,
 			TextHash:     "sha256:it_transcript_hash",
-			Status:       asset.TextTrackReady,
+			Status:       detail.TextTrackReady,
 		},
 	}), "UpsertBatch must succeed for backfilled tracks")
 

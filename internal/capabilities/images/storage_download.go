@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
@@ -29,7 +29,7 @@ import (
 // typed error rather than silently falling back to inline http. The
 // composition root MUST wire the stager at NewService time
 // (pre-PR this was silently absent in tests).
-func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*detail.ImageAsset, error) {
 	if s.sourceStager == nil {
 		return nil, fmt.Errorf("image ingest: source stager is nil (PR-SOURCESTAGER-CONSOLIDATE: composition root must wire acquisition.SourceStager)")
 	}
@@ -68,7 +68,7 @@ func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgUR
 // the lower-level entry point used by downloadAndIngest (which
 // already staged the bytes via sourceStager.Prepare) and by
 // any caller that already holds a streamed body.
-func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*detail.ImageAsset, error) {
 	if s.repo == nil {
 		return nil, ErrImageRepositoryUnavailable
 	}

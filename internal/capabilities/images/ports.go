@@ -16,6 +16,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -28,7 +29,7 @@ import (
 // the raw subject-slug match (not just the routing-level SubjectID).
 type RepositoryListFilter struct {
 	SubjectID string
-	Origins   []asset.ImageOrigin
+	Origins   []detail.ImageOrigin
 	Providers []string
 	StyleIDs  []string
 	Tags      []string
@@ -55,7 +56,7 @@ type RepositoryImageRow struct {
 	Name          string
 	PreviewURL    string
 	Provider      string
-	Origin        asset.ImageOrigin
+	Origin        detail.ImageOrigin
 	License       string
 	Author        string
 	SourcePageURL string

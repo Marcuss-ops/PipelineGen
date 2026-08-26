@@ -9,11 +9,12 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ResolverConfig is the read-only configuration the resolver
@@ -103,12 +104,12 @@ func (c ResolverConfig) Validate() error {
 // Resolver is the source-track + candidate-language selector.
 type Resolver struct {
 	cfg      ResolverConfig
-	repo     asset.TextTrackRepository
+	repo     detail.TextTrackRepository
 	sourceID string
-	kind     asset.TextTrackKind
+	kind     detail.TextTrackKind
 }
 
-func NewResolver(cfg ResolverConfig, repo asset.TextTrackRepository, assetID string, kind asset.TextTrackKind) *Resolver {
+func NewResolver(cfg ResolverConfig, repo detail.TextTrackRepository, assetID string, kind detail.TextTrackKind) *Resolver {
 	return &Resolver{
 		cfg:      cfg,
 		repo:     repo,
@@ -118,7 +119,7 @@ func NewResolver(cfg ResolverConfig, repo asset.TextTrackRepository, assetID str
 }
 
 // FindSourceTrack returns the canonical READY source track.
-func (r *Resolver) FindSourceTrack(ctx context.Context) (*asset.TextTrack, error) {
+func (r *Resolver) FindSourceTrack(ctx context.Context) (*detail.TextTrack, error) {
 	track, err := r.repo.Find(ctx, r.sourceID, r.cfg.SourceLanguage, r.kind)
 	if err != nil {
 		return nil, fmt.Errorf("texttracks.resolver.FindSourceTrack(%s, %s, %s): %w",
@@ -131,7 +132,7 @@ func (r *Resolver) FindSourceTrack(ctx context.Context) (*asset.TextTrack, error
 			TextKind:       r.kind,
 		}
 	}
-	if track.Status != asset.TextTrackReady {
+	if track.Status != detail.TextTrackReady {
 		// Surface the union of available languages for the
 		// same (asset, kind) so the operator dashboard can
 		// see "what's actually READY" without a second
@@ -144,7 +145,7 @@ func (r *Resolver) FindSourceTrack(ctx context.Context) (*asset.TextTrack, error
 			SourceLanguage:     r.cfg.SourceLanguage,
 			TextKind:           r.kind,
 			CurrentStatus:      track.Status,
-			AvailableStatuses:  []asset.TextTrackStatus{track.Status},
+			AvailableStatuses:  []detail.TextTrackStatus{track.Status},
 			AvailableLanguages: langs,
 		}
 	}
@@ -197,7 +198,7 @@ func (r *Resolver) CandidateLanguages() []string {
 
 // FindExistingTarget returns the existing text track for the
 // (asset, target_lang, kind) triple, regardless of status.
-func (r *Resolver) FindExistingTarget(ctx context.Context, targetLang string) (*asset.TextTrack, error) {
+func (r *Resolver) FindExistingTarget(ctx context.Context, targetLang string) (*detail.TextTrack, error) {
 	track, err := r.repo.Find(ctx, r.sourceID, targetLang, r.kind)
 	if err != nil {
 		return nil, fmt.Errorf("texttracks.resolver.FindExistingTarget(%s, %s, %s): %w",

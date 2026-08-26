@@ -41,7 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Run is the high-level driver: query candidates, optionally
@@ -56,7 +56,7 @@ import (
 // delegate to IsAssetMissingForTargetSet (backfill_candidates.go).
 func (s *BackfillService) Run(
 	ctx context.Context,
-	repo asset.TextTrackRepository,
+	repo detail.TextTrackRepository,
 	opts BackfillOptions,
 ) (*BackfillReport, error) {
 	start := time.Now()

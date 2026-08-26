@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"math"

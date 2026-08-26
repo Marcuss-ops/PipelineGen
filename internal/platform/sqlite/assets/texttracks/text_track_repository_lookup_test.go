@@ -11,6 +11,7 @@
 package texttracks
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
@@ -110,7 +110,7 @@ func TestFindReady_PrefersCurrentRowOverStalePredecessor(t *testing.T) {
 	// Current authoritative row: is_current=1, fresh Argos cue text.
 	insertTrack(t, db, "it", "argos-translate/v2", 1, "Veramente, ho messo i miei,")
 
-	track, cues, err := repo.FindReady(context.Background(), "asset-1", "it", asset.TextTrackTranscript)
+	track, cues, err := repo.FindReady(context.Background(), "asset-1", "it", detail.TextTrackTranscript)
 	require.NoError(t, err)
 	require.NotNil(t, track, "FindReady must return the authoritative track")
 	if track.IsCurrent != true {

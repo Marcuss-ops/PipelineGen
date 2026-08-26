@@ -21,7 +21,7 @@
 // even though SQLite column is case-sensitive — the canonical
 // recomputation always returns lowercase).
 //
-// Format: hashutil.SHA256String("jobID:" + attempt + ":" + resultHash)
+// Format: digest.SHA256String("jobID:" + attempt + ":" + resultHash)
 // (colon-separated concatenation). The ":attempt:" middle segment
 // distinguishes attempts with the same jobID + resultHash from
 // each other (so retry attempt N+1 cannot collide with attempt N
@@ -39,7 +39,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -48,10 +48,10 @@ import (
 // the typed-factory pattern. Future production callers SHOULD
 // migrate to:
 //
-//	derive := MakeCompleteJobIdempotencyKey(hashutil.HashFunc)
+//	derive := MakeCompleteJobIdempotencyKey(digest.HashFunc)
 //	service := &CompletionService{derive: derive, ...} // field injection
 //
-// (composition root wires the derive using hashutil.HashFunc
+// (composition root wires the derive using digest.HashFunc
 // or a test fake per the Commit D spec literal "Aggiungi un test
 // unit con fake `HashFunc`").
 //
@@ -67,7 +67,7 @@ import (
 //
 //  2. Default-priming: the package-init
 //     `defaultCompleteJobKey` (MakeCompleteJobIdempotencyKey
-//     (hashutil.SHA256String)) is the byte-stable
+//     (digest.SHA256String)) is the byte-stable
 //     production default the free function delegates to.
 //     Removing the free function would force the composition
 //     root to inject the derive into every caller manually —
@@ -94,7 +94,7 @@ import (
 // ON CONFLICT DO NOTHING pattern.
 //
 // Algorithm: SHA-256 of "jobID:attempt:resultHash" (colon-separated
-// concatenation), hex-encoded. The domain-owned hashutil.SHA256String
+// concatenation), hex-encoded. The domain-owned digest.SHA256String
 // implementation is the default leaf; callers may inject any compatible
 // HashFunc through MakeCompleteJobIdempotencyKey.
 //
@@ -108,7 +108,7 @@ import (
 //
 // Empty-input edge case: an empty input triple would silently
 // collide with another empty-triple call (because
-// hashutil.SHA256String("::") is a valid 64-char hex). Per
+// digest.SHA256String("::") is a valid 64-char hex). Per
 // godlike/07 no-fake-availability, we surface the empty-key
 // marker (empty string) instead. Callers MUST check
 // IsValidCompleteJobIdempotencyKey(key) AND handle the empty case
@@ -136,7 +136,7 @@ type CompleteJobIdempotencyKeyFunc func(jobID string, attempt int, resultHash st
 // the C6 MakeArtifactIdempotencyKey shape: panic-on-nil HashFunc at
 // construction (godlike/07 fail-closed); callers receive the
 // HashFunc via constructor injection.
-func MakeCompleteJobIdempotencyKey(hash hashutil.HashFunc) CompleteJobIdempotencyKeyFunc {
+func MakeCompleteJobIdempotencyKey(hash digest.HashFunc) CompleteJobIdempotencyKeyFunc {
 	if hash == nil {
 		panic("MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
@@ -151,7 +151,7 @@ func MakeCompleteJobIdempotencyKey(hash hashutil.HashFunc) CompleteJobIdempotenc
 // defaultCompleteJobKey is the package-level production default
 // bound to the domain-owned standard-library SHA-256 implementation. Mirrors
 // defaultArtifactKey for the (jobID, attempt, resultHash) surface.
-var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(hashutil.SHA256String)
+var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(digest.SHA256String)
 
 // IsValidCompleteJobIdempotencyKey returns true if `key` is a
 // well-formed key for the job_results UNIQUE column: either the

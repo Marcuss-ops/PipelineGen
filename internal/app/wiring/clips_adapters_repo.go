@@ -1,11 +1,12 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"time"
 
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -42,11 +43,11 @@ func (a *clipsRepoAdapter) GetClip(ctx context.Context, id string) (*asset.Asset
 	return a.inner.GetClip(ctx, id)
 }
 
-func (a *clipsRepoAdapter) ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error) {
+func (a *clipsRepoAdapter) ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error) {
 	return a.inner.ListFolders(ctx, source)
 }
 
-func (a *clipsRepoAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
+func (a *clipsRepoAdapter) GetFolder(ctx context.Context, folderID string) (*detail.ClipFolder, error) {
 	return a.inner.GetFolder(ctx, folderID)
 }
 
@@ -213,6 +214,6 @@ func newImageRepoAdapter(r *imagesrepo.ImagesRepository) clips.ImageRepositoryPo
 	return &imageRepoAdapter{inner: r}
 }
 
-func (a *imageRepoAdapter) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
+func (a *imageRepoAdapter) ListAll(ctx context.Context) ([]*detail.ImageAsset, error) {
 	return a.inner.ListAll(ctx)
 }

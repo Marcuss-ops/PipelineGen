@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"go.uber.org/zap"
 )
 
@@ -159,7 +159,7 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	// Compute MD5 hash — byte-identical with the legacy path
 	// (processor.go::generateLegacy uses md5.New()).
 	if result.LocalPath != "" {
-		if hash, hashErr := hashutil.LegacyMD5File(result.LocalPath); hashErr != nil {
+		if hash, hashErr := checksum.LegacyMD5File(result.LocalPath); hashErr != nil {
 			p.log.Warn("hash computation failed", zap.Error(hashErr))
 		} else {
 			result.LegacyFileMD5 = hash

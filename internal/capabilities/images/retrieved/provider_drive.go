@@ -13,6 +13,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -30,7 +31,7 @@ func NewDriveImageProvider(bridge StorageBridge, log *zap.Logger) *DriveImagePro
 	return &DriveImageProvider{bridge: bridge, log: log}
 }
 
-func (p *DriveImageProvider) Name() asset.ImageProvider { return asset.ProviderDrive }
+func (p *DriveImageProvider) Name() detail.ImageProvider { return detail.ProviderDrive }
 
 func (p *DriveImageProvider) Healthy(_ context.Context) error { return nil }
 
@@ -43,8 +44,8 @@ func (p *DriveImageProvider) Search(_ context.Context, query string, _ Retrieval
 	out := make([]RetrievalSearchResult, 0, len(hits))
 	for _, url := range hits {
 		out = append(out, RetrievalSearchResult{
-			Provider:   asset.ProviderDrive,
-			Origin:     asset.ImageOriginRetrieved,
+			Provider:   detail.ProviderDrive,
+			Origin:     detail.ImageOriginRetrieved,
 			PreviewURL: url,
 			PageURL:    url,
 			License:    "Unknown",

@@ -11,6 +11,9 @@
 // embedding work.
 package mediaregistry
 
+import (
+)
+
 // IndexEligibility is the searchability decision for a registered asset.
 type IndexEligibility string
 

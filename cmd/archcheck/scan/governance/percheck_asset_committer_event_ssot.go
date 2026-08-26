@@ -21,7 +21,7 @@
 //     looks for ONE event per asset would over-flag).
 //   - ad-hoc envelope shape (the canonical
 //     asset.index.requested.v1 envelope is documented in
-//     pkg/idempotency/keys.go::OutboxKey; ad-hoc payloads fail
+//     internal/kernel/idempotency/keys.go::OutboxKey; ad-hoc payloads fail
 //     the idempotency-key uniqueness constraint silently).
 //
 // This gate is the forward-prevention fence. Production-code
@@ -96,7 +96,7 @@ var assetCommitterEventSSOTSkipPathPrefixes = []string{
 var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	// 1. Canonical AssetCommitter files — the SOLE authority
 	//    on the asset.index.requested emission site.
-	"internal/application/assets/persistence/",
+	"internal/capabilities/assets/persistence/",
 	// 2. The canonical outboxevents package — the constants
 	//    that define EventAssetIndexRequested as the literal
 	//    value (single source of truth for the literal value).
@@ -104,18 +104,18 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	// 3. Mutations.AssetMutationDispatcher — the canonical
 	//    envelope surface (EnqueueAndIndex emits the canonical
 	//    envelope inside the commit pipeline).
-	"internal/application/assets/mutations/",
+	"internal/capabilities/assets/mutations/",
 	// 4. Finalizer / texttracks / voiceover / image ingest /
 	//    soundeffect / catalogsync / provider — surfaces that
 	//    route through the canonical AssetCommitter pipeline
 	//    (lambda-flow-down). These ARE the canonical owner
 	//    chain for the literal value (per godlike/06 SSOT).
-	"internal/application/assets/finalizer/",
-	"internal/application/assets/texttracks/",
+	"internal/capabilities/assets/finalizer/",
+	"internal/capabilities/assets/texttracks/",
 	"internal/capabilities/voiceover/service/",
 	"internal/capabilities/images/workflow/",
-	"internal/application/assets/soundeffect/",
-	"internal/application/assets/catalogsync/",
+	"internal/capabilities/assets/soundeffect/",
+	"internal/capabilities/assets/catalogsync/",
 	"internal/capabilities/assets/providers/",
 	"internal/recommendation/",
 	// 5. Composition-root bundles — emit the canonical
@@ -123,16 +123,17 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	"internal/app/",
 	// 6. Idempotency keys package — the canonical
 	//    asset.index.requested.v1 envelope is documented at
-	//    pkg/idempotency/keys.go::OutboxKey.
-	"pkg/idempotency/",
+	//    internal/kernel/idempotency/keys.go::OutboxKey.
+	"internal/kernel/idempotency/",
 	// 7. CLI admin tools — operator tooling (reconciliation,
 	//    diagnostics) legitimately inspects and possibly
 	//    emits asset.index.requested for data correction.
 	"cmd/admin/",
-	// 8. Soundeffect API surface — typed-port documentation
-	//    referencing the canonical event_type literal.
-	"internal/api/assets/soundeffect/",
-	"internal/api/images/",
+	// 8. Soundeffect / image API surfaces — typed-port
+	//    documentation referencing the canonical event_type
+	//    literal.
+	"internal/capabilities/assets/soundeffect/",
+	"internal/capabilities/images/",
 	// 9. Metrics / observability — event_type labels for
 	//    metric dimensions (NOT for emission).
 	"internal/platform/observability/",
@@ -155,7 +156,7 @@ const assetCommitterEventSSOTScanScope = "internal/"
 // emission of the literal `asset.index.requested` AND the
 // canonical envelope `asset.index.requested.v1`. The canonical
 // envelope is documented at
-// `pkg/idempotency/keys.go::OutboxKey` as the canonical
+// `internal/kernel/idempotency/keys.go::OutboxKey` as the canonical
 // idempotency-key target. We match BOTH forms because the
 // canonical AssetCommitter emits the canonical envelope; an
 // ad-hoc emitter using either literal is a violation.
@@ -170,7 +171,7 @@ const assetCommitterEventSSOTRule = "percheck_asset_committer_event_ssot"
 // AssetCommitter chain. The message references the canonical
 // envelope + the canonical COMMIT pipeline concretely so the
 // operator sees the migration path inline.
-const assetCommitterEventSSOTNote = "forbidden emission of canonical 'asset.index.requested' outbox-event literal outside the canonical AssetCommitter chain (PR-DIAGNOSI-FINALE rule 3, July 2026); godlike/06 SSOT requires the canonical envelope (asset.index.requested.v1) to be emitted ONLY by the AssetCommitter.CommitAsset pathway (internal/application/assets/persistence/committer.go) via the mutations.AssetMutationDispatcher (atomic UPSERT + outbox INSERT in single TX, QDRANT-002 atomicity invariant). Any other emission site risks silent QDRANT-002 regression (Qdrant indexing a not-yet-committed media_assets row) or duplicate-emission regression (a future cleanup over-counts events per asset_id). Exempt zones per scanner policy: canonical AssetCommitter files, outboxevents constants package, mutations.Dispatcher envelope, provider services routing through AssetCommitter, finalizer/post-processing surfaces that emit via the canonical AssetMutationDispatcher envelope, CLI admin tools (cmd/admin/**), test fixtures (tests/**)."
+const assetCommitterEventSSOTNote = "forbidden emission of canonical 'asset.index.requested' outbox-event literal outside the canonical AssetCommitter chain (PR-DIAGNOSI-FINALE rule 3, July 2026); godlike/06 SSOT requires the canonical envelope (asset.index.requested.v1) to be emitted ONLY by the AssetCommitter.CommitAsset pathway (internal/capabilities/assets/persistence/committer.go) via the mutations.AssetMutationDispatcher (atomic UPSERT + outbox INSERT in single TX, QDRANT-002 atomicity invariant). Any other emission site risks silent QDRANT-002 regression (Qdrant indexing a not-yet-committed media_assets row) or duplicate-emission regression (a future cleanup over-counts events per asset_id). Exempt zones per scanner policy: canonical AssetCommitter files, outboxevents constants package, mutations.Dispatcher envelope, provider services routing through AssetCommitter, finalizer/post-processing surfaces that emit via the canonical AssetMutationDispatcher envelope, CLI admin tools (cmd/admin/**), test fixtures (tests/**)."
 
 // assetCommitterEventSSOTWarn is the residue-emitter for
 // comment-only references.

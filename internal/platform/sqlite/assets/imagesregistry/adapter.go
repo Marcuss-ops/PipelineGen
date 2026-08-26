@@ -1,6 +1,7 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -26,7 +27,7 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			if rec == nil {
 				return nil
 			}
-			img := &asset.ImageAsset{
+			img := &detail.ImageAsset{
 				Hash:         imageRecordHash(rec.ID, rec.LegacyFileMD5),
 				SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 				SourceURL:    textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
@@ -75,7 +76,7 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 		},
 		ListFn: func(ctx context.Context) ([]*artifacts.MediaRecord, error) {
 			return artifacts.GetAllWithDriveFileID(ctx, repo.ListAll,
-				func(img *asset.ImageAsset) (*artifacts.MediaRecord, bool) {
+				func(img *detail.ImageAsset) (*artifacts.MediaRecord, bool) {
 					if strings.TrimSpace(img.DriveFileID) == "" {
 						return nil, false
 					}
@@ -99,7 +100,7 @@ func imageRecordHash(id, fallback string) string {
 	return id
 }
 
-func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageToMediaRecord(img *detail.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}

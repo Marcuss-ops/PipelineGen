@@ -18,6 +18,7 @@
 package register
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 )

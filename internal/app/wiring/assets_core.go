@@ -6,7 +6,7 @@
 // capability area:
 //
 //   - Core:        the canonical data layer (clips + voiceover + image
-//     repositories, asset.Service, asset tree + index,
+//     repositories, detail.Service, asset tree + index,
 //     mediaProcessor, catalogSync). The bulk of any
 //     Assets-module wire logic consumes these. Held by
 //     ComposeRoot.Repos + ComposeRoot.Search.
@@ -49,7 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
@@ -90,10 +90,10 @@ type RepositoryDeps struct {
 
 // ServiceDeps groups the service-like ports owned by CoreDeps.
 type ServiceDeps struct {
-	Assets             *domainasset.Service
+	Assets             *detail.Service
 	AssetTreeService   *assettree.Service
 	AssetIndexService  *assetindex.Service
-	MediaProcessor     domainasset.Processor
+	MediaProcessor     detail.Processor
 	CatalogSyncService *catalogsync.Service
 	// P0.1 (June 2026): the concrete artifact blob service wired
 	// from BuildDomainBundle → DomainBundle → CoreDeps.

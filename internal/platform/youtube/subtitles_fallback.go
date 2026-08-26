@@ -30,9 +30,10 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // triggerWhisperFallback is the canonical (nil, nil) sentinel that
@@ -43,7 +44,7 @@ import (
 // decision explicitly named at the call site — the orchestrator's
 // priority discipline is preserved (godlike/06 SSOT) without
 // importing the Whisper port here.
-func triggerWhisperFallback() (*asset.ResolvedTextBundle, error) {
+func triggerWhisperFallback() (*detail.ResolvedTextBundle, error) {
 	return nil, nil
 }
 

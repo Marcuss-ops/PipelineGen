@@ -4,6 +4,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -38,7 +39,7 @@ func configureFakeClipTranscripts(builder *ClipSourceBuilder, resolver *fakeClip
 
 	reader, ok := builder.textTrackReader.(*stubTextTrackReader)
 	if !ok || reader == nil {
-		reader = &stubTextTrackReader{tracks: make(map[string]*asset.TextTrack)}
+		reader = &stubTextTrackReader{tracks: make(map[string]*detail.TextTrack)}
 		builder.ConfigureTextTrackReader(reader)
 	}
 	for id, clip := range resolver.clips {

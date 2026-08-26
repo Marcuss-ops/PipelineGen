@@ -8,10 +8,10 @@
 job_handler_map:
   - job_type: script.generate_batch
     handler: BatchJobHandler.Handle
-    owner: internal/application/scripts
+    owner: internal/capabilities/scripts
   - job_type: artlist.run
     handler: ArtlistHandler.enqueueArtlistRun
-    owner: internal/api/assets/artlist
+    owner: internal/capabilities/assets/providers/artlist
   - job_type: media.artlist
     handler: artlist.jobHandler
     owner: internal/capabilities/assets/providers/artlist
@@ -23,10 +23,10 @@ job_handler_map:
     owner: internal/capabilities/assets/providers/stock
   - job_type: maintenance.deep_cleanup
     handler: MaintenanceService
-    owner: internal/application/assets/maintenance
+    owner: internal/capabilities/assets/maintenance
   - job_type: catalog.sync
     handler: CatalogSync service
-    owner: internal/application/assets/catalogsync
+    owner: internal/capabilities/assets/catalogsync
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
 # Each canonical service is constructed EXACTLY ONCE.

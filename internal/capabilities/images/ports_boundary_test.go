@@ -23,8 +23,8 @@ func TestApplicationImagesProductionHasNoConcreteSemanticOrHTTPImports(t *testin
 		}
 		source := string(data)
 		for _, forbidden := range []string{
-			"internal/infrastructure/ai/semantic",
-			"internal/infrastructure/httpclient",
+			"internal/capabilities/ai/semantic",
+			"internal/platform/httpclient",
 		} {
 			if strings.Contains(source, forbidden) {
 				t.Errorf("%s imports forbidden concrete dependency %q", path, forbidden)

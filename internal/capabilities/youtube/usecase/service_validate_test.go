@@ -1,11 +1,12 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -23,7 +24,7 @@ func (f *fakeSearchRunner) GetVideoInfo(ctx context.Context, videoURL string) (*
 	return nil, nil
 }
 
-// fakeAssetRepo satisfies asset.Repository.
+// fakeAssetRepo satisfies detail.Repository.
 type fakeAssetRepo struct{}
 
 func (f *fakeAssetRepo) Upsert(ctx context.Context, a *asset.Asset) error { return nil }
@@ -74,7 +75,7 @@ func TestValidateServiceDeps_RejectsTypedNilSearchRunner(t *testing.T) {
 
 func TestValidateServiceDeps_RejectsTypedNilAssetRepo(t *testing.T) {
 	var nilRepo *fakeAssetRepo
-	var repo asset.Repository = nilRepo // typed-nil
+	var repo detail.Repository = nilRepo // typed-nil
 
 	core, asset, video, storage, adapter := validSubBundles()
 	asset.AssetRepo = repo
@@ -96,7 +97,7 @@ func TestValidateServiceDeps_RejectsTypedNilVideoPipeline(t *testing.T) {
 
 func TestValidateServiceDeps_RejectsTypedNilMediaProcessor(t *testing.T) {
 	var nilProc *fakeMediaProcessor
-	var proc asset.Processor = nilProc // typed-nil
+	var proc detail.Processor = nilProc // typed-nil
 
 	core, asset, video, storage, adapter := validSubBundles()
 	asset.MediaProcessor = proc

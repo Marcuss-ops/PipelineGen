@@ -4,20 +4,21 @@
 package channels
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // AssetRenditionRepository is the SQLite-backed implementation of
-// asset.RenditionRepository.
+// detail.RenditionRepository.
 type AssetRenditionRepository struct {
 	db  *sql.DB
 	log *zap.Logger
@@ -34,10 +35,10 @@ func NewAssetRenditionRepository(db *sql.DB, log *zap.Logger) (*AssetRenditionRe
 	return &AssetRenditionRepository{db: db, log: log}, nil
 }
 
-var _ asset.RenditionRepository = (*AssetRenditionRepository)(nil)
+var _ detail.RenditionRepository = (*AssetRenditionRepository)(nil)
 
 // Create persists a new AssetRendition and returns its ID.
-func (r *AssetRenditionRepository) Create(ctx context.Context, rendition *asset.AssetRendition) (string, error) {
+func (r *AssetRenditionRepository) Create(ctx context.Context, rendition *detail.AssetRendition) (string, error) {
 	if rendition == nil {
 		return "", errors.New("asset_rendition_repository.Create: rendition is nil")
 	}
@@ -45,7 +46,7 @@ func (r *AssetRenditionRepository) Create(ctx context.Context, rendition *asset.
 		return "", errors.New("asset_rendition_repository.Create: AssetID is required")
 	}
 	if rendition.Kind == "" {
-		rendition.Kind = asset.RenditionKindMaster
+		rendition.Kind = detail.RenditionKindMaster
 	}
 	if !isValidRenditionKind(rendition.Kind) {
 		return "", fmt.Errorf("asset_rendition_repository.Create: invalid Kind %q", rendition.Kind)
@@ -79,7 +80,7 @@ func (r *AssetRenditionRepository) Create(ctx context.Context, rendition *asset.
 }
 
 // Get retrieves an AssetRendition by ID.
-func (r *AssetRenditionRepository) Get(ctx context.Context, id string) (*asset.AssetRendition, error) {
+func (r *AssetRenditionRepository) Get(ctx context.Context, id string) (*detail.AssetRendition, error) {
 	if id == "" {
 		return nil, errors.New("asset_rendition_repository.Get: id is required")
 	}
@@ -93,7 +94,7 @@ func (r *AssetRenditionRepository) Get(ctx context.Context, id string) (*asset.A
 }
 
 // ListByAsset lists all renditions for a given asset.
-func (r *AssetRenditionRepository) ListByAsset(ctx context.Context, assetID string) ([]*asset.AssetRendition, error) {
+func (r *AssetRenditionRepository) ListByAsset(ctx context.Context, assetID string) ([]*detail.AssetRendition, error) {
 	if assetID == "" {
 		return nil, errors.New("asset_rendition_repository.ListByAsset: assetID is required")
 	}
@@ -104,7 +105,7 @@ func (r *AssetRenditionRepository) ListByAsset(ctx context.Context, assetID stri
 }
 
 // ListByLocation lists all renditions for a given location.
-func (r *AssetRenditionRepository) ListByLocation(ctx context.Context, locationID int64) ([]*asset.AssetRendition, error) {
+func (r *AssetRenditionRepository) ListByLocation(ctx context.Context, locationID int64) ([]*detail.AssetRendition, error) {
 	if locationID <= 0 {
 		return nil, errors.New("asset_rendition_repository.ListByLocation: locationID must be positive")
 	}
@@ -114,14 +115,14 @@ func (r *AssetRenditionRepository) ListByLocation(ctx context.Context, locationI
 	return r.scanRows(ctx, query, locationID)
 }
 
-func (r *AssetRenditionRepository) scanRows(ctx context.Context, query string, value any) ([]*asset.AssetRendition, error) {
+func (r *AssetRenditionRepository) scanRows(ctx context.Context, query string, value any) ([]*detail.AssetRendition, error) {
 	rows, err := r.db.QueryContext(ctx, query, value)
 	if err != nil {
 		return nil, fmt.Errorf("asset_rendition_repository.scanRows: %w", err)
 	}
 	defer rows.Close()
 
-	var out []*asset.AssetRendition
+	var out []*detail.AssetRendition
 	for rows.Next() {
 		rend, err := scanAssetRendition(rows)
 		if err != nil {
@@ -133,7 +134,7 @@ func (r *AssetRenditionRepository) scanRows(ctx context.Context, query string, v
 }
 
 // Update modifies an existing AssetRendition.
-func (r *AssetRenditionRepository) Update(ctx context.Context, rendition *asset.AssetRendition) error {
+func (r *AssetRenditionRepository) Update(ctx context.Context, rendition *detail.AssetRendition) error {
 	if rendition == nil || rendition.ID == "" {
 		return errors.New("asset_rendition_repository.Update: rendition and ID are required")
 	}
@@ -174,18 +175,18 @@ func (r *AssetRenditionRepository) Delete(ctx context.Context, id string) error 
 	return nil
 }
 
-func isValidRenditionKind(kind asset.RenditionKind) bool {
+func isValidRenditionKind(kind detail.RenditionKind) bool {
 	switch kind {
-	case asset.RenditionKindMaster, asset.RenditionKindMezzanine, asset.RenditionKindProxy,
-		asset.RenditionKindThumbnail, asset.RenditionKindStoryboard, asset.RenditionKindAudio,
-		asset.RenditionKindSubtitle:
+	case detail.RenditionKindMaster, detail.RenditionKindMezzanine, detail.RenditionKindProxy,
+		detail.RenditionKindThumbnail, detail.RenditionKindStoryboard, detail.RenditionKindAudio,
+		detail.RenditionKindSubtitle:
 		return true
 	}
 	return false
 }
 
-func scanAssetRendition(row interface{ Scan(dest ...any) error }) (*asset.AssetRendition, error) {
-	var rend asset.AssetRendition
+func scanAssetRendition(row interface{ Scan(dest ...any) error }) (*detail.AssetRendition, error) {
+	var rend detail.AssetRendition
 	var locationID sql.NullInt64
 	var createdAt, updatedAt string
 

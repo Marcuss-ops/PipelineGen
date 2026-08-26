@@ -1,9 +1,10 @@
 package catalogsync
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // CatalogRepository is the application port for catalog reads and folder
@@ -11,7 +12,7 @@ import (
 // root and must not leak into this package.
 type CatalogRepository interface {
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
-	ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error)
+	ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error)
 	DeleteFolder(ctx context.Context, id string) error
 }
 

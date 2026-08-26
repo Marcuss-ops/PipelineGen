@@ -5,11 +5,12 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
 )
@@ -38,16 +39,16 @@ func (a *ClipStoreAdapter) GetClip(ctx context.Context, id string) (*asset.Asset
 func (a *ClipStoreAdapter) Upsert(ctx context.Context, clip *asset.Asset) error {
 	return a.inner.Upsert(ctx, clip)
 }
-func (a *ClipStoreAdapter) UpsertFolder(ctx context.Context, f *asset.ClipFolder) error {
+func (a *ClipStoreAdapter) UpsertFolder(ctx context.Context, f *detail.ClipFolder) error {
 	return a.inner.UpsertFolder(ctx, f)
 }
 func (a *ClipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.inner.DeleteClip(ctx, id)
 }
-func (a *ClipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
+func (a *ClipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*detail.ClipFolder, error) {
 	return a.inner.GetFolder(ctx, folderID)
 }
-func (a *ClipStoreAdapter) SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error) {
+func (a *ClipStoreAdapter) SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error) {
 	return a.inner.SearchClipsAdvanced(ctx, req)
 }
 func (a *ClipStoreAdapter) CountClips(ctx context.Context) (int, error) {

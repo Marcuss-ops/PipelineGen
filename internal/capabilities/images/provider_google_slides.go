@@ -9,6 +9,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"strings"
@@ -34,7 +35,7 @@ func NewGoogleSlidesProvider(delegate ImageGeneratorPort, log *zap.Logger) *Goog
 	return &GoogleSlidesProvider{delegate: delegate, log: log}
 }
 
-func (p *GoogleSlidesProvider) Name() asset.ImageProvider { return asset.ProviderGoogleSlides }
+func (p *GoogleSlidesProvider) Name() detail.ImageProvider { return detail.ProviderGoogleSlides }
 
 func (p *GoogleSlidesProvider) Healthy(_ context.Context) error {
 	if p == nil || p.delegate == nil {
@@ -83,7 +84,7 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 		Width:      portOut.Width,
 		Height:     portOut.Height,
 		PromptUsed: portOut.PromptUsed,
-		Provider:   asset.ProviderGoogleSlides,
+		Provider:   detail.ProviderGoogleSlides,
 		Model:      resultModel,
 		SourceHash: portOut.SourceHash,
 		OutputPath: portOut.OutputPath,

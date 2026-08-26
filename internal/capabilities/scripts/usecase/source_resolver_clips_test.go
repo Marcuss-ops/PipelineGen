@@ -1,13 +1,14 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -104,19 +105,19 @@ func equalClipIDs(got, want []string) bool {
 }
 
 type hydrationSubtitleRepository struct {
-	artifacts []asset.SubtitleArtifact
+	artifacts []detail.SubtitleArtifact
 }
 
-func (r *hydrationSubtitleRepository) Upsert(_ context.Context, _ *asset.SubtitleArtifact) error {
+func (r *hydrationSubtitleRepository) Upsert(_ context.Context, _ *detail.SubtitleArtifact) error {
 	return nil
 }
 
-func (r *hydrationSubtitleRepository) FindCurrent(_ context.Context, _ string, _ string, _ asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
+func (r *hydrationSubtitleRepository) FindCurrent(_ context.Context, _ string, _ string, _ detail.SubtitleFormat) (*detail.SubtitleArtifact, error) {
 	return nil, nil
 }
 
-func (r *hydrationSubtitleRepository) ListByAsset(_ context.Context, assetID string) ([]asset.SubtitleArtifact, error) {
-	out := make([]asset.SubtitleArtifact, 0, len(r.artifacts))
+func (r *hydrationSubtitleRepository) ListByAsset(_ context.Context, assetID string) ([]detail.SubtitleArtifact, error) {
+	out := make([]detail.SubtitleArtifact, 0, len(r.artifacts))
 	for _, artifact := range r.artifacts {
 		if artifact.AssetID == assetID {
 			out = append(out, artifact)
@@ -134,10 +135,10 @@ func TestClipSourceBuilder_HydratesAssetTimingAndSubtitleWithoutSearch(t *testin
 
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{"clip-a:en": makeTrack("clip-a", "en", "hydrated transcript")},
+		tracks: map[string]*detail.TextTrack{"clip-a:en": makeTrack("clip-a", "en", "hydrated transcript")},
 	})
-	builder.ConfigureSubtitleArtifactRepository(&hydrationSubtitleRepository{artifacts: []asset.SubtitleArtifact{{
-		AssetID: "clip-a", Format: asset.SubtitleFormatASS, Status: asset.SubtitleStatusReady, IsCurrent: true,
+	builder.ConfigureSubtitleArtifactRepository(&hydrationSubtitleRepository{artifacts: []detail.SubtitleArtifact{{
+		AssetID: "clip-a", Format: detail.SubtitleFormatASS, Status: detail.SubtitleStatusReady, IsCurrent: true,
 		DriveURL: "https://drive/subtitle-a", DriveFileID: "subtitle-a",
 	}}})
 
@@ -172,7 +173,7 @@ func TestClipSourceBuilder_StrictTranscriptPolicyRejectsMissingTranscript(t *tes
 	resolver := newFakeClipResolver()
 	resolver.AddClip(makeTestClip("clip-strict", "Strict", time.Second))
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
-	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
 
 	_, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-strict"}, &ClipGenerationOptions{
 		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
@@ -188,7 +189,7 @@ func TestClipSourceBuilder_AllowsSummaryWithoutTranscript(t *testing.T) {
 	clip.SetMetadataString("summary", "A boxer explains how footwork changes the pace of a fight.")
 	resolver.AddClip(clip)
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
-	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
 
 	evidence, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-summary"}, &ClipGenerationOptions{
 		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict, AllowMetadataFallback: true,
@@ -208,7 +209,7 @@ func TestClipSourceBuilder_UnknownTranscriptPolicyRejectsMissingTranscript(t *te
 	resolver := newFakeClipResolver()
 	resolver.AddClip(makeTestClip("clip-unknown-policy", "Unknown policy", time.Second))
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
-	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
 
 	_, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-unknown-policy"}, &ClipGenerationOptions{
 		Language: "en", TranscriptPolicy: "unsupported", SourceText: "EXPLICIT_SOURCE_TEXT",
@@ -222,7 +223,7 @@ func TestClipSourceBuilder_StrictPolicyAllowsFallbackOnlyForExplicitSourceText(t
 	resolver := newFakeClipResolver()
 	resolver.AddClip(makeTestClip("clip-fallback", "Fallback", time.Second))
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
-	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
 
 	evidence, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-fallback"}, &ClipGenerationOptions{
 		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict, SourceText: "EXPLICIT_GLOBAL_SOURCE_TEXT",

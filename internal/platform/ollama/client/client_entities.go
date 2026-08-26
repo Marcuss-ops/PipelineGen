@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 )
 
@@ -20,12 +20,12 @@ const entityExtractionNumPredict = 256
 const entityExtractionBatchSize = 5
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.
-func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req asset.EntityExtractionRequest) (*asset.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req detail.EntityExtractionRequest) (*detail.EntityExtractionResult, error) {
 	return c.ExtractEntitiesFromSegmentWithModel(ctx, req, "")
 }
 
 // ExtractEntitiesFromSegmentWithModel extracts entities using the specified model.
-func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req asset.EntityExtractionRequest, model string) (*asset.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req detail.EntityExtractionRequest, model string) (*detail.EntityExtractionResult, error) {
 	entityCount := req.EntityCount
 	if entityCount <= 0 {
 		entityCount = 2
@@ -62,7 +62,7 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req as
 
 // ExtractEntitiesFromBatchWithModel performs one bounded generation for up to
 // five scenes and returns one typed result per input scene.
-func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*asset.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*detail.EntityExtractionResult, error) {
 	if len(segments) == 0 || len(segments) > entityExtractionBatchSize {
 		return nil, fmt.Errorf("entity batch size must be between 1 and %d", entityExtractionBatchSize)
 	}
@@ -98,8 +98,8 @@ func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments
 	return c.extractEntityBatchIndividually(ctx, segments, entityCount, model, language)
 }
 
-func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*asset.EntityExtractionResult, error) {
-	results := make([]*asset.EntityExtractionResult, len(segments))
+func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*detail.EntityExtractionResult, error) {
+	results := make([]*detail.EntityExtractionResult, len(segments))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	var firstErr error
@@ -109,7 +109,7 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 		go func() {
 			defer wg.Done()
 			for index := range jobs {
-				result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, asset.EntityExtractionRequest{
+				result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, detail.EntityExtractionRequest{
 					SegmentText: segments[index], SegmentIndex: index, EntityCount: entityCount,
 				}, model)
 				if err != nil {
@@ -152,11 +152,11 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 	return results, nil
 }
 
-func parseEntityExtractionBatchResult(response string, expected int) ([]*asset.EntityExtractionResult, error) {
+func parseEntityExtractionBatchResult(response string, expected int) ([]*detail.EntityExtractionResult, error) {
 	cleaned := stripMarkdownFences(strings.TrimSpace(response))
 	const marker = "### SEGMENT_INDEX:"
 	parts := strings.Split(cleaned, marker)
-	results := make([]*asset.EntityExtractionResult, expected)
+	results := make([]*detail.EntityExtractionResult, expected)
 	seen := make([]bool, expected)
 	for _, part := range parts[1:] {
 		lines := strings.SplitN(part, "\n", 2)
@@ -197,12 +197,12 @@ func parseEntityExtractionBatchResult(response string, expected int) ([]*asset.E
 }
 
 // ExtractEntitiesFromScript extracts entities from all segments.
-func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*asset.FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*detail.FullEntityAnalysis, error) {
 	return c.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, "")
 }
 
 // ExtractEntitiesFromScriptWithModel extracts entities using the specified model.
-func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*detail.FullEntityAnalysis, error) {
 	return c.ExtractEntitiesFromScriptWithModelAndLanguage(ctx, segments, entityCount, model, "")
 }
 
@@ -210,7 +210,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 // of ExtractEntitiesFromScriptWithModel. It forwards the request language into
 // sanitization so stop-word and function-word filtering uses the correct
 // per-language lexicon instead of the cross-linguistic fallback profile.
-func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Context, segments []string, entityCount int, model string, language string) (*asset.FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Context, segments []string, entityCount int, model string, language string) (*detail.FullEntityAnalysis, error) {
 	if len(segments) == 0 {
 		return nil, fmt.Errorf("no segments provided")
 	}
@@ -218,14 +218,14 @@ func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Conte
 		entityCount = 2
 	}
 
-	analysis := &asset.FullEntityAnalysis{
+	analysis := &detail.FullEntityAnalysis{
 		TotalSegments:         len(segments),
-		SegmentEntities:       make([]asset.SegmentEntities, 0, len(segments)),
+		SegmentEntities:       make([]detail.SegmentEntities, 0, len(segments)),
 		EntityCountPerSegment: entityCount,
 	}
 
 	for i, segment := range segments {
-		req := asset.EntityExtractionRequest{
+		req := detail.EntityExtractionRequest{
 			SegmentText:  segment,
 			SegmentIndex: i,
 			EntityCount:  entityCount,
@@ -249,7 +249,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Conte
 		}
 		result = capEntityExtractionResult(result, entityCount)
 
-		analysis.SegmentEntities = append(analysis.SegmentEntities, asset.SegmentEntities{
+		analysis.SegmentEntities = append(analysis.SegmentEntities, detail.SegmentEntities{
 			SegmentIndex:     i,
 			SegmentText:      segment,
 			FrasiImportanti:  result.FrasiImportanti,
@@ -270,7 +270,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Conte
 	return analysis, nil
 }
 
-func parseEntityExtractionResult(response string, segmentIndex int) (*asset.EntityExtractionResult, error) {
+func parseEntityExtractionResult(response string, segmentIndex int) (*detail.EntityExtractionResult, error) {
 	cleaned := stripMarkdownFences(strings.TrimSpace(response))
 
 	// Primary path: plain-text labeled sections (LLM-PLAIN-TEXT-CONTRACT P1).
@@ -324,8 +324,8 @@ var sectionHeaders = map[string]string{
 
 // parsePlainTextEntityResult parses the LLM-PLAIN-TEXT-CONTRACT P1 format:
 // labeled sections with "## SectionName" headers and "- item" bullet points.
-func parsePlainTextEntityResult(response string, segmentIndex int) (*asset.EntityExtractionResult, error) {
-	result := &asset.EntityExtractionResult{
+func parsePlainTextEntityResult(response string, segmentIndex int) (*detail.EntityExtractionResult, error) {
+	result := &detail.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		EntitaSenzaTesto: make(map[string]string),
 	}
@@ -426,7 +426,7 @@ func parseEntityKeyValue(item string) (key, value string, ok bool) {
 
 // parseLegacyJSONEntityResult parses the pre-P1 JSON format.
 // Kept as fallback for cache hits and models that still produce JSON.
-func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*asset.EntityExtractionResult, error) {
+func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.EntityExtractionResult, error) {
 	start := strings.Index(jsonStr, "{")
 	end := strings.LastIndex(jsonStr, "}")
 	if start != -1 && end != -1 && end > start {
@@ -477,7 +477,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*asset.Entit
 		}
 	}
 
-	return &asset.EntityExtractionResult{
+	return &detail.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  raw.FrasiImportanti,
 		EntitaSenzaTesto: entityMap,
@@ -487,7 +487,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*asset.Entit
 	}, nil
 }
 
-func resultIsEmpty(result *asset.EntityExtractionResult) bool {
+func resultIsEmpty(result *detail.EntityExtractionResult) bool {
 	if result == nil {
 		return true
 	}
@@ -498,7 +498,7 @@ func resultIsEmpty(result *asset.EntityExtractionResult) bool {
 		len(result.ArtlistPhrases) == 0
 }
 
-func capEntityExtractionResult(result *asset.EntityExtractionResult, limit int) *asset.EntityExtractionResult {
+func capEntityExtractionResult(result *detail.EntityExtractionResult, limit int) *detail.EntityExtractionResult {
 	if result == nil {
 		return nil
 	}

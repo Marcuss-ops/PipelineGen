@@ -12,6 +12,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -22,7 +23,7 @@ import (
 type GenerationProvider interface {
 	Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error)
 	TriggerPrewarm(ctx context.Context, jobID string, count int)
-	Name() asset.ImageProvider
+	Name() detail.ImageProvider
 	Healthy(ctx context.Context) error
 }
 

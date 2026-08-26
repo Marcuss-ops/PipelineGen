@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func TestFallbackSpecialNames_RecoversSingleWordProperNouns(t *testing.T) {
@@ -80,7 +80,7 @@ func TestSanitizeEntityExtractionResult_FiltersByLanguage(t *testing.T) {
 	}
 
 	segment := "L'astronomia Maya e la scrittura che studiamo."
-	result := &asset.EntityExtractionResult{
+	result := &detail.EntityExtractionResult{
 		SegmentIndex:     0,
 		FrasiImportanti:  []string{segment},
 		EntitaSenzaTesto: map[string]string{},

@@ -28,12 +28,13 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ComputeIndexRevision derives the canonical index revision — the
@@ -51,13 +52,13 @@ import (
 // where sorted means ascending by (language_code, text_kind).
 // When no text tracks exist, the revision is just contentHash
 // (matching the byte-identity-only snapshot).
-func ComputeIndexRevision(contentHash string, textTracks []asset.TextTrack) string {
+func ComputeIndexRevision(contentHash string, textTracks []detail.TextTrack) string {
 	if len(textTracks) == 0 {
 		return contentHash
 	}
 
 	// Sort by (language_code, text_kind) for determinism.
-	sorted := make([]asset.TextTrack, len(textTracks))
+	sorted := make([]detail.TextTrack, len(textTracks))
 	copy(sorted, textTracks)
 	sort.Slice(sorted, func(i, j int) bool {
 		if sorted[i].LanguageCode != sorted[j].LanguageCode {
@@ -85,7 +86,7 @@ func ComputeIndexRevision(contentHash string, textTracks []asset.TextTrack) stri
 // must never fold text-track/metadata changes. New callers MUST use
 // ComputeIndexRevision; this alias is retained only for the existing
 // e2e determinism tests and the facade re-export surface.
-func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTrack) string {
+func ComputeContentHashWithTextTracks(fileHash string, textTracks []detail.TextTrack) string {
 	return ComputeIndexRevision(fileHash, textTracks)
 }
 

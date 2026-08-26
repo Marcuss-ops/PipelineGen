@@ -6,7 +6,7 @@
 // The brain is the decision layer; the nervous system (infra) executes.
 //
 // Scope:
-//   - internal/application/brain/**
+//   - internal/capabilities/brain/**
 //   - internal/capabilities/mediamemory/**
 //
 // Exempt:
@@ -43,7 +43,7 @@ import (
 const (
 	brainInfraBanRule = "percheck_brain_infra_ban"
 
-	brainScopePrefix       = "internal/application/brain/"
+	brainScopePrefix       = "internal/capabilities/brain/"
 	mediaMemoryScopePrefix = "internal/capabilities/mediamemory/"
 )
 

@@ -159,7 +159,7 @@ verify-integration: go-version-check
 verify-architecture:
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
 	$(GO) run ./cmd/archcheck && \
-	$(GO) run -tags=c2_source_catalog_only scripts/archcheck/gates/gate_c2_source_catalog_only_main.go --baseline=48 . && \
+	$(GO) run -tags=c2_source_catalog_only scripts/archcheck/gates/gate_c2_source_catalog_only_main.go . && \
 	$(GO) run -tags=c2_route_manifest scripts/archcheck/gates/gate_c2_route_manifest_main.go --baseline=171 --root=.
 	@echo "✅ Architecture verification passed"
 

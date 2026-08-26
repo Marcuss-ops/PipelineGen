@@ -13,6 +13,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"strings"
 	"testing"
@@ -32,15 +33,15 @@ func TestSearch_SameSceneAcross10Languages_SameAssetID(t *testing.T) {
 	)
 	src := "narrator walks through a misty forest at dawn"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	langs := []string{"it", "es", "fr", "de", "pt", "ru", "ja", "zh", "ko", "ar"}
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, langs); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, langs); err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
 
@@ -70,15 +71,15 @@ func TestSearch_LocalizationIsTextualNotIdentity(t *testing.T) {
 		src     = "the plane descends into the canyon at sunset"
 	)
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	langs := []string{"it", "es", "fr", "de", "pt", "ru", "ja", "zh", "ko", "ar"}
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, langs); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, langs); err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
 
@@ -127,21 +128,21 @@ func TestSearch_Localization_StaysTextualAcrossRounds(t *testing.T) {
 	)
 	srcV1 := "first cut lighting"
 	srcV1Hash := sha256Hex(srcV1)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV1),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV1),
 	}); err != nil {
 		t.Fatalf("seed v1: %v", err)
 	}
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, asset.TextTrackTranscript, []string{"it", "fr", "de", "ja"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV1Hash, detail.TextTrackTranscript, []string{"it", "fr", "de", "ja"}); err != nil {
 		t.Fatalf("Materialize v1: %v", err)
 	}
 
 	srcV2 := "second cut lighting"
 	srcV2Hash := sha256Hex(srcV2)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		func() asset.TextTrack {
-			s := newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcV2)
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		func() detail.TextTrack {
+			s := newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcV2)
 			s.SourceTextHash = srcV2Hash
 			s.TextHash = srcV2Hash
 			return s
@@ -149,7 +150,7 @@ func TestSearch_Localization_StaysTextualAcrossRounds(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed v2: %v", err)
 	}
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, asset.TextTrackTranscript, []string{"it", "fr", "de", "ja"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcV2Hash, detail.TextTrackTranscript, []string{"it", "fr", "de", "ja"}); err != nil {
 		t.Fatalf("Materialize v2: %v", err)
 	}
 

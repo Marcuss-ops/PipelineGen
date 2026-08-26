@@ -40,7 +40,7 @@ func makeFileForCommitterEventTest(t *testing.T, root, relPath, content string) 
 func TestScanAssetCommitterEventSSOT_CanonicalExempt(t *testing.T) {
 	root := t.TempDir()
 	// The canonical AssetCommitter emitting the literal.
-	makeFileForCommitterEventTest(t, root, "internal/application/assets/persistence/committer.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/assets/persistence/committer.go",
 		`package persistence
 const AssetIndexRequestedLiteral = "asset.index.requested"
 func CommitAsset() {}
@@ -58,7 +58,7 @@ func CommitAsset() {}
 // literal trips the gate.
 func TestScanAssetCommitterEventSSOT_NonCanonicalProducer(t *testing.T) {
 	root := t.TempDir()
-	makeFileForCommitterEventTest(t, root, "internal/application/random_other/ad_hoc_enqueuer.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/random_other/ad_hoc_enqueuer.go",
 		`package random_other
 import "fmt"
 func BadProducer() {
@@ -79,7 +79,7 @@ func BadProducer() {
 // that the .v1 envelope form is also caught.
 func TestScanAssetCommitterEventSSOT_V1EnvelopeForm(t *testing.T) {
 	root := t.TempDir()
-	makeFileForCommitterEventTest(t, root, "internal/application/random_other/v1_emitter.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/random_other/v1_emitter.go",
 		`package random_other
 import "fmt"
 func BadProducer() {
@@ -97,7 +97,7 @@ func BadProducer() {
 // that __test.go files are exempt (regression-guard surface).
 func TestScanAssetCommitterEventSSOT_TestFilesExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForCommitterEventTest(t, root, "internal/application/random_other/test_event_test.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/random_other/test_event_test.go",
 		`package random_other
 import "testing"
 func TestEventLiteral(t *testing.T) {
@@ -136,7 +136,7 @@ func Fixture() {
 // !productionOnly mode.
 func TestScanAssetCommitterEventSSOT_CommentOnlyResidue(t *testing.T) {
 	root := t.TempDir()
-	makeFileForCommitterEventTest(t, root, "internal/application/random_other/docs_only.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/random_other/docs_only.go",
 		`package random_other
 // "asset.index.requested" is the canonical envelope literal.
 func Note() {}
@@ -156,7 +156,7 @@ func Note() {}
 // WARN bucket (operator-facing zero-hits claim).
 func TestScanAssetCommitterEventSSOT_ProductionOnlySilencesWarn(t *testing.T) {
 	root := t.TempDir()
-	makeFileForCommitterEventTest(t, root, "internal/application/random_other/docs_only.go",
+	makeFileForCommitterEventTest(t, root, "internal/capabilities/random_other/docs_only.go",
 		`package random_other
 // "asset.index.requested" is the canonical envelope literal.
 func Note() {}

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
@@ -111,7 +111,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 	rows, err := clipsRepo.DB().QueryContext(ctx, `
 		SELECT json_extract(metadata_json, '$.youtube_video_id') AS vid, COUNT(*) AS n
 		FROM media_assets
-		WHERE `+asset.SoftDeleteFilter()+`
+		WHERE `+detail.SoftDeleteFilter()+`
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') IS NOT NULL
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') != ''
 		GROUP BY vid

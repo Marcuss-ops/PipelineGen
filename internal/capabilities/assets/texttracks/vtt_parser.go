@@ -28,7 +28,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // cueTimestampRE matches WebVTT timestamps (HH:MM:SS.mmm) and
@@ -47,7 +47,7 @@ var cueTimestampRE = regexp.MustCompile(`(\d{1,2}):(\d{2}):(\d{2})[.,](\d{3})\s+
 //   - file contains no parseable cues
 //   - any individual cue with invalid timing is silently dropped
 //     (the rest of the file is still returned)
-func ParseSubtitleFile(path string) (string, []asset.TimedCue, error) {
+func ParseSubtitleFile(path string) (string, []detail.TimedCue, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", nil, fmt.Errorf("texttracks.ParseSubtitleFile: open %q: %w", path, err)
@@ -63,9 +63,9 @@ func ParseSubtitleFile(path string) (string, []asset.TimedCue, error) {
 	// Allow long lines (VTT cues can be verbose).
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	var cues []asset.TimedCue
+	var cues []detail.TimedCue
 	var textParts []string
-	var currentCue *asset.TimedCue
+	var currentCue *detail.TimedCue
 	var cueIndex int
 
 	flush := func() {
@@ -100,7 +100,7 @@ func ParseSubtitleFile(path string) (string, []asset.TimedCue, error) {
 			flush()
 			startMs, _ := timestampToMs(m[1], m[2], m[3], m[4])
 			endMs, _ := timestampToMs(m[5], m[6], m[7], m[8])
-			currentCue = &asset.TimedCue{
+			currentCue = &detail.TimedCue{
 				StartMs: startMs,
 				EndMs:   endMs,
 				Text:    "",

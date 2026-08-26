@@ -1,10 +1,10 @@
 package finalizer
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
@@ -26,14 +26,14 @@ func (s *AssetTxFinalizer) FirePostCommitHooks(
 		return
 	}
 
-	kinds := []asset.TextTrackKind{
-		asset.TextTrackTranscript,
-		asset.TextTrackDescription,
-		asset.TextTrackSummary,
+	kinds := []detail.TextTrackKind{
+		detail.TextTrackTranscript,
+		detail.TextTrackDescription,
+		detail.TextTrackSummary,
 	}
 	var err error
 	if artifact.SourceTextHash == "" {
-		err = s.fanout.EnqueueAcquireOne(ctx, artifact.ArtifactID, sourceLanguage, []asset.TextTrackKind{asset.TextTrackTranscript})
+		err = s.fanout.EnqueueAcquireOne(ctx, artifact.ArtifactID, sourceLanguage, []detail.TextTrackKind{detail.TextTrackTranscript})
 	} else {
 		err = s.fanout.EnqueueMaterializeOne(ctx, artifact.ArtifactID, sourceLanguage, artifact.SourceTextHash, kinds)
 	}

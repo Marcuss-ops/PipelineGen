@@ -21,21 +21,22 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
 // resolveTranscript returns the canonical transcript string +
-// the resolved *asset.TextTrack for the given clip via the
+// the resolved *detail.TextTrack for the given clip via the
 // TextTrackReader. There is no legacy metadata_json fallback
 // (Fase 4 strict cutover) — every non-READY-or-missing path
 // returns *ErrTextTrackNotReady.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
-// signature is `(string, *asset.TextTrack, error)` so the
+// signature is `(string, *detail.TextTrack, error)` so the
 // per-clip accumulator can capture the resolved track (needed
 // to populate the 3 ClipEvidence fingerprint fields:
 // LanguageCode, TextTrackVersion, TranscriptHash). A nil track
@@ -60,7 +61,7 @@ func (c *ClipSourceBuilder) resolveTranscript(
 	assetID string,
 	language string,
 	clip *asset.Asset,
-) (string, *asset.TextTrack, error) {
+) (string, *detail.TextTrack, error) {
 	// Fase 4 strict cutover: textTrackReader is REQUIRED. A nil
 	// reader is a composition-time wiring gap — surface
 	// ErrTextTrackNotReady so the operator dashboard sees it
@@ -72,7 +73,7 @@ func (c *ClipSourceBuilder) resolveTranscript(
 			AssetID:            assetID,
 			RequestedLanguage:  strings.TrimSpace(language),
 			AvailableLanguages: nil,
-			MissingKind:        asset.TextTrackTranscript,
+			MissingKind:        detail.TextTrackTranscript,
 		}
 	}
 
@@ -84,18 +85,18 @@ func (c *ClipSourceBuilder) resolveTranscript(
 			AssetID:            assetID,
 			RequestedLanguage:  "",
 			AvailableLanguages: nil,
-			MissingKind:        asset.TextTrackTranscript,
+			MissingKind:        detail.TextTrackTranscript,
 		}
 	}
 
-	track, _, err := c.textTrackReader.FindReady(ctx, assetID, lang, asset.TextTrackTranscript)
+	track, _, err := c.textTrackReader.FindReady(ctx, assetID, lang, detail.TextTrackTranscript)
 	if err != nil {
 		c.logTextTrackResolveError(assetID, lang, err)
 		return "", nil, &ErrTextTrackNotReady{
 			AssetID:            assetID,
 			RequestedLanguage:  lang,
 			AvailableLanguages: nil,
-			MissingKind:        asset.TextTrackTranscript,
+			MissingKind:        detail.TextTrackTranscript,
 		}
 	}
 	if track == nil {
@@ -104,14 +105,14 @@ func (c *ClipSourceBuilder) resolveTranscript(
 			AssetID:            assetID,
 			RequestedLanguage:  lang,
 			AvailableLanguages: available,
-			MissingKind:        asset.TextTrackTranscript,
+			MissingKind:        detail.TextTrackTranscript,
 		}
 	}
 	// A previous render path could persist the editorial clip brief as if it
 	// were a transcript. Never expose that contamination to the model.
 	text := strings.ToLower(strings.TrimSpace(track.TextContent))
 	if strings.Contains(text, "clip description:") || strings.Contains(text, "write a ") || strings.Contains(text, "source text:") {
-		return "", nil, &ErrTextTrackNotReady{AssetID: assetID, RequestedLanguage: lang, MissingKind: asset.TextTrackTranscript}
+		return "", nil, &ErrTextTrackNotReady{AssetID: assetID, RequestedLanguage: lang, MissingKind: detail.TextTrackTranscript}
 	}
 
 	// Track found and READY. Return both the track (for
@@ -130,7 +131,7 @@ func (c *ClipSourceBuilder) listReadyLanguagesBestEffort(ctx context.Context, as
 	if c.textTrackReader == nil {
 		return nil
 	}
-	langs, err := c.textTrackReader.ListReadyLanguages(ctx, assetID, asset.TextTrackTranscript)
+	langs, err := c.textTrackReader.ListReadyLanguages(ctx, assetID, detail.TextTrackTranscript)
 	if err != nil {
 		if c.log != nil {
 			c.log.Warn("clip source builder: list ready languages failed",

@@ -27,6 +27,7 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -38,7 +39,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -230,7 +231,7 @@ func buildMetadataPayload(
 // `texttracks.UpsertTextTrackSQL` is the canonical SQL constant declared in
 // text_track_repository.go (same `assets` package — package-level
 // symbol sharing makes it visible without an explicit import).
-func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []asset.TextTrack, nowStr string) error {
+func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []detail.TextTrack, nowStr string) error {
 	if len(tracks) == 0 {
 		return nil
 	}
@@ -252,7 +253,7 @@ func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []asset.TextTr
 		}
 		status := string(t.Status)
 		if status == "" {
-			status = string(asset.TextTrackReady)
+			status = string(detail.TextTrackReady)
 		}
 
 		if _, err := stmt.ExecContext(ctx,

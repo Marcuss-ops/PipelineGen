@@ -14,6 +14,7 @@ package adapters
 // at call time, never a silent no-op path.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -27,7 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -184,7 +185,7 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 		Cues:             cues,
 		Confidence:       confPtr,
 		DurationMS:       res.DurationMs,
-		StreamSourceType: string(asset.TextSourceWhisper),
+		StreamSourceType: string(detail.TextSourceWhisper),
 	}, nil
 }
 
@@ -194,7 +195,7 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 // exists and generates (streaming PCM preferred, Whisper chain fallback) +
 // optionally persists when it does not.
 type ClipRenderTranscriptResolver struct {
-	repo      asset.TextTrackRepository
+	repo      detail.TextTrackRepository
 	acquire   *texttracks.AcquireService
 	streaming *ClipRenderStreamingTranscriber
 	cueWriter texttracks.TimedCueWriter
@@ -205,14 +206,14 @@ func (r *ClipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 	if r.repo == nil {
 		return nil, false, errors.New("clip.render: text track repository not wired")
 	}
-	track, cues, err := r.repo.FindReady(ctx, in.AssetID, in.Language, asset.TextTrackTranscript)
+	track, cues, err := r.repo.FindReady(ctx, in.AssetID, in.Language, detail.TextTrackTranscript)
 	if err != nil {
 		return nil, false, err
 	}
 	if track == nil {
-		langs, listErr := r.repo.ListReadyLanguages(ctx, in.AssetID, asset.TextTrackTranscript)
+		langs, listErr := r.repo.ListReadyLanguages(ctx, in.AssetID, detail.TextTrackTranscript)
 		if listErr == nil && len(langs) > 0 {
-			track, cues, _ = r.repo.FindReady(ctx, in.AssetID, langs[0], asset.TextTrackTranscript)
+			track, cues, _ = r.repo.FindReady(ctx, in.AssetID, langs[0], detail.TextTrackTranscript)
 		}
 	}
 	if track == nil {
@@ -220,7 +221,7 @@ func (r *ClipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 	}
 	hash := track.TextHash
 	if hash == "" {
-		hash = asset.TextHash(track.TextContent, track.LanguageCode, asset.TextTrackTranscript)
+		hash = detail.TextHash(track.TextContent, track.LanguageCode, detail.TextTrackTranscript)
 	}
 	return &cliprender.TranscriptResult{
 		AssetID:           in.AssetID,
@@ -294,7 +295,7 @@ func (r *ClipRenderTranscriptResolver) finalizeGenerated(
 	}
 	result.AssetID = in.AssetID
 	result.SourceAudioSHA256 = in.SourceSHA256
-	result.TextSHA256 = asset.TextHash(result.Text, result.Language, asset.TextTrackTranscript)
+	result.TextSHA256 = detail.TextHash(result.Text, result.Language, detail.TextTrackTranscript)
 
 	if in.Persist {
 		if err := r.persistResult(ctx, in.AssetID, source, result); err != nil {
@@ -331,17 +332,17 @@ func (r *ClipRenderTranscriptResolver) persistResult(
 	if lang == "" {
 		lang = "und"
 	}
-	srcType := asset.TextSourceWhisper
+	srcType := detail.TextSourceWhisper
 	if result.StreamSourceType != "" {
-		srcType = asset.TextTrackSource(result.StreamSourceType)
+		srcType = detail.TextTrackSource(result.StreamSourceType)
 	}
 	if srcType == "local_file" {
-		srcType = asset.TextSourceProvided
+		srcType = detail.TextSourceProvided
 	}
-	track := asset.TextTrack{
+	track := detail.TextTrack{
 		AssetID:            assetID,
 		LanguageCode:       lang,
-		TextKind:           asset.TextTrackTranscript,
+		TextKind:           detail.TextTrackTranscript,
 		TextContent:        result.Text,
 		SourceType:         srcType,
 		SourceLanguageCode: lang,
@@ -349,24 +350,24 @@ func (r *ClipRenderTranscriptResolver) persistResult(
 		Provider:           clipRenderProviderFor(srcType),
 		TextHash:           result.TextSHA256,
 		Confidence:         result.Confidence,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 	}
-	if err := r.repo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+	if err := r.repo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
 		return err
 	}
 	if len(result.Cues) > 0 && r.cueWriter != nil {
-		cues := make([]asset.TimedCue, 0, len(result.Cues))
+		cues := make([]detail.TimedCue, 0, len(result.Cues))
 		for _, c := range result.Cues {
-			cues = append(cues, asset.TimedCue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
+			cues = append(cues, detail.TimedCue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
 		}
-		return r.cueWriter.ReplaceTranscriptCues(ctx, assetID, map[string][]asset.TimedCue{lang: cues})
+		return r.cueWriter.ReplaceTranscriptCues(ctx, assetID, map[string][]detail.TimedCue{lang: cues})
 	}
 	return nil
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-func mapTimedCues(in []asset.TimedCue) []cliprender.Cue {
+func mapTimedCues(in []detail.TimedCue) []cliprender.Cue {
 	if len(in) == 0 {
 		return nil
 	}
@@ -377,24 +378,24 @@ func mapTimedCues(in []asset.TimedCue) []cliprender.Cue {
 	return out
 }
 
-func mapClipRenderCues(in []cliprender.Cue) []asset.TimedCue {
+func mapClipRenderCues(in []cliprender.Cue) []detail.TimedCue {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]asset.TimedCue, 0, len(in))
+	out := make([]detail.TimedCue, 0, len(in))
 	for _, c := range in {
-		out = append(out, asset.TimedCue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
+		out = append(out, detail.TimedCue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
 	}
 	return out
 }
 
 // clipRenderProviderFor maps the acquisition source_type to the canonical
 // provider label persisted on the text track (whisper/youtube, else empty).
-func clipRenderProviderFor(st asset.TextTrackSource) string {
+func clipRenderProviderFor(st detail.TextTrackSource) string {
 	switch st {
-	case asset.TextSourceYouTubeSubtitle:
+	case detail.TextSourceYouTubeSubtitle:
 		return "youtube"
-	case asset.TextSourceWhisper:
+	case detail.TextSourceWhisper:
 		return "whisper"
 	default:
 		return ""

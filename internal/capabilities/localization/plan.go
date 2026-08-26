@@ -12,7 +12,7 @@
 //     RenderLocalizedClip(plan) where TargetLanguage / Priority /
 //     SubtitleTrackID / SubtitleSHA256 change.
 //   - The plan REFERENCES text tracks by (ID, SHA256) instead of embedding the
-//     translated text: asset.TextTrack stays the owner of the translation
+//     translated text: detail.TextTrack stays the owner of the translation
 //     content (transcript + translated track), so the text is never duplicated
 //     across DB / request / render plan / document model.
 //   - Fingerprint and Validate() are the canonical single owners of their
@@ -22,6 +22,7 @@
 package localization
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,7 +30,7 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // LocalizedClipPlanVersion is the canonical version of the localized-clip
@@ -81,7 +82,7 @@ type LocalizedClipPlan struct {
 	// SubtitleTrackID + SubtitleSHA256 reference the translated
 	// target-language text track. The resolver fetches the content and
 	// compiles the .ass from it — this keeps the translation owned by
-	// asset.TextTrack, not duplicated into the plan.
+	// detail.TextTrack, not duplicated into the plan.
 	SubtitleTrackID int64  `json:"subtitle_track_id"`
 	SubtitleSHA256  string `json:"subtitle_sha256"`
 

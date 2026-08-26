@@ -20,7 +20,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // SearchRequest is the per-call request envelope the Router
@@ -32,7 +32,7 @@ type SearchRequest struct {
 	Query  string
 	Lang   string
 	Tags   []string
-	Origin asset.ImageOrigin
+	Origin detail.ImageOrigin
 	Limit  int
 }
 
@@ -42,6 +42,6 @@ type SearchRequest struct {
 // the territory identifier ("retrieved" | "generated") the Router
 // dispatcher uses for log lines + downstream dispatch.
 type SearchResponse struct {
-	Assets     []asset.ImageAsset
+	Assets     []detail.ImageAsset
 	SubService string
 }

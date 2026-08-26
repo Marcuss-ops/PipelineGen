@@ -30,8 +30,9 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
+	localizationadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -272,12 +273,12 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		return nil, fmt.Errorf("localization service: build asset materializer: %w", materializerErr)
 	}
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	sources := newLocalizationSourceResolver(resolver, materializer, prober)
+	sources := localizationadapters.NewSourceResolver(resolver, materializer, prober)
 
 	// Subtitle ports: resolve the translated track by PK + compile the ASS via
 	// the canonical texttracks.CompileASSContent generator.
-	subtitleResolver := newLocalizationSubtitleResolver(trackStore)
-	subtitleCompiler := newLocalizationSubtitleCompiler()
+	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
+	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
 	// Rust render boundary: the same render_clip executor + resolved profile
 	// that every other render flows through.
@@ -285,16 +286,16 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, root.MediaExec.Profile, log)
 	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
 	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	executor := newLocalizationRenderPlanExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, nil, backendResolver, backendProbe), root.MediaExec.Profile, log)
+	executor := localizationadapters.NewRenderPlanExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, nil, backendResolver, backendProbe), root.MediaExec.Profile, log)
 
-	uploader := &localizationDriveUploader{publisher: root.Drive.Publisher}
-	docPublisher := &localizationDocPublisher{doc: root.Drive.DocClient}
+	uploader := localizationadapters.NewDriveUploader(root.Drive.Publisher)
+	docPublisher := localizationadapters.NewDocPublisher(root.Drive.DocClient)
 
 	svcCfg := LocalizationConfigFromConfig(cfg)
 
 	return NewLocalizationService(LocalizationDeps{
 		Sources:          sources,
-		TrackResolver:    &localizationTrackResolver{repo: trackStore},
+		TrackResolver:    localizationadapters.NewTrackResolver(trackStore),
 		SubtitleResolver: subtitleResolver,
 		SubtitleCompiler: subtitleCompiler,
 		Executor:         executor,
@@ -351,6 +352,6 @@ func canonicalFactHash(v any) string {
 // building) plus the raw PK fetch (for subtitle resolution). The concrete
 // *texttracks.TextTrackRepositorySQLite satisfies both.
 type localizationTrackStore interface {
-	asset.TextTrackRepository
-	FindByID(ctx context.Context, trackID int64) (*asset.TextTrack, []asset.TimedCue, error)
+	detail.TextTrackRepository
+	FindByID(ctx context.Context, trackID int64) (*detail.TextTrack, []detail.TimedCue, error)
 }

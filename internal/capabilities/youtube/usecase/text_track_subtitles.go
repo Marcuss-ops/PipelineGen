@@ -12,7 +12,7 @@
 //   - the priority-3 + priority-4 vs Whisper-fall-through decision
 //
 // The subtitle fetcher port (SubtitleFetcherPort.FetchSegmentSubtitles)
-// itself returns an already-assembled *asset.ResolvedTextBundle so the
+// itself returns an already-assembled *detail.ResolvedTextBundle so the
 // orchestrator can accept it directly — this leaf is reserved for the
 // downstream conversion into the writer's per-cue shape, not the port
 // call itself.
@@ -33,10 +33,11 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // bundleToTimedTrack converts a non-empty bundle's Cues into a single
@@ -59,7 +60,7 @@ import (
 //     Cues field, this helper grows a parallel MaterializePayload
 //     TimedTracks API. Until then the publisher contract is
 //     bundle-only.
-func (r *TextTrackResolver) bundleToTimedTrack(clipID string, bundle *asset.ResolvedTextBundle) *localized.TimedTextTrack {
+func (r *TextTrackResolver) bundleToTimedTrack(clipID string, bundle *detail.ResolvedTextBundle) *localized.TimedTextTrack {
 	if r == nil {
 		return nil
 	}
@@ -73,7 +74,7 @@ func (r *TextTrackResolver) bundleToTimedTrack(clipID string, bundle *asset.Reso
 	if lang == "" {
 		lang = "und"
 	}
-	cues := make([]asset.TimedCue, 0, len(bundle.Cues))
+	cues := make([]detail.TimedCue, 0, len(bundle.Cues))
 	dropped := 0
 	for _, c := range bundle.Cues {
 		if c.StartMs < 0 || c.EndMs < c.StartMs || c.Text == "" {
@@ -95,7 +96,7 @@ func (r *TextTrackResolver) bundleToTimedTrack(clipID string, bundle *asset.Reso
 	}
 	return &localized.TimedTextTrack{
 		LanguageCode: lang,
-		TextKind:     asset.TextTrackTranscript,
+		TextKind:     detail.TextTrackTranscript,
 		SourceType:   bundle.SourceType,
 		Cues:         cues,
 	}

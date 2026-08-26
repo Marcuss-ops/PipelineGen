@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 var _ capoverlay.MediaProber = (*MediaContractProber)(nil)
@@ -46,7 +47,7 @@ func (p *MediaContractProber) ProbeOverlay(ctx context.Context, path string) (ca
 	if info == nil {
 		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media probe: nil MediaInfo")
 	}
-	sha, err := SHA256File(path)
+	sha, _, err := digest.SHA256File(path)
 	if err != nil {
 		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media hash: %w", err)
 	}

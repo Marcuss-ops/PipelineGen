@@ -15,7 +15,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The TextHash + SourceVersion SHA-256 formula lives in
 //     internal/kernel/asset/text_track_hashes.go. This file CALLS
-//     asset.TextHash / asset.SourceVersion and NEVER re-implements
+//     detail.TextHash / detail.SourceVersion and NEVER re-implements
 //     the formula inline.
 //   - The canonical BCP-47 normalization rules live in
 //     internal/kernel/asset/bcp47.go. This file CALLS asset.Normalize
@@ -46,13 +46,14 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Save persists a single transcript row (text_kind=transcript) to
@@ -69,7 +70,7 @@ func (r *TextTrackResolver) Save(
 	ctx context.Context,
 	clipID string,
 	transcript string,
-	source asset.TextTrackSource,
+	source detail.TextTrackSource,
 	languageCode string,
 ) error {
 	if r == nil || r.Repo == nil || transcript == "" {
@@ -82,15 +83,15 @@ func (r *TextTrackResolver) Save(
 	if err != nil {
 		return fmt.Errorf("text_track_resolver.Save: invalid language %q: %w", languageCode, err)
 	}
-	bundle := &asset.ResolvedTextBundle{
+	bundle := &detail.ResolvedTextBundle{
 		LanguageCode:       lang,
 		SourceLanguageCode: lang,
 		PlainText:          transcript,
 		SourceType:         source,
-		IsOriginal:         source == asset.TextSourceYouTubeSubtitle || source == asset.TextSourceProvided || source == asset.TextSourceWhisper,
+		IsOriginal:         source == detail.TextSourceYouTubeSubtitle || source == detail.TextSourceProvided || source == detail.TextSourceWhisper,
 		Provider:           "",
 	}
-	tracks := bundleToTextTracks(clipID, bundle, asset.TextTrackTranscript)
+	tracks := bundleToTextTracks(clipID, bundle, detail.TextTrackTranscript)
 	if len(tracks) == 0 {
 		return nil
 	}
@@ -107,7 +108,7 @@ func (r *TextTrackResolver) Save(
 // and nil-safe: nil Receiver or empty slice is a no-op. Errors are
 // propagated verbatim (caller in step6to9 mirrors the BLOCKER #4
 // partial-state pattern on failure).
-func (r *TextTrackResolver) SaveMany(ctx context.Context, tracks []asset.TextTrack) error {
+func (r *TextTrackResolver) SaveMany(ctx context.Context, tracks []detail.TextTrack) error {
 	if r == nil || r.Repo == nil || len(tracks) == 0 {
 		return nil
 	}
@@ -136,8 +137,8 @@ func (r *TextTrackResolver) SaveMany(ctx context.Context, tracks []asset.TextTra
 // Fase 1.b: language codes are normalized via asset.Normalize here
 // (the orchestrator) before the row is built — godlike/07 honest
 // lock: empty input collapses to "und" without error.
-func (r *TextTrackResolver) MaterializePayloadTexts(clipID string, texts []youtubetypes.LocalizedClipText) []asset.TextTrack {
-	var out []asset.TextTrack
+func (r *TextTrackResolver) MaterializePayloadTexts(clipID string, texts []youtubetypes.LocalizedClipText) []detail.TextTrack {
+	var out []detail.TextTrack
 	for _, t := range texts {
 		rawLang := t.LanguageCode
 		lang, err := asset.Normalize(rawLang)
@@ -155,9 +156,9 @@ func (r *TextTrackResolver) MaterializePayloadTexts(clipID string, texts []youtu
 		}
 		srcType := sourceOrProvided(t.SourceType)
 		isOriginal := t.IsOriginal ||
-			srcType == asset.TextSourceProvided ||
-			srcType == asset.TextSourceYouTubeSubtitle ||
-			srcType == asset.TextSourceWhisper
+			srcType == detail.TextSourceProvided ||
+			srcType == detail.TextSourceYouTubeSubtitle ||
+			srcType == detail.TextSourceWhisper
 
 		// godlike/06 SSOT: the SourceLanguageCode derivation lives
 		// ONLY in sourceLangOf (text_track_persistence.go). The
@@ -167,12 +168,12 @@ func (r *TextTrackResolver) MaterializePayloadTexts(clipID string, texts []youtu
 		// split per the user-spec discipline).
 		srcLang := sourceLangOf(t, lang, isOriginal)
 
-		push := func(kind asset.TextTrackKind, text string) {
+		push := func(kind detail.TextTrackKind, text string) {
 			if text == "" {
 				return
 			}
-			hash := asset.TextHash(text, lang, kind)
-			out = append(out, asset.TextTrack{
+			hash := detail.TextHash(text, lang, kind)
+			out = append(out, detail.TextTrack{
 				AssetID:            clipID,
 				LanguageCode:       lang,
 				TextKind:           kind,
@@ -184,15 +185,15 @@ func (r *TextTrackResolver) MaterializePayloadTexts(clipID string, texts []youtu
 				ModelName:          t.ModelName,
 				ModelVersion:       t.ModelVersion,
 				TextHash:           hash,
-				SourceVersion:      asset.SourceVersion(hash, srcLang, lang, "", t.ModelName, t.ModelVersion, ""),
+				SourceVersion:      detail.SourceVersion(hash, srcLang, lang, "", t.ModelName, t.ModelVersion, ""),
 				Confidence:         confidencePtr(t.Confidence),
-				Status:             asset.TextTrackReady,
+				Status:             detail.TextTrackReady,
 			})
 		}
-		push(asset.TextTrackTranscript, t.Transcript)
-		push(asset.TextTrackTitle, t.Title)
-		push(asset.TextTrackSummary, t.Summary)
-		push(asset.TextTrackDescription, t.Description)
+		push(detail.TextTrackTranscript, t.Transcript)
+		push(detail.TextTrackTitle, t.Title)
+		push(detail.TextTrackSummary, t.Summary)
+		push(detail.TextTrackDescription, t.Description)
 	}
 	return out
 }

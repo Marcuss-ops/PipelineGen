@@ -23,7 +23,7 @@ import (
 	"context"
 
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -117,6 +117,6 @@ type AssocSearchService interface {
 // byte-equivalent behaviour and satisfies godlike/06 SSOT (no
 // operator-of-untyped-traffic).
 type ImageGenService interface {
-	SearchAndDownload(ctx context.Context, name, description, query, language string) (*asset.ImageAsset, error)
-	GenerateSceneImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
+	SearchAndDownload(ctx context.Context, name, description, query, language string) (*detail.ImageAsset, error)
+	GenerateSceneImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*detail.ImageAsset, error)
 }

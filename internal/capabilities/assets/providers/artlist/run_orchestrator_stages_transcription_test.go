@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -30,7 +30,7 @@ type failingTextTrackRepo struct {
 	err error
 }
 
-func (f *failingTextTrackRepo) UpsertBatch(_ context.Context, _ []asset.TextTrack) error {
+func (f *failingTextTrackRepo) UpsertBatch(_ context.Context, _ []detail.TextTrack) error {
 	return f.err
 }
 
@@ -39,8 +39,8 @@ func (f *failingTextTrackRepo) UpsertBatch(_ context.Context, _ []asset.TextTrac
 // transcription path has a path to read.
 type succeedMediaProcessor struct{}
 
-func (s *succeedMediaProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
-	return &asset.ProcessResult{
+func (s *succeedMediaProcessor) Process(_ context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
+	return &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.Name + ".mp4",
 		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
@@ -53,7 +53,7 @@ func (s *succeedMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 // stageProcessBatch will exercise the transcription path. mediaProcessor
 // always succeeds; the caller can inject custom transcriber / text track
 // repo doubles to test failure branches.
-func newTranscriptionTestOrchestrator(t *testing.T, transcriber Transcriber, ttRepo asset.TextTrackRepository) *RunOrchestratorService {
+func newTranscriptionTestOrchestrator(t *testing.T, transcriber Transcriber, ttRepo detail.TextTrackRepository) *RunOrchestratorService {
 	t.Helper()
 
 	svc := &Service{
@@ -82,7 +82,7 @@ func newTranscriptionPipelineState() *pipelineState {
 					ClipID: "clip-transcription-001",
 					Name:   "stub",
 				},
-				processInput: &asset.ProcessInput{
+				processInput: &detail.ProcessInput{
 					ID:        "clip-transcription-001",
 					Name:      "stub",
 					SourceURL: "https://artlist.io/clip/001",

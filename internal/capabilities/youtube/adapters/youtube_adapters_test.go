@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 	"time"
@@ -9,7 +10,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 
 	"github.com/stretchr/testify/assert"
@@ -228,8 +229,8 @@ func (s *stubVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req 
 
 type stubMediaProcessor struct{}
 
-func (s *stubMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
-	return &asset.ProcessResult{Status: "ok"}, nil
+func (s *stubMediaProcessor) Process(ctx context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
+	return &detail.ProcessResult{Status: "ok"}, nil
 }
 
 // ── fromExistingClip mapper tests ───────────────────────────────────────
@@ -299,12 +300,12 @@ func TestFromExistingClip_RoundTrip_RichMetadata(t *testing.T) {
 }
 
 // Compile-time assertion (Wave 16 follow-up, June 2026): *stubAssetRepo
-// statically satisfies asset.Repository. AGENTS.md Pattern 0 doctrine
-// applied at the test-stub home: if asset.Repository evolves in a future
+// statically satisfies detail.Repository. AGENTS.md Pattern 0 doctrine
+// applied at the test-stub home: if detail.Repository evolves in a future
 // wave (e.g. a new method), this assertion will fail at test compile
 // time, forcing the stub to grow BEFORE the next vet run unblocks —
 // preventing the rot that the FindByExternalRef addition above fixes
 // from recurring. Mirrors the production-side precedents at
 // internal/platform/qdrant/search_adapter.go and
 // internal/platform/sqlite/assets/clips_repository.go.
-var _ asset.Repository = (*stubAssetRepo)(nil)
+var _ detail.Repository = (*stubAssetRepo)(nil)

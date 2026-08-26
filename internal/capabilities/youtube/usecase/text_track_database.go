@@ -22,9 +22,10 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // fetchDatabaseTrackRaw performs the canonical READY-only lookup
@@ -40,11 +41,11 @@ import (
 // cue metadata.
 func fetchDatabaseTrackRaw(
 	ctx context.Context,
-	repo asset.TextTrackRepository,
+	repo detail.TextTrackRepository,
 	clipID string,
 	normalizedLang string,
-	kind asset.TextTrackKind,
-) (*asset.TextTrack, []asset.TimedCue, error) {
+	kind detail.TextTrackKind,
+) (*detail.TextTrack, []detail.TimedCue, error) {
 	if repo == nil {
 		return nil, nil, nil
 	}

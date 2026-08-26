@@ -15,6 +15,7 @@
 package pythontransformer
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"bufio"
 	"context"
 	"encoding/json"

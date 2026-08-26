@@ -2,7 +2,7 @@
 //
 // FASE 2.A PR2 (June 2026) split: the curation-layer adapter
 // moved out of wire_script.go. The adapter bridges the concrete
-// *imgservice.Service signature (which returns *asset.ImageAsset
+// *imgservice.Service signature (which returns *detail.ImageAsset
 // and takes tags []string as the search-input carrier) into the
 // canonical adapters.ImageGenService typed-port shape (which
 // returns *adapters.ImageResult). This is the only canonical
@@ -60,7 +60,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // imageGenSvcAdapter adapts *imgservice.Service →
@@ -69,7 +69,7 @@ import (
 //
 // The adapter invokes AI image generation (GenerateSmartImage) via
 // the wrapped concrete service and bridges the result shape
-// (*asset.ImageAsset) into the consumer's typed-port shape
+// (*detail.ImageAsset) into the consumer's typed-port shape
 // (*adapters.ImageResult). On failure the error is propagated.
 // The concrete SearchAndDownload path of *imgservice.Service (a
 // Wikipedia/SearXNG/DuckDuckGo web-search fallback) is intentionally
@@ -88,8 +88,8 @@ import (
 // non-broken type-bridge.
 type imageGenSvcAdapter struct {
 	svc interface {
-		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
-		SearchAndDownload(ctx context.Context, name, description, query, language string, tags []string) (*asset.ImageAsset, error)
+		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error)
+		SearchAndDownload(ctx context.Context, name, description, query, language string, tags []string) (*detail.ImageAsset, error)
 		TriggerPrewarm(ctx context.Context, jobID string, count int)
 	}
 }
@@ -98,7 +98,7 @@ type imageGenSvcAdapter struct {
 // the composition boundary. Without this forwarding method the adapter was
 // seen only as the generic SearchAndDownload port, so scene generation
 // bypassed the visual-prompt path in the ImageProcessor.
-func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
 	if a == nil || a.svc == nil {
 		return nil, fmt.Errorf("image generation service is not configured")
 	}
@@ -106,11 +106,11 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, to
 }
 
 // SearchAndDownload bridges the concrete *imgservice.Service
-// signature (returns *asset.ImageAsset) to the canonical
+// signature (returns *detail.ImageAsset) to the canonical
 // adapters.ImageGenService interface (returns
 // *adapters.ImageResult). ImageResult exposes only SourceURL, so
 // the bridge copies that single field after a defensive nil-check
-// on the underlying asset.ImageAsset. A nil inner result becomes
+// on the underlying detail.ImageAsset. A nil inner result becomes
 // an EMPTY ImageResult (SourceURL="") so the downstream
 // ImageProcessor gets a typed non-nil pointer — matching the
 // existing processor code path in

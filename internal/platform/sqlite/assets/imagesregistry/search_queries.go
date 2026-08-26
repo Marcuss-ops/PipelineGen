@@ -7,11 +7,12 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
@@ -145,7 +146,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	// Fast path: use indexed search terms table.
 	clips, err := s.SearchByTerms(ctx, source, keywords, 50)
 	if err == nil && len(clips) > 0 {
-		scored := asset.ScoreClips(clips, keywords)
+		scored := detail.ScoreClips(clips, keywords)
 		return scored, nil
 	}
 
@@ -183,7 +184,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	}
 
 	if len(results) > 0 {
-		return asset.ScoreClips(results, keywords), nil
+		return detail.ScoreClips(results, keywords), nil
 	}
 
 	if len(keywords) > 1 {
@@ -215,7 +216,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 		}
 	}
 
-	return asset.ScoreClips(results, keywords), nil
+	return detail.ScoreClips(results, keywords), nil
 }
 
 // SearchClipsByKeywords searches clips by keywords using LIKE on the
@@ -257,7 +258,7 @@ func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source str
 }
 
 // SearchClipsAdvanced searches clips with structured filters.
-func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error) {
+func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error) {
 	if req.Limit <= 0 {
 		req.Limit = 50
 	}
@@ -391,7 +392,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 		clips = append(clips, clip)
 	}
 
-	return &asset.AdvancedSearchResult{
+	return &detail.AdvancedSearchResult{
 		Clips:  clips,
 		Total:  total,
 		Limit:  req.Limit,

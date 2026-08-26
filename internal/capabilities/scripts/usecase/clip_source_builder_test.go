@@ -30,6 +30,7 @@
 package usecase_test
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"
@@ -42,7 +43,7 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -445,8 +446,8 @@ func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
 	clip.Tags = []string{"commentator", "boxing"}
 
 	reader := &stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
-			clipID + ":en": makeTrack(clipID, "en", "Pacquiao appears faster and lighter on his feet.", asset.TextTrackReady),
+		tracks: map[string]*detail.TextTrack{
+			clipID + ":en": makeTrack(clipID, "en", "Pacquiao appears faster and lighter on his feet.", detail.TextTrackReady),
 		},
 		readyLanguages: map[string][]string{clipID: {"en"}},
 	}
@@ -488,22 +489,22 @@ type a4StubTextTrackReader struct {
 	transcripts map[string]string
 }
 
-func (s *a4StubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	if text, ok := s.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
-		return &asset.TextTrack{
+func (s *a4StubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
+	if text, ok := s.transcripts[assetID]; ok && kind == detail.TextTrackTranscript {
+		return &detail.TextTrack{
 			AssetID:       assetID,
 			LanguageCode:  languageCode,
-			TextKind:      asset.TextTrackTranscript,
+			TextKind:      detail.TextTrackTranscript,
 			TextContent:   text,
 			TextHash:      "a4-" + assetID,
 			SourceVersion: "v1",
-			Status:        asset.TextTrackReady,
+			Status:        detail.TextTrackReady,
 		}, nil, nil
 	}
 	return nil, nil, nil
 }
 
-func (s *a4StubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+func (s *a4StubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, _ detail.TextTrackKind) ([]string, error) {
 	if _, ok := s.transcripts[assetID]; ok {
 		return []string{"en"}, nil
 	}

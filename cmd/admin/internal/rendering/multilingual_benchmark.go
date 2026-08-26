@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
@@ -14,7 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
@@ -174,8 +175,8 @@ func benchmarkLevel(ctx context.Context, renderer *multilingual.Renderer, inputs
 func buildBenchmarkInputs(
 	ctx context.Context,
 	clips *sqassets.ClipsRepository,
-	trackRepo asset.TextTrackRepository,
-	subRepo asset.SubtitleArtifactRepository,
+	trackRepo detail.TextTrackRepository,
+	subRepo detail.SubtitleArtifactRepository,
 	cfg *config.Config,
 	id, srcLang string,
 	targetLangs []string,
@@ -205,13 +206,13 @@ func buildBenchmarkInputs(
 
 	inputs := make([]multilingual.VariantInput, 0, len(order))
 	for _, lang := range order {
-		art, err := subRepo.FindCurrent(ctx, id, lang, asset.SubtitleFormatASS)
+		art, err := subRepo.FindCurrent(ctx, id, lang, detail.SubtitleFormatASS)
 		if err != nil || art == nil || art.LocalPath == "" {
 			log.Warn("multilingual-benchmark: no READY ASS artifact, skipping language",
 				zap.String("asset_id", id), zap.String("lang", lang))
 			continue
 		}
-		track, _, err := trackRepo.FindReady(ctx, id, lang, asset.TextTrackTranscript)
+		track, _, err := trackRepo.FindReady(ctx, id, lang, detail.TextTrackTranscript)
 		transcriptSHA := ""
 		translationVersion := ""
 		if err == nil && track != nil {

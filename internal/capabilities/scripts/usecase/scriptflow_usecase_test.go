@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -88,11 +88,11 @@ func TestSemaphoreUseCase_AcquireReleaseReuse(t *testing.T) {
 // inject a canned FullEntityAnalysis or an error.
 type fakePostGenExtractor struct {
 	calls     atomic.Int32
-	analysis  *asset.FullEntityAnalysis
+	analysis  *detail.FullEntityAnalysis
 	returnErr error
 }
 
-func (f *fakePostGenExtractor) ExtractEntitiesFromScriptWithModel(_ context.Context, _ []string, _ int, _ string) (*asset.FullEntityAnalysis, error) {
+func (f *fakePostGenExtractor) ExtractEntitiesFromScriptWithModel(_ context.Context, _ []string, _ int, _ string) (*detail.FullEntityAnalysis, error) {
 	f.calls.Add(1)
 	if f.returnErr != nil {
 		return nil, f.returnErr
@@ -100,7 +100,7 @@ func (f *fakePostGenExtractor) ExtractEntitiesFromScriptWithModel(_ context.Cont
 	if f.analysis != nil {
 		return f.analysis, nil
 	}
-	return &asset.FullEntityAnalysis{}, nil
+	return &detail.FullEntityAnalysis{}, nil
 }
 
 // fakePostGenInsight is the InsightBuilder narrow-port fake.

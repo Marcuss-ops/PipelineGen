@@ -10,13 +10,14 @@
 //     errors.Is surface the sentinel.
 //
 // Field shapes (canonical from internal/kernel/asset/*.go):
-//   - asset.TranscriptResult{ Text string, DetectedLanguage string,
+//   - detail.TranscriptResult{ Text string, DetectedLanguage string,
 //     Confidence *float64 } — NO bare Language field.
-//   - asset.TextTrack{ LanguageCode, TextContent, ... } — NO bare Language
+//   - detail.TextTrack{ LanguageCode, TextContent, ... } — NO bare Language
 //     or Text field (those would not compile against the canonical surface).
 package ingest
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"sync/atomic"
@@ -27,7 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Test stubs satisfying the 9 named ports ────────────────────────────
@@ -69,29 +70,29 @@ func (s *stubStore) StoreArtifact(_ context.Context, _ *artifacts.MediaRecord) e
 
 type stubTranscriber struct{ called atomic.Int32 }
 
-func (s *stubTranscriber) Transcribe(_ context.Context, _ NormalizedMedia) (asset.TranscriptResult, error) {
+func (s *stubTranscriber) Transcribe(_ context.Context, _ NormalizedMedia) (detail.TranscriptResult, error) {
 	s.called.Add(1)
 	// Canonical TranscriptResult field is DetectedLanguage (NOT Language).
-	return asset.TranscriptResult{Text: "hello world", DetectedLanguage: "en"}, nil
+	return detail.TranscriptResult{Text: "hello world", DetectedLanguage: "en"}, nil
 }
 
 type stubEnricher struct{ called atomic.Int32 }
 
-func (s *stubEnricher) Enrich(_ context.Context, _ string, _ NormalizedMedia, _ asset.TranscriptResult) error {
+func (s *stubEnricher) Enrich(_ context.Context, _ string, _ NormalizedMedia, _ detail.TranscriptResult) error {
 	s.called.Add(1)
 	return nil
 }
 
 type stubTranslator struct{ called atomic.Int32 }
 
-func (s *stubTranslator) Translate(_ context.Context, _ string, _ asset.TranscriptResult) ([]asset.TextTrack, error) {
+func (s *stubTranslator) Translate(_ context.Context, _ string, _ detail.TranscriptResult) ([]detail.TextTrack, error) {
 	s.called.Add(1)
 	// Canonical TextTrack fields: LanguageCode, TextContent, TextKind
 	// (typed-kind). Min-shape literal valid against the canonical
 	// TextTrack declaration.
-	return []asset.TextTrack{{
+	return []detail.TextTrack{{
 		LanguageCode: "en",
-		TextKind:     asset.TextTrackTranscript,
+		TextKind:     detail.TextTrackTranscript,
 		TextContent:  "hello world",
 	}}, nil
 }

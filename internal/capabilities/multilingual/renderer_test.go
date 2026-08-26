@@ -12,7 +12,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -90,25 +90,25 @@ func defaultMockProber() *mockOutputProber {
 
 type fakeVariantRepo struct {
 	mu   sync.Mutex
-	rows map[string]*asset.RenderVariant
+	rows map[string]*detail.RenderVariant
 }
 
 func newFakeVariantRepo() *fakeVariantRepo {
-	return &fakeVariantRepo{rows: map[string]*asset.RenderVariant{}}
+	return &fakeVariantRepo{rows: map[string]*detail.RenderVariant{}}
 }
 
 func (f *fakeVariantRepo) key(sourceClipID, language, fingerprint string) string {
 	return sourceClipID + "\x00" + language + "\x00" + fingerprint
 }
 
-func (f *fakeVariantRepo) Upsert(_ context.Context, v *asset.RenderVariant) error {
+func (f *fakeVariantRepo) Upsert(_ context.Context, v *detail.RenderVariant) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.rows[f.key(v.SourceClipID, v.LanguageCode, v.Fingerprint)] = v
 	return nil
 }
 
-func (f *fakeVariantRepo) FindCurrent(_ context.Context, sourceClipID, languageCode string) (*asset.RenderVariant, error) {
+func (f *fakeVariantRepo) FindCurrent(_ context.Context, sourceClipID, languageCode string) (*detail.RenderVariant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, v := range f.rows {
@@ -119,7 +119,7 @@ func (f *fakeVariantRepo) FindCurrent(_ context.Context, sourceClipID, languageC
 	return nil, nil
 }
 
-func (f *fakeVariantRepo) FindByFingerprint(_ context.Context, sourceClipID, languageCode, fingerprint string) (*asset.RenderVariant, error) {
+func (f *fakeVariantRepo) FindByFingerprint(_ context.Context, sourceClipID, languageCode, fingerprint string) (*detail.RenderVariant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if v, ok := f.rows[f.key(sourceClipID, languageCode, fingerprint)]; ok {
@@ -128,10 +128,10 @@ func (f *fakeVariantRepo) FindByFingerprint(_ context.Context, sourceClipID, lan
 	return nil, nil
 }
 
-func (f *fakeVariantRepo) ListBySourceClip(_ context.Context, sourceClipID string) ([]asset.RenderVariant, error) {
+func (f *fakeVariantRepo) ListBySourceClip(_ context.Context, sourceClipID string) ([]detail.RenderVariant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []asset.RenderVariant
+	var out []detail.RenderVariant
 	for _, v := range f.rows {
 		if v.SourceClipID == sourceClipID {
 			out = append(out, *v)
@@ -211,13 +211,13 @@ func runRenderAll(t *testing.T, r *Renderer, ctx context.Context, inputs []Varia
 
 func TestRenderVariantFingerprint_DeterministicAndSensitive(t *testing.T) {
 	base := []string{
-		"source_sha", "transcript_sha", "it", "model-v1", "style-v1", asset.RenderProfileFFmpegAss1080pV1,
+		"source_sha", "transcript_sha", "it", "model-v1", "style-v1", detail.RenderProfileFFmpegAss1080pV1,
 	}
-	fp := asset.RenderVariantFingerprint(base[0], base[1], base[2], base[3], base[4], base[5])
+	fp := detail.RenderVariantFingerprint(base[0], base[1], base[2], base[3], base[4], base[5])
 	if fp == "" {
 		t.Fatal("fingerprint must be non-empty")
 	}
-	if fp2 := asset.RenderVariantFingerprint(base[0], base[1], base[2], base[3], base[4], base[5]); fp2 != fp {
+	if fp2 := detail.RenderVariantFingerprint(base[0], base[1], base[2], base[3], base[4], base[5]); fp2 != fp {
 		t.Fatalf("fingerprint must be deterministic: %q != %q", fp, fp2)
 	}
 
@@ -235,7 +235,7 @@ func TestRenderVariantFingerprint_DeterministicAndSensitive(t *testing.T) {
 	for _, c := range cases {
 		args := append([]string{}, base...)
 		args[c.index] = c.value
-		if got := asset.RenderVariantFingerprint(args[0], args[1], args[2], args[3], args[4], args[5]); got == fp {
+		if got := detail.RenderVariantFingerprint(args[0], args[1], args[2], args[3], args[4], args[5]); got == fp {
 			t.Errorf("%s: fingerprint must change when the input changes", c.name)
 		}
 	}

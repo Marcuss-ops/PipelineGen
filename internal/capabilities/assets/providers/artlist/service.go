@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"database/sql"
 	"fmt"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
@@ -20,7 +21,7 @@ import (
 var ErrTranscriberUnavailable = fmt.Errorf("artlist: transcriber is mandatory but not wired")
 
 // ErrTextTrackRepoUnavailable is returned when the mandatory
-// asset.TextTrackRepository port is not wired at composition time.
+// detail.TextTrackRepository port is not wired at composition time.
 var ErrTextTrackRepoUnavailable = fmt.Errorf("artlist: textTrackRepo is mandatory but not wired")
 
 // Service è un facade leggero che delega a componenti specializzati.
@@ -100,13 +101,13 @@ type Service struct {
 	detailFetcher DetailFetcher
 
 	// Cross-cutting domain services.
-	mediaProcessor    asset.Processor
+	mediaProcessor    detail.Processor
 	assetDestResolver asset.Resolver
 	jobsSvc           *appjobs.Service
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
-	assetProcessing asset.ProcessingRepository
-	assetVersions   asset.VersionRepository
+	assetProcessing detail.ProcessingRepository
+	assetVersions   detail.VersionRepository
 
 	// assetFinalizer is the canonical transactional asset finalizer.
 	// It writes media_assets, asset_versions, asset_locations, and
@@ -148,7 +149,7 @@ type Service struct {
 	// textTrackRepo persists audio transcripts for downloaded clips.
 	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
 	// July 2026); nil is rejected by NewService.
-	textTrackRepo asset.TextTrackRepository
+	textTrackRepo detail.TextTrackRepository
 
 	// systemProber is the canonical godlike/06 SystemProber port
 	// (Fase 2, July 2026). nil means the diagnostics endpoint reports
@@ -161,11 +162,11 @@ type Service struct {
 
 	// locationRepo persists physical asset locations (Wave C / July 2026).
 	// Used by stagePersistResults to record rendition locations.
-	locationRepo asset.LocationRepository
+	locationRepo detail.LocationRepository
 
 	// renditionRepo persists asset rendition metadata (July 2026).
 	// Used by stagePersistResults to record generated renditions.
-	renditionRepo asset.RenditionRepository
+	renditionRepo detail.RenditionRepository
 
 	// searchStrategy controls the Pexels/Pixabay fallback chain
 	// (PR-AUDIT-5, July 2026). Wired from deps.SearchStrategy.

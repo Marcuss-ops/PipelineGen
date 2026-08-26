@@ -12,9 +12,6 @@ pkg:
     - pkg/concurrent
     - pkg/corid
     - pkg/defaults
-    - pkg/hashutil
-    - pkg/pathutil
-    - pkg/ptrutil
     - pkg/retry
     - pkg/similarity
     - pkg/sliceutil

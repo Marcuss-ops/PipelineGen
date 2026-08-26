@@ -3,6 +3,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -24,9 +25,9 @@ func (s *generatedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 	}
 	narrowed := filter
 	if len(narrowed.Origins) == 0 {
-		narrowed.Origins = []asset.ImageOrigin{asset.ImageOriginGenerated}
+		narrowed.Origins = []detail.ImageOrigin{detail.ImageOriginGenerated}
 	} else {
-		narrowed.Origins = intersectOrigins(narrowed.Origins, []asset.ImageOrigin{asset.ImageOriginGenerated})
+		narrowed.Origins = intersectOrigins(narrowed.Origins, []detail.ImageOrigin{detail.ImageOriginGenerated})
 	}
 	rows, err := s.repo.ListImages(ctx, narrowed)
 	if err != nil {
@@ -34,21 +35,21 @@ func (s *generatedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 	}
 	out := make([]ImageSearchResult, 0, len(rows))
 	for _, r := range rows {
-		r.Origin = string(asset.ImageOriginGenerated) // territory invariant
+		r.Origin = string(detail.ImageOriginGenerated) // territory invariant
 		out = append(out, r)
 	}
 	return out, nil
 }
 
-func intersectOrigins(a, b []asset.ImageOrigin) []asset.ImageOrigin {
+func intersectOrigins(a, b []detail.ImageOrigin) []detail.ImageOrigin {
 	if len(a) == 0 || len(b) == 0 {
 		return nil
 	}
-	set := make(map[asset.ImageOrigin]struct{}, len(b))
+	set := make(map[detail.ImageOrigin]struct{}, len(b))
 	for _, x := range b {
 		set[x] = struct{}{}
 	}
-	out := make([]asset.ImageOrigin, 0, len(a))
+	out := make([]detail.ImageOrigin, 0, len(a))
 	for _, x := range a {
 		if _, ok := set[x]; ok {
 			out = append(out, x)

@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // DeleteSegmentEmbeddingsByScriptKey removes all cached segments
@@ -23,7 +23,7 @@ func (s *AssetStoreSQLite) DeleteSegmentEmbeddingsByScriptKey(ctx context.Contex
 
 // GetSegmentEmbeddingsByScriptKey loads cached segments for a
 // script key.
-func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, scriptKey string) ([]asset.SegmentEmbeddingRecord, error) {
+func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, scriptKey string) ([]detail.SegmentEmbeddingRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, script_key, source_hash, topic, language, template, duration, segment_index,
 		       raw_subject, canonical_subject, raw_keywords_json, canonical_keywords_json,
@@ -38,9 +38,9 @@ func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	out := make([]asset.SegmentEmbeddingRecord, 0)
+	out := make([]detail.SegmentEmbeddingRecord, 0)
 	for rows.Next() {
-		var rec asset.SegmentEmbeddingRecord
+		var rec detail.SegmentEmbeddingRecord
 		if err := rows.Scan(
 			&rec.ID, &rec.ScriptKey, &rec.SourceHash, &rec.Topic, &rec.Language, &rec.Template,
 			&rec.Duration, &rec.SegmentIndex, &rec.RawSubject, &rec.CanonicalSubject,
@@ -56,7 +56,7 @@ func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, 
 }
 
 // UpsertSegmentEmbedding stores a segment cache row.
-func (s *AssetStoreSQLite) UpsertSegmentEmbedding(ctx context.Context, rec *asset.SegmentEmbeddingRecord) error {
+func (s *AssetStoreSQLite) UpsertSegmentEmbedding(ctx context.Context, rec *detail.SegmentEmbeddingRecord) error {
 	if rec == nil {
 		return fmt.Errorf("nil segment embedding record")
 	}

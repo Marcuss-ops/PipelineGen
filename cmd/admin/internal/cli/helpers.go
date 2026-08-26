@@ -1,6 +1,7 @@
 package cli
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"crypto/sha256"
 	"database/sql"

@@ -11,17 +11,17 @@ import (
 	"context"
 	"io"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // IngestImage ingests raw image bytes into the storage system.
-func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*detail.ImageAsset, error) {
 	return s.Store.IngestImage(ctx, slug, style, genID, data, filename, sourceURL, description, tags, skipDrive, skipMetadata)
 }
 
 // UploadToStyleDrive uploads an image asset to its style-specific
 // Drive folder.
-func (s *Service) UploadToStyleDrive(ctx context.Context, imageAsset *asset.ImageAsset, style string) (string, string, error) {
+func (s *Service) UploadToStyleDrive(ctx context.Context, imageAsset *detail.ImageAsset, style string) (string, string, error) {
 	return s.Store.UploadToStyleDrive(ctx, imageAsset, style)
 }
 

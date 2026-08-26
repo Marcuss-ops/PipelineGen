@@ -1,5 +1,8 @@
 package script
 
+import (
+)
+
 // ClipBinding anchors a scene to a selected YouTube clip. The LLM
 // outputs the clip_id; the application layer enriches title and
 // Drive link from the resolved clip evidence.

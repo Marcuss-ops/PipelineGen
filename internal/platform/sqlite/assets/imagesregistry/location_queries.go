@@ -9,12 +9,13 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -162,7 +163,7 @@ func scanLocation(scanner interface{ Scan(dest ...any) error }) (*asset.Location
 
 // ── LocationRepository adapter (canonical Wave C surface) ────────────
 //
-// The asset.LocationRepository interface stays in domain (canonical
+// The detail.LocationRepository interface stays in domain (canonical
 // contract). The concrete adapter struct + factory method migrate
 // here so the domain stays free of database/sql responsibilities.
 
@@ -198,6 +199,6 @@ func (a *locationRepositoryAdapter) DeleteAll(ctx context.Context, assetID strin
 // LOCAL AssetStoreSQLite. Caller-side promotion to legacy
 // `*asset.AssetStoreSQLite` keeps backward
 // compatibility for composition roots that haven't yet migrated.
-func (s *AssetStoreSQLite) LocationRepository() asset.LocationRepository {
+func (s *AssetStoreSQLite) LocationRepository() detail.LocationRepository {
 	return &locationRepositoryAdapter{store: s}
 }

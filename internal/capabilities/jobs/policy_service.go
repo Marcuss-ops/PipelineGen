@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -21,7 +22,7 @@ import (
 
 type AssetTransferServiceImpl struct {
 	assetIndex    *assetindex.Service
-	querySvc      *asset.Service
+	querySvc      *detail.Service
 	imagesRepo    *imagesrepo.ImagesRepository
 	voiceoverRepo *sqliteassets.VoiceoversRepository
 	uploadRoot    string
@@ -49,11 +50,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewAssetTransferService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
+func NewAssetTransferService(assetIndex *assetindex.Service, querySvc *detail.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
 	return NewAssetTransferServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
+func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *detail.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}

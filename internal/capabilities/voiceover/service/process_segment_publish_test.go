@@ -22,7 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // newPublishTimingUseCase builds a ProcessSegmentUseCase whose only live
@@ -183,8 +183,8 @@ func TestPublishTimingBundle_HappyPath_PublishesJSONAndSRT(t *testing.T) {
 	assert.Equal(t, "word", res.BoundaryMode)
 	assert.Equal(t, 3, res.WordCount)
 	assert.Equal(t, int64(2_500_000), res.DurationUS)
-	assert.Equal(t, files.SHA256String(cmd.Text), res.TextSHA256)
-	assert.Equal(t, files.SHA256String("fake-mp3-bytes"), res.AudioSHA256)
+	assert.Equal(t, digest.SHA256String(cmd.Text), res.TextSHA256)
+	assert.Equal(t, digest.SHA256String("fake-mp3-bytes"), res.AudioSHA256)
 
 	// Two projection uploads with canonical filenames + distinct idem keys.
 	// The projections are published in non-deterministic order, so assert
@@ -280,7 +280,7 @@ func TestPublishTimingBundle_Required_RemoveSilence_WithEditMap_Completes(t *tes
 	// the post-silence word shifted left by the removed 1s.
 	assert.Equal(t, int64(2_000_000), res.DurationUS)
 	assert.Equal(t, 3, res.WordCount)
-	assert.Equal(t, files.SHA256String("cleaned-fake-mp3"), res.AudioSHA256,
+	assert.Equal(t, digest.SHA256String("cleaned-fake-mp3"), res.AudioSHA256,
 		"the artifact must bind to the CLEANED audio bytes")
 
 	// The timing.json projection is published with the canonical filename

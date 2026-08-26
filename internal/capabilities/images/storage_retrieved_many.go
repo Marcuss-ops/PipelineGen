@@ -1,11 +1,12 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // MaxRetrievedImageBatch bounds one synchronous multi-image request. The
@@ -17,14 +18,14 @@ const MaxRetrievedImageBatch = 100
 // images from the selected provider. The multi-result path is intentionally
 // explicit: it currently supports DuckDuckGo, whose continuation API returns
 // the original image URLs used by the downloader.
-func (s *ImageStorageService) SearchAndDownloadManyDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider, limit int) ([]*SearchResult, error) {
+func (s *ImageStorageService) SearchAndDownloadManyDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider detail.ImageProvider, limit int) ([]*SearchResult, error) {
 	if limit < 1 || limit > MaxRetrievedImageBatch {
 		return nil, fmt.Errorf("image result limit must be between 1 and %d", MaxRetrievedImageBatch)
 	}
 	if provider == "" {
-		provider = asset.ProviderDuckDuckGo
+		provider = detail.ProviderDuckDuckGo
 	}
-	if provider != asset.ProviderDuckDuckGo {
+	if provider != detail.ProviderDuckDuckGo {
 		return nil, fmt.Errorf("multi-image retrieval provider %q is not supported", provider)
 	}
 	if strings.TrimSpace(query) == "" {
@@ -64,7 +65,7 @@ func (s *ImageStorageService) SearchAndDownloadManyDetailedFromProvider(ctx cont
 			// candidates. The caller receives the number actually acquired.
 			continue
 		}
-		updatedJSON := asset.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, imgURL, string(provider), query)
+		updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, imgURL, string(provider), query)
 		if err := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); err != nil {
 			continue
 		}

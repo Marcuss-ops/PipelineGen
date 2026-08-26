@@ -5,6 +5,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -12,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
@@ -112,7 +113,7 @@ func (h *MaterializeJobHandler) HandleJob(
 			Source:          string(assets[0].Source),
 			SourceLanguage:  cmd.SourceLanguage,
 			TargetLanguages: cmd.TargetLanguages,
-			TextKind:        asset.TextTrackTranscript,
+			TextKind:        detail.TextTrackTranscript,
 		})
 		if err != nil {
 			return nil, err
@@ -135,7 +136,7 @@ func (h *MaterializeJobHandler) HandleJob(
 	pf(progressPer, fmt.Sprintf("fan-out to %d kind(s)", len(cmd.TextKinds)))
 
 	for i, kindStr := range cmd.TextKinds {
-		kind := asset.TextTrackKind(kindStr)
+		kind := detail.TextTrackKind(kindStr)
 		if !isKnownTextTrackKind(kind) {
 			return nil, h.classifyError(&ErrInvalidMaterializeRequest{
 				Field:  "text_kinds",
@@ -246,13 +247,13 @@ func (h *MaterializeJobHandler) classifyError(err error) error {
 	}
 }
 
-func isKnownTextTrackKind(k asset.TextTrackKind) bool {
+func isKnownTextTrackKind(k detail.TextTrackKind) bool {
 	switch k {
-	case asset.TextTrackTranscript,
-		asset.TextTrackDescription,
-		asset.TextTrackSummary,
-		asset.TextTrackTitle,
-		asset.TextTrackKeywords:
+	case detail.TextTrackTranscript,
+		detail.TextTrackDescription,
+		detail.TextTrackSummary,
+		detail.TextTrackTitle,
+		detail.TextTrackKeywords:
 		return true
 	}
 	return false

@@ -26,6 +26,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
@@ -34,7 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -42,11 +43,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// assetServiceLookupAdapter wraps asset.Service to satisfy the
+// assetServiceLookupAdapter wraps detail.Service to satisfy the
 // drive.AssetStoreLookup interface needed by LocationVerifier
 // for deep Drive+SQLite cross-reference.
 type assetServiceLookupAdapter struct {
-	svc *asset.Service
+	svc *detail.Service
 }
 
 func (a *assetServiceLookupAdapter) GetAsset(
@@ -213,7 +214,7 @@ func registerScriptPostProcessors(
 	// BestEffort policy: transport errors become warnings, link
 	// integrity is best-effort.
 	//
-	// When SQLite (asset.Service) is available, the processor uses
+	// When SQLite (detail.Service) is available, the processor uses
 	// the deep LocationVerifier which cross-references Drive API
 	// results against the asset store to detect ORPHAN_DRIVE_FILE,
 	// BROKEN_ASSET_LOCATION, and DUPLICATE states.

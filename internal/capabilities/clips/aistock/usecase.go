@@ -2,6 +2,7 @@
 package aistock
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -160,7 +161,7 @@ func (uc *UseCase) buildAsset(doc visualanalysis.Document, filename, fileID, loc
 		ID:         doc.Asset.ProposedAssetID,
 		Name:       doc.Asset.Title,
 		Filename:   filename,
-		Source:     asset.SourceAIGenerated,
+		Source:     detail.SourceAIGenerated,
 		Category:   visualanalysis.FolderCategory(doc.Asset.FolderPath),
 		Group:      doc.Asset.FolderPath,
 		MediaType:  asset.MediaType(doc.Asset.MediaType),

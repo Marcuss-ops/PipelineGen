@@ -6,10 +6,9 @@
 # corresponding dispatcher update).
 
 # ── Check 47: C2-C no-source-switch-outside-catalog (Blocco C2, June 2026) ──
-# The canonical Source Catalog dispatch surface lives in exactly two files:
+# The canonical Source Catalog dispatch surface lives in the typed registry:
 #
-#   - internal/application/assets/artifacts/source_resolver.go  (assets-side SourceCatalog registry)
-#   - internal/application/scripts/adapters/source_registry.go  (script-side SourceRegistry registry)
+#   - internal/capabilities/scripts/adapters/source_registry.go  (SourceRegistry registry)
 #
 # Every other source-kind switch (case "artlist" / case scriptpkg.SourceCatalog /
 # if source == "youtube" / etc.) in production code is a SSOT regression: the
@@ -22,38 +21,20 @@
 #   switch X { case "artlist" | case scriptpkg.SourceCatalog | case SourceCatalog: ... }
 #   if X == "youtube" / if X == scriptpkg.SourceArtlist / if X == SourceStock: ...
 #
-# Allowlist (the ONLY permitted dispatch surface):
-#   - internal/application/assets/artifacts/source_resolver.go
-#   - internal/application/scripts/adapters/source_registry.go
-#
-# Tests (`*_test.go`) and the generated/ subdirectory are excluded by the
-# gate's discoverGoFiles walker. Walker scope is RESTRICTED to
-# internal/application + internal/api + internal/domain (excludes infra as
-# adapter-decoding, pkg/ as leaf utility, cmd/ as one-shot operator tooling —
-# documented in capability_inventory.yaml::gates_baseline::C2-C::walker_scope_rationale).
-#
-# Transitional baseline (per AGENTS.md "transitional baselines" + godlike/08
-# §"zero-baseline rule"): --baseline=33 absorbs the 33 production violations
-# observed at C2-C landing time; each migration PR must decrement
-# --baseline by the count of sites migrated, until --baseline=0 enables
-# enforce_zero promotion. The yaml entry mirrors this count.
-echo "=== Check 47: C2-C no-source-switch-outside-catalog (Blocco C2, June 2026) ==="    # PR-CHECK-5-FOLLOWUP (2026-08-08): --baseline=48 must be passed to the underlying
-    # gate program (NOT to `go run` itself). The `--` separator stops `go run` from
-    # parsing --baseline=48 as its own flag (which it does NOT have), and the gate's
-    # flag.Parse() then sees --baseline=48 BEFORE the positional `.` arg (Go's flag
-    # package stops parsing at the first non-flag arg, so the pre-fix ordering
-    # `. --baseline=48` silently left --baseline=48 unparsed and the gate defaulted
-    # to baseline=0, causing 48 false-positive violations on every run).
-    c2c_out=$(go run -tags=c2_source_catalog_only -- ./scripts/archcheck/gates/gate_c2_source_catalog_only_main.go --baseline=48 . 2>&1) || c2c_rc=$?
+# CLOSED 2026-08-26 (WAVE-22-C2-C): the migration-only roots
+# (internal/application + internal/api) were deleted, so the scanned count is
+# zero and the allowlist is empty. The gate now enforces the target-zero state
+# directly from the code scan (no manual baseline; ceiling derived from HEAD^).
+echo "=== Check 47: C2-C no-source-switch-outside-catalog (Blocco C2, June 2026) ==="
+    c2c_out=$(go run -tags=c2_source_catalog_only -- ./scripts/archcheck/gates/gate_c2_source_catalog_only_main.go . 2>&1) || c2c_rc=$?
 c2c_rc=${c2c_rc:-0}
 if [ "$c2c_rc" -ne 0 ]; then
     printf '%s\n' "$c2c_out" | sed 's/^/  /'
     echo ""
     echo "Fix: every source-kind switch/if dispatch"
     echo '      (case "<canonical>" OR case scriptpkg.Source<> OR if == "<canonical>")'
-    echo "      MUST live in ONE of the Source Catalog canonical files:"
-    echo "        - internal/application/assets/artifacts/source_resolver.go  (assets-side SourceCatalog)"
-    echo "        - internal/application/scripts/adapters/source_registry.go  (script-side SourceRegistry)"
+    echo "      MUST live in the Source Catalog canonical registry:"
+    echo "        - internal/capabilities/scripts/adapters/source_registry.go  (SourceRegistry)"
     echo "      See capability_inventory.yaml::gates_baseline::C2-C for the canonical surface contract."
     echo ""
     echo "Per godlike/06 (data-and-config-ownership) the Source Catalog is the SSOT for"
@@ -71,11 +52,9 @@ if [ "$c2c_rc" -ne 0 ]; then
     echo "     to capability_inventory.yaml::gates_baseline::C2-C. (Don't just widen"
     echo "     the allowlist without a documented owner + deadline + cutover plan.)"
     echo ""
-    echo "To advance the transitional baseline after a migration PR, update the"
-    echo "--baseline=NN value below to match the live count (lambda \\u2192 0 when the"
-    echo "tree is Source-Catalog-clean; this promotion targets 2026-09-15)."
+    echo "The ceiling is derived from HEAD^; reduce violations in code."
+    echo "Do not edit a duplicated baseline number to make this gate pass."
     exit 1
 fi
-# Print the AST gate's own success line verbatim so the operator sees it in CI output
-# (with remaining-allowance info if --baseline > 0 and current violations < baseline).
+# Print the AST gate's own success line verbatim so the operator sees it in CI output.
 printf '%s\n' "$c2c_out" | grep -E '^C2-C gate:' || true

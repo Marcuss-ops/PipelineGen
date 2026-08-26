@@ -20,11 +20,12 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Audit-trail-aware stub tests ────────────────────────────────────────────
@@ -47,21 +48,21 @@ func TestAuditTrail_P1F_Stub_InsertTranslationWithAuditPredecessor_FlipsPriorCur
 	const (
 		assetID  = "yt_p1f_audit_001"
 		lang     = "it"
-		kind     = asset.TextTrackTranscript
+		kind     = detail.TextTrackTranscript
 		priorKey = "key-prior-v1"
 		nextKey  = "key-next-v2"
 	)
 	createdAt := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	priorUpdated := createdAt.Add(time.Hour)
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
 		{
 			ID:             1001,
 			AssetID:        assetID,
 			LanguageCode:   lang,
 			TextKind:       kind,
 			TextContent:    "italiano v1 - dal DB",
-			Status:         asset.TextTrackReady,
-			SourceType:     asset.TextSourceTranslation,
+			Status:         detail.TextTrackReady,
+			SourceType:     detail.TextSourceTranslation,
 			IsCurrent:      true,
 			TranslationKey: priorKey,
 			PromptVersion:  "prompt-v1",
@@ -83,12 +84,12 @@ func TestAuditTrail_P1F_Stub_InsertTranslationWithAuditPredecessor_FlipsPriorCur
 
 	err := repo.InsertTranslationWithAuditPredecessor(
 		context.Background(),
-		asset.TextTrack{
+		detail.TextTrack{
 			AssetID:        assetID,
 			LanguageCode:   lang,
 			TextKind:       kind,
 			TextContent:    "italiano v2 - tradotto da en con prompt-v2",
-			SourceType:     asset.TextSourceTranslation,
+			SourceType:     detail.TextSourceTranslation,
 			TranslationKey: nextKey,
 			PromptVersion:  "prompt-v2",
 			SourceTextHash: "source-text-hash-v2",
@@ -157,18 +158,18 @@ func TestAuditTrail_P1F_Stub_InsertTranslationWithAuditPredecessor_IdempotencyNo
 	const (
 		assetID = "yt_p1f_idemp_001"
 		lang    = "en"
-		kind    = asset.TextTrackTranscript
+		kind    = detail.TextTrackTranscript
 	)
-	key := asset.TranslationKey("source-text-hash", lang, "ollama", "v1", "prompt-v1")
+	key := detail.TranslationKey("source-text-hash", lang, "ollama", "v1", "prompt-v1")
 	fixedTime := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
+	repo := &p1fStubRepo{rows: []detail.TextTrack{
 		{
 			AssetID:        assetID,
 			LanguageCode:   lang,
 			TextKind:       kind,
 			TextContent:    "already-current",
-			Status:         asset.TextTrackReady,
-			SourceType:     asset.TextSourceYouTubeSubtitle,
+			Status:         detail.TextTrackReady,
+			SourceType:     detail.TextSourceYouTubeSubtitle,
 			IsOriginal:     true,
 			Provider:       "yt-dlp",
 			IsCurrent:      true,
@@ -185,12 +186,12 @@ func TestAuditTrail_P1F_Stub_InsertTranslationWithAuditPredecessor_IdempotencyNo
 
 	err := repo.InsertTranslationWithAuditPredecessor(
 		context.Background(),
-		asset.TextTrack{
+		detail.TextTrack{
 			AssetID:        assetID,
 			LanguageCode:   lang,
 			TextKind:       kind,
 			TextContent:    "SHOULD-BE-DROPPED",
-			SourceType:     asset.TextSourceYouTubeSubtitle,
+			SourceType:     detail.TextSourceYouTubeSubtitle,
 			TranslationKey: key, // same key → idempotent
 			PromptVersion:  "prompt-v1",
 			SourceTextHash: "source-text-hash",

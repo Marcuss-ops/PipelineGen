@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // bm25SchemaVersion is the hash-stamp field for the BM25 lexical-index
@@ -51,5 +51,5 @@ func (s *Service) computeContentHash(ctx context.Context, clipID string) (hash s
 	if len(contentParts) == 2 && strings.TrimSpace(contentParts[0]) == "name:|search_text:|transcript:" {
 		return "", false, nil
 	}
-	return hashutil.SHA256String(content), strings.TrimSpace(cleanTranscript) != "", nil
+	return digest.SHA256String(content), strings.TrimSpace(cleanTranscript) != "", nil
 }

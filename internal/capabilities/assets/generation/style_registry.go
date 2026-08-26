@@ -25,6 +25,10 @@
 // time, so existing consumers in this shim continue to work unchanged.
 package generation
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 
 // ── Type aliases (transparent — same type, same method set) ─────────────

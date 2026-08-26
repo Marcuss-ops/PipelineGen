@@ -48,6 +48,7 @@
 package script
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"bytes"
 	"encoding/json"
 	"net/http"

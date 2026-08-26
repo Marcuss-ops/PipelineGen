@@ -1,6 +1,7 @@
 package processor
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,13 +14,13 @@ import (
 	"go.uber.org/zap"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // processStep normalizes/processes the video if needed.
-func (p *Processor) processStep(ctx context.Context, input *asset.ProcessInput, rawPath, processedPath string) (string, error) {
+func (p *Processor) processStep(ctx context.Context, input *detail.ProcessInput, rawPath, processedPath string) (string, error) {
 	// Normalize=false (reprocess contract fix, July 2026): honor the
 	// flag — skip the ffmpeg normalize and promote the raw source to
 	// the processed path (mux/copy only). The caller bypasses the
@@ -296,7 +297,7 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 // Callers (the YouTube asset pipeline) thread the rendered paths into
 // the canonical Publisher per-file; the publisher resolves the per-asset
 // folder via YouTubeAssetPath (the asset_id segment is the leaf folder).
-func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessInput, rawPath string) ([]asset.RenditionOutput, error) {
+func (p *Processor) processRenditions(ctx context.Context, input *detail.ProcessInput, rawPath string) ([]detail.RenditionOutput, error) {
 	assetID := input.ID
 	if assetID == "" {
 		return nil, fmt.Errorf("processRenditions: input.ID is required (canonical asset_id segment)")
@@ -457,21 +458,21 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	// per-file `Filename` field carries the canonical
 	// `{asset_id}__<role>.<ext>` name; callers thread this into the
 	// Publisher per-file.
-	renditions := []asset.RenditionOutput{
-		p.buildRenditionOutput(ctx, asset.RenditionKindMaster, masterPath),
-		p.buildRenditionOutput(ctx, asset.RenditionKindMezzanine, mezzaninePath),
+	renditions := []detail.RenditionOutput{
+		p.buildRenditionOutput(ctx, detail.RenditionKindMaster, masterPath),
+		p.buildRenditionOutput(ctx, detail.RenditionKindMezzanine, mezzaninePath),
 	}
 	if fileExists(previewPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindProxy, previewPath))
+		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindProxy, previewPath))
 	}
 	if fileExists(thumbnailPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindThumbnail, thumbnailPath))
+		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindThumbnail, thumbnailPath))
 	}
 	if fileExists(storyboardPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindStoryboard, storyboardPath))
+		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindStoryboard, storyboardPath))
 	}
 	if fileExists(manifestPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindManifest, manifestPath))
+		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindManifest, manifestPath))
 	}
 
 	return renditions, nil
@@ -479,8 +480,8 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 
 // buildRenditionOutput populates a RenditionOutput from a local file,
 // probing it for technical metadata when possible.
-func (p *Processor) buildRenditionOutput(ctx context.Context, kind asset.RenditionKind, path string) asset.RenditionOutput {
-	out := asset.RenditionOutput{
+func (p *Processor) buildRenditionOutput(ctx context.Context, kind detail.RenditionKind, path string) detail.RenditionOutput {
+	out := detail.RenditionOutput{
 		Kind:      kind,
 		LocalPath: path,
 		Filename:  filepath.Base(path),
@@ -496,7 +497,7 @@ func (p *Processor) buildRenditionOutput(ctx context.Context, kind asset.Renditi
 		out.Height = info.Height
 		out.FPS = info.FPS
 		out.Bitrate = info.BitRate
-		if kind != asset.RenditionKindThumbnail && kind != asset.RenditionKindStoryboard {
+		if kind != detail.RenditionKindThumbnail && kind != detail.RenditionKindStoryboard {
 			out.Codec = info.VideoCodec
 		}
 	}

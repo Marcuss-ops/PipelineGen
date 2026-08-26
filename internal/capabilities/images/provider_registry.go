@@ -19,6 +19,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -54,9 +55,9 @@ func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateR
 	if r == nil || r.provider == nil {
 		return nil, fmt.Errorf("google-slides provider not registered: %w", ErrProviderUnavailable)
 	}
-	if r.provider.Name() != asset.ProviderGoogleSlides {
+	if r.provider.Name() != detail.ProviderGoogleSlides {
 		return nil, fmt.Errorf("invalid generation provider %q: only %q is allowed: %w",
-			r.provider.Name(), asset.ProviderGoogleSlides, ErrProviderUnavailable)
+			r.provider.Name(), detail.ProviderGoogleSlides, ErrProviderUnavailable)
 	}
 
 	out, err := r.provider.Generate(ctx, req, opts)
@@ -65,7 +66,7 @@ func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateR
 	}
 	if r.log != nil {
 		r.log.Info("generation provider dispatched",
-			zap.String("provider", string(asset.ProviderGoogleSlides)),
+			zap.String("provider", string(detail.ProviderGoogleSlides)),
 			zap.String("model", CanonicalGoogleSlidesModel),
 			zap.Int("bytes", len(out.Data)),
 		)
@@ -83,8 +84,8 @@ func (r *GenerationProviderRegistry) TriggerPrewarm(ctx context.Context, jobID s
 
 // ProviderByName returns Google Slides for its canonical ID and nil for every
 // other provider name.
-func (r *GenerationProviderRegistry) ProviderByName(name asset.ImageProvider) GenerationProvider {
-	if r == nil || r.provider == nil || name != asset.ProviderGoogleSlides {
+func (r *GenerationProviderRegistry) ProviderByName(name detail.ImageProvider) GenerationProvider {
+	if r == nil || r.provider == nil || name != detail.ProviderGoogleSlides {
 		return nil
 	}
 	return r.provider
@@ -99,12 +100,12 @@ func (r *GenerationProviderRegistry) Providers() []GenerationProvider {
 }
 
 // Diagnostics probes only the real Google Slides provider.
-func (r *GenerationProviderRegistry) Diagnostics(ctx context.Context) map[asset.ImageProvider]error {
-	out := make(map[asset.ImageProvider]error, 1)
+func (r *GenerationProviderRegistry) Diagnostics(ctx context.Context) map[detail.ImageProvider]error {
+	out := make(map[detail.ImageProvider]error, 1)
 	if r == nil || r.provider == nil {
 		return out
 	}
-	out[asset.ProviderGoogleSlides] = r.provider.Healthy(ctx)
+	out[detail.ProviderGoogleSlides] = r.provider.Healthy(ctx)
 	return out
 }
 
@@ -114,7 +115,7 @@ func (r *GenerationProviderRegistry) Resolve(providerID string) (GenerationProvi
 	if r == nil {
 		return nil, errors.New("generated: nil registry")
 	}
-	if providerID != string(asset.ProviderGoogleSlides) || r.provider == nil {
+	if providerID != string(detail.ProviderGoogleSlides) || r.provider == nil {
 		return nil, fmt.Errorf("%w (id=%q)", ErrProviderNotFound, providerID)
 	}
 	return r.provider, nil

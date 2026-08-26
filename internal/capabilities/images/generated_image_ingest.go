@@ -24,7 +24,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ingestGeneratedImage routes the on-disk artifact (or in-memory
@@ -42,7 +42,7 @@ func (g *GenerationService) ingestGeneratedImage(
 	style string,
 	tags []string,
 	skipDrive bool,
-) (*asset.ImageAsset, error) {
+) (*detail.ImageAsset, error) {
 	if result == nil {
 		return nil, fmt.Errorf("generated image result is nil")
 	}

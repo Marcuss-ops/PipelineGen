@@ -49,8 +49,8 @@ func TestIndexPendingWriter_ProductionWriterFails(t *testing.T) {
 	dir := t.TempDir()
 	indexPendingWriterWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/ingest.go": `package images
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-func initAsset() { a := asset.ImageAsset{IndexState: asset.StateIndexPending} }
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+func initAsset() { a := detail.ImageAsset{IndexState: asset.StateIndexPending} }
 `,
 	})
 	r := indexPendingWriterTestReport()
@@ -86,7 +86,7 @@ func TestIndexPendingWriter_HealthResolverPasses(t *testing.T) {
 	dir := t.TempDir()
 	indexPendingWriterWriteTree(t, dir, map[string]string{
 		"internal/application/assets/operator/index_health_resolver.go": `package operator
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 func health(_ asset.IndexState) bool { return _ == asset.StateIndexPending }
 `,
 	})
@@ -103,7 +103,7 @@ func TestIndexPendingWriter_TestFilesExempted(t *testing.T) {
 	dir := t.TempDir()
 	indexPendingWriterWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/ingest_test.go": `package images
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 func TestX() { s := asset.StateIndexPending }
 `,
 	})
