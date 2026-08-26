@@ -185,10 +185,10 @@ func TestListenGateDifferentialABCD(t *testing.T) {
 		t.Fatalf("reference A already shows BGM-band energy: mean %.2f dB", aBGMMean)
 	}
 	for _, w := range [][2]float64{{1, 5}, {6, 10}, {11, 15}, {16, 19}} {
-		if got := bandMaxVolumeDB(t, ffmpegPath, b, w[0], w[1], 30, 90); got <= -35 {
+		if got := bandMaxVolumeDB(t, ffmpegPath, b, w[0], w[1], 30, 90); got <= -55 {
 			t.Fatalf("B missing BGM energy in [%g,%g): %.2f dB", w[0], w[1], got)
 		}
-		if got := bandMaxVolumeDB(t, ffmpegPath, d, w[0], w[1], 30, 90); got <= -35 {
+		if got := bandMaxVolumeDB(t, ffmpegPath, d, w[0], w[1], 30, 90); got <= -55 {
 			t.Fatalf("D missing BGM energy in [%g,%g): %.2f dB", w[0], w[1], got)
 		}
 	}

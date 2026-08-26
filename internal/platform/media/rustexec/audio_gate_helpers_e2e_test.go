@@ -75,8 +75,8 @@ func renderGateAudio(t *testing.T, musclesPath, ffmpegPath string, plan audio.Co
 	if err != nil {
 		t.Fatalf("real render_audio_plan failed: %v", err)
 	}
-	if metrics.AudioEncodePasses != 1 || metrics.MixMS <= 0 || metrics.AACEncodeMS <= 0 {
-		t.Fatalf("real render must encode once with measured stage timings: %+v", metrics)
+	if metrics.AudioEncodePasses != 1 || metrics.MixMS != 0 || metrics.AACEncodeMS <= 0 || metrics.ProbeMS <= 0 || metrics.HashMS <= 0 {
+		t.Fatalf("real render must encode once with measured encode/probe/hash timings: %+v", metrics)
 	}
 	if err := audio.ValidateFinalAudio(audio.FinalAudioAsset{
 		AssetID:              final.AssetID,
