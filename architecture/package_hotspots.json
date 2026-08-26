@@ -66,16 +66,16 @@
       "path": "internal/capabilities/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
-      "baseline_files": 50,
+      "baseline_files": 63,
       "baseline": {
-        "files": 50,
+        "files": 63,
         "max_loc": 11473
       },
       "current": {
-        "files": 50,
-        "max_loc": 579
+        "files": 63,
+        "max_loc": 11473
       },
-      "note": "Split 2026-08-26 (63 â†’ 50): the 52-file mutual-recursion cluster (planner, orchestrator, steps, render, service) stays in core; support/query/run/rounds/ports/errors/process/production/render-transitions extracted to the sibling support sub-package (13 files, registered separately). Core at 50 production files, under the 51 baseline; support ratchets from 13.",
+      "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/assets/stock/ingest",
         "internal/capabilities/assets/stock/finalize",
@@ -180,24 +180,6 @@
       "note": "New package created 2026-08-26 by the kernel/asset hard cutover (71 Ã¢â€ â€™ 39 core + 34 detail). Registered so the ratchet tracks its growth from day one.",
       "target_packages": [
         "internal/kernel/asset/detail"
-      ]
-    },
-    {
-      "path": "internal/capabilities/assets/providers/stock/stockpipeline/support",
-      "owner": "stock pipeline support surface (query/run/rounds/ports/errors extracted from stockpipeline core)",
-      "deadline": "2026-09-30",
-      "baseline_files": 13,
-      "baseline": {
-        "files": 13,
-        "max_loc": 0
-      },
-      "current": {
-        "files": 13,
-        "max_loc": 0
-      },
-      "note": "New package created 2026-08-26 by the stockpipeline split (63 â†’ 50 core + 13 support). Registered so the ratchet tracks its growth from day one.",
-      "target_packages": [
-        "internal/capabilities/assets/providers/stock/stockpipeline/support"
       ]
     }
   ],

@@ -3,8 +3,9 @@
 //
 // Hermetic (t.TempDir-anchored). Pins the forward-prevention contract:
 //  1. A NEW embedding model-id declaration outside the canonical
-//     internal/kernel/embedding package trips the gate.
-//  2. The canonical package is exempt.
+//     internal/kernel/models (or its alias surface internal/kernel/embedding)
+//     package trips the gate.
+//  2. The canonical packages are exempt.
 //  3. Struct-literal fields (`Model: "..."`) and config-tag defaults
 //     (`default:"..."`) are NOT matched (data, not declarations).
 //  4. Test files are exempt.
@@ -76,6 +77,20 @@ const ModelIDMultilingualE5 = "intfloat/multilingual-e5-base"
 	ScanEmbeddingConstantsSSOT(root, nil, rep, true)
 	if got := len(rep.Violations); got != 0 {
 		t.Fatalf("canonical embedding package tripped gate: %d violations\nfirst: %s", got, rep.Violations[0].Note)
+	}
+}
+
+func TestScanEmbeddingConstantsSSOT_ModelRegistryExempt(t *testing.T) {
+	root := t.TempDir()
+	makeEmbeddingConstantsFile(t, root, "internal/kernel/models/registry.go",
+		`package models
+
+const CanonicalTextModelID = "intfloat/multilingual-e5-base"
+`)
+	rep := &report.Report{}
+	ScanEmbeddingConstantsSSOT(root, nil, rep, true)
+	if got := len(rep.Violations); got != 0 {
+		t.Fatalf("canonical model-registry package tripped gate: %d violations\nfirst: %s", got, rep.Violations[0].Note)
 	}
 }
 

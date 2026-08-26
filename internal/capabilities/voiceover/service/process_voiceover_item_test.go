@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,11 +67,14 @@ func (s *stubProcessAudioPost) Process(_ context.Context, in AudioPostInput) (Au
 var _ AudioPostProcessor = (*stubProcessAudioPost)(nil)
 
 type stubProcessPublisher struct {
+	mu        sync.Mutex
 	published []VoiceoverPublishCommand
 	fileID    string
 }
 
 func (s *stubProcessPublisher) Publish(_ context.Context, cmd VoiceoverPublishCommand) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.published = append(s.published, cmd)
 	return s.fileID, nil
 }
