@@ -31,19 +31,19 @@
 #
 # Fault-to-PR canonical mapping (per godlike/06 SSOT one-owner-per-fact):
 #   HTTP 404                -> PR-CLIPS-ROUTE-REGISTRATION
-#                              SSOT: internal/api/assets/clips/handler.go
+#                              SSOT: assets/clips/handler.go
 #   HTTP 503                -> PR-CLIPS-COMPOSITION-WIRE
 #                              SSOT: internal/app/build_bundles_clips.go::WireAssets
 #   HTTP 401/403            -> PR-CLIPS-AUTH-CHECK (or PR-VELOX-AUTH-ENV-INVESTIGATE)
 #                              SSOT: middleware Bearer-token handler
 #   null job_id after POST   -> PR-CLIPS-JOB-ENQUEUE
-#                              SSOT: internal/application/jobs/dispatcher.go
+#                              SSOT: jobs/dispatcher.go
 #   HTTP 400 validation     -> PR-CLIPS-VALIDATION-PREFLIGHT
 #                              SSOT: internal/capabilities/youtube/dto/types.go
 #   FAILED status terminal  -> walks Step 1-9 typed-error chain
-#                              SSOT: internal/application/jobs/registry.go
+#                              SSOT: jobs/registry.go
 #   30 polls × 5s stuck      -> PR-CLIPS-BROKER-TIMEOUT
-#                              SSOT: internal/application/jobs/local/broker.go
+#                              SSOT: jobs/local/broker.go
 #   Assertion 2 mismatch    -> process_segment.go Step 8 bypass (cmd.DriveFolderID
 #                              not plumbed correctly)
 #   Assertion 3 mp4 corrupt  -> PR-YT-FFMPEG-CORRUPT-ARTIFACT
@@ -121,7 +121,7 @@ err_trap() {
         done
         echo
         echo "Canonical Recovery : see fault-to-PR table in script header."
-        echo "SSOT Owner         : internal/application/youtube/usecase/process_segment.go"
+        echo "SSOT Owner         : youtube/usecase/process_segment.go"
         echo "                      + internal/capabilities/youtube/jobs/job_handler.go"
     } >&2
     exit "$exit_code"
@@ -224,7 +224,7 @@ echo "================================================================="
 # Canonical handler per `internal/capabilities/youtube/jobs/job_handler.go`
 # (the broker-side `HandleJob` unmarshals the payload into
 # youtubetypes.ExtractRequest; legacy mount via
-# `internal/api/assets/youtube/handler.go::Extract` for backwards compat).
+# `assets/youtube/handler.go::Extract` for backwards compat).
 PAYLOAD=$(jq -n \
     --arg url       "$YOUTUBE_URL" \
     --arg start     "$SEG_START" \
@@ -264,7 +264,7 @@ case "$HTTP" in
         if [[ -z "$JOB_ID" || "$JOB_ID" == "null" ]]; then
             echo "FAIL: HTTP $HTTP but no job_id field in response (PR-CLIPS-JOB-ENQUEUE)" >&2
             jq . "$TMPDIR_RUN/${REQ_TAG}-post.json" >&2 || cat "$TMPDIR_RUN/${REQ_TAG}-post.json" >&2
-            echo "  SSOT Owner: internal/application/jobs/dispatcher.go (registry.Post)" >&2
+            echo "  SSOT Owner: jobs/dispatcher.go (registry.Post)" >&2
             exit 1
         fi
         echo "+ POST $URL_BASE/api/clips/process -> HTTP $HTTP, job_id=$JOB_ID"
@@ -278,7 +278,7 @@ case "$HTTP" in
     404)
         echo "FAIL: HTTP 404 route not mounted (PR-CLIPS-ROUTE-REGISTRATION)" >&2
         jq . "$TMPDIR_RUN/${REQ_TAG}-post.json" >&2 || true
-        echo "  SSOT Owner: internal/api/assets/clips/handler.go (or youtube/handler.go legacy)" >&2
+        echo "  SSOT Owner: assets/clips/handler.go (or youtube/handler.go legacy)" >&2
         exit 1
         ;;
     503)
@@ -321,15 +321,15 @@ for i in $(seq 1 30); do
             cat "$TMPDIR_RUN/${REQ_TAG}-poll-${i}.json" >&2 || true
             echo "  canonical recovery: PR-COMPLETE-WORKER-FIX (per Step 9 writer or
   Step 7 whisper fallback row)" >&2
-            echo "  SSOT Owner: internal/application/jobs/registry.go +
-  internal/application/jobs/outbox/dispatcher.go" >&2
+            echo "  SSOT Owner: jobs/registry.go +
+  internal/platform/sqlite/outbox/dispatcher.go" >&2
             exit 1
             ;;
     esac
 done
 [[ -n "$TERMINAL" ]] \
     || { echo "FAIL: 30 polls × 5s = 150s exhausted without terminal state (PR-CLIPS-BROKER-TIMEOUT)" >&2;
-         echo "  SSOT Owner: internal/application/jobs/local/broker.go" >&2; exit 1; }
+         echo "  SSOT Owner: jobs/local/broker.go" >&2; exit 1; }
 echo "+ terminal=$TERMINAL after $i polls"
 
 # ---- Assertion 2: folder_id matches the canonical target ------------------
@@ -359,7 +359,7 @@ if [[ -z "$ASS_3_LOCAL_PATH" || ! -f "$ASS_3_LOCAL_PATH" ]]; then
     echo "FAIL: Assertion 3 — local_path missing or file not on disk" >&2
     echo "  local_path: '${ASS_3_LOCAL_PATH:-<empty>}'" >&2
     echo "  canonical recovery: PR-YT-STEP5-FAIL-CLOSED (Step 5 runtime fail-closed)" >&2
-    echo "  SSOT Owner: internal/application/youtube/usecase/process_segment.go (Step 5)" >&2
+    echo "  SSOT Owner: youtube/usecase/process_segment.go (Step 5)" >&2
     exit 1
 fi
 # Probe ftyp magic within first 64 bytes (canonical QuickTime/MP4 detection)
@@ -380,7 +380,7 @@ ASS_4_METADATA=$(sqlite3 -separator '|' "$DB_PATH" \
 if [[ -z "$ASS_4_METADATA" ]]; then
     echo "FAIL: Assertion 4 — metadata_json empty for clip" >&2
     echo "  canonical recovery: PR-YT-STEP10-TYPED-PORT-M3 (Step 10 metadata enrichment)" >&2
-    echo "  SSOT Owner: internal/application/youtube/usecase/process_segment.go (Step 10)" >&2
+    echo "  SSOT Owner: youtube/usecase/process_segment.go (Step 10)" >&2
     exit 1
 fi
 # The real pipeline writes a generated narrative summary, not the raw

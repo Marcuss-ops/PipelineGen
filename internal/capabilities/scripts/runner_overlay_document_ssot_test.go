@@ -18,10 +18,7 @@
 package scriptgeneration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -114,106 +111,17 @@ func TestOverlayPlan_IsSingleSourceOfTruthForDocumentAndRender(t *testing.T) {
 	require.Len(t, docPub.records, 1, "exactly one document (en) published")
 	docHTML := docPub.records[0].Content
 	require.NotEmpty(t, docHTML)
+	// Production documents intentionally expose only the final remote
+	// assembly payload; SpecScene/phrase-timing JSON is an internal surface.
+	require.Contains(t, docHTML, "<h2>Remote Job Payload JSON</h2>")
+	require.NotContains(t, docHTML, "<h2>SpecScene JSON</h2>")
 
-	// ── SSOT: the document's embedded SpecScene JSON carries the exact
-	//    annotations the OverlayPlan was derived from. No second logic. ─────
-	docSpec := extractSpecSceneContract(t, docHTML)
-	require.Len(t, docSpec.Scenes, 3, "document must describe all 3 scenes")
-	for i := range docSpec.Scenes {
-		require.Equal(t, res.Scenes[i].Annotations, docSpec.Scenes[i].Annotations,
-			"scene %q: document annotations diverged from the OverlayPlan source", res.Scenes[i].ID)
-
-		// Structural equality above catches semantic drift. This second
-		// assertion pins the stronger wire contract: the annotation JSON
-		// embedded in the document is byte-identical to the annotation JSON
-		// from which the OverlayPlan was derived.
-		planSourceBytes, err := json.Marshal(res.Scenes[i].Annotations)
-		require.NoError(t, err, "scene %q: marshal OverlayPlan source annotations", res.Scenes[i].ID)
-		documentBytes, err := json.Marshal(docSpec.Scenes[i].Annotations)
-		require.NoError(t, err, "scene %q: marshal document annotations", res.Scenes[i].ID)
-		require.True(t, bytes.Equal(planSourceBytes, documentBytes),
-			"scene %q: document annotation bytes differ from OverlayPlan source", res.Scenes[i].ID)
-
-		// Gate 1 (document live, byte-level): the document's embedded scene
-		// body text must be byte-identical to the text NLP/TTS/overlay
-		// consumed — after the single contract normalization (TrimSpace).
-		// A "contains" or word-count check is not enough: any drift here
-		// means the pipeline worked on a text variant the user never saw.
-		require.Equal(t, strings.TrimSpace(res.Scenes[i].Text["en"]), docSpec.Scenes[i].Text,
-			"scene %q: document body text diverged from the text NLP/TTS/overlay consumed", res.Scenes[i].ID)
-	}
-
-	// ── Document completeness: script text + overlay timing surfaces. ─────
+	// ── Document completeness under the PayloadOnly contract: the human
+	//    surface still shows every scene's final script text, and the
+	//    machine surface is exactly the remote assembly payload. The
+	//    SpecScene/phrase-timing JSON that used to be embedded here is now
+	//    an internal surface (removed by design).
 	for _, scene := range res.Scenes {
 		require.Contains(t, docHTML, scene.Text["en"], "document missing scene %q script text", scene.ID)
 	}
-	require.Contains(t, docHTML, "<h3>Phrase Timing</h3>", "document missing the overlay phrase-timing section")
-	require.Contains(t, docHTML, "<strong>Start:</strong>", "document missing the overlay scene-timing section")
-
-	// ── Traceability: every OverlayPlan item comes from the document's
-	//    annotation surface (never from an independent derivation). ─────────
-	texts := documentAnnotationTexts(docSpec)
-	imageAssets := documentImageAssets(docSpec)
-	for _, item := range res.OverlayPlan.Items {
-		switch item.TemplateID {
-		case "IMPORTANT_PHRASE", "IMPORTANT_WORD", "NUMBER", "QUOTE",
-			"person_default", "org_default", "gpe_default", "concept_default":
-			require.True(t, texts[normalizeDocText(item.Text)],
-				"overlay item %q (text %q) is not present in the document", item.ID, item.Text)
-		case "IMAGE_OVERLAY", "PRODUCT", "LOGO":
-			require.Len(t, item.AssetRefs, 1, "image overlay %q must carry one asset", item.ID)
-			require.True(t, imageAssets[item.AssetRefs[0].AssetID],
-				"overlay image %q (asset %q) is not present in the document", item.ID, item.AssetRefs[0].AssetID)
-		}
-	}
-}
-
-// documentAnnotationTexts collects every textual overlay surface the document
-// carries: important phrases, important words and entity canonical names.
-func documentAnnotationTexts(spec scriptpkg.SpecSceneOutput) map[string]bool {
-	out := map[string]bool{}
-	for i := range spec.Scenes {
-		ann := spec.Scenes[i].Annotations
-		if ann == nil {
-			continue
-		}
-		for _, span := range ann.ImportantPhrases {
-			out[normalizeDocText(span.Text)] = true
-		}
-		for _, span := range ann.ImportantWords {
-			out[normalizeDocText(span.Text)] = true
-		}
-		for _, entity := range append(append([]scriptpkg.AnnotatedEntity{}, ann.PrimaryEntities...), ann.SecondaryEntities...) {
-			name := strings.TrimSpace(entity.CanonicalName)
-			if name == "" {
-				name = strings.TrimSpace(entity.Text)
-			}
-			if name != "" {
-				out[normalizeDocText(name)] = true
-			}
-		}
-	}
-	return out
-}
-
-// documentImageAssets collects every image asset id the document's entity
-// image bindings reference.
-func documentImageAssets(spec scriptpkg.SpecSceneOutput) map[string]bool {
-	out := map[string]bool{}
-	for i := range spec.Scenes {
-		ann := spec.Scenes[i].Annotations
-		if ann == nil {
-			continue
-		}
-		for _, entity := range append(append([]scriptpkg.AnnotatedEntity{}, ann.PrimaryEntities...), ann.SecondaryEntities...) {
-			if entity.Image != nil && strings.TrimSpace(entity.Image.AssetID) != "" {
-				out[strings.TrimSpace(entity.Image.AssetID)] = true
-			}
-		}
-	}
-	return out
-}
-
-func normalizeDocText(s string) string {
-	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(s))), " ")
 }

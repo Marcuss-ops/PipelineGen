@@ -89,6 +89,7 @@ func GetFromPath(path string) (*Config, error) {
 	// This prevents a default pass from masking an explicit YAML value
 	// and makes the final Config ready for validation and freezing.
 	applyEnvVars(cfg)
+	applyCanonicalModelDefaults(cfg)
 	return cfg, nil
 }
 

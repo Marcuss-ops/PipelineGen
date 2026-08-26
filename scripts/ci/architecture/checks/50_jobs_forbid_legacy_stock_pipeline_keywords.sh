@@ -80,56 +80,9 @@ if [ -n "$fails" ]; then
 fi
 echo "OK: no net-new legacy stock pipeline keywords"
 
-# -- Check 54: P0.1 -- forbid capability-layer .UploadFile* calls outside admin/legacy allowlist --
-# Drive cutover P0.1 (July 2026): every .UploadFile( / .UploadFileWithDescription(
-# call site in internal/application/** production code MUST carry a
-# forward-pointer marker on the call line or within the 2 lines directly
-# above it:
-#   // TODO(P0.4): migrate to delivery.Publisher   (delivery.Publisher P0.4 target)
-#   // TODO(P0.5): ArtifactUploader port — NOT delivery.Publisher P0.4 target (grandfathered)
-# Zero-baseline (HARD-FAIL since Azione 5, 2026-08-02): this gate fails
-# closed on any NEW UploadFile* call in internal/application/** that lacks
-# the marker. Comment-only references (descriptive prose naming the retired
-# surface) are dropped — they are not call sites.
-#
-# Forward-pointer: when P0.4 CONTRACT lands, tighten this gate to ban
-# .UploadFile* calls in internal/application/** entirely (zero tolerance,
-# no marker exception) and retire the P0.5 grandfather token.
-echo "=== Check 54: P0.1 -- forbid new UploadFile* calls in capability-layer without TODO(P0.4)/TODO(P0.5) marker ==="
-# Two rg calls merged with sort -u: call-site hits + marker lines (so the
-# marker-window logic can see a marker on the line(s) directly above a call).
-# Comment-only references are dropped by the awk pre-pass (descriptive prose
-# naming the retired surface is not a call site).
-upload_hits=$(rg -n --type go     -e '\.UploadFile\('     -e '\.UploadFileWithDescription\('     --glob '!**/cmd/admin/**'     --glob '!**/internal/infrastructure/**'     --glob '!**/internal/app/**'     --glob '!**/*_test.go'     internal/application/ 2>/dev/null || true)
-marker_hits=$(rg -n --type go     -e 'TODO\(P0\.4\)'     -e 'TODO\(P0\.5\)'     internal/application/ 2>/dev/null || true)
-upload_calls=$(printf '%s\n%s\n' "$upload_hits" "$marker_hits" | grep -v '^$' | sort -u | awk -F: '
-    {
-        rest = ""
-        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-        if (rest ~ /TODO\(P0\.[45]\)/) { markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2); next }
-        if (rest ~ /^[[:space:]]*\/\//) next
-        n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
-        allowed = 0
-        for (mi = 1; mi <= n; mi++) {
-            m = mlist[mi] + 0
-            if (m > 0 && $2 + 0 >= m && $2 + 0 <= m + 2) { allowed = 1; break }
-        }
-        if (allowed) next
-        print
-    }' || true)
-if [ -n "$upload_calls" ]; then
-    echo "FAIL: .UploadFile* call site(s) lacking TODO(P0.4)/TODO(P0.5) marker:"
-    echo "$upload_calls"
-    echo ""
-    echo "These call sites will be migrated to delivery.Publisher.Publish in P0.4."
-    echo "Each site MUST carry a // TODO(P0.4): migrate to delivery.Publisher marker"
-    echo "(or the // TODO(P0.5) ArtifactUploader-port grandfather token) on the call"
-    echo "line or within the 2 lines directly above it."
-    echo "See architecture/deprecations.yaml DRIVE-CUTOVER-P0-1 for the full audit."
-    echo "(HARD-FAIL since Azione 5: zero tolerance for unmarked NEW call sites)"
-    exit 1
-fi
-echo "OK: Check 54 -- every .UploadFile* site carries a TODO(P0.4) or TODO(P0.5) marker"
+# The P0.1 UploadFile marker gate scanned the retired application root and
+# is retired with it; the canonical Drive-write surface is the delivery
+# publisher (internal/capabilities/delivery).
 
 
 

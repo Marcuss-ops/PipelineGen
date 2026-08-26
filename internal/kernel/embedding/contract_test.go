@@ -1,14 +1,21 @@
 package embedding
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+)
 
 func TestCanonicalText_Values(t *testing.T) {
 	c := CanonicalText
-	if c.ModelID != "intfloat/multilingual-e5-base" {
-		t.Fatalf("ModelID = %q, want intfloat/multilingual-e5-base", c.ModelID)
+	if c.ModelID != models.E5.ID {
+		t.Fatalf("ModelID = %q, want %s", c.ModelID, models.E5.ID)
 	}
-	if c.Dimension != 768 {
-		t.Fatalf("Dimension = %d, want 768", c.Dimension)
+	if c.ModelRevision != models.E5.Revision {
+		t.Fatalf("ModelRevision = %q, want %s", c.ModelRevision, models.E5.Revision)
+	}
+	if c.Dimension != models.E5.Dimensions {
+		t.Fatalf("Dimension = %d, want %d", c.Dimension, models.E5.Dimensions)
 	}
 	if c.Normalization != "l2" {
 		t.Fatalf("Normalization = %q, want l2", c.Normalization)

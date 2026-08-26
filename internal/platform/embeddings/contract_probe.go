@@ -10,6 +10,7 @@ import (
 	"time"
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // ContractProbe reads the runtime embedding contract from the Python sidecar.
@@ -72,7 +73,11 @@ func (p *ContractProbe) Fetch(ctx context.Context) (coreembedding.Contract, erro
 	if contract.ModelID == "" || contract.Dimension <= 0 {
 		return coreembedding.Contract{}, fmt.Errorf("embedding contract probe: incomplete contract (model_id=%q dimension=%d)", contract.ModelID, contract.Dimension)
 	}
-	if envelope.ContractHash == "" || envelope.ContractHash != contract.Hash() {
+	// A self-consistent hash is not sufficient: a sidecar could report
+	// another model and hash that alternate contract correctly. The
+	// observed identity must also match the registry-backed canonical
+	// contract.
+	if contract.ModelID != models.E5.ID || !contract.Equal(coreembedding.CanonicalText) || envelope.ContractHash == "" || envelope.ContractHash != contract.Hash() {
 		return coreembedding.Contract{}, &coreembedding.MismatchError{
 			Component:    coreembedding.ComponentSidecar,
 			Expected:     coreembedding.CanonicalText,

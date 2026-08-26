@@ -247,27 +247,27 @@ case "$HTTP_CODE" in
         exit 1 ;;
     403)
         printf 'FAIL canonical: PR-STOCK-SEARCH-FORBIDDEN (HTTP 403 — non-admin caller; actor.IsAdmin=false)\n' >&2
-        printf '  Canonical owner: internal/api/assets/search/handler.go::actor.IsAdmin gate\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/handler.go::actor.IsAdmin gate\n' >&2
         exit 1 ;;
     404)
         printf 'FAIL canonical: PR-STOCK-ROUTE-REGISTRATION (HTTP 404 on POST /api/media/search)\n' >&2
-        printf '  Canonical owner: internal/api/assets/search/handler.go::RegisterRoutes\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/handler.go::RegisterRoutes\n' >&2
         exit 1 ;;
     400)
         printf 'FAIL canonical: PR-STOCK-SEARCH-HANDLER-VALIDATION (HTTP 400 — invalid request shape)\n' >&2
-        printf '  Canonical owner: internal/api/assets/search/handler.go::c.BindJSON(&searchRequest)\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/handler.go::c.BindJSON(&searchRequest)\n' >&2
         exit 1 ;;
     422)
         printf 'FAIL canonical: PR-STOCK-SEMANTIC-UNAVAILABLE (HTTP 422 — semantic backend down for hybrid)\n' >&2
-        printf '  Canonical owner: internal/application/search/errors.go::ErrSemanticBackendUnavailable\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/errors.go::ErrSemanticBackendUnavailable\n' >&2
         exit 1 ;;
     503)
         printf 'FAIL canonical: PR-STOCK-SEARCH-NOT-WIRED (HTTP 503 — aggregator is nil)\n' >&2
-        printf '  Canonical owner: internal/api/assets/search/handler.go::h.aggreg == nil guard\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/handler.go::h.aggreg == nil guard\n' >&2
         exit 1 ;;
     *)
         printf 'FAIL canonical: PR-STOCK-UNIFIED-SEARCH-UNKNOWN (HTTP %s)\n' "$HTTP_CODE" >&2
-        printf '  Canonical owner: internal/api/assets/search/handler.go::Handler.Search\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/search/handler.go::Handler.Search\n' >&2
         exit 1 ;;
 esac
 
@@ -296,12 +296,12 @@ if [ "$STOCK_HITS" -lt 1 ]; then
     printf 'FAIL canonical: PR-STOCK-OUTBOX-QDRANT-INDEX (zero source=stock hits)\n' >&2
     printf '  Likely cause: deliver/database.go (drive+finalizer enqueued but\n' >&2
     printf '  indexing handler has not flushed into Qdrant yet) OR\n' >&2
-    printf '  internal/api/assets/search/handler.go::searchQueryFromRequest.filters.source\n' >&2
+    printf '  internal/capabilities/assets/search/handler.go::searchQueryFromRequest.filters.source\n' >&2
     exit 1
 fi
 if [ "$VALID_STOCK_HITS" -lt 1 ]; then
     printf 'FAIL canonical: PR-STOCK-SEARCH-SCORE-OWNERSHIP (source=stock hits lack id+score+preview_url)\n' >&2
-    printf '  Canonical owner: internal/application/search/types_result.go (Candidate struct fields)\n' >&2
+    printf '  Canonical owner: internal/capabilities/assets/search/types_result.go (Candidate struct fields)\n' >&2
     exit 1
 fi
 

@@ -78,7 +78,7 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	assert.Equal(t, 2, len(docPub.records), "should have 2 doc upsert calls (EN + ES)")
 	for _, record := range docPub.records {
 		assert.Contains(t, record.Content, "<h2>Scene 1</h2>")
-		assert.Contains(t, record.Content, "<h2>SpecScene JSON</h2>")
+		assert.Contains(t, record.Content, "<h2>Remote Job Payload JSON</h2>")
 		assert.Contains(t, record.Content, "<pre><code>")
 		if record.Language == "en" {
 			assert.Contains(t, record.Content, "First scene text")

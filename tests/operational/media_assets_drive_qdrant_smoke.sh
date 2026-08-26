@@ -281,7 +281,7 @@ verify_outbox_events() {
         fail "outbox_no_events"
         printf '%sFAIL: zero outbox_events for stock assets (asset.index.requested not emitted)%s\n' \
             "$RED" "$RESET" >&2
-        printf '  Canonical owner: internal/application/assets/finalizer/asset_finalizer_tx.go::FinalizeAsset\n' >&2
+        printf '  Canonical owner: internal/capabilities/assets/finalizer/asset_finalizer_tx.go::FinalizeAsset\n' >&2
         return 1
     fi
 

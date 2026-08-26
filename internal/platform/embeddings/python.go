@@ -98,10 +98,7 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) (coreembe
 		if err2 := json.Unmarshal([]byte(result.Output), &legacy); err2 != nil {
 			return coreembedding.EmbeddingResult{}, fmt.Errorf("failed to parse embedding JSON: %w (output: %s)", err, result.Output)
 		}
-		return coreembedding.EmbeddingResult{
-			Vector:     legacy,
-			Dimensions: len(legacy),
-		}, nil
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("legacy embedding response has no canonical model metadata: %w", err)
 	}
 
 	// Fail-loud on sidecar-reported error.
@@ -118,6 +115,9 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) (coreembe
 		return coreembedding.EmbeddingResult{}, fmt.Errorf(
 			"dimension mismatch: declared %d, actual embedding length %d",
 			envelope.Dimensions, len(envelope.Embedding))
+	}
+	if err := validateCanonicalTextEnvelope(envelope.Model, envelope.ModelVersion, envelope.ContractHash, len(envelope.Embedding)); err != nil {
+		return coreembedding.EmbeddingResult{}, err
 	}
 
 	return coreembedding.EmbeddingResult{

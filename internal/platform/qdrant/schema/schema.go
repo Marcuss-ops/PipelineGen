@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // Canonical embedding model constants (godlike/06 SSOT).
@@ -18,18 +18,17 @@ import (
 const (
 	// VisualEmbeddingDim is the canonical SigLIP so400m-patch14-384
 	// embedding dimensionality for the Qdrant "visual" named vector.
-	VisualEmbeddingDim = 768
+	VisualEmbeddingDim = models.CanonicalVisualModelDimensions
 
 	// VisualEmbeddingModelVersion pins the SigLIP model version baked
 	// into media_assets.metadata_json.embedding_version_visual and
 	// schema.IndexSchema.DenseVectors[visual].ModelVersion.
 	//
-	// Re-exported from pkg/defaults.VisualEmbeddingModelVersion for
-	// backward compat with infra-layer consumers. The canonical
-	// declaration lives in pkg/defaults (cross-layer constant home).
-	// Bumping the value is a schema migration; don't change without
-	// planning a v4.
-	VisualEmbeddingModelVersion = defaults.VisualEmbeddingModelVersion
+	// Re-exported from internal/kernel/embedding (the canonical home for
+	// embedding identity facts, godlike/06) for backward compat with
+	// infra-layer consumers. Bumping the value is a schema migration;
+	// don't change without planning a v4.
+	VisualEmbeddingModelVersion = models.CanonicalVisualModelRevision
 )
 
 // DefaultV3Schema returns the canonical v3 index schema.
@@ -48,9 +47,9 @@ func DefaultV3Schema() *IndexSchema {
 		DenseVectors: []EmbeddingSpec{
 			{
 				Channel:       "text",
-				Model:         coreembedding.ModelIDMultilingualE5,
-				ModelVersion:  coreembedding.ModelRevisionMultilingualE5,
-				Dimensions:    768,
+				Model:         models.E5.ID,
+				ModelVersion:  models.E5.Revision,
+				Dimensions:    models.E5.Dimensions,
 				Distance:      "Cosine",
 				Normalized:    true,
 				QueryPrefix:   coreembedding.QueryPrefixE5,
@@ -59,9 +58,9 @@ func DefaultV3Schema() *IndexSchema {
 			},
 			{
 				Channel:       "transcript",
-				Model:         coreembedding.ModelIDMultilingualE5,
-				ModelVersion:  coreembedding.ModelRevisionMultilingualE5,
-				Dimensions:    768,
+				Model:         models.E5.ID,
+				ModelVersion:  models.E5.Revision,
+				Dimensions:    models.E5.Dimensions,
 				Distance:      "Cosine",
 				Normalized:    true,
 				QueryPrefix:   coreembedding.QueryPrefixE5,
@@ -70,9 +69,9 @@ func DefaultV3Schema() *IndexSchema {
 			},
 			{
 				Channel:      "visual",
-				Model:        "siglip-so400m-patch14-384",
-				ModelVersion: "2026-06-16-v1",
-				Dimensions:   768,
+				Model:        models.SigLIP.ID,
+				ModelVersion: models.SigLIP.Revision,
+				Dimensions:   models.SigLIP.Dimensions,
 				Distance:     "Cosine",
 				Normalized:   true,
 			},

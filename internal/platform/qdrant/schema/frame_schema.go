@@ -30,7 +30,11 @@
 // boot determines "this collection is ready".
 package schema
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+)
 
 // FrameCollectionName is the canonical physical collection name
 // for media_frames (godlike/06 SSOT).
@@ -79,9 +83,9 @@ func FrameIndexSchema() *IndexSchema {
 		DenseVectors: []EmbeddingSpec{
 			{
 				Channel:      FrameVectorName,
-				Model:        "siglip-so400m-patch14-384",
-				ModelVersion: "2026-06-16-v1",
-				Dimensions:   768,
+				Model:        models.SigLIP.ID,
+				ModelVersion: models.SigLIP.Revision,
+				Dimensions:   models.SigLIP.Dimensions,
 				Distance:     "Cosine",
 				Normalized:   true,
 			},

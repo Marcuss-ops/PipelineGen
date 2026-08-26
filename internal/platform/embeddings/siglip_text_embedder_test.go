@@ -150,8 +150,8 @@ func TestSigLIPTextEmbedder_HappyPathRoundtrip(t *testing.T) {
 		if req.Text == "" {
 			t.Errorf("sidecar request: text must not be empty")
 		}
-		if req.Model != "siglip-so400m-patch14-384" {
-			t.Errorf("sidecar request: model=%q, want siglip-so400m-patch14-384", req.Model)
+		if req.Model != "google/siglip-so400m-patch14-384" {
+			t.Errorf("sidecar request: model=%q, want google/siglip-so400m-patch14-384", req.Model)
 		}
 		// Canonical QDRANT-001 envelope response.
 		w.Header().Set("Content-Type", "application/json")

@@ -10,6 +10,12 @@ import "strings"
 // to select an audio cue without knowing where it is stored or how it was
 // originally named.
 var BuiltInAssetAliases = map[string]string{
+	"whop1":   "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+	"whop2":   "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+	"whop3":   "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+	"whop4":   "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+	"whop5":   "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+	"whop6":   "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
 	"whoop1":  "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
 	"whoop2":  "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
 	"whoop3":  "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
@@ -23,9 +29,12 @@ var BuiltInAssetAliases = map[string]string{
 	"whoosh7": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
 	"whoosh8": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
 	"whoosh9": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
-	"bgm1":    "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
-	"bgm2":    "1OXND5tIzQjTNv1T-XIS6lFBlLfJPOp6g",
-	"bgm3":    "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
+	"bgm1":    "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
+	"bgm2":    "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
+	"bgm3":    "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
+	"bgm4":    "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke",
+	"bgm5":    "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
+	"bgm6":    "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
 }
 
 // CanonicalAssetID resolves a public payload alias. Unknown IDs are already
@@ -40,7 +49,7 @@ func CanonicalAssetID(id string) string {
 
 func IsBuiltInBGM(id string) bool {
 	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "bgm1", "bgm2", "bgm3":
+	case "bgm1", "bgm2", "bgm3", "bgm4", "bgm5", "bgm6":
 		return true
 	default:
 		return false
@@ -48,6 +57,10 @@ func IsBuiltInBGM(id string) bool {
 }
 
 func IsBuiltInWhoop(id string) bool {
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case "whop1", "whop2", "whop3", "whop4", "whop5", "whop6":
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(id)) {
 	case "whoop1", "whoop2", "whoop3", "whoop4":
 		return true

@@ -25,8 +25,8 @@ if [ "$count" -ne 1 ]; then
 fi
 
 # Gate (b): no LocalPath or DriveLink in the application search DTO.
-if rg -q '^\s*(LocalPath|DriveLink)\s+string' internal/application/assets/search/ports.go; then
-    echo "FAIL: LocalPath/DriveLink still present in VectorSearchResult (internal/application/assets/search/ports.go)"
+if rg -q '^\s*(LocalPath|DriveLink)\s+string' internal/capabilities/assets/search/ports.go; then
+    echo "FAIL: LocalPath/DriveLink still present in VectorSearchResult (capabilities/assets/search/ports.go)"
     failures=$((failures+1))
 fi
 

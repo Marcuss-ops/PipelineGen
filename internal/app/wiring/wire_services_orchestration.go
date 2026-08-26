@@ -50,6 +50,7 @@ import (
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
@@ -385,12 +386,12 @@ func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID strin
 	if !ok {
 		return fmt.Errorf("embedding contract handshake: active collection %q has no \"text\" vector", active)
 	}
-	if strings.TrimSpace(queryModelID) == "" {
+	if strings.TrimSpace(queryModelID) == "" || queryModelID != models.E5.ID {
 		return &coreembedding.MismatchError{
 			Component: coreembedding.ComponentQuery,
 			Expected:  coreembedding.CanonicalText,
-			Got:       coreembedding.Contract{},
+			Got:       coreembedding.Contract{ModelID: queryModelID},
 		}
 	}
-	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: queryModelID})
+	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: models.E5.ID})
 }

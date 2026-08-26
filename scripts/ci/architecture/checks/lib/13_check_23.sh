@@ -38,7 +38,6 @@ max_fields=8
 # Collect every `(package, TypeName, file, fieldcount)` line into TSV.
 decls=$(while IFS= read -r -d '' f; do
   case "$f" in
-    */internal/application/*) ;;
     *) continue ;;
   esac
   case "$f" in

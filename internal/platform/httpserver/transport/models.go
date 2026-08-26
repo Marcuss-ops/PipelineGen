@@ -4,13 +4,13 @@
 // canonical embedding models are loaded, produce correct dimensions, and
 // are capable of inference. The two canonical models are:
 //
-//   - E5 text model (multilingual-e5-base, 768 dims) via /embed
-//   - SigLIP visual model (siglip-so400m-patch14-384, 1152 dims) via /embed_visual
+//   - E5 text model via /embed
+//   - SigLIP visual model via /embed_visual
 //
 // Each probe sends a short health-check text to the sidecar and validates:
 //   - HTTP 200 response
 //   - Non-empty embedding vector
-//   - Correct dimension (768 for E5; 1152 for the loaded SigLIP encoder)
+//   - Correct dimension from the canonical model registry (768 for both E5 and SigLIP)
 //   - No sidecar error
 //
 // The sidecar URL is configured via ServerDeps.ModelsSidecarURL (defaults
@@ -32,6 +32,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // ModelsHandler exposes the /models endpoint.
@@ -76,8 +78,8 @@ func (h *ModelsHandler) Models(c *gin.Context) {
 		c.JSON(http.StatusOK, modelsResponse{
 			OK: false,
 			Models: []modelProbeResult{
-				{Model: "multilingual-e5-base", OK: false, Error: "models sidecar not configured"},
-				{Model: "siglip-so400m-patch14-384", OK: false, Error: "models sidecar not configured"},
+				{Model: models.E5.ID, OK: false, Error: "models sidecar not configured"},
+				{Model: models.SigLIP.ID, OK: false, Error: "models sidecar not configured"},
 			},
 		})
 		return
@@ -100,7 +102,7 @@ func (h *ModelsHandler) Models(c *gin.Context) {
 // endpoint is the sidecar path (e.g. "/embed", "/embed_visual_from_text").
 // payload is the JSON body to POST. SigLIP-specific: HTTP 501 (NotImplemented)
 // is treated as "model not loaded" rather than a generic HTTP error.
-func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName string, expectedDim int, payload map[string]string, siglip501 bool) modelProbeResult {
+func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName, expectedRevision string, expectedDim int, payload map[string]string, siglip501 bool) modelProbeResult {
 	result := modelProbeResult{Model: modelName, Dimensions: expectedDim}
 	started := time.Now()
 
@@ -140,9 +142,11 @@ func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName stri
 	}
 
 	var envelope struct {
-		Embedding  []float64 `json:"embedding"`
-		Dimensions int       `json:"dimensions"`
-		Error      string    `json:"error"`
+		Embedding    []float64 `json:"embedding"`
+		Dimensions   int       `json:"dimensions"`
+		Model        string    `json:"model"`
+		ModelVersion string    `json:"model_version"`
+		Error        string    `json:"error"`
 	}
 	if err := json.Unmarshal(respBody, &envelope); err != nil {
 		result.OK = false
@@ -161,6 +165,13 @@ func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName stri
 	if len(envelope.Embedding) == 0 {
 		result.OK = false
 		result.Error = "empty embedding vector"
+		result.DurationMs = time.Since(started).Milliseconds()
+		return result
+	}
+
+	if envelope.Model != modelName || envelope.ModelVersion != expectedRevision {
+		result.OK = false
+		result.Error = fmt.Sprintf("model identity mismatch: got %q revision %q, want %q revision %q", envelope.Model, envelope.ModelVersion, modelName, expectedRevision)
 		result.DurationMs = time.Since(started).Milliseconds()
 		return result
 	}
@@ -190,7 +201,7 @@ func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName stri
 // probeE5 sends a health-check text to the sidecar's /embed endpoint
 // and validates the E5 (multilingual-e5-base) model response.
 func (h *ModelsHandler) probeE5(ctx context.Context) modelProbeResult {
-	return h.probeModel(ctx, "/embed", "multilingual-e5-base", 768,
+	return h.probeModel(ctx, "/embed", models.E5.ID, models.E5.Revision, models.E5.Dimensions,
 		map[string]string{"text": "__health_check__", "type": "query"},
 		false)
 }
@@ -199,7 +210,7 @@ func (h *ModelsHandler) probeE5(ctx context.Context) modelProbeResult {
 // /embed_visual endpoint and validates the SigLIP
 // (siglip-so400m-patch14-384) model response.
 func (h *ModelsHandler) probeSigLIP(ctx context.Context) modelProbeResult {
-	return h.probeModel(ctx, "/embed_visual", "siglip-so400m-patch14-384", 1152,
-		map[string]string{"text": "__health_check__", "model": "siglip-so400m-patch14-384"},
+	return h.probeModel(ctx, "/embed_visual", models.SigLIP.ID, models.SigLIP.Revision, models.SigLIP.Dimensions,
+		map[string]string{"text": "__health_check__", "model": models.SigLIP.ID},
 		true)
 }

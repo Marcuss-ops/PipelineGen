@@ -25,7 +25,7 @@ nilDispatcher=$(rg -nU --type go \
     --glob '!**/*_test.go' \
     --glob '!**/cmd/admin/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/app/|internal/platform/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
+    | grep -Ev '^\./(internal/app/|internal/platform/sqlite/outbox/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i

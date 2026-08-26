@@ -19,6 +19,7 @@ try:
         reranker_health_payload,
         resolve_device,
     )
+    from scripts.services.model_registry_generated import RERANKER_MODEL_NAME
 except ModuleNotFoundError:  # direct `python scripts/reranker_server.py` execution
     from device_policy import (  # type: ignore[no-redef]
         assert_model_device,
@@ -26,6 +27,7 @@ except ModuleNotFoundError:  # direct `python scripts/reranker_server.py` execut
         reranker_health_payload,
         resolve_device,
     )
+    from model_registry_generated import RERANKER_MODEL_NAME  # type: ignore[no-redef]
 from pydantic import BaseModel
 import uvicorn
 
@@ -36,7 +38,13 @@ except ImportError:
     print("Install: pip install fastapi uvicorn sentence-transformers torch")
     exit(1)
 
-MODEL_NAME = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+configured_model = os.getenv("RERANKER_MODEL", "").strip()
+if configured_model and configured_model != RERANKER_MODEL_NAME:
+    raise RuntimeError(
+        f"RERANKER_MODEL={configured_model!r} differs from canonical registry model "
+        f"{RERANKER_MODEL_NAME!r}"
+    )
+MODEL_NAME = RERANKER_MODEL_NAME
 RERANKER_DEVICE = os.getenv("PIPELINEGEN_RERANKER_DEVICE", "auto")
 RERANKER_REQUIRE_GPU = env_flag("PIPELINEGEN_RERANKER_REQUIRE_GPU")
 DEVICE_SELECTION = resolve_device(

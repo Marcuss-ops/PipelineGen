@@ -25,13 +25,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from scripts.services.model_registry_generated import WHISPER_MODEL_NAME
+except ModuleNotFoundError:  # direct execution from scripts/bridges
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.services.model_registry_generated import WHISPER_MODEL_NAME  # type: ignore[no-redef]
+
 
 def _helper_script_path() -> Path:
     return Path(__file__).resolve().parents[1] / "tools" / "transcribe_detect_lang.py"
 
 
 def _model_name() -> str:
-    return os.environ.get("VELOX_WHISPER_MODEL", "base").strip() or "base"
+    return os.environ.get("VELOX_WHISPER_MODEL", WHISPER_MODEL_NAME).strip() or WHISPER_MODEL_NAME
 
 
 def _language() -> str:

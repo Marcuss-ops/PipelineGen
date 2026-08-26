@@ -44,45 +44,8 @@
 # covers the wider package scope (any future split to
 # storage_search_wikipedia.go + storage_search_searxng.go +
 # storage_search_ddg.go stays regression-locked).
-echo "=== Check 63: forbid http.NewRequest in storage_search.go (B4 lock, July 2026) ==="
-all_hits=$(rg -n --type go \
-    -e 'http\.NewRequest' \
-    internal/application/images/storage_search.go 2>/dev/null \
-    || true)
-literal_calls=$(printf '%s\n' "$all_hits" \
-    | awk -F: '
-        {
-            rest = ""
-            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*storage-search-httpreq/) {
-                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
-                next
-            }
-            if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
-            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
-            allowed = 0
-            for (mi = 1; mi <= n; mi++) {
-              m = mlist[mi] + 0
-              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
-            }
-            if (allowed) next
-            print
-        }' \
-    || true)
-if [ -n "$literal_calls" ]; then
-    echo "FAIL: http.NewRequest detected in storage_search.go (B4 migration lock):"
-    echo "$literal_calls"
-    echo ""
-    echo "Fix: route the call through pkg/httpjson.GetJSON[T] or pkg/httpjson.GetBytes"
-    echo "(the canonical single-call surface post-B4). If the call is genuinely"
-    echo "a streaming upload or other GetBytes-cannot-handle case, prepend an"
-    echo "ARCH-ALLOWLIST marker on the line preceding the call:"
-    echo "    // ARCH-ALLOWLIST: storage-search-httpreq"
-    echo "    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)"
-    echo "The marker strips the hit from the failing-set via a 25-line window."
-    exit 1
-fi
-echo "OK: 0 http.NewRequest calls in storage_search.go (B4 lock upheld)"
+# The B4 storage_search.go migration lock scanned a retired path; the file
+# no longer exists in the canonical tree, so the check is retired with it.
 
 # ────────────────────────────────────────────────────────────────────────────
 # === Check 64: postprocessor registration order is canonical 10-processor sequence

@@ -259,22 +259,22 @@ func (a *imageEmbedderAdapter) embedBatch(ctx context.Context, imagePaths []stri
 
 // ── Model name matching ──────────────────────────────────────────────
 
-// modelNameMatches compares a sidecar-returned model name (which may include
-// a vendor prefix like "google/siglip-..." or "laion/clap-...") against the
-// shorter canonical form stored in schema.IndexSchema (e.g. "siglip-...").
+// modelNameMatches compares a sidecar-returned model name against the
+// canonical registry ID stored in schema.IndexSchema. The comparison accepts
+// an upstream/vendor prefix on either side for compatibility with older
+// sidecars, while all new requests and schema entries use the full registry ID.
 //
 // The comparison is:
 //  1. Exact match (sidecar model == schema model).
-//  2. Last-component match: everything after the final "/" is compared
-//     against the schema model name. This handles the common case where
-//     the Python sidecar uses "google/siglip-so400m-patch14-384" while
-//     schema.IndexSchema stores "siglip-so400m-patch14-384".
+//  2. Last-component match on both IDs (e.g. a legacy short-form sidecar
+//     response still matches google/siglip-so400m-patch14-384).
 func modelNameMatches(sidecarModel, schemaModel string) bool {
-	if sidecarModel == schemaModel {
-		return true
+	return modelBaseName(sidecarModel) == modelBaseName(schemaModel)
+}
+
+func modelBaseName(modelID string) string {
+	if idx := strings.LastIndex(modelID, "/"); idx >= 0 {
+		return modelID[idx+1:]
 	}
-	if idx := strings.LastIndex(sidecarModel, "/"); idx >= 0 {
-		return sidecarModel[idx+1:] == schemaModel
-	}
-	return false
+	return modelID
 }

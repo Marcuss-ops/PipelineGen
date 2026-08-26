@@ -29,21 +29,20 @@ type providedSoundEffect struct {
 }
 
 var providedSoundEffects = []providedSoundEffect{
-	{"1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX", "whoop1.mp3", "Whoop 1", "transition", "whoop", "neutral", "medium", []string{"transition", "motion", "whoop"}, []string{"whoop1", "whoop", "transition"}},
-	{"1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq", "whoop2.mp3", "Whoop 2", "transition", "whoop", "neutral", "medium", []string{"transition", "motion", "whoop"}, []string{"whoop2", "whoop", "transition"}},
-	{"1riijLdDzpL9yXhT-RX-OrRVD67jagq8D", "whoop3.mp3", "Whoop 3", "transition", "whoop", "neutral", "medium", []string{"transition", "motion", "whoop"}, []string{"whoop3", "whoop", "transition"}},
-	{"1fi2huRNuHFzNyvie8SajoZMdw27wl5ke", "whoop4.mp3", "Whoop 4", "transition", "whoop", "neutral", "medium", []string{"transition", "motion", "whoop"}, []string{"whoop4", "whoop", "transition"}},
-	{"1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2", "bgm1.mp3", "Background Music 1", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm1", "bgm", "background_music"}},
-	{"1OXND5tIzQjTNv1T-XIS6lFBlLfJPOp6g", "bgm2.mp3", "Background Music 2", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm2", "bgm", "background_music"}},
-	{"1OmVstjygP2SsX7748ylyzGDdmYxcrE8C", "bgm3.mp3", "Background Music 3", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm3", "bgm", "background_music"}},
+	{"1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX", "bgm1.mp3", "Background Music 1", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm1", "bgm", "background_music"}},
+	{"1riijLdDzpL9yXhT-RX-OrRVD67jagq8D", "bgm2.mp3", "Background Music 2", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm2", "bgm", "background_music"}},
+	{"1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq", "bgm3.mp3", "Background Music 3", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm3", "bgm", "background_music"}},
+	{"1fi2huRNuHFzNyvie8SajoZMdw27wl5ke", "bgm4.mp3", "Background Music 4", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm4", "bgm", "background_music"}},
+	{"1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2", "bgm5.mp3", "Background Music 5", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm5", "bgm", "background_music"}},
+	{"1OmVstjygP2SsX7748ylyzGDdmYxcrE8C", "bgm6.mp3", "Background Music 6", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm6", "bgm", "background_music"}},
 	{"1T7TJuqrwtvR3se1nlvY2k19lA5zAOODs", "whoosh1.mp3", "Whoosh 1", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh1", "whoosh", "transition"}},
 	{"1NQyz3d5JPcLrA6NtM2TMIKdmlTKqepNg", "whoosh2.mp3", "Whoosh 2", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh2", "whoosh", "transition"}},
 	{"1rNnmb3if98M3aSpj2O9EtuvSNJ4AdSen", "whoosh3.mp3", "Whoosh 3", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh3", "whoosh", "transition"}},
-	{"1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2", "whoosh4.mp3", "Whoosh 4", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh4", "whoosh", "transition"}},
-	{"1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK", "whoosh5.mp3", "Whoosh 5", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh5", "whoosh", "transition"}},
-	{"1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L", "whoosh7.mp3", "Whoosh 7", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh7", "whoosh", "transition"}},
-	{"1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC", "whoosh8.mp3", "Whoosh 8", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh8", "whoosh", "transition"}},
-	{"1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX", "whoosh9.mp3", "Whoosh 9", "transition", "whoosh", "neutral", "medium", []string{"transition", "motion", "whoosh"}, []string{"whoosh9", "whoosh", "transition"}},
+	{"1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2", "whop2.mp3", "Whop 2", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop2", "whop", "transition"}},
+	{"1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK", "whop6.mp3", "Whop 6", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop6", "whop", "transition"}},
+	{"1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L", "whop4.mp3", "Whop 4", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop4", "whop", "transition"}},
+	{"1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC", "whop3.mp3", "Whop 3", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop3", "whop", "transition"}},
+	{"1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX", "whop1.mp3", "Whop 1", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop1", "whop", "transition"}},
 	{"1J6oTa66IfB3k8Pt0IUQuSIEHgXa9SctD", "sfx_ui_discord_join_02.mp3", "Discord Join", "ui", "notification_click", "clean", "low", []string{"notification", "join", "micro_accent"}, []string{"discord", "join", "notification", "ui", "chime"}},
 	{"13H2YKkKSCMlenuyGVFHCfYPZ_k946rk9", "sfx_impact_bonk_comedy_01.mp3", "Bonk", "impact", "comic_impact", "comedic", "medium", []string{"comedy", "reaction", "dramatic_hit"}, []string{"bonk", "impact", "comedy", "reaction", "meme"}},
 	{"1lof30_6JSMwHtqNGyh9X4dmxOnfkwcmj", "sfx_ui_discord_notification_02.mp3", "Discord Notification", "ui", "notification_click", "clean", "low", []string{"notification", "label", "micro_accent"}, []string{"discord", "notification", "ui", "alert", "chime"}},
@@ -58,7 +57,7 @@ var providedSoundEffects = []providedSoundEffect{
 	{"1AGKnpKAagHcl3GKiRzjw7n4zNLY0PYF0", "sfx_cartoon_nope_reaction_01.mp3", "Nope Reaction", "cartoon", "comic_reaction", "comedic", "medium", []string{"comedy", "reaction", "meme"}, []string{"nope", "vocal", "tf2", "engineer", "meme", "comedy"}},
 	{"1op6uZzu29-poOM53bGHq1KteDzR4U474", "sfx_impact_minecraft_fall_damage_01.mp3", "Minecraft Fall Damage", "impact", "bone_break", "dramatic", "high", []string{"dramatic_hit", "damage", "comedy"}, []string{"minecraft", "fall", "damage", "crack", "bone", "gaming"}},
 	{"1A45OTTmz0SrN8UP58ONzxGMrzWjuFUJd", "sfx_foley_camera_shutter_03.mp3", "Camera Shutter", "foley", "camera_shutter", "documentary", "low", []string{"action_match", "camera", "transition"}, []string{"camera", "shutter", "click", "photo", "mechanical", "foley"}},
-	{"127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY", "sfx_transition_whoosh_fast_02.mp3", "Fast Whoosh", "transition", "fast_swipe", "action", "high", []string{"cut", "reveal", "motion"}, []string{"whoosh", "whip", "swish", "transition", "fast"}},
+	{"127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY", "whop5.mp3", "Whop 5", "transition", "whop", "neutral", "medium", []string{"transition", "motion", "whop"}, []string{"whop5", "whop", "transition"}},
 	{"1lzhdsxu8-4bfBbIpquPfnrMouZqOY6Mw", "sfx_ui_iphone_notification_02.mp3", "iPhone Notification", "ui", "notification_click", "clean", "low", []string{"notification", "label", "micro_accent"}, []string{"iphone", "notification", "ping", "alert", "digital", "ui"}},
 	{"1lWhiNP99YFwt3lwWbJsmvLOW8vMReOVj", "sfx_ui_awkward_magical_chime_01.mp3", "Awkward Moment Chime", "ui", "magical_chime", "playful", "low", []string{"label", "reveal", "notification"}, []string{"awkward", "chime", "sparkle", "magical", "glissando", "anime"}},
 	{"1g4Et-tG7ukJtS90qNtQB2DN8f1OcHqt3", "sfx_gaming_damage_grunt_01.mp3", "Gaming Damage Grunt", "gaming", "damage_grunt", "dramatic", "medium", []string{"damage", "reaction", "gaming"}, []string{"uh", "oof", "vocal", "grunt", "gaming", "meme"}},
@@ -229,7 +228,9 @@ func RunIndexProvidedSoundEffects(args []string) error {
 			return fmt.Errorf("hash %s: %w", spec.name, err)
 		}
 		now := time.Now().UTC()
-		clip := &asset.Asset{ID: spec.driveID, Name: spec.name, Filename: spec.filename, Source: asset.Source("sound_effect"), MediaType: asset.MediaType("sound_effect"), Category: "file", Group: spec.family, Duration: duration, LifecycleState: asset.StateActive, CreatedAt: now, UpdatedAt: now, Tags: spec.tags}
+		// Sound effects are audio assets in the canonical media taxonomy. The
+		// source remains sound_effect so the resolver derives AssetSFX.
+		clip := &asset.Asset{ID: spec.driveID, Name: spec.name, Filename: spec.filename, Source: asset.Source("sound_effect"), MediaType: asset.MediaType("audio"), Category: "file", Group: spec.family, Duration: duration, LifecycleState: asset.StateActive, CreatedAt: now, UpdatedAt: now, Tags: spec.tags}
 		clip.SearchText = strings.Join(append([]string{spec.name, spec.family, spec.subtype, spec.mood, spec.energy}, append(spec.bestFor, spec.tags...)...), " ")
 		clip.SetDriveFileID(spec.driveID)
 		clip.SetDriveLink("https://drive.google.com/file/d/" + spec.driveID + "/view")

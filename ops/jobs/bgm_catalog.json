@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "canonical": true,
+  "description": "Canonical names for the supplied background-audio files.",
+  "assets": {
+    "bgm1": {
+      "asset_id": "bgm1",
+      "name": "Background Music 1",
+      "filename": "bgm1.mp3",
+      "drive_file_id": "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
+      "url": "velox-drive://1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
+      "drive_link": "https://drive.google.com/file/d/1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX/view?usp=drive_link"
+    },
+    "bgm2": {
+      "asset_id": "bgm2",
+      "name": "Background Music 2",
+      "filename": "bgm2.mp3",
+      "drive_file_id": "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
+      "url": "velox-drive://1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
+      "drive_link": "https://drive.google.com/file/d/1riijLdDzpL9yXhT-RX-OrRVD67jagq8D/view?usp=drive_link"
+    },
+    "bgm3": {
+      "asset_id": "bgm3",
+      "name": "Background Music 3",
+      "filename": "bgm3.mp3",
+      "drive_file_id": "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
+      "url": "velox-drive://1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
+      "drive_link": "https://drive.google.com/file/d/1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq/view?usp=drive_link"
+    },
+    "bgm4": {
+      "asset_id": "bgm4", "name": "Background Music 4", "filename": "bgm4.mp3",
+      "drive_file_id": "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke",
+      "url": "velox-drive://1fi2huRNuHFzNyvie8SajoZMdw27wl5ke",
+      "drive_link": "https://drive.google.com/file/d/1fi2huRNuHFzNyvie8SajoZMdw27wl5ke/view?usp=drive_link"
+    },
+    "bgm5": {
+      "asset_id": "bgm5", "name": "Background Music 5", "filename": "bgm5.mp3",
+      "drive_file_id": "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
+      "url": "velox-drive://1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
+      "drive_link": "https://drive.google.com/file/d/1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2/view?usp=drive_link"
+    },
+    "bgm6": {
+      "asset_id": "bgm6", "name": "Background Music 6", "filename": "bgm6.mp3",
+      "drive_file_id": "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
+      "url": "velox-drive://1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
+      "drive_link": "https://drive.google.com/file/d/1OmVstjygP2SsX7748ylyzGDdmYxcrE8C/view?usp=drive_link"
+    }
+  },
+  "also_supplied_in_links": {
+    "whoop1": {
+      "name": "Whoop 1",
+      "filename": "whoop1.mp3",
+      "drive_file_id": "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX"
+    },
+    "whoop2": {
+      "name": "Whoop 2",
+      "filename": "whoop2.mp3",
+      "drive_file_id": "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq"
+    },
+    "whoop3": {
+      "name": "Whoop 3",
+      "filename": "whoop3.mp3",
+      "drive_file_id": "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D"
+    },
+    "whoop4": {
+      "name": "Whoop 4",
+      "filename": "whoop4.mp3",
+      "drive_file_id": "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke"
+    }
+  }
+}
