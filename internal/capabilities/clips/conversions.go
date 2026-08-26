@@ -7,10 +7,8 @@
 // internal/api/assets/clips/helpers.go as `ClipToAssetNode` (CamelCase
 // exported) and `treeNodeToAssetNode` (lowercase — only call sites are
 // inside the same api/ package). Both helpers were grandfathered on
-// docs/migrations/api-infrastructure-imports-allowlist.txt because they
-// reached into the infra layer from a transport package, violating
-// AGENTS.md Pattern 8 ("internal/api/** non deve contenere business
-// orchestration, no concrete infrastructure imports").
+// the retired API/infrastructure boundary because they reached into a
+// platform layer from transport code, violating the four-root architecture.
 //
 // After PR2 slice 1: the two functions are lifted to this file. The
 // application layer is the canonical seam above the infra, so it is

@@ -20,12 +20,12 @@
 # corresponding `scripts/ci-architectural-checks.sh` Check (e.g. Check 27)
 # MAY be added in a follow-up PR to enforce the marker presence in the
 # two listed source files + deny it elsewhere, using the same set-
-# arithmetic style as Check 19 (api-infrastructure-imports-allowlist.txt).
+# arithmetic style as the retired Check 19 policy.
 #
 # FORMAT
 # ──────
 # One repo-root-relative path per line (matching the convention used by
-# `docs/migrations/api-infrastructure-imports-allowlist.txt` and
+# the retired API/infrastructure import policy and
 # `docs/migrations/deps-struct-allowlist.txt`). Comments start with `#`
 # and are ignored. Section header comments (also starting with `#`) are
 # preserved for human navigation.

@@ -59,7 +59,7 @@ type ChannelMonitor struct {
 	// youtube_discoveries ledger (table created in
 	// migrations/sqlite/113_youtube_discoveries.sql). Composition wires
 	// the concrete *youtubediscoveries.YoutubeDiscoveriesRepository (declared in
-	// internal/platform/sqlite/assets/youtube_discoveries_repository.go)
+	// the canonical platform SQLite adapter)
 	// via the CompositionDeps.Discoveries field. Nil-tolerant at runtime:
 	// processVideo's recordDiscoveryAndClassify classifies already_scheduled
 	// defensively when m.discoveries is nil so a missing wire forces an
@@ -130,7 +130,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// the right signal; tolerating nil in tests preserves the test
 	// pattern that PR1 / PR2 / PR3 were built on.
 	if deps.Cfg != nil && deps.Ports.Discoveries == nil {
-		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *youtubediscoveries.YoutubeDiscoveriesRepository from internal/platform/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
+		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire the canonical platform YouTube discoveries adapter; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
 	}
 
 	// Apply default-unbound placeholder stubs if the caller left them nil.

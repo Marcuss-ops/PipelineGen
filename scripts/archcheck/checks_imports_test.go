@@ -7,95 +7,111 @@ import (
 	"testing"
 )
 
-func TestScanApplicationInfrastructureImportsUsesProductionImportEdges(t *testing.T) {
+func TestScanRetiredRootViolationsRejectsSourceAndImports(t *testing.T) {
 	root := t.TempDir()
 	writeArchcheckTestFile(t, root, "internal/application/demo/service.go", `package demo
-
-import (
-    _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-)
-
-const prose = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/not-an-import"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 `)
-	writeArchcheckTestFile(t, root, "internal/application/demo/service_test.go", `package demo
-
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/test-only"
+	writeArchcheckTestFile(t, root, "internal/capabilities/demo/service.go", `package demo
+import _ "github.com/Marcuss-ops/PipelineGen/internal/application/demo"
 `)
 
-	got, err := scanApplicationInfrastructureImports(root)
+	violations, err := scanRetiredRootViolations(root, []string{"internal/application", "internal/domain"})
 	if err != nil {
-		t.Fatalf("scanApplicationInfrastructureImports: %v", err)
-	}
-	want := "internal/application/demo/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	if len(got) != 1 || got[0] != want {
-		t.Fatalf("edges = %#v, want [%q]", got, want)
-	}
-}
-
-func TestCheckApplicationToInfrastructureRejectsNewAndStaleEdges(t *testing.T) {
-	root := t.TempDir()
-	writeArchcheckTestFile(t, root, "internal/application/demo/service.go", `package demo
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-`)
-	allowlist := filepath.Join(root, "allowlist.txt")
-	if err := os.WriteFile(allowlist, []byte(strings.Join([]string{
-		"internal/application/demo/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive",
-		"internal/application/demo/removed.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files",
-	}, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	baseline := filepath.Join(root, "baseline.txt")
-	if err := os.WriteFile(baseline, []byte(strings.Join([]string{
-		"internal/application/demo/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive",
-		"internal/application/demo/removed.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files",
-	}, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	stats, violations := checkApplicationToInfrastructureAt(root, allowlist, baseline)
-	if stats["actual"] != 1 || stats["allowed"] != 2 || stats["baseline"] != 2 || stats["stale"] != 1 || stats["violations"] != 1 {
-		t.Fatalf("stats = %#v, want actual=1 allowed=2 stale=1 violations=1", stats)
-	}
-	if len(violations) != 1 || !strings.Contains(violations[0], "stale application→infrastructure allowlist entry") {
-		t.Fatalf("violations = %#v, want one stale-entry violation", violations)
-	}
-
-	if err := os.WriteFile(allowlist, []byte("\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	stats, violations = checkApplicationToInfrastructureAt(root, allowlist, baseline)
-	if stats["actual"] != 1 || stats["allowed"] != 0 || stats["baseline"] != 2 || stats["stale"] != 0 || stats["violations"] != 1 {
-		t.Fatalf("new-edge stats = %#v, want actual=1 allowed=0 stale=0 violations=1", stats)
-	}
-	if len(violations) != 1 || !strings.Contains(violations[0], "unallowlisted application→infrastructure import") {
-		t.Fatalf("violations = %#v, want one new-edge violation", violations)
-	}
-}
-
-func TestCheckApplicationToInfrastructureRejectsAllowlistGrowth(t *testing.T) {
-	root := t.TempDir()
-	writeArchcheckTestFile(t, root, "internal/application/demo/service.go", `package demo
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-`)
-	allowlist := filepath.Join(root, "allowlist.txt")
-	baseline := filepath.Join(root, "baseline.txt")
-	activeEdge := "internal/application/demo/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	newEdge := "internal/application/demo/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	if err := os.WriteFile(allowlist, []byte(activeEdge+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(baseline, []byte(newEdge+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	stats, violations := checkApplicationToInfrastructureAt(root, allowlist, baseline)
-	if stats["violations"] != 1 {
-		t.Fatalf("stats = %#v, want one allowlist-growth violation", stats)
+		t.Fatalf("scanRetiredRootViolations: %v", err)
 	}
 	joined := strings.Join(violations, "\n")
-	if !strings.Contains(joined, "allowlist grew beyond baseline") {
-		t.Fatalf("violations = %#v, want an allowlist-growth violation", violations)
+	if !strings.Contains(joined, "retired root source reintroduced: internal/application/demo/service.go") {
+		t.Fatalf("violations = %#v, want retired source violation", violations)
+	}
+	if !strings.Contains(joined, "retired root import reintroduced") {
+		t.Fatalf("violations = %#v, want retired import violation", violations)
+	}
+}
+
+func TestCrossCapabilityImportUsesCurrentCapabilityRoot(t *testing.T) {
+	root := t.TempDir()
+	writeArchcheckTestFile(t, root, "internal/capabilities/source/service.go", `package source
+import _ "github.com/Marcuss-ops/PipelineGen/internal/capabilities/target"
+`)
+	writeArchcheckTestFile(t, root, "internal/capabilities/target/service.go", `package target
+import _ "github.com/Marcuss-ops/PipelineGen/internal/capabilities/target"
+`)
+
+	stats, violations := checkCrossCapabilityImportAt(root)
+	if stats["actual"] != 1 || stats["violations"] != 1 {
+		t.Fatalf("stats = %#v, violations = %#v; want one cross-capability pair", stats, violations)
+	}
+	if !strings.Contains(violations[0], "source->target") {
+		t.Fatalf("violations = %#v, want source->target", violations)
+	}
+
+	imports, err := scanProductionImports(root)
+	if err != nil {
+		t.Fatalf("scanProductionImports: %v", err)
+	}
+	caps := map[string]bool{"source": true, "target": true}
+	pairs := map[string]bool{}
+	for _, edge := range imports {
+		source := capabilityOfFile(edge.file, caps)
+		target := capabilityOfImport(edge.importPath, caps)
+		if source != "" && target != "" && source != target {
+			pairs[source+"->"+target] = true
+		}
+	}
+	if !pairs["source->target"] || len(pairs) != 1 {
+		t.Fatalf("pairs = %#v, want only source->target", pairs)
+	}
+}
+
+func TestCurrentAndRetiredRootsAreExplicit(t *testing.T) {
+	if len(currentInternalRoots) != 4 {
+		t.Fatalf("currentInternalRoots = %#v, want four current roots", currentInternalRoots)
+	}
+	for _, root := range []string{"internal/app", "internal/kernel", "internal/capabilities", "internal/platform"} {
+		found := false
+		for _, current := range currentInternalRoots {
+			if current == root {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("currentInternalRoots missing %q", root)
+		}
+	}
+	for _, test := range []struct {
+		path string
+		want string
+	}{
+		{"internal/app/wiring.go", "internal/app"},
+		{"internal/kernel/asset/state.go", "internal/kernel"},
+		{"internal/capabilities/scripts/service.go", "internal/capabilities"},
+		{"internal/platform/sqlite/store.go", "internal/platform"},
+		{"internal/application/legacy.go", ""},
+	} {
+		if got := currentRootForPath(test.path); got != test.want {
+			t.Errorf("currentRootForPath(%q) = %q, want %q", test.path, got, test.want)
+		}
+	}
+	if got := retiredRootForPath("internal/application/legacy.go"); got != "internal/application" {
+		t.Fatalf("retiredRootForPath = %q, want internal/application", got)
+	}
+	if got := retiredRootForImport(moduleImportPrefix + "internal/infrastructure/drive"); got != "internal/infrastructure" {
+		t.Fatalf("retiredRootForImport = %q, want internal/infrastructure", got)
+	}
+}
+
+func TestCapabilityClassifiersUseCurrentRoot(t *testing.T) {
+	caps := map[string]bool{"scripts": true, "images": true}
+	if got := capabilityOfFile("internal/capabilities/scripts/adapter.go", caps); got != "scripts" {
+		t.Fatalf("capabilityOfFile = %q, want scripts", got)
+	}
+	if got := capabilityOfFile("internal/application/scripts/adapter.go", caps); got != "" {
+		t.Fatalf("legacy capabilityOfFile = %q, want empty", got)
+	}
+	if got := capabilityOfImport("github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/service", caps); got != "images" {
+		t.Fatalf("capabilityOfImport = %q, want images", got)
 	}
 }
 

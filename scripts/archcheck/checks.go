@@ -15,15 +15,10 @@
 // All actual check body logic lives in 3 sibling files (godlike/06 SSOT
 // one-canonical-owner-per-fact):
 //
-//   - checks_imports.go  (~350 LOC): import-graph rules —
-//     checkAPIInfrastructureImports + hard-gated checkApplicationToInfrastructure +
-//     checkCrossCapabilityImport + their 3 capability-classification
-//     helpers + loadAllowlist (co-located because ONLY
-//     checkAPIInfrastructureImports consumes it).
+//   - checks_imports.go: canonical-root and cross-capability import rules.
 //
-//   - checks_coupling.go (~150 LOC): package-dependency coupling rule —
-//     checkDatabaseSQLGate + databaseSQLLegacyBaseline (the pre-gate
-//     surface the ratchet monitors).
+//   - checks_coupling.go: package-dependency coupling rule via
+//     checkDatabaseSQLGate.
 //
 //   - checks_patterns.go (~130 LOC): anti-pattern detection —
 //     checkMigrationYAML + checkOwnershipYAML + checkPythonLegacyWriterGate
@@ -49,9 +44,9 @@ import (
 // (vs the "-1 violation" sentinel that signals rg itself failed).
 //
 // Lives in checks.go (not in a sister file) because EVERY rg-driven
-// check in this package uses the same classification: checkAPIInfrastructureImports
-// in checks_imports.go, checkApplicationToInfrastructure + checkCrossCapabilityImport
-// in checks_imports.go, checkDatabaseSQLGate in checks_coupling.go,
+// check in this package uses the same classification: checkRetiredRootImports
+// and checkCrossCapabilityImport in checks_imports.go, checkDatabaseSQLGate
+// in checks_coupling.go,
 // and the 4 rg-driven Phase 0 rules in phase0_checks.go
 // (checkSetterDetector + checkTypeAliasCrossPkg + checkFakeRoute all
 // need the same "exit 1 = no hits" semantic).
@@ -74,8 +69,6 @@ func execErrIsNoMatch(err error) bool {
 // Lives in checks.go (not in a sister file) because it is a string util
 // shared by 4+ checks across the package:
 //
-//   - checks_imports.go: checkAPIInfrastructureImports +
-//     checkApplicationToInfrastructure (path-list rg output)
 //   - checks_patterns.go: checkPythonLegacyWriterGate is file-based
 //     (NOT eated by splitNonEmpty) but historically inherited the
 //     helper from this file's pre-split topology

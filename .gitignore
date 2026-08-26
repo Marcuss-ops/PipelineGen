@@ -261,7 +261,7 @@ secrets/
 # PR1 (Repository truth, June 2026):
 #   * scripts/archcheck/current_report.json is a per-run diagnostic snapshot
 #     of the codebase scan; regenerated cheaply on every `go run ./scripts/archcheck`.
-#   * It is NEVER used as an allowlist (see docs/migrations/api-infrastructure-imports-allowlist.txt
+#   * It is NEVER used as an architectural allowlist.
 #     for the single source of truth on the ratchet).
 #   * Keeping it out-of-tree avoids polluting PR diffs with full-repo snapshots.
 scripts/archcheck/current_report.json

@@ -8,7 +8,7 @@ import (
 
 // prohibitedPatterns is the per-area list for internal/api/assets/artlist.
 // Baseline (no goroutines; bash Check 19 enforces no infrastructure
-// imports against `docs/migrations/api-infrastructure-imports-allowlist.txt`)
+// imports against the retired-root anti-reintroduction gate)
 // + the grep-verified `artlistadapter.NewAdapter` + `artlist.NewService`
 // orchestrators (added 2026-06-24 followup). See
 // architecture/current.yaml::Wave 14 + arch check Check 19.

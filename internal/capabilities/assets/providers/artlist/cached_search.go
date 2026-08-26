@@ -31,8 +31,8 @@ package artlist
 //
 // The two-arg wiring IS the post-migration contract — direct *sql.DB
 // usage in the application layer is forbidden by
-// scripts/ci-architectural-checks.sh Check 42 + the canonical
-// app-sql-imports-allowlist owner + deadline discipline.
+// scripts/ci-architectural-checks.sh Check 42 and the canonical
+// platform-only database/sql ownership gate.
 //
 // Phase 7 manifest: this file marks the canonical location of the
 // cached-search capability in the split-by-capability refactor of

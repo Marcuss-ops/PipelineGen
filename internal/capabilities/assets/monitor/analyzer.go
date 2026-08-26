@@ -17,7 +17,7 @@
 // those concerns moved out under the TranscriptProvider / VideoAnalyzer
 // ports. The concrete YTDLPSubtitleAdapter (transcripts) and
 // OllamaAnalyzer (semantic) are installed in the next commit, in the
-// internal/application/{transcripts,semantic}/ siblings.
+// sibling capability packages.
 //
 // analyzeVideo returns (Analysis, error) with the following contract:
 //   - (Analysis{}, err): the AI gate produced a real failure (transcript
@@ -100,7 +100,7 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 
 	// Metrics observations — FASE 3.7 Commit 2 (2026-07-04):
 	// emit via the typed m.metrics port (declared in
-	// internal/application/assets/monitor/ports_metrics.go) instead
+	// the monitor capability's typed port instead
 	// of the legacy `internal/platform/observability`
 	// package-level vars. The composition root wires an
 	// *observability.ObservabilityMetricsRecorder adapter; tests

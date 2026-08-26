@@ -11,7 +11,7 @@ import (
 // imports) + the grep-verified `stockpipeline.NewProductionStockPipeline` direct
 // orchestrator (added 2026-06-24 followup). See
 // architecture/current.yaml::Wave 14 + arch check Check 19.
-// Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt
+// Cross-ref: retired-root anti-reintroduction gate
 // (28 grandfathered-import entries as of Wave 14-PR3).
 //
 // HTTP HANDLER RETIRED (godlike/07 NO-FAKE-AVAILABILITY, July 2026):

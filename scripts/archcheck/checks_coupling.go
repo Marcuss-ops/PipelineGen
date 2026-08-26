@@ -1,123 +1,147 @@
-// Package main — archcheck package-dependency coupling rules.
+// Package main - archcheck database/sql ownership rules.
 //
-// checks_coupling.go owns the 1 package-dependency coupling check that
-// monitors "raw database/sql surface" regression vs the locked
-// canonical baseline.
-//
-//   - checkDatabaseSQLGate: ratchet gate for `database/sql` import
-//     count in `internal/api`, `internal/application`, and
-//     `internal/domain`. The intent is the SSOT godlike/06 invariant
-//     "API = thin transport; application = typed repository via port;
-//     domain = no DB imports" — `database/sql` reaching into these
-//     layers means a repository concrete bubbled up out of its layer.
-//     The gate emits violations ONLY for paths in `actual` that are NOT
-//     in `databaseSQLLegacyBaseline` (the pre-gate surface that still
-//     exists and is being shrunk incrementally).
-//
-// Helper (godlike/06 SSOT one-canonical-owner-per-fact: lives here,
-// not in checks.go, because it's the SOLE owner of the legacy
-// pre-gate db/sql surface):
-//
-//   - databaseSQLLegacyBaseline: the canonical pre-gate db/sql surface
-//     snapshot. This baseline is the goto-allowlist for Wave 14 PR-5
-//     (the ratchet gate rationale: ratchets MONOTONE-decrease across
-//     the minor cycle, so the baseline is the "current state" snapshot
-//     operators see at gate promotion time).
+// This file owns the current-tree database/sql gate. SQL access belongs to
+// concrete persistence adapters under internal/platform and to composition
+// wiring under internal/app. Capability packages are permitted only in the
+// explicitly designated persistence seams.
 package main
 
 import (
 	"fmt"
-	"os/exec"
-
-	bl "github.com/Marcuss-ops/PipelineGen/scripts/archcheck/baseline"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
-// checkDatabaseSQLGate is the Wave 14 ratchet gate for `database/sql`
-// import surface in api/application. Monitors REGGRESSIONS:
-//
-//   - "actual"     = current rg -ln `"database/sql"` hit count across
-//     internal/api + internal/application
-//   - "baseline"   = legacy baseline length (adjusted downward when
-//     existing baseline entries were removed from
-//     production — a positive signal, not a violation).
-//   - "regressions"= `actual - baseline` (new import sites added since
-//     baseline freeze). The ONLY violation source: every
-//     added path emits "new database/sql import in
-//     api/application: <path>".
-//
-// Removed entries (in baseline but not in actual) are NOT regressions
-// — they are PROGRESS (-shrinkage is the gate's direction). The
-// function adjusts stats["baseline"] = baseline - removed so the
-// report correctly shows "active legacy surface shrinks" without
-// emitting a violation entry.
-//
-// Pre-PR2 this rule did not exist (the Wave 14 ratchet was a single
-// global counter). PR-5 introduced the per-path regression gate.
-//
-// NOTE: internal/domain was removed in commit b11ed83f4 (converge
-// cleanup architecture, August 2026). The gate now only scans
-// internal/api and internal/application.
+const databaseSQLImport = "database/sql"
+
+// checkDatabaseSQLGate enforces the current ownership rule for database/sql.
+// It parses production Go files under internal/, records actual import sites,
+// and fails closed for every site outside internal/app and internal/platform.
 func checkDatabaseSQLGate() (map[string]int, []string) {
 	stats := map[string]int{
 		"actual":      0,
-		"baseline":    len(databaseSQLLegacyBaseline),
+		"allowed":     0,
 		"regressions": 0,
 	}
-	out, err := exec.Command("rg", "-ln", `"database/sql"`,
-		"internal/api",
-		"internal/application",
-		"--type", "go",
-	).Output()
-	if err != nil && !(execErrIsNoMatch(err)) {
+
+	actual, err := scanDatabaseSQLImports(".")
+	if err != nil {
 		stats["regressions"] = -1
-		return stats, []string{fmt.Sprintf("checkDatabaseSQLGate: rg failed: %v", err)}
+		return stats, []string{fmt.Sprintf("checkDatabaseSQLGate: scan failed: %v", err)}
 	}
 
-	actual := bl.NormalizePaths(splitNonEmpty(string(out)))
-	baseSet := bl.NormalizePaths(databaseSQLLegacyBaseline)
-	added := bl.SubtractSet(actual, baseSet)
-	removed := bl.SubtractSet(baseSet, actual)
 	stats["actual"] = len(actual)
-	stats["regressions"] = len(added)
-
 	var violations []string
-	for _, path := range added {
-		violations = append(violations, "new database/sql import in api/application: "+path)
+	for _, path := range actual {
+		if databaseSQLImportAllowed(path) {
+			stats["allowed"]++
+			continue
+		}
+		violations = append(violations, "database/sql import outside authorized platform/persistence areas: "+path)
 	}
-	if len(removed) > 0 {
-		stats["baseline"] = len(baseSet) - len(removed)
-	}
+	stats["regressions"] = len(violations)
 	return stats, violations
 }
 
-// databaseSQLLegacyBaseline captures the pre-gate db/sql surface that still
-// exists in api/application/domain and is being shrunk incrementally.
-//
-// Canonical SSOT (godlike/06 one-owner-per-fact): this slice lives in
-// checks_coupling.go (NOT in a separate `baseline.go` file) because
-// checkDatabaseSQLGate is its SOLE consumer. Wave 14 PR-5 explicitly
-// co-located the baseline next to its consumer so a future agent
-// adding new entries cannot accidentally edit a stale static snapshot
-// from a different file.
-//
-// Ordering: alphabetical (Go sort.String idiom) for deterministic
-// diff output across CI runs (random ordering would produce spurious
-// CI churn on baseline refresh).
-var databaseSQLLegacyBaseline = []string{
-	"internal/api/middleware/middleware_auth_test.go",
-	"internal/application/assets/artifacts/clips_adapter.go",
-	"internal/application/assets/artifacts/finalizer_test.go",
-	"internal/application/assets/artifacts/repository.go",
-	"internal/application/assets/ingest/adapter_clip.go",
-	"internal/application/assets/maintenance/deep_cleanup.go",
-	"internal/application/assets/maintenance/run_cleanup.go",
-	"internal/application/assets/maintenance/service.go",
-	"internal/capabilities/assets/providers/artlist/assetrepo_integration_test.go",
-	"internal/capabilities/assets/providers/artlist/search_cache.go",
-	"internal/capabilities/assets/providers/artlist/service.go",
-	"internal/capabilities/assets/providers/artlist/service_test.go",
-	"internal/application/books/service.go",
-	"internal/capabilities/jobs/outbox/delivery.go",
-	"internal/capabilities/jobs/outbox/registry.go",
-	"internal/capabilities/jobs/queue/service_test.go",
+// scanDatabaseSQLImports returns production Go files under internal/ that
+// import database/sql. Parsing imports avoids false positives from comments,
+// strings, and unrelated package names. The returned paths are repository-
+// relative and sorted for deterministic reports.
+func scanDatabaseSQLImports(root string) ([]string, error) {
+	internalRoot := filepath.Join(root, "internal")
+	var actual []string
+
+	err := filepath.WalkDir(internalRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "vendor", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", filepath.ToSlash(path), err)
+		}
+		for _, imp := range file.Imports {
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return fmt.Errorf("decode import in %s: %w", filepath.ToSlash(path), err)
+			}
+			if importPath != databaseSQLImport {
+				continue
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return fmt.Errorf("relativize %s from %s: %w", path, root, err)
+			}
+			actual = append(actual, filepath.ToSlash(rel))
+			break
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return normalizeDatabaseSQLPaths(actual), nil
+}
+
+func normalizeDatabaseSQLPaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = filepath.ToSlash(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func databaseSQLImportAllowed(path string) bool {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	if strings.HasPrefix(path, "internal/platform/") || strings.HasPrefix(path, "internal/app/") {
+		return true
+	}
+	for _, prefix := range authorizedPersistenceCapabilityPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// These are the only capability persistence seams currently authorized to
+// depend directly on database/sql. Keep this list explicit and small: new
+// capability persistence must be introduced through a platform adapter or
+// deliberately added here with an architectural review.
+var authorizedPersistenceCapabilityPrefixes = []string{
+	"internal/capabilities/assets/persistence/",
+	"internal/capabilities/assets/artifacts/",
+	"internal/capabilities/assets/finalizer/",
+	"internal/capabilities/assembly/sqlite/",
+	"internal/capabilities/execution/steps/",
+	"internal/capabilities/jobs/",
+	"internal/capabilities/maintenance/",
+	"internal/capabilities/operations/",
+	"internal/capabilities/voiceover/service/persistence/",
 }

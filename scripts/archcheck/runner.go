@@ -26,19 +26,11 @@ import (
 	bl "github.com/Marcuss-ops/PipelineGen/scripts/archcheck/baseline"
 )
 
-// runFocusedChecks runs the "report-only" gate that always exits 0
-// unless the (smaller) focused surface breaks. Mirrors the pre-PR2
-// behaviour exactly — the refactor is structural only.
+// runFocusedChecks runs the focused current-tree architecture checks.
+// Legacy root policy is enforced structurally; no retired allowlist is loaded.
 func runFocusedChecks() Report {
 	checks := map[string]int{}
 	violations := []string{}
-
-	apiStats, apiViolations := checkAPIInfrastructureImports()
-	checks["api_infrastructure_imports"] = apiStats["violations"]
-	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
-	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
-	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
-	violations = append(violations, apiViolations...)
 
 	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
 	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
@@ -59,15 +51,9 @@ func runFocusedChecks() Report {
 	}
 	violations = append(violations, depViolations...)
 
-	// Enforce the temporary application-boundary ratchet. New import
-	// edges and stale ledger entries are both violations.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_edges"] = atiStats["actual"]
-	checks["application_to_infrastructure_allowed"] = atiStats["allowed"]
-	checks["application_to_infrastructure_baseline"] = atiStats["baseline"]
-	checks["application_to_infrastructure_allowlist_stale"] = atiStats["stale"]
-	checks["application_to_infrastructure_violations"] = atiStats["violations"]
-	violations = append(violations, atiViolations...)
+	retiredStats, retiredViolations := checkRetiredRootImports("retired_roots", retiredInternalRoots[:])
+	checks["retired_root_violations"] = retiredStats["violations"]
+	violations = append(violations, retiredViolations...)
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]
@@ -83,23 +69,14 @@ func runFocusedChecks() Report {
 	}
 }
 
-// runRatchetChecks runs the full ratchet gate (allowlist + baseline
-// + database/sql regressions + ...). See architecture/current.yaml
-// Wave 14-18 for the ratchet definition and exit-gate criteria.
+// runRatchetChecks runs the full current-tree ratchet gate, including
+// database/sql ownership and retired-root reintroduction checks.
 func runRatchetChecks() Report {
 	checks := map[string]int{}
 	violations := []string{}
 
-	apiStats, apiViolations := checkAPIInfrastructureImports()
-	checks["api_infrastructure_imports"] = apiStats["violations"]
-	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
-	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
-	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
-	violations = append(violations, apiViolations...)
-
 	sqlStats, sqlViolations := checkDatabaseSQLGate()
 	checks["database_sql_actual"] = sqlStats["actual"]
-	checks["database_sql_baseline"] = sqlStats["baseline"]
 	checks["database_sql_regressions"] = sqlStats["regressions"]
 	violations = append(violations, sqlViolations...)
 
@@ -122,14 +99,9 @@ func runRatchetChecks() Report {
 	}
 	violations = append(violations, depViolations...)
 
-	// Enforce the temporary application-boundary ratchet in ratchet mode.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_edges"] = atiStats["actual"]
-	checks["application_to_infrastructure_allowed"] = atiStats["allowed"]
-	checks["application_to_infrastructure_baseline"] = atiStats["baseline"]
-	checks["application_to_infrastructure_allowlist_stale"] = atiStats["stale"]
-	checks["application_to_infrastructure_violations"] = atiStats["violations"]
-	violations = append(violations, atiViolations...)
+	retiredStats, retiredViolations := checkRetiredRootImports("retired_roots", retiredInternalRoots[:])
+	checks["retired_root_violations"] = retiredStats["violations"]
+	violations = append(violations, retiredViolations...)
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]

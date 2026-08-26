@@ -50,11 +50,6 @@ func (s *Service) handleBatchJob(ctx context.Context, job *appjobs.Job) (map[str
 }
 
 func (s *Service) handlePromoJob(ctx context.Context, job *appjobs.Job) (map[string]any, error) {
-	// PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (July 2026): the legacy
-	// voiceover.PromoRequest alias was removed; the canonical surface
-	// is now promo.Request (owned by internal/application/
-	// workflow/promo). Import alias `promo` mirrors promo.go's
-	// natural Go-idiomatic convention for the same package.
 	var req promo.Request
 	if err := json.Unmarshal(job.Payload, &req); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal promo payload: %w", err)
