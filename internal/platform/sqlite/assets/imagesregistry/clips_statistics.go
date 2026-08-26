@@ -1,7 +1,6 @@
 package imagesregistry
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"errors"

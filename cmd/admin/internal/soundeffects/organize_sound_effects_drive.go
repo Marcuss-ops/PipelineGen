@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"

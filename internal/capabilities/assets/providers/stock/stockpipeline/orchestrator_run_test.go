@@ -2,7 +2,7 @@
 //
 // TDD coverage for the LLM enrichment plumbing-on-nil contract.
 // The 6 fields (Category / Event / Round / Scene / Subject /
-// Entities) on stockpipeline.StockRunMetadata are wired into the wire shape
+// Entities) on StockRunMetadata are wired into the wire shape
 // NOW so future PRs can populate them after the LLM enrichment
 // pass lands. For now, the fields stay at zero-value; omitempty
 // drops them from the JSON payload.
@@ -20,13 +20,12 @@
 // steps which call writeAndHashMetadata → buildStockRunMetadata).
 // The test directly exercises buildStockRunMetadata because it
 // is the canonical pure function that constructs the
-// stockpipeline.StockRunMetadata wire shape; this is the godlike/06 SSOT
+// StockRunMetadata wire shape; this is the godlike/06 SSOT
 // surface for the metadata.json envelope. The test pins the
 // contract that RunResilient's downstream steps inherit.
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -34,7 +33,7 @@ import (
 
 // TestRunOrchestratorResilient_LLMFieldsNil_DefaultsToOmitFromPayload
 // pins the PR-007 godlike/07 NO-FAKE-AVAILABILITY contract:
-//   - The 6 LLM enrichment fields on stockpipeline.StockRunMetadata stay at
+//   - The 6 LLM enrichment fields on StockRunMetadata stay at
 //     zero-value (nil / empty) until the LLM enrichment pass lands.
 //   - omitempty drops the zero-value fields from the JSON payload.
 //   - The JSON wire shape does NOT contain any of the 6 LLM keys.
@@ -51,13 +50,13 @@ import (
 //     slice (omitempty still drops both, but the contract check
 //     is loose enough to permit it).
 func TestRunOrchestratorResilient_LLMFieldsNil_DefaultsToOmitFromPayload(t *testing.T) {
-	// Build a minimal stockpipeline.RunInput + chunks + fingerprint. The
+	// Build a minimal RunInput + chunks + fingerprint. The
 	// buildStockRunMetadata helper is the canonical production
 	// function that RunResilient's publish/finalize steps call
 	// (via writeAndHashMetadata) to construct the metadata.json
 	// envelope. Per godlike/06 SSOT, this is the SOLE wire-shape
 	// construction site for the per-run metadata.
-	in := &stockpipeline.RunInput{
+	in := &RunInput{
 		FolderID:      "wf-pr007",
 		FolderName:    "pr007-folder",
 		DirectURLs:    []string{"https://example.com/source.mp4"},
@@ -68,7 +67,7 @@ func TestRunOrchestratorResilient_LLMFieldsNil_DefaultsToOmitFromPayload(t *test
 		// downstream LLM enrichment pass. Per PR-007 contract the
 		// fields stay at zero-value.
 	}
-	chunks := []stockpipeline.ChunkState{
+	chunks := []ChunkState{
 		{
 			Index:      0,
 			ArtifactID: "stock:fp:c0",
@@ -111,7 +110,7 @@ func TestRunOrchestratorResilient_LLMFieldsNil_DefaultsToOmitFromPayload(t *test
 	// ── 2. godlike/07 NO-FAKE-AVAILABILITY — JSON omits the 6 keys ──
 	raw, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
-		t.Fatalf("json.MarshalIndent(stockpipeline.StockRunMetadata) failed: %v", err)
+		t.Fatalf("json.MarshalIndent(StockRunMetadata) failed: %v", err)
 	}
 	jsonStr := string(raw)
 

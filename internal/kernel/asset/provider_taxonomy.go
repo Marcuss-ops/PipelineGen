@@ -70,3 +70,6 @@ func (p ImageProvider) IsRetrieved() bool {
 		return false
 	}
 }
+
+func (o ImageOrigin) String() string   { return string(o) }
+func (p ImageProvider) String() string { return string(p) }

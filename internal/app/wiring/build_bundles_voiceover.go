@@ -24,8 +24,8 @@
 package wiring
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"go.uber.org/zap"
@@ -33,7 +33,6 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"

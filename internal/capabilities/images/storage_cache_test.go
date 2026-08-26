@@ -1,16 +1,15 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"errors"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"

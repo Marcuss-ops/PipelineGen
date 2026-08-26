@@ -33,7 +33,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

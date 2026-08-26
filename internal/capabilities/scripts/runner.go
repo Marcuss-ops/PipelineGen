@@ -149,6 +149,7 @@ type Runner struct {
 	vidRushBarrier      VidRushBarrier
 	vidRushTiming       VidRushTimingRecorder
 	generationGate      *GenerationGate
+	nlpGenerationGate   *GenerationGate
 	vidRushPipeline     *VidRushPipeline
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
@@ -326,7 +327,14 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	coordinator.SetSegmentProviderResolver(p.ProviderResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
-	coordinator.SetGenerationGate(r.generationGate)
+	nlpGate := r.nlpGenerationGate
+	// Compatibility fallback for focused tests and older composition roots
+	// that only wired the historical shared gate. Production wiring always
+	// provides both independent gates.
+	if nlpGate == nil {
+		nlpGate = r.generationGate
+	}
+	coordinator.SetGenerationGate(nlpGate)
 
 	r.registerVidRush(runID, vidRushWiring{
 		observer: coordinator,

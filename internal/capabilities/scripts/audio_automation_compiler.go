@@ -79,7 +79,7 @@ func (r *AudioAutomationCompiler) CompileBGMFades(bgm []audio.ResolvedBGM) ([]au
 			TargetTrackID: "bgm",
 			StartUS:       layer.TimelineStartUS,
 			EndUS:         layer.TimelineStartUS + layer.DurationUS,
-			GainDB:        layer.GainDB,
+			GainDB:        audio.BackgroundMusicGainDB,
 			AttackUS:      fadeIn,
 			ReleaseUS:     fadeOut,
 		})
@@ -119,6 +119,12 @@ func (r *AudioAutomationCompiler) CompileBGMDucking(timeline audio.CanonicalTime
 		gain := layer.DuckGainDB
 		if gain == 0 {
 			gain = DefaultBGMDuckGainDB
+		}
+		// Ducking must never make BGM louder than the canonical -50 dB
+		// policy level. The old default (-30 dB) is retained only as a
+		// legacy input, then clamped at the canonical audio boundary.
+		if gain > audio.BackgroundMusicGainDB {
+			gain = audio.BackgroundMusicGainDB
 		}
 		attack := layer.DuckAttackUS
 		if attack == 0 {

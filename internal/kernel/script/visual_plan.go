@@ -6,8 +6,7 @@
 // cold candidates that were evaluated but not materialized.
 package script
 
-import (
-)
+import ()
 
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 

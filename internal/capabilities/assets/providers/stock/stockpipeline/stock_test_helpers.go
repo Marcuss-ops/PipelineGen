@@ -1,7 +1,7 @@
 // Package stockpipeline — stock_test_helpers.go (PR-STOCK-PRODUCTION-DEPS, July 2026).
 //
 // Shared test helpers for the stockpipeline package. The noopRenderer
-// struct is the canonical trivial stockpipeline.StockRenderer used by tests that
+// struct is the canonical trivial StockRenderer used by tests that
 // exercise the orchestrator wiring without asserting on render
 // behavior. Extracted from stock_stager_wiring_test.go +
 // run_upload_indexing_test.go per godlike/06 SSOT one-canonical-
@@ -10,7 +10,7 @@
 //
 // godlike/07 composition-time guarantee: the orchestrator's
 // composition-time fail-closed gate (orchestrator.go::RunResilient)
-// rejects nil renderer with stockpipeline.ErrOrchestratorNilDeps. Tests that
+// rejects nil renderer with ErrOrchestratorNilDeps. Tests that
 // exercise the pipeline must wire a non-nil renderer stub even if
 // they don't assert on render behavior. noopRenderer satisfies the
 // contract without side effects.
@@ -21,31 +21,30 @@
 // helpers serve different purposes: noopRenderer is a type-level
 // trivial impl; successNoopRenderer is a per-call configurable
 // handler. Both are valid per the composition-time gate.
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
-// noopRenderer is a trivial stockpipeline.StockRenderer that always returns success.
+// noopRenderer is a trivial StockRenderer that always returns success.
 // Used by tests that exercise the orchestrator wiring without asserting
 // on render behavior. The composition-time fail-closed gate
 // (PR-STOCK-PRODUCTION-DEPS, July 2026) requires a non-nil renderer;
 // the noop stub satisfies the contract without side effects.
 type noopRenderer struct{}
 
-var _ stockpipeline.StockRenderer = (*noopRenderer)(nil)
+var _ StockRenderer = (*noopRenderer)(nil)
 
-// Render always returns (stockpipeline.RenderResult{}, nil). The composition-time
+// Render always returns (RenderResult{}, nil). The composition-time
 // gate is satisfied; render behavior is irrelevant to the tests that
 // use this stub (they assert on stage_sources / plan / extract_clips
 // / publish / finalize behavior, not on render output).
-func (noopRenderer) Render(_ context.Context, _ stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
-	return stockpipeline.RenderResult{}, nil
+func (noopRenderer) Render(_ context.Context, _ RenderRequest) (RenderResult, error) {
+	return RenderResult{}, nil
 }
 
 // testLease returns a deterministic non-empty lease for stockpipeline

@@ -5,12 +5,12 @@
 package texttracks
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

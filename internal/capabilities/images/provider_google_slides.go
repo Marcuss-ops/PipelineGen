@@ -9,12 +9,11 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 

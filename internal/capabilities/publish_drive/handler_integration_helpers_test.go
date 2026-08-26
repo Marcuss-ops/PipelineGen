@@ -53,7 +53,7 @@ import (
 	"testing"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -120,17 +120,17 @@ func newRepoForTest(db *sql.DB) *artifactstages.Repository {
 // artifact_stages/repository_test.go (kept here to keep the
 // integration test self-contained — no test-file cross-import
 // coupling).
-func validStageForTest(id string) *artifact.ArtifactStage {
-	return &artifact.ArtifactStage{
+func validStageForTest(id string) *detail.ArtifactStage {
+	return &detail.ArtifactStage{
 		ID:           id,
 		JobID:        "job-integ-1",
 		LocalPath:    "/var/lib/pipelinegen/staging/job-integ-1/" + id,
 		Hash:         "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		Size:         4096,
 		Mime:         "audio/mpeg",
-		Requirement:  artifact.RequirementRequired,
+		Requirement:  detail.RequirementRequired,
 		Destination:  "drive:voiceover/test",
-		State:        artifact.ArtifactStageStateStaged,
+		State:        detail.ArtifactStageStateStaged,
 		AttemptCount: 0,
 	}
 }

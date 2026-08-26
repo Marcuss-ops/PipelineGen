@@ -14,11 +14,9 @@
 package acceptance_test
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestIdempotency_DoubleDispatch_SecondCallSuperseded(t *testing.T) {

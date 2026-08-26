@@ -2,10 +2,10 @@
 package aistock
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"fmt"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strings"
 	"time"
 

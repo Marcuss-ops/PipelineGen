@@ -1,65 +1,27 @@
-// Package asset defines image provenance and provider taxonomy.
+// Package detail keeps compatibility aliases for image provenance types.
+// The canonical definitions live in kernel/asset so core asset state and
+// image details share one nominal type.
 package detail
 
-// ImageOrigin classifies how an image asset entered the system.
-type ImageOrigin string
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+
+type ImageOrigin = asset.ImageOrigin
+
+type ImageProvider = asset.ImageProvider
 
 const (
-	ImageOriginRetrieved ImageOrigin = "retrieved"
-	ImageOriginGenerated ImageOrigin = "generated"
-	ImageOriginUploaded  ImageOrigin = "uploaded"
+	ImageOriginRetrieved = asset.ImageOriginRetrieved
+	ImageOriginGenerated = asset.ImageOriginGenerated
+	ImageOriginUploaded  = asset.ImageOriginUploaded
+
+	ProviderWikipedia        = asset.ProviderWikipedia
+	ProviderWikimediaCommons = asset.ProviderWikimediaCommons
+	ProviderDuckDuckGo       = asset.ProviderDuckDuckGo
+	ProviderSearXNG          = asset.ProviderSearXNG
+	ProviderDrive            = asset.ProviderDrive
+	ProviderGoogleSlides     = asset.ProviderGoogleSlides
+	ProviderNVIDIA           = asset.ProviderNVIDIA
+	ProviderFlux             = asset.ProviderFlux
+	ProviderUpload           = asset.ProviderUpload
+	ProviderUnknown          = asset.ProviderUnknown
 )
-
-func (o ImageOrigin) IsValid() bool {
-	switch o {
-	case ImageOriginRetrieved, ImageOriginGenerated, ImageOriginUploaded:
-		return true
-	default:
-		return false
-	}
-}
-
-// ImageProvider identifies the concrete source of an image. Google Slides is
-// the only provider in the generated-image territory.
-type ImageProvider string
-
-const (
-	ProviderWikipedia        ImageProvider = "wikipedia"
-	ProviderWikimediaCommons ImageProvider = "wikimedia_commons"
-	ProviderDuckDuckGo       ImageProvider = "duckduckgo"
-	ProviderSearXNG          ImageProvider = "searxng"
-	ProviderDrive            ImageProvider = "drive"
-	ProviderGoogleSlides     ImageProvider = "google-slides"
-	ProviderNVIDIA           ImageProvider = "nvidia"
-	ProviderFlux             ImageProvider = "flux"
-	ProviderUpload           ImageProvider = "upload"
-	ProviderUnknown          ImageProvider = "unknown"
-)
-
-func (p ImageProvider) IsValid() bool {
-	switch p {
-	case ProviderWikipedia, ProviderWikimediaCommons, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive,
-		ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload, ProviderUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-func (p ImageProvider) IsGenerated() bool {
-	switch p {
-	case ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux:
-		return true
-	default:
-		return false
-	}
-}
-
-func (p ImageProvider) IsRetrieved() bool {
-	switch p {
-	case ProviderWikipedia, ProviderWikimediaCommons, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive:
-		return true
-	default:
-		return false
-	}
-}

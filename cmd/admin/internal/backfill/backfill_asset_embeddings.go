@@ -52,7 +52,6 @@
 package backfill
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -65,7 +64,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
+	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

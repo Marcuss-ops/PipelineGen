@@ -25,9 +25,9 @@
 package texttracks
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"net/url"
 	"strings"
 

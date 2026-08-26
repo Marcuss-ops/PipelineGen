@@ -1,7 +1,6 @@
 package adapters
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"strings"
 

@@ -70,7 +70,7 @@ func TestCompileBGMDucking_PlanExample(t *testing.T) {
 		TriggerTrackID: "voiceover",
 		StartUS:        0,
 		EndUS:          8_000_000, // speech ends at min(window 10s, certified 8s)
-		GainDB:         -30,
+		GainDB:         audio.BackgroundMusicGainDB,
 		AttackUS:       120_000,
 		ReleaseUS:      350_000,
 	}}
@@ -92,8 +92,8 @@ func TestCompileBGMDucking_PlanDefaults(t *testing.T) {
 		t.Fatalf("automation = %+v, want exactly one entry", out)
 	}
 	a := out[0]
-	if a.GainDB != DefaultBGMDuckGainDB || a.AttackUS != DefaultBGMDuckAttackUS || a.ReleaseUS != DefaultBGMDuckReleaseUS {
-		t.Fatalf("defaults not applied: %+v (want gain=%.1f attack=%d release=%d)", a, DefaultBGMDuckGainDB, DefaultBGMDuckAttackUS, DefaultBGMDuckReleaseUS)
+	if a.GainDB != audio.BackgroundMusicGainDB || a.AttackUS != DefaultBGMDuckAttackUS || a.ReleaseUS != DefaultBGMDuckReleaseUS {
+		t.Fatalf("canonical defaults not applied: %+v (want gain=%.1f attack=%d release=%d)", a, audio.BackgroundMusicGainDB, DefaultBGMDuckAttackUS, DefaultBGMDuckReleaseUS)
 	}
 }
 

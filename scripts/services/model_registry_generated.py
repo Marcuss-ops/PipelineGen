@@ -13,6 +13,7 @@ MODEL_REGISTRY = {
         "dimensions": 768,
         "license": "MIT",
         "role": "text_embedding",
+        "languages": 0,
         "enabled": True,
     },
     "google/siglip-so400m-patch14-384": {
@@ -21,6 +22,7 @@ MODEL_REGISTRY = {
         "dimensions": 768,
         "license": "Apache-2.0",
         "role": "visual_embedding",
+        "languages": 0,
         "enabled": True,
     },
     "BAAI/bge-reranker-v2-m3": {
@@ -29,6 +31,7 @@ MODEL_REGISTRY = {
         "dimensions": 0,
         "license": "Apache-2.0",
         "role": "reranker",
+        "languages": 0,
         "enabled": True,
     },
     "laion/clap-htsat-fused": {
@@ -37,6 +40,7 @@ MODEL_REGISTRY = {
         "dimensions": 512,
         "license": "Apache-2.0",
         "role": "audio_embedding",
+        "languages": 0,
         "enabled": False,
     },
     "openai/whisper-large-v3-turbo": {
@@ -45,6 +49,7 @@ MODEL_REGISTRY = {
         "dimensions": 0,
         "license": "MIT",
         "role": "transcription",
+        "languages": 99,
         "enabled": False,
     },
 }

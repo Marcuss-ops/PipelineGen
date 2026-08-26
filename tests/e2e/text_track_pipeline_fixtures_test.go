@@ -1,9 +1,9 @@
 package e2e
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sync"
 	"testing"
 

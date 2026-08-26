@@ -40,6 +40,7 @@ import (
 	"time"
 
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
@@ -69,19 +70,19 @@ type markPublishedCall struct {
 	PublishedAt  time.Time
 }
 
-func (s *stubRepository) Insert(_ context.Context, _ *artifact.ArtifactStage) error {
+func (s *stubRepository) Insert(_ context.Context, _ *detail.ArtifactStage) error {
 	return nil
 }
-func (s *stubRepository) InsertWithOutbox(_ context.Context, _ *artifact.ArtifactStage, _ string, _ []byte) (string, error) {
+func (s *stubRepository) InsertWithOutbox(_ context.Context, _ *detail.ArtifactStage, _ string, _ []byte) (string, error) {
 	return "", nil
 }
-func (s *stubRepository) GetByID(_ context.Context, _ string) (*artifact.ArtifactStage, error) {
-	return nil, artifact.WrapArtifactStageNotFound("not-implemented-stub")
+func (s *stubRepository) GetByID(_ context.Context, _ string) (*detail.ArtifactStage, error) {
+	return nil, detail.WrapArtifactStageNotFound("not-implemented-stub")
 }
-func (s *stubRepository) ListByJob(_ context.Context, _ string) ([]artifact.ArtifactStage, error) {
+func (s *stubRepository) ListByJob(_ context.Context, _ string) ([]detail.ArtifactStage, error) {
 	return nil, nil
 }
-func (s *stubRepository) ListByState(_ context.Context, _ artifact.ArtifactStageState, _ int) ([]artifact.ArtifactStage, error) {
+func (s *stubRepository) ListByState(_ context.Context, _ detail.ArtifactStageState, _ int) ([]detail.ArtifactStage, error) {
 	return nil, nil
 }
 func (s *stubRepository) MarkPublished(_ context.Context, id, locationJSON string, publishedAt time.Time) error {
@@ -105,7 +106,7 @@ func (s *stubRepository) IncrementAttemptCount(_ context.Context, _ string) erro
 }
 
 // Compile-time conformance anchor.
-var _ artifact.ArtifactStageRepository = (*stubRepository)(nil)
+var _ detail.ArtifactStageRepository = (*stubRepository)(nil)
 
 // stubPublisher captures Publish calls + returns a canned
 // PublishResult (default: drive-published) + a canned error
@@ -352,7 +353,7 @@ func TestHandler_Handle_TerminalStateRejection_ReturnsNil(t *testing.T) {
 	// fenced-CAS rejects with the canonical terminal-state
 	// sentinel. The handler MUST return nil to break the
 	// outbox redelivery loop.
-	repo.markErr = artifact.ErrTerminalStateRejection
+	repo.markErr = detail.ErrTerminalStateRejection
 
 	if err := h.Handle(context.Background(), makeEvent(validPayload())); err != nil {
 		t.Errorf("Handle terminal-state fence: err = %v, want nil (idempotent re-delivery = no-op)", err)

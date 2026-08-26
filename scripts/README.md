@@ -26,10 +26,12 @@ scripts/
 ├── services/                     # Persistent ML servers (HTTP, called from Go)
 │   ├── embedding_server/          #  E5 embeddings + CLIP + CLAP (__main__, models, audio, text, visual)
 │   ├── reranker_server.py         #  CrossEncoder reranking
+│   ├── model_registry_generated.py #  Python mirror of internal/kernel/models (generated)
 │   └── device_policy.py           #  GPU/CPU device selection policy
 ├── tools/                        # Manual CLI utilities (not called from Go)
 │   ├── argos_install_models.py    #  Install Argos Translate language models
 │   ├── generate_drive_token.py    #  OAuth2 token generation for Google Drive
+│   ├── model_downloader.py        #  Download + verify ML model weights (registry SSOT)
 │   ├── resolve_drive_ids.py       #  Resolve Drive file/folder IDs
 │   ├── sync_drive_qdrant.py       #  Sync Drive contents to Qdrant
 │   ├── transcribe_detect_lang.py  #  Transcription + language detection

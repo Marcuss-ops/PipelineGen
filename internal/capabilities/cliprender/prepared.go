@@ -1,9 +1,5 @@
 package cliprender
 
-import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-)
-
 // prepared.go owns the typed result of the parallel preparation phase:
 // the resolved asset identities, the materialized local artifacts, the
 // canonical transcript, the resolved output contract, and the wall-vs-work

@@ -37,9 +37,9 @@
 package wiring
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"

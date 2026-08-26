@@ -20,8 +20,7 @@
 // ambiguity stays visible as a non-zero counter.
 package mediaregistry
 
-import (
-)
+import ()
 
 import "context"
 

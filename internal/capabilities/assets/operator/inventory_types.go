@@ -1,7 +1,6 @@
 package operator
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"time"
 
@@ -91,7 +90,7 @@ type AssetInspection struct {
 	Locations []*asset.Location `json:"locations,omitempty"`
 
 	// Processing contains the latest processing records per step.
-	Processing []detail.ProcessingRecord `json:"processing,omitempty"`
+	Processing []asset.ProcessingRecord `json:"processing,omitempty"`
 
 	// OutboxEvents lists the recent outbox activity for the asset.
 	OutboxEvents []OutboxEventProjection `json:"outbox_events,omitempty"`

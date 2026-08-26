@@ -12,9 +12,9 @@
 package artifacts
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"sync/atomic"
 	"testing"
 

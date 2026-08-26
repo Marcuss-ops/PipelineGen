@@ -20,12 +20,11 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 

@@ -80,13 +80,16 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 			track.Events = append(track.Events, e)
 		}
 	}
+	// BGM/SFX levels are policy, not user-controlled asset metadata. Keep the
+	// payload gain fields for wire compatibility, but normalize them here so
+	// every producer (including translated runs) reaches the same master mix.
 	for i, layer := range bgm {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackBGM, "bgm")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: BackgroundMusicGainDB})
 	}
 	for i, layer := range sfx {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: SoundEffectGainDB})
 	}
 	applyMixPolicy(&p)
 	if err := p.Seal(); err != nil {

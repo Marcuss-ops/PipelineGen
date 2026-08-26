@@ -202,6 +202,21 @@ func writeDocumentSpecSceneJSON(b *strings.Builder, model *scriptpkg.ModelScript
 	b.WriteString("</code></pre>")
 }
 
+func writeDocumentJobPayloadJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	if len(opts.JobPayload) == 0 {
+		return
+	}
+	var payload any
+	if err := json.Unmarshal(opts.JobPayload, &payload); err != nil {
+		return
+	}
+	if raw, err := json.MarshalIndent(payload, "", "  "); err == nil {
+		b.WriteString("<h2>Remote Job Payload JSON</h2><pre><code>")
+		b.WriteString(html.EscapeString(string(raw)))
+		b.WriteString("</code></pre>")
+	}
+}
+
 func writeDocumentTimelineJSON(b *strings.Builder, opts DocumentRenderOptions) {
 	if opts.AudioTimeline == nil {
 		return

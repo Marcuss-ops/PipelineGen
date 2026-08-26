@@ -55,7 +55,7 @@ import (
 
 	"go.uber.org/zap"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Compile-time assertion: *finalizerService satisfies the

@@ -1,12 +1,12 @@
 package artlist
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"path/filepath"
 	"testing"

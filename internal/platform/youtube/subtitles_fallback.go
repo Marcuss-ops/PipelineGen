@@ -30,7 +30,6 @@
 package youtube
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

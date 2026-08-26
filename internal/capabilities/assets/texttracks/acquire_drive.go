@@ -1,12 +1,11 @@
 package texttracks
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"io"
 	"os"
-
 )
 
 func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireCommand) (*AcquireResult, error) {

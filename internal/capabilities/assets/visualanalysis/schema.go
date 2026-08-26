@@ -5,7 +5,6 @@
 package visualanalysis
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/json"
 	"fmt"
 	"path"

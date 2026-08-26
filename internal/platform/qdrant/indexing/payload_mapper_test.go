@@ -21,7 +21,6 @@
 package indexing
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"testing"
 
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"

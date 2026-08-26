@@ -1,9 +1,9 @@
 package clips
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"

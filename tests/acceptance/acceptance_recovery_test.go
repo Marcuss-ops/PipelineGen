@@ -13,14 +13,13 @@
 package acceptance_test
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // concatInit wraps a per-call language list with the required

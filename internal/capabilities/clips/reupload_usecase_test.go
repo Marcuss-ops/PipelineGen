@@ -17,9 +17,9 @@
 package clips
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +27,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 

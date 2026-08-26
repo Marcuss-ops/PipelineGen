@@ -545,6 +545,82 @@ func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 	}
 }
 
+// ── Test 6c: reranker fetch window + top-5 truncation ───────────────
+//
+// Pins the canonical recipe (Qdrant top_k window → BGE → top 5):
+// when the reranker is enabled, the Qdrant fetch limit must be widened
+// to the rerank window (max(page limit, TopK), capped at MaxLimit) so
+// BGE genuinely re-scores the top_k candidates, and the backend must
+// return only the top semanticRerankTopResults hits.
+
+func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
+	vs := &mockVectorStore{
+		annRes: []assetsearch.VectorSearchResult{
+			{AssetID: "a-1", Score: 0.95},
+			{AssetID: "a-2", Score: 0.94},
+			{AssetID: "a-3", Score: 0.93},
+			{AssetID: "a-4", Score: 0.92},
+			{AssetID: "a-5", Score: 0.91},
+			{AssetID: "a-6", Score: 0.90},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "a-1", Name: "One", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+			{ID: "a-2", Name: "Two", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+			{ID: "a-3", Name: "Three", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+			{ID: "a-4", Name: "Four", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+			{ID: "a-5", Name: "Five", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+			{ID: "a-6", Name: "Six", Source: "youtube", MediaType: "video", LifecycleState: "ACTIVE"},
+		},
+	}
+	rk := &mockReranker{
+		enabled: true,
+		weight:  0.5,
+		// topK left 0 → mock default 30 (the canonical rerank window).
+		results: []reranker.Result{
+			{ID: "a-6", RerankScore: 0.99},
+			{ID: "a-5", RerankScore: 0.98},
+			{ID: "a-4", RerankScore: 0.97},
+			{ID: "a-3", RerankScore: 0.96},
+			{ID: "a-2", RerankScore: 0.95},
+			{ID: "a-1", RerankScore: 0.10},
+		},
+	}
+	b := newSemanticBackendWithReranker(&mockEmbeddingRegistry{vec: []float32{0.1}}, vs, mr, &mockDelivery{}, rk)
+
+	candidates, err := b.Search(context.Background(), search.Query{
+		Text:  "top five please",
+		Mode:  search.SearchModeANN,
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Qdrant fetch window must be widened to the rerank window (30),
+	// not left at the page limit (5).
+	if vs.lastAnnReq == nil {
+		t.Fatal("expected ANN Search to be called")
+	}
+	if vs.lastAnnReq.Limit != 30 {
+		t.Errorf("Qdrant fetch Limit = %d, want 30 (rerank window, not page limit 5)", vs.lastAnnReq.Limit)
+	}
+	// BGE saw the full candidate window.
+	if rk.called != 1 {
+		t.Fatalf("expected reranker to be called once, got %d", rk.called)
+	}
+	if len(rk.lastIDs) != 6 {
+		t.Fatalf("expected 6 rerank candidates, got %d", len(rk.lastIDs))
+	}
+	// Final answer is the top 5, with the blended winner first.
+	if len(candidates) != 5 {
+		t.Fatalf("expected top-5 truncation, got %d candidates", len(candidates))
+	}
+	if candidates[0].AssetID != "a-6" {
+		t.Errorf("expected a-6 first after rerank, got %q", candidates[0].AssetID)
+	}
+}
+
 // ── Test 6: IsAdmin → IsSystem propagation (ANN) ─────────────────────
 //
 // Pinned by PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT: when Actor.IsAdmin=true,

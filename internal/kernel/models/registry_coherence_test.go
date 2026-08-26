@@ -51,6 +51,13 @@ func TestRegistryEntriesHaveCanonicalMetadata(t *testing.T) {
 		models.CLAP.ID:     models.RoleAudioEmbedding,
 		models.Whisper.ID:  models.RoleTranscription,
 	}
+	wantLanguages := map[string]int{
+		models.E5.ID:       0,
+		models.SigLIP.ID:   0,
+		models.Reranker.ID: 0,
+		models.CLAP.ID:     0,
+		models.Whisper.ID:  99, // ASR capability fact: 99 languages
+	}
 
 	seen := make(map[string]struct{}, len(models.Canonical()))
 	for _, model := range models.Canonical() {
@@ -70,6 +77,9 @@ func TestRegistryEntriesHaveCanonicalMetadata(t *testing.T) {
 		}
 		if model.Role != wantRoles[model.ID] {
 			t.Errorf("%s role = %q, want %q", model.ID, model.Role, wantRoles[model.ID])
+		}
+		if model.Languages != wantLanguages[model.ID] {
+			t.Errorf("%s languages = %d, want %d", model.ID, model.Languages, wantLanguages[model.ID])
 		}
 		if err := model.Validate(); err != nil {
 			t.Errorf("%s registry entry is invalid: %v", model.ID, err)
@@ -153,6 +163,7 @@ func TestRegistryAndGeneratedPythonMirrorAreCoherent(t *testing.T) {
 			fmt.Sprintf("\"dimensions\": %d", model.Dimensions),
 			fmt.Sprintf("\"license\": %q", model.License),
 			fmt.Sprintf("\"role\": %q", model.Role),
+			fmt.Sprintf("\"languages\": %d", model.Languages),
 			fmt.Sprintf("\"enabled\": %s", pythonBool(model.Enabled)),
 		} {
 			if !strings.Contains(content, field) {

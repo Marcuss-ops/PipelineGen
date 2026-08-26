@@ -1,9 +1,5 @@
 package sqlite
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
 // PR-MIGRATIONS-SSOT (August 2026): the CREATE TABLE constants that
 // previously lived in this file (CanonicalMediaAssetsSchema,
 // CanonicalAssetLocationsTable, CanonicalAssetArtifactsTable,

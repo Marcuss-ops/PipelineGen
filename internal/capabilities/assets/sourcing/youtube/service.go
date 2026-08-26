@@ -32,15 +32,15 @@
 package youtube
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"time"
 
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Service is the YouTubeRegistrar implementation. 8-port surface

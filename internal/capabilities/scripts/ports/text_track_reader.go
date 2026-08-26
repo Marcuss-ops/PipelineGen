@@ -30,7 +30,6 @@
 package ports
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

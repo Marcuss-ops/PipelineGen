@@ -31,10 +31,6 @@
 // SQLITE-PERSISTENCE, owner = assets, deadline 2026-08-31).
 package duplicates
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
 // DuplicateMatch is one matched-duplicate row returned from the
 // duplicates capability.
 //

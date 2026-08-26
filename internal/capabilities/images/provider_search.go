@@ -1,9 +1,9 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sort"
 	"strconv"
 	"strings"

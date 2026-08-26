@@ -2,8 +2,7 @@
 // Code-motion split from internal/domain/finalization/types.go (674 LOC, LONG-FILES-DECOMPOSITION-2026-07-06 P0 critical band slice, 2026-07-06).
 package finalization
 
-import (
-)
+import ()
 
 import "encoding/json"
 

@@ -21,8 +21,6 @@ import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sort"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // AggregateVLMResponses deduplicates and truncates a slice of VLM

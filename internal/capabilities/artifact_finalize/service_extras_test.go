@@ -42,7 +42,7 @@ import (
 	"errors"
 	"testing"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"

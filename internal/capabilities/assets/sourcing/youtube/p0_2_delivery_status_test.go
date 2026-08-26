@@ -12,13 +12,13 @@
 package youtube
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 

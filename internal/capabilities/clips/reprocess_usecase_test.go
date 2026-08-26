@@ -20,10 +20,10 @@
 package clips
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"os"
 	"path/filepath"
@@ -35,7 +35,7 @@ import (
 
 // ── Compile-time port assertions ──────────────────────────────────────
 var (
-	_ detail.Processor                   = (*fakeReprocessProcessor)(nil)
+	_ detail.Processor                  = (*fakeReprocessProcessor)(nil)
 	_ mutations.AssetMutationDispatcher = (*fakeReprocessDispatcher)(nil)
 	_ RemoteAssetReader                 = (*fakeReprocessReader)(nil)
 )

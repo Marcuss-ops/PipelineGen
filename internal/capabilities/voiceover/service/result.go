@@ -17,7 +17,6 @@
 package voiceover
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"errors"
 	"time"
 

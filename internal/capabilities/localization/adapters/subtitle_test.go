@@ -5,7 +5,6 @@ package adapters
 // cues→.ass compiler (deterministic via texttracks.CompileASSContent).
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"

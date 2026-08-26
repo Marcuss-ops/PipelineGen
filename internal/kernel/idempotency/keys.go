@@ -89,8 +89,7 @@
 // constructors (AssetKey, JobKey, OutboxKey).
 package idempotency
 
-import (
-)
+import ()
 
 import "strings"
 

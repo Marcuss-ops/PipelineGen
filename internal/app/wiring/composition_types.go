@@ -8,8 +8,8 @@
 package wiring
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
@@ -27,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
@@ -47,6 +46,7 @@ import (
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
+	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"

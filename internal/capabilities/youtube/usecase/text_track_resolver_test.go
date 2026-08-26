@@ -39,9 +39,9 @@ package usecase_test
 // the canonical hash factory in internal/kernel/asset/text_track_hashes.go.
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"testing"
 
 	"go.uber.org/zap"
@@ -198,7 +198,7 @@ func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ stri
 // Compile-time guarantees that the stubs satisfy the ports the
 // resolver depends on.
 var (
-	_ detail.TextTrackRepository           = (*stubRepo)(nil)
+	_ detail.TextTrackRepository          = (*stubRepo)(nil)
 	_ youtubeports.SubtitleFetcherPort    = (*stubSubtitles)(nil)
 	_ youtubeports.WhisperTranscriberPort = (*stubTranscriber)(nil)
 )

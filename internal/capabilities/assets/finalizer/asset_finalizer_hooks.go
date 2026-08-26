@@ -1,8 +1,8 @@
 package finalizer
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"go.uber.org/zap"

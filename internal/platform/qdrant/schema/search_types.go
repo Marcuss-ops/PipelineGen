@@ -17,8 +17,7 @@
 // marker pointing at the inline shape.
 package schema
 
-import (
-)
+import ()
 
 import "context"
 

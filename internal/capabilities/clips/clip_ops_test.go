@@ -10,8 +10,8 @@
 package clips
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"testing"
 

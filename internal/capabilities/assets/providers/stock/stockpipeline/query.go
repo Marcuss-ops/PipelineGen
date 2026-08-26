@@ -1,7 +1,6 @@
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"fmt"
 	"strings"
@@ -12,13 +11,13 @@ import (
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
-// resolveQuery converts a query string into a list of stockpipeline.VideoSource entries.
+// resolveQuery converts a query string into a list of VideoSource entries.
 // If the query is a YouTube URL, it returns it directly. Otherwise it searches
 // YouTube. `limit` is the caller-supplied per-query result cap: a positive
-// value wins over the runtime default (stockpipeline.RuntimeConfig.MaxResults), which is
+// value wins over the runtime default (RuntimeConfig.MaxResults), which is
 // still used when limit <= 0. The legacy " -N" suffix convention is honoured
 // only when the caller did not supply an explicit limit.
-func (s *stockpipeline.Service) resolveQuery(ctx context.Context, query string, limit int) ([]stockpipeline.VideoSource, error) {
+func (s *Service) resolveQuery(ctx context.Context, query string, limit int) ([]VideoSource, error) {
 	query = strings.TrimSpace(query)
 
 	if strings.HasPrefix(query, "http") && (strings.Contains(query, "youtube.com") || strings.Contains(query, "youtu.be")) {
@@ -28,14 +27,14 @@ func (s *stockpipeline.Service) resolveQuery(ctx context.Context, query string, 
 			if info.Title != "" {
 				title = info.Title
 			}
-			return []stockpipeline.VideoSource{{
+			return []VideoSource{{
 				URL:         query,
 				Title:       title,
 				Source:      query,
 				DurationSec: info.Duration,
 			}}, nil
 		}
-		return []stockpipeline.VideoSource{{
+		return []VideoSource{{
 			URL:    query,
 			Title:  title,
 			Source: query,
@@ -78,14 +77,14 @@ func (s *stockpipeline.Service) resolveQuery(ctx context.Context, query string, 
 		}
 	}
 
-	var sources []stockpipeline.VideoSource
+	var sources []VideoSource
 	for _, v := range videos {
 		url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", v.ID)
 		title := v.Title
 		if title == "" {
 			title = v.ID
 		}
-		sources = append(sources, stockpipeline.VideoSource{
+		sources = append(sources, VideoSource{
 			URL:         url,
 			Title:       title,
 			Source:      url,
@@ -96,13 +95,13 @@ func (s *stockpipeline.Service) resolveQuery(ctx context.Context, query string, 
 	return sources, nil
 }
 
-// Search resolves a text query into a list of stockpipeline.VideoSource entries via
+// Search resolves a text query into a list of VideoSource entries via
 // the YouTube channel lister, honouring an explicit caller-supplied
 // result limit. It is the canonical public search surface for the stock
 // provider (the SearchProvider adapter delegates here), kept separate
 // from resolveQuery (which applies pipeline run defaults and URL
 // passthrough). A nil channelLister fails closed with a typed error.
-func (s *stockpipeline.Service) Search(ctx context.Context, query string, limit int) ([]stockpipeline.VideoSource, error) {
+func (s *Service) Search(ctx context.Context, query string, limit int) ([]VideoSource, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("stock search: query is required")
@@ -125,14 +124,14 @@ func (s *stockpipeline.Service) Search(ctx context.Context, query string, limit 
 			return nil, fmt.Errorf("stock search: failed to list videos for query %q: %w", query, err)
 		}
 	}
-	sources := make([]stockpipeline.VideoSource, 0, len(videos))
+	sources := make([]VideoSource, 0, len(videos))
 	for _, v := range videos {
 		url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", v.ID)
 		title := v.Title
 		if title == "" {
 			title = v.ID
 		}
-		sources = append(sources, stockpipeline.VideoSource{
+		sources = append(sources, VideoSource{
 			URL:         url,
 			Title:       title,
 			Source:      url,
@@ -143,8 +142,8 @@ func (s *stockpipeline.Service) Search(ctx context.Context, query string, limit 
 }
 
 // getDirectVideoInfo fetches metadata for a direct YouTube URL.
-// P8 (July 2026): youtubeSvc field REMOVED from stockpipeline.Service — dead code
+// P8 (July 2026): youtubeSvc field REMOVED from Service — dead code
 // (never wired at composition root). Always returns nil, nil.
-func (s *stockpipeline.Service) getDirectVideoInfo(_ context.Context, _ string) (*youtubeports.DownloaderMetadata, error) {
+func (s *Service) getDirectVideoInfo(_ context.Context, _ string) (*youtubeports.DownloaderMetadata, error) {
 	return nil, nil
 }

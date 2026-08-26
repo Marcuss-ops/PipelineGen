@@ -13,7 +13,6 @@ import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"

@@ -8,13 +8,13 @@
 package imagesregistry
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -60,7 +60,7 @@ func (s *AssetStoreSQLite) FailProcessing(ctx context.Context, assetID, step, er
 }
 
 // TransitionProcessing atomically transitions a processing step status.
-func (s *AssetStoreSQLite) TransitionProcessing(ctx context.Context, assetID, step string, from, to detail.ProcessingStatus) error {
+func (s *AssetStoreSQLite) TransitionProcessing(ctx context.Context, assetID, step string, from, to asset.ProcessingStatus) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE asset_processing
@@ -73,7 +73,7 @@ func (s *AssetStoreSQLite) TransitionProcessing(ctx context.Context, assetID, st
 }
 
 // GetProcessingRecord retrieves a specific processing record.
-func (s *AssetStoreSQLite) GetProcessingRecord(ctx context.Context, assetID, step string) (*detail.ProcessingRecord, error) {
+func (s *AssetStoreSQLite) GetProcessingRecord(ctx context.Context, assetID, step string) (*asset.ProcessingRecord, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -84,7 +84,7 @@ func (s *AssetStoreSQLite) GetProcessingRecord(ctx context.Context, assetID, ste
 
 // GetProcessingRecordsByAssetID retrieves all processing records for
 // an asset.
-func (s *AssetStoreSQLite) GetProcessingRecordsByAssetID(ctx context.Context, assetID string) ([]detail.ProcessingRecord, error) {
+func (s *AssetStoreSQLite) GetProcessingRecordsByAssetID(ctx context.Context, assetID string) ([]asset.ProcessingRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -95,7 +95,7 @@ func (s *AssetStoreSQLite) GetProcessingRecordsByAssetID(ctx context.Context, as
 	}
 	defer rows.Close()
 
-	var out []detail.ProcessingRecord
+	var out []asset.ProcessingRecord
 	for rows.Next() {
 		rec, err := scanProcessingRecord(rows)
 		if err != nil {
@@ -107,7 +107,7 @@ func (s *AssetStoreSQLite) GetProcessingRecordsByAssetID(ctx context.Context, as
 }
 
 // GetFailedProcessingRecords retrieves all failed processing records.
-func (s *AssetStoreSQLite) GetFailedProcessingRecords(ctx context.Context) ([]detail.ProcessingRecord, error) {
+func (s *AssetStoreSQLite) GetFailedProcessingRecords(ctx context.Context) ([]asset.ProcessingRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -118,7 +118,7 @@ func (s *AssetStoreSQLite) GetFailedProcessingRecords(ctx context.Context) ([]de
 	}
 	defer rows.Close()
 
-	var out []detail.ProcessingRecord
+	var out []asset.ProcessingRecord
 	for rows.Next() {
 		rec, err := scanProcessingRecord(rows)
 		if err != nil {
@@ -145,8 +145,8 @@ func (s *AssetStoreSQLite) DeleteAllProcessingRecords(ctx context.Context, asset
 }
 
 // scanProcessingRecord scans a single asset_processing row.
-func scanProcessingRecord(scanner interface{ Scan(dest ...any) error }) (*detail.ProcessingRecord, error) {
-	var rec detail.ProcessingRecord
+func scanProcessingRecord(scanner interface{ Scan(dest ...any) error }) (*asset.ProcessingRecord, error) {
+	var rec asset.ProcessingRecord
 	var statusStr, startedAtStr, completedAtStr, errStr, metaStr sql.NullString
 	err := scanner.Scan(
 		&rec.AssetID, &rec.Step, &statusStr, &startedAtStr, &completedAtStr, &errStr, &rec.AttemptCount, &metaStr,
@@ -157,7 +157,7 @@ func scanProcessingRecord(scanner interface{ Scan(dest ...any) error }) (*detail
 	if err != nil {
 		return nil, err
 	}
-	rec.Status = detail.ProcessingStatus(statusStr.String)
+	rec.Status = asset.ProcessingStatus(statusStr.String)
 	if startedAtStr.Valid {
 		t := timeutil.ParseRFC3339(startedAtStr.String)
 		rec.StartedAt = &t
@@ -189,19 +189,19 @@ func (a *processingRepositoryAdapter) Fail(ctx context.Context, assetID, step, e
 	return a.store.FailProcessing(ctx, assetID, step, errMsg)
 }
 
-func (a *processingRepositoryAdapter) Transition(ctx context.Context, assetID, step string, from, to detail.ProcessingStatus) error {
+func (a *processingRepositoryAdapter) Transition(ctx context.Context, assetID, step string, from, to asset.ProcessingStatus) error {
 	return a.store.TransitionProcessing(ctx, assetID, step, from, to)
 }
 
-func (a *processingRepositoryAdapter) Get(ctx context.Context, assetID, step string) (*detail.ProcessingRecord, error) {
+func (a *processingRepositoryAdapter) Get(ctx context.Context, assetID, step string) (*asset.ProcessingRecord, error) {
 	return a.store.GetProcessingRecord(ctx, assetID, step)
 }
 
-func (a *processingRepositoryAdapter) GetByAssetID(ctx context.Context, assetID string) ([]detail.ProcessingRecord, error) {
+func (a *processingRepositoryAdapter) GetByAssetID(ctx context.Context, assetID string) ([]asset.ProcessingRecord, error) {
 	return a.store.GetProcessingRecordsByAssetID(ctx, assetID)
 }
 
-func (a *processingRepositoryAdapter) GetFailed(ctx context.Context) ([]detail.ProcessingRecord, error) {
+func (a *processingRepositoryAdapter) GetFailed(ctx context.Context) ([]asset.ProcessingRecord, error) {
 	return a.store.GetFailedProcessingRecords(ctx)
 }
 

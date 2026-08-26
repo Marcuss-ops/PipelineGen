@@ -16,7 +16,6 @@ package localization
 // ASS is written — Rust never burns subtitles from the wrong track.
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 

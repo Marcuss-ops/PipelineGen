@@ -44,7 +44,3 @@
 // package-scope (all 4 files share the `outbox` package) so no
 // import additions are required at any consumer site.
 package jobs
-
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)

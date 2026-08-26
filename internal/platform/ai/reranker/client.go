@@ -50,8 +50,11 @@ type Response struct {
 }
 
 // Config holds the reranker client configuration.
+// Enabled defaults to true: the canonical query recipe is Qdrant top_k
+// window → BGE re-score → top 5 results. Disable explicitly via
+// VELOX_RERANKER_ENABLED=false to bypass the sidecar.
 type Config struct {
-	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"false"`
+	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"true"`
 	URL       string  `yaml:"url" env:"VELOX_RERANKER_URL" default:"http://127.0.0.1:8091/rerank"`
 	Model     string  `yaml:"model" env:"VELOX_RERANKER_MODEL" default:"BAAI/bge-reranker-v2-m3"`
 	TopK      int     `yaml:"top_k" env:"VELOX_RERANKER_TOP_K" default:"30"`

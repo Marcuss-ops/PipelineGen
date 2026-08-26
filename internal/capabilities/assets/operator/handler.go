@@ -53,7 +53,6 @@
 package operator
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 

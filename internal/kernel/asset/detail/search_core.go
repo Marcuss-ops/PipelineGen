@@ -60,9 +60,9 @@ type AdvancedSearchRequest struct {
 // AdvancedSearchResult is the response for advanced clip search.
 type AdvancedSearchResult struct {
 	Clips  []*asset.Asset `json:"clips"`
-	Total  int      `json:"total"`
-	Limit  int      `json:"limit"`
-	Offset int      `json:"offset"`
+	Total  int            `json:"total"`
+	Limit  int            `json:"limit"`
+	Offset int            `json:"offset"`
 }
 
 // SearchRequest is the generic search REQUEST DTO passed to a Searcher.

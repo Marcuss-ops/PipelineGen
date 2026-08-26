@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -65,7 +65,7 @@ import (
 type (
 	dummyStagingStore struct{ staging.Store }
 	dummyArtifactRepo struct {
-		artifact.ArtifactStageRepository
+		detail.ArtifactStageRepository
 	}
 	dummyPublisher struct{ delivery.Publisher }
 )

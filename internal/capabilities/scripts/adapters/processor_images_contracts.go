@@ -35,10 +35,9 @@
 package adapters
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // defaultImageWidth is the canonical smart-image width (Commit 6

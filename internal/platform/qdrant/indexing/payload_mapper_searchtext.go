@@ -14,6 +14,7 @@ import (
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // parseMetadataJSON lazily parses metadata JSON on first access.
@@ -242,7 +243,7 @@ func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData)
 			if tracks, err := m.textTrackQuerier.ListByAsset(ctx, asset.ID); err == nil && len(tracks) > 0 {
 				entries := make([]appsearchtext.TextTrackEntry, 0, len(tracks))
 				for _, t := range tracks {
-					if t.TextContent != "" && t.Status == assetpkg.TextTrackReady {
+					if t.TextContent != "" && t.Status == detail.TextTrackReady {
 						entries = append(entries, appsearchtext.TextTrackEntry{
 							LanguageCode: t.LanguageCode,
 							Text:         t.TextContent,

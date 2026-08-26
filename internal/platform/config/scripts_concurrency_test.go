@@ -5,8 +5,9 @@ import "testing"
 // TestScriptsConcurrencyEnvResolution pins the dedicated NLP/TTS concurrency
 // env vars introduced for the script-generation worker pools:
 //
-//   - VELOX_SCRIPTS_NLP_CONCURRENCY defaults to 4 (certified) and overrides the
-//     generation-gate capacity when set.
+//   - VELOX_SCRIPTS_NLP_CONCURRENCY defaults to 4 (certified) for entity work.
+//   - VELOX_SCRIPTS_SCRIPT_GENERATION_CONCURRENCY independently controls
+//     scene-text generation.
 //   - VELOX_SCRIPTS_TTS_CONCURRENCY overrides the TTS voiceover pool; when unset
 //     it stays 0 so the capability wiring defers to the voiceover provider bound
 //     (VELOX_VOICEOVER_MAX_CONCURRENT_TTS) and then the certified default.
@@ -17,16 +18,23 @@ func TestScriptsConcurrencyEnvResolution(t *testing.T) {
 	if got := cfg.Scripts.NLPConcurrency; got != 4 {
 		t.Fatalf("NLPConcurrency default = %d, want 4 (certified)", got)
 	}
+	if got := cfg.Scripts.ScriptGenerationConcurrency; got != 4 {
+		t.Fatalf("ScriptGenerationConcurrency default = %d, want 4 (certified)", got)
+	}
 	if got := cfg.Scripts.TTSConcurrency; got != 0 {
 		t.Fatalf("TTSConcurrency default = %d, want 0 (defer to voiceover provider bound)", got)
 	}
 
 	t.Setenv("VELOX_SCRIPTS_NLP_CONCURRENCY", "8")
+	t.Setenv("VELOX_SCRIPTS_SCRIPT_GENERATION_CONCURRENCY", "3")
 	t.Setenv("VELOX_SCRIPTS_TTS_CONCURRENCY", "6")
 	applyEnvVars(cfg)
 
 	if got := cfg.Scripts.NLPConcurrency; got != 8 {
 		t.Fatalf("NLPConcurrency after env = %d, want 8", got)
+	}
+	if got := cfg.Scripts.ScriptGenerationConcurrency; got != 3 {
+		t.Fatalf("ScriptGenerationConcurrency after env = %d, want 3", got)
 	}
 	if got := cfg.Scripts.TTSConcurrency; got != 6 {
 		t.Fatalf("TTSConcurrency after env = %d, want 6", got)
@@ -40,6 +48,9 @@ func TestScriptsConfigWithDefaults_DoesNotFakeTTSDefault(t *testing.T) {
 	s := ScriptsConfig{}.WithDefaults()
 	if s.NLPConcurrency != 4 {
 		t.Fatalf("WithDefaults NLPConcurrency = %d, want 4", s.NLPConcurrency)
+	}
+	if s.ScriptGenerationConcurrency != 4 {
+		t.Fatalf("WithDefaults ScriptGenerationConcurrency = %d, want 4", s.ScriptGenerationConcurrency)
 	}
 	if s.TTSConcurrency != 0 {
 		t.Fatalf("WithDefaults TTSConcurrency = %d, want 0 (defer, never faked)", s.TTSConcurrency)

@@ -1,6 +1,6 @@
 // Package stock — ports_test.go (PR6 + FASE 2.4).
 //
-// Pure-Go unit tests for the canonical stockpipeline.StockRenderer + stockpipeline.VideoCutter ports.
+// Pure-Go unit tests for the canonical StockRenderer + VideoCutter ports.
 // Mocks implement the port interfaces; no FFmpeg / process / infrastructure
 // import is exercised. These tests guard:
 //
@@ -9,14 +9,13 @@
 //	(2) Mockable: the ports are interface-typed, so tests can swap in
 //	    fakes without touching infrastructure bindings.
 //
-// FASE 2.4 (July 2026): tests pivoted from CutResult to stockpipeline.CutBatchResult
+// FASE 2.4 (July 2026): tests pivoted from CutResult to CutBatchResult
 // — mockCutter now returns the structured per-job surface, and the
-// partial-success test asserts on stockpipeline.CutItemStatus/Err rather than on
+// partial-success test asserts on CutItemStatus/Err rather than on
 // the legacy ProducedPaths slice.
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"errors"
 	"testing"
@@ -24,28 +23,28 @@ import (
 
 // mockRenderer captures the last Render call and returns a stub Result.
 type mockRenderer struct {
-	lastReq stockpipeline.RenderRequest
-	result  stockpipeline.RenderResult
+	lastReq RenderRequest
+	result  RenderResult
 	err     error
 	called  int
 }
 
-func (m *mockRenderer) Render(ctx context.Context, req stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
+func (m *mockRenderer) Render(ctx context.Context, req RenderRequest) (RenderResult, error) {
 	m.called++
 	m.lastReq = req
 	return m.result, m.err
 }
 
 // mockCutter captures the last Cut call. FASE 2.4 returns
-// stockpipeline.CutBatchResult so per-Job detail is observable by tests.
+// CutBatchResult so per-Job detail is observable by tests.
 type mockCutter struct {
-	lastReq stockpipeline.CutRequest
-	res     stockpipeline.CutBatchResult
+	lastReq CutRequest
+	res     CutBatchResult
 	err     error
 	called  int
 }
 
-func (m *mockCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {
+func (m *mockCutter) Cut(ctx context.Context, req CutRequest) (CutBatchResult, error) {
 	m.called++
 	m.lastReq = req
 	return m.res, m.err
@@ -57,8 +56,8 @@ func (m *mockCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (sto
 // contracts (catches accidental breakage of the *_ = (*noOpRenderer)(nil)
 // declaration if the interfaces evolve).
 func TestNoOpAnchors(t *testing.T) {
-	var r stockpipeline.StockRenderer = noOpRenderer{}
-	out, err := r.Render(context.Background(), stockpipeline.RenderRequest{OutputPath: "/tmp/x.mp4"})
+	var r StockRenderer = noOpRenderer{}
+	out, err := r.Render(context.Background(), RenderRequest{OutputPath: "/tmp/x.mp4"})
 	if err != nil {
 		t.Fatalf("noOpRenderer.Render returned unexpected error: %v", err)
 	}
@@ -67,18 +66,18 @@ func TestNoOpAnchors(t *testing.T) {
 	}
 
 	// FASE 2.4: noOpCutter now returns a fully-populated
-	// stockpipeline.CutBatchResult (mai-nil-with-zero-output invariant). Iterate
+	// CutBatchResult (mai-nil-with-zero-output invariant). Iterate
 	// Items without nil-checks; produced paths are empty when
-	// stockpipeline.ErrNoOpCutter surfaces at the batch level.
-	var c stockpipeline.VideoCutter = noOpCutter{}
-	out2, err := c.Cut(context.Background(), stockpipeline.CutRequest{
+	// ErrNoOpCutter surfaces at the batch level.
+	var c VideoCutter = noOpCutter{}
+	out2, err := c.Cut(context.Background(), CutRequest{
 		SourcePath: "/tmp/in.mp4",
-		Jobs: []stockpipeline.CutJob{
+		Jobs: []CutJob{
 			{StartSec: 0, EndSec: 5, OutputPath: "/tmp/clip_a.mp4"},
 		},
 	})
-	if !errors.Is(err, stockpipeline.ErrNoOpCutter) {
-		t.Fatalf("noOpCutter should surface stockpipeline.ErrNoOpCutter; got %v", err)
+	if !errors.Is(err, ErrNoOpCutter) {
+		t.Fatalf("noOpCutter should surface ErrNoOpCutter; got %v", err)
 	}
 	if len(out2.Items) != 1 {
 		t.Fatalf("noOpCutter should populate 1 item (mai-nil invariant); got %d", len(out2.Items))
@@ -97,19 +96,19 @@ func TestNoOpAnchors(t *testing.T) {
 // ── Mock-based: renderer delegates the request intact ─────────────────
 
 // TestMockRendererDelegation ensures a concrete renderer can be swapped in
-// and receives the stockpipeline.RenderRequest as built by the application layer (no
+// and receives the RenderRequest as built by the application layer (no
 // opaque magic).
 func TestMockRendererDelegation(t *testing.T) {
 	mock := &mockRenderer{
-		result: stockpipeline.RenderResult{
+		result: RenderResult{
 			UsedFastPath:        true,
 			AppliedTransitions:  []string{"fadeblack"},
 			AppliedOverlayFiles: []string{"/effects/a.mp4"},
 			DurationMS:          1234,
 		},
 	}
-	var r stockpipeline.StockRenderer = mock
-	req := stockpipeline.RenderRequest{
+	var r StockRenderer = mock
+	req := RenderRequest{
 		OutputPath:      "/tmp/out.mp4",
 		InputPaths:      []string{"/tmp/a.mp4", "/tmp/b.mp4"},
 		Codec:           "libx264",
@@ -135,7 +134,7 @@ func TestMockRendererDelegation(t *testing.T) {
 // ── Mock-based: cutter partial-success path is observable ──────────────
 
 // TestMockCutterPartialError confirms the application layer can observe
-// partial success via the structured stockpipeline.CutBatchResult — critical for
+// partial success via the structured CutBatchResult — critical for
 // stockpipeline to fall through without crashing.
 //
 // FASE 2.4 refactor: the partial-success test now asserts on
@@ -144,9 +143,9 @@ func TestMockRendererDelegation(t *testing.T) {
 // so legacy callers continue to detect "some clips failed".
 func TestMockCutterPartialError(t *testing.T) {
 	mock := &mockCutter{
-		res: stockpipeline.CutBatchResult{
+		res: CutBatchResult{
 			SourcePath: "/tmp/raw.mp4",
-			Items: []stockpipeline.CutItemResult{
+			Items: []CutItemResult{
 				{
 					JobID:      "/tmp/clip_0000_0000.mp4",
 					OutputPath: "/tmp/clip_0000_0000.mp4",
@@ -162,12 +161,12 @@ func TestMockCutterPartialError(t *testing.T) {
 		},
 		err: errors.New("one clip failed"),
 	}
-	var c stockpipeline.VideoCutter = mock
-	jobs := []stockpipeline.CutJob{
+	var c VideoCutter = mock
+	jobs := []CutJob{
 		{StartSec: 0, EndSec: 5, OutputPath: "/tmp/clip_0000_0000.mp4"},
 		{StartSec: 5, EndSec: 10, OutputPath: "/tmp/clip_0000_0001.mp4"},
 	}
-	out, err := c.Cut(context.Background(), stockpipeline.CutRequest{
+	out, err := c.Cut(context.Background(), CutRequest{
 		SourcePath: "/tmp/raw.mp4",
 		Jobs:       jobs,
 	})
@@ -202,12 +201,12 @@ func TestMockCutterPartialError(t *testing.T) {
 // ── Batch accessors (FASE 2.4)  ────────────────────────────────────────
 
 // TestCutBatchResultAccessors verifies the typed accessors on
-// stockpipeline.CutBatchResult partition Items into successful + failed correctly
-// across the full spectrum of stockpipeline.CutItemStatus values.
+// CutBatchResult partition Items into successful + failed correctly
+// across the full spectrum of CutItemStatus values.
 func TestCutBatchResultAccessors(t *testing.T) {
-	batch := stockpipeline.CutBatchResult{
+	batch := CutBatchResult{
 		SourcePath: "/tmp/in.mp4",
-		Items: []stockpipeline.CutItemResult{
+		Items: []CutItemResult{
 			{JobID: "/a", OutputPath: "/a", Status: CutItemStatusFailed, Err: errors.New("a-err")},
 			{JobID: "/b", OutputPath: "/b", Status: CutItemStatusSucceeded, SizeBytes: 1024},
 			{JobID: "/c", OutputPath: "/c", Status: CutItemStatusValidated, SizeBytes: 2048, DurationSec: 4.0},
@@ -238,9 +237,9 @@ func TestCutBatchResultAccessors(t *testing.T) {
 // TestCutBatchResultEmptyAllSucceed checks the empty-batch edge
 // case: AllSucceeded returns true (vacuous truth).
 func TestCutBatchResultEmptyAllSucceed(t *testing.T) {
-	batch := stockpipeline.CutBatchResult{
+	batch := CutBatchResult{
 		SourcePath: "/tmp/in.mp4",
-		Items:      []stockpipeline.CutItemResult{},
+		Items:      []CutItemResult{},
 	}
 	if !batch.AllSucceeded() {
 		t.Fatalf("AllSucceeded on empty Items should be true")
@@ -256,7 +255,7 @@ func TestCutBatchResultEmptyAllSucceed(t *testing.T) {
 // TestCutItemStatusString enumerates the status enum rendering pins
 // the canonical human-readable labels (used by dashboards / logs).
 func TestCutItemStatusString(t *testing.T) {
-	cases := map[stockpipeline.CutItemStatus]string{
+	cases := map[CutItemStatus]string{
 		CutItemStatusUnknown:   "unknown",
 		CutItemStatusSucceeded: "succeeded",
 		CutItemStatusFailed:    "failed",
@@ -264,27 +263,27 @@ func TestCutItemStatusString(t *testing.T) {
 	}
 	for s, want := range cases {
 		if got := s.String(); got != want {
-			t.Fatalf("stockpipeline.CutItemStatus(%d).String() = %q, want %q", s, got, want)
+			t.Fatalf("CutItemStatus(%d).String() = %q, want %q", s, got, want)
 		}
 	}
 }
 
-// TestClipSucceeded pins the stockpipeline.Clip.Succeeded() predicate (= Status ∈
+// TestClipSucceeded pins the Clip.Succeeded() predicate (= Status ∈
 // {Succeeded, Validated}). Used by InterleaveClips + renderChunk.
 func TestClipSucceeded(t *testing.T) {
-	bad := stockpipeline.Clip{Status: CutItemStatusFailed}
+	bad := Clip{Status: CutItemStatusFailed}
 	if bad.Succeeded() {
 		t.Fatalf("Failed clip should not be Succeeded()")
 	}
-	good := stockpipeline.Clip{Status: CutItemStatusSucceeded}
+	good := Clip{Status: CutItemStatusSucceeded}
 	if !good.Succeeded() {
 		t.Fatalf("Succeeded clip should be Succeeded()")
 	}
-	valid := stockpipeline.Clip{Status: CutItemStatusValidated}
+	valid := Clip{Status: CutItemStatusValidated}
 	if !valid.Succeeded() {
 		t.Fatalf("Validated clip should be Succeeded()")
 	}
-	unknown := stockpipeline.Clip{}
+	unknown := Clip{}
 	if unknown.Succeeded() {
 		t.Fatalf("Unknown (zero-value) clip should not be Succeeded()")
 	}
@@ -362,10 +361,10 @@ var _ TransitionRegistry = (*mockTransitionRegistry)(nil)
 // FASE 2.4: Items is empty (len(req.Jobs)==0 ⇒ no populated Items);
 // AllSucceeded() returns true (vacuous); ProducedPaths() is empty.
 func TestNoOpCutterEmptyJobs(t *testing.T) {
-	var c stockpipeline.VideoCutter = noOpCutter{}
-	res, err := c.Cut(context.Background(), stockpipeline.CutRequest{SourcePath: "/tmp/in.mp4", Jobs: nil})
-	if !errors.Is(err, stockpipeline.ErrNoOpCutter) {
-		t.Fatalf("expected stockpipeline.ErrNoOpCutter; got %v", err)
+	var c VideoCutter = noOpCutter{}
+	res, err := c.Cut(context.Background(), CutRequest{SourcePath: "/tmp/in.mp4", Jobs: nil})
+	if !errors.Is(err, ErrNoOpCutter) {
+		t.Fatalf("expected ErrNoOpCutter; got %v", err)
 	}
 	if len(res.Items) != 0 {
 		t.Fatalf("expected empty Items, got %d", len(res.Items))

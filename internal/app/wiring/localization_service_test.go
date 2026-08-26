@@ -5,7 +5,6 @@ package wiring
 // LocalizationConfigFromConfig (deterministic deployment facts).
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"

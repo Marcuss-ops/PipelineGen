@@ -39,12 +39,11 @@
 package adapters
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

@@ -168,12 +168,15 @@ type ScriptsConfig struct {
 	// configured" — resolve via the canonical script docs resolver.
 	ScriptDocsFolderID string `yaml:"script_docs_folder_id" env:"PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID" default:""`
 
-	// NLPConcurrency bounds the concurrent SceneAnalysis (entity / important
-	// phrase / important word extraction) scenes in the incremental VidRush
-	// pipeline — it is the generation-gate capacity. Default 4 (certified).
-	// Lower it for a CPU-constrained Ollama host; raise it for a clustered
-	// extraction backend. Values <= 0 fall back to the certified default.
+	// NLPConcurrency bounds concurrent SceneAnalysis (entity / important phrase
+	// / important word extraction) scenes in the incremental VidRush pipeline.
+	// It is independent from script text generation.
 	NLPConcurrency int `yaml:"nlp_concurrency" env:"VELOX_SCRIPTS_NLP_CONCURRENCY" default:"4"`
+
+	// ScriptGenerationConcurrency bounds concurrent Ollama calls that write
+	// scene narration. It is deliberately separate from NLPConcurrency because
+	// entity extraction and script writing are different workloads. Default 4.
+	ScriptGenerationConcurrency int `yaml:"script_generation_concurrency" env:"VELOX_SCRIPTS_SCRIPT_GENERATION_CONCURRENCY" default:"4"`
 
 	// TTSConcurrency bounds the concurrent voiceover synthesis calls in the
 	// script-generation voiceover phase (the TTS worker pool). When 0
@@ -213,6 +216,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.NLPConcurrency <= 0 {
 		s.NLPConcurrency = 4
+	}
+	if s.ScriptGenerationConcurrency <= 0 {
+		s.ScriptGenerationConcurrency = 4
 	}
 	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
 	// the voiceover provider bound", resolved at the capability wiring

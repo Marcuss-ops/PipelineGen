@@ -17,8 +17,7 @@
 // DO NOTHING guarantee collapses duplicates.
 package reconciliation
 
-import (
-)
+import ()
 
 import "time"
 

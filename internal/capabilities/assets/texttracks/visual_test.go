@@ -1,7 +1,6 @@
 package texttracks
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

@@ -7,7 +7,6 @@ import (
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-
 )
 
 var ErrSourceCatalogDependencyUnavailable = errors.New("artifacts: source catalog dependency unavailable")

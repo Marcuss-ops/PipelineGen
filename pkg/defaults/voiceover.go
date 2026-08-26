@@ -1,7 +1,6 @@
 package defaults
 
-import (
-)
+import ()
 
 // VoiceoverConfig is the canonical SSOT for voiceover generation
 // defaults. Pre-fix scattered literals this SSOT replaces (June

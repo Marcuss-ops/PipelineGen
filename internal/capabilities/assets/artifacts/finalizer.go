@@ -13,8 +13,8 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
-	"go.uber.org/zap"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"go.uber.org/zap"
 )
 
 type Finalizer struct {

@@ -26,8 +26,7 @@
 // only when a new call site emerges.
 package metadataexport
 
-import (
-)
+import ()
 
 import "context"
 

@@ -1,9 +1,5 @@
 package outbox
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
 // ── Delete/Restore Payloads ────────────────────────────────────────────
 
 // restoreRequestV1 is the canonical envelope Dispatcher emits on

@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	_ "github.com/mattn/go-sqlite3"
 )
 
