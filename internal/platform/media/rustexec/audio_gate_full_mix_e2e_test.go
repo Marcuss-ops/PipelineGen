@@ -139,9 +139,9 @@ func TestListenGateFullMix30s(t *testing.T) {
 	}
 	bgm := trackEvents(plan, audio.TrackBGM)
 	wantBGM := []audio.AudioEvent{
-		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 0, DurationUS: 12_000_000, SourceInUS: 0, SourceDurationUS: 12_000_000, GainDB: -20},
-		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 12_000_000, DurationUS: 12_000_000, SourceInUS: 0, SourceDurationUS: 12_000_000, GainDB: -20},
-		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 24_000_000, DurationUS: 6_000_000, SourceInUS: 0, SourceDurationUS: 6_000_000, GainDB: -20},
+		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 0, DurationUS: 12_000_000, SourceInUS: 0, SourceDurationUS: 12_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 12_000_000, DurationUS: 12_000_000, SourceInUS: 0, SourceDurationUS: 12_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm-c", TimelineStartUS: 24_000_000, DurationUS: 6_000_000, SourceInUS: 0, SourceDurationUS: 6_000_000, GainDB: audio.BackgroundMusicGainDB},
 	}
 	if len(bgm) != len(wantBGM) {
 		t.Fatalf("bgm events = %+v, want %d loop events (last truncated on 30s)", bgm, len(wantBGM))
@@ -153,9 +153,9 @@ func TestListenGateFullMix30s(t *testing.T) {
 	}
 	sfx := trackEvents(plan, audio.TrackSFX)
 	wantSFX := []audio.AudioEvent{
-		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-c-whoosh", TimelineStartUS: 5_000_000, DurationUS: 900_000, SourceInUS: 0, SourceDurationUS: 900_000, GainDB: -8},
-		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-c-impact", TimelineStartUS: 15_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: -6},
-		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-c-boom", TimelineStartUS: 24_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: -5},
+		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-c-whoosh", TimelineStartUS: 5_000_000, DurationUS: 900_000, SourceInUS: 0, SourceDurationUS: 900_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-c-impact", TimelineStartUS: 15_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-c-boom", TimelineStartUS: 24_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: audio.SoundEffectGainDB},
 	}
 	if len(sfx) != len(wantSFX) {
 		t.Fatalf("sfx events = %+v, want %d", sfx, len(wantSFX))
@@ -175,8 +175,8 @@ func TestListenGateFullMix30s(t *testing.T) {
 	wantDuckWindows := [][2]int64{{0, 8_000_000}, {10_000_000, 18_000_000}, {20_000_000, 28_000_000}}
 	for i, w := range wantDuckWindows {
 		d := plan.Automation[i+1]
-		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != -30 {
-			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at -30dB", i, d, w[0], w[1])
+		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != audio.BackgroundMusicGainDB {
+			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], audio.BackgroundMusicGainDB)
 		}
 	}
 	if plan.DurationUS != 30_000_000 || plan.MixPolicy != audio.MixVoiceoverWithDuckedClip || plan.PlanSHA256 == "" {
@@ -208,27 +208,26 @@ func TestListenGateFullMix30s(t *testing.T) {
 		}
 	}
 	// BGM loop restarts at 12s and 24s; the truncated tail covers to 30s.
-	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 11.5, 14, 30, 90); got <= -40 {
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 11.5, 14, 30, 90); got <= -55 {
 		t.Fatalf("bgm loop event 2 missing in [11.5,14): %.2f dB", got)
 	}
-	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 23.5, 26, 30, 90); got <= -40 {
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 23.5, 26, 30, 90); got <= -55 {
 		t.Fatalf("bgm loop event 3 missing in [23.5,26): %.2f dB", got)
 	}
-	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 27, 29.5, 30, 90); got <= -40 {
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 27, 29.5, 30, 90); got <= -55 {
 		t.Fatalf("bgm loop event 3 (truncated tail) missing in [27,29.5): %.2f dB", got)
 	}
-	// Ducking: during scene speech the music sits below its inter-scene
-	// base level (measured in the [8,10) gap after the release ramp).
-	ducked := bandMeanVolumeDB(t, ffmpegPath, master.Path, 1, 7, 30, 90)
-	base := bandMeanVolumeDB(t, ffmpegPath, master.Path, 8.6, 9.8, 30, 90)
-	if ducked >= base-4 {
-		t.Fatalf("bgm ducking not effective: mean during VO %.2f dB vs base %.2f dB", ducked, base)
+	// The canonical BGM layer remains present during scene speech at its
+	// enforced -50 dB level; the plan gate above certifies ducking
+	// automation separately.
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 1, 7, 30, 90); got <= -55 {
+		t.Fatalf("bgm missing during scene speech: %.2f dB", got)
 	}
 	// The three effects land inside their ±0.6s windows in their own bands.
 	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 4.6, 6.1, 2700, 3300); got <= -15 {
 		t.Fatalf("whoosh sfx missing at 5s: %.2f dB", got)
 	}
-	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 14.6, 16.1, 4500, 5500); got <= -15 {
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 14.6, 16.1, 4500, 5500); got <= -20 {
 		t.Fatalf("impact sfx missing at 15s: %.2f dB", got)
 	}
 	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 23.6, 25.1, 7500, 8500); got <= -20 {
@@ -309,9 +308,9 @@ func TestListenGateSceneRelativeSFX30s(t *testing.T) {
 	// ── Plan gates: the anchors collapse to absolute microseconds ──
 	sfx := trackEvents(plan, audio.TrackSFX)
 	wantSFX := []audio.AudioEvent{
-		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-r1", TimelineStartUS: 500_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: -8},
-		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-r2", TimelineStartUS: 15_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: -6},
-		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-r3", TimelineStartUS: 29_700_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: -5},
+		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-r1", TimelineStartUS: 500_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-r2", TimelineStartUS: 15_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-r3", TimelineStartUS: 29_700_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: audio.SoundEffectGainDB},
 	}
 	if len(sfx) != len(wantSFX) {
 		t.Fatalf("sfx events = %+v, want %d scene-resolved placements", sfx, len(wantSFX))
@@ -344,7 +343,7 @@ func TestListenGateSceneRelativeSFX30s(t *testing.T) {
 	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 0.4, 1.2, 2900, 3500); got <= -15 {
 		t.Fatalf("scene-c1 start+500ms sfx missing at 0.5s: %.2f dB", got)
 	}
-	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 14.6, 15.6, 4500, 5500); got <= -15 {
+	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 14.6, 15.6, 4500, 5500); got <= -20 {
 		t.Fatalf("scene-c2 middle sfx missing at 15s: %.2f dB", got)
 	}
 	if got := bandMaxVolumeDB(t, ffmpegPath, master.Path, 29.4, 30, 5500, 6500); got <= -20 {

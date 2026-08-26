@@ -102,9 +102,9 @@ func TestListenGateVOPlusThreeSFX20s(t *testing.T) {
 	}
 	sfx := trackEvents(plan, audio.TrackSFX)
 	wantSFX := []audio.AudioEvent{
-		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-b-whoosh", TimelineStartUS: 3_000_000, DurationUS: 900_000, SourceInUS: 0, SourceDurationUS: 900_000, GainDB: -8},
-		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-b-impact", TimelineStartUS: 8_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: -6},
-		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-b-boom", TimelineStartUS: 15_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: -5},
+		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx-b-whoosh", TimelineStartUS: 3_000_000, DurationUS: 900_000, SourceInUS: 0, SourceDurationUS: 900_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx-b-impact", TimelineStartUS: 8_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx-b-boom", TimelineStartUS: 15_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: audio.SoundEffectGainDB},
 	}
 	if len(sfx) != len(wantSFX) {
 		t.Fatalf("sfx events = %+v, want %d", sfx, len(wantSFX))
