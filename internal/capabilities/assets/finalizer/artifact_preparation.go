@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -50,8 +51,23 @@ func (s *ArtifactPreparation) Prepare(
 	ctx context.Context,
 	artifact finalization.VerifiedArtifact,
 ) (finalization.PublishedArtifact, error) {
-	// Fail-fast validation.
-	if err := s.validate(ctx, artifact); err != nil {
+	// Fail-fast validation (stat + size + idempotency checks; the SHA-256
+	// content hash inside VerifyArtifact is additionally measured as
+	// finalize.artifact_hash — the audio_render/mix nesting precedent).
+	// Each artifact is measured as finalize.artifact_prepare so the
+	// post_writer_finalize stage is no longer a black box. The stage
+	// comes from the caller's context (post_writer_finalize on the worker
+	// finalize spine) and defaults to publish for direct publishers
+	// (stock, vidrush, overlay).
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageOrDefault(ctx, kernobs.StagePublish),
+		Component: kernobs.ComponentName("finalize"),
+		Operation: kernobs.OperationName("artifact_prepare"),
+		Items:     1,
+		Bytes:     artifact.SizeBytes,
+	}, func(opCtx context.Context) error {
+		return s.validate(opCtx, artifact)
+	}); err != nil {
 		return finalization.PublishedArtifact{}, err
 	}
 
@@ -61,8 +77,22 @@ func (s *ArtifactPreparation) Prepare(
 			fmt.Errorf("artifact preparation: no publisher configured for artifact %s", artifact.ArtifactID)
 	}
 
-	location, err := s.publisher.Publish(ctx, artifact)
-	if err != nil {
+	// The Drive (or object-store) upload is the dominant per-artifact
+	// cost of post_writer_finalize; measured separately as
+	// finalize.drive_publish so the sequential I/O is visible in the
+	// RunReport instead of hiding inside a single finalize envelope.
+	var location finalization.AssetLocation
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageOrDefault(ctx, kernobs.StagePublish),
+		Component: kernobs.ComponentName("finalize"),
+		Operation: kernobs.OperationName("drive_publish"),
+		Items:     1,
+		Bytes:     artifact.SizeBytes,
+	}, func(opCtx context.Context) error {
+		var err error
+		location, err = s.publisher.Publish(opCtx, artifact)
+		return err
+	}); err != nil {
 		return finalization.PublishedArtifact{},
 			fmt.Errorf("artifact preparation: publish %s: %w", artifact.ArtifactID, err)
 	}

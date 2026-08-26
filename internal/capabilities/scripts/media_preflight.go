@@ -170,8 +170,14 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		}
 	}
 
+	// Resolve each canonical audio asset once. An effect may intentionally be
+	// placed on many scenes, but concurrent materialization of the same Drive
+	// asset races on the shared content-addressed `.part` file.
+	bgmIDs := uniqueCanonicalAudioIDs(in.BGMIDs)
+	sfxIDs := uniqueCanonicalAudioIDs(in.SFXIDs)
+
 	// ── BGM assets ────────────────────────────────────────────
-	for _, id := range in.BGMIDs {
+	for _, id := range bgmIDs {
 		id := id
 		if in.AudioAssetSource == nil {
 			mu.Lock()
@@ -207,7 +213,7 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	}
 
 	// ── SFX assets ────────────────────────────────────────────
-	for _, id := range in.SFXIDs {
+	for _, id := range sfxIDs {
 		id := id
 		if in.AudioAssetSource == nil {
 			mu.Lock()
@@ -271,4 +277,18 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		Failures: failures,
 		WallMS:   time.Since(started).Milliseconds(),
 	}
+}
+
+func uniqueCanonicalAudioIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, raw := range ids {
+		id := capabilityaudio.CanonicalAssetID(raw)
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }

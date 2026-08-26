@@ -114,6 +114,10 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 				}
 			}
 		}
+		// Boundary metadata is an intermediate Edge TTS artifact. It has
+		// already been parsed (and, when needed, retried), so do not leave
+		// one JSONL file per scene in the job workspace.
+		_ = os.Remove(res.MetadataPath)
 	}
 
 	out := voiceover.TTSOutput{
@@ -240,7 +244,15 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 		}
 		return voiceover.AudioPostOutput{}, err
 	}
-	return voiceover.AudioPostOutput{CleanedPath: cleaned}, nil
+	// Probe the final file immediately: callers use this duration for the
+	// scene timeline, never the pre-clean Edge duration.
+	var durationUS int64
+	if info, err := a.media.Probe(ctx, cleaned); err == nil && info != nil {
+		durationUS = info.Duration.Microseconds()
+	} else if err != nil {
+		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: probe cleaned audio: %w", err)
+	}
+	return voiceover.AudioPostOutput{CleanedPath: cleaned, DurationUS: durationUS}, nil
 }
 
 var _ voiceover.AudioPostProcessor = (*useCaseAudioAdapter)(nil)

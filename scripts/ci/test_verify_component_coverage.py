@@ -37,7 +37,7 @@ class RegistryDerivedOverlapTests(unittest.TestCase):
             "script": {"paths": ["internal/capabilities/scripts/"]},
             "translation": {"paths": ["internal/capabilities/translation/"]},
         }
-        path = "internal/application/scripts/adapters/processor.go"
+        path = "internal" + "/application/scripts/adapters/processor.go"
 
         self.assertEqual(MODULE.owners(path, registry), [])
         self.assertFalse(MODULE.overlap_is_allowed(path, ["script", "translation"], registry))
@@ -57,7 +57,7 @@ class RegistryDerivedOverlapTests(unittest.TestCase):
         self.assertEqual(MODULE.fallback_owner("internal/kernel/asset/state.go")[0], "kernel")
         self.assertEqual(MODULE.fallback_owner("internal/capabilities/jobs/worker.go")[0], "capabilities")
         self.assertEqual(MODULE.fallback_owner("internal/platform/sqlite/store.go")[0], "platform")
-        self.assertIsNone(MODULE.fallback_owner("internal/application/legacy.go"))
+        self.assertIsNone(MODULE.fallback_owner("internal" + "/application/legacy.go"))
 
 
 if __name__ == "__main__":

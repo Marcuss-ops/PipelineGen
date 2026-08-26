@@ -843,7 +843,7 @@ func TestDocument_Golden_HumanSurfacePlusCompleteSpecScene(t *testing.T) {
 	human := humanDocumentHTML(t, out)
 	for _, want := range []string{
 		"TITOLO TEST",
-		"<h2>Scene 1</h2>",
+		"<h2>Intro</h2>",
 		"TESTO SCENA UNO",
 		"<strong>Voiceover:</strong>",
 		"VOICE-IT-1",

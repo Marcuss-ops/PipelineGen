@@ -91,11 +91,19 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// composes only with name + transcript — which is exactly the
 	// production-shape pattern (search_text starts empty until the
 	// outbox elsepath populates it).
+	//
+	// namespace is set explicitly (matching the artlist provider): this
+	// fixture runs on the CANONICAL migrated schema (NewMigratedTestDB),
+	// so the taxonomy gate (ResolveIndexEligibility → AssetTaxonomy.
+	// Validate) demands a non-empty namespace. Without it the row is
+	// REGISTERED-not-searchable and IndexAsset skips the embedding call
+	// entirely — the honest production-shape eligibility path is exactly
+	// what this test must exercise.
 	_, err := db.Exec(`
-		INSERT INTO media_assets (id, name, source, media_type, asset_kind, source_type, tags, metadata_json, lifecycle_state, index_state)
+		INSERT INTO media_assets (id, name, source, media_type, asset_kind, source_type, namespace, tags, metadata_json, lifecycle_state, index_state)
 		VALUES
-			('clip_1', 'Test Clip One', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}', 'ACTIVE', 'DISCOVERED'),
-			('clip_2', 'Test Clip Two', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}', 'ACTIVE', 'DISCOVERED')
+			('clip_1', 'Test Clip One', 'artlist', 'video', 'stock_video', 'artlist', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}', 'ACTIVE', 'DISCOVERED'),
+			('clip_2', 'Test Clip Two', 'artlist', 'video', 'stock_video', 'artlist', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}', 'ACTIVE', 'DISCOVERED')
 	`)
 	require.NoError(t, err)
 

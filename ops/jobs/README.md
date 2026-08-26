@@ -36,5 +36,6 @@ an effect is mixed when it is explicitly present in `audio.sound_effects`.
 
 Background music uses `audio.background_music` and the canonical names in
 `bgm_catalog.json`, for example `asset_id: "bgm1"` or `asset_id: "bgm3"`.
-The six latest links contain four existing Whoop SFX (`whoop1`–`whoop4`) and
-two BGM files (`bgm1`, `bgm3`); they remain classified by their actual type.
+The six BGM links are permanently classified as `bgm1`–`bgm6`. The separate
+six Whoop links are permanently classified as `whop1`–`whop6`; the two groups
+must not be mixed when selecting assets.

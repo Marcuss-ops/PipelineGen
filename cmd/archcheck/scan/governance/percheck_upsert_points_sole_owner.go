@@ -46,7 +46,7 @@
 //     `node-scraper`, `examples`, `archivist`, `docs`, `data`.
 //   - skip `_test.go` files (regression-guard surface
 //     legitimately needs fixture UpsertPoints calls; residue
-//     documented in migrations/api/archcheck-strict-baseline.json).
+//     documented in docs/migrations/archcheck-strict-baseline.json).
 //   - skip `cmd/archcheck/scan/**` (this scanner file +
 //     sibling scanners reference the canonical pattern for
 //     documentation).
@@ -130,15 +130,15 @@ const upsertPointsSoleOwnerRule = "percheck_upsert_points_sole_owner"
 // upsertPointsSoleOwnerNote is the violation Note for any
 // non-canonical production call site of `.UpsertPoints(`.
 // The message references the canonical IndexingHandler +
-// outbox pipeline + the migrations/api/archcheck-strict-baseline.json
+// outbox pipeline + the docs/migrations/archcheck-strict-baseline.json
 // residue list so the operator sees the migration path inline.
-const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
+const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
 
 // deletePointsSoleOwnerNote is the violation Note for any non-canonical
 // production call site of `.DeletePoints(`. It is the destructive twin of
 // upsertPointsSoleOwnerNote: a direct DeletePoints bypasses the projection
 // writer's retention/alias contract and can silently orphan points.
-const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json."
+const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json."
 
 // upsertPointsSoleOwnerWarn is the residue-emitter for
 // comment-only references.
@@ -189,7 +189,7 @@ func ScanUpsertPointsSoleOwner(root string, pol *policy.Policy, r *report.Report
 		relSlash := filepath.ToSlash(rel)
 		// Test files are exempt — regression-guard surface
 		// legitimately needs fixture UpsertPoints calls
-		// (residue documented in archcheck-strict-baseline.json).
+		// (residue documented in docs/migrations/archcheck-strict-baseline.json).
 		if strings.HasSuffix(relSlash, "_test.go") {
 			return nil
 		}

@@ -1,168 +1,211 @@
-// Package models is the canonical Single Source Of Truth (SSOT) for the
-// ML model identities used by PipelineGen.
+// Package models is the canonical Single Source Of Truth (SSOT) for the ML
+// model identity facts used across PipelineGen: which model serves each role
+// (text/visual/audio embedding, reranking, transcription, sparse BM25), its
+// pinned revision, output dimensions, license, and whether it is part of the
+// canonical active stack.
 //
-// Policy (godlike/06): a small canonical set of models, one per
-// responsibility, versioned and interchangeable through this registry.
-// The registry carries identity facts only — ID, revision, dimension,
-// license, role, checksum, enabled. Model WEIGHTS are never committed to
-// Git; they are downloaded and cached on the server and verified against
-// Checksum at fetch time.
+// godlike/06 SSOT: the model IDs, revisions, and dimensions declared here are
+// the single owner of those facts. Do NOT declare model literals in other
+// packages — reference the canonical instances (CanonicalText, CanonicalVisual,
+// ...) or the exported constants below instead.
 //
-//	CORE     — text (E5), visual (SigLIP), reranker (BGE), BM25 (built-in)
-//	OPTIONAL — audio (CLAP), ASR (Whisper)
+// The text-embedding entry deliberately REFERENCES internal/kernel/embedding
+// (the EmbeddingContract SSOT) rather than re-declaring the E5 identity facts,
+// so a bump of one can never silently desync the other. The percheck gate
+// `percheck_embedding_constants_ssot` fails the build if a NEW package
+// re-declares the E5 model id as a constant/variable.
 //
-// Every component that names a model (Qdrant schema, embedding sidecar,
-// query embedder, reranker server, transcription bridge, health
-// handshake, diagnostics, downloader) MUST anchor to the entries here.
-// Do NOT add model identity constants in other packages.
+// Canonical stack (August 2026):
+//
+//	CORE       text      intfloat/multilingual-e5-base     MIT        768d
+//	           visual    google/siglip-so400m-patch14-384  Apache-2.0  768d
+//	           reranker  BAAI/bge-reranker-v2-m3           Apache-2.0  (scores)
+//	           bm25      qdrant/bm25                       Apache-2.0  (sparse)
+//	OPTIONAL   audio     laion/clap-htsat-fused            Apache-2.0  512d
+//	           asr       openai/whisper-large-v3-turbo     MIT         (text)
+//
+// Weights are never stored in Git: the registry carries identity facts only;
+// the model files are downloaded/cached on the server via the central
+// downloader, keyed by the ID + revision below.
 package models
 
 import (
 	"fmt"
+	"strings"
 
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// Role classifies how a model is used in the pipeline.
+// Role identifies the functional role a model serves in the pipeline.
 type Role string
 
 const (
-	// RoleTextEmbedding marks dense text-representation models (E5).
-	RoleTextEmbedding Role = "text_embedding"
-	// RoleVisualEmbedding marks image/text vision models for the
-	// "visual" Qdrant channel (SigLIP).
+	// RoleTextEmbedding is the dense text/transcript vector channel.
+	RoleTextEmbedding Role = "embedding"
+	// RoleVisualEmbedding is the dense visual vector channel.
 	RoleVisualEmbedding Role = "visual_embedding"
-	// RoleReranker marks cross-encoder relevance models (BGE reranker).
-	RoleReranker Role = "reranker"
-	// RoleAudioEmbedding marks audio-representation models (CLAP).
+	// RoleAudioEmbedding is the dense audio vector channel (optional).
 	RoleAudioEmbedding Role = "audio_embedding"
-	// RoleTranscription marks ASR models producing text transcripts
-	// (Whisper) — upstream of indexing, never directly into Qdrant.
+	// RoleReranker is the cross-encoder relevance re-scoring layer.
+	RoleReranker Role = "reranker"
+	// RoleTranscription is the ASR (audio → text) upstream of embedding.
 	RoleTranscription Role = "transcription"
+	// RoleSparse is the server-side sparse vector channel (BM25).
+	RoleSparse Role = "sparse"
 )
 
-// Model is one canonical model identity.
-//
-// Revision is the pinned model release reported by the loader (empty when
-// the upstream model id is the only pin available). Dimensions is the
-// vector length for embedding models; cross-encoders and ASR models emit
-// no vector space and carry 0.
+// Model is the canonical identity record of a single ML model. It carries
+// identity facts only — never weights, which live on the server cache.
 type Model struct {
-	// ID is the canonical model identifier (Hugging Face id).
+	// ID is the canonical model id as served by Hugging Face / the sidecar
+	// (e.g. "intfloat/multilingual-e5-base").
 	ID string
-	// Revision pins the model release (e.g. "2026-06-16-v1"). Empty when
-	// the model id is the only pin available in the codebase.
+	// Revision is the pinned model release/revision label. Empty when the
+	// model has no pinned revision label yet (not in production).
 	Revision string
-	// Dimensions is the output vector length (0 for non-vector models).
+	// Dimensions is the output vector length. 0 for non-vector models
+	// (reranker emits relevance scores, ASR emits text, BM25 is sparse).
 	Dimensions int
-	// License is the upstream model license (SPDX-ish identifier).
+	// License is the model's license identifier (e.g. "MIT", "Apache-2.0").
 	License string
-	// Role is the model's responsibility in the pipeline.
+	// Role is the functional role this model serves.
 	Role Role
-	// Checksum is the SHA-256 hex of the model weights. It is empty until
-	// the first download verifies against the upstream hub; once set, it
-	// is validated by digest.IsSHA256. Weights bytes are never in Git.
-	Checksum string
-	// Enabled reports whether the model is part of the canonical CORE
-	// production set. OPTIONAL models (CLAP, Whisper) are false. A true
-	// value is the registry target — a runtime feature flag may still lag
-	// behind (see Reranker below).
+	// Enabled reports whether the model is part of the canonical active
+	// stack. Optional models (audio, asr) are declared but disabled until
+	// their controlled migration lands.
 	Enabled bool
 }
 
-// Canonical model identity facts. These constants are the only literal
-// owner for model IDs, revisions, and vector dimensions. Consumers should
-// use the Model entries below (or these constants when a compile-time value
-// is required), never redeclare them.
-const (
-	CanonicalTextModelID         = "intfloat/multilingual-e5-base"
-	CanonicalTextModelRevision   = "2026-06-26-v1"
-	CanonicalTextModelDimensions = 768
+// ── Visual model identity ────────────────────────────────────────────────
+// The visual revision below is the runtime truth reported by the embedding
+// sidecar (scripts/services/embedding_server/__init__.py: VISUAL_MODEL_VERSION).
+//
+// KNOWN DRIFT (August 2026): pkg/defaults.VisualEmbeddingModelVersion and
+// schema.IndexSchema DenseVectors[visual].ModelVersion still pin the stale
+// "2026-06-16-v1". This registry is the new owner; the drift-fix task points
+// schema + sidecar wiring at the constants here so the two strings can never
+// diverge again.
 
-	CanonicalVisualModelID         = "google/siglip-so400m-patch14-384"
-	CanonicalVisualModelRevision   = "2026-06-16-v1"
-	CanonicalVisualModelDimensions = 768
-)
+// VisualModelID is the canonical SigLIP model id (full HF id used by the sidecar).
+const VisualModelID = "google/siglip-so400m-patch14-384"
 
-// Canonical model set — one per responsibility, stable order.
-var (
-	// E5 is the canonical multilingual text embedding model (CORE).
-	E5 = Model{
-		ID:         CanonicalTextModelID,
-		Revision:   CanonicalTextModelRevision,
-		Dimensions: CanonicalTextModelDimensions,
-		License:    "MIT",
-		Role:       RoleTextEmbedding,
-		Enabled:    true,
-	}
+// VisualModelRevision is the pinned SigLIP release label (runtime truth).
+const VisualModelRevision = "2026-06-26-v1"
 
-	// SigLIP is the canonical visual embedding model (CORE), active in the
-	// DefaultV3Schema "visual" channel and loaded by the embedding sidecar.
-	SigLIP = Model{
-		ID:         CanonicalVisualModelID,
-		Revision:   CanonicalVisualModelRevision,
-		Dimensions: CanonicalVisualModelDimensions,
-		License:    "Apache-2.0",
-		Role:       RoleVisualEmbedding,
-		Enabled:    true,
-	}
+// VisualModelDim is the SigLIP so400m-patch14-384 embedding dimensionality.
+const VisualModelDim = 768
 
-	// Reranker is the canonical cross-encoder relevance model (CORE per
-	// policy). No revision is pinned upstream: the model id is the only
-	// pin. Dimensions is 0 — a cross-encoder emits relevance scores, not a
-	// vector space. NOTE: the runtime flag (internal/platform/ai/reranker
-	// Config.Enabled) still defaults to false; activating the reranker is
-	// a deliberate rollout, not a registry change.
-	Reranker = Model{
-		ID:         "BAAI/bge-reranker-v2-m3",
-		Revision:   "",
-		Dimensions: 0,
-		License:    "Apache-2.0",
-		Role:       RoleReranker,
-		Enabled:    true,
-	}
+// ── Audio model identity (CLAP) ──────────────────────────────────────────
 
-	// CLAP is the canonical audio embedding model (OPTIONAL). The
-	// embedding sidecar already loads it, but the DefaultV3Schema "audio"
-	// channel is commented out — enabling CLAP is a v4 migration
-	// (512d audio channel + reindex + alias switch), never a silent change.
-	CLAP = Model{
-		ID:         "laion/clap-htsat-fused",
-		Revision:   "2026-06-26-v1",
-		Dimensions: 512,
-		License:    "Apache-2.0",
-		Role:       RoleAudioEmbedding,
-		Enabled:    false,
-	}
+// AudioModelID is the canonical CLAP audio-embedding model id.
+const AudioModelID = "laion/clap-htsat-fused"
 
-	// Whisper is the canonical ASR model (OPTIONAL, upstream of indexing:
-	// video → audio → Whisper → transcript → E5 → Qdrant). The
-	// transcription bridge (scripts/bridges/whisper_transcriber.py)
-	// defaults to this model and permits an explicit VELOX_WHISPER_MODEL
-	// override. No revision is pinned.
-	Whisper = Model{
-		ID:         "openai/whisper-large-v3-turbo",
-		Revision:   "",
-		Dimensions: 0,
-		License:    "MIT",
-		Role:       RoleTranscription,
-		Enabled:    false,
-	}
-)
+// AudioModelRevision is the pinned CLAP release label (sidecar runtime truth).
+const AudioModelRevision = "2026-06-26-v1"
 
-// canonicalOrder is the stable registry order (declaration order).
-var canonicalOrder = [...]Model{E5, SigLIP, Reranker, CLAP, Whisper}
+// AudioModelDim is the CLAP audio embedding dimensionality.
+const AudioModelDim = 512
 
-// Canonical returns the full registry in stable order.
-func Canonical() []Model {
-	out := make([]Model, 0, len(canonicalOrder))
-	out = append(out, canonicalOrder[:]...)
-	return out
+// ── Reranker model identity ──────────────────────────────────────────────
+
+// RerankerModelID is the canonical multilingual reranker model id.
+const RerankerModelID = "BAAI/bge-reranker-v2-m3"
+
+// ── ASR model identity ───────────────────────────────────────────────────
+
+// ASRModelID is the canonical transcription (ASR) model id.
+const ASRModelID = "openai/whisper-large-v3-turbo"
+
+// ── BM25 sparse model identity ───────────────────────────────────────────
+
+// BM25ModelID is the canonical server-side sparse inference model (Qdrant
+// built-in; no weights are downloaded for it).
+const BM25ModelID = "qdrant/bm25"
+
+// Canonical instances — the single owner of every model identity fact.
+
+// CanonicalText is the canonical dense text/transcript embedding model. The
+// identity facts are REFERENCES to internal/kernel/embedding (the
+// EmbeddingContract SSOT) so both surfaces stay in lockstep by construction.
+var CanonicalText = Model{
+	ID:         coreembedding.ModelIDMultilingualE5,
+	Revision:   coreembedding.ModelRevisionMultilingualE5,
+	Dimensions: coreembedding.DimensionText,
+	License:    "MIT",
+	Role:       RoleTextEmbedding,
+	Enabled:    true,
 }
 
-// ByID looks up a model by its canonical id.
-func ByID(id string) (Model, bool) {
-	for _, m := range canonicalOrder {
+// CanonicalVisual is the canonical dense visual embedding model (SigLIP).
+var CanonicalVisual = Model{
+	ID:         VisualModelID,
+	Revision:   VisualModelRevision,
+	Dimensions: VisualModelDim,
+	License:    "Apache-2.0",
+	Role:       RoleVisualEmbedding,
+	Enabled:    true,
+}
+
+// CanonicalAudio is the optional dense audio embedding model (CLAP).
+// Declared but disabled: the v3 Qdrant schema has the audio channel commented
+// out, so the runtime service is not part of the canonical stack yet. Enabled
+// flips only via the controlled v4 migration (new collection → reindex →
+// alias switch).
+var CanonicalAudio = Model{
+	ID:         AudioModelID,
+	Revision:   AudioModelRevision,
+	Dimensions: AudioModelDim,
+	License:    "Apache-2.0",
+	Role:       RoleAudioEmbedding,
+	Enabled:    false,
+}
+
+// CanonicalReranker is the canonical cross-encoder reranker. Part of the
+// CORE stack per the August 2026 model review; the runtime config flag
+// (RerankerConfig.Enabled) currently defaults to false and is flipped by the
+// activation task.
+var CanonicalReranker = Model{
+	ID:      RerankerModelID,
+	License: "Apache-2.0",
+	Role:    RoleReranker,
+	Enabled: true,
+}
+
+// CanonicalASR is the optional transcription model (Whisper large-v3-turbo).
+// It is upstream of the indexing path (audio → transcript → E5 → Qdrant), not
+// an embedding model itself. Declared canonical when transcripts are needed.
+var CanonicalASR = Model{
+	ID:      ASRModelID,
+	License: "MIT",
+	Role:    RoleTranscription,
+	Enabled: false,
+}
+
+// CanonicalBM25 is the canonical sparse channel model. Qdrant performs the
+// BM25 inference server-side (idf modifier), so no weights are downloaded.
+var CanonicalBM25 = Model{
+	ID:      BM25ModelID,
+	License: "Apache-2.0",
+	Role:    RoleSparse,
+	Enabled: true,
+}
+
+// All returns the canonical registry in stable order (declaration order).
+func All() []Model {
+	return []Model{
+		CanonicalText,
+		CanonicalVisual,
+		CanonicalAudio,
+		CanonicalReranker,
+		CanonicalASR,
+		CanonicalBM25,
+	}
+}
+
+// Lookup returns the canonical model with the given id (exact match on ID).
+func Lookup(id string) (Model, bool) {
+	for _, m := range All() {
 		if m.ID == id {
 			return m, true
 		}
@@ -170,41 +213,78 @@ func ByID(id string) (Model, bool) {
 	return Model{}, false
 }
 
-// Identity returns the immutable identity fingerprint "id|revision". Any
-// consumer that names a model (collection naming, contract hashes, cache
-// keys) MUST compose the identity through this method, never ad-hoc
-// strings.
-func (m Model) Identity() string {
-	return fmt.Sprintf("%s|%s", m.ID, m.Revision)
+// ByRole returns the canonical model serving the given role.
+func ByRole(role Role) (Model, bool) {
+	for _, m := range All() {
+		if m.Role == role {
+			return m, true
+		}
+	}
+	return Model{}, false
 }
 
-// HasVectorSpace reports whether the model emits vectors (embedding
-// models only). Cross-encoders and ASR models report false.
-func (m Model) HasVectorSpace() bool {
-	return m.Dimensions > 0
+// Enabled returns the subset of the canonical stack that is active.
+func Enabled() []Model {
+	var out []Model
+	for _, m := range All() {
+		if m.Enabled {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
-// Validate reports whether the entry is internally consistent:
-// a non-empty checksum must be a valid SHA-256 hex, vector-space models
-// must carry a positive dimension, and every model must have an id.
-func (m Model) Validate() error {
-	if m.ID == "" {
-		return fmt.Errorf("models: %s has empty id", m.Role)
+// Validate checks the registry invariants: every entry must have a non-empty
+// id, license, and role; ids and roles must be unique; embedding roles must
+// declare positive dimensions. Returns nil when the registry is safe to
+// consume at runtime.
+func Validate() error {
+	var errs []string
+	ids := make(map[string]bool)
+	roles := make(map[Role]bool)
+
+	for _, m := range All() {
+		if strings.TrimSpace(m.ID) == "" {
+			errs = append(errs, fmt.Sprintf("model entry with role %q: id must not be empty", m.Role))
+		}
+		if strings.TrimSpace(m.License) == "" {
+			errs = append(errs, fmt.Sprintf("model %q: license must not be empty", m.ID))
+		}
+		if m.Role == "" {
+			errs = append(errs, fmt.Sprintf("model %q: role must not be empty", m.ID))
+		}
+		if ids[m.ID] {
+			errs = append(errs, fmt.Sprintf("duplicate model id %q", m.ID))
+		}
+		ids[m.ID] = true
+		if roles[m.Role] {
+			errs = append(errs, fmt.Sprintf("duplicate role %q", m.Role))
+		}
+		roles[m.Role] = true
+
+		switch m.Role {
+		case RoleTextEmbedding, RoleVisualEmbedding, RoleAudioEmbedding:
+			if m.Dimensions <= 0 {
+				errs = append(errs, fmt.Sprintf("model %q (role %q): embedding role must declare positive dimensions, got %d", m.ID, m.Role, m.Dimensions))
+			}
+		}
 	}
-	if m.Role == "" {
-		return fmt.Errorf("models: %s has empty role", m.ID)
-	}
-	if m.License == "" {
-		return fmt.Errorf("models: %s has empty license", m.ID)
-	}
-	if m.Dimensions < 0 {
-		return fmt.Errorf("models: %s has negative dimensions=%d", m.ID, m.Dimensions)
-	}
-	if m.Checksum != "" && !digest.IsSHA256(m.Checksum) {
-		return fmt.Errorf("models: %s checksum is not SHA-256 hex", m.ID)
-	}
-	if m.HasVectorSpace() && m.Dimensions <= 0 {
-		return fmt.Errorf("models: %s claims a vector space with dimensions=%d", m.ID, m.Dimensions)
+
+	if len(errs) > 0 {
+		return fmt.Errorf("internal/kernel/models: %d registry validation failure(s): %s", len(errs), strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// Hash returns the deterministic registry fingerprint (SHA-256 hex). It is
+// the drift-detection digest: any change to a model identity fact changes
+// the fingerprint, so boot-time diagnostics / health handshakes can compare
+// the canonical registry against the runtime sidecar and Qdrant metadata.
+func Hash() string {
+	var parts []string
+	for _, m := range All() {
+		parts = append(parts, fmt.Sprintf("%s|%s|%s|%d|%s|%t",
+			m.ID, m.Revision, m.License, m.Dimensions, m.Role, m.Enabled))
+	}
+	return digest.SHA256String(strings.Join(parts, "\n"))
 }

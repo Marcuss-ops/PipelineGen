@@ -176,17 +176,20 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		// voiceover.generate_item job handler and the
 		// promoVoiceoverAdapter build (per voiceover/command.go).
 		itemCmd := &voiceover.GenerateVoiceoverItemCommand{
-			ParentJobID:   requestID, // same as RequestID — sync path, no dispatcher
-			RequestID:     requestID,
-			Text:          item.Text,
-			Language:      voiceover.Language(language),
-			Voice:         item.Voice,
-			Filename:      item.Filename,
-			TextHash:      textHash,
-			Destination:   item.Destination, // nil-safe at the use case boundary
-			Project:       project,
-			Strategy:      "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
-			RemoveSilence: false,     // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			ParentJobID: requestID, // same as RequestID — sync path, no dispatcher
+			RequestID:   requestID,
+			Text:        item.Text,
+			Language:    voiceover.Language(language),
+			Voice:       item.Voice,
+			Filename:    item.Filename,
+			TextHash:    textHash,
+			Destination: item.Destination, // nil-safe at the use case boundary
+			Project:     project,
+			Strategy:    "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			// Every generated scene goes through the canonical post-TTS
+			// cleanup; the media executor removes silence runs longer than
+			// 800 ms before the scene duration is published.
+			RemoveSilence: true,
 			Moments:       item.Moments,
 			Timing:        item.Timing,
 		}

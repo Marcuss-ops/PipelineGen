@@ -72,7 +72,7 @@ var legacyRootImportBanned = []string{
 // keys on basename (NOT full path) so accidental file-tree
 // relocations inside cmd/archcheck/scan/ do not silently re-trigger
 // the loop. The skip mirrors the canonical `cmd/archcheck/scan`
-// prefix exemption used by percheck_api_policy_literals (see the
+// prefix exemption used by the retired API policy-literal gate (its
 // apiPolicyLiteralsSkipPathPrefixes pattern) but is filename-only
 // because the legacy-root-ban pattern is data, not a path prefix.
 //

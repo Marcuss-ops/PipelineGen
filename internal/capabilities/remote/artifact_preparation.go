@@ -27,6 +27,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ── Sentinel ────────────────────────────────────────────────────────
@@ -62,10 +63,24 @@ func VerifyArtifact(ctx context.Context, jobID string, artifact finalization.Ver
 			failures = append(failures, fmt.Sprintf("size mismatch: on-disk=%d claimed=%d", fi.Size(), artifact.SizeBytes))
 		}
 
-		// (2) Content hash.
-		actualSHA, err := sha256File(artifact.LocalPath)
-		if err != nil {
-			failures = append(failures, fmt.Sprintf("cannot compute SHA-256: %v", err))
+		// (2) Content hash — measured as finalize.artifact_hash so the
+		// SHA-256 cost is separated from the validation envelope in the
+		// RunReport (post_writer_finalize no longer hides it). Stage comes
+		// from the caller's context; default publish for non-finalize
+		// callers.
+		var actualSHA string
+		if hashErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     kernobs.StageOrDefault(ctx, kernobs.StagePublish),
+			Component: kernobs.ComponentName("finalize"),
+			Operation: kernobs.OperationName("artifact_hash"),
+			Items:     1,
+			Bytes:     artifact.SizeBytes,
+		}, func(opCtx context.Context) error {
+			var err error
+			actualSHA, err = sha256File(artifact.LocalPath)
+			return err
+		}); hashErr != nil {
+			failures = append(failures, fmt.Sprintf("cannot compute SHA-256: %v", hashErr))
 		} else if actualSHA != artifact.SHA256 {
 			failures = append(failures, fmt.Sprintf("SHA-256 mismatch: on-disk=%s claimed=%s", actualSHA, artifact.SHA256))
 		}

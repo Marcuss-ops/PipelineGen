@@ -13,7 +13,7 @@
 //     exempt (the regex requires a dot-receiver before the
 //     call site name).
 //  4. Test fixtures are exempt (residue documented in
-//     migrations/api/archcheck-strict-baseline.json).
+//     documented in docs/migrations/archcheck-strict-baseline.json).
 //  5. Comment-only references are residue-accounted (WARN in
 //     !productionOnly mode; silenced in productionOnly mode).
 package governance

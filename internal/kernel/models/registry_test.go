@@ -1,182 +1,156 @@
 package models
 
 import (
+	"sort"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
-// TestCanonical_ContainsFiveModelsInStableOrder pins the registry size and
-// order. Adding a model is a deliberate policy change: update this test and
-// the godlike/06 CORE/OPTIONAL documentation together.
-func TestCanonical_ContainsFiveModelsInStableOrder(t *testing.T) {
-	got := Canonical()
-	if len(got) != 5 {
-		t.Fatalf("Canonical() returned %d models, want 5 (E5, SigLIP, Reranker, CLAP, Whisper)", len(got))
+func TestCanonicalText_MatchesEmbeddingContract(t *testing.T) {
+	// SSOT coherence: the registry's text entry must be in lockstep with the
+	// EmbeddingContract SSOT (internal/kernel/embedding) — same id, revision,
+	// and dimension. If one is bumped without the other, this fails.
+	c := CanonicalText
+	if c.ID != coreembedding.ModelIDMultilingualE5 {
+		t.Fatalf("CanonicalText.ID = %q, want %q (embedding contract)", c.ID, coreembedding.ModelIDMultilingualE5)
 	}
-	wantOrder := []string{
-		"intfloat/multilingual-e5-base",
-		"google/siglip-so400m-patch14-384",
-		"BAAI/bge-reranker-v2-m3",
-		"laion/clap-htsat-fused",
-		"openai/whisper-large-v3-turbo",
+	if c.Revision != coreembedding.ModelRevisionMultilingualE5 {
+		t.Fatalf("CanonicalText.Revision = %q, want %q (embedding contract)", c.Revision, coreembedding.ModelRevisionMultilingualE5)
 	}
-	for i, want := range wantOrder {
-		if got[i].ID != want {
-			t.Errorf("Canonical()[%d].ID = %q, want %q (stable order)", i, got[i].ID, want)
+	if c.Dimensions != coreembedding.DimensionText {
+		t.Fatalf("CanonicalText.Dimensions = %d, want %d (embedding contract)", c.Dimensions, coreembedding.DimensionText)
+	}
+}
+
+func TestCanonicalEntries_Values(t *testing.T) {
+	cases := []struct {
+		name       string
+		got        Model
+		wantID     string
+		wantRev    string
+		wantDim    int
+		wantLic    string
+		wantRole   Role
+		wantEnable bool
+	}{
+		{"text", CanonicalText, "intfloat/multilingual-e5-base", "2026-06-26-v1", 768, "MIT", RoleTextEmbedding, true},
+		{"visual", CanonicalVisual, "google/siglip-so400m-patch14-384", "2026-06-26-v1", 768, "Apache-2.0", RoleVisualEmbedding, true},
+		{"audio", CanonicalAudio, "laion/clap-htsat-fused", "2026-06-26-v1", 512, "Apache-2.0", RoleAudioEmbedding, false},
+		{"reranker", CanonicalReranker, "BAAI/bge-reranker-v2-m3", "", 0, "Apache-2.0", RoleReranker, true},
+		{"asr", CanonicalASR, "openai/whisper-large-v3-turbo", "", 0, "MIT", RoleTranscription, false},
+		{"bm25", CanonicalBM25, "qdrant/bm25", "", 0, "Apache-2.0", RoleSparse, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got.ID != tc.wantID {
+				t.Fatalf("ID = %q, want %q", tc.got.ID, tc.wantID)
+			}
+			if tc.got.Revision != tc.wantRev {
+				t.Fatalf("Revision = %q, want %q", tc.got.Revision, tc.wantRev)
+			}
+			if tc.got.Dimensions != tc.wantDim {
+				t.Fatalf("Dimensions = %d, want %d", tc.got.Dimensions, tc.wantDim)
+			}
+			if tc.got.License != tc.wantLic {
+				t.Fatalf("License = %q, want %q", tc.got.License, tc.wantLic)
+			}
+			if tc.got.Role != tc.wantRole {
+				t.Fatalf("Role = %q, want %q", tc.got.Role, tc.wantRole)
+			}
+			if tc.got.Enabled != tc.wantEnable {
+				t.Fatalf("Enabled = %t, want %t", tc.got.Enabled, tc.wantEnable)
+			}
+		})
+	}
+}
+
+func TestAll_HasSixCanonicalModels(t *testing.T) {
+	all := All()
+	if len(all) != 6 {
+		t.Fatalf("All() has %d models, want 6 (5 ML models + BM25)", len(all))
+	}
+	seen := make(map[string]bool)
+	for _, m := range all {
+		if seen[m.ID] {
+			t.Fatalf("duplicate model id in registry: %q", m.ID)
+		}
+		seen[m.ID] = true
+	}
+}
+
+func TestLookup(t *testing.T) {
+	m, ok := Lookup("intfloat/multilingual-e5-base")
+	if !ok {
+		t.Fatal("Lookup(multilingual-e5-base) must succeed")
+	}
+	if m.Role != RoleTextEmbedding {
+		t.Fatalf("Lookup role = %q, want embedding", m.Role)
+	}
+
+	if _, ok := Lookup("nomic-embed-text"); ok {
+		t.Fatal("Lookup of a legacy/non-canonical model must fail")
+	}
+}
+
+func TestByRole(t *testing.T) {
+	m, ok := ByRole(RoleReranker)
+	if !ok {
+		t.Fatal("ByRole(reranker) must succeed")
+	}
+	if m.ID != "BAAI/bge-reranker-v2-m3" {
+		t.Fatalf("ByRole(reranker).ID = %q, want BAAI/bge-reranker-v2-m3", m.ID)
+	}
+
+	if _, ok := ByRole(Role("nonexistent")); ok {
+		t.Fatal("ByRole of an unknown role must fail")
+	}
+}
+
+func TestEnabled_HasFourCore(t *testing.T) {
+	enabled := Enabled()
+	if len(enabled) != 4 {
+		t.Fatalf("Enabled() has %d models, want 4 (text, visual, reranker, bm25)", len(enabled))
+	}
+	var ids []string
+	for _, m := range enabled {
+		ids = append(ids, m.ID)
+	}
+	sort.Strings(ids)
+	want := []string{"BAAI/bge-reranker-v2-m3", "google/siglip-so400m-patch14-384", "intfloat/multilingual-e5-base", "qdrant/bm25"}
+	if len(ids) != len(want) {
+		t.Fatalf("Enabled() ids = %v, want %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("Enabled() ids = %v, want %v", ids, want)
 		}
 	}
 }
 
-// TestE5_AnchoredToRegistryConstants pins the linkage between the
-// canonical model entry and its identity constants.
-func TestE5_AnchoredToRegistryConstants(t *testing.T) {
-	if E5.ID != CanonicalTextModelID {
-		t.Errorf("E5.ID = %q, want CanonicalTextModelID %q", E5.ID, CanonicalTextModelID)
-	}
-	if E5.Revision != CanonicalTextModelRevision {
-		t.Errorf("E5.Revision = %q, want CanonicalTextModelRevision %q", E5.Revision, CanonicalTextModelRevision)
-	}
-	if E5.Dimensions != CanonicalTextModelDimensions {
-		t.Errorf("E5.Dimensions = %d, want CanonicalTextModelDimensions %d", E5.Dimensions, CanonicalTextModelDimensions)
+func TestValidate_OK(t *testing.T) {
+	if err := Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
 	}
 }
 
-// TestSigLIP_AnchoredToRegistryConstants pins the SigLIP identity and
-// dimension linkage to the registry constants.
-func TestSigLIP_AnchoredToRegistryConstants(t *testing.T) {
-	if SigLIP.Revision != CanonicalVisualModelRevision {
-		t.Errorf("SigLIP.Revision = %q, want CanonicalVisualModelRevision %q", SigLIP.Revision, CanonicalVisualModelRevision)
+func TestHash_DeterministicAndSensitive(t *testing.T) {
+	h1, h2 := Hash(), Hash()
+	if h1 != h2 {
+		t.Fatal("Hash is not deterministic")
 	}
-	if SigLIP.Dimensions != CanonicalVisualModelDimensions {
-		t.Errorf("SigLIP.Dimensions = %d, want CanonicalVisualModelDimensions %d", SigLIP.Dimensions, CanonicalVisualModelDimensions)
+	if len(h1) != 64 {
+		t.Fatalf("Hash length = %d, want 64 (sha256 hex)", len(h1))
 	}
-	if SigLIP.ID != CanonicalVisualModelID {
-		t.Errorf("SigLIP.ID = %q, want CanonicalVisualModelID %q", SigLIP.ID, CanonicalVisualModelID)
-	}
-}
 
-// TestEnabled_CoreVsOptional pins the CORE/OPTIONAL split: E5 + SigLIP +
-// Reranker are the canonical production set; CLAP + Whisper are optional
-// (audio channel inactive in DefaultV3Schema, ASR upstream of indexing).
-func TestEnabled_CoreVsOptional(t *testing.T) {
-	for _, m := range []Model{E5, SigLIP, Reranker} {
-		if !m.Enabled {
-			t.Errorf("%s (%s) must be enabled (CORE set)", m.ID, m.Role)
-		}
+	// Changing any identity fact must change the fingerprint.
+	orig := CanonicalVisual
+	CanonicalVisual.Revision = "2026-06-16-v1"
+	if Hash() == h1 {
+		t.Fatal("changing a model identity fact must change the registry hash")
 	}
-	for _, m := range []Model{CLAP, Whisper} {
-		if m.Enabled {
-			t.Errorf("%s (%s) must be disabled (OPTIONAL set)", m.ID, m.Role)
-		}
-	}
-}
-
-// TestLicenses_Pinned locks the license facts so a model upgrade that
-// changes licensing is a reviewed decision.
-func TestLicenses_Pinned(t *testing.T) {
-	want := map[string]string{
-		"intfloat/multilingual-e5-base":    "MIT",
-		"google/siglip-so400m-patch14-384": "Apache-2.0",
-		"BAAI/bge-reranker-v2-m3":          "Apache-2.0",
-		"laion/clap-htsat-fused":           "Apache-2.0",
-		"openai/whisper-large-v3-turbo":    "MIT",
-	}
-	for _, m := range Canonical() {
-		if got := want[m.ID]; got != m.License {
-			t.Errorf("%s license = %q, want %q", m.ID, m.License, got)
-		}
-	}
-}
-
-// TestDenseDimensions pins the vector lengths: E5 768, SigLIP 768, CLAP
-// 512; cross-encoder and ASR models carry no vector space (0).
-func TestDenseDimensions(t *testing.T) {
-	want := map[string]int{
-		"intfloat/multilingual-e5-base":    768,
-		"google/siglip-so400m-patch14-384": 768,
-		"BAAI/bge-reranker-v2-m3":          0,
-		"laion/clap-htsat-fused":           512,
-		"openai/whisper-large-v3-turbo":    0,
-	}
-	for _, m := range Canonical() {
-		if m.Dimensions != want[m.ID] {
-			t.Errorf("%s dimensions = %d, want %d", m.ID, m.Dimensions, want[m.ID])
-		}
-		if (m.Role == RoleReranker || m.Role == RoleTranscription) && m.HasVectorSpace() {
-			t.Errorf("%s must not claim a vector space (role %s)", m.ID, m.Role)
-		}
-	}
-}
-
-// TestByID_RoundTrip verifies lookup by canonical id and fail-closed
-// behavior for unknown ids.
-func TestByID_RoundTrip(t *testing.T) {
-	for _, m := range Canonical() {
-		got, ok := ByID(m.ID)
-		if !ok {
-			t.Fatalf("ByID(%q) not found", m.ID)
-		}
-		if got != m {
-			t.Errorf("ByID(%q) = %+v, want %+v", m.ID, got, m)
-		}
-	}
-	if _, ok := ByID("nonexistent/model"); ok {
-		t.Error("ByID(nonexistent/model) must return false (fail-closed)")
-	}
-}
-
-// TestIdentity_Stable pins the identity fingerprint: id|revision, unique
-// per model, deterministic across calls.
-func TestIdentity_Stable(t *testing.T) {
-	seen := map[string]string{}
-	for _, m := range Canonical() {
-		id := m.Identity()
-		if id != m.ID+"|"+m.Revision {
-			t.Errorf("%s Identity() = %q, want %q", m.ID, id, m.ID+"|"+m.Revision)
-		}
-		if prev, dup := seen[id]; dup {
-			t.Errorf("duplicate identity %q (models %s and %s)", id, prev, m.ID)
-		}
-		seen[id] = m.ID
-		if m.Identity() != id {
-			t.Errorf("%s Identity() not deterministic", m.ID)
-		}
-	}
-}
-
-// TestNoDuplicateIDs guards against two entries sharing an id, which
-// would silently break ByID and Identity-based cache keys.
-func TestNoDuplicateIDs(t *testing.T) {
-	seen := map[string]string{}
-	for _, m := range Canonical() {
-		if prev, dup := seen[m.ID]; dup {
-			t.Errorf("duplicate model id %q (models %s and %s)", m.ID, prev, m.ID)
-		}
-		seen[m.ID] = string(m.Role)
-	}
-}
-
-// TestChecksums_ValidSHA256OrEmpty pins the checksum contract: empty until
-// the first download verifies against the upstream hub; once populated it
-// MUST be valid SHA-256 hex (weights are never committed to Git).
-func TestChecksums_ValidSHA256OrEmpty(t *testing.T) {
-	for _, m := range Canonical() {
-		if m.Checksum == "" {
-			continue
-		}
-		if !digest.IsSHA256(m.Checksum) {
-			t.Errorf("%s checksum %q is not SHA-256 hex", m.ID, m.Checksum)
-		}
-	}
-}
-
-// TestValidate_AllEntriesValid runs the internal consistency validator
-// over the whole registry.
-func TestValidate_AllEntriesValid(t *testing.T) {
-	for _, m := range Canonical() {
-		if err := m.Validate(); err != nil {
-			t.Errorf("Validate(%s): %v", m.ID, err)
-		}
+	CanonicalVisual = orig
+	if Hash() != h1 {
+		t.Fatal("restoring the canonical instance must restore the registry hash")
 	}
 }
