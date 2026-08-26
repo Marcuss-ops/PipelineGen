@@ -2,13 +2,15 @@
 // gate that bans NEW embedding model-id declarations outside the canonical
 // EmbeddingContract SSOT (PR-HASH-SEMANTICS item 16, August 2026).
 //
-// godlike/06 SSOT: the text-embedding identity facts (model id, revision,
-// dimension, normalization, distance, prefixes, semantic-document version)
-// have exactly ONE owner — internal/kernel/embedding (the EmbeddingContract).
-// Historical drift happened precisely because `clipindexer`, the Qdrant
-// schema, the search backend and the config each declared their own copy of
-// `nomic-embed-text` / `multilingual-e5-base`. This gate fails the build when
-// a NEW package declares such a model id as a constant/variable.
+// godlike/06 SSOT: the model identity facts (model id, revision, dimension)
+// have exactly ONE owner — internal/kernel/models (the model registry).
+// internal/kernel/embedding re-exports them via aliases (ModelIDMultilingualE5
+// = models.CanonicalTextModelID) so the EmbeddingContract API stays stable
+// without a second literal definition. Historical drift happened precisely
+// because `clipindexer`, the Qdrant schema, the search backend and the config
+// each declared their own copy of `nomic-embed-text` /
+// `multilingual-e5-base`. This gate fails the build when a NEW package
+// declares such a model id as a constant/variable.
 //
 // Scope (deliberately narrow — forward prevention, not retroactive cleanup):
 //   - It matches DECLARATION lines only (`<ident> = "<model-id>"` at line
@@ -50,9 +52,11 @@ var embeddingConstantsSkipDirs = map[string]bool{
 }
 
 // embeddingConstantsCanonicalOwners is the EXEMPT surface: the canonical
-// EmbeddingContract package (internal/kernel/embedding) plus the scanner's
-// own package (this file declares the forbidden literals).
+// model-registry package (internal/kernel/models), the EmbeddingContract
+// aliases (internal/kernel/embedding), plus the scanner's own package (this
+// file declares the forbidden literals).
 var embeddingConstantsCanonicalOwners = []string{
+	"internal/kernel/models/",
 	"internal/kernel/embedding/",
 	"cmd/archcheck/scan",
 }
@@ -74,7 +78,7 @@ var embeddingModelIDLiteralRE = regexp.MustCompile(
 
 // embeddingConstantsNote is the violation Note for a forbidden embedding
 // model-id declaration outside the canonical EmbeddingContract.
-const embeddingConstantsNote = "forbidden embedding model-id declaration outside the canonical EmbeddingContract SSOT (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires every text-embedding identity fact (model id, revision, dimension, normalization, distance, prefixes) to be owned ONLY by internal/kernel/embedding. Do NOT declare a new embedding-model constant/variable in another package — reference internal/kernel/embedding.CanonicalText (or its exported constants) instead. Historical drift (nomic-embed-text vs multilingual-e5-base) broke query/document vector coherence; this gate fails closed on any re-introduction."
+const embeddingConstantsNote = "forbidden embedding model-id declaration outside the canonical model-registry SSOT (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires every text-embedding identity fact (model id, revision, dimension) to be owned ONLY by internal/kernel/models. Do NOT declare a new embedding-model constant/variable in another package — reference internal/kernel/models.CanonicalTextModelID (or the internal/kernel/embedding aliases) instead. Historical drift (nomic-embed-text vs multilingual-e5-base) broke query/document vector coherence; this gate fails closed on any re-introduction."
 
 // ScanEmbeddingConstantsSSOT walks every .go file under internal/** and emits
 // a violation for any non-test production file outside the canonical

@@ -52,6 +52,7 @@ config.yaml
 /server
 /admin
 /worker
+/model-registry-gen
 /seed_fixture
 /gen-api-docs
 *.exe
