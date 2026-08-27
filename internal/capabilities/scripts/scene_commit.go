@@ -10,6 +10,7 @@ package scriptgeneration
 import (
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 	"time"
 )
@@ -42,6 +43,11 @@ type SceneCommitted struct {
 	// Language is the ISO 639-1 source language of Text.
 	Language string    `json:"language"`
 	ReadyAt  time.Time `json:"ready_at"`
+
+	// SemanticProfile is populated by the canonical segment-understanding
+	// stage when the event is emitted. It is optional for compatibility with
+	// older producers; the enricher derives it when absent.
+	SemanticProfile *scriptpkg.SegmentSemanticProfile `json:"semantic_profile,omitempty"`
 }
 
 // SceneTextReadyEvent is the coordinator-facing name for the stable scene

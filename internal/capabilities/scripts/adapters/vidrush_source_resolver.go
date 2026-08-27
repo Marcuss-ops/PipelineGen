@@ -38,6 +38,13 @@ type CanonicalAssetSearcher interface {
 	SearchAssets(ctx context.Context, q assetsearch.AssetSearchQuery) ([]assetsearch.AssetSearchHit, error)
 }
 
+// ResolveSource is the canonical source-selection entry point used by the
+// incremental pipeline. It is intentionally kept beside the resolver so the
+// SceneCommitted path can reuse the exact locked/asset/catalog/provider order.
+func (r VidRushSourceResolver) ResolveSource(ctx context.Context, req SourceResolutionRequest) (*SourceResolutionCandidate, error) {
+	return r.Resolve(ctx, req)
+}
+
 // SourceResolver applies the fixed source priority and never skips a locked
 // assignment. It is deliberately provider-agnostic and therefore testable.
 type VidRushSourceResolver struct {
