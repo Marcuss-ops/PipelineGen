@@ -38,6 +38,31 @@ func (c *vidRushMemoryCache) Put(_ context.Context, namespace, key string, raw [
 	return nil
 }
 
+func TestVidRushSourcePerSegmentRankingCacheAndBinding(t *testing.T) {
+	cache := &vidRushMemoryCache{}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "segment-001", TextHash: "hash-001", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+			{AssetID: "yt-1", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/yt-1", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: "indexed", LegacyFileMD5: "hash-yt-1", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-1.mp4", SourcePageURL: "https://www.youtube.com/watch?v=video-1"},
+			{AssetID: "yt-2", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-2", SourceStartMs: 1000, SourceEndMs: 11000, DurationMs: 10000, Score: .40, RelevanceScore: .40, DriveLink: "https://drive.google.com/file/d/yt-2", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, LegacyFileMD5: "hash-yt-2", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-2.mp4"},
+		}}},
+		{SegmentID: "segment-002", TextHash: "hash-002", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "wrong-segment", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/wrong", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, LegacyFileMD5: "hash-wrong", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/wrong.mp4"}}}},
+	}
+	first := FinalizeVidRushBindingsWithCache(context.Background(), segments, false, cache)
+	if first[0].Assets.PrimaryVideo == nil || first[0].Assets.PrimaryVideo.AssetID != "yt-1" {
+		t.Fatalf("ranking selected %+v, want highest-scoring YouTube candidate", first[0].Assets.PrimaryVideo)
+	}
+	if first[1].Assets.PrimaryVideo == nil || first[1].Assets.PrimaryVideo.AssetID != "wrong-segment" {
+		t.Fatalf("segment-local candidate set leaked: %+v", first[1].Assets.PrimaryVideo)
+	}
+	if first[0].Cache.Binding != "MISS" {
+		t.Fatalf("first binding cache = %q, want MISS", first[0].Cache.Binding)
+	}
+	second := FinalizeVidRushBindingsWithCache(context.Background(), segments, false, cache)
+	if second[0].Cache.Binding != "HIT_EXACT" {
+		t.Fatalf("second binding cache = %q, want HIT_EXACT", second[0].Cache.Binding)
+	}
+}
+
 func TestFinalizeVidRushBindings(t *testing.T) {
 	lifecycle := func(c scriptpkg.SegmentAssetCandidate) scriptpkg.SegmentAssetCandidate {
 		c.AcquisitionStatus = scriptpkg.VidRushStatusAcquired

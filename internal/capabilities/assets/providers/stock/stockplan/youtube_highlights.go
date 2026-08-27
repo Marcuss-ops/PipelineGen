@@ -266,7 +266,7 @@ func (p PartialDownloadPlan) YTDLPSection() string {
 	return fmt.Sprintf("*%.3f-%.3f", float64(p.StartMs)/1000, float64(p.EndMs)/1000)
 }
 func (p PartialDownloadPlan) CacheKey() string {
-	h := digest.SHA256Bytes([]byte(fmt.Sprintf("youtube:%s:%d:%d:%s", p.VideoID, p.StartMs, p.EndMs, p.ProfileVersion)))
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("youtube:%s:%d:%d:%d:%s", p.VideoID, p.StartMs, p.EndMs, p.DurationMs, p.ProfileVersion)))
 	return h
 }
 func tokens(s string) map[string]struct{} {

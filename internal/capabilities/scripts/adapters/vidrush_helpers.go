@@ -242,6 +242,23 @@ func uniqueLimitedStrings(values []string, limit int) []string {
 	return sliceutil.UniqueLimitedStrings(values, limit)
 }
 
+// weightedKeywordValues projects a profile's weighted keyword stream onto the
+// legacy string surface consumed by SegmentInsights and the ad-hoc query
+// builders. It is the only legal way to read Keywords/VisualTerms back as a
+// plain list; values keep the profile's deterministic order.
+func weightedKeywordValues(keywords []scriptpkg.WeightedKeyword) []string {
+	if len(keywords) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(keywords))
+	for _, keyword := range keywords {
+		if value := strings.TrimSpace(keyword.Value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func buildArtlistQueries(segmentText string, explicitKeywords []string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
 	candidates := make([]string, 0, 12+len(explicitKeywords))
 	for _, keyword := range explicitKeywords {
@@ -418,6 +435,7 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	out.Insights.ImportantPhrases = append([]string(nil), in.Insights.ImportantPhrases...)
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
+	out.Insights.YouTubeQueries = append([]string(nil), in.Insights.YouTubeQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)
 	if in.Insights.ImageEntityCanonicalIDs != nil {
 		out.Insights.ImageEntityCanonicalIDs = make(map[string]string, len(in.Insights.ImageEntityCanonicalIDs))
@@ -545,6 +563,9 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		return false
 	}
 	provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+	if provider == scriptpkg.VidRushProviderYouTube {
+		return strings.TrimSpace(candidate.AssetID) != "" && strings.TrimSpace(candidate.SourceURL) != "" && candidate.SourceEndMs > candidate.SourceStartMs
+	}
 	if vidRushForbiddenProviders[provider] {
 		return false
 	}
@@ -558,9 +579,11 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		return false
 	}
 	sourceURL := strings.ToLower(strings.TrimSpace(candidate.SourceURL))
-	for _, pattern := range vidRushForbiddenURLPatterns {
-		if strings.Contains(sourceURL, pattern) {
-			return false
+	if provider != scriptpkg.VidRushProviderYouTube {
+		for _, pattern := range vidRushForbiddenURLPatterns {
+			if strings.Contains(sourceURL, pattern) {
+				return false
+			}
 		}
 	}
 	if provider == "artlist" {
@@ -570,6 +593,16 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 }
 
 func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
+	if candidate.Provider == scriptpkg.VidRushProviderYouTube &&
+		strings.TrimSpace(candidate.AssetID) != "" && strings.TrimSpace(candidate.DriveLink) != "" &&
+		strings.TrimSpace(candidate.SourceURL) != "" && candidate.SourceEndMs > candidate.SourceStartMs &&
+		(strings.TrimSpace(candidate.RightsStatus) == "" || strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "verified")) &&
+		candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired &&
+		candidate.VerificationStatus == scriptpkg.VidRushStatusVerified &&
+		candidate.PersistenceStatus == scriptpkg.VidRushStatusPersisted &&
+		(candidate.IndexStatus == scriptpkg.VidRushStatusIndexed || candidate.IndexStatus == "pending" || candidate.IndexStatus == "discovered" || candidate.IndexStatus == "indexing_skipped_no_indexer") {
+		return true
+	}
 	// Lifecycle-aware candidates are fail-closed. Legacy candidates remain
 	// readable during the migration window and are validated by the existing
 	// provenance predicate above.
@@ -586,6 +619,16 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	// SQLite state and Qdrant projection); only an explicit rejection must
 	// block this image-only fallback. Video and generated-image providers keep
 	// the stricter ReadyForBinding rights requirement below.
+	if candidate.Provider == scriptpkg.VidRushProviderYouTube &&
+		strings.TrimSpace(candidate.AssetID) != "" &&
+		strings.TrimSpace(candidate.DriveLink) != "" &&
+		(strings.TrimSpace(candidate.RightsStatus) == "" || strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "verified")) &&
+		(candidate.AcquisitionStatus == "acquired" || candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired) &&
+		(candidate.VerificationStatus == "verified" || candidate.VerificationStatus == scriptpkg.VidRushStatusVerified) &&
+		(candidate.PersistenceStatus == "persisted" || candidate.PersistenceStatus == scriptpkg.VidRushStatusPersisted) &&
+		(candidate.IndexStatus == "indexed" || candidate.IndexStatus == "pending" || candidate.IndexStatus == "discovered" || candidate.IndexStatus == "indexing_skipped_no_indexer") {
+		return true
+	}
 	if candidate.Provider == scriptpkg.VidRushProviderInternetImages &&
 		strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "unknown_allowed") &&
 		candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired &&
@@ -597,6 +640,20 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 			strings.EqualFold(candidate.IndexStatus, "indexing_skipped_no_indexer")) &&
 		strings.TrimSpace(candidate.LegacyFileMD5) != "" &&
 		strings.TrimSpace(candidate.DriveLink) != "" {
+		return true
+	}
+	if candidate.Provider == scriptpkg.VidRushProviderYouTube &&
+		strings.TrimSpace(candidate.AssetID) != "" && strings.TrimSpace(candidate.DriveLink) != "" &&
+		strings.TrimSpace(candidate.SourceURL) != "" && candidate.SourceEndMs > candidate.SourceStartMs &&
+		(strings.TrimSpace(candidate.RightsStatus) == "" || strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "verified")) &&
+		(candidate.AcquisitionStatus == "acquired" || candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired) &&
+		(candidate.VerificationStatus == "verified" || candidate.VerificationStatus == scriptpkg.VidRushStatusVerified) &&
+		(candidate.PersistenceStatus == "persisted" || candidate.PersistenceStatus == scriptpkg.VidRushStatusPersisted) &&
+		(candidate.IndexStatus == "indexed" || candidate.IndexStatus == "pending" || candidate.IndexStatus == "discovered" || candidate.IndexStatus == "indexing_skipped_no_indexer") {
+		return true
+	}
+	if candidate.Provider == scriptpkg.VidRushProviderYouTube &&
+		candidate.ReadyForBinding() && strings.TrimSpace(candidate.DriveLink) != "" {
 		return true
 	}
 	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.LegacyFileMD5) != "" && strings.TrimSpace(candidate.DriveLink) != ""
@@ -641,11 +698,36 @@ func ScoreVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, repeated b
 	return score
 }
 
+func compareVidRushPrimaryCandidates(a, b scriptpkg.SegmentAssetCandidate) int {
+	aScore := ScoreVidRushCandidate(a, false)
+	bScore := ScoreVidRushCandidate(b, false)
+	if aScore > bScore {
+		return 1
+	}
+	if aScore < bScore {
+		return -1
+	}
+	// Stable deterministic tie-breakers: provider, then asset identity.
+	if strings.ToLower(a.Provider) < strings.ToLower(b.Provider) {
+		return 1
+	}
+	if strings.ToLower(a.Provider) > strings.ToLower(b.Provider) {
+		return -1
+	}
+	if strings.ToLower(a.AssetID) < strings.ToLower(b.AssetID) {
+		return 1
+	}
+	if strings.ToLower(a.AssetID) > strings.ToLower(b.AssetID) {
+		return -1
+	}
+	return 0
+}
+
 func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
 	var best *scriptpkg.SegmentAssetCandidate
 	for i := range candidates {
 		candidate := candidates[i]
-		if candidate.Provider != "artlist" {
+		if candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube {
 			continue
 		}
 		repeated := previous[candidate.Provider] == candidate.AssetID

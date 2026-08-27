@@ -70,6 +70,11 @@ type MediaPlanSpec struct {
 	PostSegments []PostSegmentVisualPlan `json:"post_segments,omitempty"`
 	Variation    *VisualVariationPolicy  `json:"variation_policy,omitempty"`
 
+	// Sources are bounded, caller-supplied source candidates associated
+	// with a specific segment and slot. They are not assignments: the
+	// resolver must still select/materialize the winning asset.
+	Sources []SegmentMediaSource `json:"sources,omitempty"`
+
 	// Searches override the default per-segment/slot search behavior.
 	Searches []SegmentMediaSearch `json:"searches,omitempty"`
 
@@ -223,6 +228,7 @@ func (t MediaToggle) AsBool() bool {
 // the VidRush pipeline.
 type MediaProviderPolicy struct {
 	Artlist         MediaToggle `json:"artlist,omitempty"`
+	YouTube         MediaToggle `json:"youtube,omitempty"`
 	InternetImages  MediaToggle `json:"internet_images,omitempty"`
 	ImageGeneration MediaToggle `json:"image_generation,omitempty"`
 }
@@ -232,6 +238,7 @@ type MediaProviderPolicy struct {
 // original.
 func (m MediaPlanSpec) Clone() MediaPlanSpec {
 	m.Assignments = append([]SegmentMediaAssignment(nil), m.Assignments...)
+	m.Sources = append([]SegmentMediaSource(nil), m.Sources...)
 	m.Searches = append([]SegmentMediaSearch(nil), m.Searches...)
 	m.PostSegments = append([]PostSegmentVisualPlan(nil), m.PostSegments...)
 	if m.Intro != nil {
@@ -243,6 +250,33 @@ func (m MediaPlanSpec) Clone() MediaPlanSpec {
 		m.Variation = &variation
 	}
 	return m
+}
+
+// SegmentMediaSourceMode controls whether a suggested source is optional
+// or must successfully resolve before the segment can be completed.
+type SegmentMediaSourceMode string
+
+const (
+	SegmentMediaSourceModeSuggested SegmentMediaSourceMode = "suggested"
+	SegmentMediaSourceModeRequired  SegmentMediaSourceMode = "required"
+)
+
+// IsValidSegmentMediaSourceMode reports whether mode is supported. Empty
+// remains valid for backwards compatibility and is treated as suggested.
+func IsValidSegmentMediaSourceMode(mode SegmentMediaSourceMode) bool {
+	return mode == "" || mode == SegmentMediaSourceModeSuggested || mode == SegmentMediaSourceModeRequired
+}
+
+// SegmentMediaSource is a caller-supplied source candidate associated with
+// one segment and slot. It deliberately does not represent a selected asset.
+type SegmentMediaSource struct {
+	SegmentID string                   `json:"segment_id"`
+	Slot      SlotKind                 `json:"slot"`
+	Provider  string                   `json:"provider"`
+	SourceURL string                   `json:"source_url"`
+	Query     string                   `json:"query,omitempty"`
+	Priority  int                      `json:"priority,omitempty"`
+	Mode      SegmentMediaSourceMode   `json:"mode,omitempty"`
 }
 
 // SegmentMediaAssignment binds a media asset to a specific segment

@@ -9,6 +9,7 @@ const (
 	VidRushProviderArtlist         = "artlist"
 	VidRushProviderInternetImages  = "internet_images"
 	VidRushProviderImageGeneration = "image_generation"
+	VidRushProviderYouTube         = "youtube"
 )
 
 // VidRushArtifactStatus is the lifecycle state of a candidate as it moves
@@ -53,6 +54,7 @@ type SegmentInsights struct {
 	ImportantPhrases  []string          `json:"important_phrases,omitempty"`
 	ImportantWords    []string          `json:"important_words,omitempty"`
 	ArtlistQueries    []string          `json:"artlist_queries,omitempty"`
+	YouTubeQueries    []string          `json:"youtube_queries,omitempty"`
 	ArtlistIntentHash string            `json:"artlist_intent_hash,omitempty"`
 	ImageQueries      []string          `json:"image_queries,omitempty"`
 	// ImageSearchRequired is the deterministic image search decision of the
@@ -95,6 +97,8 @@ type SegmentAssetCandidate struct {
 	QualityReason         string  `json:"quality_reason,omitempty"`
 	SourceURL             string  `json:"source_url,omitempty"`
 	SourcePageURL         string  `json:"source_page_url,omitempty"`
+	SourceStartMs         int64   `json:"source_start_ms,omitempty"`
+	SourceEndMs           int64   `json:"source_end_ms,omitempty"`
 	PreviewURL            string  `json:"preview_url,omitempty"`
 	DriveLink             string  `json:"drive_link,omitempty"`
 	DurationMs            int64   `json:"duration_ms,omitempty"`
@@ -130,6 +134,7 @@ type SegmentCacheState struct {
 	Artlist         string `json:"artlist,omitempty"`
 	InternetImages  string `json:"internet_images,omitempty"`
 	ImageGeneration string `json:"image_generation,omitempty"`
+	YouTube         string `json:"youtube,omitempty"`
 	Binding         string `json:"binding,omitempty"`
 
 	// InternetImagesProviderSearches is the numeric count of real

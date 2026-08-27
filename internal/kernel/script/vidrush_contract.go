@@ -7,7 +7,7 @@ import "strings"
 // production composition root.
 func IsVidRushProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case VidRushProviderArtlist, VidRushProviderInternetImages, VidRushProviderImageGeneration:
+	case VidRushProviderArtlist, VidRushProviderInternetImages, VidRushProviderImageGeneration, VidRushProviderYouTube:
 		return true
 	default:
 		return false
