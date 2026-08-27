@@ -60,6 +60,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
@@ -104,6 +105,21 @@ var ErrPublishAndCompleteUseCasePrepareFailed = errors.New(
 var ErrUnmappedCompletionDestination = errors.New(
 	"completion: unknown destination for Kind/Source projection (godlike/07 NO-FAKE-AVAILABILITY — no silent auto-cast to KindDocument; rejected StagedArtifactReference)",
 )
+
+// artifactPublishConcurrency bounds the per-artifact Prepare fan-out in
+// Execute. Artifact publication is sequential Drive I/O (~2.5–3 s per
+// artifact on the canonical profiling job), so a bounded parallel pool
+// collapses the prepare phase (20 artifacts × 2.5 s ≈ 50 s toward
+// ~12–20 s) while staying below Drive API quota ceilings. The bound is
+// deliberate: 20+ concurrent uploads would trade sequential latency for
+// rate-limit 429s and nondeterministic failures. 4 workers is the
+// measured sweet spot from the profiling baselines (3–4 workers); the
+// per-artifact Drive idempotency key + ConflictSkip already dedupe
+// identical retries, so concurrency never re-uploads the same content.
+// The terminal CompleteWithArtifacts single SQLite TX is NOT part of the
+// pool — it runs strictly AFTER every publication completes, preserving
+// the atomic contract (godlike/07: no partial success).
+const artifactPublishConcurrency = 4
 
 // PublishAndCompleteUseCase is the canonical Sender-side conversion +
 // orchestration surface for the complete-with-artifacts HTTP endpoint.
@@ -251,38 +267,58 @@ func (u *PublishAndCompleteUseCase) Execute(
 	// upload + Location envelope population (godlike/06 SSOT: Prepare IS the
 	// canonical publish-pipeline seam post-P0-COMPL-4).
 	//
+	// Bounded-parallel publication (P0: post_writer_finalize): the
+	// per-artifact Drive I/O is the dominant cost (~2.5–3 s sequential per
+	// artifact on the canonical profiling job), so the prepares run on a
+	// bounded pool of artifactPublishConcurrency workers instead of a
+	// sequential loop. Results are written into their input index so the
+	// published slice keeps the manifest order (deterministic asset/row
+	// ordering for the terminal TX). errgroup cancels the pool on the FIRST
+	// failure and Wait blocks until every in-flight worker has returned — no
+	// goroutine leak, no silent partial-success (the failed artifact fails
+	// the whole request, exactly like the pre-parallel contract).
+	//
 	// FASE 3 (July 2026): the projection step (refToVerifiedArtifact)
 	// returns typed errors for unknown/destination-mismatched refs (see
-	// ErrUnmappedCompletionDestination). The loop propagates these as
+	// ErrUnmappedCompletionDestination). The pool propagates these as
 	// a per-artifact prepare failure so the HTTP layer can map to a
 	// 4xx with the destination named in the error message — the
 	// caller fixes the request and retries.
-	published := make([]*finalization.PublishedArtifact, 0, len(staged))
-	for i, ref := range staged {
-		verified, projErr := refToVerifiedArtifact(ref, req.JobID)
-		if projErr != nil {
-			u.log.Warn("PublishAndCompleteUseCase: destination cannot be projected (FASE 3 NO-FAKE-AVAILABILITY)",
-				zap.Int("index", i),
-				zap.String("artifact_id", ref.ArtifactID),
-				zap.String("destination", ref.Destination),
-				zap.Error(projErr))
-			return nil, fmt.Errorf(
-				"PublishAndCompleteUseCase.Execute: destination unmapped at index [%d] for artifact_id=%q: %w",
-				i, ref.ArtifactID, projErr,
-			)
-		}
-		prepResult, prepErr := u.preparation.Prepare(ctx, verified)
-		if prepErr != nil {
-			u.log.Warn("PublishAndCompleteUseCase: prepare failed",
-				zap.Int("index", i),
-				zap.String("artifact_id", ref.ArtifactID),
-				zap.Error(prepErr))
-			return nil, fmt.Errorf(
-				"PublishAndCompleteUseCase.Execute: prepare failed at index [%d] for artifact_id=%q: %w",
-				i, ref.ArtifactID, prepErr,
-			)
-		}
-		published = append(published, &prepResult)
+	published := make([]*finalization.PublishedArtifact, len(staged))
+	g, pubCtx := errgroup.WithContext(ctx)
+	g.SetLimit(artifactPublishConcurrency)
+	for i := range staged {
+		i, ref := i, staged[i]
+		g.Go(func() error {
+			verified, projErr := refToVerifiedArtifact(ref, req.JobID)
+			if projErr != nil {
+				u.log.Warn("PublishAndCompleteUseCase: destination cannot be projected (FASE 3 NO-FAKE-AVAILABILITY)",
+					zap.Int("index", i),
+					zap.String("artifact_id", ref.ArtifactID),
+					zap.String("destination", ref.Destination),
+					zap.Error(projErr))
+				return fmt.Errorf(
+					"PublishAndCompleteUseCase.Execute: destination unmapped at index [%d] for artifact_id=%q: %w",
+					i, ref.ArtifactID, projErr,
+				)
+			}
+			prepResult, prepErr := u.preparation.Prepare(pubCtx, verified)
+			if prepErr != nil {
+				u.log.Warn("PublishAndCompleteUseCase: prepare failed",
+					zap.Int("index", i),
+					zap.String("artifact_id", ref.ArtifactID),
+					zap.Error(prepErr))
+				return fmt.Errorf(
+					"PublishAndCompleteUseCase.Execute: prepare failed at index [%d] for artifact_id=%q: %w",
+					i, ref.ArtifactID, prepErr,
+				)
+			}
+			published[i] = &prepResult
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	// Step 2: canonical single-TX atomic terminal via WithArtifactsService.
@@ -325,13 +361,14 @@ func (u *PublishAndCompleteUseCase) Execute(
 // 4xx code with operator-auditable diagnostic. Caller MUST supply a
 // destination in the canonical 9-key set (see kindFromDestination below).
 //
-// Honest scope-lock (godlike/07): the projection here is intentionally a
-// STUB — the SourceVersion, IdempotencyKey, and SHA256 carry minimal info
-// (the prepare pipeline recomputes on-disk per the godlike/07 fail-closed
-// SHA gate). A future commit will thread the staged.Resolver lookup through
-// to populate LocalPath (the on-disk file source) once the
-// StagedArtifactReference -> media_assets lookup is canonicalized in
-// P0-COMPL-5-WIRE-NAMING followups (forward-pointer P0-COMPL-5-RESOLVER, deadline 2026-08-15, owner: completion).
+// Honest scope-lock (godlike/07): LocalPath is NO LONGER a stub — both wire
+// paths populate it from StagedArtifactReference.Path, and Drive folder
+// resolution (RenderingGen overlay parent) lives broker-side in
+// verifiedFromStagedRef via ArtifactFolderResolver. P0-COMPL-5-RESOLVER is
+// CLOSED, superseded by that implementation (was: deadline 2026-08-15).
+// What REMAINS minimal here: SourceVersion (fixed 1) and IdempotencyKey
+// (= ArtifactID hint); the prepare pipeline recomputes SHA256 on-disk per
+// the godlike/07 fail-closed gate regardless of the hint.
 func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) (finalization.VerifiedArtifact, error) {
 	kind, err := KindFromDestination(ref.Destination)
 	if err != nil {

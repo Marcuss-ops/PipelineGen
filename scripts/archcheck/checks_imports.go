@@ -162,10 +162,6 @@ func currentRootForPath(path string) string {
 	return matchingRoot(path, currentInternalRoots[:], pathUnderRoot)
 }
 
-func currentRootForImport(importPath string) string {
-	return matchingRoot(importPath, currentInternalRoots[:], importUnderRoot)
-}
-
 func retiredRootForPath(path string) string {
 	return matchingRoot(path, retiredInternalRoots[:], pathUnderRoot)
 }
@@ -247,10 +243,6 @@ func checkCrossCapabilityImportAt(root string) (map[string]int, []string) {
 	stats["actual"] = len(pairNames)
 	stats["violations"] = len(violations)
 	return stats, violations
-}
-
-func capabilityNames() map[string]bool {
-	return capabilityNamesAt(".")
 }
 
 func capabilityNamesAt(root string) map[string]bool {

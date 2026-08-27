@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func TestTimingPolicyFingerprint(t *testing.T) {
@@ -97,6 +98,31 @@ func TestBuildVoiceoverIdempotencyKey_PolicySensitive(t *testing.T) {
 	legacy := sha256.Sum256([]byte(jobID + ":" + string(lang) + ":" + string(hash)))
 	assert.NotEqual(t, hex.EncodeToString(legacy[:]), keyRequired,
 		"legacy (no-fingerprint) cache key must not be a valid hit for timing required")
+}
+
+// TestBuildVoiceoverContentFingerprint_FormatVersioned pins the v1→v2 cache
+// bump (P0 mix canonicalization, 2026-08-26): remove_silence now outputs the
+// canonical 48 kHz stereo MP3, so the content fingerprint must never match a
+// v1 (24 kHz mono) fingerprint — pre-canonicalization cache rows go cold and
+// are re-synthesized instead of being reused.
+func TestBuildVoiceoverContentFingerprint_FormatVersioned(t *testing.T) {
+	const (
+		textHash = TextHash("scene-text-hash")
+		lang     = Language("en")
+		voice    = "en-US-AriaNeural"
+		folderID = "folder-1"
+	)
+	timing := &audio.TimingRequest{Mode: audio.TimingRequired, BoundaryMode: audio.BoundaryWord}
+
+	got := BuildVoiceoverContentFingerprint(textHash, lang, voice, folderID, timing, true)
+
+	// The legacy v1 fingerprint (24 kHz mono output) must not match.
+	legacy := digest.SHA256String("voiceover-content-v1:" + string(textHash) + ":" + string(lang) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, true))
+	assert.NotEqual(t, legacy, got,
+		"v2 (canonical 48k stereo) fingerprint must never match v1 (24k mono)")
+
+	// Deterministic within the same version: same inputs → same fingerprint.
+	assert.Equal(t, got, BuildVoiceoverContentFingerprint(textHash, lang, voice, folderID, timing, true))
 }
 
 func TestBuildVoiceoverTimingIdempotencyKey_PolicySensitive(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 )
 
@@ -51,14 +52,17 @@ type PlanBackground struct {
 
 // PlanWatermark is the resolved watermark overlay. Position/opacity/margin
 // are business selections resolved here — Rust applies them verbatim.
+// Style carries the caller's visual overrides (size, color, shadow,
+// transition) using the canonical kernel/script shape.
 type PlanWatermark struct {
-	Text     string  `json:"text,omitempty"`
-	AssetID  string  `json:"asset_id"`
-	Path     string  `json:"path"`
-	SHA256   string  `json:"sha256"`
-	Position string  `json:"position"`
-	Opacity  float64 `json:"opacity"`
-	MarginPX int     `json:"margin_px"`
+	Text     string                          `json:"text,omitempty"`
+	AssetID  string                          `json:"asset_id"`
+	Path     string                          `json:"path"`
+	SHA256   string                          `json:"sha256"`
+	Position string                          `json:"position"`
+	Opacity  float64                         `json:"opacity"`
+	MarginPX int                             `json:"margin_px"`
+	Style    *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 // PlanSubtitles references the already-compiled deterministic ASS artifact.
@@ -71,6 +75,9 @@ type PlanSubtitles struct {
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
 	Cues    []Cue  `json:"cues,omitempty"`
+	// Style carries the caller's subtitle visual overrides (color, size,
+	// shadow, transition) using the canonical kernel/script shape.
+	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 // PlanOutput is the resolved VeloxEditing output contract. Rust must produce
@@ -119,14 +126,17 @@ type ClipRenderPlanV1 struct {
 // from the parallel preparation phase (+ the compiled ASS artifact); Compile
 // never resolves anything itself.
 type CompileInput struct {
-	RunID                  string
-	Source                 *MaterializedAsset
-	Watermark              *MaterializedAsset // nil when disabled
-	WatermarkSpec          *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
-	WatermarkText          string             // optional text watermark; no materialized asset is required
-	Background             *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
-	BackgroundMode         string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
-	Subtitles              *SubtitleArtifact  // nil when disabled
+	RunID          string
+	Source         *MaterializedAsset
+	Watermark      *MaterializedAsset // nil when disabled
+	WatermarkSpec  *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
+	WatermarkText  string             // optional text watermark; no materialized asset is required
+	Background     *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
+	BackgroundMode string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
+	Subtitles      *SubtitleArtifact  // nil when disabled
+	// SubtitlesStyle is the caller's subtitle visual override block (canonical
+	// kernel/script shape). Nil means the compiled ASS style applies verbatim.
+	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	Cues                   []Cue
 	Contract               *ResolvedContract
 	AudioMode              string
@@ -251,6 +261,7 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			Position: wm.Position,
 			Opacity:  wm.Opacity,
 			MarginPX: wm.MarginPX,
+			Style:    cloneVisualStyle(wm.Style),
 		}
 	}
 
@@ -264,6 +275,7 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			Path:    in.Subtitles.LocalPath,
 			SHA256:  in.Subtitles.SHA256,
 			Cues:    append([]Cue(nil), in.Cues...),
+			Style:   cloneVisualStyle(in.SubtitlesStyle),
 		}
 	}
 
@@ -281,6 +293,25 @@ func normalizeForegroundScale(value int) int {
 		return 100
 	}
 	return value
+}
+
+// cloneVisualStyle copies the canonical visual style block so the sealed
+// plan never shares a pointer with the caller's mutable request. A nil input
+// stays nil (no empty block on the wire).
+func cloneVisualStyle(in *scriptpkg.VideoVisualStyleSpec) *scriptpkg.VideoVisualStyleSpec {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	if in.Shadow != nil {
+		shadow := *in.Shadow
+		out.Shadow = &shadow
+	}
+	if in.TransitionIn != nil {
+		transition := *in.TransitionIn
+		out.TransitionIn = &transition
+	}
+	return &out
 }
 
 // Seal computes the deterministic PlanSHA256 over the plan content.

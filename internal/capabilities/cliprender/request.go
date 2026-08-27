@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TypeClipRender is the canonical job type for the clip post-processing
@@ -107,6 +108,10 @@ type WatermarkSpec struct {
 	Position string  `json:"position,omitempty"`  // default top_right
 	Opacity  float64 `json:"opacity,omitempty"`   // 0.0–1.0, default 1.0
 	MarginPX int     `json:"margin_px,omitempty"` // >= 0, default 0
+	// Style is the canonical visual override block (size, color, shadow,
+	// transition). It is the kernel/script SSOT definition — this boundary
+	// projects it verbatim, never re-defines it.
+	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 // TranscriptSpec controls canonical transcript resolution. The worker
@@ -124,6 +129,10 @@ type SubtitlesSpec struct {
 	Enabled bool   `json:"enabled,omitempty"`
 	Mode    string `json:"mode,omitempty"` // default burn
 	StyleID string `json:"style_id,omitempty"`
+	// Style is the canonical visual override block (color, size, shadow,
+	// transition). It is the kernel/script SSOT definition — this boundary
+	// projects it verbatim, never re-defines it.
+	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 // OutputSpec pins the VeloxEditing-compatible output contract. The

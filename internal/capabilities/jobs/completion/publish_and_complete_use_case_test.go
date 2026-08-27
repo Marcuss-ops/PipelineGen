@@ -35,9 +35,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -51,37 +55,30 @@ import (
 // finalization.ArtifactPreparationService (defined at
 // internal/domain/finalization/interfaces.go). Per-artifact Prepare
 // returns a canonical 10-field PublishedArtifact envelope with a
-// per-index Drive Location (so length-N + per-ref distinctness are
-// both pinned without a single mock-state machine).
+// per-artifact Drive Location (keyed by ArtifactID so the published
+// order assertion stays deterministic under bounded-parallel prepares —
+// arrival order is nondeterministic by design). The recorded inputs are
+// mutex-guarded: Execute runs prepares on a bounded pool.
 type mockArtifactPreparationService struct {
 	calls              atomic.Int64
 	prepareErr         error
-	locationPerCallIdx []finalization.AssetLocation
+	locationByArtifact map[string]finalization.AssetLocation
 	defaultLocation    finalization.AssetLocation
-	// recordedInputs preserves the per-call VerifiedArtifact envelope
-	// for the test assertions on the projection shape.
-	recordedInputs atomic.Pointer[[]finalization.VerifiedArtifact]
+	mu                 sync.Mutex
+	recorded           []finalization.VerifiedArtifact
 }
 
 func (m *mockArtifactPreparationService) Prepare(ctx context.Context, va finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
-	idx := int(m.calls.Load())
 	m.calls.Add(1)
-	// append to recordedInputs (best-effort; tests don't depend on
-	// exact ordering, only on count)
-	recorded := m.recordedInputs.Load()
-	if recorded != nil {
-		tmp := append(*recorded, va)
-		m.recordedInputs.Store(&tmp)
-	} else {
-		first := []finalization.VerifiedArtifact{va}
-		m.recordedInputs.Store(&first)
-	}
+	m.mu.Lock()
+	m.recorded = append(m.recorded, va)
+	m.mu.Unlock()
 	if m.prepareErr != nil {
 		return finalization.PublishedArtifact{}, m.prepareErr
 	}
 	loc := m.defaultLocation
-	if idx < len(m.locationPerCallIdx) {
-		loc = m.locationPerCallIdx[idx]
+	if l, ok := m.locationByArtifact[va.ArtifactID]; ok {
+		loc = l
 	}
 	return finalization.PublishedArtifact{
 		ArtifactID:     va.ArtifactID,
@@ -95,6 +92,17 @@ func (m *mockArtifactPreparationService) Prepare(ctx context.Context, va finaliz
 		IdempotencyKey: va.IdempotencyKey,
 		Location:       loc,
 	}, nil
+}
+
+// recordedInputs returns a snapshot of the Prepare inputs. Arrival order
+// is nondeterministic under bounded-parallel execution, so assertions on
+// the returned slice must be order-independent.
+func (m *mockArtifactPreparationService) recordedInputs() []finalization.VerifiedArtifact {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]finalization.VerifiedArtifact, len(m.recorded))
+	copy(out, m.recorded)
+	return out
 }
 
 // Compile-time pin (AGENTS.md Pattern 0): the mock satisfies the
@@ -113,10 +121,17 @@ type mockSenderWithArtifacts struct {
 	lastReq       *remote.CompleteWithArtifactsRequest
 	returnResp    *remote.CompleteWithArtifactsResponse
 	returnErr     error
+	// before, when non-nil, runs at the top of CompleteWithArtifacts so
+	// tests can assert the TX executes strictly AFTER every prepare
+	// finished (atomic-contract probe under bounded parallelism).
+	before func()
 }
 
 func (m *mockSenderWithArtifacts) CompleteWithArtifacts(ctx context.Context, req *remote.CompleteWithArtifactsRequest, published []*finalization.PublishedArtifact) (*remote.CompleteWithArtifactsResponse, error) {
 	m.calls.Add(1)
+	if m.before != nil {
+		m.before()
+	}
 	m.lastReq = req
 	m.lastPublished = published
 	if m.returnErr != nil {
@@ -136,10 +151,10 @@ func (m *mockSenderWithArtifacts) CompleteWithArtifacts(ctx context.Context, req
 func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLocation(t *testing.T) {
 	prep := &mockArtifactPreparationService{
 		defaultLocation: finalization.AssetLocation{Provider: "drive", FileID: "drive-default"},
-		locationPerCallIdx: []finalization.AssetLocation{
-			{Provider: "drive", FileID: "drive-file-1", WebViewLink: "https://drive/file/1"},
-			{Provider: "drive", FileID: "drive-file-2", WebViewLink: "https://drive/file/2"},
-			{Provider: "drive", FileID: "drive-file-3", WebViewLink: "https://drive/file/3"},
+		locationByArtifact: map[string]finalization.AssetLocation{
+			"art-1": {Provider: "drive", FileID: "drive-file-1", WebViewLink: "https://drive/file/1"},
+			"art-2": {Provider: "drive", FileID: "drive-file-2", WebViewLink: "https://drive/file/2"},
+			"art-3": {Provider: "drive", FileID: "drive-file-3", WebViewLink: "https://drive/file/3"},
 		},
 	}
 	sender := &mockSenderWithArtifacts{
@@ -226,17 +241,19 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 	// The 3 StagedArtifactReferences were projected to VerifiedArtifact
 	// inputs (ArtifactID + Destination mapped-kind + Filename=
 	// ArtifactID fallback per refToVerifiedArtifact() and SHA256 from
-	// the wire hint).
-	if recordedPtr := prep.recordedInputs.Load(); recordedPtr != nil {
-		recorded := *recordedPtr
-		if got := len(recorded); got != 3 {
-			t.Errorf("Prepare inputs: got %d, want 3", got)
-		}
-		for i, va := range recorded {
-			if va.ArtifactID != staged[i].ArtifactID {
-				t.Errorf("input[%d].ArtifactID: got %q want %q",
-					i, va.ArtifactID, staged[i].ArtifactID)
-			}
+	// the wire hint). Prepare runs bounded-parallel, so arrival order is
+	// nondeterministic — assert set membership, not position.
+	recorded := prep.recordedInputs()
+	if got := len(recorded); got != 3 {
+		t.Errorf("Prepare inputs: got %d, want 3", got)
+	}
+	seen := make(map[string]bool, len(recorded))
+	for _, va := range recorded {
+		seen[va.ArtifactID] = true
+	}
+	for _, s := range staged {
+		if !seen[s.ArtifactID] {
+			t.Errorf("Prepare input missing artifact %q", s.ArtifactID)
 		}
 	}
 }
@@ -406,6 +423,252 @@ func TestPublishAndCompleteUseCase_InvalidStagedFailsTypedError(t *testing.T) {
 	}
 	if len(sender.lastPublished) != 0 {
 		t.Errorf("sender.lastPublished on empty refs: got %d, want 0 (empty slice)", len(sender.lastPublished))
+	}
+}
+
+// ── Bounded-parallel publication (P0: post_writer_finalize) ─────────
+
+// blockingPreparation blocks every Prepare on a gate channel and records
+// the max in-flight count, so the bounded-parallelism test can prove the
+// bound is both respected (never exceeded) and actually reached (real
+// parallelism, not a disguised sequential loop). Locations are derived
+// from the artifact ID, keeping the published-order assertion
+// deterministic under concurrency.
+type blockingPreparation struct {
+	mu           sync.Mutex
+	active       int
+	maxActive    int
+	calls        int
+	gate         chan struct{}
+	boundOnce    sync.Once
+	boundReached chan struct{}
+}
+
+func newBlockingPreparation() *blockingPreparation {
+	return &blockingPreparation{
+		gate:         make(chan struct{}),
+		boundReached: make(chan struct{}),
+	}
+}
+
+func (p *blockingPreparation) Prepare(_ context.Context, va finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
+	p.mu.Lock()
+	p.active++
+	p.calls++
+	if p.active > p.maxActive {
+		p.maxActive = p.active
+	}
+	reached := p.active >= artifactPublishConcurrency
+	p.mu.Unlock()
+	if reached {
+		p.boundOnce.Do(func() { close(p.boundReached) })
+	}
+
+	<-p.gate
+
+	p.mu.Lock()
+	p.active--
+	p.mu.Unlock()
+
+	return finalization.PublishedArtifact{
+		ArtifactID:     va.ArtifactID,
+		Kind:           va.Kind,
+		Filename:       va.Filename,
+		MIMEType:       va.MIMEType,
+		SizeBytes:      va.SizeBytes,
+		SHA256:         va.SHA256,
+		SourceVersion:  va.SourceVersion,
+		Requirement:    va.Requirement,
+		IdempotencyKey: va.IdempotencyKey,
+		Location:       finalization.AssetLocation{Provider: "drive", FileID: "f-" + va.ArtifactID, Action: finalization.PublishCreated},
+	}, nil
+}
+
+func (p *blockingPreparation) maxConcurrent() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.maxActive
+}
+
+// snapshot returns (calls, active) so the sender hook can assert the TX
+// runs strictly after every prepare finished.
+func (p *blockingPreparation) snapshot() (calls, active int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls, p.active
+}
+
+// failPreparation succeeds for every Prepare except the failOn-th call
+// (1-based), which fails deterministically. Gate-free: calls return
+// immediately, so the errgroup's fail-fast behavior is what stops the
+// remaining artifact scheduling.
+type failPreparation struct {
+	mu     sync.Mutex
+	calls  int
+	failOn int
+}
+
+func (p *failPreparation) Prepare(_ context.Context, va finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
+	p.mu.Lock()
+	p.calls++
+	call := p.calls
+	p.mu.Unlock()
+	if call == p.failOn {
+		return finalization.PublishedArtifact{}, fmt.Errorf("prepare failed for %s", va.ArtifactID)
+	}
+	return finalization.PublishedArtifact{
+		ArtifactID:     va.ArtifactID,
+		Kind:           va.Kind,
+		Filename:       va.Filename,
+		MIMEType:       va.MIMEType,
+		SizeBytes:      va.SizeBytes,
+		SHA256:         va.SHA256,
+		SourceVersion:  va.SourceVersion,
+		Requirement:    va.Requirement,
+		IdempotencyKey: va.IdempotencyKey,
+		Location:       finalization.AssetLocation{Provider: "drive", FileID: "f-" + va.ArtifactID, Action: finalization.PublishCreated},
+	}, nil
+}
+
+func (p *failPreparation) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}
+
+// canonicalExecRequest builds the request envelope shared by the
+// bounded-parallelism tests. assetMappings must cover every staged
+// artifact (Validated() fails closed on an empty map).
+func canonicalExecRequest(assetMappings map[string]string) *remote.CompleteWithArtifactsRequest {
+	return &remote.CompleteWithArtifactsRequest{
+		WorkerID:      "w-conc",
+		JobID:         "job-conc-uc",
+		Attempt:       1,
+		LeaseID:       "lease-conc",
+		Result:        []byte(`{"ok":true}`),
+		ResultHash:    "rh-conc",
+		AssetMappings: assetMappings,
+	}
+}
+
+// concStagedRefs returns n staged artifact references (destination image;
+// no on-disk file needed — the mock preparation does not verify) plus the
+// AssetMappings covering them.
+func concStagedRefs(n int) (remote.StagedArtifacts, []string, map[string]string) {
+	staged := make(remote.StagedArtifacts, n)
+	ids := make([]string, n)
+	mappings := make(map[string]string, n)
+	for i := 0; i < n; i++ {
+		ids[i] = fmt.Sprintf("art-conc-%d", i)
+		staged[i] = &remote.StagedArtifactReference{
+			ArtifactID:  ids[i],
+			Destination: "image",
+			SHA256:      "sha-" + ids[i],
+		}
+		mappings[ids[i]] = "asset-" + ids[i]
+	}
+	return staged, ids, mappings
+}
+
+// TestPublishAndCompleteUseCase_BoundedParallelism pins the P0
+// post_writer_finalize optimization on the use-case path: with 8 staged
+// artifacts and a blocking preparation, the bound (4 workers) is reached
+// — proving real parallelism — never exceeded, the published slice keeps
+// the manifest order, and the sender's single TX runs strictly AFTER all
+// 8 prepares complete (atomic contract preserved).
+func TestPublishAndCompleteUseCase_BoundedParallelism(t *testing.T) {
+	const n = 8
+	staged, ids, mappings := concStagedRefs(n)
+
+	prep := newBlockingPreparation()
+	sender := &mockSenderWithArtifacts{
+		returnResp: &remote.CompleteWithArtifactsResponse{JobID: "job-conc-uc", Status: "SUCCEEDED"},
+	}
+	// Assert atomicity from inside the sender: at TX time every prepare
+	// must already have completed.
+	sender.before = func() {
+		calls, active := prep.snapshot()
+		if calls != n {
+			t.Errorf("sender TX ran with %d prepares done, want %d (TX must run after ALL prepares)", calls, n)
+		}
+		if active != 0 {
+			t.Errorf("sender TX ran while %d prepares still in flight", active)
+		}
+	}
+
+	uc, err := NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewPublishAndCompleteUseCase: %v", err)
+	}
+
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := uc.Execute(context.Background(), canonicalExecRequest(mappings), staged)
+		resultCh <- err
+	}()
+
+	// Prove the bound is actually reached: 4 prepares must be in flight
+	// simultaneously before any completes (the gate is still closed).
+	select {
+	case <-prep.boundReached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("bound not reached: fewer than artifactPublishConcurrency concurrent prepares")
+	}
+	close(prep.gate)
+
+	if err := <-resultCh; err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if max := prep.maxConcurrent(); max != artifactPublishConcurrency {
+		t.Errorf("max concurrent prepares = %d, want exactly %d (bound respected)", max, artifactPublishConcurrency)
+	}
+	if sender.calls.Load() != 1 {
+		t.Errorf("sender called %d times, want exactly 1 TX", sender.calls.Load())
+	}
+	if len(sender.lastPublished) != n {
+		t.Fatalf("sender received %d published artifacts, want %d", len(sender.lastPublished), n)
+	}
+	for i, want := range ids {
+		if sender.lastPublished[i] == nil {
+			t.Errorf("published[%d]: nil pointer", i)
+			continue
+		}
+		if sender.lastPublished[i].ArtifactID != want {
+			t.Errorf("artifact order: index %d = %q, want %q (manifest order must be preserved)", i, sender.lastPublished[i].ArtifactID, want)
+		}
+	}
+}
+
+// TestPublishAndCompleteUseCase_FailsClosedOnPrepareError pins the
+// fail-closed contract under concurrency: the first prepare failure fails
+// the whole Execute, the terminal TX never runs (no partial success), and
+// the failure propagates to the caller naming the failed artifact.
+func TestPublishAndCompleteUseCase_FailsClosedOnPrepareError(t *testing.T) {
+	const n = 8
+	staged, _, mappings := concStagedRefs(n)
+
+	prep := &failPreparation{failOn: 3}
+	sender := &mockSenderWithArtifacts{
+		returnResp: &remote.CompleteWithArtifactsResponse{JobID: "job-conc-uc", Status: "SUCCEEDED"},
+	}
+	uc, err := NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewPublishAndCompleteUseCase: %v", err)
+	}
+
+	_, err = uc.Execute(context.Background(), canonicalExecRequest(mappings), staged)
+	if err == nil {
+		t.Fatal("expected error when the 3rd prepare fails")
+	}
+	if !strings.Contains(err.Error(), "art-conc-") {
+		t.Errorf("error %q does not identify the failed artifact", err)
+	}
+	if sender.calls.Load() != 0 {
+		t.Errorf("sender ran %d times, want 0 (no TX after prepare failure)", sender.calls.Load())
+	}
+	if calls := prep.callCount(); calls < 3 {
+		t.Errorf("preparation ran %d calls, want at least 3 (the failure must have been reached)", calls)
 	}
 }
 

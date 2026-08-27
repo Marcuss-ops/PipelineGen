@@ -54,12 +54,11 @@ type MediaCurator struct {
 	// the optional semantic-search leg. nil → curator consumes only
 	// req.HintClipIDs. Set via SetClipSearchPort from the composition
 	// root when Qdrant is enabled.
-	serverURL     string
-	clipsRepo     any // *assets.ClipsRepository (avoid import cycle)
-	clipBuilder   any
-	generateOneUC any
-	clipSearch    any
-	log           *zap.Logger
+	serverURL   string
+	clipsRepo   any // *assets.ClipsRepository (avoid import cycle)
+	clipBuilder any
+	clipSearch  any
+	log         *zap.Logger
 }
 
 // NewMediaCurator is the canonical constructor for the scriptdto

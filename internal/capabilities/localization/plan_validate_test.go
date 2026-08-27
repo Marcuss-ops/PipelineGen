@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
 // validPlan returns a fully-valid LocalizedClipPlan whose Fingerprint is
@@ -65,6 +67,14 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 		{"zero duration_ms", func(p *LocalizedClipPlan) { p.DurationMS = 0 }},
 		{"empty renderer_version", func(p *LocalizedClipPlan) { p.RendererVersion = "" }},
 		{"empty output_profile_hash", func(p *LocalizedClipPlan) { p.OutputProfileHash = "" }},
+		{"background asset without mode=asset", func(p *LocalizedClipPlan) {
+			p.Background = &cliprender.MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
+		}},
+		{"background mode=asset without asset", func(p *LocalizedClipPlan) { p.BackgroundMode = cliprender.BackgroundModeAsset }},
+		{"background asset incomplete", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeAsset
+			p.Background = &cliprender.MaterializedAsset{AssetID: "bg"}
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,6 +92,22 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 				t.Fatalf("error must wrap ErrInvalidLocalizedClipPlan, got %v", err)
 			}
 		})
+	}
+}
+
+// TestValidate_AcceptsBackgroundAsset verifies a fully-resolved background
+// (mode=asset + complete materialized asset) validates like the watermark.
+func TestValidate_AcceptsBackgroundAsset(t *testing.T) {
+	p := validPlan()
+	p.BackgroundMode = cliprender.BackgroundModeAsset
+	p.Background = &cliprender.MaterializedAsset{
+		AssetID:   "asset-bg",
+		LocalPath: "/scratch/asset-bg.mp4",
+		SHA256:    strings.Repeat("f", 64),
+	}
+	p.Fingerprint = Fingerprint(p)
+	if err := p.Validate(); err != nil {
+		t.Fatalf("background asset plan must validate: %v", err)
 	}
 }
 

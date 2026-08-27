@@ -41,6 +41,7 @@ import (
 	"testing"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -685,5 +686,89 @@ func TestRunLease_ProducesArtifactsFalse_CallsComplete(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&broker.completeWithArtifactsCalled); got != 0 {
 		t.Errorf("ProducesArtifacts=false: CompleteWithArtifacts called %d times, want 0 (must route to Complete)", got)
+	}
+}
+
+// captureRecorder collects finished RunReports so tests can assert
+// stage attribution without touching the durable recorder.
+type captureRecorder struct {
+	mu      sync.Mutex
+	reports []*kernobs.RunReport
+}
+
+func (c *captureRecorder) SaveReport(_ context.Context, rep *kernobs.RunReport) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reports = append(c.reports, rep)
+	return nil
+}
+
+func (c *captureRecorder) latest() *kernobs.RunReport {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.reports) == 0 {
+		return nil
+	}
+	return c.reports[len(c.reports)-1]
+}
+
+// TestRunLease_ProducesArtifactsTrue_RecordsPostWriterFinalizeStage pins
+// the FASE 2 finalize attribution on the artifact-producing path: the
+// runner records the publication spine as the post_writer_finalize stage
+// on the RunReport (mirroring the legacy Worker's RecordStage), so the
+// finalize wall time — including the broker-side bounded-parallel Drive
+// publication — is never misreported as unattributed time.
+func TestRunLease_ProducesArtifactsTrue_RecordsPostWriterFinalizeStage(t *testing.T) {
+	broker := &azione7Broker{}
+	handler := func(_ context.Context, _ *job.Job, _ *jobs.JobExecutionTools) (jobs.Result, error) {
+		return jobs.Result{}, nil
+	}
+
+	reg := NewRegistry()
+	if err := reg.Register("azione7.test", handler); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	reg.SetProducesArtifacts("azione7.test", true)
+
+	tmpDir := t.TempDir()
+	workspace, err := NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+
+	rec := &captureRecorder{}
+	runner := NewRunner(broker, reg, workspace, nil, zap.NewNop(), "worker-1", "session-1", []string{"azione7.test"})
+	runner.WithObserver(kernobs.NewRunObserver(rec))
+	runner.SetRenewInterval(minRenewInterval)
+
+	lease := &jobs.Lease{
+		Job: &job.Job{
+			ID:       "azione7-job",
+			Type:     "azione7.test",
+			Revision: 1,
+			LeaseID:  "lease-1",
+		},
+		LeaseID: "lease-1",
+	}
+
+	if err := runner.runLease(context.Background(), lease); err != nil {
+		t.Fatalf("runLease: %v", err)
+	}
+
+	report := rec.latest()
+	if report == nil {
+		t.Fatal("no RunReport captured by the observer recorder")
+	}
+	var found bool
+	for _, s := range report.Stages {
+		if s.Name == "post_writer_finalize" {
+			found = true
+			if s.Status != kernobs.StageStatusCompleted {
+				t.Errorf("post_writer_finalize status = %q, want %q", s.Status, kernobs.StageStatusCompleted)
+			}
+		}
+	}
+	if !found {
+		t.Error("RunReport missing post_writer_finalize stage on the artifact-producing path")
 	}
 }

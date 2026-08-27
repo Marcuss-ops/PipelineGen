@@ -20,6 +20,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // SourceInput is the resolved source-clip identity a plan-builder needs. Every
@@ -51,6 +52,14 @@ type SourceInput struct {
 	Watermark         *cliprender.MaterializedAsset
 	WatermarkSpec     *cliprender.WatermarkSpec
 	WatermarkText     string
+
+	// Background / BackgroundMode are the resolved background selection
+	// (materialized asset only for mode=asset).
+	Background     *cliprender.MaterializedAsset
+	BackgroundMode string
+
+	// SubtitlesStyle is the caller's subtitle visual override block.
+	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
 }
 
 // TrackRef is a referenced text track: its canonical ID + content hash. The
@@ -162,6 +171,9 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			Watermark:         source.Watermark,
 			WatermarkSpec:     source.WatermarkSpec,
 			WatermarkText:     source.WatermarkText,
+			Background:        source.Background,
+			BackgroundMode:    source.BackgroundMode,
+			SubtitlesStyle:    source.SubtitlesStyle,
 		}
 		plan.Fingerprint = Fingerprint(plan)
 		if err := plan.Validate(); err != nil {

@@ -1,24 +1,510 @@
 {
-  "script": {"paths":["internal/kernel/script/","internal/capabilities/scripts/","internal/platform/nlp/","scripts/bridges/local_nlp_gpu.py","scripts/with-velox-auth","scripts/with-velox-auth_test.sh","scripts/operate_script_generate.sh","scripts/lib/dotenv.sh","start_server.sh","tests/operational/worker-integration/","tests/fixtures/script-generation/","examples/"],"go_packages":["./internal/kernel/script/...","./internal/capabilities/scripts/...","./internal/platform/nlp/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "research": {"paths":["internal/capabilities/scripts/usecase/","internal/platform/sqlite/scripts/","config/lexicons/","tools/researchlive/"],"go_packages":["./internal/capabilities/scripts/usecase/...","./internal/platform/sqlite/scripts/..."],"node_tests":[],"python_tests":[],"dependencies":["database","script"],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "clips": {"paths":["internal/capabilities/clips/","internal/capabilities/assets/clips/"],"go_packages":["./internal/capabilities/clips/...","./internal/capabilities/assets/clips/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "stock": {"paths":["internal/capabilities/assets/providers/stock/","internal/capabilities/assets/providers/artlist/","internal/platform/artlist/","scripts/youtube_boxer_stock_e2e.py","tests/fixtures/stock/","ops/jobs/"],"go_packages":["./internal/capabilities/assets/providers/stock/...","./internal/capabilities/assets/providers/artlist/...","./internal/platform/artlist/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":600,"race_timeout_seconds":1200,"race_enabled":true,"live_tests":[["make","verify-stock-live"]],"cacheable":false,"cache_scope":"live"},
-  "qdrant": {"paths":["internal/platform/qdrant/","scripts/operations/certify_media_registry_qdrant.sh"],"go_packages":["./internal/platform/qdrant/..."],"node_tests":[],"python_tests":[],"dependencies":["database"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "indexing": {"paths":["internal/capabilities/indexing/","internal/platform/qdrant/indexing/","scripts/services/","scripts/start_embedding_server.sh","scripts/bridges/generate_embedding.py"],"go_packages":["./internal/capabilities/indexing/...","./internal/platform/qdrant/indexing/..."],"node_tests":[],"python_tests":[],"dependencies":["database","qdrant"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "drive": {"paths":["internal/platform/drive/","internal/capabilities/publish_drive/"],"go_packages":["./internal/platform/drive/...","./internal/capabilities/publish_drive/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "docs": {"paths":["docs/","README.md","AGENTS.md","scripts/README.md","internal/capabilities/documents/","tools/"],"go_packages":["./internal/capabilities/documents/..."],"node_tests":[],"python_tests":[],"dependencies":["database","drive"],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":false,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "voiceover": {"paths":["internal/capabilities/voiceover/service/","internal/capabilities/voiceover/","scripts/bridges/edge_tts_bridge/","scripts/bridges/tts_edge.py","scripts/bridges/tts_edge_server.py"],"go_packages":["./internal/capabilities/voiceover/...","./internal/capabilities/voiceover/service/..."],"node_tests":[],"python_tests":[],"dependencies":["database","drive"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "images": {"paths":["internal/capabilities/images/","scripts/verify_nlp_online_images_docs_certification.sh"],"go_packages":["./internal/capabilities/images/..."],"node_tests":[],"python_tests":[],"dependencies":["database","drive"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "translation": {"paths":["internal/capabilities/translation/","internal/capabilities/scripts/adapters/","internal/capabilities/scripts/usecase/"],"go_packages":["./internal/capabilities/translation/...","./internal/capabilities/scripts/adapters/...","./internal/capabilities/scripts/usecase/..."],"node_tests":[],"python_tests":[],"dependencies":["database","ollama"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "timeline": {"paths":["internal/platform/media/"],"go_packages":["./internal/platform/media/..."],"node_tests":[],"python_tests":[],"dependencies":["storage"],"timeout_seconds":900,"race_timeout_seconds":1200,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "storage": {"paths":["internal/capabilities/assets/storage/","internal/platform/drive/"],"go_packages":["./internal/capabilities/assets/storage/...","./internal/platform/drive/..."],"node_tests":[],"python_tests":[],"dependencies":["database"],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "database": {"paths":["internal/platform/sqlite/"],"go_packages":["./internal/platform/sqlite/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "jobs": {"paths":["internal/capabilities/jobs/","internal/platform/jobs/","internal/platform/sqlite/jobs/","scripts/bridges/slide_worker_runtime/","scripts/worker-bootstrap-smoke.sh","scripts/velox_client.py"],"go_packages":["./internal/capabilities/jobs/...","./internal/platform/jobs/...","./internal/platform/sqlite/jobs/..."],"node_tests":[],"python_tests":[],"dependencies":["database"],"timeout_seconds":600,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "api": {"paths":["internal/capabilities/middleware/","internal/platform/httpserver/middleware/","internal/platform/httpserver/transport/","scripts/admin/generate_routes_yaml.go","scripts/archcheck/gates/"],"go_packages":["./internal/capabilities/middleware/...","./internal/platform/httpserver/middleware/...","./internal/platform/httpserver/transport/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "ollama": {"paths":["internal/platform/ollama/","scripts/systemd/ollama.service.d/"],"go_packages":["./internal/platform/ollama/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "youtube": {"paths":["internal/capabilities/youtube/","internal/capabilities/assets/providers/youtube/","internal/capabilities/assets/sourcing/youtube/","internal/platform/youtube/","scripts/tools/transcribe_detect_lang.py","scripts/bridges/whisper_transcriber.py","scripts/requirements-whisper.txt","requirements/whisper.lock.txt","scripts/verify-whisper.sh","scripts/tools/whisper_preflight.py","scripts/tools/whisper_runtime.py","scripts/systemd/pipelinegen.service.d/whisper.conf","scripts/systemd/pipelinegen.service.d/youtube-dlp.conf","scripts/yt-dlp-pipeline","docker-compose.yml"],"go_packages":["./internal/capabilities/youtube/...","./internal/capabilities/assets/providers/youtube/...","./internal/capabilities/assets/sourcing/youtube/...","./internal/platform/youtube/..."],"node_tests":[],"python_tests":[],"dependencies":["database","drive"],"timeout_seconds":600,"race_timeout_seconds":1200,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "artlist": {"paths":["internal/capabilities/assets/providers/artlist/","internal/platform/artlist/","scripts/lib/artlist_pipeline_payload.sh","scripts/lib/artlist_pipeline_polling.sh","scripts/lib/artlist_pipeline_preflight.sh","scripts/lib/artlist_pipeline_report.sh","config/artlist_presets.yaml"],"go_packages":["./internal/capabilities/assets/providers/artlist/...","./internal/platform/artlist/..."],"node_tests":[],"python_tests":[],"dependencies":["database","drive"],"timeout_seconds":900,"race_timeout_seconds":1200,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "node-scraper": {"paths":["node-scraper/"],"go_packages":["./internal/platform/artlist/scraper/..."],"node_tests":[["npm","--prefix","node-scraper","test"]],"python_tests":[],"dependencies":[],"timeout_seconds":600,"race_timeout_seconds":600,"race_enabled":false,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "kernel": {"paths":["internal/kernel/"],"go_packages":["./internal/kernel/..."],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":900,"race_enabled":true,"live_tests":[],"cacheable":true,"cache_scope":"content"},
-  "rust-muscles": {"utility":true,"paths":["rust/","testdata/mediaexec/"],"go_packages":[],"node_tests":[],"python_tests":[],"dependencies":[],"timeout_seconds":300,"race_timeout_seconds":300,"race_enabled":false,"live_tests":[],"cacheable":true,"cache_scope":"content"}
+  "script": {
+    "paths": [
+      "internal/kernel/script/",
+      "internal/capabilities/scripts/",
+      "internal/platform/nlp/",
+      "scripts/bridges/local_nlp_gpu.py",
+      "scripts/with-velox-auth",
+      "scripts/with-velox-auth_test.sh",
+      "scripts/operate_script_generate.sh",
+      "scripts/lib/dotenv.sh",
+      "start_server.sh",
+      "tests/operational/worker-integration/",
+      "tests/fixtures/script-generation/",
+      "examples/"
+    ],
+    "go_packages": [
+      "./internal/kernel/script/...",
+      "./internal/capabilities/scripts/...",
+      "./internal/platform/nlp/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "research": {
+    "paths": [
+      "internal/capabilities/scripts/usecase/",
+      "internal/platform/sqlite/scripts/",
+      "config/lexicons/",
+      "tools/researchlive/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/scripts/usecase/...",
+      "./internal/platform/sqlite/scripts/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "script"
+    ],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "clips": {
+    "paths": [
+      "internal/capabilities/clips/",
+      "internal/capabilities/assets/clips/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/clips/...",
+      "./internal/capabilities/assets/clips/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "stock": {
+    "paths": [
+      "internal/capabilities/assets/providers/stock/",
+      "internal/capabilities/assets/providers/artlist/",
+      "internal/platform/artlist/",
+      "scripts/youtube_boxer_stock_e2e.py",
+      "tests/fixtures/stock/",
+      "ops/jobs/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/assets/providers/stock/...",
+      "./internal/capabilities/assets/providers/artlist/...",
+      "./internal/platform/artlist/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": [
+      [
+        "make",
+        "verify-stock-live"
+      ]
+    ],
+    "cacheable": false,
+    "cache_scope": "live"
+  },
+  "qdrant": {
+    "paths": [
+      "internal/platform/qdrant/",
+      "scripts/operations/certify_media_registry_qdrant.sh"
+    ],
+    "go_packages": [
+      "./internal/platform/qdrant/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "indexing": {
+    "paths": [
+      "internal/capabilities/indexing/",
+      "internal/platform/qdrant/indexing/",
+      "scripts/services/",
+      "scripts/start_embedding_server.sh",
+      "scripts/bridges/generate_embedding.py"
+    ],
+    "go_packages": [
+      "./internal/capabilities/indexing/...",
+      "./internal/platform/qdrant/indexing/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "qdrant"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "drive": {
+    "paths": [
+      "internal/platform/drive/",
+      "internal/capabilities/publish_drive/"
+    ],
+    "go_packages": [
+      "./internal/platform/drive/...",
+      "./internal/capabilities/publish_drive/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "docs": {
+    "paths": [
+      "docs/",
+      "README.md",
+      "AGENTS.md",
+      "scripts/README.md",
+      "internal/capabilities/documents/",
+      "tools/",
+      "ops/benchmarks/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/documents/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": false,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "voiceover": {
+    "paths": [
+      "internal/capabilities/voiceover/service/",
+      "internal/capabilities/voiceover/",
+      "scripts/bridges/edge_tts_bridge/",
+      "scripts/bridges/tts_edge.py",
+      "scripts/bridges/tts_edge_server.py"
+    ],
+    "go_packages": [
+      "./internal/capabilities/voiceover/...",
+      "./internal/capabilities/voiceover/service/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "images": {
+    "paths": [
+      "internal/capabilities/images/",
+      "scripts/verify_nlp_online_images_docs_certification.sh"
+    ],
+    "go_packages": [
+      "./internal/capabilities/images/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "translation": {
+    "paths": [
+      "internal/capabilities/translation/",
+      "internal/capabilities/scripts/adapters/",
+      "internal/capabilities/scripts/usecase/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/translation/...",
+      "./internal/capabilities/scripts/adapters/...",
+      "./internal/capabilities/scripts/usecase/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "ollama"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "timeline": {
+    "paths": [
+      "internal/platform/media/"
+    ],
+    "go_packages": [
+      "./internal/platform/media/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "storage"
+    ],
+    "timeout_seconds": 900,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "storage": {
+    "paths": [
+      "internal/capabilities/assets/storage/",
+      "internal/platform/drive/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/assets/storage/...",
+      "./internal/platform/drive/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database"
+    ],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "database": {
+    "paths": [
+      "internal/platform/sqlite/"
+    ],
+    "go_packages": [
+      "./internal/platform/sqlite/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "jobs": {
+    "paths": [
+      "internal/capabilities/jobs/",
+      "internal/platform/jobs/",
+      "internal/platform/sqlite/jobs/",
+      "scripts/bridges/slide_worker_runtime/",
+      "scripts/worker-bootstrap-smoke.sh",
+      "scripts/velox_client.py"
+    ],
+    "go_packages": [
+      "./internal/capabilities/jobs/...",
+      "./internal/platform/jobs/...",
+      "./internal/platform/sqlite/jobs/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "api": {
+    "paths": [
+      "internal/capabilities/middleware/",
+      "internal/platform/httpserver/middleware/",
+      "internal/platform/httpserver/transport/",
+      "scripts/admin/generate_routes_yaml.go",
+      "scripts/archcheck/gates/"
+    ],
+    "go_packages": [
+      "./internal/capabilities/middleware/...",
+      "./internal/platform/httpserver/middleware/...",
+      "./internal/platform/httpserver/transport/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "ollama": {
+    "paths": [
+      "internal/platform/ollama/",
+      "scripts/systemd/ollama.service.d/"
+    ],
+    "go_packages": [
+      "./internal/platform/ollama/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "youtube": {
+    "paths": [
+      "internal/capabilities/youtube/",
+      "internal/capabilities/assets/providers/youtube/",
+      "internal/capabilities/assets/sourcing/youtube/",
+      "internal/platform/youtube/",
+      "scripts/tools/transcribe_detect_lang.py",
+      "scripts/bridges/whisper_transcriber.py",
+      "scripts/requirements-whisper.txt",
+      "requirements/whisper.lock.txt",
+      "scripts/verify-whisper.sh",
+      "scripts/tools/whisper_preflight.py",
+      "scripts/tools/whisper_runtime.py",
+      "scripts/systemd/pipelinegen.service.d/whisper.conf",
+      "scripts/systemd/pipelinegen.service.d/youtube-dlp.conf",
+      "scripts/yt-dlp-pipeline",
+      "docker-compose.yml"
+    ],
+    "go_packages": [
+      "./internal/capabilities/youtube/...",
+      "./internal/capabilities/assets/providers/youtube/...",
+      "./internal/capabilities/assets/sourcing/youtube/...",
+      "./internal/platform/youtube/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "artlist": {
+    "paths": [
+      "internal/capabilities/assets/providers/artlist/",
+      "internal/platform/artlist/",
+      "scripts/lib/artlist_pipeline_payload.sh",
+      "scripts/lib/artlist_pipeline_polling.sh",
+      "scripts/lib/artlist_pipeline_preflight.sh",
+      "scripts/lib/artlist_pipeline_report.sh",
+      "config/artlist_presets.yaml"
+    ],
+    "go_packages": [
+      "./internal/capabilities/assets/providers/artlist/...",
+      "./internal/platform/artlist/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
+    "timeout_seconds": 900,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "node-scraper": {
+    "paths": [
+      "node-scraper/"
+    ],
+    "go_packages": [
+      "./internal/platform/artlist/scraper/..."
+    ],
+    "node_tests": [
+      [
+        "npm",
+        "--prefix",
+        "node-scraper",
+        "test"
+      ]
+    ],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 600,
+    "race_enabled": false,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "kernel": {
+    "paths": [
+      "internal/kernel/"
+    ],
+    "go_packages": [
+      "./internal/kernel/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "rust-muscles": {
+    "utility": true,
+    "paths": [
+      "rust/",
+      "testdata/mediaexec/"
+    ],
+    "go_packages": [],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 300,
+    "race_enabled": false,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  }
 }

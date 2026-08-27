@@ -235,14 +235,6 @@ type Runner struct {
 	// The preflight result is joined after runSceneTextPhase; failures
 	// fail the run before TTS is invoked.
 	mediaPreflight MediaPreflight
-
-	// recordSubStage records a sub-stage observation on the canonical
-	// Run clock (P1.2 observability gap closure). It always measures
-	// wall-clock time from the caller's perspective via time.Since, and
-	// delegates to kernobs.RecordStage so the kernel never re-times it.
-	// When no Run is bound to ctx, the call is a no-op.
-	recordSubStage func(ctx context.Context, stage string, started time.Time, err error)
-
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch): the editorial/visual decision layer the
 	// golden battery certifies (entity typing + canonicalization + query

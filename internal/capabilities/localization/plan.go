@@ -25,11 +25,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // LocalizedClipPlanVersion is the canonical version of the localized-clip
@@ -114,6 +115,21 @@ type LocalizedClipPlan struct {
 	WatermarkSpec *cliprender.WatermarkSpec     `json:"watermark_spec,omitempty"`
 	WatermarkText string                        `json:"watermark_text,omitempty"`
 
+	// ── Background (visual layer behind the source) ───────────────
+	// BackgroundMode is the request-level background selection
+	// (none | blur_source | asset; "" normalises to none). Background is
+	// the materialized asset, non-nil ONLY for mode=asset — exactly the
+	// shape CompileInput expects, so the localized fan-out loses nothing.
+	BackgroundMode string                        `json:"background_mode,omitempty"`
+	Background     *cliprender.MaterializedAsset `json:"background,omitempty"`
+
+	// ── Subtitle visual overrides ────────────────────────────────
+	// SubtitlesStyle carries the caller's explicit subtitle visual block
+	// (color, size, shadow, transition). It rides alongside the compiled
+	// ASS (SubtitleStyleHash) so the sealed plan exposes the same style
+	// facts to every render boundary.
+	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec `json:"subtitles_style,omitempty"`
+
 	// ── Canonical fingerprint ────────────────────────────────────
 	// Fingerprint is the canonical plan digest, computed by the SINGLE
 	// Fingerprint(plan) function. It is persisted on the plan and re-checked
@@ -193,6 +209,17 @@ func (p LocalizedClipPlan) Validate() error {
 	}
 	if strings.TrimSpace(p.WatermarkText) != "" && p.WatermarkSpec == nil {
 		return fmt.Errorf("watermark text requires watermark spec")
+	}
+	if p.Background != nil {
+		if p.BackgroundMode != cliprender.BackgroundModeAsset {
+			return fmt.Errorf("%w: background materialized asset requires mode=asset (got %q)", ErrInvalidLocalizedClipPlan, p.BackgroundMode)
+		}
+		if strings.TrimSpace(p.Background.AssetID) == "" || strings.TrimSpace(p.Background.LocalPath) == "" || !isSHA256Hex(p.Background.SHA256) {
+			return fmt.Errorf("%w: background materialized asset is incomplete", ErrInvalidLocalizedClipPlan)
+		}
+	}
+	if p.BackgroundMode == cliprender.BackgroundModeAsset && p.Background == nil {
+		return fmt.Errorf("%w: background mode=asset requires the materialized asset", ErrInvalidLocalizedClipPlan)
 	}
 	if strings.TrimSpace(p.RendererVersion) == "" {
 		return fmt.Errorf("%w: renderer_version is required", ErrInvalidLocalizedClipPlan)

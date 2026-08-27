@@ -26,15 +26,41 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
 
-func watermarkPosition(path, position string, canvasW, canvasH, margin int) []int {
+// chrononAwareCapabilityProbe decorates the canonical ffmpeg capability probe
+// with the Chronon render binary's presence. Backend selection is the
+// resolver's single authority, so the probe must honestly report whether the
+// Chronon backend is configured at all — without this flag the resolver could
+// never select chronon_vulkan (the adapter's try-and-fall-back shortcut that
+// used to reach it is gone).
+type chrononAwareCapabilityProbe struct {
+	base       cliprender.BackendCapabilityProbe
+	chrononBin string
+}
+
+func (p chrononAwareCapabilityProbe) ProbeCapabilities(ctx context.Context) (cliprender.RendererCapabilities, error) {
+	caps, err := p.base.ProbeCapabilities(ctx)
+	if err != nil {
+		return caps, err
+	}
+	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != ""
+	return caps, nil
+}
+
+var _ cliprender.BackendCapabilityProbe = (*chrononAwareCapabilityProbe)(nil)
+
+// watermarkPositionForSize resolves the world-space center position for a
+// watermark of the GIVEN size. The ChrononPlanProjector passes the styled
+// size (style.width_px/height_px overrides), so a resized logo keeps its
+// declared position instead of being positioned by the original image size.
+func watermarkPositionForSize(imgW, imgH int, position string, canvasW, canvasH, margin int) []int {
 	if margin < 0 {
 		margin = 0
 	}
-	imgW, imgH := watermarkDimensions(path)
 	if imgW <= 0 || imgH <= 0 {
 		return []int{0, 0}
 	}
@@ -73,9 +99,10 @@ func watermarkDimensions(path string) (int, int) {
 }
 
 type chrononClipRenderExecutor struct {
-	binary string
-	ffmpeg string
-	log    *zap.Logger
+	binary    string
+	ffmpeg    string
+	log       *zap.Logger
+	projector ChrononPlanProjector
 }
 
 // chrononPhaseMetrics records the wall-clock duration of every phase the
@@ -117,6 +144,7 @@ func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chron
 	if log == nil {
 		log = zap.NewNop()
 	}
+	// The projector is stateless; the zero value is the canonical projector.
 	return &chrononClipRenderExecutor{binary: binary, ffmpeg: ffmpeg, log: log}
 }
 
@@ -149,7 +177,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int("fps_den", plan.Output.FPSDen),
 		zap.String("output_path", plan.OutputPath),
 		zap.Bool("has_watermark", plan.Watermark != nil),
-		zap.Bool("has_subtitles", plan.Subtitles != nil && len(plan.Subtitles.Cues) > 0),
+		zap.Bool("has_subtitles", plan.Subtitles != nil && strings.TrimSpace(plan.Subtitles.Path) != ""),
 		zap.String("binary", r.binary),
 	)
 
@@ -213,6 +241,40 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 			return rustexec.ClipRenderResult{}, err
 		}
 	}
+	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset &&
+		strings.TrimSpace(plan.Background.Path) != "" {
+		if err := link("background", plan.Background.Path, "background"+filepath.Ext(plan.Background.Path)); err != nil {
+			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "background_link"), zap.Error(err))
+			return rustexec.ClipRenderResult{}, err
+		}
+	}
+	// The sealed ASS is the single canonical subtitle artifact — the same
+	// bytes the Rust path burns via libass. Chronon consumes THIS file,
+	// never a re-derived cue serialization (no SRT drift). The on-disk bytes
+	// are re-audited against the plan hash before linking: a drifted artifact
+	// fails closed exactly like the Rust re-audit.
+	if plan.Subtitles != nil && strings.TrimSpace(plan.Subtitles.Path) != "" {
+		gotSHA, _, hashErr := digest.SHA256File(plan.Subtitles.Path)
+		if hashErr != nil {
+			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "subtitles_ass_hash"), zap.Error(hashErr))
+			return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: verify subtitle ASS %q: %w", plan.Subtitles.Path, hashErr)
+		}
+		if gotSHA != plan.Subtitles.SHA256 {
+			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "subtitles_ass_drift"),
+				zap.String("got", gotSHA),
+				zap.String("want", plan.Subtitles.SHA256),
+			)
+			return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: subtitle ASS drift: got %q want %q", gotSHA, plan.Subtitles.SHA256)
+		}
+		if err := link("subtitles", plan.Subtitles.Path, "subtitles.ass"); err != nil {
+			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "subtitles_ass_link"), zap.Error(err))
+			return rustexec.ClipRenderResult{}, err
+		}
+		r.logPhase("subtitles_ass_linked", plan.RunID,
+			zap.Int("cue_count", len(plan.Subtitles.Cues)),
+			zap.String("sha256", plan.Subtitles.SHA256),
+		)
+	}
 	font := "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 	if _, err := os.Stat(font); err != nil {
 		font = ""
@@ -245,11 +307,22 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		)
 		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: cannot determine source duration")
 	}
-	fps := plan.Output.FPSNum / plan.Output.FPSDen
-	if fps < 1 {
-		fps = 1
+	// ── Phase 3: project the sealed plan onto the Chronon wire shape ──
+	// The ChrononPlanProjector is the SINGLE canonical projection: the layer
+	// graph (video/background/watermark/subtitles), the style blocks and the
+	// transition intents are lowered there — the executor never builds layer
+	// maps itself. fps/frames derive from the probed duration inside the
+	// projector (one owner of the canvas), and the typed plan is what gets
+	// serialized.
+	projectStart := time.Now()
+	chrononPlan, projectErr := r.projector.Project(plan, durationMS)
+	metrics.PlanSerializeMS = time.Since(projectStart).Milliseconds()
+	if projectErr != nil {
+		r.logPhase("plan_projection_failed", plan.RunID, zap.Error(projectErr))
+		return rustexec.ClipRenderResult{}, projectErr
 	}
-	frames := int((durationMS*int64(fps) + 999) / 1000)
+	fps := chrononPlan.Canvas.FPS
+	frames := chrononPlan.Canvas.DurationFrames
 	r.logPhase("probed", plan.RunID,
 		zap.Int64("duration_ms", durationMS),
 		zap.Int("fps", fps),
@@ -257,44 +330,18 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int64("probe_ms", metrics.ProbeDurationMS),
 	)
 
-	layers := []map[string]any{{"id": "video", "type": "video", "source": "clip.mp4", "fit": "stretch", "start_frame": 0, "duration_frames": frames}}
-	if plan.Watermark != nil {
-		if plan.Watermark.Text != "" {
-			layers = append(layers, map[string]any{"id": "watermark", "type": "text", "text": plan.Watermark.Text, "font": "fonts/DejaVuSans.ttf", "font_size": 64, "color": []float64{1, 1, 1, plan.Watermark.Opacity}, "position": []int{plan.Output.Width / 2, plan.Output.Height / 2}, "start_frame": 0, "duration_frames": frames})
-		} else if plan.Watermark.Path != "" {
-			wmW, wmH := watermarkDimensions(plan.Watermark.Path)
-			layers = append(layers, map[string]any{"id": "watermark", "type": "image", "source": "watermark" + filepath.Ext(plan.Watermark.Path), "fit": "none", "box_width": wmW, "box_height": wmH, "position": watermarkPosition(plan.Watermark.Path, plan.Watermark.Position, plan.Output.Width, plan.Output.Height, plan.Watermark.MarginPX), "opacity": plan.Watermark.Opacity, "start_frame": 0, "duration_frames": frames})
-		}
-	}
-	if plan.Subtitles != nil && len(plan.Subtitles.Cues) > 0 {
-		var b strings.Builder
-		for i, c := range plan.Subtitles.Cues {
-			fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", i+1, srtTime(c.StartMs), srtTime(c.EndMs), c.Text)
-		}
-		if err := os.WriteFile(filepath.Join(assets, "subtitles.srt"), []byte(b.String()), 0o644); err != nil {
-			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "subtitles_srt"), zap.Error(err))
-			return rustexec.ClipRenderResult{}, err
-		}
-		r.logPhase("subtitles_srt_written", plan.RunID,
-			zap.Int("cue_count", len(plan.Subtitles.Cues)),
-			zap.Int("size_bytes", len(b.String())),
-		)
-		layers = append(layers, map[string]any{"id": "subtitles", "type": "subtitle_track", "source": "subtitles.srt", "format": "srt", "font": "fonts/DejaVuSans.ttf", "box_width": plan.Output.Width - 2*48, "box_height": 200, "start_frame": 0, "duration_frames": frames})
-	}
-	planJSON := map[string]any{"schema": "chronon.render-plan", "version": 1, "job_id": plan.RunID, "canvas": map[string]any{"width": plan.Output.Width, "height": plan.Output.Height, "fps": fps, "duration_frames": frames}, "layers": layers, "output": map[string]any{"path": "chronon.mp4", "format": "mp4", "codec": "h264"}}
-
-	// ── Phase 3: serialize + write the plan JSON ──────────────────────
+	// ── Phase 4: serialize + write the plan JSON ──────────────────────
 	planSerializeStart := time.Now()
 	planPath := filepath.Join(runRoot, "plan.json")
-	b, _ := json.Marshal(planJSON)
+	b, _ := json.Marshal(chrononPlan)
 	if err := os.WriteFile(planPath, b, 0o644); err != nil {
 		r.logPhase("plan_write_failed", plan.RunID, zap.Error(err))
 		return rustexec.ClipRenderResult{}, err
 	}
-	metrics.PlanSerializeMS = time.Since(planSerializeStart).Milliseconds()
+	metrics.PlanSerializeMS += time.Since(planSerializeStart).Milliseconds()
 	r.logPhase("plan_sealed", plan.RunID,
 		zap.String("plan_path", planPath),
-		zap.Int("layer_count", len(layers)),
+		zap.Int("layer_count", len(chrononPlan.Layers)),
 		zap.Int("plan_size_bytes", len(b)),
 		zap.Int64("duration_ms", metrics.PlanSerializeMS),
 	)
@@ -410,12 +457,6 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	}, nil
 }
 
-func srtTime(ms int64) string {
-	if ms < 0 {
-		ms = 0
-	}
-	return fmt.Sprintf("%02d:%02d:%02d,%03d", ms/3600000, (ms/60000)%60, (ms/1000)%60, ms%1000)
-}
 func boolPtr(v bool) *bool { return &v }
 func intPtr(v int) *int    { return &v }
 

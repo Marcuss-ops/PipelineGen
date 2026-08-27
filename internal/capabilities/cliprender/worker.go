@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -184,10 +185,15 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: create run directory: %w", err)
 	}
 	var subtitleArtifact *SubtitleArtifact
+	// Real instrumentation for subtitle_compile_ms: the canonical ASS compile
+	// (deterministic bytes + validation) is measured here, where it actually
+	// happens. When subtitles are disabled the phase stays NOT_INSTRUMENTED.
+	subtitleCompileMS := int64(-1)
 	if req.Subtitles.Enabled {
 		if w.subtitles == nil {
 			return nil, fmt.Errorf("%w: subtitles.enabled=true but no SubtitleCompiler is wired (the ASS-compiler step wires the canonical materializer)", ErrSubtitleCompileUnavailable)
 		}
+		subtitleCompileStart := time.Now()
 		subtitleArtifact, err = w.subtitles.Compile(ctx, SubtitleCompileInput{
 			RunID:          j.ID,
 			AssetID:        req.SourceAssetID,
@@ -202,6 +208,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: compile subtitles: %w", err)
 		}
+		subtitleCompileMS = time.Since(subtitleCompileStart).Milliseconds()
 		emit("clip.render.subtitles.compiled", "ASS artifact compiled", map[string]any{
 			"path":      subtitleArtifact.LocalPath,
 			"sha256":    subtitleArtifact.SHA256,
@@ -285,9 +292,37 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
 	// Fail-closed GPU gate: a request that demands GPU must never be silently
-	// served by the software fallback.
-	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative && outcome.Backend != BackendChrononVulkan {
+	// served by the software fallback. The GPU backends are Chronon (only
+	// when certified) and the PATH B CUDA hybrid (only on hosts with the
+	// NVDEC/NVENC chain and for plans it can render device-local).
+	if req.Execution.RequireGPU && outcome.Backend != BackendChrononVulkan && outcome.Backend != BackendCudaNative {
 		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (a GPU backend is required)", outcome.Backend)
+	}
+	// Fold the worker-measured phases into the adapter's V2 report (real
+	// instrumentation only — a disabled phase stays NOT_INSTRUMENTED). The
+	// job-level total is set at the end of the run, where the final wall time
+	// is known, so unaccounted_ms spans preparation + selection + render +
+	// publish exactly like the benchmark report.
+	if outcome.Metrics == nil {
+		outcome.Metrics = NewRenderMetricsV2()
+	}
+	if subtitleCompileMS >= 0 {
+		outcome.Metrics.SubtitleCompileMS = Metric(subtitleCompileMS)
+	}
+	// asset_materialize_ms: the preparer already tracks every materialize
+	// phase (materialize_source/watermark/background) with real wall times;
+	// fold their sum into the report so the benchmark can attribute the
+	// "bring the assets to disk" cost (Drive downloads) instead of leaving it
+	// in the unaccounted gap. No materialize phase recorded → stays
+	// NOT_INSTRUMENTED.
+	if assetMS := materializeWallMS(prepared.Timings); assetMS >= 0 {
+		outcome.Metrics.AssetMaterializeMS = Metric(assetMS)
+	}
+	// The adapter normally derives frames from the outcome's media facts; a
+	// boundary that returns a report without frames still gets the count
+	// derived here from the same sealed facts (never a fake number).
+	if outcome.Metrics.Frames == 0 && outcome.FPSNum > 0 && outcome.FPSDen > 0 {
+		outcome.Metrics.Frames = int(math.Round(outcome.DurationSec * float64(outcome.FPSNum) / float64(outcome.FPSDen)))
 	}
 
 	// ── Post-render byte certification (exact contract) ──────────────────
@@ -399,6 +434,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			"backend": outcome.Backend,
 		})
 		progress(100, "clip.render completed")
+		finalizeMetrics(outcome.Metrics, time.Since(jobStart).Milliseconds(), outcome.DurationSec)
 		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, nil), nil
 	}
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
@@ -415,6 +451,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
 	}
+	// The full publication phase (output probe + overlay composite + Drive
+	// upload + DB commit) is the REAL publish_ms of the benchmark — it
+	// replaces the Rust-side rename value the adapter mapped.
+	if outcome.Metrics != nil && publishMS >= 0 {
+		outcome.Metrics.PublishMS = Metric(publishMS)
+	}
 	if publication == nil || publication.AssetID == "" || publication.DriveFileID == "" {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
@@ -426,6 +468,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"backend":      outcome.Backend,
 	})
 	totalMS := time.Since(jobStart).Milliseconds()
+	finalizeMetrics(outcome.Metrics, totalMS, outcome.DurationSec)
 	w.log.Info("clip.render.job.completed",
 		zap.String("subsystem", "clip_render_worker"),
 		zap.String("job_id", j.ID),
@@ -443,137 +486,4 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	progress(100, "clip.render completed")
 
 	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, publication), nil
-}
-
-// renderedResult projects the *Prepared + sealed plan + render outcome +
-// composited overlay (when declared) + published derived asset into the
-// canonical job result map. Only JSON-safe values — the result envelope is
-// persisted by the Master.
-func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, composite *OverlayCompositeResult, published *RenderPublishResult) job.Result {
-	result := job.Result{
-		"job_id":          j.ID,
-		"source_asset_id": req.SourceAssetID,
-		"phase":           "rendered",
-		"transcript_mode": req.Transcript.Mode,
-		"contract_id":     prepared.Contract.ContractID,
-		"contract": map[string]any{
-			"width":        prepared.Contract.Width,
-			"height":       prepared.Contract.Height,
-			"fps_num":      prepared.Contract.FPSNum,
-			"fps_den":      prepared.Contract.FPSDen,
-			"video_codec":  prepared.Contract.VideoCodec,
-			"audio_codec":  prepared.Contract.AudioCodec,
-			"pixel_format": prepared.Contract.PixelFormat,
-		},
-		"plan": map[string]any{
-			"version":     plan.Version,
-			"plan_sha256": plan.PlanSHA256,
-			"output_path": plan.OutputPath,
-			"audio_mode":  plan.Audio.Mode,
-			"background":  plan.Background.Mode,
-		},
-		"source": map[string]any{
-			"asset_id":   prepared.Source.AssetID,
-			"path":       prepared.Source.LocalPath,
-			"sha256":     prepared.Source.SHA256,
-			"size_bytes": prepared.Source.SizeBytes,
-			"from_cache": prepared.Source.FromCache,
-		},
-		"transcript": map[string]any{
-			"language":            prepared.Transcript.Language,
-			"reused":              prepared.Transcript.Reused,
-			"text_sha256":         prepared.Transcript.TextSHA256,
-			"cues":                len(prepared.Transcript.Cues),
-			"source_audio_sha256": prepared.Transcript.SourceAudioSHA256,
-		},
-		"timings": map[string]any{
-			"total_wall_ms": prepared.Timings.TotalWallMS,
-			"total_work_ms": prepared.Timings.TotalWorkMS,
-			"parallel":      prepared.Timings.Parallel,
-		},
-	}
-	if prepared.Watermark != nil {
-		result["watermark"] = map[string]any{
-			"asset_id": prepared.Watermark.AssetID,
-			"path":     prepared.Watermark.LocalPath,
-			"sha256":   prepared.Watermark.SHA256,
-		}
-	}
-	if prepared.Background != nil {
-		result["background"] = map[string]any{
-			"asset_id": prepared.Background.AssetID,
-			"path":     prepared.Background.LocalPath,
-			"sha256":   prepared.Background.SHA256,
-		}
-	}
-	if subtitleArtifact != nil {
-		result["subtitles"] = map[string]any{
-			"path":   subtitleArtifact.LocalPath,
-			"sha256": subtitleArtifact.SHA256,
-			"mode":   subtitleArtifact.Mode,
-		}
-	}
-	if outcome != nil {
-		result["render"] = map[string]any{
-			"output_path":         outcome.OutputPath,
-			"size_bytes":          outcome.SizeBytes,
-			"duration_sec":        outcome.DurationSec,
-			"width":               outcome.Width,
-			"height":              outcome.Height,
-			"fps_num":             outcome.FPSNum,
-			"fps_den":             outcome.FPSDen,
-			"backend":             outcome.Backend,
-			"ffmpeg_ms":           outcome.FFmpegMS,
-			"audio_copy_eligible": outcome.AudioCopyEligible,
-			"audio_encode_passes": outcome.AudioEncodePasses,
-			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
-			"native_media":        outcome.NativeMedia,
-			"gpu_copy_bytes":      outcome.GPUCopyBytes,
-		}
-	}
-	if req.Overlay != nil {
-		overlayBlock := map[string]any{
-			"render_job_id":         req.Overlay.RenderJobID,
-			"plan_fingerprint":      req.Overlay.PlanFingerprint,
-			"render_key":            req.Overlay.RenderKey,
-			"source_video_asset_id": req.Overlay.SourceVideoAssetID,
-			"start_us":              req.Overlay.StartUS,
-			"end_us":                req.Overlay.EndUS,
-		}
-		if composite != nil {
-			overlayBlock["composited"] = true
-			overlayBlock["output_path"] = composite.OutputPath
-			overlayBlock["sha256"] = composite.SHA256
-			overlayBlock["composite_ms"] = composite.CompositeMS
-		}
-		result["overlay"] = overlayBlock
-	}
-	if published != nil {
-		result["asset"] = map[string]any{
-			"asset_id":      published.AssetID,
-			"drive_file_id": published.DriveFileID,
-			"drive_link":    published.DriveLink,
-			"size_bytes":    published.SizeBytes,
-			"sidecar_link":  published.SidecarLink,
-		}
-	}
-	return result
-}
-
-// safeProgress returns a nil-safe progress callback.
-func safeProgress(tools *job.JobExecutionTools) func(int, string) {
-	return func(progress int, message string) {
-		if tools != nil && tools.Progress != nil {
-			tools.Progress(progress, message)
-		}
-	}
-}
-
-// safeEvent returns a nil-safe event callback.
-func safeEvent(tools *job.JobExecutionTools) func(string, string, map[string]any) {
-	return func(eventType, message string, data map[string]any) {
-		if tools != nil && tools.Event != nil {
-			tools.Event(eventType, message, data)
-		}
-	}
 }

@@ -36,6 +36,7 @@ import (
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -115,14 +116,10 @@ type localizedRenderEnqueuerAdapter struct {
 	cues   texttracks.TimedCueWriter
 	cfg    LocalizedRenderEnqueuerConfig
 	log    *zap.Logger
-
-	// cueMu serializes the per-asset cue replacement. ReplaceTranscriptCues
-	// REPLACES the whole transcript-cue set for an asset (delete-all +
-	// insert), so two languages of the same scene (same source clip) must not
-	// race: the adapter accumulates every language's full-span cue and re-writes
-	// the complete set under the lock.
-	cueMu       sync.Mutex
-	childMu     sync.Mutex
+	// cueState accumulates every language's full-span cues before the
+	// wholesale transcript-cue replacement: ReplaceTranscriptCues deletes
+	// and re-inserts the complete cue set per source clip, so all languages
+	// of a scene are staged before the rewrite.
 	cueState    map[string]map[string][]detail.TimedCue
 	assets      cliprender.AssetResolver
 	material    cliprender.AssetMaterializer
@@ -234,6 +231,34 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 			Text:     in.Render.Watermark.Text,
 			Position: in.Render.Watermark.Position, Opacity: in.Render.Watermark.Opacity,
 			MarginPX: in.Render.Watermark.MarginPX,
+			// The canonical kernel/script style block (size, color, shadow,
+			// transition) projects verbatim — no parallel definition here.
+			Style: in.Render.Watermark.Style,
+		}
+	}
+
+	// Background is a request-level selection resolved here exactly like the
+	// watermark: mode=asset requires the materialized asset, blur_source/none
+	// carry no asset block.
+	var background *cliprender.MaterializedAsset
+	backgroundMode := ""
+	if in.Render.Background != nil {
+		backgroundMode = in.Render.Background.Mode
+		if backgroundMode == "" {
+			backgroundMode = cliprender.BackgroundModeNone
+		}
+		if backgroundMode == cliprender.BackgroundModeAsset {
+			if strings.TrimSpace(in.Render.Background.AssetID) == "" || a.assets == nil || a.material == nil {
+				return fmt.Errorf("localized render: background requested but its asset resolver is not wired")
+			}
+			ref, err := a.assets.ResolveAsset(ctx, in.Render.Background.AssetID)
+			if err != nil {
+				return fmt.Errorf("localized render: resolve background %q: %w", in.Render.Background.AssetID, err)
+			}
+			background, err = a.material.Materialize(ctx, *ref)
+			if err != nil {
+				return fmt.Errorf("localized render: materialize background %q: %w", in.Render.Background.AssetID, err)
+			}
 		}
 	}
 	req := localization.LocalizationRequest{RenderConcurrency: a.cfg.Concurrency}
@@ -314,6 +339,14 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				return ""
 			}
 			return in.Render.Watermark.Text
+		}(),
+		Background:     background,
+		BackgroundMode: backgroundMode,
+		SubtitlesStyle: func() *scriptpkg.VideoVisualStyleSpec {
+			if in.Render.Subtitles == nil {
+				return nil
+			}
+			return in.Render.Subtitles.Style
 		}(),
 	})
 	if err != nil {

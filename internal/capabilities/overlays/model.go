@@ -57,6 +57,7 @@ type OverlayBackground struct {
 	Fit       string            `json:"fit,omitempty"`
 	Opacity   *float64          `json:"opacity,omitempty"`
 	Loop      bool              `json:"loop,omitempty"`
+	Style     map[string]any    `json:"style,omitempty"`
 }
 
 type OverlayItem struct {

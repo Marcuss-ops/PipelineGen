@@ -58,6 +58,38 @@ func TestCompileChrononPlanOptionalBackground(t *testing.T) {
 	}
 }
 
+func TestCompileChrononPlanCarriesStyleOverrides(t *testing.T) {
+	plan := GoldenOverlayPlanV1()
+	plan.PlanID = "style-overrides"
+	plan.Items = []OverlayItem{{
+		ID: "styled-phrase", TemplateID: "IMPORTANT_PHRASE", PresetID: "caption_card",
+		Text: "Styled", StartMs: 0, EndMs: 1000,
+		Params: map[string]any{
+			"box_width": 640, "box_height": 360,
+			"style": map[string]any{
+				"fill":      "#FF801A",
+				"font_size": 72.0,
+				"shadow":    map[string]any{"color": "#000000", "opacity": 0.7, "blur": 12.0, "offset": []float64{0, 6}},
+			},
+			"animation": map[string]any{"preset": "fade_in", "enter": map[string]any{"duration_frames": 12.0}},
+		},
+	}}
+	compiled, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layer := compiled.Plan.Layers[0]
+	if layer.Style["fill"] != "#FF801A" {
+		t.Fatalf("style fill lost: %#v", layer.Style)
+	}
+	if layer.Style["shadow"] == nil {
+		t.Fatalf("style shadow lost: %#v", layer.Style)
+	}
+	if layer.Animation == nil || layer.Animation.Enter == nil || layer.Animation.Enter.DurationFrames != 12 {
+		t.Fatalf("transition_in lost: %+v", layer.Animation)
+	}
+}
+
 // TestCompileChrononPlanGoldenJSON matches the compiled plan against the
 // literal render_plan document carried by RenderingGen's
 // testdata/golden/golden-overlay-job-v1.json (the canonical, immutable

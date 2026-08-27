@@ -17,9 +17,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -173,29 +175,98 @@ type ClipRenderExecutorAdapter struct {
 }
 
 func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
-	if a == nil || (a.renderer == nil && a.chronon == nil) {
+	if a == nil || a.renderer == nil {
 		return nil, fmt.Errorf("%w: Rust clip renderer not wired", cliprender.ErrRenderPhaseNotImplemented)
 	}
-	if a.chronon != nil && (plan.Watermark != nil || plan.Subtitles != nil || plan.Background != nil && plan.Background.Mode != cliprender.BackgroundModeNone) {
-		result, err := a.chronon.RenderClip(ctx, plan, cliprender.BackendChrononVulkan)
-		if err == nil {
-			return &cliprender.RenderOutcome{OutputPath: result.OutputPath, SizeBytes: result.SizeBytes, DurationSec: result.DurationSec, Width: result.Width, Height: result.Height, FPSNum: result.FPSNum, FPSDen: result.FPSDen, Backend: cliprender.BackendChrononVulkan, FFmpegMS: result.FFmpegMS, AudioCopyEligible: result.AudioCopyEligible, AudioEncodePasses: result.AudioEncodePasses, SubtitleRasterCPU: result.SubtitleRasterCPU, NativeMedia: result.NativeMedia, GPUCopyBytes: result.GPUCopyBytes}, nil
+	metrics := cliprender.NewRenderMetricsV2()
+	renderStart := time.Now()
+
+	// Backend selection lives ONLY in the resolver (probed host capabilities
+	// + the plan's requirements). The adapter never tries a backend and falls
+	// back on failure; it dispatches execution to the executor that owns the
+	// selected backend. The probe/resolve timings below are the real
+	// instrumentation for backend_probe_ms / backend_resolve_ms — the same
+	// fail-closed semantics as cliprender.ResolveBackend, split so the report
+	// can attribute each stage.
+	if a.probe == nil {
+		return nil, fmt.Errorf("%w: backend capability probe is not wired (DEGRADED — no host capability information)", cliprender.ErrBackendUnavailable)
+	}
+	if a.resolver == nil {
+		return nil, fmt.Errorf("%w: render backend resolver is not wired (NOT READY — cannot select a backend)", cliprender.ErrBackendUnavailable)
+	}
+	probeStart := time.Now()
+	capabilities, err := a.probe.ProbeCapabilities(ctx)
+	metrics.BackendProbeMS = cliprender.Metric(time.Since(probeStart).Milliseconds())
+	if err != nil {
+		return nil, fmt.Errorf("%w: capability probe failed: %w (DEGRADED — host capabilities unknown)", cliprender.ErrBackendUnavailable, err)
+	}
+	resolveStart := time.Now()
+	backend, err := a.resolver.Resolve(ctx, plan, capabilities)
+	metrics.BackendResolveMS = cliprender.Metric(time.Since(resolveStart).Milliseconds())
+	if err != nil {
+		return nil, err
+	}
+	metrics.BackendSelected = backend
+	// Single-authority selection: exactly one backend is attempted, zero
+	// fallbacks. Any fallback would be a silent downgrade — the resolver is
+	// the only place backend choice happens.
+	metrics.BackendAttempts = 1
+	metrics.FallbackCount = 0
+	// A configured-but-uncertified Chronon binary (ChrononVulkan without
+	// ChrononNativeCertified) explains why the resolver did not select
+	// chronon_vulkan — the real-probe gate refused it. Surface the reason so
+	// operators see the certification gate in the report instead of guessing
+	// why the GPU path is not used. Informational only: no fallback happened
+	// (single-authority selection), so fallback_count stays 0.
+	if capabilities.ChrononVulkan && !capabilities.ChrononNativeCertified {
+		metrics.FallbackReason = "chronon_native_not_certified"
+	}
+
+	var result rustexec.ClipRenderResult
+	if backend == cliprender.BackendChrononVulkan {
+		if a.chronon == nil {
+			return nil, fmt.Errorf("%w: backend %q selected but no Chronon executor is wired", cliprender.ErrBackendUnavailable, backend)
 		}
-		// Chronon is preferred for overlays, but a transient CUDA/VRAM failure
-		// must not discard an otherwise valid clip. Continue through the
-		// canonical software backend below.
+		result, err = a.chronon.RenderClip(ctx, plan, backend)
+	} else {
+		// The Rust executor owns the non-Chronon backends: cuda_native (PATH
+		// B CUDA hybrid) and ffmpeg_fallback (software baseline).
+		result, err = a.renderer.RenderClip(ctx, plan, backend)
 	}
-	if a.renderer == nil {
-		return nil, fmt.Errorf("%w: Rust clip renderer not wired", cliprender.ErrRenderPhaseNotImplemented)
-	}
-	backend, err := cliprender.ResolveBackend(ctx, a.probe, a.resolver, plan)
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.renderer.RenderClip(ctx, plan, backend)
-	if err != nil {
-		return nil, err
+
+	// The Rust boundary reports ONE coarse render wall time (ffmpeg_ms)
+	// spanning decode → composite → encode → mux. Until per-phase metadata
+	// lands it is mapped onto CompositeMS; the derived unaccounted_ms then
+	// surfaces exactly the "time outside the render" question — the phases
+	// we cannot attribute yet stay NOT_INSTRUMENTED, never fake zeros.
+	metrics.CompositeMS = cliprender.Metric(result.FFmpegMS)
+	// The Rust boundary now reports its own phase timings for the benchmark
+	// decomposition: renderer_startup_ms is the pre-ffmpeg wall (plan decode
+	// + source probe + filter-graph build + process spawn) and publish_ms is
+	// the Rust-side output publish. Both map only when actually reported
+	// (nil stays NOT_INSTRUMENTED — never a fake zero); the worker overwrites
+	// publish_ms with its full publication wall when a publisher runs.
+	if result.StartupMS != nil {
+		metrics.RendererStartupMS = cliprender.Metric(*result.StartupMS)
 	}
+	if result.PublishMS != nil {
+		metrics.PublishMS = cliprender.Metric(*result.PublishMS)
+	}
+	if result.SubtitleRasterCPU != nil {
+		metrics.SubtitleRasterCPU = *result.SubtitleRasterCPU
+	}
+	if result.GPUCopyBytes != nil {
+		metrics.GPUCopyBytes = cliprender.Metric(int64(*result.GPUCopyBytes))
+	}
+	if result.FPSNum > 0 && result.FPSDen > 0 {
+		metrics.Frames = int(math.Round(result.DurationSec * float64(result.FPSNum) / float64(result.FPSDen)))
+	}
+	metrics.TotalMS = cliprender.Metric(time.Since(renderStart).Milliseconds())
+	metrics.Compute(result.DurationSec)
+
 	return &cliprender.RenderOutcome{
 		OutputPath:        result.OutputPath,
 		SizeBytes:         result.SizeBytes,
@@ -209,7 +280,7 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		AudioCopyEligible: result.AudioCopyEligible,
 		AudioEncodePasses: result.AudioEncodePasses,
 		SubtitleRasterCPU: result.SubtitleRasterCPU,
-		NativeMedia:       result.NativeMedia,
 		GPUCopyBytes:      result.GPUCopyBytes,
+		Metrics:           metrics,
 	}, nil
 }

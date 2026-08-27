@@ -132,6 +132,54 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	if !ok || render["ffmpeg_ms"] != int64(1234) {
 		t.Fatalf("render result = %v", result["render"])
 	}
+	// V2 report envelope: the worker folds the job-level total into the
+	// adapter report and exposes it in the job result. Phases without real
+	// instrumentation (subtitles disabled here) stay NOT_INSTRUMENTED.
+	metrics, ok := render["metrics_v2"].(*RenderMetricsV2)
+	if !ok || metrics == nil {
+		t.Fatalf("metrics_v2 = %v, want *RenderMetricsV2 in the render block", render["metrics_v2"])
+	}
+	// A fast fake can legitimately measure 0 ms of wall time — the worker must
+	// still have MEASURED the job total (never the NOT_INSTRUMENTED sentinel).
+	if int64(metrics.TotalMS) == NotInstrumented {
+		t.Fatalf("total_ms = %d, want a measured job-level wall time", int64(metrics.TotalMS))
+	}
+	if metrics.Frames != 72 {
+		t.Fatalf("frames = %d, want 72 (3s × 24fps)", metrics.Frames)
+	}
+	if int64(metrics.SubtitleCompileMS) != NotInstrumented {
+		t.Fatalf("subtitle_compile_ms = %d, want NOT_INSTRUMENTED (subtitles disabled)", int64(metrics.SubtitleCompileMS))
+	}
+	// asset_materialize_ms folds the preparer's materialize phase walls into
+	// the report (the real preparer records materialize_source even through
+	// the fake materializer), so the benchmark can attribute the "bring the
+	// assets to disk" cost instead of leaving it in the unaccounted gap.
+	if int64(metrics.AssetMaterializeMS) == NotInstrumented {
+		t.Fatalf("asset_materialize_ms = %d, want the measured materialize phase wall", int64(metrics.AssetMaterializeMS))
+	}
+}
+
+// TestMaterializeWallMS verifies the phase-fold helper: materialize_* walls
+// sum into asset_materialize_ms; a preparation without materialize phases
+// (all cached, nothing recorded) stays NOT_INSTRUMENTED (-1).
+func TestMaterializeWallMS(t *testing.T) {
+	summed := materializeWallMS(PreparationTimings{Phases: []PhaseTiming{
+		{Phase: "resolve_source", WallMS: 12},
+		{Phase: "materialize_source", WallMS: 340},
+		{Phase: "materialize_watermark", WallMS: 60},
+		{Phase: "transcript_resolve", WallMS: 5},
+	}})
+	if summed != 400 {
+		t.Fatalf("materializeWallMS = %d, want 400 (340+60)", summed)
+	}
+	if got := materializeWallMS(PreparationTimings{Phases: []PhaseTiming{
+		{Phase: "resolve_source", WallMS: 12},
+	}}); got != -1 {
+		t.Fatalf("materializeWallMS without materialize phases = %d, want -1 (NOT_INSTRUMENTED)", got)
+	}
+	if got := materializeWallMS(PreparationTimings{}); got != -1 {
+		t.Fatalf("materializeWallMS(empty) = %d, want -1", got)
+	}
 }
 
 // TestWorker_ValidPayload_PreparesAndFailsClosed verifies the full worker
@@ -438,6 +486,19 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	}
 	if result["source_asset_id"] != "asset-source" {
 		t.Errorf("source_asset_id = %v", result["source_asset_id"])
+	}
+	// The full publication wall (probe + overlay + Drive upload) is folded
+	// into the V2 report as publish_ms — the benchmark's real publish phase.
+	renderBlock, ok := result["render"].(map[string]any)
+	if !ok {
+		t.Fatalf("result must carry a render block, got %+v", result["render"])
+	}
+	if metrics, ok := renderBlock["metrics_v2"].(*RenderMetricsV2); ok && metrics != nil {
+		if int64(metrics.PublishMS) == NotInstrumented {
+			t.Fatalf("publish_ms = %d, want the measured publication wall", int64(metrics.PublishMS))
+		}
+	} else {
+		t.Fatalf("metrics_v2 = %v, want the V2 report in the render block", renderBlock["metrics_v2"])
 	}
 }
 

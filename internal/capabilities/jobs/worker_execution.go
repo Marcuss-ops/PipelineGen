@@ -36,11 +36,12 @@
 // allowlisted `context.Background()` sites. The purpose is to
 // survive jobCtx cancellation so the terminal writes (the DB flip
 // AND the artifact-publication spine — script.json, scenes.json,
-// per-scene voiceovers, ... to their destination) can complete even
-// when the worker is mid-shutdown. Detaching from jobCtx (rather
-// than from ctx / worker lifecycle) prevents losing outcome
-// persistence when jobCtx is cancelled by either timeout or by the
-// outer worker Stop.
+// final_audio.m4a, ... to their destination; per-scene voiceovers
+// are NOT re-uploaded, the TTS pipeline publishes them during
+// generation) can complete even when the worker is mid-shutdown.
+// Detaching from jobCtx (rather than from ctx / worker lifecycle)
+// prevents losing outcome persistence when jobCtx is cancelled by
+// either timeout or by the outer worker Stop.
 //
 // The bound (finalizationTimeout) must cover publishing EVERY
 // staged artifact to Drive: artifact-producing jobs scale with
@@ -87,12 +88,13 @@ import (
 // finalizationTimeout bounds the broker-side finalize phase
 // (runJob → finalizeJob). It covers the terminal DB flip AND the
 // artifact-publication spine (CompleteWithArtifacts), which publishes
-// every staged artifact (script.json, scenes.json, per-scene voiceovers,
-// ...) to Drive sequentially. Artifact count scales with the job: a
-// 46-clip run publishes 48 artifacts at ~2.5s each ≈ 2 minutes, so the
-// legacy 30s bound (pre-artifact-publication) would fail mid-publish.
-// 10 minutes covers 46+ artifact runs with retry headroom while keeping
-// worker shutdown bounded and far below the per-job timeout (30–60m).
+// the staged manifest artifacts (script.json, scenes.json,
+// final_audio.m4a) to Drive. Per-scene voiceovers are NOT staged
+// artifacts (Aug 2026 P0: the TTS pipeline publishes them during
+// generation), so finalize is O(1) uploads instead of scaling with
+// the artifact count. The legacy 30s bound (pre-artifact-publication)
+// would have failed mid-publish; 10 minutes keeps worker shutdown
+// bounded while staying far below the per-job timeout (30–60m).
 const finalizationTimeout = 10 * time.Minute
 
 func (w *Worker) runJob(parent context.Context, j *job.Job) {

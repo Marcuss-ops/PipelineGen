@@ -70,6 +70,34 @@ func TestBuildGenerateRequest_PropagatesVideoRenderContract(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequest_PropagatesOverlayStyle(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	err := json.Unmarshal([]byte(`{
+		"version":2,"items":[{
+			"source":{"type":"clips","clip_ids":["clip-a"]},
+			"overlay_style":{
+				"color":[1,0.5,0.1,1],
+				"size":{"width":640,"height":360,"font_size":72},
+				"shadow":{"enabled":true,"color":"#000000","opacity":0.7,"blur":12,"offset":[0,6]},
+				"transition_in":{"preset":"fade_in","duration_frames":12}
+			}
+		}]
+	}`), &env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "overlay-style-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OverlayStyle == nil || got.OverlayStyle.Size == nil || got.OverlayStyle.Size.Width == nil || *got.OverlayStyle.Size.Width != 640 {
+		t.Fatalf("overlay style was not propagated: %+v", got.OverlayStyle)
+	}
+	if got.OverlayStyle.Shadow == nil || !got.OverlayStyle.Shadow.Enabled || got.OverlayStyle.TransitionIn == nil {
+		t.Fatalf("overlay shadow/transition was not propagated: %+v", got.OverlayStyle)
+	}
+}
+
 func TestBuildGenerateRequest_PreservesEnglishPerClipSourceText(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	err := json.Unmarshal([]byte(`{

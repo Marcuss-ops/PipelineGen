@@ -88,6 +88,11 @@ type MediaPreflightInput struct {
 	RenderEnabled     bool
 	WatermarkAssetID  string
 	WatermarkResolver ClipPreflighter
+	// BackgroundAssetID is probed only when background.mode=asset — the
+	// materialized background layer is a render requirement like the
+	// watermark, so a missing asset fails the run before any LLM/TTS work.
+	BackgroundAssetID  string
+	BackgroundResolver ClipPreflighter
 }
 
 // RunMediaPreflight executes every check concurrently and returns all
@@ -265,6 +270,30 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 					failures = append(failures, PreflightFailure{
 						Category: "watermark", AssetID: id,
 						Detail: fmt.Sprintf("watermark asset unavailable: %v", err),
+					})
+					mu.Unlock()
+				}
+			}()
+		}
+	}
+
+	// ── Background asset (mode=asset only) ─────────────────────
+	if in.RenderEnabled && strings.TrimSpace(in.BackgroundAssetID) != "" {
+		id := in.BackgroundAssetID
+		if in.BackgroundResolver == nil {
+			failures = append(failures, PreflightFailure{
+				Category: "background", AssetID: id,
+				Detail: "background resolver not wired",
+			})
+		} else {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := in.BackgroundResolver.ProbeClip(ctx, id); err != nil {
+					mu.Lock()
+					failures = append(failures, PreflightFailure{
+						Category: "background", AssetID: id,
+						Detail: fmt.Sprintf("background asset unavailable: %v", err),
 					})
 					mu.Unlock()
 				}

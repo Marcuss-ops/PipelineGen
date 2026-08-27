@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -298,7 +299,19 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 				return tools.Fail(jobCtx, err.Error())
 			}
 		}
+		finalizeStarted := time.Now().UTC()
 		canonicalAssetIDs, completeErr := tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)
+		// FASE 2 observability — finalize attribution: the artifact
+		// publication spine runs on the worker critical path but outside
+		// the dispatcher-owned stages. Record it as post_writer_finalize
+		// (mirrors the legacy Worker's RecordStage in
+		// worker_execution.go) so the finalize wall time — including the
+		// broker-side bounded-parallel Drive publication — stays
+		// attributed to the RunReport instead of surfacing as
+		// unattributed time.
+		kernobs.RecordStage(jobCtx, kernobs.StageInfo{
+			Stage: kernobs.StageName("post_writer_finalize"),
+		}, finalizeStarted, time.Now().UTC(), completeErr)
 		if completeErr != nil {
 			terminalErr = completeErr
 			return completeErr

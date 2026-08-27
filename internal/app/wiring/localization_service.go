@@ -33,6 +33,7 @@ import (
 	localizationadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -150,6 +151,16 @@ type LocalizeInput struct {
 	WatermarkSpec  *cliprender.WatermarkSpec
 	WatermarkText  string
 
+	// Background is the resolved background layer: the materialized asset
+	// (non-nil ONLY for mode=asset) plus the request-level mode
+	// (none | blur_source | asset).
+	Background     *cliprender.MaterializedAsset
+	BackgroundMode string
+
+	// SubtitlesStyle carries the caller's explicit subtitle visual overrides
+	// (color, size, shadow, transition) into the sealed render plan.
+	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+
 	// Request is the ordered language fan-out + render concurrency.
 	Request localization.LocalizationRequest
 
@@ -206,6 +217,9 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		Watermark:         in.Watermark,
 		WatermarkSpec:     in.WatermarkSpec,
 		WatermarkText:     in.WatermarkText,
+		Background:        in.Background,
+		BackgroundMode:    in.BackgroundMode,
+		SubtitlesStyle:    in.SubtitlesStyle,
 	}
 
 	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)

@@ -49,16 +49,28 @@ func (a *RenderPlanExecutor) logPhase(phase, planID string, fields ...zap.Field)
 // the actual bytes on disk), the size, the duration, and the codecs pinned by
 // the output contract (Rust re-audits these before reporting success).
 func (a *RenderPlanExecutor) Execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset) (localization.RenderFacts, error) {
-	return a.execute(ctx, plan, subtitle, nil, nil)
+	return a.execute(ctx, plan, subtitle, localization.RenderOptions{})
 }
 
 // ExecuteWithWatermark keeps watermarking on the same sealed render_clip
 // invocation as subtitle burn. There is no second device/encode pass.
+// Deprecated in favor of ExecuteExtended: this watermark-only variant cannot
+// carry background or subtitle style to the sealed plan.
 func (a *RenderPlanExecutor) ExecuteWithWatermark(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, watermark *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (localization.RenderFacts, error) {
-	return a.execute(ctx, plan, subtitle, watermark, spec)
+	return a.execute(ctx, plan, subtitle, localization.RenderOptions{
+		Watermark:     watermark,
+		WatermarkSpec: spec,
+	})
 }
 
-func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, watermark *cliprender.MaterializedAsset, watermarkSpec *cliprender.WatermarkSpec) (localization.RenderFacts, error) {
+// ExecuteExtended runs the full-fidelity render_clip invocation: watermark,
+// background, and subtitle style all reach the sealed ClipRenderPlanV1 on the
+// same single render pass (no second device/encode pass).
+func (a *RenderPlanExecutor) ExecuteExtended(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, opts localization.RenderOptions) (localization.RenderFacts, error) {
+	return a.execute(ctx, plan, subtitle, opts)
+}
+
+func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, opts localization.RenderOptions) (localization.RenderFacts, error) {
 	if a == nil || a.renderer == nil {
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan executor not wired")
 	}
@@ -112,7 +124,9 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.String("source_asset_id", src.AssetID),
 		zap.String("source_path", src.Path),
 		zap.Bool("has_subtitle", sub != nil),
-		zap.Bool("has_watermark", watermark != nil),
+		zap.Bool("has_watermark", opts.Watermark != nil),
+		zap.String("background_mode", opts.BackgroundMode),
+		zap.Bool("has_subtitle_style", opts.SubtitlesStyle != nil),
 		zap.Int("width", contract.Width),
 		zap.Int("height", contract.Height),
 		zap.Int("fps_num", contract.FPSNum),
@@ -124,18 +138,21 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	clipPlan, err := cliprender.Compile(cliprender.CompileInput{
 		RunID:         plan.Revision,
 		Source:        &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
-		Watermark:     watermark,
-		WatermarkSpec: watermarkSpec,
+		Watermark:     opts.Watermark,
+		WatermarkSpec: opts.WatermarkSpec,
 		WatermarkText: func() string {
-			if watermarkSpec == nil {
+			if opts.WatermarkSpec == nil {
 				return ""
 			}
-			return watermarkSpec.Text
+			return opts.WatermarkSpec.Text
 		}(),
-		Subtitles:  sub,
-		Contract:   contract,
-		AudioMode:  cliprender.AudioModeCopyIfCompatible,
-		OutputPath: plan.OutputPath,
+		Background:     opts.Background,
+		BackgroundMode: opts.BackgroundMode,
+		Subtitles:      sub,
+		SubtitlesStyle: opts.SubtitlesStyle,
+		Contract:       contract,
+		AudioMode:      cliprender.AudioModeCopyIfCompatible,
+		OutputPath:     plan.OutputPath,
 	})
 	compileMS := time.Since(compileStart).Milliseconds()
 	if err != nil {

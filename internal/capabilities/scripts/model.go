@@ -357,6 +357,7 @@ type GenerateRequest struct {
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
+	OverlayStyle      *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`
 	Audio             capabilityaudio.AudioMode        `json:"audio_mode,omitempty"`
 	// Timing is the canonical voiceover timing policy nested inside the
 	// audio config (wire key "timing"). nil means the pipeline applies the

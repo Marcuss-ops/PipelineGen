@@ -28,6 +28,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // RenderFacts is the certified outcome of one localized render: the local
@@ -51,9 +52,31 @@ type RenderPlanExecutor interface {
 	Execute(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset) (RenderFacts, error)
 }
 
-// WatermarkRenderPlanExecutor is the extended executor implemented by the
-// production clip-render bridge. The base interface remains source-compatible
-// with existing tests and non-watermarked callers.
+// RenderOptions carries every visual layer the executor must fold into the
+// sealed ClipRenderPlanV1: watermark (materialized asset + spec + text),
+// background (mode + materialized asset for mode=asset), and the subtitle
+// visual overrides. All fields are optional; nil/empty means "no such layer".
+type RenderOptions struct {
+	Watermark      *cliprender.MaterializedAsset
+	WatermarkSpec  *cliprender.WatermarkSpec
+	WatermarkText  string
+	Background     *cliprender.MaterializedAsset
+	BackgroundMode string
+	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+}
+
+// ExtendedRenderPlanExecutor is the full-fidelity executor implemented by
+// the production clip-render bridge: every visual layer of the plan reaches
+// the sealed plan without loss.
+type ExtendedRenderPlanExecutor interface {
+	RenderPlanExecutor
+	ExecuteExtended(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset, opts RenderOptions) (RenderFacts, error)
+}
+
+// WatermarkRenderPlanExecutor is the watermark-only executor, kept
+// source-compatible with existing tests and non-watermarked callers. New
+// callers should prefer ExtendedRenderPlanExecutor so background + subtitle
+// style propagate too.
 type WatermarkRenderPlanExecutor interface {
 	RenderPlanExecutor
 	ExecuteWithWatermark(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset, watermark *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (RenderFacts, error)
@@ -113,12 +136,26 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 
 	// 3. Rust render boundary.
 	var facts RenderFacts
-	// Text watermarks do not require a materialized image asset. The executor
-	// still needs the extended path so the sealed WatermarkSpec reaches the
-	// renderer; checking only plan.Watermark silently dropped text overlays.
-	if executor, ok := r.executor.(WatermarkRenderPlanExecutor); ok &&
+	opts := RenderOptions{
+		Watermark:      plan.Watermark,
+		WatermarkSpec:  plan.WatermarkSpec,
+		WatermarkText:  plan.WatermarkText,
+		Background:     plan.Background,
+		BackgroundMode: plan.BackgroundMode,
+		SubtitlesStyle: plan.SubtitlesStyle,
+	}
+	hasVisual := plan.Watermark != nil ||
+		(plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "") ||
+		plan.Background != nil || plan.BackgroundMode != ""
+	if extended, ok := r.executor.(ExtendedRenderPlanExecutor); ok && hasVisual {
+		// Full fidelity: background + subtitle style ride the same sealed
+		// render_clip invocation as the watermark (no second pass).
+		facts, err = extended.ExecuteExtended(ctx, renderPlan, ass, opts)
+	} else if wm, ok := r.executor.(WatermarkRenderPlanExecutor); ok &&
 		(plan.Watermark != nil || (plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "")) {
-		facts, err = executor.ExecuteWithWatermark(ctx, renderPlan, ass, plan.Watermark, plan.WatermarkSpec)
+		// Watermark-only path (legacy executors): the sealed WatermarkSpec
+		// still reaches the renderer so text overlays are never dropped.
+		facts, err = wm.ExecuteWithWatermark(ctx, renderPlan, ass, plan.Watermark, plan.WatermarkSpec)
 	} else {
 		facts, err = r.executor.Execute(ctx, renderPlan, ass)
 	}

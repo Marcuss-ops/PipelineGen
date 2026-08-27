@@ -439,7 +439,25 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		}
 	}
 	chrononRenderer := NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
-	worker.WithRenderExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, chrononRenderer, backendResolver, backendProbe))
+	// Backend selection lives ONLY in the resolver. The probe stack is:
+	//   ffmpeg capabilities (base) → chrononAwareCapabilityProbe (binary
+	//   presence) → chrononCertifiedCapabilityProbe (ChrononNativeCertified).
+	// The registry gates chronon_vulkan on the CERTIFIED flag, never on
+	// binary presence: a configured binary whose NVDEC → CUDA/Vulkan → NVENC
+	// handoff faults (e.g. CUDA_ERROR_ILLEGAL_ADDRESS) is never selected, so
+	// a broken path adds zero latency to every render. The certification runs
+	// once per environment fingerprint (chronon SHA + driver + GPU) and
+	// re-certifies automatically on any change; the boot-time warm-up below
+	// absorbs the certification cost so the first render is not affected.
+	certifier := NewChrononNativeCertifier(chrononBin, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy().Codec, log)
+	if certifier != nil {
+		go certifier.Certify(context.Background())
+	}
+	probe := &chrononCertifiedCapabilityProbe{
+		base: &chrononAwareCapabilityProbe{base: backendProbe, chrononBin: chrononBin},
+		cert: certifier,
+	}
+	worker.WithRenderExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, chrononRenderer, backendResolver, probe))
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
