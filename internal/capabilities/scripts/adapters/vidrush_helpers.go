@@ -674,7 +674,11 @@ var defaultVidRushRankingWeights = VidRushRankingWeights{
 }
 
 func ScoreVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, repeated bool) float64 {
-	if candidate.RelevanceScore == 0 && candidate.TechnicalQualityScore == 0 && candidate.RightsScore == 0 && candidate.DiversityScore == 0 && candidate.ProviderReliability == 0 {
+	return scoreVidRushCandidateWithProfile(candidate, scriptpkg.SegmentSemanticProfile{}, repeated)
+}
+
+func scoreVidRushCandidateWithProfile(candidate scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile, repeated bool) float64 {
+	if candidate.RelevanceScore == 0 && candidate.TechnicalQualityScore == 0 && candidate.RightsScore == 0 && candidate.DiversityScore == 0 && candidate.ProviderReliability == 0 && candidate.SemanticScore == 0 && len(profile.Keywords) == 0 && len(profile.VisualTerms) == 0 && len(profile.Entities) == 0 && strings.TrimSpace(profile.Topic) == "" {
 		return candidate.Score
 	}
 	clamp := func(v float64) float64 {
@@ -687,11 +691,19 @@ func ScoreVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, repeated b
 		return v
 	}
 	w := defaultVidRushRankingWeights
-	score := w.Relevance*clamp(candidate.RelevanceScore) +
+	semantic := clamp(candidate.SemanticScore)
+	if semantic == 0 {
+		semantic = profileSemanticMatch(candidate, profile)
+	}
+	relevance := clamp(candidate.RelevanceScore)
+	if relevance == 0 {
+		relevance = semantic
+	}
+	score := w.Relevance*relevance +
 		w.TechnicalQuality*clamp(candidate.TechnicalQualityScore) +
 		w.Rights*clamp(candidate.RightsScore) +
 		w.Diversity*clamp(candidate.DiversityScore) +
-		w.ProviderReliability*clamp(candidate.ProviderReliability)
+		w.ProviderReliability*clamp(candidate.ProviderReliability) + 0.10*semantic
 	if repeated {
 		score *= 0.75
 	}
@@ -723,7 +735,7 @@ func compareVidRushPrimaryCandidates(a, b scriptpkg.SegmentAssetCandidate) int {
 	return 0
 }
 
-func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
+func chooseVidRushPrimaryWithProfile(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
 	var best *scriptpkg.SegmentAssetCandidate
 	for i := range candidates {
 		candidate := candidates[i]
@@ -734,13 +746,44 @@ func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous
 		if repeated && len(candidates) > 1 {
 			continue
 		}
-		candidate.Score = ScoreVidRushCandidate(candidate, repeated)
-		if best == nil || candidate.Score > best.Score {
+		candidate.Score = scoreVidRushCandidateWithProfile(candidate, profile, repeated)
+		if best == nil || compareVidRushPrimaryCandidates(candidate, *best) > 0 {
 			selected := candidate
 			best = &selected
 		}
 	}
 	return best
+}
+
+func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
+	return chooseVidRushPrimaryWithProfile(candidates, previous, scriptpkg.SegmentSemanticProfile{})
+}
+
+func profileSemanticMatch(candidate scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) float64 {
+	if len(profile.Keywords) == 0 && len(profile.VisualTerms) == 0 && len(profile.Entities) == 0 && strings.TrimSpace(profile.Topic) == "" {
+		return 0
+	}
+	text := strings.ToLower(strings.Join([]string{candidate.Query, candidate.Entity, candidate.SourceURL}, " "))
+	terms := []string{profile.Topic}
+	for _, keyword := range profile.Keywords {
+		terms = append(terms, keyword.Value)
+	}
+	for _, term := range profile.VisualTerms {
+		terms = append(terms, term.Value)
+	}
+	for _, entity := range profile.Entities {
+		terms = append(terms, entity.Value)
+	}
+	matched := 0
+	for _, term := range terms {
+		if value := strings.TrimSpace(term); value != "" && strings.Contains(text, strings.ToLower(value)) {
+			matched++
+		}
+	}
+	if matched == 0 {
+		return 0
+	}
+	return float64(matched) / float64(len(terms))
 }
 
 func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {

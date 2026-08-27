@@ -6,18 +6,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// TestCanonical_ContainsFiveModelsInStableOrder pins the registry size and
-// order. Adding a model is a deliberate policy change: update this test and
-// the godlike/06 CORE/OPTIONAL documentation together.
+// TestCanonical_ContainsModelsInStableOrder pins the registry size and order.
+// Adding a model is a deliberate policy change: update this test and the
+// godlike/06 CORE/OPTIONAL documentation together.
 func TestCanonical_ContainsFiveModelsInStableOrder(t *testing.T) {
 	got := Canonical()
-	if len(got) != 5 {
-		t.Fatalf("Canonical() returned %d models, want 5 (E5, SigLIP, Reranker, CLAP, Whisper)", len(got))
+	if len(got) != 6 {
+		t.Fatalf("Canonical() returned %d models, want 6 (E5, SigLIP, Reranker, SegmentUnderstanding, CLAP, Whisper)", len(got))
 	}
 	wantOrder := []string{
 		"intfloat/multilingual-e5-base",
 		"google/siglip-so400m-patch14-384",
 		"BAAI/bge-reranker-v2-m3",
+		"gemma3:1b",
 		"laion/clap-htsat-fused",
 		"openai/whisper-large-v3-turbo",
 	}
@@ -57,8 +58,8 @@ func TestSigLIP_AnchoredToRegistryConstants(t *testing.T) {
 }
 
 // TestEnabled_CoreVsOptional pins the CORE/OPTIONAL split: E5 + SigLIP +
-// Reranker are the canonical production set; CLAP + Whisper are optional
-// (audio channel inactive in DefaultV3Schema, ASR upstream of indexing).
+// Reranker + segment understanding are the canonical production set; CLAP +
+// Whisper are optional (audio channel inactive in DefaultV3Schema, ASR upstream of indexing).
 func TestEnabled_CoreVsOptional(t *testing.T) {
 	for _, m := range []Model{E5, SigLIP, Reranker} {
 		if !m.Enabled {
@@ -79,6 +80,7 @@ func TestLicenses_Pinned(t *testing.T) {
 		"intfloat/multilingual-e5-base":    "MIT",
 		"google/siglip-so400m-patch14-384": "Apache-2.0",
 		"BAAI/bge-reranker-v2-m3":          "Apache-2.0",
+		"gemma3:1b":                        "unknown",
 		"laion/clap-htsat-fused":           "Apache-2.0",
 		"openai/whisper-large-v3-turbo":    "MIT",
 	}

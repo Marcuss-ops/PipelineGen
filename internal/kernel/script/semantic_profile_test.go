@@ -76,6 +76,38 @@ func TestSegmentSemanticProfile_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSegmentSemanticProfile_ValidateRejectsInvalidConfidence(t *testing.T) {
+	profile := SegmentSemanticProfile{
+		SegmentID: "segment-001",
+		TextHash:  "hash-1",
+		Keywords:  []WeightedKeyword{{Value: "tractor", Confidence: 1.1}},
+	}
+	if err := profile.Validate(); err == nil {
+		t.Fatal("expected invalid confidence error")
+	}
+
+	profile.Keywords[0].Confidence = 0.8
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("valid profile rejected: %v", err)
+	}
+}
+
+func TestSegmentSemanticProfile_CloneIsIndependent(t *testing.T) {
+	original := SegmentSemanticProfile{
+		SegmentID: "segment-001", TextHash: "hash-1",
+		Subtopics: []string{"farming"},
+		Keywords:  []WeightedKeyword{{Value: "tractor", Confidence: 0.9}},
+		Retrieval: &RetrievalIntent{YouTube: []string{"tractor history"}},
+	}
+	clone := original.Clone()
+	clone.Subtopics[0] = "changed"
+	clone.Keywords[0].Value = "other"
+	clone.Retrieval.YouTube[0] = "other query"
+	if original.Subtopics[0] != "farming" || original.Keywords[0].Value != "tractor" || original.Retrieval.YouTube[0] != "tractor history" {
+		t.Fatal("clone mutation changed original profile")
+	}
+}
+
 // TestSegmentSemanticProfile_EmptySectionsStayOmitted certifies the wire
 // contract stays compact: unset optional sections (retrieval, terms,
 // entities) are omitted rather than emitted as empty blocks.
@@ -179,6 +211,42 @@ func TestBuildSegmentSemanticProfile_EmptyResultNeverInventsEntities(t *testing.
 
 // TestTermKindConstantsAreCanonical certifies the closed set of TermKind
 // values: subject, context, visual, temporal, action, technology.
+func TestBuildSegmentSemanticProfile_PreservesTemporalEntitiesAndClassifiesTerms(t *testing.T) {
+	profile := BuildSegmentSemanticProfile(
+		CanonicalSegment{ID: "segment-003", TextHash: "hash-3", Text: "In 1892 John Froelich developed a gasoline tractor in Iowa."},
+		EntityResult{
+			Persons:  []Entity{{Value: "John Froelich", Type: "PERSON", Score: 0.98}},
+			Places:   []Entity{{Value: "Iowa", Type: "GPE", Score: 0.97}},
+			Concepts: []Entity{{Value: "1892", Type: "DATE", Score: 0.99}},
+			ImportantWords: []string{
+				"tractor", "agriculture", "plowing",
+			},
+			ArtlistPhrases: []string{"vintage tractor field"},
+		},
+		"gemma3:1b", "v1",
+	)
+
+	var kinds = map[string]TermKind{}
+	for _, term := range profile.Terms {
+		kinds[term.Value] = term.Kind
+	}
+	if kinds["1892"] != TermKindTemporal {
+		t.Fatalf("temporal entity kind = %q, want %q; terms=%#v", kinds["1892"], TermKindTemporal, profile.Terms)
+	}
+	if kinds["tractor"] != TermKindTechnology {
+		t.Fatalf("technology keyword kind = %q, want %q", kinds["tractor"], TermKindTechnology)
+	}
+	if kinds["agriculture"] != TermKindContext {
+		t.Fatalf("context keyword kind = %q, want %q", kinds["agriculture"], TermKindContext)
+	}
+	if kinds["plowing"] != TermKindAction {
+		t.Fatalf("action keyword kind = %q, want %q", kinds["plowing"], TermKindAction)
+	}
+	if kinds["vintage tractor field"] != TermKindVisual {
+		t.Fatalf("visual term kind = %q, want %q", kinds["vintage tractor field"], TermKindVisual)
+	}
+}
+
 func TestTermKindConstantsAreCanonical(t *testing.T) {
 	want := map[TermKind]bool{
 		TermKindSubject:    true,

@@ -195,8 +195,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		err          error
 	}
 
-	artlistEnabled := plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && f.artlist != nil && len(updated.Insights.ArtlistQueries) > 0
-	imagesEnabled := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && f.images != nil && len(updated.Insights.ImageQueries) > 0
+	profile := profileFromVidRushSegment(updated)
+	artlistEnabled := plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && f.artlist != nil && len(queriesOrProfile(updated.Insights.ArtlistQueries, profileArtlistQueries(profile))) > 0
+	imagesEnabled := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && f.images != nil && len(queriesOrProfile(updated.Insights.ImageQueries, profileImageQueries(profile))) > 0
 	youtubeEnabled := plan.MediaPlan.ProviderPolicy.YouTube.AsBool() && f.youtube != nil
 
 	outcomes := make(chan providerOutcome, 3)
@@ -209,12 +210,16 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	segmentID := updated.SegmentID
 	textHash := updated.TextHash
 	artlistIntentHash := updated.Insights.ArtlistIntentHash
-	artlistQueries := append([]string(nil), updated.Insights.ArtlistQueries...)
-	imageQueries := append([]string(nil), updated.Insights.ImageQueries...)
+	artlistQueries := queriesOrProfile(updated.Insights.ArtlistQueries, profileArtlistQueries(profile))
+	imageQueries := queriesOrProfile(updated.Insights.ImageQueries, profileImageQueries(profile))
 	youtubeSources := youtubeSourcesForSegment(plan, segmentID)
 	firstEntity := ""
-	if len(updated.Insights.Entities) > 0 {
-		firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
+	entities := updated.Insights.Entities
+	if len(entities) == 0 {
+		entities = profile.Entities
+	}
+	if len(entities) > 0 {
+		firstEntity = strings.TrimSpace(entities[0].Value)
 	}
 	artlistIdentity := scriptpkg.VidRushSegmentResult{SegmentID: segmentID}
 
@@ -535,6 +540,14 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	go func() { wg.Wait(); close(outcomes) }()
 
 	for outcome := range outcomes {
+		for i := range outcome.candidates {
+			if outcome.candidates[i].SemanticScore == 0 {
+				outcome.candidates[i].SemanticScore = profileSemanticMatch(outcome.candidates[i], profile)
+			}
+			if outcome.candidates[i].RelevanceScore == 0 {
+				outcome.candidates[i].RelevanceScore = outcome.candidates[i].SemanticScore
+			}
+		}
 		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
 		if outcome.provider == scriptpkg.VidRushProviderInternetImages {
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
@@ -550,6 +563,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		}
 		switch outcome.provider {
 		case scriptpkg.VidRushProviderArtlist:
+			if outcome.primary == nil {
+				outcome.primary = chooseVidRushPrimaryWithProfile(outcome.candidates, nil, profile)
+			}
 			updated.Assets.PrimaryVideo = outcome.primary
 			updated.Cache.Artlist = "MISS"
 			if plan.MediaPlan.ForceRefreshAssets {

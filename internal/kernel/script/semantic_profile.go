@@ -11,7 +11,11 @@
 //	VidRush chooses. The canonical asset pipeline persists.
 package script
 
-import "strings"
+import (
+	"fmt"
+	"math"
+	"strings"
+)
 
 // TermKind classifies the semantic function of a term extracted from a
 // segment. The kind keeps ENTITY ≠ KEYWORD ≠ VISUAL QUERY strictly
@@ -57,8 +61,9 @@ type SemanticTerm struct {
 }
 
 // RetrievalIntent groups the per-provider retrieval queries derived
-// deterministically from one segment profile. The small LLM produces
-// understanding; the query builders produce these provider-specific
+// deterministically from one segment profile. Each provider keeps its own
+// query language while sharing the same semantic understanding. The small
+// LLM produces understanding; the query builders produce these provider-specific
 // queries. YouTube leans on entities+keywords, Artlist on visual terms,
 // images on entity-first phrasing.
 type RetrievalIntent struct {
@@ -129,6 +134,80 @@ type SegmentSemanticProfile struct {
 	Retrieval *RetrievalIntent `json:"retrieval,omitempty"`
 }
 
+// Validate checks the profile's identity, confidence ranges and required
+// semantic values. It is intentionally side-effect free so callers can use
+// it at persistence and provider boundaries.
+func (p SegmentSemanticProfile) Validate() error {
+	if strings.TrimSpace(p.SegmentID) == "" {
+		return fmt.Errorf("segment semantic profile: segment_id is required")
+	}
+	if strings.TrimSpace(p.TextHash) == "" {
+		return fmt.Errorf("segment semantic profile: text_hash is required")
+	}
+	for i, keyword := range p.Keywords {
+		if err := validateWeightedKeyword(keyword, fmt.Sprintf("keywords[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, term := range p.VisualTerms {
+		if err := validateWeightedKeyword(term, fmt.Sprintf("visual_terms[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, term := range p.Terms {
+		if strings.TrimSpace(term.Value) == "" || term.Kind == "" {
+			return fmt.Errorf("segment semantic profile: terms[%d] requires value and kind", i)
+		}
+		if err := validateConfidence(term.Score, fmt.Sprintf("terms[%d].score", i)); err != nil {
+			return err
+		}
+	}
+	for i, entity := range p.Entities {
+		if strings.TrimSpace(entity.Value) == "" || strings.TrimSpace(entity.Type) == "" {
+			return fmt.Errorf("segment semantic profile: entities[%d] requires value and type", i)
+		}
+		if err := validateConfidence(entity.Confidence, fmt.Sprintf("entities[%d].confidence", i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateWeightedKeyword(keyword WeightedKeyword, field string) error {
+	if strings.TrimSpace(keyword.Value) == "" {
+		return fmt.Errorf("segment semantic profile: %s.value is required", field)
+	}
+	return validateConfidence(keyword.Confidence, field+".confidence")
+}
+
+func validateConfidence(value float64, field string) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fmt.Errorf("segment semantic profile: %s must be between 0 and 1", field)
+	}
+	return nil
+}
+
+// Clone returns an independent profile snapshot suitable for persistence or
+// cache storage. It prevents callers from mutating the canonical profile via
+// shared slices or the Retrieval pointer.
+func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
+	clone := p
+	clone.Subtopics = append([]string(nil), p.Subtopics...)
+	clone.Keywords = append([]WeightedKeyword(nil), p.Keywords...)
+	clone.VisualTerms = append([]WeightedKeyword(nil), p.VisualTerms...)
+	clone.Terms = append([]SemanticTerm(nil), p.Terms...)
+	clone.ImportantPhrases = append([]string(nil), p.ImportantPhrases...)
+	clone.Entities = append([]ExtractedEntity(nil), p.Entities...)
+	if p.Retrieval != nil {
+		intent := *p.Retrieval
+		intent.YouTube = append([]string(nil), p.Retrieval.YouTube...)
+		intent.Artlist = append([]string(nil), p.Retrieval.Artlist...)
+		intent.Images = append([]string(nil), p.Retrieval.Images...)
+		clone.Retrieval = &intent
+	}
+	return clone
+}
+
 // BuildSegmentSemanticProfile is the SINGLE canonical point where a typed
 // EntityResult extraction evolves into a SegmentSemanticProfile. No adapter
 // may map extraction fields into a profile with parallel logic: producers
@@ -155,6 +234,8 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 	profile.Entities = appendEntityGroup(profile.Entities, res.Concepts, "CONCEPT")
 	profile.Keywords = weightedTerms(res.ImportantWords)
 	profile.VisualTerms = weightedTerms(res.ArtlistPhrases)
+	profile.Topic, profile.Subtopics = deriveUnderstanding(profile, seg.Text)
+	profile.Terms = deriveSemanticTerms(profile)
 	return profile
 }
 
@@ -176,10 +257,68 @@ func appendEntityGroup(dst []ExtractedEntity, bucket []Entity, defaultKind strin
 	return dst
 }
 
-// weightedTerms converts an ordered list of extraction strings into a
-// weighted keyword stream. The extractor's order is the importance ranking,
-// so the first term carries the highest confidence (the same descending
-// formula the scene-annotation projection uses for important words).
+// deriveUnderstanding supplies deterministic, source-grounded understanding
+// fields when the legacy extraction surface has not yet carried explicit LLM
+// topic fields. It deliberately never invents entities or facts: the segment
+// text and extracted terms are the only inputs.
+func deriveUnderstanding(profile SegmentSemanticProfile, text string) (string, []string) {
+	if strings.TrimSpace(text) == "" {
+		return "", nil
+	}
+	topic := strings.TrimSpace(text)
+	if len(profile.ImportantPhrases) > 0 {
+		topic = strings.TrimSpace(profile.ImportantPhrases[0])
+	}
+	var subtopics []string
+	for _, term := range profile.Keywords {
+		if value := strings.TrimSpace(term.Value); value != "" && !strings.EqualFold(value, topic) {
+			subtopics = append(subtopics, value)
+		}
+		if len(subtopics) == 3 {
+			break
+		}
+	}
+	return topic, subtopics
+}
+
+func deriveSemanticTerms(profile SegmentSemanticProfile) []SemanticTerm {
+	terms := make([]SemanticTerm, 0, len(profile.Entities)+len(profile.Keywords)+len(profile.VisualTerms))
+	for _, entity := range profile.Entities {
+		kind := TermKindSubject
+		switch strings.ToUpper(strings.TrimSpace(entity.Type)) {
+		case "DATE", "TIME", "CARDINAL":
+			kind = TermKindTemporal
+		case "EVENT":
+			kind = TermKindContext
+		}
+		terms = append(terms, SemanticTerm{Value: entity.Value, Kind: kind, Score: entity.Confidence})
+	}
+	for _, keyword := range profile.Keywords {
+		terms = append(terms, SemanticTerm{Value: keyword.Value, Kind: classifyKeywordTerm(keyword.Value), Score: keyword.Confidence})
+	}
+	for _, visual := range profile.VisualTerms {
+		terms = append(terms, SemanticTerm{Value: visual.Value, Kind: TermKindVisual, Score: visual.Confidence})
+	}
+	if len(terms) == 0 {
+		return nil
+	}
+	return terms
+}
+
+func classifyKeywordTerm(value string) TermKind {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if strings.Contains(lower, "engine") || strings.Contains(lower, "motor") || strings.Contains(lower, "macchin") || strings.Contains(lower, "tractor") || strings.Contains(lower, "trattor") {
+		return TermKindTechnology
+	}
+	if strings.Contains(lower, "farm") || strings.Contains(lower, "agricol") || strings.Contains(lower, "agriculture") || strings.Contains(lower, "field") || strings.Contains(lower, "campo") {
+		return TermKindContext
+	}
+	if strings.Contains(lower, "plow") || strings.Contains(lower, "aratur") || strings.Contains(lower, "harvest") || strings.Contains(lower, "lavor") {
+		return TermKindAction
+	}
+	return TermKindSubject
+}
+
 func weightedTerms(values []string) []WeightedKeyword {
 	var cleaned []string
 	for _, value := range values {
