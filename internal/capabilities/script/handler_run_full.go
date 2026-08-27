@@ -129,28 +129,28 @@ type SceneView struct {
 // YouTubeSceneView exposes the per-segment YouTube source candidates and the
 // selected source timing/asset as a read-only projection of the GenerationRun.
 type YouTubeSceneView struct {
-	SourcesConsidered int                 `json:"sources_considered"`
-	Candidates        []YouTubeCandidate  `json:"candidates,omitempty"`
-	Selected          *YouTubeCandidate   `json:"selected,omitempty"`
+	SourcesConsidered int                `json:"sources_considered"`
+	Candidates        []YouTubeCandidate `json:"candidates,omitempty"`
+	Selected          *YouTubeCandidate  `json:"selected,omitempty"`
 }
 
 // YouTubeCandidate contains source provenance, ranking and canonical asset
 // identity for a YouTube candidate.
 type YouTubeCandidate struct {
-	SourceURL        string  `json:"source_url"`
-	YouTubeVideoID   string  `json:"youtube_video_id,omitempty"`
-	SourceStartMs    int64   `json:"source_start_ms,omitempty"`
-	SourceEndMs      int64   `json:"source_end_ms,omitempty"`
-	DurationMs       int64   `json:"duration_ms,omitempty"`
-	RelevanceScore   float64 `json:"relevance_score,omitempty"`
-	Score            float64 `json:"score,omitempty"`
-	AssetID          string  `json:"asset_id,omitempty"`
-	DriveLink        string  `json:"drive_link,omitempty"`
-	AcquisitionStatus string `json:"acquisition_status,omitempty"`
-	VerificationStatus string `json:"verification_status,omitempty"`
-	PersistenceStatus string `json:"persistence_status,omitempty"`
-	IndexStatus       string `json:"index_status,omitempty"`
-	SelectionReason   string `json:"selection_reason,omitempty"`
+	SourceURL          string  `json:"source_url"`
+	YouTubeVideoID     string  `json:"youtube_video_id,omitempty"`
+	SourceStartMs      int64   `json:"source_start_ms,omitempty"`
+	SourceEndMs        int64   `json:"source_end_ms,omitempty"`
+	DurationMs         int64   `json:"duration_ms,omitempty"`
+	RelevanceScore     float64 `json:"relevance_score,omitempty"`
+	Score              float64 `json:"score,omitempty"`
+	AssetID            string  `json:"asset_id,omitempty"`
+	DriveLink          string  `json:"drive_link,omitempty"`
+	AcquisitionStatus  string  `json:"acquisition_status,omitempty"`
+	VerificationStatus string  `json:"verification_status,omitempty"`
+	PersistenceStatus  string  `json:"persistence_status,omitempty"`
+	IndexStatus        string  `json:"index_status,omitempty"`
+	SelectionReason    string  `json:"selection_reason,omitempty"`
 }
 
 // VoiceoverView is the public wire representation of a voiceover.

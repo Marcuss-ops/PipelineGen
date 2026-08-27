@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -21,7 +23,7 @@ type OllamaEntityExtractorAdapter struct {
 	client *client.Client
 }
 
-const defaultEntityModel = "gemma3:1b"
+const segmentUnderstandingRole = models.RoleSegmentUnderstanding
 
 func NewOllamaEntityExtractorAdapter(c *client.Client) scriptadapters.EntityExtractor {
 	return &OllamaEntityExtractorAdapter{client: c}
@@ -228,10 +230,24 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntitiesBatch(ctx context.Context,
 }
 
 func selectedEntityModel() string {
+	// OLLAMA_ENTITY_MODEL remains the highest-precedence compatibility
+	// override for existing deployments and benchmarks. Without it, the
+	// model is resolved by responsibility from the canonical registry.
 	if model := strings.TrimSpace(os.Getenv("OLLAMA_ENTITY_MODEL")); model != "" {
 		return model
 	}
-	return defaultEntityModel
+	return modelForRole(segmentUnderstandingRole).ID
+}
+
+func modelForRole(role models.Role) models.Model {
+	for _, model := range models.Canonical() {
+		if model.Role == role {
+			return model
+		}
+	}
+	// The canonical registry always contains segment_understanding. Keep
+	// this fail-safe source-bound and visible if registry wiring drifts.
+	return models.SegmentUnderstanding
 }
 
 func entityResultFromAnalysis(result *detail.EntityExtractionResult) *script.EntityResult {

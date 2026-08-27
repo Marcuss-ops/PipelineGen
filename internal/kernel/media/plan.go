@@ -9,6 +9,7 @@ package media
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -269,14 +270,39 @@ func IsValidSegmentMediaSourceMode(mode SegmentMediaSourceMode) bool {
 
 // SegmentMediaSource is a caller-supplied source candidate associated with
 // one segment and slot. It deliberately does not represent a selected asset.
+// Exactly one of AssetID or SourceURL must be supplied.
 type SegmentMediaSource struct {
-	SegmentID string                   `json:"segment_id"`
-	Slot      SlotKind                 `json:"slot"`
-	Provider  string                   `json:"provider"`
-	SourceURL string                   `json:"source_url"`
-	Query     string                   `json:"query,omitempty"`
-	Priority  int                      `json:"priority,omitempty"`
-	Mode      SegmentMediaSourceMode   `json:"mode,omitempty"`
+	SegmentID string                 `json:"segment_id"`
+	Slot      SlotKind               `json:"slot"`
+	Provider  string                 `json:"provider"`
+	AssetID   string                 `json:"asset_id,omitempty"`
+	SourceURL string                 `json:"source_url,omitempty"`
+	Query     string                 `json:"query,omitempty"`
+	Priority  int                    `json:"priority,omitempty"`
+	Mode      SegmentMediaSourceMode `json:"mode,omitempty"`
+}
+
+// Validate enforces the source contract, including the XOR invariant between
+// an already-materialized AssetID and a remote/unmaterialized SourceURL.
+func (s SegmentMediaSource) Validate() error {
+	if strings.TrimSpace(s.SegmentID) == "" {
+		return fmt.Errorf("segment media source: segment_id is required")
+	}
+	if !s.Slot.IsValid() {
+		return fmt.Errorf("segment media source: invalid slot %q", s.Slot)
+	}
+	if strings.TrimSpace(s.Provider) == "" {
+		return fmt.Errorf("segment media source: provider is required")
+	}
+	assetID := strings.TrimSpace(s.AssetID)
+	sourceURL := strings.TrimSpace(s.SourceURL)
+	if (assetID == "") == (sourceURL == "") {
+		return fmt.Errorf("segment media source: exactly one of asset_id or source_url is required")
+	}
+	if !IsValidSegmentMediaSourceMode(s.Mode) {
+		return fmt.Errorf("segment media source: invalid mode %q", s.Mode)
+	}
+	return nil
 }
 
 // SegmentMediaAssignment binds a media asset to a specific segment

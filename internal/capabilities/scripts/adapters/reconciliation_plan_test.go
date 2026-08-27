@@ -133,7 +133,9 @@ func TestAssetLocationReconciliation_SecondImmediateReconcileIsZeroDiff(t *testi
 		AssetID: "clip-1", DriveFileID: "stable", DriveLink: link,
 		State: scriptpkg.LocationStateVerified,
 	})
-	type recording struct{ changes []scriptpkg.AssetLocationChange }
+	type recording struct {
+		changes []scriptpkg.AssetLocationChange
+	}
 	committer := &recordingAssetLocationCommitter{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 

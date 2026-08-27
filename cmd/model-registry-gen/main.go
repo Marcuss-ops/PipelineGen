@@ -30,11 +30,12 @@ const generatedPath = "scripts/services/model_registry_generated.py"
 // by the sidecar services. Kept stable so consumers don't churn when the
 // registry grows.
 var rolePrefix = map[models.Role]string{
-	models.RoleTextEmbedding:   "TEXT",
-	models.RoleVisualEmbedding: "VISUAL",
-	models.RoleAudioEmbedding:  "CLAP",
-	models.RoleReranker:        "RERANKER",
-	models.RoleTranscription:   "WHISPER",
+	models.RoleTextEmbedding:        "TEXT",
+	models.RoleVisualEmbedding:      "VISUAL",
+	models.RoleAudioEmbedding:       "CLAP",
+	models.RoleReranker:             "RERANKER",
+	models.RoleTranscription:        "WHISPER",
+	models.RoleSegmentUnderstanding: "SEGMENT_UNDERSTANDING",
 }
 
 func pythonBool(b bool) string {

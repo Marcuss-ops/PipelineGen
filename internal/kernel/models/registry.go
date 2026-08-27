@@ -39,6 +39,9 @@ const (
 	// RoleTranscription marks ASR models producing text transcripts
 	// (Whisper) — upstream of indexing, never directly into Qdrant.
 	RoleTranscription Role = "transcription"
+	// RoleSegmentUnderstanding marks small language models used to
+	// understand script segments and produce retrieval-safe semantics.
+	RoleSegmentUnderstanding Role = "segment_understanding"
 )
 
 // Model is one canonical model identity.
@@ -139,6 +142,16 @@ var (
 		Enabled:    false,
 	}
 
+	// SegmentUnderstanding is the canonical small-LLM role for one-call
+	// segment semantics (topic, keywords, visual concepts and phrases).
+	// The runtime may override this identity explicitly for benchmarking.
+	SegmentUnderstanding = Model{
+		ID:      "gemma3:1b",
+		License: "unknown",
+		Role:    RoleSegmentUnderstanding,
+		Enabled: true,
+	}
+
 	// Whisper is the canonical ASR model (OPTIONAL, upstream of indexing:
 	// video → audio → Whisper → transcript → E5 → Qdrant). It is MIT-
 	// licensed, accelerates/prunes Whisper large-v3, and covers 99
@@ -158,7 +171,7 @@ var (
 )
 
 // canonicalOrder is the stable registry order (declaration order).
-var canonicalOrder = [...]Model{E5, SigLIP, Reranker, CLAP, Whisper}
+var canonicalOrder = [...]Model{E5, SigLIP, Reranker, SegmentUnderstanding, CLAP, Whisper}
 
 // Canonical returns the full registry in stable order.
 func Canonical() []Model {

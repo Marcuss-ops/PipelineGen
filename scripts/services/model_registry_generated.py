@@ -34,6 +34,15 @@ MODEL_REGISTRY = {
         "languages": 0,
         "enabled": True,
     },
+    "gemma3:1b": {
+        "revision": "",
+        "checksum": "",
+        "dimensions": 0,
+        "license": "unknown",
+        "role": "segment_understanding",
+        "languages": 0,
+        "enabled": True,
+    },
     "laion/clap-htsat-fused": {
         "revision": "2026-06-26-v1",
         "checksum": "",
@@ -64,6 +73,9 @@ VISUAL_MODEL_DIMENSIONS = 768
 
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 RERANKER_MODEL_VERSION = ""
+
+SEGMENT_UNDERSTANDING_MODEL_NAME = "gemma3:1b"
+SEGMENT_UNDERSTANDING_MODEL_VERSION = ""
 
 CLAP_MODEL_NAME = "laion/clap-htsat-fused"
 CLAP_MODEL_VERSION = "2026-06-26-v1"

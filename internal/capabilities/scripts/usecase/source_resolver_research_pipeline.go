@@ -35,17 +35,29 @@ func buildResearchPlan(src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResoluti
 		topic = strings.TrimSpace(src.Query)
 	}
 	policy := src.Research
-	if policy.MaxQueries <= 0 { policy.MaxQueries = researchDefaultMaxQueries }
-	if policy.MaxPages <= 0 { policy.MaxPages = researchDefaultMaxPages }
-	if policy.MinSources <= 0 { policy.MinSources = researchDefaultMinSources }
-	if policy.MinFullPageSources <= 0 && policy.MinSources >= 3 { policy.MinFullPageSources = 1 }
-	if policy.MinEvidenceScore <= 0 { policy.MinEvidenceScore = float64(policy.MinSources) * 0.7 }
+	if policy.MaxQueries <= 0 {
+		policy.MaxQueries = researchDefaultMaxQueries
+	}
+	if policy.MaxPages <= 0 {
+		policy.MaxPages = researchDefaultMaxPages
+	}
+	if policy.MinSources <= 0 {
+		policy.MinSources = researchDefaultMinSources
+	}
+	if policy.MinFullPageSources <= 0 && policy.MinSources >= 3 {
+		policy.MinFullPageSources = 1
+	}
+	if policy.MinEvidenceScore <= 0 {
+		policy.MinEvidenceScore = float64(policy.MinSources) * 0.7
+	}
 	language := resCtx.Language
-	if language == "" { language = "it" }
+	if language == "" {
+		language = "it"
+	}
 	metric := resolveRankingMetric(src, topic)
 	return ResearchPlan{
 		Topic: topic, Language: language,
-		Queries: researchQueries(topic, src.Query, maxResearchQueries(policy.MaxQueries), metric),
+		Queries:  researchQueries(topic, src.Query, maxResearchQueries(policy.MaxQueries), metric),
 		MaxPages: policy.MaxPages, MinSources: policy.MinSources,
 		MinFullPage: policy.MinFullPageSources, MinEvidenceScore: policy.MinEvidenceScore,
 		SearchEnabled: src.Search, CacheMode: normalizeCacheMode(src.CachePolicy.Mode),
@@ -54,7 +66,9 @@ func buildResearchPlan(src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResoluti
 }
 
 func maxResearchQueries(value int) int {
-	if value <= 0 { return researchDefaultMaxQueries }
+	if value <= 0 {
+		return researchDefaultMaxQueries
+	}
 	return value
 }
 
@@ -73,8 +87,12 @@ func deduplicateResearchEvidence(in []ResearchEvidence) []ResearchEvidence {
 	seenURLs := make(map[string]struct{}, len(in))
 	for _, item := range in {
 		key := strings.ToLower(strings.TrimSpace(item.Source.URL))
-		if key == "" { continue }
-		if _, exists := seenURLs[key]; exists { continue }
+		if key == "" {
+			continue
+		}
+		if _, exists := seenURLs[key]; exists {
+			continue
+		}
 		seenURLs[key] = struct{}{}
 		out = append(out, item)
 	}
@@ -100,8 +118,14 @@ func applyResearchGroundingPolicy(plan ResearchPlan, evidence []ResearchEvidence
 	fullPages := 0
 	score := 0.0
 	for _, item := range selected {
-		if item.Source.AccessMode == scriptpkg.EvidenceAccessFullPage { fullPages++ }
-		if item.Source.AccessMode == scriptpkg.EvidenceAccessSnippet { score += 0.55 } else { score += 1 }
+		if item.Source.AccessMode == scriptpkg.EvidenceAccessFullPage {
+			fullPages++
+		}
+		if item.Source.AccessMode == scriptpkg.EvidenceAccessSnippet {
+			score += 0.55
+		} else {
+			score += 1
+		}
 	}
 	if fullPages < plan.MinFullPage || score < plan.MinEvidenceScore {
 		return nil, ErrResearchInsufficientSources

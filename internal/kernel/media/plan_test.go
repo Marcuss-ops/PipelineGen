@@ -41,6 +41,39 @@ func TestMediaPlanSourcesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSegmentMediaSourceValidateAcceptsAssetIDOrSourceURL(t *testing.T) {
+	base := SegmentMediaSource{SegmentID: "segment-001", Slot: SlotPrimaryVideo, Provider: "youtube", Mode: SegmentMediaSourceModeSuggested}
+	for _, source := range []SegmentMediaSource{
+		{SegmentID: base.SegmentID, Slot: base.Slot, Provider: base.Provider, AssetID: "yt-stock-001", Mode: base.Mode},
+		{SegmentID: base.SegmentID, Slot: base.Slot, Provider: base.Provider, SourceURL: "https://youtube.com/watch?v=AAA", Mode: base.Mode},
+	} {
+		if err := source.Validate(); err != nil {
+			t.Fatalf("valid source rejected: %v", err)
+		}
+	}
+}
+
+func TestSegmentMediaSourceValidateRejectsMissingOrConflictingReferences(t *testing.T) {
+	base := SegmentMediaSource{SegmentID: "segment-001", Slot: SlotPrimaryVideo, Provider: "youtube"}
+	for name, source := range map[string]SegmentMediaSource{
+		"missing references": base,
+		"both references":    {SegmentID: base.SegmentID, Slot: base.Slot, Provider: base.Provider, AssetID: "asset-1", SourceURL: "https://example.com/video"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := source.Validate(); err == nil {
+				t.Fatal("expected source validation error")
+			}
+		})
+	}
+}
+
+func TestSegmentMediaSourceValidateRejectsMissingIdentity(t *testing.T) {
+	source := SegmentMediaSource{AssetID: "asset-1", Provider: "youtube", Slot: SlotPrimaryVideo}
+	if err := source.Validate(); err == nil {
+		t.Fatal("expected missing segment ID error")
+	}
+}
+
 func TestSegmentMediaSourceModeValidation(t *testing.T) {
 	for _, mode := range []SegmentMediaSourceMode{"", SegmentMediaSourceModeSuggested, SegmentMediaSourceModeRequired} {
 		if !IsValidSegmentMediaSourceMode(mode) {

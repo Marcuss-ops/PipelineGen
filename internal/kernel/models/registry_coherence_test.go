@@ -23,39 +23,44 @@ func repositoryRoot(t *testing.T) string {
 
 func TestRegistryEntriesHaveCanonicalMetadata(t *testing.T) {
 	wantRevisions := map[string]string{
-		models.E5.ID:       models.CanonicalTextModelRevision,
-		models.SigLIP.ID:   models.CanonicalVisualModelRevision,
-		models.Reranker.ID: "",
-		models.CLAP.ID:     "2026-06-26-v1",
-		models.Whisper.ID:  "",
+		models.E5.ID:                   models.CanonicalTextModelRevision,
+		models.SigLIP.ID:               models.CanonicalVisualModelRevision,
+		models.Reranker.ID:             "",
+		models.SegmentUnderstanding.ID: "",
+		models.CLAP.ID:                 "2026-06-26-v1",
+		models.Whisper.ID:              "",
 	}
 	wantLicenses := map[string]string{
-		models.E5.ID:       "MIT",
-		models.SigLIP.ID:   "Apache-2.0",
-		models.Reranker.ID: "Apache-2.0",
-		models.CLAP.ID:     "Apache-2.0",
-		models.Whisper.ID:  "MIT",
+		models.E5.ID:                   "MIT",
+		models.SigLIP.ID:               "Apache-2.0",
+		models.Reranker.ID:             "Apache-2.0",
+		models.SegmentUnderstanding.ID: "unknown",
+		models.CLAP.ID:                 "Apache-2.0",
+		models.Whisper.ID:              "MIT",
 	}
 	wantDimensions := map[string]int{
-		models.E5.ID:       768,
-		models.SigLIP.ID:   768,
-		models.Reranker.ID: 0,
-		models.CLAP.ID:     512,
-		models.Whisper.ID:  0,
+		models.E5.ID:                   768,
+		models.SigLIP.ID:               768,
+		models.Reranker.ID:             0,
+		models.SegmentUnderstanding.ID: 0,
+		models.CLAP.ID:                 512,
+		models.Whisper.ID:              0,
 	}
 	wantRoles := map[string]models.Role{
-		models.E5.ID:       models.RoleTextEmbedding,
-		models.SigLIP.ID:   models.RoleVisualEmbedding,
-		models.Reranker.ID: models.RoleReranker,
-		models.CLAP.ID:     models.RoleAudioEmbedding,
-		models.Whisper.ID:  models.RoleTranscription,
+		models.E5.ID:                   models.RoleTextEmbedding,
+		models.SigLIP.ID:               models.RoleVisualEmbedding,
+		models.Reranker.ID:             models.RoleReranker,
+		models.SegmentUnderstanding.ID: models.RoleSegmentUnderstanding,
+		models.CLAP.ID:                 models.RoleAudioEmbedding,
+		models.Whisper.ID:              models.RoleTranscription,
 	}
 	wantLanguages := map[string]int{
-		models.E5.ID:       0,
-		models.SigLIP.ID:   0,
-		models.Reranker.ID: 0,
-		models.CLAP.ID:     0,
-		models.Whisper.ID:  99, // ASR capability fact: 99 languages
+		models.E5.ID:                   0,
+		models.SigLIP.ID:               0,
+		models.Reranker.ID:             0,
+		models.SegmentUnderstanding.ID: 0,
+		models.CLAP.ID:                 0,
+		models.Whisper.ID:              99, // ASR capability fact: 99 languages
 	}
 
 	seen := make(map[string]struct{}, len(models.Canonical()))
