@@ -3,6 +3,8 @@ package audio
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 )
 
 // Compile builds the complete primary-event audio plan from the
@@ -17,7 +19,7 @@ func Compile(t CanonicalTimeline, profile CanonicalAudioProfile) (CompiledAudioP
 // the voiceover at unity and ducks the original clip audio underneath it with
 // a static gain plus dynamic ducking automation. The chosen policy is recorded
 // on the plan so the mixer and renderer consume the same decision.
-func CompileWithMixPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, policy AudioMixPolicy) (CompiledAudioPlan, error) {
+func CompileWithMixPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, policy audio.AudioMixPolicy) (CompiledAudioPlan, error) {
 	return compilePlan(t, profile, nil, nil, nil, policy)
 }
 
@@ -33,11 +35,11 @@ func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, 
 // editorial mix policy (VOICEOVER_ONLY / VOICEOVER_DUCKED_CLIP), recorded
 // on the plan so the mixer and renderer consume the same decision. An
 // empty policy preserves the legacy full-volume overlap behaviour.
-func CompileWithLayersAndPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy AudioMixPolicy) (CompiledAudioPlan, error) {
+func CompileWithLayersAndPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy audio.AudioMixPolicy) (CompiledAudioPlan, error) {
 	return compilePlan(t, profile, bgm, sfx, automation, policy)
 }
 
-func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy AudioMixPolicy) (CompiledAudioPlan, error) {
+func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy audio.AudioMixPolicy) (CompiledAudioPlan, error) {
 	if err := t.Validate(); err != nil {
 		return CompiledAudioPlan{}, err
 	}
@@ -85,11 +87,11 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 	// every producer (including translated runs) reaches the same master mix.
 	for i, layer := range bgm {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackBGM, "bgm")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: BackgroundMusicGainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: audio.BackgroundMusicGainDB})
 	}
 	for i, layer := range sfx {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: SoundEffectGainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: audio.SoundEffectGainDB})
 	}
 	applyMixPolicy(&p)
 	if err := p.Seal(); err != nil {
@@ -103,9 +105,9 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 // it can see whether a voiceover is actually present before ducking the clip.
 func applyMixPolicy(p *CompiledAudioPlan) {
 	switch p.MixPolicy {
-	case MixVoiceoverOnly:
+	case audio.MixVoiceoverOnly:
 		removeTrack(&p.Tracks, TrackClipAudio)
-	case MixVoiceoverWithDuckedClip:
+	case audio.MixVoiceoverWithDuckedClip:
 		if findTrack(p.Tracks, TrackVoiceover) == nil {
 			return // nothing to duck under
 		}
@@ -115,7 +117,7 @@ func applyMixPolicy(p *CompiledAudioPlan) {
 		}
 		for i := range clip.Events {
 			if clip.Events[i].GainDB == 0 {
-				clip.Events[i].GainDB = DuckClipBaseGainDB
+				clip.Events[i].GainDB = audio.DuckClipBaseGainDB
 			}
 		}
 		p.Automation = append(p.Automation, clipDuckingAutomation(p.Tracks)...)
@@ -163,9 +165,9 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 				TriggerTrackID: voTrackID,
 				StartUS:        start,
 				EndUS:          end,
-				GainDB:         DuckClipActiveGainDB,
-				AttackUS:       DuckAttackUS,
-				ReleaseUS:      DuckReleaseUS,
+				GainDB:         audio.DuckClipActiveGainDB,
+				AttackUS:       audio.DuckAttackUS,
+				ReleaseUS:      audio.DuckReleaseUS,
 			})
 		}
 	}

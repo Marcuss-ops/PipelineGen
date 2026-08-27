@@ -1,0 +1,74 @@
+
+--- REQ: 57 chiamate ---
+  cmd/admin/regen-current-yaml/main.go:52
+      `got, err := os.ReadFile(path)`
+  cmd/admin/regen-current-yaml/main.go:66
+      `if err := os.WriteFile(path, data, 0o644); err != nil {`
+  cmd/admin/reconcile/reconcile_qdrant.go:236
+      `_ = os.WriteFile(deps.ReportPath, b, 0o644)`
+  cmd/admin/internal/drive/remove_drive_folder_recursive.go:382
+      `if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {`
+  cmd/admin/internal/drive/index_drive_clip.go:132
+      `out, err := os.Create(localPath)`
+  cmd/admin/internal/drive/manifest.go:113
+      `raw, err := os.ReadFile(path)`
+  cmd/admin/internal/drive/upload_drive_file.go:37
+      `if _, err := os.Stat(*input); err != nil {`
+  cmd/admin/internal/cli/helpers.go:75
+      `f, err := os.Open(path)`
+  cmd/admin/internal/rendering/multilingual_render.go:106
+      `if st, statErr := os.Stat(sourcePath); statErr == nil {`
+  cmd/admin/internal/rendering/benchmark.go:87
+      `f, err := os.Open(path)`
+  cmd/admin/internal/rendering/benchmark.go:133
+      `f, err := os.Create(path)`
+  cmd/admin/internal/rendering/multilingual_render_command.go:269
+      `out, err := os.Create(path)`
+  cmd/admin/internal/rendering/render_short.go:29
+      `data, err := os.ReadFile(*manifestPath)`
+  cmd/admin/internal/rendering/summarize_book.go:111
+      `out, err := os.Create(targetFilePath)`
+
+--- TICK: 6 chiamate ---
+  internal/app/workerruntime/preflight.go:43
+      `gpuErr = exec.Command("nvidia-smi", "-L").Run()`
+  internal/app/workerruntime/preflight.go:132
+      `// time.Sleep(preflightInterval) exactly. The ctx deadline`
+  internal/platform/process/runner.go:235
+      `if _, err := os.Stat(pythonPath); err != nil {`
+  internal/platform/process/runner.go:298
+      `fi, err := os.Stat(name)`
+  internal/platform/process/runner.go:302
+      `f, err := os.Open(name)`
+  scripts/archcheck/runner.go:153
+      `if _, err := os.Stat(bl.File); os.IsNotExist(err) {`
+
+--- INFO: 446 chiamate ---
+  tools/golden06/main.go:83
+      `if err := os.WriteFile(*outPath, append(raw, '\n'), 0o644); err != nil {`
+  tests/operational/voiceover_probes.go:114
+      `cmd := exec.Command(h.sqliteBin, "-separator", "|", h.dbPath, query)`
+  tests/operational/voiceover_report.go:134
+      `if err := os.WriteFile(h.reportPath, data, 0o600); err != nil {`
+  tests/operational/voiceover_harness.go:341
+      `data, err := os.ReadFile(path)`
+  cmd/archcheck/debt_budget.go:40
+      `currentData, err := os.ReadFile(catalogPath)`
+  cmd/archcheck/debt_budget.go:47
+      `if parent, err := exec.Command("git", "-C", root, "show", "HEAD^:architecture/issues.yaml").Out`
+  cmd/archcheck/debt_budget.go:90
+      `file, err := os.Open(path)`
+  cmd/archcheck/debt_budget.go:173
+      `if exec.Command("git", "-C", root, "cat-file", "-e", sha+"^{commit}").Run() == nil {`
+  cmd/archcheck/debt_budget.go:180
+      `if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Size() > 0 {`
+  cmd/archcheck/debt_budget.go:188
+      `out, err := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD^", "HEAD").Output()`
+  cmd/archcheck/policy/load.go:64
+      `f, err := os.Open(path)`
+  cmd/archcheck/scan/governance/percheck_slot_strings_ban.go:122
+      `f, err := os.Open(path)`
+  cmd/archcheck/scan/governance/percheck_digest_sha256_ban.go:154
+      `if _, err := os.Stat(allowlistPath); err != nil {`
+  cmd/archcheck/scan/governance/percheck_digest_sha256_ban.go:276
+      `f, err := os.Open(path)`

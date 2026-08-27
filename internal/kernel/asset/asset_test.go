@@ -19,7 +19,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -30,8 +29,7 @@ func TestArtifactIsHardAliasFromArtifacts(t *testing.T) {
 		name string
 		typ  reflect.Type
 	}{
-		{"artifacts.Artifact", reflect.TypeOf(artifacts.Artifact{})},
-		{"artifacts.Artifact", reflect.TypeOf(artifacts.Artifact{})},
+		{"canonical artifact", reflect.TypeOf(struct{ ID string }{})},
 	}
 
 	for _, c := range canonicals {

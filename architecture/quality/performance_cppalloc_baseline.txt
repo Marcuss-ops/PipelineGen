@@ -1,0 +1,47 @@
+### C++ alloc-in-loop (solo hot dirs): {'ctor': 61, 'mkshared': 14}
+  [ctor] x8   src/render_graph/preflight/analysis_diagnostics.cpp:209 nest=2
+             `std::string reason = "Input node '" + parent_rec.name + "' is dirty";`
+  [mkshared] x5   src/render_graph/pipeline/scene_refresh.cpp:284 nest=1
+             `auto prepared = std::make_unique<SourceNode>(*source_node);`
+  [ctor] x4   src/render_graph/compiler/frame_graph_builder.cpp:354 nest=2
+             `std::vector<uint64_t> input_sids;`
+  [ctor] x4   src/text/timed_text_adapter_vtt.cpp:245 nest=2
+             `std::string raw;`
+  [mkshared] x4   src/render_graph/pipeline/composition.cpp:331 nest=1
+             `auto sample_cache = std::make_unique<cache::NodeCache>();`
+  [ctor] x3   src/render_graph/pipeline/scene_refresh.cpp:335 nest=2
+             `const std::string layer_name_str(rl->layer->name);`
+  [ctor] x3   src/runtime/telemetry/sqlite/sqlite_telemetry_store_schema.cpp:163 nest=2
+             `std::string alter_sql = "ALTER TABLE " + std::string(table_def.name)`
+  [ctor] x3   src/text/timed_text_adapter_ass.cpp:150 nest=2
+             `const std::string section = close == std::string_view::npos`
+  [mkshared] x3   src/render_graph/builder/graph_builder_layer_pipeline.cpp:44 nest=1
+             `auto source = graph.add_node(std::make_unique<SourceNode>(`
+  [ctor] x2   src/backends/software/rasterizers/path/path_stroke.cpp:225 nest=2
+             `const std::vector<Vec2> sub_points = std::move(sub_pts);`
+  [ctor] x2   src/render_graph/preflight/analysis.cpp:78 nest=1
+             `std::string color = "white";`
+  [ctor] x2   src/render_graph/preflight/analysis_graph.cpp:156 nest=1
+             `std::string mem_warn = "HIGH_MEMORY_PRESSURE: Node '" + rec.name + "' has a predicted memory fo`
+  [ctor] x2   src/text/resolver/font_fallback_resolver.cpp:82 nest=1
+             `std::string family, style;`
+  [ctor] x1   src/render_graph/builder/passes/graph_builder_layer_pipeline_pass.cpp:199 nest=1
+             `const std::string layer_name(layer.name);`
+  [ctor] x1   src/render_graph/nodes/transform_node.cpp:472 nest=1
+             `std::string line = "";`
+  [ctor] x1   src/render_graph/pipeline/pool_preallocation.cpp:24 nest=1
+             `std::unordered_map<cache::FramebufferPoolKey, size_t, cache::FramebufferPoolKeyHash> level_coun`
+  [ctor] x1   src/render_graph/render_graph.cpp:137 nest=1
+             `std::string color = "white";`
+  [ctor] x1   src/render_plan/render_plan_compiler.cpp:304 nest=1
+             `const std::string raw(`
+  [ctor] x1   src/render_plan/render_plan_validator.cpp:28 nest=1
+             `std::string decoded;`
+  [ctor] x1   src/text/timed_text_adapter_json.cpp:348 nest=3
+             `std::string word_str = cue.text.substr(start, i - start);`
+  [ctor] x1   src/text/timed_text_adapter_srt.cpp:117 nest=1
+             `std::string cue_text;`
+  [mkshared] x1   src/render_graph/builder/passes/graph_builder_layer_pipeline_pass.cpp:252 nest=1
+             `std::make_unique<ClipTransitionNode>(`
+  [mkshared] x1   src/render_graph/builder/passes/graph_builder_lighting_passes.cpp:107 nest=1
+             `std::make_unique<CompositeNode>(graph.next_composite_id(), BlendMode::Normal), node_ctx);`

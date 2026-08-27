@@ -1,0 +1,35 @@
+### C++ TOP-22 ciclomatica:
+  cc=111  cog=245   loc=357   nest=6  ch=3        include/chronon3d/backends/text/text_layout_inline.hpp:36 layout_inline_runs
+  cc=100  cog=207   loc=303   nest=7  ch=25  *HT* src/render_graph/compiler/frame_graph_builder.cpp:591 build_compiled_frame_program
+  cc=85   cog=208   loc=157   nest=6  ch=4   *HT* src/text/timed_text_adapter_vtt.cpp:83 timed_text_from_vtt
+  cc=78   cog=218   loc=283   nest=6  ch=8        src/backends/text/text_material.cpp:72 apply_text_material
+  cc=76   cog=153   loc=288   nest=6  ch=6        include/chronon3d/backends/text/text_layout_single.hpp:147 layout_single_run
+  cc=75   cog=345   loc=165   nest=11 ch=3   *HT* src/text/timed_text_adapter_json.cpp:185 timed_text_from_json
+  cc=67   cog=91    loc=234   nest=2  ch=30  *HT* apps/chronon3d_cli/utils/video/native_av_encoder.cpp:57 open
+  cc=64   cog=166   loc=428   nest=7  ch=33       apps/chronon3d_cli/commands/video/common/pipe_export_session.cpp:20 run_render_loop
+  cc=60   cog=145   loc=200   nest=7  ch=7        src/backends/software/utils/blend2d_bridge_transforms_fb.cpp:33 composite_framebuffer_transformed
+  cc=59   cog=97    loc=136   nest=5  ch=17       src/backends/software/software_compositor.cpp:16 composite_layer
+  cc=58   cog=109   loc=264   nest=4  ch=14       tools/cuda_nvdec_nvenc_overlay_bench.cpp:760 main
+  cc=55   cog=58    loc=194   nest=3  ch=25       src/backends/assets/image_renderer.cpp:223 draw_image
+  cc=52   cog=98    loc=130   nest=3  ch=2        apps/chronon3d_cli/commands/render/command_inspect_plan.cpp:153 inspection_to_text
+  cc=50   cog=107   loc=123   nest=4  ch=5        include/chronon3d/compositor/blend_mode.hpp:31 blend
+  cc=50   cog=86    loc=123   nest=3  ch=1        tools/trace_gates/trace_correctness_check.cpp:49 inspect_trace
+  cc=42   cog=105   loc=95    nest=6  ch=3        src/backends/software/utils/blend2d_bridge_transforms.cpp:18 composite_bl_image_transformed
+  cc=42   cog=63    loc=193   nest=3  ch=2        tools/trace_gates/trace_sql_report.cpp:274 main
+  cc=40   cog=70    loc=54    nest=4  ch=11       src/media/video/native_video_frame_decoder.cpp:191 decode_frame_internal
+  cc=39   cog=89    loc=123   nest=4  ch=10       src/backends/software/utils/blend2d_bridge_core.cpp:226 composite_framebuffer
+  cc=38   cog=72    loc=198   nest=4  ch=18  *HT* src/render_graph/builder/passes/graph_builder_layer_pipeline_pass.cpp:31 run
+  cc=38   cog=71    loc=89    nest=3  ch=1   *HT* src/text/timed_text_adapter_ass.cpp:113 timed_text_from_ass
+  cc=38   cog=46    loc=199   nest=3  ch=1        apps/chronon3d_bench/cmd/command_bench.cpp:243 command_bench
+
+### C++ TOP cognitiva (non gia elencate):
+  cog=92    cc=30   loc=58    nest=7  *HT* src/render_graph/optimizer/graph_optimizer.cpp:223 prune_branches
+  cog=79    cc=27   loc=149   nest=7       src/media/frame_conversion/backends/packed_backend.cpp:99 convert_frame_fallback
+  cog=72    cc=36   loc=127   nest=3       apps/chronon3d_cli/commands/render/command_inspect_plan.cpp:19 inspection_to_json
+  cog=70    cc=31   loc=174   nest=3       apps/chronon3d_cli/commands/telemetry/command_telemetry_summary.cpp:12 query_run_summary
+  cog=68    cc=33   loc=70    nest=3  *HT* src/text/animation/text_animator_compile.cpp:149 is_valid
+  cog=68    cc=24   loc=83    nest=5       src/backends/software/utils/blend2d_bridge_core.cpp:124 composite_bl_image
+  cog=66    cc=18   loc=73    nest=7  *HT* src/render_graph/builder/passes/graph_builder_output_pass.cpp:83 run
+  cog=63    cc=32   loc=71    nest=4       src/backends/software/rasterizers/shape_rasterizer.cpp:100 hit_test
+  cog=58    cc=25   loc=95    nest=7       include/chronon3d/backends/text/text_unicode_utils.hpp:468 grapheme_byte_offset_at
+  cog=57    cc=28   loc=152   nest=4       apps/chronon3d_cli/commands/video/common/pipe_export_writer.cpp:15 run_writer_thread

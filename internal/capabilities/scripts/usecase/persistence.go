@@ -32,6 +32,19 @@ func buildGenerationResult(
 	return buildGenerationResultWithCache(item, plan, engineResult, postResult, nil, context.Background())
 }
 
+type generationCacheDecision struct {
+	Status string
+	Hit    bool
+}
+
+func decideGenerationCache(status string) generationCacheDecision {
+	return generationCacheDecision{Status: status, Hit: status == "exact_hit"}
+}
+
+func lookupGenerationCache(decision generationCacheDecision) bool {
+	return decision.Hit
+}
+
 func buildGenerationResultWithCache(
 	item scriptpkg.GenerationItemV2,
 	plan scriptpkg.ResolvedGenerationPlan,
@@ -40,7 +53,8 @@ func buildGenerationResultWithCache(
 	cache scriptports.VidRushCachePort,
 	ctx context.Context,
 ) *scriptpkg.GenerationResult {
-	cacheHit := engineResult.CacheStatus == "exact_hit"
+	cacheDecision := decideGenerationCache(engineResult.CacheStatus)
+	cacheHit := lookupGenerationCache(cacheDecision)
 
 	// PR 5: ScriptID is sourced from postResult.ScriptID (set by
 	// PersistenceProcessor), NOT from engineResult.ScriptID (which
@@ -285,6 +299,12 @@ func buildGenerationResultWithCache(
 	}
 
 	result.Source = sourceTrace
+	return projectGenerationResult(result, postResult, plan, cacheHit)
+}
+
+// projectGenerationResult performs the final cache/result projection after
+// all canonical fields and postprocessor artifacts have been assembled.
+func projectGenerationResult(result *scriptpkg.GenerationResult, _ *adapters.PipelineResult, _ scriptpkg.ResolvedGenerationPlan, _ bool) *scriptpkg.GenerationResult {
 	return result
 }
 

@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -247,5 +248,126 @@ func TestWriteDeletionPlan_PersistsManifest(t *testing.T) {
 	if got.AssetsRaw-got.AssetsUnique != got.Duplicates {
 		t.Errorf("duplicates must equal raw - unique; got %d - %d = %d (want %d)",
 			got.AssetsRaw, got.AssetsUnique, got.AssetsRaw-got.AssetsUnique, got.Duplicates)
+	}
+}
+
+// stubDriveReader is a minimal drive.Reader for unit tests. It embeds the
+// full port interface and overrides only ListFiles, so the recursive folder
+// scanner (collectAllSubfolders) can be exercised without provisioning all
+// of Reader's read methods. Any unoverridden method would panic if called;
+// collectAllSubfolders only ever calls ListFiles.
+func stubDriveReaderFixture(childrenByParent map[string][]drive.DriveFileInfo) *stubDriveReader {
+	return &stubDriveReader{childrenByParent: childrenByParent}
+}
+
+type stubDriveReader struct {
+	drive.Reader
+	childrenByParent map[string][]drive.DriveFileInfo
+}
+
+func (s *stubDriveReader) ListFiles(_ context.Context, parentID string) ([]drive.DriveFileInfo, error) {
+	children, ok := s.childrenByParent[parentID]
+	if !ok {
+		return nil, nil
+	}
+	return children, nil
+}
+
+func driveFolder(id, name string) drive.DriveFileInfo {
+	return drive.DriveFileInfo{ID: id, Name: name, MimeType: "application/vnd.google-apps.folder"}
+}
+
+func driveFile(id, name string) drive.DriveFileInfo {
+	return drive.DriveFileInfo{ID: id, Name: name, MimeType: "video/quicktime"}
+}
+
+// TestCollectAllSubfolders_NeverIncludesRoot pins the root-protection
+// invariant: the recursive scan must collect ONLY descendants and must
+// NEVER return the root folder itself (the caller owns whether the root is
+// destroyed, gated by an explicit --delete-root intent). Non-folder child
+// files must be ignored entirely.
+func TestCollectAllSubfolders_NeverIncludesRoot(t *testing.T) {
+	ctx := context.Background()
+	root := "root-1"
+	reader := stubDriveReaderFixture(map[string][]drive.DriveFileInfo{
+		root: {
+			driveFolder("folder-A", "A"),
+			driveFile("file-1", "clip.mov"), // files are never folders
+		},
+		"folder-A": {
+			driveFolder("folder-B", "B"),
+		},
+		"folder-B": nil, // leaf
+	})
+
+	got, err := collectAllSubfolders(ctx, reader, root)
+	if err != nil {
+		t.Fatalf("collectAllSubfolders: %v", err)
+	}
+	want := map[string]bool{"folder-A": true, "folder-B": true}
+	if len(got) != len(want) {
+		t.Fatalf("subfolders = %d (%v), want %d (%v)", len(got), got, len(want), want)
+	}
+	seen := map[string]bool{}
+	for _, f := range got {
+		if f.ID == root {
+			t.Errorf("root folder %q leaked into the subfolder scan (root-protection violated)", root)
+		}
+		if f.ID == "file-1" {
+			t.Errorf("non-folder file %q leaked into the subfolder scan", f.ID)
+		}
+		seen[f.ID] = true
+	}
+	for id := range want {
+		if !seen[id] {
+			t.Errorf("missing subfolder %q", id)
+		}
+	}
+}
+
+// TestRecursiveRemoval_EmptyTreeIsIdempotent pins the idempotency contract:
+// when there is nothing to remove (nonexistent or empty root, no children,
+// no matching source-video assets) the scan + asset planning succeed as a
+// no-op, and a second identical run produces the exact same empty plan.
+// Re-running the operation on an already-clean tree must never error or
+// report phantom work.
+func TestRecursiveRemoval_EmptyTreeIsIdempotent(t *testing.T) {
+	db := recursiveMediaAssetsFixture(t)
+	ctx := context.Background()
+	reader := stubDriveReaderFixture(map[string][]drive.DriveFileInfo{
+		"nonexistent-root": nil,
+		"leaf-folder":      nil,
+	})
+
+	// First invocation: nothing to scan, nothing to plan.
+	folders, err := collectAllSubfolders(ctx, reader, "nonexistent-root")
+	if err != nil {
+		t.Fatalf("scan nonexistent root: %v", err)
+	}
+	if len(folders) != 0 {
+		t.Fatalf("nonexistent root produced folders: %v", folders)
+	}
+	assets, rawRefs, err := collectUniqueAssets(ctx, db, folders, "")
+	if err != nil {
+		t.Fatalf("collect assets: %v", err)
+	}
+	if len(assets) != 0 || rawRefs != 0 {
+		t.Fatalf("expected zero assets/refs; got assets=%d refs=%d", len(assets), rawRefs)
+	}
+
+	// Second invocation on the identical tree must not change any outcome.
+	folders2, err := collectAllSubfolders(ctx, reader, "nonexistent-root")
+	if err != nil {
+		t.Fatalf("second scan: %v", err)
+	}
+	if len(folders2) != len(folders) {
+		t.Fatalf("second scan changed result: %d vs %d", len(folders2), len(folders))
+	}
+	assets2, rawRefs2, err := collectUniqueAssets(ctx, db, folders2, "")
+	if err != nil {
+		t.Fatalf("second collect: %v", err)
+	}
+	if len(assets2) != len(assets) || rawRefs2 != rawRefs {
+		t.Fatalf("second plan changed: assets %d/%d vs %d/%d", len(assets2), rawRefs2, len(assets), rawRefs)
 	}
 }

@@ -352,6 +352,10 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
 		}
 		for _, queryResult := range queryResults {
+			queryResult.candidates = runInternetImageCandidatePipeline(internetImagePipelineInput{
+				Candidates: queryResult.candidates,
+				Query:      queryResult.query,
+			})
 			if queryResult.err != nil {
 				if p.metrics != nil {
 					p.metrics.IncProviderFailure("internet_images")
@@ -359,25 +363,6 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				warnings = append(warnings, fmt.Sprintf("internet_images: search failed for segment %s: %v", updated.SegmentID, queryResult.err))
 			}
 			for _, cand := range queryResult.candidates {
-				if cand.Provider == "" {
-					cand.Provider = "internet_images"
-				}
-				if cand.Query == "" {
-					cand.Query = queryResult.query
-				}
-				// Defense-in-depth: reject candidates from forbidden providers.
-				// The binding gate (validVidRushCandidate) also rejects these,
-				// but filtering at ingest time prevents forbidden candidates
-				// from polluting cache entries.
-				if strings.ToLower(strings.TrimSpace(cand.Provider)) != "internet_images" {
-					continue
-				}
-				if cand.RightsStatus == "" {
-					cand.RightsStatus = "unknown"
-				}
-				if cand.SelectionReason == "" {
-					cand.SelectionReason = "retrieved image candidate matching a segment entity/query"
-				}
 				key := vidRushCandidateIdentity(cand)
 				if key == "" {
 					continue
