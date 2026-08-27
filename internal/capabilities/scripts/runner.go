@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -443,7 +442,17 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 // ExecuteWithContext is the worker-facing entry point that preserves the
 // broker's root/parent/project/video correlation across every stage.
 func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+	if !r.prepareExecution(ctx, runID, req, &exec) {
+		return
+	}
 
+	r.runExecution(ctx, runID, req, exec)
+}
+
+// prepareExecution normalizes and validates the correlation context before any
+// workflow I/O. Keeping this boundary separate makes the public entry point
+// intentionally small without changing failure handling.
+func (r *Runner) prepareExecution(ctx context.Context, runID string, req GenerateRequest, exec *ExecutionContext) bool {
 	if exec.JobID == "" {
 		exec.JobID = runID
 	}
@@ -458,307 +467,61 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 			r.log.Warn("scriptgeneration: invalid execution context", zap.Error(err))
 		}
 		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
-		return
+		return false
 	}
-	r.log.Info("scriptgeneration: starting execution",
-		zap.String("run_id", runID),
-		zap.String("source_type", string(req.Source.Type)),
-	)
+	return true
+}
 
-	// Resolve the canonical artifact routing context ONCE at generation
-	// start. Downstream phases consume this resolved value and never re-derive
-	// Project, Language, or folder routing (godlike/06 SSOT — one owner per
-	// routing fact). A docs.enabled=true run with no resolvable folder fails
-	// closed here, before any LLM or Google Docs I/O.
-	routing, resolveErr := req.resolveArtifactRoutingContext(r.scriptDocsFolderID)
-	if resolveErr != nil {
-		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, resolveErr)
-		return
-	}
-
-	// Determine resume stage from existing run (if any).
-	run, err := r.repo.Get(ctx, runID)
-	resumeIdx := -1 // -1 means start from beginning
-	if err == nil && run != nil {
-		resumeStage := ResumeFrom(run)
-		if resumeStage == StageCompleted {
-			r.log.Info("run already completed", zap.String("run_id", runID))
-			return
-		}
-		resumeIdx = StageIndex(resumeStage)
-		r.log.Info("resuming from checkpoint",
-			zap.String("run_id", runID),
-			zap.String("resume_stage", string(resumeStage)),
-			zap.Int("attempt", run.AttemptCount+1),
-		)
-	} else {
-		// New run — set RUNNING.
-		if err := r.updateStage(ctx, runID, RunStatusRunning, StageNormalizing); err != nil {
-			r.failRunWithRetry(ctx, runID, StageNormalizing, err)
-			return
-		}
-	}
-	if exec.Attempt <= 0 {
-		exec.Attempt = 1
-		if run != nil && run.AttemptCount > 0 {
-			exec.Attempt = run.AttemptCount + 1
-		}
+// runExecution performs the ordered workflow after execution context
+// validation. It drives the run through its explicit business phases via a
+// run-scoped execution wrapper; the wrapper owns the shared timing, metrics,
+// checkpoint, error-classification and logging concerns a single time. Each
+// phase is an explicit named step below; a phase returning false stops the
+// run (a terminal error was already classified and persisted).
+func (r *Runner) runExecution(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+	e := &executionRun{
+		r:     r,
+		ctx:   ctx,
+		runID: runID,
+		req:   req,
+		exec:  exec,
 	}
 
-	if !r.measurePhase(ctx, kernobs.StageName(stageNormalize), func(c context.Context) bool {
-		return r.runNormalizePhase(c, runID, exec, resumeIdx)
-	}) {
+	if !e.start() {
 		return
 	}
-	var coordinator *VidRushIncrementalCoordinator
-	var beginVidRushErr error
-	kernobs.MeasureStage(ctx, "begin_vidrush", func(stageCtx context.Context) error {
-		coordinator, beginVidRushErr = r.beginVidRush(stageCtx, runID, req)
-		return beginVidRushErr
-	})
-	if beginVidRushErr != nil {
-		r.failRunWithRetry(ctx, runID, StageNormalizing, beginVidRushErr)
+	if !e.normalize() {
 		return
 	}
-	if coordinator != nil {
+	if !e.beginMediaPreflight() {
+		return
+	}
+	// The VidRush coordinator wiring lives for the whole run: release it only
+	// after every phase that consumes the fan-out completes (or fails).
+	if e.coordinator != nil {
 		defer r.endVidRush(runID)
 	}
-
-	// ── P0.5 Media Preflight (parallel with Gemma) ────────────────
-	// After normalize, start the fail-fast asset verification in a
-	// goroutine. It checks clip files, original audio streams, BGM/SFX,
-	// and watermark assets while Gemma generates scene text. Join
-	// after runSceneTextPhase; preflight failures fail the run BEFORE
-	// any TTS work is done.
-	var preflightDone <-chan PreflightResult
-	if r.mediaPreflight != nil {
-		pfCh := make(chan PreflightResult, 1)
-		preflightDone = pfCh
-		go func() {
-			pfCh <- r.mediaPreflight.Run(ctx, req)
-		}()
-	}
-
-	var result *GenerateResult
-	if !r.measurePhase(ctx, kernobs.StageGenerate, func(c context.Context) bool {
-		var ok bool
-		result, ok = r.runSceneTextPhase(c, runID, req, routing, exec, run, resumeIdx)
-		return ok
-	}) {
+	if !e.generate() {
 		return
 	}
-
-	// ── Pipeline KPI: generate phase milestones ────────────────
-	// For streaming mode, the coordinator records first_scene_ready
-	// earlier; for serial/clip mode, we record it at phase completion.
-	if run := kernobs.FromContext(ctx); run != nil {
-		elapsed := run.ElapsedMs()
-		// Only set first_scene_ready if not already set by coordinator.
-		if run.Report().KPIs.GenerateFirstSceneReadyMs == 0 {
-			kernobs.RecordKPIMilestone(ctx, "generate_first_scene_ready_ms", elapsed)
-		}
-		kernobs.RecordKPIMilestone(ctx, "generate_finished_ms", elapsed)
-	}
-
-	// ── Join media preflight ────────────────────────────────────
-	if preflightDone != nil {
-		preflightJoinStarted := time.Now()
-		pfResult := <-preflightDone
-		if pfResult.HasFailures() {
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), fmt.Errorf("preflight: %d failures", len(pfResult.Failures)))
-		} else {
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), nil)
-		}
-		r.log.Info("media preflight completed",
-			zap.String("run_id", runID),
-			zap.Int("failures", len(pfResult.Failures)),
-			zap.Int64("wall_ms", pfResult.WallMS))
-		if pfResult.HasFailures() {
-			r.log.Warn("media preflight FAILED — run aborted before TTS",
-				zap.String("run_id", runID),
-				zap.String("failures", pfResult.Error()))
-			r.failRunWithRetry(ctx, runID, StagePreflight, fmt.Errorf("media preflight: %s", pfResult.Error()))
-			return
-		}
-	}
-
-	if result == nil {
-		result = &GenerateResult{Scenes: []Scene{}, Render: req.Render, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
-	}
-	// ── SCENE-TEXT-READY FAN-OUT ──────────────────────────────────────
-	// Committing the scene text during the generate phase is the canonical
-	// SceneTextReady boundary. SceneAnalysis (VidRush) already started per
-	// scene on that boundary; translation is the next branch (depends only on
-	// the final scene text, never on entities/phrases/words).
-	if !r.measurePhase(ctx, kernobs.StageName(stageTranslation), func(c context.Context) bool {
-		return r.runTranslationPhase(c, runID, req, exec, resumeIdx, result)
-	}) {
+	if !e.joinPreflight() {
 		return
 	}
-
-	snapshot := snapshotSceneText(result.Scenes, req.SourceLanguage)
-
-	// skeletons carries the per-language document skeletons rendered at
-	// SceneTextReady by the parallel fan-out (the early DocsPrepare pass). It
-	// is nil in serial mode (the "before" baseline keeps the one-shot render)
-	// and when the renderer does not implement the early/late split.
-	var skeletons map[Language]string
-
-	if r.serialMode {
-		// Serial "before" chain: entities → voiceover. The VidRush join +
-		// overlay.prepare runs blocking first, its projections are applied,
-		// and only then does TTS start — NLP and TTS never overlap.
-		prepared, err := r.runVidRushJoinAndPrepare(ctx, runID, req, snapshot)
-		if err != nil {
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
-			return
-		}
-		applyVidRushPrepareProjections(result, prepared)
-
-		if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
-			return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
-		}) {
-			return
-		}
-		r.checkpoint(ctx, runID, result)
-	} else {
-		// ── SCENE-TEXT-READY FAN-OUT (parallel DAG) ────────────────────
-		// The VidRush join + overlay.prepare is the OTHER branch of the
-		// SceneTextReady fan-out, running concurrently with TTS below. It
-		// awaits the VidRush barrier, computes the per-scene entity
-		// annotations and the pre-timing OverlayIntents from a read-only
-		// scene-text snapshot, and enqueues overlay.prepare — so prepare
-		// starts as soon as NLP results arrive and never waits for TTS or
-		// final audio. The branch never touches result (or result.Scenes), so
-		// it runs alongside TTS without racing; the projections are applied
-		// after the join below.
-		prepareCtx, cancelPrepare := context.WithCancel(ctx)
-		defer cancelPrepare()
-		prepareDone := make(chan vidRushPrepareOutcome, 1)
-		go func() {
-			// Early DocsPrepare: render the scene-text-only document skeleton
-			// for each docs language FIRST, before the VidRush join, so the
-			// CPU render overlaps both TTS (main goroutine) and NLP (VidRush
-			// enrichments) instead of waiting for the audio join.
-			skel := r.renderDocumentSkeletons(req, result)
-
-			// ── P1.1 Audio prefetch ──────────────────────────────
-			// Resolve BGM/SFX assets and materialize original clip
-			// audio in parallel with TTS so the heavy I/O is done
-			// before audio compile starts. Best-effort: skip when
-			// the required source is nil (audio compile handles the
-			// fail-closed check at its own boundary).
-			var prefetched *AudioPrefetchResult
-			if (len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 ||
-				req.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip) &&
-				r.audioAssetSource != nil {
-				bgmIDs := make([]string, len(req.BackgroundMusic))
-				for i, b := range req.BackgroundMusic {
-					bgmIDs[i] = b.AssetID
-				}
-				sfxIDs := make([]string, len(req.SoundEffects))
-				for i, s := range req.SoundEffects {
-					sfxIDs[i] = s.AssetID
-				}
-				var clipIDs []string
-				for _, s := range result.Scenes {
-					for _, c := range s.Clips {
-						if c != nil && c.ID != "" {
-							clipIDs = append(clipIDs, c.ID)
-						}
-					}
-					if s.Clip != nil && s.Clip.ID != "" {
-						clipIDs = append(clipIDs, s.Clip.ID)
-					}
-				}
-				var clipAudioSource ClipAudioAssetSource
-				if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
-					clipAudioSource = candidate
-				}
-				pf, pfErr := PrefetchAudioAssets(prepareCtx, bgmIDs, sfxIDs, r.audioAssetSource, clipIDs, clipAudioSource, req.MixPolicy)
-				if pfErr != nil {
-					r.log.Warn("audio prefetch failed — audio compile will run with synchronous resolution",
-						zap.String("run_id", runID),
-						zap.Error(pfErr))
-				} else {
-					prefetched = pf
-				}
-			}
-
-			res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
-			prepareDone <- vidRushPrepareOutcome{
-				result:     res,
-				skeletons:  skel,
-				prefetched: prefetched,
-				err:        err,
-			}
-		}()
-
-		// TTS runs in the main goroutine, in parallel with the prepare branch.
-		if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
-			return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
-		}) {
-			// TTS failed: the deferred cancelPrepare stops the prepare branch.
-			return
-		}
-
-		// Join the prepare branch; an error fails the run (fail-closed).
-		// MeasureStage attributes this wait (VidRush + DocsPrepare + AudioPrefetch
-		// finishing after TTS) so it no longer leaks into unattributed time.
-		var outcome vidRushPrepareOutcome
-		kernobs.MeasureStage(ctx, "prepare_join", func(stageCtx context.Context) error {
-			outcome = <-prepareDone
-			return outcome.err
-		})
-		if outcome.err != nil {
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, outcome.err)
-			return
-		}
-		applyVidRushPrepareProjections(result, outcome.result)
-		skeletons = outcome.skeletons
-		// Store the prefetched audio assets so the audio compile phase
-		// can consume them without blocking on I/O.
-		result.AudioPrefetch = outcome.prefetched
-		r.checkpoint(ctx, runID, result)
-	}
-
-	result.SourceTrace = sourceTraceFromResult(result)
-	if !r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {
-		if !r.runAudioCompilePhase(c, runID, req, exec, resumeIdx, result) {
-			return false
-		}
-		return r.publishFinalAudio(c, runID, req, routing, exec, result)
-	}) {
+	e.ensureResult()
+	if !e.translate() {
 		return
 	}
-	if !r.measurePhase(ctx, kernobs.StageName(stagePersistence), func(c context.Context) bool {
-		if result.FinalVideoRequired {
-			if err := r.assembleFinalVideo(c, runID, result); err != nil {
-				r.failRunWithRetry(c, runID, StagePublishingDocuments, err)
-				return false
-			}
-		}
-		if result.FinalVideoRequired && r.finalVideoPublisher != nil {
-			published, err := r.finalVideoPublisher.PublishFinalVideo(c, runID, *result.FinalVideo, req.Render.DriveFolderID)
-			if err != nil {
-				r.failRunWithRetry(c, runID, StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: %w", err))
-				return false
-			}
-			result.FinalVideo.AssetID = published.AssetID
-			result.FinalVideo.DriveLink = published.DriveLink
-		} else if result.FinalVideoRequired {
-			r.failRunWithRetry(c, runID, StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: final video publisher is not wired"))
-			return false
-		}
-		r.checkpoint(c, runID, result)
-		return r.persistScript(c, runID, req, exec, resumeIdx, result)
-	}) {
+	if !e.sceneTextReady() {
 		return
 	}
-	if !r.measurePhase(ctx, kernobs.StageName(stageDocument), func(c context.Context) bool {
-		return r.runDocumentPhase(c, runID, req, routing, exec, resumeIdx, result, skeletons)
-	}) {
+	if !e.audioCompile() {
 		return
 	}
-	r.completeRun(ctx, runID, result)
+	if !e.persist() {
+		return
+	}
+	if !e.documents() {
+		return
+	}
+	e.complete()
 }

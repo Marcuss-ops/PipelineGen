@@ -29,7 +29,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 )
 
@@ -215,7 +214,7 @@ func deriveRootFolderName(in DriveDestinationInput) string {
 func derivePathLeafName(in DriveDestinationInput) string {
 	// 1. Explicit slug (highest priority)
 	if raw := strings.TrimSpace(in.ClipSlug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && containsAlphanumeric(safe) {
+		if safe := safeFolderName(raw); safe != "" && safe != "untitled" && containsAlphanumeric(safe) {
 			return safe
 		}
 	}
@@ -240,8 +239,21 @@ func derivePathLeafName(in DriveDestinationInput) string {
 // stockpipeline/step_publish.go have been retired (PR-CANONICAL-CLIP-NAMING,
 // July 2026) — callers import the domain delivery package instead.
 
+// safeFolderName applies the local, technology-neutral folder-name sanitization.
+func safeFolderName(s string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == ' ' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // sanitizedFolderName trims whitespace, returns "" for empty input,
-// otherwise runs through pathutil.SafeFolderName. Empty-in / all-
+// otherwise runs through safeFolderName. Empty-in / all-
 // whitespace-in collapses to "" so the caller continues to the next
 // fallback rule.
 func sanitizedFolderName(s string) string {
@@ -249,7 +261,7 @@ func sanitizedFolderName(s string) string {
 	if s == "" {
 		return ""
 	}
-	return pathutil.SafeFolderName(s)
+	return safeFolderName(s)
 }
 
 // FirstSanitizedQuery is the exported entry point for the canonical
@@ -305,6 +317,9 @@ func sanitizedURLBasename(rawURL string) string {
 	}
 	base := filepath.Base(s)
 	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if base == "." || base == string(filepath.Separator) {
+		return "_"
+	}
 	return sanitizedFolderName(base)
 }
 

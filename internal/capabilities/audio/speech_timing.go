@@ -3,6 +3,8 @@ package audio
 import (
 	"errors"
 	"fmt"
+
+	audiokernel "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 )
 
 // SpeechTimingVersion is the schema version for SpeechTimingArtifact files.
@@ -10,14 +12,7 @@ import (
 // cached artifacts cannot be silently misread.
 const SpeechTimingVersion = 1
 
-// BoundaryMode identifies the granularity of speech boundaries captured by a
-// TTS provider. Only word-level boundaries are supported; anything else is
-// rejected by Validate rather than approximated downstream.
-type BoundaryMode string
-
-const (
-	BoundaryWord BoundaryMode = "word"
-)
+// BoundaryMode risiede nel kernel (vedi internal/kernel/audio/timing.go).
 
 // SpeechWordTiming is one word-level boundary. All values are integer
 // microseconds, never floats, so downstream consumers never accumulate
@@ -36,6 +31,24 @@ type SpeechWordTiming struct {
 // The hashes bind the artifact to exactly one synthesized text and one audio
 // file: text_sha256 covers the exact text sent to synthesis and audio_sha256
 // covers the final published audio bytes.
+type BoundaryMode = audiokernel.BoundaryMode
+
+type TimingMode = audiokernel.TimingMode
+type TimingFormat = audiokernel.TimingFormat
+type TimingRequest = audiokernel.TimingRequest
+
+const (
+	BoundaryWord     = audiokernel.BoundaryWord
+	TimingDisabled   = audiokernel.TimingDisabled
+	TimingBestEffort = audiokernel.TimingBestEffort
+	TimingRequired   = audiokernel.TimingRequired
+	TimingJSON       = audiokernel.TimingJSON
+	TimingSRT        = audiokernel.TimingSRT
+	TimingVTT        = audiokernel.TimingVTT
+)
+
+func DefaultTimingRequest() TimingRequest { return audiokernel.DefaultTimingRequest() }
+
 type SpeechTimingArtifact struct {
 	Version      int          `json:"version"`
 	Provider     string       `json:"provider"`
@@ -51,8 +64,10 @@ type SpeechTimingArtifact struct {
 }
 
 var (
+	ErrInvalidTimingMode       = audiokernel.ErrInvalidTimingMode
+	ErrInvalidTimingFormat     = audiokernel.ErrInvalidTimingFormat
 	ErrInvalidTimingVersion    = errors.New("invalid speech timing version")
-	ErrUnsupportedBoundaryMode = errors.New("unsupported speech boundary mode")
+	ErrUnsupportedBoundaryMode = audiokernel.ErrUnsupportedBoundaryMode
 	ErrInvalidWordIndex        = errors.New("invalid speech word index")
 	ErrNegativeTiming          = errors.New("negative speech timing")
 	ErrInvalidTimingRange      = errors.New("speech word end before start")

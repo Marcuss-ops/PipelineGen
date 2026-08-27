@@ -19,8 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // UnmarshalJSON decodes AudioOutputConfig and normalizes the
@@ -83,7 +81,7 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(normalized, &tmp); err != nil {
 		return err
 	}
-	if audio.IsBuiltInBGM(tmp.AssetID) {
+	if isBuiltInBGM(tmp.AssetID) {
 		if _, present := raw["loop"]; !present {
 			tmp.Loop = true
 		}
@@ -93,6 +91,21 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	}
 	*b = BackgroundMusicIntent(tmp)
 	return nil
+}
+
+func isBuiltInBGM(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.HasPrefix(id, "bgm") && len(id) == 4 && id[3] >= '1' && id[3] <= '6'
+}
+
+func isBuiltInWhoop(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.HasPrefix(id, "whop") || strings.HasPrefix(id, "whoop")
+}
+
+func isBuiltInWhoosh(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.HasPrefix(id, "whoosh") || id == "random_whoosh"
 }
 
 // BackgroundMusicIntent is the caller's intent for one background-music
@@ -168,7 +181,7 @@ func (s *SoundEffectIntent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
-	if _, present := raw["gain_db"]; !present && (audio.IsBuiltInWhoop(tmp.AssetID) || audio.IsBuiltInWhoosh(tmp.AssetID)) {
+	if _, present := raw["gain_db"]; !present && (isBuiltInWhoop(tmp.AssetID) || isBuiltInWhoosh(tmp.AssetID)) {
 		tmp.GainDB = -30
 	}
 	*s = SoundEffectIntent(tmp)

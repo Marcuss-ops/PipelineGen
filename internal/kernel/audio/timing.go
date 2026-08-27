@@ -1,9 +1,23 @@
 package audio
 
+// Contratto di timing voce: policy provider-neutral appartenente al
+// kernel (SSOT dei tipi usati sia dallo spec che dalla capability).
+
 import (
 	"errors"
 	"fmt"
 )
+
+// BoundaryMode identifica la granularita dei confini vocali.
+type BoundaryMode string
+
+const (
+	BoundaryWord BoundaryMode = "word"
+)
+
+// ErrUnsupportedBoundaryMode viene restituito da Validate quando la
+// granularita richiesta non e supportata.
+var ErrUnsupportedBoundaryMode = errors.New("unsupported voiceover timing boundary mode")
 
 // TimingMode is the voiceover timing capture policy. Timing capture must
 // never be implicitly mandatory: callers opt in via required, tolerate

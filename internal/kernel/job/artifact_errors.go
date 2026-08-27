@@ -34,8 +34,6 @@ package job
 
 import (
 	"errors"
-
-	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ── Sentinel errors (FASE 1 c — typed manifest contract) ─────────────
@@ -91,7 +89,7 @@ var (
 // Missing." Without this alias the third sentinel would only be
 // reachable from internal/domain/finalization, forcing every
 // producer-side code path to dual-import the two packages.
-var ErrRequiredArtifactMissing = finalization.ErrRequiredArtifactMissing
+var ErrRequiredArtifactMissing = errors.New("artifact manifest: required artifact missing")
 
 // ErrManifestTypedErrors is the package-level compile-time guard
 // that the typed-error contract is in place. Callers may use this

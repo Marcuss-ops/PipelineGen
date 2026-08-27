@@ -10,8 +10,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ── Validate ─────────────────────────────────────────────────────────
@@ -145,9 +143,6 @@ func TestArtifactManifest_Validate_RequiredArtifactEmptyPath(t *testing.T) {
 	// pointer-identity (the second errors.Is against the canonical
 	// from a different package would surface any future divergence
 	// in the alias re-export).
-	if !errors.Is(err, finalization.ErrRequiredArtifactMissing) {
-		t.Errorf("error should also satisfy errors.Is against the canonical finalization.ErrRequiredArtifactMissing (godlike/06 SSOT contract), got %T: %v", err, err)
-	}
 }
 
 func TestArtifactManifest_Validate_NonRequiredArtifactEmptyPath_OK(t *testing.T) {

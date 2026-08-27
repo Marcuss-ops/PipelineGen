@@ -1,0 +1,7 @@
+### C++ syscall/fs nei frame-path dirs:
+    5  src/runtime/telemetry/telemetry_manager.cpp
+    1  src/backends/software/processors/text_run/text_run_processor/scratch.cpp
+    1  src/backends/software/processors/text_run/text_run_processor/prepare.cpp
+    1  src/backends/software/rasterizers/path/path_rasterizer.cpp
+    1  src/backends/software/simd/cpu_isa.cpp
+    1  src/render_graph/pipeline/frame_state_commit.cpp

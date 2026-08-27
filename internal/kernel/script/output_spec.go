@@ -1,6 +1,6 @@
 package script
 
-import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+import audio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 
 // OutputSpec declares which post-generation artifacts to produce.
 // ExtractEntities and GenerateMetadata are Toggle tri-state values.

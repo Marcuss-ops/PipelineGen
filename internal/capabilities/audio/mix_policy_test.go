@@ -1,5 +1,7 @@
 package audio
 
+import kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+
 import "testing"
 
 func combinedTimeline() CanonicalTimeline {
@@ -17,12 +19,12 @@ func combinedTimeline() CanonicalTimeline {
 }
 
 func TestCompileWithMixPolicy_VoiceoverOnlyDropsClipAudio(t *testing.T) {
-	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), MixVoiceoverOnly)
+	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.MixPolicy != MixVoiceoverOnly {
-		t.Fatalf("mix policy = %q, want %q", plan.MixPolicy, MixVoiceoverOnly)
+	if plan.MixPolicy != kernelaudio.MixVoiceoverOnly {
+		t.Fatalf("mix policy = %q, want %q", plan.MixPolicy, kernelaudio.MixVoiceoverOnly)
 	}
 	if findTrack(plan.Tracks, TrackClipAudio) != nil {
 		t.Fatalf("clip track must be removed, tracks=%+v", plan.Tracks)
@@ -34,11 +36,11 @@ func TestCompileWithMixPolicy_VoiceoverOnlyDropsClipAudio(t *testing.T) {
 }
 
 func TestCompileWithMixPolicy_DuckedClipAppliesGainAndAutomation(t *testing.T) {
-	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), MixVoiceoverWithDuckedClip)
+	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.MixPolicy != MixVoiceoverWithDuckedClip {
+	if plan.MixPolicy != kernelaudio.MixVoiceoverWithDuckedClip {
 		t.Fatalf("mix policy = %q", plan.MixPolicy)
 	}
 
@@ -51,22 +53,22 @@ func TestCompileWithMixPolicy_DuckedClipAppliesGainAndAutomation(t *testing.T) {
 	if clip == nil || len(clip.Events) != 1 {
 		t.Fatalf("clip track missing, tracks=%+v", plan.Tracks)
 	}
-	if clip.Events[0].GainDB != DuckClipBaseGainDB {
-		t.Fatalf("clip gain = %v, want %v", clip.Events[0].GainDB, DuckClipBaseGainDB)
+	if clip.Events[0].GainDB != kernelaudio.DuckClipBaseGainDB {
+		t.Fatalf("clip gain = %v, want %v", clip.Events[0].GainDB, kernelaudio.DuckClipBaseGainDB)
 	}
 
 	if len(plan.Automation) != 1 {
 		t.Fatalf("automation = %+v, want exactly one ducking entry", plan.Automation)
 	}
 	a := plan.Automation[0]
-	if a.TargetTrackID != "clip_audio" || a.TriggerTrackID != "voiceover" || a.GainDB != DuckClipActiveGainDB {
+	if a.TargetTrackID != "clip_audio" || a.TriggerTrackID != "voiceover" || a.GainDB != kernelaudio.DuckClipActiveGainDB {
 		t.Fatalf("ducking automation = %+v", a)
 	}
 	if a.StartUS != 0 || a.EndUS != 8_000_000 {
 		t.Fatalf("duck window = [%d,%d), want [0,8000000) (ends at the 8s voiceover source duration)", a.StartUS, a.EndUS)
 	}
-	if a.AttackUS != DuckAttackUS || a.ReleaseUS != DuckReleaseUS {
-		t.Fatalf("duck ramps = [%d,%d), want [%d,%d)", a.AttackUS, a.ReleaseUS, DuckAttackUS, DuckReleaseUS)
+	if a.AttackUS != kernelaudio.DuckAttackUS || a.ReleaseUS != kernelaudio.DuckReleaseUS {
+		t.Fatalf("duck ramps = [%d,%d), want [%d,%d)", a.AttackUS, a.ReleaseUS, kernelaudio.DuckAttackUS, kernelaudio.DuckReleaseUS)
 	}
 }
 
@@ -75,7 +77,7 @@ func TestCompileWithMixPolicy_DuckingCoversWholeWindowWhenSourceDurationMatches(
 	// Voiceover source duration equals the scene window: the duck zone must
 	// span the full window (no early release).
 	tl.Segments[0].AudioIntents[0].SourceDurationUS = 10_000_000
-	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), MixVoiceoverWithDuckedClip)
+	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +101,7 @@ func TestCompileWithMixPolicy_DuckedClipWithoutVoiceoverLeavesClipAtUnity(t *tes
 			},
 		}},
 	}
-	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), MixVoiceoverWithDuckedClip)
+	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,14 +120,14 @@ func TestCompileWithMixPolicy_DuckedClipWithoutVoiceoverLeavesClipAtUnity(t *tes
 func TestNormalize_WireAliasVoiceoverWithDuckedClip(t *testing.T) {
 	tests := []struct {
 		name  string
-		input AudioMixPolicy
-		want  AudioMixPolicy
+		input kernelaudio.AudioMixPolicy
+		want  kernelaudio.AudioMixPolicy
 	}{
-		{name: "canonical_ducked", input: MixVoiceoverWithDuckedClip, want: MixVoiceoverWithDuckedClip},
-		{name: "wire_alias_snake_case", input: "voiceover_with_ducked_clip", want: MixVoiceoverWithDuckedClip},
-		{name: "wire_alias_mixed_case", input: "Voiceover_With_Ducked_Clip", want: MixVoiceoverWithDuckedClip},
-		{name: "canonical_only", input: MixVoiceoverOnly, want: MixVoiceoverOnly},
-		{name: "wire_alias_only", input: "voiceover_only", want: MixVoiceoverOnly},
+		{name: "canonical_ducked", input: kernelaudio.MixVoiceoverWithDuckedClip, want: kernelaudio.MixVoiceoverWithDuckedClip},
+		{name: "wire_alias_snake_case", input: "voiceover_with_ducked_clip", want: kernelaudio.MixVoiceoverWithDuckedClip},
+		{name: "wire_alias_mixed_case", input: "Voiceover_With_Ducked_Clip", want: kernelaudio.MixVoiceoverWithDuckedClip},
+		{name: "canonical_only", input: kernelaudio.MixVoiceoverOnly, want: kernelaudio.MixVoiceoverOnly},
+		{name: "wire_alias_only", input: "voiceover_only", want: kernelaudio.MixVoiceoverOnly},
 		{name: "empty_stays_empty", input: "", want: ""},
 		{name: "unknown_fails_closed", input: "duck_everything", want: ""},
 	}
@@ -158,7 +160,7 @@ func TestCompileWithMixPolicy_EmptyPolicyPreservesLegacyOverlap(t *testing.T) {
 func TestCompileWithMixPolicy_ExplicitClipGainIsPreserved(t *testing.T) {
 	tl := combinedTimeline()
 	tl.Segments[0].AudioIntents[1].GainDB = -6
-	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), MixVoiceoverWithDuckedClip)
+	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,10 +179,10 @@ func TestCompileWithLayers_EnforcesCanonicalBGMAndSFXLevels(t *testing.T) {
 	}
 	bgmTrack := findTrack(plan.Tracks, TrackBGM)
 	sfxTrack := findTrack(plan.Tracks, TrackSFX)
-	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].GainDB != BackgroundMusicGainDB {
-		t.Fatalf("BGM gain = %+v, want %.1f dB", bgmTrack, BackgroundMusicGainDB)
+	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].GainDB != kernelaudio.BackgroundMusicGainDB {
+		t.Fatalf("BGM gain = %+v, want %.1f dB", bgmTrack, kernelaudio.BackgroundMusicGainDB)
 	}
-	if sfxTrack == nil || len(sfxTrack.Events) != 1 || sfxTrack.Events[0].GainDB != SoundEffectGainDB {
-		t.Fatalf("SFX gain = %+v, want %.1f dB", sfxTrack, SoundEffectGainDB)
+	if sfxTrack == nil || len(sfxTrack.Events) != 1 || sfxTrack.Events[0].GainDB != kernelaudio.SoundEffectGainDB {
+		t.Fatalf("SFX gain = %+v, want %.1f dB", sfxTrack, kernelaudio.SoundEffectGainDB)
 	}
 }

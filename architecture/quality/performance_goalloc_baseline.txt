@@ -1,0 +1,45 @@
+### GO alloc-in-loop (pesata): {'concat': 646, 'makemap': 59, 'sprintf': 945, 'makeslice': 102, 'ctxTO': 33, 'defer': 310}
+  [concat] x36  internal/capabilities/scripts/adapters/reconciliation_process.go
+             ? loopnest=2  `okCount += result.ok`
+  [sprintf] x18  internal/capabilities/scripts/usecase/generation_validator.go
+             validateScriptSegmentShape loopnest=1  `d = append(d, fmt.Sprintf("%s: script_params.segments[%d].topic is required", `
+  [sprintf] x13  internal/capabilities/scripts/adapters/processor_vidrush_materialization.go
+             ? loopnest=1  `warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catal`
+  [concat] x11  internal/kernel/asset/detail/scoring.go
+             scoreClipsInternal loopnest=3  `score += 0.06`
+  [concat] x10  internal/platform/sqlite/performance/source.go
+             projectAudioMetrics loopnest=1  `audio.TTSMS += op.DurationMs`
+  [concat] x10  internal/capabilities/research/ranking.go
+             supportMetrics loopnest=1  `cited += len(fact.SourceIDs)`
+  [sprintf] x9   internal/platform/sqlite/controlplane/verifier.go
+             ? loopnest=1  `add(fmt.Sprintf("migration:%03d", required), "FAIL", "required migration is mi`
+  [concat] x9   internal/capabilities/audit/audit_collection.go
+             Classify loopnest=2  `r.Audit.NonMediaRow += cats.NonMediaRow`
+  [concat] x8   cmd/admin/internal/audit/sqlite_audit.go
+             executeAudit loopnest=1  `report.Summary.TotalRows += row.TotalRows`
+  [sprintf] x8   cmd/admin/internal/audit/reachability_graph.go
+             computeReachabilityGraph loopnest=2  `st.Error = fmt.Sprintf("column %s.%s or %s.%s missing", t, rel.ChildColumn, re`
+  [sprintf] x8   internal/capabilities/mediamemory/batch_service_orchestrator.go
+             ? loopnest=2  `fmt.Sprintf("child=%q candidate=%q linker: %s",`
+  [sprintf] x8   internal/capabilities/jobs/request_validator.go
+             ? loopnest=1  `fmt.Sprintf("artifact[%d] has empty ArtifactID", i),`
+  [sprintf] x7   internal/kernel/script/audio_intent_validation.go
+             validateAudioIntentBlock loopnest=1  `prefix := fmt.Sprintf("%s: audio.background_music[%d]", ref, i)`
+  [sprintf] x7   internal/capabilities/scripts/media_preflight.go
+             RunMediaPreflight loopnest=1  `Detail: fmt.Sprintf("clip not reachable: %v", err),`
+  [sprintf] x7   internal/capabilities/scripts/adapters/processor_voiceover.go
+             ? loopnest=2  `warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: sc`
+  [concat] x6   cmd/admin/internal/rendering/multilingual_render.go
+             processOneClip loopnest=1  `sumTranslateMS += elapsed`
+  [sprintf] x6   cmd/admin/internal/audit/broken_references.go
+             detectFKOrphans loopnest=1  `q := fmt.Sprintf(`
+  [sprintf] x6   internal/capabilities/audio/timeline_normalizer.go
+             NormalizeLegacyTimeline loopnest=1  `start, startMS, err := normalizeValue(segment.TimelineStartMS, segment.Timelin`
+  [sprintf] x6   internal/capabilities/assets/foldermemory/service.go
+             ? loopnest=1  `sb.WriteString(fmt.Sprintf("%d. [%s]\n", i+1, item.Name))`
+  [sprintf] x6   internal/capabilities/scripts/usecase/specscene_validator.go
+             applyKindClipRule loopnest=1  `fmt.Sprintf("scene[%d]: clip_id is empty in binding[%d]", i, j))`
+  [sprintf] x5   cmd/admin/internal/maintenance/stock_reset.go
+             RunResetStockDrive loopnest=1  `recordStockResetError(&firstErr, fmt.Sprintf("delete Drive folder %s", f.ID), `
+  [makemap] x5   internal/capabilities/linguistics/lexicon_registry.go
+             NewLexiconRegistry loopnest=1  `StopWords:         make(map[string]struct{}),`

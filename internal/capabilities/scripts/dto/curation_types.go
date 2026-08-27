@@ -71,7 +71,7 @@ type MediaCurator struct {
 // gated on this symbol existing (the underlying struct fields are
 // unexported, so callers cannot construct an instance via `&MediaCurator{}`).
 // Field wiring matches the pre-drift shape exactly: serverURL,
-// clipsRepo, clipBuilder, log all set; generateOneUC + clipSearch are
+// clipsRepo, clipBuilder, log all set; clipSearch is
 // late-bound via SetGenerateOneUC / SetClipSearchPort setters (the
 // composition root stamps them when those bundles are available).
 func NewMediaCurator(serverURL string, clipsRepo any, clipBuilder any, log *zap.Logger) *MediaCurator {

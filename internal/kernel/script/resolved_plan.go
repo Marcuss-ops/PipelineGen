@@ -9,7 +9,7 @@ package script
 import (
 	"slices"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	audio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

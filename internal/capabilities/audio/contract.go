@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"strings"
@@ -281,8 +282,8 @@ type CompiledAudioPlan struct {
 	// MixPolicy records the editorial mix decision applied by the compiler
 	// (VOICEOVER_ONLY vs VOICEOVER_DUCKED_CLIP). Empty means no policy was
 	// applied (legacy full-volume overlap). It is part of the plan hash.
-	MixPolicy  AudioMixPolicy `json:"mix_policy,omitempty"`
-	PlanSHA256 string         `json:"audio_plan_sha256"`
+	MixPolicy  audio.AudioMixPolicy `json:"mix_policy,omitempty"`
+	PlanSHA256 string               `json:"audio_plan_sha256"`
 }
 
 type ResolvedAudioAsset struct {

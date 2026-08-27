@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"sort"
 	"strings"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -317,15 +316,26 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		}, conflictErr
 	}
 
+	// ── PLAN → APPLY ─────────────────────────────────────────────
+	// Compute the immutable ReconcilePlan from the scan/classify phase, then
+	// Apply BY THE PLAN. dry-run (no committer) and real execution (committer
+	// wired) both build this same plan; Apply consumes only plan values and
+	// plan.AssetLocationChanges(), never a re-scan of the mutable scenes. Two
+	// runs over the same classification therefore produce the same Hash() and
+	// an already-reconciled scene yields an empty plan (zero diff).
+	reconcilePlan := buildReconcilePlan(assetChanges)
+	reconcilePlan.Noops = okCount
+	if len(reconcilePlan.Conflicts) > 0 {
+		return &PostProcessResult{
+			Changed:          changed,
+			SpecSceneChanged: changed,
+			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
+			Warnings:         warnings,
+		}, fmt.Errorf("%w: reconciliation plan contains conflicts", scriptpkg.ErrPostprocessFailed)
+	}
+
 	if p.committer != nil && len(assetChanges) > 0 {
-		changes := make([]scriptpkg.AssetLocationChange, 0, len(assetChanges))
-		for _, change := range assetChanges {
-			changes = append(changes, change)
-		}
-		sort.Slice(changes, func(i, j int) bool {
-			return changes[i].AssetID < changes[j].AssetID
-		})
-		if err := p.committer.CommitAssetLocations(ctx, changes); err != nil {
+		if err := p.committer.CommitAssetLocations(ctx, reconcilePlan.AssetLocationChanges()); err != nil {
 			return &PostProcessResult{
 				Changed:          changed,
 				SpecSceneChanged: changed,
