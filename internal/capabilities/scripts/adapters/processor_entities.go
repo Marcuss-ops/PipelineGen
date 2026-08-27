@@ -372,6 +372,9 @@ func buildVidRushSegmentResult(
 	imageLimit int,
 	queryText ...string,
 ) scriptpkg.VidRushSegmentResult {
+	if res == nil {
+		res = &scriptpkg.EntityResult{}
+	}
 	cleanText, explicitArtlist := scriptpkg.ParseArtlistDirectives(canonicalSeg.Text)
 	canonicalSeg.Text = cleanText
 	canonicalSeg.TextHash = segmentTextHash(cleanText)
@@ -386,6 +389,16 @@ func buildVidRushSegmentResult(
 	// legacy insight below is projected FROM that profile. No parallel
 	// extraction-to-insight mapping may exist outside this builder.
 	profile := scriptpkg.BuildSegmentSemanticProfile(canonicalSeg, *res, plan.Model, plan.PromptVersion)
+	if err := profile.Validate(); err != nil {
+		// Extraction data is an untrusted model boundary. Keep invalid
+		// profiles out of query generation and persistence rather than
+		// allowing malformed confidence/identity values downstream.
+		return scriptpkg.VidRushSegmentResult{
+			SegmentID: canonicalSeg.ID, SceneID: canonicalSeg.SceneID,
+			Position: canonicalSeg.Position, Text: canonicalSeg.Text,
+			TextHash: canonicalSeg.TextHash,
+		}
+	}
 	insights.Entities = uniqueLimitedEntities(profile.Entities, entitiesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(profile.ImportantPhrases, phrasesLimit)
 	// Keep the per-segment insight contract total for short canonical
