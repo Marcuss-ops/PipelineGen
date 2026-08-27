@@ -57,6 +57,7 @@ package script
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -122,6 +123,34 @@ type SceneView struct {
 	Text      map[string]string        `json:"text"`
 	Clip      *scriptgen.ClipReference `json:"clip,omitempty"`
 	Voiceover map[string]VoiceoverView `json:"voiceover,omitempty"`
+	YouTube   *YouTubeSceneView        `json:"youtube,omitempty"`
+}
+
+// YouTubeSceneView exposes the per-segment YouTube source candidates and the
+// selected source timing/asset as a read-only projection of the GenerationRun.
+type YouTubeSceneView struct {
+	SourcesConsidered int                 `json:"sources_considered"`
+	Candidates        []YouTubeCandidate  `json:"candidates,omitempty"`
+	Selected          *YouTubeCandidate   `json:"selected,omitempty"`
+}
+
+// YouTubeCandidate contains source provenance, ranking and canonical asset
+// identity for a YouTube candidate.
+type YouTubeCandidate struct {
+	SourceURL        string  `json:"source_url"`
+	YouTubeVideoID   string  `json:"youtube_video_id,omitempty"`
+	SourceStartMs    int64   `json:"source_start_ms,omitempty"`
+	SourceEndMs      int64   `json:"source_end_ms,omitempty"`
+	DurationMs       int64   `json:"duration_ms,omitempty"`
+	RelevanceScore   float64 `json:"relevance_score,omitempty"`
+	Score            float64 `json:"score,omitempty"`
+	AssetID          string  `json:"asset_id,omitempty"`
+	DriveLink        string  `json:"drive_link,omitempty"`
+	AcquisitionStatus string `json:"acquisition_status,omitempty"`
+	VerificationStatus string `json:"verification_status,omitempty"`
+	PersistenceStatus string `json:"persistence_status,omitempty"`
+	IndexStatus       string `json:"index_status,omitempty"`
+	SelectionReason   string `json:"selection_reason,omitempty"`
 }
 
 // VoiceoverView is the public wire representation of a voiceover.
@@ -319,6 +348,7 @@ func convertScenesToView(scenes []scriptgen.Scene) []SceneView {
 			Index: s.Index,
 			Text:  convertLanguageMap(s.Text),
 		}
+		v.YouTube = youtubeViewForScene(s)
 		if s.Clip != nil {
 			v.Clip = s.Clip
 		}
@@ -335,6 +365,37 @@ func convertScenesToView(scenes []scriptgen.Scene) []SceneView {
 		views[i] = v
 	}
 	return views
+}
+
+func youtubeViewForScene(scene scriptgen.Scene) *YouTubeSceneView {
+	if scene.VidRush == nil || len(scene.VidRush.Assets.Candidates) == 0 {
+		return nil
+	}
+	view := &YouTubeSceneView{}
+	for _, candidate := range scene.VidRush.Assets.Candidates {
+		if candidate.Provider != "youtube" {
+			continue
+		}
+		mapped := YouTubeCandidate{SourceURL: candidate.SourceURL, SourceStartMs: candidate.SourceStartMs, SourceEndMs: candidate.SourceEndMs, DurationMs: candidate.DurationMs, RelevanceScore: candidate.RelevanceScore, Score: candidate.Score, AssetID: candidate.AssetID, DriveLink: candidate.DriveLink, AcquisitionStatus: candidate.AcquisitionStatus, VerificationStatus: candidate.VerificationStatus, PersistenceStatus: candidate.PersistenceStatus, IndexStatus: candidate.IndexStatus, SelectionReason: candidate.SelectionReason}
+		if parsed, err := url.Parse(candidate.SourceURL); err == nil {
+			mapped.YouTubeVideoID = parsed.Query().Get("v")
+		}
+		view.Candidates = append(view.Candidates, mapped)
+	}
+	view.SourcesConsidered = len(view.Candidates)
+	if scene.VidRush.Assets.PrimaryVideo != nil && scene.VidRush.Assets.PrimaryVideo.Provider == "youtube" {
+		for i := range view.Candidates {
+			if view.Candidates[i].AssetID == scene.VidRush.Assets.PrimaryVideo.AssetID {
+				selected := view.Candidates[i]
+				view.Selected = &selected
+				break
+			}
+		}
+	}
+	if view.SourcesConsidered == 0 {
+		return nil
+	}
+	return view
 }
 
 // convertDocumentsToView converts the internal Documents map to

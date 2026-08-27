@@ -139,6 +139,7 @@ func (s *VidRushRegistryImageSearcher) SearchImages(ctx context.Context, req Int
 type VidRushProviderFanout struct {
 	artlist ArtlistClipSearcher
 	images  InternetImageSearcher
+	youtube scriptports.VidRushAssetProvider
 	cache   scriptports.VidRushCachePort
 	catalog entitycatalog.Repository
 	metrics VidRushMetrics
@@ -146,6 +147,14 @@ type VidRushProviderFanout struct {
 
 func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
 	return NewVidRushProviderFanoutWithCatalog(artlist, images, nil, nil, metrics...)
+}
+
+// NewVidRushProviderFanoutWithYouTube adds the canonical YouTube provider to
+// the existing fan-out while preserving the legacy constructor.
+func NewVidRushProviderFanoutWithYouTube(artlist ArtlistClipSearcher, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	fanout := NewVidRushProviderFanout(artlist, images, metrics...)
+	fanout.youtube = youtube
+	return fanout
 }
 
 func NewVidRushProviderFanoutWithCache(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
@@ -188,8 +197,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 
 	artlistEnabled := plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && f.artlist != nil && len(updated.Insights.ArtlistQueries) > 0
 	imagesEnabled := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && f.images != nil && len(updated.Insights.ImageQueries) > 0
+	youtubeEnabled := plan.MediaPlan.ProviderPolicy.YouTube.AsBool() && f.youtube != nil
 
-	outcomes := make(chan providerOutcome, 2)
+	outcomes := make(chan providerOutcome, 3)
 	var wg sync.WaitGroup
 
 	// Snapshot the read-only segment inputs each provider goroutine needs so
@@ -201,12 +211,28 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	artlistIntentHash := updated.Insights.ArtlistIntentHash
 	artlistQueries := append([]string(nil), updated.Insights.ArtlistQueries...)
 	imageQueries := append([]string(nil), updated.Insights.ImageQueries...)
+	youtubeSources := youtubeSourcesForSegment(plan, segmentID)
 	firstEntity := ""
 	if len(updated.Insights.Entities) > 0 {
 		firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
 	}
 	artlistIdentity := scriptpkg.VidRushSegmentResult{SegmentID: segmentID}
 
+	if youtubeEnabled && len(youtubeSources) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			candidates, err := f.youtube.Search(ctx, scriptports.VidRushSearchRequest{
+				SegmentID: segmentID, SceneID: plan.Title, TextHash: textHash, Text: updated.Text,
+				Query: youtubeQuery(updated), Limit: 3, Sources: youtubeSources,
+			})
+			if err != nil {
+				outcomes <- providerOutcome{provider: scriptpkg.VidRushProviderYouTube, err: err}
+				return
+			}
+			outcomes <- providerOutcome{provider: scriptpkg.VidRushProviderYouTube, candidates: candidates}
+		}()
+	}
 	if artlistEnabled {
 		wg.Add(1)
 		go func() {
@@ -517,6 +543,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			if outcome.provider == scriptpkg.VidRushProviderArtlist && vidRushArtlistOnlyPlan(plan) {
 				return updated, fmt.Errorf("vidrush provider fanout: required artlist search failed for segment %s: %w", updated.SegmentID, outcome.err)
 			}
+			if outcome.provider == scriptpkg.VidRushProviderYouTube && youtubeSourceRequired(plan, segmentID) {
+				return updated, fmt.Errorf("vidrush provider fanout: required youtube source failed for segment %s: %w", updated.SegmentID, outcome.err)
+			}
 			continue
 		}
 		switch outcome.provider {
@@ -539,4 +568,34 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		}
 	}
 	return updated, nil
+}
+
+func youtubeSourcesForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmentID string) []scriptports.VidRushSourceHint {
+	if plan == nil {
+		return nil
+	}
+	out := make([]scriptports.VidRushSourceHint, 0)
+	for _, source := range plan.MediaPlan.Sources {
+		if source.SegmentID != segmentID || !strings.EqualFold(source.Provider, scriptpkg.VidRushProviderYouTube) {
+			continue
+		}
+		out = append(out, scriptports.VidRushSourceHint{URL: source.SourceURL, Priority: source.Priority, Required: string(source.Mode) == "required"})
+	}
+	return out
+}
+
+func youtubeSourceRequired(plan *scriptpkg.ResolvedGenerationPlan, segmentID string) bool {
+	for _, source := range plan.MediaPlan.Sources {
+		if source.SegmentID == segmentID && strings.EqualFold(source.Provider, scriptpkg.VidRushProviderYouTube) && source.Mode == "required" {
+			return true
+		}
+	}
+	return false
+}
+
+func youtubeQuery(segment scriptpkg.VidRushSegmentResult) string {
+	if len(segment.Insights.YouTubeQueries) > 0 {
+		return strings.Join(segment.Insights.YouTubeQueries, " ")
+	}
+	return segment.Text
 }

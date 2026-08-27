@@ -9,6 +9,11 @@ type Entity struct {
 }
 
 // EntityResult is the canonical typed entity-extraction output.
+//
+// It is the extractor's typed output surface. It evolves into the canonical
+// SegmentSemanticProfile via BuildSegmentSemanticProfile (the single
+// canonical point — no parallel mapping is allowed); legacy consumers keep
+// reading this surface.
 type EntityResult struct {
 	Persons          []Entity `json:"persons,omitempty"`
 	Places           []Entity `json:"places,omitempty"`

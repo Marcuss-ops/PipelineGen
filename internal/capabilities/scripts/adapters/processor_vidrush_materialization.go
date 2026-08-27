@@ -269,6 +269,13 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			legacyPersisted := candidate.IsLegacyCandidate() && strings.TrimSpace(candidate.DriveLink) != ""
+			// YouTube clips are already fully materialized by the canonical
+			// StockService/extractor. Never send them through VidRush's generic
+			// Acquire → Verify → Finalize path a second time.
+			if candidate.Provider == scriptpkg.VidRushProviderYouTube && readyVidRushCandidate(candidate) {
+				materialized = append(materialized, candidate)
+				continue
+			}
 			if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
 				materialized = append(materialized, candidate)
 				if isImage {
@@ -299,7 +306,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 			}
 			providerName := strings.ToLower(strings.TrimSpace(candidate.Provider))
-			if providerName != scriptpkg.VidRushProviderArtlist && providerName != scriptpkg.VidRushProviderInternetImages && providerName != scriptpkg.VidRushProviderImageGeneration {
+			if providerName != scriptpkg.VidRushProviderArtlist && providerName != scriptpkg.VidRushProviderInternetImages && providerName != scriptpkg.VidRushProviderImageGeneration && providerName != scriptpkg.VidRushProviderYouTube {
 				materialized = append(materialized, candidate)
 				continue
 			}
@@ -448,11 +455,12 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	updated.Assets.PrimaryVideo = nil
 	for i := range materialized {
 		candidate := materialized[i]
-		if candidate.Provider != scriptpkg.VidRushProviderArtlist || !readyVidRushCandidate(candidate) {
+		if (candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube) || !readyVidRushCandidate(candidate) {
 			continue
 		}
-		if updated.Assets.PrimaryVideo == nil || ScoreVidRushCandidate(candidate, false) > ScoreVidRushCandidate(*updated.Assets.PrimaryVideo, false) {
+		if updated.Assets.PrimaryVideo == nil || compareVidRushPrimaryCandidates(candidate, *updated.Assets.PrimaryVideo) > 0 {
 			selected := candidate
+			selected.Score = ScoreVidRushCandidate(candidate, false)
 			selected.SelectionReason = "highest ranked verified and persisted video"
 			updated.Assets.PrimaryVideo = &selected
 		}
@@ -495,6 +503,8 @@ func vidRushProviderTimeout(provider string) time.Duration {
 		return vidRushImageAcquireTimeout
 	case scriptpkg.VidRushProviderImageGeneration:
 		return vidRushGenerationAcquireTimeout
+	case scriptpkg.VidRushProviderYouTube:
+		return vidRushImageAcquireTimeout
 	default:
 		return vidRushImageAcquireTimeout
 	}
@@ -531,6 +541,7 @@ func requireVidRushEnabledProviders(plan *scriptpkg.ResolvedGenerationPlan, regi
 		{name: scriptpkg.VidRushProviderArtlist, enabled: plan.MediaPlan.ProviderPolicy.Artlist.AsBool()},
 		{name: scriptpkg.VidRushProviderInternetImages, enabled: plan.MediaPlan.ProviderPolicy.InternetImages.AsBool()},
 		{name: scriptpkg.VidRushProviderImageGeneration, enabled: plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()},
+		{name: scriptpkg.VidRushProviderYouTube, enabled: plan.MediaPlan.ProviderPolicy.YouTube.AsBool()},
 	}
 	for _, check := range checks {
 		if !check.enabled {

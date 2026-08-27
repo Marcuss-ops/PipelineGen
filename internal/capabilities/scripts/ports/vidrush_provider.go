@@ -24,6 +24,17 @@ type VidRushSearchRequest struct {
 	Text      string
 	Query     string
 	Limit     int
+	// Sources are bounded, caller-supplied URLs. Providers that do not
+	// support source hints may ignore them; YouTube requires them.
+	Sources []VidRushSourceHint
+}
+
+// VidRushSourceHint identifies a provider source associated with the
+// requesting segment. It is a candidate input, not a selected asset.
+type VidRushSourceHint struct {
+	URL      string `json:"url"`
+	Priority int    `json:"priority,omitempty"`
+	Required bool   `json:"required,omitempty"`
 }
 
 // LocalArtifact is the provider-to-verifier handoff. Providers may resolve a

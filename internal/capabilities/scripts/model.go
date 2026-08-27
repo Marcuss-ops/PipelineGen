@@ -525,6 +525,12 @@ type Scene struct {
 	// entity that may drive an overlay intent. It is derived from Entities
 	// (false when entities=[]), never invented.
 	EntityOverlayRequired bool `json:"entity_overlay_required"`
+
+	// VidRush carries the canonical per-segment VidRush result (insights,
+	// asset candidates and selection) when a VidRush plan is active for this
+	// scene. It is projected read-only into the job view; nil when no
+	// enrichment produced a result for this scene.
+	VidRush *scriptpkg.VidRushSegmentResult `json:"vidrush,omitempty"`
 }
 
 // GenerateOutput is the durable plain-text projection of the generated

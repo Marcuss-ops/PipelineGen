@@ -381,43 +381,20 @@ func buildVidRushSegmentResult(
 		TextHash:          canonicalSeg.TextHash,
 		ArtlistIntentHash: scriptpkg.ArtlistSearchIntentHash(append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...)),
 	}
-	entities := make([]scriptpkg.ExtractedEntity, 0, entitiesLimit)
-	for _, person := range res.Persons {
-		if v := strings.TrimSpace(person.Value); v != "" {
-			kind := strings.ToUpper(strings.TrimSpace(person.Type))
-			if kind == "" {
-				kind = "PERSON"
-			}
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(person.Score)})
-		}
-	}
-	for _, place := range res.Places {
-		if v := strings.TrimSpace(place.Value); v != "" {
-			kind := strings.ToUpper(strings.TrimSpace(place.Type))
-			if kind == "" {
-				kind = "LOCATION"
-			}
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(place.Score)})
-		}
-	}
-	for _, concept := range res.Concepts {
-		if v := strings.TrimSpace(concept.Value); v != "" {
-			kind := strings.ToUpper(strings.TrimSpace(concept.Type))
-			if kind == "" {
-				kind = "CONCEPT"
-			}
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(concept.Score)})
-		}
-	}
-	insights.Entities = uniqueLimitedEntities(entities, entitiesLimit)
-	insights.ImportantPhrases = uniqueLimitedStrings(res.ImportantPhrases, phrasesLimit)
+	// SINGLE canonical point: the typed extraction result evolves into the
+	// segment profile via kernel/script.BuildSegmentSemanticProfile, and every
+	// legacy insight below is projected FROM that profile. No parallel
+	// extraction-to-insight mapping may exist outside this builder.
+	profile := scriptpkg.BuildSegmentSemanticProfile(canonicalSeg, *res, plan.Model, plan.PromptVersion)
+	insights.Entities = uniqueLimitedEntities(profile.Entities, entitiesLimit)
+	insights.ImportantPhrases = uniqueLimitedStrings(profile.ImportantPhrases, phrasesLimit)
 	// Keep the per-segment insight contract total for short canonical
 	// segments (for example a one-word section heading). The fallback is
 	// the segment text itself, never a model-generated or hardcoded value.
 	if len(insights.ImportantPhrases) == 0 && strings.TrimSpace(canonicalSeg.Text) != "" && phrasesLimit > 0 {
 		insights.ImportantPhrases = []string{strings.TrimSpace(canonicalSeg.Text)}
 	}
-	insights.ImportantWords = uniqueLimitedStrings(res.ImportantWords, wordsLimit)
+	insights.ImportantWords = uniqueLimitedStrings(weightedKeywordValues(profile.Keywords), wordsLimit)
 
 	// Deterministic source-grounded queries lead the bounded fan-out. Model
 	// phrases enrich the set only after a retrieval-safe visual query is
@@ -431,12 +408,12 @@ func buildVidRushSegmentResult(
 		insights.ArtlistQueries = uniqueLimitedStrings(manualArtlistQueries, artlistLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotPrimaryVideo) {
 		fallbackArtlistQueries := buildArtlistQueries(visualText, append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...), insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-		llmArtlistQueries := normalizeRetrievalQueries(res.ArtlistPhrases, 6)
+		llmArtlistQueries := normalizeRetrievalQueries(weightedKeywordValues(profile.VisualTerms), 6)
 		llmArtlistQueries = uniqueLimitedStrings(llmArtlistQueries, artlistLimit)
 		insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
 	}
 
-	imagePhrases := append([]string(nil), res.ArtlistPhrases...)
+	imagePhrases := append([]string(nil), weightedKeywordValues(profile.VisualTerms)...)
 	imagePhrases = append(imagePhrases, insights.ImportantPhrases...)
 	manualImageQueries := ResolveManualSegmentQueries(plan, canonicalSeg, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
 	if len(manualImageQueries) > 0 {
