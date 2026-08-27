@@ -121,11 +121,17 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			}
 		} else if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
 			return nil, fmt.Errorf("broker: deserialise published artifacts: %w", err)
-		}
-		// Older in-process runners emitted the published envelope before
+		} // Older in-process runners emitted the published envelope before
 		// the typed requirement/location cutover. Normalize only that
 		// legacy shape at this compatibility boundary; new staged refs
 		// above always carry both values explicitly.
+		//
+		// REMOVAL GATE: delete this normalize loop only after a FULL
+		// rollout of runners built post-cutover has been observed emitting
+		// zero legacy-shape payloads (isStaged == false while
+		// len(cmd.StagedArtifacts) > 0) over a complete benchmark cycle.
+		// Until then, dropping normalization turns every in-flight old
+		// binary's finalize into a validation failure.
 		for i := range artifacts {
 			if !artifacts[i].Requirement.Valid() {
 				artifacts[i].Requirement = finalization.ArtifactRequirementRequired

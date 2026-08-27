@@ -383,6 +383,10 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// that carried timing surfaces must project, or the run fails.
 		canvas := r.overlayCanvas
 		canvas.Background = overlayBackgroundFromPayload(req.OverlayBackground)
+		canvas.Style = req.OverlayStyle
+		if canvas.Style == nil && req.OverlayBackground != nil {
+			canvas.Style = req.OverlayBackground.Style
+		}
 		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, canvas); err != nil {
 			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)

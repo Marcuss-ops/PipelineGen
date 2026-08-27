@@ -53,7 +53,6 @@ type DBProbeRecord struct {
 // when at least one DB probe returned ErrSqliteBinaryMissing. Operators
 // can grep the report for "probe_unavailable" to identify which FASE
 // had the missing binary without re-running.
-const probeOutcomeUnavailable = "probe_unavailable"
 
 // ── Report writer + assertion recorder ──────────────────────────────────
 

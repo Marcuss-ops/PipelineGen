@@ -55,6 +55,23 @@ type DocClientImpl struct {
 
 // CreateDoc creates a new Google Doc, inserts the provided content, and moves it to the target folder when requested.
 func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID string) (*Doc, error) {
+	return d.createDocWithProps(ctx, title, content, folderID, nil)
+}
+
+// createDocWithProps creates a new Google Doc, inserts the content, and then
+// performs the move-to-folder AND the app-property tagging in a SINGLE Drive
+// Files.Update call. Folding the move and the idempotency/content-hash tags
+// into one round trip is the document-publish hot path: the previous shape
+// (create → insert → move [get+update] → tag ×2) cost seven sequential
+// Google API calls; this shape costs five. Callers that need neither the
+// move nor the tags pass nil/empty (folderID "" + props nil skips the
+// update entirely, so a create-only call still costs exactly two round
+// trips: create + insert).
+//
+// HTML content is built structurally via the Docs API so the title heading
+// and code blocks survive. Drive's HTML import silently drops both, so it
+// must not be used for the canonical document surface.
+func (d *DocClientImpl) createDocWithProps(ctx context.Context, title, content, folderID string, props map[string]string) (*Doc, error) {
 	if d.docsService == nil {
 		return nil, fmt.Errorf("google docs service not initialized")
 	}
@@ -64,37 +81,6 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 		docTitle = "Untitled script"
 	}
 
-	// HTML content is built structurally via the Docs API so the title
-	// heading and code blocks survive. Drive's HTML import silently drops
-	// both, so it must not be used for the canonical document surface.
-	if isHTMLContent(content) {
-		if d.docsService == nil {
-			return nil, fmt.Errorf("google docs service not initialized")
-		}
-
-		created, err := d.docsService.Documents.Create(&docs.Document{
-			Title: docTitle,
-		}).Context(ctx).Do()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create google doc: %w", err)
-		}
-
-		if err := d.insertHTMLContent(ctx, created.DocumentId, content); err != nil {
-			return nil, err
-		}
-
-		if err := d.moveToFolder(ctx, created.DocumentId, folderID); err != nil {
-			return nil, err
-		}
-
-		return &Doc{
-			ID:      created.DocumentId,
-			Title:   docTitle,
-			URL:     googleDocsEditURL(created.DocumentId),
-			Content: content,
-		}, nil
-	}
-
 	created, err := d.docsService.Documents.Create(&docs.Document{
 		Title: docTitle,
 	}).Context(ctx).Do()
@@ -102,20 +88,29 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 		return nil, fmt.Errorf("failed to create google doc: %w", err)
 	}
 
-	if err := d.insertContent(ctx, created.DocumentId, content); err != nil {
+	if isHTMLContent(content) {
+		if err := d.insertHTMLContent(ctx, created.DocumentId, content); err != nil {
+			return nil, err
+		}
+	} else if err := d.insertContent(ctx, created.DocumentId, content); err != nil {
 		return nil, err
 	}
 
-	if err := d.moveToFolder(ctx, created.DocumentId, folderID); err != nil {
-		return nil, err
+	doc := &Doc{
+		ID:            created.DocumentId,
+		Title:         docTitle,
+		URL:           googleDocsEditURL(created.DocumentId),
+		Content:       content,
+		ContentSHA256: props[docContentHashProperty],
 	}
-
-	return &Doc{
-		ID:      created.DocumentId,
-		Title:   docTitle,
-		URL:     googleDocsEditURL(created.DocumentId),
-		Content: content,
-	}, nil
+	if err := d.moveToFolderAndTag(ctx, created.DocumentId, folderID, props); err != nil {
+		// The doc exists and is fully written; only the move/tag round
+		// trip failed. Return the doc with the wrapped error so callers
+		// keep the link (the idempotent caller maps it to
+		// ErrDocumentReferencePreserved) instead of losing it.
+		return doc, err
+	}
+	return doc, nil
 }
 
 // CreateDocIdempotent creates a Google Doc only once for a given
@@ -150,21 +145,21 @@ func (d *DocClientImpl) CreateDocIdempotent(ctx context.Context, title, content,
 		return existing, nil
 	}
 
-	doc, err := d.CreateDoc(ctx, title, content, folderID)
+	doc, err := d.createDocWithProps(ctx, title, content, folderID, map[string]string{
+		"pipelinegen_generation_id": idempotencyKey,
+		docContentHashProperty:      sha256Hex(content),
+	})
 	if err != nil {
-		return nil, err
+		if doc == nil {
+			// The failure happened before the doc existed (create/insert):
+			// propagate it verbatim.
+			return nil, err
+		}
+		// Non-fatal contract preserved: the doc exists but is untagged.
+		// The wrapped error carries "idempotency" so the caller maps it
+		// to ErrDocumentReferencePreserved and keeps the link.
+		return doc, fmt.Errorf("doc created but idempotency/content-hash tag failed: %w", err)
 	}
-	if err := d.setAppProperty(ctx, doc.ID, "pipelinegen_generation_id", idempotencyKey); err != nil {
-		// Non-fatal: the doc exists but we could not tag it. Log is
-		// not available here, so surface as a wrapped error but still
-		// return the created doc so callers do not lose the link.
-		return doc, fmt.Errorf("doc created but idempotency tag failed: %w", err)
-	}
-	contentHash := sha256Hex(content)
-	if err := d.setAppProperty(ctx, doc.ID, docContentHashProperty, contentHash); err != nil {
-		return doc, fmt.Errorf("doc created but content hash tag failed: %w", err)
-	}
-	doc.ContentSHA256 = contentHash
 	return doc, nil
 }
 
@@ -364,25 +359,39 @@ func (d *DocClientImpl) ListRecentDocs(ctx context.Context, folderID string, lim
 	return docs, nil
 }
 
-func (d *DocClientImpl) moveToFolder(ctx context.Context, docID, folderID string) error {
+// moveToFolderAndTag moves a freshly created document into folderID and sets
+// the given Drive app properties in ONE Files.Update round trip. The move is
+// only issued when folderID is non-empty; the tag only when props is
+// non-empty; both empty short-circuits without touching the Drive API, so
+// create-only callers never pay the parents read + update pair.
+func (d *DocClientImpl) moveToFolderAndTag(ctx context.Context, docID, folderID string, props map[string]string) error {
 	folderID = strings.TrimSpace(folderID)
-	if folderID == "" || d.driveService == nil {
+	if folderID == "" && len(props) == 0 {
 		return nil
 	}
-
-	file, err := d.driveService.Files.Get(docID).Fields("parents").Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed to fetch document parents: %w", err)
+	if d.driveService == nil {
+		return fmt.Errorf("drive service not initialized")
 	}
 
-	update := d.driveService.Files.Update(docID, nil).
-		AddParents(folderID)
-	if len(file.Parents) > 0 {
-		update = update.RemoveParents(strings.Join(file.Parents, ","))
+	update := d.driveService.Files.Update(docID, &drive.File{
+		AppProperties: props,
+	})
+	if folderID != "" {
+		// A doc created via the API has exactly one parent (Drive root);
+		// read it so the move removes the real parent instead of assuming
+		// "root" (custom-root workspaces would otherwise leave the doc
+		// under its original parent).
+		file, err := d.driveService.Files.Get(docID).Fields("parents").Context(ctx).Do()
+		if err != nil {
+			return fmt.Errorf("failed to fetch document parents: %w", err)
+		}
+		update = update.AddParents(folderID)
+		if len(file.Parents) > 0 {
+			update = update.RemoveParents(strings.Join(file.Parents, ","))
+		}
 	}
-	_, err = update.Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed to move document to folder: %w", err)
+	if _, err := update.Fields("id").Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to move/tag document: %w", err)
 	}
 
 	return nil

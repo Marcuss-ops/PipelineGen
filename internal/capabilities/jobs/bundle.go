@@ -51,13 +51,3 @@ func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {
 	}
 	return api.RuntimeModuleFor("jobs", "/api/jobs", d)
 }
-
-func (b Bundle) buildOld(ctx api.BuildContext) (api.Descriptor, error) {
-	return Build(Dependencies{
-		Service:     b.service,
-		Stats:       b.stats,
-		History:     b.history,
-		EnabledFunc: b.enabledFunc,
-		Logger:      b.logger,
-	})
-}

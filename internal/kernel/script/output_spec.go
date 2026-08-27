@@ -134,12 +134,18 @@ func (o *OutputSpec) HasAnyPostprocessor() bool {
 // POST /api/script/generate. It is deliberately independent from the
 // narration contract: generation decides the scenes, while the localized
 // render fan-out materializes each selected clip.
+//
+// The block is the SSOT for the full visual stack: background, watermark,
+// and subtitles. Style/shadow/transition live ONLY here (canonical
+// definition in the kernel); the capability boundaries project them into
+// their typed equivalents instead of re-defining parallel structs.
 type VideoRenderSpec struct {
-	Enabled       bool                `json:"enabled,omitempty"`
-	AssembleFinal bool                `json:"assemble_final,omitempty"`
-	Watermark     *VideoWatermarkSpec `json:"watermark,omitempty"`
-	Subtitles     *VideoSubtitlesSpec `json:"subtitles,omitempty"`
-	OutputDir     string              `json:"output_dir,omitempty"`
+	Enabled       bool                 `json:"enabled,omitempty"`
+	AssembleFinal bool                 `json:"assemble_final,omitempty"`
+	Background    *VideoBackgroundSpec `json:"background,omitempty"`
+	Watermark     *VideoWatermarkSpec  `json:"watermark,omitempty"`
+	Subtitles     *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
+	OutputDir     string               `json:"output_dir,omitempty"`
 	// DriveFolderID is the parent Drive folder for rendered clips. When
 	// DriveSubfolderName is set, the renderer creates/reuses that child.
 	DriveFolderID      string `json:"drive_folder_id,omitempty"`
@@ -147,27 +153,79 @@ type VideoRenderSpec struct {
 	RequireGPU         bool   `json:"require_gpu,omitempty"`
 }
 
+// VideoBackgroundSpec selects the rendered background behind the source
+// clip. Mode is one of none, blur_source, asset (canonical literals owned
+// by the cliprender capability): blur_source derives the blurred background
+// from the source itself, asset requires AssetID. Mode "" (omitted)
+// normalises to none.
+type VideoBackgroundSpec struct {
+	Mode    string `json:"mode,omitempty"`
+	AssetID string `json:"asset_id,omitempty"`
+}
+
+// VideoVisualStyleSpec is the canonical shared visual override block for
+// video layers (watermark + subtitles). Every field is optional so existing
+// payloads keep their exact behaviour; the render boundary projects these
+// into the strongly-typed Chronon/Rust layer style.
+type VideoVisualStyleSpec struct {
+	Color        string               `json:"color,omitempty"`
+	FontSizePX   float64              `json:"font_size_px,omitempty"`
+	WidthPX      int                  `json:"width_px,omitempty"`
+	HeightPX     int                  `json:"height_px,omitempty"`
+	ScalePercent float64              `json:"scale_percent,omitempty"`
+	Shadow       *VideoShadowSpec     `json:"shadow,omitempty"`
+	TransitionIn *VideoTransitionSpec `json:"transition_in,omitempty"`
+}
+
+// VideoShadowSpec is the canonical drop-shadow block shared by every video
+// layer. Color is a CSS-style hex string ("#RRGGBB"); offsets are in pixels.
+type VideoShadowSpec struct {
+	Color   string  `json:"color,omitempty"`
+	Opacity float64 `json:"opacity,omitempty"`
+	BlurPX  float64 `json:"blur_px,omitempty"`
+	OffsetX float64 `json:"offset_x,omitempty"`
+	OffsetY float64 `json:"offset_y,omitempty"`
+}
+
+// VideoTransitionSpec is the canonical entry-animation block for a video
+// layer. Preset selects the animation intent (e.g. fade_in); DurationMS is
+// the animation length in milliseconds.
+type VideoTransitionSpec struct {
+	Preset     string `json:"preset,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
+}
+
 type VideoWatermarkSpec struct {
-	Enabled  bool    `json:"enabled,omitempty"`
-	Text     string  `json:"text,omitempty"`
-	AssetID  string  `json:"asset_id,omitempty"`
-	Position string  `json:"position,omitempty"`
-	Opacity  float64 `json:"opacity,omitempty"`
-	MarginPX int     `json:"margin_px,omitempty"`
+	Enabled  bool                  `json:"enabled,omitempty"`
+	Text     string                `json:"text,omitempty"`
+	AssetID  string                `json:"asset_id,omitempty"`
+	Position string                `json:"position,omitempty"`
+	Opacity  float64               `json:"opacity,omitempty"`
+	MarginPX int                   `json:"margin_px,omitempty"`
+	Style    *VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 type VideoSubtitlesSpec struct {
-	Enabled bool   `json:"enabled,omitempty"`
-	Mode    string `json:"mode,omitempty"`
-	StyleID string `json:"style_id,omitempty"`
+	Enabled bool                  `json:"enabled,omitempty"`
+	Mode    string                `json:"mode,omitempty"`
+	StyleID string                `json:"style_id,omitempty"`
+	Style   *VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
 // Normalize preserves the caller's explicit choices and enables the video
-// path whenever either requested overlay is enabled. Empty values receive the
-// same safe defaults as clip.render.
+// path whenever the background is a real layer or either requested overlay
+// is enabled. Empty values receive the same safe defaults as clip.render.
 func (r *VideoRenderSpec) Normalize() {
 	if r == nil {
 		return
+	}
+	if r.Background != nil {
+		if r.Background.Mode == "" {
+			r.Background.Mode = "none"
+		}
+		if r.Background.Mode != "none" {
+			r.Enabled = true
+		}
 	}
 	if r.Watermark != nil && r.Watermark.Enabled {
 		r.Enabled = true

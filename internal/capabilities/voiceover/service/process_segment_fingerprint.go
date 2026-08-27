@@ -73,6 +73,12 @@ func TimingPolicyFingerprint(timing *audio.TimingRequest, removeSilence bool) st
 // The destination is included because the persisted artifact and its Drive
 // ownership are part of the delivery contract. JobID is intentionally not
 // included; retry isolation belongs to BuildVoiceoverIdempotencyKey.
+//
+// Version v2 (2026-08-26): the voiceover output format was canonicalized to
+// 48 kHz stereo MP3 (remove_silence now normalizes in the same pass that
+// strips silence). The format token is part of the fingerprint so a v1
+// (24 kHz mono) cache row is never reused as a valid hit for a v2 synthesis:
+// old entries go cold and are re-synthesized once, then cached under v2.
 func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
-	return digest.SHA256String("voiceover-content-v1:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence))
+	return digest.SHA256String("voiceover-content-v2:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
 }

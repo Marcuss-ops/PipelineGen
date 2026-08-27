@@ -341,7 +341,6 @@ type rateLimitedTranslator struct {
 	inner   translation.TranslationPort
 	sem     chan struct{}
 	timeout time.Duration
-	log     *zap.Logger
 }
 
 func (r *rateLimitedTranslator) Translate(ctx context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {

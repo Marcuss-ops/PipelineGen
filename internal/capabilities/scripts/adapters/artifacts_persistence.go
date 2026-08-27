@@ -25,19 +25,29 @@
 //
 // godlike/07 honest-limitation: this file exceeds the 66-LoC
 // transitional cap (~150 LoC) because the §8.4 multi-artifact
-// shape comprises 4 inline writing paths (script.json / scenes.json /
-// workspace-mkdir / per-language voiceover) + SHA256 + manifest
+// shape comprises 3 inline writing paths (script.json / scenes.json /
+// workspace-mkdir / optional final audio) + SHA256 + manifest
 // assembly. Forward-pointer linked_issue (zero-baseline rule):
 // PR-GODOBJ-4c-PERSIST-ADAPTER-SLIM extracts per-kind writers into
 // per-kind helper functions (≤30 LoC each). Deadline 2026-08-15.
 //
 // JSON-shape invariant: §8.4 spec post-Sprint-1.0 lists exactly
-// 3 kinds — script-json (REQUIRED), scenes (OPTIONAL when generated),
-// voiceover (OPTIONAL, language-grouped). Document artefacts
-// (document-pdf, document-markdown) were RETIRED in Sprint 1.0;
-// the canonical downstream document.generate job owns Google-Doc
-// creation. Pre-§8.4 kinds (script_text, metadata, entities,
-// image) are REMOVED here.
+// 2 kinds in the manifest — script-json (REQUIRED), scenes (OPTIONAL
+// when generated) — plus the optional certified final_audio.m4a.
+// Per-scene voiceovers are INTENTIONALLY NOT emitted as manifest
+// artifacts (P0 finalize optimization, Aug 2026): the TTS pipeline
+// already publishes each scene file to Drive during generation
+// (voiceover.VoiceoverItemExecutor "TTS → publish → finalize") and
+// stores the DriveLink in the scene binding; the Google-Doc, scenes.json
+// and script.json consumers all read THAT link, and audio/render use
+// local paths. The finalize re-publication was a second upload of the
+// same bytes with no downstream consumer (Qdrant classifies audio as
+// REGISTERED-only). The files stay on disk (job workspace + voiceover
+// text-hash cache) for audio compile and cross-run reuse. Document
+// artefacts (document-pdf, document-markdown) were RETIRED in
+// Sprint 1.0; the canonical downstream document.generate job owns
+// Google-Doc creation. Pre-§8.4 kinds (script_text, metadata,
+// entities, image) are REMOVED here.
 package adapters
 
 import (
@@ -92,7 +102,7 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
 	}
 
-	artifacts := make([]job.Artifact, 0, 4 /* script, scenes, voiceover, optional final audio */)
+	artifacts := make([]job.Artifact, 0, 3 /* script, scenes, optional final audio */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
@@ -154,57 +164,24 @@ func PersistGeneratedArtifacts(
 		})
 	}
 
-	// ── 5. voiceover (OPTIONAL, language-grouped) ──────────────────────
-	// Voiceover generation produces one independently addressable audio
-	// file per scene. Emit every scene file: the worker's canonical
-	// artifact publisher routes each entry to the voiceover Drive group.
+	// ── 5. per-scene voiceovers — INTENTIONALLY NOT emitted ────────────
+	// (P0 finalize optimization, Aug 2026 — O(N) → O(1) Drive uploads.)
 	//
-	// PR-OUTBOX-SOURCE-VERSION: compute SHA256 + SizeBytes for
-	// voiceover artifacts. Without this, FinalizeAsset emits
-	// outbox events with empty source_version, causing dead_letter
-	// via the IndexingHandler supersede gate. Skip files that
-	// don't exist on disk (the voiceover pipeline may not have
-	// generated them yet).
-	for sceneIndex, scene := range result.Output.SpecScene.Scenes {
-		if scene.Bindings.Voiceover == nil || strings.TrimSpace(scene.Bindings.Voiceover.LocalPath) == "" {
-			continue
-		}
-		lang := result.Language
-		if lang == "" {
-			lang = "default"
-		}
-		voPath := scene.Bindings.Voiceover.LocalPath
-		voFilename := fmt.Sprintf("voiceover-scene-%d.mp3", sceneIndex)
-		if lang != "" && lang != "default" {
-			voFilename = fmt.Sprintf("voiceover-scene-%d-%s.mp3", sceneIndex, lang)
-		}
-		// Only include voiceover artifact if the file exists and
-		// we can compute its SHA256. Skip missing files gracefully.
-		if voInfo, voStatErr := os.Stat(voPath); voStatErr == nil {
-			voSHA, voSHAErr := job.ComputeSHA256(fs, voPath)
-			if voSHAErr != nil {
-				return nil, fmt.Errorf("artifacts_persistence: sha256 voiceover %s: %w", voPath, voSHAErr)
-			}
-			artifacts = append(artifacts, job.Artifact{
-				ID:            fmt.Sprintf("%s:voiceover:scene-%d:%s", jobID, sceneIndex, lang),
-				Kind:          job.ArtifactKindVoiceover,
-				Path:          voPath,
-				Filename:      voFilename,
-				MIMEType:      "audio/mpeg",
-				SizeBytes:     voInfo.Size(),
-				SHA256:        voSHA,
-				Required:      false,
-				DriveGroup:    result.VoiceoverGroup,
-				DriveLanguage: lang,
-			})
-		} else {
-			log.Debug("artifacts_persistence: voiceover file not on disk — skipping artifact",
-				zap.String("job_id", jobID),
-				zap.String("lang", lang),
-				zap.String("vo_path", voPath),
-				zap.Error(voStatErr))
-		}
-	}
+	// The TTS pipeline (RunVoiceoverSceneFanout → VoiceoverItemExecutor
+	// "TTS → publish → finalize") already publishes each scene voiceover
+	// to Drive during generation and hydrates the voiceovers row +
+	// media_assets projection + the scene binding DriveLink. All
+	// downstream consumers read THAT publication:
+	//   - Google Docs  → scene.Bindings.Voiceover.Link (TTS link)
+	//   - scenes.json / script.json → bindings (TTS links)
+	//   - audio compile / render → local paths + final_audio.m4a
+	//   - Qdrant index → audio is REGISTERED-only (skipped)
+	//
+	// Re-listing the same local files here made post_writer_finalize
+	// re-upload identical bytes (~2.5s × N sequential Drive I/O ≈ the
+	// 50s finalize bottleneck on a 20-clip job) with no downstream
+	// consumer. The files remain on disk (job workspace + voiceover
+	// text-hash cache) for the audio compile and cross-run reuse.
 
 	if result.AudioMode == "COMBINED_TIMELINE" {
 		if result.FinalAudio == nil || !result.FinalAudio.CopyEligible || !result.FinalAudio.FinalMix || strings.TrimSpace(result.FinalAudio.Path) == "" {

@@ -68,8 +68,15 @@ type RenderOutcome struct {
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
-	NativeMedia       *bool
 	GPUCopyBytes      *uint64
+
+	// Metrics is the canonical V2 execution report (metrics.go). The executor
+	// adapter fills the backend-selection facts (probe/resolve timings, the
+	// single selected backend, attempts/fallback counters), maps the coarse
+	// render wall time onto CompositeMS, and computes the derived aggregates
+	// (unaccounted_ms, FPS, realtime factor). Phases without real
+	// instrumentation stay NOT_INSTRUMENTED — never a fake zero.
+	Metrics *RenderMetricsV2
 }
 
 // RenderExecutor executes the sealed ClipRenderPlanV1 in a single render

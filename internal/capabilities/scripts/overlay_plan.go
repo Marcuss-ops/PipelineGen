@@ -40,6 +40,7 @@ type OverlayCanvasSpec struct {
 	FPSNum     int
 	FPSDen     int
 	Background *capabilityoverlay.OverlayBackground
+	Style      *scriptpkg.OverlayStyleSpec
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -65,12 +66,93 @@ func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capabil
 		Kind: src.Kind, Color: append([]float64(nil), src.Color...), Fit: src.Fit,
 		Opacity: src.Opacity, Loop: src.Loop,
 	}
+	if params := overlayStyleParams(src.Style); params != nil {
+		if style, ok := params["style"].(map[string]any); ok {
+			bg.Style = style
+		}
+	}
 	if src.AssetID != "" || src.URL != "" || src.SHA256 != "" {
 		bg.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
 			AssetID: src.AssetID, URL: src.URL, SHA256: src.SHA256, MediaType: src.MediaType,
 		}}
 	}
 	return bg
+}
+
+func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
+	if style == nil {
+		return nil
+	}
+	p := map[string]any{}
+	if len(style.Color) > 0 {
+		p["color"] = append([]float64(nil), style.Color...)
+		styleMap := map[string]any{"fill": rgbaHex(style.Color)}
+		p["style"] = styleMap
+	}
+	if style.Size != nil {
+		if style.Size.Width != nil {
+			p["box_width"] = *style.Size.Width
+		}
+		if style.Size.Height != nil {
+			p["box_height"] = *style.Size.Height
+		}
+		if style.Size.FontSize != nil {
+			p["style"] = mergeStyleParam(p["style"], map[string]any{"font_size": *style.Size.FontSize})
+		}
+	}
+	if style.TransitionIn != nil && strings.TrimSpace(style.TransitionIn.Preset) != "" {
+		anim := map[string]any{"preset": style.TransitionIn.Preset}
+		if style.TransitionIn.DurationFrames > 0 {
+			anim["enter"] = map[string]any{"duration_frames": style.TransitionIn.DurationFrames}
+		}
+		p["animation"] = anim
+	}
+	if style.Shadow != nil && style.Shadow.Enabled {
+		shadow := map[string]any{}
+		if style.Shadow.Color != "" {
+			shadow["color"] = style.Shadow.Color
+		}
+		if style.Shadow.Opacity != nil {
+			shadow["opacity"] = *style.Shadow.Opacity
+		}
+		if style.Shadow.Blur != nil {
+			shadow["blur"] = *style.Shadow.Blur
+		}
+		if len(style.Shadow.Offset) > 0 {
+			shadow["offset"] = append([]float64(nil), style.Shadow.Offset...)
+		}
+		p["style"] = mergeStyleParam(p["style"], map[string]any{"shadow": shadow})
+	}
+	return p
+}
+
+func rgbaHex(color []float64) string {
+	if len(color) < 3 {
+		return ""
+	}
+	clamp := func(v float64) int {
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		return int(v*255 + 0.5)
+	}
+	return fmt.Sprintf("#%02X%02X%02X", clamp(color[0]), clamp(color[1]), clamp(color[2]))
+}
+
+func mergeStyleParam(existing any, add map[string]any) map[string]any {
+	out := map[string]any{}
+	if current, ok := existing.(map[string]any); ok {
+		for k, v := range current {
+			out[k] = v
+		}
+	}
+	for k, v := range add {
+		out[k] = v
+	}
+	return out
 }
 
 // CompileOverlayPlan derives the full semantic OverlayPlan for a completed
@@ -158,6 +240,22 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
 	items := plannerPlan.Items
+	if styleParams := overlayStyleParams(canvas.Style); len(styleParams) > 0 {
+		for i := range items {
+			merged := map[string]any{}
+			for k, v := range items[i].Params {
+				merged[k] = v
+			}
+			for k, v := range styleParams {
+				if k == "style" {
+					merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
+				} else if _, exists := merged[k]; !exists {
+					merged[k] = v
+				}
+			}
+			items[i].Params = merged
+		}
+	}
 
 	// Entity cards (PERSON / ORGANIZATION / LOCATION / CONCEPT) come from the
 	// certified EntityTimeline via the overlay resolver. NUMBER / QUOTE /

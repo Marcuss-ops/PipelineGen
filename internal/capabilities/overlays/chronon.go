@@ -210,6 +210,9 @@ type ChrononLayer struct {
 	// slide_up, scale_in). Projected from item Params["animation"]; a layer
 	// without an animation param carries none.
 	Animation *ChrononLayerAnimation `json:"animation,omitempty"`
+	// Style is the direct Chronon LayerStylePlan override. Chronon owns the
+	// authoritative style schema; this boundary preserves it as JSON.
+	Style map[string]any `json:"style,omitempty"`
 	// BlendMode is the compositing blend applied to the layer (e.g. the
 	// LIGHT_LEAK template's "screen" / "add"). Empty means renderer default.
 	BlendMode string `json:"blend_mode,omitempty"`
@@ -306,21 +309,8 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 	}
 
 	fps := float64(plan.FPSNum) / float64(plan.FPSDen)
-	frameAtMS := func(ms int64) int64 {
-		return int64(math.Round(float64(ms) * fps / 1000.0))
-	}
 	frameAtUS := func(us int64) int64 {
 		return int64(math.Round(float64(us) * fps / 1_000_000.0))
-	}
-	// itemFrameRange returns the item's [start, end) in integer frames from
-	// its canonical timing: integer microseconds when present, else the legacy
-	// millisecond projection. The compiler never estimates or re-derives
-	// timing — Chronon receives exact, PipelineGen-owned frames.
-	itemFrameRange := func(item OverlayItem) (int64, int64) {
-		if item.DurationUS > 0 {
-			return frameAtUS(item.StartUS), frameAtUS(item.StartUS + item.DurationUS)
-		}
-		return frameAtMS(item.StartMs), frameAtMS(item.EndMs)
 	}
 	itemEndUS := func(item OverlayItem) int64 {
 		if item.DurationUS > 0 {
@@ -340,220 +330,43 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 	}
 
 	layers := make([]ChrononLayer, 0, len(plan.Items)+1)
-	seenAssets := make(map[string]string) // sha256 -> logical path
+	seenAssets := make(map[string]string)
 	var assets []ChrononAsset
 	needsFont := false
-	// Auto-layout candidates: image layers whose semantic position is a
-	// string slot (not an explicit numeric position). Resolved after the
-	// loop by layoutImages with collision avoidance.
 	var layoutCandidates []imageLayoutCandidate
-	if bg := plan.Background; bg != nil {
-		kind := strings.ToLower(strings.TrimSpace(bg.Kind))
-		layer := ChrononLayer{ID: "background", Type: kind, BoxWidth: plan.Width, BoxHeight: plan.Height,
-			Fit: bg.Fit, StartFrame: 0, DurationFrames: frameAtUS(maxEndUS), Loop: bg.Loop}
-		if layer.Fit == "" && kind != "color" {
-			layer.Fit = "cover"
+
+	// Process background layer.
+	if bgLayer, bgAssets := compileBackgroundLayer(plan, maxEndUS, frameAtUS); bgLayer.ID != "" {
+		layers = append(layers, bgLayer)
+		for _, a := range bgAssets {
+			seenAssets[a.Hash] = a.LogicalPath
 		}
-		if bg.Opacity != nil {
-			layer.Opacity = *bg.Opacity
-		}
-		if kind == "color" {
-			layer.Color = append([]float64(nil), bg.Color...)
-		} else if len(bg.AssetRefs) > 0 {
-			ref := bg.AssetRefs[0]
-			logical := logicalAssetPath(ref.URL)
-			if kind == "video" {
-				layer.Source = logical
-			} else {
-				layer.Asset = logical
-			}
-			if ref.SHA256 != "" {
-				seenAssets[ref.SHA256] = logical
-				assets = append(assets, ChrononAsset{Hash: ref.SHA256, LogicalPath: logical})
-			}
-		}
-		layers = append(layers, layer)
+		assets = append(assets, bgAssets...)
 	}
+
+	// Process item layers.
 	for index, item := range plan.Items {
-		spec, ok := templateRegistry[item.TemplateID]
-		if !ok {
-			return ChrononCompileResult{}, fmt.Errorf("overlay plan: template %q is not a chronon-compilable template", item.TemplateID)
+		layer, itemAssets, itemNeedsFont, layoutCandidate, err := compileItemLayer(
+			item, index, plan, maxEndUS, frameAtUS, seenAssets,
+		)
+		if err != nil {
+			return ChrononCompileResult{}, err
 		}
-		// Every semantic entity must terminate in a canonical primitive:
-		// a template without one is a vocabulary bug, never a silent render.
-		if spec.Primitive == "" {
-			return ChrononCompileResult{}, fmt.Errorf("overlay plan: template %q does not terminate in a canonical primitive (text/image/video/shape)", item.TemplateID)
-		}
-		// Asset-driven primitives (Image / Video) must resolve an asset: a
-		// missing ref, or a ref with neither URL nor content hash, is a hard
-		// error (missing-image fail-closed), never a blank or garbage layer.
-		// A URL-only or hash-only ref is legitimate (the worker materializes
-		// it and computes the missing half).
-		if spec.Primitive == PrimitiveImage || spec.Primitive == PrimitiveVideo {
-			if len(item.AssetRefs) == 0 {
-				return ChrononCompileResult{}, fmt.Errorf("overlay plan: item %q (%s) requires an asset", item.ID, spec.Primitive)
-			}
-			if strings.TrimSpace(item.AssetRefs[0].URL) == "" && strings.TrimSpace(item.AssetRefs[0].SHA256) == "" {
-				return ChrononCompileResult{}, fmt.Errorf("overlay plan: item %q (%s) requires a resolvable asset (url or content hash)", item.ID, spec.Primitive)
-			}
-		}
-		startFrame, endFrame := itemFrameRange(item)
-		// The preset is the ONE editorial decision PipelineGen owns: resolved
-		// through the SemanticOverlayResolver (semantic_role → Chronon preset),
-		// never from a hard-coded geometry map. Preset-less primitives
-		// (backgrounds, shapes, effects) resolve to an empty preset.
-		preset := strings.TrimSpace(item.PresetID)
-		if preset == "" {
-			preset = modernPresetFor(item, plan.PlanID)
-		}
-		presetDriven := preset != ""
-		// PipelineGen may carry a concrete preset selected by its visual
-		// sampler (for example one of the special-name treatments).  Honor
-		// that sealed contract; only fall back to the semantic-role mapping
-		// when the item did not select an explicit preset.
-		if spec.Primitive == PrimitiveText && !presetDriven {
-			return ChrononCompileResult{}, fmt.Errorf("overlay plan: text template %q has no semantic_role → preset mapping", item.TemplateID)
-		}
-		layer := ChrononLayer{
-			ID:             item.ID,
-			Preset:         preset,
-			StartFrame:     startFrame,
-			DurationFrames: endFrame - startFrame,
-		}
-		// Preset-less primitives carry their bare transport shape (layer type
-		// + geometry); preset-driven layers historically relied on Chronon to
-		// derive the type from `supported_layer`, but the production validator
-		// (chronon.render-plan.v1) treats `type` as required for every layer
-		// regardless of preset, so we now project spec.Primitive onto every
-		// layer — preset-driven or not — and per-item Params may still
-		// override either below.
-		if presetDriven {
-			layer.Type = primitiveToLayerType(spec.Primitive)
-		} else {
-			layer.Type = spec.LayerType
-			layer.Fit = spec.Fit
-			layer.BoxWidth = spec.BoxWidth
-			layer.BoxHeight = spec.BoxHeight
-			layer.Position = spec.Position
-			layer.BlendMode = spec.BlendMode
-			layer.Opacity = spec.Opacity
-			layer.Loop = spec.Loop
-		}
-		if layer.DurationFrames <= 0 {
-			return ChrononCompileResult{}, fmt.Errorf("overlay plan: item %q compiles to a non-positive frame range", item.ID)
-		}
-		if strings.TrimSpace(item.Text) != "" {
-			layer.Text = item.Text
-		}
-		// Text layers emit a font_asset reference pinned to the canonical
-		// DejaVuSans bytes. Chronon's StyleResolver is meant to substitute
-		// this with each preset's own font on its own schedule, but several
-		// production paths (text_run fallback, native_av encoder path, the
-		// warm-shell daemon) still resolve against an empty font name and
-		// degrade to the "primary-only" stack with missing-glyph errors.
-		// Carrying the asset by hash on every text layer is the smallest
-		// change that guarantees the glyphs render regardless of preset
-		// registry state.
-		if spec.Primitive == PrimitiveText {
-			layer.FontAsset = &ChrononFontAsset{
-				Asset:  CanonicalTextFontPath,
-				Family: "DejaVu Sans",
-				Weight: 700,
-			}
+		if itemNeedsFont {
 			needsFont = true
 		}
-		// A FullCanvas template (BACKGROUND / VIDEO_BACKGROUND) spans the
-		// full canvas for the whole clip.
-		if spec.FullCanvas {
-			layer.BoxWidth = plan.Width
-			layer.BoxHeight = plan.Height
-			layer.StartFrame = 0
-			layer.DurationFrames = frameAtUS(maxEndUS)
+		if layoutCandidate != nil {
+			layoutCandidates = append(layoutCandidates, *layoutCandidate)
 		}
-		// Per-item params override template defaults (fit/position/box).
-		if v, ok := paramString(item.Params, "fit"); ok {
-			layer.Fit = v
+		for _, a := range itemAssets {
+			seenAssets[a.Hash] = a.LogicalPath
 		}
-		if v, ok := paramPosition(item.Params, "position"); ok {
-			layer.Position = v
-		}
-		if v, ok := paramInt(item.Params, "box_width"); ok {
-			layer.BoxWidth = v
-		}
-		if v, ok := paramInt(item.Params, "box_height"); ok {
-			layer.BoxHeight = v
-		}
-		if v, ok := paramString(item.Params, "preset"); ok {
-			layer.Preset = v
-		}
-		if v, ok := paramString(item.Params, "blend_mode"); ok {
-			layer.BlendMode = v
-		}
-		if v, ok := paramFloatOpt(item.Params, "opacity"); ok {
-			layer.Opacity = v
-		}
-		if v, ok := paramBool(item.Params, "loop"); ok {
-			layer.Loop = v
-		}
-		// Semantic slot intent (string position) on an image layer: defer to
-		// the collision-avoiding layout pass (layoutImages). Explicit numeric
-		// positions win; template defaults stay untouched (legacy fixtures
-		// compile identically). Captured after box overrides so the slot is
-		// sized by the final box.
-		if pos, ok := paramString(item.Params, "position"); ok && spec.Primitive == PrimitiveImage && !spec.FullCanvas {
-			layer.Position = nil
-			layoutCandidates = append(layoutCandidates, imageLayoutCandidate{
-				layerIndex: index,
-				slot:       semanticSlotFor(pos),
-				boxW:       layer.BoxWidth,
-				boxH:       layer.BoxHeight,
-				priority:   paramFloat(item.Params, "priority"),
-				startFrame: layer.StartFrame,
-				endFrame:   layer.StartFrame + layer.DurationFrames,
-			})
-		}
-		// Per-item animation override: Params["animation"]["preset"] names
-		// the motion preset Chronon applies to the layer.
-		if anim, ok := paramAnimation(item.Params, "animation"); ok {
-			layer.Animation = anim
-		}
-		// The Shape primitive fills the layer with its RGBA color; Params
-		// may override the template default.
-		if spec.Primitive == PrimitiveShape {
-			if c, ok := paramColor(item.Params, "color"); ok {
-				layer.Color = c
-			} else {
-				layer.Color = spec.Color
-			}
-		}
-		// Project the item's first asset into the layer reference and the
-		// queue asset list (content-addressed by SHA-256). The Video
-		// primitive references `source`; every other primitive uses `asset`.
-		if len(item.AssetRefs) > 0 {
-			ref := item.AssetRefs[0]
-			logical := logicalAssetPath(ref.URL)
-			if spec.Primitive == PrimitiveVideo {
-				layer.Source = logical
-			} else {
-				layer.Asset = logical
-			}
-			if ref.SHA256 != "" {
-				if _, dup := seenAssets[ref.SHA256]; !dup {
-					seenAssets[ref.SHA256] = logical
-					assets = append(assets, ChrononAsset{Hash: ref.SHA256, LogicalPath: logical})
-				}
-			}
-		}
+		assets = append(assets, itemAssets...)
 		layers = append(layers, layer)
 	}
-	// Resolve semantic image slots with collision avoidance. Deterministic:
-	// priority desc, then plan order; explicit numeric positions untouched.
+
 	layoutImages(layers, plan.Width, plan.Height, layoutCandidates)
 
-	// Any plan with text layers carries the canonical font as a queue asset
-	// (content-addressed, deduped against item assets) so the worker can
-	// materialize the bytes Chronon's preset font_asset resolves. Plans with
-	// no text layers (e.g. a bare VIDEO_BACKGROUND) do not carry it.
 	if needsFont {
 		if _, dup := seenAssets[GoldenFontHash]; !dup {
 			seenAssets[GoldenFontHash] = CanonicalTextFontPath

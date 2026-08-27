@@ -64,18 +64,27 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 		watermarkID = req.Render.Watermark.AssetID
 	}
 
+	// Background asset ID — probed only for background.mode=asset (the
+	// blur_source/none modes carry no asset block).
+	var backgroundID string
+	if req.Render.Background != nil && req.Render.Background.Mode == "asset" {
+		backgroundID = req.Render.Background.AssetID
+	}
+
 	return scriptgen.RunMediaPreflight(ctx, scriptgen.MediaPreflightInput{
-		ClipIDs:           clipIDs,
-		IntroClipIDs:      req.Source.IntroClipIDs,
-		ClipProber:        a.clipProber,
-		ClipAudioSource:   a.clipAudioAssetSource,
-		MixPolicy:         req.MixPolicy,
-		BGMIDs:            bgmIDs,
-		SFXIDs:            sfxIDs,
-		AudioAssetSource:  a.audioAssetSource,
-		RenderEnabled:     req.Render.Enabled,
-		WatermarkAssetID:  watermarkID,
-		WatermarkResolver: a.clipProber, // same prober works for watermark assets
+		ClipIDs:            clipIDs,
+		IntroClipIDs:       req.Source.IntroClipIDs,
+		ClipProber:         a.clipProber,
+		ClipAudioSource:    a.clipAudioAssetSource,
+		MixPolicy:          req.MixPolicy,
+		BGMIDs:             bgmIDs,
+		SFXIDs:             sfxIDs,
+		AudioAssetSource:   a.audioAssetSource,
+		RenderEnabled:      req.Render.Enabled,
+		WatermarkAssetID:   watermarkID,
+		WatermarkResolver:  a.clipProber, // same prober works for watermark assets
+		BackgroundAssetID:  backgroundID,
+		BackgroundResolver: a.clipProber,
 	})
 }
 

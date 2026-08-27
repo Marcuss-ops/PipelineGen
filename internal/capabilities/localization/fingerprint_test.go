@@ -1,6 +1,12 @@
 package localization
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
 
 // basePlan returns a fully-populated LocalizedClipPlan whose Fingerprint
 // field is left empty (the output, not an input).
@@ -63,10 +69,66 @@ func TestFingerprint_EachRenderFactChangesDigest(t *testing.T) {
 		{"output_profile_hash", func(p *LocalizedClipPlan) { p.OutputProfileHash = "other-profile-sha" }},
 		{"renderer_version", func(p *LocalizedClipPlan) { p.RendererVersion = "renderer-v2" }},
 		{"contract_version", func(p *LocalizedClipPlan) { p.Version = "localized-clip-plan.v2" }},
+		{"background_mode", func(p *LocalizedClipPlan) { p.BackgroundMode = "blur_source" }},
+		{"background_asset", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = "asset"
+			p.Background = &cliprender.MaterializedAsset{AssetID: "asset-bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
+		}},
+		{"subtitle_style", func(p *LocalizedClipPlan) {
+			p.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{Color: "#FFFFFF", FontSizePX: 54}
+		}},
+		{"watermark_style", func(p *LocalizedClipPlan) {
+			p.Watermark = &cliprender.MaterializedAsset{AssetID: "asset-wm", LocalPath: "/x.png", SHA256: strings.Repeat("e", 64)}
+			p.WatermarkSpec = &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: "top_right", Opacity: 0.9, MarginPX: 24,
+				Style: &scriptpkg.VideoVisualStyleSpec{WidthPX: 180, Shadow: &scriptpkg.VideoShadowSpec{Opacity: 0.55, BlurPX: 14, OffsetY: 8}}}
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := base
+			tc.mutate(&p)
+			if got := Fingerprint(p); got == ref {
+				t.Fatalf("changing %s must change the fingerprint (both %q)", tc.name, got)
+			}
+		})
+	}
+}
+
+// TestFingerprint_StyleDeltaChangesDigest verifies fine-grained style deltas
+// (a shadow offset, a transition duration, a color) are each folded into the
+// digest — a cached render with a different style must never be reused.
+func TestFingerprint_StyleDeltaChangesDigest(t *testing.T) {
+	styled := basePlan()
+	styled.Watermark = &cliprender.MaterializedAsset{AssetID: "asset-wm", LocalPath: "/x.png", SHA256: strings.Repeat("e", 64)}
+	styled.WatermarkSpec = &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: "top_right", Opacity: 0.9, MarginPX: 24,
+		Style: &scriptpkg.VideoVisualStyleSpec{
+			WidthPX: 180,
+			Shadow:  &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.55, BlurPX: 14, OffsetY: 8},
+		}}
+	styled.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{
+		Color:      "#FFFFFF",
+		FontSizePX: 54,
+		Shadow:     &scriptpkg.VideoShadowSpec{Opacity: 0.7, BlurPX: 10, OffsetY: 5},
+	}
+	styled.BackgroundMode = "blur_source"
+	ref := Fingerprint(styled)
+
+	cases := []struct {
+		name   string
+		mutate func(*LocalizedClipPlan)
+	}{
+		{"watermark shadow offset", func(p *LocalizedClipPlan) { p.WatermarkSpec.Style.Shadow.OffsetY = 9 }},
+		{"watermark shadow color", func(p *LocalizedClipPlan) { p.WatermarkSpec.Style.Shadow.Color = "#FF0000" }},
+		{"watermark transition added", func(p *LocalizedClipPlan) {
+			p.WatermarkSpec.Style.TransitionIn = &scriptpkg.VideoTransitionSpec{Preset: "fade_in", DurationMS: 250}
+		}},
+		{"subtitle color", func(p *LocalizedClipPlan) { p.SubtitlesStyle.Color = "#FF0000" }},
+		{"subtitle shadow blur", func(p *LocalizedClipPlan) { p.SubtitlesStyle.Shadow.BlurPX = 12 }},
+		{"background mode", func(p *LocalizedClipPlan) { p.BackgroundMode = "asset" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := styled
 			tc.mutate(&p)
 			if got := Fingerprint(p); got == ref {
 				t.Fatalf("changing %s must change the fingerprint (both %q)", tc.name, got)

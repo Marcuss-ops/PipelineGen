@@ -34,7 +34,6 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
@@ -46,17 +45,10 @@ import (
 // when constructing the Service used by the extraction pipeline.
 // Fields are unexported because all accessors are methods in this package.
 type Service struct {
-	log           *zap.Logger
-	cfg           youtubetypes.RuntimeConfig
-	clips         youtubeports.ClipStorePort
-	monitors      youtubeports.MonitorsStorePort
-	folderMemory  youtubeports.FolderMemoryPort
-	callbacks     usecase.ExtractionCallbacks
-	cache         youtubeports.CachePort
-	segmentsSvc   *usecase.SegmentsService
-	videoPipeline youtubeports.VideoPipelinePort
-	ollama        youtubeports.OllamaClientPort
-	assetRepo     detail.Repository
+	log       *zap.Logger
+	cfg       youtubetypes.RuntimeConfig
+	ollama    youtubeports.OllamaClientPort
+	assetRepo detail.Repository
 }
 
 // ServiceDeps is the PR1.6/1.7 constructor envelope for Service.
@@ -70,10 +62,7 @@ type ServiceDeps struct {
 	AssetRepo detail.Repository
 }
 
-// NewService constructs a Service from a ServiceDeps envelope. Only
-// the fields exercised by the current test surface (Log + AssetRepo)
-// are wired; the remaining fields keep their zero values and the
-// corresponding adapters methods stay nil-safe.
+// NewService constructs a Service from a ServiceDeps envelope.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
 		log:       deps.Log,

@@ -10,9 +10,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── fakes ───────────────────────────────────────────────────────────
@@ -408,5 +410,138 @@ func TestLocalizedRenderEnqueuer_ReportSinkErrorFailsClosed(t *testing.T) {
 	}
 	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
 		t.Fatal("must fail closed when the video recording sink errors")
+	}
+}
+
+// ── visual-layer propagation fakes ───────────────────────────────────
+
+// fakeClipAssets resolves every asset_id to a fixed ref and materializes a
+// fixed content-addressed artifact (idempotent).
+type fakeClipAssets struct {
+	resolved map[string]cliprender.AssetRef
+}
+
+type fakeClipMaterializer struct {
+	assets map[string]cliprender.AssetRef
+}
+
+func (f *fakeClipAssets) ResolveAsset(_ context.Context, assetID string) (*cliprender.AssetRef, error) {
+	if ref, ok := f.resolved[assetID]; ok {
+		return &ref, nil
+	}
+	return nil, errors.New("unknown asset " + assetID)
+}
+
+func (f *fakeClipMaterializer) Materialize(_ context.Context, ref cliprender.AssetRef) (*cliprender.MaterializedAsset, error) {
+	return &cliprender.MaterializedAsset{
+		AssetID:   ref.AssetID,
+		LocalPath: "/scratch/" + ref.AssetID + ".bin",
+		SHA256:    strings.Repeat("9", 64),
+	}, nil
+}
+
+var _ cliprender.AssetResolver = (*fakeClipAssets)(nil)
+var _ cliprender.AssetMaterializer = (*fakeClipMaterializer)(nil)
+
+// TestLocalizedRenderEnqueuer_PropagatesBackgroundAndStyles verifies the
+// enqueuer resolves the background asset (mode=asset), normalizes blur_source,
+// and projects watermark style + subtitle style into the LocalizeInput — the
+// full script.generate render block reaches the fan-out without loss.
+func TestLocalizedRenderEnqueuer_PropagatesBackgroundAndStyles(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	resolver := &fakeClipAssets{resolved: map[string]cliprender.AssetRef{
+		"asset-bg": {AssetID: "asset-bg", LocalPath: "/local/bg.mp4"},
+		"logo":     {AssetID: "logo", LocalPath: "/local/logo.png"},
+	}}
+	materializer := &fakeClipMaterializer{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+	a.assets = resolver
+	a.material = materializer
+
+	in := testEnqueuerInput()
+	in.Render = scriptpkg.VideoRenderSpec{
+		Enabled: true,
+		Background: &scriptpkg.VideoBackgroundSpec{
+			Mode:    "asset",
+			AssetID: "asset-bg",
+		},
+		Watermark: &scriptpkg.VideoWatermarkSpec{
+			Enabled:  true,
+			AssetID:  "logo",
+			Position: "top_right",
+			Opacity:  0.9,
+			MarginPX: 24,
+			Style: &scriptpkg.VideoVisualStyleSpec{
+				WidthPX:      180,
+				ScalePercent: 100,
+				Shadow:       &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.55, BlurPX: 14, OffsetY: 8},
+				TransitionIn: &scriptpkg.VideoTransitionSpec{Preset: "fade_in", DurationMS: 250},
+			},
+		},
+		Subtitles: &scriptpkg.VideoSubtitlesSpec{
+			Enabled: true,
+			Mode:    "burn",
+			StyleID: "shorts-v1",
+			Style: &scriptpkg.VideoVisualStyleSpec{
+				Color:      "#FFFFFF",
+				FontSizePX: 54,
+				Shadow:     &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.7, BlurPX: 10, OffsetY: 5},
+			},
+		},
+	}
+
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+	got := l.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("Localize calls: got %d, want 1", len(got))
+	}
+	call := got[0]
+
+	// Background: mode=asset must be materialized and passed with its bytes.
+	if call.BackgroundMode != cliprender.BackgroundModeAsset || call.Background == nil ||
+		call.Background.AssetID != "asset-bg" || call.Background.LocalPath != "/scratch/asset-bg.bin" {
+		t.Fatalf("background not propagated: mode=%q asset=%+v", call.BackgroundMode, call.Background)
+	}
+	// Watermark style rides the sealed WatermarkSpec.
+	if call.WatermarkSpec == nil || call.WatermarkSpec.Style == nil ||
+		call.WatermarkSpec.Style.WidthPX != 180 || call.WatermarkSpec.Style.Shadow == nil ||
+		call.WatermarkSpec.Style.Shadow.Opacity != 0.55 || call.WatermarkSpec.Style.TransitionIn == nil ||
+		call.WatermarkSpec.Style.TransitionIn.DurationMS != 250 {
+		t.Fatalf("watermark style not propagated: %+v", call.WatermarkSpec)
+	}
+	if call.Watermark == nil || call.Watermark.AssetID != "logo" {
+		t.Fatalf("watermark asset not materialized: %+v", call.Watermark)
+	}
+	// Subtitle style reaches the fan-out.
+	if call.SubtitlesStyle == nil || call.SubtitlesStyle.Color != "#FFFFFF" ||
+		call.SubtitlesStyle.FontSizePX != 54 || call.SubtitlesStyle.Shadow == nil || call.SubtitlesStyle.Shadow.BlurPX != 10 {
+		t.Fatalf("subtitle style not propagated: %+v", call.SubtitlesStyle)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset pins the
+// no-asset background modes: blur_source is passed verbatim and never tries
+// to resolve an asset (no resolver is wired).
+func TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+
+	in := testEnqueuerInput()
+	in.Render = scriptpkg.VideoRenderSpec{
+		Enabled:    true,
+		Background: &scriptpkg.VideoBackgroundSpec{Mode: "blur_source"},
+	}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+	call := l.snapshot()[0]
+	if call.BackgroundMode != cliprender.BackgroundModeBlurSource || call.Background != nil {
+		t.Fatalf("blur_source must carry no asset: mode=%q asset=%+v", call.BackgroundMode, call.Background)
 	}
 }

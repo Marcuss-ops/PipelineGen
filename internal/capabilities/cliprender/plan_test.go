@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // baseCompileInput returns a fully-resolved CompileInput for the happy path.
@@ -125,6 +127,89 @@ func TestCompile_ResolvedWatermarkBackgroundSubtitles(t *testing.T) {
 		plan.Subtitles.StyleID != "shorts-v1" ||
 		plan.Subtitles.Path != "/scratch/run-1/subtitles.ass" {
 		t.Errorf("subtitles: got %+v", plan.Subtitles)
+	}
+}
+
+// TestCompile_PropagatesVisualStyle verifies the canonical style blocks
+// (watermark + subtitles) reach the sealed plan without loss — the exact
+// script.generate payload shape projected verbatim.
+func TestCompile_PropagatesVisualStyle(t *testing.T) {
+	in := baseCompileInput()
+	in.Watermark = &MaterializedAsset{
+		AssetID:   "asset-wm",
+		LocalPath: "/scratch/asset-wm.png",
+		SHA256:    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
+	in.WatermarkSpec = &WatermarkSpec{
+		Enabled:  true,
+		AssetID:  "asset-wm",
+		Position: PositionTopRight,
+		Opacity:  0.9,
+		MarginPX: 24,
+		Style: &scriptpkg.VideoVisualStyleSpec{
+			WidthPX:      180,
+			ScalePercent: 100,
+			Shadow: &scriptpkg.VideoShadowSpec{
+				Color:   "#000000",
+				Opacity: 0.55,
+				BlurPX:  14,
+				OffsetY: 8,
+			},
+			TransitionIn: &scriptpkg.VideoTransitionSpec{Preset: "fade_in", DurationMS: 250},
+		},
+	}
+	in.Subtitles = &SubtitleArtifact{
+		LocalPath: "/scratch/run-1/subtitles.ass",
+		SHA256:    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		Mode:      SubtitlesModeBurn,
+		StyleID:   "shorts-v1",
+	}
+	in.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{
+		Color:      "#FFFFFF",
+		FontSizePX: 54,
+		Shadow: &scriptpkg.VideoShadowSpec{
+			Color:   "#000000",
+			Opacity: 0.7,
+			BlurPX:  10,
+			OffsetY: 5,
+		},
+		TransitionIn: &scriptpkg.VideoTransitionSpec{Preset: "fade_in", DurationMS: 120},
+	}
+
+	plan, err := Compile(in)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if plan.Watermark == nil || plan.Watermark.Style == nil {
+		t.Fatalf("watermark style lost: %+v", plan.Watermark)
+	}
+	wm := plan.Watermark.Style
+	if wm.WidthPX != 180 || wm.ScalePercent != 100 {
+		t.Errorf("watermark size lost: %+v", wm)
+	}
+	if wm.Shadow == nil || wm.Shadow.Color != "#000000" || wm.Shadow.Opacity != 0.55 || wm.Shadow.BlurPX != 14 || wm.Shadow.OffsetY != 8 {
+		t.Errorf("watermark shadow lost: %+v", wm.Shadow)
+	}
+	if wm.TransitionIn == nil || wm.TransitionIn.Preset != "fade_in" || wm.TransitionIn.DurationMS != 250 {
+		t.Errorf("watermark transition lost: %+v", wm.TransitionIn)
+	}
+	if plan.Subtitles == nil || plan.Subtitles.Style == nil {
+		t.Fatalf("subtitle style lost: %+v", plan.Subtitles)
+	}
+	sub := plan.Subtitles.Style
+	if sub.Color != "#FFFFFF" || sub.FontSizePX != 54 {
+		t.Errorf("subtitle style lost: %+v", sub)
+	}
+	if sub.Shadow == nil || sub.Shadow.Opacity != 0.7 || sub.Shadow.BlurPX != 10 || sub.Shadow.OffsetY != 5 {
+		t.Errorf("subtitle shadow lost: %+v", sub.Shadow)
+	}
+	if sub.TransitionIn == nil || sub.TransitionIn.Preset != "fade_in" || sub.TransitionIn.DurationMS != 120 {
+		t.Errorf("subtitle transition lost: %+v", sub.TransitionIn)
+	}
+
+	// The sealed plan must still validate (style folds into PlanSHA256).
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("sealed plan with style must validate: %v", err)
 	}
 }
 

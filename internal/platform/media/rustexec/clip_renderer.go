@@ -34,8 +34,12 @@ type ClipRenderResult struct {
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
-	NativeMedia       *bool
 	GPUCopyBytes      *uint64
+	// render_clip phase timings reported by Rust (nil = phase not reported;
+	// the V2 metrics report maps them only when measured — never a fake zero).
+	StartupMS *int64 // pre-ffmpeg wall inside Rust (decode plan + probe + graph + spawn)
+	PublishMS *int64 // Rust-side output publish/rename
+	OpMS      *int64 // whole render_clip wall in-process
 }
 
 // ClipRenderer executes sealed ClipRenderPlanV1 plans through the Rust
@@ -133,8 +137,10 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		AudioCopyEligible: m.AudioCopyEligible,
 		AudioEncodePasses: m.AudioEncodePasses,
 		SubtitleRasterCPU: m.SubtitleRasterCPU,
-		NativeMedia:       m.NativeMedia,
 		GPUCopyBytes:      m.GPUCopyBytes,
+		StartupMS:         m.StartupMS,
+		PublishMS:         m.PublishMS,
+		OpMS:              m.OpMS,
 	}, nil
 }
 

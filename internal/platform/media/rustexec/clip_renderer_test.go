@@ -103,7 +103,7 @@ func newTestClipRenderer(runner commandRunner) *ClipRenderer {
 
 func TestClipRenderer_TransportsSealedPlanWithPolicy(t *testing.T) {
 	plan, sourcePath := clipRenderPlanWithFiles(t)
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"fps_num":60,"fps_den":1,"ffmpeg_ms":1250,"audio_copy_eligible":true,"audio_encode_passes":0,"subtitle_raster_cpu":true}}`)}
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"fps_num":60,"fps_den":1,"ffmpeg_ms":1250,"startup_ms":187,"publish_ms":9,"op_ms":1450,"audio_copy_eligible":true,"audio_encode_passes":0,"subtitle_raster_cpu":true}}`)}
 	renderer := newTestClipRenderer(runner)
 
 	result, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
@@ -159,6 +159,17 @@ func TestClipRenderer_TransportsSealedPlanWithPolicy(t *testing.T) {
 	}
 	if result.OutputPath != plan.OutputPath || result.SizeBytes == 0 || result.FFmpegMS != 1250 {
 		t.Fatalf("result output facts: %+v", result)
+	}
+	// The Rust phase timings pass through so the adapter can populate the
+	// benchmark decomposition (renderer_startup_ms / publish_ms).
+	if result.StartupMS == nil || *result.StartupMS != 187 {
+		t.Fatalf("StartupMS = %v, want 187", result.StartupMS)
+	}
+	if result.PublishMS == nil || *result.PublishMS != 9 {
+		t.Fatalf("PublishMS = %v, want 9", result.PublishMS)
+	}
+	if result.OpMS == nil || *result.OpMS != 1450 {
+		t.Fatalf("OpMS = %v, want 1450", result.OpMS)
 	}
 }
 

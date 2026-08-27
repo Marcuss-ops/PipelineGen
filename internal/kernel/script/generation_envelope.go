@@ -95,6 +95,10 @@ type GenerationItemV2 struct {
 	// the Chronon overlay render. It is deliberately separate from audio
 	// background_music: this is a visual pixel-layer choice.
 	OverlayBackground *OverlayBackgroundSpec `json:"overlay_background,omitempty"`
+	// OverlayStyle applies the same explicit visual overrides to generated
+	// phrase/word/image overlays. It is transport-only; Chronon's preset
+	// registry remains the source of defaults.
+	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
@@ -123,15 +127,44 @@ type GenerationItemV2 struct {
 // optional visual overlay background. Image/video backgrounds identify one
 // content-addressed asset; color backgrounds use RGBA components in [0,1].
 type OverlayBackgroundSpec struct {
-	Kind      string    `json:"kind"`
-	Color     []float64 `json:"color,omitempty"`
-	AssetID   string    `json:"asset_id,omitempty"`
-	URL       string    `json:"url,omitempty"`
-	SHA256    string    `json:"sha256,omitempty"`
-	MediaType string    `json:"media_type,omitempty"`
-	Fit       string    `json:"fit,omitempty"`
-	Opacity   *float64  `json:"opacity,omitempty"`
-	Loop      bool      `json:"loop,omitempty"`
+	Kind      string            `json:"kind"`
+	Color     []float64         `json:"color,omitempty"`
+	AssetID   string            `json:"asset_id,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	SHA256    string            `json:"sha256,omitempty"`
+	MediaType string            `json:"media_type,omitempty"`
+	Fit       string            `json:"fit,omitempty"`
+	Opacity   *float64          `json:"opacity,omitempty"`
+	Loop      bool              `json:"loop,omitempty"`
+	Style     *OverlayStyleSpec `json:"style,omitempty"`
+}
+
+// OverlayStyleSpec is the canonical script.generate visual override block.
+// Every field is optional so existing payloads keep their exact behaviour.
+type OverlayStyleSpec struct {
+	Shadow       *OverlayShadowSpec     `json:"shadow,omitempty"`
+	Color        []float64              `json:"color,omitempty"`
+	Size         *OverlaySizeSpec       `json:"size,omitempty"`
+	TransitionIn *OverlayTransitionSpec `json:"transition_in,omitempty"`
+}
+
+type OverlayShadowSpec struct {
+	Enabled bool      `json:"enabled,omitempty"`
+	Color   string    `json:"color,omitempty"`
+	Opacity *float64  `json:"opacity,omitempty"`
+	Blur    *float64  `json:"blur,omitempty"`
+	Offset  []float64 `json:"offset,omitempty"`
+}
+
+type OverlaySizeSpec struct {
+	Width    *int     `json:"width,omitempty"`
+	Height   *int     `json:"height,omitempty"`
+	FontSize *float64 `json:"font_size,omitempty"`
+}
+
+type OverlayTransitionSpec struct {
+	Preset         string `json:"preset"`
+	DurationFrames int    `json:"duration_frames,omitempty"`
 }
 
 // DocumentsSpec is the transport-level document publication configuration.

@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Fingerprint returns the canonical deterministic SHA-256 hex digest of the
@@ -49,6 +50,8 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(plan.OutputProfileHash),
 		strings.TrimSpace(plan.RendererVersion),
 		watermarkFingerprint(plan),
+		backgroundFingerprint(plan),
+		subtitleStyleFingerprint(plan),
 		strings.TrimSpace(plan.Version),
 	}
 	return digest.Fingerprint(parts...)
@@ -69,5 +72,64 @@ func watermarkFingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(plan.WatermarkSpec.Position),
 		fmt.Sprintf("%.6f", plan.WatermarkSpec.Opacity),
 		fmt.Sprintf("%d", plan.WatermarkSpec.MarginPX),
+		visualStyleFingerprint(plan.WatermarkSpec.Style),
 	}, "\x1f")
+}
+
+// backgroundFingerprint folds the background selection: the mode plus (for
+// mode=asset) the content-addressed asset identity. It is part of the digest
+// because the rendered bytes change with the background.
+func backgroundFingerprint(plan LocalizedClipPlan) string {
+	mode := strings.TrimSpace(plan.BackgroundMode)
+	if mode == "" {
+		mode = "none"
+	}
+	assetID, sha := "", ""
+	if plan.Background != nil {
+		assetID, sha = plan.Background.AssetID, plan.Background.SHA256
+	}
+	return strings.Join([]string{
+		mode,
+		strings.TrimSpace(assetID),
+		strings.TrimSpace(sha),
+	}, "\x1f")
+}
+
+// subtitleStyleFingerprint folds the caller's subtitle visual overrides.
+// They change the burned subtitle pixels, so they are render content — never
+// editorial metadata.
+func subtitleStyleFingerprint(plan LocalizedClipPlan) string {
+	return visualStyleFingerprint(plan.SubtitlesStyle)
+}
+
+// visualStyleFingerprint canonicalizes a VisualStyleSpec into a stable string
+// (hex color, pixel sizes, %-scale, shadow, transition). Floats are formatted
+// with a fixed precision so equivalent values fold identically.
+func visualStyleFingerprint(s *scriptpkg.VideoVisualStyleSpec) string {
+	if s == nil {
+		return ""
+	}
+	parts := []string{
+		strings.TrimSpace(s.Color),
+		fmt.Sprintf("%.6f", s.FontSizePX),
+		fmt.Sprintf("%d", s.WidthPX),
+		fmt.Sprintf("%d", s.HeightPX),
+		fmt.Sprintf("%.6f", s.ScalePercent),
+	}
+	if s.Shadow != nil {
+		parts = append(parts, strings.Join([]string{
+			strings.TrimSpace(s.Shadow.Color),
+			fmt.Sprintf("%.6f", s.Shadow.Opacity),
+			fmt.Sprintf("%.6f", s.Shadow.BlurPX),
+			fmt.Sprintf("%.6f", s.Shadow.OffsetX),
+			fmt.Sprintf("%.6f", s.Shadow.OffsetY),
+		}, "\x1e"))
+	}
+	if s.TransitionIn != nil {
+		parts = append(parts, strings.Join([]string{
+			strings.TrimSpace(s.TransitionIn.Preset),
+			fmt.Sprintf("%d", s.TransitionIn.DurationMS),
+		}, "\x1e"))
+	}
+	return strings.Join(parts, "\x1f")
 }

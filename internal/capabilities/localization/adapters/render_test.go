@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // fakeLocalizationRenderExecutor records the ClipRenderPlanV1 it was handed and
@@ -161,6 +162,74 @@ func TestLocalizationRenderPlanExecutor_ExecutesViaClipRender(t *testing.T) {
 	}
 	if got.OutputPath != outPath || got.RunID != "clip-1/es" {
 		t.Fatalf("clip plan identity: run=%q out=%q", got.RunID, got.OutputPath)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_ExecuteExtendedPropagatesVisualLayers
+// verifies the full-fidelity path: watermark style, background (mode + asset),
+// and subtitle style all reach the sealed ClipRenderPlanV1 on one render pass.
+func TestLocalizationRenderPlanExecutor_ExecuteExtendedPropagatesVisualLayers(t *testing.T) {
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "source.mp4")
+	if err := os.WriteFile(srcPath, []byte("source-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcSHA, _, _ := digest.SHA256File(srcPath)
+	outPath := filepath.Join(dir, "clip-1.es.mp4")
+	if err := os.WriteFile(outPath, []byte("rendered-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(outPath)
+
+	plan := appTestRenderPlan(t, srcPath, srcSHA, outPath)
+	subtitle := appTestSubtitle(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: outPath, SizeBytes: info.Size(), DurationSec: 8.432}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+
+	bgAsset := &cliprender.MaterializedAsset{
+		AssetID:   "asset-bg",
+		LocalPath: "/scratch/asset-bg.mp4",
+		SHA256:    strings.Repeat("f", 64),
+	}
+	wmStyle := &scriptpkg.VideoVisualStyleSpec{
+		WidthPX:      180,
+		ScalePercent: 100,
+		Shadow:       &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.55, BlurPX: 14, OffsetY: 8},
+		TransitionIn: &scriptpkg.VideoTransitionSpec{Preset: "fade_in", DurationMS: 250},
+	}
+	subStyle := &scriptpkg.VideoVisualStyleSpec{
+		Color:      "#FFFFFF",
+		FontSizePX: 54,
+		Shadow:     &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.7, BlurPX: 10, OffsetY: 5},
+	}
+
+	facts, err := adapter.ExecuteExtended(context.Background(), plan, subtitle, localization.RenderOptions{
+		Watermark: &cliprender.MaterializedAsset{
+			AssetID:   "asset-wm",
+			LocalPath: "/scratch/asset-wm.png",
+			SHA256:    strings.Repeat("e", 64),
+		},
+		WatermarkSpec:  &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: cliprender.PositionTopRight, Opacity: 0.9, MarginPX: 24, Style: wmStyle},
+		Background:     bgAsset,
+		BackgroundMode: cliprender.BackgroundModeAsset,
+		SubtitlesStyle: subStyle,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteExtended: %v", err)
+	}
+	if facts.LocalPath != outPath {
+		t.Fatalf("facts: %+v", facts)
+	}
+
+	got := exec.gotPlan
+	if got.Watermark == nil || got.Watermark.Style == nil || got.Watermark.Style.WidthPX != 180 || got.Watermark.Style.Shadow == nil || got.Watermark.Style.Shadow.Opacity != 0.55 || got.Watermark.Style.TransitionIn == nil || got.Watermark.Style.TransitionIn.DurationMS != 250 {
+		t.Fatalf("watermark style lost in sealed plan: %+v", got.Watermark)
+	}
+	if got.Background == nil || got.Background.Mode != cliprender.BackgroundModeAsset || got.Background.AssetID != "asset-bg" || got.Background.Path != "/scratch/asset-bg.mp4" || got.Background.SHA256 != bgAsset.SHA256 {
+		t.Fatalf("background lost in sealed plan: %+v", got.Background)
+	}
+	if got.Subtitles == nil || got.Subtitles.Style == nil || got.Subtitles.Style.Color != "#FFFFFF" || got.Subtitles.Style.FontSizePX != 54 || got.Subtitles.Style.Shadow == nil || got.Subtitles.Style.Shadow.BlurPX != 10 {
+		t.Fatalf("subtitle style lost in sealed plan: %+v", got.Subtitles)
 	}
 }
 

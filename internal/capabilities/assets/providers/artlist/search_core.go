@@ -8,7 +8,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
@@ -18,15 +17,10 @@ import (
 // Construction/wiring stays in the application service, while concrete
 // responsibility boundaries live in searcher_sqlite.go and searcher_cache.go.
 type SearchService struct {
-	service         *Service
-	assetRepo       detail.Repository
-	dispatcher      Dispatcher
-	scraperSearcher Searcher
-	pixabaySearcher Searcher
-	pexelsSearcher  Searcher
-	searchStrategy  ArtlistSearchStrategy
-	cfg             *config.Config
-	log             *zap.Logger
+	service        *Service
+	assetRepo      detail.Repository
+	dispatcher     Dispatcher
+	searchStrategy ArtlistSearchStrategy
 }
 
 func (ss *SearchService) SetAssetRepo(r detail.Repository) {

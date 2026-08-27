@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // fakeRendererCompiler returns a fixed render.RenderPlan (or error), recording
@@ -200,4 +202,109 @@ func TestLocalizedClipRenderer_NilReceiverFailsClosed(t *testing.T) {
 // RenderFunc seam is satisfied by the renderer's Render method.
 func TestLocalizedClipRenderer_InterfaceSatisfaction(t *testing.T) {
 	var _ RenderFunc = (&LocalizedClipRenderer{}).Render
+}
+
+// fakeExtendedRenderPlanExecutor implements the full-fidelity executor seam,
+// recording the RenderOptions it received.
+type fakeExtendedRenderPlanExecutor struct {
+	facts   RenderFacts
+	err     error
+	gotOpts RenderOptions
+	gotSub  *SubtitleAsset
+}
+
+func (f *fakeExtendedRenderPlanExecutor) Execute(_ context.Context, _ render.RenderPlan, _ *SubtitleAsset) (RenderFacts, error) {
+	return f.facts, f.err
+}
+
+func (f *fakeExtendedRenderPlanExecutor) ExecuteExtended(_ context.Context, _ render.RenderPlan, s *SubtitleAsset, opts RenderOptions) (RenderFacts, error) {
+	f.gotSub = s
+	f.gotOpts = opts
+	if f.err != nil {
+		return RenderFacts{}, f.err
+	}
+	return f.facts, nil
+}
+
+// TestLocalizedClipRenderer_ExtendedExecutorReceivesAllVisualLayers verifies
+// background + subtitle style ride the same render_clip invocation as the
+// watermark — nothing is dropped on the full-fidelity path.
+func TestLocalizedClipRenderer_ExtendedExecutorReceivesAllVisualLayers(t *testing.T) {
+	compiler := &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4"}}
+	wire := newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()})
+	executor := &fakeExtendedRenderPlanExecutor{facts: validRenderFacts()}
+	r := newTestRenderer(t, compiler, wire, executor)
+
+	plan := validPlan()
+	plan.Background = &cliprender.MaterializedAsset{
+		AssetID:   "asset-bg",
+		LocalPath: "/scratch/asset-bg.mp4",
+		SHA256:    strings.Repeat("f", 64),
+	}
+	plan.BackgroundMode = cliprender.BackgroundModeAsset
+	plan.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{
+		Color:      "#FFFFFF",
+		FontSizePX: 54,
+		Shadow:     &scriptpkg.VideoShadowSpec{Opacity: 0.7, BlurPX: 10, OffsetY: 5},
+	}
+	plan.Fingerprint = Fingerprint(plan)
+
+	if _, err := r.Render(context.Background(), plan); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if executor.gotOpts.Background != plan.Background || executor.gotOpts.BackgroundMode != cliprender.BackgroundModeAsset {
+		t.Fatalf("background not passed: %+v", executor.gotOpts)
+	}
+	if executor.gotOpts.SubtitlesStyle == nil || executor.gotOpts.SubtitlesStyle.Color != "#FFFFFF" || executor.gotOpts.SubtitlesStyle.FontSizePX != 54 {
+		t.Fatalf("subtitle style not passed: %+v", executor.gotOpts.SubtitlesStyle)
+	}
+	if executor.gotSub == nil || executor.gotSub.SHA256 != validSubtitleAsset().SHA256 {
+		t.Fatalf("subtitle asset not passed: %+v", executor.gotSub)
+	}
+}
+
+// TestLocalizedClipRenderer_LegacyWatermarkExecutorStillReceivesWatermark
+// verifies a watermark-only executor keeps working: the sealed WatermarkSpec
+// (incl. text overlays) still reaches the renderer on the legacy path.
+type fakeWatermarkOnlyExecutor struct {
+	facts   RenderFacts
+	err     error
+	gotWM   *cliprender.MaterializedAsset
+	gotSpec *cliprender.WatermarkSpec
+}
+
+func (f *fakeWatermarkOnlyExecutor) Execute(_ context.Context, _ render.RenderPlan, _ *SubtitleAsset) (RenderFacts, error) {
+	return f.facts, f.err
+}
+
+func (f *fakeWatermarkOnlyExecutor) ExecuteWithWatermark(_ context.Context, _ render.RenderPlan, _ *SubtitleAsset, wm *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (RenderFacts, error) {
+	f.gotWM = wm
+	f.gotSpec = spec
+	if f.err != nil {
+		return RenderFacts{}, f.err
+	}
+	return f.facts, nil
+}
+
+func TestLocalizedClipRenderer_LegacyWatermarkExecutorStillReceivesWatermark(t *testing.T) {
+	compiler := &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4"}}
+	wire := newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()})
+	executor := &fakeWatermarkOnlyExecutor{facts: validRenderFacts()}
+	r := newTestRenderer(t, compiler, wire, executor)
+
+	plan := validPlan()
+	plan.Watermark = &cliprender.MaterializedAsset{
+		AssetID:   "asset-wm",
+		LocalPath: "/scratch/asset-wm.png",
+		SHA256:    strings.Repeat("e", 64),
+	}
+	plan.WatermarkSpec = &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: cliprender.PositionTopRight, Opacity: 0.9, MarginPX: 24}
+	plan.Fingerprint = Fingerprint(plan)
+
+	if _, err := r.Render(context.Background(), plan); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if executor.gotWM != plan.Watermark || executor.gotSpec != plan.WatermarkSpec {
+		t.Fatalf("watermark not passed on legacy path: wm=%+v spec=%+v", executor.gotWM, executor.gotSpec)
+	}
 }

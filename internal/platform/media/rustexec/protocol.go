@@ -113,8 +113,9 @@ type request struct {
 	// the same plan and verifies every referenced artifact fail-closed.
 	ClipPlan json.RawMessage `json:"clip_plan,omitempty"`
 	// RenderBackend is the backend resolved by the cliprender capability's
-	// RenderBackendResolver (cuda_native | ffmpeg_fallback). Rust executes the
-	// selected backend verbatim; it never derives the backend from the codec.
+	// RenderBackendResolver (chronon_vulkan | cuda_native | ffmpeg_fallback).
+	// Rust executes the selected backend verbatim; it never derives the
+	// backend from the codec.
 	RenderBackend string `json:"render_backend,omitempty"`
 }
 
@@ -341,18 +342,25 @@ type mediaMetadata struct {
 	// Stage timings populated only by render_audio_plan (mix → AAC encode →
 	// probe → hash). Zero everywhere else; final_audio_sha256 is the digest
 	// Rust computed over the published output.
-	MixMS            int64  `json:"mix_ms"`
-	AACEncodeMS      int64  `json:"aac_encode_ms"`
-	ProbeMS          int64  `json:"probe_ms"`
-	HashMS           int64  `json:"hash_ms"`
-	FFmpegMS         int64  `json:"ffmpeg_ms"`
+	MixMS       int64 `json:"mix_ms"`
+	AACEncodeMS int64 `json:"aac_encode_ms"`
+	ProbeMS     int64 `json:"probe_ms"`
+	HashMS      int64 `json:"hash_ms"`
+	FFmpegMS    int64 `json:"ffmpeg_ms"`
+	// render_clip phase timings (the benchmark decomposition): StartupMS is
+	// the pre-ffmpeg wall inside Rust (plan decode + source probe + graph
+	// build + process spawn), PublishMS the output publish, OpMS the whole
+	// render_clip wall. Pointers: nil when the operation did not report the
+	// phase (NOT_INSTRUMENTED semantics — never a fake zero).
+	StartupMS        *int64 `json:"startup_ms,omitempty"`
+	PublishMS        *int64 `json:"publish_ms,omitempty"`
+	OpMS             *int64 `json:"op_ms,omitempty"`
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
 	// render_clip audio copy policy outcome (copy verbatim vs one certified
 	// conversion) and whether the burn stage rasterized libass (CPU).
 	AudioCopyEligible *bool   `json:"audio_copy_eligible,omitempty"`
 	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
 	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
-	NativeMedia       *bool   `json:"native_media,omitempty"`
 	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
 }
 
