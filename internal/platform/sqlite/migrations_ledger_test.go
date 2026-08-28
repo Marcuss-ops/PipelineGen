@@ -262,7 +262,7 @@ func TestMigrations_ReconcilesHistoricalRunResourceReports238To239(t *testing.T)
 			app_git_sha TEXT NOT NULL DEFAULT 'test'
 		);
 		INSERT INTO schema_migrations(version, migration_id, filename, checksum, checksum_sha256)
-		VALUES (238, 238, '238_run_resource_reports.sql', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+		VALUES (238, 238, '238_run_resource_reports.sql', '66be1ded3070b3a2dfe09039e848a70981396cbe0407cdb90914003670b7a8f4', '66be1ded3070b3a2dfe09039e848a70981396cbe0407cdb90914003670b7a8f4');
 	`)
 	if err != nil {
 		db.Close()
@@ -286,6 +286,33 @@ func TestMigrations_ReconcilesHistoricalRunResourceReports238To239(t *testing.T)
 	wantChecksum := sha256Hex(content)
 	if version != 239 || migrationID != 239 || filename != "239_run_resource_reports.sql" || checksum != wantChecksum {
 		t.Fatalf("reconciled ledger = version=%d id=%d filename=%q checksum=%q", version, migrationID, filename, checksum)
+	}
+}
+
+func TestMigrations_RejectsUnknownHistoricalRunResourceReports238Checksum(t *testing.T) {
+	targetDir := t.TempDir()
+	content, err := os.ReadFile(filepath.Join("../../../migrations/sqlite", "239_run_resource_reports.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "239_run_resource_reports.sql"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "bad-historical-238.sqlite")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE run_resource_reports (run_id TEXT PRIMARY KEY);
+		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, migration_id INTEGER NOT NULL UNIQUE, filename TEXT NOT NULL, checksum TEXT NOT NULL, checksum_sha256 TEXT NOT NULL, applied_at TEXT NOT NULL DEFAULT (datetime('now')), duration_ms INTEGER NOT NULL DEFAULT 0, app_git_sha TEXT NOT NULL DEFAULT 'test');
+		INSERT INTO schema_migrations(version, migration_id, filename, checksum, checksum_sha256) VALUES (238, 238, '238_run_resource_reports.sql', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrationsOnDB(dbPath, nil, targetDir, "observability"); err == nil || !strings.Contains(err.Error(), "checksum is not authorized") {
+		t.Fatalf("unknown legacy checksum error = %v", err)
 	}
 }
 

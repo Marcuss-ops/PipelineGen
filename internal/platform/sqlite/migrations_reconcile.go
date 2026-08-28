@@ -3,9 +3,16 @@ package sqlite
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 )
+
+// legacyRunResourceReports238Checksum is the checksum of the historically
+// deployed 238_run_resource_reports.sql.  The migration was renamed without
+// changing its SQL; keep the old identity explicit so a fabricated 238 row
+// can never be promoted merely because its schema happens to look right.
+const legacyRunResourceReports238Checksum = "66be1ded3070b3a2dfe09039e848a70981396cbe0407cdb90914003670b7a8f4"
 
 // reconcileHistoricalMigrationIdentities repairs renumberings that happened
 // after a migration was deployed.  A migration is identified by its durable
@@ -49,6 +56,9 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	}
 	if oldVersion != 238 || oldFilename != "238_run_resource_reports.sql" {
 		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(oldChecksum), legacyRunResourceReports238Checksum) {
+		return fmt.Errorf("legacy migration 238 checksum is not authorized: got %q", oldChecksum)
 	}
 
 	canonicalRows, err := db.Query(`SELECT COUNT(*) FROM schema_migrations WHERE version = 239`)
