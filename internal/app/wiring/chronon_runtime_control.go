@@ -197,8 +197,11 @@ func runChrononCommandStreaming(cmd *exec.Cmd, logPath, runID string, log *zap.L
 	readers.Add(2)
 	go func() { defer readers.Done(); consume("stdout", stdout) }()
 	go func() { defer readers.Done(); consume("stderr", stderr) }()
-	waitErr := cmd.Wait()
+	// StdoutPipe/StderrPipe require the consumer to drain both streams before
+	// Wait closes their descriptors. The child may exit while the goroutines
+	// are still reading; EOF releases the readers, then Wait reaps the process.
 	readers.Wait()
+	waitErr := cmd.Wait()
 
 	mu.Lock()
 	result := chrononProcessOutput{Tail: append([]byte(nil), tail...), TotalBytes: total}
