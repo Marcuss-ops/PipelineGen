@@ -56,10 +56,8 @@ type Provider struct {
 	clockTicks int64
 	pageSize   int64
 
-	mu           sync.Mutex
-	prev         snapshot
-	gpuChecked   bool
-	gpuAvailable bool
+	mu   sync.Mutex
+	prev snapshot
 }
 
 // gpuSample is one nvidia-smi snapshot aggregated across all GPUs.
@@ -286,31 +284,24 @@ func (p *Provider) readSnapshot() snapshot {
 	return cur
 }
 
-// readGPU snapshots NVIDIA GPUs via nvidia-smi, permanently disabling GPU
-// collection after the first failure (no GPU or missing binary). Returns nil
-// when GPUs are unavailable.
+// readGPU snapshots NVIDIA GPUs via nvidia-smi. A failed invocation is treated
+// as a transient missing sample rather than permanently disabling GPU metrics:
+// driver/NVML initialization can fail briefly while workers are starting, and
+// one such failure must not turn every later benchmark field into null. A
+// missing binary is already represented by an empty nvidiaSMI path from New().
 func (p *Provider) readGPU(ctx context.Context) *gpuSample {
 	if p.nvidiaSMI == "" || p.nvidiaSMI == "none" {
-		return nil
-	}
-	if p.gpuChecked && !p.gpuAvailable {
 		return nil
 	}
 	out, err := exec.CommandContext(ctx, p.nvidiaSMI,
 		"--query-gpu=utilization.gpu,memory.used,utilization.encoder,utilization.decoder,temperature.gpu",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
-		p.gpuChecked = true
-		p.gpuAvailable = false
 		return nil
 	}
 	gpu, ok := parseGPUOutput(string(out))
 	if !ok {
-		p.gpuChecked = true
-		p.gpuAvailable = false
 		return nil
 	}
-	p.gpuChecked = true
-	p.gpuAvailable = true
 	return &gpu
 }
