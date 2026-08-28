@@ -306,6 +306,18 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.GPUCopyBytes != nil {
 		metrics.GPUCopyBytes = cliprender.Metric(int64(*result.GPUCopyBytes))
 	}
+	if result.GPUReadbackBytes != nil {
+		metrics.GPUReadbackBytes = cliprender.Metric(int64(*result.GPUReadbackBytes))
+	}
+	if result.EncoderStagingCopyBytes != nil {
+		metrics.EncoderStagingCopyBytes = cliprender.Metric(int64(*result.EncoderStagingCopyBytes))
+	}
+	if result.NV12ToRGBAFrames != nil {
+		metrics.NV12ToRGBAFrames = cliprender.Metric(int64(*result.NV12ToRGBAFrames))
+	}
+	if result.RGBAToNV12Frames != nil {
+		metrics.RGBAToNV12Frames = cliprender.Metric(int64(*result.RGBAToNV12Frames))
+	}
 	// Process/resource metrics are reported by the Rust operation owner and
 	// projected into the canonical clip report only when actually measured.
 	if result.OperationMetrics != nil {
