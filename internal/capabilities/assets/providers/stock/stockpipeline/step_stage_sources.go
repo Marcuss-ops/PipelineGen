@@ -32,8 +32,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/ingest"
 )
 
 // StockStageSourcesStep is the canonical implementation of
@@ -73,7 +73,10 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	// no-fake-availability: a production run cannot reach here with a
 	// nil stager, and a test fixture that passes nil must update to
 	// wire a non-nil stub (mapStager / recordingStager).
-	stager := runner.SourceStager()
+	preparer := &stockIngestPreparer{
+		stager:        runner.SourceStager(),
+		policyVersion: runner.PolicyVersion(),
+	}
 
 	plans := runner.State().Plan
 
@@ -89,8 +92,15 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 		return nil
 	}
 
-	seen := make(map[string]bool)
-	var staged []*assets.StagedAsset
+	sources := ingestSourcesFromClipPlans(plans)
+
+	var staged []*ports.StagedAsset
+	plansBySource := make(map[string]ClipPlan, len(plans))
+	for _, plan := range plans {
+		if _, exists := plansBySource[plan.SourceID]; !exists {
+			plansBySource[plan.SourceID] = plan
+		}
+	}
 	state := runner.State()
 	if state.SourceErrors == nil {
 		state.SourceErrors = make(map[string]string)
@@ -102,26 +112,15 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	// files on disk. Cleanup now lives at the orchestrator level
 	// (orchestrator.go::RunResilient), fired after ALL steps complete.
 
-	for _, plan := range plans {
+	uniqueSources := ingest.UniqueSources(sources)
+	for _, source := range uniqueSources {
+		plan := plansBySource[source.ID]
 		// Stage the complete source once. In sections_only mode the clip
 		// timestamps are cut locally by stock.extract_clips; using StageKey
 		// or DownloadSection here would create a distinct cache key per
 		// clip and invoke yt-dlp repeatedly for the same YouTube video.
-		stageKey := plan.SourceID
-		if seen[stageKey] {
-			continue
-		}
-		seen[stageKey] = true
-
-		req := acquisition.PrepareRequest{
-			Source: acquisition.SourceRef{URL: stagingSourceURL(plan)},
-			IdempotencyKey: acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
-				URL:           stagingSourceURL(plan),
-				PolicyVersion: runner.PolicyVersion(),
-			}),
-			CallerRef: "stock.stage_sources",
-		}
-		prepared, stageErr := stager.Prepare(ctx, req)
+		stageKey := source.ID
+		prepared, stageErr := preparer.Prepare(ctx, source)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
 			// Mirrors YouTube (process_segment.go Step 4a) + Artlist pattern.
@@ -147,10 +146,10 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 			continue
 		}
 		// Convert PrepareContext to StagedAsset for the pipeline state.
-		sa := &assets.StagedAsset{
+		sa := &ports.StagedAsset{
 			LocalPath: prepared.LocalPath,
-			Bytes:     prepared.SizeBytes,
-			SourceID:  stageKey,
+			Bytes:     prepared.Bytes,
+			SourceID:  prepared.SourceID,
 		}
 		staged = append(staged, sa)
 		// Publish immediately to the shared RunState so the
@@ -189,8 +188,8 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	// source is available. Previously the step treated partial staging as
 	// graceful degradation, allowing a 10-video request with one usable
 	// video to publish successfully while silently dropping the other nine.
-	if len(staged) < len(seen) {
-		return fmt.Errorf("%w: staged=%d requested=%d failed_sources=%s", ErrStockStageSourcesIncomplete, len(staged), len(seen), formatSourceErrors(state.SourceErrors))
+	if len(staged) < len(uniqueSources) {
+		return fmt.Errorf("%w: staged=%d requested=%d failed_sources=%s", ErrStockStageSourcesIncomplete, len(staged), len(uniqueSources), formatSourceErrors(state.SourceErrors))
 	}
 
 	runner.State().StagedAssets = staged

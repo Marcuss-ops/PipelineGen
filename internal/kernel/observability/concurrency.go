@@ -18,7 +18,6 @@ package observability
 // per-cue translator) record events; the tracker only reconstructs numbers.
 
 import (
-	"sort"
 	"sync"
 	"time"
 )
@@ -103,11 +102,7 @@ func (t *ConcurrencyTracker) Stats(configured int) ConcurrencyStats {
 
 	var totalWork, totalQueue, maxQueue int64
 	var minStart, maxEnd time.Time
-	type boundary struct {
-		at    time.Time
-		delta int // +1 start, -1 end
-	}
-	bounds := make([]boundary, 0, len(events)*2)
+	bounds := make([]concurrencyPoint, 0, len(events)*2)
 	for _, e := range events {
 		totalWork += e.DurationMS()
 		q := e.QueueMS()
@@ -121,29 +116,19 @@ func (t *ConcurrencyTracker) Stats(configured int) ConcurrencyStats {
 		if e.CompletedAt.After(maxEnd) {
 			maxEnd = e.CompletedAt
 		}
-		bounds = append(bounds, boundary{at: e.StartedAt, delta: 1}, boundary{at: e.CompletedAt, delta: -1})
+		bounds = append(bounds, concurrencyPoint{at: e.StartedAt, delta: 1}, concurrencyPoint{at: e.CompletedAt, delta: -1})
 	}
-	// Sweep for peak overlap. At equal timestamps, ends (-1) sort before
-	// starts (+1) so a completed slot is freed before a new one is counted.
-	sort.Slice(bounds, func(i, j int) bool {
-		if bounds[i].at.Equal(bounds[j].at) {
-			return bounds[i].delta < bounds[j].delta
-		}
-		return bounds[i].at.Before(bounds[j].at)
-	})
-	current, maxCurrent := 0, 0
-	for _, b := range bounds {
-		current += b.delta
-		if current > maxCurrent {
-			maxCurrent = current
-		}
-	}
+	// Peak overlap comes from the canonical sweep (same deterministic
+	// end-before-start tie-breaker used by the batch and per-phase
+	// derivations). AvgObserved stays WORK-based (total work / wall), which
+	// is this tracker's documented semantics — the sweep's time-weighted
+	// average is used by the batch-level derivations.
+	s.MaxObserved, _ = sweepConcurrency(bounds, 0)
 
 	s.WallMS = nonNegMS(maxEnd.Sub(minStart))
 	s.TotalWorkMS = totalWork
 	s.TotalQueueMS = totalQueue
 	s.MaxQueueMS = maxQueue
-	s.MaxObserved = maxCurrent
 	if s.WallMS > 0 {
 		s.AvgObserved = float64(totalWork) / float64(s.WallMS)
 	}

@@ -5,10 +5,12 @@ package cliprender
 // file under the 600-LOC strict gate.
 
 import (
+	"context"
 	"strings"
 	"sync"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // renderedResult projects the *Prepared + sealed plan + render outcome +
@@ -242,6 +244,72 @@ func finalizeMetrics(m *RenderMetricsV2, jobTotalMS int64, durationSec float64) 
 	}
 	m.TotalMS = Metric(jobTotalMS)
 	m.Compute(durationSec)
+}
+
+// projectRendererPhases projects the renderer-owned phase timings from the
+// canonical V2 report onto the Run bound to ctx as typed operations (e.g.
+// subtitle_raster_ms → Run.Operation{operation=subtitle_raster,
+// component=chronon, duration_ms}). Every phase was MEASURED by the render
+// engine boundary (Chronon/CUDA/FFmpeg) and reported in the canonical clip
+// report; the kernel records the owner-reported duration via RecordOperation
+// and never re-times the boundary (one boundary = one timer). Phases that
+// were not instrumented stay absent — never a fake zero. The component
+// mirrors the backend that actually ran, so a software-fallback render is
+// never mislabelled as the GPU engine.
+func projectRendererPhases(ctx context.Context, backend RenderBackend, m *RenderMetricsV2) {
+	if m == nil {
+		return
+	}
+	component := componentForBackend(backend)
+	record := func(op kernobs.OperationName, ms Metric) {
+		if int64(ms) == NotInstrumented {
+			return
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage:     StageClipRender,
+			Component: component,
+			Operation: op,
+		}, int64(ms))
+	}
+	record(kernobs.OperationRendererStartup, m.RendererStartupMS)
+	record(kernobs.OperationProbe, m.ProbeMS)
+	record(kernobs.OperationDecode, m.DecodeMS)
+	record(kernobs.OperationComposite, m.CompositeMS)
+	record(kernobs.OperationSubtitleRaster, m.SubtitleRasterMS)
+	record(kernobs.OperationWatermarkRaster, m.WatermarkRasterMS)
+	record(kernobs.OperationFrameConversion, m.FrameConversionMS)
+	record(kernobs.OperationEncode, m.EncodeMS)
+	record(kernobs.OperationAudioMux, m.AudioMuxMS)
+	// GPU byte counters are counters, not durations: projected with Bytes so
+	// the operation never fakes a duration for a non-time measurement.
+	recordBytes := func(op kernobs.OperationName, bytes Metric) {
+		if int64(bytes) == NotInstrumented {
+			return
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage:     StageClipRender,
+			Component: component,
+			Operation: op,
+			Bytes:     int64(bytes),
+		}, 0)
+	}
+	recordBytes(kernobs.OperationGPUCopy, m.GPUCopyBytes)
+	recordBytes(kernobs.OperationGPUReadback, m.GPUReadbackBytes)
+}
+
+// componentForBackend maps the resolved render backend onto the canonical
+// component that owns its measured phases. chronon_vulkan (primary) → chronon;
+// cuda_native → cuda; ffmpeg_fallback → ffmpeg. Unknown backends keep the
+// primary GPU component — a wrong label is never fabricated.
+func componentForBackend(b RenderBackend) kernobs.ComponentName {
+	switch b {
+	case BackendCudaNative:
+		return kernobs.ComponentCUDA
+	case BackendFFmpegFallback:
+		return kernobs.ComponentFFmpeg
+	default:
+		return kernobs.ComponentChronon
+	}
 }
 
 // safeProgress returns a nil-safe progress callback.

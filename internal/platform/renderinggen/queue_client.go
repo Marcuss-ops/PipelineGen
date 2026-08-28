@@ -106,6 +106,12 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		FirstFrameKeyframe: in.FirstFrameKeyframe,
 		RenderMS:           metricMillis(in.Metrics, "render_ms"),
 		EncodeMS:           metricMillis(in.Metrics, "encode_ms"),
+		MaterializeMS:      metricMillisEither(in.Metrics, "materialize_ms", "materialize_us"),
+		PlanMS:             metricMillisEither(in.Metrics, "overlay_compile_ms", "overlay_compile_us"),
+		ProbeMS:            metricMillisEither(in.Metrics, "probe_ms", "probe_us"),
+		HashMS:             metricMillisEither(in.Metrics, "sha256_ms", "sha256_us"),
+		UploadMS:           metricMillisEither(in.Metrics, "objectstore_upload_ms", "objectstore_upload_us"),
+		DrivePublishMS:     metricMillisEither(in.Metrics, "drive_publish_ms", "drive_upload_us"),
 		DriveFileID:        in.DriveFileID,
 		DriveLink:          in.DriveLink,
 	}
@@ -118,6 +124,23 @@ func metricMillis(m map[string]float64, key string) int64 {
 		return 0
 	}
 	return int64(m[key])
+}
+
+// metricMillisEither reads a worker-reported phase duration preferring the
+// millisecond key and falling back to the microsecond key (the RenderingGen
+// worker reports materialize/render/hash/upload phases in microseconds and
+// the drive phase in milliseconds). Absent keys yield 0 (unreported).
+func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
+	if m == nil {
+		return 0
+	}
+	if v := int64(m[msKey]); v > 0 {
+		return v
+	}
+	if v := int64(m[usKey]); v > 0 {
+		return v / 1000
+	}
+	return 0
 }
 
 var _ scriptgen.RenderQueueClient = (*Client)(nil)

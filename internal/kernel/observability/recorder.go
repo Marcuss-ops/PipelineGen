@@ -11,6 +11,13 @@ type Recorder interface {
 	SaveReport(context.Context, *RunReport) error
 }
 
+// ResourceReportRecorder persists the canonical raw host/process resource
+// report associated with one run. Resource reports are deliberately separate
+// from RunReport so readers can retain high-volume samples independently.
+type ResourceReportRecorder interface {
+	SaveResourceReport(context.Context, *RunResourceReport) error
+}
+
 type LifecycleRecorder interface {
 	StartReport(context.Context, *RunReport) error
 	AppendStage(context.Context, string, StageReport) error

@@ -52,10 +52,14 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	procmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/procmetrics"
+	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
+	"os"
 )
 
 // jobRunnerDeps holds the composition-root dependencies required to
@@ -195,6 +199,28 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		deps.log.Warn("observability recorder unavailable; using metrics-only projection")
 	}
 	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
+
+	// Run resource telemetry (August 2026): the canonical ResourceSampler
+	// samples host/process resources every 500ms per run into
+	// resource_observations on the primary DB, bound to the run's
+	// run_id/job_id/attempt_id/worker_id/host. The procmetrics provider
+	// reads /proc + sysfs (+ nvidia-smi when present); missing sources
+	// stay nil. When the store or sampler cannot be built, telemetry is
+	// disabled with a WARN — never a startup failure.
+	if deps.root.DB != nil && deps.root.DB.DB != nil {
+		store, err := perfstore.NewResourceStore(deps.root.DB.DB)
+		if err != nil {
+			deps.log.Warn("resource sampler store unavailable; run resource telemetry disabled", zap.Error(err))
+		} else {
+			sampler, err := perfstore.NewSampler(procmetrics.New(procmetrics.Options{}), store)
+			if err != nil {
+				deps.log.Warn("resource sampler unavailable; run resource telemetry disabled", zap.Error(err))
+			} else {
+				host, _ := os.Hostname()
+				runner.WithResourceSampler(sampler, host)
+			}
+		}
+	}
 	return runner
 }
 

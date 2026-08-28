@@ -47,7 +47,8 @@ type chrononRenderPlan struct {
 
 type chrononCanvas struct {
 	DurationFrames int `json:"duration_frames"`
-	FPS            int `json:"fps"`
+	FPSNum         int `json:"fps_num"`
+	FPSDen         int `json:"fps_den"`
 	Height         int `json:"height"`
 	Width          int `json:"width"`
 }
@@ -146,7 +147,8 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 		Canvas: chrononCanvas{
 			Width:          plan.Output.Width,
 			Height:         plan.Output.Height,
-			FPS:            fps,
+			FPSNum:         plan.Output.FPSNum,
+			FPSDen:         plan.Output.FPSDen,
 			DurationFrames: frames,
 		},
 		Output: chrononOutput{Path: chrononOutputPath, Format: "mp4", Codec: "h264"},

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // fakeRenderQueueClient implements RenderQueueClient in-memory for the
@@ -371,5 +372,64 @@ func TestQueueRenderEnqueuerChrononPlanPropagatesFailure(t *testing.T) {
 
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
 		t.Fatal("expected failure to propagate")
+	}
+}
+
+// TestRecordRenderingGenPhasesMapsWorkerTimingsToCanonicalRun pins the
+// RenderingGen → canonical mapping: every worker-reported phase becomes one
+// owner-measured operation on the run (component renderinggen, stage
+// process), and phases the worker did not report are skipped — never a fake
+// zero. The kernel never re-times a phase the worker already measured.
+func TestRecordRenderingGenPhasesMapsWorkerTimingsToCanonicalRun(t *testing.T) {
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-render", JobType: "overlay.render", AttemptID: "attempt-render"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	artifact := &RenderArtifact{
+		MaterializeMS: 420, PlanMS: 15, RenderMS: 900, ProbeMS: 25, HashMS: 8,
+		UploadMS: 31, DrivePublishMS: 240,
+	}
+	recordRenderingGenPhases(ctx, artifact)
+
+	report := run.Finish()
+	want := map[string]int64{
+		"materialize": 420, "plan": 15, "render": 900, "probe": 25,
+		"hash": 8, "objectstore_upload": 31, "drive_publish": 240,
+	}
+	got := map[string]int64{}
+	for _, op := range report.Operations {
+		if op.Component != string(kernobs.ComponentRenderingGen) {
+			t.Fatalf("operation %s component=%q, want renderinggen", op.Operation, op.Component)
+		}
+		if op.Stage != string(kernobs.StageProcess) {
+			t.Fatalf("operation %s stage=%q, want process", op.Operation, op.Stage)
+		}
+		if _, dup := got[op.Operation]; dup {
+			t.Fatalf("operation %s recorded twice", op.Operation)
+		}
+		got[op.Operation] = op.DurationMs
+	}
+	if len(got) != len(want) {
+		t.Fatalf("operations=%v, want %v", got, want)
+	}
+	for op, ms := range want {
+		if got[op] != ms {
+			t.Fatalf("operation %s duration=%d, want %d", op, got[op], ms)
+		}
+	}
+}
+
+// TestRecordRenderingGenPhasesSkipsUnreportedPhases pins the no-fake-zero
+// rule: a nil artifact and zero durations record nothing.
+func TestRecordRenderingGenPhasesSkipsUnreportedPhases(t *testing.T) {
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-render", AttemptID: "attempt-render"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	recordRenderingGenPhases(ctx, nil)
+	recordRenderingGenPhases(ctx, &RenderArtifact{RenderMS: 0})
+
+	if report := run.Finish(); len(report.Operations) != 0 {
+		t.Fatalf("unreported phases must not be recorded: %+v", report.Operations)
 	}
 }

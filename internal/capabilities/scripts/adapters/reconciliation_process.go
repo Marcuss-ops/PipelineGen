@@ -23,6 +23,9 @@ import (
 // missing/trashed/inaccessible/malformed links are cleared and
 // flagged as warnings. The UpdatedSpecScene field in the result
 // carries the reconciled SpecScene for downstream consumption.
+// Process coordinates the reconciliation phases: scan/classify, build the
+// immutable plan, apply it, and report the reconciled scene. The per-link
+// state machine remains owned by verifyAndReconcile.
 func (p *AssetLocationReconciliationProcessor) Process(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
@@ -37,12 +40,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		// the required error is surfaced.
 		reconciled := cloneSpecScenes(input.SpecScene.Scenes)
 		clearUnverifiedSceneLinks(reconciled)
-		return &PostProcessResult{
-			Changed:          len(reconciled) > 0,
-			SpecSceneChanged: len(reconciled) > 0,
-			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
-			Warnings:         []string{"asset_location_reconciliation: verifier is not configured (all Drive links cleared)"},
-		}, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
+		return reconciliationReport(input, reconciled, len(reconciled) > 0, []string{"asset_location_reconciliation: verifier is not configured (all Drive links cleared)"}), fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
 	scenes := input.SpecScene.Scenes
@@ -308,12 +306,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	}
 
 	if conflictErr != nil {
-		return &PostProcessResult{
-			Changed:          changed,
-			SpecSceneChanged: changed,
-			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
-			Warnings:         warnings,
-		}, conflictErr
+		return reconciliationReport(input, reconciled, changed, warnings), conflictErr
 	}
 
 	// ── PLAN → APPLY ─────────────────────────────────────────────
@@ -326,31 +319,32 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	reconcilePlan := buildReconcilePlan(assetChanges)
 	reconcilePlan.Noops = okCount
 	if len(reconcilePlan.Conflicts) > 0 {
-		return &PostProcessResult{
-			Changed:          changed,
-			SpecSceneChanged: changed,
-			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
-			Warnings:         warnings,
-		}, fmt.Errorf("%w: reconciliation plan contains conflicts", scriptpkg.ErrPostprocessFailed)
+		return reconciliationReport(input, reconciled, changed, warnings), fmt.Errorf("%w: reconciliation plan contains conflicts", scriptpkg.ErrPostprocessFailed)
 	}
 
-	if p.committer != nil && len(assetChanges) > 0 {
-		if err := p.committer.CommitAssetLocations(ctx, reconcilePlan.AssetLocationChanges()); err != nil {
-			return &PostProcessResult{
-				Changed:          changed,
-				SpecSceneChanged: changed,
-				UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
-				Warnings:         warnings,
-			}, fmt.Errorf("%w: asset_location_reconciliation commit failed: %w", scriptpkg.ErrPostprocessFailed, err)
-		}
+	if err := p.applyReconcilePlan(ctx, reconcilePlan); err != nil {
+		return reconciliationReport(input, reconciled, changed, warnings), fmt.Errorf("%w: asset_location_reconciliation commit failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
 
+	return reconciliationReport(input, reconciled, changed, warnings), nil
+}
+
+// applyReconcilePlan is the only durable mutation boundary. It consumes the
+// immutable plan produced by the scan/classify phase and never re-reads scenes.
+func (p *AssetLocationReconciliationProcessor) applyReconcilePlan(ctx context.Context, plan ReconcilePlan) error {
+	if p.committer == nil || plan.Empty() {
+		return nil
+	}
+	return p.committer.CommitAssetLocations(ctx, plan.AssetLocationChanges())
+}
+
+func reconciliationReport(input ProcessInput, reconciled []scriptpkg.SpecScene, changed bool, warnings []string) *PostProcessResult {
 	return &PostProcessResult{
 		Changed:          changed,
 		SpecSceneChanged: changed,
 		UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 		Warnings:         warnings,
-	}, nil
+	}
 }
 
 func reconciliationFailureResult(

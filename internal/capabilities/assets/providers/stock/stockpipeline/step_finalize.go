@@ -187,19 +187,15 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		return fmt.Errorf("orchestrator: stock.finalize: marshal manifest: %w", marshalErr)
 	}
 
-	finReq, finBuildErr := BuildFinalizationRequest(
+	finisher := &stockFinalizeAdapter{finalizer: runner.JobFinalizer()}
+	finResult, finErr := finisher.Complete(ctx, newStockFinalizeRequest(
 		runner.JobID(),
 		lease,
 		manifestData,
 		runner.State().Published,
 		runner.State().MetadataPublished,
 		fp,
-	)
-	if finBuildErr != nil {
-		return fmt.Errorf("orchestrator: stock.finalize: BuildFinalizationRequest: %w", finBuildErr)
-	}
-
-	finResult, finErr := runner.JobFinalizer().CompleteWithArtifacts(ctx, *finReq)
+	))
 	if finErr != nil {
 		// godlike/07 typed-error contract: propagate the typed sentinel
 		// verbatim via %w + fmt.Errorf so callers can errors.Is into
@@ -207,7 +203,7 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		// ErrRemoteArtifactHashMismatch) without unwrapping our wrapper.
 		return fmt.Errorf("%w: %v", ErrStockFinalizeSpineFailed, finErr)
 	}
-	runner.State().FinalizationResult = finResult
+	runner.State().FinalizationResult = finisher.legacyFinalizationResult()
 
 	// Phase 5: durable batch state flip from PUBLISHED → VERIFIED and
 	// group/batch status to SUCCEEDED. This happens only after the

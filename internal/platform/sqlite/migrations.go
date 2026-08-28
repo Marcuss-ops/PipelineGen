@@ -3,12 +3,8 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -109,6 +105,13 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 // file. Migration 109 carries a one-time checksum shim — see below —
 // so existing primary DBs that pre-date the `-- database: primary`
 // header preserve their applied status.
+//
+// The migrateAll body is deliberately scoped to orchestration: the
+// ledger bootstrap, discovery, status parsing and per-file apply logic
+// each live in a sibling migrations_*.go file (migrations_ledger.go,
+// migrations_discovery.go, migrations_splitter.go, migrations_apply.go,
+// migrations_reconcile.go, migrations_status.go). The historical
+// checksum-reconciliation shims are likewise split out.
 func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error {
 	// Bootstrap and expand the ledger before reading migration files. Existing
 	// databases may have the legacy four-column shape; expansion backfills the
@@ -137,6 +140,14 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	applied, err := loadAppliedMigrations(db)
 	if err != nil {
 		return fmt.Errorf("storage: load applied migrations: %w", err)
+	}
+	if err := reconcileHistoricalMigrationIdentities(db, migrations, targetDB, log); err != nil {
+		return fmt.Errorf("storage: reconcile historical migration identities: %w", err)
+	}
+	// The reconciliation may have moved a ledger row to its canonical
+	// version, so reload before validating gaps and out-of-scope entries.
+	if applied, err = loadAppliedMigrations(db); err != nil {
+		return fmt.Errorf("storage: reload applied migrations after reconciliation: %w", err)
 	}
 	if err := validateAppliedMigrationSet(applied, migrations, targetDB); err != nil {
 		return err
@@ -213,20 +224,6 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					}
 					if log != nil {
 						log.Warn("reconciled migration 195 ledger for deployed media taxonomy", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				legacyChecksums := map[int]string{
-					191: "441f6502693e3ffceb4bf85a18d22559b937624861c5db6daa6cc59233f91d5b",
-					192: "90a5ffc831f380fa4e0763835b5699d0049db5192f84125c3b15bac8f77d6d66",
-					193: "e5f9ea1d18ca6542346cf6abe0e07d145b992d7b95e50a05affb1b4f44e43358",
-				}
-				if expected, ok := legacyChecksums[m.version]; ok && targetDB == "primary" && prev.filename == m.filename && prev.checksum == expected {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
-						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
-					}
-					if log != nil {
-						log.Warn("reconciled removed historical migration ledger entry", zap.Int("version", m.version), zap.String("filename", m.filename))
 					}
 					continue
 				}
@@ -348,6 +345,20 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					}
 					continue
 				}
+				legacyChecksums := map[int]string{
+					191: "441f6502693e3ffceb4bf85a18d22559b937624861c5db6daa6cc59233f91d5b",
+					192: "90a5ffc831f380fa4e0763835b5699d0049db5192f84125c3b15bac8f77d6d66",
+					193: "e5f9ea1d18ca6542346cf6abe0e07d145b992d7b95e50a05affb1b4f44e43358",
+				}
+				if expected, ok := legacyChecksums[m.version]; ok && targetDB == "primary" && prev.filename == m.filename && prev.checksum == expected {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
+						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
+					}
+					if log != nil {
+						log.Warn("reconciled removed historical migration ledger entry", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
 				return fmt.Errorf(
 					"storage: migration %03d (%s) identity/checksum mismatch — "+
 						"applied=%s/%s current=%s/%s. Migrations must never be modified or renamed after being applied",
@@ -373,240 +384,4 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		zap.Int("already_applied", len(applied)),
 	)
 	return nil
-}
-
-// isLegacyControlPlaneMetaSchema recognizes the schema produced by the one
-// deployed pre-singleton variant of migration 198. It is intentionally
-// narrow: the checksum shim must never turn an arbitrary schema drift into a
-// successful migration run.
-func isLegacyControlPlaneMetaSchema(db queryable) bool {
-	rows, err := db.Query("PRAGMA table_info(control_plane_meta)")
-	if err != nil {
-		return false
-	}
-	defer rows.Close()
-
-	want := map[string]bool{
-		"database_id":       false,
-		"schema_family":     false,
-		"instance_role":     false,
-		"canonical_version": false,
-		"created_at":        false,
-	}
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull, pk int
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
-			return false
-		}
-		if _, ok := want[name]; !ok || name == "singleton_id" {
-			return false
-		}
-		want[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return false
-	}
-	for _, present := range want {
-		if !present {
-			return false
-		}
-	}
-	countRows, err := db.Query("SELECT COUNT(*) FROM control_plane_meta")
-	if err != nil {
-		return false
-	}
-	defer countRows.Close()
-	if !countRows.Next() {
-		return false
-	}
-	var count int
-	if err := countRows.Scan(&count); err != nil {
-		return false
-	}
-	return count == 1
-}
-
-func hasMediaTaxonomyColumns(db queryable) bool {
-	rows, err := db.Query("PRAGMA table_info(media_assets)")
-	if err != nil {
-		return false
-	}
-	defer rows.Close()
-	want := map[string]bool{"namespace": false, "asset_kind": false, "source_type": false}
-	for rows.Next() {
-		var cid, notNull, pk int
-		var name, typ string
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
-			return false
-		}
-		if _, ok := want[name]; ok {
-			want[name] = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return false
-	}
-	for _, present := range want {
-		if !present {
-			return false
-		}
-	}
-	return true
-}
-
-// queryable abstracts the database handle so migrateAll works with both
-// *sql.DB (from RunMigrationsOnDB) and *SQLiteDB (from RunMigrations).
-type queryable interface {
-	Exec(query string, args ...any) (sql.Result, error)
-	Query(query string, args ...any) (*sql.Rows, error)
-	Begin() (*sql.Tx, error)
-}
-
-// appliedRecord holds a row from the schema_migrations ledger.
-type appliedRecord struct {
-	checksum string
-	filename string
-}
-
-// applyMigration executes a single migration file inside a transaction
-// and records its application in schema_migrations.
-//
-// Migration files are split into individual statements and each is executed
-// in turn. SQLite does not support `ALTER TABLE ADD COLUMN IF NOT EXISTS`,
-// so we soft-skip any `ALTER TABLE … ADD COLUMN` that fails with
-// "duplicate column name": the column was already created by a prior
-// migration (e.g. 015 was retrofitted to add columns that 017 also adds).
-// The migration is still recorded as fully applied. The check is scoped to
-// ALTER TABLE … ADD COLUMN specifically so other DDL with the same error
-// string (e.g. a CREATE TABLE with a duplicated column in its column list)
-// is still hard-errored as a real bug.
-func applyMigration(db queryable, log *zap.Logger, version int, filename, checksum string, content []byte) error {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	startedAt := time.Now()
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	statements := splitSQLStatements(string(content))
-	for i, stmt := range statements {
-		trimmed := strings.TrimSpace(stmt)
-		if trimmed == "" {
-			continue
-		}
-		// Pre-flight skip: standalone BEGIN/BEGIN TRANSACTION/BEGIN IMMEDIATE/
-		// COMMIT/ROLLBACK appear inside migration files the author wrote
-		// expecting to need explicit tx boundaries. Within the outer Go-level
-		// `tx` from `db.Begin()` these statements are no-ops, but more
-		// importantly SQLite treats a stray `COMMIT` as terminating the
-		// underlying transaction — which leaves Go's `*sql.Tx` open against a
-		// closed SQLite handle. The eventual `tx.Commit()` then errors with
-		// "cannot commit - no transaction is active".  Skipping before
-		// exec() guarantees the driver never sees the lifecycle command,
-		// fixes fresh DBs, and — because the SQL files are unchanged —
-		// preserves the SHA-256 ledger invariant on existing databases.
-		//
-		// This is the ONLY `isNestedTransactionControl` check in the runner:
-		// the previous post-error check inside `if err != nil` was deleted
-		// because it relied on the driver erroring (which SQLite doesn't do
-		// for `COMMIT` inside an active tx — it silently closes the handle).
-		if isNestedTransactionControl(trimmed) {
-			log.Info("skipping nested transaction control (handled by outer runner tx)",
-				zap.Int("version", version),
-				zap.String("filename", filename),
-				zap.Int("statement", i+1),
-			)
-			continue
-		}
-		if _, err := tx.Exec(trimmed); err != nil {
-			if isDuplicateColumnError(err.Error(), trimmed) {
-				// Soft-skip: ALTER TABLE … ADD COLUMN collided with a column
-				// that already exists from a prior migration (e.g. 015 was
-				// retrofitted to add columns that 017 also adds). This makes
-				// migrations idempotent against retrofitted column lists.
-				log.Info("skipping duplicate ADD COLUMN (already exists from prior migration)",
-					zap.Int("version", version),
-					zap.String("filename", filename),
-					zap.Int("statement", i+1),
-				)
-				continue
-			}
-			if isConditionalInsertOnMissingTable(err.Error(), trimmed) {
-				// Soft-skip: conditional data-migration INSERT that gated on
-				// `WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table'
-				// AND name='<tbl>')` failed because SQLite's query planner
-				// resolves the FROM-table at planning time even when the
-				// EXISTS gate would have produced zero rows at runtime.
-				// The migration author intended the INSERT to no-op when the
-				// source table was absent; this runtime workaround fulfils
-				// that intent without modifying the migration file (which
-				// would break the SHA-256 ledger invariant).
-				log.Info("skipping conditional INSERT onto missing source table",
-					zap.Int("version", version),
-					zap.String("filename", filename),
-					zap.Int("statement", i+1),
-					zap.Error(err),
-				)
-				continue
-			}
-			return fmt.Errorf("%s: statement %d: %w", filename, i+1, err)
-		}
-	}
-
-	// Record in ledger
-	now := time.Now().UTC().Format(time.RFC3339)
-	durationMS := time.Since(startedAt).Milliseconds()
-	if _, err := tx.Exec(
-		"INSERT INTO schema_migrations (version, migration_id, filename, checksum, checksum_sha256, applied_at, duration_ms, app_git_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		version, version, filename, checksum, checksum, now, durationMS, currentAppGitSHA(),
-	); err != nil {
-		return fmt.Errorf("record migration %d: %w", version, err)
-	}
-
-	return tx.Commit()
-}
-
-// parseMigrationVersion extracts the integer version prefix from a
-// migration filename. Expected format: NNN_<descriptive>.sql
-// e.g. "001_velox_core.sql" → 1.
-func parseMigrationVersion(filename string) (int, error) {
-	name := filepath.Base(filename)
-	idx := strings.Index(name, "_")
-	if idx <= 0 || idx > 3 {
-		return 0, fmt.Errorf("invalid migration filename: %s (expected NNN_*.sql)", name)
-	}
-	version, err := strconv.Atoi(name[:idx])
-	if err != nil || version <= 0 {
-		return 0, fmt.Errorf("invalid migration version in %s: %w", name, err)
-	}
-	return version, nil
-}
-
-// sha256Hex returns the hex-encoded SHA-256 hash of the input bytes.
-func sha256Hex(data []byte) string {
-	return digest.SHA256Bytes(data)
-}
-
-// MigrateStatus represents the status of a single migration file.
-type MigrateStatus struct {
-	Version  int
-	Filename string
-	Applied  bool
-	Checksum string
-}
-
-// MigrateStatusReport holds the result of a migration status check.
-type MigrateStatusReport struct {
-	Applied  []MigrateStatus
-	Pending  []MigrateStatus
-	Total    int
-	AppliedN int
-	PendingN int
 }

@@ -304,33 +304,15 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: expected *sql.Tx, got %T", tx)
 	}
 
-	now := time.Now()
-	nowStr := now.UTC().Format(time.RFC3339)
-	requestedAt := req.RequestedAt
-	if requestedAt.IsZero() {
-		requestedAt = now
-	}
-
-	// Merge request-level column hints with typed metadata.
-	title := firstNonEmpty(req.Title, req.Metadata.Title)
-	sourceProvider := firstNonEmpty(req.SourceProvider, req.Metadata.SourceProvider)
-	sourceVideoID := firstNonEmpty(req.SourceVideoID, req.Metadata.SourceVideoID)
-	startMs := req.StartMs
-	if startMs == 0 && req.Metadata.StartSec != 0 {
-		startMs = int64(req.Metadata.StartSec * 1000)
-	}
-	endMs := req.EndMs
-	if endMs == 0 && req.Metadata.EndSec != 0 {
-		endMs = int64(req.Metadata.EndSec * 1000)
-	}
-
-	// Resolve the supersede fingerprint once. Metadata.SourceVersion carries
-	// the caller-computed indexable-snapshot revision (index_revision); when
-	// it is absent the snapshot collapses to byte identity (content_sha256).
-	sourceVersion := req.Metadata.SourceVersion
-	if sourceVersion == "" {
-		sourceVersion = req.ContentHash
-	}
+	fields := normalizeAssetCommitFields(req, time.Now())
+	nowStr := fields.nowString
+	requestedAt := fields.requestedAt
+	title := fields.title
+	sourceProvider := fields.sourceProvider
+	sourceVideoID := fields.sourceVideoID
+	startMs := fields.startMS
+	endMs := fields.endMS
+	sourceVersion := fields.sourceVersion
 
 	// 1. Build metadata_json from typed metadata.
 	metadataMap := req.Metadata.ToMap()
@@ -358,14 +340,8 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 	metadataJSON, _ := json.Marshal(metadataMap)
 
 	// 2. UPSERT media_assets.
-	indexState := req.IndexState
-	if indexState == "" {
-		indexState = "DISCOVERED"
-	}
-	name := req.Name
-	if name == "" {
-		name = req.Filename
-	}
+	indexState := fields.indexState
+	name := fields.name
 
 	res, err := sqlTx.ExecContext(ctx, `
 		INSERT INTO media_assets (

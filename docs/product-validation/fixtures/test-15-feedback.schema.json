@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["subjects"],
+  "properties": {
+    "subjects": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["id", "q1", "q2", "q3_minutes"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "q1": {"type": "number"},
+          "q2": {"type": "number"},
+          "q3_minutes": {"type": "number", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

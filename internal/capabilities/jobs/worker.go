@@ -135,6 +135,15 @@ type Worker struct {
 	// attempts. nil = legacy un-instrumented behaviour (test fixtures
 	// that don't wire an observer keep working). See WithObserver().
 	observer *kernobs.RunObserver
+
+	// resourceSampler is the run-scoped resource telemetry port (August
+	// 2026). When non-nil, runJob starts a 500ms sampling loop bound to
+	// the run's canonical identity (run_id/job_id/attempt_id/worker_id/
+	// host) and stops it when the run completes. nil = un-instrumented
+	// behaviour (fixtures keep working). See WithResourceSampler().
+	resourceSampler kernobs.RunResourceSampler
+	// host is the hostname stamped on every resource observation.
+	host string
 }
 
 // WorkerDeps carries the dependencies for NewWorker. Grouping them
@@ -279,6 +288,24 @@ func (w *Worker) WithJobRegistry(reg capjobregistry.Registry) *Worker {
 // composition site.
 func (w *Worker) WithObserver(observer *kernobs.RunObserver) *Worker {
 	w.observer = observer
+	return w
+}
+
+// WithResourceSampler attaches the run-scoped resource telemetry port to
+// the Worker (August 2026). Mirrors the WithObserver fluent-setter
+// precedent; the composition root passes the concrete sampler built from
+// the performance ResourceStore + procmetrics provider, plus the hostname
+// stamped on every observation.
+//
+// Nil-tolerant: a nil sampler means runJob skips sampling entirely
+// (legacy behaviour preserved for fixtures that don't wire one).
+// Production wiring ALWAYS supplies a non-nil sampler via the Runner.
+//
+// Returns the receiver to allow builder-style chaining at the
+// composition site.
+func (w *Worker) WithResourceSampler(s kernobs.RunResourceSampler, host string) *Worker {
+	w.resourceSampler = s
+	w.host = host
 	return w
 }
 

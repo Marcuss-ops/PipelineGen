@@ -36,7 +36,7 @@ func TestChrononPlanProjector_GoldenMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	want := `{"canvas":{"duration_frames":240,"fps":30,"height":720,"width":1280},"job_id":"run-1","layers":[{"duration_frames":240,"fit":"stretch","id":"video","source":"clip.mp4","start_frame":0,"type":"video"}],"output":{"codec":"h264","format":"mp4","path":"chronon.mp4"},"schema":"chronon.render-plan","version":1}`
+	want := `{"canvas":{"duration_frames":240,"fps_num":30,"fps_den":1,"height":720,"width":1280},"job_id":"run-1","layers":[{"duration_frames":240,"fit":"stretch","id":"video","source":"clip.mp4","start_frame":0,"type":"video"}],"output":{"codec":"h264","format":"mp4","path":"chronon.mp4"},"schema":"chronon.render-plan","version":1}`
 	if string(raw) != want {
 		t.Fatalf("golden plan mismatch\n got: %s\nwant: %s", raw, want)
 	}
@@ -53,7 +53,7 @@ func TestChrononPlanProjector_FramesDerivation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project: %v", err)
 	}
-	if rp.Canvas.FPS != 24 || rp.Canvas.DurationFrames != 193 {
+	if rp.Canvas.FPSNum != 24 || rp.Canvas.FPSDen != 1 || rp.Canvas.DurationFrames != 193 {
 		t.Fatalf("canvas = %+v, want fps 24 / frames 193 (ceil(8.01×24))", rp.Canvas)
 	}
 

@@ -25,11 +25,27 @@ type BatchReport struct {
 	PeakConcurrency    int     `json:"peak_concurrency"`
 	AverageConcurrency float64 `json:"average_concurrency"`
 	ParallelismFactor  float64 `json:"parallelism_factor"`
+	// SlotUtilization is peak_concurrency / configured slots — how much of
+	// the configured pool was ever busy at once. Omitted (absent) when the
+	// configured slot count is unknown: never a fake zero.
+	SlotUtilization float64 `json:"slot_utilization,omitempty"`
+	// ScalingEfficiency is parallelism_factor / configured slots — the
+	// fraction of the ideal perfectly-parallel speedup actually achieved.
+	// Omitted when the configured slot count is unknown.
+	ScalingEfficiency float64 `json:"scaling_efficiency,omitempty"`
+	// Phases carries the per-phase reconstructed concurrency (peak/avg) for
+	// every operation name with timed observations in the batch.
+	Phases map[string]PhaseConcurrency `json:"phases,omitempty"`
 }
 
 // DeriveBatchReport derives batch metrics solely from attempt-owned RunReports.
-// Intervals use CreatedAt/StartedAt/FinishedAt; no benchmark clock is involved.
-func DeriveBatchReport(reports []RunReport) BatchReport {
+// Intervals use StartedAt/FinishedAt; no benchmark clock is involved.
+// configuredSlots is the pool the batch was bounded to (0 = unknown); it
+// enables the derived slot_utilization and scaling_efficiency aggregates.
+// All concurrency is reconstructed through the canonical sweep
+// (sweepConcurrency) with the deterministic end-before-start tie-breaker, so
+// the report never depends on the input ordering of the runs.
+func DeriveBatchReport(reports []RunReport, configuredSlots int) BatchReport {
 	var out BatchReport
 	if len(reports) == 0 {
 		return out
@@ -53,42 +69,24 @@ func DeriveBatchReport(reports []RunReport) BatchReport {
 		return out
 	}
 	out.BatchWallMs = maxFinish.Sub(minStart).Milliseconds()
-	if out.BatchWallMs <= 0 {
-		return out
-	}
-	points := make([]struct {
-		at    time.Time
-		delta int
-	}, 0, len(reports)*2)
+	points := make([]concurrencyPoint, 0, len(reports)*2)
 	for _, r := range reports {
 		if r.StartedAt.IsZero() || r.FinishedAt.IsZero() || r.FinishedAt.Before(r.StartedAt) {
 			continue
 		}
-		points = append(points, struct {
-			at    time.Time
-			delta int
-		}{r.StartedAt, 1}, struct {
-			at    time.Time
-			delta int
-		}{r.FinishedAt, -1})
+		points = append(points,
+			concurrencyPoint{at: r.StartedAt, delta: 1},
+			concurrencyPoint{at: r.FinishedAt, delta: -1})
 	}
-	for i := 1; i < len(points); i++ {
-		for j := i; j > 0 && points[j].at.Before(points[j-1].at); j-- {
-			points[j], points[j-1] = points[j-1], points[j]
-		}
+	out.PeakConcurrency, out.AverageConcurrency = sweepConcurrency(points, out.BatchWallMs)
+	if out.BatchWallMs > 0 {
+		out.ParallelismFactor = float64(out.BatchWorkMs) / float64(out.BatchWallMs)
 	}
-	active, weighted := 0, int64(0)
-	last := minStart
-	for _, p := range points {
-		weighted += int64(active) * p.at.Sub(last).Milliseconds()
-		active += p.delta
-		if active > out.PeakConcurrency {
-			out.PeakConcurrency = active
-		}
-		last = p.at
+	if configuredSlots > 0 && out.BatchWallMs > 0 {
+		out.SlotUtilization = float64(out.PeakConcurrency) / float64(configuredSlots)
+		out.ScalingEfficiency = out.ParallelismFactor / float64(configuredSlots)
 	}
-	out.AverageConcurrency = float64(weighted) / float64(out.BatchWallMs)
-	out.ParallelismFactor = float64(out.BatchWorkMs) / float64(out.BatchWallMs)
+	out.Phases = derivePhaseConcurrency(reports)
 	return out
 }
 
@@ -126,6 +124,7 @@ type RunReport struct {
 	Waits                  []WaitReport      `json:"waits,omitempty"`
 	Children               *ChildrenSummary  `json:"children,omitempty"`
 	KPIs                   PipelineKPIs      `json:"kpis,omitempty"`
+	ClipTimeline           *ClipTimeline     `json:"clip_timeline,omitempty"`
 	ErrorCode              string            `json:"error_code,omitempty"`
 	Error                  string            `json:"error,omitempty"`
 }
@@ -258,6 +257,14 @@ type PipelineKPIs struct {
 }
 
 func (r *RunReport) JSON() ([]byte, error) { return json.Marshal(r) }
+
+// JSON returns the versioned resource envelope as canonical JSON.
+func (r *RunResourceReport) JSON() ([]byte, error) {
+	if r == nil {
+		return nil, nil
+	}
+	return json.Marshal(r)
+}
 
 // UnmarshalJSON accepts the retired child wall-time key for persisted report
 // compatibility while always exposing the canonical AccumulatedChildMs field.

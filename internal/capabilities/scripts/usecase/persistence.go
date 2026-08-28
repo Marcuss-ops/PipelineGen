@@ -142,32 +142,9 @@ func buildGenerationResultWithCache(
 		},
 	}
 
-	// Populate Source trace.
-	var sourceTrace scriptpkg.SourceTrace
-
-	// PR 7 (June 2026): the model-emitted SpecScene goes through
-	// the post-processor walk BEFORE this function is called.
-	if engineResult.ClipEvidence != nil {
-		clipIDs := engineResult.ClipEvidence.AcceptedClipIDs
-		if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
-			clipIDs = clipIDs[:plan.NumClips]
-		}
-		sourceTrace.AcceptedClipIDs = append([]string(nil), clipIDs...)
-	}
-	if len(engineResult.SearchResults) > 0 {
-		sourceTrace.SearchResults = append([]scriptpkg.SearchResultItem(nil), engineResult.SearchResults...)
-	}
-	if plan.ResearchEvidence != nil {
-		sourceTrace.ResearchEvidence = plan.ResearchEvidence.Clone()
-		if plan.ResearchReport != nil {
-			report := *plan.ResearchReport
-			report.Evidence = plan.ResearchEvidence.Clone()
-			sourceTrace.ResearchReport = &report
-		} else {
-			sourceTrace.ResearchReport = &scriptpkg.ResearchReport{Status: "SUCCEEDED", Mode: "multi_candidate", SearchEnabled: true, Searched: true, QualityGatePassed: true, Evidence: plan.ResearchEvidence.Clone()}
-		}
-	}
-	result.Source = sourceTrace
+	// Source trace is assembled by the dedicated projection helper so this
+	// function remains focused on the response and artifact assembly.
+	result.Source = buildGenerationSourceTrace(plan, engineResult)
 
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
@@ -298,7 +275,7 @@ func buildGenerationResultWithCache(
 		result.Warnings = append(result.Warnings, postResult.Warnings...)
 	}
 
-	result.Source = sourceTrace
+	// Keep the canonical trace assembled before postprocessor artifact merges.
 	return projectGenerationResult(result, postResult, plan, cacheHit)
 }
 

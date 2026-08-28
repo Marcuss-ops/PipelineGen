@@ -28,6 +28,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,7 +45,7 @@ import (
 // ────────────────────────────────────────────────────────────────────────
 
 // renderBenchConcurrencyLevels are the concurrency levels to test.
-var renderBenchConcurrencyLevels = []int{1, 2, 3, 4}
+var renderBenchConcurrencyLevels = []int{1, 2, 3, 5}
 
 // renderBenchSampleClips is the number of clips to render per concurrency
 // level. Override with VELOX_BENCH_CLIP_COUNT env var.
@@ -68,6 +69,14 @@ type renderBenchReport struct {
 	FFmpegWaitMS     int64 // 0 when not real-stack
 	DriveUploadMS    int64 // 0 when not real-stack
 	IOWaitEstimateMS int64 // 0 when not real-stack
+	Samples          int64
+	CPUAvgPct        float64
+	CPUPeakPct       float64
+	FFmpegCPUAvgPct  float64
+	FFmpegCPUPeakPct float64
+	PeakChildRSSMB   int64
+	DiskWriteMB      float64
+	DiskReadMB       float64
 	Completed        int
 	Failed           int
 }
@@ -116,6 +125,15 @@ func (r renderBenchReport) String() string {
 		}
 		parts = append(parts, fmt.Sprintf("io_wait_est=%dms(%.1f%%)", r.IOWaitEstimateMS, pct))
 	}
+	if r.Samples > 0 {
+		parts = append(parts,
+			fmt.Sprintf("samples=%d", r.Samples),
+			fmt.Sprintf("cpu=%.1f%%/%.1f%%", r.CPUAvgPct, r.CPUPeakPct),
+			fmt.Sprintf("ffmpeg_cpu=%.1f%%/%.1f%%", r.FFmpegCPUAvgPct, r.FFmpegCPUPeakPct),
+			fmt.Sprintf("child_rss_peak=%dMB", r.PeakChildRSSMB),
+			fmt.Sprintf("disk_w=%.1fMB", r.DiskWriteMB),
+			fmt.Sprintf("disk_r=%.1fMB", r.DiskReadMB))
+	}
 	return strings.Join(parts, " | ")
 }
 
@@ -143,6 +161,15 @@ func FormatConcurrencyTable(reports []renderBenchReport) string {
 		b.WriteString(fmt.Sprintf("| %d | %d | %d | %d | %.2fx | %d | %d | %s |\n",
 			r.Concurrency, r.WallMS, r.WorkMS, avg, speedup,
 			r.Completed, r.Failed, peakRSS))
+	}
+	b.WriteString("\n")
+	b.WriteString("| Concurrency | Samples | CPU avg/peak | FFmpeg CPU avg/peak | Child RSS peak (MB) | Disk write/read (MB) |\n")
+	b.WriteString("|------------|---------|--------------|---------------------|---------------------|----------------------|\n")
+	for _, r := range reports {
+		b.WriteString(fmt.Sprintf("| %d | %d | %.1f%% / %.1f%% | %.1f%% / %.1f%% | %d | %.1f / %.1f |\n",
+			r.Concurrency, r.Samples, r.CPUAvgPct, r.CPUPeakPct,
+			r.FFmpegCPUAvgPct, r.FFmpegCPUPeakPct, r.PeakChildRSSMB,
+			r.DiskWriteMB, r.DiskReadMB))
 	}
 	b.WriteString("\n")
 
@@ -176,6 +203,115 @@ func FormatConcurrencyTable(reports []renderBenchReport) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+type procSample struct {
+	cpuTicks   int64
+	rssBytes   int64
+	readBytes  int64
+	writeBytes int64
+}
+
+func readProcSample(pid int) (procSample, bool) {
+	if pid <= 0 || runtime.GOOS != "linux" {
+		return procSample{}, false
+	}
+	s := procSample{}
+	if data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid)); err == nil {
+		line := string(data)
+		if idx := strings.LastIndexByte(line, ')'); idx >= 0 {
+			fields := strings.Fields(line[idx+2:])
+			if len(fields) > 12 {
+				u, e1 := strconv.ParseInt(fields[11], 10, 64)
+				v, e2 := strconv.ParseInt(fields[12], 10, 64)
+				if e1 == nil && e2 == nil {
+					s.cpuTicks = u + v
+				}
+			}
+		}
+	}
+	if data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid)); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "VmRSS:") {
+				f := strings.Fields(line)
+				if len(f) >= 2 {
+					if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil {
+						s.rssBytes = kb * 1024
+					}
+				}
+				break
+			}
+		}
+	}
+	if data, err := os.ReadFile(fmt.Sprintf("/proc/%d/io", pid)); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			f := strings.Fields(line)
+			if len(f) != 2 {
+				continue
+			}
+			v, err := strconv.ParseInt(f[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			switch f[0] {
+			case "read_bytes:":
+				s.readBytes = v
+			case "write_bytes:":
+				s.writeBytes = v
+			}
+		}
+	}
+	return s, s.cpuTicks > 0 || s.rssBytes > 0 || s.readBytes > 0 || s.writeBytes > 0
+}
+
+func hostCPUTicks() (int64, bool) {
+	if runtime.GOOS != "linux" {
+		return 0, false
+	}
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "cpu ") {
+			continue
+		}
+		var user, nice, system, idle, iowait, irq, softirq, steal int64
+		if _, err := fmt.Sscan(line, new(string), &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal); err != nil {
+			return 0, false
+		}
+		return user + nice + system + idle + iowait + irq + softirq + steal, true
+	}
+	return 0, false
+}
+
+func hostCPUStats() (busy, total int64, ok bool) {
+	if runtime.GOOS != "linux" {
+		return 0, 0, false
+	}
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "cpu ") {
+			continue
+		}
+		var user, nice, system, idle, iowait, irq, softirq, steal int64
+		if _, err := fmt.Sscan(line, new(string), &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal); err != nil {
+			return 0, 0, false
+		}
+		return user + nice + system + irq + softirq + steal, user + nice + system + idle + iowait + irq + softirq + steal, true
+	}
+	return 0, 0, false
+}
+
+type renderTelemetry struct {
+	samples                     int64
+	cpuSum, cpuPeak             float64
+	ffmpegCPUSum, ffmpegCPUPeak float64
+	childRSSPeak                int64
+	readBytes, writeBytes       int64
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -253,6 +389,11 @@ func runRealRenderBenchmarks(t *testing.T, runner *Runner, concurrency int, clip
 	var mu sync.Mutex
 	var perRender []int64
 	var wg sync.WaitGroup
+	active := make(map[int]bool)
+	telemetry := renderTelemetry{}
+	stopTelemetry := make(chan struct{})
+	telemetryDone := make(chan struct{})
+	go sampleRenderTelemetry(&mu, active, &telemetry, stopTelemetry, telemetryDone)
 
 	started := time.Now()
 	for i := 0; i < clipCount; i++ {
@@ -273,12 +414,22 @@ func runRealRenderBenchmarks(t *testing.T, runner *Runner, concurrency int, clip
 				"-c:a", "aac", "-b:a", "64k",
 				"-vf", "drawtext=text='Scene "+fmt.Sprint(i)+"':fontsize=24:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2",
 				outPath)
-			out, cmdErr := cmd.CombinedOutput()
+			cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+			cmdErr := cmd.Start()
+			if cmdErr == nil {
+				mu.Lock()
+				active[cmd.Process.Pid] = true
+				mu.Unlock()
+				cmdErr = cmd.Wait()
+				mu.Lock()
+				delete(active, cmd.Process.Pid)
+				mu.Unlock()
+			}
 			elapsed := time.Since(renderStarted).Milliseconds()
 
 			mu.Lock()
 			if cmdErr != nil {
-				t.Logf("render %d failed: %v\n%s", i, cmdErr, string(out))
+				t.Logf("render %d failed: %v", i, cmdErr)
 			}
 			perRender = append(perRender, elapsed)
 			mu.Unlock()
@@ -286,6 +437,8 @@ func runRealRenderBenchmarks(t *testing.T, runner *Runner, concurrency int, clip
 	}
 	wg.Wait()
 	wall := time.Since(started).Milliseconds()
+	close(stopTelemetry)
+	<-telemetryDone
 
 	var workMS int64
 	var failed int
@@ -300,15 +453,97 @@ func runRealRenderBenchmarks(t *testing.T, runner *Runner, concurrency int, clip
 	}
 
 	completed := clipCount - failed
+	if telemetry.samples > 0 {
+		telemetry.cpuSum /= float64(telemetry.samples)
+		telemetry.ffmpegCPUSum /= float64(telemetry.samples)
+	}
 
 	return renderBenchReport{
-		Concurrency: concurrency,
-		WallMS:      wall,
-		WorkMS:      workMS,
-		PerRenderMS: perRender,
-		PeakRSSMB:   peakRSS,
-		Completed:   completed,
-		Failed:      failed,
+		Concurrency:      concurrency,
+		WallMS:           wall,
+		WorkMS:           workMS,
+		PerRenderMS:      perRender,
+		PeakRSSMB:        peakRSS,
+		Samples:          telemetry.samples,
+		CPUAvgPct:        telemetry.cpuSum,
+		CPUPeakPct:       telemetry.cpuPeak,
+		FFmpegCPUAvgPct:  telemetry.ffmpegCPUSum,
+		FFmpegCPUPeakPct: telemetry.ffmpegCPUPeak,
+		PeakChildRSSMB:   telemetry.childRSSPeak / (1024 * 1024),
+		DiskWriteMB:      float64(telemetry.writeBytes) / (1024 * 1024),
+		DiskReadMB:       float64(telemetry.readBytes) / (1024 * 1024),
+		Completed:        completed,
+		Failed:           failed,
+	}
+}
+
+// sampleRenderTelemetry polls the orchestrator's active ffmpeg children every
+// 500ms. Linux proc counters are used so the benchmark remains dependency-free.
+// I/O values are deltas from /proc/<pid>/io; CPU values are normalized to one
+// wall-clock core (multi-process totals may therefore exceed 100%).
+func sampleRenderTelemetry(mu *sync.Mutex, active map[int]bool, out *renderTelemetry, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var prevBusy, prevTotal int64
+	previous := make(map[int]procSample)
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			mu.Lock()
+			pids := make([]int, 0, len(active))
+			for pid := range active {
+				pids = append(pids, pid)
+			}
+			mu.Unlock()
+			if len(pids) == 0 {
+				continue
+			}
+			out.samples++
+			busy, total, ok := hostCPUStats()
+			if ok && prevTotal > 0 && total > prevTotal {
+				pct := float64(busy-prevBusy) / float64(total-prevTotal) * 100
+				if pct < 0 {
+					pct = 0
+				}
+				if pct > 100 {
+					pct = 100
+				}
+				out.cpuSum += pct
+				if pct > out.cpuPeak {
+					out.cpuPeak = pct
+				}
+			}
+			prevBusy, prevTotal = busy, total
+			var ffmpegCPU float64
+			for _, pid := range pids {
+				cur, ok := readProcSample(pid)
+				if !ok {
+					continue
+				}
+				if prev, exists := previous[pid]; exists {
+					if cur.cpuTicks >= prev.cpuTicks {
+						ffmpegCPU += float64(cur.cpuTicks-prev.cpuTicks) / 100.0 / 0.5 * 100.0
+					}
+					if cur.readBytes >= prev.readBytes {
+						out.readBytes += cur.readBytes - prev.readBytes
+					}
+					if cur.writeBytes >= prev.writeBytes {
+						out.writeBytes += cur.writeBytes - prev.writeBytes
+					}
+				}
+				previous[pid] = cur
+				if cur.rssBytes > out.childRSSPeak {
+					out.childRSSPeak = cur.rssBytes
+				}
+			}
+			out.ffmpegCPUSum += ffmpegCPU
+			if ffmpegCPU > out.ffmpegCPUPeak {
+				out.ffmpegCPUPeak = ffmpegCPU
+			}
+		}
 	}
 }
 

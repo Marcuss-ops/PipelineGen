@@ -135,6 +135,8 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 
 	progress(0, "clip.render started")
 	jobStart := time.Now()
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseSubmitted, jobStart, jobStart, kernobs.StageStatusCompleted, nil)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseClaimed, jobStart, jobStart, kernobs.StageStatusCompleted, nil)
 	w.log.Info("clip.render.job.phase",
 		zap.String("subsystem", "clip_render_worker"),
 		zap.String("phase", "start"),
@@ -171,7 +173,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// RecordStage is a no-op (instrumentation never changes behaviour).
 	prepareStart := time.Now()
 	prepared, err := w.preparer.Prepare(ctx, &req, j.ID)
-	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPrepare}, prepareStart, time.Now(), err)
+	prepareEnd := time.Now()
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPrepare}, prepareStart, prepareEnd, err)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhasePrepare, prepareStart, prepareEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {
 		w.log.Error("clip.render.job.prepare_failed",
 			zap.String("job_id", j.ID),
@@ -270,6 +274,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	progress(90, "plan sealed; rendering with Rust")
+	renderSlotStart := time.Now()
+	renderSlotEnd := renderSlotStart
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderSlotEnd, kernobs.StageStatusCompleted, nil)
 	renderStart := time.Now()
 	w.log.Info("clip.render.job.phase",
 		zap.String("subsystem", "clip_render_worker"),
@@ -294,8 +301,10 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		})
 		return o, e
 	}()
-	renderMS := time.Since(renderStart).Milliseconds()
-	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, time.Now(), err)
+	renderEnd := time.Now()
+	renderMS := renderEnd.Sub(renderStart).Milliseconds()
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, renderEnd, err)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {
 		w.log.Error("clip.render.job.render_failed",
 			zap.String("job_id", j.ID),
@@ -358,11 +367,25 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		outcome.Metrics.Frames = int(math.Round(outcome.DurationSec * float64(outcome.FPSNum) / float64(outcome.FPSDen)))
 	}
 
+	// ── Canonical projection of the renderer-owned phase timings ────────
+	// The render engine (Chronon/CUDA/FFmpeg) measured every render phase in
+	// the V2 report; project them onto the Run as owner-measured operations
+	// (typed projection, never a second timer) so the benchmark can answer
+	// "where did the render seconds go" from the canonical run — the same
+	// single source the report already owns. Phases that were not measured
+	// stay absent: no fake zeros. This is the projection half of the
+	// one-boundary-one-timer rule: the rust.render_clip operation above is
+	// the render WALL (worker-owned), these operations are the render WORK
+	// (engine-owned), and neither re-times the other's boundary.
+	projectRendererPhases(ctx, outcome.Backend, outcome.Metrics)
+
 	// ── Post-render byte certification (exact contract) ──────────────────
 	if w.outputProber != nil {
 		probeStart := time.Now()
 		probe, err := w.outputProber.ProbeOutput(ctx, outcome.OutputPath)
-		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, time.Now(), err)
+		probeEnd := time.Now()
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, probeEnd, err)
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseHashProbe, probeStart, probeEnd, kernobs.StageStatusCompleted, err)
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
 		}
@@ -479,6 +502,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// RunReport critical path separates the clip.render "drive" phase from
 	// the render chain. Publication metrics come exclusively from the
 	// publisher-owned report; no worker chronometer is copied into a V2 field.
+	uploadSlotStart := time.Now()
+	uploadSlotEnd := uploadSlotStart
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseUploadSlot, uploadSlotStart, uploadSlotEnd, kernobs.StageStatusCompleted, nil)
 	publishStart := time.Now()
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:         j.ID,
@@ -490,7 +516,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		Subtitles:     subtitleArtifact,
 		DriveFolderID: req.Destination.DriveFolderID,
 	})
-	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, time.Now(), err)
+	publishEnd := time.Now()
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, publishEnd, err)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseDrive, publishStart, publishEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
 	}

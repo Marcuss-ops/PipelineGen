@@ -245,6 +245,83 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 // RecordChild persists a child lifecycle snapshot. It is idempotent by the
 // canonical (parent_run_id, child_job_id) key, so enqueue deduplication and
 // terminal retries cannot inflate the parent summary.
+// SaveResourceReport persists the versioned resource envelope and each raw
+// sample in one transaction. It is idempotent by run_id/sample_id and rejects
+// attempts to reuse either identity for a different run.
+func (r *SQLiteRecorder) SaveResourceReport(ctx context.Context, p *kernobs.RunResourceReport) error {
+	if p == nil {
+		return r.fail("", "save_resource_report", errors.New("nil resource report"))
+	}
+	normalized := *p
+	if normalized.SchemaVersion == 0 {
+		normalized.SchemaVersion = kernobs.RunResourceReportSchemaVersion
+	}
+	if err := normalized.Validate(); err != nil {
+		return r.fail(normalized.RunID, "save_resource_report", err)
+	}
+	if r == nil || r.db == nil {
+		return r.fail(normalized.RunID, "save_resource_report", errors.New("nil observability database"))
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return r.fail(normalized.RunID, "resource_report_begin", err)
+	}
+	defer tx.Rollback()
+
+	var jobID, attemptID string
+	if err := tx.QueryRowContext(ctx, `SELECT job_id,attempt_id FROM run_observability WHERE run_id=?`, normalized.RunID).Scan(&jobID, &attemptID); err != nil {
+		return r.fail(normalized.RunID, "resource_report_run_identity", err)
+	}
+	if jobID != normalized.JobID || attemptID != normalized.AttemptID {
+		return r.fail(normalized.RunID, "resource_report_run_identity", errors.New("resource report run identity conflict"))
+	}
+
+	body, err := normalized.JSON()
+	if err != nil {
+		return r.fail(normalized.RunID, "resource_report_marshal", err)
+	}
+	now := time.Now().UTC()
+	_, err = tx.ExecContext(ctx, `INSERT INTO run_resource_reports (run_id,job_id,attempt_id,schema_version,started_at,finished_at,sample_count,report_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET schema_version=excluded.schema_version,started_at=excluded.started_at,finished_at=excluded.finished_at,sample_count=excluded.sample_count,report_json=excluded.report_json,updated_at=excluded.updated_at`, normalized.RunID, normalized.JobID, normalized.AttemptID, normalized.SchemaVersion, nullableTime(normalized.StartedAt), nullableTime(normalized.FinishedAt), len(normalized.Samples), string(body), timeValue(now), timeValue(now))
+	if err != nil {
+		return r.fail(normalized.RunID, "resource_report_write", err)
+	}
+
+	aggregate := kernobs.AggregateResourceSamples(normalized.Samples)
+	aggregateBody, err := json.Marshal(aggregate)
+	if err != nil {
+		return r.fail(normalized.RunID, "resource_aggregate_marshal", err)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO run_resource_aggregates (run_id,job_id,attempt_id,schema_version,sample_count,first_observed_at,last_observed_at,aggregate_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET schema_version=excluded.schema_version,sample_count=excluded.sample_count,first_observed_at=excluded.first_observed_at,last_observed_at=excluded.last_observed_at,aggregate_json=excluded.aggregate_json,updated_at=excluded.updated_at`, normalized.RunID, normalized.JobID, normalized.AttemptID, aggregate.SchemaVersion, aggregate.SampleCount, nullableTime(aggregate.FirstObservedAt), nullableTime(aggregate.LastObservedAt), string(aggregateBody), timeValue(now), timeValue(now))
+
+	for _, sample := range normalized.Samples {
+		sampleBody, err := json.Marshal(sample)
+		if err != nil {
+			return r.fail(normalized.RunID, "resource_sample_marshal", err)
+		}
+		var storedRunID, storedJobID, storedAttemptID string
+		err = tx.QueryRowContext(ctx, `SELECT run_id,job_id,attempt_id FROM run_resource_samples WHERE sample_id=?`, sample.SampleID).Scan(&storedRunID, &storedJobID, &storedAttemptID)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return r.fail(normalized.RunID, "resource_sample_identity", err)
+		case storedRunID != normalized.RunID || storedJobID != normalized.JobID || storedAttemptID != normalized.AttemptID:
+			return r.fail(normalized.RunID, "resource_sample_identity", errors.New("resource sample identity conflict"))
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO run_resource_samples (sample_id,run_id,job_id,attempt_id,observed_at,sample_json,created_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(sample_id) DO UPDATE SET observed_at=excluded.observed_at,sample_json=excluded.sample_json`, sample.SampleID, normalized.RunID, normalized.JobID, normalized.AttemptID, timeValue(sample.ObservedAt), string(sampleBody), timeValue(now))
+		if err != nil {
+			return r.fail(normalized.RunID, "resource_sample_write", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return r.fail(normalized.RunID, "resource_report_commit", err)
+	}
+	return nil
+}
+
 func (r *SQLiteRecorder) RecordChild(ctx context.Context, child *kernobs.RunReport) error {
 	if child == nil || child.ParentRunID == "" || child.JobID == "" {
 		return r.fail(reportID(child), "record_child", errors.New("parent_run_id and child job_id are required"))
@@ -433,6 +510,7 @@ func boolInt(v bool) int {
 }
 
 var _ kernobs.Recorder = (*SQLiteRecorder)(nil)
+var _ kernobs.ResourceReportRecorder = (*SQLiteRecorder)(nil)
 var _ kernobs.LifecycleRecorder = (*SQLiteRecorder)(nil)
 var _ kernobs.RecorderFailureLogger = (*SQLiteRecorder)(nil)
 var _ kernobs.AbandonedRunReconciler = (*SQLiteRecorder)(nil)

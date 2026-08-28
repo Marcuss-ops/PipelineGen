@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -10,126 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
-
-// Artlist applies a provider-side rate limit independently of the local
-// worker budget. Keep one live browser search in flight across all VidRush
-// jobs and use bounded retries for 429 responses; otherwise waves of jobs can
-// turn the configured worker count into a provider outage.
-var vidRushArtlistSearchGate = make(chan struct{}, 1)
-
-func acquireVidRushArtlistSearch(ctx context.Context) error {
-	select {
-	case vidRushArtlistSearchGate <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func releaseVidRushArtlistSearch() { <-vidRushArtlistSearchGate }
-
-func isArtlistRateLimited(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "429")
-}
-
-// VidRushRegistryClipSearcher adapts the shared VidRush provider registry to
-// the legacy clip-search result shape. It keeps discovery on the same
-// provider path as acquisition; the materializer still owns persistence.
-type VidRushRegistryClipSearcher struct {
-	Registry *VidRushAssetProviderRegistry
-}
-
-func (s *VidRushRegistryClipSearcher) SearchClips(ctx context.Context, title string, phrases []string) ([]ArtlistClipMatch, error) {
-	if s == nil || s.Registry == nil {
-		return nil, scriptports.ErrVidRushProviderNotFound
-	}
-	type queryResult struct {
-		match ArtlistClipMatch
-		err   error
-	}
-	results, mapErr := concurrent.Map(ctx, phrases, 3, func(ctx context.Context, _ int, rawPhrase string) (queryResult, error) {
-		phrase := strings.TrimSpace(rawPhrase)
-		if phrase == "" {
-			return queryResult{}, nil
-		}
-		if err := acquireVidRushArtlistSearch(ctx); err != nil {
-			return queryResult{err: fmt.Errorf("artlist query %q: acquire search slot: %w", phrase, err)}, nil
-		}
-		defer releaseVidRushArtlistSearch()
-
-		var candidates []scriptpkg.SegmentAssetCandidate
-		var err error
-		for attempt := 0; attempt < 3; attempt++ {
-			queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-			candidates, err = s.Registry.Search(queryCtx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{SceneID: title, Text: title, Query: phrase, Limit: 10})
-			cancel()
-			if !isArtlistRateLimited(err) || attempt == 2 {
-				break
-			}
-			backoff := time.Duration(1<<attempt) * time.Second
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return queryResult{err: fmt.Errorf("artlist query %q: retry canceled: %w", phrase, ctx.Err())}, nil
-			}
-		}
-		if err != nil {
-			return queryResult{err: fmt.Errorf("artlist query %q: %w", phrase, err)}, nil
-		}
-		match := ArtlistClipMatch{Phrase: phrase, Remote: true}
-		for _, candidate := range candidates {
-			link := strings.TrimSpace(candidate.SourceURL)
-			if !isM3U8URL(link) {
-				link = strings.TrimSpace(candidate.PreviewURL)
-			}
-			if !isM3U8URL(link) {
-				continue
-			}
-			match.ClipNames = append(match.ClipNames, candidate.AssetID)
-			match.ClipDriveLinks = append(match.ClipDriveLinks, link)
-			if match.FolderLink == "" {
-				match.FolderLink = candidate.SourcePageURL
-			}
-		}
-		return queryResult{match: match}, nil
-	})
-	if mapErr != nil {
-		return nil, mapErr
-	}
-	out := make([]ArtlistClipMatch, 0, len(results))
-	var firstErr error
-	for _, result := range results {
-		if result.err != nil && firstErr == nil {
-			firstErr = result.err
-		}
-		if len(result.match.ClipDriveLinks) > 0 {
-			out = append(out, result.match)
-		}
-	}
-	return out, firstErr
-}
-
-func isM3U8URL(raw string) bool {
-	raw = strings.ToLower(strings.TrimSpace(raw))
-	return strings.Contains(raw, ".m3u8")
-}
-
-// VidRushRegistryImageSearcher adapts the shared registry to the image
-// discovery port used by InternetImagesProcessor.
-type VidRushRegistryImageSearcher struct {
-	Registry *VidRushAssetProviderRegistry
-}
-
-func (s *VidRushRegistryImageSearcher) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if s == nil || s.Registry == nil {
-		return nil, scriptports.ErrVidRushProviderNotFound
-	}
-	return s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
-		SegmentID: req.SegmentID, TextHash: req.TextHash, Text: req.Query, Query: req.Query, Limit: req.Limit,
-	})
-}
 
 // VidRushProviderFanout resolves a single enriched segment's visual providers
 // in parallel through the shared searcher ports (which dispatch the canonical
@@ -179,48 +59,28 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	if plan == nil {
 		return updated, nil
 	}
-	perQueryLimit := 10
-	if plan.MediaPlan.Planner.CandidateLimit > 0 {
-		perQueryLimit = plan.MediaPlan.Planner.CandidateLimit
-	}
-	if perQueryLimit > 50 {
-		perQueryLimit = 50
-	}
-
-	type providerOutcome struct {
-		provider     string
-		candidates   []scriptpkg.SegmentAssetCandidate
-		primary      *scriptpkg.SegmentAssetCandidate
-		allCacheHits bool
-		err          error
-	}
+	// Provider work is represented by a small outcome value and merged only
+	// by the caller, keeping concurrent providers away from shared state.
 
 	profile := profileFromVidRushSegment(updated)
-	artlistEnabled := plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && f.artlist != nil && len(queriesOrProfile(updated.Insights.ArtlistQueries, profileArtlistQueries(profile))) > 0
-	imagesEnabled := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && f.images != nil && len(queriesOrProfile(updated.Insights.ImageQueries, profileImageQueries(profile))) > 0
-	youtubeEnabled := plan.MediaPlan.ProviderPolicy.YouTube.AsBool() && f.youtube != nil
-
-	outcomes := make(chan providerOutcome, 3)
+	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.artlist, f.images, f.youtube)
+	artlistEnabled := fanoutPlan.artlistEnabled
+	imagesEnabled := fanoutPlan.imagesEnabled
+	youtubeEnabled := fanoutPlan.youtubeEnabled
+	outcomes := make(chan vidRushProviderOutcome, 3)
 	var wg sync.WaitGroup
 
 	// Snapshot the read-only segment inputs each provider goroutine needs so
 	// no goroutine reads the shared `updated` result while the collector below
 	// mutates its Assets fields. This makes the fanout merge race-free and
 	// deterministic regardless of provider completion order.
-	segmentID := updated.SegmentID
-	textHash := updated.TextHash
-	artlistIntentHash := updated.Insights.ArtlistIntentHash
-	artlistQueries := queriesOrProfile(updated.Insights.ArtlistQueries, profileArtlistQueries(profile))
-	imageQueries := queriesOrProfile(updated.Insights.ImageQueries, profileImageQueries(profile))
-	youtubeSources := youtubeSourcesForSegment(plan, segmentID)
-	firstEntity := ""
-	entities := updated.Insights.Entities
-	if len(entities) == 0 {
-		entities = profile.Entities
-	}
-	if len(entities) > 0 {
-		firstEntity = strings.TrimSpace(entities[0].Value)
-	}
+	perQueryLimit := fanoutPlan.perQueryLimit
+	segmentID := fanoutPlan.segmentID
+	textHash := fanoutPlan.textHash
+	artlistQueries := fanoutPlan.artlistQueries
+	imageQueries := fanoutPlan.imageQueries
+	youtubeSources := fanoutPlan.youtubeSources
+	firstEntity := fanoutPlan.firstEntity
 	artlistIdentity := scriptpkg.VidRushSegmentResult{SegmentID: segmentID}
 
 	if youtubeEnabled && len(youtubeSources) > 0 {
@@ -232,24 +92,27 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				Query: youtubeQuery(updated), Limit: 3, Sources: youtubeSources,
 			})
 			if err != nil {
-				outcomes <- providerOutcome{provider: scriptpkg.VidRushProviderYouTube, err: err}
+				outcomes <- vidRushProviderOutcome{provider: scriptpkg.VidRushProviderYouTube, err: err}
 				return
 			}
-			outcomes <- providerOutcome{provider: scriptpkg.VidRushProviderYouTube, candidates: candidates}
+			outcomes <- vidRushProviderOutcome{provider: scriptpkg.VidRushProviderYouTube, candidates: candidates}
 		}()
 	}
 	if artlistEnabled {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cacheKey := artlistSegmentCacheKey(
-				segmentID,
-				textHash,
-				artlistIntentHash,
-				plan.Language,
-				plan.Model,
-				plan.PromptVersion,
-			)
+			cacheKey := vidRushFanoutArtlistCacheKey(&fanoutPlan, plan)
+			/*
+				cacheKey := artlistSegmentCacheKey(
+					segmentID,
+					textHash,
+					artlistIntentHash,
+					plan.Language,
+					plan.Model,
+					plan.PromptVersion,
+				)
+			*/
 			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
 					if payload, ok := cached.(artlistSegmentCachePayload); ok {
@@ -262,13 +125,13 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						if f.metrics != nil {
 							f.metrics.IncAssetCache("artlist", true)
 						}
-						outcomes <- providerOutcome{provider: "artlist", candidates: candidates, primary: primary, allCacheHits: true}
+						outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, primary: primary, allCacheHits: true}
 						return
 					}
 				}
 				var persisted artlistSegmentCachePayload
 				if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, &persisted); err != nil {
-					outcomes <- providerOutcome{provider: "artlist", err: err}
+					outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
 					return
 				} else if hit {
 					persisted = cloneArtlistSegmentCachePayload(persisted)
@@ -283,7 +146,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					if f.metrics != nil {
 						f.metrics.IncAssetCache("artlist", true)
 					}
-					outcomes <- providerOutcome{provider: "artlist", candidates: persisted.Candidates, primary: primary, allCacheHits: true}
+					outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: persisted.Candidates, primary: primary, allCacheHits: true}
 					return
 				}
 			}
@@ -298,7 +161,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				if f.metrics != nil {
 					f.metrics.IncProviderFailure("artlist")
 				}
-				outcomes <- providerOutcome{provider: "artlist", err: err}
+				outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
 				return
 			}
 			candidates := artlistMatchesToCandidates(artlistIdentity, dedupeArtlistMatches(matches))
@@ -313,10 +176,10 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			}
 			cacheStore(&vidrushArtlistCache, cacheKey, payload)
 			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, payload); cacheErr != nil {
-				outcomes <- providerOutcome{provider: "artlist", err: cacheErr}
+				outcomes <- vidRushProviderOutcome{provider: "artlist", err: cacheErr}
 				return
 			}
-			outcomes <- providerOutcome{provider: "artlist", candidates: candidates, primary: primary}
+			outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, primary: primary}
 		}()
 	}
 	if imagesEnabled {
@@ -328,31 +191,34 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			// On the text path the TextHash is deterministic across a warm
 			// replay (memory gate), so this cache produces HIT_EXACT without
 			// re-calling the provider.
-			segmentCacheKeyStr := segmentCacheKey(
-				"internet-images-assets-v3",
-				segmentID,
-				textHash,
-				plan.Language,
-				plan.Model,
-				plan.PromptVersion,
-				fmt.Sprintf("%d", perQueryLimit),
-			)
+			segmentCacheKeyStr := vidRushFanoutImageCacheKey(&fanoutPlan, plan)
+			/*
+				segmentCacheKeyStr := segmentCacheKey(
+					"internet-images-assets-v3",
+					segmentID,
+					textHash,
+					plan.Language,
+					plan.Model,
+					plan.PromptVersion,
+					fmt.Sprintf("%d", perQueryLimit),
+				)
+			*/
 			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				if cached, ok := cacheLoad(&vidrushImageCache, segmentCacheKeyStr); ok {
 					if payload, ok := cached.(internetImageCachePayload); ok {
-						outcomes <- providerOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...), allCacheHits: true}
+						outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...), allCacheHits: true}
 						return
 					}
 				}
 				var persisted internetImageCachePayload
 				if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, &persisted); err != nil {
-					outcomes <- providerOutcome{provider: "internet_images", err: err}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 					return
 				} else if hit {
 					if len(persisted.Candidates) > 0 {
 						cacheStore(&vidrushImageCache, segmentCacheKeyStr, persisted)
 					}
-					outcomes <- providerOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...), allCacheHits: true}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...), allCacheHits: true}
 					return
 				}
 			}
@@ -367,7 +233,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
 				catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(updated, query)
 				if catalogErr != nil {
-					outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 					return
 				}
 				var results []scriptpkg.SegmentAssetCandidate
@@ -389,7 +255,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							if releaseCatalog != nil {
 								releaseCatalog()
 							}
-							outcomes <- providerOutcome{provider: "internet_images", err: err}
+							outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 							return
 						}
 						if pool.Sufficient {
@@ -420,7 +286,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							if releaseCatalog != nil {
 								releaseCatalog()
 							}
-							outcomes <- providerOutcome{provider: "internet_images", err: err}
+							outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 							return
 						} else if hit {
 							if len(persisted) > 0 {
@@ -439,7 +305,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							if releaseCatalog != nil {
 								releaseCatalog()
 							}
-							outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+							outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 							return
 						}
 					}
@@ -470,7 +336,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							releaseCatalog()
 							releaseCatalog = nil
 						}
-						outcomes <- providerOutcome{provider: "internet_images", candidates: catalogFallback, err: err}
+						outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: catalogFallback, err: err}
 						return
 					}
 					providerResults := normalizeInternetImageCatalogResults(searched, query)
@@ -480,7 +346,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							if releaseCatalog != nil {
 								releaseCatalog()
 							}
-							outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+							outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 							return
 						}
 					}
@@ -495,7 +361,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						if releaseCatalog != nil {
 							releaseCatalog()
 						}
-						outcomes <- providerOutcome{provider: "internet_images", err: cacheErr}
+						outcomes <- vidRushProviderOutcome{provider: "internet_images", err: cacheErr}
 						return
 					}
 				}
@@ -531,56 +397,17 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				cacheStore(&vidrushImageCache, segmentCacheKeyStr, payload)
 			}
 			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
-				outcomes <- providerOutcome{provider: "internet_images", err: cacheErr}
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", err: cacheErr}
 				return
 			}
-			outcomes <- providerOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
+			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
 		}()
 	}
 	go func() { wg.Wait(); close(outcomes) }()
 
 	for outcome := range outcomes {
-		for i := range outcome.candidates {
-			if outcome.candidates[i].SemanticScore == 0 {
-				outcome.candidates[i].SemanticScore = profileSemanticMatch(outcome.candidates[i], profile)
-			}
-			if outcome.candidates[i].RelevanceScore == 0 {
-				outcome.candidates[i].RelevanceScore = outcome.candidates[i].SemanticScore
-			}
-		}
-		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
-		if outcome.provider == scriptpkg.VidRushProviderInternetImages {
-			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
-		}
-		if outcome.err != nil {
-			if outcome.provider == scriptpkg.VidRushProviderArtlist && vidRushArtlistOnlyPlan(plan) {
-				return updated, fmt.Errorf("vidrush provider fanout: required artlist search failed for segment %s: %w", updated.SegmentID, outcome.err)
-			}
-			if outcome.provider == scriptpkg.VidRushProviderYouTube && youtubeSourceRequired(plan, segmentID) {
-				return updated, fmt.Errorf("vidrush provider fanout: required youtube source failed for segment %s: %w", updated.SegmentID, outcome.err)
-			}
-			continue
-		}
-		switch outcome.provider {
-		case scriptpkg.VidRushProviderArtlist:
-			if outcome.primary == nil {
-				outcome.primary = chooseVidRushPrimaryWithProfile(outcome.candidates, nil, profile)
-			}
-			updated.Assets.PrimaryVideo = outcome.primary
-			updated.Cache.Artlist = "MISS"
-			if plan.MediaPlan.ForceRefreshAssets {
-				updated.Cache.Artlist = "REFRESHED"
-			} else if outcome.allCacheHits {
-				updated.Cache.Artlist = "HIT_EXACT"
-			}
-		case scriptpkg.VidRushProviderInternetImages:
-			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
-			updated.Cache.InternetImages = "MISS"
-			if plan.MediaPlan.ForceRefreshAssets {
-				updated.Cache.InternetImages = "REFRESHED"
-			} else if outcome.allCacheHits {
-				updated.Cache.InternetImages = "HIT_EXACT"
-			}
+		if err := mergeVidRushProviderOutcome(&updated, outcome, plan, profile, segmentID); err != nil {
+			return updated, err
 		}
 	}
 	return updated, nil

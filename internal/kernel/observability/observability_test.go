@@ -819,14 +819,14 @@ func TestRun_ConcurrentCounters(t *testing.T) {
 // ── registry ─────────────────────────────────────────────────────────
 
 func TestRegistry_CanonicalNames(t *testing.T) {
-	if len(AllStages()) != 12 {
-		t.Fatalf("stages = %d, want 12", len(AllStages()))
+	if len(AllStages()) != 21 {
+		t.Fatalf("stages = %d, want 21", len(AllStages()))
 	}
-	if len(AllComponents()) != 12 {
-		t.Fatalf("components = %d, want 12", len(AllComponents()))
+	if len(AllComponents()) != 15 {
+		t.Fatalf("components = %d, want 15", len(AllComponents()))
 	}
-	if len(AllOperations()) != 21 {
-		t.Fatalf("operations = %d, want 21", len(AllOperations()))
+	if len(AllOperations()) != 37 {
+		t.Fatalf("operations = %d, want 37", len(AllOperations()))
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")

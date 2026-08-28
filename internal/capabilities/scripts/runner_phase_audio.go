@@ -27,9 +27,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// Envelope validation rejects invalid audio-mode combinations
 		// earlier; fail closed here for direct-runner callers.
 		cause := fmt.Errorf("audio compile phase: resolve audio mode: %w", modeErr)
-		r.failExecutionStep(ctx, exec, payloadStep, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
+		return r.failAudioCompileStep(ctx, runID, exec, payloadStep, cause)
 	}
 	result.AudioMode = mode
 	// The audio phase builds the canonical timeline whenever a timeline is

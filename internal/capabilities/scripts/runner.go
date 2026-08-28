@@ -479,49 +479,5 @@ func (r *Runner) prepareExecution(ctx context.Context, runID string, req Generat
 // phase is an explicit named step below; a phase returning false stops the
 // run (a terminal error was already classified and persisted).
 func (r *Runner) runExecution(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
-	e := &executionRun{
-		r:     r,
-		ctx:   ctx,
-		runID: runID,
-		req:   req,
-		exec:  exec,
-	}
-
-	if !e.start() {
-		return
-	}
-	if !e.normalize() {
-		return
-	}
-	if !e.beginMediaPreflight() {
-		return
-	}
-	// The VidRush coordinator wiring lives for the whole run: release it only
-	// after every phase that consumes the fan-out completes (or fails).
-	if e.coordinator != nil {
-		defer r.endVidRush(runID)
-	}
-	if !e.generate() {
-		return
-	}
-	if !e.joinPreflight() {
-		return
-	}
-	e.ensureResult()
-	if !e.translate() {
-		return
-	}
-	if !e.sceneTextReady() {
-		return
-	}
-	if !e.audioCompile() {
-		return
-	}
-	if !e.persist() {
-		return
-	}
-	if !e.documents() {
-		return
-	}
-	e.complete()
+	r.runExecutionPhases(ctx, runID, req, exec)
 }

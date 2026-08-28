@@ -24,7 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -112,19 +111,14 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		}
 	}
 
-	query := strings.TrimSpace(src.Query)
-	if query == "" {
-		return nil, &scriptpkg.NoSourceError{
-			ItemID: resCtx.ItemID,
-			Reason: "search source requires a query",
-		}
+	searchPlan, planErr := buildSearchResolutionPlan(src)
+	if planErr != nil {
+		planErr.(*scriptpkg.NoSourceError).ItemID = resCtx.ItemID
+		return nil, planErr
 	}
-
-	limit := src.MaxClips
-	if limit <= 0 {
-		limit = 10
-	}
-	minCoverage := src.MinCoverage
+	query := searchPlan.Query
+	limit := searchPlan.Limit
+	minCoverage := searchPlan.MinCoverage
 
 	start := time.Now()
 
@@ -135,10 +129,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// clips to accept, not the number of Qdrant rows to inspect: stale or
 	// Drive-only rows must not consume the whole search window before the
 	// renderability gate can find staged local media.
-	searchLimit := limit
-	if searchLimit < 20 {
-		searchLimit = 20
-	}
+	searchLimit := searchPlan.SearchLimit
 	// qdrant.search is the semantic-index boundary. The canonical Run clock
 	// records it as an OperationReport under source.resolve; no ad-hoc timer.
 	var results []SemanticSearchResult
@@ -278,10 +269,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		searchClipOpts.MetadataFallbackByClipID[id] = visualSummary
 	}
 
-	minQualityScore := 0.0
-	if src.MinQualityScore != nil {
-		minQualityScore = *src.MinQualityScore
-	}
+	minQualityScore := searchPlan.MinScore
 	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerSearch).Select(
 		ports.ClipSamplerRequest{
 			Query:         query,
@@ -400,7 +388,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		query:         query,
 		clipIDs:       clipIDs,
 		opts:          opts,
-		titleFallback: textutil.FirstNonEmpty(resCtx.Title, query),
+		titleFallback: fallbackTitle(resCtx.Title, query),
 		startTime:     start,
 	}, r.log)
 	if err != nil {

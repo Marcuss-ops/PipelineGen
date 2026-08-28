@@ -63,8 +63,12 @@ type chrononCertResult struct {
 // what gates which CUDA runtimes work, so driver+GPU identity completes the
 // environment key.
 const (
-	certCanvasWidth  = 256
-	certCanvasHeight = 144
+	// Keep the probe at a decoder-safe 720p surface size. Some NVDEC driver
+	// combinations reject very small 256x144 H264 surfaces even though the
+	// production 1080p path is valid; certifying with the real profile shape
+	// avoids a false negative before Chronon is selected.
+	certCanvasWidth  = 1280
+	certCanvasHeight = 720
 	certFPS          = 30
 	certFrames       = 30 // 1s of 30fps — the "30 frame" certification job
 	certTimeout      = 90 * time.Second
@@ -286,7 +290,8 @@ func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerpri
 		Canvas: chrononCanvas{
 			Width:          certCanvasWidth,
 			Height:         certCanvasHeight,
-			FPS:            certFPS,
+			FPSNum:         certFPS,
+			FPSDen:         1,
 			DurationFrames: certFrames,
 		},
 		Layers: []chrononLayer{{
@@ -356,7 +361,7 @@ func (c *chrononNativeCertifier) encodeCertClip(ctx context.Context, clipPath st
 		"-y", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi",
 		"-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1", certCanvasWidth, certCanvasHeight, certFPS),
-		"-pix_fmt", "yuv420p", "-preset", "ultrafast",
+		"-pix_fmt", "yuv420p",
 	}
 	// Use the resolved encoder from the canonical policy. The governance
 	// gate prohibits hardcoded encoder literals outside the resolver;
@@ -365,7 +370,16 @@ func (c *chrononNativeCertifier) encodeCertClip(ctx context.Context, clipPath st
 	if strings.TrimSpace(encoder) == "" {
 		return fmt.Errorf("no encoder configured: certification requires a resolved codec from the canonical encoder policy")
 	}
-	args := append(append([]string(nil), base...), "-c:v", encoder, "-t", "1", clipPath)
+	// FFmpeg's software preset names (for example "ultrafast" and
+	// "veryfast") are not accepted by the NVENC wrapper in the installed
+	// builds.  The certification clip must therefore use an encoder-specific
+	// probe preset; this is only a tiny compatibility probe and does not alter
+	// the production encoder policy.  p1 is the fastest valid NVENC preset.
+	preset := "ultrafast"
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(encoder)), "_nvenc") {
+		preset = "p1"
+	}
+	args := append(append([]string(nil), base...), "-c:v", encoder, "-preset", preset, "-t", "1", clipPath)
 	if out, err := c.run(ctx, bin, args...); err != nil {
 		return fmt.Errorf("encoder %s: %w: %s", encoder, err, strings.TrimSpace(out))
 	}

@@ -321,7 +321,8 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		r.logPhase("plan_projection_failed", plan.RunID, zap.Error(projectErr))
 		return rustexec.ClipRenderResult{}, projectErr
 	}
-	fps := chrononPlan.Canvas.FPS
+	fpsNum, fpsDen := chrononPlan.Canvas.FPSNum, chrononPlan.Canvas.FPSDen
+	fps := fpsNum / fpsDen
 	frames := chrononPlan.Canvas.DurationFrames
 	r.logPhase("probed", plan.RunID,
 		zap.Int64("duration_ms", durationMS),
