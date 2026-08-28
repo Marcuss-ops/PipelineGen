@@ -577,6 +577,21 @@ def ms(v):
         return 0
 
 
+def timestamp_ms(v):
+    """Parse runtime timestamps from either numeric or RFC3339 JSON fields."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return int(v)
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        return int(float(v))
+    except ValueError:
+        pass
+    try:
+        value = v.strip().replace("Z", "+00:00")
+        return int(datetime.fromisoformat(value).timestamp() * 1000)
+    except (TypeError, ValueError, OverflowError):
+        return None
 def sentinel_ok(v):
     # metrics_v2 NOT_INSTRUMENTED sentinel serializes as the string
     # "NOT_INSTRUMENTED" (and -1 in-process). Only a real measured value
@@ -871,8 +886,19 @@ def build_job(full, i):
     queue_wait = ms(timing.get("queue_wait_ms"))
     critical_path = sum((p.get("critical_ms") or 0) for p in phases)
     publish = phase({"phases": phases}, "drive")
-    runtime_start = ms(timing.get("started_at_ms")) if timing.get("started_at_ms") is not None else None
-    runtime_finish = ms(timing.get("finished_at_ms")) if timing.get("finished_at_ms") is not None else None
+    # Current /full responses expose these on the job envelope as RFC3339;
+    # older workers used *_at_ms inside timing. Accept both representations.
+    job_meta = full.get("job") or {}
+    runtime_start = timestamp_ms(timing.get("started_at_ms"))
+    if runtime_start is None:
+        runtime_start = timestamp_ms(timing.get("started_at"))
+    if runtime_start is None:
+        runtime_start = timestamp_ms(job_meta.get("started_at"))
+    runtime_finish = timestamp_ms(timing.get("finished_at_ms"))
+    if runtime_finish is None:
+        runtime_finish = timestamp_ms(timing.get("finished_at"))
+    if runtime_finish is None:
+        runtime_finish = timestamp_ms(job_meta.get("completed_at"))
     return {"phases": phases, "critical_order": critical_order, "wall_ms": wall,
             "runtime_started_ms": runtime_start,
             "runtime_finished_ms": runtime_finish,
