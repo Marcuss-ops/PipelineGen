@@ -333,6 +333,38 @@ wait_for_benchmark_job() {
     done
 }
 
+wait_for_benchmark_batch() {
+    local begin="$1" end="$2" polled=0 all_done status i jid
+    while true; do
+        all_done=1
+        for ((i=begin; i<end; i++)); do
+            jid="${J_JOB_IDS[$i]}"
+            [[ -n "$jid" ]] || continue
+            status=$(api GET "/api/jobs/$jid" 2>/dev/null || echo '{}')
+            status=$(echo "$status" | json_field "status" "unknown" | tr '[:upper:]' '[:lower:]')
+            case "$status" in
+                completed|succeeded|failed|cancelled)
+                    J_STATUS[$i]="$status" ;;
+                *)
+                    all_done=0 ;;
+            esac
+        done
+        if (( all_done == 1 )); then
+            echo "[bench] Batch [$begin,$end) terminal"
+            return 0
+        fi
+        if (( polled >= POLL_MAX )); then
+            for ((i=begin; i<end; i++)); do
+                [[ "${J_STATUS[$i]:-}" == "submitted" ]] && J_STATUS[$i]="timeout"
+            done
+            echo "[bench] ⚠️ batch [$begin,$end) timed out after ${POLL_MAX}s" >&2
+            return 1
+        fi
+        sleep "$POLL_INTERVAL"
+        polled=$((polled + POLL_INTERVAL))
+    done
+}
+
 SUCCESS_COUNT=0
 
 for entry in "${WORK_LIST[@]}"; do
@@ -379,6 +411,10 @@ EOJSON
 
         if [[ "$WORKER_SLOTS" == "1" ]]; then
             wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
+        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS == 0 )); then
+            BATCH_END=${#J_JOB_IDS[@]}
+            BATCH_BEGIN=$((BATCH_END - WORKER_SLOTS))
+            wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
         fi
 
     elif [[ "$MODE" == "render" ]]; then
@@ -431,9 +467,19 @@ EOJSON
 
         if [[ "$WORKER_SLOTS" == "1" ]]; then
             wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
+        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS == 0 )); then
+            BATCH_END=${#J_JOB_IDS[@]}
+            BATCH_BEGIN=$((BATCH_END - WORKER_SLOTS))
+            wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
         fi
     fi
 done
+
+if [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS != 0 )); then
+    BATCH_END=${#J_JOB_IDS[@]}
+    BATCH_BEGIN=$((BATCH_END - (BATCH_END % WORKER_SLOTS)))
+    wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
+fi
 
 echo ""
 echo "[bench] All jobs submitted"
