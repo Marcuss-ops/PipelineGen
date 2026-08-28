@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -34,8 +35,19 @@ func (p *RustOutputProber) ProbeOutput(ctx context.Context, path string) (*clipr
 	// not yet reported by Rust (timebase, SAR, color) are set to zero/empty
 	// and skipped by ValidateContract when the contract field is also zero.
 	// Assembly-ready frozen defaults are carried on the contract side.
+	// ffprobe reports MP4 as the compatible family
+	// "mov,mp4,m4a,3gp,3g2,mj2". The output contract names the canonical
+	// container ("mp4"), so normalize the first family member here rather
+	// than rejecting a valid rendered MP4.
+	container := strings.TrimSpace(info.FormatName)
+	if i := strings.IndexByte(container, ','); i >= 0 {
+		container = strings.TrimSpace(container[:i])
+	}
+	if container == "mov" && strings.Contains(info.FormatName, "mp4") {
+		container = "mp4"
+	}
 	return &cliprender.OutputProbe{
-		Container:        info.FormatName,
+		Container:        container,
 		HasVideo:         info.HasVideo,
 		VideoCodec:       info.VideoCodec,
 		VideoProfile:     "", // Rust probe doesn't report codec_profile yet

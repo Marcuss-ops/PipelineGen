@@ -6,6 +6,7 @@ package cliprender
 
 import (
 	"strings"
+	"sync"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -15,8 +16,36 @@ import (
 // canonical job result map. Only JSON-safe values — the result envelope is
 // persisted by the Master.
 func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, composite *OverlayCompositeResult, published *RenderPublishResult) job.Result {
+	jobID := ""
+	if j != nil {
+		jobID = j.ID
+	}
+	if req == nil {
+		req = &RenderRequest{Transcript: &TranscriptSpec{}}
+	} else if req.Transcript == nil {
+		req.Transcript = &TranscriptSpec{}
+	}
+	if prepared == nil {
+		prepared = &Prepared{Contract: &ResolvedContract{}, Transcript: &TranscriptResult{}}
+	}
+	if prepared.Contract == nil {
+		prepared.Contract = &ResolvedContract{}
+	}
+	if prepared.Transcript == nil {
+		prepared.Transcript = &TranscriptResult{}
+	}
+	if prepared.Source == nil {
+		prepared.Source = &MaterializedAsset{}
+	}
+	if prepared.Watermark == nil {
+		// materializationResult is nil-safe; no initialization needed.
+	}
+	backgroundMode := ""
+	if plan.Background != nil {
+		backgroundMode = plan.Background.Mode
+	}
 	result := job.Result{
-		"job_id":          j.ID,
+		"job_id":          jobID,
 		"source_asset_id": req.SourceAssetID,
 		"phase":           "rendered",
 		"transcript_mode": req.Transcript.Mode,
@@ -35,15 +64,9 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"plan_sha256": plan.PlanSHA256,
 			"output_path": plan.OutputPath,
 			"audio_mode":  plan.Audio.Mode,
-			"background":  plan.Background.Mode,
+			"background":  backgroundMode,
 		},
-		"source": map[string]any{
-			"asset_id":   prepared.Source.AssetID,
-			"path":       prepared.Source.LocalPath,
-			"sha256":     prepared.Source.SHA256,
-			"size_bytes": prepared.Source.SizeBytes,
-			"from_cache": prepared.Source.FromCache,
-		},
+		"source": materializationResult(prepared.Source),
 		"transcript": map[string]any{
 			"language":            prepared.Transcript.Language,
 			"reused":              prepared.Transcript.Reused,
@@ -51,50 +74,63 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"cues":                len(prepared.Transcript.Cues),
 			"source_audio_sha256": prepared.Transcript.SourceAudioSHA256,
 		},
+		"materialization": map[string]any{
+			"source":     materializationResult(prepared.Source),
+			"watermark":  materializationResult(prepared.Watermark),
+			"background": materializationResult(prepared.Background),
+		},
 		"timings": map[string]any{
 			"total_wall_ms": prepared.Timings.TotalWallMS,
 			"total_work_ms": prepared.Timings.TotalWorkMS,
 			"parallel":      prepared.Timings.Parallel,
+			"phases":        prepared.Timings.Phases,
 		},
 	}
 	if prepared.Watermark != nil {
-		result["watermark"] = map[string]any{
-			"asset_id": prepared.Watermark.AssetID,
-			"path":     prepared.Watermark.LocalPath,
-			"sha256":   prepared.Watermark.SHA256,
-		}
+		result["watermark"] = materializationResult(prepared.Watermark)
 	}
 	if prepared.Background != nil {
-		result["background"] = map[string]any{
-			"asset_id": prepared.Background.AssetID,
-			"path":     prepared.Background.LocalPath,
-			"sha256":   prepared.Background.SHA256,
-		}
+		result["background"] = materializationResult(prepared.Background)
 	}
 	if subtitleArtifact != nil {
-		result["subtitles"] = map[string]any{
-			"path":   subtitleArtifact.LocalPath,
-			"sha256": subtitleArtifact.SHA256,
-			"mode":   subtitleArtifact.Mode,
+		cacheFacts := subtitleCacheFactsFor(subtitleArtifact.LocalPath)
+		subtitles := map[string]any{
+			"path":               subtitleArtifact.LocalPath,
+			"sha256":             subtitleArtifact.SHA256,
+			"mode":               subtitleArtifact.Mode,
+			"content_cache_hit":  cacheFacts.ContentCacheHit,
+			"artifact_cache_hit": cacheFacts.ArtifactCacheHit,
 		}
+		if !cacheFacts.Measured {
+			delete(subtitles, "content_cache_hit")
+			delete(subtitles, "artifact_cache_hit")
+		}
+		result["subtitles"] = subtitles
 	}
 	if outcome != nil {
 		renderBlock := map[string]any{
-			"output_path":         outcome.OutputPath,
-			"size_bytes":          outcome.SizeBytes,
-			"duration_sec":        outcome.DurationSec,
-			"width":               outcome.Width,
-			"height":              outcome.Height,
-			"fps_num":             outcome.FPSNum,
-			"fps_den":             outcome.FPSDen,
-			"backend":             outcome.Backend,
+			"output_path":  outcome.OutputPath,
+			"size_bytes":   outcome.SizeBytes,
+			"duration_sec": outcome.DurationSec,
+			"width":        outcome.Width,
+			"height":       outcome.Height,
+			"fps_num":      outcome.FPSNum,
+			"fps_den":      outcome.FPSDen,
+			"backend":      outcome.Backend,
+			// Read-only compatibility projection of the canonical MetricsV2
+			// report — same measured values, never a second computation.
+			// ffmpeg_ms has no dedicated V2 field: it is the raw Rust boundary
+			// scalar (the FFmpeg-fallback backend maps it onto
+			// metrics_v2.composite_ms).
 			"ffmpeg_ms":           outcome.FFmpegMS,
 			"audio_copy_eligible": outcome.AudioCopyEligible,
 			"audio_encode_passes": outcome.AudioEncodePasses,
 			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
 			"gpu_copy_bytes":      outcome.GPUCopyBytes,
 		}
+
 		if outcome.Metrics != nil {
+			renderBlock["render_wall_ms"] = outcome.Metrics.RenderWallMS
 			renderBlock["metrics_v2"] = outcome.Metrics
 		}
 		result["render"] = renderBlock
@@ -128,6 +164,35 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 	return result
 }
 
+// SubtitleCacheFacts records cache ownership at both levels: generated ASS
+// content and the materialized run-local artifact. Availability is explicit
+// so a missing registration is not misreported as a measured cache miss.
+type SubtitleCacheFacts struct {
+	ContentCacheHit  bool
+	ArtifactCacheHit bool
+	Measured         bool
+}
+
+// subtitleCacheFacts is the run-local registry keyed by the materialized ASS
+// path. It is populated by the SubtitleCompiler adapter and projected into the
+// job result so the benchmark report can show subtitle cache hits.
+var subtitleCacheFacts sync.Map // map[string]SubtitleCacheFacts
+
+// RecordSubtitleCacheFacts registers cache ownership for a materialized ASS
+// artifact. Called by the SubtitleCompiler adapter after compile.
+func RecordSubtitleCacheFacts(localPath string, facts SubtitleCacheFacts) {
+	subtitleCacheFacts.Store(localPath, facts)
+}
+
+// subtitleCacheFactsFor returns the recorded cache facts for a materialized
+// ASS artifact, or an all-false zero value when nothing was recorded.
+func subtitleCacheFactsFor(path string) SubtitleCacheFacts {
+	if facts, ok := subtitleCacheFacts.Load(path); ok {
+		return facts.(SubtitleCacheFacts)
+	}
+	return SubtitleCacheFacts{}
+}
+
 // materializeWallMS sums the preparer's materialize phase walls
 // (materialize_source/watermark/background) so asset_materialize_ms reflects
 // the real "bring assets to disk" cost. Returns -1 when no materialize phase
@@ -143,6 +208,27 @@ func materializeWallMS(timings PreparationTimings) int64 {
 		}
 	}
 	return total
+}
+
+func materializationResult(asset *MaterializedAsset) map[string]any {
+	if asset == nil {
+		return nil
+	}
+	// A cache hit means no download bytes were consumed by materialization.
+	downloadBytes := asset.SizeBytes
+	if asset.FromCache {
+		downloadBytes = 0
+	}
+	return map[string]any{
+		"asset_id":       asset.AssetID,
+		"path":           asset.LocalPath,
+		"sha256":         asset.SHA256,
+		"size_bytes":     asset.SizeBytes,
+		"from_cache":     asset.FromCache,
+		"cache_hit":      asset.FromCache,
+		"download_bytes": downloadBytes,
+		"materialized":   true,
+	}
 }
 
 // finalizeMetrics sets the job-level total wall time on the V2 report and

@@ -153,7 +153,7 @@ func TestGenerateScriptAttachesOperationMeta(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true}`))
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true,"load_duration":45000000000,"prompt_eval_count":120,"prompt_eval_duration":300000000,"eval_count":340,"eval_duration":2000000000,"total_duration":48000000000}`))
 	}))
 	defer server.Close()
 
@@ -190,7 +190,9 @@ func TestGenerateScriptAttachesOperationMeta(t *testing.T) {
 		if op.QueueWaitMs <= 0 {
 			t.Errorf("queue_wait_ms = %d, want > 0", op.QueueWaitMs)
 		}
-		var meta map[string]string
+		// The Ollama-reported split facts must be merged into metadata_json
+		// alongside the fan-out provenance (owner-measured, no second timer).
+		var meta map[string]any
 		if err := json.Unmarshal([]byte(op.MetadataJSON), &meta); err != nil {
 			t.Fatalf("metadata_json %q is not a JSON object: %v", op.MetadataJSON, err)
 		}
@@ -199,6 +201,21 @@ func TestGenerateScriptAttachesOperationMeta(t *testing.T) {
 		}
 		if meta["segment_index"] != "2" {
 			t.Errorf("metadata segment_index = %q, want 2", meta["segment_index"])
+		}
+		if meta["input_tokens"] != float64(120) {
+			t.Errorf("metadata input_tokens = %v, want 120", meta["input_tokens"])
+		}
+		if meta["output_tokens"] != float64(340) {
+			t.Errorf("metadata output_tokens = %v, want 340", meta["output_tokens"])
+		}
+		if meta["model_load_ms"] != float64(45000) {
+			t.Errorf("metadata model_load_ms = %v, want 45000 (cold start)", meta["model_load_ms"])
+		}
+		if meta["inference_work_ms"] != float64(2300) {
+			t.Errorf("metadata inference_work_ms = %v, want 2300 (300ms prompt eval + 2000ms eval)", meta["inference_work_ms"])
+		}
+		if meta["cold_start"] != true {
+			t.Errorf("metadata cold_start = %v, want true (45s model load)", meta["cold_start"])
 		}
 	}
 	if !found {

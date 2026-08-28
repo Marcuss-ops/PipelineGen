@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -20,8 +21,14 @@ import (
 // and `document.publish` even though they are nested under their processor
 // stage.
 type TimingSummary struct {
-	// WallMs is the total run wall time (WallTimeMs).
-	WallMs int64 `json:"wall_ms"`
+	// WallMs and ExecutionWallMs are the same attempt-owned wall measurement;
+	// the latter is the canonical name for new consumers.
+	WallMs          int64 `json:"wall_ms"`
+	ExecutionWallMs int64 `json:"execution_wall_ms"`
+	// QueueWaitMs is the attempt queue wait (enqueue → processing start),
+	// measured by the runtime at claim. It is the canonical per-job answer to
+	// "how long did this clip sit in the queue before a worker picked it up".
+	QueueWaitMs int64 `json:"queue_wait_ms,omitempty"`
 	// AttributedMs is the sum of top-level (exclusive/sequential) stage
 	// wall times.
 	AttributedMs int64 `json:"attributed_ms"`
@@ -70,6 +77,13 @@ type TimingOperation struct {
 	// fan-out it can exceed the enclosing stage wall time and must never be
 	// reported as wall time.
 	WorkMs int64 `json:"work_ms"`
+	// QueueWaitMs is the accumulated queue wait across all calls.
+	QueueWaitMs int64 `json:"queue_wait_ms,omitempty"`
+	// Metadata is the merge of the per-call metadata_json facts (e.g. the
+	// Ollama split: input/output tokens, model_load_ms, inference_wall_ms,
+	// inference_work_ms, cold_start). Numeric values are summed; strings that
+	// are identical across calls are kept, otherwise replaced by "mixed".
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // TimingSummary returns the canonical diagnostic projection. It is pure and
@@ -88,6 +102,8 @@ func (r *RunReport) timingSummaryWithWall(wallMs int64) TimingSummary {
 	bd := r.breakdownWithWall(wallMs)
 	return TimingSummary{
 		WallMs:              wallMs,
+		ExecutionWallMs:     wallMs,
+		QueueWaitMs:         nonNegative(r.QueueWaitMs),
 		AttributedMs:        bd.AttributedStageMs,
 		UnattributedMs:      bd.UnattributedMs,
 		UnattributedPercent: bd.UnattributedPercent,
@@ -165,6 +181,8 @@ func timingOperations(ops []OperationReport) []TimingOperation {
 		}
 		a.Calls++
 		a.WorkMs += nonNegative(op.DurationMs)
+		a.QueueWaitMs += nonNegative(op.QueueWaitMs)
+		mergeOperationMetadata(a, op.MetadataJSON)
 		if !seen[k] {
 			seen[k] = true
 			keys = append(keys, k)
@@ -181,4 +199,62 @@ func timingOperations(ops []OperationReport) []TimingOperation {
 		out = append(out, *byKey[k])
 	}
 	return out
+}
+
+// mergeOperationMetadata merges one operation's metadata_json into the
+// aggregate. Numeric values are summed so per-call counters (tokens,
+// durations) accumulate across the fan-out; booleans are counted as
+// cold_start counts; strings must be identical across calls or become
+// "mixed".
+func mergeOperationMetadata(a *TimingOperation, metadataJSON string) {
+	if a == nil || metadataJSON == "" {
+		return
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil || len(meta) == 0 {
+		return
+	}
+	if a.Metadata == nil {
+		a.Metadata = make(map[string]any, len(meta))
+	}
+	for key, value := range meta {
+		prev, exists := a.Metadata[key]
+		if !exists {
+			// Normalize booleans to 0/1 floats on first insert so later
+			// merges can accumulate them (e.g. cold_start counts).
+			if b, ok := value.(bool); ok {
+				a.Metadata[key] = boolToFloat(b)
+			} else {
+				a.Metadata[key] = value
+			}
+			continue
+		}
+		switch v := value.(type) {
+		case float64:
+			if p, ok := prev.(float64); ok {
+				a.Metadata[key] = p + v
+			}
+		case bool:
+			if p, ok := prev.(float64); ok {
+				a.Metadata[key] = p + boolToFloat(v)
+			} else if p, ok := prev.(bool); ok {
+				a.Metadata[key] = boolToFloat(p) + boolToFloat(v)
+			} else {
+				a.Metadata[key] = boolToFloat(v)
+			}
+		case string:
+			if p, ok := prev.(string); ok && p == v {
+				// keep the uniform value
+			} else {
+				a.Metadata[key] = "mixed"
+			}
+		}
+	}
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
 }

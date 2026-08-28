@@ -145,7 +145,11 @@ type VideoRenderSpec struct {
 	Background    *VideoBackgroundSpec `json:"background,omitempty"`
 	Watermark     *VideoWatermarkSpec  `json:"watermark,omitempty"`
 	Subtitles     *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
-	OutputDir     string               `json:"output_dir,omitempty"`
+	// SubtitlePresets are reusable request-local styles selected by
+	// subtitles.preset or subtitles.style_id.
+	SubtitlePresets   map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`
+	RenderConcurrency int                             `json:"render_concurrency,omitempty"`
+	OutputDir         string                          `json:"output_dir,omitempty"`
 	// DriveFolderID is the parent Drive folder for rendered clips. When
 	// DriveSubfolderName is set, the renderer creates/reuses that child.
 	DriveFolderID      string `json:"drive_folder_id,omitempty"`
@@ -168,6 +172,10 @@ type VideoBackgroundSpec struct {
 // payloads keep their exact behaviour; the render boundary projects these
 // into the strongly-typed Chronon/Rust layer style.
 type VideoVisualStyleSpec struct {
+	// Concise payload aliases used by clip subtitle presets.
+	Font         string               `json:"font,omitempty"`
+	Position     string               `json:"position,omitempty"`
+	Size         float64              `json:"size,omitempty"`
 	Color        string               `json:"color,omitempty"`
 	FontSizePX   float64              `json:"font_size_px,omitempty"`
 	WidthPX      int                  `json:"width_px,omitempty"`
@@ -209,6 +217,7 @@ type VideoSubtitlesSpec struct {
 	Enabled bool                  `json:"enabled,omitempty"`
 	Mode    string                `json:"mode,omitempty"`
 	StyleID string                `json:"style_id,omitempty"`
+	Preset  string                `json:"preset,omitempty"`
 	Style   *VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
@@ -218,6 +227,9 @@ type VideoSubtitlesSpec struct {
 func (r *VideoRenderSpec) Normalize() {
 	if r == nil {
 		return
+	}
+	if r.RenderConcurrency < 1 {
+		r.RenderConcurrency = 2
 	}
 	if r.Background != nil {
 		if r.Background.Mode == "" {
@@ -240,6 +252,19 @@ func (r *VideoRenderSpec) Normalize() {
 		r.Enabled = true
 		if r.Subtitles.Mode == "" {
 			r.Subtitles.Mode = "burn"
+		}
+		presetID := r.Subtitles.Preset
+		if presetID == "" {
+			presetID = r.Subtitles.StyleID
+		}
+		if r.Subtitles.Style == nil && presetID != "" {
+			if preset, ok := r.SubtitlePresets[presetID]; ok {
+				style := preset
+				r.Subtitles.Style = &style
+			}
+		}
+		if r.Subtitles.Style != nil && r.Subtitles.Style.FontSizePX == 0 && r.Subtitles.Style.Size > 0 {
+			r.Subtitles.Style.FontSizePX = r.Subtitles.Style.Size
 		}
 	}
 }

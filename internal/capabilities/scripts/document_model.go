@@ -37,6 +37,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		Render:  result.Render,
 	}
 	var allText []string
+	renderedLinks := latestLocalizedRenderLinks(result)
 	for _, scene := range result.Scenes {
 		text := strings.TrimSpace(scene.Text[language])
 		if text != "" {
@@ -58,10 +59,17 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 			if clip == nil {
 				continue
 			}
-			converted.Bindings.Clips = append(converted.Bindings.Clips, clipBindingFromReference(clip))
+			binding := clipBindingFromReference(clip)
+			if link := renderedLinks[clip.ID]; link != "" {
+				binding.DriveLink = link
+			}
+			converted.Bindings.Clips = append(converted.Bindings.Clips, binding)
 		}
 		if scene.Clip != nil {
 			clipBinding := clipBindingFromReference(scene.Clip)
+			if link := renderedLinks[scene.Clip.ID]; link != "" {
+				clipBinding.DriveLink = link
+			}
 			converted.Bindings.Clip = &clipBinding
 			if len(converted.Bindings.Clips) == 0 {
 				converted.Bindings.Clips = append(converted.Bindings.Clips, *converted.Bindings.Clip)
@@ -103,6 +111,26 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		Text:          strings.Join(allText, "\n\n"),
 		SpecScene:     spec,
 	}
+}
+
+// latestLocalizedRenderLinks is the document projection of the render
+// certificate. The source clip IDs remain unchanged in the request/result;
+// only the link exposed to the document is replaced by the newest successful
+// render for that clip. This also makes resumed runs safe when the source
+// ClipReference was restored from an older checkpoint.
+func latestLocalizedRenderLinks(result *GenerateResult) map[string]string {
+	links := make(map[string]string)
+	if result == nil {
+		return links
+	}
+	for _, rendered := range result.LocalizedRenders {
+		clipID := strings.TrimSpace(rendered.ClipID)
+		link := strings.TrimSpace(rendered.DriveLink)
+		if clipID != "" && link != "" {
+			links[clipID] = link
+		}
+	}
+	return links
 }
 
 // documentSkeletonInputForScenes projects the scene-text-only skeleton inputs

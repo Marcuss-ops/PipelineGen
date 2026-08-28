@@ -95,6 +95,9 @@ func (o *ObservedExecutor) measurement(req request, started time.Time, result re
 		m.SourceDurationMS = int64(req.DurationSec * 1000)
 	}
 	if metrics := result.Metrics; metrics != nil {
+		// Preserve measured zeroes; the Rust metrics block is authoritative
+		// whenever present. Absent blocks remain uninstrumented at the
+		// downstream RenderMetricsV2 projection.
 		if metrics.CPUUserMS > 0 {
 			m.CPUUserMS = metrics.CPUUserMS
 		}
@@ -110,6 +113,11 @@ func (o *ObservedExecutor) measurement(req request, started time.Time, result re
 		m.CacheHit = metrics.CacheHit
 		m.MetadataJSON = metricsMetadataJSON(metrics)
 	}
+	if err != nil {
+		// Keep the canonical operation fact even on failure; status/error
+		// ownership remains with the RunReport recorder.
+		m.MetadataJSON = metricsMetadataJSON(result.Metrics)
+	}
 	return m
 }
 
@@ -121,10 +129,15 @@ func metricsMetadataJSON(m *OperationMetrics) string {
 		return "{}"
 	}
 	b, err := json.Marshal(struct {
-		WallMS        int64 `json:"wall_ms"`
-		FramesDecoded int64 `json:"frames_decoded"`
-		FramesEncoded int64 `json:"frames_encoded"`
-	}{m.WallMS, m.FramesDecoded, m.FramesEncoded})
+		WallMS         int64 `json:"wall_ms"`
+		FramesDecoded  int64 `json:"frames_decoded"`
+		FramesEncoded  int64 `json:"frames_encoded"`
+		PeakRSSBytes   int64 `json:"peak_rss_bytes"`
+		DiskReadBytes  int64 `json:"disk_read_bytes"`
+		DiskWriteBytes int64 `json:"disk_write_bytes"`
+		NetworkRXBytes int64 `json:"network_rx_bytes"`
+		NetworkTXBytes int64 `json:"network_tx_bytes"`
+	}{m.WallMS, m.FramesDecoded, m.FramesEncoded, m.PeakRSSBytes, m.DiskReadBytes, m.DiskWriteBytes, m.NetworkRXBytes, m.NetworkTXBytes})
 	if err != nil {
 		return "{}"
 	}

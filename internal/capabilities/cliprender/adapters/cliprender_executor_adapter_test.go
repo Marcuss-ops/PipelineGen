@@ -35,6 +35,9 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 	startupMS := int64(187)
 	rustPublishMS := int64(9)
 	opMS := int64(1450)
+	peakRSS := int64(1234)
+	diskRead := int64(5678)
+	diskWrite := int64(910)
 	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{
 		OutputPath:        "/scratch/run-1/rendered-clip.mp4",
 		SizeBytes:         1024,
@@ -50,6 +53,7 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		StartupMS:         &startupMS,
 		PublishMS:         &rustPublishMS,
 		OpMS:              &opMS,
+		OperationMetrics:  &rustexec.OperationMetrics{PeakRSSBytes: peakRSS, DiskReadBytes: diskRead, DiskWriteBytes: diskWrite},
 	}}
 	adapter := &ClipRenderExecutorAdapter{
 		renderer: fake,
@@ -98,16 +102,21 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		t.Fatalf("composite_ms = %d, want 1250 (ffmpeg_ms mapped onto the composite phase)", int64(m.CompositeMS))
 	}
 	// The Rust boundary's own phase timings now populate the benchmark
-	// decomposition: renderer_startup_ms (pre-ffmpeg wall) and publish_ms
-	// (Rust-side output publish) map only when the boundary reported them.
+	// decomposition: renderer_startup_ms and renderer_finalize_ms.
 	if int64(m.RendererStartupMS) != 187 {
 		t.Fatalf("renderer_startup_ms = %d, want 187 (Rust pre-ffmpeg wall)", int64(m.RendererStartupMS))
 	}
-	if int64(m.PublishMS) != 9 {
-		t.Fatalf("publish_ms = %d, want 9 (Rust-side publish, worker overwrites with its full publication wall)", int64(m.PublishMS))
+	if int64(m.RendererOutputFinalizeMS) != 9 {
+		t.Fatalf("renderer_finalize_ms = %d, want 9 (Rust-side output finalize)", int64(m.RendererOutputFinalizeMS))
+	}
+	if int64(m.PublishMS) != cliprender.NotInstrumented {
+		t.Fatalf("publish_ms = %d, want NOT_INSTRUMENTED compatibility field", int64(m.PublishMS))
 	}
 	if m.Frames != 1830 {
 		t.Fatalf("frames = %d, want 1830 (30.5s × 60fps)", m.Frames)
+	}
+	if m.PeakRSSBytes != cliprender.Metric(peakRSS) || m.DiskReadBytes != cliprender.Metric(diskRead) || m.DiskWriteBytes != cliprender.Metric(diskWrite) {
+		t.Fatalf("resource metrics = rss=%d read=%d write=%d, want %d/%d/%d", m.PeakRSSBytes, m.DiskReadBytes, m.DiskWriteBytes, peakRSS, diskRead, diskWrite)
 	}
 	if !m.SubtitleRasterCPU {
 		t.Fatal("subtitle_raster_cpu = false, want true (from the Rust metadata)")
@@ -134,6 +143,68 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 	}
 	if int64(m.UnaccountedMS) != cliprender.NotInstrumented && int64(m.UnaccountedMS) < 0 {
 		t.Fatalf("unaccounted_ms = %d, must never be negative", int64(m.UnaccountedMS))
+	}
+}
+
+// TestClipRenderExecutorAdapter_MapsFineGrainedRenderPhases verifies the
+// Rust boundary's measured phases (probe / decode / filter-graph / encode)
+// are projected into the canonical V2 report, and that CompositeMS prefers
+// the real filter-graph residual over the coarse ffmpeg_ms fallback.
+func TestClipRenderExecutorAdapter_MapsFineGrainedRenderPhases(t *testing.T) {
+	probeMS := int64(38)
+	decodeMS := int64(2100)
+	filterGraphMS := int64(6400)
+	encodeMS := int64(6500)
+	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{
+		OutputPath:    "/out.mp4",
+		SizeBytes:     1024,
+		DurationSec:   30.0,
+		Width:         1080,
+		Height:        1920,
+		FPSNum:        60,
+		FPSDen:        1,
+		FFmpegMS:      14120, // coarse decode→encode wall (legacy scalar)
+		ProbeMS:       &probeMS,
+		DecodeMS:      &decodeMS,
+		FilterGraphMS: &filterGraphMS,
+		EncodeMS:      &encodeMS,
+	}}
+	adapter := &ClipRenderExecutorAdapter{
+		renderer: fake,
+		resolver: cliprender.NewRenderBackendResolver(nil),
+		probe:    emptyCapabilityProbe{},
+	}
+
+	outcome, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	m := outcome.Metrics
+	if int64(m.ProbeMS) != 38 {
+		t.Fatalf("probe_ms = %d, want 38 (ffprobe wall reported separately from startup)", int64(m.ProbeMS))
+	}
+	if int64(m.DecodeMS) != 2100 {
+		t.Fatalf("decode_ms = %d, want 2100 (bench_all decode sum)", int64(m.DecodeMS))
+	}
+	if int64(m.EncodeMS) != 6500 {
+		t.Fatalf("encode_ms = %d, want 6500 (bench_all encode sum)", int64(m.EncodeMS))
+	}
+	// CompositeMS must come from the measured filter-graph residual, NOT the
+	// coarse ffmpeg_ms fallback (which stays a legacy scalar on the outcome).
+	if int64(m.CompositeMS) != 6400 {
+		t.Fatalf("composite_ms = %d, want 6400 (filter-graph residual preferred over ffmpeg_ms)", int64(m.CompositeMS))
+	}
+	// The phases stock ffmpeg cannot attribute from a single pass stay
+	// NOT_INSTRUMENTED — never fake zeros.
+	for name, phase := range map[string]int64{
+		"subtitle_raster_ms":  int64(m.SubtitleRasterMS),
+		"watermark_raster_ms": int64(m.WatermarkRasterMS),
+		"frame_conversion_ms": int64(m.FrameConversionMS),
+		"audio_mux_ms":        int64(m.AudioMuxMS),
+	} {
+		if phase != cliprender.NotInstrumented {
+			t.Errorf("%s = %d, want NOT_INSTRUMENTED (single-pass stock ffmpeg cannot attribute it)", name, phase)
+		}
 	}
 }
 

@@ -32,6 +32,18 @@ type ChatRequest struct {
 type ChatResponse struct {
 	Message Message `json:"message"`
 	Done    bool    `json:"done"`
+	// Ollama timing/token facts (nanoseconds, per the /api/chat response).
+	// They let the benchmark split the coarse "Ollama N ms" into model load,
+	// prompt evaluation, generation, and server-side queue: cold starts are
+	// visible as a large load_duration, and tokens_per_second is derivable
+	// from eval_count / eval_duration. Zero/absent when the server does not
+	// report them (vLLM/NVIDIA paths or older Ollama).
+	LoadDuration       int64 `json:"load_duration,omitempty"`
+	PromptEvalCount    int64 `json:"prompt_eval_count,omitempty"`
+	PromptEvalDuration int64 `json:"prompt_eval_duration,omitempty"`
+	EvalCount          int64 `json:"eval_count,omitempty"`
+	EvalDuration       int64 `json:"eval_duration,omitempty"`
+	TotalDuration      int64 `json:"total_duration,omitempty"`
 }
 
 // GenerateRequest richiesta generazione (Legacy API)

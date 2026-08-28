@@ -77,7 +77,7 @@ func TestDrivePublisher_PublishesRenderedArtifact(t *testing.T) {
 
 	// Upload input carries the certified facts.
 	got := uploader.got
-	if got.LocalPath != "/tmp/renders/clip-1.es.mp4" || got.Filename != "clip-1.es.mp4" || got.FolderID != "folder-1" || got.ContentHash != "render-sha" || got.Language != "es" || got.SizeBytes != 1234 {
+	if got.LocalPath != "/tmp/renders/clip-1.es.mp4" || got.Filename != "clip-1.es.render-sha.mp4" || got.FolderID != "folder-1" || got.ContentHash != "render-sha" || got.Language != "es" || got.SizeBytes != 1234 {
 		t.Errorf("upload input: got %+v", got)
 	}
 }

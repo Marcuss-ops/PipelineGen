@@ -379,6 +379,45 @@ func TestRun_OperationMeasuresAndAccumulates(t *testing.T) {
 	}
 }
 
+// TestRun_OperationOnRecordAttachesPostCallFacts pins the OnRecord hook:
+// an owner that only knows its facts AFTER the call (tokens, model load)
+// can attach them to the finalized report before it is recorded, without
+// re-timing the boundary.
+func TestRun_OperationOnRecordAttachesPostCallFacts(t *testing.T) {
+	obs := NewRunObserver(nil)
+	obs.now = newFakeClock().Now
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
+
+	attached := false
+	err := run.Operation(context.Background(), OperationInfo{
+		Stage:     StageGenerate,
+		Component: ComponentOllama,
+		Operation: OperationGenerate,
+		OnRecord: func(op *OperationReport) {
+			attached = true
+			op.MetadataJSON = `{"input_tokens":120,"output_tokens":340,"cold_start":true}`
+		},
+	}, func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatalf("Operation: %v", err)
+	}
+
+	rep := run.Finish()
+	if len(rep.Operations) != 1 {
+		t.Fatalf("operations = %d, want 1", len(rep.Operations))
+	}
+	op := rep.Operations[0]
+	if !attached {
+		t.Fatal("OnRecord was not invoked")
+	}
+	if op.MetadataJSON != `{"input_tokens":120,"output_tokens":340,"cold_start":true}` {
+		t.Fatalf("metadata_json = %q, want the post-call facts", op.MetadataJSON)
+	}
+	if op.Status != StageStatusCompleted || op.DurationMs <= 0 {
+		t.Fatalf("operation = %q/%d, want completed with a duration", op.Status, op.DurationMs)
+	}
+}
+
 func TestRun_OperationPanicClosesTimerAndRepanics(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now

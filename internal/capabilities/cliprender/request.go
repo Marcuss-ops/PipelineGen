@@ -251,6 +251,9 @@ func (r *RenderRequest) Normalize() {
 	if r.Subtitles.Mode == "" {
 		r.Subtitles.Mode = SubtitlesModeBurn
 	}
+	if r.Subtitles.Style != nil && r.Subtitles.Style.FontSizePX == 0 && r.Subtitles.Style.Size > 0 {
+		r.Subtitles.Style.FontSizePX = r.Subtitles.Style.Size
+	}
 	if r.Output == nil {
 		r.Output = &OutputSpec{}
 	}

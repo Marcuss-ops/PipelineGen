@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -103,6 +104,34 @@ func (f *fakeOutputProber) ProbeOutput(_ context.Context, _ string) (*OutputProb
 	}
 	return f.probe, nil
 }
+
+func TestRenderedResult_LegacyFieldsAreReadOnlyProjections(t *testing.T) {
+	outcome := &RenderOutcome{OutputPath: "/work/out.mp4", SizeBytes: 1, DurationSec: 1, FFmpegMS: 1234, SubtitleRasterCPU: boolPtr(true), GPUCopyBytes: uint64Ptr(99), Metrics: NewRenderMetricsV2()}
+	outcome.Metrics.CompositeMS = 1234
+	outcome.Metrics.GPUCopyBytes = 99
+	outcome.Metrics.SubtitleRasterCPU = true
+	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse_or_generate"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil, nil)
+	render, ok := result["render"].(map[string]any)
+	if !ok {
+		t.Fatalf("render result = %v", result["render"])
+	}
+	metrics, ok := render["metrics_v2"].(*RenderMetricsV2)
+	if !ok || metrics == nil {
+		t.Fatalf("metrics_v2 = %v", render["metrics_v2"])
+	}
+	if render["ffmpeg_ms"] != outcome.FFmpegMS || metrics.CompositeMS != outcome.Metrics.CompositeMS {
+		t.Fatalf("legacy/canonical projection mismatch: render=%v metrics=%+v", render, metrics)
+	}
+	if render["gpu_copy_bytes"] != outcome.GPUCopyBytes || metrics.GPUCopyBytes != outcome.Metrics.GPUCopyBytes {
+		t.Fatalf("gpu projection mismatch: render=%v metrics=%+v", render, metrics)
+	}
+	if render["subtitle_raster_cpu"] != outcome.SubtitleRasterCPU || metrics.SubtitleRasterCPU != *outcome.SubtitleRasterCPU {
+		t.Fatalf("subtitle projection mismatch: render=%v metrics=%+v", render, metrics)
+	}
+}
+
+func boolPtr(v bool) *bool       { return &v }
+func uint64Ptr(v uint64) *uint64 { return &v }
 
 func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	w, _, _ := newTestWorker(t)
@@ -318,6 +347,14 @@ func TestWorker_SubtitlesEnabled_CompilesFromTranscriptAndSeals(t *testing.T) {
 	if sub["mode"] != SubtitlesModeBurn || sub["sha256"] == "" {
 		t.Errorf("result subtitles block: got %v", sub)
 	}
+	// A fake compiler does not own cache instrumentation, so cache fields
+	// must be absent rather than fabricated as false.
+	if _, ok := sub["content_cache_hit"]; ok {
+		t.Errorf("content_cache_hit = %v, must be absent when unmeasured", sub["content_cache_hit"])
+	}
+	if _, ok := sub["artifact_cache_hit"]; ok {
+		t.Errorf("artifact_cache_hit = %v, must be absent when unmeasured", sub["artifact_cache_hit"])
+	}
 }
 
 // TestWorker_SubtitlesEnabled_NoCompilerFailsClosed verifies subtitles
@@ -345,6 +382,97 @@ func contains(list []string, want string) bool {
 	return false
 }
 
+// TestWorker_RecordsRunReportStages pins the clip.render observability
+// contract: the worker records its serial chain (clip.prepare → clip.render
+// → clip.publish) as stages on the kernel RunReport bound to ctx, plus the
+// rust.render_clip operation for the render work, so the RunReport critical
+// path and the benchmark can separate wall / work / critical path per phase
+// instead of treating the run as uninstrumented.
+func TestWorker_RecordsRunReportStages(t *testing.T) {
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-obs-1", AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+	}})
+	w.WithRenderPublisher(&fakeRenderPublisher{})
+
+	if _, err := w.Handle(ctx, &job.Job{ID: "job-obs-1", Payload: renderJobPayload(t, baseRenderRequest())}, nil); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	run.Finish()
+	report := run.Report()
+
+	// Every serial phase must be recorded as a stage (wall) on the run.
+	found := map[string]bool{}
+	for _, st := range report.Stages {
+		found[st.Name] = true
+	}
+	for _, name := range []string{string(StageClipPrepare), string(StageClipRender), string(StageClipPublish)} {
+		if !found[name] {
+			t.Errorf("stage %s must be recorded, got %+v", name, report.Stages)
+		}
+	}
+
+	// The render boundary must also be recorded as an operation (work),
+	// attributed to the clip.render stage with the rust component.
+	var renderOp bool
+	for _, op := range report.Operations {
+		if op.Stage == string(StageClipRender) && op.Component == string(kernobs.ComponentName("rust")) && op.Operation == string(kernobs.OperationName("render_clip")) {
+			renderOp = true
+		}
+	}
+	if !renderOp {
+		t.Errorf("rust.render_clip operation must be recorded under clip.render, got %+v", report.Operations)
+	}
+
+	// The stages are strictly sequential, so the run's critical path must be
+	// the ordered serial chain prepare → render → publish (each stage's wall
+	// is its critical-path contribution).
+	cp := report.Breakdown().CriticalPath
+	names := make([]string, 0, len(cp))
+	for _, c := range cp {
+		names = append(names, c.Name)
+	}
+	want := []string{string(StageClipPrepare), string(StageClipRender), string(StageClipPublish)}
+	if len(names) != len(want) {
+		t.Fatalf("critical path = %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("critical path = %v, want %v", names, want)
+		}
+	}
+}
+
+// TestWorker_NoRunBoundRecordsNothing pins the nil-run degradation: without a
+// Run bound to ctx the worker still completes (instrumentation must never
+// change behaviour) and records no stages.
+func TestWorker_NoRunBoundRecordsNothing(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+	}})
+	w.WithRenderPublisher(&fakeRenderPublisher{})
+
+	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-obs-2", Payload: renderJobPayload(t, baseRenderRequest())}, nil); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+}
+
 // fakeRenderPublisher records the publish input and returns a deterministic
 // publication so the full worker path (render + publish + result envelope)
 // can be exercised without Drive or SQLite.
@@ -364,6 +492,9 @@ func (f *fakeRenderPublisher) Publish(_ context.Context, in RenderPublishInput) 
 			DriveFileID: "drive-file-001",
 			DriveLink:   "https://drive.google.com/file/d/drive-file-001/view",
 			SizeBytes:   in.Outcome.SizeBytes,
+			Publish: &PublicationMetrics{
+				HashMS: 1, VideoUploadMS: 2, TaxonomyResolveMS: 3, AssetCommitMS: 4, TotalMS: 10,
+			},
 		}
 	}
 	return &out, nil
@@ -488,14 +619,21 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		t.Errorf("source_asset_id = %v", result["source_asset_id"])
 	}
 	// The full publication wall (probe + overlay + Drive upload) is folded
-	// into the V2 report as publish_ms — the benchmark's real publish phase.
+	// into the V2 report as publication_total_ms without overwriting the
+	// renderer-owned finalize timing.
 	renderBlock, ok := result["render"].(map[string]any)
 	if !ok {
 		t.Fatalf("result must carry a render block, got %+v", result["render"])
 	}
 	if metrics, ok := renderBlock["metrics_v2"].(*RenderMetricsV2); ok && metrics != nil {
-		if int64(metrics.PublishMS) == NotInstrumented {
-			t.Fatalf("publish_ms = %d, want the measured publication wall", int64(metrics.PublishMS))
+		if int64(metrics.PublicationTotalMS) == NotInstrumented {
+			t.Fatalf("publication_total_ms = %d, want the measured publication wall", int64(metrics.PublicationTotalMS))
+		}
+		if int64(metrics.ArtifactPublishMS) == NotInstrumented {
+			t.Fatalf("artifact_publish_ms = %d, want the measured publisher boundary", int64(metrics.ArtifactPublishMS))
+		}
+		if int64(metrics.RendererOutputFinalizeMS) != NotInstrumented {
+			t.Fatalf("renderer_finalize_ms = %d, must not be overwritten by worker publication timing", int64(metrics.RendererOutputFinalizeMS))
 		}
 	} else {
 		t.Fatalf("metrics_v2 = %v, want the V2 report in the render block", renderBlock["metrics_v2"])

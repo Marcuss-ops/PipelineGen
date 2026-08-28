@@ -376,6 +376,9 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	out, renderErr := cmd.CombinedOutput()
 	chrononRenderMu.Unlock()
 	metrics.ChrononRenderMS = time.Since(renderStart).Milliseconds()
+	// Chronon reports one opaque render invocation today. Keep the internal
+	// decode/composite/encode phases explicitly uninstrumented rather than
+	// distributing the invocation duration across them.
 
 	// Always persist the chronon report so we can reconstruct the GPU
 	// pipeline (init, frame loop, encoder finalize) when something fails.
@@ -443,14 +446,19 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	}, metrics.LogFields()...)...)
 
 	return rustexec.ClipRenderResult{
-		OutputPath:        plan.OutputPath,
-		SizeBytes:         st.Size(),
-		DurationSec:       float64(durationMS) / 1000,
-		Width:             uint32(plan.Output.Width),
-		Height:            uint32(plan.Output.Height),
-		FPSNum:            uint32(plan.Output.FPSNum),
-		FPSDen:            uint32(plan.Output.FPSDen),
-		FFmpegMS:          metrics.TotalMS,
+		OutputPath:  plan.OutputPath,
+		SizeBytes:   st.Size(),
+		DurationSec: float64(durationMS) / 1000,
+		Width:       uint32(plan.Output.Width),
+		Height:      uint32(plan.Output.Height),
+		FPSNum:      uint32(plan.Output.FPSNum),
+		FPSDen:      uint32(plan.Output.FPSDen),
+		FFmpegMS:    metrics.TotalMS,
+		// Chronon currently reports one render invocation plus a separately
+		// measured audio mux. Preserve the phase split in the common Rust
+		// result contract; unavailable decode/composite/encode internals remain
+		// nil rather than being fabricated from the coarse duration.
+		AudioMuxMS:        &metrics.AudioMuxMS,
 		AudioCopyEligible: boolPtr(true),
 		AudioEncodePasses: intPtr(0),
 		SubtitleRasterCPU: boolPtr(false),

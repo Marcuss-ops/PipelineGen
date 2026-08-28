@@ -151,6 +151,17 @@ func (p *DrivePublisher) Publish(ctx context.Context, artifact LocalizedClipArti
 // localizedClipFilename derives the deterministic Drive filename from the
 // artifact identity + language: "<clip_id>.<language>.mp4".
 func localizedClipFilename(artifact LocalizedClipArtifact) string {
-	name := artifact.ClipID + "." + artifact.Language + ".mp4"
+	// The rendered bytes, not the source clip name, identify a regeneration.
+	// Keeping the digest in the filename prevents ConflictSkip from returning
+	// an older render while preserving idempotency for identical bytes.
+	digest := strings.TrimSpace(artifact.SHA256)
+	if len(digest) > 12 {
+		digest = digest[:12]
+	}
+	name := artifact.ClipID + "." + artifact.Language
+	if digest != "" {
+		name += "." + digest
+	}
+	name += ".mp4"
 	return name
 }

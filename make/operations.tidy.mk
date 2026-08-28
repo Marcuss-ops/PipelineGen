@@ -36,9 +36,45 @@ tidy-check: go-version-check
 vuln:
 	govulncheck ./...
 
-# Run benchmarks
+# Run benchmarks. The local E2E benchmark must depend on preflight-e2e;
+# existing Go microbenchmarks remain independent and read-only.
 bench:
 	$(GO) test -bench=. -benchmem ./...
+
+# Canonical E2E benchmark gate. The actual workload is supplied by the
+# operator through BENCHMARK_COMMAND; no workload is executed if preflight
+# fails. Keep this target on main-only via scripts/preflight-e2e.sh.
+benchmark-e2e: preflight-e2e
+	@test -n "$(BENCHMARK_COMMAND)" || { echo "❌ BENCHMARK_COMMAND is required" >&2; exit 2; }
+	@bash -lc '$(BENCHMARK_COMMAND)'
+
+# benchmark-generate — canonical video generation benchmark. Uses
+# scripts/bench/generate-video.sh which submits N jobs, polls for
+# completion, and emits a structured JSON timing report.
+#
+# Modes:
+#   BENCH_TOPIC=X          Generate clips from topic (default: Matt Damon)
+#   BENCH_CLIP_ID=A,B,C    Render existing clip IDs
+#   BENCH_WATERMARK=X      Apply watermark asset ID
+#   BENCH_DRIVE_FOLDER=X   Upload to specific Drive folder
+#
+# Examples:
+#   make benchmark-generate BENCH_TOPIC="Dune" BENCH_CLIPS=3
+#   make benchmark-generate BENCH_CLIP_ID=asset_abc,asset_def
+#   make benchmark-generate BENCH_TOPIC="Interstellar" BENCH_WATERMARK=wm_xyz
+benchmark-generate: preflight-e2e
+	@_CLIP_ARGS=""; \
+	if [ -n "$(BENCH_CLIP_ID)" ]; then \
+		IFS=',' read -ra _IDS <<< "$(BENCH_CLIP_ID)"; \
+		for _id in "$${_IDS[@]}"; do _CLIP_ARGS="$${_CLIP_ARGS} --clip-id $${_id}"; done; \
+	fi; \
+	bash scripts/bench/generate-video.sh \
+		$${_CLIP_ARGS} \
+		$${BENCH_TOPIC:+--topic "$(BENCH_TOPIC)"} \
+		$${BENCH_TOPIC:+--clips "$(BENCH_CLIPS:-5)"} \
+		${BENCH_WATERMARK:+--watermark $(BENCH_WATERMARK)} \
+		${BENCH_DRIVE_FOLDER:+--drive-folder $(BENCH_DRIVE_FOLDER)} \
+		${BENCH_OUTPUT:+--output $(BENCH_OUTPUT)}
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
 
@@ -71,6 +107,39 @@ preflight: go-version-check node-version-check
 	@test -f .env || echo "⚠️  .env not found — copy .env.example to .env (server may refuse boot without VELOX_ADMIN_TOKEN)" >&2
 	@echo "✅ SQLite migrations: $$N files"
 	@echo "Preflight passed"
+
+# preflight-e2e — canonical runtime dependency matrix. This is deliberately
+# separate from the repository/config preflight above: it probes the live
+# services and is the mandatory dependency of the E2E benchmark target.
+preflight-e2e:
+	@bash scripts/preflight-e2e.sh
+
+# Canonical local E2E lifecycle. The harness owns only its recorded local
+# processes and the Compose project; it never mutates migrations or databases.
+e2e-up:
+	@bash scripts/dev/e2e-up.sh up
+e2e-status:
+	@bash scripts/dev/e2e-up.sh status
+e2e-down:
+	@bash scripts/dev/e2e-up.sh down
+
+# dev-up — deterministic staged startup with readiness gates at each stage.
+# Startup order: Infrastructure → Server → Worker → Preflight.
+# Each stage blocks until its readiness probe passes or times out.
+# Environment overrides:
+#   E2E_READINESS_TIMEOUT=60    Per-service timeout (default 60s)
+#   E2E_SKIP_PREFLIGHT=1        Skip preflight (debugging only)
+#   E2E_START_LOCAL_PROCESSES=1 Start server/worker locally instead of Compose
+dev-up:
+	@bash scripts/dev/e2e-up.sh dev-up
+dev-down:
+	@bash scripts/dev/e2e-up.sh dev-down
+
+# velox — canonical operations CLI. Single entry point for lifecycle,
+# API, database, and environment operations. Never run raw curl,
+# sqlite3, or source .env — use this instead.
+velox:
+	@bash scripts/ops.sh $(ARGS)
 
 # verify-format — Cleanup Plan P0-3 followup (June 2026): the actually
 # FAIL-CLOSED gofmt gate. Used as a dependency of verify-main so a
