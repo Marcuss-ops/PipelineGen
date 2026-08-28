@@ -22,6 +22,9 @@ package localization
 import (
 	"context"
 	"fmt"
+	"time"
+
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // LocalizeInput is the fully-resolved input for one localization fan-out.
@@ -106,7 +109,10 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 	// per-plan mechanics, only that each plan yields one certified artifact.
 	folderID := in.FolderID
 	renderFunc := func(ctx context.Context, plan LocalizedClipPlan) (LocalizedClipArtifact, error) {
+		renderStart := time.Now().UTC()
 		rendered, err := s.renderer.Render(ctx, plan)
+		renderEnd := time.Now().UTC()
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, err)
 		if err != nil {
 			return rendered, err
 		}
@@ -116,7 +122,11 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 			rendered.SubtitlePath = ""
 			rendered.SubtitleSHA256 = ""
 		}
-		return s.uploader.Publish(ctx, rendered, folderID)
+		publishStart := time.Now().UTC()
+		published, err := s.uploader.Publish(ctx, rendered, folderID)
+		publishEnd := time.Now().UTC()
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseDrive, publishStart, publishEnd, kernobs.StageStatusCompleted, err)
+		return published, err
 	}
 
 	scheduler, err := NewScheduler(ctx, renderFunc, concurrency)

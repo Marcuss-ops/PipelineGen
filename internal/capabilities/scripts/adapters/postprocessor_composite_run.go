@@ -10,7 +10,6 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -171,54 +170,7 @@ func (r *PostProcessorRegistry) run(
 		// The canonical Run owns timing whenever the worker has bound one to
 		// the context. The no-run branch is retained only for legacy callers
 		// and unit fixtures that execute the registry standalone.
-		var (
-			stageReport kernobs.StageReport
-			ppResult    *PostProcessResult
-			err         error
-		)
-		if kernobs.FromContext(ctx) != nil {
-			stageReport, err = kernobs.MeasureStageReport(ctx, kernobs.StageName(name), func(stageCtx context.Context) error {
-				processorCtx, cancel := context.WithTimeout(stageCtx, postprocessorOperationTimeout)
-				defer cancel()
-				var processErr error
-				ppResult, processErr = proc.Process(processorCtx, plan, input)
-				return processErr
-			})
-			// StageWithReport already returns the exact observation. The
-			// assignment is intentionally projection-only: no second clock.
-		} else {
-			start := time.Now()
-			processorCtx, cancel := context.WithTimeout(ctx, postprocessorOperationTimeout)
-			ppResult, err = proc.Process(processorCtx, plan, input)
-			cancel()
-			legacyMs := time.Since(start).Milliseconds()
-			stageReport = kernobs.StageReport{
-				Name:       string(name),
-				Status:     kernobs.StageStatusCompleted,
-				DurationMs: legacyMs,
-			}
-			if err != nil {
-				stageReport.Status = kernobs.StageStatusFailed
-			}
-
-		}
-		adapter := r.canonicalTimingAdapter()
-		if adapter == nil {
-			adapter = &CanonicalTimingAdapter{VidRush: r.vidRushTimingMetrics()}
-		}
-		if projectionErr := adapter.ProjectStage(ctx, result, string(name), stageReport); projectionErr != nil {
-			if r.log != nil {
-				r.log.Warn("canonical timing projection failed",
-					zap.String("name", string(name)),
-					zap.Error(projectionErr))
-			}
-		}
-		// Concurrency safety: a processor may return a shared/cached
-		// PostProcessResult (common in stubs and caches). Clone before
-		// mutating DurationMs or passing to merge so concurrent Run
-		// calls cannot race on the same pointer.
-		ppResult = clonePostProcessResult(ppResult)
-
+		stageReport, ppResult, err := r.invokePostProcessor(ctx, plan, input, name, proc, result)
 		if err != nil {
 			reportProcessorProgress(reporter, ProcessorProgressEvent{
 				Index: index, Total: len(plan.Postprocessors), Name: name,

@@ -116,53 +116,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
 	}
-	cap := cfg.Scripts.Capability
-	if !cap.Enabled {
+	if !cfg.Scripts.Capability.Enabled {
 		log.Info("wireScriptFlow: script capability disabled by configuration")
 		return nil
 	}
-
-	// Fail-closed dependency checks. In production a missing required
-	// dependency aborts the boot. In dev mode (DeliveryInsecureDev) the
-	// module is disabled explicitly and no route is registered.
-	aiPresent := root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptEngine != nil
-	audioPresent := root.Domains != nil && root.Domains.AudioProcessor != nil
-	if cap.RequireAI {
-		if !aiPresent {
-			if cfg.Security.DeliveryInsecureDev {
-				log.Warn("wireScriptFlow: script capability disabled in dev — missing AI bundle (ScriptEngine)")
-				return nil
-			}
-			return fmt.Errorf("wireScriptFlow: required AI bundle (ScriptEngine) is missing")
-		}
-		if !audioPresent {
-			if cfg.Security.DeliveryInsecureDev {
-				log.Warn("wireScriptFlow: script capability disabled in dev — missing audio processor")
-				return nil
-			}
-			return fmt.Errorf("wireScriptFlow: required audio processor is missing")
-		}
-	} else if !aiPresent || !audioPresent {
-		log.Warn("wireScriptFlow: AI bundle incomplete — disabling ScriptFlow without registering routes")
+	ready, err := validateScriptFlowDependencies(cfg, root, log)
+	if err != nil {
+		return err
+	}
+	if !ready {
 		return nil
-	}
-	if cap.RequireDrive {
-		if root.Drive == nil {
-			if cfg.Security.DeliveryInsecureDev {
-				log.Warn("wireScriptFlow: script capability disabled in dev — missing Drive bundle")
-				return nil
-			}
-			return fmt.Errorf("wireScriptFlow: required Drive bundle is missing")
-		}
-	}
-	if cap.RequireDatabase {
-		if root.DB == nil {
-			if cfg.Security.DeliveryInsecureDev {
-				log.Warn("wireScriptFlow: script capability disabled in dev — missing database")
-				return nil
-			}
-			return fmt.Errorf("wireScriptFlow: required database is missing")
-		}
 	}
 
 	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────

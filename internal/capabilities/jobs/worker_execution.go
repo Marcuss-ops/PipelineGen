@@ -144,6 +144,8 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			RetryCount:     j.RetryCount,
 		})
 		ctx = kernobs.WithRun(ctx, run)
+		claimedAt := time.Now().UTC()
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseClaimed, claimedAt, claimedAt, kernobs.StageStatusCompleted, nil)
 		defer func() {
 			if run == nil {
 				return
@@ -158,6 +160,26 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				run.Finish()
 			}
 		}()
+		// FASE resource telemetry (August 2026): sample host/process
+		// resources every 500ms for the run's canonical identity
+		// (run_id/job_id/attempt_id/worker_id/host) until runJob returns,
+		// covering dispatch AND finalize. The stop defer is registered
+		// AFTER the run-finish defer, so sampling halts before the run is
+		// finalized. Sampling is best-effort: failures are logged by the
+		// loop and never affect the job outcome (instrumentation must
+		// never change behaviour).
+		if w.resourceSampler != nil {
+			if report := run.Report(); report != nil {
+				stop := w.resourceSampler.SampleLoop(ctx, kernobs.ResourceSampleIdentity{
+					RunID:     report.RunID,
+					JobID:     report.JobID,
+					AttemptID: report.AttemptID,
+					WorkerID:  report.WorkerID,
+					Host:      w.host,
+				}, w.log)
+				defer stop()
+			}
+		}
 	}
 
 	claimAt := time.Now().UTC()
@@ -308,7 +330,9 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	}
 
 	postWriterFinalizeStarted := time.Now().UTC()
+	finalizeStartedAt := time.Now().UTC()
 	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)
+	kernobs.RecordClipPhase(finalizationCtx, kernobs.ClipPhaseFinalize, finalizeStartedAt, time.Now().UTC(), kernobs.StageStatusCompleted, dispatchErr)
 	// CompleteWithArtifacts is outside the dispatcher-owned pipeline stages,
 	// but it is still on the worker critical path. Record it explicitly so
 	// SQLite contention, artifact publication, or finalizer retries cannot be

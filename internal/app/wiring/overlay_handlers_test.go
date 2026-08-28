@@ -12,6 +12,7 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	infra "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
@@ -367,4 +368,99 @@ func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capove
 		SizeBytes:    int64(len(b)),
 		SHA256:       hex.EncodeToString(sum[:]),
 	}, nil
+}
+
+// TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun pins the
+// RenderingGen → canonical mapping for the in-process overlay path: the
+// handler records each RenderingGen phase (plan/materialize/render/
+// objectstore_upload/hash) as one canonical operation on the run bound to
+// ctx (component renderinggen, stage process) instead of a new timing
+// family. Without a bound run the handlers degrade to plain pass-throughs.
+func TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-overlay", JobType: capoverlay.JobTypeRender, AttemptID: "attempt-overlay"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	plan := testPlan()
+	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(ctx, &job.Job{ID: "job-overlay", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if r.calls != 1 {
+		t.Fatalf("renderer calls=%d, want 1", r.calls)
+	}
+
+	report := run.Finish()
+	got := map[string]bool{}
+	for _, op := range report.Operations {
+		if op.Component != string(kernobs.ComponentRenderingGen) {
+			t.Fatalf("operation %s component=%q, want renderinggen", op.Operation, op.Component)
+		}
+		if op.Stage != string(kernobs.StageProcess) {
+			t.Fatalf("operation %s stage=%q, want process", op.Operation, op.Stage)
+		}
+		if op.Status != string(kernobs.StageStatusCompleted) {
+			t.Fatalf("operation %s status=%q, want completed", op.Operation, op.Status)
+		}
+		got[op.Operation] = true
+	}
+	for _, want := range []string{"plan", "materialize", "render", "objectstore_upload", "hash"} {
+		if !got[want] {
+			t.Fatalf("missing canonical operation %q (got %v)", want, got)
+		}
+	}
+}
+
+// TestOverlayPrepareMapsMaterializeToCanonicalRun covers the prepare
+// handler's materialize phase.
+func TestOverlayPrepareMapsMaterializeToCanonicalRun(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-prepare", JobType: capoverlay.JobTypePrepare, AttemptID: "attempt-prepare"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	req := capoverlay.PrepareRequest{
+		SchemaVersion: capoverlay.SchemaVersionPrepare, PlanID: "run-001", VideoID: "run-001",
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
+		Intents: []capoverlay.OverlayIntent{{Version: capoverlay.OverlayIntentVersion, IntentID: "intent-1", SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity, Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"}, Kind: string(capoverlay.KindEntityCard), TemplateID: "person_default", Payload: capoverlay.IntentPayload{Name: "Tom"}, TimingState: capoverlay.TimingStatePending}},
+	}
+	payload, _ := json.Marshal(req)
+	if _, err := h.Prepare(ctx, &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	report := run.Finish()
+	for _, op := range report.Operations {
+		if op.Operation == string(kernobs.OperationMaterialize) && op.Component == string(kernobs.ComponentRenderingGen) {
+			return
+		}
+	}
+	t.Fatalf("prepare did not record the materialize operation: %+v", report.Operations)
 }

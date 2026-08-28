@@ -63,36 +63,49 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
-	cacheOnly := plan.MediaPlan.Mode == mediadomain.MediaPlanModeCacheOnly
-	entityImagesEnabled := plan.MediaPlan.Extraction.EntityImages.Enabled
-	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && !entityImagesEnabled {
-		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
-		for _, segment := range input.VidRushSegments {
-			cloned := cloneVidRushSegmentResult(segment)
-			cloned.Cache.InternetImages = "BYPASSED"
-			segments = append(segments, cloned)
-		}
-		if len(segments) == 0 {
-			return &PostProcessResult{}, nil
-		}
-		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
-	}
-	if p.searcher == nil && !cacheOnly {
-		return &PostProcessResult{
-			Changed:  true,
-			Warnings: []string{"internet_images: InternetImageSearcher not configured"},
-		}, nil
+	options := internetImageOptions(plan)
+	if result, handled := p.handleBypassOrUnavailable(plan, input, options); handled {
+		return result, nil
 	}
 	if len(input.VidRushSegments) == 0 {
 		return &PostProcessResult{}, nil
 	}
-	perQueryLimit := 10
-	if plan.MediaPlan.Planner.CandidateLimit > 0 {
-		perQueryLimit = plan.MediaPlan.Planner.CandidateLimit
+	return p.processInternetImageSegments(ctx, plan, input, options)
+}
+
+type internetImageProcessOptions struct {
+	cacheOnly           bool
+	entityImagesEnabled bool
+}
+
+func (p *InternetImagesProcessor) handleBypassOrUnavailable(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, bool) {
+	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && !options.entityImagesEnabled {
+		segments := markInternetImagesBypassed(input.VidRushSegments)
+		if len(segments) == 0 {
+			return &PostProcessResult{}, true
+		}
+		return &PostProcessResult{VidRushSegments: segments, Changed: true}, true
 	}
-	if perQueryLimit > 50 {
-		perQueryLimit = 50
+	if p.searcher == nil && !options.cacheOnly {
+		return &PostProcessResult{Changed: true, Warnings: []string{"internet_images: InternetImageSearcher not configured"}}, true
 	}
+	return nil, false
+}
+
+func markInternetImagesBypassed(input []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input))
+	for _, segment := range input {
+		cloned := cloneVidRushSegmentResult(segment)
+		cloned.Cache.InternetImages = "BYPASSED"
+		segments = append(segments, cloned)
+	}
+	return segments
+}
+
+func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, error) {
+	cacheOnly := options.cacheOnly
+	entityImagesEnabled := options.entityImagesEnabled
+	perQueryLimit := internetImageCandidateLimit(plan)
 
 	// Pre-index scenes by identity so each segment's entity-image query
 	// lookup is O(1) instead of a full O(scenes) scan per segment (the
@@ -139,7 +152,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		// cache_only is an absolute no-provider contract. A forced refresh flag
 		// must not turn it into an external search; it may only replay a warm
 		// materialized result.
-		if cacheOnly || (!plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh) {
+		if internetImageCacheReadable(plan, options) {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
 				if payload, ok := cached.(internetImageCachePayload); ok {
 					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
@@ -173,7 +186,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 		if cacheOnly {
 			updated.Cache.InternetImages = "CACHE_MISS"
-			warnings = append(warnings, fmt.Sprintf("internet_images: cache-only miss for segment %s", updated.SegmentID))
+			warnings = append(warnings, internetImageCacheMissWarning(updated.SegmentID))
 			updatedSegments = append(updatedSegments, updated)
 			continue
 		}

@@ -218,8 +218,8 @@ func TestLocalize_RunsFullFanOut(t *testing.T) {
 	if result.Ref == nil || result.Ref.ID != "doc-1" || len(result.Ref.Entries) != 2 {
 		t.Fatalf("doc ref = %+v", result.Ref)
 	}
-	// The uploader must receive the deterministic "<clip>.<lang>.mp4" filename
-	// and the certified content hash for every language.
+	// The uploader must receive the deterministic regenerated-artifact filename
+	// (clip + language + content digest) and the certified content hash.
 	if len(uploader.got) != 2 {
 		t.Fatalf("uploader calls: got %d, want 2", len(uploader.got))
 	}
@@ -232,7 +232,7 @@ func TestLocalize_RunsFullFanOut(t *testing.T) {
 		if !ok {
 			t.Fatalf("uploader never received language %q", lang)
 		}
-		if in.Filename != "clip-1."+lang+".mp4" || in.FolderID != "folder-1" {
+		if in.Filename != "clip-1."+lang+".aaaaaaaaaaaa.mp4" || in.FolderID != "folder-1" {
 			t.Fatalf("uploader input for %q = %+v", lang, in)
 		}
 		if in.ContentHash != strings.Repeat("a", 64) {

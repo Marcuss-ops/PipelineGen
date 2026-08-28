@@ -126,25 +126,8 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	// doesn't pin a connection in a doomed transaction. Unknown enum
 	// values, missing required fields, and incompatible combinations
 	// are surfaced as typed sentinels the caller can errors.Is-probe.
-	if cmd.JobID == "" {
-		return domjob.FinalizeAttemptResult{}, errors.New("FinalizeAttempt: JobID required")
-	}
-	if !cmd.Outcome.IsValid() {
-		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
-	}
-	if cmd.Outcome == domjob.OutcomeSucceeded && len(cmd.Result) == 0 {
-		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptResultMissing
-	}
-	if cmd.Outcome != domjob.OutcomeSucceeded && cmd.ErrorMessage == "" {
-		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptErrorMissing
-	}
-	if len(cmd.DLQPayload) > 0 && cmd.Outcome == domjob.OutcomeSucceeded {
-		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptDLQIncompatible
-	}
-	for _, evt := range cmd.OutboxEvents {
-		if evt.Type == "" || evt.EventKey == "" {
-			return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptOutboxEventMissing
-		}
+	if err := validateFinalizeAttemptCommand(cmd); err != nil {
+		return domjob.FinalizeAttemptResult{}, err
 	}
 
 	now := time.Now().UTC()
@@ -204,33 +187,13 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	// field is never mutated. If we mutated cmd.ErrorMessage, a caller
 	// reusing cmd across retries (e.g. a worker with retry-on-failure
 	// loop) would silently propagate the suffix across all retries.
-	targetStatus := domjob.StatusSucceeded
-	incrementRetry := false
-	errorMessage := cmd.ErrorMessage
-	switch cmd.Outcome {
-	case domjob.OutcomeSucceeded:
-		targetStatus = domjob.StatusSucceeded
-	case domjob.OutcomeFailedPermanent:
-		targetStatus = domjob.StatusFailed
-	case domjob.OutcomeScheduleRetry:
-		if retryCount+1 > maxRetries {
-			// Retry-exhaustion downgrade: caller asked SCHEDULE_RETRY but
-			// the row is already at max_retries. Atomic downgrade to
-			// FAILED, with forensic-suffix on ErrorMessage so operators
-			// can distinguish "caller asked retry" from "retry limit hit".
-			targetStatus = domjob.StatusFailed
-			incrementRetry = false
-			errorMessage = cmd.ErrorMessage + " (max retries exhausted)"
-		} else {
-			targetStatus = domjob.StatusRetryWait
-			incrementRetry = true
-		}
-	default:
-		// Defensive: cmd.Outcome.IsValid() already guards this in step 1;
-		// this branch is dead code but keeps the switch exhaustive under
-		// any future enum widening that the IsValid helper misses.
-		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
+	decision, err := decideFinalizeAttempt(cmd.Outcome, cmd.ErrorMessage, retryCount, maxRetries)
+	if err != nil {
+		return domjob.FinalizeAttemptResult{}, err
 	}
+	targetStatus := decision.targetStatus
+	incrementRetry := decision.incrementRetry
+	errorMessage := decision.errorMessage
 	// errorMessage is consumed by steps 4 (SET error=?), 5 (DLQ error=?),
 	// and 8 (job_events message=?); the local-var assignment above
 	// documents the no-mutate-input contract for the retry-exhaustion

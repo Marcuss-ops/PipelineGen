@@ -1,4 +1,4 @@
-# PipelineGen — Product Validation Aggregator (Tests 8, 9, 15, 17, 18)
+# PipelineGen — Product Validation Aggregator (Tests 9, 15, 17, 18)
 
 > **Home**: questo aggregator vive nel repo operativo PipelineGen, NON nel core
 > Chronon3d. Il core non deve sapere cosa sia una founder dashboard: la
@@ -8,7 +8,7 @@
 > **Split 2026-08-28**: i Test 8, 9, 15, 17, 18 sono stati spostati qui dal
 > TICKET-125 core per separare ENGINE CERTIFICATION da PRODUCT VALIDATION.
 
-| **PV-AGG — Product Validation aggregator (Tests 8, 9, 15, 17, 18)** | |
+| **PV-AGG — Product Validation aggregator (Tests 9, 15, 17, 18)** | |
 | --- | --- |
 | **Stato** | PARTIAL (catalog landed; per-test runtime richiede esecuzione umana e/o working build host) |
 | **Priorità** | P1 (product evidence; non bloccante per la certificazione del motore) |
@@ -22,9 +22,9 @@
 |---|---|---|---|---|
 | 8 | manual_touches_per_video counter | `apps/chronon3d_cli/utils/touchpoint/manual_touchpoint_log.{hpp,cpp}` + `--touchpoint <kind>` CLI flag + `~/.chronon3d/telemetry/touchpoints.jsonl` (nel core — il counter nasce lì, la metrica è consumata qui) | `chronon3d_cli telemetry query --metric manual_touches_per_video --last 1` exits 0 + counter non-null | DONE (counter wired nel core; consumo metrico qui) |
 | 9 | Pilota cliente reale (7gg) | `docs/product-validation/TEST-9-pilot-protocol.md` + `TEST-9-feedback-form.md` + `TEST-9-transcript-7gg.md` (harness da creare) | Transcript aggregate `transcripts/aggregate.md` con median Q1 ≥ +1 across ≥5 soggetti | HARNESS-MISSING → [TICKET-TEST-9-PILOT-7GG](TICKET-TEST-9-PILOT-7GG.md) |
-| 15 | Test del prodotto (non del motore) | 4 docs harness (one-pager, feedback-form, pilot-protocol, transcript-template) — rimossi dal core nel docs cleanup `1bfad805`; da ricreare qui | median Q1 ≥ +1 (≥3 of 5 YES) across ≥5 soggetti + median Q2 ≥ +1 + median Q3 ≥ 10 min + NO Q3=0 | EVIDENCE-GAP (harness archiviato nel cleanup docs core; da ricreare qui) |
-| 17 | Confronto diretto (Chronon3D / pipeline precedente / Remotion v4) | `docs/product-validation/TEST-17-COMPARISON.md` (8 metriche × 3 prodotti + cert tier `[EVIDENCED/SOURCED/ESTIMATED]`) | 24/24 celle populate con cert tier + 2 celle `[RADICAL W]` + 1 cella `[HONEST L]` | TABLE-COMPLETE (celle compilate nel core; file da migrare qui) |
-| 18 | Weekly founder dashboard (8 metriche) | `scripts/run_weekly_scorecard.sh` (spostato dal core) + `docs/product-validation/TEST-18-WEEKLY-DASHBOARD.md` | `bash scripts/run_weekly_scorecard.sh` exits 0 + tabella 8-row (videos_completed, failure_rate, manual_touches_per_video, cost_per_finished_minute, p95_render_time, peak_memory, deterministic_hash_failures, bbox_contract_violations) | OPEN → [TICKET-TEST-18-WEEKLY-DASHBOARD](TICKET-TEST-18-WEEKLY-DASHBOARD.md) |
+| 15 | Test del prodotto (non del motore) | `TEST-15-PRODUCT-VALIDATION.md` + `fixtures/test-15-feedback.schema.json` + `tools/product_validation.py` | validator exit 0: ≥5 soggetti, median Q1/Q2 ≥1, median Q3 ≥10 min, ≥3 Q1 positivi, nessun Q3=0 | READY (evidence input required) |
+| 17 | Confronto diretto (Chronon3D / pipeline precedente / Remotion v4) | `TEST-17-COMPARISON.md` + `fixtures/test-17-comparison.schema.json` + `tools/product_validation.py` | validator exit 0: 24 celle, tier validi, 2 `[RADICAL W]`, 1 `[HONEST L]` | READY (evidence input required) |
+| 18 | Weekly founder dashboard (8 metriche) | `scripts/run_weekly_scorecard.sh` + `TICKET-TEST-18-WEEKLY-DASHBOARD.md` | script exits 0 with tabella 8-row su telemetry SQLite/JSONL; rate costo esplicito via env | READY (live telemetry required) |
 
 # Ticket operativi
 

@@ -36,7 +36,7 @@ import (
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -200,186 +200,21 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		// Audio-only scene: no source clip to burn subtitles onto.
 		return nil
 	}
-	sourceLang := string(in.SourceLanguage)
-	if sourceLang == "" {
-		sourceLang = strings.TrimSpace(a.cfg.SourceLanguage)
-	}
-	targetLang := string(in.Language)
-	if targetLang == "" {
-		targetLang = sourceLang
-	}
-	if sourceLang == "" || targetLang == "" {
-		return fmt.Errorf("localized render: source and target language are required (scene %q)", in.SceneID)
-	}
-	// Clip subtitles are canonical source media metadata.  A script may be
-	// generated in another language (for example it) while the source clip's
-	// existing timed transcript is stored as en.  Reuse that track instead of
-	// invoking ASR or requiring a translation that was never requested.
-	if resolvedLang, resolveErr := a.resolveExistingSubtitleLanguage(ctx, assetID, sourceLang); resolveErr != nil {
-		return resolveErr
-	} else if resolvedLang != "" {
-		sourceLang = resolvedLang
-	}
-	if sourceLang != targetLang {
-		if target, targetCues, targetErr := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript); targetErr != nil {
-			return fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, targetErr)
-		} else if target == nil || len(targetCues) == 0 {
-			// No translation track is not a missing-subtitle condition: the
-			// original timed subtitles are still authoritative and burnable.
-			targetLang = sourceLang
-		}
-	}
-
-	// Subtitles are never derived from scene narration/clip descriptions. They
-	// must come from the canonical timed transcript in SQLite. If it is absent,
-	// acquire/transcribe it once, persist it, and let the next render reuse it.
-	generatedSubtitles, err := a.ensureDatabaseSubtitles(ctx, assetID, sourceLang, targetLang, in)
+	built, err := a.buildLocalizedRenderRequest(ctx, in)
 	if err != nil {
 		return err
 	}
-
-	// 3. Single-language fan-out: Rust renders this clip in this language now.
-	var watermark *cliprender.MaterializedAsset
-	var watermarkSpec *cliprender.WatermarkSpec
-	if in.Render.Watermark != nil && in.Render.Watermark.Enabled {
-		if strings.TrimSpace(in.Render.Watermark.Text) == "" && (strings.TrimSpace(in.Render.Watermark.AssetID) == "" || a.assets == nil || a.material == nil) {
-			return fmt.Errorf("localized render: watermark requested but its asset resolver is not wired")
-		}
-		if strings.TrimSpace(in.Render.Watermark.AssetID) != "" {
-			ref, err := a.assets.ResolveAsset(ctx, in.Render.Watermark.AssetID)
-			if err != nil {
-				return fmt.Errorf("localized render: resolve watermark %q: %w", in.Render.Watermark.AssetID, err)
-			}
-			watermark, err = a.material.Materialize(ctx, *ref)
-			if err != nil {
-				return fmt.Errorf("localized render: materialize watermark %q: %w", in.Render.Watermark.AssetID, err)
-			}
-		}
-		watermarkSpec = &cliprender.WatermarkSpec{
-			Enabled: true, AssetID: in.Render.Watermark.AssetID,
-			Text:     in.Render.Watermark.Text,
-			Position: in.Render.Watermark.Position, Opacity: in.Render.Watermark.Opacity,
-			MarginPX: in.Render.Watermark.MarginPX,
-			// The canonical kernel/script style block (size, color, shadow,
-			// transition) projects verbatim — no parallel definition here.
-			Style: in.Render.Watermark.Style,
-		}
-	}
-
-	// Background is a request-level selection resolved here exactly like the
-	// watermark: mode=asset requires the materialized asset, blur_source/none
-	// carry no asset block.
-	var background *cliprender.MaterializedAsset
-	backgroundMode := ""
-	if in.Render.Background != nil {
-		backgroundMode = in.Render.Background.Mode
-		if backgroundMode == "" {
-			backgroundMode = cliprender.BackgroundModeNone
-		}
-		if backgroundMode == cliprender.BackgroundModeAsset {
-			if strings.TrimSpace(in.Render.Background.AssetID) == "" || a.assets == nil || a.material == nil {
-				return fmt.Errorf("localized render: background requested but its asset resolver is not wired")
-			}
-			ref, err := a.assets.ResolveAsset(ctx, in.Render.Background.AssetID)
-			if err != nil {
-				return fmt.Errorf("localized render: resolve background %q: %w", in.Render.Background.AssetID, err)
-			}
-			background, err = a.material.Materialize(ctx, *ref)
-			if err != nil {
-				return fmt.Errorf("localized render: materialize background %q: %w", in.Render.Background.AssetID, err)
-			}
-		}
-	}
-	req := localization.LocalizationRequest{RenderConcurrency: a.cfg.Concurrency}
-	req.Languages = []localization.LanguageRequest{{Language: targetLang, Priority: 0}}
-	req.Normalize()
-
-	clipID := strings.TrimSpace(in.ClipID)
-	if clipID == "" {
-		clipID = assetID
-	}
-	destinationFolderID := strings.TrimSpace(a.cfg.FolderID)
-	if strings.TrimSpace(in.Render.DriveFolderID) != "" {
-		destinationFolderID = strings.TrimSpace(in.Render.DriveFolderID)
-	}
-	subtitleFolderID := strings.TrimSpace(a.cfg.SubtitleFolderID)
-	if subtitleFolderID != "" {
-		if a.cfg.FolderAdmin == nil {
-			return fmt.Errorf("localized render: subtitle folder admin is not wired")
-		}
-		cacheKey := "subtitle\x00" + subtitleFolderID + "\x00" + clipID
-		a.folderMu.Lock()
-		cached := a.folderCache[cacheKey]
-		if cached != "" {
-			a.folderMu.Unlock()
-			subtitleFolderID = cached
-		} else {
-			resolved, err := a.cfg.FolderAdmin.GetOrCreateFolder(ctx, clipID, subtitleFolderID)
-			if err != nil {
-				a.folderMu.Unlock()
-				return fmt.Errorf("localized render: ensure subtitle subfolder %q: %w", clipID, err)
-			}
-			a.folderCache[cacheKey] = resolved
-			a.folderMu.Unlock()
-			subtitleFolderID = resolved
-		}
-	}
-	if subfolder := strings.TrimSpace(in.Render.DriveSubfolderName); subfolder != "" {
-		if a.cfg.FolderAdmin == nil {
-			return fmt.Errorf("localized render: Drive folder admin is not wired for subfolder %q", subfolder)
-		}
-		cacheKey := destinationFolderID + "\x00" + subfolder
-		a.folderMu.Lock()
-		cached := a.folderCache[cacheKey]
-		if cached != "" {
-			a.folderMu.Unlock()
-			destinationFolderID = cached
-		} else {
-			var err error
-			destinationFolderID, err = a.cfg.FolderAdmin.GetOrCreateFolder(ctx, subfolder, destinationFolderID)
-			if err != nil {
-				a.folderMu.Unlock()
-				return fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
-			}
-			a.folderCache[cacheKey] = destinationFolderID
-			a.folderMu.Unlock()
-		}
-	}
-	a.renderGate <- struct{}{}
-	defer func() { <-a.renderGate }()
-	res, err := a.svc.Localize(ctx, LocalizeInput{
-		AssetID:                assetID,
-		JobID:                  in.RunID,
-		SceneID:                in.SceneID,
-		ClipID:                 clipID,
-		SourceLanguage:         sourceLang,
-		Request:                req,
-		FolderID:               destinationFolderID,
-		SubtitleFolderID:       subtitleFolderID,
-		UploadSubtitleArtifact: generatedSubtitles,
-		DocTitle:               fmt.Sprintf("Localized — %s (%s)", clipID, targetLang),
-		DocFolderID:            a.cfg.DocFolderID,
-		DocIdempotencyKey:      in.RunID + ":" + in.SceneID + ":" + targetLang,
-		SkipDocument:           true,
-		Watermark:              watermark,
-		WatermarkSpec:          watermarkSpec,
-		WatermarkText: func() string {
-			if in.Render.Watermark == nil {
-				return ""
-			}
-			return in.Render.Watermark.Text
-		}(),
-		Background:     background,
-		BackgroundMode: backgroundMode,
-		SubtitlesStyle: func() *scriptpkg.VideoVisualStyleSpec {
-			if in.Render.Subtitles == nil {
-				return nil
-			}
-			return in.Render.Subtitles.Style
-		}(),
-	})
+	assetID = built.identity.assetID
+	clipIDForChild = built.identity.clipIDChild
+	clipID := built.identity.clipID
+	release, err := kernobs.AcquireSlot(ctx, a.renderGate, kernobs.ComponentRenderQueue, kernobs.WaitSemaphore)
 	if err != nil {
-		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, targetLang, err)
+		return err
+	}
+	defer release()
+	res, err := a.svc.Localize(ctx, a.localizeInput(in, built))
+	if err != nil {
+		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
 	}
 	if len(res.Failures) > 0 {
 		for _, failure := range res.Failures {
@@ -389,7 +224,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 			}
 			a.log.Error("localized render child failed",
 				zap.String("scene_id", in.SceneID),
-				zap.String("language", targetLang),
+				zap.String("language", built.identity.targetLang),
 				zap.String("clip_id", clipID),
 				zap.String("error", failureText),
 			)
@@ -400,14 +235,14 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 			}
 			if in.OnFailed != nil {
 				if sinkErr := in.OnFailed(scriptgeneration.LocalizedRenderFailure{
-					SceneID: in.SceneID, Language: scriptgeneration.Language(targetLang), ClipID: clipID,
+					SceneID: in.SceneID, Language: scriptgeneration.Language(built.identity.targetLang), ClipID: clipID,
 					ErrorCode: code, Error: failureText,
 				}); sinkErr != nil {
 					return fmt.Errorf("localized render: record failure for scene %q: %w", in.SceneID, sinkErr)
 				}
 			}
 		}
-		return fmt.Errorf("localized render: scene %q lang %q produced %d failure(s)", in.SceneID, targetLang, len(res.Failures))
+		return fmt.Errorf("localized render: scene %q lang %q produced %d failure(s)", in.SceneID, built.identity.targetLang, len(res.Failures))
 	}
 	// Project the certified produced videos back to the runner so the final
 	// MP4 (asset id, sha256, Drive link) is recorded on the run result — a
@@ -432,7 +267,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				FinishedAt:  renderFinishedAt,
 				WallMS:      renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
 			}); err != nil {
-				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, targetLang, err)
+				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
 			}
 		}
 	}

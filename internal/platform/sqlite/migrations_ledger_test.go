@@ -234,6 +234,61 @@ func TestMigrations_LedgerRejectsOutOfScopeAppliedVersion(t *testing.T) {
 	}
 }
 
+func TestMigrations_ReconcilesHistoricalRunResourceReports238To239(t *testing.T) {
+	targetDir := t.TempDir()
+	canonicalPath := filepath.Join("../../../migrations/sqlite", "239_run_resource_reports.sql")
+	content, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "239_run_resource_reports.sql"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "historical-238.sqlite")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE run_resource_reports (run_id TEXT PRIMARY KEY);
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			migration_id INTEGER NOT NULL UNIQUE,
+			filename TEXT NOT NULL,
+			checksum TEXT NOT NULL,
+			checksum_sha256 TEXT NOT NULL,
+			applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			app_git_sha TEXT NOT NULL DEFAULT 'test'
+		);
+		INSERT INTO schema_migrations(version, migration_id, filename, checksum, checksum_sha256)
+		VALUES (238, 238, '238_run_resource_reports.sql', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	if err := RunMigrationsOnDB(dbPath, nil, targetDir, "observability"); err != nil {
+		t.Fatalf("historical 238 ledger was not reconciled: %v", err)
+	}
+	db, err = sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version, migrationID int
+	var filename, checksum string
+	if err := db.QueryRow(`SELECT version, migration_id, filename, checksum FROM schema_migrations`).Scan(&version, &migrationID, &filename, &checksum); err != nil {
+		t.Fatal(err)
+	}
+	wantChecksum := sha256Hex(content)
+	if version != 239 || migrationID != 239 || filename != "239_run_resource_reports.sql" || checksum != wantChecksum {
+		t.Fatalf("reconciled ledger = version=%d id=%d filename=%q checksum=%q", version, migrationID, filename, checksum)
+	}
+}
+
 func TestMigrations_LedgerRejectsAppliedGap(t *testing.T) {
 	dir := writeLedgerFixture(t, map[string]string{
 		"001_first.sql":  "CREATE TABLE first_table (id INTEGER PRIMARY KEY);\n",

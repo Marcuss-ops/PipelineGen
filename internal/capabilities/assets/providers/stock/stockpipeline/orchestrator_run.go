@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/cleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -201,15 +202,23 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			}
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
+		resources := make([]cleanup.Resource, 0, len(state.StagedAssets))
 		for _, sa := range state.StagedAssets {
-			// The cleanup token is the LocalPath (set by StockStager.Prepare adapter).
-			if cleanErr := stager.Release(cleanupCtx, sa.LocalPath); cleanErr != nil {
-				if o.executorLog != nil {
-					o.executorLog.Warn("orchestrator: staged source cleanup failed",
-						zap.String("local_path", sa.LocalPath),
-						zap.String("source_id", sa.SourceID),
-						zap.Error(cleanErr))
-				}
+			if sa == nil {
+				continue
+			}
+			resources = append(resources, cleanup.Resource{
+				SourceID:  sa.SourceID,
+				LocalPath: sa.LocalPath,
+			})
+		}
+		failures := cleanup.ReleaseAll(cleanupCtx, &stockCleanupReleaser{stager: stager}, resources)
+		for _, failure := range failures {
+			if o.executorLog != nil {
+				o.executorLog.Warn("orchestrator: staged source cleanup failed",
+					zap.String("local_path", failure.Resource.LocalPath),
+					zap.String("source_id", failure.Resource.SourceID),
+					zap.Error(failure.Err))
 			}
 		}
 	}()

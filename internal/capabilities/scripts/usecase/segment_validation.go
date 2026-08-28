@@ -538,8 +538,8 @@ func (e *Engine) generateSegments(
 	if first == nil {
 		return nil, fmt.Errorf("%w: no segments generated", scriptpkg.ErrSegmentValidationFailed)
 	}
-	if report := validateSegmentTexts(plan, texts, settings); !report.Valid && !relaxedShortClipQuality(plan) {
-		return nil, fmt.Errorf("%w: %s", scriptpkg.ErrSegmentValidationFailed, strings.Join(report.Reasons, "; "))
+	if err := validateGeneratedSegments(plan, texts, settings); err != nil {
+		return nil, err
 	}
 	frozenText := assembleFrozenSegments(texts)
 	result := *first

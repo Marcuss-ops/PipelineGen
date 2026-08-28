@@ -10,6 +10,7 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
@@ -48,12 +49,25 @@ func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutio
 	// OverlayIntents so the later timing-frozen overlay.render finds them
 	// warm. Template resolution is PipelineGen-owned (the template_id is
 	// already bound on each intent); this worker only warms the assets.
-	for _, intent := range req.Intents {
-		for _, ref := range intent.Payload.AssetRefs {
-			if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
-				return nil, fmt.Errorf("overlay.prepare asset %s: %w", ref.AssetID, err)
+	// The asset warm is the RenderingGen "materialize" phase, so it is
+	// mapped into the canonical run model as one operation — never a new
+	// timing family.
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageProcess,
+		Component: kernobs.ComponentRenderingGen,
+		Operation: kernobs.OperationMaterialize,
+		Items:     int64(len(req.Intents)),
+	}, func(ctx context.Context) error {
+		for _, intent := range req.Intents {
+			for _, ref := range intent.Payload.AssetRefs {
+				if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
+					return fmt.Errorf("overlay.prepare asset %s: %w", ref.AssetID, err)
+				}
 			}
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return map[string]any{
 		"schema_version": capoverlay.SchemaVersionPrepare,
@@ -67,35 +81,64 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	if err := json.Unmarshal(j.Payload, &req); err != nil {
 		return nil, fmt.Errorf("overlay.render payload: %w", err)
 	}
-	if req.Plan.RendererVersion == "" {
-		req.Plan.RendererVersion = h.RendererVersion
-	}
-	if err := req.Plan.Validate(); err != nil {
+	// plan: the render plan is compiled, validated and the media contract
+	// resolved before any pixel work. Mapped as the RenderingGen "plan"
+	// phase operation on the canonical run.
+	var (
+		item     *capoverlay.OverlayItem
+		contract capoverlay.OverlayMediaContract
+	)
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageProcess,
+		Component: kernobs.ComponentRenderingGen,
+		Operation: kernobs.OperationPlan,
+	}, func(ctx context.Context) error {
+		if req.Plan.RendererVersion == "" {
+			req.Plan.RendererVersion = h.RendererVersion
+		}
+		if err := req.Plan.Validate(); err != nil {
+			return err
+		}
+		for i := range req.Plan.Items {
+			if req.Plan.Items[i].ID == req.OverlayID {
+				item = &req.Plan.Items[i]
+				break
+			}
+		}
+		if item == nil {
+			return fmt.Errorf("overlay.render: overlay_id %q not found", req.OverlayID)
+		}
+		if item.RenderKey == "" {
+			item.RenderKey = capoverlay.ComputeRenderKey(req.Plan, *item)
+		}
+		// The render container/codec/alpha come from the plan's media
+		// contract — never a hardcoded .mov guess. The contract is the
+		// single owner of the output format; the worker only materializes
+		// it.
+		c, err := capoverlay.ResolveMediaContract(req.Plan.MediaContract)
+		if err != nil {
+			return err
+		}
+		contract = c
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	var item *capoverlay.OverlayItem
-	for i := range req.Plan.Items {
-		if req.Plan.Items[i].ID == req.OverlayID {
-			item = &req.Plan.Items[i]
-			break
+	// materialize: every asset referenced by the overlay is resolved into
+	// the cache before rendering (the RenderingGen "materialize" phase).
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageProcess,
+		Component: kernobs.ComponentRenderingGen,
+		Operation: kernobs.OperationMaterialize,
+		Items:     int64(len(item.AssetRefs)),
+	}, func(ctx context.Context) error {
+		for _, ref := range item.AssetRefs {
+			if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
+				return fmt.Errorf("overlay.render asset %s: %w", ref.AssetID, err)
+			}
 		}
-	}
-	if item == nil {
-		return nil, fmt.Errorf("overlay.render: overlay_id %q not found", req.OverlayID)
-	}
-	if item.RenderKey == "" {
-		item.RenderKey = capoverlay.ComputeRenderKey(req.Plan, *item)
-	}
-	for _, ref := range item.AssetRefs {
-		if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
-			return nil, fmt.Errorf("overlay.render asset %s: %w", ref.AssetID, err)
-		}
-	}
-	// The render container/codec/alpha come from the plan's media contract —
-	// never a hardcoded .mov guess. The contract is the single owner of the
-	// output format; the worker only materializes it.
-	contract, err := capoverlay.ResolveMediaContract(req.Plan.MediaContract)
-	if err != nil {
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	container := contract.Container
@@ -116,30 +159,65 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 			return nil, err
 		}
 	} else {
-		release, err := h.GPUGate.Acquire(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("overlay.render: acquire GPU gate: %w", err)
-		}
-		planJSON, err := json.Marshal(req.Plan)
-		if err != nil {
+		// render: the GPU-gated Chronon render call — the RenderingGen
+		// "render" phase, mapped as one canonical operation.
+		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     kernobs.StageProcess,
+			Component: kernobs.ComponentRenderingGen,
+			Operation: kernobs.OperationRender,
+		}, func(ctx context.Context) error {
+			release, err := h.GPUGate.Acquire(ctx)
+			if err != nil {
+				return fmt.Errorf("overlay.render: acquire GPU gate: %w", err)
+			}
+			planJSON, err := json.Marshal(req.Plan)
+			if err != nil {
+				release()
+				return err
+			}
+			if err := h.Renderer.Render(ctx, planJSON, output); err != nil {
+				release()
+				return err
+			}
 			release()
+			return nil
+		}); err != nil {
 			return nil, err
 		}
-		if err := h.Renderer.Render(ctx, planJSON, output); err != nil {
-			release()
-			return nil, err
-		}
-		release()
-		if _, err := h.Cache.PutFile("overlays", item.RenderKey, "overlay."+container, output); err != nil {
+		// objectstore_upload: persisting the rendered bytes into the content
+		// cache — the RenderingGen "objectstore_upload" phase.
+		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     kernobs.StageProcess,
+			Component: kernobs.ComponentRenderingGen,
+			Operation: kernobs.OperationObjectStoreUpload,
+		}, func(ctx context.Context) error {
+			if _, err := h.Cache.PutFile("overlays", item.RenderKey, "overlay."+container, output); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}
 	// The rendered artifact is certified only after a canonical probe (ffprobe
 	// via rustexec.VideoProcessor.Probe, never a raw subprocess) + content
 	// hash. The renderer's exit code is NOT a validity criterion: an invalid
-	// or stub render that still exited 0 fails closed here.
-	probed, err := h.Prober.ProbeOverlay(ctx, output)
-	if err != nil {
+	// or stub render that still exited 0 fails closed here. The probe+hash
+	// call is the RenderingGen "sha256" phase, mapped as one canonical
+	// operation.
+	var probed capoverlay.OverlayProbeResult
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageProcess,
+		Component: kernobs.ComponentRenderingGen,
+		Operation: kernobs.OperationHash,
+	}, func(ctx context.Context) error {
+		p, err := h.Prober.ProbeOverlay(ctx, output)
+		if err != nil {
+			return err
+		}
+		probed = p
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	if err := contract.Validate(probed); err != nil {

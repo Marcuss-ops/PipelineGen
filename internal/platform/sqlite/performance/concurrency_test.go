@@ -18,7 +18,7 @@ func TestConcurrencyStorePersistsAndUpdatesFactsIdempotently(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE benchmark_batches (batch_id TEXT PRIMARY KEY,run_id TEXT NOT NULL DEFAULT '',worker_slot_count INTEGER NOT NULL CHECK(worker_slot_count > 0),started_at TEXT NOT NULL,completed_at TEXT,created_at TEXT NOT NULL); CREATE TABLE benchmark_batch_jobs (batch_id TEXT NOT NULL,job_id TEXT NOT NULL,run_id TEXT NOT NULL DEFAULT '',worker_slot INTEGER,queued_at TEXT,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,PRIMARY KEY(batch_id,job_id))`); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewConcurrencyStore(db)
+	store, err := NewConcurrencyStore(db, db)
 	if err != nil {
 		t.Fatal(err)
 	}

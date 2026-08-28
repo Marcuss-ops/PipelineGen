@@ -20,6 +20,13 @@ type Runner struct {
 	broker     CompletionPort
 	jobLedger  capjobregistry.Registry
 	observer   *kernobs.RunObserver
+
+	// resourceSampler is the run-scoped resource telemetry port (August
+	// 2026), propagated to every Worker by buildWorkers. nil = workers
+	// run un-instrumented (fixtures keep working).
+	resourceSampler kernobs.RunResourceSampler
+	// host is the hostname stamped on every resource observation.
+	host string
 }
 
 func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg RunnerConfig) *Runner {
@@ -54,6 +61,17 @@ func (r *Runner) WithObserver(obs *kernobs.RunObserver) *Runner {
 	return r
 }
 
+// WithResourceSampler attaches the run-scoped resource telemetry port
+// (August 2026) and the hostname stamped on every observation. Mirrors the
+// WithObserver fluent-setter precedent; buildWorkers propagates both to
+// every Worker. Nil-tolerant: a nil sampler keeps the legacy
+// un-instrumented worker path.
+func (r *Runner) WithResourceSampler(s kernobs.RunResourceSampler, host string) *Runner {
+	r.resourceSampler = s
+	r.host = host
+	return r
+}
+
 // buildWorkers constructs the worker pool and attaches every wired
 // dependency (registry, broker, job ledger, observer) to each Worker.
 // Start() runs these workers; the helper exists so tests can assert
@@ -84,6 +102,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		}
 		if r.observer != nil {
 			w.WithObserver(r.observer)
+		}
+		if r.resourceSampler != nil {
+			w.WithResourceSampler(r.resourceSampler, r.host)
 		}
 		workers = append(workers, w)
 	}

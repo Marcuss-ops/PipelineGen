@@ -286,10 +286,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if len(src.Research.Candidates) > 0 {
 		return r.resolveCandidates(ctx, src, resCtx)
 	}
-	topic := strings.TrimSpace(src.Topic)
-	if topic == "" {
-		topic = strings.TrimSpace(src.Query)
-	}
+	topic := researchTopic(src)
 	if topic == "" {
 		return nil, &scriptpkg.NoSourceError{ItemID: resCtx.ItemID, Reason: "research source requires topic or query"}
 	}

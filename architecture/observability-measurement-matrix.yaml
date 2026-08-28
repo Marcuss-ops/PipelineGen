@@ -1056,6 +1056,29 @@ measurements:
     migration_adapter: "Treat OutboxDispatchDurationSeconds as the current writer and remove this duplicate family unless a distinct boundary is proven"
     removal_condition: "Static metric-family audit proves one authoritative outbox duration family and dashboards no longer depend on this duplicate"
 
+  - current_symbol: "RenderingGen worker phase timings"
+    current_owner: "RenderingGen/renderinggen/internal/processor (worker side); PipelineGen mapping: internal/capabilities/scripts/render_queue.go recordRenderingGenPhases + internal/app/wiring/overlay_handlers.go"
+    current_writer: "recordRenderingGenPhases (remote queue path) and MeasureOperation in the overlay Prepare/Render handlers (in-process path). The worker reports materialize_us / overlay_compile_us / render_us / probe_us / sha256_us / objectstore_upload_us / drive_publish_ms / total_ms in the queue artifact metrics map; the queue client surfaces them as RenderArtifact phase fields"
+    current_storage: "queue artifact Metrics map → RenderArtifact phase fields → run_operation_observations as canonical operations (component=renderinggen, stage=process)"
+    current_metric: "none directly; canonical operation durations on run_operation_observations"
+    canonical_type: operation
+    canonical_stage: "process"
+    canonical_component: "renderinggen"
+    canonical_operation: "materialize/plan/render/probe/hash/objectstore_upload/drive_publish"
+    migration_adapter: "DONE — the enqueuer records each worker-reported phase as ONE owner-measured canonical operation (RecordOperation, never re-timed), and the in-process overlay handlers measure the same phases via MeasureOperation; total_ms maps to the run's own WallTimeMs (never a second timer)"
+    removal_condition: "MET — no parallel timing family exists for RenderingGen phases; every consumer reads the canonical run operations"
+  - current_symbol: "Chronon render phase timings (RenderMetricsV2)"
+    current_owner: "internal/capabilities/cliprender/metrics.go (canonical V2 report); adapters/cliprender_plan.go ClipRenderExecutorAdapter (projection of the Rust/Chronon result); mapping: internal/capabilities/cliprender/worker_result.go projectRendererPhases"
+    current_writer: "projectRendererPhases — the worker projects each renderer-measured phase from the canonical V2 report (renderer_startup_ms / probe_ms / decode_ms / composite_ms / subtitle_raster_ms / watermark_raster_ms / frame_conversion_ms / encode_ms / audio_mux_ms + gpu_copy_bytes / gpu_readback_bytes) as ONE owner-measured canonical operation; the rust.render_clip operation above is the worker-owned render WALL, these are the engine-owned render WORK (never re-timed)"
+    current_storage: "RenderMetricsV2 (canonical clip report) → run_operation_observations as canonical operations (component=chronon|cuda|ffmpeg by resolved backend, stage=clip.render)"
+    current_metric: "none directly; canonical operation durations on run_operation_observations; GPU byte counters carry Bytes (never a fake duration)"
+    canonical_type: operation
+    canonical_stage: "clip.render"
+    canonical_component: "chronon (cuda for cuda_native, ffmpeg for ffmpeg_fallback)"
+    canonical_operation: "renderer_startup/probe/decode/composite/subtitle_raster/watermark_raster/frame_conversion/encode/audio_mux/gpu_copy/gpu_readback"
+    migration_adapter: "DONE — projectRendererPhases records each measured phase as ONE canonical operation (RecordOperation, owner-measured duration, never a second timer); non-instrumented phases stay absent (no fake zeros)"
+    removal_condition: "MET — no parallel timing family exists for Chronon phases; the V2 report is the single owner and the run carries the typed projection"
+
 coverage_notes:
   current_code_searches:
     - "StageDurations, PipelineResult, processmetrics, process_phase_metrics, VidRushTimingMetrics"

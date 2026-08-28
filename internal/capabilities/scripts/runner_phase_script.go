@@ -241,23 +241,8 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			// these scenes, while their metrics remain visible on the result.
 		}
 		bindExplicitClipSceneText(req, scenes)
-		if req.Source.Type == SourceClips {
-			for i, scene := range scenes {
-				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-				words := len(strings.Fields(text))
-				lower := strings.ToLower(text)
-				placeholder := text == "" || words < minimumClipSceneWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
-				if placeholder || contaminatedClipNarration(text) {
-					code := "SCRIPT_SCENE_TEXT_INVALID"
-					if contaminatedClipNarration(text) {
-						code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
-					}
-					cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
-					r.failExecutionStep(ctx, exec, scriptStep, cause)
-					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-					return result, false
-				}
-			}
+		if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
+			return result, false
 		}
 		output := outputFromScenes(scenes, req.SourceLanguage)
 		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {

@@ -47,6 +47,7 @@ OUTPUT_FILE=""
 PREFLIGHT=1
 VERBOSE=0
 WATERMARK_ASSET_ID="${BENCH_WATERMARK_ASSET_ID:-}"
+WATERMARK_TEXT="${BENCH_WATERMARK_TEXT:-}"
 DRIVE_FOLDER_ID="${BENCH_DRIVE_FOLDER_ID:-}"
 # Optional worker claim concurrency (slots) for the concurrency report;
 # empty means unknown (report shows "-" and no utilization).
@@ -70,6 +71,7 @@ Options:
   --output FILE       Output JSON report file (default: out/benchmark-<ts>.json)
   --base-url URL      PipelineGen server URL (default: http://127.0.0.1:8000)
   --watermark ID      Watermark asset ID to apply during render
+  --watermark-text T  Text watermark to apply during render (e.g. test)
   --drive-folder ID   Drive folder ID for upload destination
   --worker-slots N    Worker claim concurrency (slots) for the concurrency
                       report; when set, utilization = peak_running/slots
@@ -109,6 +111,7 @@ while [[ $# -gt 0 ]]; do
         --output)       OUTPUT_FILE="$2"; shift 2 ;;
         --base-url)     BASE_URL="$2"; shift 2 ;;
         --watermark)    WATERMARK_ASSET_ID="$2"; shift 2 ;;
+        --watermark-text) WATERMARK_TEXT="$2"; shift 2 ;;
         --drive-folder) DRIVE_FOLDER_ID="$2"; shift 2 ;;
         --worker-slots) WORKER_SLOTS="$2"; shift 2 ;;
         --no-preflight) PREFLIGHT=0; shift ;;
@@ -255,7 +258,7 @@ poll_job() {
 
     while (( polled < POLL_MAX )); do
         RESP=$(api GET "/api/jobs/$jid" 2>/dev/null || echo '{}')
-        STATUS=$(echo "$RESP" | json_field "status" "unknown")
+        STATUS=$(echo "$RESP" | json_field "status" "unknown" | tr '[:upper:]' '[:lower:]')
         ELAPSED=$(( $(ms_now) - start_ms ))
 
         log_v "  [$jid] status=$STATUS elapsed=${ELAPSED}ms"
@@ -354,6 +357,8 @@ EOJSON
         WM_BLOCK="{}"
         if [[ -n "$WATERMARK_ASSET_ID" ]]; then
             WM_BLOCK="{\"enabled\":true,\"asset_id\":\"${WATERMARK_ASSET_ID}\",\"position\":\"top_right\",\"opacity\":0.25}"
+        elif [[ -n "$WATERMARK_TEXT" ]]; then
+            WM_BLOCK="{\"enabled\":true,\"text\":\"${WATERMARK_TEXT}\",\"position\":\"top_right\",\"opacity\":0.25}"
         fi
         DEST_BLOCK="{}"
         if [[ -n "$DRIVE_FOLDER_ID" ]]; then
@@ -363,7 +368,7 @@ EOJSON
         PAYLOAD=$(cat <<EOJSON
 {
   "source_asset_id": "${ASSET_ID}",
-  "background": {"mode": "blur_source"},
+  "background": {"mode": "none"},
   "watermark": ${WM_BLOCK},
   "transcript": {"mode": "reuse_or_generate", "language": "en"},
   "subtitles": {"enabled": true, "mode": "burn"},
@@ -941,22 +946,32 @@ concurrency_utilization = round(peak_concurrency / worker_slots * 100, 1) if wor
 
 # Batch aggregates are derived only from job-runtime SSOT events and the
 # per-job RunReport values. Local submit/poll clocks are not metric inputs.
-# batch_wall is the elapsed span from the earliest runtime execution start
-# to the latest runtime execution finish; batch_work is the sum of each job's
-# measured execution wall. This intentionally separates wall from work.
-execution_windows = []
-for i, j in enumerate(jobs):
-    timing = j.get("timing") or {}
-    started_at = timing.get("started_at")
-    finished_at = timing.get("finished_at")
-    if started_at and finished_at:
-        execution_windows.append((started_at, finished_at))
-
-# The fetched report currently exposes epoch timestamps as ISO strings. Use
-# the runtime-derived execution_wall_ms when timestamps are unavailable; never
-# use local polling timestamps as an aggregate metric.
+# batch_wall is the PARALLEL WALL-CLOCK of the batch: the elapsed span from
+# the earliest runtime execution start to the latest runtime execution finish.
+# It is deliberately NOT the max per-clip E2E wall: with concurrency > 1 the
+# two differ whenever clips are staggered (queue wait pushes starts apart).
+# batch_work is the sum of each clip's E2E execution wall — the
+# sequential-equivalent total, never a wall clock. The cumulative FFmpeg work
+# is a third quantity (batch_render_work_ms, Σ render-phase work below).
+# These are different magnitudes: none may be subtracted from another to get
+# "the overhead" when concurrency > 1.
+runtime_windows = [
+    (j["runtime_started_ms"], j["runtime_finished_ms"]) for j in jobs
+    if (j.get("runtime_started_ms") or 0) > 0
+    and (j.get("runtime_finished_ms") or 0) > (j.get("runtime_started_ms") or 0)
+]
 report_walls = [ms(j["timing"].get("wall_ms")) for j in jobs if ms(j["timing"].get("wall_ms")) > 0]
-batch_wall = max(report_walls) if report_walls else 0
+if runtime_windows:
+    batch_wall = max(f for _, f in runtime_windows) - min(s for s, _ in runtime_windows)
+    batch_wall_source = "runtime_execution_span"
+elif report_walls:
+    # Fallback for servers predating started_at_ms/finished_at_ms: the max
+    # per-clip E2E wall. Understated whenever clip starts are staggered.
+    batch_wall = max(report_walls)
+    batch_wall_source = "max_per_clip_e2e_wall_fallback"
+else:
+    batch_wall = 0
+    batch_wall_source = "unavailable"
 batch_work = sum(ms(j.get("timing", {}).get("execution_wall_ms", j["wall_ms"])) for j in jobs)
 intervals = batch_intervals(jobs)
 all_intervals = [iv for ivs in intervals.values() for iv in ivs]
@@ -977,6 +992,10 @@ for name, ivs in intervals.items():
         "critical_share": round(crit / batch_critical * 100, 1) if batch_critical else 0.0,
         "jobs": sum(1 for j in jobs for p in j["phases"] if p["name"] == name and p["wall_ms"] > 0),
     }
+# Cumulative FFmpeg work across the batch (Σ render-phase work). This is the
+# "41.08 s" figure in batch analyses — a work total, never comparable with
+# the parallel wall clock by subtraction.
+render_work_total = phases_summary.get("render", {}).get("work_ms", 0)
 # The batch bottleneck is the phase with the LARGEST critical-path
 # contribution (wall occupancy on the serial chain) — never the phase with
 # the most accumulated work.
@@ -1090,14 +1109,19 @@ print("  %-40s %d / %d" % ("Jobs succeeded:", success_count, n_jobs))
 print("  %-40s %d" % ("Total assets:", total_assets))
 print("")
 print("  ── Batch (wall / work / critical path / concurrency) ──")
-print("  %-40s %s" % ("batch_total_wall_ms:", f"{batch_wall:,}"))
+print("  %-40s %s" % ("batch_parallel_wall_ms:", f"{batch_wall:,}"))
+print("  %-40s %s" % ("batch_wall_source:", batch_wall_source))
 print("  %-40s %s" % ("batch_total_work_ms:", f"{batch_work:,}"))
+print("  %-40s %s" % ("batch_render_work_ms:", f"{render_work_total:,}"))
+if batch_wall > 0:
+    print("  %-40s %s" % ("batch_wall_minus_render_work_ms:", f"{batch_wall - render_work_total:,}"))
+print("  %-40s %s" % ("overhead_rule:", "wall − Σ render work is NOT overhead when concurrency > 1; per-clip overhead = E2E − RENDER (per-clip table)"))
 print("  %-40s %s" % ("batch_critical_path_ms:", f"{batch_critical:,}"))
 if bottleneck:
     print("  %-40s %s @ %.1f%%" % (
         "batch bottleneck (critical path):", bottleneck, phases_summary[bottleneck]["critical_share"]))
 if batch_wall > 0:
-    print("  %-40s %.2fx" % ("parallelism_efficiency (work/wall):", batch_work / batch_wall))
+    print("  %-40s %.2fx" % ("parallelism_factor (Σ clip E2E / wall):", batch_work / batch_wall))
 print("  %-40s %d" % ("peak_running_clips:", peak_concurrency))
 print("  %-40s %.1f" % ("average_running_clips:", average_concurrency))
 print("  %-40s %s" % ("queue_wait_total_ms:", f"{sum(j.get('queue_wait_ms', 0) for j in jobs):,}"))
@@ -1124,7 +1148,8 @@ print("")
 print("  ── Throughput / resources ──")
 source_seconds = sum(float((j["result"].get("render") or {}).get("duration_sec") or 0) for j in jobs)
 print("  %-40s %.2f" % ("clips_per_minute:", (n_jobs / (batch_wall / 60000.0)) if batch_wall > 0 else 0.0))
-print("  %-40s %.3fx" % ("pipeline_rtf:", (source_seconds / (batch_wall / 1000.0)) if batch_wall > 0 else 0.0))
+print("  %-40s %.3fx" % ("batch_speed_factor (video/wall, >1 faster):", (source_seconds / (batch_wall / 1000.0)) if batch_wall > 0 else 0.0))
+print("  %-40s %.3fx" % ("batch_xrt (wall/video, <1 faster):", ((batch_wall / 1000.0) / source_seconds) if source_seconds > 0 else 0.0))
 print("  %-40s %s" % ("cpu_user_ms:", f"{total_cpu_user_ms:,}" if total_cpu_user_ms else "-"))
 print("  %-40s %s" % ("cpu_system_ms:", f"{total_cpu_system_ms:,}" if total_cpu_system_ms else "-"))
 print("  %-40s %s" % ("peak_cpu_percent:", f"{peak_cpu_percent:.1f}" if peak_cpu_percent else "-"))
@@ -1168,9 +1193,11 @@ print("  ── Per-clip table (Queue / Prepare / Subs / Render / Upload / Total
 print("  Queue = queue_wait_ms (RunReport); Prepare = clip.prepare wall;")
 print("  Subs = clip.subtitles wall; Render = clip.render+probe+overlay wall;")
 print("  Publish = clip.publish wall/work; Queue is excluded from execution total and shown separately.")
+print("  OVERHEAD = TOTAL wall − RENDER wall: this clip's time outside the render;")
+print("  it is per-clip (clips overlap), never additive into a batch total.")
 print("  BOTTLENECK = largest critical-path phase on this clip.")
-print("  %-14s %8s %15s %14s %15s %15s %15s %15s %-10s" % ("JOB_ID", "QUEUE", "PREP wall/work", "SUBS wall/work", "RENDER wall/work", "PUBLISH wall/work", "TOTAL wall/work", "CRITICAL", "BOTTLENECK"))
-print("  %-14s %8s %15s %14s %15s %15s %15s %15s %-10s" % ("──────", "─────", "───────────────", "──────────────", "───────────────", "───────────────", "───────────────", "──────", "──────────"))
+print("  %-14s %8s %15s %14s %15s %15s %15s %15s %15s %-10s" % ("JOB_ID", "QUEUE", "PREP wall/work", "SUBS wall/work", "RENDER wall/work", "PUBLISH wall/work", "TOTAL wall/work", "OVERHEAD", "CRITICAL", "BOTTLENECK"))
+print("  %-14s %8s %15s %14s %15s %15s %15s %15s %15s %-10s" % ("──────", "─────", "───────────────", "──────────────", "───────────────", "───────────────", "───────────────", "────────", "──────", "──────────"))
 for i in range(n_jobs):
     j = jobs[i]
     prep = phase(j, "prepare")
@@ -1188,10 +1215,11 @@ for i in range(n_jobs):
     ren_s = fmt_work(ren) if ren else "-"
     drv_s = fmt_work(drv) if drv else "-"
     total_s = "%s/%s" % (fmt_sec(j["wall_ms"]), fmt_sec(j["work_ms"]))
+    overhead_s = fmt_sec(j["wall_ms"] - ren["wall_ms"]) if ren and ren["wall_ms"] > 0 else "-"
     critical_s = fmt_sec(j.get("critical_path_ms", 0))
-    print("  %-14s %8s %15s %14s %15s %15s %15s %15s %-10s" % (
+    print("  %-14s %8s %15s %14s %15s %15s %15s %15s %15s %-10s" % (
         (j_ids[i] or "N/A")[:12], queue_s, prep_s, subs_s, ren_s, drv_s, total_s,
-        critical_s, job_bottleneck(j)[:10]))
+        overhead_s, critical_s, job_bottleneck(j)[:10]))
 
 
 # ── Render phase split (metrics_v2, measured by the renderer) ──────────────
@@ -1340,6 +1368,8 @@ for i in range(n_jobs):
     r = j["result"]
     render = r.get("render") or {}
     timing = j["timing"] or {}
+    clip_render_wall = (phase(j, "render") or {}).get("wall_ms") or 0
+    clip_overhead_ms = (j["wall_ms"] - clip_render_wall) if clip_render_wall > 0 else 0
     jobs_out.append({
         "job_id": j_ids[i],
         "label": j_labels[i],
@@ -1392,6 +1422,11 @@ for i in range(n_jobs):
             "subs_work_ms": (phase(j, "subs") or {}).get("work_ms", 0),
             "render_wall_ms": (phase(j, "render") or {}).get("wall_ms", 0),
             "render_work_ms": (phase(j, "render") or {}).get("work_ms", 0),
+            # overhead_ms = clip E2E wall − clip render wall: this clip's
+            # out-of-render time (prepare, publish, scheduling — queue is
+            # reported separately). The honest per-clip overhead figure;
+            # not additive across clips when concurrency > 1.
+            "overhead_ms": clip_overhead_ms,
             "upload_wall_ms": j.get("publish_wall_ms", 0),
             "upload_work_ms": j.get("publish_work_ms", 0),
             "total_wall_ms": j["wall_ms"],
@@ -1449,14 +1484,21 @@ report = {
         "total_assets": total_assets,
         "batch": {
             "batch_total_wall_ms": batch_wall,
+            "batch_wall_source": batch_wall_source,
             "batch_total_work_ms": batch_work,
+            "batch_render_work_ms": render_work_total,
+            "batch_wall_minus_render_work_ms": (batch_wall - render_work_total) if batch_wall > 0 else 0,
             "derived_only": True,
             "derivation": {
-                "batch_wall": "max(runtime execution spans from RunReports)",
-                "batch_work": "sum(job execution_wall_ms from RunReports)",
+                "batch_total_wall_ms": "parallel wall-clock: earliest runtime execution start → latest runtime execution finish; fallback = max per-clip E2E wall",
+                "batch_wall_source": batch_wall_source,
+                "batch_total_work_ms": "sum of per-clip E2E execution_wall_ms — sequential-equivalent, NOT wall",
+                "batch_render_work_ms": "sum of render-phase work_ms — the cumulative FFmpeg work",
+                "batch_wall_minus_render_work_ms": "wall − Σ render work; NOT the batch overhead when concurrency > 1 (clips overlap)",
+                "batch_overhead_rule": "per-clip overhead = clip E2E wall − clip render wall (per_clip.overhead_ms)",
                 "peak_concurrency": "max overlap of runtime execution spans",
                 "average_concurrency": "time-weighted overlap over batch wall",
-                "parallelism_factor": "batch work / batch wall",
+                "parallelism_factor": "Σ per-clip E2E execution wall / parallel wall",
             },
             "batch_critical_path_ms": batch_critical,
             "parallelism_factor": round(batch_work / batch_wall, 3) if batch_wall else 0.0,
@@ -1497,6 +1539,12 @@ report = {
             "gpu_copy_bytes_total": total_gpu_copy_bytes,
             "throughput": {
                 "clips_per_minute": (n_jobs / (batch_wall / 60000.0)) if batch_wall > 0 else 0.0,
+                # batch_speed_factor = video seconds produced / batch wall
+                # (>1 = faster than realtime). pipeline_rtf is a legacy alias
+                # of the same number — it is NOT an xRT-style factor; the
+                # true inverse (wall / video, <1 = faster) is batch_xrt.
+                "batch_speed_factor": (source_seconds / (batch_wall / 1000.0)) if batch_wall > 0 else 0.0,
+                "batch_xrt": ((batch_wall / 1000.0) / source_seconds) if source_seconds > 0 else 0.0,
                 "pipeline_rtf": (source_seconds / (batch_wall / 1000.0)) if batch_wall > 0 else 0.0,
             },
             "resources": {

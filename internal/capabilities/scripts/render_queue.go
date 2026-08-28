@@ -145,7 +145,47 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 			return RenderReference{}, fmt.Errorf("record render attempt analytics: %w", err)
 		}
 	}
+	// Map the RenderingGen worker's own phase timings into the canonical
+	// run model instead of a new timing family: each reported phase becomes
+	// one owner-measured operation on the run bound to ctx (the kernel
+	// never re-times a phase the worker already measured).
+	recordRenderingGenPhases(ctx, done.Artifact)
 	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+}
+
+// recordRenderingGenPhases projects the worker-reported RenderingGen phase
+// durations (materialize/plan/render/probe/hash/objectstore_upload/
+// drive_publish) into canonical run operations bound to ctx. Phases the
+// worker did not report (zero) are skipped — a missing measurement is never
+// recorded as zero. The queue wait is already a canonical WaitCompletion
+// observation (waitForCompletion) and the job wall time is the run's own
+// WallTimeMs, so neither is duplicated here.
+func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
+	if artifact == nil {
+		return
+	}
+	phases := []struct {
+		operation  kernobs.OperationName
+		durationMS int64
+	}{
+		{kernobs.OperationMaterialize, artifact.MaterializeMS},
+		{kernobs.OperationPlan, artifact.PlanMS},
+		{kernobs.OperationRender, artifact.RenderMS},
+		{kernobs.OperationProbe, artifact.ProbeMS},
+		{kernobs.OperationHash, artifact.HashMS},
+		{kernobs.OperationObjectStoreUpload, artifact.UploadMS},
+		{kernobs.OperationDrivePublish, artifact.DrivePublishMS},
+	}
+	for _, phase := range phases {
+		if phase.durationMS <= 0 {
+			continue
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage:     kernobs.StageProcess,
+			Component: kernobs.ComponentRenderingGen,
+			Operation: phase.operation,
+		}, phase.durationMS)
+	}
 }
 
 // ── overlay.prepare ───────────────────────────────────────────────────

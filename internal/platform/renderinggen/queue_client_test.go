@@ -111,6 +111,44 @@ func TestToScriptArtifactMapsAnalyticsFields(t *testing.T) {
 	}
 }
 
+func TestToScriptArtifactMapsRenderingGenPhaseTimings(t *testing.T) {
+	in := &queueclient.Artifact{
+		ArtifactHash: "abc",
+		Metrics: map[string]float64{
+			"render_ms":             900,
+			"encode_ms":             300,
+			"materialize_us":        420000,
+			"overlay_compile_us":    15000,
+			"probe_us":              25000,
+			"sha256_us":             8000,
+			"objectstore_upload_us": 31000,
+			"drive_publish_ms":      240,
+		},
+	}
+	got := toScriptArtifact(in)
+	if got == nil {
+		t.Fatal("nil artifact")
+	}
+	if got.RenderMS != 900 || got.EncodeMS != 300 {
+		t.Fatalf("render/encode = %d/%d, want 900/300", got.RenderMS, got.EncodeMS)
+	}
+	if got.MaterializeMS != 420 || got.PlanMS != 15 || got.ProbeMS != 25 || got.HashMS != 8 || got.UploadMS != 31 || got.DrivePublishMS != 240 {
+		t.Fatalf("phase timings = %+v, want materialize=420 plan=15 probe=25 hash=8 upload=31 drive_publish=240", got)
+	}
+
+	// Millisecond keys win over microsecond keys when both are present.
+	both := toScriptArtifact(&queueclient.Artifact{Metrics: map[string]float64{"materialize_us": 500000, "materialize_ms": 999}})
+	if both.MaterializeMS != 999 {
+		t.Fatalf("ms key must win over us key: got %d", both.MaterializeMS)
+	}
+
+	// Missing phase keys stay zero (a missing measurement is never faked).
+	none := toScriptArtifact(&queueclient.Artifact{Metrics: map[string]float64{"render_ms": 10}})
+	if none.MaterializeMS != 0 || none.PlanMS != 0 || none.ProbeMS != 0 || none.HashMS != 0 || none.UploadMS != 0 || none.DrivePublishMS != 0 {
+		t.Fatalf("absent phases must map to zero: %+v", none)
+	}
+}
+
 func TestClientGetDecodesArtifact(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/jobs/job-1" || r.Method != http.MethodGet {

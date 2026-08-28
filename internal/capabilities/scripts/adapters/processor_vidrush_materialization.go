@@ -89,17 +89,13 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	if p == nil {
 		return nil, fmt.Errorf("vidrush materialization: processor not configured")
 	}
-	if plan != nil && plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
-		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
-		for _, segment := range input.VidRushSegments {
-			segments = append(segments, cloneVidRushSegmentResult(segment))
-		}
-		return &PostProcessResult{VidRushSegments: segments, Changed: len(segments) > 0}, nil
+	if result, handled := p.metadataOnlyResult(plan, input); handled {
+		return result, nil
+	}
+	if err := materializationDependenciesError(plan, input, p.providers, p.finalizer); err != nil {
+		return nil, err
 	}
 	if p.providers == nil || p.finalizer == nil {
-		if vidRushMaterializationRequested(plan, input) {
-			return nil, fmt.Errorf("vidrush materialization: provider registry and common finalizer are required")
-		}
 		return &PostProcessResult{}, nil
 	}
 	if err := requireVidRushEnabledProviders(plan, p.providers); err != nil {
@@ -148,13 +144,13 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	if p == nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush materialization: processor not configured")
 	}
-	if plan != nil && plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
-		return cloneVidRushSegmentResult(segment), nil
+	if result, handled := p.metadataOnlyResult(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}); handled {
+		return result.VidRushSegments[0], nil
+	}
+	if err := materializationDependenciesError(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}, p.providers, p.finalizer); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	if p.providers == nil || p.finalizer == nil {
-		if vidRushMaterializationRequested(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}) {
-			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush materialization: provider registry and common finalizer are required")
-		}
 		return cloneVidRushSegmentResult(segment), nil
 	}
 	if err := requireVidRushEnabledProviders(plan, p.providers); err != nil {
@@ -306,7 +302,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 			}
 			providerName := strings.ToLower(strings.TrimSpace(candidate.Provider))
-			if providerName != scriptpkg.VidRushProviderArtlist && providerName != scriptpkg.VidRushProviderInternetImages && providerName != scriptpkg.VidRushProviderImageGeneration && providerName != scriptpkg.VidRushProviderYouTube {
+			if _, supported := providerPolicy(providerName); !supported {
 				materialized = append(materialized, candidate)
 				continue
 			}
@@ -333,18 +329,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 					catalogMaterializationStarted = time.Now()
 				}
 			}
-			acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
-			var local scriptports.LocalArtifact
-			err = measureVidRushProvider(acquireCtx, p.metrics, kernobs.OperationInfo{
-				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "acquire", Provider: providerName,
-			}, func(callCtx context.Context) error {
-				var acquireErr error
-				local, acquireErr = provider.Acquire(callCtx, candidate)
-				return acquireErr
-			})
-			cancelAcquire()
-			if err != nil {
-				candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
+			lifecycle := acquireAndVerify(ctx, provider, candidate, providerName, p.metrics)
+			if lifecycle.err != nil && lifecycle.stage == "acquire" {
+				err = lifecycle.err
+				candidate = lifecycle.candidate
 				if catalogMaterializationStarted.IsZero() == false {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogURLBroken()
@@ -358,19 +346,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
-			verifyCtx, cancelVerify := context.WithTimeout(ctx, vidRushVerifyTimeout)
-			var verified scriptports.VerifiedArtifact
-			err = measureVidRushProvider(verifyCtx, p.metrics, kernobs.OperationInfo{
-				Stage: kernobs.StageVerify, Component: "vidrush", Operation: "verify", Provider: providerName,
-			}, func(callCtx context.Context) error {
-				var verifyErr error
-				verified, verifyErr = provider.Verify(callCtx, local)
-				return verifyErr
-			})
-			cancelVerify()
-			if err != nil {
-				candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-				candidate.VerificationStatus = scriptpkg.VidRushStatusFailed
+			if lifecycle.err != nil {
+				err = lifecycle.err
+				candidate = lifecycle.candidate
 				if !catalogMaterializationStarted.IsZero() {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogURLBroken()
@@ -384,6 +362,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
+			verified := lifecycle.verified
 			cacheKey := vidRushCandidateIdentity(candidate)
 			var persisted scriptpkg.SegmentAssetCandidate
 			err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
@@ -452,30 +431,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
 		))
 	}
-	updated.Assets.PrimaryVideo = nil
-	for i := range materialized {
-		candidate := materialized[i]
-		if (candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube) || !readyVidRushCandidate(candidate) {
-			continue
-		}
-		if updated.Assets.PrimaryVideo == nil || compareVidRushPrimaryCandidates(candidate, *updated.Assets.PrimaryVideo) > 0 {
-			selected := candidate
-			selected.Score = ScoreVidRushCandidate(candidate, false)
-			selected.SelectionReason = "highest ranked verified and persisted video"
-			updated.Assets.PrimaryVideo = &selected
-		}
-	}
+	updated.Assets.PrimaryVideo = selectVidRushPrimaryVideo(materialized)
 	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
 		diagnostics := make([]string, 0, minInt(len(materialized), 3))
-		for _, candidate := range materialized {
-			if candidate.Provider != scriptpkg.VidRushProviderArtlist {
-				continue
-			}
-			diagnostics = append(diagnostics, fmt.Sprintf("asset=%s acquire=%s verify=%s persist=%s source=%t page=%t drive=%t", candidate.AssetID, candidate.AcquisitionStatus, candidate.VerificationStatus, candidate.PersistenceStatus, strings.TrimSpace(candidate.SourceURL) != "", strings.TrimSpace(candidate.SourcePageURL) != "", strings.TrimSpace(candidate.DriveLink) != ""))
-			if len(diagnostics) == 3 {
-				break
-			}
-		}
+		diagnostics = vidRushArtlistDiagnostics(materialized)
 		if len(diagnostics) == 0 {
 			providers := make(map[string]int)
 			for _, candidate := range discoveredCandidates {
@@ -493,21 +452,6 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// reused, 1 per freshly finalized internet_images candidate otherwise.
 	updated.Cache.InternetImagesNewUploads = newInternetImageUploads
 	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
-}
-
-func vidRushProviderTimeout(provider string) time.Duration {
-	switch provider {
-	case scriptpkg.VidRushProviderArtlist:
-		return vidRushArtlistAcquireTimeout
-	case scriptpkg.VidRushProviderInternetImages:
-		return vidRushImageAcquireTimeout
-	case scriptpkg.VidRushProviderImageGeneration:
-		return vidRushGenerationAcquireTimeout
-	case scriptpkg.VidRushProviderYouTube:
-		return vidRushImageAcquireTimeout
-	default:
-		return vidRushImageAcquireTimeout
-	}
 }
 
 func vidRushMaterializationRequested(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
@@ -552,26 +496,6 @@ func requireVidRushEnabledProviders(plan *scriptpkg.ResolvedGenerationPlan, regi
 		}
 	}
 	return nil
-}
-
-func vidRushAcquireBudget(plan *scriptpkg.ResolvedGenerationPlan, provider string) int {
-	switch provider {
-	case scriptpkg.VidRushProviderArtlist:
-		return vidRushArtlistAcquireBudget
-	case scriptpkg.VidRushProviderInternetImages:
-		target := vidRushImageTarget(plan)
-		if target == 0 {
-			target = vidRushDefaultImagesPerScene
-		}
-		return target + vidRushImageAcquireSlack
-	case scriptpkg.VidRushProviderImageGeneration:
-		if target := vidRushImageTarget(plan); target > 0 {
-			return target
-		}
-		return vidRushDefaultImagesPerScene
-	default:
-		return 0
-	}
 }
 
 func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) ([]scriptpkg.SegmentAssetCandidate, string) {

@@ -209,6 +209,18 @@ type RenderArtifact struct {
 	// map: render_ms / encode_ms). Zero means the worker did not report them.
 	RenderMS int64 `json:"render_ms,omitempty"`
 	EncodeMS int64 `json:"encode_ms,omitempty"`
+	// The remaining phase durations are the RenderingGen worker's own
+	// per-phase timings (materialize/plan/probe/hash/objectstore_upload/
+	// drive_publish), mapped from the queue artifact's metrics map. They
+	// are projected into the canonical run model as owner-measured
+	// operations — PipelineGen never re-times a phase the worker already
+	// measured. Zero means the worker did not report the phase.
+	MaterializeMS  int64 `json:"materialize_ms,omitempty"`
+	PlanMS         int64 `json:"plan_ms,omitempty"`
+	ProbeMS        int64 `json:"probe_ms,omitempty"`
+	HashMS         int64 `json:"hash_ms,omitempty"`
+	UploadMS       int64 `json:"objectstore_upload_ms,omitempty"`
+	DrivePublishMS int64 `json:"drive_publish_ms,omitempty"`
 	// DriveFileID and DriveLink are the Google Drive publication identity of
 	// the rendered artifact (populated by the worker's publish phase). Empty
 	// when the artifact was not published to Drive.

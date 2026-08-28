@@ -281,6 +281,7 @@ func cloneReport(in *RunReport) *RunReport {
 	out.Operations = append([]OperationReport(nil), in.Operations...)
 	out.Artifacts = append([]ArtifactReport(nil), in.Artifacts...)
 	out.Waits = append([]WaitReport(nil), in.Waits...)
+	out.ClipTimeline = cloneClipTimeline(in.ClipTimeline)
 	if in.Children != nil {
 		c := *in.Children
 		out.Children = &c
