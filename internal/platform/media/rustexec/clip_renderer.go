@@ -35,7 +35,14 @@ type ClipRenderResult struct {
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
 	GPUCopyBytes      *uint64
-	OperationMetrics  *OperationMetrics
+	// Zero-copy counters are optional because not every executor measures
+	// them. Chronon populates them from its canonical timing sidecar; the Rust
+	// FFmpeg boundary leaves them nil until it owns equivalent instrumentation.
+	GPUReadbackBytes        *uint64
+	EncoderStagingCopyBytes *uint64
+	NV12ToRGBAFrames        *uint64
+	RGBAToNV12Frames        *uint64
+	OperationMetrics        *OperationMetrics
 	// render_clip phase timings reported by Rust (nil = phase not reported;
 	// the V2 metrics report maps them only when measured — never a fake zero).
 	StartupMS         *int64 // pre-ffmpeg wall inside Rust (plan decode + graph + spawn; probe is separate)
