@@ -303,6 +303,51 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					}
 					continue
 				}
+				// A pair of early migrations only changed stale package-path
+				// comments after deployment.  Their SQL/schema effects are
+				// byte-for-byte identical; reconcile only the exact historical
+				// hashes so arbitrary edits still fail closed.
+				legacyCommentChecksums := map[int]string{
+					37:  "9162ff7a29771c01fa0b3467960b94207f3f6bd3330e0a81bce1dcbfd14ec59f",
+					68:  "e9eaf9a2118f658b0c47102b8d8b0bb256bf27b48ba7df8072dc3cc398e6b537",
+					89:  "34a6f63829f13ba816b39e27c4642b7ba6bba28505a4145fab929dbd1c03b0a8",
+					90:  "7fc081ead4bc3ef108174ae0e585f4ddb334dcf903e6c42b8f60258295acff48",
+					91:  "b2ae5a7681fd614243542901d253fda875033869071fd5dcdcbcd8e6f6b04a91",
+					92:  "0f91943040205c0ec74ddfea633dc54c7ecce13c1d34508398bc15df32399d01",
+					94:  "81a59ffe3bf1c981e30248149c8549a358f19a231d9cec2ead01797a085ddc89",
+					95:  "1886cb3e4208fe39eb6ed9d2379dac758cf5e6648be7a12014401e1eaa862359",
+					96:  "addeefa96ae3ba1a67cfee75c89f519a2508b6aa28a57399b66d3492b6810433",
+					97:  "2f4d9a40129d1dfcd74b039a9b79a2eb1a4b98d4545bf306d6d281e2356633a6",
+					98:  "d8aafb61b2928fb6955e300020a53530f9aee11adc4aa1edac88b32c292d01a7",
+					102: "41baff1a82b1ee03b6a3aeff43495957c87a6591f9d3a3c9fed045d825496751",
+					105: "028713f76b05017b46d7cd0f4f520469daf1276100185145b2000ee979e57aee",
+					108: "63cb5dffd6a1ab755646f7eac6c463e3f71f25b99ca733c58a89313e4b90ea23",
+					120: "1682c4c47796d18921696c93df1adf561ff75eb78c5d6ffb59137440789b06f2",
+					123: "14c0e244e5972568c448d852d08bb04cfd96b2fe9f42c70d441986b640420334",
+					129: "01af20ab1757ffb8a704c7a488593421e18feb6144df54fdbd338b68646bd8d4",
+					137: "0def3c2a2309e2bc0e8c29e9ff8ef31af3c1f51efa3b85612790b23be11c0bb5",
+					148: "ae4c43979c67ca21d01cf78fe2955627add216181106015961992c74bc445343",
+					151: "46ce7b091341338e85bdefd01543b4f737231b7adabeb66f23dab445d43e50e0",
+					154: "75a625c49558e7f0dcd00703598f323942df1787efcbeb3a54ed73729f79392e",
+					155: "088b151a5370f4b522f109472956dd6d790b4c70207ff3fc376acf4cf8f0fe81",
+					158: "042ffb06cbba8324b6e07de3ab5a900e02d2d91e1da934ce21c1b2b31d9e0e47",
+					159: "940568ccd17e194b16b53a7f2bb5772424ad34fb9e957c2e0f9548ff09a27a63",
+					160: "2a666620d1c5c5bd54c0986f7eb3c910fcc12442a4f758c58c9f542f42b70ea9",
+					162: "587b31be29358b8f72a9ebdf2775bcd14ea4f3798e6816ce22819aeefe1d017a",
+					163: "5fc93683400092a2b7546d79bbb7733b2bcbca4313fd0da0d4362cc57b6d5692",
+					169: "2fa6489ebcae70eff4073a2caab7f0cee78796a850f0d47a584b66d4c6d953ab",
+					170: "0a4da5918aab3f68f744a19d0bdc2d419c7042e7cf4b47da188b7d59a16c178f",
+					230: "0a471101a2bfc372236ca551d87f95200801da816551c9caaf2289ec3900d4ea",
+				}
+				if expected, ok := legacyCommentChecksums[m.version]; ok && (targetDB == "primary" || targetDB == "observability") && prev.filename == m.filename && prev.checksum == expected {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
+						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
+					}
+					if log != nil {
+						log.Warn("reconciled historical comment-only migration checksum", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
 				return fmt.Errorf(
 					"storage: migration %03d (%s) identity/checksum mismatch — "+
 						"applied=%s/%s current=%s/%s. Migrations must never be modified or renamed after being applied",

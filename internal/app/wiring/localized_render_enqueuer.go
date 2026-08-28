@@ -200,6 +200,24 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if sourceLang == "" || targetLang == "" {
 		return fmt.Errorf("localized render: source and target language are required (scene %q)", in.SceneID)
 	}
+	// Clip subtitles are canonical source media metadata.  A script may be
+	// generated in another language (for example it) while the source clip's
+	// existing timed transcript is stored as en.  Reuse that track instead of
+	// invoking ASR or requiring a translation that was never requested.
+	if resolvedLang, resolveErr := a.resolveExistingSubtitleLanguage(ctx, assetID, sourceLang); resolveErr != nil {
+		return resolveErr
+	} else if resolvedLang != "" {
+		sourceLang = resolvedLang
+	}
+	if sourceLang != targetLang {
+		if target, targetCues, targetErr := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript); targetErr != nil {
+			return fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, targetErr)
+		} else if target == nil || len(targetCues) == 0 {
+			// No translation track is not a missing-subtitle condition: the
+			// original timed subtitles are still authoritative and burnable.
+			targetLang = sourceLang
+		}
+	}
 
 	// Subtitles are never derived from scene narration/clip descriptions. They
 	// must come from the canonical timed transcript in SQLite. If it is absent,
@@ -408,6 +426,30 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		}
 	}
 	return nil
+}
+
+func (a *localizedRenderEnqueuerAdapter) resolveExistingSubtitleLanguage(ctx context.Context, assetID, requested string) (string, error) {
+	track, cues, err := a.tracks.FindReady(ctx, assetID, requested, detail.TextTrackTranscript)
+	if err != nil {
+		return "", fmt.Errorf("localized render: find source subtitles for %q: %w", assetID, err)
+	}
+	if track != nil && len(cues) > 0 && !invalidSubtitleText(track.TextContent, cues) {
+		return requested, nil
+	}
+	languages, err := a.tracks.ListReadyLanguages(ctx, assetID, detail.TextTrackTranscript)
+	if err != nil {
+		return "", fmt.Errorf("localized render: list source subtitle languages for %q: %w", assetID, err)
+	}
+	for _, language := range languages {
+		candidate, candidateCues, findErr := a.tracks.FindReady(ctx, assetID, language, detail.TextTrackTranscript)
+		if findErr != nil {
+			return "", fmt.Errorf("localized render: find fallback subtitles for %q/%q: %w", assetID, language, findErr)
+		}
+		if candidate != nil && len(candidateCues) > 0 && !invalidSubtitleText(candidate.TextContent, candidateCues) {
+			return language, nil
+		}
+	}
+	return "", nil
 }
 
 func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) (bool, error) {
