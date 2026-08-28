@@ -43,6 +43,10 @@ type ClipRenderResult struct {
 	NV12ToRGBAFrames        *uint64
 	RGBAToNV12Frames        *uint64
 	OperationMetrics        *OperationMetrics
+	// Chronon admission/service timings are adapter-owned wall measurements.
+	// They stay nil for non-Chronon executors instead of fabricating zeros.
+	ChrononQueueWaitMS *int64
+	ChrononServiceMS   *int64
 	// render_clip phase timings reported by Rust (nil = phase not reported;
 	// the V2 metrics report maps them only when measured — never a fake zero).
 	StartupMS         *int64 // pre-ffmpeg wall inside Rust (plan decode + graph + spawn; probe is separate)
