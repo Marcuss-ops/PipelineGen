@@ -130,6 +130,169 @@ func (m chrononPhaseMetrics) LogFields() []zap.Field {
 	}
 }
 
+// chrononTimingReport is the narrow projection of Chronon's canonical
+// *.timing.json sidecar needed by RenderMetricsV2. Chronon remains the owner
+// of these measurements; PipelineGen only transports them and never re-times
+// or fabricates missing phases.
+type chrononTimingReport struct {
+	EncodeCloseMS float64 `json:"encode_close_ms"`
+	FrameTimes    []struct {
+		ConversionCopyMS float64 `json:"conversion_copy_ms"`
+		EncoderMS        float64 `json:"encoder_ms"`
+	} `json:"frame_times_ms"`
+	Job struct {
+		EngineInitMS      *float64 `json:"engine_init_ms"`
+		BackendInitMS     *float64 `json:"backend_init_ms"`
+		PlanReadMS        *float64 `json:"plan_read_ms"`
+		PlanParseMS       *float64 `json:"plan_parse_ms"`
+		PlanValidateMS    *float64 `json:"plan_validate_ms"`
+		PlanCompileMS     *float64 `json:"plan_compile_ms"`
+		GraphCompileMS    *float64 `json:"graph_compile_ms"`
+		PrepareMS         *float64 `json:"prepare_ms"`
+		OutputFinalizeMS  *float64 `json:"output_finalize_ms"`
+		GPU               struct {
+			CUDACompositeWallUS *uint64 `json:"cuda_composite_wall_us"`
+			VideoDecodeWallMS    *uint64 `json:"video_decode_wall_ms"`
+		} `json:"gpu"`
+		Text struct {
+			RasterMS      *float64 `json:"raster_ms"`
+			AtlasUploadMS *float64 `json:"atlas_upload_ms"`
+			DrawMS        *float64 `json:"draw_ms"`
+		} `json:"text"`
+		Image struct {
+			ResolveMS *float64 `json:"resolve_ms"`
+			DecodeMS  *float64 `json:"decode_ms"`
+			ConvertMS *float64 `json:"convert_ms"`
+			UploadMS  *float64 `json:"upload_ms"`
+			DrawMS    *float64 `json:"draw_ms"`
+		} `json:"image"`
+		CPUBreakdown struct {
+			CompositeNodeBlendMS *float64 `json:"compositenode_blend_ms"`
+			EffectStackTotalMS   *float64 `json:"effect_stack_total_ms"`
+		} `json:"cpu_breakdown"`
+	} `json:"job"`
+}
+
+type chrononMeasuredPhases struct {
+	StartupMS         *int64
+	DecodeMS          *int64
+	CompositeMS       *int64
+	SubtitleRasterMS  *int64
+	WatermarkRasterMS *int64
+	FrameConversionMS *int64
+	EncodeMS          *int64
+	FinalizeMS        *int64
+}
+
+func sumMeasuredMS(values ...*float64) *int64 {
+	var sum float64
+	seen := false
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		seen = true
+		sum += *value
+	}
+	if !seen {
+		return nil
+	}
+	ms := int64(sum + 0.5)
+	return &ms
+}
+
+func measuredUintMS(value *uint64) *int64 {
+	if value == nil {
+		return nil
+	}
+	ms := int64(*value)
+	return &ms
+}
+
+func readChrononMeasuredPhases(path string, plan cliprender.ClipRenderPlanV1) (chrononMeasuredPhases, error) {
+	var report chrononTimingReport
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return chrononMeasuredPhases{}, err
+	}
+	if err := json.Unmarshal(raw, &report); err != nil {
+		return chrononMeasuredPhases{}, fmt.Errorf("decode chronon timing sidecar: %w", err)
+	}
+
+	phases := chrononMeasuredPhases{}
+	phases.StartupMS = sumMeasuredMS(
+		report.Job.EngineInitMS,
+		report.Job.BackendInitMS,
+		report.Job.PlanReadMS,
+		report.Job.PlanParseMS,
+		report.Job.PlanValidateMS,
+		report.Job.PlanCompileMS,
+		report.Job.GraphCompileMS,
+		report.Job.PrepareMS,
+	)
+	phases.DecodeMS = measuredUintMS(report.Job.GPU.VideoDecodeWallMS)
+
+	var compositeValues []*float64
+	if report.Job.CPUBreakdown.CompositeNodeBlendMS != nil {
+		compositeValues = append(compositeValues, report.Job.CPUBreakdown.CompositeNodeBlendMS)
+	}
+	if report.Job.CPUBreakdown.EffectStackTotalMS != nil {
+		compositeValues = append(compositeValues, report.Job.CPUBreakdown.EffectStackTotalMS)
+	}
+	if report.Job.GPU.CUDACompositeWallUS != nil {
+		cudaMS := float64(*report.Job.GPU.CUDACompositeWallUS) / 1000.0
+		compositeValues = append(compositeValues, &cudaMS)
+	}
+	phases.CompositeMS = sumMeasuredMS(compositeValues...)
+
+	textOverlayMS := sumMeasuredMS(
+		report.Job.Text.RasterMS,
+		report.Job.Text.AtlasUploadMS,
+		report.Job.Text.DrawMS,
+	)
+	hasSubtitles := plan.Subtitles != nil && strings.TrimSpace(plan.Subtitles.Path) != ""
+	hasTextWatermark := plan.Watermark != nil && strings.TrimSpace(plan.Watermark.Text) != ""
+	hasImageWatermark := plan.Watermark != nil && strings.TrimSpace(plan.Watermark.Text) == "" && strings.TrimSpace(plan.Watermark.Path) != ""
+	hasBackgroundAsset := plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset && strings.TrimSpace(plan.Background.Path) != ""
+	// Chronon's job.text aggregate covers all text nodes. Attribute it only
+	// when exactly one text-overlay class is present; when subtitles and a
+	// text watermark coexist we deliberately leave both fields unknown rather
+	// than splitting one measured total by guesswork.
+	if hasSubtitles && !hasTextWatermark {
+		phases.SubtitleRasterMS = textOverlayMS
+	}
+	if hasTextWatermark && !hasSubtitles {
+		phases.WatermarkRasterMS = textOverlayMS
+	}
+	// The job.image aggregate is watermark-specific only when no background
+	// image is also present. In that safe case expose the complete measured
+	// image watermark pipeline (resolve/decode/convert/upload/draw).
+	if hasImageWatermark && !hasBackgroundAsset {
+		phases.WatermarkRasterMS = sumMeasuredMS(
+			report.Job.Image.ResolveMS,
+			report.Job.Image.DecodeMS,
+			report.Job.Image.ConvertMS,
+			report.Job.Image.UploadMS,
+			report.Job.Image.DrawMS,
+		)
+	}
+
+	if len(report.FrameTimes) > 0 {
+		var conversionMS float64
+		var encodeMS float64
+		for _, frame := range report.FrameTimes {
+			conversionMS += frame.ConversionCopyMS
+			encodeMS += frame.EncoderMS
+		}
+		conversion := int64(conversionMS + 0.5)
+		encode := int64(encodeMS + report.EncodeCloseMS + 0.5)
+		phases.FrameConversionMS = &conversion
+		phases.EncodeMS = &encode
+	}
+	phases.FinalizeMS = sumMeasuredMS(report.Job.OutputFinalizeMS)
+	return phases, nil
+}
+
 // The current Chronon native Vulkan/NVENC surface pool is process-safe for
 // one render at a time but not for several independent CLI processes sharing
 // the same device. Keep Rust acquisition and publishing parallel, while
@@ -362,10 +525,11 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.String("encoder_backend", "native"),
 		zap.Int("expected_frames", frames),
 	)
+	chrononVideoPath := filepath.Join(runRoot, "chronon.mp4")
 	cmd := exec.CommandContext(ctx, r.binary,
 		"render",
 		"--plan", planPath,
-		"--output", filepath.Join(runRoot, "chronon.mp4"),
+		"--output", chrononVideoPath,
 		"--assets-root", assets,
 		"--backend", "vulkan",
 		"--hardware", "nvenc",
@@ -381,12 +545,10 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	out, renderErr := cmd.CombinedOutput()
 	chrononRenderMu.Unlock()
 	metrics.ChrononRenderMS = time.Since(executionStart).Milliseconds()
-	// Chronon reports one opaque render invocation today. Keep the internal
-	// decode/composite/encode phases explicitly uninstrumented rather than
-	// distributing the invocation duration across them.
 
-	// Always persist the chronon report so we can reconstruct the GPU
-	// pipeline (init, frame loop, encoder finalize) when something fails.
+	// Always persist Chronon's stdout and exact timing sidecar. The temp run
+	// directory is deleted at return, so the sidecar must be copied before
+	// cleanup or all granular engine metrics disappear from the parent job.
 	metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
 	if metricsErr := os.MkdirAll(metricsDir, 0o755); metricsErr == nil {
 		if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.log"), out, 0o644); writeErr != nil {
@@ -401,15 +563,25 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		r.logPhase("chronon_render_failed", plan.RunID,
 			zap.Int("stdout_bytes", len(out)),
 			zap.Int64("duration_ms", metrics.ChrononRenderMS),
-			zap.String("stderr_tail", strings.TrimSpace(string(out[len(out)-previewLen:]))),
+			zap.String("stderr_tail", strings.TrimSpace(string(out[len(out)-previewLen:])),
 			zap.Error(renderErr),
 		)
 		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon render: %w: %s", renderErr, strings.TrimSpace(string(out)))
 	}
+
+	chrononSidecarPath := chrononVideoPath + ".timing.json"
+	measured, timingErr := readChrononMeasuredPhases(chrononSidecarPath, plan)
+	if timingErr != nil {
+		r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
+	} else if rawTiming, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
+		if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
+			r.logPhase("metrics_write_failed", plan.RunID, zap.String("artifact", "timing_sidecar"), zap.Error(writeErr))
+		}
+	}
 	r.logPhase("chronon_render_done", plan.RunID,
 		zap.Int("stdout_bytes", len(out)),
 		zap.Int64("duration_ms", metrics.ChrononRenderMS),
-		zap.String("output", filepath.Join(runRoot, "chronon.mp4")),
+		zap.String("output", chrononVideoPath),
 	)
 
 	// ── Phase 5: remux audio from the source onto the chronon video ──
@@ -418,11 +590,11 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	}
 	muxStart := time.Now()
 	r.logPhase("audio_mux_start", plan.RunID,
-		zap.String("video", filepath.Join(runRoot, "chronon.mp4")),
+		zap.String("video", chrononVideoPath),
 		zap.String("source_audio", plan.Source.Path),
 		zap.String("output", plan.OutputPath),
 	)
-	if err := muxChrononAudio(ctx, r.ffmpeg, filepath.Join(runRoot, "chronon.mp4"), plan.Source.Path, plan.OutputPath); err != nil {
+	if err := muxChrononAudio(ctx, r.ffmpeg, chrononVideoPath, plan.Source.Path, plan.OutputPath); err != nil {
 		metrics.AudioMuxMS = time.Since(muxStart).Milliseconds()
 		r.logPhase("audio_mux_failed", plan.RunID,
 			zap.Int64("duration_ms", metrics.AudioMuxMS),
@@ -450,19 +622,27 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int64("duration_ms", durationMS),
 	}, metrics.LogFields()...)...)
 
+	probeMS := metrics.ProbeDurationMS
+	opMS := metrics.TotalMS
 	return rustexec.ClipRenderResult{
-		OutputPath:  plan.OutputPath,
-		SizeBytes:   st.Size(),
-		DurationSec: float64(durationMS) / 1000,
-		Width:       uint32(plan.Output.Width),
-		Height:      uint32(plan.Output.Height),
-		FPSNum:      uint32(plan.Output.FPSNum),
-		FPSDen:      uint32(plan.Output.FPSDen),
-		FFmpegMS:    metrics.TotalMS,
-		// Chronon currently reports one render invocation plus a separately
-		// measured audio mux. Preserve the phase split in the common Rust
-		// result contract; unavailable decode/composite/encode internals remain
-		// nil rather than being fabricated from the coarse duration.
+		OutputPath:        plan.OutputPath,
+		SizeBytes:         st.Size(),
+		DurationSec:       float64(durationMS) / 1000,
+		Width:             uint32(plan.Output.Width),
+		Height:            uint32(plan.Output.Height),
+		FPSNum:            uint32(plan.Output.FPSNum),
+		FPSDen:            uint32(plan.Output.FPSDen),
+		FFmpegMS:          metrics.TotalMS,
+		StartupMS:         measured.StartupMS,
+		PublishMS:         measured.FinalizeMS,
+		OpMS:              &opMS,
+		ProbeMS:           &probeMS,
+		DecodeMS:          measured.DecodeMS,
+		FilterGraphMS:     measured.CompositeMS,
+		SubtitleRasterMS:  measured.SubtitleRasterMS,
+		WatermarkRasterMS: measured.WatermarkRasterMS,
+		FrameConversionMS: measured.FrameConversionMS,
+		EncodeMS:          measured.EncodeMS,
 		AudioMuxMS:        &metrics.AudioMuxMS,
 		AudioCopyEligible: boolPtr(true),
 		AudioEncodePasses: intPtr(0),
