@@ -197,13 +197,6 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	metrics := cliprender.NewRenderMetricsV2()
 	renderStart := time.Now()
 
-	// Backend selection lives ONLY in the resolver (probed host capabilities
-	// + the plan's requirements). The adapter never tries a backend and falls
-	// back on failure; it dispatches execution to the executor that owns the
-	// selected backend. The probe/resolve timings below are the real
-	// instrumentation for backend_probe_ms / backend_resolve_ms — the same
-	// fail-closed semantics as cliprender.ResolveBackend, split so the report
-	// can attribute each stage.
 	if a.probe == nil {
 		return nil, fmt.Errorf("%w: backend capability probe is not wired (DEGRADED — no host capability information)", cliprender.ErrBackendUnavailable)
 	}
@@ -223,17 +216,8 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		return nil, err
 	}
 	metrics.BackendSelected = backend
-	// Single-authority selection: exactly one backend is attempted, zero
-	// fallbacks. Any fallback would be a silent downgrade — the resolver is
-	// the only place backend choice happens.
 	metrics.BackendAttempts = 1
 	metrics.FallbackCount = 0
-	// A configured-but-uncertified Chronon binary (ChrononVulkan without
-	// ChrononNativeCertified) explains why the resolver did not select
-	// chronon_vulkan — the real-probe gate refused it. Surface the reason so
-	// operators see the certification gate in the report instead of guessing
-	// why the GPU path is not used. Informational only: no fallback happened
-	// (single-authority selection), so fallback_count stays 0.
 	if capabilities.ChrononVulkan && !capabilities.ChrononNativeCertified {
 		metrics.FallbackReason = "chronon_native_not_certified"
 	}
@@ -245,23 +229,15 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		}
 		result, err = a.chronon.RenderClip(ctx, plan, backend)
 	} else {
-		// The Rust executor owns the non-Chronon backends: cuda_native (PATH
-		// B CUDA hybrid) and ffmpeg_fallback (software baseline).
 		result, err = a.renderer.RenderClip(ctx, plan, backend)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	// All backend results are projected into the single canonical V2 report.
-	// Until Rust exposes fine-grained phase metadata, its coarse ffmpeg_ms is
-	// represented in CompositeMS; unknown phases remain NOT_INSTRUMENTED.
-	// FFmpegMS below is only the legacy compatibility projection.
 	if result.FilterGraphMS != nil {
 		metrics.CompositeMS = cliprender.Metric(*result.FilterGraphMS)
 	} else if result.FFmpegMS >= 0 && result.AudioMuxMS == nil {
-		// Legacy coarse Rust boundary: retain the measured decode→encode wall
-		// as the composite work only when no phase metadata is available.
 		metrics.CompositeMS = cliprender.Metric(result.FFmpegMS)
 	}
 	if result.DecodeMS != nil {
@@ -282,15 +258,12 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.AudioMuxMS != nil {
 		metrics.AudioMuxMS = cliprender.Metric(*result.AudioMuxMS)
 	}
-	// The Rust boundary now reports its own phase timings for the benchmark
-	// decomposition: renderer_startup_ms is the pre-ffmpeg wall (plan decode
-	// + source probe + filter-graph build + process spawn) and publish_ms is
-	// the Rust-side output publish, mapped onto renderer_finalize_ms.
-	// Both map only when actually reported (nil stays NOT_INSTRUMENTED —
-	// never a fake zero). Publication beyond the Rust boundary is owned by
-	// the publisher adapter, which reports its own measured walls; the
-	// worker projects those into publication_total_ms / artifact_publish_ms /
-	// drive_upload_ms and never re-times the Rust finalize.
+	if result.ChrononQueueWaitMS != nil {
+		metrics.ChrononQueueWaitMS = cliprender.Metric(*result.ChrononQueueWaitMS)
+	}
+	if result.ChrononServiceMS != nil {
+		metrics.ChrononServiceMS = cliprender.Metric(*result.ChrononServiceMS)
+	}
 	if result.StartupMS != nil {
 		metrics.RendererStartupMS = cliprender.Metric(*result.StartupMS)
 	}
@@ -318,12 +291,7 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.RGBAToNV12Frames != nil {
 		metrics.RGBAToNV12Frames = cliprender.Metric(int64(*result.RGBAToNV12Frames))
 	}
-	// Process/resource metrics are reported by the Rust operation owner and
-	// projected into the canonical clip report only when actually measured.
 	if result.OperationMetrics != nil {
-		// These counters are measured by the Rust operation owner. Keep absent
-		// fields at NOT_INSTRUMENTED; zero is valid only for explicitly
-		// instrumented values.
 		if result.OperationMetrics.PeakRSSBytes > 0 {
 			metrics.PeakRSSBytes = cliprender.Metric(result.OperationMetrics.PeakRSSBytes)
 		}
@@ -340,17 +308,12 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 			metrics.NetworkTXBytes = cliprender.Metric(result.OperationMetrics.NetworkTXBytes)
 		}
 	}
-	// OutputBytes is an encoded output-size fact, not GPU readback traffic. The
-	// Rust boundary does not instrument readback here, so keep the canonical
-	// field at NOT_INSTRUMENTED rather than projecting an unrelated counter.
 	if result.FPSNum > 0 && result.FPSDen > 0 {
 		metrics.Frames = int(math.Round(result.DurationSec * float64(result.FPSNum) / float64(result.FPSDen)))
 	}
 	metrics.TotalMS = cliprender.Metric(time.Since(renderStart).Milliseconds())
 	metrics.Compute(result.DurationSec)
 
-	// Keep legacy scalar fields as projections of the canonical report/result
-	// for existing consumers; no second metrics authority is introduced.
 	return &cliprender.RenderOutcome{
 		OutputPath:        result.OutputPath,
 		SizeBytes:         result.SizeBytes,
