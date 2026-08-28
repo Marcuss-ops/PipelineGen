@@ -109,12 +109,13 @@ type chrononClipRenderExecutor struct {
 // Go side is responsible for. The result is logged once and returned so
 // downstream handlers can surface it in the job envelope.
 type chrononPhaseMetrics struct {
-	SetupMS         int64 `json:"setup_ms"`
-	ProbeDurationMS int64 `json:"probe_duration_ms"`
-	PlanSerializeMS int64 `json:"plan_serialize_ms"`
-	ChrononRenderMS int64 `json:"chronon_render_ms"`
-	AudioMuxMS      int64 `json:"audio_mux_ms"`
-	TotalMS         int64 `json:"total_ms"`
+	SetupMS           int64 `json:"setup_ms"`
+	ProbeDurationMS   int64 `json:"probe_duration_ms"`
+	PlanSerializeMS   int64 `json:"plan_serialize_ms"`
+	ChrononLockWaitMS int64 `json:"chronon_lock_wait_ms"`
+	ChrononRenderMS   int64 `json:"chronon_render_ms"`
+	AudioMuxMS        int64 `json:"audio_mux_ms"`
+	TotalMS           int64 `json:"total_ms"`
 }
 
 func (m chrononPhaseMetrics) LogFields() []zap.Field {
@@ -122,6 +123,7 @@ func (m chrononPhaseMetrics) LogFields() []zap.Field {
 		zap.Int64("setup_ms", m.SetupMS),
 		zap.Int64("probe_duration_ms", m.ProbeDurationMS),
 		zap.Int64("plan_serialize_ms", m.PlanSerializeMS),
+		zap.Int64("chronon_lock_wait_ms", m.ChrononLockWaitMS),
 		zap.Int64("chronon_render_ms", m.ChrononRenderMS),
 		zap.Int64("audio_mux_ms", m.AudioMuxMS),
 		zap.Int64("total_ms", m.TotalMS),
@@ -352,7 +354,6 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	// pipe mode because it is the Chronon video export path, but use native
 	// encoding so frames stay on the CUDA surface path instead of falling
 	// back to a CPU libx264 subprocess.
-	renderStart := time.Now()
 	r.logPhase("chronon_render_start", plan.RunID,
 		zap.String("binary", r.binary),
 		zap.String("backend", "vulkan"),
@@ -372,11 +373,14 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		"--encoder-backend", "native",
 		"--report",
 	)
+	lockStart := time.Now()
 	chrononRenderMu.Lock()
+	metrics.ChrononLockWaitMS = time.Since(lockStart).Milliseconds()
 	r.logPhase("chronon_render_acquired_lock", plan.RunID)
+	executionStart := time.Now()
 	out, renderErr := cmd.CombinedOutput()
 	chrononRenderMu.Unlock()
-	metrics.ChrononRenderMS = time.Since(renderStart).Milliseconds()
+	metrics.ChrononRenderMS = time.Since(executionStart).Milliseconds()
 	// Chronon reports one opaque render invocation today. Keep the internal
 	// decode/composite/encode phases explicitly uninstrumented rather than
 	// distributing the invocation duration across them.

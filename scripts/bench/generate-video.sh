@@ -333,31 +333,35 @@ wait_for_benchmark_job() {
     done
 }
 
-wait_for_benchmark_batch() {
-    local begin="$1" end="$2" polled=0 all_done status i jid
+# Sliding-window controller. This releases one window slot as soon as any job
+# terminates, so the submitter can replace
+# it immediately without an artificial barrier at every group boundary.
+declare -a WINDOW_INDEXES=()
+declare -a WINDOW_JOB_IDS=()
+wait_for_any_benchmark_window() {
+    local polled=0 status i j idx
     while true; do
-        all_done=1
-        for ((i=begin; i<end; i++)); do
-            jid="${J_JOB_IDS[$i]}"
-            [[ -n "$jid" ]] || continue
-            status=$(api GET "/api/jobs/$jid" 2>/dev/null || echo '{}')
+        for ((i=0; i<${#WINDOW_JOB_IDS[@]}; i++)); do
+            j="${WINDOW_JOB_IDS[$i]}"
+            status=$(api GET "/api/jobs/$j" 2>/dev/null || echo '{}')
             status=$(echo "$status" | json_field "status" "unknown" | tr '[:upper:]' '[:lower:]')
             case "$status" in
                 completed|succeeded|failed|cancelled)
-                    J_STATUS[$i]="$status" ;;
-                *)
-                    all_done=0 ;;
+                    idx="${WINDOW_INDEXES[$i]}"
+                    J_STATUS[$idx]="$status"
+                    echo "[bench] Window slot released: $j → $status"
+                    WINDOW_INDEXES=("${WINDOW_INDEXES[@]:0:i}" "${WINDOW_INDEXES[@]:i+1}")
+                    WINDOW_JOB_IDS=("${WINDOW_JOB_IDS[@]:0:i}" "${WINDOW_JOB_IDS[@]:i+1}")
+                    return 0
+                    ;;
             esac
         done
-        if (( all_done == 1 )); then
-            echo "[bench] Batch [$begin,$end) terminal"
-            return 0
-        fi
         if (( polled >= POLL_MAX )); then
-            for ((i=begin; i<end; i++)); do
-                [[ "${J_STATUS[$i]:-}" == "submitted" ]] && J_STATUS[$i]="timeout"
+            for ((i=0; i<${#WINDOW_INDEXES[@]}; i++)); do
+                idx="${WINDOW_INDEXES[$i]}"
+                [[ "${J_STATUS[$idx]:-}" == "submitted" ]] && J_STATUS[$idx]="timeout"
             done
-            echo "[bench] ⚠️ batch [$begin,$end) timed out after ${POLL_MAX}s" >&2
+            echo "[bench] ⚠️ sliding window timed out after ${POLL_MAX}s" >&2
             return 1
         fi
         sleep "$POLL_INTERVAL"
@@ -411,10 +415,12 @@ EOJSON
 
         if [[ "$WORKER_SLOTS" == "1" ]]; then
             wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
-        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS == 0 )); then
-            BATCH_END=${#J_JOB_IDS[@]}
-            BATCH_BEGIN=$((BATCH_END - WORKER_SLOTS))
-            wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
+        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]]; then
+            WINDOW_INDEXES+=("$(( ${#J_JOB_IDS[@]} - 1 ))")
+            WINDOW_JOB_IDS+=("$JOB_ID")
+            if (( ${#WINDOW_JOB_IDS[@]} >= WORKER_SLOTS )); then
+                wait_for_any_benchmark_window || true
+            fi
         fi
 
     elif [[ "$MODE" == "render" ]]; then
@@ -467,18 +473,20 @@ EOJSON
 
         if [[ "$WORKER_SLOTS" == "1" ]]; then
             wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
-        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS == 0 )); then
-            BATCH_END=${#J_JOB_IDS[@]}
-            BATCH_BEGIN=$((BATCH_END - WORKER_SLOTS))
-            wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
+        elif [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]]; then
+            WINDOW_INDEXES+=("$(( ${#J_JOB_IDS[@]} - 1 ))")
+            WINDOW_JOB_IDS+=("$JOB_ID")
+            if (( ${#WINDOW_JOB_IDS[@]} >= WORKER_SLOTS )); then
+                wait_for_any_benchmark_window || true
+            fi
         fi
     fi
 done
 
-if [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]] && (( ${#J_JOB_IDS[@]} % WORKER_SLOTS != 0 )); then
-    BATCH_END=${#J_JOB_IDS[@]}
-    BATCH_BEGIN=$((BATCH_END - (BATCH_END % WORKER_SLOTS)))
-    wait_for_benchmark_batch "$BATCH_BEGIN" "$BATCH_END" || true
+if [[ "$WORKER_SLOTS" =~ ^[2-9][0-9]*$ ]]; then
+    while (( ${#WINDOW_JOB_IDS[@]} > 0 )); do
+        wait_for_any_benchmark_window || break
+    done
 fi
 
 echo ""
