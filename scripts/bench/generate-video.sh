@@ -514,6 +514,7 @@ TOTAL_ELAPSED=0 # legacy CLI argument; excluded from all metrics
 echo ""
 echo "[bench] ═══ STAGE 4: REPORT (wall / work / critical path) ═══"
 
+BENCH_RESOURCE_DB="${BENCH_RESOURCE_DB:-$ROOT_DIR/data/media/media.db.sqlite}" \
 python3 - "$OUTPUT_FILE" "$FINGERPRINT_FILE" \
     "$GIT_SHA" "$GIT_BRANCH" "$CONFIG_SHA" "$DB_SHA" "$WORKER_IDS" "$BASE_URL" \
     "0" "0" "0" \
@@ -523,6 +524,7 @@ python3 - "$OUTPUT_FILE" "$FINGERPRINT_FILE" \
 import json
 import os
 import re
+import sqlite3
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -1127,6 +1129,73 @@ metrics_by_job = [
     ((j["result"].get("render") or {}).get("metrics_v2") or {})
     for j in jobs
 ]
+# ResourceSampler persists canonical host/GPU observations in the primary
+# media database. Read the persisted projection here; the benchmark never
+# samples the machine itself and never turns missing values into zero.
+resource_by_job = {}
+resource_db = os.environ.get("BENCH_RESOURCE_DB", "")
+resource_db = os.path.abspath(resource_db)
+if os.path.isfile(resource_db):
+    try:
+        conn = sqlite3.connect(resource_db)
+        columns = [
+            "cpu_avg_pct", "cpu_peak_pct", "rss_peak_bytes", "gpu_avg_pct",
+            "gpu_peak_pct", "vram_peak_bytes", "encoder_avg_pct",
+            "decoder_avg_pct", "disk_read_bytes", "disk_write_bytes",
+            "disk_util_pct", "io_wait_pct", "disk_queue_depth",
+            "gpu_temp_peak_c", "throttled",
+        ]
+        sql = "SELECT job_id,%s FROM resource_observations WHERE job_id IN (%s)" % (
+            ",".join(columns), ",".join("?" for _ in jobs))
+        rows = conn.execute(sql, j_ids).fetchall()
+        conn.close()
+        grouped = {}
+        for row in rows:
+            grouped.setdefault(row[0], []).append(row[1:])
+        for job_id, samples in grouped.items():
+            aggregate = {"samples": len(samples)}
+            for pos, name in enumerate(columns):
+                values = [row[pos] for row in samples if row[pos] is not None]
+                if not values:
+                    continue
+                if name.endswith("_avg_pct") or name in ("disk_util_pct", "io_wait_pct", "disk_queue_depth"):
+                    aggregate[name] = sum(float(v) for v in values) / len(values)
+                elif name == "throttled":
+                    aggregate[name] = any(bool(v) for v in values)
+                else:
+                    aggregate[name] = max(values)
+            resource_by_job[job_id] = aggregate
+    except (OSError, sqlite3.Error):
+        resource_by_job = {}
+
+resource_rows = [resource_by_job.get(j_ids[i], {}) for i in range(n_jobs)]
+def resource_avg(name):
+    values = [float(r[name]) for r in resource_rows if isinstance(r.get(name), (int, float))]
+    return sum(values) / len(values) if values else None
+def resource_max(name):
+    values = [float(r[name]) for r in resource_rows if isinstance(r.get(name), (int, float))]
+    return max(values) if values else None
+def resource_sum(name):
+    values = [float(r[name]) for r in resource_rows if isinstance(r.get(name), (int, float))]
+    return sum(values) if values else None
+resource_summary = {
+    "samples": sum(int(r.get("samples", 0)) for r in resource_rows),
+    "cpu_avg_pct": resource_avg("cpu_avg_pct"),
+    "cpu_peak_pct": resource_max("cpu_peak_pct"),
+    "rss_peak_bytes": resource_max("rss_peak_bytes"),
+    "gpu_avg_pct": resource_avg("gpu_avg_pct"),
+    "gpu_peak_pct": resource_max("gpu_peak_pct"),
+    "vram_peak_bytes": resource_max("vram_peak_bytes"),
+    "encoder_avg_pct": resource_avg("encoder_avg_pct"),
+    "decoder_avg_pct": resource_avg("decoder_avg_pct"),
+    "disk_read_bytes": resource_max("disk_read_bytes"),
+    "disk_write_bytes": resource_max("disk_write_bytes"),
+    "disk_util_pct": resource_avg("disk_util_pct"),
+    "io_wait_pct": resource_avg("io_wait_pct"),
+    "disk_queue_depth": resource_avg("disk_queue_depth"),
+    "gpu_temp_peak_c": resource_max("gpu_temp_peak_c"),
+    "throttled": any(bool(r.get("throttled")) for r in resource_rows),
+}
 # Resource metrics are sourced from each render's canonical metrics_v2.
 # CPU is aggregated as user+system time; RSS is a batch high-water mark.
 total_cpu_user_ms = sum(ms(m.get("cpu_user_ms")) for m in metrics_by_job if sentinel_ok(m.get("cpu_user_ms")))
@@ -1222,6 +1291,9 @@ print("  %-40s %s" % ("peak_cpu_percent:", f"{peak_cpu_percent:.1f}" if peak_cpu
 print("  %-40s %s" % ("peak_rss_bytes:", f"{total_peak_rss_bytes:,}" if total_peak_rss_bytes else "-"))
 print("  %-40s %s" % ("disk_read_bytes:", f"{total_disk_read_bytes:,}" if total_disk_read_bytes else "-"))
 print("  %-40s %s" % ("disk_write_bytes:", f"{total_disk_write_bytes:,}" if total_disk_write_bytes else "-"))
+for key in ("cpu_avg_pct", "cpu_peak_pct", "gpu_avg_pct", "gpu_peak_pct", "vram_peak_bytes", "encoder_avg_pct", "decoder_avg_pct", "disk_util_pct", "io_wait_pct", "disk_queue_depth", "gpu_temp_peak_c"):
+    value = resource_summary.get(key)
+    print("  %-40s %s" % (key + ":", "-" if value is None else (f"{value:,.1f}" if isinstance(value, float) else f"{value:,}")))
 print("")
 print("  ── Per-job (real worker facts) ──")
 print("  %-16s %-9s %-11s %-16s %13s %15s %8s %10s %8s %10s" % (
@@ -1622,6 +1694,7 @@ report = {
                 "disk_write_bytes": total_disk_write_bytes,
                 "network_rx_bytes": total_network_rx_bytes,
                 "network_tx_bytes": total_network_tx_bytes,
+                **resource_summary,
             },
             "peak_rss_bytes_max": total_peak_rss_bytes,
             "disk_read_bytes_total": total_disk_read_bytes,
