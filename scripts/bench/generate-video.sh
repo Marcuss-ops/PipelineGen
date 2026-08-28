@@ -522,6 +522,7 @@ python3 - "$OUTPUT_FILE" "$FINGERPRINT_FILE" \
     "$WORKER_SLOTS" <<'PYEOF'
 import json
 import os
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -589,6 +590,9 @@ def timestamp_ms(v):
         pass
     try:
         value = v.strip().replace("Z", "+00:00")
+        # Go's RFC3339Nano timestamps may contain 9 fractional digits;
+        # datetime.fromisoformat accepts at most 6.
+        value = re.sub(r"(\.\d{6})\d+(?=\+00:00$)", r"\1", value)
         return int(datetime.fromisoformat(value).timestamp() * 1000)
     except (TypeError, ValueError, OverflowError):
         return None
