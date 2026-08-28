@@ -293,12 +293,11 @@ func readChrononMeasuredPhases(path string, plan cliprender.ClipRenderPlanV1) (c
 	return phases, nil
 }
 
-// The current Chronon native Vulkan/NVENC surface pool is process-safe for
-// one render at a time but not for several independent CLI processes sharing
-// the same device. Keep Rust acquisition and publishing parallel, while
-// serializing only the Chronon critical section until Chronon daemon-level
-// surface ownership is enabled.
-var chrononRenderMu sync.Mutex
+// Process-wide Chronon lifecycle is initialized once, but GPU work is admitted
+// through a bounded semaphore (default C=2) instead of a global render mutex.
+// The semaphore is context-aware and is shared by every Chronon render in this
+// process; mux and publication happen after the permit is released.
+var chrononRuntimeControlInit sync.Once
 
 // NewChrononClipRenderExecutor constructs the adapter. log is mandatory: every
 // render boundary decision and phase timing is emitted through it.
@@ -524,6 +523,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.String("ffmpeg_mode", "pipe"),
 		zap.String("encoder_backend", "native"),
 		zap.Int("expected_frames", frames),
+		zap.Int("gpu_concurrency", currentChrononGPUConcurrency()),
 	)
 	chrononVideoPath := filepath.Join(runRoot, "chronon.mp4")
 	cmd := exec.CommandContext(ctx, r.binary,
@@ -537,31 +537,39 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		"--encoder-backend", "native",
 		"--report",
 	)
-	lockStart := time.Now()
-	chrononRenderMu.Lock()
-	metrics.ChrononLockWaitMS = time.Since(lockStart).Milliseconds()
-	r.logPhase("chronon_render_acquired_lock", plan.RunID)
-	executionStart := time.Now()
-	out, renderErr := cmd.CombinedOutput()
-	chrononRenderMu.Unlock()
-	metrics.ChrononRenderMS = time.Since(executionStart).Milliseconds()
 
-	// Always persist Chronon's stdout and exact timing sidecar. The temp run
-	// directory is deleted at return, so the sidecar must be copied before
-	// cleanup or all granular engine metrics disappear from the parent job.
 	metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
-	if metricsErr := os.MkdirAll(metricsDir, 0o755); metricsErr == nil {
-		if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.log"), out, 0o644); writeErr != nil {
-			r.logPhase("metrics_write_failed", plan.RunID, zap.Error(writeErr))
-		}
+	metricsDirReady := os.MkdirAll(metricsDir, 0o755) == nil
+	chrononLogPath := filepath.Join(runRoot, "chronon.log")
+	if metricsDirReady {
+		chrononLogPath = filepath.Join(metricsDir, plan.RunID+".chronon.log")
 	}
+	wait, release, acquireErr := acquireChrononGPU(ctx)
+	metrics.ChrononLockWaitMS = wait.Milliseconds()
+	if acquireErr != nil {
+		r.logPhase("chronon_render_admission_failed", plan.RunID,
+			zap.Int64("wait_ms", metrics.ChrononLockWaitMS),
+			zap.Error(acquireErr),
+		)
+		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon GPU admission: %w", acquireErr)
+	}
+	r.logPhase("chronon_render_acquired_slot", plan.RunID,
+		zap.Int64("wait_ms", metrics.ChrononLockWaitMS),
+		zap.Int("gpu_concurrency", currentChrononGPUConcurrency()),
+	)
+	executionStart := time.Now()
+	procOut, renderErr := runChrononCommandStreaming(cmd, chrononLogPath, plan.RunID, r.log)
+	release()
+	metrics.ChrononRenderMS = time.Since(executionStart).Milliseconds()
+	out := procOut.Tail
+
 	if renderErr != nil {
 		previewLen := len(out)
 		if previewLen > 4000 {
 			previewLen = 4000
 		}
 		r.logPhase("chronon_render_failed", plan.RunID,
-			zap.Int("stdout_bytes", len(out)),
+			zap.Int64("stdout_bytes", procOut.TotalBytes),
 			zap.Int64("duration_ms", metrics.ChrononRenderMS),
 			zap.String("stderr_tail", strings.TrimSpace(string(out[len(out)-previewLen:])),
 			zap.Error(renderErr),
@@ -573,13 +581,15 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	measured, timingErr := readChrononMeasuredPhases(chrononSidecarPath, plan)
 	if timingErr != nil {
 		r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
-	} else if rawTiming, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
-		if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
-			r.logPhase("metrics_write_failed", plan.RunID, zap.String("artifact", "timing_sidecar"), zap.Error(writeErr))
+	} else if metricsDirReady {
+		if rawTiming, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
+			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
+				r.logPhase("metrics_write_failed", plan.RunID, zap.String("artifact", "timing_sidecar"), zap.Error(writeErr))
+			}
 		}
 	}
 	r.logPhase("chronon_render_done", plan.RunID,
-		zap.Int("stdout_bytes", len(out)),
+		zap.Int64("stdout_bytes", procOut.TotalBytes),
 		zap.Int64("duration_ms", metrics.ChrononRenderMS),
 		zap.String("output", chrononVideoPath),
 	)
@@ -654,8 +664,10 @@ func boolPtr(v bool) *bool { return &v }
 func intPtr(v int) *int    { return &v }
 
 func probeDurationMS(ctx context.Context, ffmpeg, path string) int64 {
+	if cached, ok := chrononProbeLookup(path); ok {
+		return cached
+	}
 	ffprobe := "ffprobe"
-	probeStart := time.Now()
 	if strings.TrimSpace(ffmpeg) != "" {
 		ffprobe = filepath.Join(filepath.Dir(ffmpeg), "ffprobe")
 	}
@@ -667,8 +679,9 @@ func probeDurationMS(ctx context.Context, ffmpeg, path string) int64 {
 	if err != nil {
 		return 0
 	}
-	_ = probeStart // kept for symmetry with the public phase log
-	return int64(sec*1000 + .5)
+	durationMS := int64(sec*1000 + .5)
+	chrononProbeStore(path, durationMS)
+	return durationMS
 }
 
 func muxChrononAudio(ctx context.Context, ffmpeg, video, source, output string) error {
