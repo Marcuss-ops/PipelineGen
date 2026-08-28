@@ -642,6 +642,10 @@ def build_job(full, i):
     drive_work = 0
     drive_download_ms = drive_download_work = drive_upload_ms = drive_upload_work = 0
     doc_publish_ms = doc_publish_work = 0
+    # publish_wall is assigned by the clip.render envelope branch; default it
+    # so a job with no render facts (missing result file, e.g.) never crashes
+    # the report at the drive dict.
+    publish_wall = 0
     for op in timing.get("operations") or []:
         comp = op.get("component", "")
         opname = op.get("operation", "")
