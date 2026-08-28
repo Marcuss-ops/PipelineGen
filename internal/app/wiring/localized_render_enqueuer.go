@@ -165,6 +165,17 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 
 var _ scriptgeneration.LocalizedRenderEnqueuer = (*localizedRenderEnqueuerAdapter)(nil)
 
+// ReplaceTranscriptCues keeps the policy adapter compatible with the
+// canonical cue-writer port while preserving the concrete writer ownership in
+// the composition root.  The policy refactor uses the adapter as a writer
+// boundary; it must not silently drop cue replacements.
+func (a *localizedRenderEnqueuerAdapter) ReplaceTranscriptCues(ctx context.Context, assetID string, byLang map[string][]detail.TimedCue) error {
+	if a == nil || a.cues == nil {
+		return fmt.Errorf("localized render: cue writer not wired")
+	}
+	return a.cues.ReplaceTranscriptCues(ctx, assetID, byLang)
+}
+
 // EnqueueLocalizedRender persists the source transcript + translated subtitle
 // text tracks (with full-span cues), then runs a single-language Localize.
 func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (err error) {

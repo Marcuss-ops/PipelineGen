@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -25,6 +26,12 @@ type SourceResolver struct {
 	resolve  cliprender.AssetResolver
 	material cliprender.AssetMaterializer
 	probe    MediaProber
+	// factsCache avoids resolving, materializing and probing the same
+	// immutable content-addressed clip twice during one localization pass:
+	// the compiler asks for source facts after the service has already done so.
+	// Asset IDs are immutable in the canonical registry, so this cache is safe
+	// for the lifetime of the process and is shared by concurrent renders.
+	factsCache sync.Map // map[string]localization.SourceFacts
 }
 
 // NewSourceResolver builds the resolver. Fail-closed at call time (not
@@ -43,6 +50,9 @@ var _ localization.SourceResolver = (*SourceResolver)(nil)
 func (r *SourceResolver) ResolveSource(ctx context.Context, assetID string) (localization.SourceFacts, error) {
 	if r == nil || r.resolve == nil || r.material == nil {
 		return localization.SourceFacts{}, fmt.Errorf("localization: source resolver not wired")
+	}
+	if cached, ok := r.factsCache.Load(strings.TrimSpace(assetID)); ok {
+		return cached.(localization.SourceFacts), nil
 	}
 
 	ref, err := r.resolve.ResolveAsset(ctx, assetID)
@@ -80,13 +90,15 @@ func (r *SourceResolver) ResolveSource(ctx context.Context, assetID string) (loc
 		return localization.SourceFacts{}, fmt.Errorf("localization: source asset %q has no valid rational frame rate", assetID)
 	}
 
-	return localization.SourceFacts{
+	facts := localization.SourceFacts{
 		AssetID:    ref.AssetID,
 		LocalPath:  mat.LocalPath,
 		SHA256:     mat.SHA256,
 		DurationMS: mat.DurationMS,
 		FrameRate:  audio.FrameRate{Numerator: int64(info.FPSNum), Denominator: int64(info.FPSDen)},
-	}, nil
+	}
+	r.factsCache.Store(strings.TrimSpace(assetID), facts)
+	return facts, nil
 }
 
 // cleanSHA256 returns the value when it is a canonical 64-character lowercase
