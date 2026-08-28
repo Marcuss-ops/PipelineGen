@@ -40,22 +40,11 @@ func (m Metric) MarshalJSON() ([]byte, error) {
 	return json.Marshal(int64(m))
 }
 
-// RenderMetricsV2 is the canonical execution report. Field-by-field:
-//
-//   - Backend selection (measured by the executor adapter around the probe and
-//     the resolver; NOT part of the accounted phase set — selection overhead
-//     surfaces inside unaccounted_ms).
-//   - Preparation phases (asset materialization + subtitle compilation happen
-//     upstream of the executor seam, so they are NOT_INSTRUMENTED here until
-//     the preparer reports them).
-//   - Render phases. Backends that only report a coarse render duration (the
-//     Rust boundary reports one ffmpeg_ms spanning decode→encode; the Chronon
-//     adapter reports one chronon render invocation) map that duration onto
-//     CompositeMS until per-phase metadata lands — the unaccounted_ms delta
-//     then exactly exposes the "time outside the render" question.
-//   - Throughput + GPU movement counters.
-//   - Totals: TotalMS (adapter-measured, authoritative) and the derived
-//     UnaccountedMS.
+// RenderMetricsV2 is the canonical execution report. Diagnostic sub-phases
+// may be nested inside top-level walls. Compute therefore reconciles TotalMS
+// with exclusive top-level walls first and only falls back to fine-grained
+// render work when a render wall is unavailable. This prevents subtitle,
+// watermark, conversion and encoder diagnostics from being counted twice.
 type RenderMetricsV2 struct {
 	BackendProbeMS   Metric        `json:"backend_probe_ms"`
 	BackendResolveMS Metric        `json:"backend_resolve_ms"`
@@ -72,52 +61,43 @@ type RenderMetricsV2 struct {
 	// ProbeMS is the ffprobe source-probe wall reported separately from
 	// RendererStartupMS (which excludes it), so the report can attribute the
 	// probe instead of burying it inside startup.
-	ProbeMS           Metric `json:"probe_ms"`
-	DecodeMS          Metric `json:"decode_ms"`
-	CompositeMS       Metric `json:"composite_ms"`
-	SubtitleRasterMS  Metric `json:"subtitle_raster_ms"`
-	WatermarkRasterMS Metric `json:"watermark_raster_ms"`
+	ProbeMS Metric `json:"probe_ms"`
+	// ChrononQueueWaitMS is time waiting for PipelineGen's bounded GPU
+	// admission permit. ChrononServiceMS is only the Chronon process service
+	// wall while that permit is held. Both are diagnostics nested inside the
+	// worker-owned RenderWallMS and are never added on top of it.
+	ChrononQueueWaitMS Metric `json:"chronon_queue_wait_ms"`
+	ChrononServiceMS   Metric `json:"chronon_service_ms"`
+	DecodeMS           Metric `json:"decode_ms"`
+	CompositeMS        Metric `json:"composite_ms"`
+	SubtitleRasterMS   Metric `json:"subtitle_raster_ms"`
+	WatermarkRasterMS  Metric `json:"watermark_raster_ms"`
 	FrameConversionMS Metric `json:"frame_conversion_ms"`
-	EncodeMS          Metric `json:"encode_ms"`
-	AudioMuxMS        Metric `json:"audio_mux_ms"`
+	EncodeMS           Metric `json:"encode_ms"`
+	AudioMuxMS         Metric `json:"audio_mux_ms"`
 
 	// Publication is split by ownership. RendererOutputFinalizeMS is the
-	// Rust-side output finalize (set by the executor adapter, never
-	// overwritten); ArtifactPublishMS / DriveUploadMS / PublicationTotalMS
-	// are the publisher-owned walls (drive upload wall is the max of the
-	// concurrent video/sidecar uploads, never their sum). PublishMS is
-	// retained only as a deprecated compatibility projection and is never
-	// written by the worker or the adapter. It remains NOT_INSTRUMENTED in
-	// newly produced V2 reports; consumers must use the three explicit fields.
+	// renderer-side output finalize. PublicationTotalMS is the publisher wall;
+	// ArtifactPublishMS and DriveUploadMS are diagnostics nested inside it.
 	RendererOutputFinalizeMS Metric `json:"renderer_finalize_ms"`
 	ArtifactPublishMS        Metric `json:"artifact_publish_ms"`
 	DriveUploadMS            Metric `json:"drive_upload_ms"`
 	PublicationTotalMS       Metric `json:"publication_total_ms"`
 	PublishMS                Metric `json:"publish_ms,omitempty"`
 
-	// RenderWallMS is the wall-clock duration of the render phase (backend
-	// selection + execution), measured by the worker around the render port
-	// call. It lets the benchmark separate render WALL time from render WORK
-	// (the summed phases like startup/composite/encode): the adapter's
-	// TotalMS is later overwritten with the job-level total, so without this
-	// field the render wall would be lost. It is deliberately NOT part of the
-	// accounted phase set — the render work phases are inside it, so adding
-	// it to unaccounted_ms would double-count.
+	// RenderWallMS is the worker-owned top-level wall around backend selection
+	// + execution. Fine-grained renderer timings are diagnostics inside this
+	// wall and must not be added to it during reconciliation.
 	RenderWallMS Metric `json:"render_wall_ms"`
 
 	Frames    int     `json:"frames"`
 	RenderFPS float64 `json:"render_fps"`
 	TotalFPS  float64 `json:"total_fps"`
 	// RealtimeFactor is retained as the compatibility field for the speed
-	// factor. It is the inverse of ProcessingXRT: media duration / total
-	// render wall time. New consumers should use SpeedFactor.
+	// factor. It is the inverse of ProcessingXRT: media duration / total wall.
 	RealtimeFactor float64 `json:"realtime_factor"`
-	// SpeedFactor is media duration / total render wall time. Values above 1
-	// mean faster than realtime; it is intentionally named to avoid confusing
-	// this inverse with xRT.
-	SpeedFactor float64 `json:"speed_factor"`
-	// ProcessingXRT is render wall time / media duration. Lower is faster.
-	ProcessingXRT float64 `json:"processing_xrt"`
+	SpeedFactor    float64 `json:"speed_factor"`
+	ProcessingXRT  float64 `json:"processing_xrt"`
 
 	GPUCopyBytes            Metric `json:"gpu_copy_bytes"`
 	GPUReadbackBytes        Metric `json:"gpu_readback_bytes"`
@@ -131,26 +111,29 @@ type RenderMetricsV2 struct {
 	RGBAToNV12Frames        Metric `json:"rgba_to_nv12_frames"`
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
 
-	TotalMS       Metric `json:"total_ms"`
-	UnaccountedMS Metric `json:"unaccounted_ms"`
+	TotalMS Metric `json:"total_ms"`
+	// UnaccountedMS is retained for wire compatibility. UnattributedMS is the
+	// explicit name used by new consumers. They are always identical.
+	UnaccountedMS  Metric `json:"unaccounted_ms"`
+	UnattributedMS Metric `json:"unattributed_ms"`
 }
 
 // NewRenderMetricsV2 returns a report with every phase/counter marked
-// NOT_INSTRUMENTED. Callers fill only what they actually measure; the adapter
-// then computes the derived aggregates (unaccounted_ms, FPS, realtime factor).
+// NOT_INSTRUMENTED. Callers fill only what they actually measure.
 func NewRenderMetricsV2() *RenderMetricsV2 {
 	m := &RenderMetricsV2{}
 	for _, p := range []*Metric{
 		&m.BackendProbeMS, &m.BackendResolveMS, &m.FailedBackendMS,
 		&m.AssetMaterializeMS, &m.SubtitleCompileMS,
-		&m.RendererStartupMS, &m.ProbeMS, &m.DecodeMS, &m.CompositeMS, &m.SubtitleRasterMS,
-		&m.WatermarkRasterMS, &m.FrameConversionMS, &m.EncodeMS, &m.AudioMuxMS,
+		&m.RendererStartupMS, &m.ProbeMS, &m.ChrononQueueWaitMS, &m.ChrononServiceMS,
+		&m.DecodeMS, &m.CompositeMS, &m.SubtitleRasterMS, &m.WatermarkRasterMS,
+		&m.FrameConversionMS, &m.EncodeMS, &m.AudioMuxMS,
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
 		&m.PublicationTotalMS, &m.PublishMS, &m.RenderWallMS,
 		&m.GPUCopyBytes, &m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
 		&m.DiskWriteBytes, &m.NetworkRXBytes, &m.NetworkTXBytes, &m.EncoderStagingCopyBytes,
 		&m.NV12ToRGBAFrames, &m.RGBAToNV12Frames,
-		&m.TotalMS, &m.UnaccountedMS,
+		&m.TotalMS, &m.UnaccountedMS, &m.UnattributedMS,
 	} {
 		*p = Metric(NotInstrumented)
 	}
@@ -158,8 +141,7 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 }
 
 // Merge overlays an executor-provided partial report onto this report. Only
-// phases the executor actually measured (non-sentinel) win, so the adapter's
-// selection facts, total, and derived aggregates are never clobbered.
+// phases the executor actually measured (non-sentinel) win.
 func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	if executor == nil {
 		return
@@ -173,6 +155,8 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.SubtitleCompileMS, &executor.SubtitleCompileMS)
 	merge(&m.RendererStartupMS, &executor.RendererStartupMS)
 	merge(&m.ProbeMS, &executor.ProbeMS)
+	merge(&m.ChrononQueueWaitMS, &executor.ChrononQueueWaitMS)
+	merge(&m.ChrononServiceMS, &executor.ChrononServiceMS)
 	merge(&m.DecodeMS, &executor.DecodeMS)
 	merge(&m.CompositeMS, &executor.CompositeMS)
 	merge(&m.SubtitleRasterMS, &executor.SubtitleRasterMS)
@@ -198,62 +182,100 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.RGBAToNV12Frames, &executor.RGBAToNV12Frames)
 }
 
-// accountedPhases is the render-execution phase set UnaccountedMS is computed
-// against. Backend selection (probe/resolve) is deliberately excluded — it is
-// pipeline overhead that unaccounted_ms is meant to surface.
-func (m *RenderMetricsV2) accountedPhases() []Metric {
-	return []Metric{
-		m.AssetMaterializeMS, m.SubtitleCompileMS, m.RendererStartupMS, m.ProbeMS,
-		m.DecodeMS, m.CompositeMS, m.SubtitleRasterMS, m.WatermarkRasterMS,
-		m.FrameConversionMS, m.EncodeMS, m.AudioMuxMS,
-		m.RendererOutputFinalizeMS, m.ArtifactPublishMS, m.DriveUploadMS,
+func measured(m Metric) (int64, bool) {
+	if int64(m) == NotInstrumented {
+		return 0, false
 	}
+	return int64(m), true
 }
 
-// Compute derives the aggregate metrics from the measured phases:
-//
-//   - UnaccountedMS = TotalMS − Σ(measured render phases). Non-instrumented
-//     phases do not subtract, so the sentinel case (a coarse render mapped to
-//     CompositeMS) surfaces exactly the "time outside the render" delta the
-//     review benchmark asks about.//   - TotalFPS / RealtimeFactor from TotalMS and the rendered duration.
-//   - ProcessingXRT from RenderWallMS and the rendered duration; unlike
-//     RealtimeFactor (speed factor), lower ProcessingXRT is better.
+// exclusiveAccountedMS returns non-overlapping wall time. Diagnostic subphase
+// metrics are deliberately excluded whenever their owning wall is available.
+func (m *RenderMetricsV2) exclusiveAccountedMS() int64 {
+	var total int64
+	add := func(metric Metric) bool {
+		if v, ok := measured(metric); ok {
+			total += v
+			return true
+		}
+		return false
+	}
 
-//   - RenderFPS from CompositeMS only (the compositing phase), 0 when the
-//     composite phase is not measured.
-//
-// It is idempotent and safe to call after every population step.
+	// Upstream work whose only available measurement is its owned subphase.
+	add(m.AssetMaterializeMS)
+	add(m.SubtitleCompileMS)
+
+	// Render wall owns queue + executor service + mux and every engine
+	// diagnostic. If the worker wall is unavailable, fall back to a set of
+	// non-overlapping engine-owned phases. Subtitle/watermark timings are
+	// nested diagnostics of CompositeMS and are never added separately.
+	if !add(m.RenderWallMS) {
+		add(m.RendererStartupMS)
+		add(m.ProbeMS)
+		add(m.ChrononQueueWaitMS)
+		if _, serviceMeasured := measured(m.ChrononServiceMS); serviceMeasured {
+			add(m.ChrononServiceMS)
+		} else {
+			add(m.DecodeMS)
+			add(m.CompositeMS)
+			add(m.FrameConversionMS)
+			add(m.EncodeMS)
+			add(m.RendererOutputFinalizeMS)
+		}
+		add(m.AudioMuxMS)
+	}
+
+	// PublicationTotalMS owns hash + concurrent Drive uploads + taxonomy +
+	// durable asset commit. Only fall back to child diagnostics if the owner
+	// wall is absent; drive and artifact work can overlap, so max is safer
+	// than an invalid sum in that fallback case.
+	if !add(m.PublicationTotalMS) {
+		artifact, artifactOK := measured(m.ArtifactPublishMS)
+		drive, driveOK := measured(m.DriveUploadMS)
+		switch {
+		case artifactOK && driveOK:
+			if artifact > drive {
+				total += artifact
+			} else {
+				total += drive
+			}
+		case artifactOK:
+			total += artifact
+		case driveOK:
+			total += drive
+		}
+	}
+	return total
+}
+
+// Compute derives aggregate metrics from real owner-measured walls.
 func (m *RenderMetricsV2) Compute(durationSec float64) {
 	if int64(m.TotalMS) == NotInstrumented {
 		m.UnaccountedMS = Metric(NotInstrumented)
+		m.UnattributedMS = Metric(NotInstrumented)
 	} else {
-		var accounted int64
-		for _, p := range m.accountedPhases() {
-			if int64(p) != NotInstrumented {
-				accounted += int64(p)
-			}
-		}
+		accounted := m.exclusiveAccountedMS()
 		total := int64(m.TotalMS)
-		if total < accounted {
-			total = accounted
+		unattributed := total - accounted
+		if unattributed < 0 {
+			// Clock granularity/rounding may make a set of owner walls exceed the
+			// enclosing wall by a few milliseconds. Negative mystery time is not
+			// meaningful, so clamp the derived diagnostic only.
+			unattributed = 0
 		}
-		m.UnaccountedMS = Metric(total - accounted)
+		m.UnaccountedMS = Metric(unattributed)
+		m.UnattributedMS = Metric(unattributed)
 	}
 
 	if int64(m.TotalMS) != NotInstrumented && int64(m.TotalMS) > 0 && m.Frames > 0 {
 		totalSec := float64(int64(m.TotalMS)) / 1000.0
 		m.TotalFPS = float64(m.Frames) / totalSec
 		if durationSec > 0 {
-			// Speed factor: >1 means faster than realtime. Keep the legacy
-			// realtime_factor projection and expose the unambiguous name too.
 			m.SpeedFactor = durationSec / totalSec
 			m.RealtimeFactor = m.SpeedFactor
 		}
 	}
 	if int64(m.RenderWallMS) != NotInstrumented && int64(m.RenderWallMS) >= 0 && durationSec > 0 {
-		// xRT: <1 means the render completed faster than realtime. Both
-		// derived values use the worker-owned total render wall, never a
-		// second stopwatch.
 		renderSec := float64(int64(m.RenderWallMS)) / 1000.0
 		m.ProcessingXRT = renderSec / durationSec
 		if renderSec > 0 {
