@@ -74,8 +74,10 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	keyMaterial := fmt.Sprintf("%s\x00%s\x00%v", in.Language, in.StyleID, canonicalCues)
 	key := digest.SHA256String(keyMaterial)
 	var content string
+	contentCacheHit := false
 	if cached, ok := assContentCache.Load(key); ok {
 		content = cached.(string)
+		contentCacheHit = true
 	} else {
 		generated, compileErr := texttracks.CompileASSContent(canonicalCues, in.StyleID)
 		if compileErr != nil {
@@ -95,10 +97,17 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	// content-addressed cache, so repeated clip jobs do not regenerate or
 	// rewrite identical subtitle bytes. The existing file is still validated
 	// before it is accepted by the plan.
+	artifactCacheHit := false
 	if existing, readErr := os.ReadFile(localPath); readErr == nil && string(existing) == content {
+		artifactCacheHit = true
 		if err := texttracks.ValidateASSFile(localPath, in.ClipDurationMS); err != nil {
 			return nil, fmt.Errorf("%w: invalid existing ASS for asset %q: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
 		}
+		cliprender.RecordSubtitleCacheFacts(localPath, cliprender.SubtitleCacheFacts{
+			ContentCacheHit:  contentCacheHit,
+			ArtifactCacheHit: artifactCacheHit,
+			Measured:         true,
+		})
 		return &cliprender.SubtitleArtifact{LocalPath: localPath, SHA256: sha, Mode: in.Mode, StyleID: in.StyleID}, nil
 	}
 	cacheDir := filepath.Join(filepath.Dir(filepath.Dir(in.OutputDir)), "subtitle-cache")
@@ -106,7 +115,9 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create subtitle cache dir %q: %w", cacheDir, err)
 	}
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+	if _, err := os.Stat(cachePath); err == nil {
+		artifactCacheHit = true
+	} else if os.IsNotExist(err) {
 		if err := os.WriteFile(cachePath, []byte(content), 0o644); err != nil {
 			return nil, fmt.Errorf("write cached ASS artifact %q: %w", cachePath, err)
 		}
@@ -123,6 +134,11 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	if err := texttracks.ValidateASSFile(localPath, in.ClipDurationMS); err != nil {
 		return nil, fmt.Errorf("%w: invalid generated ASS for asset %q: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
 	}
+	cliprender.RecordSubtitleCacheFacts(localPath, cliprender.SubtitleCacheFacts{
+		ContentCacheHit:  contentCacheHit,
+		ArtifactCacheHit: artifactCacheHit,
+		Measured:         true,
+	})
 	return &cliprender.SubtitleArtifact{
 		LocalPath: localPath,
 		SHA256:    sha,
@@ -237,23 +253,52 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		return nil, err
 	}
 
-	// The Rust boundary reports ONE coarse render wall time (ffmpeg_ms)
-	// spanning decode → composite → encode → mux. Until per-phase metadata
-	// lands it is mapped onto CompositeMS; the derived unaccounted_ms then
-	// surfaces exactly the "time outside the render" question — the phases
-	// we cannot attribute yet stay NOT_INSTRUMENTED, never fake zeros.
-	metrics.CompositeMS = cliprender.Metric(result.FFmpegMS)
+	// All backend results are projected into the single canonical V2 report.
+	// Until Rust exposes fine-grained phase metadata, its coarse ffmpeg_ms is
+	// represented in CompositeMS; unknown phases remain NOT_INSTRUMENTED.
+	// FFmpegMS below is only the legacy compatibility projection.
+	if result.FilterGraphMS != nil {
+		metrics.CompositeMS = cliprender.Metric(*result.FilterGraphMS)
+	} else if result.FFmpegMS >= 0 && result.AudioMuxMS == nil {
+		// Legacy coarse Rust boundary: retain the measured decode→encode wall
+		// as the composite work only when no phase metadata is available.
+		metrics.CompositeMS = cliprender.Metric(result.FFmpegMS)
+	}
+	if result.DecodeMS != nil {
+		metrics.DecodeMS = cliprender.Metric(*result.DecodeMS)
+	}
+	if result.SubtitleRasterMS != nil {
+		metrics.SubtitleRasterMS = cliprender.Metric(*result.SubtitleRasterMS)
+	}
+	if result.WatermarkRasterMS != nil {
+		metrics.WatermarkRasterMS = cliprender.Metric(*result.WatermarkRasterMS)
+	}
+	if result.FrameConversionMS != nil {
+		metrics.FrameConversionMS = cliprender.Metric(*result.FrameConversionMS)
+	}
+	if result.EncodeMS != nil {
+		metrics.EncodeMS = cliprender.Metric(*result.EncodeMS)
+	}
+	if result.AudioMuxMS != nil {
+		metrics.AudioMuxMS = cliprender.Metric(*result.AudioMuxMS)
+	}
 	// The Rust boundary now reports its own phase timings for the benchmark
 	// decomposition: renderer_startup_ms is the pre-ffmpeg wall (plan decode
 	// + source probe + filter-graph build + process spawn) and publish_ms is
-	// the Rust-side output publish. Both map only when actually reported
-	// (nil stays NOT_INSTRUMENTED — never a fake zero); the worker overwrites
-	// publish_ms with its full publication wall when a publisher runs.
+	// the Rust-side output publish, mapped onto renderer_finalize_ms.
+	// Both map only when actually reported (nil stays NOT_INSTRUMENTED —
+	// never a fake zero). Publication beyond the Rust boundary is owned by
+	// the publisher adapter, which reports its own measured walls; the
+	// worker projects those into publication_total_ms / artifact_publish_ms /
+	// drive_upload_ms and never re-times the Rust finalize.
 	if result.StartupMS != nil {
 		metrics.RendererStartupMS = cliprender.Metric(*result.StartupMS)
 	}
+	if result.ProbeMS != nil {
+		metrics.ProbeMS = cliprender.Metric(*result.ProbeMS)
+	}
 	if result.PublishMS != nil {
-		metrics.PublishMS = cliprender.Metric(*result.PublishMS)
+		metrics.RendererOutputFinalizeMS = cliprender.Metric(*result.PublishMS)
 	}
 	if result.SubtitleRasterCPU != nil {
 		metrics.SubtitleRasterCPU = *result.SubtitleRasterCPU
@@ -261,12 +306,39 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.GPUCopyBytes != nil {
 		metrics.GPUCopyBytes = cliprender.Metric(int64(*result.GPUCopyBytes))
 	}
+	// Process/resource metrics are reported by the Rust operation owner and
+	// projected into the canonical clip report only when actually measured.
+	if result.OperationMetrics != nil {
+		// These counters are measured by the Rust operation owner. Keep absent
+		// fields at NOT_INSTRUMENTED; zero is valid only for explicitly
+		// instrumented values.
+		if result.OperationMetrics.PeakRSSBytes > 0 {
+			metrics.PeakRSSBytes = cliprender.Metric(result.OperationMetrics.PeakRSSBytes)
+		}
+		if result.OperationMetrics.DiskReadBytes > 0 {
+			metrics.DiskReadBytes = cliprender.Metric(result.OperationMetrics.DiskReadBytes)
+		}
+		if result.OperationMetrics.DiskWriteBytes > 0 {
+			metrics.DiskWriteBytes = cliprender.Metric(result.OperationMetrics.DiskWriteBytes)
+		}
+		if result.OperationMetrics.NetworkRXBytes > 0 {
+			metrics.NetworkRXBytes = cliprender.Metric(result.OperationMetrics.NetworkRXBytes)
+		}
+		if result.OperationMetrics.NetworkTXBytes > 0 {
+			metrics.NetworkTXBytes = cliprender.Metric(result.OperationMetrics.NetworkTXBytes)
+		}
+	}
+	// OutputBytes is an encoded output-size fact, not GPU readback traffic. The
+	// Rust boundary does not instrument readback here, so keep the canonical
+	// field at NOT_INSTRUMENTED rather than projecting an unrelated counter.
 	if result.FPSNum > 0 && result.FPSDen > 0 {
 		metrics.Frames = int(math.Round(result.DurationSec * float64(result.FPSNum) / float64(result.FPSDen)))
 	}
 	metrics.TotalMS = cliprender.Metric(time.Since(renderStart).Milliseconds())
 	metrics.Compute(result.DurationSec)
 
+	// Keep legacy scalar fields as projections of the canonical report/result
+	// for existing consumers; no second metrics authority is introduced.
 	return &cliprender.RenderOutcome{
 		OutputPath:        result.OutputPath,
 		SizeBytes:         result.SizeBytes,

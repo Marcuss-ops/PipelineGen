@@ -161,6 +161,14 @@ func contaminatedClipNarration(text string) bool {
 }
 
 func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
+	// Internal callers may construct GenerateRequest directly instead of using
+	// BuildGenerateRequest. Preserve the same Drive grouping contract there.
+	if req.Render.Enabled && strings.TrimSpace(req.Render.DriveSubfolderName) == "" {
+		req.Render.DriveSubfolderName = strings.TrimSpace(req.Title)
+		if req.Render.DriveSubfolderName == "" {
+			req.Render.DriveSubfolderName = strings.TrimSpace(req.Source.Topic)
+		}
+	}
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
 	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
 	if startErr != nil {
@@ -273,7 +281,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		if req.Source.Type == SourceClips && req.Render.Enabled {
 			result.ExpectedRenderCount = len(scenes)
 			result.FinalVideoRequired = req.Render.AssembleFinal
-			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: 1}
+			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: req.Render.RenderConcurrency}
 		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a
@@ -282,47 +290,71 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// localized renderer, watermark contract, and certified result sink.
 		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
 			renderBatchStarted := time.Now()
+			concurrency := req.Render.RenderConcurrency
+			if concurrency < 1 {
+				concurrency = 2
+			}
+			sem := make(chan struct{}, concurrency)
+			var renders sync.WaitGroup
+			var renderErr error
+			var renderErrMu sync.Mutex
 			for _, scene := range scenes {
-				renderStarted := time.Now()
-				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
-				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-				if text == "" {
-					text = strings.TrimSpace(req.Source.SourceText)
-				}
-				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-					RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-					Language: req.SourceLanguage, Text: text,
-					SourceLanguage: req.SourceLanguage, SourceText: text,
-					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-					ClipDurationMS: clipDurationMS, Render: req.Render,
-					OnRendered: func(rendered LocalizedRenderResult) error {
-						r.localizedRenderMu.Lock()
-						applyLocalizedRenderLinkLocked(result, rendered)
-						result.LocalizedRenders = append(result.LocalizedRenders, rendered)
-						result.RenderMetrics.Successful = len(result.LocalizedRenders)
-						accumulateLocalizedRenderMetrics(result, rendered)
-						r.localizedRenderMu.Unlock()
-						if rendered.WallMS == 0 {
-							result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+				scene := scene
+				renders.Add(1)
+				go func() {
+					defer renders.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					renderStarted := time.Now()
+					clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
+					text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+					if text == "" {
+						text = strings.TrimSpace(req.Source.SourceText)
+					}
+					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+						RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+						Language: req.SourceLanguage, Text: text,
+						SourceLanguage: req.SourceLanguage, SourceText: text,
+						ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+						ClipDurationMS: clipDurationMS, Render: req.Render,
+						OnRendered: func(rendered LocalizedRenderResult) error {
+							r.localizedRenderMu.Lock()
+							applyLocalizedRenderLinkLocked(result, rendered)
+							result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+							result.RenderMetrics.Successful = len(result.LocalizedRenders)
+							accumulateLocalizedRenderMetrics(result, rendered)
+							r.localizedRenderMu.Unlock()
+							if rendered.WallMS == 0 {
+								r.localizedRenderMu.Lock()
+								result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+								r.localizedRenderMu.Unlock()
+							}
+							return nil
+						},
+						OnFailed: func(failure LocalizedRenderFailure) error {
+							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+							result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
+							result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+							upper := strings.ToUpper(failure.Error)
+							if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+								result.RenderMetrics.GPUOOMs++
+							}
+							return nil
+						},
+					}); err != nil {
+						renderErrMu.Lock()
+						if renderErr == nil {
+							renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
 						}
-						return nil
-					},
-					OnFailed: func(failure LocalizedRenderFailure) error {
-						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-						result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
-						result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
-						upper := strings.ToUpper(failure.Error)
-						if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
-							result.RenderMetrics.GPUOOMs++
-						}
-						return nil
-					},
-				}); err != nil {
-					cause := fmt.Errorf("enqueue no-audio localized render: %w", err)
-					r.failExecutionStep(ctx, exec, scriptStep, cause)
-					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-					return result, false
-				}
+						renderErrMu.Unlock()
+					}
+				}()
+			}
+			renders.Wait()
+			if renderErr != nil {
+				r.failExecutionStep(ctx, exec, scriptStep, renderErr)
+				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, renderErr)
+				return result, false
 			}
 			result.RenderMetrics.WallMS = time.Since(renderBatchStarted).Milliseconds()
 		}

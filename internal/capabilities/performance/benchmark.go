@@ -136,6 +136,7 @@ type BaselineSource interface {
 type Suite struct {
 	executor           WorkloadExecutor
 	samples            OperationSampleSource
+	reports            PerformanceReportReader
 	registry           Registry
 	samplesPerWorkload int
 	now                func() time.Time
@@ -157,6 +158,16 @@ func NewBenchmarkSuite(executor WorkloadExecutor, samples OperationSampleSource,
 	}
 }
 
+// WithPerformanceReports switches the suite to read-only report mode. The
+// benchmark then consumes persisted PerformanceReport facts and does not run
+// workloads or start a local timer.
+func (s *Suite) WithPerformanceReports(reports PerformanceReportReader) *Suite {
+	if s != nil {
+		s.reports = reports
+	}
+	return s
+}
+
 // SetClock overrides the suite clock (tests).
 func (s *Suite) SetClock(now func() time.Time) {
 	if s != nil && now != nil {
@@ -169,7 +180,13 @@ func (s *Suite) SetClock(now func() time.Time) {
 // Comparison per workload. An executor failure during sampling records the
 // completed samples and continues with the next workload.
 func (s *Suite) Run(ctx context.Context, workloads []Workload) ([]Comparison, error) {
-	if s == nil || s.executor == nil {
+	if s == nil {
+		return nil, fmt.Errorf("performance benchmark suite: suite is required")
+	}
+	if s.reports != nil {
+		return s.runPersistedReports(ctx, workloads)
+	}
+	if s.executor == nil {
 		return nil, fmt.Errorf("performance benchmark suite: executor is required")
 	}
 	if s.samples == nil {
@@ -181,6 +198,24 @@ func (s *Suite) Run(ctx context.Context, workloads []Workload) ([]Comparison, er
 		if err != nil {
 			return nil, err
 		}
+		comparisons = append(comparisons, comparison)
+	}
+	return comparisons, nil
+}
+
+// runPersistedReports is the benchmark's read-only path. It only resolves
+// already persisted reports; no workload is executed and no duration is
+// measured locally. WorkloadID is used as the persisted job identifier.
+func (s *Suite) runPersistedReports(ctx context.Context, workloads []Workload) ([]Comparison, error) {
+	comparisons := make([]Comparison, 0, len(workloads))
+	for _, workload := range workloads {
+		report, err := s.reports.PerformanceReport(ctx, workload.WorkloadID)
+		if err != nil {
+			return nil, fmt.Errorf("performance benchmark persisted report %s: %w", workload.WorkloadID, err)
+		}
+		current := []int64{report.Job.WallTimeMS}
+		comparison := CompareBaseline(nil, current)
+		comparison.WorkloadID = workload.WorkloadID
 		comparisons = append(comparisons, comparison)
 	}
 	return comparisons, nil

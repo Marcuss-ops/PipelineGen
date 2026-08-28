@@ -135,6 +135,69 @@ func TestTimingSummary_OperationsAggregateCallsAndWork(t *testing.T) {
 	}
 }
 
+// TestTimingSummary_OperationsMergeMetadata pins the metadata_json merge:
+// numeric facts (tokens, model_load_ms, inference_work_ms) accumulate across
+// the fan-out, booleans (cold_start) count, uniform strings (model) stay,
+// and queue_wait_ms accumulates — so the benchmark can split the coarse
+// Ollama wall without a second timer.
+func TestTimingSummary_OperationsMergeMetadata(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 5210,
+		Stages: []StageReport{
+			stageAt("generate", 0, 5210),
+		},
+		Operations: []OperationReport{
+			{
+				Stage: "generate", Component: "ollama", Operation: "generate",
+				DurationMs: 4000, QueueWaitMs: 50,
+				MetadataJSON: `{"model":"gemma3:1b","input_tokens":120,"output_tokens":340,"model_load_ms":45000,"inference_wall_ms":3900,"inference_work_ms":3600,"cold_start":true}`,
+			},
+			{
+				Stage: "generate", Component: "ollama", Operation: "generate",
+				DurationMs: 4400, QueueWaitMs: 120,
+				MetadataJSON: `{"model":"gemma3:1b","input_tokens":130,"output_tokens":410,"model_load_ms":0,"inference_wall_ms":4300,"inference_work_ms":4100,"cold_start":false}`,
+			},
+		},
+	}
+
+	s := report.TimingSummary()
+	if len(s.Operations) != 1 {
+		t.Fatalf("operations = %d, want 1 aggregated", len(s.Operations))
+	}
+	op := s.Operations[0]
+	if op.Calls != 2 || op.WorkMs != 8400 {
+		t.Fatalf("calls/work = %d/%d, want 2/8400", op.Calls, op.WorkMs)
+	}
+	if op.QueueWaitMs != 170 {
+		t.Fatalf("queue_wait_ms = %d, want 170", op.QueueWaitMs)
+	}
+	if report.TimingSummary().ExecutionWallMs != report.TimingSummary().WallMs {
+		t.Fatalf("execution_wall_ms = %d, want wall_ms %d", report.TimingSummary().ExecutionWallMs, report.TimingSummary().WallMs)
+	}
+	m := op.Metadata
+	if m == nil {
+		t.Fatal("metadata must be merged")
+	}
+	if m["input_tokens"] != float64(250) {
+		t.Errorf("input_tokens = %v, want 250", m["input_tokens"])
+	}
+	if m["output_tokens"] != float64(750) {
+		t.Errorf("output_tokens = %v, want 750", m["output_tokens"])
+	}
+	if m["model_load_ms"] != float64(45000) {
+		t.Errorf("model_load_ms = %v, want 45000 (cold load counts once)", m["model_load_ms"])
+	}
+	if m["inference_work_ms"] != float64(7700) {
+		t.Errorf("inference_work_ms = %v, want 7700", m["inference_work_ms"])
+	}
+	if m["cold_start"] != float64(1) {
+		t.Errorf("cold_start = %v, want 1 (one cold call)", m["cold_start"])
+	}
+	if m["model"] != "gemma3:1b" {
+		t.Errorf("model = %v, want gemma3:1b (uniform string kept)", m["model"])
+	}
+}
+
 // TestTimingSummary_NilSafe pins zero-value safety for nil and empty reports.
 func TestTimingSummary_NilSafe(t *testing.T) {
 	var nilReport *RunReport

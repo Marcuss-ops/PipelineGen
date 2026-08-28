@@ -292,14 +292,19 @@ type response struct {
 // the right operation. Fields are zero when not applicable (e.g. frames stay
 // 0 on copy-only mux paths).
 type OperationMetrics struct {
-	WallMS        int64 `json:"wall_ms"`
-	CPUUserMS     int64 `json:"cpu_user_ms"`
-	CPUSystemMS   int64 `json:"cpu_system_ms"`
-	InputBytes    int64 `json:"input_bytes"`
-	OutputBytes   int64 `json:"output_bytes"`
-	CacheHit      bool  `json:"cache_hit"`
-	FramesDecoded int64 `json:"frames_decoded"`
-	FramesEncoded int64 `json:"frames_encoded"`
+	WallMS         int64 `json:"wall_ms"`
+	CPUUserMS      int64 `json:"cpu_user_ms"`
+	CPUSystemMS    int64 `json:"cpu_system_ms"`
+	InputBytes     int64 `json:"input_bytes"`
+	OutputBytes    int64 `json:"output_bytes"`
+	CacheHit       bool  `json:"cache_hit"`
+	FramesDecoded  int64 `json:"frames_decoded"`
+	FramesEncoded  int64 `json:"frames_encoded"`
+	PeakRSSBytes   int64 `json:"peak_rss_bytes"`
+	DiskReadBytes  int64 `json:"disk_read_bytes"`
+	DiskWriteBytes int64 `json:"disk_write_bytes"`
+	NetworkRXBytes int64 `json:"network_rx_bytes"`
+	NetworkTXBytes int64 `json:"network_tx_bytes"`
 }
 
 type cutRequestJob struct {
@@ -362,6 +367,15 @@ type mediaMetadata struct {
 	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
 	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
 	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
+	// Fine-grained render phases are optional until the owning executor
+	// measures them; nil preserves NOT_INSTRUMENTED semantics.
+	DecodeMS          *int64 `json:"decode_ms,omitempty"`
+	FilterGraphMS     *int64 `json:"filter_graph_ms,omitempty"`
+	SubtitleRasterMS  *int64 `json:"subtitle_raster_ms,omitempty"`
+	WatermarkRasterMS *int64 `json:"watermark_raster_ms,omitempty"`
+	FrameConversionMS *int64 `json:"frame_conversion_ms,omitempty"`
+	EncodeMS          *int64 `json:"encode_ms,omitempty"`
+	AudioMuxMS        *int64 `json:"audio_mux_ms,omitempty"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the

@@ -270,6 +270,10 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.Int64("asset_commit_ms", metrics.AssetCommitMS),
 		zap.Int64("total_ms", metrics.TotalMS),
 	)
+	// Publication metrics have ONE chronometer owner: this publisher. The
+	// measured sub-phase walls travel with the result so the worker projects
+	// them into the canonical RenderMetricsV2 report instead of re-timing
+	// publication with a second, worker-side chronometer.
 	return &cliprender.RenderPublishResult{
 		AssetID:       assetID,
 		DriveFileID:   pub.FileID,
@@ -277,5 +281,13 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		SizeBytes:     size,
 		SidecarFileID: sidecarFileID,
 		SidecarLink:   sidecarLink,
+		Publish: &cliprender.PublicationMetrics{
+			HashMS:            metrics.HashMS,
+			VideoUploadMS:     metrics.VideoUploadMS,
+			SidecarUploadMS:   metrics.SidecarUploadMS,
+			TaxonomyResolveMS: metrics.TaxonomyResolveMS,
+			AssetCommitMS:     metrics.AssetCommitMS,
+			TotalMS:           metrics.TotalMS,
+		},
 	}, nil
 }

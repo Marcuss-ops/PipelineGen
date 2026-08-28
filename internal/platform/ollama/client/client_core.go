@@ -46,17 +46,98 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 //
 // Pass nil to disable native JSON-mode (free-form prose).
 func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
+	result, err := c.ChatDetailed(ctx, messages, options, format)
+	if err != nil {
+		return "", err
+	}
+	return result.Content, nil
+}
+
+// ChatResult is the outcome of one ChatDetailed call: the model text plus
+// the Ollama-reported timing/token facts (nil when the backend does not
+// report them, e.g. vLLM/NVIDIA).
+type ChatResult struct {
+	Content string
+	Metrics *ChatMetrics
+}
+
+// ChatMetrics carries the per-call Ollama timing/token facts so callers can
+// split the coarse inference wall into model load, prompt evaluation, and
+// generation without re-timing the boundary. All durations are nanoseconds
+// as reported by /api/chat.
+type ChatMetrics struct {
+	Model                string
+	LoadDurationNS       int64
+	PromptEvalCount      int64
+	PromptEvalDurationNS int64
+	EvalCount            int64
+	EvalDurationNS       int64
+	TotalDurationNS      int64
+}
+
+// ModelLoadMS is the model-load wall in milliseconds (cold start when large).
+func (m *ChatMetrics) ModelLoadMS() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.LoadDurationNS / 1e6
+}
+
+// InferenceWallMS is the whole server-side request wall in milliseconds.
+func (m *ChatMetrics) InferenceWallMS() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.TotalDurationNS / 1e6
+}
+
+// InferenceWorkMS is the actual compute (prompt eval + generation) in ms.
+func (m *ChatMetrics) InferenceWorkMS() int64 {
+	if m == nil {
+		return 0
+	}
+	return (m.PromptEvalDurationNS + m.EvalDurationNS) / 1e6
+}
+
+// TokensPerSecond is the generation throughput (eval_count / eval time).
+func (m *ChatMetrics) TokensPerSecond() float64 {
+	if m == nil || m.EvalDurationNS <= 0 {
+		return 0
+	}
+	return float64(m.EvalCount) / (float64(m.EvalDurationNS) / 1e9)
+}
+
+// ColdStart reports whether the model had to be loaded (a large load_duration
+// is the Ollama cold-start signature).
+func (m *ChatMetrics) ColdStart() bool {
+	return m != nil && m.LoadDurationNS > 1e9 // > 1s of model load
+}
+
+// ChatDetailed is the metrics-aware variant of Chat. It executes the same
+// retry/fallback/circuit-breaker path but also returns the Ollama-reported
+// timing/token facts of the successful call. Chat stays a thin wrapper.
+func (c *Client) ChatDetailed(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (ChatResult, error) {
 	model := c.model
 	if options != nil {
 		if optModel, ok := options["model"].(string); ok && optModel != "" {
 			model = optModel
 		}
 	}
-	return c.chatWithRetryAndFallback(ctx, model, messages, options, format, types.MaxRetries)
+	return c.chatWithRetryAndFallbackDetailed(ctx, model, messages, options, format, types.MaxRetries)
 }
 
-// chatWithRetryAndFallback implements retry logic with model fallback
+// chatWithRetryAndFallback implements retry logic with model fallback.
 func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage, maxRetries int) (string, error) {
+	result, err := c.chatWithRetryAndFallbackDetailed(ctx, model, messages, options, format, maxRetries)
+	if err != nil {
+		return "", err
+	}
+	return result.Content, nil
+}
+
+// chatWithRetryAndFallbackDetailed implements retry logic with model fallback
+// and returns the metrics of the successful call.
+func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage, maxRetries int) (ChatResult, error) {
 	// Build fallback chain including current model
 	modelChain := []string{model}
 	if fallbacks, ok := modelFallbackChains[model]; ok {
@@ -75,7 +156,7 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 		attemptedAny = true
 
 		attempt := 0
-		resp, err := retry.DoWithValue(ctx, func() (string, error) {
+		resp, err := retry.DoWithValue(ctx, func() (ChatResult, error) {
 			idx := attempt
 			attempt++
 			r, e := c.doChatRequest(ctx, model, messages, options, format)
@@ -104,22 +185,24 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 	}
 
 	if lastErr != nil {
-		return "", fmt.Errorf("all models failed, last error: %w", lastErr)
+		return ChatResult{}, fmt.Errorf("all models failed, last error: %w", lastErr)
 	}
 	if !attemptedAny {
-		return "", fmt.Errorf("all models skipped by circuit breaker")
+		return ChatResult{}, fmt.Errorf("all models skipped by circuit breaker")
 	}
-	return "", fmt.Errorf("all models failed without specific error")
+	return ChatResult{}, fmt.Errorf("all models failed without specific error")
 }
 
 // doChatRequest executes a single chat request
-func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
+func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage) (ChatResult, error) {
 	if c.useVLLM {
-		return c.vllmChatRequest(ctx, model, messages)
+		content, err := c.vllmChatRequest(ctx, model, messages)
+		return ChatResult{Content: content, Metrics: nil}, err
 	}
 
 	if c.useNvidiaForLLM && c.nvidiaAPIKey != "" {
-		return c.nvidiaChatRequest(ctx, messages)
+		content, err := c.nvidiaChatRequest(ctx, messages)
+		return ChatResult{Content: content, Metrics: nil}, err
 	}
 
 	// Add keep_alive to model options to avoid reloading the model on every request.
@@ -148,34 +231,34 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", err
+		return ChatResult{}, err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return ChatResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return "", err
+			return ChatResult{}, err
 		}
-		return "", &retry.TransientInfrastructureError{Err: err}
+		return ChatResult{}, &retry.TransientInfrastructureError{Err: err}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
-			return "", &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama chat returned status %d", resp.StatusCode)}
+			return ChatResult{}, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama chat returned status %d", resp.StatusCode)}
 		}
-		return "", fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
+		return ChatResult{}, fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
 	}
 
 	var result types.ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return ChatResult{}, err
 	}
 
 	logger.Info("Ollama chat response received",
@@ -184,7 +267,18 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		zap.Int("words", len(strings.Fields(result.Message.Content))),
 	)
 
-	return result.Message.Content, nil
+	return ChatResult{
+		Content: result.Message.Content,
+		Metrics: &ChatMetrics{
+			Model:                model,
+			LoadDurationNS:       result.LoadDuration,
+			PromptEvalCount:      result.PromptEvalCount,
+			PromptEvalDurationNS: result.PromptEvalDuration,
+			EvalCount:            result.EvalCount,
+			EvalDurationNS:       result.EvalDuration,
+			TotalDurationNS:      result.TotalDuration,
+		},
+	}, nil
 }
 
 // vllmChatRequest sends a chat request to a vLLM server via the OpenAI-compatible API.

@@ -19,22 +19,98 @@ const (
 	StageStatusFailed    = "failed"
 )
 
+type BatchReport struct {
+	BatchWallMs        int64   `json:"batch_wall_ms"`
+	BatchWorkMs        int64   `json:"batch_work_ms"`
+	PeakConcurrency    int     `json:"peak_concurrency"`
+	AverageConcurrency float64 `json:"average_concurrency"`
+	ParallelismFactor  float64 `json:"parallelism_factor"`
+}
+
+// DeriveBatchReport derives batch metrics solely from attempt-owned RunReports.
+// Intervals use CreatedAt/StartedAt/FinishedAt; no benchmark clock is involved.
+func DeriveBatchReport(reports []RunReport) BatchReport {
+	var out BatchReport
+	if len(reports) == 0 {
+		return out
+	}
+	var minStart, maxFinish time.Time
+	for _, r := range reports {
+		start := r.StartedAt
+		finish := r.FinishedAt
+		if start.IsZero() || finish.IsZero() || finish.Before(start) {
+			continue
+		}
+		if minStart.IsZero() || start.Before(minStart) {
+			minStart = start
+		}
+		if maxFinish.IsZero() || finish.After(maxFinish) {
+			maxFinish = finish
+		}
+		out.BatchWorkMs += r.ExecutionWallMs
+	}
+	if minStart.IsZero() || maxFinish.IsZero() {
+		return out
+	}
+	out.BatchWallMs = maxFinish.Sub(minStart).Milliseconds()
+	if out.BatchWallMs <= 0 {
+		return out
+	}
+	points := make([]struct {
+		at    time.Time
+		delta int
+	}, 0, len(reports)*2)
+	for _, r := range reports {
+		if r.StartedAt.IsZero() || r.FinishedAt.IsZero() || r.FinishedAt.Before(r.StartedAt) {
+			continue
+		}
+		points = append(points, struct {
+			at    time.Time
+			delta int
+		}{r.StartedAt, 1}, struct {
+			at    time.Time
+			delta int
+		}{r.FinishedAt, -1})
+	}
+	for i := 1; i < len(points); i++ {
+		for j := i; j > 0 && points[j].at.Before(points[j-1].at); j-- {
+			points[j], points[j-1] = points[j-1], points[j]
+		}
+	}
+	active, weighted := 0, int64(0)
+	last := minStart
+	for _, p := range points {
+		weighted += int64(active) * p.at.Sub(last).Milliseconds()
+		active += p.delta
+		if active > out.PeakConcurrency {
+			out.PeakConcurrency = active
+		}
+		last = p.at
+	}
+	out.AverageConcurrency = float64(weighted) / float64(out.BatchWallMs)
+	out.ParallelismFactor = float64(out.BatchWorkMs) / float64(out.BatchWallMs)
+	return out
+}
+
 type RunReport struct {
-	RunID                  string            `json:"run_id"`
-	JobID                  string            `json:"job_id"`
-	JobType                string            `json:"job_type"`
-	AttemptID              string            `json:"attempt_id"`
-	LeaseID                string            `json:"lease_id,omitempty"`
-	ParentRunID            string            `json:"parent_run_id,omitempty"`
-	ParentJobID            string            `json:"parent_job_id,omitempty"`
-	WorkerID               string            `json:"worker_id,omitempty"`
-	LeaseExpiresAt         time.Time         `json:"lease_expires_at,omitempty"`
-	Status                 string            `json:"status"`
-	ObservabilityDegraded  bool              `json:"observability_degraded,omitempty"`
-	CreatedAt              time.Time         `json:"created_at"`
-	StartedAt              time.Time         `json:"started_at"`
-	FinishedAt             time.Time         `json:"finished_at"`
-	QueueWaitMs            int64             `json:"queue_wait_ms"`
+	RunID                 string    `json:"run_id"`
+	JobID                 string    `json:"job_id"`
+	JobType               string    `json:"job_type"`
+	AttemptID             string    `json:"attempt_id"`
+	LeaseID               string    `json:"lease_id,omitempty"`
+	ParentRunID           string    `json:"parent_run_id,omitempty"`
+	ParentJobID           string    `json:"parent_job_id,omitempty"`
+	WorkerID              string    `json:"worker_id,omitempty"`
+	LeaseExpiresAt        time.Time `json:"lease_expires_at,omitempty"`
+	Status                string    `json:"status"`
+	ObservabilityDegraded bool      `json:"observability_degraded,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+	StartedAt             time.Time `json:"started_at"`
+	FinishedAt            time.Time `json:"finished_at"`
+	QueueWaitMs           int64     `json:"queue_wait_ms"`
+	// ExecutionWallMs is the attempt wall after claim. It is the canonical
+	// runtime execution duration; WallTimeMs remains the compatibility name.
+	ExecutionWallMs        int64             `json:"execution_wall_ms"`
 	WallTimeMs             int64             `json:"wall_time_ms"`
 	BlockedMs              int64             `json:"blocked_ms,omitempty"`
 	AccumulatedOperationMs int64             `json:"accumulated_operation_ms,omitempty"`

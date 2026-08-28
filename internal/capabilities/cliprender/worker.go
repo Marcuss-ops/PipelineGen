@@ -23,6 +23,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -162,7 +163,15 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	)
 	progress(10, "request validated; running parallel preparation")
 
+	// ── Observability: the clip.render serial chain is recorded on the
+	// kernel RunReport bound to ctx (prepare → subtitles → render → probe →
+	// overlay → publish). Each stage uses the worker's own measured anchors
+	// (the same anchors feed metrics_v2), so the RunReport critical path is
+	// the real wall chain — never accumulated work. No run bound to ctx →
+	// RecordStage is a no-op (instrumentation never changes behaviour).
+	prepareStart := time.Now()
 	prepared, err := w.preparer.Prepare(ctx, &req, j.ID)
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPrepare}, prepareStart, time.Now(), err)
 	if err != nil {
 		w.log.Error("clip.render.job.prepare_failed",
 			zap.String("job_id", j.ID),
@@ -205,6 +214,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			SourceSHA256:   prepared.Source.SHA256,
 			OutputDir:      runDir,
 		})
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipSubtitles}, subtitleCompileStart, time.Now(), err)
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: compile subtitles: %w", err)
 		}
@@ -268,8 +278,24 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("plan_sha256", plan.PlanSHA256),
 		zap.String("output_path", plan.OutputPath),
 	)
-	outcome, err := w.renderer.Render(ctx, plan)
+	// The render boundary is both a stage (wall, owner-measured anchors) and
+	// an operation (rust.render_clip accumulated work) on the RunReport, so
+	// the benchmark can compare render WALL against render WORK exactly like
+	// the script.generate phases.
+	outcome, err := func() (o *RenderOutcome, e error) {
+		e = kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     StageClipRender,
+			Component: kernobs.ComponentName("rust"),
+			Operation: kernobs.OperationName("render_clip"),
+		}, func(opCtx context.Context) error {
+			var rErr error
+			o, rErr = w.renderer.Render(opCtx, plan)
+			return rErr
+		})
+		return o, e
+	}()
 	renderMS := time.Since(renderStart).Milliseconds()
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, time.Now(), err)
 	if err != nil {
 		w.log.Error("clip.render.job.render_failed",
 			zap.String("job_id", j.ID),
@@ -306,6 +332,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if outcome.Metrics == nil {
 		outcome.Metrics = NewRenderMetricsV2()
 	}
+	// render_wall_ms: the worker's own wall around the render port call
+	// (backend selection + execution). This is the honest render WALL the
+	// benchmark needs to compare against the render WORK (the summed
+	// startup/composite/encode phases): TotalMS is later overwritten with
+	// the job-level total, so without this field the render wall would be
+	// lost and the wall-vs-work distinction would be unanswerable.
+	outcome.Metrics.RenderWallMS = Metric(renderMS)
 	if subtitleCompileMS >= 0 {
 		outcome.Metrics.SubtitleCompileMS = Metric(subtitleCompileMS)
 	}
@@ -327,7 +360,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 
 	// ── Post-render byte certification (exact contract) ──────────────────
 	if w.outputProber != nil {
+		probeStart := time.Now()
 		probe, err := w.outputProber.ProbeOutput(ctx, outcome.OutputPath)
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, time.Now(), err)
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
 		}
@@ -370,6 +405,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
 			return nil, fmt.Errorf("clip.render: overlay resolver returned an invalid segment")
 		}
+		compositeStart := time.Now()
 		emit("clip.render.overlay.segment_resolved", "overlay segment resolved", map[string]any{
 			"render_job_id": req.Overlay.RenderJobID,
 			"render_key":    req.Overlay.RenderKey,
@@ -387,6 +423,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			Height:     int(prepared.Contract.Height),
 			Contract:   prepared.Contract,
 		})
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipOverlay}, compositeStart, time.Now(), err)
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: composite overlay: %w", err)
 		}
@@ -437,6 +474,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		finalizeMetrics(outcome.Metrics, time.Since(jobStart).Milliseconds(), outcome.DurationSec)
 		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, nil), nil
 	}
+	// The publish stage is the true publisher boundary (Drive upload + asset
+	// commit), distinct from the render-side probe/overlay stages — so the
+	// RunReport critical path separates the clip.render "drive" phase from
+	// the render chain. Publication metrics come exclusively from the
+	// publisher-owned report; no worker chronometer is copied into a V2 field.
+	publishStart := time.Now()
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:         j.ID,
 		SourceAssetID: req.SourceAssetID,
@@ -447,15 +490,36 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		Subtitles:     subtitleArtifact,
 		DriveFolderID: req.Destination.DriveFolderID,
 	})
-	publishMS := time.Since(renderStart).Milliseconds() - renderMS
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, time.Now(), err)
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
 	}
-	// The full publication phase (output probe + overlay composite + Drive
-	// upload + DB commit) is the REAL publish_ms of the benchmark — it
-	// replaces the Rust-side rename value the adapter mapped.
-	if outcome.Metrics != nil && publishMS >= 0 {
-		outcome.Metrics.PublishMS = Metric(publishMS)
+	// Publication metrics have ONE chronometer owner: the publisher. When it
+	// reports its measured walls they are projected into the canonical V2
+	// report as-is — the worker never re-times publication with a second
+	// chronometer:
+	//   publication_total_ms = publisher total wall
+	//   artifact_publish_ms  = hash + taxonomy + commit (local artifact work)
+	//   drive_upload_ms      = max(video, sidecar upload) — the uploads run
+	//                          concurrently, so the phase wall is the max,
+	//                          never the sum.
+	// The renderer finalize timing (Rust publish_ms → renderer_finalize_ms)
+	// was recorded by the Rust adapter and is never overwritten here. The
+	// publisher owns publication_total_ms, artifact_publish_ms and
+	// drive_upload_ms. If it does not provide a report, those fields remain
+	// NOT_INSTRUMENTED rather than being populated with a second worker timer.
+	var logPublishMS int64 = NotInstrumented
+	if outcome.Metrics != nil {
+		if pm := publication.Publish; pm != nil {
+			outcome.Metrics.PublicationTotalMS = Metric(pm.TotalMS)
+			outcome.Metrics.ArtifactPublishMS = Metric(pm.HashMS + pm.TaxonomyResolveMS + pm.AssetCommitMS)
+			driveMS := pm.VideoUploadMS
+			if pm.SidecarUploadMS > driveMS {
+				driveMS = pm.SidecarUploadMS
+			}
+			outcome.Metrics.DriveUploadMS = Metric(driveMS)
+			logPublishMS = pm.TotalMS
+		}
 	}
 	if publication == nil || publication.AssetID == "" || publication.DriveFileID == "" {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
@@ -479,7 +543,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("backend", string(outcome.Backend)),
 		zap.Int64("total_ms", totalMS),
 		zap.Int64("render_ms", renderMS),
-		zap.Int64("publish_ms", publishMS),
+		// Publication wall: the publisher-owned total when reported, else the
+		// worker boundary wall (publishers without a metrics report).
+		zap.Int64("renderer_finalize_ms", logPublishMS),
 		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
 		zap.Int64("size_bytes", outcome.SizeBytes),
 	)

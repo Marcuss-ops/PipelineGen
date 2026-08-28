@@ -56,25 +56,33 @@ type ContractResolver interface {
 // wall time) comes from the Rust response metadata; the concrete adapter
 // never re-derives them.
 type RenderOutcome struct {
-	OutputPath        string
-	SizeBytes         int64
-	DurationSec       float64
-	Width             uint32
-	Height            uint32
-	FPSNum            uint32
-	FPSDen            uint32
-	Backend           RenderBackend
+	OutputPath  string
+	SizeBytes   int64
+	DurationSec float64
+	Width       uint32
+	Height      uint32
+	FPSNum      uint32
+	FPSDen      uint32
+	Backend     RenderBackend
+	// FFmpegMS is retained as a read-only compatibility projection of the
+	// canonical Metrics report; adapters must not calculate it independently.
 	FFmpegMS          int64
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
 	GPUCopyBytes      *uint64
+	DecodeMS          *int64
+	FilterGraphMS     *int64
+	SubtitleRasterMS  *int64
+	WatermarkRasterMS *int64
+	FrameConversionMS *int64
+	EncodeMS          *int64
+	AudioMuxMS        *int64
 
-	// Metrics is the canonical V2 execution report (metrics.go). The executor
-	// adapter fills the backend-selection facts (probe/resolve timings, the
-	// single selected backend, attempts/fallback counters), maps the coarse
-	// render wall time onto CompositeMS, and computes the derived aggregates
-	// (unaccounted_ms, FPS, realtime factor). Phases without real
+	// Metrics is the sole canonical V2 execution report (metrics.go). All
+	// backends (CUDA, Chronon and FFmpeg) must populate this contract; legacy
+	// scalar fields are read-only compatibility projections. The adapter fills
+	// selection facts and derived aggregates. Phases without real
 	// instrumentation stay NOT_INSTRUMENTED — never a fake zero.
 	Metrics *RenderMetricsV2
 }
@@ -153,9 +161,28 @@ type RenderPublishInput struct {
 	DriveFolderID string
 }
 
+// PublicationMetrics carries the publisher's OWN measured publication
+// sub-phase walls. The publisher is the single chronometer owner for its
+// phases; the worker projects these into RenderMetricsV2 (publication_total_ms
+// / artifact_publish_ms / drive_upload_ms) and never re-times publication
+// when this report is present. HashMS/TaxonomyResolveMS/AssetCommitMS run
+// sequentially (their sum is the local artifact work); VideoUploadMS and
+// SidecarUploadMS run concurrently (the drive upload wall is their max,
+// never their sum).
+type PublicationMetrics struct {
+	HashMS            int64
+	VideoUploadMS     int64
+	SidecarUploadMS   int64
+	TaxonomyResolveMS int64
+	AssetCommitMS     int64
+	TotalMS           int64
+}
+
 // RenderPublishResult is the typed outcome of publishing + committing the
 // derived asset. AssetID is the canonical media_assets.id; DriveLink is the
-// canonical Drive web link (never reconstructed by the worker).
+// canonical Drive web link (never reconstructed by the worker). Publish is
+// the publisher-owned measurement report projected into the canonical V2
+// execution report.
 type RenderPublishResult struct {
 	AssetID       string
 	DriveFileID   string
@@ -163,6 +190,7 @@ type RenderPublishResult struct {
 	SizeBytes     int64
 	SidecarFileID string
 	SidecarLink   string
+	Publish       *PublicationMetrics
 }
 
 // RenderPublisher publishes the validated output to Drive through the

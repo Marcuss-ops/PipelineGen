@@ -182,8 +182,14 @@ func (r *Run) finish(status string, finalErr error) *RunReport {
 	if r.report.FinishedAt.IsZero() {
 		r.report.FinishedAt = r.now()
 	}
+	// Both values are derived from the runtime lifecycle events: execution
+	// starts at the claimed/started event and ends at finished_at. Queue wait
+	// is never part of execution wall and neither value belongs in a renderer
+	// metrics contract.
 	r.report.WallTimeMs = nonNegative(r.report.FinishedAt.Sub(r.started).Milliseconds())
+	r.report.ExecutionWallMs = r.report.WallTimeMs
 	r.report.AccumulatedOperationMs = r.operationMs
+
 	// Derive the canonical timing breakdown from the top-level stage wall
 	// times recorded on the SAME clock (never a second timer).
 	bd := r.report.Breakdown()

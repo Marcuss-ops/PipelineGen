@@ -52,6 +52,15 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	item := env.Items[0]
+	// Rendered clips are grouped under the generated script name. Keep the
+	// source clip IDs untouched; this field only controls Drive routing.
+	if strings.TrimSpace(item.Output.Render.DriveSubfolderName) == "" {
+		scriptFolderName := strings.TrimSpace(item.Title)
+		if scriptFolderName == "" {
+			scriptFolderName = strings.TrimSpace(item.Source.Topic)
+		}
+		item.Output.Render.DriveSubfolderName = scriptFolderName
+	}
 	item.Output.Render.Normalize()
 	if item.Output.Render.Watermark == nil {
 		item.Output.Render.Watermark = item.Output.Watermark

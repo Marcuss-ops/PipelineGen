@@ -2,6 +2,7 @@ package ollama
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -237,10 +238,39 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if meta, ok := kernobs.OperationMetaFromContext(ctx); ok {
 		meta.Apply(&info)
 	}
+	// The Ollama server reports its own timing/token facts (load_duration,
+	// prompt_eval_count, eval_count, eval_duration, total_duration). OnRecord
+	// merges them into the operation's metadata_json so the RunReport carries
+	// the split inference cost per call — model load, prompt eval, generation,
+	// tokens, tokens/sec, cold start — without a second timer around the
+	// boundary and without changing the wall/status/error semantics.
 	var result string
+	var chatMetrics *client.ChatMetrics
+	info.OnRecord = func(op *kernobs.OperationReport) {
+		if chatMetrics == nil {
+			return
+		}
+		meta := map[string]any{}
+		if op.MetadataJSON != "" {
+			_ = json.Unmarshal([]byte(op.MetadataJSON), &meta)
+		}
+		meta["model"] = chatMetrics.Model
+		meta["input_tokens"] = chatMetrics.PromptEvalCount
+		meta["output_tokens"] = chatMetrics.EvalCount
+		meta["model_load_ms"] = chatMetrics.ModelLoadMS()
+		meta["prompt_eval_ms"] = chatMetrics.PromptEvalDurationNS / 1e6
+		meta["inference_wall_ms"] = chatMetrics.InferenceWallMS()
+		meta["inference_work_ms"] = chatMetrics.InferenceWorkMS()
+		meta["tokens_per_second"] = chatMetrics.TokensPerSecond()
+		meta["cold_start"] = chatMetrics.ColdStart()
+		if b, err := json.Marshal(meta); err == nil {
+			op.MetadataJSON = string(b)
+		}
+	}
 	err := kernobs.MeasureOperation(ctx, info, func(ctx context.Context) error {
-		out, chatErr := g.client.Chat(ctx, messages, options, req.Format)
-		result = out
+		chatResult, chatErr := g.client.ChatDetailed(ctx, messages, options, req.Format)
+		result = chatResult.Content
+		chatMetrics = chatResult.Metrics
 		return chatErr
 	})
 	if err != nil {

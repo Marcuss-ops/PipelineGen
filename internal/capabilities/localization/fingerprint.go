@@ -110,6 +110,9 @@ func visualStyleFingerprint(s *scriptpkg.VideoVisualStyleSpec) string {
 		return ""
 	}
 	parts := []string{
+		strings.TrimSpace(s.Font),
+		strings.TrimSpace(s.Position),
+		fmt.Sprintf("%.6f", s.Size),
 		strings.TrimSpace(s.Color),
 		fmt.Sprintf("%.6f", s.FontSizePX),
 		fmt.Sprintf("%d", s.WidthPX),

@@ -20,6 +20,13 @@ type OperationInfo struct {
 	StartedAt    time.Time
 	FinishedAt   time.Time
 	MetadataJSON string
+	// OnRecord, when non-nil, is invoked with the finalized OperationReport
+	// immediately before it is recorded. Owners use it to attach facts that
+	// are only known AFTER the call completes (e.g. tokens, model-load,
+	// and inference durations reported by an external service) without
+	// re-timing the boundary. It runs on the success/error path only, never
+	// on the panic path.
+	OnRecord func(*OperationReport)
 }
 
 // Operation measures one external-boundary call:
@@ -92,6 +99,9 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 		op.ErrorCode = errorCode(err)
 	} else {
 		op.Status = StageStatusCompleted
+	}
+	if info.OnRecord != nil {
+		info.OnRecord(&op)
 	}
 	r.recordOperation(op)
 	return err

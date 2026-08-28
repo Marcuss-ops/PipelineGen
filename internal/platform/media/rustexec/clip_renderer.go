@@ -35,11 +35,20 @@ type ClipRenderResult struct {
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
 	GPUCopyBytes      *uint64
+	OperationMetrics  *OperationMetrics
 	// render_clip phase timings reported by Rust (nil = phase not reported;
 	// the V2 metrics report maps them only when measured — never a fake zero).
-	StartupMS *int64 // pre-ffmpeg wall inside Rust (decode plan + probe + graph + spawn)
-	PublishMS *int64 // Rust-side output publish/rename
-	OpMS      *int64 // whole render_clip wall in-process
+	StartupMS         *int64 // pre-ffmpeg wall inside Rust (plan decode + graph + spawn; probe is separate)
+	PublishMS         *int64 // Rust-side output publish/rename
+	OpMS              *int64 // whole render_clip wall in-process
+	ProbeMS           *int64 // ffprobe source probe wall, reported separately from startup
+	DecodeMS          *int64
+	FilterGraphMS     *int64
+	SubtitleRasterMS  *int64
+	WatermarkRasterMS *int64
+	FrameConversionMS *int64
+	EncodeMS          *int64
+	AudioMuxMS        *int64
 }
 
 // ClipRenderer executes sealed ClipRenderPlanV1 plans through the Rust
@@ -125,6 +134,13 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		return ClipRenderResult{}, fmt.Errorf("render_clip output missing or empty: %w", err)
 	}
 	m := result.Metadata
+	// ProbeMS is a non-pointer scalar on the wire (shared with the
+	// render_audio_plan path), so >0 is the honest "reported" test — Rust
+	// omits probe_ms entirely when it did not measure it.
+	var probeMS *int64
+	if m.ProbeMS > 0 {
+		probeMS = &m.ProbeMS
+	}
 	return ClipRenderResult{
 		OutputPath:        plan.OutputPath,
 		SizeBytes:         info.Size(),
@@ -138,9 +154,18 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		AudioEncodePasses: m.AudioEncodePasses,
 		SubtitleRasterCPU: m.SubtitleRasterCPU,
 		GPUCopyBytes:      m.GPUCopyBytes,
+		OperationMetrics:  result.Metrics,
 		StartupMS:         m.StartupMS,
 		PublishMS:         m.PublishMS,
 		OpMS:              m.OpMS,
+		ProbeMS:           probeMS,
+		DecodeMS:          m.DecodeMS,
+		FilterGraphMS:     m.FilterGraphMS,
+		SubtitleRasterMS:  m.SubtitleRasterMS,
+		WatermarkRasterMS: m.WatermarkRasterMS,
+		FrameConversionMS: m.FrameConversionMS,
+		EncodeMS:          m.EncodeMS,
+		AudioMuxMS:        m.AudioMuxMS,
 	}, nil
 }
 

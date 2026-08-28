@@ -258,6 +258,12 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 	} else {
 		finalPath = m.legacyPath(req.AssetID, req.Extension)
 	}
+	// Content-addressed paths include a per-hash directory. Ensure it exists
+	// before creating the atomic .part file; Drive-only sources otherwise fail
+	// before the download starts on a cold cache.
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
+		return nil, fmt.Errorf("create materializer cache path: %w", err)
+	}
 
 	// If the final path already exists with the right hash, it was just
 	// downloaded by a concurrent call or the CAS cache was populated.

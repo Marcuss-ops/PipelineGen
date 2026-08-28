@@ -30,7 +30,7 @@
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
-	verify-images verify-script verify-research verify-clips verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main test-main-stock verify-main-clip verify-release \
+	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-node-scraper verify-race-kernel \
 	whisper-preflight \
 	test-pipeline-stock-only verify-pipeline-clip-only verify-pipeline-research verify-pipeline-document verify-pipeline-voiceover verify-pipeline-script test-pipeline-youtube-stock verify-pipeline-vidrush verify-component-coverage verify-reconciliation-contracts reconcile-pipeline verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
@@ -60,7 +60,7 @@
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	doctor artlist auth-check regenerate-token scraper-up \
 	smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
-	deps tidy-check vuln bench ci preflight verify-format test-imports install-hooks regen-current-yaml
+	deps tidy-check vuln bench benchmark-e2e benchmark-generate e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
 # the high-traffic targets; for the FULL ~90-target catalog see the
@@ -131,6 +131,15 @@ help:
 	@echo "  make verify-pipeline-voiceover   Script-to-voiceover pipeline"
 	@echo "  make test-pipeline-youtube-stock YouTube/stock pipeline diagnostic"
 	@echo "  make verify-pipeline-vidrush     Vidrush pipeline"
+	@echo ""
+	@echo "BENCHMARK (require running server + /ready)"
+	@echo "  make benchmark-generate  Video benchmark (BENCH_TOPIC=BENCH_CLIP_ID=)"
+	@echo "  make dev-up              Deterministic staged startup (Infrastructure→Server→Worker→Preflight)"
+	@echo "  make dev-down            Stop all services + remove orphans"
+	@echo "  make velox ARGS='doctor' Operations CLI (velox up|down|api|query|doctor|env)"
+	@echo "  make e2e-up              Start E2E harness + preflight (fast, no readiness gates)"
+	@echo "  make e2e-down            Stop E2E harness"
+	@echo "  make e2e-status          Show E2E harness status + preflight"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
