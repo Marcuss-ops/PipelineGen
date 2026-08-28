@@ -1250,6 +1250,26 @@ resource_summary = {
     "gpu_temp_peak_c": resource_max("gpu_temp_peak_c"),
     "throttled": any(bool(r.get("throttled")) for r in resource_rows),
 }
+
+# Fine-grained renderer costs. Each value is taken from metrics_v2 exactly as
+# emitted by the renderer. Missing instrumentation remains null with a zero
+# measured-job count; it is never inferred from composite_ms.
+render_cost_names = (
+    "renderer_startup_ms", "probe_ms", "decode_ms", "composite_ms",
+    "subtitle_compile_ms", "subtitle_raster_ms", "watermark_raster_ms",
+    "frame_conversion_ms", "encode_ms", "audio_mux_ms",
+    "renderer_finalize_ms", "drive_upload_ms", "render_wall_ms",
+)
+render_costs = {}
+for name in render_cost_names:
+    key = name
+    values = [ms(m.get(key)) for m in metrics_by_job if sentinel_ok(m.get(key))]
+    render_costs[name] = {
+        "total_ms": sum(values) if values else None,
+        "avg_ms": round(sum(values) / len(values), 2) if values else None,
+        "measured_jobs": len(values),
+        "status": "measured" if values else "NOT_INSTRUMENTED",
+    }
 # Resource metrics are sourced from each render's canonical metrics_v2.
 # CPU is aggregated as user+system time; RSS is a batch high-water mark.
 total_cpu_user_ms = sum(ms(m.get("cpu_user_ms")) for m in metrics_by_job if sentinel_ok(m.get("cpu_user_ms")))
@@ -1440,6 +1460,18 @@ if render_rows:
     print("  %-14s %8s %8s %10s %8s %12s" % ("──────", "─────", "──────", "─────────", "──────", "───────────"))
     for row in render_rows:
         print("  %-14s %8s %8s %10s %8s %12s" % row)
+
+print("")
+print("  ── Renderer cost totals (metrics_v2) ──")
+print("  total_ms = sum across clips; avg_ms = average per measured clip;")
+print("  composite includes the current subtitle/watermark full-frame compositor;")
+print("  subtitle_raster/watermark_raster are shown as unavailable until separately instrumented.")
+print("  %-28s %12s %12s %10s %-18s" % ("COST", "TOTAL_MS", "AVG_MS", "CLIPS", "STATUS"))
+print("  %-28s %12s %12s %10s %-18s" % ("────", "────────", "──────", "─────", "──────"))
+for name, cost in render_costs.items():
+    total = str(cost["total_ms"]) if cost["total_ms"] is not None else "-"
+    avg = str(cost["avg_ms"]) if cost["avg_ms"] is not None else "-"
+    print("  %-28s %12s %12s %10d %-18s" % (name, total, avg, cost["measured_jobs"], cost["status"]))
 
 
 print("")
@@ -1729,6 +1761,7 @@ report = {
             "backends": dict(backends),
             "drive_file_ids": drive_file_ids,
             "gpu_copy_bytes_total": total_gpu_copy_bytes,
+            "render_costs": render_costs,
             "throughput": {
                 "clips_per_minute": (n_jobs / (batch_wall / 60000.0)) if batch_wall > 0 else 0.0,
                 # batch_speed_factor = video seconds produced / batch wall
