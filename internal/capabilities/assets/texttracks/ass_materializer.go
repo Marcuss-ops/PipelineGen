@@ -89,6 +89,32 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	cuesHashBytes := digest.SHA256Bytes(cuesJSON)
 	cuesHash := cuesHashBytes[:8] // Keep 8 chars for the file path as requested
 
+	// Idempotency is resolved before touching the filesystem or Drive.  The
+	// subtitle is a durable asset, not a per-render temporary.  Reprocessing a
+	// clip with the same current text/cues/style must reuse the existing ASS and
+	// its Drive reference; otherwise every render creates a duplicate subtitle
+	// file even though the content has not changed.
+	if current, lookupErr := m.repo.FindCurrent(ctx, in.AssetID, in.LanguageCode, detail.SubtitleFormatASS); lookupErr != nil {
+		return nil, fmt.Errorf("ass_materializer: lookup current artifact: %w", lookupErr)
+	} else if current != nil && current.Status == detail.SubtitleStatusReady && current.IsCurrent &&
+		current.TextHash == textHash && current.CuesHash == cuesHashBytes &&
+		current.StyleVersion == in.SubtitleStyleID && current.ClipDurationMs == in.ClipDurationMs &&
+		(in.ClipContentHash == "" || current.ClipContentHash == in.ClipContentHash) &&
+		current.DriveFileID != "" && current.DriveURL != "" {
+		if _, statErr := os.Stat(current.LocalPath); statErr == nil {
+			return &SubtitleMaterializerOutput{
+				LocalPath:       current.LocalPath,
+				LegacyFileMD5:   current.LegacyFileMD5,
+				CuesHash:        current.CuesHash,
+				TextHash:        current.TextHash,
+				CoveredDuration: current.LastCueEndMs,
+				CueCount:        current.CueCount,
+				LastCueEndMs:    current.LastCueEndMs,
+			}, nil
+		}
+		return nil, fmt.Errorf("ass_materializer: canonical subtitle %q exists on Drive but is not materialized locally; refusing duplicate generation/upload", current.DriveFileID)
+	}
+
 	// 2. Build deterministic ASS file path
 	localDir := filepath.Join(m.root, in.AssetID, in.LanguageCode)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
