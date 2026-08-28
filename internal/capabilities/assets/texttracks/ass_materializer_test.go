@@ -65,6 +65,27 @@ func TestSubtitleMaterializerPublishesAndPersistsPerClipDriveReference(t *testin
 	}
 }
 
+func TestSubtitleMaterializerReusesCurrentArtifactWithoutRepublish(t *testing.T) {
+	repo := &subtitleArtifactRepoRecorder{}
+	publisher := &subtitlePublisherRecorder{}
+	materializer := NewSubtitleArtifactMaterializer(repo, t.TempDir(), publisher)
+	cues := []detail.TimedCue{{StartMs: 0, EndMs: 1200, Text: "already indexed"}}
+	in := SubtitleMaterializerInput{
+		AssetID: "clip-retry", LanguageCode: "en", TextTrackID: 11,
+		ClipDurationMs: 2000, TimedCues: cues, SubtitleStyleID: "vidrush-default",
+		DriveFolderID: "drive-folder",
+	}
+	if _, err := materializer.Materialize(context.Background(), in); err != nil {
+		t.Fatalf("first materialize: %v", err)
+	}
+	if _, err := materializer.Materialize(context.Background(), in); err != nil {
+		t.Fatalf("retry materialize: %v", err)
+	}
+	if got := len(publisher.requests); got != 1 {
+		t.Fatalf("publish calls after identical retry = %d, want 1", got)
+	}
+}
+
 type subtitleArtifactRepoRecorder struct {
 	byAsset map[string]detail.SubtitleArtifact
 }

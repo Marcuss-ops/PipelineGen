@@ -120,13 +120,14 @@ type localizedRenderEnqueuerAdapter struct {
 	// wholesale transcript-cue replacement: ReplaceTranscriptCues deletes
 	// and re-inserts the complete cue set per source clip, so all languages
 	// of a scene are staged before the rewrite.
-	cueState    map[string]map[string][]detail.TimedCue
-	assets      cliprender.AssetResolver
-	material    cliprender.AssetMaterializer
-	transcript  cliprender.TranscriptResolver
-	folderMu    sync.Mutex
-	folderCache map[string]string
-	renderGate  chan struct{}
+	cueState          map[string]map[string][]detail.TimedCue
+	assets            cliprender.AssetResolver
+	material          cliprender.AssetMaterializer
+	transcript        cliprender.TranscriptResolver
+	subtitleArtifacts detail.SubtitleArtifactRepository
+	folderMu          sync.Mutex
+	folderCache       map[string]string
+	renderGate        chan struct{}
 }
 
 func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
@@ -148,18 +149,23 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 	if len(extras) > 2 {
 		transcript, _ = extras[2].(cliprender.TranscriptResolver)
 	}
+	var subtitleArtifacts detail.SubtitleArtifactRepository
+	if len(extras) > 3 {
+		subtitleArtifacts, _ = extras[3].(detail.SubtitleArtifactRepository)
+	}
 	return &localizedRenderEnqueuerAdapter{
-		svc:         svc,
-		tracks:      tracks,
-		cues:        cues,
-		cfg:         cfg,
-		log:         log,
-		cueState:    make(map[string]map[string][]detail.TimedCue),
-		assets:      assets,
-		material:    material,
-		transcript:  transcript,
-		folderCache: make(map[string]string),
-		renderGate:  make(chan struct{}, cfg.GlobalConcurrency),
+		svc:               svc,
+		tracks:            tracks,
+		cues:              cues,
+		cfg:               cfg,
+		log:               log,
+		cueState:          make(map[string]map[string][]detail.TimedCue),
+		assets:            assets,
+		material:          material,
+		transcript:        transcript,
+		subtitleArtifacts: subtitleArtifacts,
+		folderCache:       make(map[string]string),
+		renderGate:        make(chan struct{}, cfg.GlobalConcurrency),
 	}
 }
 
@@ -302,6 +308,20 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 	if a.tracks == nil {
 		return false, fmt.Errorf("localized render: text track repository not wired")
 	}
+	// A durable ASS artifact is an existing input, never a newly generated
+	// subtitle for this render. Keep this fact separate from the text-track
+	// lookup: an ASS may already be on Drive even when an older database row
+	// has incomplete cue materialization. In that case fail closed; do not
+	// invoke Whisper and do not create a duplicate Drive artifact.
+	existingSubtitle := false
+	if a.subtitleArtifacts != nil {
+		artifact, artifactErr := a.subtitleArtifacts.FindCurrent(ctx, assetID, sourceLang, detail.SubtitleFormatASS)
+		if artifactErr != nil {
+			return false, fmt.Errorf("localized render: find existing subtitle artifact for %q: %w", assetID, artifactErr)
+		}
+		existingSubtitle = artifact != nil && artifact.Status == detail.SubtitleStatusReady && artifact.IsCurrent &&
+			strings.TrimSpace(artifact.DriveFileID) != "" && strings.TrimSpace(artifact.DriveURL) != ""
+	}
 	track, cues, err := a.tracks.FindReady(ctx, assetID, sourceLang, detail.TextTrackTranscript)
 	if err != nil {
 		return false, fmt.Errorf("localized render: find source subtitles for %q: %w", assetID, err)
@@ -314,6 +334,9 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 		track, cues = nil, nil
 	}
 	if track == nil || len(cues) == 0 {
+		if existingSubtitle {
+			return false, fmt.Errorf("localized render: existing subtitle artifact for %q has no READY timed transcript; refusing ASR regeneration", assetID)
+		}
 		if a.transcript == nil || a.assets == nil || a.material == nil {
 			return false, fmt.Errorf("localized render: no timed subtitles in database for %q and transcript generation is not wired", assetID)
 		}
@@ -340,6 +363,12 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 		if err != nil || track == nil || len(cues) == 0 || invalidSubtitleText(track.TextContent, cues) {
 			return false, fmt.Errorf("localized render: generated subtitles for %q were not readable from database", assetID)
 		}
+	}
+	// Existing canonical subtitles are inputs to this render. They must never
+	// activate the localization subtitle uploader, even when the caller's
+	// request was assembled by a retry path.
+	if existingSubtitle {
+		generated = false
 	}
 	if targetLang != sourceLang {
 		target, targetCues, err := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
@@ -421,7 +450,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		SubtitleFolderID:  "1noSFMK_UeF_Xo-RRZWvH10U7tiL1jPP1",
 		Concurrency:       cfg.Scripts.LocalizedRenderConcurrency,
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
-	}, log, resolver, materializer, transcriptResolver)
+	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo)
 	runner.SetLocalizedRenderEnqueuer(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (Rust render_clip)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),
