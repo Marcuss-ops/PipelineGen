@@ -307,6 +307,32 @@ declare -a J_LABELS=()
 declare -a J_MODES=()
 declare -a J_STATUS=()
 
+# When the benchmark is explicitly bounded to one slot, submit the next job
+# only after the previous one reaches a terminal state.  The server's worker
+# pool is shared with other queues, so a report-only label cannot guarantee
+# isolation; serial submission makes the advertised 1-slot baseline real.
+wait_for_benchmark_job() {
+    local index="$1" jid="$2" polled=0 status
+    while true; do
+        status=$(api GET "/api/jobs/$jid" 2>/dev/null || echo '{}')
+        status=$(echo "$status" | json_field "status" "unknown" | tr '[:upper:]' '[:lower:]')
+        case "$status" in
+            completed|succeeded|failed|cancelled)
+                J_STATUS[$index]="$status"
+                echo "[bench] Job $jid → $status"
+                return 0
+                ;;
+        esac
+        if (( polled >= POLL_MAX )); then
+            J_STATUS[$index]="timeout"
+            echo "[bench] ⚠️ Job $jid timed out after ${POLL_MAX}s" >&2
+            return 1
+        fi
+        sleep "$POLL_INTERVAL"
+        polled=$((polled + POLL_INTERVAL))
+    done
+}
+
 SUCCESS_COUNT=0
 
 for entry in "${WORK_LIST[@]}"; do
@@ -350,6 +376,10 @@ EOJSON
         J_MODES+=("generate")
         : # submission timing is transport-only and never enters the report
         J_STATUS+=("submitted")
+
+        if [[ "$WORKER_SLOTS" == "1" ]]; then
+            wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
+        fi
 
     elif [[ "$MODE" == "render" ]]; then
         # ── Render: POST /api/clips/render ───────────────────────────────
@@ -398,6 +428,10 @@ EOJSON
         J_MODES+=("render")
         : # submission timing is transport-only and never enters the report
         J_STATUS+=("submitted")
+
+        if [[ "$WORKER_SLOTS" == "1" ]]; then
+            wait_for_benchmark_job "$(( ${#J_JOB_IDS[@]} - 1 ))" "$JOB_ID" || true
+        fi
     fi
 done
 
