@@ -18,8 +18,8 @@ import (
 
 const (
 	defaultChrononGPUConcurrency = 2
-	defaultChrononProbeTTL        = 10 * time.Minute
-	chrononProcessTailBytes       = 64 * 1024
+	defaultChrononProbeTTL       = 10 * time.Minute
+	chrononProcessTailBytes      = 64 * 1024
 )
 
 var (
