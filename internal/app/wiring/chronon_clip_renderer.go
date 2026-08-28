@@ -141,18 +141,18 @@ type chrononTimingReport struct {
 		EncoderMS        float64 `json:"encoder_ms"`
 	} `json:"frame_times_ms"`
 	Job struct {
-		EngineInitMS      *float64 `json:"engine_init_ms"`
-		BackendInitMS     *float64 `json:"backend_init_ms"`
-		PlanReadMS        *float64 `json:"plan_read_ms"`
-		PlanParseMS       *float64 `json:"plan_parse_ms"`
-		PlanValidateMS    *float64 `json:"plan_validate_ms"`
-		PlanCompileMS     *float64 `json:"plan_compile_ms"`
-		GraphCompileMS    *float64 `json:"graph_compile_ms"`
-		PrepareMS         *float64 `json:"prepare_ms"`
-		OutputFinalizeMS  *float64 `json:"output_finalize_ms"`
-		GPU               struct {
+		EngineInitMS     *float64 `json:"engine_init_ms"`
+		BackendInitMS    *float64 `json:"backend_init_ms"`
+		PlanReadMS       *float64 `json:"plan_read_ms"`
+		PlanParseMS      *float64 `json:"plan_parse_ms"`
+		PlanValidateMS   *float64 `json:"plan_validate_ms"`
+		PlanCompileMS    *float64 `json:"plan_compile_ms"`
+		GraphCompileMS   *float64 `json:"graph_compile_ms"`
+		PrepareMS        *float64 `json:"prepare_ms"`
+		OutputFinalizeMS *float64 `json:"output_finalize_ms"`
+		GPU              struct {
 			CUDACompositeWallUS *uint64 `json:"cuda_composite_wall_us"`
-			VideoDecodeWallMS    *uint64 `json:"video_decode_wall_ms"`
+			VideoDecodeWallMS   *uint64 `json:"video_decode_wall_ms"`
 		} `json:"gpu"`
 		Text struct {
 			RasterMS      *float64 `json:"raster_ms"`
@@ -571,7 +571,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		r.logPhase("chronon_render_failed", plan.RunID,
 			zap.Int64("stdout_bytes", procOut.TotalBytes),
 			zap.Int64("duration_ms", metrics.ChrononRenderMS),
-			zap.String("stderr_tail", strings.TrimSpace(string(out[len(out)-previewLen:])),
+			zap.String("stderr_tail", strings.TrimSpace(string(out[len(out)-previewLen:]))),
 			zap.Error(renderErr),
 		)
 		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon render: %w: %s", renderErr, strings.TrimSpace(string(out)))

@@ -72,7 +72,7 @@ type RenderMetricsV2 struct {
 	CompositeMS        Metric `json:"composite_ms"`
 	SubtitleRasterMS   Metric `json:"subtitle_raster_ms"`
 	WatermarkRasterMS  Metric `json:"watermark_raster_ms"`
-	FrameConversionMS Metric `json:"frame_conversion_ms"`
+	FrameConversionMS  Metric `json:"frame_conversion_ms"`
 	EncodeMS           Metric `json:"encode_ms"`
 	AudioMuxMS         Metric `json:"audio_mux_ms"`
 

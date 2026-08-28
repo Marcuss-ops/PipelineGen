@@ -314,8 +314,11 @@ func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerpri
 	}
 
 	// 3. Invoke the Chronon binary exactly like production (same flags as the
-	//    executor). The mutex serializes against real renders on the device.
-	chrononRenderMu.Lock()
+	//    executor). Share the bounded GPU admission policy with real renders.
+	_, release, acquireErr := acquireChrononGPU(runCtx)
+	if acquireErr != nil {
+		return fail(fmt.Sprintf("chronon GPU admission: %v", acquireErr))
+	}
 	out, renderErr := c.run(runCtx, c.bin,
 		"render",
 		"--plan", planPath,
@@ -327,7 +330,7 @@ func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerpri
 		"--encoder-backend", "native",
 		"--report",
 	)
-	chrononRenderMu.Unlock()
+	release()
 	if renderErr != nil {
 		preview := strings.TrimSpace(out)
 		if len(preview) > 2000 {

@@ -12,17 +12,17 @@ func u64ptr(v uint64) *uint64 { return &v }
 
 func TestClipRenderExecutorAdapter_ProjectsMeasuredZeroCopyCounters(t *testing.T) {
 	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{
-		OutputPath:               "/out.mp4",
-		SizeBytes:                1024,
-		DurationSec:              1,
-		Width:                    1280,
-		Height:                   720,
-		FPSNum:                   30,
-		FPSDen:                   1,
-		GPUReadbackBytes:         u64ptr(0),
-		EncoderStagingCopyBytes:  u64ptr(4096),
-		NV12ToRGBAFrames:         u64ptr(3),
-		RGBAToNV12Frames:         u64ptr(4),
+		OutputPath:              "/out.mp4",
+		SizeBytes:               1024,
+		DurationSec:             1,
+		Width:                   1280,
+		Height:                  720,
+		FPSNum:                  30,
+		FPSDen:                  1,
+		GPUReadbackBytes:        u64ptr(0),
+		EncoderStagingCopyBytes: u64ptr(4096),
+		NV12ToRGBAFrames:        u64ptr(3),
+		RGBAToNV12Frames:        u64ptr(4),
 	}}
 	adapter := &ClipRenderExecutorAdapter{
 		renderer: fake,
