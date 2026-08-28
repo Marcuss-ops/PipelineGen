@@ -264,7 +264,7 @@ poll_job() {
         log_v "  [$jid] status=$STATUS elapsed=${ELAPSED}ms"
 
         case "$STATUS" in
-            completed|failed|cancelled)
+            completed|succeeded|failed|cancelled)
                 echo "$STATUS"
                 return 0
                 ;;
@@ -415,16 +415,16 @@ while true; do
         JID="${J_JOB_IDS[$i]}"
         [[ -n "$JID" ]] || continue
         CUR="${J_STATUS[$i]}"
-        [[ "$CUR" == "completed" || "$CUR" == "failed" || "$CUR" == "cancelled" || "$CUR" == "submit_failed" || "$CUR" == "timeout" ]] && continue
+        [[ "$CUR" == "completed" || "$CUR" == "succeeded" || "$CUR" == "failed" || "$CUR" == "cancelled" || "$CUR" == "submit_failed" || "$CUR" == "timeout" ]] && continue
 
         RESP=$(api GET "/api/jobs/$JID" 2>/dev/null || echo '{}')
-        STATUS=$(echo "$RESP" | json_field "status" "unknown")
+        STATUS=$(echo "$RESP" | json_field "status" "unknown" | tr '[:upper:]' '[:lower:]')
         ELAPSED=""
 
         log_v "  [$JID] status=$STATUS elapsed=${ELAPSED}ms"
 
         case "$STATUS" in
-            completed|failed|cancelled)
+            completed|succeeded|failed|cancelled)
                 J_STATUS[$i]="$STATUS"
                 echo "[bench] Job $JID → $STATUS"
                 ;;
@@ -443,7 +443,7 @@ while true; do
             JID="${J_JOB_IDS[$i]}"
             [[ -n "$JID" ]] || continue
             CUR="${J_STATUS[$i]}"
-            [[ "$CUR" == "completed" || "$CUR" == "failed" || "$CUR" == "cancelled" || "$CUR" == "submit_failed" || "$CUR" == "timeout" ]] && continue
+            [[ "$CUR" == "completed" || "$CUR" == "succeeded" || "$CUR" == "failed" || "$CUR" == "cancelled" || "$CUR" == "submit_failed" || "$CUR" == "timeout" ]] && continue
             J_STATUS[$i]="timeout"
         done
         break
@@ -469,7 +469,7 @@ for i in "${!J_JOB_IDS[@]}"; do
     else
         echo '{}' > "$JOBS_DIR/job-$i.json"
     fi
-    if [[ "${J_STATUS[$i]}" == "completed" ]]; then
+    if [[ "${J_STATUS[$i]}" == "completed" || "${J_STATUS[$i]}" == "succeeded" ]]; then
         SUCCESS_COUNT=$(( SUCCESS_COUNT + 1 ))
     fi
 done
@@ -624,7 +624,9 @@ def fmt_sec(v):
 
 
 def fmt_work(p):
-    return "%s/%s" % (fmt_sec(p["wall_ms"]), fmt_sec(p["work_ms"]))
+    if not p:
+        return "-"
+    return "%s/%s" % (fmt_sec(ms(p.get("wall_ms"))), fmt_sec(ms(p.get("work_ms"))))
 
 
 def build_job(full, i):
