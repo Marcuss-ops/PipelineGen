@@ -176,6 +176,9 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	return GenerateRequest{
+		Model:             item.Model,
+		Tone:              item.Tone,
+		Style:             item.Style,
 		Render:            item.Output.Render,
 		OverlayBackground: item.OverlayBackground,
 		OverlayStyle:      item.OverlayStyle,

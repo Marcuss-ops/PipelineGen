@@ -9,7 +9,7 @@ import (
 )
 
 func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {
-	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, req.ScriptParams.Style, req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, firstNonEmpty(req.Style, req.ScriptParams.Style), req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
 }
 
 func buildEditorialPrompt(topic, sourceText, title, query string, targetWords, minWords int, style, guidelines, language, promptVersion string) string {
