@@ -52,7 +52,7 @@ func TestYouTubeMaterializationIsIdempotentForSameWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := NewVidRushYouTubeProvider(stock)
+	provider, err := NewVidRushYouTubeProvider(stock, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestYouTubeWindowIsReusedAcrossDifferentJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := NewVidRushYouTubeProvider(stock)
+	provider, err := NewVidRushYouTubeProvider(stock, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

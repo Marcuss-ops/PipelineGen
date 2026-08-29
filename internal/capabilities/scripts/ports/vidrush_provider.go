@@ -24,6 +24,15 @@ type VidRushSearchRequest struct {
 	Text      string
 	Query     string
 	Limit     int
+	// TargetDurationMs is the desired clip length derived from the
+	// segment timing budget (voiceover > scene > estimated). Zero means
+	// the provider falls back to its own default.
+	TargetDurationMs int64
+	MinDurationMs    int64
+	MaxDurationMs    int64
+	// SemanticProfile is the segment understanding (SSOT) handed to
+	// providers that build queries from meaning. Optional.
+	SemanticProfile *scriptpkg.SegmentSemanticProfile
 	// Sources are bounded, caller-supplied URLs. Providers that do not
 	// support source hints may ignore them; YouTube requires them.
 	Sources []VidRushSourceHint
