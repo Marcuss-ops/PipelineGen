@@ -56,10 +56,12 @@ func (p *VidRushYouTubeProvider) Search(ctx context.Context, req scriptports.Vid
 	}
 	hints := requiredFirst(req.Sources)
 	if hasRequiredHint(hints) {
-		// Required path: only the mandated URLs are eligible.
-		return p.planWindows(ctx, req, hintURLs(hints))
+		// Required path: only required URLs are eligible. Any planning error,
+		// empty result, malformed URL or unavailable transcript is terminal;
+		// discovery and other source hints must never mask the failure.
+		return p.planRequiredWindows(ctx, req, requiredHintURLs(hints))
 	}
-	suggested := hintURLs(hints)
+	suggested := optionalHintURLs(hints)
 	if len(suggested) > 0 {
 		candidates, err := p.planWindows(ctx, req, suggested)
 		if err == nil && len(candidates) > 0 {
@@ -77,6 +79,9 @@ func (p *VidRushYouTubeProvider) Search(ctx context.Context, req scriptports.Vid
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("youtube VidRush provider: no youtube candidates for segment %q: %w", req.SegmentID, scriptports.ErrNoDiscoveryCandidates)
 	}
+	// Discovered URLs are intentionally sent through Plan only: metadata,
+	// transcripts and semantic windows are evaluated without downloading or
+	// persisting media. MaterializeSelected remains the sole download path.
 	return p.planWindows(ctx, req, urls)
 }
 
@@ -93,7 +98,11 @@ func (p *VidRushYouTubeProvider) planWindows(ctx context.Context, req scriptport
 	if err != nil {
 		return nil, err
 	}
-	return selectedSegmentsToCandidates(planned.SelectedSegments, req.Query), nil
+	candidates := selectedSegmentsToCandidates(planned.SelectedSegments, req.Query)
+	for i := range candidates {
+		candidates[i].SemanticStatus = "planned_transcript"
+	}
+	return preRankYouTubeCandidates(candidates, req.Query, req.SceneID, youtubeCandidateLimit(req)), nil
 }
 
 // discoverURLs runs autonomous discovery and returns canonical watch URLs.
@@ -114,9 +123,22 @@ func (p *VidRushYouTubeProvider) discoverURLs(ctx context.Context, req scriptpor
 		return nil, err
 	}
 	urls := make([]string, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
-		if strings.TrimSpace(candidate.URL) != "" {
-			urls = append(urls, strings.TrimSpace(candidate.URL))
+		if err := candidate.Validate(); err != nil {
+			continue
+		}
+		url := strings.TrimSpace(candidate.URL)
+		if url == "" {
+			continue
+		}
+		if _, exists := seen[url]; exists {
+			continue
+		}
+		seen[url] = struct{}{}
+		urls = append(urls, url)
+		if len(urls) >= maxVideos {
+			break
 		}
 	}
 	return urls, nil
@@ -129,11 +151,30 @@ func (p *VidRushYouTubeProvider) discoverURLs(ctx context.Context, req scriptpor
 // never invents content and never ranks videos.
 //
 // Intent ladder (most to least specific):
-//   exact_subject       — caller query / important phrases / entity-led phrase
-//   historical_context  — temporal + place context layered onto the subject
-//   visual_fallback     — profile visual terms, for when subject queries miss
+//
+//	exact_subject       — caller query / important phrases / entity-led phrase
+//	historical_context  — temporal + place context layered onto the subject
+//	visual_fallback     — profile visual terms, for when subject queries miss
 func buildYouTubeQueryPlan(req scriptports.VidRushSearchRequest) scriptports.ProviderQueryPlan {
 	profile := req.SemanticProfile
+	if profile != nil {
+		queries := youtubeProfileQueries(*profile, req.Query)
+		if len(queries) > 0 {
+			plan := scriptports.ProviderQueryPlan{Provider: scriptpkg.VidRushProviderYouTube}
+			for i, query := range queries {
+				weight := 1.0 - float64(i)*0.1
+				if weight < 0.1 {
+					weight = 0.1
+				}
+				intent := scriptports.QueryIntentExactSubject
+				if i > 0 {
+					intent = scriptports.QueryIntentVisualFallback
+				}
+				plan.Queries = append(plan.Queries, scriptports.ProviderQuery{Query: query, Intent: intent, Weight: weight})
+			}
+			return plan
+		}
+	}
 	exact := make([]string, 0, 2)
 	contextual := make([]string, 0, 2)
 	visual := make([]string, 0, 3)
@@ -183,6 +224,17 @@ func buildYouTubeQueryPlan(req scriptports.VidRushSearchRequest) scriptports.Pro
 }
 
 // appendRung adds one intent rung's phrases with decaying weights.
+func youtubeProfileQueries(profile scriptpkg.SegmentSemanticProfile, explicit string) []string {
+	values := make([]string, 0, 1+len(profile.VisualTerms))
+	if explicit = strings.TrimSpace(explicit); explicit != "" {
+		values = append(values, explicit)
+	}
+	for _, term := range profile.VisualTerms {
+		values = append(values, strings.TrimSpace(term.Value))
+	}
+	return normalizedProviderQueries(values, 8)
+}
+
 func appendRung(out *[]scriptports.ProviderQuery, intent scriptports.QueryIntent, phrases []string, top float64) {
 	for i, phrase := range phrases {
 		weight := top - float64(i)*0.1
@@ -232,6 +284,44 @@ func requiredFirst(sources []scriptports.VidRushSourceHint) []scriptports.VidRus
 	return out
 }
 
+func requiredHintURLs(sources []scriptports.VidRushSourceHint) []string {
+	urls := make([]string, 0, len(sources))
+	for _, source := range sources {
+		if source.Required {
+			if url := strings.TrimSpace(source.URL); url != "" {
+				urls = append(urls, url)
+			}
+		}
+	}
+	return urls
+}
+
+func optionalHintURLs(sources []scriptports.VidRushSourceHint) []string {
+	urls := make([]string, 0, len(sources))
+	for _, source := range sources {
+		if !source.Required {
+			if url := strings.TrimSpace(source.URL); url != "" {
+				urls = append(urls, url)
+			}
+		}
+	}
+	return urls
+}
+
+func (p *VidRushYouTubeProvider) planRequiredWindows(ctx context.Context, req scriptports.VidRushSearchRequest, urls []string) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("youtube VidRush provider: required source URL is missing")
+	}
+	candidates, err := p.planWindows(ctx, req, urls)
+	if err != nil {
+		return nil, fmt.Errorf("youtube VidRush provider: required source planning failed: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("youtube VidRush provider: required source produced no usable window")
+	}
+	return candidates, nil
+}
+
 func hasRequiredHint(sources []scriptports.VidRushSourceHint) bool {
 	for _, source := range sources {
 		if source.Required && strings.TrimSpace(source.URL) != "" {
@@ -239,6 +329,16 @@ func hasRequiredHint(sources []scriptports.VidRushSourceHint) bool {
 		}
 	}
 	return false
+}
+
+func candidateURLs(candidates []scriptpkg.SegmentAssetCandidate) []string {
+	urls := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if url := strings.TrimSpace(candidate.SourceURL); url != "" {
+			urls = append(urls, url)
+		}
+	}
+	return urls
 }
 
 func hintURLs(sources []scriptports.VidRushSourceHint) []string {
@@ -257,11 +357,26 @@ func (p *VidRushYouTubeProvider) MaterializeSelected(ctx context.Context, req sc
 	if p == nil || p.Stock == nil {
 		return nil, fmt.Errorf("youtube VidRush provider: stock service is unavailable")
 	}
+	// Materialize exactly the selected winner. Callers may pass diagnostic or
+	// ranked alternatives, but only the first candidate is eligible for the
+	// canonical extractor. A persisted winner is returned immediately and is
+	// never downloaded again.
+	if len(selected) == 0 {
+		return []scriptpkg.SegmentAssetCandidate{}, nil
+	}
+	// The caller must provide candidates already ordered by the deterministic
+	// winner selector; only the first candidate is ever materialized.
+	selected = dedupeYouTubeCandidatesByCacheKey(selected[:1])
 	urls := hintURLs(req.Sources)
-	selected = dedupeYouTubeCandidatesByCacheKey(selected)
-	plannedSegments := candidatesToSelectedSegments(selected)
+	if len(urls) == 0 {
+		urls = candidateURLs(selected)
+	}
 	if allYouTubeCandidatesPersisted(selected) {
 		return append([]scriptpkg.SegmentAssetCandidate(nil), selected...), nil
+	}
+	plannedSegments := candidatesToSelectedSegments(selected)
+	if len(plannedSegments) == 0 {
+		return nil, fmt.Errorf("youtube VidRush provider: selected winner has no valid source window")
 	}
 	planned := &stockplan.YouTubeStockResult{SelectedSegments: plannedSegments}
 	result, err := p.Stock.Materialize(ctx, stockplan.YouTubeStockRequest{
@@ -274,7 +389,11 @@ func (p *VidRushYouTubeProvider) MaterializeSelected(ctx context.Context, req sc
 	if err != nil {
 		return nil, err
 	}
-	return selectedSegmentsToCandidates(result.SelectedSegments, req.Query), nil
+	materialized := selectedSegmentsToCandidates(result.SelectedSegments, req.Query)
+	if len(materialized) > 1 {
+		materialized = materialized[:1]
+	}
+	return materialized, nil
 }
 
 // normalizeClipDurationMs resolves the clip length from the request's
@@ -284,7 +403,16 @@ func (p *VidRushYouTubeProvider) MaterializeSelected(ctx context.Context, req sc
 const defaultClipMs = 8000
 
 func normalizeClipDurationMs(req scriptports.VidRushSearchRequest) int64 {
+	// Timing precedence is explicit: voiceover-derived TargetDurationMs,
+	// then scene timing, then an estimated segment budget, and finally the
+	// provider safety default for legacy callers.
 	duration := req.TargetDurationMs
+	if duration <= 0 {
+		duration = req.SceneDurationMs
+	}
+	if duration <= 0 {
+		duration = req.EstimatedDurationMs
+	}
 	if duration <= 0 {
 		duration = defaultClipMs
 	}

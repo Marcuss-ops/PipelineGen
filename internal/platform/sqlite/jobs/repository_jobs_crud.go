@@ -194,6 +194,39 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	return nil
 }
 
+// PeekQueued returns up to limit currently queued jobs without acquiring a
+// lease or changing any job state. Results use the same priority/creation
+// ordering as ClaimNext so preparation can inspect the likely future jobs.
+// A non-positive limit is treated as an empty request.
+func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, error) {
+	if limit <= 0 {
+		return []job.Job{}, nil
+	}
+
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+jobColumns+` FROM jobs
+		 WHERE status = ?
+		 ORDER BY priority DESC, created_at ASC
+		 LIMIT ?`, job.StatusQueued, limit)
+	if err != nil {
+		return nil, fmt.Errorf("PeekQueued: query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]job.Job, 0)
+	for rows.Next() {
+		var j job.Job
+		if err := scanJobColumns(rows, &j); err != nil {
+			return nil, fmt.Errorf("PeekQueued: scan: %w", err)
+		}
+		out = append(out, j)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("PeekQueued: rows: %w", err)
+	}
+	return out, nil
+}
+
 // Get returns the job row matching `id`, or (nil, nil) on sql.ErrNoRows.
 func (r *SQLiteStore) Get(ctx context.Context, id string) (*job.Job, error) {
 	query := `SELECT ` + jobColumns + ` FROM jobs WHERE id = ?`

@@ -5,11 +5,11 @@ package artifactcache
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 var (
@@ -33,28 +33,11 @@ type Key struct {
 }
 
 func (k Key) Digest() (string, error) {
-	if k.SourceSHA256 == "" || k.Operation == "" || k.ProcessorVersion == "" {
+	sum, err := digest.ArtifactKeyDigest(k.SourceSHA256, k.Operation, k.ParametersJSON, k.ProcessorVersion)
+	if errors.Is(err, digest.ErrInvalidArtifactIdentity) {
 		return "", ErrInvalidKey
 	}
-	params := k.ParametersJSON
-	if params == "" {
-		params = "{}"
-	}
-	var value any
-	if err := json.Unmarshal([]byte(params), &value); err != nil {
-		return "", err
-	}
-	canonical, err := json.Marshal(struct {
-		SourceSHA256     string `json:"source_sha256"`
-		Operation        string `json:"operation"`
-		Parameters       any    `json:"parameters"`
-		ProcessorVersion string `json:"processor_version"`
-	}{k.SourceSHA256, k.Operation, value, k.ProcessorVersion})
-	if err != nil {
-		return "", err
-	}
-	sum := digest.SHA256Bytes(canonical)
-	return sum, nil
+	return sum, err
 }
 
 type Entry struct {

@@ -145,7 +145,7 @@ func replayE2ECAS(t *testing.T) (*cas.Store, string) {
 	root := filepath.Join(t.TempDir(), "cas")
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	require.NoError(t, os.MkdirAll(workspace, 0o700))
-	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: workspace})
+	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: workspace, MinFreeBytes: 1})
 	require.NoError(t, err)
 	store, err := cas.NewStore(cas.Config{Root: root, Stager: stager})
 	require.NoError(t, err)

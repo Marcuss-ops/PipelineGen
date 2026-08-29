@@ -21,6 +21,12 @@ type EntityResult struct {
 	ArtlistPhrases   []string `json:"artlist_phrases,omitempty"`
 	ImportantPhrases []string `json:"important_phrases,omitempty"`
 	ImportantWords   []string `json:"important_words,omitempty"`
+	// Topic, Actions and VisualConcepts are semantic fields produced by the
+	// small model. Named entities remain owned by deterministic NLP.
+	Topic          string   `json:"topic,omitempty"`
+	Subtopics      []string `json:"subtopics,omitempty"`
+	Actions        []string `json:"actions,omitempty"`
+	VisualConcepts []string `json:"visual_concepts,omitempty"`
 	// Raw preserves the original backend analysis for backward reads and
 	// diagnostics. Consumers should prefer the typed fields above.
 	Raw string `json:"raw,omitempty"`
@@ -55,7 +61,9 @@ type EntityExtractionRequest struct {
 	EntityCount int `json:"entity_count,omitempty"`
 	// SpecScene carries the structured scene breakdown for adapters that
 	// use scene context. VidRush callers should pass only the current scene.
-	SpecScene SpecSceneOutput `json:"specscene,omitempty"`
+	SpecScene                 SpecSceneOutput `json:"specscene,omitempty"`
+	UnderstandingModelVersion string          `json:"understanding_model_version,omitempty"`
+	PromptVersion             string          `json:"prompt_version,omitempty"`
 }
 
 // MetadataGenerationRequest is the canonical typed request for metadata generation.

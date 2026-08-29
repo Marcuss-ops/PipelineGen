@@ -76,6 +76,33 @@ func TestSegmentSemanticProfile_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSegmentSemanticProfile_FingerprintIncludesCompleteIdentity(t *testing.T) {
+	profile := cachedProfile()
+	if profile.Fingerprint() == "" {
+		t.Fatal("expected complete profile fingerprint")
+	}
+	for name, mutate := range map[string]func(*SegmentSemanticProfile){
+		"segment": func(p *SegmentSemanticProfile) { p.SegmentID = "segment-002" },
+		"text":    func(p *SegmentSemanticProfile) { p.TextHash = "different" },
+		"model":   func(p *SegmentSemanticProfile) { p.UnderstandingModelVersion = "other" },
+		"prompt":  func(p *SegmentSemanticProfile) { p.PromptVersion = "other" },
+	} {
+		variant := profile
+		mutate(&variant)
+		if variant.Fingerprint() == profile.Fingerprint() {
+			t.Errorf("%s change did not invalidate fingerprint", name)
+		}
+	}
+}
+
+func TestSegmentSemanticProfile_FingerprintEmptyWhenIdentityIncomplete(t *testing.T) {
+	profile := cachedProfile()
+	profile.PromptVersion = ""
+	if got := profile.Fingerprint(); got != "" {
+		t.Fatalf("fingerprint = %q, want empty", got)
+	}
+}
+
 func TestSegmentSemanticProfile_ValidateRejectsInvalidConfidence(t *testing.T) {
 	profile := SegmentSemanticProfile{
 		SegmentID: "segment-001",

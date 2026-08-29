@@ -30,6 +30,8 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 		return nil
 	}
 	switch outcome.provider {
+	case scriptpkg.VidRushProviderYouTube:
+		updated.Cache.YouTube = fanoutCacheState(plan, outcome.allCacheHits)
 	case scriptpkg.VidRushProviderArtlist:
 		if outcome.primary == nil {
 			outcome.primary = chooseVidRushPrimaryWithProfile(outcome.candidates, nil, profile)

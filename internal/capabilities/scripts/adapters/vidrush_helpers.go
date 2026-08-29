@@ -62,7 +62,7 @@ func artlistSegmentCacheKey(segmentID, textHash, intentHash, language, model, pr
 	if strings.TrimSpace(intentHash) != "" {
 		textHash = ""
 	}
-	return segmentCacheKey("artlist-assets-v3", segmentID, textHash, intentHash, language, model, promptVersion)
+	return versionedSegmentCacheKey("artlist-assets", scriptports.CacheVersion("artlist-v3"), segmentID, textHash, intentHash, language, model, promptVersion)
 }
 
 func materializeNarrativeScenes(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.SpecScene {
@@ -110,8 +110,8 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 			segText = strings.TrimSpace(plan.Segments[0].Topic)
 		}
 		return []scriptpkg.CanonicalSegment{{
-			ID: id, SceneID: sceneID, Position: 0, Text: segText,
-			TextHash: segmentTextHash(segText),
+			ID: id, SceneID: sceneID, Position: 0, Text: segText, SourceText: segText,
+			TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 		}}
 	}
 	if len(scenes) > 0 {
@@ -132,10 +132,8 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 				id = fmt.Sprintf("segment-%03d", i+1)
 			}
 			out = append(out, scriptpkg.CanonicalSegment{
-				ID:       id,
-				Position: i,
-				Text:     segText,
-				TextHash: segmentTextHash(segText),
+				ID: id, Position: i, Text: segText, SourceText: segText,
+				TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 			})
 		}
 		return out
@@ -159,11 +157,9 @@ func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string)
 				id = fmt.Sprintf("segment-%03d", i+1)
 			}
 			out = append(out, scriptpkg.CanonicalSegment{
-				ID:       id,
-				SceneID:  strings.TrimSpace(scene.ID),
-				Position: i,
-				Text:     segText,
-				TextHash: segmentTextHash(segText),
+				ID: id, SceneID: strings.TrimSpace(scene.ID), Position: i,
+				Text: segText, SourceText: segText,
+				TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 			})
 		}
 		if len(out) > 0 {
@@ -177,19 +173,16 @@ func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string)
 			return nil
 		}
 		return []scriptpkg.CanonicalSegment{{
-			ID:       "segment-001",
-			Position: 0,
-			Text:     trimmed,
-			TextHash: segmentTextHash(trimmed),
+			ID: "segment-001", Position: 0, Text: trimmed, SourceText: trimmed,
+			TextHash: segmentTextHash(trimmed), SourceTextHash: segmentTextHash(trimmed),
 		}}
 	}
 	out := make([]scriptpkg.CanonicalSegment, 0, len(parts))
 	for i, part := range parts {
 		out = append(out, scriptpkg.CanonicalSegment{
-			ID:       fmt.Sprintf("segment-%03d", i+1),
-			Position: i,
-			Text:     part,
-			TextHash: segmentTextHash(part),
+			ID: fmt.Sprintf("segment-%03d", i+1), Position: i,
+			Text: part, SourceText: part,
+			TextHash: segmentTextHash(part), SourceTextHash: segmentTextHash(part),
 		})
 	}
 	return out
@@ -399,6 +392,10 @@ var retrievalNoiseWords = map[string]bool{
 	"ingenuity": true, "perhaps": true, "progress": true, "advancement": true,
 }
 
+func versionedSegmentCacheKey(stage string, version scriptports.CacheVersion, parts ...string) string {
+	return segmentCacheKey(append([]string{scriptports.VersionedCacheNamespace(stage, version)}, parts...)...)
+}
+
 func segmentCacheKey(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {
@@ -437,6 +434,8 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
 	out.Insights.YouTubeQueries = append([]string(nil), in.Insights.YouTubeQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)
+	out.Insights.ResearchSources = append([]scriptpkg.ResearchWebSource(nil), in.Insights.ResearchSources...)
+	out.Insights.EntityMediaLinks = append([]scriptpkg.EntityMediaLink(nil), in.Insights.EntityMediaLinks...)
 	if in.Insights.ImageEntityCanonicalIDs != nil {
 		out.Insights.ImageEntityCanonicalIDs = make(map[string]string, len(in.Insights.ImageEntityCanonicalIDs))
 		for key, id := range in.Insights.ImageEntityCanonicalIDs {

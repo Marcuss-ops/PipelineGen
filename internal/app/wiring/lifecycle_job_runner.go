@@ -179,6 +179,12 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		cfg,
 	)
 	runner.WithRegistry(appjobs.Compose())
+	// Claim-time KPI snapshot (prepared_at_claim_ratio): the runner owns it now.
+	// It fires the instant broker.Claim() returns — before runLease executes any
+	// unit — so the readiness photograph (required/ready/running/missing +
+	// ratio + saved ms) is pristine. The canonical SQLite store implements
+	// SnapshotPreparationClaim; nil-safe (legacy un-instrumented runners).
+	runner.WithClaimSnapshotter(deps.root.Jobs.Repo)
 	if deps.root.Jobs.Broker != nil {
 		runner.WithBroker(deps.root.Jobs.Broker)
 	}

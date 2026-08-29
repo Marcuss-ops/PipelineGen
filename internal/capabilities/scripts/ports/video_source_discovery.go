@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ErrNoDiscoveryCandidates is returned when discovery produced no usable
@@ -21,21 +23,21 @@ var ErrNoDiscoveryCandidates = errors.New("video source discovery: no candidates
 // discovery adapter owns transport (YouTube search API or equivalent).
 type VideoSourceDiscoveryRequest struct {
 	// SegmentID bounds the discovery to one segment for cache isolation.
-	SegmentID string
+	SegmentID string `json:"segment_id"`
 	// Queries are focused search phrases (exact subject, context, fallback).
-	Queries []string
+	Queries []string `json:"queries"`
 	// Language is the preferred content language (BCP-47, e.g. "en").
-	Language string
+	Language string `json:"language,omitempty"`
 	// MaxVideos caps the candidate count across all queries after dedupe.
-	MaxVideos int
+	MaxVideos int `json:"max_videos,omitempty"`
 	// MinVideoDurationMs filters out videos too short to host the beat.
-	MinVideoDurationMs int64
+	MinVideoDurationMs int64 `json:"min_video_duration_ms,omitempty"`
 	// ExcludeLive filters live streams, whose timing windows are unstable.
-	ExcludeLive bool
+	ExcludeLive bool `json:"exclude_live"`
 	// QueryPlan is the weighted per-provider query translation of the
 	// segment semantic profile. Optional: backends that only accept a
 	// flat phrase list fall back to Queries.
-	QueryPlan *ProviderQueryPlan
+	QueryPlan *ProviderQueryPlan `json:"query_plan,omitempty"`
 }
 
 // VideoSourceCandidate is one discovered video, not yet planned or
@@ -43,21 +45,46 @@ type VideoSourceDiscoveryRequest struct {
 // StockService.Plan.
 type VideoSourceCandidate struct {
 	// Provider names the discovery backend (e.g. "youtube").
-	Provider string
+	Provider string `json:"provider"`
 	// VideoID is the backend-native identity used for dedupe and caching.
-	VideoID string
+	VideoID string `json:"video_id"`
 	// URL is the canonical watch URL handed to StockService.Plan.
-	URL string
+	URL string `json:"url"`
 	// Title is the raw video title, used by deterministic ranking.
-	Title string
+	Title string `json:"title,omitempty"`
 	// DurationMs is the full video length when known (0 = unknown).
-	DurationMs int64
+	DurationMs int64 `json:"duration_ms,omitempty"`
 	// Query records which discovery query produced this candidate.
-	Query string
+	Query string `json:"query,omitempty"`
 	// Rank is the per-query result position (0-based).
-	Rank int
+	Rank int `json:"rank,omitempty"`
 	// MetadataScore is the deterministic metadata relevance in [0, 1].
-	MetadataScore float64
+	MetadataScore float64 `json:"metadata_score,omitempty"`
+}
+
+// Validate checks the portable contract shared by discovery adapters.
+// Discovery candidates must identify a provider and video and expose a URL;
+// unknown metadata is represented by zero values.
+func (c VideoSourceCandidate) Validate() error {
+	if strings.TrimSpace(c.Provider) == "" {
+		return errors.New("video source candidate: provider is required")
+	}
+	if strings.TrimSpace(c.VideoID) == "" {
+		return errors.New("video source candidate: video id is required")
+	}
+	if strings.TrimSpace(c.URL) == "" {
+		return errors.New("video source candidate: url is required")
+	}
+	if c.DurationMs < 0 {
+		return errors.New("video source candidate: duration must not be negative")
+	}
+	if c.Rank < 0 {
+		return errors.New("video source candidate: rank must not be negative")
+	}
+	if math.IsNaN(c.MetadataScore) || math.IsInf(c.MetadataScore, 0) || c.MetadataScore < 0 || c.MetadataScore > 1 {
+		return errors.New("video source candidate: metadata score must be in [0, 1]")
+	}
+	return nil
 }
 
 // Query intents for ProviderQuery, ordered from most to least specific.
@@ -138,4 +165,40 @@ func (p ProviderQueryPlan) Phrases() []string {
 // respect to media storage: no downloads, no Drive uploads, no SQLite rows.
 type VideoSourceDiscovery interface {
 	Discover(ctx context.Context, req VideoSourceDiscoveryRequest) ([]VideoSourceCandidate, error)
+}
+
+// ResearchContext contains optional, externally discovered context used to
+// improve retrieval. It is deliberately separate from ExtractedEntity: web
+// research may suggest aliases or related terms, but cannot create or mutate
+// authoritative NLP entities.
+type ResearchContext struct {
+	Aliases      []string `json:"aliases,omitempty"`
+	RelatedTerms []string `json:"related_terms,omitempty"`
+	Dates        []string `json:"dates,omitempty"`
+	Locations    []string `json:"locations,omitempty"`
+}
+
+// SemanticResearchRequest identifies a segment that may benefit from
+// lightweight historical or ambiguity resolution. Implementations should not
+// be called for ordinary generic visual segments.
+type SemanticResearchRequest struct {
+	SegmentID string `json:"segment_id"`
+	Text      string `json:"text"`
+	Topic     string `json:"topic,omitempty"`
+	Entities  []scriptpkg.ExtractedEntity `json:"entities,omitempty"`
+	Language  string `json:"language,omitempty"`
+}
+
+// SemanticResearchResult is optional retrieval context and never an entity
+// extraction result.
+type SemanticResearchResult struct {
+	Context ResearchContext `json:"context"`
+	Reason  string          `json:"reason,omitempty"`
+}
+
+// SemanticResearchPort enriches only segments selected by the caller's
+// historical/ambiguity policy. Errors should normally be handled as a
+// best-effort enrichment miss by the caller.
+type SemanticResearchPort interface {
+	Enrich(ctx context.Context, req SemanticResearchRequest) (SemanticResearchResult, error)
 }

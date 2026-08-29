@@ -200,6 +200,9 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *Databases
 	if runMaintenance {
 		steps = append(steps, buildMaintenanceSteps(maintenanceDeps{cfg: cfg, root: root, log: log})...)
 	}
+	if step := buildPreparationCoordinatorStep(jobRunnerDeps{root: root, cfg: cfg, log: log}); step != nil {
+		steps = append(steps, *step)
+	}
 
 	// Job runner: REQUIRED, always LAST in the plan.
 	// Construction + step closure extracted to buildJobRunnerStep

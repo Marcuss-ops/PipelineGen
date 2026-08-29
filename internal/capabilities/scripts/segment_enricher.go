@@ -15,6 +15,10 @@ import (
 // finalizer. It runs after provider search and returns the segment with its
 // candidates persisted. Implementations must return an immutable result and
 // must never mutate shared scene state.
+type SegmentResearcher interface {
+	ResearchSegment(context.Context, *scriptpkg.ResolvedGenerationPlan, scriptpkg.VidRushSegmentResult) (*scriptpkg.ResearchReport, error)
+}
+
 type SegmentMaterializer interface {
 	Materialize(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error)
 }

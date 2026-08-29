@@ -7,10 +7,34 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func hasCanonicalSourceForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmentID string) bool {
+	if plan == nil {
+		return false
+	}
+	for _, source := range plan.MediaPlan.Sources {
+		if source.SegmentID == segmentID && strings.TrimSpace(source.AssetID) != "" {
+			return true
+		}
+	}
+	for _, assignment := range plan.MediaPlan.Assignments {
+		if assignment.SegmentID == segmentID && assignment.Locked && strings.TrimSpace(assignment.Asset.AssetID) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult, artlist ArtlistClipSearcher, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider) vidRushFanoutPlan {
 	profile := profileFromVidRushSegment(segment)
-	artlistQueries := queriesOrProfile(segment.Insights.ArtlistQueries, profileArtlistQueries(profile))
-	imageQueries := queriesOrProfile(segment.Insights.ImageQueries, profileImageQueries(profile))
+	decision := buildSegmentProviderDecision(plan, segment, "video")
+	if hasCanonicalSourceForSegment(plan, segment.SegmentID) {
+		// A caller-supplied canonical asset is complete at the source
+		// boundary; no external provider should be queried for this segment.
+		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
+	}
+	builders := NewVidRushProviderQueryBuilders()
+	artlistQueries := queriesOrProfile(segment.Insights.ArtlistQueries, builders.Artlist(profile))
+	imageQueries := queriesOrProfile(segment.Insights.ImageQueries, builders.InternetImages(profile))
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
 		limit = plan.MediaPlan.Planner.CandidateLimit
@@ -31,8 +55,8 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		title: plan.Title, artlistIntentHash: segment.Insights.ArtlistIntentHash,
 		artlistQueries: artlistQueries, imageQueries: imageQueries, firstEntity: firstEntity,
 		youtubeSources: youtubeSourcesForSegment(plan, segment.SegmentID), perQueryLimit: limit,
-		artlistEnabled: plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && artlist != nil && len(artlistQueries) > 0,
-		imagesEnabled:  plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && images != nil && len(imageQueries) > 0,
-		youtubeEnabled: plan.MediaPlan.ProviderPolicy.YouTube.AsBool() && youtube != nil,
+		artlistEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderArtlist) && artlist != nil && len(artlistQueries) > 0,
+		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
+		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}
 }

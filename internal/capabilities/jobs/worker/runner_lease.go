@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // postRenewFailClosedCheckTimeout bounds the post-renewCancel
@@ -150,9 +151,40 @@ func (r *Runner) Run(ctx context.Context) error {
 		if lease == nil || lease.Job == nil {
 			continue
 		}
+		// Claim-time KPI snapshot: the instant broker.Claim returns the job is
+		// claimed and NO unit has executed yet — the pristine readiness
+		// photograph (required/ready/running/missing + prepared_at_claim_ratio)
+		// can only be captured here, before runLease starts mutating units.
+		// Best-effort: a snapshot failure never delays or fails the claim.
+		r.captureClaimSnapshot(ctx, lease)
 		if err := r.runLease(ctx, lease); err != nil {
 			r.log.Warn("job failed", zap.String("job_id", lease.Job.ID), zap.Error(err))
 		}
+	}
+}
+
+// captureClaimSnapshot records the prepared_at_claim_ratio KPI for a just-
+// claimed lease via the durable preparation store snapshotter, when wired.
+// It runs synchronously BEFORE runLease so the readiness counts reflect the
+// exact claim instant (immediately after, RUNNING → READY / MISS → READY
+// transitions destroy the pristine state). Errors are logged, never returned:
+// snapshotting is a control-plane side effect and must not delay claim work.
+func (r *Runner) captureClaimSnapshot(ctx context.Context, lease *jobs.Lease) {
+	if r == nil || r.claimSnapshot == nil || lease == nil || lease.Job == nil {
+		return
+	}
+	jobRef := lease.Job
+	attemptID := fmt.Sprintf("%s:%d", jobRef.ID, jobRef.Revision)
+	if _, err := r.claimSnapshot.SnapshotPreparationClaim(ctx, job.PreparationClaimInput{
+		JobID:       jobRef.ID,
+		AttemptID:   attemptID,
+		JobRevision: int64(jobRef.Revision),
+		ClaimedAt:   time.Now().UTC(),
+	}); err != nil {
+		r.log.Warn("claim-time preparation snapshot failed",
+			zap.String("job_id", jobRef.ID),
+			zap.String("attempt_id", attemptID),
+			zap.Error(err))
 	}
 }
 

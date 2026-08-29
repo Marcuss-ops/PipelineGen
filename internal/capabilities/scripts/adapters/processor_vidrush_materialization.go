@@ -77,9 +77,9 @@ func (p *VidRushMaterializationProcessor) Name() ProcessorName {
 }
 
 func (p *VidRushMaterializationProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	if plan != nil && (plan.MediaPlan.ProviderPolicy.Artlist.AsBool() ||
-		plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() ||
-		plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()) {
+	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)) {
 		return ProcessorRequired
 	}
 	return ProcessorBestEffort
@@ -431,7 +431,8 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
 		))
 	}
-	updated.Assets.PrimaryVideo = selectVidRushPrimaryVideo(materialized)
+	targetDurationMs, _ := segmentDurationBudgetMs(updated, plan)
+	updated.Assets.PrimaryVideo = selectVidRushPrimaryVideoWithPolicy(materialized, plan, profileFromVidRushSegment(updated), targetDurationMs, nil, ctx)
 	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
 		diagnostics := make([]string, 0, minInt(len(materialized), 3))
 		diagnostics = vidRushArtlistDiagnostics(materialized)
@@ -455,9 +456,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 }
 
 func vidRushMaterializationRequested(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
-	if plan != nil && (plan.MediaPlan.ProviderPolicy.Artlist.AsBool() ||
-		plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() ||
-		plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()) {
+	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)) {
 		return true
 	}
 	for _, segment := range input.VidRushSegments {
@@ -499,7 +500,7 @@ func requireVidRushEnabledProviders(plan *scriptpkg.ResolvedGenerationPlan, regi
 }
 
 func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) ([]scriptpkg.SegmentAssetCandidate, string) {
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool() {
+	if plan == nil || !providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
 		return nil, "BYPASSED"
 	}
 	targetImages := vidRushImageTarget(plan)

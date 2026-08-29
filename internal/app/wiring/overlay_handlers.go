@@ -16,6 +16,7 @@ import (
 
 type HandlerSet struct {
 	Cache           *overlays.Cache
+	AssetPreparer   *overlays.AssetPreparer
 	Renderer        overlays.Renderer
 	GPUGate         *overlays.GPUGate
 	Prober          capoverlay.MediaProber
@@ -29,7 +30,11 @@ func NewHandlerSet(cache *overlays.Cache, renderer overlays.Renderer, gate *over
 	if version == "" {
 		version = "renderinggen-dev"
 	}
-	return &HandlerSet{Cache: cache, Renderer: renderer, GPUGate: gate, Prober: prober, RendererVersion: version}, nil
+	preparer, err := overlays.NewAssetPreparer(cache)
+	if err != nil {
+		return nil, err
+	}
+	return &HandlerSet{Cache: cache, AssetPreparer: preparer, Renderer: renderer, GPUGate: gate, Prober: prober, RendererVersion: version}, nil
 }
 
 func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutionTools) (map[string]any, error) {
@@ -58,14 +63,14 @@ func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutio
 		Operation: kernobs.OperationMaterialize,
 		Items:     int64(len(req.Intents)),
 	}, func(ctx context.Context) error {
+		assets := make([]overlays.AssetRef, 0)
 		for _, intent := range req.Intents {
 			for _, ref := range intent.Payload.AssetRefs {
-				if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
-					return fmt.Errorf("overlay.prepare asset %s: %w", ref.AssetID, err)
-				}
+				assets = append(assets, overlays.AssetRef{AssetID: ref.AssetID, URL: ref.URL, SHA256: ref.SHA256})
 			}
 		}
-		return nil
+		_, err := h.AssetPreparer.Prepare(ctx, assets)
+		return err
 	}); err != nil {
 		return nil, err
 	}
@@ -132,12 +137,13 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		Operation: kernobs.OperationMaterialize,
 		Items:     int64(len(item.AssetRefs)),
 	}, func(ctx context.Context) error {
+
+		assets := make([]overlays.AssetRef, 0, len(item.AssetRefs))
 		for _, ref := range item.AssetRefs {
-			if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
-				return fmt.Errorf("overlay.render asset %s: %w", ref.AssetID, err)
-			}
+			assets = append(assets, overlays.AssetRef{AssetID: ref.AssetID, URL: ref.URL, SHA256: ref.SHA256})
 		}
-		return nil
+		_, err := h.AssetPreparer.Prepare(ctx, assets)
+		return err
 	}); err != nil {
 		return nil, err
 	}

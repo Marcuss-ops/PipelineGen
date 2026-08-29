@@ -369,6 +369,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
+	preparedResolver, err := cliprender.NewPreparedAssetResolver(filepath.Join(cfg.Storage.TempPath(), "cliprender", "assets"), materializer)
+	if err != nil {
+		return fmt.Errorf("registerClipRender: build prepared asset resolver: %w", err)
+	}
+	materializerPort := cliprender.AssetMaterializer(preparedResolver)
 	transcriptResolver := clipadapters.NewClipRenderTranscriptResolver(log)
 	if root.Repos != nil {
 		transcriptResolver.SetRepo(root.Repos.TextTrackRepo)
@@ -391,7 +396,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 
 	preparer, err := cliprender.NewPreparer(
 		resolver,
-		materializer,
+		materializerPort,
 		transcriptResolver,
 		cliprender.NewContractResolver(),
 		log,

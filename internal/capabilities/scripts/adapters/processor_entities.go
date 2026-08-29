@@ -28,9 +28,10 @@ type EntitiesProcessor struct {
 // migration-zone adapters package must not import the capability package); it
 // is embedded by the batch EntitiesProcessor for non-streaming workflows.
 type VidRushSegmentEnricher struct {
-	extractor EntityExtractor
-	metrics   VidRushMetrics
-	cache     scriptports.VidRushCachePort
+	extractor     EntityExtractor
+	understanding SegmentUnderstandingModel
+	metrics       VidRushMetrics
+	cache         scriptports.VidRushCachePort
 	// imageSearch is the optional deterministic Image Search Intent resolver
 	// (capabilities/imagesearch — the same one the golden battery certifies).
 	// When wired, its decision drives the segment's image fan-out: ordered
@@ -67,6 +68,13 @@ func NewVidRushSegmentEnricher(extractor EntityExtractor, cache scriptports.VidR
 // resolver (the same one the golden battery certifies) to the enricher. It
 // is chainable and nil-safe; it is also available on EntitiesProcessor via
 // the embedded enricher. Nil keeps the legacy ad-hoc query builder.
+func (e *VidRushSegmentEnricher) WithSegmentUnderstandingModel(model SegmentUnderstandingModel) *VidRushSegmentEnricher {
+	if e != nil {
+		e.understanding = model
+	}
+	return e
+}
+
 func (e *VidRushSegmentEnricher) WithImageSearchResolver(resolver *capabilityimagesearch.Resolver) *VidRushSegmentEnricher {
 	if e != nil {
 		e.imageSearch = resolver
@@ -151,7 +159,9 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 							SegmentID: seg.ID, Text: seg.Text, Title: plan.Title,
 							Language: plan.Language, Device: extractionDevice(plan),
 							Model: plan.Model, EntityCount: limits.entities,
-							SpecScene: segmentSpecSceneContext(input.SpecScene, seg),
+							UnderstandingModelVersion: plan.Model,
+							PromptVersion:             plan.PromptVersion,
+							SpecScene:                 segmentSpecSceneContext(input.SpecScene, seg),
 						})
 					}
 					results, err := batchExtractor.ExtractEntitiesBatch(workerCtx, reqs)
@@ -357,6 +367,18 @@ func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSeg
 	dst.ImportantPhrases = uniqueLimitedStrings(append(dst.ImportantPhrases, seg.Insights.ImportantPhrases...), 5)
 	dst.ImportantWords = uniqueLimitedStrings(append(dst.ImportantWords, seg.Insights.ImportantWords...), 5)
 	dst.ArtlistPhrases = uniqueLimitedStrings(append(dst.ArtlistPhrases, seg.Insights.ArtlistQueries...), 5)
+}
+
+func projectProfileToVidRushSegment(seg scriptpkg.VidRushSegmentResult, profile scriptpkg.SegmentSemanticProfile) scriptpkg.VidRushSegmentResult {
+	seg.Insights.ImportantPhrases = append([]string(nil), profile.ImportantPhrases...)
+	seg.Insights.ImportantWords = uniqueLimitedStrings(weightedKeywordValues(profile.Keywords), 5)
+	seg.Insights.Entities = uniqueLimitedEntities(profile.Entities, 5)
+	if profile.Retrieval != nil {
+		seg.Insights.ArtlistQueries = uniqueLimitedStrings(profile.Retrieval.Artlist, 5)
+		seg.Insights.YouTubeQueries = uniqueLimitedStrings(profile.Retrieval.YouTube, 5)
+		seg.Insights.ImageQueries = uniqueLimitedStrings(profile.Retrieval.Images, 5)
+	}
+	return seg
 }
 
 func buildVidRushSegmentResult(
@@ -662,14 +684,16 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 		return outcome
 	}
 	request := scriptpkg.EntityExtractionRequest{
-		SegmentID:   canonicalSeg.ID,
-		Text:        canonicalSeg.Text,
-		Title:       plan.Title,
-		Language:    plan.Language,
-		Device:      device,
-		Model:       plan.Model,
-		EntityCount: limits.entities,
-		SpecScene:   segmentSpecSceneContext(specScene, canonicalSeg),
+		SegmentID:                 canonicalSeg.ID,
+		Text:                      canonicalSeg.Text,
+		Title:                     plan.Title,
+		Language:                  plan.Language,
+		Device:                    device,
+		Model:                     plan.Model,
+		EntityCount:               limits.entities,
+		UnderstandingModelVersion: plan.Model,
+		PromptVersion:             plan.PromptVersion,
+		SpecScene:                 segmentSpecSceneContext(specScene, canonicalSeg),
 	}
 	res, err := e.extractor.ExtractEntities(ctx, request)
 	// A malformed/too-short generated scene must not erase the semantic
@@ -697,6 +721,15 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 		res = &scriptpkg.EntityResult{}
 	}
 	seg := buildVidRushSegmentResult(ctx, e.imageSearch, plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
+	if e.understanding != nil {
+		profile := profileFromVidRushSegment(seg)
+		understood, understandErr := e.understanding.UnderstandProfile(ctx, canonicalSeg, profile, plan.Language, plan.Model, plan.PromptVersion)
+		if understandErr != nil {
+			outcome.err = understandErr
+			return outcome
+		}
+		seg = projectProfileToVidRushSegment(seg, understood)
+	}
 	seg.Cache.Extraction = "MISS"
 	if plan.MediaPlan.ForceRefreshExtraction {
 		seg.Cache.Extraction = "REFRESHED"
@@ -776,10 +809,8 @@ func canonicalSegmentFromScene(scene scriptpkg.SpecScene) scriptpkg.CanonicalSeg
 		id = strings.TrimSpace(scene.ID)
 	}
 	return scriptpkg.CanonicalSegment{
-		ID:       id,
-		SceneID:  strings.TrimSpace(scene.ID),
-		Position: scene.Index,
-		Text:     segText,
-		TextHash: segmentTextHash(segText),
+		ID: id, SceneID: strings.TrimSpace(scene.ID), Position: scene.Index,
+		Text: segText, SourceText: segText,
+		TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 	}
 }

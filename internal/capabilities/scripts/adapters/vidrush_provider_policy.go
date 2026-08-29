@@ -38,6 +38,13 @@ func providerPolicy(provider string) (vidRushProviderPolicy, bool) {
 	return policy, ok
 }
 
+func providerEnabledForVidRush(plan *scriptpkg.ResolvedGenerationPlan, provider string) bool {
+	if plan == nil {
+		return false
+	}
+	return providerAllowed(plan.MediaPlan.ProviderPolicy, provider)
+}
+
 func imageAcquireBudget(plan *scriptpkg.ResolvedGenerationPlan, slack int) int {
 	target := vidRushImageTarget(plan)
 	if target == 0 {

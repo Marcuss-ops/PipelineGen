@@ -43,7 +43,12 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 	if entityCount <= 0 {
 		entityCount = 5
 	}
+	// The script-level API already performs one model generation per segment.
+	// Keep this adapter on the single-segment contract: one request results in
+	// exactly one small-model call, with deterministic NLP applied only
+	// afterward as the authoritative entity layer.
 	analysis, err := a.client.ExtractEntitiesFromScriptWithModelAndLanguage(ctx, segments, entityCount, selectedEntityModel(), req.Language)
+
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +66,12 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 	}
 	seenEntities := make(map[string]struct{})
 
-	for _, seg := range analysis.SegmentEntities {
-		// The model is useful for concepts and editorial insights, but its
-		// named-entity output is not authoritative: small models may split a
+	for index, seg := range analysis.SegmentEntities {
+		if index >= len(segments) {
+			continue
+		}
+		// The model is useful for concepts and editorial insights, but its			// named-entity output is not authoritative: small models may split a
+
 		// multi-word name into token-sized fragments. Resolve spans from the
 		// source text first, then use those canonical candidates to suppress
 		// contained model fragments.
@@ -134,6 +142,33 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 		result.Raw = string(rawBytes)
 	}
 	return result, nil
+}
+
+func firstNonEmpty(current, candidate string) string {
+	if strings.TrimSpace(current) != "" {
+		return current
+	}
+	return strings.TrimSpace(candidate)
+}
+
+func appendUniqueStrings(dst []string, values ...string) []string {
+	seen := make(map[string]struct{}, len(dst)+len(values))
+	for _, value := range dst {
+		seen[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		dst = append(dst, value)
+	}
+	return dst
 }
 
 func deterministicEntityValues(result *script.EntityResult) []string {

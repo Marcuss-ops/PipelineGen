@@ -11,6 +11,14 @@ import (
 	"path/filepath"
 )
 
+// AssetRef is the minimal content-addressed asset identity needed by the
+// canonical overlay asset preparer.
+type AssetRef struct {
+	AssetID string
+	URL     string
+	SHA256  string
+}
+
 // Cache is disposable, content-addressed renderer state. It is never the
 // authority for job state or artifact identity.
 type Cache struct{ Root string }

@@ -16,7 +16,32 @@ import (
 
 // Client adapts the queue's public client to scriptgen.RenderQueueClient.
 type Client struct {
-	q *queueclient.Client
+	q        *queueclient.Client
+	prefetch *AssetPrefetcher
+}
+
+// AssetPrefetcher warms every RenderQueueJob asset without changing queue
+// state. It is injected by the composition root and shares the canonical
+// overlay AssetPreparer used by overlay.prepare.
+type AssetPrefetcher struct {
+	prepare func(context.Context, []scriptgen.RenderQueueAsset) error
+}
+
+func NewAssetPrefetcher(prepare func(context.Context, []scriptgen.RenderQueueAsset) error) *AssetPrefetcher {
+	return &AssetPrefetcher{prepare: prepare}
+}
+
+func (p *AssetPrefetcher) Prefetch(ctx context.Context, assets []scriptgen.RenderQueueAsset) error {
+	if p == nil || p.prepare == nil {
+		return nil
+	}
+	return p.prepare(ctx, assets)
+}
+
+func (c *Client) SetAssetPrefetcher(prefetch *AssetPrefetcher) {
+	if c != nil {
+		c.prefetch = prefetch
+	}
 }
 
 // New creates a queue client for the given RenderingGen queue endpoint.
@@ -27,6 +52,14 @@ func New(baseURL string) *Client {
 // Submit enqueues a job. A 409 (job already exists) is surfaced as
 // scriptgen.ErrJobExists so the enqueuer treats replays as idempotent.
 func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error {
+	if c == nil || c.q == nil {
+		return fmt.Errorf("renderinggen submit: client is not configured")
+	}
+	if c.prefetch != nil {
+		if err := c.prefetch.Prefetch(ctx, job.Assets); err != nil {
+			return fmt.Errorf("renderinggen asset prefetch: %w", err)
+		}
+	}
 	err := c.q.Submit(ctx, queueclient.Job{
 		ID:         job.ID,
 		JobType:    job.JobType,

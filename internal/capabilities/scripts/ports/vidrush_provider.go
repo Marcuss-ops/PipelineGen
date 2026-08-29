@@ -27,12 +27,19 @@ type VidRushSearchRequest struct {
 	// TargetDurationMs is the desired clip length derived from the
 	// segment timing budget (voiceover > scene > estimated). Zero means
 	// the provider falls back to its own default.
-	TargetDurationMs int64
-	MinDurationMs    int64
-	MaxDurationMs    int64
+	TargetDurationMs int64 `json:"target_duration_ms,omitempty"`
+	MinDurationMs    int64 `json:"min_duration_ms,omitempty"`
+	MaxDurationMs    int64 `json:"max_duration_ms,omitempty"`
+	// SceneDurationMs is the duration available from the visual scene when
+	// voiceover timing is not available. It is intentionally separate from
+	// TargetDurationMs so callers can preserve the timing-source precedence.
+	SceneDurationMs int64 `json:"scene_duration_ms,omitempty"`
+	// EstimatedDurationMs is the final caller-provided estimate based on
+	// words/language when neither voiceover nor scene timing is available.
+	EstimatedDurationMs int64 `json:"estimated_duration_ms,omitempty"`
 	// SemanticProfile is the segment understanding (SSOT) handed to
 	// providers that build queries from meaning. Optional.
-	SemanticProfile *scriptpkg.SegmentSemanticProfile
+	SemanticProfile *scriptpkg.SegmentSemanticProfile `json:"semantic_profile,omitempty"`
 	// Sources are bounded, caller-supplied URLs. Providers that do not
 	// support source hints may ignore them; YouTube requires them.
 	Sources []VidRushSourceHint

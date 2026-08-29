@@ -71,6 +71,13 @@ type Runner struct {
 	// un-instrumented behaviour (test fixtures keep working).
 	observer  *kernobs.RunObserver
 	jobLedger capjobregistry.Registry
+
+	// claimSnapshot captures the durable prepared_at_claim_ratio KPI at the
+	// INSTANT the broker's Claim() returns — before runLease executes any
+	// unit, so the readiness photograph is pristine. When non-nil, every
+	// successfully claimed lease snapshots its job (best-effort, never
+	// blocks the claim path). nil = legacy un-instrumented behaviour.
+	claimSnapshot jobs.ClaimSnapshotter
 }
 
 // NewRunner constructs a Runner with the default renewal cadence
@@ -102,6 +109,16 @@ func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
 
 // WithJobRegistry attaches the durable Job Registry projection to this runner.
 func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
+
+// WithClaimSnapshotter attaches the claim-time KPI snapshotter to the Runner
+// (prepared_at_claim_ratio photography). When set, Run captures a durable
+// preparation_claim_snapshots row the moment broker.Claim returns, using the
+// real attempt identity (jobID:revision). Errors are non-fatal: snapshotting
+// is a control-plane side effect and must never delay or fail the claim path.
+func (r *Runner) WithClaimSnapshotter(snapshotter jobs.ClaimSnapshotter) *Runner {
+	r.claimSnapshot = snapshotter
+	return r
+}
 
 // SetRenewInterval overrides the renewal cadence. Returns the
 // receiver for chaining. Zero / negative / sub-minRenewInterval

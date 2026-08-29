@@ -33,6 +33,7 @@ type VidRushBarrier interface {
 type VidRushIncrementalCoordinator struct {
 	enricher     SegmentEnricher
 	resolver     SegmentProviderResolver
+	research     SegmentResearcher
 	materializer SegmentMaterializer
 	plan         *scriptpkg.ResolvedGenerationPlan
 	backpressure VidRushBackpressure
@@ -107,6 +108,12 @@ var _ VidRushTimingRecorder = (*VidRushIncrementalCoordinator)(nil)
 // SetSegmentProviderResolver wires the per-segment provider fanout that runs
 // after entity extraction. A nil resolver is safe and leaves the enrichment
 // at the entities+queries stage (no candidate media is resolved).
+func (c *VidRushIncrementalCoordinator) SetSegmentResearcher(researcher SegmentResearcher) {
+	if c != nil {
+		c.research = researcher
+	}
+}
+
 func (c *VidRushIncrementalCoordinator) SetSegmentProviderResolver(resolver SegmentProviderResolver) {
 	if c != nil {
 		c.resolver = resolver
@@ -276,6 +283,9 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		// never starved when both share the same model.
 		result, err := c.enrichSegment(ctx, scene)
 		if err == nil {
+			result, err = c.researchSegment(ctx, result)
+		}
+		if err == nil {
 			result, err = c.searchProviders(ctx, result)
 		}
 		if err == nil {
@@ -323,6 +333,20 @@ func (c *VidRushIncrementalCoordinator) enrichSegment(ctx context.Context, scene
 
 // searchProviders runs the provider fan-out stage under its own bounded
 // semaphore, independent of the extraction limit.
+func (c *VidRushIncrementalCoordinator) researchSegment(ctx context.Context, result scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if c.research == nil {
+		return result, nil
+	}
+	report, err := c.research.ResearchSegment(ctx, c.plan, result)
+	if err != nil {
+		return result, err
+	}
+	if report != nil {
+		result.Insights.ResearchSources = report.Sources
+	}
+	return result, nil
+}
+
 func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, result scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
 	if c.resolver == nil {
 		return result, nil
