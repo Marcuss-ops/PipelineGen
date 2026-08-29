@@ -144,6 +144,13 @@ type Worker struct {
 	resourceSampler kernobs.RunResourceSampler
 	// host is the hostname stamped on every resource observation.
 	host string
+
+	// claimSnapshot captures the durable prepared_at_claim_ratio KPI at the
+	// INSTANT ClaimNext returns — before runJob executes any unit, so the
+	// readiness photograph (required/ready/running/missing + ratio + saved
+	// ms) is pristine. nil = legacy un-instrumented behaviour. See
+	// WithClaimSnapshotter().
+	claimSnapshot ClaimSnapshotter
 }
 
 // WorkerDeps carries the dependencies for NewWorker. Grouping them
@@ -309,6 +316,42 @@ func (w *Worker) WithResourceSampler(s kernobs.RunResourceSampler, host string) 
 	return w
 }
 
+// WithClaimSnapshotter attaches the claim-time KPI snapshotter to the Worker
+// (prepared_at_claim_ratio photography). When set, Start captures a durable
+// preparation_claim_snapshots row the instant ClaimNext returns — before
+// runJob executes any unit — using the real attempt identity (jobID:revision).
+// Errors are non-fatal: snapshotting is a control-plane side effect and must
+// never delay or fail the claim path. Mirrors the WithObserver fluent-setter
+// precedent; the Runner forwards it to every Worker via buildWorkers.
+func (w *Worker) WithClaimSnapshotter(snapshotter ClaimSnapshotter) *Worker {
+	w.claimSnapshot = snapshotter
+	return w
+}
+
+// captureClaimSnapshot records the prepared_at_claim_ratio KPI for a just-
+// claimed job via the durable preparation store snapshotter, when wired. It
+// runs synchronously BEFORE runJob so the readiness counts reflect the exact
+// claim instant (immediately after, RUNNING → READY / MISS → READY transitions
+// destroy the pristine state). Errors are logged, never returned: snapshotting
+// is a control-plane side effect and must not delay claim work.
+func (w *Worker) captureClaimSnapshot(ctx context.Context, claimed *job.Job) {
+	if w == nil || w.claimSnapshot == nil || claimed == nil {
+		return
+	}
+	attemptID := fmt.Sprintf("%s:%d", claimed.ID, claimed.Revision)
+	if _, err := w.claimSnapshot.SnapshotPreparationClaim(ctx, job.PreparationClaimInput{
+		JobID:       claimed.ID,
+		AttemptID:   attemptID,
+		JobRevision: int64(claimed.Revision),
+		ClaimedAt:   time.Now().UTC(),
+	}); err != nil {
+		w.log.Warn("claim-time preparation snapshot failed",
+			zap.String("job_id", claimed.ID),
+			zap.String("attempt_id", attemptID),
+			zap.Error(err))
+	}
+}
+
 // jobTimeoutFor returns the cached timeout for a job type, falling
 // back to the canonical 10-minute default when (a) the worker has no
 // attached registry, (b) the snapshot is nil, or (c) the job type is
@@ -459,6 +502,13 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 		consecutiveEmpty = 0
 		currentBackoff = w.pollEvery
+
+		// Claim-time KPI snapshot: the instant ClaimNext returns the job is
+		// claimed and NO unit has executed yet — the pristine readiness
+		// photograph (required/ready/running/missing + prepared_at_claim_ratio)
+		// can only be captured here, before runJob starts mutating units.
+		// Best-effort: a snapshot failure never delays or fails the claim.
+		w.captureClaimSnapshot(ctx, j)
 
 		w.runJob(ctx, j)
 	}

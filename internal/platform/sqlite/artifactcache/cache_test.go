@@ -44,7 +44,7 @@ func newTestCache(t *testing.T) (*Cache, *sql.DB) {
 		t.Fatal(err)
 	}
 	root := filepath.Join(t.TempDir(), "cas")
-	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: filepath.Join(root, ".staging")})
+	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: filepath.Join(root, ".staging"), MinFreeBytes: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

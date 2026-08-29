@@ -102,6 +102,8 @@ type SegmentSemanticProfile struct {
 	// of the profile fingerprint.
 	PromptVersion string `json:"prompt_version,omitempty"`
 
+	// Actions are the visual/editorial actions described by the segment.
+	Actions []string `json:"actions,omitempty"`
 	// Topic is the single-sentence topic of the segment
 	// (e.g. "origine dei primi trattori").
 	Topic string `json:"topic,omitempty"`
@@ -115,6 +117,8 @@ type SegmentSemanticProfile struct {
 	// VisualTerms are the visual concepts — things you want to see on
 	// screen (e.g. "horse drawn farming", "steam tractor").
 	VisualTerms []WeightedKeyword `json:"visual_terms,omitempty"`
+	// VisualConcepts preserves the model's unweighted visual concepts.
+	VisualConcepts []string `json:"visual_concepts,omitempty"`
 	// Terms is the scalable typed term stream (subject/context/visual/
 	// temporal/action/technology). Optional: query builders may consume
 	// it instead of the flat keyword arrays.
@@ -197,6 +201,8 @@ func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
 	clone.VisualTerms = append([]WeightedKeyword(nil), p.VisualTerms...)
 	clone.Terms = append([]SemanticTerm(nil), p.Terms...)
 	clone.ImportantPhrases = append([]string(nil), p.ImportantPhrases...)
+	clone.Actions = append([]string(nil), p.Actions...)
+	clone.VisualConcepts = append([]string(nil), p.VisualConcepts...)
 	clone.Entities = append([]ExtractedEntity(nil), p.Entities...)
 	if p.Retrieval != nil {
 		intent := *p.Retrieval
@@ -228,13 +234,23 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 		UnderstandingModelVersion: understandingModelVersion,
 		PromptVersion:             promptVersion,
 		ImportantPhrases:          append([]string(nil), res.ImportantPhrases...),
+		Actions:                   append([]string(nil), res.Actions...),
+		VisualConcepts:            append([]string(nil), res.VisualConcepts...),
 	}
 	profile.Entities = appendEntityGroup(profile.Entities, res.Persons, "PERSON")
 	profile.Entities = appendEntityGroup(profile.Entities, res.Places, "LOCATION")
 	profile.Entities = appendEntityGroup(profile.Entities, res.Concepts, "CONCEPT")
 	profile.Keywords = weightedTerms(res.ImportantWords)
-	profile.VisualTerms = weightedTerms(res.ArtlistPhrases)
-	profile.Topic, profile.Subtopics = deriveUnderstanding(profile, seg.Text)
+	visualValues := append([]string(nil), res.ArtlistPhrases...)
+	visualValues = append(visualValues, res.VisualConcepts...)
+	profile.VisualTerms = weightedTerms(visualValues)
+	if profile.Topic == "" {
+		profile.Topic, profile.Subtopics = deriveUnderstanding(profile, seg.Text)
+	}
+	profile.Actions = appendUniqueProfileStrings(profile.Actions)
+	for _, visual := range res.VisualConcepts {
+		profile.VisualConcepts = appendUniqueProfileStrings(profile.VisualConcepts, visual)
+	}
 	profile.Terms = deriveSemanticTerms(profile)
 	return profile
 }
@@ -279,6 +295,26 @@ func deriveUnderstanding(profile SegmentSemanticProfile, text string) (string, [
 		}
 	}
 	return topic, subtopics
+}
+
+func appendUniqueProfileStrings(dst []string, values ...string) []string {
+	seen := make(map[string]struct{}, len(dst)+len(values))
+	for _, value := range dst {
+		seen[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		dst = append(dst, value)
+	}
+	return dst
 }
 
 func deriveSemanticTerms(profile SegmentSemanticProfile) []SemanticTerm {

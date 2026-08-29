@@ -2,6 +2,11 @@
 // result shapes used by script generation.
 package script
 
+import (
+	"errors"
+	"strings"
+)
+
 // VidRush providers are intentionally a closed set. The application layer
 // owns the orchestration contract; infrastructure registers concrete
 // implementations at the composition root.
@@ -27,15 +32,67 @@ const (
 	VidRushStatusFailed         = "failed"
 )
 
-// CanonicalSegment is the stable segment representation used for
-// VidRush extraction and asset binding.
+// CanonicalSegment is the immutable identity boundary used by VidRush
+// extraction, visual planning and asset binding. SourceText preserves the
+// narrative/source wording that produced the segment; Text is the text sent
+// to the visual/semantic pipeline. Position is zero-based and stable within
+// the canonical segment list.
 type CanonicalSegment struct {
 	ID              string   `json:"segment_id"`
 	SceneID         string   `json:"scene_id,omitempty"`
 	Position        int      `json:"position"`
 	Text            string   `json:"text"`
+	SourceText      string   `json:"source_text,omitempty"`
 	TextHash        string   `json:"text_hash"`
+	SourceTextHash  string   `json:"source_text_hash,omitempty"`
 	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
+}
+
+// Validate verifies the stable segment identity and hash contract.
+func (s CanonicalSegment) Validate() error {
+	if strings.TrimSpace(s.ID) == "" {
+		return errors.New("canonical segment: segment_id is required")
+	}
+	if s.Position < 0 {
+		return errors.New("canonical segment: position must not be negative")
+	}
+	if strings.TrimSpace(s.Text) == "" {
+		return errors.New("canonical segment: text is required")
+	}
+	if strings.TrimSpace(s.TextHash) == "" {
+		return errors.New("canonical segment: text_hash is required")
+	}
+	if source := strings.TrimSpace(s.SourceText); source != "" && strings.TrimSpace(s.SourceTextHash) == "" {
+		return errors.New("canonical segment: source_text_hash is required when source_text is present")
+	}
+	return nil
+}
+
+// NormalizeCanonicalSegment trims textual fields and fills the source text
+// and hashes deterministically. It does not mutate the receiver.
+func NormalizeCanonicalSegment(segment CanonicalSegment) CanonicalSegment {
+	segment.ID = strings.TrimSpace(segment.ID)
+	segment.SceneID = strings.TrimSpace(segment.SceneID)
+	segment.Text = strings.TrimSpace(segment.Text)
+	segment.SourceText = strings.TrimSpace(segment.SourceText)
+	if segment.SourceText == "" {
+		segment.SourceText = segment.Text
+	}
+	if segment.TextHash == "" {
+		segment.TextHash = ComputeCanonicalSegmentTextHash(segment.Text)
+	}
+	if segment.SourceTextHash == "" {
+		segment.SourceTextHash = ComputeCanonicalSegmentTextHash(segment.SourceText)
+	}
+	segment.ArtlistKeywords = append([]string(nil), segment.ArtlistKeywords...)
+	return segment
+}
+
+// ComputeCanonicalSegmentTextHash computes the stable hash used by the
+// VidRush segment identity boundary. Formatting whitespace is normalized so
+// equivalent source text replays the same segment cache key.
+func ComputeCanonicalSegmentTextHash(text string) string {
+	return ComputeSourceHash(strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " "))
 }
 
 // ExtractedEntity is a typed entity extracted from one segment.
@@ -45,39 +102,33 @@ type ExtractedEntity struct {
 	Confidence float64 `json:"confidence"`
 }
 
+// EntityMediaLink joins an NLP surface entity to a canonical media identity.
+// It is enrichment metadata and never mutates ExtractedEntity.
+type EntityMediaLink struct {
+	SurfaceValue      string   `json:"surface_value"`
+	EntityType        string   `json:"entity_type"`
+	CanonicalEntityID string   `json:"canonical_entity_id"`
+	AssetIDs          []string `json:"asset_ids,omitempty"`
+}
+
 // SegmentInsights collects the per-segment semantic extractions and
 // generated queries used by VidRush.
 type SegmentInsights struct {
-	SegmentID         string            `json:"segment_id"`
-	TextHash          string            `json:"text_hash"`
-	Entities          []ExtractedEntity `json:"entities,omitempty"`
-	ImportantPhrases  []string          `json:"important_phrases,omitempty"`
-	ImportantWords    []string          `json:"important_words,omitempty"`
-	ArtlistQueries    []string          `json:"artlist_queries,omitempty"`
-	YouTubeQueries    []string          `json:"youtube_queries,omitempty"`
-	ArtlistIntentHash string            `json:"artlist_intent_hash,omitempty"`
-	ImageQueries      []string          `json:"image_queries,omitempty"`
-	// ImageSearchRequired is the deterministic image search decision of the
-	// Image Search Intent resolver (capabilities/imagesearch): false when the
-	// scene carries no visual entity (abstract/editorial text). When false,
-	// ImageQueries holds only the compact B-roll fallback; the flag itself is
-	// the decision the visual scheduler consumes. Omitted (false) when the
-	// resolver is not wired.
-	ImageSearchRequired bool `json:"image_search_required,omitempty"`
-	// ImageSearchNoImageReason explains a Required=false decision
-	// (e.g. "no_visual_entity", "pronoun_without_antecedent").
-	ImageSearchNoImageReason string `json:"image_search_no_image_reason,omitempty"`
-	// ImagePrimaryCanonicalID is the canonical_entity_id (entities-package
-	// spelling, e.g. "person:floyd-mayweather") of the resolver's chosen
-	// PRIMARY entity — the entity that must drive the primary image and the
-	// entity card. Empty when the resolver is not wired or the decision is
-	// no-image.
-	ImagePrimaryCanonicalID string `json:"image_primary_canonical_id,omitempty"`
-	// ImageEntityCanonicalIDs maps each imageable entity's lowercased
-	// surface/canonical text to the canonical_entity_id the resolver chose
-	// for it. The scene-annotation projection consumes it to stamp the SAME
-	// identity onto the annotated entity (join key of the media index).
-	ImageEntityCanonicalIDs map[string]string `json:"image_entity_canonical_ids,omitempty"`
+	SegmentID                string              `json:"segment_id"`
+	TextHash                 string              `json:"text_hash"`
+	Entities                 []ExtractedEntity   `json:"entities,omitempty"`
+	ImportantPhrases         []string            `json:"important_phrases,omitempty"`
+	ImportantWords           []string            `json:"important_words,omitempty"`
+	ArtlistQueries           []string            `json:"artlist_queries,omitempty"`
+	YouTubeQueries           []string            `json:"youtube_queries,omitempty"`
+	ArtlistIntentHash        string              `json:"artlist_intent_hash,omitempty"`
+	ImageQueries             []string            `json:"image_queries,omitempty"`
+	ImageSearchRequired      bool                `json:"image_search_required,omitempty"`
+	ImageSearchNoImageReason string              `json:"image_search_no_image_reason,omitempty"`
+	ImagePrimaryCanonicalID  string              `json:"image_primary_canonical_id,omitempty"`
+	ImageEntityCanonicalIDs  map[string]string   `json:"image_entity_canonical_ids,omitempty"`
+	ResearchSources          []ResearchWebSource `json:"research_sources,omitempty"`
+	EntityMediaLinks         []EntityMediaLink   `json:"entity_media_links,omitempty"`
 }
 
 // SegmentAssetCandidate is a single candidate found for a segment.
@@ -127,32 +178,19 @@ type SegmentAssetSelection struct {
 	SelectionReason  string                  `json:"selection_reason,omitempty"`
 }
 
-// SegmentCacheState stores the per-segment cache status across the
-// VidRush steps.
+// SegmentCacheState stores the per-segment cache status across the VidRush steps.
 type SegmentCacheState struct {
-	Extraction      string `json:"extraction,omitempty"`
-	Artlist         string `json:"artlist,omitempty"`
-	InternetImages  string `json:"internet_images,omitempty"`
-	ImageGeneration string `json:"image_generation,omitempty"`
-	YouTube         string `json:"youtube,omitempty"`
-	Binding         string `json:"binding,omitempty"`
-
-	// InternetImagesProviderSearches is the numeric count of real
-	// internet_images provider invocations for this segment. It is 0 when
-	// every image query was satisfied by the durable catalog or the segment
-	// cache (a warm replay) — the numeric proof behind the
-	// "provider search = 0" certification gate.
-	InternetImagesProviderSearches int `json:"internet_images_provider_searches,omitempty"`
-
-	// InternetImagesNewUploads is the numeric count of new Drive uploads for
-	// internet_images candidates in this segment. It is 0 when the catalog's
-	// Drive materialization is reused (no re-download, no re-upload) — the
-	// numeric proof behind the "new upload = 0" certification gate.
-	InternetImagesNewUploads int `json:"internet_images_new_uploads,omitempty"`
+	Extraction                     string `json:"extraction,omitempty"`
+	Artlist                        string `json:"artlist,omitempty"`
+	InternetImages                 string `json:"internet_images,omitempty"`
+	ImageGeneration                string `json:"image_generation,omitempty"`
+	YouTube                        string `json:"youtube,omitempty"`
+	Binding                        string `json:"binding,omitempty"`
+	InternetImagesProviderSearches int    `json:"internet_images_provider_searches,omitempty"`
+	InternetImagesNewUploads       int    `json:"internet_images_new_uploads,omitempty"`
 }
 
-// VidRushSegmentResult is the full per-segment output surfaced by
-// script generation.
+// VidRushSegmentResult is the full per-segment output surfaced by script generation.
 type VidRushSegmentResult struct {
 	SegmentID string                `json:"segment_id"`
 	SceneID   string                `json:"scene_id,omitempty"`

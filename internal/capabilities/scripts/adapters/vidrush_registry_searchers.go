@@ -64,6 +64,8 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 
 	profile := profileFromVidRushSegment(updated)
 	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.artlist, f.images, f.youtube)
+	semanticProfile := &profile
+	segmentDurationMs, _ := segmentDurationBudgetMs(updated, plan)
 	artlistEnabled := fanoutPlan.artlistEnabled
 	imagesEnabled := fanoutPlan.imagesEnabled
 	youtubeEnabled := fanoutPlan.youtubeEnabled
@@ -89,7 +91,12 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			defer wg.Done()
 			candidates, err := f.youtube.Search(ctx, scriptports.VidRushSearchRequest{
 				SegmentID: segmentID, SceneID: plan.Title, TextHash: textHash, Text: updated.Text,
-				Query: youtubeQuery(updated), Limit: 3, Sources: youtubeSources,
+				Query: youtubeQuery(updated), Limit: 3,
+				TargetDurationMs:    segmentDurationMs,
+				SceneDurationMs:     segmentSceneDurationMs(updated),
+				EstimatedDurationMs: estimatedSegmentDurationMs(updated, plan),
+				SemanticProfile:     semanticProfile,
+				Sources:             youtubeSources,
 			})
 			if err != nil {
 				outcomes <- vidRushProviderOutcome{provider: scriptpkg.VidRushProviderYouTube, err: err}
@@ -193,8 +200,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			// re-calling the provider.
 			segmentCacheKeyStr := vidRushFanoutImageCacheKey(&fanoutPlan, plan)
 			/*
-				segmentCacheKeyStr := segmentCacheKey(
-					"internet-images-assets-v3",
+				segmentCacheKeyStr := versionedSegmentCacheKey("discovery", scriptports.DiscoveryCacheVersion,
 					segmentID,
 					textHash,
 					plan.Language,
@@ -230,7 +236,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				// Per-query cache keyed on (topic, query, language), stable on
 				// the research path where the generated scene text (and thus
 				// TextHash) is non-deterministic across runs.
-				entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
+				entityCacheKey := versionedSegmentCacheKey("discovery", scriptports.DiscoveryCacheVersion, strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
 				catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(updated, query)
 				if catalogErr != nil {
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}

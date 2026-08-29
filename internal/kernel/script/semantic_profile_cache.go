@@ -29,11 +29,21 @@ func (k SegmentSemanticProfileKey) String() string {
 // Key returns the cache identity for a profile.
 func (p SegmentSemanticProfile) Key() SegmentSemanticProfileKey {
 	return SegmentSemanticProfileKey{
-		SegmentID:                 p.SegmentID,
-		TextHash:                  p.TextHash,
-		UnderstandingModelVersion: p.UnderstandingModelVersion,
-		PromptVersion:             p.PromptVersion,
+		SegmentID:                 strings.TrimSpace(p.SegmentID),
+		TextHash:                  strings.TrimSpace(p.TextHash),
+		UnderstandingModelVersion: strings.TrimSpace(p.UnderstandingModelVersion),
+		PromptVersion:             strings.TrimSpace(p.PromptVersion),
 	}
+}
+
+// Fingerprint returns the stable serialized identity used by cache and
+// persistence layers. It is empty for an incomplete profile identity.
+func (p SegmentSemanticProfile) Fingerprint() string {
+	key := p.Key()
+	if _, err := NewSegmentSemanticProfileKey(key.SegmentID, key.TextHash, key.UnderstandingModelVersion, key.PromptVersion); err != nil {
+		return ""
+	}
+	return key.String()
 }
 
 // NewSegmentSemanticProfileKey creates a normalized cache key from the

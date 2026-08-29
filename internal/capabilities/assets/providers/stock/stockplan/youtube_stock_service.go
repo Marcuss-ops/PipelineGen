@@ -2,6 +2,7 @@ package stockplan
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -52,6 +53,7 @@ type StockService struct {
 	mu         sync.Mutex
 	metaCache  map[string]*youtubeports.DownloaderMetadata
 	textCache  map[string]*Transcript
+	planCache  map[string]*YouTubeStockResult
 }
 
 func NewYouTubeStockService(metadata MetadataProvider, transcript TranscriptProvider, extractor Extractor, folderID string) (*StockService, error) {
@@ -64,6 +66,7 @@ func NewYouTubeStockService(metadata MetadataProvider, transcript TranscriptProv
 		segmenter: NewTranscriptSegmenter(), folderID: folderID,
 		metaCache: make(map[string]*youtubeports.DownloaderMetadata),
 		textCache: make(map[string]*Transcript),
+		planCache: make(map[string]*YouTubeStockResult),
 	}, nil
 }
 
@@ -77,6 +80,14 @@ func (s *StockService) Plan(ctx context.Context, req YouTubeStockRequest) (*YouT
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
+	cacheKey := stockPlanCacheKey(req)
+	s.mu.Lock()
+	if cached := s.planCache[cacheKey]; cached != nil {
+		result := cloneYouTubeStockResult(cached)
+		s.mu.Unlock()
+		return result, nil
+	}
+	s.mu.Unlock()
 	out := &YouTubeStockResult{}
 	languageByVideo := make(map[string]string)
 	titleByVideo := make(map[string]string)
@@ -153,6 +164,9 @@ func (s *StockService) Plan(ctx context.Context, req YouTubeStockRequest) (*YouT
 		}
 		return out.SelectedSegments[i].YouTubeVideoID < out.SelectedSegments[j].YouTubeVideoID
 	})
+	s.mu.Lock()
+	s.planCache[cacheKey] = cloneYouTubeStockResult(out)
+	s.mu.Unlock()
 	return out, nil
 }
 
@@ -295,9 +309,34 @@ func (s *StockService) materializePlanned(ctx context.Context, req YouTubeStockR
 	return out, nil
 }
 
+const (
+	metadataCacheVersion      = "youtube-metadata-v1"
+	transcriptCacheVersion    = "youtube-transcript-v1"
+	plannedWindowCacheVersion = "youtube-window-v1"
+)
+
+func stockPlanCacheKey(req YouTubeStockRequest) string {
+	payload, _ := json.Marshal(struct {
+		URLs           []string
+		Query, Subject string
+		Duration       int64
+		Clips          int
+	}{req.YouTubeURLs, req.Query, req.Subject, req.ClipDurationMs, req.ClipsPerVideo})
+	return digest.SHA256Bytes(append([]byte(plannedWindowCacheVersion+"\x00"), payload...))
+}
+
+func cloneYouTubeStockResult(in *YouTubeStockResult) *YouTubeStockResult {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.SelectedSegments = append([]SelectedSegment(nil), in.SelectedSegments...)
+	return &out
+}
+
 func (s *StockService) getMetadata(ctx context.Context, video YouTubeVideo) (*youtubeports.DownloaderMetadata, error) {
 	s.mu.Lock()
-	if cached := s.metaCache[video.ID]; cached != nil {
+	if cached := s.metaCache[metadataCacheVersion+"\x00"+video.ID]; cached != nil {
 		s.mu.Unlock()
 		return cached, nil
 	}
@@ -307,14 +346,14 @@ func (s *StockService) getMetadata(ctx context.Context, video YouTubeVideo) (*yo
 		return nil, err
 	}
 	s.mu.Lock()
-	s.metaCache[video.ID] = meta
+	s.metaCache[metadataCacheVersion+"\x00"+video.ID] = meta
 	s.mu.Unlock()
 	return meta, nil
 }
 
 func (s *StockService) getTranscript(ctx context.Context, video YouTubeVideo, durationMs int64) (*Transcript, error) {
 	s.mu.Lock()
-	if cached := s.textCache[video.ID]; cached != nil {
+	if cached := s.textCache[transcriptCacheVersion+"\x00"+video.ID]; cached != nil {
 		s.mu.Unlock()
 		return cached, nil
 	}
@@ -327,7 +366,7 @@ func (s *StockService) getTranscript(ctx context.Context, video YouTubeVideo, du
 		return nil, fmt.Errorf("%w: %s", ErrTranscriptUnavailable, video.ID)
 	}
 	s.mu.Lock()
-	s.textCache[video.ID] = transcript
+	s.textCache[transcriptCacheVersion+"\x00"+video.ID] = transcript
 	s.mu.Unlock()
 	return transcript, nil
 }

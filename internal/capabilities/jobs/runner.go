@@ -27,6 +27,11 @@ type Runner struct {
 	resourceSampler kernobs.RunResourceSampler
 	// host is the hostname stamped on every resource observation.
 	host string
+
+	// claimSnapshot is the claim-time KPI snapshotter (prepared_at_claim_ratio)
+	// propagated to every Worker by buildWorkers. It fires on the real
+	// ClaimNext() instant — before any unit executes. nil = un-instrumented.
+	claimSnapshot ClaimSnapshotter
 }
 
 func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg RunnerConfig) *Runner {
@@ -72,6 +77,16 @@ func (r *Runner) WithResourceSampler(s kernobs.RunResourceSampler, host string) 
 	return r
 }
 
+// WithClaimSnapshotter attaches the claim-time KPI snapshotter
+// (prepared_at_claim_ratio photography) to the Runner; buildWorkers
+// propagates it to every Worker, which captures the durable snapshot the
+// instant ClaimNext returns. Nil-tolerant: a nil snapshotter keeps the
+// legacy un-instrumented worker path.
+func (r *Runner) WithClaimSnapshotter(snapshotter ClaimSnapshotter) *Runner {
+	r.claimSnapshot = snapshotter
+	return r
+}
+
 // buildWorkers constructs the worker pool and attaches every wired
 // dependency (registry, broker, job ledger, observer) to each Worker.
 // Start() runs these workers; the helper exists so tests can assert
@@ -105,6 +120,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		}
 		if r.resourceSampler != nil {
 			w.WithResourceSampler(r.resourceSampler, r.host)
+		}
+		if r.claimSnapshot != nil {
+			w.WithClaimSnapshotter(r.claimSnapshot)
 		}
 		workers = append(workers, w)
 	}

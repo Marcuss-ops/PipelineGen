@@ -1,0 +1,81 @@
+package adapters
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
+
+type warmReplayImageMetrics struct {
+	mu            sync.Mutex
+	assetHits     int
+	assetMisses   int
+	providerCalls int
+}
+
+func (*warmReplayImageMetrics) IncSegments()                             {}
+func (*warmReplayImageMetrics) IncExtractionCache(bool)                  {}
+func (*warmReplayImageMetrics) IncProviderFailure(string)                {}
+func (*warmReplayImageMetrics) IncBinding()                              {}
+func (*warmReplayImageMetrics) IncUnresolvedSegment()                    {}
+func (*warmReplayImageMetrics) ObserveProcessorDuration(string, float64) {}
+func (*warmReplayImageMetrics) ObserveProviderDuration(string, float64)  {}
+func (m *warmReplayImageMetrics) IncAssetCache(_ string, hit bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if hit {
+		m.assetHits++
+	} else {
+		m.assetMisses++
+	}
+}
+func (m *warmReplayImageMetrics) IncProviderRequest(_ string) {
+	m.mu.Lock()
+	m.providerCalls++
+	m.mu.Unlock()
+}
+
+func TestVidRushImagesWarmReplayPersistsAndReusesL2(t *testing.T) {
+	vidrushImageCache = sync.Map{}
+	cache := newMemoryVidRushCache()
+	searcher := &countingImageSearcher{}
+	metrics := &warmReplayImageMetrics{}
+	processor := NewInternetImagesProcessorWithCache(searcher, cache, metrics)
+	plan := func(force bool) *scriptpkg.ResolvedGenerationPlan {
+		return &scriptpkg.ResolvedGenerationPlan{Language: "it", Topic: "maya", MediaPlan: mediadomain.MediaPlanSpec{
+			ProviderPolicy:     mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			ForceRefreshAssets: force,
+		}}
+	}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "warm-segment", TextHash: "warm-hash", Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"maya ruins"}},
+	}}}
+
+	cold, err := processor.Process(context.Background(), plan(true), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.calls != 1 || cold.VidRushSegments[0].Cache.InternetImagesProviderSearches != 1 {
+		t.Fatalf("cold calls/searches=%d/%d, want 1/1", searcher.calls, cold.VidRushSegments[0].Cache.InternetImagesProviderSearches)
+	}
+	if cold.VidRushSegments[0].Cache.InternetImages != "REFRESHED" || len(cold.VidRushSegments[0].Assets.SecondaryImages) != 1 {
+		t.Fatalf("cold result=%+v", cold.VidRushSegments[0])
+	}
+
+	warm, err := processor.Process(context.Background(), plan(false), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.calls != 1 || warm.VidRushSegments[0].Cache.InternetImagesProviderSearches != 0 {
+		t.Fatalf("warm calls/searches=%d/%d, want 1/0", searcher.calls, warm.VidRushSegments[0].Cache.InternetImagesProviderSearches)
+	}
+	if warm.VidRushSegments[0].Cache.InternetImages != "HIT_EXACT" || len(warm.VidRushSegments[0].Assets.SecondaryImages) != 1 {
+		t.Fatalf("warm result=%+v", warm.VidRushSegments[0])
+	}
+	if metrics.providerCalls != 1 || metrics.assetMisses != 1 || metrics.assetHits != 1 {
+		t.Fatalf("metrics provider=%d misses=%d hits=%d, want 1/1/1", metrics.providerCalls, metrics.assetMisses, metrics.assetHits)
+	}
+}

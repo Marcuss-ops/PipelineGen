@@ -3,9 +3,32 @@ package adapters
 import (
 	"testing"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+
 	stockplan "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestNormalizeClipDurationMsUsesTargetAndBounds(t *testing.T) {
+	tests := []struct {
+		name string
+		req  scriptports.VidRushSearchRequest
+		want int64
+	}{
+		{name: "target", req: scriptports.VidRushSearchRequest{TargetDurationMs: 8420}, want: 8420},
+		{name: "scene fallback", req: scriptports.VidRushSearchRequest{SceneDurationMs: 6300}, want: 6300},
+		{name: "estimated fallback", req: scriptports.VidRushSearchRequest{EstimatedDurationMs: 5100}, want: 5100},
+		{name: "min bound", req: scriptports.VidRushSearchRequest{TargetDurationMs: 2000, MinDurationMs: 4000}, want: 4000},
+		{name: "max bound", req: scriptports.VidRushSearchRequest{TargetDurationMs: 15000, MaxDurationMs: 12000}, want: 12000},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeClipDurationMs(tc.req); got != tc.want {
+				t.Fatalf("normalizeClipDurationMs() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestSelectedSegmentsToCandidatesPreservesProvenanceAndStatus(t *testing.T) {
 	got := selectedSegmentsToCandidates([]stockplan.SelectedSegment{{

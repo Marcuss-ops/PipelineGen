@@ -67,7 +67,11 @@ func (r VidRushSourceResolver) Resolve(ctx context.Context, req SourceResolution
 	if suggested := suggestedAssetSource(req.Plan, req.Segment.ID, req.Slot); suggested != nil {
 		return &SourceResolutionCandidate{Source: *suggested, Provider: suggested.Provider, Stage: "suggested_asset_id"}, nil
 	}
-	if r.Canonical != nil && req.Slot == mediadomain.SlotPrimaryVideo {
+	// Existing Stock is always consulted before any remote provider. The
+	// canonical search covers the SQLite/Qdrant local catalog and returns a
+	// durable AssetID, so downstream materialization can reuse it without
+	// download or upload.
+	if r.Canonical != nil {
 		if candidate, err := r.resolveCanonical(ctx, req); err == nil && candidate != nil {
 			return candidate, nil
 		}
@@ -113,8 +117,9 @@ func (r VidRushSourceResolver) resolveCanonical(ctx context.Context, req SourceR
 	if query == "" {
 		return nil, nil
 	}
+
 	hits, err := r.Canonical.SearchAssets(ctx, assetsearch.AssetSearchQuery{
-		Query: query, Source: "stock", MediaType: "video", Limit: 5, IsSystem: true,
+		Query: query, Source: "stock", MediaType: slotMediaType(req.Slot), Limit: 5, IsSystem: true,
 	})
 	if err != nil || len(hits) == 0 {
 		return nil, err
@@ -132,6 +137,13 @@ func (r VidRushSourceResolver) resolveCanonical(ctx context.Context, req SourceR
 		}, nil
 	}
 	return nil, nil
+}
+
+func slotMediaType(slot mediadomain.SlotKind) string {
+	if slot == mediadomain.SlotSecondaryImage {
+		return "image"
+	}
+	return "video"
 }
 
 func lockedSource(plan *scriptpkg.ResolvedGenerationPlan, segmentID string, slot mediadomain.SlotKind) *mediadomain.SegmentMediaSource {
@@ -164,12 +176,8 @@ func providerEnabled(plan *scriptpkg.ResolvedGenerationPlan, provider string) bo
 		return true
 	}
 	switch provider {
-	case scriptpkg.VidRushProviderYouTube:
-		return plan.MediaPlan.ProviderPolicy.YouTube.AsBool()
-	case scriptpkg.VidRushProviderArtlist:
-		return plan.MediaPlan.ProviderPolicy.Artlist.AsBool()
-	case scriptpkg.VidRushProviderInternetImages:
-		return plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() || plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
+	case scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderArtlist, scriptpkg.VidRushProviderInternetImages, scriptpkg.VidRushProviderImageGeneration:
+		return providerEnabledForVidRush(plan, provider)
 	default:
 		return false
 	}

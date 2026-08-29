@@ -1,11 +1,50 @@
 package adapters
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func selectVidRushPrimaryVideoWithPolicy(candidates []scriptpkg.SegmentAssetCandidate, plan *scriptpkg.ResolvedGenerationPlan, profile scriptpkg.SegmentSemanticProfile, targetDurationMs int64, reranker scriptports.CandidateReranker, ctx context.Context) *scriptpkg.SegmentAssetCandidate {
+	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube {
+			continue
+		}
+		if !readyVidRushCandidate(candidate) {
+			continue
+		}
+		eligible = append(eligible, candidate)
+	}
+	if len(eligible) == 0 {
+		return nil
+	}
+	limit := 8
+	if plan != nil && plan.MediaPlan.Planner.CandidateLimit > 0 && plan.MediaPlan.Planner.CandidateLimit < limit {
+		limit = plan.MediaPlan.Planner.CandidateLimit
+	}
+	// The common planner is selected by MediaPlannerPolicy. Unknown or empty
+	// strategies safely use deterministic ranking; the optional reranker only
+	// contributes SemanticScore and never changes candidate identity/timing.
+	strategy := "deterministic"
+	if plan != nil && strings.TrimSpace(plan.MediaPlan.Planner.Strategy) != "" {
+		strategy = strings.ToLower(strings.TrimSpace(plan.MediaPlan.Planner.Strategy))
+	}
+	if strategy == "small_model_rerank" {
+		eligible = NewVidRushWindowRanker().RankWithOptionalReranker(ctx, reranker, eligible, profile, targetDurationMs)
+	} else {
+		eligible = NewVidRushWindowRanker().Rank(eligible, profile, targetDurationMs)
+	}
+	if len(eligible) > limit {
+		eligible = eligible[:limit]
+	}
+	return selectVidRushPrimaryVideo(eligible)
+}
 
 func selectVidRushPrimaryVideo(candidates []scriptpkg.SegmentAssetCandidate) *scriptpkg.SegmentAssetCandidate {
 	var selected *scriptpkg.SegmentAssetCandidate
