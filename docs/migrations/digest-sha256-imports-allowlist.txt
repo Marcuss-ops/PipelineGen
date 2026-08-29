@@ -14,7 +14,6 @@ internal/platform/cas/replay_source.go
 internal/platform/cas/store.go
 internal/platform/drive/artifact_publisher_adapter.go
 internal/platform/drive/verifier.go
-internal/platform/media/rustexec/video_processor.go
 internal/platform/sqlite/backup.go
 internal/platform/stager/http_source_stager.go
 internal/platform/youtube/cached_whisper.go
