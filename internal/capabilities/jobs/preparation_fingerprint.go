@@ -1,12 +1,12 @@
 package jobs
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 type PreparationFingerprintInput struct {
@@ -47,8 +47,7 @@ func BuildPreparationFingerprint(input PreparationFingerprintInput) (string, err
 	if err != nil {
 		return "", fmt.Errorf("marshal preparation fingerprint input: %w", err)
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	return digest.SHA256Bytes(raw), nil
 }
 
 func PreparationUnitFingerprint(kind, jobType string, payload []byte, inputs map[string]string, dependsOn []string, processorVersion string) (string, error) {
