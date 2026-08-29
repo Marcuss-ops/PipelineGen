@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"go.uber.org/zap"
 )
@@ -201,6 +203,17 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if err != nil {
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
 		}
+		// Attach the SQLite render-attempt analytics recorder so the coarse
+		// per-attempt row (render_ms/encode_ms) is persisted in parallel with
+		// the granular chronon.* phases the Chronon Metrics Adapter projects
+		// into performance_operations. Both are projections of the same render
+		// into their own existing tables — never new ones. Best-effort: a
+		// missing DB skips analytics, never fails the run.
+		var analyticsDB *sql.DB
+		if root.DB != nil {
+			analyticsDB = root.DB.DB
+		}
+		renderEnqueuer.SetRecorder(wireRenderAttemptRecorder(analyticsDB, log))
 		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
 		log.Info("overlay.prepare enqueuer wired to RenderingGen queue", zap.String("url", queueURL))
 	} else {
@@ -331,6 +344,23 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		zap.Bool("serial_mode", cfg.Scripts.SerialMode))
 
 	return runner, nil
+}
+
+// wireRenderAttemptRecorder builds the SQLite render-attempt analytics
+// recorder over the primary DB (render_attempt_analytics lives in the primary
+// database). Best-effort wiring mirroring wireChrononMetricsAdapter: a nil DB
+// or a construction error logs a Warn and returns nil — the render enqueuer
+// then skips analytics instead of aborting boot.
+func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAttemptRecorder {
+	if db == nil {
+		return nil
+	}
+	reg, err := rendermetrics.New(db)
+	if err != nil {
+		log.Warn("render attempt analytics recorder NOT wired (registry unavailable)", zap.Error(err))
+		return nil
+	}
+	return reg
 }
 
 var _ scriptgen.Translator = (*scriptGenerationTranslator)(nil)

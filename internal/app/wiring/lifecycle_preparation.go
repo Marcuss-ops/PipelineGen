@@ -7,8 +7,10 @@ import (
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
+	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 
 	"go.uber.org/zap"
 )
@@ -143,11 +145,22 @@ func buildPreparationCoordinatorStep(deps jobRunnerDeps) *StartupStep {
 	// coordinator only plans and speculates.
 
 	// Wire the learned per-kind work estimator, replacing static expected_work_ms
-	// guesses with a real EMA over completed preparation_attempts. Bootstrap is
-	// best-effort (fail-open); an empty history simply means estimates stay static
-	// until the first observed runs land.
+	// guesses with a real EMA over completed preparation_attempts PLUS the
+	// durable performance history (performance_operations): what the execution
+	// layer measured yesterday (the Chronon render loop included) becomes the
+	// expected_work_ms of tomorrow's jobs. Bootstrap is best-effort (fail-open);
+	// an empty history simply means estimates stay static until the first
+	// observed runs land.
 	estimator := appjobs.NewPreparationWorkEstimator(0)
-	if err := estimator.Bootstrap(context.Background(), deps.root.Jobs.Repo, 1000); err != nil {
+	var perfHistory *capperformance.WorkHistoryReader
+	if deps.root.DB != nil && deps.root.DB.DB != nil {
+		if ops, opsErr := perfstore.NewOperationStore(deps.root.DB.DB); opsErr == nil {
+			perfHistory = capperformance.NewWorkHistoryReader(ops)
+		} else {
+			deps.log.Warn("preparation work estimator: performance history unavailable", zap.Error(opsErr))
+		}
+	}
+	if err := estimator.BootstrapSources(context.Background(), 1000, deps.root.Jobs.Repo, perfHistory); err != nil {
 		deps.log.Warn("preparation work estimator bootstrap failed; using static estimates", zap.Error(err))
 	}
 	coordinator = coordinator.WithWorkEstimator(estimator)

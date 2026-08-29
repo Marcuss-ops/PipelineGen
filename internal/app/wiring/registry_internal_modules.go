@@ -444,6 +444,9 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		}
 	}
 	chrononRenderer := NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
+	if root.DB != nil && root.DB.DB != nil {
+		chrononRenderer.WithChrononMetrics(wireChrononMetricsAdapter(root.DB.DB, log))
+	}
 	// Backend selection lives ONLY in the resolver. The probe stack is:
 	//   ffmpeg capabilities (base) → chrononAwareCapabilityProbe (binary
 	//   presence) → chrononCertifiedCapabilityProbe (ChrononNativeCertified).

@@ -89,6 +89,7 @@ var commandRegistry = map[string]commandHandler{
 	"organize-foley-drive":           soundeffects.RunOrganizeFoleyDrive,
 	"organize-sound-effects-drive":   soundeffects.RunOrganizeSoundEffectsDrive,
 	"performance-backfill":           maintenance.RunPerformanceBackfill,
+	"performance-cold-warm":          maintenance.RunPerformanceColdWarmReport,
 	"performance-report":             maintenance.RunPerformanceReport,
 	"reachability-graph":             audit.RunReachabilityGraph,
 	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,

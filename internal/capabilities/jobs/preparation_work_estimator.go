@@ -162,21 +162,44 @@ type WorkObservationsReader interface {
 	ListPreparationWorkObservations(context.Context, int) ([]job.WorkObservation, error)
 }
 
-// Bootstrap loads recent completed attempts from the reader and folds them into
-// the estimator. It is best-effort: a reader error leaves the estimator at its
-// current state (fail-open) so speculative planning is never blocked.
+// Bootstrap loads recent completed attempts from one reader and folds them
+// into the estimator. It is best-effort: a reader error leaves the estimator
+// at its current state (fail-open) so speculative planning is never blocked.
 func (e *PreparationWorkEstimator) Bootstrap(ctx context.Context, reader WorkObservationsReader, limit int) error {
-	if e == nil || reader == nil {
+	if reader == nil {
 		return nil
 	}
-	obs, err := reader.ListPreparationWorkObservations(ctx, limit)
-	if err != nil {
-		return err
+	return e.BootstrapSources(ctx, limit, reader)
+}
+
+// BootstrapSources folds every provided reader into the estimator, in order.
+// Each source must implement the same WorkObservationsReader contract, so the
+// estimator learns from preparation_attempts AND from the durable
+// performance history (performance_operations via
+// PerformanceHistoryWorkReader) with one EMA per kind. Nil readers are
+// skipped; a reader error stops that source only — the failure is returned
+// and the estimator keeps whatever it already learned (fail-open).
+func (e *PreparationWorkEstimator) BootstrapSources(ctx context.Context, limit int, readers ...WorkObservationsReader) error {
+	if e == nil {
+		return nil
 	}
-	for i := range obs {
-		e.Observe(obs[i])
+	var firstErr error
+	for _, reader := range readers {
+		if reader == nil {
+			continue
+		}
+		obs, err := reader.ListPreparationWorkObservations(ctx, limit)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		for i := range obs {
+			e.Observe(obs[i])
+		}
 	}
-	return nil
+	return firstErr
 }
 
 // String implements fmt.Stringer for diagnostics.

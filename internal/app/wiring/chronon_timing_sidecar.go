@@ -7,13 +7,33 @@ package wiring
 // RenderMetricsV2 from the executor in chronon_clip_renderer.go.
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
+	"go.uber.org/zap"
 )
+
+// wireChrononMetricsAdapter builds the Chronon Metrics Adapter over the
+// primary SQLite DB (performance_operations lives in the primary database).
+// Best-effort wiring: a nil DB or a store construction error logs a Warn and
+// returns nil — the render path then simply skips the performance projection
+// instead of aborting boot.
+func wireChrononMetricsAdapter(db *sql.DB, log *zap.Logger) *cliprender.ChrononMetricsAdapter {
+	if db == nil {
+		return nil
+	}
+	ops, err := perfstore.NewOperationStore(db)
+	if err != nil {
+		log.Warn("chronon metrics adapter NOT wired (performance operation store unavailable)", zap.Error(err))
+		return nil
+	}
+	return cliprender.NewChrononMetricsAdapter(ops, log)
+}
 
 // chrononTimingReport is the narrow projection of Chronon's canonical
 // *.timing.json sidecar needed by RenderMetricsV2. Chronon remains the owner
