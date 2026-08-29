@@ -60,10 +60,9 @@ const (
 	DefaultMaxWorkspaceBytes int64 = 100 * 1024 * 1024 * 1024
 
 	// DefaultMinFreeBytes is the safety floor on free disk space.
-	// 1 GiB is the production default (matches the pre-FASE 3
-	// deployment floor). The pre-stage check uses 2x the inbound
-	// size (so smaller stages can still succeed when the floor is
-	// approached).
+	// It is intentionally configurable per store; the default keeps
+	// production staging fail-closed while tests can opt into a small
+	// deterministic floor.
 	DefaultMinFreeBytes int64 = 1 * 1024 * 1024 * 1024
 
 	// partialDirName is the canonical in-workspace subdir holding
@@ -139,7 +138,12 @@ func NewLocalStore(cfg Config) (*LocalStore, error) {
 	if cfg.MaxWorkspaceBytes <= 0 {
 		cfg.MaxWorkspaceBytes = DefaultMaxWorkspaceBytes
 	}
-	if cfg.MinFreeBytes <= 0 {
+	// A zero value uses the production floor. Negative values are
+	// invalid rather than silently weakening the disk-space guard.
+	if cfg.MinFreeBytes < 0 {
+		return nil, fmt.Errorf("%w: MinFreeBytes must be >= 0", staging.ErrStagerNotConfigured)
+	}
+	if cfg.MinFreeBytes == 0 {
 		cfg.MinFreeBytes = DefaultMinFreeBytes
 	}
 	if cfg.statfsFn == nil {

@@ -29,7 +29,7 @@ func newTestStore(t *testing.T) (*Store, string, string) {
 	if err := os.Chmod(workspace, 0o700); err != nil {
 		t.Fatalf("chmod workspace: %v", err)
 	}
-	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: workspace})
+	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: workspace, MinFreeBytes: 1})
 	if err != nil {
 		t.Fatalf("build LocalStore stager: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestNewStoreValidation(t *testing.T) {
 	}
 	// The workspace must be a not-yet-existing path: the LocalStore creates
 	// it with 0700 and rejects pre-existing dirs with looser modes.
-	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: filepath.Join(t.TempDir(), "ws")})
+	stager, err := artifacts.NewLocalStore(artifacts.Config{Workspace: filepath.Join(t.TempDir(), "ws"), MinFreeBytes: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
