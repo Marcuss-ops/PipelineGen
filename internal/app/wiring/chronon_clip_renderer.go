@@ -103,6 +103,13 @@ type chrononClipRenderExecutor struct {
 	ffmpeg    string
 	log       *zap.Logger
 	projector ChrononPlanProjector
+	// chrononMetrics is the optional Chronon Metrics Adapter. When wired, the
+	// fine-grained sidecar phases (startup/input_open/prepare/render_loop/
+	// encoder_drain/ffprobe/sha256) are projected into the durable
+	// performance registry (performance_operations) after every render —
+	// best-effort, never failing the render. Optional: benchmarks and unit
+	// tests may omit it.
+	chrononMetrics *cliprender.ChrononMetricsAdapter
 }
 
 // chrononPhaseMetrics records the wall-clock duration of every phase the
@@ -147,6 +154,16 @@ func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chron
 	}
 	// The projector is stateless; the zero value is the canonical projector.
 	return &chrononClipRenderExecutor{binary: binary, ffmpeg: ffmpeg, log: log}
+}
+
+// WithChrononMetrics attaches the Chronon Metrics Adapter. It is optional and
+// nil-tolerant: without it the render simply skips the performance-registry
+// projection.
+func (r *chrononClipRenderExecutor) WithChrononMetrics(a *cliprender.ChrononMetricsAdapter) *chrononClipRenderExecutor {
+	if r != nil {
+		r.chrononMetrics = a
+	}
+	return r
 }
 
 // logPhase emits a single chronon render phase line with consistent fields so
@@ -416,13 +433,43 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 
 	chrononSidecarPath := chrononVideoPath + ".timing.json"
 	measured, timingErr := readChrononMeasuredPhases(chrononSidecarPath, plan)
+	var rawTiming []byte
 	if timingErr != nil {
 		r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
 	} else if metricsDirReady {
-		if rawTiming, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
-			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
+		if raw, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
+			rawTiming = raw
+			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), raw, 0o644); writeErr != nil {
 				r.logPhase("metrics_write_failed", plan.RunID, zap.String("artifact", "timing_sidecar"), zap.Error(writeErr))
 			}
+		}
+	}
+	// ── Chronon Metrics Adapter ───────────────────────────────────────
+	// The fine-grained sidecar phases are the engine's own exclusive-wall
+	// measurements (startup/input_open/prepare/render_loop/encoder_drain/
+	// ffprobe/sha256). When the adapter is wired they are promoted to the
+	// canonical durable performance registry (performance_operations) through
+	// the OperationReportProjectionRecorder seam — the sidecar JSON stays a
+	// transport/debug payload, the SQLite registry becomes the canonical
+	// history. Best-effort: a parse/record failure is logged, never a render
+	// failure. The certified output facts come from the sealed plan + the
+	// chronon.mp4 bytes (the exact artifact the phases measured).
+	if r.chrononMetrics != nil && len(rawTiming) > 0 {
+		doc, parseErr := cliprender.ParseChrononSidecar(rawTiming)
+		if parseErr != nil {
+			r.logPhase("chronon_metrics_parse_failed", plan.RunID, zap.Error(parseErr))
+		} else {
+			opts := cliprender.ChrononMetricsPublishOptions{
+				SourceSHA256:     plan.Source.SHA256,
+				SourceDurationMS: durationMS,
+				Width:            plan.Output.Width,
+				Height:           plan.Output.Height,
+				FPS:              float64(fps),
+			}
+			if chrononOut, statErr := os.Stat(chrononVideoPath); statErr == nil {
+				opts.OutputSizeBytes = chrononOut.Size()
+			}
+			r.chrononMetrics.Publish(ctx, doc, opts)
 		}
 	}
 	r.logPhase("chronon_render_done", plan.RunID,

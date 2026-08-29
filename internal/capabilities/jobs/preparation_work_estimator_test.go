@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -108,6 +109,44 @@ func TestPreparationWorkEstimator_Bootstrap(t *testing.T) {
 	}
 	if est.ExpectedWorkMS != 5000 {
 		t.Fatalf("ExpectedWorkMS = %d, want 5000 (kind EMA of 4000,6000)", est.ExpectedWorkMS)
+	}
+}
+
+func TestPreparationWorkEstimator_BootstrapSources(t *testing.T) {
+	// Two independent feeds (preparation_attempts + performance history)
+	// fold into ONE per-kind EMA: seed 1000, then 0.5*3000 + 0.5*1000 = 2000.
+	e := NewPreparationWorkEstimator(0.5)
+	err := e.BootstrapSources(context.Background(), 10,
+		&fakeObsReader{obs: []job.WorkObservation{{Kind: "chronon.render", WallMS: 1000}}},
+		nil, // must be skipped
+		&fakeObsReader{obs: []job.WorkObservation{{Kind: "chronon.render", WallMS: 3000}}},
+	)
+	if err != nil {
+		t.Fatalf("BootstrapSources: %v", err)
+	}
+	est, ok := e.Expect("chronon.render")
+	if !ok {
+		t.Fatal("multi-source bootstrap should have produced an estimate")
+	}
+	if est.ExpectedWorkMS != 2000 {
+		t.Fatalf("ExpectedWorkMS = %d, want 2000 (EMA of 1000,3000 across both sources)", est.ExpectedWorkMS)
+	}
+}
+
+func TestPreparationWorkEstimator_BootstrapSourcesFailOpen(t *testing.T) {
+	// A failing source returns its error but the good source still folds:
+	// the estimator keeps whatever it learned (speculation never blocked).
+	e := NewPreparationWorkEstimator(0.5)
+	err := e.BootstrapSources(context.Background(), 10,
+		&fakeObsReader{err: errors.New("history read failed")},
+		&fakeObsReader{obs: []job.WorkObservation{{Kind: "probe", WallMS: 2500}}},
+	)
+	if err == nil {
+		t.Fatal("source error must be returned")
+	}
+	est, ok := e.Expect("probe")
+	if !ok || est.ExpectedWorkMS != 2500 {
+		t.Fatalf("good source not folded: est=%+v ok=%v", est, ok)
 	}
 }
 

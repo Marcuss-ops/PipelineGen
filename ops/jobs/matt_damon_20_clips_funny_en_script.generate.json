@@ -1,0 +1,119 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "project": "matt-damon-20-clips-funny-en",
+  "correlation_id": "matt-damon-20-clips-funny-en-script-20260829",
+  "force_refresh": true,
+  "model": "gemma4:e2b",
+  "items": [
+    {
+      "id": "matt-damon-20-clips-funny-en-script-item",
+      "project": "matt-damon-20-clips-funny-en",
+      "title": "Matt Damon: 20 clips, one man, zero normal days",
+      "language": "en",
+      "tone": "playful, witty, fast-paced internet comedy",
+      "model": "gemma4:e2b",
+      "style": "Write one short, original English voiceover narration for each clip, in order. Make it funny and friendly, suitable for social video. Use the clip transcript and topic as grounding, but do not quote, imitate, or invent facts. Keep each segment punchy, roughly 12–18 words. The narration should add a humorous observation rather than describe every visible action.",
+      "source": {
+        "type": "clips",
+        "topic": "Twenty funny Matt Damon interview moments",
+        "source_text": "A playful compilation of Matt Damon discussing getting lost in movies, heights, acting, friends, film budgets, celebrity cameos, strange interviews, childhood memories, practical filmmaking, impressions, mistaken identity, and movie promotion.",
+        "clip_ids": [
+          "yt_0ElQTzSx3ec_72_91_v1",
+          "yt_ERzbkt5r5Gg_32_66_v1",
+          "yt_Gcgdk1gEo8U_285_302_v1",
+          "yt_S6ADB98CR7g_358_425_v1",
+          "yt_T6x-kDiQsWM_203_252_v1",
+          "yt_T6x-kDiQsWM_65_105_v1",
+          "yt_ZPT2iPcDZtI_1220_1246_v1",
+          "yt_arWZf7_ktBs_19_85_v1",
+          "yt_arWZf7_ktBs_95_150_v1",
+          "yt_e4Zccf3v7J4_1315_1365_v1",
+          "yt_etHNI39Ibgk_144_168_v1",
+          "yt_stRtOHjh6lY_167_218_v1",
+          "yt_stRtOHjh6lY_370_405_v1",
+          "yt_-AFmYLDxBgY_65_96_v1",
+          "yt_0ElQTzSx3ec_150_202_v1",
+          "yt_0ElQTzSx3ec_203_220_v1",
+          "yt_0ElQTzSx3ec_258_306_v1",
+          "yt_D0yMBI3Whi4_110_145_v1",
+          "yt_D0yMBI3Whi4_168_195_v1",
+          "yt_D0yMBI3Whi4_975_1030_v1"
+        ],
+        "intro_clip_ids": [
+          "yt_D0yMBI3Whi4_1740_1780_v1",
+          "yt_D0yMBI3Whi4_1800_1895_v1",
+          "yt_D0yMBI3Whi4_320_380_v1"
+        ],
+        "outro_clip_ids": [
+          "yt_-AFmYLDxBgY_390_425_v1",
+          "yt_-AFmYLDxBgY_445_520_v1",
+          "yt_DKql9c7kq4A_1080_1125_v1"
+        ],
+        "num_clips": 20,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "transcript_policy": "required",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 300,
+        "min_words": 220,
+        "max_words": 380,
+        "segment_words": 15,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "use_memory": false,
+        "segments": [
+          {"id":"intro","kind":"intro","topic":"fast Matt Damon opening montage","source_text":"A quick opening montage introducing Matt Damon and the playful theme of his most unexpected interview moments.","clip_ids":["yt_D0yMBI3Whi4_1740_1780_v1","yt_D0yMBI3Whi4_1800_1895_v1","yt_D0yMBI3Whi4_320_380_v1"],"target_words":0},
+          {"id":"scene-0","kind":"clip","topic":"always getting lost in movies","source_text":"Matt Damon is associated with several films where his character gets lost or stranded.","clip_ids":["yt_0ElQTzSx3ec_72_91_v1"],"target_words":15},
+          {"id":"scene-1","kind":"clip","topic":"discovering a fear of heights","source_text":"He discusses discovering a fear of heights despite performing dangerous stunts.","clip_ids":["yt_ERzbkt5r5Gg_32_66_v1"],"target_words":15},
+          {"id":"scene-2","kind":"clip","topic":"pretending to be in love","source_text":"He talks about a story with horror elements and pretending to be in love.","clip_ids":["yt_Gcgdk1gEo8U_285_302_v1"],"target_words":15},
+          {"id":"scene-3","kind":"clip","topic":"guessing underwear color","source_text":"A comic conversation involves guessing a man's underwear color by looking at him.","clip_ids":["yt_S6ADB98CR7g_358_425_v1"],"target_words":15},
+          {"id":"scene-4","kind":"clip","topic":"hacking a control room","source_text":"A dramatic scene involves hacking a system and being stuck there for decades.","clip_ids":["yt_T6x-kDiQsWM_203_252_v1"],"target_words":15},
+          {"id":"scene-5","kind":"clip","topic":"photobombing friends","source_text":"Matt interrupts an interview while friends are discussing working together.","clip_ids":["yt_T6x-kDiQsWM_65_105_v1"],"target_words":15},
+          {"id":"scene-6","kind":"clip","topic":"expensive rescues","source_text":"The conversation estimates how much movie money has been spent rescuing Matt Damon characters.","clip_ids":["yt_ZPT2iPcDZtI_1220_1246_v1"],"target_words":15},
+          {"id":"scene-7","kind":"clip","topic":"Ben Affleck asking for Matt","source_text":"Ben Affleck jokes that a cast list is missing Matt Damon.","clip_ids":["yt_arWZf7_ktBs_19_85_v1"],"target_words":15},
+          {"id":"scene-8","kind":"clip","topic":"finally appearing on the show","source_text":"Matt celebrates appearing on the show, with the appearance treated as partly virtual.","clip_ids":["yt_arWZf7_ktBs_95_150_v1"],"target_words":15},
+          {"id":"scene-9","kind":"clip","topic":"the bathroom picture","source_text":"A funny story centers on a sports photograph displayed above a bathroom toilet.","clip_ids":["yt_e4Zccf3v7J4_1315_1365_v1"],"target_words":15},
+          {"id":"scene-10","kind":"clip","topic":"cinema keeps losing Matt","source_text":"The interviewer jokes that movies repeatedly lose Matt Damon in different places.","clip_ids":["yt_etHNI39Ibgk_144_168_v1"],"target_words":15},
+          {"id":"scene-11","kind":"clip","topic":"the ponytail tweets","source_text":"They read enthusiastic online reactions to Matt Damon wearing a ponytail or man bun.","clip_ids":["yt_stRtOHjh6lY_167_218_v1"],"target_words":15},
+          {"id":"scene-12","kind":"clip","topic":"the red chair","source_text":"A fan interaction involves a lever and a chair that flips.","clip_ids":["yt_stRtOHjh6lY_370_405_v1"],"target_words":15},
+          {"id":"scene-13","kind":"clip","topic":"first concert memories","source_text":"Matt recalls attending a concert with his mother and brother as a child.","clip_ids":["yt_-AFmYLDxBgY_65_96_v1"],"target_words":15},
+          {"id":"scene-14","kind":"clip","topic":"speed-loading a bow","source_text":"He describes training to use a bow and arrow for a role.","clip_ids":["yt_0ElQTzSx3ec_150_202_v1"],"target_words":15},
+          {"id":"scene-15","kind":"clip","topic":"Christopher Nolan calls","source_text":"Matt discusses how quickly he would say yes if Christopher Nolan called.","clip_ids":["yt_0ElQTzSx3ec_203_220_v1"],"target_words":15},
+          {"id":"scene-16","kind":"clip","topic":"practical battle scenes","source_text":"He describes a battle scene made with real people rather than computer-generated extras.","clip_ids":["yt_0ElQTzSx3ec_258_306_v1"],"target_words":15},
+          {"id":"scene-17","kind":"clip","topic":"the Matthew McConaughey impression","source_text":"Matt is asked to perform an impression of Matthew McConaughey.","clip_ids":["yt_D0yMBI3Whi4_110_145_v1"],"target_words":15},
+          {"id":"scene-18","kind":"clip","topic":"being mistaken for Mark Wahlberg","source_text":"Matt discusses sometimes being mistaken for Mark Wahlberg.","clip_ids":["yt_D0yMBI3Whi4_168_195_v1"],"target_words":15},
+          {"id":"scene-19","kind":"clip","topic":"promoting Elysium","source_text":"He jokes about immediately saying the wrong thing while promoting a science-fiction film.","clip_ids":["yt_D0yMBI3Whi4_975_1030_v1"],"target_words":15},
+          {"id":"outro","kind":"outro","topic":"quick closing montage","source_text":"A short closing montage wraps up the compilation with a final playful Matt Damon moment.","clip_ids":["yt_-AFmYLDxBgY_390_425_v1","yt_-AFmYLDxBgY_445_520_v1","yt_DKql9c7kq4A_1080_1125_v1"],"target_words":0}
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["en"],
+        "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "extract_entities": "disabled",
+        "voiceover_enabled": false,
+        "render": {
+          "enabled": true,
+          "assemble_final": false,
+          "render_concurrency": 4,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "matt-damon-20-clips-funny-en-render",
+          "watermark": {"enabled": true, "text": "laughtoday", "position": "center", "opacity": 0.28},
+          "subtitles": {"enabled": true, "mode": "burn", "source": "generated_script"}
+        }
+      }
+    }
+  ]
+}

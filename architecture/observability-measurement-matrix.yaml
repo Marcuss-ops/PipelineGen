@@ -1078,6 +1078,28 @@ measurements:
     canonical_operation: "renderer_startup/probe/decode/composite/subtitle_raster/watermark_raster/frame_conversion/encode/audio_mux/gpu_copy/gpu_readback"
     migration_adapter: "DONE — projectRendererPhases records each measured phase as ONE canonical operation (RecordOperation, owner-measured duration, never a second timer); non-instrumented phases stay absent (no fake zeros)"
     removal_condition: "MET — no parallel timing family exists for Chronon phases; the V2 report is the single owner and the run carries the typed projection"
+  - current_symbol: "Chronon sidecar exclusive-wall phases (*.timing.json, chronon3d.frame-timing.v1)"
+    current_owner: "internal/capabilities/cliprender/chronon_sidecar.go (parser) + chronon_metrics_adapter.go (ChrononMetricsAdapter); write path: internal/app/wiring/chronon_clip_renderer.go"
+    current_writer: "ChrononMetricsAdapter.Publish — the sidecar is parsed once (ParseChrononSidecar) and each measured exclusive-wall phase (startup / input_open / prepare / render_loop / encoder_drain / ffprobe / sha256) becomes ONE canonical OperationReport (chronon.startup … chronon.sha256) recorded through the OperationReportProjectionRecorder seam into performance_operations; job.gpu (backend/decoder/encoder/CUDA bytes) and cache facts ride in metadata_json"
+    current_storage: "transport/debug: *.timing.json sidecar + copied per-run *.chronon.timing.json under the metrics dir; canonical: performance_operations (migration 217) rows bound to the run"
+    current_metric: "none directly; canonical chronon.* operation durations on performance_operations (elapsed_ms + metadata_json)"
+    canonical_type: operation
+    canonical_stage: "clip.render"
+    canonical_component: "chronon"
+    canonical_operation: "chronon.startup / chronon.input_open / chronon.prepare / chronon.render_loop / chronon.encoder_drain / chronon.ffprobe / chronon.sha256"
+    migration_adapter: "DONE — the sidecar JSON is a transport/debug payload, never the metrics database: one parse → one canonical write; absent phase = absent row (no fake zeros); publish is best-effort (parse/record failure logs and never fails the render)"
+    removal_condition: "MET — no consumer queries the sidecar as the metrics source; every dashboard/benchmark/cold-warm-verifier/Preparation-Fabric read goes through performance_operations (see docs/architecture/chronon-metrics-canonical-store-contract.md)"
+  - current_symbol: "render_attempt_analytics per-attempt row (render_ms / encode_ms)"
+    current_owner: "internal/capabilities/scripts/render_attempt_analytics.go (RenderAttemptAnalytics + RenderAttemptRecorder port) + internal/platform/sqlite/rendermetrics/registry.go (Registry); write path: internal/capabilities/scripts/render_queue.go EnqueueChrononPlan + internal/app/wiring/script_generation_runtime.go wireRenderAttemptRecorder"
+    current_writer: "BuildRenderAttemptAnalyticsWithWait (render_ms/encode_ms + content census + queue observation metrics + certified output facts from the RenderingGen worker artifact) → RenderAttemptRecorder.RecordAttempt → rendermetrics.Registry upsert keyed by attempt_id"
+    current_storage: "canonical: render_attempt_analytics (migrations 215 + 227), one row per attempt, idempotent ON CONFLICT(attempt_id) upsert"
+    current_metric: "none directly; durable per-attempt render_ms / encode_ms columns"
+    canonical_type: run
+    canonical_stage: "clip.render"
+    canonical_component: "renderinggen"
+    canonical_operation: "render/encode"
+    migration_adapter: "DONE — the coarse per-attempt row is written in parallel with the granular chronon.* phases in performance_operations (dual write, no new table); both existing canonical tables receive rows for the same render"
+    removal_condition: "MET — render_attempt_analytics keeps recording render_ms/encode_ms alongside performance_operations and no chronon_metrics_v2-style table was created (see docs/architecture/chronon-metrics-canonical-store-contract.md)"
 
 coverage_notes:
   current_code_searches:
