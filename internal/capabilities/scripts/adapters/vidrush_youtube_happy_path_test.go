@@ -46,14 +46,18 @@ func TestYouTubeHappyPathPlansTranscriptWindowMaterializesAndBinds(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := NewVidRushYouTubeProvider(stock)
+	provider, err := NewVidRushYouTubeProvider(stock, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	req := scriptports.VidRushSearchRequest{
 		SegmentID: "segment-001", SceneID: "scene-001", Text: "Germany invaded Poland",
-		Query: "German invasion Poland September 1939", Sources: []scriptports.VidRushSourceHint{{
+		Query: "German invasion Poland September 1939",
+		// The single 10s transcript cue is the only relevant window;
+		// the request budget (not a provider default) picks the length.
+		TargetDurationMs: 10000,
+		Sources: []scriptports.VidRushSourceHint{{
 			URL: "https://www.youtube.com/watch?v=video-1", Required: true,
 		}},
 	}

@@ -86,7 +86,7 @@ func mustIsolationProvider(t *testing.T) *VidRushYouTubeProvider {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := NewVidRushYouTubeProvider(stock)
+	provider, err := NewVidRushYouTubeProvider(stock, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
