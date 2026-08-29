@@ -87,9 +87,9 @@ func TestPreparationStore_SnapshotPreparationClaim_KPI(t *testing.T) {
 		"nlp-missing": "", // not seeded → MISSING
 	}
 	seeded := map[string]int64{
-		"fp-tts-ready":  3500,
-		"fp-clip-ready": 5000,
-		"fp-render-run": 12000,
+		"fp-tts-ready":   3500,
+		"fp-clip-ready":  5000,
+		"fp-render-run":  12000,
 		"fp-nlp-missing": 0,
 	}
 	// register every superidentity as a job unit; all required except the last.

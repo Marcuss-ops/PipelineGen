@@ -195,9 +195,9 @@ func TestPreparationStore_V2MetadataPersistsThroughPlanAndReady(t *testing.T) {
 		Fingerprint: "fp-v2", LeaseOwner: "owner-a",
 		ArtifactID: "artifact-v2", CacheKey: "cache-v2",
 		ActualWorkMS: 3922,
-		ResultKind:    job.ResultArtifactCache,
-		ResultRef:     "cache-v2",
-		Result:        []byte(`{"done":true}`),
+		ResultKind:   job.ResultArtifactCache,
+		ResultRef:    "cache-v2",
+		Result:       []byte(`{"done":true}`),
 	}); err != nil {
 		t.Fatalf("MarkPreparationReady: %v", err)
 	}
