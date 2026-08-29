@@ -10,10 +10,10 @@ import (
 func TestSemanticResearchResultKeepsResearchContextSeparate(t *testing.T) {
 	result := SemanticResearchResult{
 		Context: ResearchContext{
-			Aliases: []string{"John Froelich"},
+			Aliases:      []string{"John Froelich"},
 			RelatedTerms: []string{"gasoline tractor"},
-			Dates: []string{"1892"},
-			Locations: []string{"Iowa"},
+			Dates:        []string{"1892"},
+			Locations:    []string{"Iowa"},
 		},
 		Reason: "historical segment",
 	}
@@ -36,8 +36,8 @@ func TestSemanticResearchResultKeepsResearchContextSeparate(t *testing.T) {
 func TestSemanticResearchRequestCarriesNLPEntitiesAsInputOnly(t *testing.T) {
 	request := SemanticResearchRequest{
 		SegmentID: "segment-1",
-		Text: "John Froelich built a tractor in Iowa",
-		Entities: []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}},
+		Text:      "John Froelich built a tractor in Iowa",
+		Entities:  []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}},
 	}
 	if request.Entities[0].Type != "PERSON" {
 		t.Fatalf("unexpected NLP entity: %+v", request.Entities)

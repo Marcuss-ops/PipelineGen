@@ -182,11 +182,11 @@ type ResearchContext struct {
 // lightweight historical or ambiguity resolution. Implementations should not
 // be called for ordinary generic visual segments.
 type SemanticResearchRequest struct {
-	SegmentID string `json:"segment_id"`
-	Text      string `json:"text"`
-	Topic     string `json:"topic,omitempty"`
+	SegmentID string                      `json:"segment_id"`
+	Text      string                      `json:"text"`
+	Topic     string                      `json:"topic,omitempty"`
 	Entities  []scriptpkg.ExtractedEntity `json:"entities,omitempty"`
-	Language  string `json:"language,omitempty"`
+	Language  string                      `json:"language,omitempty"`
 }
 
 // SemanticResearchResult is optional retrieval context and never an entity

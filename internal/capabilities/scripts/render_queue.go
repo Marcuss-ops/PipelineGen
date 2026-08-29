@@ -118,6 +118,30 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	for _, a := range compiled.Assets {
 		assets = append(assets, RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
 	}
+	// Chronon's VisualPresetRegistry preflights the preset-owned font before
+	// applying a layer's explicit font_asset override. Keep both content-
+	// addressed fonts in the queue payload: the explicit PipelineGen font
+	// remains authoritative for the layer, while Poppins satisfies the
+	// registry dependency during plan preparation.
+	for _, layer := range compiled.Plan.Layers {
+		if layer.Type != "text" {
+			continue
+		}
+		found := false
+		for _, a := range assets {
+			if a.URL == capoverlay.CanonicalPresetFontPath {
+				found = true
+				break
+			}
+		}
+		if !found {
+			assets = append(assets, RenderQueueAsset{
+				Hash: capoverlay.GoldenPresetFontHash,
+				URL:  capoverlay.CanonicalPresetFontPath,
+			})
+		}
+		break
+	}
 	// Keep the queue dispatch explicit. RenderingGen uses this discriminator to
 	// route the job through the overlay renderer (and to apply the overlay media
 	// contract/ffprobe checks); omitting it silently falls back to the legacy

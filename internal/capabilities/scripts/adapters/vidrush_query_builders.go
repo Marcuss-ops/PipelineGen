@@ -49,7 +49,9 @@ func (VidRushProviderQueryBuilders) InternetImages(profile scriptpkg.SegmentSema
 		parts = append(parts, e.Value)
 	}
 	parts = append(parts, profile.VisualConcepts...)
-	for _, term := range profile.VisualTerms { parts = append(parts, term.Value) }
+	for _, term := range profile.VisualTerms {
+		parts = append(parts, term.Value)
+	}
 	return normalizedProviderQueries(parts, 7)
 }
 

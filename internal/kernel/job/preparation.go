@@ -226,11 +226,11 @@ type PreparationClaimSnapshot struct {
 	// the claim (vs a shallow cache-hit count).
 	PreparedAtClaimRatio float64
 
-	EstimatedSavedMS       int64 // sum of expected_work_ms over READY required units
-	SpeculativeWorkMS      int64 // sum of expected_work_ms over RUNNING required units
-	QueueWaitMS            int64
-	QueuePositionAtPlan    int64
-	Metadata               json.RawMessage
+	EstimatedSavedMS    int64 // sum of expected_work_ms over READY required units
+	SpeculativeWorkMS   int64 // sum of expected_work_ms over RUNNING required units
+	QueueWaitMS         int64
+	QueuePositionAtPlan int64
+	Metadata            json.RawMessage
 }
 
 // PreparationClaimTargets encodes the plan's KPI target bands.
@@ -263,13 +263,13 @@ func PreparationClaimBandName(ratio float64) string {
 // PreparationClaimInput is the caller-provided identity + queue context a
 // claim snapshot carries alongside the readiness counts the store derives.
 type PreparationClaimInput struct {
-	JobID                string
-	AttemptID            string
-	JobRevision          int64
-	ClaimedAt            time.Time
-	QueueWaitMS          int64
-	QueuePositionAtPlan  int64
-	Metadata             json.RawMessage
+	JobID               string
+	AttemptID           string
+	JobRevision         int64
+	ClaimedAt           time.Time
+	QueueWaitMS         int64
+	QueuePositionAtPlan int64
+	Metadata            json.RawMessage
 }
 
 // WorkloadDimension is the canonical scaling axis the work estimator learns on.
@@ -369,10 +369,10 @@ type WorkObservation struct {
 // WorkEstimate is the output of the estimator: an expected wall time for a
 // kind (or a scaled estimate when the driver amount is known).
 type WorkEstimate struct {
-	Kind         UnitKind
+	Kind           UnitKind
 	ExpectedWorkMS int64
-	Source       WorkloadDimension // which axis produced the estimate
-	Observations int
+	Source         WorkloadDimension // which axis produced the estimate
+	Observations   int
 }
 
 type PreparationState string
@@ -462,8 +462,8 @@ type PreparationPlanInput struct {
 
 	// ResourceClass / CostClass classify what the unit consumes so the
 	// scheduler can arbitrate speculation and singleflight.
-	ResourceClass  ResourceClass
-	CostClass      CostClass
+	ResourceClass    ResourceClass
+	CostClass        CostClass
 	SpeculationLevel SpeculationLevel
 	// ExpectedWorkMS is the learned/static cost estimate used for claim-time
 	// saved-work accounting. Zero leaves the column default.

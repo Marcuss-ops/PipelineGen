@@ -51,6 +51,11 @@ const (
 	// RenderingGen/infra/e2e/gen-golden-assets.py). Changing it breaks the
 	// cross-repo golden invariant on purpose.
 	GoldenFontHash = "690243adfefe0ce154b547db6205794bd30ac4277275179517a90994f4980648"
+	// GoldenPresetFontHash is the font bundled by Chronon's VisualPresetRegistry.
+	// Text layers may still carry an explicit font_asset (GoldenFontHash); the
+	// preset font is an additional runtime dependency that must be staged too.
+	GoldenPresetFontHash    = "983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c"
+	CanonicalPresetFontPath = "assets/fonts/Poppins-Bold.ttf"
 )
 
 // Primitive is the canonical primitive every semantic entity terminates in.

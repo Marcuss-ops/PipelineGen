@@ -18,7 +18,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
-// sqliteArtifactFolderResolver reads media_assets.folder_id for a parent video.
+// sqliteArtifactFolderResolver reads the canonical folder_id for a parent
+// video, falling back to the legacy drive_folder_id projection while older
+// catalog rows are being migrated.
 type sqliteArtifactFolderResolver struct {
 	db *sql.DB
 }
@@ -38,7 +40,7 @@ func (r *sqliteArtifactFolderResolver) ResolveArtifactFolder(ctx context.Context
 	}
 	var folderID string
 	err := r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(folder_id, '') FROM media_assets WHERE id = ?`, parentVideoID).Scan(&folderID)
+		`SELECT COALESCE(NULLIF(folder_id, ''), drive_folder_id, '') FROM media_assets WHERE id = ?`, parentVideoID).Scan(&folderID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
