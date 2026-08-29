@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -63,7 +64,7 @@ func (p VidRushVisualWindowPlanner) Plan(input VisualWindowPlanningInput) ([]scr
 		if len(blocks) > 1 && input.DurationMs/int64(len(blocks)) >= p.beatPlanner.Policy.MinBeatMs {
 			layers := make([]scriptpkg.VisualLayer, 0, len(blocks))
 			for _, phrase := range input.PhraseTimings {
-				layers = append(layers, scriptpkg.VisualLayer{Slot: "primary_video", StartMs: phrase.StartMs, EndMs: phrase.EndMs, DurationMs: phrase.EndMs - phrase.StartMs, Score: 1})
+				layers = append(layers, scriptpkg.VisualLayer{Slot: mediadomain.SlotPrimaryVideo, StartMs: phrase.StartMs, EndMs: phrase.EndMs, DurationMs: phrase.EndMs - phrase.StartMs, Score: 1})
 			}
 			return layers, nil
 		}
@@ -75,7 +76,7 @@ func (p VidRushVisualWindowPlanner) Plan(input VisualWindowPlanningInput) ([]scr
 	layers := make([]scriptpkg.VisualLayer, 0, len(beatPlan.Beats))
 	for i, beat := range beatPlan.Beats {
 		layers = append(layers, scriptpkg.VisualLayer{
-			Slot:       "primary_video",
+			Slot:       mediadomain.SlotPrimaryVideo,
 			StartMs:    beat.StartMs,
 			EndMs:      beat.EndMs,
 			DurationMs: beat.EndMs - beat.StartMs,
