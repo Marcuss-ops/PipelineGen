@@ -10,6 +10,21 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"test","language":"en","tone":"playful","style":"short funny social narration","model":"gemma4:e2b","source":{"type":"text","topic":"topic"}}]}`), &env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "llm-identity-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "gemma4:e2b" || got.Tone != "playful" || got.Style != "short funny social narration" {
+		t.Fatalf("LLM identity = model %q tone %q style %q", got.Model, got.Tone, got.Style)
+	}
+}
+
 func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"persisted","language":"it","source":{"type":"text","topic":"topic"},"output":{"save_to_db":true}}]}`), &env); err != nil {

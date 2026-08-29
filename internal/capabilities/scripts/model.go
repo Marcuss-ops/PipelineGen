@@ -363,6 +363,13 @@ type DocumentsConfig struct {
 //
 // Zero I/O in the builder.
 type GenerateRequest struct {
+	// Model is the explicit per-item LLM model selected at the envelope
+	// boundary. Empty means the runtime may apply its configured default.
+	Model string `json:"model,omitempty"`
+	// Tone and Style are caller editorial identity fields. They must remain
+	// distinct from overlay styling and survive the durable request boundary.
+	Tone  string `json:"tone,omitempty"`
+	Style string `json:"style,omitempty"`
 	// Render is the explicit per-clip reconstruction request. It is copied
 	// once at ingress and consumed by the localized render fan-out.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`

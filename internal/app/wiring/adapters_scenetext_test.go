@@ -96,6 +96,26 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 	}
 }
 
+func TestSceneTextGeneratorResolveVidRushPlanPropagatesLLMIdentity(t *testing.T) {
+	generator := &SceneTextGenerator{}
+	req := scriptgen.GenerateRequest{
+		Model:          "gemma4:e2b",
+		Tone:           "playful",
+		Style:          "short funny social narration",
+		SourceLanguage: "en",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
+		Title:          "identity",
+	}
+
+	plan, err := generator.ResolveVidRushPlan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Model != req.Model || plan.Tone != req.Tone || plan.Style != req.Style {
+		t.Fatalf("LLM identity = model %q tone %q style %q", plan.Model, plan.Tone, plan.Style)
+	}
+}
+
 type scenetextClipResolver struct {
 	clip *asset.Asset
 }
