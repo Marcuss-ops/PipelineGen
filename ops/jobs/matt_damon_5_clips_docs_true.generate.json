@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "project": "matt-damon-5-clips-docs-true",
+  "correlation_id": "matt-damon-5-clips-docs-true",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "matt-damon-5-clips-docs-true-item",
+      "project": "matt-damon-5-clips-docs-true",
+      "title": "Matt Damon — 5 clip verification",
+      "language": "it",
+      "tone": "documentario leggero, rapido e preciso",
+      "style": "Scrivi una nuova introduzione breve per ogni clip, rispettando l'ordine. Usa solo la descrizione fornita e il contenuto della clip. Non inventare fatti e non copiare il testo sorgente.",
+      "source": {
+        "type": "clips",
+        "topic": "Cinque clip di Matt Damon",
+        "source_text": "Cinque clip di Matt Damon: attraversare mondi cinematografici diversi; una reazione comica alla paura dell'altezza a Dubai; una storia con elementi horror e sentimenti simulati; un gioco sul colore della biancheria; una rivelazione drammatica su un sistema hackerato.",
+        "clip_ids": [
+          "yt_0ElQTzSx3ec_72_91_v1",
+          "yt_ERzbkt5r5Gg_32_66_v1",
+          "yt_Gcgdk1gEo8U_285_302_v1",
+          "yt_S6ADB98CR7g_358_425_v1",
+          "yt_T6x-kDiQsWM_203_252_v1"
+        ],
+        "num_clips": 5,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 180,
+        "min_words": 100,
+        "segment_words": 36,
+        "skip_quality_gate": true,
+        "force_refresh": true,
+        "segments": [
+          {"id":"scene-0","kind":"clip","topic":"cinema e mondi diversi","source_text":"Matt Damon viene associato a molti film e a mondi cinematografici molto diversi.","clip_ids":["yt_0ElQTzSx3ec_72_91_v1"],"target_words":36},
+          {"id":"scene-1","kind":"clip","topic":"paura dell'altezza a Dubai","source_text":"A Dubai Matt Damon racconta una reazione inattesa all'altezza, nonostante gli stunt già affrontati.","clip_ids":["yt_ERzbkt5r5Gg_32_66_v1"],"target_words":36},
+          {"id":"scene-2","kind":"clip","topic":"storia con elementi horror","source_text":"La conversazione descrive una storia con elementi horror e il fatto di dover simulare sentimenti profondi.","clip_ids":["yt_Gcgdk1gEo8U_285_302_v1"],"target_words":36},
+          {"id":"scene-3","kind":"clip","topic":"colore della biancheria","source_text":"Un gioco comico prova a indovinare il colore della biancheria di un uomo guardandolo.","clip_ids":["yt_S6ADB98CR7g_358_425_v1"],"target_words":36},
+          {"id":"scene-4","kind":"clip","topic":"sistema hackerato","source_text":"Una scena tesa rivela che un sistema è stato hackerato e richiama protocolli di sicurezza.","clip_ids":["yt_T6x-kDiQsWM_203_252_v1"],"target_words":36}
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["it"],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "extract_entities": "disabled",
+        "voiceover_enabled": false,
+        "render": {
+          "enabled": true,
+          "assemble_final": false,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "matt-damon-5-clips-docs-true",
+          "watermark": {"enabled": true, "text": "test", "position": "top_right", "opacity": 1},
+          "subtitles": {"enabled": true, "mode": "burn"}
+        }
+      }
+    }
+  ]
+}
