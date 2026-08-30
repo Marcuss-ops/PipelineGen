@@ -170,6 +170,7 @@ func TestChrononPlanProjector_SubtitlesStyleAndTransition(t *testing.T) {
 		Mode:   cliprender.SubtitlesModeBurn,
 		Path:   "/tmp/subtitles.ass",
 		SHA256: "abc",
+		Cues:   []cliprender.Cue{{StartMs: 0, EndMs: 1000, Text: "hello"}},
 		Style: &scriptpkg.VideoVisualStyleSpec{
 			Color:      "#FFFFFF",
 			FontSizePX: 54,

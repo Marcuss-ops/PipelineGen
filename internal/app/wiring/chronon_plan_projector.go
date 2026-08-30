@@ -186,7 +186,10 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 				plan.Watermark, plan.Output.Width, plan.Output.Height, frames, fps))
 		}
 	}
-	if plan.Subtitles != nil && strings.TrimSpace(plan.Subtitles.Path) != "" {
+	// An artifact can exist even when subtitle compilation produced no cues.
+	// Do not project an empty subtitle node: it would make an otherwise simple
+	// video non-simple and incorrectly route it away from Direct-YUV.
+	if plan.Subtitles != nil && len(plan.Subtitles.Cues) > 0 && strings.TrimSpace(plan.Subtitles.Path) != "" {
 		rp.Layers = append(rp.Layers, projectSubtitles(
 			plan.Subtitles, plan.Output.Width, frames, fps))
 	}

@@ -388,7 +388,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	// hosts the slower FullGraph path.  Carry the explicit execution request
 	// through both the CLI and daemon protocols so a regression cannot silently
 	// turn this probe into a FullGraph benchmark.
-	directYUV := plan.Watermark == nil && plan.Subtitles == nil &&
+	directYUV := plan.Watermark == nil && (plan.Subtitles == nil || len(plan.Subtitles.Cues) == 0) &&
 		(plan.Background == nil || plan.Background.Mode == cliprender.BackgroundModeNone)
 	gpuHotPathMode := "auto"
 	if directYUV {
@@ -400,7 +400,15 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	)
 	chrononVideoPath := filepath.Join(runRoot, "chronon.mp4")
 	metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
-	metricsDirReady := os.MkdirAll(metricsDir, 0o755) == nil
+	if err := os.MkdirAll(metricsDir, 0o755); err != nil {
+		r.logPhase("setup_failed", plan.RunID,
+			zap.String("stage", "metrics_directory"),
+			zap.String("path", metricsDir),
+			zap.Error(err),
+		)
+		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: prepare metrics directory: %w", err)
+	}
+	metricsDirReady := true
 	chrononLogPath := filepath.Join(runRoot, "chronon.log")
 	if metricsDirReady {
 		chrononLogPath = filepath.Join(metricsDir, plan.RunID+".chronon.log")
