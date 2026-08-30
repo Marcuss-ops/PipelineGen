@@ -224,6 +224,19 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		}
 		scenes[0].Index = index
 		scenes[0].ID = fmt.Sprintf("scene-%d", index)
+		if len(scenes[0].Clips) == 0 && scenes[0].Clip == nil && len(segment.ClipIDs) > 0 {
+			for _, clipID := range segment.ClipIDs {
+				clip, err := g.resolveEvidenceClip(ctx, &segmentPlan, clipID, true)
+				if err != nil {
+					return sceneResult{index: index, err: err}
+				}
+				ensureClipPlanningDuration(clip, scenes[0].DurationMS)
+				scenes[0].Clips = append(scenes[0].Clips, clip)
+				if scenes[0].Clip == nil {
+					scenes[0].Clip = clip
+				}
+			}
+		}
 		return sceneResult{index: index, scene: scenes[0]}
 	}
 	workers := g.segmentConcurrency
