@@ -90,11 +90,15 @@ func (r *SourceResolver) ResolveSource(ctx context.Context, assetID string) (loc
 		return localization.SourceFacts{}, fmt.Errorf("localization: source asset %q has no valid rational frame rate", assetID)
 	}
 
+	durationMS := mat.DurationMS
+	if durationMS <= 0 && info != nil && info.Duration > 0 {
+		durationMS = info.Duration.Milliseconds()
+	}
 	facts := localization.SourceFacts{
 		AssetID:    ref.AssetID,
 		LocalPath:  mat.LocalPath,
 		SHA256:     mat.SHA256,
-		DurationMS: mat.DurationMS,
+		DurationMS: durationMS,
 		FrameRate:  audio.FrameRate{Numerator: int64(info.FPSNum), Denominator: int64(info.FPSDen)},
 	}
 	r.factsCache.Store(strings.TrimSpace(assetID), facts)
