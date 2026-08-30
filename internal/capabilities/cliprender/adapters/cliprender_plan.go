@@ -276,6 +276,7 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.SubtitleRasterCPU != nil {
 		metrics.SubtitleRasterCPU = *result.SubtitleRasterCPU
 	}
+	metrics.VideoZeroCopy = result.VideoZeroCopy
 	if result.GPUCopyBytes != nil {
 		metrics.GPUCopyBytes = cliprender.Metric(int64(*result.GPUCopyBytes))
 	}
@@ -328,6 +329,7 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		AudioEncodePasses: result.AudioEncodePasses,
 		SubtitleRasterCPU: result.SubtitleRasterCPU,
 		GPUCopyBytes:      result.GPUCopyBytes,
+		VideoZeroCopy:     result.VideoZeroCopy,
 		Metrics:           metrics,
 	}, nil
 }

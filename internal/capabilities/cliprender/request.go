@@ -164,6 +164,9 @@ type ExecutionSpec struct {
 	// RequireGPU fails the render unless the resolved backend is any registered
 	// GPU backend (CUDA or Chronon Vulkan). Default false allows software.
 	RequireGPU bool `json:"require_gpu,omitempty"`
+	// RequireZeroCopy fails unless the selected executor explicitly certifies
+	// a device-local video path. Unknown (nil) is not treated as success.
+	RequireZeroCopy bool `json:"require_zero_copy,omitempty"`
 }
 
 // OverlayRefSpec carries the artifact lineage of the overlay the final video

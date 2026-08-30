@@ -4,12 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
-
-const modelResidencyTTL = 30 * time.Minute
 
 // WarmModel makes model residency an explicit, singleflight operation. The
 // first caller pays the load; concurrent scene callers wait for that same
@@ -26,20 +23,14 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 		return nil
 	}
 
-	c.residencyMu.Lock()
-	resident := time.Now().Before(c.residentUntil[model])
-	c.residencyMu.Unlock()
-	if resident {
-		return nil
-	}
-
 	_, err, _ := c.warmModelGroup.Do(model, func() (any, error) {
-		c.residencyMu.Lock()
-		if time.Now().Before(c.residentUntil[model]) {
-			c.residencyMu.Unlock()
+		resident, checkErr := c.IsModelResident(ctx, model)
+		if checkErr != nil {
+			return nil, fmt.Errorf("verify live residency for %q: %w", model, checkErr)
+		}
+		if resident {
 			return nil, nil
 		}
-		c.residencyMu.Unlock()
 
 		// A minimal chat request forces Ollama to load the model while keeping
 		// it resident. The real scene fan-out starts only after this returns.
@@ -52,9 +43,6 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 		if err != nil {
 			return nil, err
 		}
-		c.residencyMu.Lock()
-		c.residentUntil[model] = time.Now().Add(modelResidencyTTL)
-		c.residencyMu.Unlock()
 		return nil, nil
 	})
 	if err != nil {

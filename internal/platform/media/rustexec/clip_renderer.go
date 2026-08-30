@@ -35,6 +35,7 @@ type ClipRenderResult struct {
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
 	GPUCopyBytes      *uint64
+	VideoZeroCopy     *bool
 	// Zero-copy counters are optional because not every executor measures
 	// them. Chronon populates them from its canonical timing sidecar; the Rust
 	// FFmpeg boundary leaves them nil until it owns equivalent instrumentation.
@@ -165,6 +166,7 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		AudioEncodePasses: m.AudioEncodePasses,
 		SubtitleRasterCPU: m.SubtitleRasterCPU,
 		GPUCopyBytes:      m.GPUCopyBytes,
+		VideoZeroCopy:     m.VideoZeroCopy,
 		OperationMetrics:  result.Metrics,
 		StartupMS:         m.StartupMS,
 		PublishMS:         m.PublishMS,

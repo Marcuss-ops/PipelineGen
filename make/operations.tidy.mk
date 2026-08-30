@@ -62,6 +62,9 @@ benchmark-e2e: preflight-e2e
 #   make benchmark-generate BENCH_TOPIC="Dune" BENCH_CLIPS=3
 #   make benchmark-generate BENCH_CLIP_ID=asset_abc,asset_def
 #   make benchmark-generate BENCH_TOPIC="Interstellar" BENCH_WATERMARK=wm_xyz
+benchmark-ollama-models:
+	@bash scripts/bench/ollama-model-benchmark.sh
+
 benchmark-generate: preflight-e2e
 	@_CLIP_ARGS=""; \
 	if [ -n "$(BENCH_CLIP_ID)" ]; then \

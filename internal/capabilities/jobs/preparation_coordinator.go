@@ -51,6 +51,17 @@ type PreparationCoordinator struct {
 	execute   func(context.Context, SpeculationCandidate) error
 	metrics   *PreparationMetrics
 	estimator *PreparationWorkEstimator
+	warmModel func(context.Context, PreparationUnit) error
+}
+
+// WithModelWarmer attaches the optional queue-time model residency step. It
+// runs only for admitted LLM units, before the candidate lease is acquired,
+// so model load is outside the active job's critical path.
+func (c *PreparationCoordinator) WithModelWarmer(warm func(context.Context, PreparationUnit) error) *PreparationCoordinator {
+	if c != nil {
+		c.warmModel = warm
+	}
+	return c
 }
 
 func NewPreparationCoordinator(reader QueuedJobReader, notifier interface{ Subscribe() <-chan struct{} }, registry *JobPreparationRegistry, scheduler *SpeculationScheduler, lookahead int, execute func(context.Context, SpeculationCandidate) error) (*PreparationCoordinator, error) {
@@ -131,6 +142,11 @@ func (c *PreparationCoordinator) inspect(ctx context.Context) error {
 		}
 	}
 	return c.scheduler.Run(ctx, candidates, func(ctx context.Context, candidate SpeculationCandidate) error {
+		if c.warmModel != nil && candidate.Unit.ResourceClass == string(job.ResourceLLM) {
+			if err := c.warmModel(ctx, candidate.Unit); err != nil {
+				return err
+			}
+		}
 		if c.metrics != nil {
 			_ = c.metrics.RecordAdoption(ctx, PreparationAdoptionEvent{JobID: candidate.Job.ID, UnitID: candidate.Unit.ID, Fingerprint: candidate.Unit.Fingerprint, Kind: candidate.Unit.Kind, PreparedBeforeClaim: false, Outcome: "speculative_started", EstimatedSavedMS: candidate.EstimatedTimeSavedMS})
 		}

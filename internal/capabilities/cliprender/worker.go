@@ -162,6 +162,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.Bool("background_mode", req.Background.Mode != ""),
 		zap.Bool("overlay_requested", req.Overlay != nil),
 		zap.Bool("require_gpu", req.Execution.RequireGPU),
+		zap.Bool("require_zero_copy", req.Execution.RequireZeroCopy),
 	)
 	progress(10, "request validated; running parallel preparation")
 
@@ -332,6 +333,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// NVDEC/NVENC chain and for plans it can render device-local).
 	if req.Execution.RequireGPU && outcome.Backend != BackendChrononVulkan && outcome.Backend != BackendCudaNative {
 		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (a GPU backend is required)", outcome.Backend)
+	}
+	if req.Execution.RequireZeroCopy && (outcome.VideoZeroCopy == nil || !*outcome.VideoZeroCopy) {
+		return nil, fmt.Errorf("clip.render: execution.require_zero_copy=true but renderer did not certify video_zero_copy=true (backend=%q)", outcome.Backend)
 	}
 	// Fold the worker-measured phases into the adapter's V2 report (real
 	// instrumentation only — a disabled phase stays NOT_INSTRUMENTED). The

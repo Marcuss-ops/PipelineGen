@@ -107,8 +107,6 @@ type Client struct {
 	// EntityExtractionFallbackHeuristic for backward-compat).
 	entityExtractionFallbackMode EntityExtractionFallbackMode
 
-	residencyMu    sync.Mutex
-	residentUntil  map[string]time.Time
 	warmModelGroup singleflight.Group
 }
 

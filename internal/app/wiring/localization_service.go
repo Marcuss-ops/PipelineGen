@@ -294,13 +294,14 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
 	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
-	// Rust render boundary: the same render_clip executor + resolved profile
-	// that every other render flows through.
-	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
-	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	executor := localizationadapters.NewRenderPlanExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, nil, backendResolver, backendProbe), root.MediaExec.Profile, log)
+	// Rust/Chronon render boundary: reuse the composition-root runtime shared
+	// with /api/clips/render. This is deliberately not rebuilt here: the
+	// resolver, capability probe and native certifier are single owners.
+	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)
+	if runtimeErr != nil {
+		return nil, fmt.Errorf("localization service: build shared render runtime: %w", runtimeErr)
+	}
+	executor := localizationadapters.NewRenderPlanExecutor(renderRuntime.Executor, root.MediaExec.Profile, log)
 
 	uploader := localizationadapters.NewDriveUploader(root.Drive.Publisher)
 	docPublisher := localizationadapters.NewDocPublisher(root.Drive.DocClient)

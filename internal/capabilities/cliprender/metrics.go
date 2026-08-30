@@ -110,6 +110,10 @@ type RenderMetricsV2 struct {
 	NV12ToRGBAFrames        Metric `json:"nv12_to_rgba_frames"`
 	RGBAToNV12Frames        Metric `json:"rgba_to_nv12_frames"`
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
+	// VideoZeroCopy is nil when the executor did not certify the strict
+	// device-local path. It is a pointer intentionally: false is a measured
+	// software/readback path, nil is not instrumented.
+	VideoZeroCopy *bool `json:"video_zero_copy,omitempty"`
 
 	TotalMS Metric `json:"total_ms"`
 	// UnaccountedMS is retained for wire compatibility. UnattributedMS is the

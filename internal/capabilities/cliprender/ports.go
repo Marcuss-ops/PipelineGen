@@ -71,6 +71,7 @@ type RenderOutcome struct {
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
 	GPUCopyBytes      *uint64
+	VideoZeroCopy     *bool
 	DecodeMS          *int64
 	FilterGraphMS     *int64
 	SubtitleRasterMS  *int64

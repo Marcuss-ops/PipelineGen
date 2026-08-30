@@ -129,6 +129,7 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"audio_encode_passes": outcome.AudioEncodePasses,
 			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
 			"gpu_copy_bytes":      outcome.GPUCopyBytes,
+			"video_zero_copy":     outcome.VideoZeroCopy,
 		}
 
 		if outcome.Metrics != nil {

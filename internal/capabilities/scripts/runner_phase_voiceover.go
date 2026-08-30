@@ -361,6 +361,13 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		}
 		result.AudioMetrics.TTSMS = tts.TotalMs
 		result.AudioMetrics.TTSCalls = int(tts.Calls)
+		if run := kernobs.FromContext(ctx); run != nil {
+			kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+				Stage: kernobs.StageName(voiceoverStage), Component: kernobs.ComponentTTS,
+				Operation: kernobs.OperationName("tts_publish_drain"),
+				Items:     int64(result.AudioMetrics.VoiceoverGenerated),
+			}, 0)
+		}
 
 		// P0.4: drain the async voiceover publish pool. All TTS synthesis
 		// goroutines have returned, but Drive uploads + timing publishes +

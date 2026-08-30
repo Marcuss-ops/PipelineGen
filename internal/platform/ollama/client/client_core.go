@@ -26,11 +26,10 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 	}
 
 	return &Client{
-		baseURL:       baseURL,
-		model:         model,
-		httpClient:    &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
-		breakers:      make(map[string]*CircuitBreaker),
-		residentUntil: make(map[string]time.Time),
+		baseURL:    baseURL,
+		model:      model,
+		httpClient: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
+		breakers:   make(map[string]*CircuitBreaker),
 	}
 }
 

@@ -367,6 +367,7 @@ type mediaMetadata struct {
 	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
 	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
 	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
+	VideoZeroCopy     *bool   `json:"video_zero_copy,omitempty"`
 	// Fine-grained render phases are optional until the owning executor
 	// measures them; nil preserves NOT_INSTRUMENTED semantics.
 	DecodeMS          *int64 `json:"decode_ms,omitempty"`

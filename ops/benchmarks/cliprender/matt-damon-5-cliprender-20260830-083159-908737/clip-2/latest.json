@@ -1,0 +1,273 @@
+{
+  "correlation_id": "matt-damon-5-cliprender-20260830-083159-908737-clip-2",
+  "created_at": "2026-08-30T08:31:59Z",
+  "current_stage": "progress",
+  "current_step": "RUNNING",
+  "error": "",
+  "events": [
+    {
+      "id": "evt_1788078719265669890_24c257",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "job_running",
+      "message": "job.Job started",
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719302779914_c45014",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_907612_4",
+      "data": {
+        "lease_id": "lease_1788078719262375874_bcd1a5bd",
+        "revision": 2,
+        "worker_id": "YOutube_907612_4"
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719312657864_bb37c4",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "progress": 0
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719320710484_c4774c",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "request validated; running parallel preparation",
+      "data": {
+        "progress": 10
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719524548235_57889e",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "clip.render.subtitles.compiled",
+      "message": "ASS artifact compiled",
+      "data": {
+        "cue_count": 7,
+        "mode": "sidecar",
+        "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788078719254979480_562b1cff/subtitles.ass",
+        "sha256": "5e62aa277ec9fc5a51dfdf1854c972d1688de452af275b7566a41fa4019d1bf1"
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719525372540_3fe5f1",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "clip.render.plan.sealed",
+      "message": "ClipRenderPlanV1 sealed — fully resolved before Rust",
+      "data": {
+        "background": "none",
+        "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788078719254979480_562b1cff/rendered-clip.mp4",
+        "plan_sha256": "37b50e6c9d423d7cf136e6827180819ae7a53757b4744225d16c07c6cf678c1d",
+        "plan_version": "clip-render-plan.v1",
+        "source": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/assets/eb847f737acb7238e646a6213efbba9e5ea97b4301de03dce9e5698ca60861a2/source.mp4",
+        "subtitles": true,
+        "watermark": true
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719526379492_49e73d",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "plan sealed; rendering with Rust",
+      "data": {
+        "progress": 90
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    }
+  ],
+  "id": "job_1788078719254979480_562b1cff",
+  "job": {
+    "id": "job_1788078719254979480_562b1cff",
+    "type": "clip.render",
+    "status": "RUNNING",
+    "priority": 0,
+    "payload": {
+      "source_asset_id": "yt_ERzbkt5r5Gg_32_66_v1",
+      "background": {
+        "mode": "none"
+      },
+      "watermark": {
+        "enabled": true,
+        "text": "MATT DAMON",
+        "position": "top_right",
+        "opacity": 0.85,
+        "margin_px": 24,
+        "style": {
+          "font": "DejaVu Sans",
+          "size": 42,
+          "color": "#FFFFFF",
+          "shadow": {
+            "color": "#000000",
+            "opacity": 0.75,
+            "blur_px": 8,
+            "offset_x": 2,
+            "offset_y": 2
+          },
+          "transition_in": {
+            "preset": "fade_in",
+            "duration_ms": 250
+          }
+        }
+      },
+      "transcript": {
+        "mode": "reuse_or_generate",
+        "language": "en",
+        "persist": true
+      },
+      "subtitles": {
+        "enabled": true,
+        "mode": "sidecar",
+        "style_id": "matt-damon-benchmark-v1",
+        "style": {
+          "font": "DejaVu Sans",
+          "position": "bottom_center",
+          "size": 54,
+          "color": "#FFFFFF",
+          "font_size_px": 54,
+          "shadow": {
+            "color": "#000000",
+            "opacity": 0.8,
+            "blur_px": 10,
+            "offset_y": 5
+          },
+          "transition_in": {
+            "preset": "fade_in",
+            "duration_ms": 200
+          }
+        }
+      },
+      "output": {
+        "contract": "VELOX_ASSEMBLY_READY_V1",
+        "width": 1920,
+        "height": 1080,
+        "fps_num": 24,
+        "fps_den": 1
+      },
+      "audio": {
+        "mode": "copy_if_compatible"
+      },
+      "destination": {
+        "drive_folder_id": "19UYPb2dfK_Y_-rDBXrsY_1VOge4iiWmk"
+      },
+      "execution": {}
+    },
+    "result": {},
+    "progress": 90,
+    "retry_count": 0,
+    "max_retries": 2,
+    "worker_id": "YOutube_907612_4",
+    "lease_id": "lease_1788078719262375874_bcd1a5bd",
+    "lease_expiry": "2026-08-30T08:40:19Z",
+    "revision": 2,
+    "correlation_id": "matt-damon-5-cliprender-20260830-083159-908737-clip-2",
+    "created_at": "2026-08-30T08:31:59Z",
+    "updated_at": "2026-08-30T08:35:19Z",
+    "started_at": "2026-08-30T08:31:59.272144307Z"
+  },
+  "progress": 90,
+  "result": {},
+  "retryable": false,
+  "started_at": "2026-08-30T08:31:59.272144307Z",
+  "status": "RUNNING",
+  "timeline": [
+    {
+      "id": "evt_1788078719265669890_24c257",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "job_running",
+      "message": "job.Job started",
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719302779914_c45014",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_907612_4",
+      "data": {
+        "lease_id": "lease_1788078719262375874_bcd1a5bd",
+        "revision": 2,
+        "worker_id": "YOutube_907612_4"
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719312657864_bb37c4",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "progress": 0
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719320710484_c4774c",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "request validated; running parallel preparation",
+      "data": {
+        "progress": 10
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719524548235_57889e",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "clip.render.subtitles.compiled",
+      "message": "ASS artifact compiled",
+      "data": {
+        "cue_count": 7,
+        "mode": "sidecar",
+        "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788078719254979480_562b1cff/subtitles.ass",
+        "sha256": "5e62aa277ec9fc5a51dfdf1854c972d1688de452af275b7566a41fa4019d1bf1"
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719525372540_3fe5f1",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "clip.render.plan.sealed",
+      "message": "ClipRenderPlanV1 sealed — fully resolved before Rust",
+      "data": {
+        "background": "none",
+        "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788078719254979480_562b1cff/rendered-clip.mp4",
+        "plan_sha256": "37b50e6c9d423d7cf136e6827180819ae7a53757b4744225d16c07c6cf678c1d",
+        "plan_version": "clip-render-plan.v1",
+        "source": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/assets/eb847f737acb7238e646a6213efbba9e5ea97b4301de03dce9e5698ca60861a2/source.mp4",
+        "subtitles": true,
+        "watermark": true
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    },
+    {
+      "id": "evt_1788078719526379492_49e73d",
+      "job_id": "job_1788078719254979480_562b1cff",
+      "type": "progress",
+      "message": "plan sealed; rendering with Rust",
+      "data": {
+        "progress": 90
+      },
+      "created_at": "2026-08-30T08:31:59Z"
+    }
+  ],
+  "timing": {
+    "wall_ms": 0,
+    "execution_wall_ms": 0,
+    "attributed_ms": 0,
+    "unattributed_ms": 0,
+    "unattributed_percent": 0,
+    "overlapped_ms": 0
+  },
+  "type": "clip.render",
+  "updated_at": "2026-08-30T08:35:19Z",
+  "warnings": [],
+  "batch_index": 2
+}

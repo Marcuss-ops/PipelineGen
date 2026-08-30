@@ -423,49 +423,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
 		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
 	}
-	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
-	// Render backend selection: probed host capabilities drive the resolver;
-	// there is no hardcoded CUDA path (the CUDA native backend runs only when
-	// the registry says the host satisfies its full chain).
-	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
-	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	chrononBin := os.Getenv("CHRONON_RENDER_BIN")
-	if chrononBin == "" {
-		candidates := []string{
-			filepath.Clean(filepath.Join("..", "Chronon3d", ".tmp", "chronon-builds", "native-verify", "apps", "chronon3d_cli", "chronon3d_cli")),
-			"/opt/chronon3d/bin/chronon3d_cli",
-		}
-		for _, candidate := range candidates {
-			if st, statErr := os.Stat(candidate); statErr == nil && !st.IsDir() {
-				chrononBin = candidate
-				break
-			}
-		}
+	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)
+	if runtimeErr != nil {
+		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}
-	chrononRenderer := NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
-	if root.DB != nil && root.DB.DB != nil {
-		chrononRenderer.WithChrononMetrics(wireChrononMetricsAdapter(root.DB.DB, log))
-	}
-	// Backend selection lives ONLY in the resolver. The probe stack is:
-	//   ffmpeg capabilities (base) → chrononAwareCapabilityProbe (binary
-	//   presence) → chrononCertifiedCapabilityProbe (ChrononNativeCertified).
-	// The registry gates chronon_vulkan on the CERTIFIED flag, never on
-	// binary presence: a configured binary whose NVDEC → CUDA/Vulkan → NVENC
-	// handoff faults (e.g. CUDA_ERROR_ILLEGAL_ADDRESS) is never selected, so
-	// a broken path adds zero latency to every render. The certification runs
-	// once per environment fingerprint (chronon SHA + driver + GPU) and
-	// re-certifies automatically on any change; the boot-time warm-up below
-	// absorbs the certification cost so the first render is not affected.
-	certifier := NewChrononNativeCertifier(chrononBin, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy().Codec, log)
-	if certifier != nil {
-		go certifier.Certify(context.Background())
-	}
-	probe := &chrononCertifiedCapabilityProbe{
-		base: &chrononAwareCapabilityProbe{base: backendProbe, chrononBin: chrononBin},
-		cert: certifier,
-	}
-	worker.WithRenderExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, chrononRenderer, backendResolver, probe))
+	worker.WithRenderExecutor(renderRuntime.Executor)
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
@@ -501,7 +463,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Post-render OutputProber: probes actual bytes on disk via the canonical
 	// Rust probe boundary. Mandatory for overlay compositing; validates
 	// rendered output against the assembly-ready contract before publication.
-	outputProber := clipadapters.NewRustOutputProber(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
+	outputProber := clipadapters.NewRustOutputProber(rustexec.NewConfiguredVideoProcessorWithExecutor(renderRuntime.RustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
 	worker.WithOutputProber(outputProber)
 	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary + OutputProber)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),
