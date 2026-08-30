@@ -375,6 +375,24 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 		}
 	}
 
+	if len(scenes) > 0 && len(plan.Segments) == len(scenes) {
+		for i := range scenes {
+			if len(scenes[i].Clips) == 0 && scenes[i].Clip == nil && len(plan.Segments[i].ClipIDs) > 0 {
+				for _, clipID := range plan.Segments[i].ClipIDs {
+					clip, err := g.resolveEvidenceClip(ctx, plan, clipID, true)
+					if err != nil {
+						return nil, scriptpkg.SourceTrace{}, err
+					}
+					ensureClipPlanningDuration(clip, scenes[i].DurationMS)
+					scenes[i].Clips = append(scenes[i].Clips, clip)
+					if scenes[i].Clip == nil {
+						scenes[i].Clip = clip
+					}
+				}
+			}
+		}
+	}
+
 	if g.Log != nil {
 		g.Log.Info("scenetext: scene text generated",
 			zap.Int("scene_count", len(scenes)),

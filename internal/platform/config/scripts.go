@@ -55,13 +55,12 @@ type ScriptsConfig struct {
 	MaxBatchWorkers int `yaml:"max_batch_workers" env:"VELOX_SCRIPTS_MAX_BATCH_WORKERS" default:"4"`
 
 	// LocalizedRenderConcurrency bounds concurrent clip renders within one
-	// script. Start at 2: it overlaps independent FFmpeg/GPU work while
-	// avoiding the VRAM pressure of unbounded fan-out.
-	LocalizedRenderConcurrency int `yaml:"localized_render_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY" default:"2"`
+	// script. Set to 4 for high-throughput Vulkan/Direct-YUV rendering.
+	LocalizedRenderConcurrency int `yaml:"localized_render_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY" default:"4"`
 
 	// LocalizedRenderGlobalConcurrency bounds the number of render jobs allowed
-	// across the script fan-out. Keep this at 1 on hosts that show GPU OOM.
-	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"2"`
+	// across the script fan-out.
+	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"4"`
 
 	// LocalizedRenderUploadConcurrency bounds Drive uploads independently from
 	// GPU rendering. Uploads must not retain a render slot while waiting on I/O.
