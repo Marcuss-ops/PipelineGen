@@ -71,7 +71,12 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	}
 	certifier := NewChrononNativeCertifier(chrononBin, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy().Codec, log)
 	if certifier != nil {
-		go certifier.Certify(context.Background())
+		// Certification gates backend selection.  Starting it asynchronously
+		// allowed the first production renders to observe an uncertified
+		// Chronon and fall back to Rust/FFmpeg before the real probe completed.
+		// Pay the probe once at composition-root startup so every render sees a
+		// stable, authoritative capability result.
+		certifier.Certify(context.Background())
 	}
 	probe := &chrononCertifiedCapabilityProbe{
 		base: &chrononAwareCapabilityProbe{base: backendProbe, chrononBin: chrononBin},
