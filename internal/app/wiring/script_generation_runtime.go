@@ -145,9 +145,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		scriptGenerationDocumentRenderer{},
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
-	runner.SetFinalVideoAssembler(videoProcessor)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
-	runner.SetFinalVideoPublisher(newFinalVideoPublisher(root, committer, log))
+	// Full-video assembly/rendering is intentionally NOT wired on PipelineGen.
+	// This process may materialize localized clips, sub-videos and overlay
+	// artifacts, but the complete final video belongs to an external render
+	// worker and must never be assembled or uploaded by the Master runtime.
 	// Wire the BGM/SFX asset resolver: asset_id → verified local path via
 	// the canonical asset registry (+ Drive materialization into scratch).
 	// The audio layer resolver consumes it when the run carries an audio
