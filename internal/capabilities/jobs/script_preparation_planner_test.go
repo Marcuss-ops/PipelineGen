@@ -73,6 +73,27 @@ func TestScriptPreparationPlanner_UsesDependenciesAndStableFingerprints(t *testi
 	}
 }
 
+func TestScriptPreparationPlanner_CarriesExplicitModelOnLLMUnit(t *testing.T) {
+	planner := NewScriptPreparationPlanner()
+	plan, err := planner.Plan(context.Background(), &job.Job{
+		ID:      "job-model",
+		Type:    job.TypeScriptGenerate,
+		Payload: []byte(`{"model":"gemma4:e2b"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range plan.Units {
+		if unit.Kind == "LLM" {
+			if got := unit.Inputs["model"]; got != "gemma4:e2b" {
+				t.Fatalf("LLM unit model = %v, want gemma4:e2b", got)
+			}
+			return
+		}
+	}
+	t.Fatal("planner produced no LLM unit")
+}
+
 func TestComposeJobPreparationRegistry_UsesScriptPlanner(t *testing.T) {
 	registry, err := ComposeJobPreparationRegistry()
 	if err != nil {

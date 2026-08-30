@@ -44,6 +44,11 @@ mkdir -p "$RUN_DIR/tmp"
 
 WATERMARK_TEXT="${CLIPRENDER_WATERMARK_TEXT:-MATT DAMON}"
 WATERMARK_ASSET_ID="${CLIPRENDER_WATERMARK_ASSET_ID:-}"
+# The benchmark inputs already have editable ASS sidecars. Keep subtitles
+# editable without burning them a second time into source videos that may
+# already contain captions. Set CLIPRENDER_SUBTITLES_MODE=burn explicitly
+# when testing a clean, unsubtitled source.
+SUBTITLES_MODE="${CLIPRENDER_SUBTITLES_MODE:-sidecar}"
 # Never silently fall back to clip.render's certification root: benchmark
 # artifacts must be isolated in the caller-selected Drive folder.
 DESTINATION_ID="${CLIPRENDER_DESTINATION_FOLDER_ID:-19UYPb2dfK_Y_-rDBXrsY_1VOge4iiWmk}"
@@ -52,7 +57,8 @@ DESTINATION_ID="${CLIPRENDER_DESTINATION_FOLDER_ID:-19UYPb2dfK_Y_-rDBXrsY_1VOge4
 build_payload() {
   local source_id="$1" payload_path="$2"
   jq -n --arg source "$source_id" --arg wm_text "$WATERMARK_TEXT" \
-    --arg wm_asset "$WATERMARK_ASSET_ID" --arg destination "$DESTINATION_ID" '
+    --arg wm_asset "$WATERMARK_ASSET_ID" --arg destination "$DESTINATION_ID" \
+    --arg subtitles_mode "$SUBTITLES_MODE" '
     {
       source_asset_id: $source,
       watermark: ({
@@ -64,7 +70,7 @@ build_payload() {
         else . + {text:$wm_text} end),
       transcript:{mode:"reuse_or_generate",language:"en",persist:true},
       subtitles:{
-        enabled:true, mode:"burn", style_id:"matt-damon-benchmark-v1",
+        enabled:true, mode:$subtitles_mode, style_id:"matt-damon-benchmark-v1",
         style:{font:"DejaVu Sans",size:54,color:"#FFFFFF",position:"bottom_center",
           shadow:{color:"#000000",opacity:0.80,blur_px:10,offset_x:0,offset_y:5},
           transition_in:{preset:"fade_in",duration_ms:200}}

@@ -91,6 +91,9 @@ type ComposeRoot struct {
 	// MediaExec is the single resolved media contract for this composition.
 	// Platform config is mapped before downstream bundles are built.
 	MediaExec mediaexec.ExecutionConfig
+	// ClipRenderRuntime is the shared Rust/Chronon backend graph. It is
+	// initialized by BuildClipRenderRuntime and reused by every render flow.
+	ClipRenderRuntime *ClipRenderRuntime
 
 	DB              *storage.SQLiteDB
 	ObservabilityDB *storage.SQLiteDB

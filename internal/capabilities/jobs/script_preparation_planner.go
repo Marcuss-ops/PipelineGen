@@ -32,6 +32,7 @@ func (p *ScriptPreparationPlanner) Plan(_ context.Context, j *job.Job) (Preparat
 		p = NewScriptPreparationPlanner()
 	}
 	payload := append([]byte(nil), j.Payload...)
+	model := scriptPayloadModel(payload)
 	phaseDefs := []struct {
 		id       string
 		kind     string
@@ -59,6 +60,13 @@ func (p *ScriptPreparationPlanner) Plan(_ context.Context, j *job.Job) (Preparat
 	units := make([]PreparationUnit, 0, len(phaseDefs))
 	for _, def := range phaseDefs {
 		inputs := map[string]string{"phase": def.id, "processor_version": p.ProcessorVersion}
+		if def.kind == "LLM" && model != "" {
+			inputs["model"] = model
+		}
+		inputManifest := make(job.InputManifest, len(inputs))
+		for key, value := range inputs {
+			inputManifest[key] = value
+		}
 		fingerprint, err := PreparationUnitFingerprint(def.kind, j.Type, payload, inputs, def.depends, p.ProcessorVersion)
 		if err != nil {
 			return PreparationPlan{}, fmt.Errorf("script preparation unit %q: %w", def.id, err)
@@ -67,11 +75,24 @@ func (p *ScriptPreparationPlanner) Plan(_ context.Context, j *job.Job) (Preparat
 			ID: def.id, Kind: def.kind, Fingerprint: fingerprint,
 			DependsOn: append([]string(nil), def.depends...), Priority: def.priority,
 			CostClass: def.cost, ResourceClass: def.resource, Reusable: true,
-			Inputs:           job.InputManifest{"phase": def.id, "processor_version": p.ProcessorVersion},
+			Inputs:           inputManifest,
 			ProcessorVersion: p.ProcessorVersion,
 		})
 	}
 	return PreparationPlan{JobID: j.ID, Units: units}, nil
+}
+
+// scriptPayloadModel extracts the explicit model override without making the
+// preparation planner depend on the script API DTO. Empty/invalid payloads
+// intentionally fall back to the runtime's configured default model.
+func scriptPayloadModel(payload []byte) string {
+	var envelope struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return ""
+	}
+	return envelope.Model
 }
 
 // MarshalJSON makes the planner version visible in diagnostics without

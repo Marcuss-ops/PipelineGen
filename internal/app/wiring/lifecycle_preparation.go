@@ -3,6 +3,8 @@ package wiring
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync/atomic"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
@@ -164,6 +166,18 @@ func buildPreparationCoordinatorStep(deps jobRunnerDeps) *StartupStep {
 		deps.log.Warn("preparation work estimator bootstrap failed; using static estimates", zap.Error(err))
 	}
 	coordinator = coordinator.WithWorkEstimator(estimator)
+	if deps.root.AI != nil && deps.root.AI.OllamaClient != nil {
+		coordinator = coordinator.WithModelWarmer(func(ctx context.Context, unit appjobs.PreparationUnit) error {
+			model := deps.cfg.External.OllamaModel
+			if value, ok := unit.Inputs["model"].(string); ok && strings.TrimSpace(value) != "" {
+				model = value
+			}
+			if err := deps.root.AI.OllamaClient.WarmModel(ctx, model); err != nil {
+				return fmt.Errorf("queue-time warm model %q: %w", model, err)
+			}
+			return nil
+		})
+	}
 	if err != nil {
 		deps.log.Warn("preparation coordinator disabled", zap.Error(err))
 		return nil

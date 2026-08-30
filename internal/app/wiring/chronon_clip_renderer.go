@@ -11,12 +11,14 @@ package wiring
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,7 +49,7 @@ func (p chrononAwareCapabilityProbe) ProbeCapabilities(ctx context.Context) (cli
 	if err != nil {
 		return caps, err
 	}
-	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != ""
+	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != "" || strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET")) != ""
 	return caps, nil
 }
 
@@ -100,6 +102,7 @@ func watermarkDimensions(path string) (int, int) {
 
 type chrononClipRenderExecutor struct {
 	binary    string
+	socket    string
 	ffmpeg    string
 	log       *zap.Logger
 	projector ChrononPlanProjector
@@ -146,14 +149,15 @@ var chrononRuntimeControlInit sync.Once
 // NewChrononClipRenderExecutor constructs the adapter. log is mandatory: every
 // render boundary decision and phase timing is emitted through it.
 func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chrononClipRenderExecutor {
-	if strings.TrimSpace(binary) == "" {
+	socket := strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET"))
+	if strings.TrimSpace(binary) == "" && socket == "" {
 		return nil
 	}
 	if log == nil {
 		log = zap.NewNop()
 	}
 	// The projector is stateless; the zero value is the canonical projector.
-	return &chrononClipRenderExecutor{binary: binary, ffmpeg: ffmpeg, log: log}
+	return &chrononClipRenderExecutor{binary: binary, socket: socket, ffmpeg: ffmpeg, log: log}
 }
 
 // WithChrononMetrics attaches the Chronon Metrics Adapter. It is optional and
@@ -178,7 +182,7 @@ func (r *chrononClipRenderExecutor) logPhase(phase, runID string, fields ...zap.
 }
 
 func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1, _ cliprender.RenderBackend) (rustexec.ClipRenderResult, error) {
-	if r == nil || strings.TrimSpace(r.binary) == "" {
+	if r == nil || (strings.TrimSpace(r.binary) == "" && strings.TrimSpace(r.socket) == "") {
 		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon renderer is not configured")
 	}
 	if err := plan.Validate(); err != nil {
@@ -379,19 +383,22 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int("expected_frames", frames),
 		zap.Int("gpu_concurrency", currentChrononGPUConcurrency()),
 	)
-	chrononVideoPath := filepath.Join(runRoot, "chronon.mp4")
-	cmd := exec.CommandContext(ctx, r.binary,
-		"render",
-		"--plan", planPath,
-		"--output", chrononVideoPath,
-		"--assets-root", assets,
-		"--backend", "vulkan",
-		"--hardware", "nvenc",
-		"--ffmpeg-mode", "pipe",
-		"--encoder-backend", "native",
-		"--report",
+	// A video-only plan is the certification probe for Chronon's zero-copy
+	// Direct-YUV path.  The backend name alone is not sufficient: Vulkan also
+	// hosts the slower FullGraph path.  Carry the explicit execution request
+	// through both the CLI and daemon protocols so a regression cannot silently
+	// turn this probe into a FullGraph benchmark.
+	directYUV := plan.Watermark == nil && plan.Subtitles == nil &&
+		(plan.Background == nil || plan.Background.Mode == cliprender.BackgroundModeNone)
+	gpuHotPathMode := "auto"
+	if directYUV {
+		gpuHotPathMode = "require_direct_yuv"
+	}
+	r.logPhase("execution_request", plan.RunID,
+		zap.String("gpu_hot_path_mode", gpuHotPathMode),
+		zap.Bool("direct_yuv_probe", directYUV),
 	)
-
+	chrononVideoPath := filepath.Join(runRoot, "chronon.mp4")
 	metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
 	metricsDirReady := os.MkdirAll(metricsDir, 0o755) == nil
 	chrononLogPath := filepath.Join(runRoot, "chronon.log")
@@ -412,7 +419,40 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int("gpu_concurrency", currentChrononGPUConcurrency()),
 	)
 	executionStart := time.Now()
-	procOut, renderErr := runChrononCommandStreaming(cmd, chrononLogPath, plan.RunID, r.log)
+	var procOut chrononProcessOutput
+	var renderErr error
+	if r.socket != "" {
+		payload, marshalErr := json.Marshal(map[string]any{
+			"plan_path":         planPath,
+			"output":            chrononVideoPath,
+			"assets_root":       assets,
+			"backend":           "vulkan",
+			"hardware_encoder":  "nvenc",
+			"encoder_backend":   "native",
+			"ffmpeg_mode":       "pipe",
+			"report":            true,
+			"gpu_hot_path_mode": gpuHotPathMode,
+		})
+		if marshalErr != nil {
+			renderErr = marshalErr
+		} else {
+			procOut, renderErr = runChrononIPC(ctx, r.socket, payload, chrononLogPath, plan.RunID, r.log)
+		}
+	} else {
+		cmd := exec.CommandContext(ctx, r.binary,
+			"render",
+			"--plan", planPath,
+			"--output", chrononVideoPath,
+			"--assets-root", assets,
+			"--backend", "vulkan",
+			"--hardware", "nvenc",
+			"--ffmpeg-mode", "pipe",
+			"--encoder-backend", "native",
+			"--gpu-hot-path-mode", gpuHotPathMode,
+			"--report",
+		)
+		procOut, renderErr = runChrononCommandStreaming(cmd, chrononLogPath, plan.RunID, r.log)
+	}
 	release()
 	metrics.ChrononRenderMS = time.Since(executionStart).Milliseconds()
 	out := procOut.Tail
@@ -546,6 +586,65 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 
 func boolPtr(v bool) *bool { return &v }
 func intPtr(v int) *int    { return &v }
+
+// runChrononIPC submits one RENDER_JOB to the persistent Chronon daemon.
+// The wire format is the small stable protocol documented in
+// Chronon3d/apps/chronon3d_cli/daemon/chronon_ipc.hpp:
+// MAGIC|COMMAND|PAYLOAD_LEN|PAYLOAD, all integers big-endian.
+func runChrononIPC(ctx context.Context, socket string, payload []byte, logPath, runID string, log *zap.Logger) (chrononProcessOutput, error) {
+	const (
+		magic       = uint32(0x43484e33) // CHN3
+		renderJob   = uint32(6)
+		maxPayload  = 64 * 1024 * 1024
+		headerBytes = 12
+	)
+	if len(payload) > maxPayload {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC payload too large: %d", len(payload))
+	}
+	dialer := net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC connect %q: %w", socket, err)
+	}
+	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	frame := make([]byte, headerBytes+len(payload))
+	binary.BigEndian.PutUint32(frame[0:4], magic)
+	binary.BigEndian.PutUint32(frame[4:8], renderJob)
+	binary.BigEndian.PutUint32(frame[8:12], uint32(len(payload)))
+	copy(frame[headerBytes:], payload)
+	if _, err := conn.Write(frame); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC write: %w", err)
+	}
+	replyHeader := make([]byte, headerBytes)
+	if _, err := io.ReadFull(conn, replyHeader); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply header: %w", err)
+	}
+	if binary.BigEndian.Uint32(replyHeader[0:4]) != magic {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply has invalid magic")
+	}
+	status := binary.BigEndian.Uint32(replyHeader[4:8])
+	messageLen := binary.BigEndian.Uint32(replyHeader[8:12])
+	if messageLen > maxPayload {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply too large: %d", messageLen)
+	}
+	message := make([]byte, messageLen)
+	if _, err := io.ReadFull(conn, message); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply body: %w", err)
+	}
+	if logFile, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); openErr == nil {
+		_, _ = logFile.Write(message)
+		_, _ = logFile.WriteString("\n")
+		_ = logFile.Close()
+	}
+	if status != 0 {
+		return chrononProcessOutput{Tail: append([]byte(nil), message...), TotalBytes: int64(len(message))}, fmt.Errorf("chronon IPC render failed (status=%d): %s", status, strings.TrimSpace(string(message)))
+	}
+	log.Debug("chronon IPC render completed", zap.String("run_id", runID), zap.String("socket", socket), zap.Int("reply_bytes", len(message)))
+	return chrononProcessOutput{Tail: append([]byte(nil), message...), TotalBytes: int64(len(message))}, nil
+}
 
 func probeDurationMS(ctx context.Context, ffmpeg, path string) int64 {
 	if cached, ok := chrononProbeLookup(path); ok {

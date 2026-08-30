@@ -337,7 +337,14 @@ func (c *VidRushIncrementalCoordinator) researchSegment(ctx context.Context, res
 	if c.research == nil {
 		return result, nil
 	}
-	report, err := c.research.ResearchSegment(ctx, c.plan, result)
+	var report *scriptpkg.ResearchReport
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: StageSceneAnalysis, Component: kernobs.ComponentNLP, Operation: kernobs.OperationSearch,
+	}, func(opCtx context.Context) error {
+		var researchErr error
+		report, researchErr = c.research.ResearchSegment(opCtx, c.plan, result)
+		return researchErr
+	})
 	if err != nil {
 		return result, err
 	}
@@ -355,7 +362,15 @@ func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, res
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	defer c.release(c.providerSem)
-	return c.resolver.ResolveProviders(ctx, c.plan, result)
+	var resolved scriptpkg.VidRushSegmentResult
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: StageSceneAnalysis, Component: kernobs.ComponentArtlist, Operation: kernobs.OperationResolve,
+	}, func(opCtx context.Context) error {
+		var resolveErr error
+		resolved, resolveErr = c.resolver.ResolveProviders(opCtx, c.plan, result)
+		return resolveErr
+	})
+	return resolved, err
 }
 
 // materializeSegment runs the acquire/verify/finalize stage under its own

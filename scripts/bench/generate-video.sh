@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/bench/generate-video.sh — canonical PipelineGen video benchmark runner.
 #
-# Full pipeline benchmark: generate → render (watermark + subtitles + Chronon)
+# Full pipeline benchmark: generate → TTS/audio → render (watermark + subtitles + Chronon) → Docs/Drive
 # → Drive upload. Timing is read from the job SSOT reports; this script only
 # aggregates and derives batch-level values.
 #
@@ -52,6 +52,8 @@ DRIVE_FOLDER_ID="${BENCH_DRIVE_FOLDER_ID:-}"
 # Optional worker claim concurrency (slots) for the concurrency report;
 # empty means unknown (report shows "-" and no utilization).
 WORKER_SLOTS="${BENCH_WORKER_SLOTS:-}"
+VOICEOVER="${BENCH_VOICEOVER:-0}"
+DOCS_FOLDER_ID="${BENCH_DOCS_FOLDER_ID:-}"
 
 # Arrays for --clip-id accumulation
 CLIP_IDS=()
@@ -68,6 +70,8 @@ Modes (at least one required):
 
 Options:
   --clips N           Number of clips to generate from topic (default: 5)
+  --voiceover         Enable real TTS with COMBINED_TIMELINE for generated jobs
+  --docs-folder ID    Google Drive folder ID for generated documents
   --output FILE       Output JSON report file (default: out/benchmark-<ts>.json)
   --base-url URL      PipelineGen server URL (default: http://127.0.0.1:8000)
   --watermark ID      Watermark asset ID to apply during render
@@ -86,7 +90,7 @@ Pipeline stages timed:
   4. drive     — Drive artifact upload + verification
   5. total     — wall-clock from first submit to last terminal
 
-Report: per-phase wall_ms / work_ms / critical_path_ms (LLM, render, Drive)
+Report: per-phase wall_ms / work_ms / critical_path_ms (LLM, TTS, audio, Docs, render, Drive)
 plus the real worker facts already exposed in the job result (transcript,
 timings, render.backend, gpu_copy_bytes). No synthetic 60/40 splits: phases
 come from /api/jobs/{id}/full (result + RunReport timing).
@@ -108,6 +112,8 @@ while [[ $# -gt 0 ]]; do
         --topic)        TOPIC="$2"; shift 2 ;;
         --clip-id)      CLIP_IDS+=("$2"); shift 2 ;;
         --clips)        CLIPS="$2"; shift 2 ;;
+        --voiceover)    VOICEOVER=1; shift ;;
+        --docs-folder)  DOCS_FOLDER_ID="$2"; shift 2 ;;
         --output)       OUTPUT_FILE="$2"; shift 2 ;;
         --base-url)     BASE_URL="$2"; shift 2 ;;
         --watermark)    WATERMARK_ASSET_ID="$2"; shift 2 ;;
@@ -378,21 +384,45 @@ for entry in "${WORK_LIST[@]}"; do
 
     if [[ "$MODE" == "generate" ]]; then
         # ── Generate: POST /api/script/generate ──────────────────────────
-        PAYLOAD=$(cat <<EOJSON
-{
+        if [[ "$VOICEOVER" == "1" ]]; then
+            [[ -n "$DOCS_FOLDER_ID" ]] || { echo "[bench] ERROR: --docs-folder or BENCH_DOCS_FOLDER_ID is required with --voiceover" >&2; exit 2; }
+            PAYLOAD=$(python3 - "$PAYLOAD_ARG" "$DOCS_FOLDER_ID" <<'PY'
+import json, sys
+from time import time_ns
+
+topic, folder = sys.argv[1:]
+print(json.dumps({
   "version": 2,
   "preset": "custom",
+  "force_refresh": True,
   "items": [{
-    "id": "bench-$(ms_now)",
-    "title": "Benchmark: ${PAYLOAD_ARG}",
+    "id": f"bench-matt-damon-{time_ns()}",
+    "title": f"Benchmark: {topic}",
+    "project": "matt-damon-5-clips-tts-benchmark",
     "language": "en",
-    "source": {"type": "text", "topic": "${PAYLOAD_ARG}"},
-    "script_params": {"target_words": 500},
-    "output": {"generate_scene_images": false}
+    "source": {"type": "text", "topic": topic},
+    "script_params": {"target_words": 180, "segment_words": 36},
+    "output": {"generate_timeline": True, "voiceover_enabled": True,
+               "render": {"enabled": True, "assemble_final": False,
+                          "watermark": {"enabled": True, "text": "MATT DAMON", "position": "top_right", "opacity": 1},
+                          "subtitles": {"enabled": True, "mode": "burn"}}},
+    "audio": {"mode": "COMBINED_TIMELINE", "timing": {"mode": "required", "boundary": "word", "formats": ["json", "srt", "vtt"]}},
+    "docs": {"enabled": True, "languages": ["en"], "folder_id": folder}
   }]
-}
-EOJSON
+}))
+PY
 )
+        else
+            PAYLOAD=$(python3 - "$PAYLOAD_ARG" <<'PY'
+import json, sys
+print(json.dumps({"version": 2, "preset": "custom", "items": [{
+  "id": "bench-" + sys.argv[1], "title": "Benchmark: " + sys.argv[1], "language": "en",
+  "source": {"type": "text", "topic": sys.argv[1]}, "script_params": {"target_words": 500},
+  "output": {"generate_scene_images": False}
+}]}))
+PY
+)
+        fi
         RESP=$(api POST "/api/script/generate" -d "$PAYLOAD" 2>/dev/null || echo '{"error":"submit_failed"}')
         JOB_ID=$(echo "$RESP" | json_field "job_id" "")
 

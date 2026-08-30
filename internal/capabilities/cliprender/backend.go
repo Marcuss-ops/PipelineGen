@@ -272,7 +272,7 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 	})
 	// PATH B CUDA hybrid: requires the NVDEC/NVENC/GPU chain and supports
 	// only the plans it can render device-local (zero readback of the base
-	// video): overlays (image/text watermark, burn subtitles) on a scale-100
+	// video): image overlays on a scale-100
 	// base, no background plate, no style shadow/transition (they do not
 	// travel in the Rust plan). Everything else routes to Chronon or to the
 	// software baseline.
@@ -284,8 +284,6 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 	})
 	registry.SetSupport(BackendCudaNative, BackendSupport{
 		ImageWatermark: true,
-		TextWatermark:  true,
-		BurnSubtitles:  true,
 		GPUAlpha:       true,
 	})
 	registry.Register(BackendFFmpegFallback, RendererCapabilities{})

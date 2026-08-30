@@ -85,3 +85,14 @@ type Model struct {
 type ListModelsResponse struct {
 	Models []Model `json:"models"`
 }
+
+// RunningModel is a model currently resident in the Ollama runner process.
+// Unlike /api/tags, /api/ps reports live residency rather than availability.
+type RunningModel struct {
+	Name string `json:"name"`
+}
+
+// ListRunningModelsResponse is the response returned by Ollama /api/ps.
+type ListRunningModelsResponse struct {
+	Models []RunningModel `json:"models"`
+}

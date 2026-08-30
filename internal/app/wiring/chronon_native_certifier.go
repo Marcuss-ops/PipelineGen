@@ -250,7 +250,7 @@ func (c *chrononNativeCertifier) queryGPUIdentity(ctx context.Context) (driver, 
 
 // runCertification executes the real ~30-frame job: synthesize a tiny H264
 // clip, project a minimal video-only plan, invoke the Chronon binary with the
-// SAME native flags as production (vulkan + nvenc + pipe + native encoder)
+// SAME flags as production (vulkan + nvenc + pipe encoder backend)
 // and verify the output MP4. The critical section is serialized against real
 // renders via chrononRenderMu (one Chronon process on the device at a time).
 func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerprint string) chrononCertResult {

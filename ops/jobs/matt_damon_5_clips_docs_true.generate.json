@@ -49,20 +49,25 @@
         "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
       },
       "audio": {
-        "mode": "NONE"
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
       },
       "output": {
         "save_to_db": true,
         "generate_timeline": true,
         "generate_metadata": false,
         "extract_entities": "disabled",
-        "voiceover_enabled": false,
+        "voiceover_enabled": true,
         "render": {
           "enabled": true,
           "assemble_final": false,
           "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
           "drive_subfolder_name": "matt-damon-5-clips-docs-true",
-          "watermark": {"enabled": true, "text": "test", "position": "top_right", "opacity": 1},
+          "watermark": {"enabled": true, "text": "MATT DAMON", "position": "top_right", "opacity": 1},
           "subtitles": {"enabled": true, "mode": "burn"}
         }
       }

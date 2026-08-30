@@ -60,7 +60,7 @@
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	doctor artlist auth-check regenerate-token scraper-up \
 	smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
-	deps tidy-check vuln bench benchmark-e2e benchmark-generate e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
+	deps tidy-check vuln bench benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
 # the high-traffic targets; for the FULL ~90-target catalog see the
@@ -134,6 +134,7 @@ help:
 	@echo ""
 	@echo "BENCHMARK (require running server + /ready)"
 	@echo "  make benchmark-generate  Video benchmark (BENCH_TOPIC=BENCH_CLIP_ID=)"
+	@echo "  make benchmark-ollama-models  Cold/prewarmed/steady-state e4b/e2b comparison"
 	@echo "  make dev-up              Deterministic staged startup (Infrastructure→Server→Worker→Preflight)"
 	@echo "  make dev-down            Stop all services + remove orphans"
 	@echo "  make velox ARGS='doctor' Operations CLI (velox up|down|api|query|doctor|env)"
