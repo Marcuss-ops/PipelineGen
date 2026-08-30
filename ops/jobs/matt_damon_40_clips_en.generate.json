@@ -1,0 +1,520 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "project": "matt-damon-40-clips-en",
+  "correlation_id": "matt-damon-40-clips-en",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "matt-damon-40-clips-en-item",
+      "project": "matt-damon-40-clips-en",
+      "title": "Matt Damon \u2014 40 Clip Career Anthology",
+      "language": "en",
+      "tone": "engaging, rapid, documentary-style in clear English",
+      "style": "Write a concise, compelling introduction in English for each clip, respecting the sequence. Keep each introduction strictly around 25 to 30 words. Use only the provided description and clip context.",
+      "source": {
+        "type": "clips",
+        "topic": "Matt Damon Complete Career Anthology",
+        "source_text": "A 40-clip anthology celebrating Matt Damon's legendary film career, starting with 3 overarching intro clips before diving into his iconic roles, breakthrough moments, and behind-the-scenes filmmaking stories.",
+        "clip_ids": [
+          "yt_PfOkaa2a_iA_4055_4185_v1",
+          "yt_PfOkaa2a_iA_2180_2300_v1",
+          "yt_UZ1kCEGjYX0_800_888_v1",
+          "yt_UZ1kCEGjYX0_1050_1135_v1",
+          "yt_PfOkaa2a_iA_3095_3174_v1",
+          "yt_UZ1kCEGjYX0_1890_1965_v1",
+          "yt_Nfwyfb_AuNA_91_164_v1",
+          "yt_l5ujKZGgP8o_125_197_v1",
+          "yt_UZ1kCEGjYX0_665_735_v1",
+          "yt_-6RGcPQuzog_2175_2245_v1",
+          "yt_arWZf7_ktBs_19_85_v1",
+          "yt_T6x-kDiQsWM_138_202_v1",
+          "yt_Nfwyfb_AuNA_454_515_v1",
+          "yt_424w9fJRgYk_1060_1120_v1",
+          "yt_BSnPkOM-38M_25_85_v1",
+          "yt_otYXs5gRHqg_105_164_v1",
+          "yt_l5ujKZGgP8o_66_124_v1",
+          "yt_arWZf7_ktBs_95_150_v1",
+          "yt_stRtOHjh6lY_167_218_v1",
+          "yt_R4ZNqeE4PyY_230_280_v1",
+          "yt_9rO0FGivAvQ_705_755_v1",
+          "yt_424w9fJRgYk_2785_2835_v1",
+          "yt_Nfwyfb_AuNA_262_310_v1",
+          "yt_Ew8DPVwhyhc_900_948_v1",
+          "yt_d-QswCgdbO0_400_445_v1",
+          "yt_424w9fJRgYk_303_348_v1",
+          "yt_F9A5CG1lISE_232_275_v1",
+          "yt_DaB_aqdDWUw_360_402_v1",
+          "yt_ZPT2iPcDZtI_385_425_v1",
+          "yt_ca482ZHSANA_605_645_v1",
+          "yt_T6x-kDiQsWM_65_105_v1",
+          "yt_e35PVH3ksFA_810_847_v1",
+          "yt_l5ujKZGgP8o_200_237_v1",
+          "yt_Nfwyfb_AuNA_520_556_v1",
+          "yt_yqD_a00kY_g_248_284_v1",
+          "yt_stRtOHjh6lY_370_405_v1",
+          "yt_ERzbkt5r5Gg_32_66_v1",
+          "yt_Nfwyfb_AuNA_15_46_v1",
+          "yt_F9A5CG1lISE_25_55_v1",
+          "yt_TMb7tRpRstk_895_924_v1"
+        ],
+        "num_clips": 40,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 1200,
+        "min_words": 800,
+        "segment_words": 30,
+        "skip_quality_gate": true,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "clip",
+            "topic": "Matt Damon's Hilarious Breakdown of Temptation Island",
+            "source_text": "Matt Damon's Hilarious Breakdown of Temptation Island",
+            "clip_ids": [
+              "yt_PfOkaa2a_iA_4055_4185_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-1",
+            "kind": "clip",
+            "topic": "The Forgotten Dr. Matt Damon SNL Sketch",
+            "source_text": "The Forgotten Dr. Matt Damon SNL Sketch",
+            "clip_ids": [
+              "yt_PfOkaa2a_iA_2180_2300_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "The Shared Bank Account Password River P",
+            "source_text": "Matt Damon details the joint bank account he shared with Ben Affleck in high school, funded for audition trips to New York, arcade games, and beer.",
+            "clip_ids": [
+              "yt_UZ1kCEGjYX0_800_888_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-3",
+            "kind": "clip",
+            "topic": "Francis Ford Coppola's Sound Ball Game",
+            "source_text": "Matt Damon describes how Francis Ford Coppola gathered tough actors in a parking lot every morning to play the absurd improv game Sound Ball.",
+            "clip_ids": [
+              "yt_UZ1kCEGjYX0_1050_1135_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-4",
+            "kind": "clip",
+            "topic": "George Clooney's Fake Matt Damon Letter Prank",
+            "source_text": "George Clooney's Fake Matt Damon Letter Prank",
+            "clip_ids": [
+              "yt_PfOkaa2a_iA_3095_3174_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-5",
+            "kind": "clip",
+            "topic": "Crying Over The Beatles Rooftop Concert",
+            "source_text": "Matt Damon shares why the Beatles rooftop finale in Get Back brought him to tears and prompted him to call Ben Affleck to collaborate again.",
+            "clip_ids": [
+              "yt_UZ1kCEGjYX0_1890_1965_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-6",
+            "kind": "clip",
+            "topic": "The Boca Juniors 'No Women, No Children' Match",
+            "source_text": "Matt Damon recounts the wild experience of attending a Boca Juniors soccer final in Argentina through riot police lines, empty middle seats to prevent throwing objects, and waiting to give opposing fans a head start.",
+            "clip_ids": [
+              "yt_Nfwyfb_AuNA_91_164_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-7",
+            "kind": "clip",
+            "topic": "Jimmy Fallon vs Jimmy Kimmel",
+            "source_text": "Matt Damon sides with Jimmy Fallon over Jimmy Kimmel and jokes about a 17-year absence.",
+            "clip_ids": [
+              "yt_l5ujKZGgP8o_125_197_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-8",
+            "kind": "clip",
+            "topic": "Meeting at a Bar to Talk Flannery O'Connor",
+            "source_text": "Conan recalls bumping into Matt Damon at a Cambridge bar on Christmas after both escaped their parents, bonding over Flannery O'Connor while joking that most movie stars can't even read.",
+            "clip_ids": [
+              "yt_UZ1kCEGjYX0_665_735_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-9",
+            "kind": "clip",
+            "topic": "clip-12-interstellar-crying-scene-cut-disappointment",
+            "source_text": "Timoth\u00e9e racconta con ironia la delusione di vedere al cinema che la scena di pianto in Interstellar inquadrava quasi solo McConaughey.",
+            "clip_ids": [
+              "yt_-6RGcPQuzog_2175_2245_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-10",
+            "kind": "clip",
+            "topic": "Ben Affleck Begs Jimmy for One Matt Damon Question",
+            "source_text": "The conversation revolves around the cast of a film and the dynamics between its stars, with one participant expressing concern about potential feuds among the actors. The focus shifts heavily toward Matt Damon, who was praised for his effort on the movie, prompting an offer to immediately get him on the phone to answer a question.",
+            "clip_ids": [
+              "yt_arWZf7_ktBs_19_85_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-11",
+            "kind": "clip",
+            "topic": "Chris Hemsworth Admits He Only Pities Matt Damon",
+            "source_text": "The speakers discuss observed habits of a friend who frequently attends social events and stays at homes uninvited. The conversation details specific anecdotes about this person's presence in locations like Australia and includes commentary on their general life circumstances.",
+            "clip_ids": [
+              "yt_T6x-kDiQsWM_138_202_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-12",
+            "kind": "clip",
+            "topic": "Tom Holland's Costume Choke Mistaken for a Heart Salute",
+            "source_text": "Matt Damon explains how from a distant boat he saw Tom Holland clutching his chest, mistook it for an emotional father-son salute, and mimicked it back, only to learn Tom was being choked by his tight costume collar.",
+            "clip_ids": [
+              "yt_Nfwyfb_AuNA_454_515_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-13",
+            "kind": "clip",
+            "topic": "clip-04-interstellar-birthday-grumpy-drive",
+            "source_text": "Timoth\u00e9e racconta la proiezione a sorpresa per il compleanno, preceduta dalla sua rabbia in auto senza sapere la destinazione.",
+            "clip_ids": [
+              "yt_424w9fJRgYk_1060_1120_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-14",
+            "kind": "clip",
+            "topic": "clip-01-hallway-audition-claire-danes-guy",
+            "source_text": "Elle riconosce Timoth\u00e9e solo come il tizio di Homeland con Claire Danes, ignorando che avesse gi\u00e0 fatto Interstellar.",
+            "clip_ids": [
+              "yt_BSnPkOM-38M_25_85_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-15",
+            "kind": "clip",
+            "topic": "Good Will Hunting's Harvey Keitel Part",
+            "source_text": "The speakers explain that they wrote a segment, which they called the 'Harvey Kitell part,' because they wanted roles as actors and were inspired by Quentin Tarantino's Reservoir Dogs. They structured it to be very open-ended, allowing for casting flexibility whether an actor like Morgan Freeman or Denzel Washington was chosen, or if the relationship explored was mother-son instead of father-son.",
+            "clip_ids": [
+              "yt_otYXs5gRHqg_105_164_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-16",
+            "kind": "clip",
+            "topic": "Kissing Scarlett Johansson After an Onion Sandwich",
+            "source_text": "Matt Damon humorously recalls shooting a kissing scene with Scarlett Johansson after an onion sandwich.",
+            "clip_ids": [
+              "yt_l5ujKZGgP8o_66_124_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-17",
+            "kind": "clip",
+            "topic": "Matt Damon Celebrates Finally Being on Kimmel",
+            "source_text": "Matt Damon enthusiastically acknowledges being on the show, giving thanks to Jimmy for calling and dedicating a gift to Ben and JLo. The conversation then transitions into an interview segment where Damon discusses his professional life and acting process. He addresses how he approaches playing a real person compared to portraying a fictional character like Sonny Vicaro.",
+            "clip_ids": [
+              "yt_arWZf7_ktBs_95_150_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-18",
+            "kind": "clip",
+            "topic": "Reading Thirsty Tweets About Matt's Ponytail",
+            "source_text": "The speaker reads through and reacts to extremely humorous and 'thirsty' tweets about Matt Damon having a ponytail or man bun. They laugh at the outlandish fan theories, discussing how such a topic completely derails one's sense of understanding the world.",
+            "clip_ids": [
+              "yt_stRtOHjh6lY_167_218_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-19",
+            "kind": "clip",
+            "topic": "3 AM Bathroom Scribbling for Good Will Hunting",
+            "source_text": "3 AM Bathroom Scribbling for Good Will Hunting",
+            "clip_ids": [
+              "yt_R4ZNqeE4PyY_230_280_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-20",
+            "kind": "clip",
+            "topic": "Matt Damon: Every Other Nolan Actor Must Have Passed",
+            "source_text": "Matt Damon: Every Other Nolan Actor Must Have Passed",
+            "clip_ids": [
+              "yt_9rO0FGivAvQ_705_755_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-21",
+            "kind": "clip",
+            "topic": "clip-11-seen-interstellar-only-once-disbelief",
+            "source_text": "Timoth\u00e9e rimane scioccato scoprendo che Matthew ha visto Interstellar una sola volta e che i figli saltano i suoi film.",
+            "clip_ids": [
+              "yt_424w9fJRgYk_2785_2835_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-22",
+            "kind": "clip",
+            "topic": "Stunt Performers Buried in Black Sand with Snorkels",
+            "source_text": "Matt Damon explains how Christopher Nolan achieved the underworld ghost scene without CGI by burying actual stunt performers in black sand equipped with snorkels and emergency timers.",
+            "clip_ids": [
+              "yt_Nfwyfb_AuNA_262_310_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-23",
+            "kind": "clip",
+            "topic": "Losing Primal Fear to Edward Norton Sparked Good Will Hunting",
+            "source_text": "The speaker recounts working hard on an audition for a great role that was ultimately won by Edward Norton. They describe how casting initially treated him as unknown, despite his success in winning the part over other contestants. This success inspired the speaker and Ben to write their own material.",
+            "clip_ids": [
+              "yt_Ew8DPVwhyhc_900_948_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-24",
+            "kind": "clip",
+            "topic": "clip-03-interstellar-suppressed-smile-vs-wonka-joy",
+            "source_text": "Timoth\u00e9e racconta con ironia di aver represso ogni sorriso sul set di Interstellar per non sembrare un fan di Nolan, facendo l\u2019opposto in Wonka.",
+            "clip_ids": [
+              "yt_d-QswCgdbO0_400_445_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-25",
+            "kind": "clip",
+            "topic": "clip-01-interstellar-trailer-prank-souvenir",
+            "source_text": "Timoth\u00e9e racconta il rito di passaggio texano di Matthew McConaughey, che gli battezz\u00f2 il bagno del trailer.",
+            "clip_ids": [
+              "yt_424w9fJRgYk_303_348_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-26",
+            "kind": "clip",
+            "topic": "Rapid-Fire Bourne, We Bought a Zoo and Good Burger",
+            "source_text": "The clip is characterized by repetitive shouts of \"I'm Jason Bourne!\" The speakers also exchange banter about purchasing a zoo, correcting a potential misunderstanding. The segment concludes with an excited count-down and announcement of multiple upcoming burgers.",
+            "clip_ids": [
+              "yt_F9A5CG1lISE_232_275_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-27",
+            "kind": "clip",
+            "topic": "The Harvard Playwriting Class That Started Good Will Hunting",
+            "source_text": "A college student submitted 40 pages of writing for a playwriting class that was meant to be a one-act piece. The professor praised the work greatly, giving an 'A' and encouraging the writer to continue with the material. Inspired by this positive feedback, the speaker showed the script to their friend Ben, who suggested they collaborate on the project.",
+            "clip_ids": [
+              "yt_DaB_aqdDWUw_360_402_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-28",
+            "kind": "clip",
+            "topic": "Jason Bourne at SoulCycle Wouldn t Be Much of a Movie",
+            "source_text": "The speaker analyzes how to successfully write a sequel featuring the character Bourne, arguing that a happy ending is insufficient for dramatic tension. He advises that if the hero is not placed back into conflict\u2014or started in a 'dark place'\u2014there will be no compelling story to tell.",
+            "clip_ids": [
+              "yt_ZPT2iPcDZtI_385_425_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-29",
+            "kind": "clip",
+            "topic": "Jason Bourne vs Every Batman",
+            "source_text": "No transcript was provided for analysis.",
+            "clip_ids": [
+              "yt_ca482ZHSANA_605_645_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-30",
+            "kind": "clip",
+            "topic": "Matt Damon Photobombs Mark Ruffalo and Taika Waititi",
+            "source_text": "The clip captures a lively backstage moment where attendees are interacting near a film set or green room. The speakers exchange complimentary messages, discussing someone's great work on a movie and having general social banter. The conversation includes corrections about names and various celebrity greetings.",
+            "clip_ids": [
+              "yt_T6x-kDiQsWM_65_105_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-31",
+            "kind": "clip",
+            "topic": "The Mutual Hate for Corn Dogs",
+            "source_text": "Tom Holland and Matt Damon bond over their dislike of corn dogs.",
+            "clip_ids": [
+              "yt_e35PVH3ksFA_810_847_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-32",
+            "kind": "clip",
+            "topic": "British vs American Food Debate",
+            "source_text": "Emily Blunt and Matt Damon trade barbs over national cuisine.",
+            "clip_ids": [
+              "yt_l5ujKZGgP8o_200_237_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-33",
+            "kind": "clip",
+            "topic": "Christopher Nolan Looking Like a 'Drowned Rat'",
+            "source_text": "Matt Damon explains that even when suffering in freezing water and rain on set, nobody could complain because director Christopher Nolan was standing five feet away looking like a drowned rat.",
+            "clip_ids": [
+              "yt_Nfwyfb_AuNA_520_556_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-34",
+            "kind": "clip",
+            "topic": "High School Friends Crashing the Good Will Hunting Shoot",
+            "source_text": "The speaker recalls living together in South Boston while filming a movie and describes how friends from high school showed up one Tuesday night with beer. The friends were there because they associated the filming experience with big parties, but they were met with resistance as the group was tired and needed sleep for an early morning shoot.",
+            "clip_ids": [
+              "yt_yqD_a00kY_g_248_284_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-35",
+            "kind": "clip",
+            "topic": "The Red Chair Fan Flip",
+            "source_text": "After some preliminary banter involving a hypothetical lever, one speaker shifts to praising Matt Damon's acting performance. They conclude by stating that their experience on the talk show was highly enjoyable.",
+            "clip_ids": [
+              "yt_stRtOHjh6lY_370_405_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-36",
+            "kind": "clip",
+            "topic": "Matt Damon's Lizard Brain Height Freeze in Dubai",
+            "source_text": "Matt Damon's Lizard Brain Height Freeze in Dubai",
+            "clip_ids": [
+              "yt_ERzbkt5r5Gg_32_66_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-37",
+            "kind": "clip",
+            "topic": "Matt Bluntly Rejects Jimmy's Hike Offer",
+            "source_text": "Jimmy Fallon recalls asking Matt Damon to go on a hike during a family vacation, to which Matt responded with an immediate and unelaborated 'No'.",
+            "clip_ids": [
+              "yt_Nfwyfb_AuNA_15_46_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-38",
+            "kind": "clip",
+            "topic": "Good Will Hunting: How Do You Like Them Apples?",
+            "source_text": "The speaker begins by repeatedly questioning an unseen participant about whether they enjoy apples. After receiving confirmation, the conversation shifts briefly to a number, concluding with the rhetorical question: \"How do you like them apples? Come on!\"",
+            "clip_ids": [
+              "yt_F9A5CG1lISE_25_55_v1"
+            ],
+            "target_words": 30
+          },
+          {
+            "id": "scene-39",
+            "kind": "clip",
+            "topic": "Matt Damon vs Jimmy Kimmel Feud",
+            "source_text": "Ben asks Matt who he would save first, him or Jimmy Kimmel.",
+            "clip_ids": [
+              "yt_TMb7tRpRstk_895_924_v1"
+            ],
+            "target_words": 30
+          }
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "en"
+        ],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "extract_entities": "disabled",
+        "voiceover_enabled": true,
+        "render": {
+          "enabled": true,
+          "assemble_final": false,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "matt-damon-40-clips-en",
+          "watermark": {
+            "enabled": true,
+            "text": "MATT DAMON",
+            "position": "top_right",
+            "opacity": 1
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn"
+          }
+        }
+      }
+    }
+  ]
+}

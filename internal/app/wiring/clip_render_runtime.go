@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
@@ -53,9 +54,10 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	)
 	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
 	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	chrononBin := os.Getenv("CHRONON_RENDER_BIN")
+	chrononBin := strings.TrimSpace(os.Getenv("CHRONON_RENDER_BIN"))
 	if chrononBin == "" {
 		for _, candidate := range []string{
+			filepath.Clean(filepath.Join("..", "Chronon3d", "build", "chronon", "linux-video-fast-dev", "apps", "chronon3d_cli", "chronon3d_cli")),
 			filepath.Clean(filepath.Join("..", "Chronon3d", ".tmp", "chronon-builds", "native-verify", "apps", "chronon3d_cli", "chronon3d_cli")),
 			"/opt/chronon3d/bin/chronon3d_cli",
 		} {

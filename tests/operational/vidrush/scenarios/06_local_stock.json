@@ -24,7 +24,7 @@
         "language": "en",
         "tone": "documentary",
         "style": "Write a dynamic boxing narrative using the retrieved Mike Tyson clips. Alternate between fight highlights, interview moments, and training footage. Keep the prose grounded in actual clip content.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "search",
           "query": "Mike Tyson boxing fight highlights knockout training interview",

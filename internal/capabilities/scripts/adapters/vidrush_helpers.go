@@ -144,6 +144,7 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {
 	if len(scenes) > 0 {
 		out := make([]scriptpkg.CanonicalSegment, 0, len(scenes))
+		seenIDs := make(map[string]struct{}, len(scenes))
 		for i, scene := range scenes {
 			segText := strings.TrimSpace(scene.Text)
 			if segText == "" {
@@ -156,6 +157,17 @@ func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string)
 			if id == "" {
 				id = fmt.Sprintf("segment-%03d", i+1)
 			}
+			if _, exists := seenIDs[id]; exists {
+				base := id
+				for suffix := 1; ; suffix++ {
+					candidate := fmt.Sprintf("%s-%d", base, suffix)
+					if _, collision := seenIDs[candidate]; !collision {
+						id = candidate
+						break
+					}
+				}
+			}
+			seenIDs[id] = struct{}{}
 			out = append(out, scriptpkg.CanonicalSegment{
 				ID: id, SceneID: strings.TrimSpace(scene.ID), Position: i,
 				Text: segText, SourceText: segText,
@@ -472,6 +484,12 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 	return FinalizeVidRushBindingsWithCache(context.Background(), segments, forceRefresh, nil)
 }
 
+// DeduplicateVidRushSegments collapses repeated processor deltas by the
+// canonical segment id while preserving provider candidates and insights.
+func DeduplicateVidRushSegments(segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	return mergeVidRushSegments(nil, segments)
+}
+
 // FinalizeVidRushBindingsWithCache is the canonical binding finalizer used by
 // the generation use case. The in-memory map remains a fast L1 cache, while
 // cache provides the durable L2 replay surface across process restarts.
@@ -479,6 +497,7 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 // already-persisted binding into a false failure or a false cache hit.
 func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.VidRushSegmentResult, forceRefresh bool, cache scriptports.VidRushCachePort) []scriptpkg.VidRushSegmentResult {
 	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
+	segmentIndex := make(map[string]int, len(segments))
 	lastAssetByProvider := make(map[string]string)
 	for _, original := range segments {
 		seg := cloneVidRushSegmentResult(original)
@@ -533,6 +552,16 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			seg.Cache.Binding = "REFRESHED"
 			cacheStore(&vidrushBindingCache, bindingKey, true)
 			_ = storeVidRushPersistentJSON(ctx, cache, "binding", bindingKey, true)
+		}
+		if existing, ok := segmentIndex[seg.SegmentID]; ok && strings.TrimSpace(seg.SegmentID) != "" {
+			// Multiple provider processors may return the same segment delta.
+			// Collapse it here so the durable response has one authoritative
+			// segment and cannot expose duplicate keyword/provider bindings.
+			out[existing] = mergeVidRushSegmentResult(out[existing], seg)
+			continue
+		}
+		if strings.TrimSpace(seg.SegmentID) != "" {
+			segmentIndex[seg.SegmentID] = len(out)
 		}
 		out = append(out, seg)
 	}

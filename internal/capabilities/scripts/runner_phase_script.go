@@ -9,6 +9,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -200,13 +201,17 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// per-request: clips with no SCENE N: markers in source text
 		// are streamable (no post-gen rebinding).
 		streamable := SceneStreamingEligibility(req)
-		if _, ok := r.textGen.(SceneTextStreamer); ok && (req.Source.Type != SourceClips || streamable) {
+		// A declared segment budget requires whole-prose materialization before
+		// SceneCommitted; streaming a model's provisional single scene would
+		// permanently launch VidRush enrichment with the wrong topology.
+		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene
+		if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
 		}
-		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && (req.Source.Type != SourceClips || streamable) {
+		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			streamed = true
 			scenes, generatedTrace, genErr = r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
-		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && (req.Source.Type != SourceClips || streamable) {
+		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			// Scene-ready streaming: emit SceneTextReady(N) per scene
 			// as its text becomes final so downstream branches start
 			// while the LLM keeps generating later scenes.
@@ -222,6 +227,17 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failExecutionStep(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
+		}
+		// Small/local models commonly return one opaque prose scene even when
+		// the request declares a per-segment budget. The batch postprocessor
+		// already materializes that shape, but the incremental VidRush path
+		// commits scenes before postprocessors run. Normalize here so keyword
+		// extraction and provider fan-out receive the same segment topology.
+		if !streamed {
+			scenes = materializeGeneratedScenes(req, scenes)
+		}
+		if req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene {
+			normalizeGeneratedSceneIdentity(scenes)
 		}
 		if len(scenes) == 0 {
 			cause := fmt.Errorf("generate scene text returned zero scenes")
@@ -302,6 +318,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 						SourceLanguage: req.SourceLanguage, SourceText: text,
 						ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 						ClipDurationMS: clipDurationMS, Render: req.Render,
+						ResumeFrom: r.stagedLocalizedRender(result, scene.ID, req.SourceLanguage, clipID),
+						OnRenderReady: func(rendered LocalizedRenderResult) error {
+							return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+						},
 						OnRendered: func(rendered LocalizedRenderResult) error {
 							r.localizedRenderMu.Lock()
 							applyLocalizedRenderLinkLocked(result, rendered)
@@ -409,6 +429,81 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 	}
 
 	return result, true
+}
+
+func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
+	if req.ScriptParams.SingleScene || req.ScriptParams.SegmentWords <= 0 || len(scenes) != 1 {
+		return scenes
+	}
+
+	text := strings.TrimSpace(scenes[0].Text[req.SourceLanguage])
+	if text == "" {
+		for _, value := range scenes[0].Text {
+			if value = strings.TrimSpace(value); value != "" {
+				text = value
+				break
+			}
+		}
+	}
+	if text == "" {
+		return scenes
+	}
+
+	paragraphs := strings.Split(strings.TrimSpace(req.Source.SourceText), "\n\n")
+	n := 0
+	for _, paragraph := range paragraphs {
+		if strings.TrimSpace(paragraph) != "" {
+			n++
+		}
+	}
+	wordCount := len(strings.Fields(text))
+	if n < 2 {
+		n = (wordCount + req.ScriptParams.SegmentWords - 1) / req.ScriptParams.SegmentWords
+	}
+	if n < 2 {
+		return scenes
+	}
+
+	planned := sceneplanner.NewSceneSynthesizer().FromProse(text, n)
+	if len(planned) < 2 {
+		return scenes
+	}
+	out := make([]Scene, 0, len(planned))
+	for _, plannedScene := range planned {
+		out = append(out, Scene{
+			ID: plannedScene.ID, Index: plannedScene.Index,
+			Text: map[Language]string{req.SourceLanguage: plannedScene.Text},
+		})
+	}
+	return out
+}
+
+// normalizeGeneratedSceneIdentity repairs model-produced duplicate or missing
+// scene identities before downstream VidRush fan-out. A model may return a
+// valid number of prose chunks while copying the last scene id/index onto
+// multiple chunks; enrichment must never collapse those chunks through an id
+// keyed map.
+func normalizeGeneratedSceneIdentity(scenes []Scene) {
+	seen := make(map[string]struct{}, len(scenes))
+	for i := range scenes {
+		id := strings.TrimSpace(scenes[i].ID)
+		if id == "" {
+			id = fmt.Sprintf("scene-%d", i)
+		}
+		if _, exists := seen[id]; exists {
+			base := fmt.Sprintf("scene-%d", i)
+			id = base
+			for suffix := 1; ; suffix++ {
+				if _, collision := seen[id]; !collision {
+					break
+				}
+				id = fmt.Sprintf("%s-%d", base, suffix)
+			}
+		}
+		seen[id] = struct{}{}
+		scenes[i].ID = id
+		scenes[i].Index = i
+	}
 }
 
 // emitSceneCommits publishes one SceneCommitted event per stable scene after

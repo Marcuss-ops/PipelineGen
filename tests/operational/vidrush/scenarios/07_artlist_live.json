@@ -26,7 +26,7 @@
         "language": "en",
         "tone": "cinematic",
         "style": "Write a visually rich narrative using cinematic language. Each segment should evoke a scene that maps well to stock footage categories: nature, urban, lifestyle, technology, sports.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Cinematic stock footage scenes for Artlist live discovery",
@@ -37,7 +37,12 @@
           "min_words": 200,
           "segment_words": 60,
           "skip_quality_gate": true,
-          "use_memory": false
+          "use_memory": false,
+          "segments": [
+            {"id": "coastal-road", "topic": "Aerial coastal road at golden hour with turquoise water and cliffs", "target_words": 80},
+            {"id": "latte-art", "topic": "Barista making latte art in a sunlit specialty coffee shop", "target_words": 80},
+            {"id": "trail-runner", "topic": "Trail runner climbing a mountain ridge at sunrise", "target_words": 80}
+          ]
         },
         "output": {
           "extract_entities": true,

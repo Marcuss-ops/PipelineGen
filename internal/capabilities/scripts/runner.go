@@ -217,6 +217,11 @@ type Runner struct {
 	// outside the per-phase apply lock, so the result slice needs its own
 	// fence (a data race on LocalizedRenders would corrupt the run record).
 	localizedRenderMu sync.Mutex
+	// recorderMu serializes calls into the execution recorder. Production
+	// recorders are expected to be durable, but the port is not required to
+	// implement internal concurrency; serialization also keeps the lineage
+	// contract deterministic during parallel Docs/render fan-out.
+	recorderMu sync.Mutex
 
 	// voiceoverPublishDrainer drains the async voiceover publish pool
 	// (P0.4: separate TTS pool from publish pool). After the voiceover

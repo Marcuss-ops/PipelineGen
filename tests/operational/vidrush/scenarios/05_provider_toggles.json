@@ -23,7 +23,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Write a short grounded paragraph. Keep it concrete.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Artlist-only provider test",
@@ -61,7 +61,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Write a short grounded paragraph. Keep it concrete.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Images-only provider test",
@@ -99,7 +99,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Write a short grounded paragraph. Keep it concrete.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "No-provider test",
@@ -135,7 +135,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Write a short grounded paragraph. Keep it concrete.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Both-providers test",

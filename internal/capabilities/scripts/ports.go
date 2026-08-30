@@ -322,7 +322,13 @@ type LocalizedRenderInput struct {
 	// run that produced it — a run that rendered a video must be able to
 	// prove it. A non-nil sink is fail-closed: a sink error fails the
 	// enqueue. Nil means the caller does not need the outcome.
-	OnRendered func(LocalizedRenderResult) error  `json:"-"`
+	OnRendered func(LocalizedRenderResult) error `json:"-"`
+	// OnRenderReady is invoked after local render certification and before
+	// upload, allowing durable recovery to retry Drive without rerendering.
+	OnRenderReady func(LocalizedRenderResult) error `json:"-"`
+	// ResumeFrom, when set, identifies a locally certified RENDERED artifact
+	// restored from a partial result. The adapter may publish it directly.
+	ResumeFrom *LocalizedRenderResult             `json:"-"`
 	OnFailed   func(LocalizedRenderFailure) error `json:"-"`
 }
 
@@ -365,6 +371,12 @@ type LocalizedRenderFailure struct {
 // (an enqueue error fails the run, never a silent skip).
 type LocalizedRenderEnqueuer interface {
 	EnqueueLocalizedRender(context.Context, LocalizedRenderInput) error
+}
+
+// LocalizedRenderRecoveryEnqueuer is optional for backwards-compatible
+// adapters. It publishes a staged local artifact without rerendering it.
+type LocalizedRenderRecoveryEnqueuer interface {
+	UploadRendered(context.Context, LocalizedRenderInput, LocalizedRenderResult) error
 }
 
 // CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must

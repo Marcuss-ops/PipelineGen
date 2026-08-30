@@ -112,7 +112,9 @@ func buildWorkerSteps(deps workerDeps) []StartupStep {
 		steps = append(steps, StartupStep{
 			Name: "job-scanner", Required: false,
 			Start: func(startCtx context.Context) error {
-				concurrent.SafeGo("job-scanner", func() { sc.Start(startCtx, 5*time.Minute) })
+				// The scanner still honors the configured lease TTL; this only
+				// bounds detection latency once that TTL has elapsed.
+				concurrent.SafeGo("job-scanner", func() { sc.Start(startCtx, 15*time.Second) })
 				deps.log.Info("Job scanner started")
 				return nil
 			},

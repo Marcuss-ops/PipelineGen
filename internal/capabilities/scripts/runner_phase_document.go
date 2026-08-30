@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -161,6 +162,18 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			r.failExecutionStep(ctx, exec, documentStep, err)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return false
+		}
+		// VOICEOVER_READY is local, certified audio and is sufficient for
+		// audio compilation. Drive publication is needed only when Docs
+		// projects the published links, so drain the independent publisher
+		// pool at this final consumer boundary instead of blocking audio.
+		if r.voiceoverPublishDrainer != nil {
+			publishDrainStarted := time.Now()
+			r.voiceoverPublishDrainer.Wait()
+			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(result.AudioMetrics.VoiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
+			r.log.Info("voiceover publish pool drained",
+				zap.String("run_id", runID),
+				zap.Int("generated", result.AudioMetrics.VoiceoverGenerated))
 		}
 		if r.documentRenderer == nil {
 			cause := fmt.Errorf("canonical document renderer is not configured")
@@ -324,6 +337,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					// Per-language durable checkpoint: a crash after
 					// one doc is published must preserve it on the
 					// partial result so a restart reuses it.
+					var outputOrdinal int
 					publishedMu.Lock()
 					docs[job.lang] = docRef
 					renderers[job.lang] = job.rd.rendererID
@@ -333,10 +347,11 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					result.DocumentRenderers = renderers
 					result.DocumentSpecSceneSHA256 = hashes
 					result.DocumentSceneCounts = sceneCounts
+					outputOrdinal = len(docs) - 1
 					r.checkpoint(groupCtx, runID, result)
 					publishedMu.Unlock()
 
-					if err := r.attachOutputAsset(groupCtx, exec, documentStep.StepID, docRef.ID, len(docs)-1); err != nil {
+					if err := r.attachOutputAsset(groupCtx, exec, documentStep.StepID, docRef.ID, outputOrdinal); err != nil {
 						return err
 					}
 					if err := r.recordArtifactOperation(groupCtx, exec, ArtifactOperation{

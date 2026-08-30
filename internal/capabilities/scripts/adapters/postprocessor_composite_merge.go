@@ -708,12 +708,18 @@ func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg
 		return dst
 	}
 	index := make(map[string]int, len(dst))
-	out := append([]scriptpkg.VidRushSegmentResult(nil), dst...)
-	for i, seg := range out {
+	out := make([]scriptpkg.VidRushSegmentResult, 0, len(dst)+len(src))
+	for _, seg := range dst {
 		if seg.SegmentID == "" {
+			out = append(out, seg)
 			continue
 		}
-		index[seg.SegmentID] = i
+		if i, exists := index[seg.SegmentID]; exists {
+			out[i] = mergeVidRushSegmentResult(out[i], seg)
+			continue
+		}
+		index[seg.SegmentID] = len(out)
+		out = append(out, seg)
 	}
 	for _, seg := range src {
 		if seg.SegmentID == "" {

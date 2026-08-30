@@ -102,7 +102,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Short factual prose. Keep it simple and fast to generate.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Concurrency operational verification",

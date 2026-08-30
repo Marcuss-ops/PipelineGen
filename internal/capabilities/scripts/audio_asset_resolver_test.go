@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -16,6 +17,7 @@ import (
 // assets[assetID] → resolved asset (path + duration), plus an optional
 // failing id.
 type fakeAudioAssetSource struct {
+	mu       sync.Mutex
 	assets   map[string]audio.ResolvedAudioAsset
 	failOn   string
 	failErr  error
@@ -23,6 +25,8 @@ type fakeAudioAssetSource struct {
 }
 
 func (f *fakeAudioAssetSource) ResolveAudioAsset(_ context.Context, assetID string) (audio.ResolvedAudioAsset, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.requests = append(f.requests, assetID)
 	if f.failOn == assetID {
 		if f.failErr == nil {

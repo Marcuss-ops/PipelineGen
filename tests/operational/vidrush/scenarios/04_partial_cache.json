@@ -24,7 +24,7 @@
         "language": "en",
         "tone": "documentary",
         "style": "Write a vivid, concrete narrative. Each segment should describe a distinct visual scene. Use specific, searchable details that translate well to media queries.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Three cinematic stories for partial cache verification",

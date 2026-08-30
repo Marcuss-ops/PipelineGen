@@ -152,6 +152,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			zap.Int("generated", len(work)),
 		)
 		var dbCacheHits int
+		var renderWg sync.WaitGroup
 		if len(work) > 0 {
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.
@@ -236,6 +237,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					sourceText = req.Source.SourceText
 					renderText = sourceText
 				}
+				// Clip bindings are read from the shared scene while applyMu is
+				// held; the render goroutine must receive a value snapshot, never
+				// dereference the mutable scene after this lock is released.
+				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 				r.checkpoint(ctx, runID, result)
 				applyMu.Unlock()
 
@@ -245,14 +250,15 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// for the entire render duration. The renderGate inside the
 				// adapter already bounds render concurrency; OnRendered /
 				// OnFailed capture the certified result asynchronously.
-				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 				// ── Pipeline KPI: first render enqueue ───────────
 				renderStartedOnce.Do(func() {
 					if run := kernobs.FromContext(ctx); run != nil {
 						kernobs.RecordKPIMilestone(ctx, "render_first_started_ms", run.ElapsedMs())
 					}
 				})
+				renderWg.Add(1)
 				go func(item voiceoverWork, audioRef AudioReference) {
+					defer renderWg.Done()
 					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 						RunID:          runID,
 						ParentJobID:    exec.JobID,
@@ -268,6 +274,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 						ClipSHA256:     clipSHA256,
 						ClipDurationMS: clipDurationMS,
 						Render:         req.Render,
+						ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
+						OnRenderReady: func(rendered LocalizedRenderResult) error {
+							return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+						},
 						OnRendered: func(rendered LocalizedRenderResult) error {
 							return r.recordLocalizedRender(ctx, exec, result, rendered)
 						},
@@ -369,18 +379,26 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			}, 0)
 		}
 
-		// P0.4: drain the async voiceover publish pool. All TTS synthesis
-		// goroutines have returned, but Drive uploads + timing publishes +
-		// SQLite commits may still be in-flight. Waiting here ensures
-		// DriveFileID/DriveLink/TimingBundle are hydrated on the DB before
-		// audio compile and docs stages read the results.
-		if r.voiceoverPublishDrainer != nil {
-			publishDrainStarted := time.Now()
-			r.voiceoverPublishDrainer.Wait()
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(result.AudioMetrics.VoiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
-			r.log.Info("voiceover publish pool drained",
-				zap.String("run_id", runID),
-				zap.Int("generated", result.AudioMetrics.VoiceoverGenerated))
+		// Wait for all async localized renders spawned during voiceover to complete.
+		renderDone := make(chan struct{})
+		go func() {
+			renderWg.Wait()
+			close(renderDone)
+		}()
+		select {
+		case <-renderDone:
+			// Render callbacks run concurrently with TTS workers. Projecting
+			// Drive links into mutable scene clip references is deferred until
+			// both fan-outs have joined, so the scene graph has one writer.
+			r.localizedRenderMu.Lock()
+			for _, rendered := range result.LocalizedRenders {
+				applyLocalizedRenderLinkLocked(result, rendered)
+			}
+			r.localizedRenderMu.Unlock()
+		case <-ctx.Done():
+			r.failExecutionStep(ctx, exec, voiceoverStep, ctx.Err())
+			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, ctx.Err())
+			return false
 		}
 
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))

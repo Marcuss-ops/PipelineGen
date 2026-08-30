@@ -308,15 +308,8 @@ func (e *executionRun) parallelFanOut() bool {
 				sfxIDs[i] = s.AssetID
 			}
 			var clipIDs []string
-			for _, s := range e.result.Scenes {
-				for _, c := range s.Clips {
-					if c != nil && c.ID != "" {
-						clipIDs = append(clipIDs, c.ID)
-					}
-				}
-				if s.Clip != nil && s.Clip.ID != "" {
-					clipIDs = append(clipIDs, s.Clip.ID)
-				}
+			for _, s := range e.snapshot {
+				clipIDs = append(clipIDs, s.ClipIDs...)
 			}
 			var clipAudioSource ClipAudioAssetSource
 			if candidate, ok := e.r.audioAssetSource.(ClipAudioAssetSource); ok {

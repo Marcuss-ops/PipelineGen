@@ -24,7 +24,7 @@
         "language": "en",
         "tone": "documentary",
         "style": "Write a concrete, grounded narrative. Do not invent details. Keep segments concise and distinct.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Three distinct visual stories for operational verification",

@@ -55,9 +55,20 @@ func (s *Scanner) RequeueExpiredLeases(ctx context.Context) error {
 // Start runs the scanner in a tick loop until ctx is cancelled. The
 // underlying reaper is invoked once per interval; ctx cancellation
 // surfaces via the next RequeueExpiredLeases call (which propagates
-// the cancellation). Production interval is 5 minutes (see
-// internal/app/lifecycle.go::startBackgroundJobs).
+// the cancellation). Production callers use a short interval; the lease
+// TTL remains the safety boundary, so live workers are not reclaimed early.
 func (s *Scanner) Start(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+
+	// Reap once before waiting for the first ticker edge. This closes the
+	// restart gap where a process returns with an already-expired worker
+	// lease but the queue remains invisible until the next tick.
+	if err := s.RequeueExpiredLeases(ctx); err != nil && ctx.Err() == nil {
+		s.log.Error("initial lease scan failed", zap.Error(err))
+	}
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

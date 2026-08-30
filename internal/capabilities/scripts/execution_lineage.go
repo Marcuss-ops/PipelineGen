@@ -68,7 +68,10 @@ func (r *Runner) attachInputAsset(ctx context.Context, exec ExecutionContext, st
 	if strings.TrimSpace(assetID) == "" {
 		return nil
 	}
-	if err := r.recorder.AttachInputAsset(ctx, exec, stepID, assetID, ordinal); err != nil {
+	r.recorderMu.Lock()
+	err := r.recorder.AttachInputAsset(ctx, exec, stepID, assetID, ordinal)
+	r.recorderMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("record input asset %q: %w", assetID, err)
 	}
 	return nil
@@ -78,14 +81,20 @@ func (r *Runner) attachOutputAsset(ctx context.Context, exec ExecutionContext, s
 	if strings.TrimSpace(assetID) == "" {
 		return nil
 	}
-	if err := r.recorder.AttachOutputAsset(ctx, exec, stepID, assetID, ordinal); err != nil {
+	r.recorderMu.Lock()
+	err := r.recorder.AttachOutputAsset(ctx, exec, stepID, assetID, ordinal)
+	r.recorderMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("record output asset %q: %w", assetID, err)
 	}
 	return nil
 }
 
 func (r *Runner) recordExecutionMetric(ctx context.Context, exec ExecutionContext, stepID, name string, value float64, unit string) error {
-	if err := r.recorder.RecordMetric(ctx, exec, stepID, name, value, unit); err != nil {
+	r.recorderMu.Lock()
+	err := r.recorder.RecordMetric(ctx, exec, stepID, name, value, unit)
+	r.recorderMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("record metric %q: %w", name, err)
 	}
 	return nil
@@ -99,7 +108,10 @@ func (r *Runner) recordArtifactOperation(ctx context.Context, exec ExecutionCont
 	if strings.TrimSpace(op.OperationID) == "" || strings.TrimSpace(op.Kind) == "" {
 		return fmt.Errorf("artifact operation requires operation_id and kind")
 	}
-	if err := r.recorder.RecordOperation(ctx, exec, op); err != nil {
+	r.recorderMu.Lock()
+	err := r.recorder.RecordOperation(ctx, exec, op)
+	r.recorderMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("record %s operation %q: %w", op.Kind, op.OperationID, err)
 	}
 	return nil

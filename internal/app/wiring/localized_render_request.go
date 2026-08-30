@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
@@ -151,6 +152,16 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
 		WatermarkText: watermarkText(in), Background: built.background, BackgroundMode: built.backgroundMode,
 		SubtitlesStyle: subtitleStyle(in),
+		OnRendered: func(artifact localization.LocalizedClipArtifact) error {
+			if in.OnRenderReady == nil {
+				return nil
+			}
+			return in.OnRenderReady(scriptgeneration.LocalizedRenderResult{
+				SceneID: artifact.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(artifact.Language),
+				ClipID: artifact.ClipID, AssetID: artifact.AssetID, SHA256: artifact.SHA256, DurationMS: artifact.DurationMS,
+				LocalPath: artifact.LocalPath, Status: string(artifact.Status), StartedAt: time.Now().UTC(),
+			})
+		},
 	}
 }
 
