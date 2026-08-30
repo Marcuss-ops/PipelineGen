@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -104,6 +106,10 @@ type Client struct {
 	// extraction silently falls back to a heuristic result (default:
 	// EntityExtractionFallbackHeuristic for backward-compat).
 	entityExtractionFallbackMode EntityExtractionFallbackMode
+
+	residencyMu    sync.Mutex
+	residentUntil  map[string]time.Time
+	warmModelGroup singleflight.Group
 }
 
 // BaseURL returns the configured Ollama base URL.

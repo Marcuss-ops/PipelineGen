@@ -41,6 +41,14 @@ func (g *Generator) GetClient() *client.Client {
 	return g.client
 }
 
+// WarmModel exposes the explicit residency seam to the script engine.
+func (g *Generator) WarmModel(ctx context.Context, model string) error {
+	if g == nil || g.client == nil {
+		return fmt.Errorf("ollama client not initialized")
+	}
+	return g.client.WarmModel(ctx, model)
+}
+
 // SetMetadataModel sets a lighter model for post-generation phases
 // (entity extraction, video metadata, translations).
 func (g *Generator) SetMetadataModel(model string) {
@@ -173,25 +181,15 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		options["model"] = strings.TrimSpace(req.Model)
 	}
 	if req.MaxChars > 0 {
-		// Gemma4 needs a generous token budget: the model "thinks" first,
-		// consuming tokens before the actual response. Budget = JSON structure
-		// overhead (256) + per-clip thinking overhead (512) + char limit ÷ 4.
-		clipCount := len(req.ClipIDs)
-		if clipCount == 0 {
-			clipCount = strings.Count(req.SourceText, "NARRATIVE EVIDENCE ")
-		}
-		perClipOverhead := 512 * max(1, clipCount)
-		options["num_predict"] = 256 + perClipOverhead + (req.MaxChars / 4)
+		options["num_predict"] = ResolveOutputBudget(req)
 	} else if _, ok := options["num_predict"]; !ok {
-		options["num_predict"] = types.DefaultNumPredict
+		options["num_predict"] = ResolveOutputBudget(req)
 	}
-	// num_ctx must fit the prompt plus the generation budget. Ollama's
-	// default window is 4096 tokens; the research path's editorial prompt
-	// embeds the full resolved source text and reaches ~5k tokens, so at the
-	// default the model is left with a single output token and fails
-	// min_words. Callers may override via req.Options["num_ctx"].
+	// num_ctx is derived from the actual prompt and output budget. Short scene
+	// generation must not reserve the 16K research window; callers can still
+	// override it explicitly for research or other large prompts.
 	if _, ok := options["num_ctx"]; !ok {
-		options["num_ctx"] = types.DefaultNumCtx
+		options["num_ctx"] = ResolveContextBudget(messages, options["num_predict"])
 	}
 	if _, ok := options["temperature"]; !ok {
 		options["temperature"] = types.DefaultTemperature

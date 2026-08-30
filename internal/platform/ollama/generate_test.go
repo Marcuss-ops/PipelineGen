@@ -69,13 +69,20 @@ func TestResolveGenerationFormat(t *testing.T) {
 func TestGenerateScriptForwardsExplicitModelOverride(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Model string `json:"model"`
+			Model   string         `json:"model"`
+			Options map[string]any `json:"options"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode chat request: %v", err)
 		}
 		if body.Model != "gemma2:2b" {
 			t.Errorf("chat model=%q, want explicit request model", body.Model)
+		}
+		if got := body.Options["num_ctx"]; got != float64(2048) {
+			t.Errorf("chat num_ctx=%v, want 2048 for a short scene", got)
+		}
+		if got := body.Options["num_predict"]; got != float64(96) {
+			t.Errorf("chat num_predict=%v, want 96 for a short scene", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true}`))

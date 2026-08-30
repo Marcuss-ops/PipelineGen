@@ -11,9 +11,10 @@ type Message struct {
 
 // ChatRequest richiesta chat
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model     string    `json:"model"`
+	Messages  []Message `json:"messages"`
+	Stream    bool      `json:"stream"`
+	KeepAlive string    `json:"keep_alive,omitempty"`
 	// Think disables Gemma's reasoning channel for production text
 	// generation. Without this explicit false, Gemma can consume the
 	// entire num_predict budget in message.thinking and return an empty

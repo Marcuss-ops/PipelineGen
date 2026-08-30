@@ -301,6 +301,16 @@ func (e *Engine) generateSegments(
 	plan *scriptpkg.ResolvedGenerationPlan,
 	req ports.TextGenerationRequest,
 ) (*ports.GenerationResult, error) {
+	// Optional production seam: warm the selected model once before the
+	// segment fan-out. The narrow interface keeps provider fakes and remote
+	// generators compatible while the Ollama adapter uses singleflight.
+	if warmer, ok := e.ollamaGen.(interface {
+		WarmModel(context.Context, string) error
+	}); ok {
+		if err := warmer.WarmModel(ctx, req.Model); err != nil {
+			return nil, fmt.Errorf("engine: warm model: %w", err)
+		}
+	}
 	// The Ollama generator owns the canonical ollama/generate measurement
 	// (see *ollama.Generator.GenerateScript). This closure only applies the
 	// concurrency gate; it must not re-time the same inference boundary.

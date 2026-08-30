@@ -309,7 +309,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	scriptGenerationConcurrency := cfg.Scripts.ScriptGenerationConcurrency
 	if scriptGenerationConcurrency <= 0 {
-		scriptGenerationConcurrency = 4
+		// Certified default: match the measured OLLAMA_NUM_PARALLEL baseline on
+		// A4000/e4b (3). Client slots beyond the server parallelism only deepen
+		// the server queue — they never add throughput.
+		scriptGenerationConcurrency = scriptgen.DefaultGenerationConcurrency
 	}
 	ollamaScriptGate := scriptgen.NewGenerationGateWithCapacity(scriptGenerationConcurrency)
 	ollamaNLPGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
