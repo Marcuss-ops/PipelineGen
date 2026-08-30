@@ -63,6 +63,10 @@ type ScriptsConfig struct {
 	// across the script fan-out. Keep this at 1 on hosts that show GPU OOM.
 	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"2"`
 
+	// LocalizedRenderUploadConcurrency bounds Drive uploads independently from
+	// GPU rendering. Uploads must not retain a render slot while waiting on I/O.
+	LocalizedRenderUploadConcurrency int `yaml:"localized_render_upload_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY" default:"4"`
+
 	// MaxInsightEntities caps the number of important words, important phrases,
 	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`

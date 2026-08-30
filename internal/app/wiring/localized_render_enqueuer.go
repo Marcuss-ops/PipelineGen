@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -35,8 +36,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -47,7 +48,12 @@ type localizedLocalizer interface {
 	Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error)
 }
 
+type localizedArtifactUploader interface {
+	UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error)
+}
+
 var _ localizedLocalizer = (*LocalizationService)(nil)
+var _ localizedArtifactUploader = (*LocalizationService)(nil)
 
 // LocalizedRenderEnqueuerConfig pins the deployment-scoped facts the adapter
 // needs to map a LocalizedRenderInput into a LocalizeInput. It is resolved at
@@ -127,7 +133,6 @@ type localizedRenderEnqueuerAdapter struct {
 	subtitleArtifacts detail.SubtitleArtifactRepository
 	folderMu          sync.Mutex
 	folderCache       map[string]string
-	renderGate        chan struct{}
 }
 
 func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
@@ -165,7 +170,6 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 		transcript:        transcript,
 		subtitleArtifacts: subtitleArtifacts,
 		folderCache:       make(map[string]string),
-		renderGate:        make(chan struct{}, cfg.GlobalConcurrency),
 	}
 }
 
@@ -213,11 +217,6 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	assetID = built.identity.assetID
 	clipIDForChild = built.identity.clipIDChild
 	clipID := built.identity.clipID
-	release, err := kernobs.AcquireSlot(ctx, a.renderGate, kernobs.ComponentRenderQueue, kernobs.WaitSemaphore)
-	if err != nil {
-		return err
-	}
-	defer release()
 	res, err := a.svc.Localize(ctx, a.localizeInput(in, built))
 	if err != nil {
 		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
@@ -276,6 +275,58 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
 			}
 		}
+	}
+	return nil
+}
+
+// UploadRendered publishes a durable local RENDERED checkpoint directly.
+// It deliberately does not call build/render code beyond resolving the
+// destination folder, so a retry after a crash cannot rerun Chronon.
+func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in scriptgeneration.LocalizedRenderInput, staged scriptgeneration.LocalizedRenderResult) error {
+	if a == nil || a.svc == nil {
+		return fmt.Errorf("localized render recovery: service is not wired")
+	}
+	if strings.TrimSpace(staged.LocalPath) == "" || strings.TrimSpace(staged.SHA256) == "" {
+		return fmt.Errorf("localized render recovery: staged artifact is incomplete")
+	}
+	info, err := os.Stat(staged.LocalPath)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return fmt.Errorf("localized render recovery: staged local artifact is unavailable: %s", staged.LocalPath)
+	}
+	computed, _, err := digest.SHA256File(staged.LocalPath)
+	if err != nil || !strings.EqualFold(computed, staged.SHA256) {
+		return fmt.Errorf("localized render recovery: staged sha256 mismatch for %s", staged.LocalPath)
+	}
+	clipID := strings.TrimSpace(staged.ClipID)
+	if clipID == "" {
+		clipID = strings.TrimSpace(in.ClipID)
+	}
+	destination, _, err := a.resolveRenderFolders(ctx, in, clipID)
+	if err != nil {
+		return fmt.Errorf("localized render recovery: resolve destination: %w", err)
+	}
+	artifact := localization.LocalizedClipArtifact{
+		Version: localization.LocalizedClipArtifactVersion, JobID: in.RunID,
+		SceneID: staged.SceneID, ClipID: clipID, Language: string(staged.Language),
+		AssetID: staged.AssetID, LocalPath: staged.LocalPath, SHA256: staged.SHA256,
+		DurationMS: staged.DurationMS, Status: localization.LocalizedClipRendered,
+	}
+	uploader, ok := a.svc.(localizedArtifactUploader)
+	if !ok {
+		return fmt.Errorf("localized render recovery: upload-only service is not wired")
+	}
+	published, err := uploader.UploadRendered(ctx, artifact, destination)
+	if err != nil {
+		return fmt.Errorf("localized render recovery: upload: %w", err)
+	}
+	if in.OnRendered != nil {
+		return in.OnRendered(scriptgeneration.LocalizedRenderResult{
+			SceneID: published.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(published.Language),
+			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
+			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DurationMS: published.DurationMS,
+			LocalPath: published.LocalPath, Status: string(published.Status), StartedAt: staged.StartedAt,
+			FinishedAt: time.Now().UTC(),
+		})
 	}
 	return nil
 }

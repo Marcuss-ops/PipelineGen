@@ -152,7 +152,54 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	if input.Voiceover.ID == "" && strings.TrimSpace(input.ClipAssetID) == "" && strings.TrimSpace(input.ClipID) == "" {
 		return nil
 	}
+	if input.ResumeFrom != nil {
+		if recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer); ok {
+			return recovery.UploadRendered(ctx, input, *input.ResumeFrom)
+		}
+		return fmt.Errorf("localized render recovery requested but upload-only adapter is not wired")
+	}
 	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
+}
+
+func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, lang Language, clipID string) *LocalizedRenderResult {
+	if result == nil {
+		return nil
+	}
+	r.localizedRenderMu.Lock()
+	defer r.localizedRenderMu.Unlock()
+	for i := range result.LocalizedRenderStaged {
+		v := &result.LocalizedRenderStaged[i]
+		if v.SceneID == sceneID && v.Language == lang && v.ClipID == clipID && strings.EqualFold(v.Status, "RENDERED") {
+			copy := *v
+			return &copy
+		}
+	}
+	return nil
+}
+
+func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+	if result == nil || strings.TrimSpace(rendered.LocalPath) == "" || strings.TrimSpace(rendered.SHA256) == "" {
+		return fmt.Errorf("localized render ready: local path and sha256 are required")
+	}
+	r.localizedRenderMu.Lock()
+	defer r.localizedRenderMu.Unlock()
+	for i := range result.LocalizedRenderStaged {
+		v := &result.LocalizedRenderStaged[i]
+		if v.SceneID == rendered.SceneID && v.Language == rendered.Language && v.ClipID == rendered.ClipID {
+			*v = rendered
+			if err := r.repo.SavePartialResult(ctx, exec.JobID, result); err != nil {
+				return fmt.Errorf("localized render ready: checkpoint update: %w", err)
+			}
+			r.log.Info("localized render staged", zap.String("job_id", exec.JobID), zap.String("scene_id", rendered.SceneID), zap.String("language", string(rendered.Language)), zap.String("clip_id", rendered.ClipID), zap.String("sha256", rendered.SHA256))
+			return nil
+		}
+	}
+	result.LocalizedRenderStaged = append(result.LocalizedRenderStaged, rendered)
+	if err := r.repo.SavePartialResult(ctx, exec.JobID, result); err != nil {
+		return fmt.Errorf("localized render ready: checkpoint save: %w", err)
+	}
+	r.log.Info("localized render staged", zap.String("job_id", exec.JobID), zap.String("scene_id", rendered.SceneID), zap.String("language", string(rendered.Language)), zap.String("clip_id", rendered.ClipID), zap.String("sha256", rendered.SHA256))
+	return nil
 }
 
 // recordLocalizedRender records one certified produced video of the
@@ -174,22 +221,47 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	}
 	if result != nil {
 		r.localizedRenderMu.Lock()
-		applyLocalizedRenderLinkLocked(result, rendered)
+		removeStagedLocalizedRenderLocked(result, rendered)
 		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
 		accumulateLocalizedRenderMetrics(result, rendered)
-		r.localizedRenderMu.Unlock()
 	}
 	// Durable lineage: the produced video is an OperationRender artifact
 	// joinable on (scene_id, language, asset_id) like every other produced
 	// artifact of the run.
-	return r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+	if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
 		OperationID: artifactOperationID(exec.Attempt, OperationRender, rendered.SceneID, string(rendered.Language)),
 		Kind:        OperationRender,
 		SceneID:     rendered.SceneID,
 		Language:    rendered.Language,
 		AssetID:     rendered.AssetID,
 		Status:      "COMPLETED",
-	})
+	}); err != nil {
+		if result != nil {
+			r.localizedRenderMu.Unlock()
+		}
+		return err
+	}
+	// Persist immediately after each certified unit, not only when the whole
+	// fan-out joins. This makes a successful render/upload visible to resume
+	// after a process crash in a later sibling.
+	if result != nil {
+		r.checkpoint(ctx, exec.JobID, result)
+		r.localizedRenderMu.Unlock()
+	}
+	return nil
+}
+
+func removeStagedLocalizedRenderLocked(result *GenerateResult, rendered LocalizedRenderResult) {
+	if result == nil {
+		return
+	}
+	for i := range result.LocalizedRenderStaged {
+		v := result.LocalizedRenderStaged[i]
+		if v.SceneID == rendered.SceneID && v.Language == rendered.Language && v.ClipID == rendered.ClipID {
+			result.LocalizedRenderStaged = append(result.LocalizedRenderStaged[:i], result.LocalizedRenderStaged[i+1:]...)
+			return
+		}
+	}
 }
 
 // accumulateLocalizedRenderMetrics records both child work and the enclosing

@@ -126,7 +126,7 @@
         "language": "en",
         "tone": "neutral",
         "style": "Short factual prose.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Failure injection operational test",

@@ -21,6 +21,18 @@ type recordingLocalizedRenderEnqueuer struct {
 	producedVideo *LocalizedRenderResult
 }
 
+type recoveryLocalizedRenderEnqueuer struct {
+	recordingLocalizedRenderEnqueuer
+	recovered []LocalizedRenderResult
+}
+
+func (e *recoveryLocalizedRenderEnqueuer) UploadRendered(_ context.Context, _ LocalizedRenderInput, staged LocalizedRenderResult) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recovered = append(e.recovered, staged)
+	return nil
+}
+
 func (e *recordingLocalizedRenderEnqueuer) EnqueueLocalizedRender(_ context.Context, in LocalizedRenderInput) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -38,6 +50,25 @@ func (e *recordingLocalizedRenderEnqueuer) snapshot() []LocalizedRenderInput {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]LocalizedRenderInput(nil), e.inputs...)
+}
+
+func TestRunner_LocalizedRenderResumeUsesUploadOnlyPath(t *testing.T) {
+	enq := &recoveryLocalizedRenderEnqueuer{}
+	runner, _, _, _, _, _, _ := newTestRunner()
+	runner.SetLocalizedRenderEnqueuer(enq)
+	staged := LocalizedRenderResult{
+		SceneID: "scene-0", Language: "en", ClipID: "clip-0", Status: "RENDERED",
+		LocalPath: "/tmp/clip-0.mp4", SHA256: "sha-0",
+	}
+	err := runner.enqueueLocalizedRender(context.Background(), LocalizedRenderInput{
+		RunID: "run-recovery", SceneID: staged.SceneID, Language: staged.Language,
+		ClipID: staged.ClipID, ClipAssetID: staged.ClipID,
+		ResumeFrom: &staged,
+	})
+	require.NoError(t, err)
+	require.Len(t, enq.recovered, 1)
+	require.Equal(t, staged.LocalPath, enq.recovered[0].LocalPath)
+	require.Empty(t, enq.snapshot(), "resume must not enqueue a fresh render")
 }
 
 // TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage pins the batch

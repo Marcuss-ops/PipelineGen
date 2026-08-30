@@ -171,7 +171,12 @@ func (r *Registry) AppendEvent(ctx context.Context, e capregistry.Event) (int64,
 	}
 	if affected, _ := res.RowsAffected(); affected == 0 {
 		var seq int64
-		if err := r.db.QueryRowContext(ctx, `SELECT seq FROM job_registry_events WHERE event_id=?`, e.EventID).Scan(&seq); err != nil {
+		// Production databases created by migration 204 use event_id as
+		// the primary key and therefore do not expose the legacy AUTOINCREMENT
+		// `seq` column used by older test fixtures. SQLite's implicit rowid is
+		// the stable insertion sequence for this table and is the compatible
+		// idempotency return value for both schemas.
+		if err := r.db.QueryRowContext(ctx, `SELECT rowid FROM job_registry_events WHERE event_id=?`, e.EventID).Scan(&seq); err != nil {
 			return 0, fmt.Errorf("append job event %q: read existing event: %w", e.EventID, err)
 		}
 		return seq, nil

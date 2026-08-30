@@ -257,10 +257,33 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		r.logPhase("setup_failed", plan.RunID, zap.String("stage", "asset_link"), zap.Error(err))
 		return rustexec.ClipRenderResult{}, err
 	}
-	if plan.Watermark != nil && plan.Watermark.Text == "" && plan.Watermark.Path != "" {
-		if err := link("watermark_image", plan.Watermark.Path, "watermark"+filepath.Ext(plan.Watermark.Path)); err != nil {
-			r.logPhase("setup_failed", plan.RunID, zap.String("stage", "watermark_link"), zap.Error(err))
-			return rustexec.ClipRenderResult{}, err
+	if plan.Watermark != nil {
+		if strings.TrimSpace(plan.Watermark.Text) != "" && plan.Watermark.Path == "" {
+			wmPNG := filepath.Join(runRoot, "watermark_text.png")
+			fontSize := 48
+			if plan.Watermark.Style != nil && plan.Watermark.Style.FontSizePX > 0 {
+				fontSize = int(plan.Watermark.Style.FontSizePX)
+			}
+			escapedText := strings.ReplaceAll(plan.Watermark.Text, "'", "\\'")
+			filter := fmt.Sprintf("drawtext=text='%s':fontcolor=white:fontsize=%d:x=(w-text_w)/2:y=(h-text_h)/2", escapedText, fontSize)
+			cmd := exec.Command(r.ffmpeg,
+				"-y",
+				"-f", "lavfi",
+				"-i", "color=c=black@0.0:s=400x120:d=0.1",
+				"-vf", filter,
+				"-vframes", "1",
+				wmPNG,
+			)
+			if err := cmd.Run(); err == nil {
+				plan.Watermark.Path = wmPNG
+				plan.Watermark.Text = ""
+			}
+		}
+		if plan.Watermark.Path != "" {
+			if err := link("watermark_image", plan.Watermark.Path, "watermark"+filepath.Ext(plan.Watermark.Path)); err != nil {
+				r.logPhase("setup_failed", plan.RunID, zap.String("stage", "watermark_link"), zap.Error(err))
+				return rustexec.ClipRenderResult{}, err
+			}
 		}
 	}
 	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset &&
@@ -388,7 +411,8 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	// hosts the slower FullGraph path.  Carry the explicit execution request
 	// through both the CLI and daemon protocols so a regression cannot silently
 	// turn this probe into a FullGraph benchmark.
-	directYUV := plan.Watermark == nil && (plan.Subtitles == nil || len(plan.Subtitles.Cues) == 0) &&
+	directYUV := (plan.Watermark == nil || plan.Watermark.Path != "") &&
+		(plan.Subtitles == nil || plan.Subtitles.Mode != "burn" || len(plan.Subtitles.Cues) == 0) &&
 		(plan.Background == nil || plan.Background.Mode == cliprender.BackgroundModeNone)
 	gpuHotPathMode := "auto"
 	if directYUV {
@@ -457,6 +481,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 			"--ffmpeg-mode", "pipe",
 			"--encoder-backend", "native",
 			"--gpu-hot-path-mode", gpuHotPathMode,
+			"--preset", "fast",
 			"--report",
 		)
 		procOut, renderErr = runChrononCommandStreaming(cmd, chrononLogPath, plan.RunID, r.log)

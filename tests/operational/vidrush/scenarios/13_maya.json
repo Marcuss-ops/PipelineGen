@@ -31,7 +31,7 @@
         "language": "it",
         "tone": "documentary",
         "style": "Testo documentaristico pre-scritto sulla civiltà Maya. Il server deve solo segmentare, estrarre entità/keyword/query, e cercare media (internet_images + Artlist).",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "La civiltà Maya: città, astronomia, religione, scrittura e mistero del suo declino",

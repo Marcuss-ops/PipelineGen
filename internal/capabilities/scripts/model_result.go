@@ -139,7 +139,12 @@ type GenerateResult struct {
 	// with its asset id, sha256, and Drive identity. A run that rendered a
 	// final MP4 must prove it — the produced video is never orphaned from
 	// the run result. Nil when the fan-out produced no certified video.
-	LocalizedRenders        []LocalizedRenderResult  `json:"localized_renders,omitempty"`
+	LocalizedRenders []LocalizedRenderResult `json:"localized_renders,omitempty"`
+	// LocalizedRenderStaged contains locally certified RENDERED artifacts
+	// whose Drive publication has not yet been confirmed. It is the durable
+	// hand-off point used by resume: these entries must be uploaded without
+	// invoking Chronon again.
+	LocalizedRenderStaged   []LocalizedRenderResult  `json:"localized_render_staged,omitempty"`
 	LocalizedRenderFailures []LocalizedRenderFailure `json:"localized_render_failures,omitempty"`
 	RenderMetrics           *RenderMetrics           `json:"render_metrics,omitempty"`
 	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`

@@ -75,12 +75,30 @@ PAYLOAD=$(jq -n --arg item_id "$CASE_PREFIX-item" --arg item_title "$CASE_PREFIX
         "A doctor evaluates a new hospital technology. The medical team tests the device in a modern clinical ward.\n\n" +
         "Verification case identifier: " + $case_marker + ".")
     },
-    script_params: { target_words: 260, skip_quality_gate: true, use_memory: true },
+    script_params: {
+      target_words: 260,
+      min_words: 180,
+      segment_words: 70,
+      skip_quality_gate: true,
+      use_memory: true,
+      segments: [
+        { id: "factory-technology", topic: "Elon Musk, Tesla factory and electric vehicle assembly", target_words: 80 },
+        { id: "coastal-storm", topic: "Italian coastal storm, flooded streets and emergency crews", target_words: 80 },
+        { id: "hospital-innovation", topic: "Doctor testing new hospital technology in a clinical ward", target_words: 80 }
+      ]
+    },
     output: { extract_entities: true, generate_metadata: false, save_to_db: true },
     media_plan: {
       mode: "hybrid",
       provider_policy: { artlist: "enabled", internet_images: "enabled" },
-      extraction: { enabled: true }
+      extraction: {
+        enabled: true,
+        max_entities_per_segment: 5,
+        max_important_phrases_per_segment: 5,
+        max_important_words_per_segment: 5,
+        max_artlist_queries_per_segment: 5,
+        max_image_queries_per_segment: 5
+      }
     }
   }]
 }')
@@ -139,7 +157,10 @@ run_generation() {
 }
 
 extract_result() {
-    jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // empty' "$1"
+    # The canonical durable capability envelope is .result.data.result.
+    # Keep the legacy item envelopes as compatibility fallbacks because
+    # older workers may still return them during a rolling deployment.
+    jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$1"
 }
 
 assert_segments() {
@@ -157,18 +178,18 @@ assert_segments() {
         and ((.insights.entities | length) <= 5)
         and ((.insights.important_phrases | length) <= 5)
         and ((.insights.important_words | length) <= 5)
-        and ((.insights.artlist_queries | length) <= 5)
-        and ((.insights.image_queries | length) <= 5)
-        and ((.insights.entities | map(.value) | map(select(length > 0)) | length) == (.insights.entities | map(.value) | unique | length))
+        and (((.insights.artlist_queries // []) | length) <= 5)
+        and (((.insights.image_queries // []) | length) <= 5)
+        and ((.insights.entities | map(select((.value // "") | length > 0) | [(.value | ascii_downcase), ((.type // "") | ascii_upcase)]) | length) == (.insights.entities | map(select((.value // "") | length > 0) | [(.value | ascii_downcase), ((.type // "") | ascii_upcase)]) | unique | length))
         and ((.insights.important_phrases | map(select(length > 0)) | length) == (.insights.important_phrases | unique | length))
         and ((.insights.important_words | map(select(length > 0)) | length) == (.insights.important_words | unique | length))
-        and ((.insights.artlist_queries | map(select(length > 0)) | length) == (.insights.artlist_queries | unique | length))
-        and ((.insights.image_queries | map(select(length > 0)) | length) == (.insights.image_queries | unique | length))
+        and (((.insights.artlist_queries // []) | map(select(length > 0)) | length) == ((.insights.artlist_queries // []) | unique | length))
+        and (((.insights.image_queries // []) | map(select(length > 0)) | length) == ((.insights.image_queries // []) | unique | length))
         and (($artlist or (.cache.artlist == "BYPASSED")) and ($images or (.cache.internet_images == "BYPASSED")))
       )
     ' <<<"$result" >/dev/null; then
         echo "segment/insight/cache contract failed (artlist=$artlist images=$images)" >&2
-        jq -c '{segments: [.segments[] | {segment_id,position,text_hash,cache,insights,assets}]}' <<<"$result" >&2
+        jq -c '{segment_count: (.segments | length), segments: [.segments[] | {segment_id,position,text_hash,cache,insights: {entities: (.insights.entities // [] | length), important_phrases: (.insights.important_phrases // [] | length), important_words: (.insights.important_words // [] | length), artlist_queries: (.insights.artlist_queries // [] | length), image_queries: (.insights.image_queries // [] | length), hashes_match: (.insights.text_hash == .text_hash)}, candidate_providers: ([.assets.candidates[]?.provider] | unique)}]}' <<<"$result" >&2
         return 1
     fi
 

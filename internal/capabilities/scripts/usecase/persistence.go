@@ -149,6 +149,7 @@ func buildGenerationResultWithCache(
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
 		if len(postResult.VidRushSegments) > 0 {
+			postResult.VidRushSegments = adapters.DeduplicateVidRushSegments(postResult.VidRushSegments)
 			if plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
 				result.Segments = append([]scriptpkg.VidRushSegmentResult(nil), postResult.VidRushSegments...)
 			} else {

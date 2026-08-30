@@ -41,7 +41,7 @@
         "language": "en",
         "tone": "cinematic",
         "style": "Write a short narrative that produces a valid SpecScene with at least 2 scenes. Each scene must have a composite spec with assets.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Render pipeline handoff verification",

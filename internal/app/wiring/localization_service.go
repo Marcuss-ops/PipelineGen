@@ -59,7 +59,9 @@ type LocalizationConfig struct {
 	// policy (preset / CRF / pixel format) applied to every render.
 	EncoderPolicyHash string
 	// WorkDir is the scratch root where rendered outputs + subtitle ASS land.
-	WorkDir string
+	WorkDir                 string
+	GlobalRenderConcurrency int
+	UploadConcurrency       int
 }
 
 // LocalizationRendererVersion is the canonical renderer version for the
@@ -123,7 +125,15 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if err != nil {
 		return nil, fmt.Errorf("localization service: document assembler: %w", err)
 	}
-	svc, err := localization.NewService(renderer, drivePublisher, assembler)
+	renderConcurrency := cfg.GlobalRenderConcurrency
+	if renderConcurrency < 1 {
+		renderConcurrency = 2
+	}
+	uploadConcurrency := cfg.UploadConcurrency
+	if uploadConcurrency < 1 {
+		uploadConcurrency = 4
+	}
+	svc, err := localization.NewServiceWithConcurrency(renderer, drivePublisher, assembler, renderConcurrency, uploadConcurrency)
 	if err != nil {
 		return nil, fmt.Errorf("localization service: service: %w", err)
 	}
@@ -169,6 +179,7 @@ type LocalizeInput struct {
 	// SubtitleFolderID is the resolved per-clip Drive folder for the ASS.
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
+	OnRendered             func(localization.LocalizedClipArtifact) error
 	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
 	// localization manifest Google Doc.
 	DocTitle          string
@@ -239,6 +250,15 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		SkipDocument:           in.SkipDocument,
 		Plans:                  plans,
 	})
+}
+
+// UploadRendered republishes a locally certified artifact without invoking
+// the renderer. It is used only by crash/retry recovery of localized clips.
+func (s *LocalizationService) UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error) {
+	if s == nil || s.service == nil {
+		return artifact, fmt.Errorf("localization service: upload-only service is not wired")
+	}
+	return s.service.UploadRendered(ctx, artifact, folderID)
 }
 
 // BuildLocalizationService is the composition-root factory: it wires the
@@ -341,12 +361,14 @@ func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
 	}
 
 	return LocalizationConfig{
-		SourceLanguage:    sourceLanguage,
-		OutputProfileHash: canonicalFactHash(profile),
-		RendererVersion:   LocalizationRendererVersion,
-		SubtitleStyleHash: LocalizationSubtitleStyleHash,
-		EncoderPolicyHash: canonicalFactHash(policy),
-		WorkDir:           workDir,
+		SourceLanguage:          sourceLanguage,
+		OutputProfileHash:       canonicalFactHash(profile),
+		RendererVersion:         LocalizationRendererVersion,
+		SubtitleStyleHash:       LocalizationSubtitleStyleHash,
+		EncoderPolicyHash:       canonicalFactHash(policy),
+		WorkDir:                 workDir,
+		GlobalRenderConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
+		UploadConcurrency:       cfg.Scripts.LocalizedRenderUploadConcurrency,
 	}
 }
 

@@ -26,7 +26,7 @@
         "language": "en",
         "tone": "descriptive",
         "style": "Write clear factual descriptions centered on the named famous person. Keep each segment focused on the person and the specific public scene so image search queries preserve the exact name.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Famous people and public appearances",

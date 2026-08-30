@@ -124,7 +124,7 @@ dispatch_and_poll() {
     cp "${SMOKE_LAST_BODY:-/dev/null}" "$full_body" 2>/dev/null || true
 
     local result
-    result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // empty' "$full_body")
+    result=$(jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$full_body")
     if [[ -z "$result" || "$result" == "null" ]]; then
         printf '  %sFAIL%s %s: missing generation result\n' "$RED" "$RESET" "$label"
         return 1
@@ -167,7 +167,7 @@ build_maya_payload() {
                 language: "it",
                 tone: "documentary",
                 style: "Scrivi un testo documentaristico concreto e informativo sulla civiltà Maya. Suddividi in segmenti distinti per tema: città, astronomia, religione, scrittura, declino. Usa dettagli specifici e ricercabili.",
-                model: "gemma2:2b",
+                model: "gemma4:e2b",
                 source: {
                     type: "text",
                     topic: $topic,
@@ -629,7 +629,7 @@ PARTIAL_PAYLOAD=$(jq -n \
             language: "it",
             tone: "documentary",
             style: "Scrivi un testo documentaristico concreto e informativo sulla civiltà Maya. Suddividi in segmenti distinti per tema: città, astronomia, religione, scrittura, declino.",
-            model: "gemma2:2b",
+            model: "gemma4:e2b",
             source: {
                 type: "text",
                 topic: $topic,
@@ -706,7 +706,7 @@ MISS_PAYLOAD=$(jq -n \
             language: "en",
             tone: "documentary",
             style: "Write one short paragraph. Keep it concrete.",
-            model: "gemma2:2b",
+            model: "gemma4:e2b",
             source: {
                 type: "text",
                 topic: "authentic Maya king Pacal carved sarcophagus cinematic footage",

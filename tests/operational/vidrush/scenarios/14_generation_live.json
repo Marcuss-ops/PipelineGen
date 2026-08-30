@@ -26,7 +26,7 @@
         "language": "en",
         "tone": "cinematic",
         "style": "Write three concise, visually concrete cinematic scenes suitable for generated images.",
-        "model": "gemma2:2b",
+        "model": "gemma4:e2b",
         "source": {
           "type": "text",
           "topic": "Generated visual fallback scenes",

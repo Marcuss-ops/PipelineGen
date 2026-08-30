@@ -25,6 +25,7 @@ type sceneTextSnapshot struct {
 	Index       int
 	Text        string
 	Annotations *scriptpkg.SceneAnnotations
+	ClipIDs     []string
 }
 
 // snapshotSceneText projects the source-language text (and any pre-existing
@@ -34,7 +35,16 @@ type sceneTextSnapshot struct {
 func snapshotSceneText(scenes []Scene, language Language) []sceneTextSnapshot {
 	out := make([]sceneTextSnapshot, 0, len(scenes))
 	for i := range scenes {
-		out = append(out, sceneTextSnapshot{ID: scenes[i].ID, Index: i, Text: scenes[i].Text[language], Annotations: scenes[i].Annotations})
+		clipIDs := make([]string, 0, len(scenes[i].Clips)+1)
+		for _, clip := range scenes[i].Clips {
+			if clip != nil && clip.ID != "" {
+				clipIDs = append(clipIDs, clip.ID)
+			}
+		}
+		if scenes[i].Clip != nil && scenes[i].Clip.ID != "" {
+			clipIDs = append(clipIDs, scenes[i].Clip.ID)
+		}
+		out = append(out, sceneTextSnapshot{ID: scenes[i].ID, Index: i, Text: scenes[i].Text[language], Annotations: scenes[i].Annotations, ClipIDs: clipIDs})
 	}
 	return out
 }

@@ -202,9 +202,12 @@ echo ""
 # ── Helper functions ───────────────────────────────────────────────────────
 api() {
     local method="$1" path="$2"; shift 2
+    local ikey
+    ikey=$(python3 -c 'import uuid; print(uuid.uuid4())')
     curl -fsS --max-time 60 \
         -X "$method" \
         -H "Authorization: Bearer $ADMIN_TOKEN" \
+        -H "Idempotency-Key: $ikey" \
         -H "Content-Type: application/json" \
         "$@" \
         "$BASE_URL$path"
@@ -213,9 +216,12 @@ api() {
 api_raw() {
     # Returns HTTP body + status code; does not fail on non-2xx.
     local method="$1" path="$2"; shift 2
+    local ikey
+    ikey=$(python3 -c 'import uuid; print(uuid.uuid4())')
     curl -sS --max-time 60 \
         -X "$method" \
         -H "Authorization: Bearer $ADMIN_TOKEN" \
+        -H "Idempotency-Key: $ikey" \
         -H "Content-Type: application/json" \
         -w '\n__HTTP_CODE__%{http_code}' \
         "$@" \

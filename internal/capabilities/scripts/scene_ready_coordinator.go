@@ -154,6 +154,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	}
 	for i, lang := range langs {
 		out.Voiceover[lang] = tts[i]
+		audioRef := tts[i]
 		// Per-(scene, language) TTS correlation: record the produced
 		// voiceover asset so the translation → TTS → render → Drive lineage
 		// is joinable on (scene_id, language, asset_id).
@@ -198,7 +199,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 				SceneIndex:     out.Index,
 				Language:       lang,
 				Text:           renderText,
-				Voiceover:      out.Voiceover[lang],
+				Voiceover:      audioRef,
 				SourceLanguage: c.req.SourceLanguage,
 				SourceText:     sourceText,
 				ClipID:         clipID,
