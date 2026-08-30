@@ -323,6 +323,12 @@ func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, dur
 	if durationMS <= 0 && clip.Duration > 0 {
 		durationMS = int64(clip.Duration * 1000)
 	}
+	if durationMS <= 0 && clip.SourceOutMS > clip.SourceInMS {
+		durationMS = clip.SourceOutMS - clip.SourceInMS
+	}
+	if durationMS <= 0 && scene.DurationMS > 0 {
+		durationMS = scene.DurationMS
+	}
 	return clip.ID, clip.ID, clip.SHA256, durationMS
 }
 

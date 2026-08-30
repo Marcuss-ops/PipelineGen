@@ -30,6 +30,15 @@ func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64)
 		return
 	}
 	if clip.SourceOutMS > clip.SourceInMS {
+		if clip.Duration <= 0 {
+			clip.Duration = float64(clip.SourceOutMS-clip.SourceInMS) / 1000.0
+		}
+		if clip.DurationUS <= 0 {
+			clip.DurationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
+		}
+		if clip.FrameCount <= 0 {
+			clip.FrameCount = int64(math.Round(clip.Duration * 30))
+		}
 		return
 	}
 	if clip.Duration <= 0 {
@@ -40,6 +49,7 @@ func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64)
 	}
 	clip.SourceInMS = 0
 	clip.SourceOutMS = int64(math.Round(clip.Duration * 1000))
+	clip.DurationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
 	clip.FrameCount = int64(math.Round(clip.Duration * 30))
 }
 

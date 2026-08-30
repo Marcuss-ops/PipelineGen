@@ -11,6 +11,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // sceneReadyCoordinator owns the asynchronous SceneTextReady downstream
@@ -220,9 +221,10 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 					return nil
 				},
 			}); err != nil {
-				// The adapter is nil-safe (returns nil when render not
-				// registered). A non-nil error here is a real failure —
-				// record it but do NOT fail the scene (TTS is done).
+				c.runner.log.Error("streaming localized render enqueue failed",
+					zap.String("scene_id", out.ID),
+					zap.String("clip_id", clipID),
+					zap.Error(err))
 				c.mu.Lock()
 				c.failures = append(c.failures, LocalizedRenderFailure{
 					SceneID: out.ID, Language: lang, ClipID: clipID,
