@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	mwm2m "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -102,16 +103,33 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		return
 	}
 
+	// PG-M2M (Aug 2026): resolve the M2M client_id from the gin context.
+	// JobClientAuthMiddleware stores the resolved *M2MClient under
+	// jobClientContextKey when the request came through the M2M surface
+	// (/api/v1/jobs). On the admin surface (/api/jobs) no M2MClient is
+	// stored, so client_id stays empty — admin enqueues are NOT deduped
+	// by (client_id, idempotency_key), preserving the existing admin
+	// semantics. The client_id is the non-secret projection of the
+	// Bearer VELOX_M2M_SECRET; the plaintext token is never stored.
+	var clientID string
+	if raw, exists := c.Get("m2m_client"); exists && raw != nil {
+		if m2mClient, ok := raw.(*mwm2m.M2MClient); ok && m2mClient != nil {
+			clientID = m2mClient.ClientID
+		}
+	}
+
 	// Map HTTP DTO to domain request
 	req := job.EnqueueRequest{
-		Type:          dto.Type,
-		Project:       dto.Project,
-		VideoName:     dto.VideoName,
-		Payload:       dto.Payload,
-		Priority:      dto.Priority,
-		MaxRetries:    dto.MaxRetries,
-		ActiveKey:     dto.ActiveKey,
-		CorrelationID: dto.CorrelationID,
+		Type:           dto.Type,
+		Project:        dto.Project,
+		VideoName:      dto.VideoName,
+		Payload:        dto.Payload,
+		Priority:       dto.Priority,
+		MaxRetries:     dto.MaxRetries,
+		ActiveKey:      dto.ActiveKey,
+		CorrelationID:  dto.CorrelationID,
+		ClientID:       clientID,
+		IdempotencyKey: dto.IdempotencyKey,
 	}
 
 	j, err := h.service.Enqueue(c.Request.Context(), &req)

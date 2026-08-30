@@ -24,9 +24,10 @@ func (f *fakeRenderer) Render(_ context.Context, _ []byte, output string) error 
 }
 
 // fakeProber returns contract-valid facts (DefaultOverlayContractV1:
-// 1920x1080@30fps prores/yuva444p/mov, zero audio streams) and hashes the
-// on-disk bytes so the manifest's sha256/size stay byte-exact. It never
-// inspects actual media — it stands in for the canonical rustexec probe.
+// 1920x1080@24/1 prores/yuva444p/mov, zero audio streams — canvas fps
+// inherited from the assembly V2 contract) and hashes the on-disk bytes so
+// the manifest's sha256/size stay byte-exact. It never inspects actual
+// media — it stands in for the canonical rustexec probe.
 type fakeProber struct{ err error }
 
 func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
@@ -42,7 +43,7 @@ func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.Ov
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   1_000_000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -359,7 +360,7 @@ func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capove
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   1_000_000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 1, // violation: overlays must be video-only
 		Codec:        "prores",

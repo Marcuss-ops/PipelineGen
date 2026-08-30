@@ -118,7 +118,7 @@ for i in 0 1 2 3 4; do
   SRC_DUR=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$CLIP_PATH" | awk '{printf "%.3f", $1+0}')
   TARGET_DUR=$(awk -v src="$SRC_DUR" -v subms="$SUB_END_MS" 'BEGIN{subdur=subms/1000.0; if(src<=0)src=subdur; if(subdur>0 && subdur<src)src=subdur; if(src<=0)src=5; printf "%.3f", src}')
   CLEAN="$VEL_E2E_WORK/clips/scene-$((i+1)).mp4"
-  ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -i "$CLIP_PATH" -t "$TARGET_DUR" -vf "scale=1280:-2,fps=30,format=yuv420p" -map 0:v:0 -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -ar 48000 -ac 2 -shortest -movflags +faststart "$CLEAN"
+  ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -i "$CLIP_PATH" -t "$TARGET_DUR" -vf "scale=1280:-2,fps=24,format=yuv420p" -map 0:v:0 -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -ar 48000 -ac 2 -shortest -movflags +faststart "$CLEAN"
   AUDIO_STREAMS=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$CLEAN" | wc -l | tr -d ' ')
   [[ "$AUDIO_STREAMS" != "0" ]] || { echo "FAIL cleaned clip has no original audio: $CLEAN" >&2; exit 1; }
   BODY="$VEL_E2E_WORK/upload-clip-$i.json"

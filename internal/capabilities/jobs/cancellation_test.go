@@ -108,6 +108,9 @@ func (m *renewLoopMockJobBroker) FindActiveByKey(_ context.Context, _ string) (*
 func (m *renewLoopMockJobBroker) FindByTypeAndCorrelation(_ context.Context, _ string, _ string) (*job.Job, error) {
 	return nil, nil
 }
+func (m *renewLoopMockJobBroker) FindByClientAndIdempotencyKey(_ context.Context, _, _ string) (*job.Job, error) {
+	return nil, nil
+}
 func (m *renewLoopMockJobBroker) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
 	return nil, nil
 }
@@ -395,6 +398,9 @@ func (m *mockCancelBroker) FindActiveByKey(_ context.Context, _ string) (*job.Jo
 	return nil, nil
 }
 func (m *mockCancelBroker) FindByTypeAndCorrelation(_ context.Context, _ string, _ string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *mockCancelBroker) FindByClientAndIdempotencyKey(_ context.Context, _, _ string) (*job.Job, error) {
 	return nil, nil
 }
 func (m *mockCancelBroker) SetProgress(_ context.Context, _ string, p int, _ string) error {

@@ -35,9 +35,7 @@ func NewBundle(service *Service, stats JobStatsReader, enabledFunc func() bool, 
 }
 
 // Name implements api.CapabilityModule.
-func (b Bundle) Name() string { return "jobs" }
-
-// Build delegates to the existing canonical jobs module builder.
+func (b Bundle) Name() string { return "jobs" } // Build delegates to the existing canonical jobs module builder.
 func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {
 	d, err := Build(Dependencies{
 		Service:     b.service,
@@ -50,4 +48,21 @@ func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {
 		return api.RuntimeModule{}, err
 	}
 	return api.RuntimeModuleFor("jobs", "/api/jobs", d)
+}
+
+// Handler returns the canonical *JobsHandler constructed during Build.
+// PG-M2M (Aug 2026): the composition root uses this to construct the
+// M2M job surface (NewM2MJobsModule) on a SEPARATE RouterGroup
+// (the /api/v1/jobs group protected by JobClientAuthMiddleware),
+// while the admin module (Build above) stays on the /api/jobs admin
+// group. Both surfaces share the SAME *JobsHandler so Enqueue/Get
+// remain single-implementation.
+//
+// The handler is built lazily on first call (the admin module Build
+// path constructs it via NewJobsHandler); callers that only need the
+// M2M surface can call Handler() without going through Build. This
+// keeps the M2M surface independent of the admin module's
+// RuntimeModule plumbing.
+func (b Bundle) Handler() *JobsHandler {
+	return NewJobsHandler(b.service, b.stats, b.logger)
 }

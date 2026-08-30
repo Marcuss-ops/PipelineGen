@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
@@ -78,6 +79,11 @@ type AppHandlers struct {
 	InternalMediaHandler InternalMediaRegistrar
 	OutboxHandler        RouteRegistrar
 	MediasearchHandler   RouteRegistrar
+	// PG-M2M (Aug 2026): the M2M job surface (POST + GET /:id on
+	// /api/v1/jobs). Plumbed through from RegistryWiring.M2MJobsHandler;
+	// nil when the M2M store is not wired (the group is then skipped).
+	M2MJobsHandler RouteRegistrar
+	M2MSecurity    mwports.M2MSecurityPort
 }
 
 // AppRuntime groups the lifecycle / server-control surface. Kept as

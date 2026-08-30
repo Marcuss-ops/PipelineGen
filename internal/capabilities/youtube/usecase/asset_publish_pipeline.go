@@ -28,7 +28,7 @@
 //
 // Filter (Step 9 user spec, verified in step 9 review):
 //
-//	Master         (H.264/AAC/yuv420p/30fps/1920x1080) → publish
+//	Master         (H.264/AAC/yuv420p/24fps/1920x1080) → publish
 //	Proxy          (720p preview .mp4)                  → publish
 //	Manifest       (per-asset metadata ledger json)    → publish
 //	Mezzanine      (redundant copy of master)           → SKIP

@@ -298,7 +298,7 @@ artlist_replay_run() {
     local term="$1" limit="$2"
     local strategy="${3:-replace}"
     local clip_duration="${4:-7}"
-    local width="${5:-1920}" height="${6:-1080}" fps="${7:-30}"
+    local width="${5:-1920}" height="${6:-1080}" fps="${7:-24}"
     local concurrency="${8:-1}"
     local root="${9:-${VELOX_DRIVE_ARTLIST_ROOT:-}}"
     local out="${WORK_DIR:-/tmp}/artlist_replay_$$.json"

@@ -127,7 +127,7 @@ PY
         TARGET_DURATION=$(jq -r --argjson idx "$((CLIP_UPLOAD_INDEX - 1))" '.[$idx] // 5' <<<"$VOICEOVER_DURATIONS_JSON")
         CLEAN_CLIP="${VEL_CLEAN_CLIP_DIR}/scene-${CLIP_UPLOAD_INDEX}.clean.mp4"
         ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -stream_loop -1 -i "$clip_path" -t "$TARGET_DURATION" \
-            -vf "scale=1280:-2,fps=30,format=yuv420p" \
+            -vf "scale=1280:-2,fps=24,format=yuv420p" \
             -c:v libx264 -preset veryfast -crf 23 \
             -an -movflags +faststart "$CLEAN_CLIP" >"${VEL_E2E_WORK}/ffmpeg-clean.log" 2>&1
         CLEAN_DURATION=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$CLEAN_CLIP" 2>/dev/null | awk '{printf "%.3f", $1 + 0}')

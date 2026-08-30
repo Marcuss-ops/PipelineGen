@@ -50,11 +50,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		cancelled_at TEXT,
 		parent_state_typed TEXT NOT NULL DEFAULT '',
 		parent_job_id TEXT NOT NULL DEFAULT '',
-		root_job_id TEXT NOT NULL DEFAULT ''
+		root_job_id TEXT NOT NULL DEFAULT '',
+		client_id TEXT NOT NULL DEFAULT '',
+		idempotency_key TEXT NOT NULL DEFAULT ''
 	);
 	CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority DESC, created_at ASC);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_key ON jobs(active_key) WHERE active_key != '';
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_type_correlation ON jobs(type, correlation_id) WHERE correlation_id != '';
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_client_idempotency ON jobs(client_id, idempotency_key) WHERE client_id != '' AND idempotency_key != '';
 	CREATE TABLE IF NOT EXISTS job_events (
 		id TEXT PRIMARY KEY,
 		job_id TEXT NOT NULL,

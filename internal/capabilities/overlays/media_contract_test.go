@@ -10,7 +10,7 @@ func TestOverlayRender_ValidatesMediaContract(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -29,7 +29,7 @@ func TestOverlayRender_RejectsInvalidMedia(t *testing.T) {
 		Width:        1280, // wrong width
 		Height:       720,  // wrong height
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -48,7 +48,7 @@ func TestOverlayRender_HasZeroAudioStreams(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 1, // overlay must have 0 audio streams
 		Codec:        "prores",
@@ -67,7 +67,7 @@ func TestOverlayRender_RejectsWrongCodec(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "h264", // wrong codec
@@ -86,7 +86,7 @@ func TestOverlayRender_RejectsWrongPixelFormat(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -106,7 +106,7 @@ func TestOverlayRender_RejectsAlphaRequiredButMissing(t *testing.T) {
 		RequiresAlpha: true,
 		Width:         1920,
 		Height:        1080,
-		FPSNum:        30,
+		FPSNum:        24,
 		FPSDen:        1,
 		AudioStreams:  0,
 		PixelFormat:   "yuv420p", // no alpha
@@ -115,7 +115,7 @@ func TestOverlayRender_RejectsAlphaRequiredButMissing(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -135,7 +135,7 @@ func TestOverlayRender_AcceptsAlphaInPixelFormat(t *testing.T) {
 		RequiresAlpha: true,
 		Width:         1920,
 		Height:        1080,
-		FPSNum:        30,
+		FPSNum:        24,
 		FPSDen:        1,
 		AudioStreams:  0,
 		PixelFormat:   "yuva444p",
@@ -144,7 +144,7 @@ func TestOverlayRender_AcceptsAlphaInPixelFormat(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -163,7 +163,7 @@ func TestOverlayRender_RejectsZeroDuration(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   0, // zero duration
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -182,7 +182,7 @@ func TestOverlayRender_RejectsZeroFileSize(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -196,12 +196,12 @@ func TestOverlayRender_RejectsZeroFileSize(t *testing.T) {
 }
 
 func TestOverlayContractForCanvas_Alpha(t *testing.T) {
-	c := OverlayContractForCanvas(1280, 720, 30, 1, true)
+	c := OverlayContractForCanvas(1280, 720, 24, 1, true)
 	if c.Width != 1280 || c.Height != 720 {
 		t.Errorf("canvas = %dx%d, want 1280x720", c.Width, c.Height)
 	}
-	if c.FPSNum != 30 || c.FPSDen != 1 {
-		t.Errorf("fps = %d/%d, want 30/1", c.FPSNum, c.FPSDen)
+	if c.FPSNum != 24 || c.FPSDen != 1 {
+		t.Errorf("fps = %d/%d, want 24/1", c.FPSNum, c.FPSDen)
 	}
 	if !c.RequiresAlpha {
 		t.Error("requires_alpha should be true")
@@ -247,10 +247,10 @@ func TestResolveMediaContract_UnknownFailsClosed(t *testing.T) {
 }
 
 func TestContractIDForCanvas(t *testing.T) {
-	if id := ContractIDForCanvas(1280, 720, 30, 1, true); id != DefaultOverlayContractV1.ID {
+	if id := ContractIDForCanvas(1280, 720, 24, 1, true); id != DefaultOverlayContractV1.ID {
 		t.Fatalf("alpha contract id = %q, want %q", id, DefaultOverlayContractV1.ID)
 	}
-	if id := ContractIDForCanvas(1280, 720, 30, 1, false); id != DefaultOverlayContractNoAlpha.ID {
+	if id := ContractIDForCanvas(1280, 720, 24, 1, false); id != DefaultOverlayContractNoAlpha.ID {
 		t.Fatalf("no-alpha contract id = %q, want %q", id, DefaultOverlayContractNoAlpha.ID)
 	}
 }
@@ -287,7 +287,7 @@ func TestOverlayMediaContract_ContainerCommaTokenAware(t *testing.T) {
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",

@@ -156,6 +156,22 @@ type Job struct {
 	// (per the BACKFILL contract in
 	// internal/application/voiceover/jobs/parent_aggregator_state.go).
 	ParentStateTyped string `json:"parent_state_typed,omitempty"`
+	// ClientID is the M2M client identifier resolved from the Bearer
+	// VELOX_M2M_SECRET by JobClientAuthMiddleware (the non-secret
+	// projection stored in the gin context). Empty for admin/internal
+	// enqueues. Persisted so the (client_id, idempotency_key) UNIQUE
+	// constraint can dedup M2M retries. Added by migration 251
+	// (PG-M2M, Aug 2026).
+	ClientID string `json:"client_id,omitempty"`
+	// IdempotencyKey is the caller-controlled dedup key for the M2M
+	// surface (e.g. "matt-damon-40-en-001"). Empty for admin/internal
+	// enqueues. Together with ClientID it forms the canonical dedup
+	// pair for M2M job submission: a retry with the same pair returns
+	// the SAME job_id instead of creating a duplicate. Added by
+	// migration 251 (PG-M2M, Aug 2026). Distinct from CorrelationID
+	// (which is derived from X-Request-ID / request context and is
+	// NOT per-client controlled).
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // IsTerminal returns true if the job has reached a terminal state.

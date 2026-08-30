@@ -230,7 +230,7 @@ echo "=== FAIL CLOSED ==="
 NEG_TRANS="$(jq -cn \
     --argjson inputs "$(printf '%s\n' "${CLIPS[@]:0:2}" | jq -R . | jq -sc .)" \
     --arg out "$WORKDIR/neg-trans.mp4" \
-    '{version:"mediaexec.v1",operation:"render_stock",input_paths:$inputs,output_path:$out,codec:"libx264",preset:"veryfast",crf:23,width:1280,height:720,fps:30,keyframe_interval:60,audio_codec:"aac",audio_bitrate:"128k",sample_rate:48000,channels:2,no_transitions:false,no_effects:true,clip_duration_sec:7,transitions:[{clip_index:0,segment:"end",id:"random-transition"}]}')"
+    '{version:"mediaexec.v1",operation:"render_stock",input_paths:$inputs,output_path:$out,codec:"libx264",preset:"veryfast",crf:23,width:1280,height:720,fps:24,keyframe_interval:60,audio_codec:"aac",audio_bitrate:"128k",sample_rate:48000,channels:2,no_transitions:false,no_effects:true,clip_duration_sec:7,transitions:[{clip_index:0,segment:"end",id:"random-transition"}]}')"
 NEG_TRANS_RESP="$(muscles "$NEG_TRANS")"
 echo "$NEG_TRANS_RESP" | jq -e '.ok == false and (.error | contains("invalid resolved transition"))' >/dev/null 2>&1 \
     && ok "unknown transition ID rejected" \
@@ -239,7 +239,7 @@ echo "$NEG_TRANS_RESP" | jq -e '.ok == false and (.error | contains("invalid res
 NEG_EFFECT="$(jq -cn \
     --argjson inputs "$(printf '%s\n' "${CLIPS[@]:0:2}" | jq -R . | jq -sc .)" \
     --arg out "$WORKDIR/neg-effect.mp4" \
-    '{version:"mediaexec.v1",operation:"render_stock",input_paths:$inputs,output_path:$out,codec:"libx264",preset:"veryfast",crf:23,width:1280,height:720,fps:30,keyframe_interval:60,audio_codec:"aac",audio_bitrate:"128k",sample_rate:48000,channels:2,no_transitions:true,no_effects:false,effect_paths:[{clip_index:0,path:"/nonexistent/effect.mp4"}]}')"
+    '{version:"mediaexec.v1",operation:"render_stock",input_paths:$inputs,output_path:$out,codec:"libx264",preset:"veryfast",crf:23,width:1280,height:720,fps:24,keyframe_interval:60,audio_codec:"aac",audio_bitrate:"128k",sample_rate:48000,channels:2,no_transitions:true,no_effects:false,effect_paths:[{clip_index:0,path:"/nonexistent/effect.mp4"}]}')"
 NEG_EFFECT_RESP="$(muscles "$NEG_EFFECT")"
 echo "$NEG_EFFECT_RESP" | jq -e '.ok == false and (.error | contains("invalid resolved effect path"))' >/dev/null 2>&1 \
     && ok "missing effect file rejected" \

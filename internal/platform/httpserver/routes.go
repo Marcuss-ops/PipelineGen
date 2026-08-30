@@ -62,11 +62,19 @@ type Router struct {
 	// enforces the split. Typed ports isolate each handler's contract.
 	outboxHandler      InternalOutboxRouter
 	mediasearchHandler InternalMediaSearchRouter
-	ctx                context.Context
-	healthSvc          any                      // *systemhealth.Service; any keeps the router infra-clean.
-	readyChecker       any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
-	qdrantHealth       any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
-	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
+	// PG-M2M (Aug 2026): the M2M job surface. m2mJobsHandler is the
+	// tiny route module that mounts POST + GET /:id on the
+	// /api/v1/jobs group; m2mSec is the per-client secret port backing
+	// JobClientAuthMiddleware. Both are nil-safe — when either is
+	// nil the M2M group is not registered (dev/test fixtures that
+	// have not provisioned an m2m_clients row keep working).
+	m2mJobsHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	m2mSec         mwports.M2MSecurityPort
+	ctx            context.Context
+	healthSvc      any                      // *systemhealth.Service; any keeps the router infra-clean.
+	readyChecker   any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
+	qdrantHealth   any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
+	modelsHandler  *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
@@ -102,6 +110,11 @@ type RouterConfig struct {
 	Auth     mwports.AuthSecurityPort
 	Rate     mwports.RateLimitPort
 	Features mwports.FeatureFlagsPort
+	// M2M (Aug 2026): the per-client secret port backing
+	// JobClientAuthMiddleware on the /api/v1/jobs surface. nil when
+	// the M2M store is not wired (dev/test/E2E fixtures); the
+	// middleware short-circuits to pass-through via EnableM2M()==false.
+	M2M mwports.M2MSecurityPort
 
 	// Structured logger — required by Logger/Recovery/Auth/WorkerAuth
 	// since these now accept *zap.Logger directly instead of going
@@ -154,6 +167,27 @@ func (r *Router) SetOutboxHandler(h InternalOutboxRouter) {
 // WorkerAuth-protected internalGroup. nil-safe.
 func (r *Router) SetMediasearchHandler(h InternalMediaSearchRouter) {
 	r.mediasearchHandler = h
+}
+
+// SetM2MSecurity wires the per-client secret port that backs
+// JobClientAuthMiddleware on the /api/v1/jobs M2M surface. nil-safe:
+// when nil (or EnableM2M()==false), the M2M group short-circuits to
+// pass-through (admin context) so dev/test/E2E fixtures without a
+// provisioned m2m_clients row keep working. Mirrors the PG-006
+// typed-port convention.
+func (r *Router) SetM2MSecurity(sec mwports.M2MSecurityPort) {
+	r.m2mSec = sec
+}
+
+// SetM2MJobsHandler wires the tiny route module that mounts
+// POST + GET /:id on the /api/v1/jobs M2M group. The group is
+// protected by JobClientAuthMiddleware + per-route RequireScope; the
+// module's RegisterRoutes applies the RequireScope("jobs.submit" /
+// "jobs.read") gate immediately before the handler. nil-safe: when
+// nil, the M2M group is not registered (the Master still serves the
+// admin /api/jobs surface via the module registry).
+func (r *Router) SetM2MJobsHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+	r.m2mJobsHandler = h
 }
 
 // SetContext sets the context for module lifecycle management

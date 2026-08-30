@@ -45,6 +45,15 @@ type Store interface {
 	// idempotency (companion to UNIQUE-constraint rescue on INSERT).
 	FindByTypeAndCorrelation(ctx context.Context, jobType string, correlationID string) (*Job, error)
 
+	// FindByClientAndIdempotencyKey returns the most recent job matching
+	// the (client_id, idempotency_key) pair regardless of status, or nil
+	// if none. The canonical pre-INSERT dedup primitive for M2M
+	// idempotency (PG-M2M, Aug 2026): a remote submitter that retries a
+	// POST after a network drop gets the SAME job_id back instead of a
+	// duplicate. Companion to the UNIQUE-constraint rescue on INSERT
+	// (idx_jobs_client_idempotency, migration 251).
+	FindByClientAndIdempotencyKey(ctx context.Context, clientID, idempotencyKey string) (*Job, error)
+
 	// ListEvents returns all events on a job's timeline in created_at
 	// ascending order. Used by the timeline view in the operator UI.
 	ListEvents(ctx context.Context, jobID string) ([]Event, error)

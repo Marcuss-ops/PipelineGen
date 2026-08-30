@@ -79,7 +79,9 @@ func setupFinalizeTestDB(t *testing.T) (*SQLiteStore, string) {
 			correlation_id TEXT,
 			progress INTEGER NOT NULL DEFAULT 0,
 			result_json TEXT,
-			error TEXT
+			error TEXT,
+			client_id TEXT NOT NULL DEFAULT '',
+			idempotency_key TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE job_events (
 			id TEXT PRIMARY KEY,

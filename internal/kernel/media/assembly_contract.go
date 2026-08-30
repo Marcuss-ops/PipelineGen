@@ -21,7 +21,7 @@ import (
 // from intermediate artifacts (ProRes, alpha, proxies — assembly_ready=false).
 // Only assembly-ready clips may enter the assembler.
 //
-// Frozen values for VELOX_ASSEMBLY_READY_V1 (2026-08-23, unico SSOT):
+// Frozen values for VELOX_ASSEMBLY_READY_V1 (legacy, 2026-08-23, unico SSOT):
 //
 //	container mp4, h264 high 4.0 yuv420p, 1920x1080, 24/1, 1/1 SAR,
 //	timebase video 1/90000 audio 1/48000, tv/bt709 progressive,
@@ -29,13 +29,18 @@ import (
 //	AAC-LC 48000 2ch stereo 128k.
 //
 // Audio profile SSOT: audio.DefaultAudioProfile() in internal/capabilities/audio
-// (aac, LC, 48000 Hz, 2 channels, stereo, 128k). This contract MUST stay
+// (aac, LC, 48000 Hz, 2 channels, stereo, 192k). This contract MUST stay
 // in sync with that profile; MuxFinalAudioCopy gates on the same values.
 const (
+	// V1 remains frozen for compatibility with existing assets.
 	AssemblyMediaContractID      = "VELOX_ASSEMBLY_READY_V1"
 	AssemblyMediaContractVersion = 1
 
-	// Legacy alias kept for source compatibility during migration.
+	// V2 is the canonical contract for newly produced assembly-ready clips.
+	AssemblyMediaContractV2ID      = "VELOX_ASSEMBLY_READY_V2"
+	AssemblyMediaContractV2Version = 2
+
+	// Legacy aliases kept for source compatibility during migration.
 	AssemblyReadyVideoContractID = AssemblyMediaContractID
 	AssemblyReadyVideoVersion    = AssemblyMediaContractVersion
 )
@@ -124,6 +129,7 @@ type AssemblyMediaContract struct {
 type VideoContract = AssemblyMediaContract
 
 // DefaultAssemblyMediaContract returns the frozen v1 contract.
+// Deprecated: use DefaultAssemblyMediaContractV2 for newly produced clips.
 func DefaultAssemblyMediaContract() AssemblyMediaContract {
 	return AssemblyMediaContract{
 		ID:                 AssemblyMediaContractID,
@@ -160,6 +166,18 @@ func DefaultAssemblyMediaContract() AssemblyMediaContract {
 	}
 }
 
+// DefaultAssemblyMediaContractV2 returns the canonical contract for newly
+// produced assembly-ready clips. V1 is intentionally left unchanged because
+// its contract ID is already present on legacy assets.
+func DefaultAssemblyMediaContractV2() AssemblyMediaContract {
+	c := DefaultAssemblyMediaContract()
+	c.ID = AssemblyMediaContractV2ID
+	c.Version = AssemblyMediaContractV2Version
+	c.VideoLevel = "4.1"
+	c.AudioBitrate = "192k"
+	return c
+}
+
 // DefaultAssemblyReadyVideoContract returns the frozen v1 contract.
 // Deprecated: use DefaultAssemblyMediaContract().
 func DefaultAssemblyReadyVideoContract() AssemblyMediaContract {
@@ -168,8 +186,12 @@ func DefaultAssemblyReadyVideoContract() AssemblyMediaContract {
 
 // ValidateExact checks every dimension exactly (no float epsilon for FPS).
 func (c AssemblyMediaContract) ValidateExact() error {
-	if c.ID != AssemblyMediaContractID {
-		return fmt.Errorf("contract id %q != %q", c.ID, AssemblyMediaContractID)
+	if c.ID != AssemblyMediaContractID && c.ID != AssemblyMediaContractV2ID {
+		return fmt.Errorf("contract id %q is not a supported assembly contract", c.ID)
+	}
+	isV2 := c.ID == AssemblyMediaContractV2ID
+	if c.Version != AssemblyMediaContractVersion && c.Version != AssemblyMediaContractV2Version {
+		return fmt.Errorf("contract version %d is unsupported", c.Version)
 	}
 	if c.Container != "mp4" || c.VideoCodec != "h264" || c.VideoProfile != "high" || c.PixelFormat != "yuv420p" {
 		return fmt.Errorf("video codec/container mismatch: %s/%s/%s/%s", c.Container, c.VideoCodec, c.VideoProfile, c.PixelFormat)
@@ -198,10 +220,14 @@ func (c AssemblyMediaContract) ValidateExact() error {
 	if c.KeyframeInterval != 48 {
 		return fmt.Errorf("GOP %d != 48", c.KeyframeInterval)
 	}
-	if c.VideoLevel != "4.0" {
-		return fmt.Errorf("level %q != 4.0", c.VideoLevel)
+	expectedLevel, expectedBitrate := "4.0", "128k"
+	if isV2 {
+		expectedLevel, expectedBitrate = "4.1", "192k"
 	}
-	if c.AudioCodec != "aac" || c.AudioProfile != "LC" || c.AudioSampleRate != 48000 || c.AudioChannels != 2 || c.AudioChannelLayout != "stereo" || c.AudioBitrate != "128k" {
+	if c.VideoLevel != expectedLevel {
+		return fmt.Errorf("level %q != %s", c.VideoLevel, expectedLevel)
+	}
+	if c.AudioCodec != "aac" || c.AudioProfile != "LC" || c.AudioSampleRate != 48000 || c.AudioChannels != 2 || c.AudioChannelLayout != "stereo" || c.AudioBitrate != expectedBitrate {
 		return fmt.Errorf("audio %s/%s/%d/%d/%s/%s mismatch", c.AudioCodec, c.AudioProfile, c.AudioSampleRate, c.AudioChannels, c.AudioChannelLayout, c.AudioBitrate)
 	}
 	if c.VideoStreams != 1 || c.AudioStreams != 1 {

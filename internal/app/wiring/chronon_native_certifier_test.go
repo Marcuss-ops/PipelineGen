@@ -2,7 +2,9 @@ package wiring
 
 import (
 	"context"
+
 	"errors"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +41,7 @@ func (f *fakeCertRunner) run(ctx context.Context, name string, args ...string) (
 		if f.ffprobeOut != "" {
 			return f.ffprobeOut, nil
 		}
-		return `{"streams":[{"nb_frames":"30","duration":"1.0"}]}`, nil
+		return `{"streams":[{"nb_frames":"24","duration":"1.0"}]}`, nil
 	case strings.HasSuffix(name, "ffmpeg") || name == "ffmpeg":
 		// The clip path is the last argument (-t 1 <clipPath>).
 		clip := args[len(args)-1]
@@ -96,6 +98,13 @@ func newTestCertifier(t *testing.T, runner *fakeCertRunner) *chrononNativeCertif
 	cert.tmpBase = t.TempDir()
 	cert.WithRunner(runner.run)
 	return cert
+}
+
+func TestChrononNativeCertifier_UsesAssemblyV2Profile(t *testing.T) {
+	contract := kernelmedia.DefaultAssemblyMediaContractV2()
+	if certCanvasWidth() != contract.Width || certCanvasHeight() != contract.Height || certFPSNum() != contract.FPS.Num || certFPSDen() != contract.FPS.Den || certFrames() != 24 {
+		t.Fatalf("certifier profile drifted from assembly V2: %dx%d @ %d/%d, frames=%d", certCanvasWidth(), certCanvasHeight(), certFPSNum(), certFPSDen(), certFrames())
+	}
 }
 
 func TestChrononNativeCertifier_CertifiesOnceThenServesFromCache(t *testing.T) {

@@ -26,12 +26,13 @@ type VideoProfile struct {
 	Channels         int
 }
 
-// FrameRate returns rational FPS. Canonical 24/1.
+// FrameRate returns rational FPS, falling back to the canonical V2 contract.
 func (p VideoProfile) FrameRate() (num, den int) {
 	if p.FPSNum > 0 && p.FPSDen > 0 {
 		return p.FPSNum, p.FPSDen
 	}
-	return 24, 1
+	c := kernelmedia.DefaultAssemblyMediaContractV2()
+	return c.FPS.Num, c.FPS.Den
 }
 
 func (p VideoProfile) FPSFloat() float64 {
@@ -41,65 +42,42 @@ func (p VideoProfile) FPSFloat() float64 {
 
 // ToVideoContract uplifts this media-execution profile to the canonical SSOT.
 func (p VideoProfile) ToVideoContract() kernelmedia.VideoContract {
-	n, d := p.FrameRate()
-	return kernelmedia.VideoContract{
-		ID:                 kernelmedia.AssemblyReadyVideoContractID,
-		Version:            kernelmedia.AssemblyReadyVideoVersion,
-		Container:          "mp4",
-		VideoCodec:         "h264",
-		VideoProfile:       "high",
-		VideoLevel:         "4.0",
-		PixelFormat:        "yuv420p",
-		Width:              p.Width,
-		Height:             p.Height,
-		FPS:                kernelmedia.FrameRate{Num: n, Den: d},
-		VideoTimeBase:      kernelmedia.Rational{Num: 1, Den: 90000},
-		AudioTimeBase:      kernelmedia.Rational{Num: 1, Den: 48000},
-		SAR:                kernelmedia.Rational{Num: 1, Den: 1},
-		ColorRange:         "tv",
-		ColorSpace:         "bt709",
-		ColorTransfer:      "bt709",
-		ColorPrimaries:     "bt709",
-		FieldOrder:         "progressive",
-		KeyframeInterval:   p.KeyframeInterval,
-		AudioCodec:         p.AudioCodec,
-		AudioProfile:       "LC",
-		AudioSampleRate:    p.SampleRate,
-		AudioChannels:      p.Channels,
-		AudioChannelLayout: "stereo",
-		AudioBitrate:       p.AudioBitrate,
-		VideoStreams:       1,
-		AudioStreams:       1,
-		StartPTS:           0,
-	}
+	p = p.WithDefaults()
+	c := kernelmedia.DefaultAssemblyMediaContractV2()
+	c.Width = p.Width
+	c.Height = p.Height
+	c.FPS = kernelmedia.FrameRate{Num: p.FPSNum, Den: p.FPSDen}
+	c.KeyframeInterval = p.KeyframeInterval
+	return c
 }
 
 // WithDefaults makes a partially populated profile safe for direct consumers.
 func (p VideoProfile) WithDefaults() VideoProfile {
+	c := kernelmedia.DefaultAssemblyMediaContractV2()
 	if p.Width <= 0 {
-		p.Width = 1920
+		p.Width = c.Width
 	}
 	if p.Height <= 0 {
-		p.Height = 1080
+		p.Height = c.Height
 	}
 	if p.FPSNum <= 0 || p.FPSDen <= 0 {
-		p.FPSNum = 24
-		p.FPSDen = 1
+		p.FPSNum = c.FPS.Num
+		p.FPSDen = c.FPS.Den
 	}
 	if p.KeyframeInterval <= 0 {
-		p.KeyframeInterval = 48
+		p.KeyframeInterval = c.KeyframeInterval
 	}
 	if p.AudioCodec == "" {
-		p.AudioCodec = "aac"
+		p.AudioCodec = c.AudioCodec
 	}
 	if p.AudioBitrate == "" {
-		p.AudioBitrate = "128k"
+		p.AudioBitrate = c.AudioBitrate
 	}
 	if p.SampleRate <= 0 {
-		p.SampleRate = 48000
+		p.SampleRate = c.AudioSampleRate
 	}
 	if p.Channels <= 0 {
-		p.Channels = 2
+		p.Channels = c.AudioChannels
 	}
 	return p
 }

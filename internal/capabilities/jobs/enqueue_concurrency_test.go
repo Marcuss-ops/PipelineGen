@@ -36,6 +36,10 @@ func (b *concurrentEnqueueBroker) FindByTypeAndCorrelation(context.Context, stri
 	return nil, nil
 }
 
+func (b *concurrentEnqueueBroker) FindByClientAndIdempotencyKey(context.Context, string, string) (*job.Job, error) {
+	return nil, nil
+}
+
 func (b *concurrentEnqueueBroker) Create(ctx context.Context, _ *job.Job) error {
 	b.entered <- struct{}{}
 	if b.count.Add(1) == b.want {

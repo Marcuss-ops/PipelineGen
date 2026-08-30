@@ -417,3 +417,217 @@ func newSqliteStoreForTest(t *testing.T) (*sqljobs.SQLiteStore, func()) {
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	return store, func() {}
 }
+
+// ── PG-M2M (Aug 2026): (client_id, idempotency_key) idempotency tests ──
+//
+// These tests pin the M2M idempotency contract: a remote submitter that
+// retries a POST with the SAME (client_id, idempotency_key) pair gets the
+// SAME job_id back instead of a duplicate. They mirror the existing
+// TestEnqueue_ExistingCorrelationID_DedupReturnsExisting shape but
+// exercise the M2M-specific (client_id, idempotency_key) path, NOT the
+// (type, correlation_id) path. The two surfaces are deliberately
+// distinct: correlation_id is request-context derived and NOT
+// per-client controlled; the M2M pair lets two different clients
+// legitimately reuse the same key string without colliding.
+
+// TestEnqueue_M2M_SameIdempotencyKey_ReturnsSameJobID is the happy path:
+// the second Enqueue with the same (client_id, idempotency_key) returns
+// the SAME job_id as the first. This is the load-bearing contract —
+// without it, a network drop after POST would cause a duplicate job.
+func TestEnqueue_M2M_SameIdempotencyKey_ReturnsSameJobID(t *testing.T) {
+	t.Parallel()
+	reg := newWiringRegistry(t, 1*time.Minute, 7)
+
+	store, cleanup := newSqliteStoreForTest(t)
+	defer cleanup()
+	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
+
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	req1 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"scene": 1},
+		ClientID:       "computer-editor-01",
+		IdempotencyKey: "matt-damon-40-en-001",
+	}
+	got1, err := svc.Enqueue(context.Background(), req1)
+	if err != nil {
+		t.Fatalf("first Enqueue: unexpected err = %v", err)
+	}
+	if got1 == nil {
+		t.Fatal("first Enqueue: nil job returned")
+	}
+
+	// Second Enqueue with the SAME (client_id, idempotency_key) — must
+	// return the SAME job_id, NOT a duplicate.
+	req2 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"scene": 1},
+		ClientID:       "computer-editor-01",
+		IdempotencyKey: "matt-damon-40-en-001",
+	}
+	got2, err := svc.Enqueue(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("second Enqueue (same key): unexpected err = %v", err)
+	}
+	if got2 == nil {
+		t.Fatal("second Enqueue (same key): nil job returned")
+	}
+
+	if got1.ID != got2.ID {
+		t.Errorf("idempotency contract violation: same (client_id, idempotency_key) returned DIFFERENT job_ids: first=%s second=%s — a retry must return the same job_id, not a duplicate", got1.ID, got2.ID)
+	}
+
+	// Verify the persisted row carries the M2M fields.
+	if got2.ClientID != "computer-editor-01" {
+		t.Errorf("job.ClientID = %q, want %q", got2.ClientID, "computer-editor-01")
+	}
+	if got2.IdempotencyKey != "matt-damon-40-en-001" {
+		t.Errorf("job.IdempotencyKey = %q, want %q", got2.IdempotencyKey, "matt-damon-40-en-001")
+	}
+}
+
+// TestEnqueue_M2M_DifferentIdempotencyKey_CreatesNewJob pins the
+// converse: a DIFFERENT idempotency_key creates a NEW job (the dedup
+// does not over-fire). Without this, a single client could not submit
+// multiple jobs.
+func TestEnqueue_M2M_DifferentIdempotencyKey_CreatesNewJob(t *testing.T) {
+	t.Parallel()
+	reg := newWiringRegistry(t, 1*time.Minute, 7)
+
+	store, cleanup := newSqliteStoreForTest(t)
+	defer cleanup()
+	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
+
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	req1 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"scene": 1},
+		ClientID:       "computer-editor-01",
+		IdempotencyKey: "matt-damon-40-en-001",
+	}
+	got1, err := svc.Enqueue(context.Background(), req1)
+	if err != nil {
+		t.Fatalf("first Enqueue: unexpected err = %v", err)
+	}
+
+	// Second Enqueue with a DIFFERENT idempotency_key — must create a
+	// NEW job.
+	req2 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"scene": 2},
+		ClientID:       "computer-editor-01",
+		IdempotencyKey: "matt-damon-40-en-002",
+	}
+	got2, err := svc.Enqueue(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("second Enqueue (different key): unexpected err = %v", err)
+	}
+
+	if got1.ID == got2.ID {
+		t.Errorf("idempotency over-fire: different (client_id, idempotency_key) returned the SAME job_id %s — different keys must create different jobs", got1.ID)
+	}
+}
+
+// TestEnqueue_M2M_DifferentClientID_SameKey_CreatesNewJob pins the
+// per-client scoping: two DIFFERENT clients using the SAME
+// idempotency_key string each get their OWN job (no cross-client
+// collision). This is the key differentiator from (type,
+// correlation_id) — the M2M pair is per-client.
+func TestEnqueue_M2M_DifferentClientID_SameKey_CreatesNewJob(t *testing.T) {
+	t.Parallel()
+	reg := newWiringRegistry(t, 1*time.Minute, 7)
+
+	store, cleanup := newSqliteStoreForTest(t)
+	defer cleanup()
+	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
+
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	// Client A submits with key "render-001".
+	req1 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"client": "A"},
+		ClientID:       "client-A",
+		IdempotencyKey: "render-001",
+	}
+	got1, err := svc.Enqueue(context.Background(), req1)
+	if err != nil {
+		t.Fatalf("client A Enqueue: unexpected err = %v", err)
+	}
+
+	// Client B submits with the SAME key string "render-001" — must
+	// get a DIFFERENT job (per-client scoping).
+	req2 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"client": "B"},
+		ClientID:       "client-B",
+		IdempotencyKey: "render-001",
+	}
+	got2, err := svc.Enqueue(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("client B Enqueue (same key string): unexpected err = %v", err)
+	}
+
+	if got1.ID == got2.ID {
+		t.Errorf("per-client scoping violation: two different clients (client-A, client-B) with the same key string \"render-001\" got the SAME job_id %s — the (client_id, idempotency_key) pair must scope per-client", got1.ID)
+	}
+}
+
+// TestEnqueue_M2M_EmptyClientID_NoDedup pins the admin/internal path:
+// when ClientID is empty (admin enqueue via /api/jobs, internal
+// fan-out), the M2M dedup is a no-op. The job is created normally
+// even if IdempotencyKey is set (the pair is incomplete). This
+// preserves the existing admin semantics — admin enqueues are NOT
+// deduped by (client_id, idempotency_key).
+func TestEnqueue_M2M_EmptyClientID_NoDedup(t *testing.T) {
+	t.Parallel()
+	reg := newWiringRegistry(t, 1*time.Minute, 7)
+
+	store, cleanup := newSqliteStoreForTest(t)
+	defer cleanup()
+	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
+
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	// Admin-style enqueue: no ClientID, IdempotencyKey set but ignored
+	// (the pair is incomplete — no dedup).
+	req1 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"admin": true},
+		IdempotencyKey: "some-key", // ignored without ClientID
+	}
+	got1, err := svc.Enqueue(context.Background(), req1)
+	if err != nil {
+		t.Fatalf("first admin Enqueue: unexpected err = %v", err)
+	}
+
+	// Second enqueue with the same IdempotencyKey but still no ClientID
+	// — must create a NEW job (no M2M dedup).
+	req2 := &job.EnqueueRequest{
+		Type:           wiringTestType,
+		Payload:        map[string]any{"admin": true},
+		IdempotencyKey: "some-key",
+	}
+	got2, err := svc.Enqueue(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("second admin Enqueue: unexpected err = %v", err)
+	}
+
+	if got1.ID == got2.ID {
+		t.Errorf("admin over-dedup: two enqueues with no ClientID but the same IdempotencyKey returned the SAME job_id %s — the M2M dedup must be a no-op when ClientID is empty", got1.ID)
+	}
+}

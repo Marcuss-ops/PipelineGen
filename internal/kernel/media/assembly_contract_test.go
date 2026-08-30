@@ -235,6 +235,25 @@ func TestAssemblyCompatibilityGate_WrongContractFails(t *testing.T) {
 	}
 }
 
+func TestAssemblyMediaContractV2_CanonicalValues(t *testing.T) {
+	c := DefaultAssemblyMediaContractV2()
+	if c.ID != AssemblyMediaContractV2ID || c.Version != AssemblyMediaContractV2Version {
+		t.Fatalf("unexpected V2 identity: %s/%d", c.ID, c.Version)
+	}
+	if c.Width != 1920 || c.Height != 1080 || c.VideoCodec != "h264" || c.VideoProfile != "high" || c.VideoLevel != "4.1" || c.PixelFormat != "yuv420p" {
+		t.Fatalf("unexpected V2 video profile: %+v", c)
+	}
+	if !c.FPS.Equal(FrameRate{Num: 24, Den: 1}) || c.KeyframeInterval != 48 || c.BFrames != 0 || !c.ClosedGOP {
+		t.Fatalf("unexpected V2 timing/GOP: %+v", c)
+	}
+	if c.AudioCodec != "aac" || c.AudioProfile != "LC" || c.AudioSampleRate != 48000 || c.AudioChannels != 2 || c.AudioChannelLayout != "stereo" || c.AudioBitrate != "192k" {
+		t.Fatalf("unexpected V2 audio profile: %+v", c)
+	}
+	if err := c.ValidateExact(); err != nil {
+		t.Fatalf("V2 contract must validate: %v", err)
+	}
+}
+
 func TestVideoContract_ValidateExact_PassesDefault(t *testing.T) {
 	c := DefaultAssemblyReadyVideoContract()
 	if err := c.ValidateExact(); err != nil {

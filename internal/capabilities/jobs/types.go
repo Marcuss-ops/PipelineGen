@@ -46,6 +46,14 @@ type EnqueueRequest struct {
 	MaxRetries    int    `json:"max_retries,omitempty"`
 	ActiveKey     string `json:"active_key,omitempty"`
 	CorrelationID string `json:"correlation_id,omitempty"`
+	// IdempotencyKey is the caller-controlled dedup key for the M2M
+	// surface (PG-M2M, Aug 2026). When set, the Master returns the
+	// SAME job_id on retry instead of creating a duplicate. Distinct
+	// from correlation_id (request-context derived). client_id is
+	// NOT in the DTO — it is resolved server-side from the Bearer
+	// VELOX_M2M_SECRET by JobClientAuthMiddleware and injected into
+	// the domain EnqueueRequest from the gin context.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // Canonical Handler / JobExecutionTools / Result types live in

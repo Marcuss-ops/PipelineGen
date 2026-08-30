@@ -284,7 +284,7 @@ probe_scraper_unavailable() {
     local probe_run_body
     probe_run_body=$(jq -nc \
         --arg term "scraper unavailable probe $(date +%s%N)" \
-        '{term:$term,limit:1,strategy:"replace",clip_duration:7,width:1920,height:1080,fps:30,concurrency:1,dry_run:false}')
+        '{term:$term,limit:1,strategy:"replace",clip_duration:7,width:1920,height:1080,fps:24,concurrency:1,dry_run:false}')
     local http_code
     http_code=$(smoke_curl POST "/api/artlist/run" -d "$probe_run_body")
     if [[ ! "$http_code" =~ ^2[0-9][0-9]$ ]]; then

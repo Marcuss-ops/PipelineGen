@@ -51,7 +51,7 @@ func (fakeChrononProber) ProbeOverlay(_ context.Context, path string) (capoverla
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   1_000_000,
-		FPSNum:       30,
+		FPSNum:       24,
 		FPSDen:       1,
 		AudioStreams: 0,
 		Codec:        "prores",
@@ -123,7 +123,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 		ProjectID:     "project-e2e",
 		Width:         1920,
 		Height:        1080,
-		FPSNum:        30,
+		FPSNum:        24,
 		FPSDen:        1,
 		Items: []capoverlay.OverlayItem{{
 			ID:         "overlay-1",

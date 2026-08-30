@@ -48,6 +48,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
@@ -57,6 +58,7 @@ import (
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/logsink"
+	sqlitem2m "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/m2m"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 	"go.uber.org/zap"
 
@@ -331,6 +333,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			InternalMediaHandler: internalMediaHandler,
 			OutboxHandler:        registryWiring.OutboxHandler,
 			MediasearchHandler:   registryWiring.MediasearchHandler,
+			M2MJobsHandler:       registryWiring.M2MJobsHandler,
+			M2MSecurity: func() mwports.M2MSecurityPort {
+				if root.DB == nil || root.DB.DB == nil {
+					return nil
+				}
+				return sqlitem2m.NewStore(root.DB.DB, cfg.Security.EnableM2M)
+			}(),
 		},
 		Runtime: AppRuntime{
 			Lifecycle: lifecycle,

@@ -499,18 +499,34 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
 }
 
-func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
-	capability := capjobs.NewBundleWithHistory(
+func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
+	bundle := capjobs.NewBundleWithHistory(
 		root.Jobs.Service,
 		root.Jobs.Service,
 		root.Jobs.History,
 		func() bool { return true },
 		log,
 	)
-	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
+	if err := registry.RegisterCapabilityModule(bundle, module.BuildContext{}); err != nil {
 		return fmt.Errorf("wire registry: jobs: %w", err)
 	}
 	log.Info("created Jobs module")
+
+	// PG-M2M (Aug 2026): build the M2M job surface from the SAME bundle
+	// so Enqueue/Get stay single-implementation. The M2M module is
+	// NOT registered in the public /api registry (it would collide
+	// with the admin /jobs prefix and inherit the admin Auth guard);
+	// it is plumbed through RegistryWiring → AppDeps.Handlers and
+	// mounted on its own /api/v1/jobs group by the server composition.
+	// Enabled closure is true so the M2M surface mounts whenever the
+	// M2MSecurityPort is wired (the port's EnableM2M() is the real
+	// gate inside JobClientAuthMiddleware; this closure only decides
+	// whether the routes exist at all).
+	m2mModule := capjobs.NewM2MJobsModule(bundle.Handler(), func() bool { return true })
+	if wiring != nil {
+		wiring.M2MJobsHandler = m2mModule
+	}
+	log.Info("created M2M Jobs module (POST + GET /:id on /api/v1/jobs)")
 	return nil
 }
 

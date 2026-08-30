@@ -1,0 +1,69 @@
+{
+  "source_asset_id": "yt_Gcgdk1gEo8U_285_302_v1",
+  "watermark": {
+    "enabled": true,
+    "position": "top_right",
+    "opacity": 0.85,
+    "margin_px": 24,
+    "style": {
+      "font": "DejaVu Sans",
+      "size": 42,
+      "color": "#FFFFFF",
+      "shadow": {
+        "color": "#000000",
+        "opacity": 0.75,
+        "blur_px": 8,
+        "offset_x": 2,
+        "offset_y": 2
+      },
+      "transition_in": {
+        "preset": "fade_in",
+        "duration_ms": 250
+      }
+    },
+    "text": "MATT DAMON"
+  },
+  "transcript": {
+    "mode": "reuse_or_generate",
+    "language": "en",
+    "persist": true
+  },
+  "subtitles": {
+    "enabled": true,
+    "mode": "sidecar",
+    "style_id": "matt-damon-benchmark-v1",
+    "style": {
+      "font": "DejaVu Sans",
+      "size": 54,
+      "color": "#FFFFFF",
+      "position": "bottom_center",
+      "shadow": {
+        "color": "#000000",
+        "opacity": 0.8,
+        "blur_px": 10,
+        "offset_x": 0,
+        "offset_y": 5
+      },
+      "transition_in": {
+        "preset": "fade_in",
+        "duration_ms": 200
+      }
+    }
+  },
+  "output": {
+    "contract": "VELOX_ASSEMBLY_READY_V1",
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
+    "fps_den": 1
+  },
+  "audio": {
+    "mode": "copy_if_compatible"
+  },
+  "destination": {
+    "drive_folder_id": "19UYPb2dfK_Y_-rDBXrsY_1VOge4iiWmk"
+  },
+  "execution": {
+    "require_gpu": false
+  }
+}

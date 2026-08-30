@@ -151,6 +151,14 @@ type RegistryWiring struct {
 	OutboxHandler      RouteRegistrar
 	MediasearchHandler RouteRegistrar
 
+	// PG-M2M (Aug 2026): the M2M job surface — POST + GET /:id on the
+	// /api/v1/jobs group protected by JobClientAuthMiddleware. Like
+	// Outbox/Mediasearch above, it is constructed by WireRegistry but
+	// NOT registered in the public /api registry; it is plumbed through
+	// AppDeps and mounted on its own group by the server composition.
+	// nil when the M2M store is not wired (the group is then skipped).
+	M2MJobsHandler RouteRegistrar
+
 	// SearchFanOut is the public accessor for the canonical search
 	// aggregator (PR-AGENTE2-READINESS). Populated by WireRegistry
 	// from the explicit cross-step capability state.
@@ -180,7 +188,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: system: %w", err)
 	}
 
-	if err := registerJobsRoute(registry, log, root); err != nil {
+	if err := registerJobsRoute(registry, log, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: jobs: %w", err)
 	}
 

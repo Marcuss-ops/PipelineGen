@@ -81,7 +81,6 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 			correlationID = cid
 		}
 	}
-
 	if req.ActiveKey != "" {
 		existing, err := s.repo.FindActiveByKey(ctx, req.ActiveKey)
 		if err != nil {
@@ -109,6 +108,29 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		}
 	}
 
+	// PG-M2M (Aug 2026): idempotency on (client_id, idempotency_key).
+	// Distinct from (type, correlation_id) above: the M2M surface uses a
+	// caller-controlled, per-client dedup key so two different clients
+	// can legitimately reuse the same key string without colliding. The
+	// pre-check mirrors the correlation_id path; the rescue on
+	// UNIQUE-constraint collision (idx_jobs_client_idempotency) is
+	// handled in the Create error branch below. Skipped for
+	// admin/internal enqueues where either field is empty.
+	if req.ClientID != "" && req.IdempotencyKey != "" {
+		existing, err := s.findExistingByClientAndIdempotency(ctx, req.ClientID, req.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			s.log.Info("returning existing job with same (client_id, idempotency_key)",
+				zap.String("job_id", existing.ID),
+				zap.String("client_id", req.ClientID),
+				zap.String("idempotency_key", req.IdempotencyKey),
+			)
+			return existing, nil
+		}
+	}
+
 	now := time.Now()
 
 	// Marshal the payload (typed struct or map[string]any).
@@ -125,20 +147,22 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 	}
 
 	j := &job.Job{
-		ID:            generateJobID(),
-		Type:          req.Type,
-		Status:        job.StatusQueued,
-		Priority:      req.Priority,
-		Project:       req.Project,
-		VideoName:     req.VideoName,
-		Payload:       payload,
-		RetryCount:    0,
-		MaxRetries:    req.MaxRetries,
-		Progress:      0,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		ActiveKey:     req.ActiveKey,
-		CorrelationID: correlationID,
+		ID:             generateJobID(),
+		Type:           req.Type,
+		Status:         job.StatusQueued,
+		Priority:       req.Priority,
+		Project:        req.Project,
+		VideoName:      req.VideoName,
+		Payload:        payload,
+		RetryCount:     0,
+		MaxRetries:     req.MaxRetries,
+		Progress:       0,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ActiveKey:      req.ActiveKey,
+		CorrelationID:  correlationID,
+		ClientID:       req.ClientID,
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	// Step 6 (July 2026): fail-closed handler gate. When the dispatcher is
@@ -196,7 +220,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		// (ErrNoExtended) fields — neither depends on the error string
 		// format, so a future driver string change cannot silently disable
 		// the rescue path).
-		if correlationID != "" || req.ActiveKey != "" {
+		if correlationID != "" || req.ActiveKey != "" || (req.ClientID != "" && req.IdempotencyKey != "") {
 			var sqliteErr sqlite3.Error
 			// PR-JOBS-SQLITE3-PROBE-FIX (commit-9, 2026-07-05): canonical
 			// ExtendedCode == sqlite3.ErrConstraintUnique comparison.
@@ -208,8 +232,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 			// code 2067 — NEVER matching) is RETIRED; the canonical
 			// pattern is direct typed equality between matching
 			// sqlite3.ErrNoExtended values, with no int() cast. The
-			// probe still discriminates UNIQUE-constraint failures
-			// from generic create-job errors (the godlike/07
+			// probe still discriminates UNIQUE-constraint failures		// from generic create-job errors (the godlike/07
 			// typed-string-compare anti-pattern is NOT reintroduced).
 			// SILENT LOGIC BUG surfaced by this audit: the pre-commit-9
 			// int() cast compared 19 (base constraint code) against 2067
@@ -237,8 +260,18 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 						return existing, nil
 					}
 				}
-				// typed probe fired but no existing job found — propagate
-				// as typed sentinel so callers can errors.Is it.
+				// PG-M2M (Aug 2026): rescue on (client_id, idempotency_key)
+				// UNIQUE collision (idx_jobs_client_idempotency).
+				if req.ClientID != "" && req.IdempotencyKey != "" {
+					if existing, findErr := s.repo.FindByClientAndIdempotencyKey(ctx, req.ClientID, req.IdempotencyKey); findErr == nil && existing != nil {
+						s.log.Info("returning existing job by (client_id, idempotency_key) — caught race on SQLite UNIQUE constraint",
+							zap.String("job_id", existing.ID),
+							zap.String("client_id", req.ClientID),
+							zap.String("idempotency_key", req.IdempotencyKey),
+						)
+						return existing, nil
+					}
+				}
 				// typed probe fired but no existing job found — propagate
 				// as typed sentinel so callers can errors.Is it.
 				//
@@ -253,8 +286,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 				// errors.Is(err, ErrUniqueConstraintViolation) — the
 				// pre-PR substring is now gone. The double-`%w` wrap
 				// preserves both the typed sentinel AND the underlying
-				// driver error chain for diagnostics (Go 1.20+).
-				return nil, fmt.Errorf("%w: %w", ErrUniqueConstraintViolation, err)
+				// driver error chain for diagnostics (Go 1.20+).					return nil, fmt.Errorf("%w: %w", ErrUniqueConstraintViolation, err)
 			}
 		}
 		return nil, fmt.Errorf("failed to create job: %w", err)
@@ -292,6 +324,38 @@ func (s *Service) findExistingByCorrelation(ctx context.Context, jobType, correl
 	}
 
 	return nil, fmt.Errorf("failed to check existing job by correlation: %w", err)
+}
+
+// findExistingByClientAndIdempotency is the M2M counterpart of
+// findExistingByCorrelation. It probes the (client_id, idempotency_key)
+// pair via FindByClientAndIdempotencyKey with the same detached-ctx
+// timeout + transient-error tolerance so a transient DB hiccup does not
+// block the enqueue (the UNIQUE constraint is the backstop). Mirrors
+// the correlation_id path verbatim so the two idempotency surfaces
+// behave identically under store instability (PG-M2M, Aug 2026).
+func (s *Service) findExistingByClientAndIdempotency(ctx context.Context, clientID, idempotencyKey string) (*job.Job, error) {
+	if clientID == "" || idempotencyKey == "" {
+		return nil, nil
+	}
+
+	lookupCtx, cancel := background.DetachWithTimeout(ctx, "jobs-m2m-idempotency-lookup", correlationLookupTimeout)
+	defer cancel()
+
+	existing, err := s.repo.FindByClientAndIdempotencyKey(lookupCtx, clientID, idempotencyKey)
+	if err == nil {
+		return existing, nil
+	}
+
+	if isTransientCorrelationLookupError(err) {
+		s.log.Warn("job M2M idempotency lookup unavailable; proceeding without pre-check",
+			zap.String("client_id", clientID),
+			zap.String("idempotency_key", idempotencyKey),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("failed to check existing job by client+idempotency_key: %w", err)
 }
 
 func isTransientCorrelationLookupError(err error) bool {

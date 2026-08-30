@@ -198,6 +198,13 @@ func (c *Config) AdminToken() string {
 	return c.Security.AdminToken
 }
 
+func (c *Config) EnableM2M() bool {
+	if c == nil {
+		return false
+	}
+	return c.Security.EnableM2M
+}
+
 func (c *Config) WorkerToken() string {
 	if c == nil {
 		return ""
