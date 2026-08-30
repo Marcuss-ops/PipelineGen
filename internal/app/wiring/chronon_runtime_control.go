@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -153,6 +154,9 @@ func runChrononCommandStreaming(cmd *exec.Cmd, logPath, runID string, log *zap.L
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return chrononProcessOutput{}, fmt.Errorf("chronon stderr pipe: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon log dir: %w", err)
 	}
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
