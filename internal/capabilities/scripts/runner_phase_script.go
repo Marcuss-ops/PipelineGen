@@ -204,7 +204,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// A declared segment budget requires whole-prose materialization before
 		// SceneCommitted; streaming a model's provisional single scene would
 		// permanently launch VidRush enrichment with the wrong topology.
-		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene
+		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
 		if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
 		}
