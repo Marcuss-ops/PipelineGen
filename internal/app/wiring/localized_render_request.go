@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
 )
 
 type localizedRenderRequest struct {
@@ -110,9 +111,14 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Contex
 	subtitle := strings.TrimSpace(a.cfg.SubtitleFolderID)
 	var err error
 	if subtitle != "" {
-		subtitle, err = a.resolveFolder(ctx, "subtitle\x00"+subtitle+"\x00"+clipID, clipID, subtitle)
+		resolvedSub, err := a.resolveFolder(ctx, "subtitle\x00"+subtitle+"\x00"+clipID, clipID, subtitle)
 		if err != nil {
-			return "", "", fmt.Errorf("localized render: ensure subtitle subfolder %q: %w", clipID, err)
+			if a.log != nil {
+				a.log.Warn("localized render: could not create subtitle subfolder, proceeding without separate subtitle folder", zap.String("clip_id", clipID), zap.Error(err))
+			}
+			subtitle = ""
+		} else {
+			subtitle = resolvedSub
 		}
 	}
 	if subfolder := strings.TrimSpace(in.Render.DriveSubfolderName); subfolder != "" {
