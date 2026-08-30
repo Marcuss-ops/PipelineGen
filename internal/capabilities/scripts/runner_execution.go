@@ -370,24 +370,16 @@ func (e *executionRun) audioCompile() bool {
 	})
 }
 
-// persist assembles/publishes the final video (when required) and persists
-// the canonical script. It checkpoints before persisting.
+// persist stores the canonical script only. Full-video assembly/rendering is
+// worker-owned and is deliberately forbidden on the PipelineGen master. The
+// master may still produce localized clips, sub-videos and overlay artifacts;
+// any assemble_final request remains part of the downstream render handoff but
+// never causes a local final-video render, concat or upload here.
 func (e *executionRun) persist() bool {
 	return e.measure(kernobs.StageName(stagePersistence), func(c context.Context) bool {
-		if e.result.FinalVideoRequired {
-			if err := e.r.assembleFinalVideo(c, e.runID, e.result); err != nil {
-				return e.fail(StagePublishingDocuments, err)
-			}
-		}
-		if e.result.FinalVideoRequired && e.r.finalVideoPublisher != nil {
-			published, err := e.r.finalVideoPublisher.PublishFinalVideo(c, e.runID, *e.result.FinalVideo, e.req.Render.DriveFolderID)
-			if err != nil {
-				return e.fail(StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: %w", err))
-			}
-			e.result.FinalVideo.AssetID = published.AssetID
-			e.result.FinalVideo.DriveLink = published.DriveLink
-		} else if e.result.FinalVideoRequired {
-			return e.fail(StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: final video publisher is not wired"))
+		if e.result != nil {
+			e.result.FinalVideoRequired = false
+			e.result.FinalVideo = nil
 		}
 		e.checkpoint()
 		return e.r.persistScript(c, e.runID, e.req, e.exec, e.resumeIdx, e.result)
