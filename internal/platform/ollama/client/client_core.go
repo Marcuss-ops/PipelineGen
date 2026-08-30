@@ -26,10 +26,11 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 	}
 
 	return &Client{
-		baseURL:    baseURL,
-		model:      model,
-		httpClient: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
-		breakers:   make(map[string]*CircuitBreaker),
+		baseURL:       baseURL,
+		model:         model,
+		httpClient:    &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
+		breakers:      make(map[string]*CircuitBreaker),
+		residentUntil: make(map[string]time.Time),
 	}
 }
 
@@ -205,21 +206,29 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		return ChatResult{Content: content, Metrics: nil}, err
 	}
 
-	// Add keep_alive to model options to avoid reloading the model on every request.
-	// When set, Ollama keeps the model in GPU VRAM for the specified duration.
-	// Callers can override by passing options["keep_alive"].
+	// keep_alive is an Ollama request-level field, not a model option. Copy the
+	// options map before removing the legacy nested value so callers do not see
+	// their map mutated and the wire contract remains unambiguous.
 	if options == nil {
 		options = map[string]any{}
 	}
-	if _, hasKeepAlive := options["keep_alive"]; !hasKeepAlive {
-		options["keep_alive"] = "30m"
+	requestOptions := make(map[string]any, len(options))
+	for key, value := range options {
+		if key != "keep_alive" {
+			requestOptions[key] = value
+		}
+	}
+	keepAlive := "30m"
+	if value, ok := options["keep_alive"].(string); ok && strings.TrimSpace(value) != "" {
+		keepAlive = value
 	}
 
 	req := types.ChatRequest{
-		Model:    model,
-		Messages: messages,
-		Stream:   false,
-		Options:  options,
+		Model:     model,
+		Messages:  messages,
+		Stream:    false,
+		KeepAlive: keepAlive,
+		Options:   requestOptions,
 		// P0.2 (June 2026): thread Format as a TOP-LEVEL body field.
 		// Ollama interprets a top-level `format` value as the JSON-mode
 		// constraint; an `options`-nested `format` would be silently

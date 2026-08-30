@@ -15,6 +15,15 @@ type ScriptGeneratorAdapter struct {
 	generator *ollama.Generator
 }
 
+// WarmModel forwards the optional model-residency seam without widening the
+// provider-neutral ScriptGenerator contract used by fakes and other providers.
+func (a *ScriptGeneratorAdapter) WarmModel(ctx context.Context, model string) error {
+	if a == nil || a.generator == nil {
+		return scriptports.ErrScriptGeneratorUnavailable
+	}
+	return a.generator.WarmModel(ctx, model)
+}
+
 // NewScriptGeneratorAdapter constructs an application-port adapter for Ollama.
 func NewScriptGeneratorAdapter(generator *ollama.Generator) scriptports.ScriptGenerator {
 	if generator == nil {

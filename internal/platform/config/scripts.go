@@ -175,8 +175,9 @@ type ScriptsConfig struct {
 
 	// ScriptGenerationConcurrency bounds concurrent Ollama calls that write
 	// scene narration. It is deliberately separate from NLPConcurrency because
-	// entity extraction and script writing are different workloads. Default 4.
-	ScriptGenerationConcurrency int `yaml:"script_generation_concurrency" env:"VELOX_SCRIPTS_SCRIPT_GENERATION_CONCURRENCY" default:"4"`
+	// entity extraction and script writing are different workloads. Default 3,
+	// matching the certified e4b/A4000 server parallelism baseline.
+	ScriptGenerationConcurrency int `yaml:"script_generation_concurrency" env:"VELOX_SCRIPTS_SCRIPT_GENERATION_CONCURRENCY" default:"3"`
 
 	// TTSConcurrency bounds the concurrent voiceover synthesis calls in the
 	// script-generation voiceover phase (the TTS worker pool). When 0
@@ -218,7 +219,7 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 		s.NLPConcurrency = 4
 	}
 	if s.ScriptGenerationConcurrency <= 0 {
-		s.ScriptGenerationConcurrency = 4
+		s.ScriptGenerationConcurrency = 3
 	}
 	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
 	// the voiceover provider bound", resolved at the capability wiring

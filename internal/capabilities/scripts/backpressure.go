@@ -19,6 +19,14 @@ import (
 // rate-limit or CPU contention. Docs publishing and the Rust final-audio
 // render stay single-threaded (concurrency 1) and are not governed here.
 
+// DefaultGenerationConcurrency bounds the certified default for the LLM
+// script-text generation branch: up to this many scene Ollama calls run
+// concurrently. It matches the measured OLLAMA_NUM_PARALLEL baseline on the
+// A4000/e4b server (3); the client gate must not exceed it because extra
+// client slots only deepen the server-side queue (queue wait) without adding
+// throughput.
+const DefaultGenerationConcurrency = 3
+
 // DefaultNLPConcurrency bounds the certified default for the NLP/entity
 // extraction branch: up to this many scenes enrich concurrently.
 const DefaultNLPConcurrency = 4

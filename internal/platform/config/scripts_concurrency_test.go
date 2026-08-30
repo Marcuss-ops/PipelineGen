@@ -18,8 +18,8 @@ func TestScriptsConcurrencyEnvResolution(t *testing.T) {
 	if got := cfg.Scripts.NLPConcurrency; got != 4 {
 		t.Fatalf("NLPConcurrency default = %d, want 4 (certified)", got)
 	}
-	if got := cfg.Scripts.ScriptGenerationConcurrency; got != 4 {
-		t.Fatalf("ScriptGenerationConcurrency default = %d, want 4 (certified)", got)
+	if got := cfg.Scripts.ScriptGenerationConcurrency; got != 3 {
+		t.Fatalf("ScriptGenerationConcurrency default = %d, want 3 (certified)", got)
 	}
 	if got := cfg.Scripts.TTSConcurrency; got != 0 {
 		t.Fatalf("TTSConcurrency default = %d, want 0 (defer to voiceover provider bound)", got)
@@ -49,8 +49,8 @@ func TestScriptsConfigWithDefaults_DoesNotFakeTTSDefault(t *testing.T) {
 	if s.NLPConcurrency != 4 {
 		t.Fatalf("WithDefaults NLPConcurrency = %d, want 4", s.NLPConcurrency)
 	}
-	if s.ScriptGenerationConcurrency != 4 {
-		t.Fatalf("WithDefaults ScriptGenerationConcurrency = %d, want 4", s.ScriptGenerationConcurrency)
+	if s.ScriptGenerationConcurrency != 3 {
+		t.Fatalf("WithDefaults ScriptGenerationConcurrency = %d, want 3", s.ScriptGenerationConcurrency)
 	}
 	if s.TTSConcurrency != 0 {
 		t.Fatalf("WithDefaults TTSConcurrency = %d, want 0 (defer, never faked)", s.TTSConcurrency)
