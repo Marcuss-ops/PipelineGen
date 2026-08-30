@@ -435,7 +435,8 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	metricsDirReady := true
 	chrononLogPath := filepath.Join(runRoot, "chronon.log")
 	if metricsDirReady {
-		chrononLogPath = filepath.Join(metricsDir, plan.RunID+".chronon.log")
+		safeID := strings.ReplaceAll(plan.RunID, "/", "_")
+		chrononLogPath = filepath.Join(metricsDir, safeID+".chronon.log")
 	}
 	wait, release, acquireErr := acquireChrononGPU(ctx)
 	metrics.ChrononLockWaitMS = wait.Milliseconds()
