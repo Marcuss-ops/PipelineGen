@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 const (
@@ -250,8 +252,19 @@ type CanonicalAudioProfile struct {
 	Bitrate       string
 }
 
+// DefaultAudioProfile projects the audio portion of the canonical assembly
+// V2 contract. The media contract remains the single owner of codec, sample
+// rate, channel layout, and bitrate values.
 func DefaultAudioProfile() CanonicalAudioProfile {
-	return CanonicalAudioProfile{Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", Bitrate: "128k"}
+	contract := kernelmedia.DefaultAssemblyMediaContractV2()
+	return CanonicalAudioProfile{
+		Codec:         contract.AudioCodec,
+		Profile:       contract.AudioProfile,
+		SampleRate:    contract.AudioSampleRate,
+		Channels:      contract.AudioChannels,
+		ChannelLayout: contract.AudioChannelLayout,
+		Bitrate:       contract.AudioBitrate,
+	}
 }
 
 func (p CanonicalAudioProfile) Output() AudioOutputContract {

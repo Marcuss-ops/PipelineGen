@@ -467,3 +467,84 @@ var (
 	_ mwidem.RateLimitPort    = testRateLimitAdapter{}
 	_ mwidem.FeatureFlagsPort = testFeatureFlagsAdapter{}
 )
+
+// fakeM2MJobsHandler is the minimal stub for the M2M job surface test
+// (TestRoutes_M2MJobsGroupMountedSeparately). It mounts POST + GET /:id
+// on the supplied group — mirrors production
+// internal/capabilities/jobs/m2m_module.go::M2MJobsModule.
+type fakeM2MJobsHandler struct{}
+
+func (fakeM2MJobsHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("", func(c *gin.Context) {})
+	rg.GET("/:id", func(c *gin.Context) {})
+}
+
+// TestRoutes_M2MJobsGroupMountedSeparately is the PG-M2M (Aug 2026)
+// anti-regression gate for the routing split between the admin /api/jobs
+// surface and the M2M /api/v1/jobs surface.
+//
+// Regression targets:
+//
+//  1. POST /api/v1/jobs and GET /api/v1/jobs/:id ARE registered when an
+//     M2M jobs handler is supplied — proving the M2M group mounts.
+//  2. The M2M routes live under /api/v1/jobs (NOT /api/jobs) — so the
+//     admin surface and the M2M surface do not collide.
+//  3. The M2M group is NOT registered when no handler is supplied — so
+//     dev/test fixtures without a provisioned M2M store keep working.
+//
+// This test mirrors the structural shape of TestRoutes_NoApiInternalV1Prefix
+// (the QDRANT-002/004 anti-regression): it uses a minimal Router.Setup() with
+// a stub handler so the assertion is structural, not behavioral. The
+// per-request auth path (Bearer → 401/403/scope) is covered by the
+// middleware tests in middleware_m2m_test.go.
+func TestRoutes_M2MJobsGroupMountedSeparately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	authAdapter := &middleware.TokenSecurityAdapter{Enable: false}
+
+	t.Run("M2M group mounts when handler supplied", func(t *testing.T) {
+		router := NewRouter(&RouterConfig{
+			Auth:          authAdapter,
+			Rate:          testRateLimitAdapter{},
+			Features:      testFeatureFlagsAdapter{},
+			Log:           zap.NewNop(),
+			ServerGinMode: gin.TestMode,
+		})
+		router.SetM2MJobsHandler(fakeM2MJobsHandler{})
+
+		engine := router.Setup()
+		have := make(map[string]bool, len(engine.Routes()))
+		for _, route := range engine.Routes() {
+			have[route.Method+" "+route.Path] = true
+		}
+
+		want := []string{
+			"POST /api/v1/jobs",
+			"GET /api/v1/jobs/:id",
+		}
+		for _, w := range want {
+			if !have[w] {
+				t.Errorf("expected M2M route %q to be registered, but it is missing", w)
+			}
+		}
+	})
+
+	t.Run("M2M group skipped when no handler supplied", func(t *testing.T) {
+		router := NewRouter(&RouterConfig{
+			Auth:          authAdapter,
+			Rate:          testRateLimitAdapter{},
+			Features:      testFeatureFlagsAdapter{},
+			Log:           zap.NewNop(),
+			ServerGinMode: gin.TestMode,
+		})
+		// NOTE: deliberately NO SetM2MJobsHandler — simulates a dev/test
+		// fixture without a provisioned M2M store.
+
+		engine := router.Setup()
+		for _, route := range engine.Routes() {
+			if strings.HasPrefix(route.Path, "/api/v1/jobs") {
+				t.Errorf("M2M route %s %q leaked without an M2MJobs handler — the group must be skipped when no handler is supplied", route.Method, route.Path)
+			}
+		}
+	})
+}

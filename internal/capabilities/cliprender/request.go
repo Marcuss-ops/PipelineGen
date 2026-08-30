@@ -57,10 +57,18 @@ const (
 	AudioModeCopyIfCompatible = "copy_if_compatible"
 	AudioModeTranscode        = "transcode"
 
-	// Output media contract — single SSOT VELOX_ASSEMBLY_READY_V1.
-	// velox-editing-clip-v1 is deprecated alias, kept for wire compat during migration.
+	// Output media contracts are owned by kernel/media; these aliases keep the
+	// capability wire surface source-compatible.
 	OutputContractVeloxAssemblyReadyV1 = "VELOX_ASSEMBLY_READY_V1"
+	OutputContractVeloxAssemblyReadyV2 = "VELOX_ASSEMBLY_READY_V2"
 	OutputContractVeloxEditingClipV1   = "velox-editing-clip-v1"
+
+	// Deprecated compatibility aliases; defaults are sourced from the kernel
+	// contract by the resolver and normalization paths.
+	DefaultWidth  = 1920
+	DefaultHeight = 1080
+	DefaultFPSNum = 24
+	DefaultFPSDen = 1
 
 	// Watermark positions.
 	PositionTopLeft     = "top_left"
@@ -73,10 +81,6 @@ const (
 	// rational num/den pair so NTSC rates (30000/1001 = 29.97) survive the
 	// contract exactly instead of being rounded/forced to an integer.
 	DefaultLanguage = "en"
-	DefaultWidth    = 1920
-	DefaultHeight   = 1080
-	DefaultFPSNum   = 24
-	DefaultFPSDen   = 1
 
 	// Bounds.
 	MinDimension = 16
@@ -264,14 +268,14 @@ func (r *RenderRequest) Normalize() {
 		r.Output.Contract = OutputContractVeloxAssemblyReadyV1
 	}
 	if r.Output.Width == 0 {
-		r.Output.Width = DefaultWidth
+		r.Output.Width = 1920
 	}
 	if r.Output.Height == 0 {
-		r.Output.Height = DefaultHeight
+		r.Output.Height = 1080
 	}
 	if r.Output.FPSNum == 0 {
-		r.Output.FPSNum = DefaultFPSNum
-		r.Output.FPSDen = DefaultFPSDen
+		r.Output.FPSNum = 24
+		r.Output.FPSDen = 1
 	} else if r.Output.FPSDen == 0 {
 		r.Output.FPSDen = 1
 	}

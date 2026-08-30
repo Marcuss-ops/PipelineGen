@@ -4,6 +4,7 @@ package httpserver
 import (
 	"context"
 	"fmt"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"net/http"
 	"os/signal"
 	"runtime/debug"
@@ -79,6 +80,11 @@ type InternalHandlers struct {
 	Media       MediaInternalRouter
 	Outbox      InternalOutboxRouter
 	MediaSearch InternalMediaSearchRouter
+	// PG-M2M (Aug 2026): the M2M job surface (POST + GET /:id on
+	// /api/v1/jobs). Mounted on its own group with
+	// JobClientAuthMiddleware; nil-safe (group skipped when nil).
+	M2MJobs     interface{ RegisterRoutes(*gin.RouterGroup) }
+	M2MSecurity mwports.M2MSecurityPort
 }
 
 // ServerDeps groups constructor dependencies by real capability.
@@ -110,6 +116,8 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	internalMediaHandler := deps.Handlers.Media
 	outboxHandler := deps.Handlers.Outbox
 	mediasearchHandler := deps.Handlers.MediaSearch
+	m2mJobsHandler := deps.Handlers.M2MJobs
+	m2mSecurity := deps.Handlers.M2MSecurity
 	lifecycle := deps.Lifecycle
 	healthSvc := deps.Health
 	readyChecker := deps.Ready
@@ -139,6 +147,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			DataDir:       cfg.Storage.DataDir,
 			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
 			CORSOrigins:   cfg.Security.CORSOrigins,
+			M2M:           m2mSecurity,
 		})
 		router.SetRegistry(registry)
 		if workerHandler != nil {
@@ -156,6 +165,18 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		}
 		if mediasearchHandler != nil {
 			router.SetMediasearchHandler(mediasearchHandler)
+		}
+		// PG-M2M (Aug 2026): wire the M2M job surface on its own
+		// /api/v1/jobs group (JobClientAuthMiddleware + per-route
+		// RequireScope). The M2MSecurityPort (per-client secret
+		// store) is NOT wired yet — the concrete SQLite adapter +
+		// migration are a follow-up. Until then the middleware's
+		// EnableM2M()==false path short-circuits to pass-through
+		// (admin context) so the routes mount but do not enforce
+		// the M2M check; once the store lands, composition wires
+		// router.SetM2MSecurity(adapter) here and the guard activates.
+		if m2mJobsHandler != nil {
+			router.SetM2MJobsHandler(m2mJobsHandler)
 		}
 		if healthSvc != nil {
 			router.SetHealthService(healthSvc)
@@ -212,6 +233,13 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	}
 	if mediasearchHandler != nil {
 		router.SetMediasearchHandler(mediasearchHandler)
+	}
+	// PG-M2M (Aug 2026): mirror the cfg != nil branch — wire the M2M
+	// job surface so the no-cfg fallback (used by
+	// TestNewServerWithHealth_*ProductionShapedRoutes) also mounts
+	// the /api/v1/jobs group when an M2MJobs handler is supplied.
+	if m2mJobsHandler != nil {
+		router.SetM2MJobsHandler(m2mJobsHandler)
 	}
 	if healthSvc != nil {
 		router.SetHealthService(healthSvc)

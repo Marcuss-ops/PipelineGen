@@ -66,6 +66,10 @@ func (s *stubJobBroker) FindByTypeAndCorrelation(ctx context.Context, jobType, c
 	return nil, nil
 }
 
+func (s *stubJobBroker) FindByClientAndIdempotencyKey(_ context.Context, _, _ string) (*job.Job, error) {
+	return nil, nil
+}
+
 func (s *stubJobBroker) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
 	panic("stubJobBroker.ListEvents: unexpected call — Service.Enqueue does not call ListEvents")
 }

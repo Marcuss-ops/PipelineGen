@@ -184,7 +184,7 @@ video:
   duration: 7
   keyframe_interval: 48
   audio_codec: "aac"
-  audio_bitrate: "128k"
+  audio_bitrate: "192k"
   clip_duration: 5
   chunk_duration: 25
   max_clips_per_source: 30

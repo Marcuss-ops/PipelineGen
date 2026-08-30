@@ -9,14 +9,14 @@ import (
 // ResolvedContract is the clip.render capability's working representation of
 // the assembly-ready video contract. The single source of truth for the
 // frozen values is kernel/media.VideoContract (AssemblyReadyVideoContractID =
-// "VELOX_ASSEMBLY_READY_V1"). This bridge keeps the two representations in
+// "VELOX_ASSEMBLY_READY_V2"). This bridge keeps the two representations in
 // sync without a hard type dependency in every consumer.
 //
 // All frozen values are canonically owned by kernel/media. ResolvedContract
 // mirrors them with flat int fields for ergonomic consumption inside the
 // clip.render capability (performance + simpler struct literals). Future
 // changes to the assembly-ready spec MUST be reflected in
-// kernel/media.DefaultAssemblyReadyVideoContract() FIRST, then propagated
+// kernel/media.DefaultAssemblyMediaContractV2() FIRST, then propagated
 // here via ToVideoContract ↔ FromVideoContract.
 
 // ToVideoContract converts the clip.render working contract to the canonical
@@ -27,7 +27,7 @@ func (c *ResolvedContract) ToVideoContract() kernelmedia.VideoContract {
 	}
 	return kernelmedia.VideoContract{
 		ID:                 c.ContractID,
-		Version:            kernelmedia.AssemblyReadyVideoVersion,
+		Version:            contractVersion(c.ContractID),
 		Container:          c.Container,
 		VideoCodec:         c.VideoCodec,
 		VideoProfile:       c.VideoProfile,
@@ -55,6 +55,13 @@ func (c *ResolvedContract) ToVideoContract() kernelmedia.VideoContract {
 		AudioStreams:       c.AudioStreams,
 		StartPTS:           c.StartPTS,
 	}
+}
+
+func contractVersion(id string) int {
+	if id == kernelmedia.AssemblyMediaContractV2ID {
+		return kernelmedia.AssemblyMediaContractV2Version
+	}
+	return kernelmedia.AssemblyMediaContractVersion
 }
 
 // FromVideoContract populates a ResolvedContract from the canonical

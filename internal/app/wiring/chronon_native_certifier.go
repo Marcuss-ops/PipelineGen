@@ -7,9 +7,10 @@ package wiring
 // an RTX A4000 with NVDEC/NVENC/Vulkan can still fault the custom
 // CUDA↔Vulkan surface exchange with CUDA_ERROR_ILLEGAL_ADDRESS on every job.
 //
-// This certifier therefore runs a REAL certification: a tiny ~30-frame job
-// (NVDEC → CUDA/Vulkan surface → NVENC, the exact handoff that broke) and
-// only then reports ChrononNativeCertified=true. The result is cached per
+// This certifier therefore runs a REAL certification: a tiny ~1-second job
+// at the canonical assembly contract FPS (NVDEC → CUDA/Vulkan surface →
+// NVENC, the exact handoff that broke) and only then reports
+// ChrononNativeCertified=true. The result is cached per
 // environment fingerprint (chronon binary SHA256 + GPU driver/model/compute
 // capability) and re-certified automatically when any of those change — so a
 // broken handoff adds ZERO latency to real renders (the resolver never even
@@ -29,6 +30,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"go.uber.org/zap"
 )
 
@@ -62,17 +64,15 @@ type chrononCertResult struct {
 // chronon binary, so its change is captured by the binary SHA; the driver is
 // what gates which CUDA runtimes work, so driver+GPU identity completes the
 // environment key.
-const (
-	// Keep the probe at a decoder-safe 720p surface size. Some NVDEC driver
-	// combinations reject very small 256x144 H264 surfaces even though the
-	// production 1080p path is valid; certifying with the real profile shape
-	// avoids a false negative before Chronon is selected.
-	certCanvasWidth  = 1280
-	certCanvasHeight = 720
-	certFPS          = 30
-	certFrames       = 30 // 1s of 30fps — the "30 frame" certification job
-	certTimeout      = 90 * time.Second
-)
+const certTimeout = 90 * time.Second
+
+var chrononCertificationContract = kernelmedia.DefaultAssemblyMediaContractV2()
+
+func certCanvasWidth() int  { return chrononCertificationContract.Width }
+func certCanvasHeight() int { return chrononCertificationContract.Height }
+func certFPSNum() int       { return chrononCertificationContract.FPS.Num }
+func certFPSDen() int       { return chrononCertificationContract.FPS.Den }
+func certFrames() int       { return certFPSNum() * 1 / certFPSDen() }
 
 // chrononNativeCertifier owns the ChrononNativeCertified probe: a real
 // short render run, cached per environment fingerprint, re-certified on any
@@ -248,10 +248,11 @@ func (c *chrononNativeCertifier) queryGPUIdentity(ctx context.Context) (driver, 
 	return driver, model, computeCap
 }
 
-// runCertification executes the real ~30-frame job: synthesize a tiny H264
-// clip, project a minimal video-only plan, invoke the Chronon binary with the
-// SAME flags as production (vulkan + nvenc + pipe encoder backend)
-// and verify the output MP4. The critical section is serialized against real
+// runCertification executes the real ~1-second certification job (canvas,
+// FPS and frame count come from the canonical assembly contract via
+// certCanvas*/certFPS*/certFrames): synthesize a tiny H264 clip, project a
+// minimal video-only plan, invoke the Chronon binary with the SAME flags as
+// production (vulkan + nvenc + pipe encoder backend) and verify the output MP4. The critical section is serialized against real
 // renders via chrononRenderMu (one Chronon process on the device at a time).
 func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerprint string) chrononCertResult {
 	started := time.Now()
@@ -288,11 +289,11 @@ func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerpri
 		Version: chrononVersion,
 		JobID:   "chronon-native-cert",
 		Canvas: chrononCanvas{
-			Width:          certCanvasWidth,
-			Height:         certCanvasHeight,
-			FPSNum:         certFPS,
-			FPSDen:         1,
-			DurationFrames: certFrames,
+			Width:          certCanvasWidth(),
+			Height:         certCanvasHeight(),
+			FPSNum:         certFPSNum(),
+			FPSDen:         certFPSDen(),
+			DurationFrames: certFrames(),
 		},
 		Layers: []chrononLayer{{
 			ID:             "video",
@@ -300,7 +301,7 @@ func (c *chrononNativeCertifier) runCertification(ctx context.Context, fingerpri
 			Source:         "clip.mp4",
 			Fit:            "stretch",
 			StartFrame:     0,
-			DurationFrames: certFrames,
+			DurationFrames: certFrames(),
 		}},
 		Output: chrononOutput{Path: "cert.mp4", Format: "mp4", Codec: "h264"},
 	}
@@ -363,7 +364,7 @@ func (c *chrononNativeCertifier) encodeCertClip(ctx context.Context, clipPath st
 	base := []string{
 		"-y", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi",
-		"-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1", certCanvasWidth, certCanvasHeight, certFPS),
+		"-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d/%d:duration=1", certCanvasWidth(), certCanvasHeight(), certFPSNum(), certFPSDen()),
 		"-pix_fmt", "yuv420p",
 	}
 	// Use the resolved encoder from the canonical policy. The governance
@@ -393,8 +394,8 @@ func (c *chrononNativeCertifier) encodeCertClip(ctx context.Context, clipPath st
 }
 
 // verifyCertOutput checks the certified MP4 via ffprobe: it must be a video
-// stream at least ~0.9s long (30 frames @30fps, tolerating container
-// rounding) with the expected frame count when the container reports it.
+// stream at least ~0.9s long (one second at the canonical contract FPS,
+// tolerating container rounding) with the expected frame count when reported.
 func (c *chrononNativeCertifier) verifyCertOutput(ctx context.Context, path string) (int, error) {
 	if st, err := os.Stat(path); err != nil || st.Size() == 0 {
 		return 0, fmt.Errorf("cert output missing or empty: %v", err)
@@ -434,8 +435,8 @@ func (c *chrononNativeCertifier) verifyCertOutput(ctx context.Context, path stri
 	if duration > 0 && duration < 0.9 {
 		return frames, fmt.Errorf("cert output duration %.2fs too short (want ~1s)", duration)
 	}
-	if duration == 0 && frames < certFrames-2 {
-		return frames, fmt.Errorf("cert output frames %d too few (want ~%d)", frames, certFrames)
+	if duration == 0 && frames < certFrames()-2 {
+		return frames, fmt.Errorf("cert output frames %d too few (want ~%d)", frames, certFrames())
 	}
 	return frames, nil
 }

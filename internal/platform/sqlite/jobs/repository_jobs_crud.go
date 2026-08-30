@@ -49,7 +49,7 @@ import (
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn + `,
-	parent_job_id, root_job_id`
+	parent_job_id, root_job_id, client_id, idempotency_key`
 
 // scanner is the minimum surface of *sql.Row and *sql.Rows that scanJobColumns
 // needs. Defined here so we can share the same code between single-row and
@@ -72,6 +72,7 @@ func scanJobColumns(s scanner, j *job.Job) error {
 		&startedAt, &completedAt, &cancelledAt, &j.Revision,
 		&j.ParentStateTyped,
 		&j.ParentJobID, &j.RootJobID,
+		&j.ClientID, &j.IdempotencyKey,
 	); err != nil {
 		return err
 	}
@@ -110,8 +111,9 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
+			client_id, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -135,7 +137,8 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
-		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID)
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID,
+		j.ClientID, j.IdempotencyKey)
 	if err != nil {
 		return fmt.Errorf("jobs.CreateInTx: %w", err)
 	}
@@ -157,8 +160,9 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
+			client_id, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -184,7 +188,8 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
-		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID)
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID,
+		j.ClientID, j.IdempotencyKey)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
@@ -407,6 +412,32 @@ func (r *SQLiteStore) FindByTypeAndCorrelation(ctx context.Context, jobType stri
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by type+correlation: %w", err)
+	}
+	return j, nil
+}
+
+// FindByClientAndIdempotencyKey returns the most recent job matching the
+// (client_id, idempotency_key) pair regardless of status. Used by
+// Service.Enqueue to satisfy M2M idempotency after a UNIQUE-constraint
+// collision on the idx_jobs_client_idempotency index (migration 251,
+// PG-M2M Aug 2026). The pair is the canonical dedup key for the M2M
+// surface: a remote submitter that retries a POST after a network drop
+// gets the SAME job_id back instead of a duplicate.
+//
+// Returns (nil, nil) when either argument is empty (the caller MUST
+// guard) so the pre-check path in Service.Enqueue is a no-op for
+// admin/internal enqueues that do not set the M2M fields.
+func (r *SQLiteStore) FindByClientAndIdempotencyKey(ctx context.Context, clientID, idempotencyKey string) (*job.Job, error) {
+	if clientID == "" || idempotencyKey == "" {
+		return nil, nil
+	}
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE client_id = ? AND idempotency_key = ? ORDER BY created_at DESC, id DESC LIMIT 1`
+	j := &job.Job{}
+	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, clientID, idempotencyKey), j); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find job by client+idempotency_key: %w", err)
 	}
 	return j, nil
 }

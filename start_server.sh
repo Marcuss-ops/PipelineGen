@@ -24,4 +24,4 @@ fi
 export VELOX_LEXICON_ROOT
 export VELOX_MEDIA_EXECUTION_SLOTS
 set +a
-exec "$DIR/bin/pipelinegen" --mode all
+exec "$DIR/bin/pipelinegen" --mode "${VELOX_RUN_MODE:-all}"

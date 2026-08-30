@@ -99,7 +99,9 @@ CREATE TABLE IF NOT EXISTS jobs (
 	started_at DATETIME,
 	completed_at DATETIME,
 	cancelled_at DATETIME,
-	revision INTEGER
+	revision INTEGER,
+	client_id TEXT NOT NULL DEFAULT '',
+	idempotency_key TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_bench_jobs_status_priority ON jobs(status, priority DESC);
 CREATE INDEX IF NOT EXISTS idx_bench_jobs_claim ON jobs(status, lease_expiry);

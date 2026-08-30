@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ErrUnsupportedContract is the typed sentinel for an output.contract ID the
@@ -36,6 +38,11 @@ var ErrUnsupportedContract = errors.New("clip.render: unsupported output contrac
 // asset — the single-pass render is re-run or the job fails, never silently
 // accepted.
 var ErrContractMismatch = errors.New("clip.render: rendered output violates the output contract")
+
+// ErrOutputContractMismatch classifies request/contract incompatibilities.
+// It intentionally exposes the stable machine-readable code requested by the
+// clip.render API while retaining ErrContractMismatch for post-render probes.
+var ErrOutputContractMismatch = errors.New("OUTPUT_CONTRACT_MISMATCH")
 
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
 
@@ -318,10 +325,9 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 // Resolver registry (SSOT)
 // ---------------------------------------------------------------------------
 
-// NewContractResolver returns the canonical ContractResolver. Single SSOT:
-// VELOX_ASSEMBLY_READY_V1 (24/1, 1/90000, GOP48). Old velox-editing-clip-v1
-// is an alias resolving to the SAME canonical spec, normalizing the stored
-// ContractID back to VELOX_ASSEMBLY_READY_V1.
+// NewContractResolver returns the canonical ContractResolver. Contract
+// values are materialized from kernel/media; this package only projects the
+// kernel contract into its capability-local representation.
 func NewContractResolver() ContractResolver {
 	return defaultContractResolver{}
 }
@@ -333,6 +339,7 @@ type defaultContractResolver struct{}
 // of the compatibility surface); nothing else may branch on contract ID.
 var contractBuilders = map[string]func(*RenderRequest) (*ResolvedContract, error){
 	OutputContractVeloxAssemblyReadyV1: resolveVeloxAssemblyReadyV1,
+	OutputContractVeloxAssemblyReadyV2: resolveVeloxAssemblyReadyV2,
 	OutputContractVeloxEditingClipV1:   resolveVeloxAssemblyReadyV1, // legacy alias
 }
 
@@ -398,41 +405,39 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 	return build(req)
 }
 
-// resolveVeloxAssemblyReadyV1 materializes the one canonical assembly-ready
-// spec (GOP48 @ 90000tb, bt709/tv, stereo AAC-LC 128k @ 48k) anchored to the
-// request resolution/fps.
+// resolveAssemblyContract projects the canonical kernel/media contract into
+// cliprender's flat working representation. Request geometry/timing remain
+// inputs for legacy V1 compatibility; V2 is expected to be validated against
+// its exact canonical dimensions by the request boundary.
+func resolveAssemblyContract(req *RenderRequest, c kernelmedia.AssemblyMediaContract) (*ResolvedContract, error) {
+	resolved := FromVideoContract(c)
+	if req != nil && req.Output != nil {
+		resolved.Width = req.Output.Width
+		resolved.Height = req.Output.Height
+		resolved.FPSNum = req.Output.FPSNum
+		resolved.FPSDen = req.Output.FPSDen
+	}
+	return resolved, nil
+}
+
+func validateRequestedFPS(contract kernelmedia.AssemblyMediaContract, req *RenderRequest) error {
+	if req == nil || req.Output == nil {
+		return nil
+	}
+	if req.Output.FPSNum*contract.FPS.Den != contract.FPS.Num*req.Output.FPSDen {
+		return fmt.Errorf("%w: contract=%s expected fps=%d/%d got fps=%d/%d", ErrOutputContractMismatch, contract.ID, contract.FPS.Num, contract.FPS.Den, req.Output.FPSNum, req.Output.FPSDen)
+	}
+	return nil
+}
+
 func resolveVeloxAssemblyReadyV1(req *RenderRequest) (*ResolvedContract, error) {
-	return &ResolvedContract{
-		ContractID:         OutputContractVeloxAssemblyReadyV1,
-		Container:          "mp4",
-		VideoCodec:         "h264",
-		VideoProfile:       "high",
-		VideoLevel:         "4.0",
-		PixelFormat:        "yuv420p",
-		Width:              req.Output.Width,
-		Height:             req.Output.Height,
-		FPSNum:             req.Output.FPSNum,
-		FPSDen:             req.Output.FPSDen,
-		VideoTimeBaseNum:   1,
-		VideoTimeBaseDen:   90000,
-		AudioTimeBaseNum:   1,
-		AudioTimeBaseDen:   48000,
-		SARNum:             1,
-		SARDen:             1,
-		ColorRange:         "tv",
-		ColorSpace:         "bt709",
-		ColorTransfer:      "bt709",
-		ColorPrimaries:     "bt709",
-		FieldOrder:         "progressive",
-		KeyframeInterval:   48,
-		AudioCodec:         "aac",
-		AudioProfile:       "LC",
-		SampleRate:         48000,
-		Channels:           2,
-		AudioChannelLayout: "stereo",
-		AudioBitrate:       "128k",
-		VideoStreams:       1,
-		AudioStreams:       1,
-		StartPTS:           0,
-	}, nil
+	return resolveAssemblyContract(req, kernelmedia.DefaultAssemblyMediaContract())
+}
+
+func resolveVeloxAssemblyReadyV2(req *RenderRequest) (*ResolvedContract, error) {
+	c := kernelmedia.DefaultAssemblyMediaContractV2()
+	if err := validateRequestedFPS(c, req); err != nil {
+		return nil, err
+	}
+	return resolveAssemblyContract(req, c)
 }

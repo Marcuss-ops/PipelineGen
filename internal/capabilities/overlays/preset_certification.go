@@ -5,6 +5,8 @@
 // live mini-render harness.
 package overlays
 
+import kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 // PresetCertificationCell is one mini-render cell of the matrix: a preset
 // bound to its semantic template and content.
 type PresetCertificationCell struct {
@@ -50,11 +52,12 @@ func PresetCertificationMatrix() []PresetCertificationCell {
 	}
 }
 
-// BuildPresetCertificationPlan builds the 5s (1280x720@30) mini-render plan for
+// BuildPresetCertificationPlan builds the 5s assembly-profile mini-render plan for
 // one matrix cell: a background video below a single overlay item carrying the
 // cell's explicit preset. The image fixture is the golden globe asset; text
 // cells carry their surface text.
 func BuildPresetCertificationPlan(cell PresetCertificationCell, planID string) OverlayPlan {
+	assembly := kernelmedia.DefaultAssemblyMediaContractV2()
 	item := OverlayItem{
 		ID:         cell.Family + "-" + cell.Preset,
 		TemplateID: cell.Template,
@@ -76,9 +79,9 @@ func BuildPresetCertificationPlan(cell PresetCertificationCell, planID string) O
 		PlanID:        planID,
 		VideoID:       "video-" + planID,
 		ProjectID:     "preset-certification",
-		Width:         1280,
-		Height:        720,
-		FPSNum:        30, FPSDen: 1,
+		Width:         assembly.Width,
+		Height:        assembly.Height,
+		FPSNum:        assembly.FPS.Num, FPSDen: assembly.FPS.Den,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{

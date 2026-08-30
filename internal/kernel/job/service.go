@@ -59,4 +59,17 @@ type EnqueueRequest struct {
 	Project       string
 	ActiveKey     string
 	VideoName     string
+	// ClientID is the M2M client identifier resolved from the Bearer
+	// VELOX_M2M_SECRET by JobClientAuthMiddleware. Empty for
+	// admin/internal enqueues. Persisted on the Job row so the
+	// (client_id, idempotency_key) UNIQUE constraint can dedup M2M
+	// retries (PG-M2M, Aug 2026).
+	ClientID string
+	// IdempotencyKey is the caller-controlled dedup key for the M2M
+	// surface. Empty for admin/internal enqueues. Together with
+	// ClientID it forms the canonical dedup pair; a retry with the
+	// same pair returns the SAME job_id instead of a duplicate
+	// (PG-M2M, Aug 2026). Distinct from CorrelationID (request-context
+	// derived, not per-client controlled).
+	IdempotencyKey string
 }

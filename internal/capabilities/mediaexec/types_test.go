@@ -6,7 +6,7 @@ func TestVideoProfileWithDefaults(t *testing.T) {
 	got := (VideoProfile{}).WithDefaults()
 	want := VideoProfile{
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, KeyframeInterval: 48,
-		AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
+		AudioCodec: "aac", AudioBitrate: "192k", SampleRate: 48000, Channels: 2,
 	}
 	if got != want {
 		t.Fatalf("VideoProfile.WithDefaults() = %+v, want %+v", got, want)

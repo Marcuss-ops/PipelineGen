@@ -90,7 +90,7 @@ func (t *TranscriptResult) HasText() bool {
 // FromVideoContract() bridges (contract_ssot.go) to convert.
 //
 // Audio profile follows the canonical audio SSOT: audio.DefaultAudioProfile()
-// (aac, LC, 48000 Hz, 2 channels, stereo, 128k). If that SSOT changes, the
+// (aac, LC, 48000 Hz, 2 channels, stereo, 192k). If that SSOT changes, the
 // Resolve implementation and ValidateContract must be updated together.
 type ResolvedContract struct {
 	ContractID         string

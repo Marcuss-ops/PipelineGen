@@ -37,6 +37,9 @@ func (m *correlationTimeoutBroker) FindByTypeAndCorrelation(_ context.Context, _
 	m.findCalls++
 	return nil, context.DeadlineExceeded
 }
+func (m *correlationTimeoutBroker) FindByClientAndIdempotencyKey(_ context.Context, _, _ string) (*job.Job, error) {
+	return nil, nil
+}
 func (m *correlationTimeoutBroker) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
 	return nil, nil
 }

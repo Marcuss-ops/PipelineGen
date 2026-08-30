@@ -87,7 +87,7 @@ def stop_health_monitor(runner: Any) -> None:
 
 
 def submit_run(runner: Any, term: str, limit: int) -> str:
-    payload = {"term": term, "limit": limit, "strategy": "verify", "dry_run": False, "clip_duration": 7, "width": 1920, "height": 1080, "fps": 30, "concurrency": runner.s.clip_concurrency, "root_folder_id": runner.s.root_folder_id}
+    payload = {"term": term, "limit": limit, "strategy": "verify", "dry_run": False, "clip_duration": 7, "width": 1920, "height": 1080, "fps": 24, "concurrency": runner.s.clip_concurrency, "root_folder_id": runner.s.root_folder_id}
     response = runner.http.post(f"{runner.s.base_url}/api/artlist/run", payload, admin=True)
     run_id = str(response.get("run_id", "")).strip()
     if not run_id:

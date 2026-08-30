@@ -163,11 +163,27 @@ func TestValidate_OutputContract(t *testing.T) {
 	if err := req.Validate(); err == nil {
 		t.Error("fps above MaxFPS must fail")
 	}
-	// valid passes.
+	// valid V1 output passes.
 	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		t.Errorf("valid output must validate: %v", err)
+	}
+
+	// V2 rejects non-canonical FPS at the request boundary.
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{
+		Contract: OutputContractVeloxAssemblyReadyV2, Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
+	}}
+	req.Normalize()
+	if _, err := NewContractResolver().Resolve(nil, req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
+		t.Fatalf("V2 30/1 must return OUTPUT_CONTRACT_MISMATCH, got %v", err)
+	}
+
+	// V2 accepts the exact canonical rational FPS.
+	req.Output.FPSNum = 24
+	req.Output.FPSDen = 1
+	if _, err := NewContractResolver().Resolve(nil, req); err != nil {
+		t.Fatalf("V2 24/1 must resolve: %v", err)
 	}
 	// Portrait and square outputs are intentionally removed from the
 	// YouTube clip contract.

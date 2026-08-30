@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // OverlayMediaContractVersion is the schema version of the media contract.
@@ -183,16 +185,17 @@ func (c OverlayMediaContract) FrameAtUS(us int64) int64 {
 // ── Predefined contracts ────────────────────────────────────────────
 
 // DefaultOverlayContractV1 is the canonical overlay render format for
-// alpha-bearing overlays (ProRes 4444 in MOV container). This is the
-// contract Chronon produces for overlays that require transparency.
+// alpha-bearing overlays (ProRes 4444 in MOV container). Canvas defaults are
+// inherited from the assembly V2 contract; the alpha/container codec remain
+// overlay-specific.
 var DefaultOverlayContractV1 = OverlayMediaContract{
 	ID:            "overlay-v1",
 	Version:       OverlayMediaContractVersion,
 	RequiresAlpha: true,
-	Width:         1920,
-	Height:        1080,
-	FPSNum:        30,
-	FPSDen:        1,
+	Width:         kernelmedia.DefaultAssemblyMediaContractV2().Width,
+	Height:        kernelmedia.DefaultAssemblyMediaContractV2().Height,
+	FPSNum:        kernelmedia.DefaultAssemblyMediaContractV2().FPS.Num,
+	FPSDen:        kernelmedia.DefaultAssemblyMediaContractV2().FPS.Den,
 	AudioStreams:  0,
 	Container:     "mov",
 	Codec:         "prores",
@@ -200,16 +203,16 @@ var DefaultOverlayContractV1 = OverlayMediaContract{
 }
 
 // DefaultOverlayContractNoAlpha is the overlay render format for overlays
-// without transparency (H.264 in MP4 container). Lighter and smaller than
-// the alpha contract; used for non-transparent overlays.
+// without transparency (H.264 in MP4 container). Canvas defaults are
+// inherited from the assembly V2 contract.
 var DefaultOverlayContractNoAlpha = OverlayMediaContract{
 	ID:            "overlay-v1-noalpha",
 	Version:       OverlayMediaContractVersion,
 	RequiresAlpha: false,
-	Width:         1920,
-	Height:        1080,
-	FPSNum:        30,
-	FPSDen:        1,
+	Width:         kernelmedia.DefaultAssemblyMediaContractV2().Width,
+	Height:        kernelmedia.DefaultAssemblyMediaContractV2().Height,
+	FPSNum:        kernelmedia.DefaultAssemblyMediaContractV2().FPS.Num,
+	FPSDen:        kernelmedia.DefaultAssemblyMediaContractV2().FPS.Den,
 	AudioStreams:  0,
 	Container:     "mp4",
 	Codec:         "h264",
@@ -222,19 +225,26 @@ var DefaultOverlayContractNoAlpha = OverlayMediaContract{
 // DefaultOverlayContractNoAlpha. The width/height of the returned contract
 // are set to match the canvas.
 func OverlayContractForCanvas(width, height, fpsNum, fpsDen int, requiresAlpha bool) OverlayMediaContract {
+	assembly := kernelmedia.DefaultAssemblyMediaContractV2()
+	if width <= 0 {
+		width = assembly.Width
+	}
+	if height <= 0 {
+		height = assembly.Height
+	}
+	if fpsNum <= 0 {
+		fpsNum = assembly.FPS.Num
+	}
+	if fpsDen <= 0 {
+		fpsDen = assembly.FPS.Den
+	}
 	if requiresAlpha {
 		c := DefaultOverlayContractV1
-		c.Width = width
-		c.Height = height
-		c.FPSNum = fpsNum
-		c.FPSDen = fpsDen
+		c.Width, c.Height, c.FPSNum, c.FPSDen = width, height, fpsNum, fpsDen
 		return c
 	}
 	c := DefaultOverlayContractNoAlpha
-	c.Width = width
-	c.Height = height
-	c.FPSNum = fpsNum
-	c.FPSDen = fpsDen
+	c.Width, c.Height, c.FPSNum, c.FPSDen = width, height, fpsNum, fpsDen
 	return c
 }
 
