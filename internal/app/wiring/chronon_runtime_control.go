@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultChrononGPUConcurrency = 2
+	defaultChrononGPUConcurrency = 4
 	defaultChrononProbeTTL       = 10 * time.Minute
 	chrononProcessTailBytes      = 64 * 1024
 )
