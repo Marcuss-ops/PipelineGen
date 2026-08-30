@@ -94,6 +94,7 @@ var commandRegistry = map[string]commandHandler{
 	"reachability-graph":             audit.RunReachabilityGraph,
 	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
+	"recover-registry-from-qdrant":   reconcile.RunRecoverRegistryFromQdrant,
 	"reindex-qdrant":                 reconcile.RunReindexQdrant,
 	"remove-drive-folder-recursive":  drive.RunRemoveDriveFolderRecursive,
 	"repair-drive-links":             audit.RunRepairDriveLinks,
