@@ -138,7 +138,6 @@ var authorizedPersistenceCapabilityPrefixes = []string{
 	"internal/capabilities/assets/persistence/",
 	"internal/capabilities/assets/artifacts/",
 	"internal/capabilities/assets/finalizer/",
-	"internal/capabilities/assembly/sqlite/",
 	"internal/capabilities/execution/steps/",
 	"internal/capabilities/jobs/",
 	"internal/capabilities/maintenance/",
