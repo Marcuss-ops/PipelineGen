@@ -189,7 +189,6 @@ type WorkerDeps struct {
 // Callers MUST pass a non-nil notifier; the worker pulls a fresh
 // channel each iteration. Today the production wiring passes the
 // in-process *SQLiteStore (the compile-time assertion in
-// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
 // is the seam marker for a future adapter).
 func NewWorker(deps WorkerDeps) *Worker {
 	return &Worker{

@@ -295,6 +295,7 @@ func projectRendererPhases(ctx context.Context, backend RenderBackend, m *Render
 		}, 0)
 	}
 	recordBytes(kernobs.OperationGPUCopy, m.GPUCopyBytes)
+	recordBytes(kernobs.OperationGPUUpload, m.GPUUploadBytes)
 	recordBytes(kernobs.OperationGPUReadback, m.GPUReadbackBytes)
 }
 

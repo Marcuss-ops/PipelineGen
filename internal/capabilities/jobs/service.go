@@ -39,9 +39,9 @@ import (
 
 // Service manages job life cycle: enqueue, query, cancel.
 //
-// PR-B: repo field is the canonical job.JobBroker port, not the concrete
-// *sqljobs.SQLiteStore. Any future broker adapter (e.g. PostgreSQL) can be
-// injected without touching this file.
+// PR-B: repo field is the canonical job.JobBroker port, not a concrete
+// SQLite store. Any future broker adapter (e.g. PostgreSQL) can be injected
+// without touching this file.
 //
 // Issue 4 (June 2026, P1): optional `registry *Registry` carries the
 // per-job-type default retries. Wired via the fluent WithRegistry(reg)
@@ -56,8 +56,8 @@ type Service struct {
 }
 
 // NewService constructs the Service from the canonical job.JobBroker port.
-// Composition root injects *sqljobs.SQLiteStore today; future PR-`postgres`
-// injects *pgbroker.Store (declared via `var _ job.JobBroker = (*pgbroker.Store)(nil)`).
+// Composition root injects the SQLite adapter today; future PR-`postgres`
+// injects a PostgreSQL adapter satisfying `job.JobBroker`.
 //
 // PR-jobs-retry-contract (July 2026): the registry is REQUIRED at
 // construction time (fail-closed typed contract per godlike/07

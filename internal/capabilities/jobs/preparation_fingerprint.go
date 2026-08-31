@@ -61,23 +61,3 @@ func NewPreparationUnit(id, kind, jobType string, payload []byte, inputs map[str
 	}
 	return PreparationUnit{ID: id, Kind: kind, Fingerprint: fingerprint, DependsOn: append([]string(nil), dependsOn...), Reusable: true}, nil
 }
-
-func (p PreparationPlan) Validate() error {
-	if p.JobID == "" {
-		return fmt.Errorf("preparation plan job ID must not be empty")
-	}
-	seen := make(map[string]struct{}, len(p.Units))
-	for _, unit := range p.Units {
-		if unit.ID == "" || unit.Kind == "" {
-			return fmt.Errorf("preparation unit ID and kind must not be empty")
-		}
-		if unit.Fingerprint == "" {
-			return fmt.Errorf("preparation unit %q fingerprint must not be empty", unit.ID)
-		}
-		if _, exists := seen[unit.ID]; exists {
-			return fmt.Errorf("duplicate preparation unit ID %q", unit.ID)
-		}
-		seen[unit.ID] = struct{}{}
-	}
-	return nil
-}

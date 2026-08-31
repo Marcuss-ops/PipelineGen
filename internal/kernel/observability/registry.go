@@ -142,6 +142,7 @@ const (
 	OperationEncode          OperationName = "encode"
 	OperationAudioMux        OperationName = "audio_mux"
 	OperationGPUCopy         OperationName = "gpu_copy"
+	OperationGPUUpload       OperationName = "gpu_upload"
 	OperationGPUReadback     OperationName = "gpu_readback"
 )
 
@@ -173,7 +174,7 @@ func AllOperations() []OperationName {
 		OperationRendererStartup, OperationDecode, OperationComposite,
 		OperationSubtitleRaster, OperationWatermarkRaster,
 		OperationFrameConversion, OperationEncode, OperationAudioMux,
-		OperationGPUCopy, OperationGPUReadback,
+		OperationGPUCopy, OperationGPUUpload, OperationGPUReadback,
 	}
 }
 

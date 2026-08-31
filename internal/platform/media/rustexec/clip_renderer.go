@@ -23,6 +23,7 @@ import (
 // value comes from the Rust response metadata (single ownership of media
 // facts) plus a fail-closed local existence/size check on the output.
 type ClipRenderResult struct {
+<<<<<<< Updated upstream
 	OutputPath        string
 	SizeBytes         int64
 	DurationSec       float64
@@ -48,6 +49,46 @@ type ClipRenderResult struct {
 	// They stay nil for non-Chronon executors instead of fabricating zeros.
 	ChrononQueueWaitMS *int64
 	ChrononServiceMS   *int64
+||||||| constructed merge base
+	OutputPath        string
+	SizeBytes         int64
+	DurationSec       float64
+	Width             uint32
+	Height            uint32
+	FPSNum            uint32
+	FPSDen            uint32
+	FFmpegMS          int64
+	AudioCopyEligible *bool
+	AudioEncodePasses *int
+	SubtitleRasterCPU *bool
+	GPUCopyBytes      *uint64
+	OperationMetrics  *OperationMetrics
+=======
+	OutputPath              string
+	SizeBytes               int64
+	DurationSec             float64
+	Width                   uint32
+	Height                  uint32
+	FPSNum                  uint32
+	FPSDen                  uint32
+	FFmpegMS                int64
+	AudioCopyEligible       *bool
+	AudioEncodePasses       *int
+	SubtitleRasterCPU       *bool
+	GPUCopyBytes            *uint64
+	GPUUploadBytes          *uint64
+	GPUReadbackBytes        *uint64
+	EncoderStagingCopyBytes *uint64
+	NV12ToRGBAFrames        *uint64
+	RGBAToNV12Frames        *uint64
+	CUDACompositeFrames     *uint64
+	GPUUtilizationAvg       *float64
+	GPUUtilizationPeak      *float64
+	NVENCUtilizationAvg     *float64
+	NVDECUtilizationAvg     *float64
+	VRAMUsedPeakMB          *uint64
+	OperationMetrics        *OperationMetrics
+>>>>>>> Stashed changes
 	// render_clip phase timings reported by Rust (nil = phase not reported;
 	// the V2 metrics report maps them only when measured — never a fake zero).
 	StartupMS         *int64 // pre-ffmpeg wall inside Rust (plan decode + graph + spawn; probe is separate)
@@ -154,6 +195,7 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		probeMS = &m.ProbeMS
 	}
 	return ClipRenderResult{
+<<<<<<< Updated upstream
 		OutputPath:        plan.OutputPath,
 		SizeBytes:         info.Size(),
 		DurationSec:       m.DurationSec,
@@ -179,6 +221,68 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		FrameConversionMS: m.FrameConversionMS,
 		EncodeMS:          m.EncodeMS,
 		AudioMuxMS:        m.AudioMuxMS,
+||||||| constructed merge base
+		OutputPath:        plan.OutputPath,
+		SizeBytes:         info.Size(),
+		DurationSec:       m.DurationSec,
+		Width:             m.Width,
+		Height:            m.Height,
+		FPSNum:            m.FPSNum,
+		FPSDen:            m.FPSDen,
+		FFmpegMS:          m.FFmpegMS,
+		AudioCopyEligible: m.AudioCopyEligible,
+		AudioEncodePasses: m.AudioEncodePasses,
+		SubtitleRasterCPU: m.SubtitleRasterCPU,
+		GPUCopyBytes:      m.GPUCopyBytes,
+		OperationMetrics:  result.Metrics,
+		StartupMS:         m.StartupMS,
+		PublishMS:         m.PublishMS,
+		OpMS:              m.OpMS,
+		ProbeMS:           probeMS,
+		DecodeMS:          m.DecodeMS,
+		FilterGraphMS:     m.FilterGraphMS,
+		SubtitleRasterMS:  m.SubtitleRasterMS,
+		WatermarkRasterMS: m.WatermarkRasterMS,
+		FrameConversionMS: m.FrameConversionMS,
+		EncodeMS:          m.EncodeMS,
+		AudioMuxMS:        m.AudioMuxMS,
+=======
+		OutputPath:              plan.OutputPath,
+		SizeBytes:               info.Size(),
+		DurationSec:             m.DurationSec,
+		Width:                   m.Width,
+		Height:                  m.Height,
+		FPSNum:                  m.FPSNum,
+		FPSDen:                  m.FPSDen,
+		FFmpegMS:                m.FFmpegMS,
+		AudioCopyEligible:       m.AudioCopyEligible,
+		AudioEncodePasses:       m.AudioEncodePasses,
+		SubtitleRasterCPU:       m.SubtitleRasterCPU,
+		GPUCopyBytes:            m.GPUCopyBytes,
+		GPUUploadBytes:          m.GPUUploadBytes,
+		GPUReadbackBytes:        m.GPUReadbackBytes,
+		EncoderStagingCopyBytes: m.EncoderStagingCopyBytes,
+		NV12ToRGBAFrames:        m.NV12ToRGBAFrames,
+		RGBAToNV12Frames:        m.RGBAToNV12Frames,
+		CUDACompositeFrames:     m.CUDACompositeFrames,
+		GPUUtilizationAvg:       m.GPUUtilizationAvg,
+		GPUUtilizationPeak:      m.GPUUtilizationPeak,
+		NVENCUtilizationAvg:     m.NVENCUtilizationAvg,
+		NVDECUtilizationAvg:     m.NVDECUtilizationAvg,
+		VRAMUsedPeakMB:          m.VRAMUsedPeakMB,
+		OperationMetrics:        result.Metrics,
+		StartupMS:               m.StartupMS,
+		PublishMS:               m.PublishMS,
+		OpMS:                    m.OpMS,
+		ProbeMS:                 probeMS,
+		DecodeMS:                m.DecodeMS,
+		FilterGraphMS:           m.FilterGraphMS,
+		SubtitleRasterMS:        m.SubtitleRasterMS,
+		WatermarkRasterMS:       m.WatermarkRasterMS,
+		FrameConversionMS:       m.FrameConversionMS,
+		EncodeMS:                m.EncodeMS,
+		AudioMuxMS:              m.AudioMuxMS,
+>>>>>>> Stashed changes
 	}, nil
 }
 

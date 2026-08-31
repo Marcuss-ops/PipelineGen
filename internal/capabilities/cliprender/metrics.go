@@ -100,6 +100,7 @@ type RenderMetricsV2 struct {
 	ProcessingXRT  float64 `json:"processing_xrt"`
 
 	GPUCopyBytes            Metric `json:"gpu_copy_bytes"`
+	GPUUploadBytes          Metric `json:"gpu_upload_bytes"`
 	GPUReadbackBytes        Metric `json:"gpu_readback_bytes"`
 	PeakRSSBytes            Metric `json:"peak_rss_bytes"`
 	DiskReadBytes           Metric `json:"disk_read_bytes"`
@@ -109,6 +110,12 @@ type RenderMetricsV2 struct {
 	EncoderStagingCopyBytes Metric `json:"encoder_staging_copy_bytes"`
 	NV12ToRGBAFrames        Metric `json:"nv12_to_rgba_frames"`
 	RGBAToNV12Frames        Metric `json:"rgba_to_nv12_frames"`
+	CUDACompositeFrames     Metric `json:"cuda_composite_frames"`
+	GPUUtilizationAvg       Metric `json:"gpu_utilization_avg"`
+	GPUUtilizationPeak      Metric `json:"gpu_utilization_peak"`
+	NVENCUtilizationAvg     Metric `json:"nvenc_utilization_avg"`
+	NVDECUtilizationAvg     Metric `json:"nvdec_utilization_avg"`
+	VRAMUsedPeakMB          Metric `json:"vram_used_peak_mb"`
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
 	// VideoZeroCopy is nil when the executor did not certify the strict
 	// device-local path. It is a pointer intentionally: false is a measured
@@ -135,8 +142,11 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
 		&m.PublicationTotalMS, &m.PublishMS, &m.RenderWallMS,
 		&m.GPUCopyBytes, &m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
+		&m.GPUUploadBytes,
 		&m.DiskWriteBytes, &m.NetworkRXBytes, &m.NetworkTXBytes, &m.EncoderStagingCopyBytes,
-		&m.NV12ToRGBAFrames, &m.RGBAToNV12Frames,
+		&m.NV12ToRGBAFrames, &m.RGBAToNV12Frames, &m.CUDACompositeFrames,
+		&m.GPUUtilizationAvg, &m.GPUUtilizationPeak, &m.NVENCUtilizationAvg,
+		&m.NVDECUtilizationAvg, &m.VRAMUsedPeakMB,
 		&m.TotalMS, &m.UnaccountedMS, &m.UnattributedMS,
 	} {
 		*p = Metric(NotInstrumented)
@@ -175,6 +185,7 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.PublishMS, &executor.PublishMS)
 	merge(&m.RenderWallMS, &executor.RenderWallMS)
 	merge(&m.GPUCopyBytes, &executor.GPUCopyBytes)
+	merge(&m.GPUUploadBytes, &executor.GPUUploadBytes)
 	merge(&m.GPUReadbackBytes, &executor.GPUReadbackBytes)
 	merge(&m.PeakRSSBytes, &executor.PeakRSSBytes)
 	merge(&m.DiskReadBytes, &executor.DiskReadBytes)
@@ -184,6 +195,12 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.EncoderStagingCopyBytes, &executor.EncoderStagingCopyBytes)
 	merge(&m.NV12ToRGBAFrames, &executor.NV12ToRGBAFrames)
 	merge(&m.RGBAToNV12Frames, &executor.RGBAToNV12Frames)
+	merge(&m.CUDACompositeFrames, &executor.CUDACompositeFrames)
+	merge(&m.GPUUtilizationAvg, &executor.GPUUtilizationAvg)
+	merge(&m.GPUUtilizationPeak, &executor.GPUUtilizationPeak)
+	merge(&m.NVENCUtilizationAvg, &executor.NVENCUtilizationAvg)
+	merge(&m.NVDECUtilizationAvg, &executor.NVDECUtilizationAvg)
+	merge(&m.VRAMUsedPeakMB, &executor.VRAMUsedPeakMB)
 }
 
 func measured(m Metric) (int64, bool) {

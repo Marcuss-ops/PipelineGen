@@ -30,7 +30,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -391,7 +390,7 @@ func (e *registryError) Error() string { return e.msg }
 // Returns the wired handler for inclusion in the registry list.
 func buildIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
 	h := NewIndexingHandler(indexer, sourceQuerier, log)
-	if su, ok := indexer.(clipindexer.IndexerStateUpdater); ok {
+	if su, ok := indexer.(IndexerStateUpdater); ok {
 		h.WithStateUpdater(su)
 		return h
 	}

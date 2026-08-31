@@ -105,7 +105,7 @@ Per action plan §4 ("Failure diagnosis table") + per-probe FAIL mappings from P
 | Job terminal status: `FAILED stock.finalize` (production gate) | `PR-STOCK-FINALIZER-PUBLISHER-RACE` | `internal/capabilities/assets/providers/stock/stockpipeline/upload_orchestration.go` | Publisher ↔ Finalizer race / out-of-order wire |
 | Job terminal status: stuck, never terminal (job_id returned but state never advances past step ladder) | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | Handler execution hang / orchestrator stuck mid-ladder (canonical 6-step `RunResilient` never returns terminal state) |
 | `SUCCEEDED` but `media_assets` empty | `PR-STOCK-FINALIZE-PROJECTION` | `internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go` | Finalizer/projection asset incomplete |
-| `media_assets` OK but search empty | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | Outbox delivery / Qdrant indexing best-effort silent-fail |
+| `media_assets` OK but search empty | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/capabilities/jobs/delivery.go` | Outbox delivery / Qdrant indexing best-effort silent-fail |
 | `outbox_events.status='failed'` (transient retry-able) | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/platform/sqlite/outboxevents/repository.go::MarkFailed` (line 252) | Pre-condition side: `attempt_count >= max_attempts` check + `RequeueExpiredLeases` scheduling |
 | `outbox_events.status='dead_lettered'` | `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/platform/sqlite/outboxevents/repository.go` (line 252 + 321) | Canonical owner writes `SET status = 'dead_letter'` — investigate retry loop exhaustion |
 | `outbox_events.last_error` non-empty | `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/platform/sqlite/outboxevents/repository.go` (lines 252, 266, 321, 367) | `last_error` write seam — inspect the surface error to identify the upstream cause |
@@ -168,7 +168,7 @@ Per action plan §6 + §7 (godlike/06 SSOT one canonical owner per fact). Each P
 | `PR-STOCK-FINALIZER-PUBLISHER-RACE` | `internal/capabilities/assets/providers/stock/stockpipeline/upload_orchestration.go` | forward-pointer |
 | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | forward-pointer |
 | `PR-STOCK-FINALIZE-PROJECTION` | `internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go` | forward-pointer |
-| `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | forward-pointer |
+| `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/capabilities/jobs/delivery.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
@@ -577,7 +577,7 @@ Cross-references §3; consistent with the lifecycle tree declared in `internal/k
 | Observed state                                                                  | Class                                                                          | Operator action                                                      |
 |---------------------------------------------------------------------------------|--------------------------------------------------------------------------------|----------------------------------------------------------------------|
 | `status=RETRY_WAIT` AND `retry_count < max_retries`                             | Transient retry pause (broker scheduled retry, scheduled `ScheduleRetry`)     | Observe. The broker drives `RETRY_WAIT → QUEUED` per `kernel/job/store.go::Store.Retry`; no manual intervention needed. |
-| `status=QUEUED` AND `retry_count > 0`                                           | Retry enqueued; awaiting worker claim                                          | Observe. If stuck in QUEUED with no claims, inspect worker runtime per `internal/application/jobs/worker/runner.go`. |
+| `status=QUEUED` AND `retry_count > 0`                                           | Retry enqueued; awaiting worker claim                                          | Observe. If stuck in QUEUED with no claims, inspect worker runtime per `internal/capabilities/jobs/worker/runner.go`. |
 | `status=FAILED` (retries exhausted)                                             | Terminal — retry logic hit `max_retries`                                       | Ship the canonical PR forward-pointer (see §11.5). Re-run by operator via `POST /api/jobs/{id}/retry` after the fix. |
 | `status=CANCELLED`                                                              | Operator-or-system cancellation (`POST /api/jobs/{id}/cancel` OR policy rule) | No auto-recovery. Inspect `cancelled_at` AND the most-recent timeline event to disambiguate operator vs system. Re-run manually after fix. |
 | `status=SUCCEEDED` (terminal but expected post-finalize-projection)             | Sanity: assert `media_assets` row + outbox + Qdrant visibility per §3         | If `error` field is non-empty on a SUCCEEDED row → `PR-JOBS-ERROR-VS-STATUS-DRIFT`; same fix as §3 "SUCCEEDED but empty projection". |

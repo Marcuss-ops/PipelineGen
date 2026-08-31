@@ -35,6 +35,10 @@ type AssetStoreSQLite struct {
 	db            *sql.DB
 	log           *zap.Logger
 	canonicalSave func(context.Context, *asset.Details) error
+
+	// batchCache is the LRU-style cache for BatchGetByIDs (search
+	// hydration). Lazily initialised on first BatchGetByIDs call.
+	batchCache *batchCache
 }
 
 func (s *AssetStoreSQLite) SetCanonicalSave(fn func(context.Context, *asset.Details) error) {

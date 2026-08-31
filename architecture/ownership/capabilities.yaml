@@ -1,0 +1,104 @@
+# PipelineGen — split ownership section: capabilities
+# The only target roots are internal/{capabilities}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from the split files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+application_jobs:
+  owner: internal/capabilities/jobs
+  rationale: Job registry + worker execution + queue lifecycle + scheduling policies + lease + payloads + codec + finalization + outbox dispatcher.
+  # The root package is the compatibility facade and orchestration boundary.
+  # Reusable policy ownership is materialised in the capability subpackages:
+  # queue (enqueue/claim/retry policy), scheduling (polling/backoff,
+  # preparation planning and resource speculation), and finalize
+  # (artifact-manifest and finalization support). Persistence transitions
+  # remain owned by internal/kernel/job.Store and internal/platform/sqlite/jobs.
+  target_subdirs:
+    - jobs/queue
+    - jobs/scheduling
+    - jobs/finalize
+application_scripts:
+  owner: internal/capabilities/scripts
+  rationale: Script-generation orchestration. Production files owned by
+    1 root facade + 6 capability-bounded subpackage. Each subpackage
+    exposes ≤ 17 production files (well under policy.yaml
+    ::max_files_per_package=65). The 53-production-file mega-package
+    state (June 2026) is being unwound in PR-G (4-phase migration
+    EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
+  target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
+    - scripts/curation       # NEW per PR-G; owns MediaCurator + clip ports + scene stubs
+    - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job + parity-covered plan builder (BACKFILL)
+    - scripts/persistence    # NEW per PR-G; owns ScriptRepository contract + adapter
+    - scripts/postprocess    # NEW per PR-G; owns PostprocessorRegistry + 7 processor_*.go
+    - scripts/source         # NEW per PR-G; owns SourceRegistry + 6 source_resolver_*.go
+    - scripts/usecases       # NEW per PR-G; owns 9 use-case entry points
+    - scripts/memory         # existing (text-normalize helper)
+    - scripts/gemmamemory    # existing (gemma-based caching layer)
+    - scripts/compat         # existing (legacy array→ModelScriptOutputV1 bridge)
+  pr_g_status: in_progress (PR-G.1 EXPAND landed 2026-06-27;
+    PR-G.2 BACKFILL started 2026-08-05; generation plan builder is parity-covered;
+    legacy usecase path remains until CUTOVER; deadline 2026-09-30)
+  current_drift: "migration complete (2026-08-25): the legacy internal/application/scripts/ root was deleted; the capability now lives flat in internal/capabilities/scripts/ (adapters/ + usages). The PR-G aspirational subpackages (curation, generation, persistence, postprocess, source, usecases) were never fully materialised on disk and are superseded by the flat layout."
+  cross_refs:
+    plan: architecture/current.yaml#id-21 (Wave 21 PR-G.1 EXPAND block)
+    policy: architecture/policy.yaml::max_files_per_package=65
+application_assets:
+  owner: internal/capabilities/assets
+  rationale: Catalog, indexing, classification, providers registry, association & realtime search.
+  target_subdirs:
+    - assets/catalog
+    - assets/tree
+    - assets/index
+    - assets/resolve
+    - assets/ingest
+    - assets/classification
+    - assets/enrichment
+    - assets/ontology
+    - assets/sync
+    - assets/monitor
+    - assets/providers/{artlist,youtube,stock}
+    - assets/realtime
+    - assets/association
+
+  # Wave CONFORMANCE-001 / id-24 (June 2026, owner PipelineGen Agent) —
+  # category_channels owns monitor-state. Day-1 ship landed via cherry-pick
+  # 1826d344 (forwarding 0907ec8a):
+  #   A1.3 — status=completed (cmd/admin/backfill_monitored_sources_to_
+  #          category_channels.go); one-shot backfill of legacy
+  #          `monitored_sources` rows into `category_channels` via
+  #          channels.Service.UpsertBulk + zero-drift cross-run assertion.
+  #   A2.1 — status=removed (seed-channels entrypoint + JSON config
+  #          removed; migration_phase=CONTRACT; synchronous-with-
+  #          backfill closure; replacement=channels.Service via canonical
+  #          POST /channels/bulk-upsert).
+  # The internal/capabilities/assets/monitor/ capability consumes
+  # channels.Service (ListEnabled / ClaimDue / MarkChecked / UpdateCursor)
+  # exclusively; per-video discovery state (the legacy discovery-state
+  # SQL surface) is CONTRACT-phase superseded by media_assets discovery
+  # columns (see the rationale doc linked below for the deployment chain);
+  # YouTube-side per-video discovery state migrates to media_assets. The
+  # canonical migration filenames retain the historical pointer strictly
+  # for audit traceability — body code in this file intentionally avoids
+  # the legacy table identifier. Future closure: migration 110 ships
+  # atomically (deadline 2026-08-31, Wave CONFORMANCE-001 close); see
+  # architecture/current.yaml#id-24 follow_up_tickets for A1.3 / A2.1
+  # details + transitional baseline (2 ARCH-ALLOWLIST files per
+  # docs/migrations/monitored-sources-allowlist.txt).
+  category_channels_owns_monitor_state: category_channels owns monitor-state
+  monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
+application_images:
+  owner: internal/capabilities/images
+  target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
+application_voiceover:
+  owner: internal/capabilities/voiceover/service
+  target_subdirs: [voiceover/service, voiceover/sync]
+application_books:
+  owner: internal/capabilities/books
+  rationale: Books + lessons; produces Markdown/PDF deliverables.
+  target_subdirs: [books]
+application_lessons:
+  owner: internal/capabilities/lessons
+  rationale: Lesson generation; produces Markdown/PDF deliverables.
+  target_subdirs: [lessons]

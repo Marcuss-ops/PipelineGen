@@ -1,3 +1,5 @@
+//go:build !no_e2e
+
 // Package voiceover — qdrant_indexing_e2e_test.go
 //
 // P0.7 Wave 21 Step 11/12 (June 2026): End-to-End Qdrant indexing
@@ -56,7 +58,6 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	outbox "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	sqliteverification "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/verification"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
@@ -616,13 +617,10 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	}
 
 	// ── Stage C: assert media_assets projection (source='voiceover') ─
-	projectionReader, readerErr := sqliteverification.NewProjectionReader(db)
-	if readerErr != nil {
-		t.Fatalf("NewProjectionReader: %v", readerErr)
-	}
-	hit, err := projectionReader.HasVoiceoverProjection(ctx, voiceoverID)
-	if err != nil {
-		t.Fatalf("HasVoiceoverProjection: %v", err)
+	// NOTE: sqlite/verification package was deleted; using direct SQL query instead
+	hit := false
+	if err := db.QueryRowContext(ctx, `SELECT 1 FROM media_assets WHERE id = ? AND source = 'voiceover'`, voiceoverID).Scan(&hit); err == nil {
+		hit = true
 	}
 	if !hit {
 		t.Errorf("media_assets row missing for voiceover id=%q (source='voiceover')", voiceoverID)

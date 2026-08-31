@@ -16,13 +16,9 @@
 // value at WireRegistry. Compile-time assertion below catches
 // signature drift if either side changes shape.
 //
-// The JobStats type currently lives in
-// internal/platform/sqlite/jobs. Moving it to
-// internal/domain/job is a deferred follow-up (it would touch the
-// repository surface + JSON wire shape). PR-0 keeps the read port
-// infra-aware for minimum-churn; the godlike/06 layer-violation
-// review is an explicit ticketed item in the Wave 22 follow-up
-// backlog.
+// JobStats is owned by the kernel job contract, so this port is
+// independent of the persistence adapter and can be implemented by
+// SQLite, PostgreSQL, or an in-memory reader.
 package jobs
 
 import (
@@ -30,7 +26,7 @@ import (
 	"encoding/json"
 	"time"
 
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type HistoryFilter struct {
@@ -72,14 +68,10 @@ type HistoryReader interface {
 // repository via type-assertion). Tests can stub with a fake reader
 // returning synthesized values.
 //
-// The port deliberately returns the SQLite-native JobStats type:
-// the admin Stats endpoint serializes it 1:1 today. A deferred
-// Wave 22 follow-up relocates JobStats to internal/domain/job and
-// lifts the api layer off the infra dependency — until then this
-// port is the minimum that lets a JobsHandler depend on (job.Service,
-// JobStatsReader) instead of *appjobs.Service concrete.
+// The port returns the canonical kernel JobStats DTO; the admin Stats
+// endpoint serializes it 1:1 and no adapter-specific type leaks through.
 type JobStatsReader interface {
-	GetStats(ctx context.Context) (*sqljobs.JobStats, error)
+	GetStats(ctx context.Context) (*job.JobStats, error)
 }
 
 // Compile-time assertion: *Service satisfies JobStatsReader.

@@ -24,7 +24,7 @@
 // the SUCCEEDED flip + audit sidecar look like for job X?".
 // Callers MUST route through markSucceeded — never set status =
 // SUCCEEDED outside the JobFinalizer (godlike/06 SSOT).
-package jobs
+package finalize
 
 import (
 	"context"

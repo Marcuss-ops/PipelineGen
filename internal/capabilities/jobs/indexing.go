@@ -83,7 +83,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -221,7 +220,7 @@ type indexRequestV1 struct {
 type IndexingHandler struct {
 	indexer       IndexClipper
 	sourceQuerier SourceVersionQuerier
-	stateUpdater  clipindexer.IndexerStateUpdater
+	stateUpdater  IndexerStateUpdater
 	log           *zap.Logger
 }
 
@@ -260,7 +259,7 @@ func NewIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier
 // godlike/07 minimum-blast-radius: returns the receiver to preserve
 // the fluent-construction idiom. Nil updater is permitted (test
 // path); production wires non-nil.
-func (h *IndexingHandler) WithStateUpdater(u clipindexer.IndexerStateUpdater) *IndexingHandler {
+func (h *IndexingHandler) WithStateUpdater(u IndexerStateUpdater) *IndexingHandler {
 	h.stateUpdater = u
 	return h
 }

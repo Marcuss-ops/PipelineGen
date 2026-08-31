@@ -98,7 +98,7 @@ var ErrInvalidPayload = errors.New("appjobs.Dispatcher: payload encode failed")
 //
 // Rendered as an interface per AGENTS.md Pattern 0 (port abstraction).
 // Future adapters (PostgresBroker, in-memory broker for tests) can
-// satisfy this contract without leaking *sqljobs.SQLiteStore into
+// satisfy this contract without leaking a concrete persistence adapter into
 // Dispatcher. The compile-time assertion below pins the contract to
 // *Service so any future drift is a build failure.
 type EnqueuePort interface {

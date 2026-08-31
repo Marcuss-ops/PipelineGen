@@ -45,7 +45,7 @@
 // the lease-fence SELECT is the single intentional dedup introduced by
 // the split (godlike/07 no-fake-availability: both checks routed
 // identically to handleIdempotentCompletion — only one is needed).
-package jobs
+package finalize
 
 import (
 	"context"

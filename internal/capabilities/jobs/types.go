@@ -8,7 +8,6 @@ import (
 	"time"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
 // ── Store / command types ───────────────────────────────────────────────────
@@ -22,9 +21,9 @@ import (
 // The single in-tree consumer that switched to direct imports is
 // internal/infrastructure/jobs/local/broker.go. The application-layer
 // Runner/NewRunner are now typed against the canonical jobs.Store interface.
-// PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
-// aliases (formerly this package's store.go). Callers now import
-// internal/platform/sqlite/jobs directly as `sqljobs`.
+// PR4.A2 (June 2026): removed the SQLiteStore and ErrLeaseLost aliases;
+// callers use the canonical kernel contracts and provider-specific adapter
+// packages only where concrete behavior is intentionally required.
 
 // Sentinel errors raised by Broker implementations and the in-process runner.
 // Workers use ErrNoWorkerCapabilities to fail closed when their advertised
@@ -192,8 +191,7 @@ type RunnerConfig struct {
 
 	// Notifier is the wake-on-Enqueue port. Required by the Worker
 	// signature (compile-time seam marker at internal/capabilities/jobs/queue/
-	// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)).
-	// Composition root wires the in-process *SQLiteStore today; a
-	// future postgres adapter (LISTEN/NOTIFY) plugs in here via Deps.
-	Notifier sqljobs.QueueNotifier
+	// Composition root wires the in-process SQLite adapter today; a future
+	// Postgres LISTEN/NOTIFY adapter can satisfy the same kernel contract.
+	Notifier QueueNotifier
 }

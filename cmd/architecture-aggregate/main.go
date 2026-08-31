@@ -38,8 +38,10 @@ var ownershipSplitFiles = []string{
 	"modules.yaml",
 	"jobs.yaml",
 	"services.yaml",
-	"application.yaml",
-	"infrastructure.yaml",
+	"app.yaml",
+	"kernel.yaml",
+	"capabilities.yaml",
+	"platform.yaml",
 	"packages.yaml",
 }
 

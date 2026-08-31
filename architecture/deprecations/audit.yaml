@@ -17,16 +17,16 @@
 # after any record add/remove/move so the counts cannot drift.
 audit:
     manifest_version: sharded-migration-v1
-    total_records: 11
+    total_records: 7
     by_status:
         removed: 0
-        in_progress: 6
+        in_progress: 5
         keep: 1
-        other: 4
+        other: 1
     by_migration_phase:
         BACKFILL: 2
-        CONTRACT: 5
+        CONTRACT: 2
         CUTOVER: 0
-        EXPAND: 3
+        EXPAND: 2
         not applicable: 1
     ci_gate_impact: ""

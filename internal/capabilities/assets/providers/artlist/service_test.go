@@ -25,8 +25,17 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
-	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
+
+// mustMarshalJSON marshals v to JSON or fails the test.
+func mustMarshalJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("failed to marshal JSON: %v", err)
+	}
+	return data
+}
 
 // createTestDB creates a temporary SQLite database for testing
 func createTestDB(t *testing.T) *sql.DB {
@@ -681,7 +690,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	defer svc.Close()
 
 	// Create a job directly (simulate a job that would be processed by a worker)
-	payload := testutil.MustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
+	payload := mustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
 	job := &job.Job{
 		ID:        "test-job-1",
 		Type:      "artlist.run",

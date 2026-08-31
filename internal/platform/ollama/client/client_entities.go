@@ -282,7 +282,6 @@ func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Conte
 			NomiSpeciali:     result.NomiSpeciali,
 			ParoleImportanti: result.ParoleImportanti,
 			ArtlistPhrases:   result.ArtlistPhrases,
-			NounChunks:       result.NounChunks,
 			Source:           result.Source,
 		})
 
@@ -399,7 +398,7 @@ func parsePlainTextEntityResult(response string, segmentIndex int) (*detail.Enti
 		case "artlist_phrases":
 			result.ArtlistPhrases = append(result.ArtlistPhrases, val)
 		case "noun_chunks":
-			result.NounChunks = append(result.NounChunks, val)
+
 		case "entity_senza_testo":
 			if key, value, ok := parseEntityKeyValue(val); ok {
 				result.EntitaSenzaTesto[key] = value
@@ -468,7 +467,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali     []string        `json:"nomi_speciali"`
 		ParoleImportanti []string        `json:"parole_importanti"`
 		ArtlistPhrases   []string        `json:"artlist_phrases"`
-		NounChunks       []string        `json:"noun_chunks"`
+
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -514,7 +513,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali:     raw.NomiSpeciali,
 		ParoleImportanti: raw.ParoleImportanti,
 		ArtlistPhrases:   raw.ArtlistPhrases,
-		NounChunks:       raw.NounChunks,
+
 	}, nil
 }
 
@@ -527,7 +526,7 @@ func resultIsEmpty(result *detail.EntityExtractionResult) bool {
 		len(result.NomiSpeciali) == 0 &&
 		len(result.ParoleImportanti) == 0 &&
 		len(result.ArtlistPhrases) == 0 &&
-		len(result.NounChunks) == 0
+		len(result.ParoleImportanti) == 0
 }
 
 func capEntityExtractionResult(result *detail.EntityExtractionResult, limit int) *detail.EntityExtractionResult {

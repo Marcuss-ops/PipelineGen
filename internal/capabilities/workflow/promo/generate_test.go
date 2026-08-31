@@ -70,7 +70,7 @@ func (s *stubVO) Generate(_ context.Context, cmd domainvo.GenerateVoiceoverComma
 	}
 	return &domainvo.Result{
 		OK: true,
-		VoiceoverSynthesisResult: domainvo.VoiceoverSynthesisResult{
+		Synthesis: domainvo.VoiceoverSynthesisResult{
 			Locale: locale,
 		},
 		DriveLink:   "https://drive.google.com/file/d/" + locale,

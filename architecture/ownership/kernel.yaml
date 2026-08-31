@@ -1,0 +1,44 @@
+# PipelineGen — split ownership section: kernel
+# The only target roots are internal/{kernel}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from the split files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+domain_job:
+  owner: internal/domain/job
+  rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
+  migrated_from:
+    - internal/domain/worker
+    - internal/contracts/scriptjobs
+    - internal/jobs/domain_types.go
+    - internal/jobs/domain_commands.go
+domain_script:
+  owner: internal/kernel/script
+  rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
+domain_asset:
+  owner: internal/domain/asset
+  rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
+  absorbs_from_core_wave_4C:
+    - Repository (from internal/core/assetop)
+    - Processor (from internal/core/processor)
+    - Destination (from internal/core/destination)
+    - EmbeddingPort (from internal/core/embedding)
+    - AudioPort (from internal/core/audio)
+  migrated_from:
+    - internal/domain/media
+    - internal/assets
+    - internal/artifacts
+    - internal/core/assetop
+    - internal/core/audio
+    - internal/core/destination
+    - internal/core/embedding
+    - internal/core/processor
+    - internal/core/scoring
+
+# STATUS: HISTORICAL — Wave 4C completed (June 2026). Core ports now live in
+# internal/domain/asset/. This section kept for audit trail only.
+# domain_core_ports (REMOVED — internal/core/ no longer exists)
+
+# ── Application (use cases)

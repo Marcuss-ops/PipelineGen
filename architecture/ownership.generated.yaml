@@ -178,16 +178,14 @@ job_handler_map:
 # from these 6 files in canonical order.
 # Edit the source files; the generated view is regenerated deterministically.
 
-# PipelineGen — split ownership section: application
-# This file records current ownership while the legacy application root is
-# migrated. It does not make internal/application a target root for new work.
-# The binding target roots are internal/{app,kernel,capabilities,platform};
-# migration-only restrictions are defined by architecture/policy.yaml.
+# PipelineGen — split ownership section: app
+# The only target roots are internal/{app}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
 # Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
-# from these 6 files in canonical order.
+# from the split files in canonical order.
 # Edit the source files; the generated view is regenerated deterministically.
 
-# no duplicate NewService/NewEngine/NewPipeline calls across modules.
 canonical_services:
   - service: Engine
     constructor: NewScriptEngine
@@ -303,7 +301,6 @@ allowed_internal_roots:
   - platform
 
 # ── Transport (HTTP) ─────────────────────────────────────────────────────────
-
 http_entrypoint:
   owner: cmd/server
   rationale: Composition root + main() for the HTTP server binary.
@@ -384,7 +381,6 @@ archcheck_cli:
     the PR1 split. The file_size violation itself is NOT
     eliminated; that requires PR4's runner.go + main.go trim to
     ≤100 LOC. PR2-PR4 will continue the cut.
-
 http_transport:
   owner: internal/api
   rule: api imports ONLY application + domain. Never platform/sqlite/sql, never os/exec, never google.golang.org/api/drive/v3.
@@ -399,13 +395,20 @@ http_transport:
     - api/transport
 
 # ── Composition ──────────────────────────────────────────────────────────────
-
 composition_root:
   owner: internal/app
   rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
   target_files: [app.go, bootstrap.go, lifecycle.go, shutdown.go, modules/*.go]
 
 # ── Domain (canonical contracts + types) ─────────────────────────────────────
+
+# PipelineGen — split ownership section: kernel
+# The only target roots are internal/{kernel}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from the split files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
 
 domain_job:
   owner: internal/domain/job
@@ -415,11 +418,9 @@ domain_job:
     - internal/contracts/scriptjobs
     - internal/jobs/domain_types.go
     - internal/jobs/domain_commands.go
-
 domain_script:
   owner: internal/kernel/script
   rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
-
 domain_asset:
   owner: internal/domain/asset
   rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
@@ -444,13 +445,29 @@ domain_asset:
 # internal/domain/asset/. This section kept for audit trail only.
 # domain_core_ports (REMOVED — internal/core/ no longer exists)
 
-# ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
-  owner: internal/capabilities/jobs
-  rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
-  target_subdirs:
-    - jobs/assets         # worker asset ops (renamed from old application/workerassets)
-    - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)
+# ── Application (use cases)
 
+# PipelineGen — split ownership section: capabilities
+# The only target roots are internal/{capabilities}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from the split files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+application_jobs:
+  owner: internal/capabilities/jobs
+  rationale: Job registry + worker execution + queue lifecycle + scheduling policies + lease + payloads + codec + finalization + outbox dispatcher.
+  # The root package is the compatibility facade and orchestration boundary.
+  # Reusable policy ownership is materialised in the capability subpackages:
+  # queue (enqueue/claim/retry policy), scheduling (polling/backoff,
+  # preparation planning and resource speculation), and finalize
+  # (artifact-manifest and finalization support). Persistence transitions
+  # remain owned by internal/kernel/job.Store and internal/platform/sqlite/jobs.
+  target_subdirs:
+    - jobs/queue
+    - jobs/scheduling
+    - jobs/finalize
 application_scripts:
   owner: internal/capabilities/scripts
   rationale: Script-generation orchestration. Production files owned by
@@ -476,7 +493,6 @@ application_scripts:
   cross_refs:
     plan: architecture/current.yaml#id-21 (Wave 21 PR-G.1 EXPAND block)
     policy: architecture/policy.yaml::max_files_per_package=65
-
 application_assets:
   owner: internal/capabilities/assets
   rationale: Catalog, indexing, classification, providers registry, association & realtime search.
@@ -521,42 +537,36 @@ application_assets:
   # docs/migrations/monitored-sources-allowlist.txt).
   category_channels_owns_monitor_state: category_channels owns monitor-state
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
-
 application_images:
   owner: internal/capabilities/images
   target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
-
 application_voiceover:
   owner: internal/capabilities/voiceover/service
   target_subdirs: [voiceover/service, voiceover/sync]
-
 application_books:
   owner: internal/capabilities/books
   rationale: Books + lessons; produces Markdown/PDF deliverables.
   target_subdirs: [books]
-
 application_lessons:
   owner: internal/capabilities/lessons
   rationale: Lesson generation; produces Markdown/PDF deliverables.
   target_subdirs: [lessons]
 
-# PipelineGen — split ownership section: infrastructure
-# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# PipelineGen — split ownership section: platform
+# The only target roots are internal/{platform}. The legacy
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
 # Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
-# from these 6 files in canonical order.
+# from the split files in canonical order.
 # Edit the source files; the generated view is regenerated deterministically.
-
-# ── Infrastructure (adapters to external systems) ────────────────────────────
 
 infrastructure_db:
   owner: internal/platform/sqlite
   rule: ONLY place where Go SQL drivers / SQLite schema live.
-
 infrastructure_drive:
   owner: internal/platform/drive
   rationale: Google Drive uploader + DocClient.
   migrated_from: internal/upload/drive
-
 infrastructure_delivery:
   owner: internal/platform/delivery
   rationale: Asset-delivery URL signing, destination registry, and startup validation.
@@ -567,26 +577,20 @@ infrastructure_embeddings:
   owner: internal/platform/embeddings
   rationale: Text-embedding adapters (HTTP sidecar, Ollama, Python subprocess, SigLIP cross-modal).
   migrated_from: internal/infrastructure/embeddings
-
 infrastructure_filesystem:
   owner: internal/platform/filesystem
   rationale: Filesystem utilities (JSON I/O, folder-name normalization, foldermemory, metadataexport) plus kernel workspace I/O adapters (OS, HTTPFetcher, NewManager).
-
 infrastructure_process:
   owner: internal/platform/process
   rationale: External command execution (yt-dlp, ffmpeg wrappers).
   rule: ONLY place where os/exec is allowed.
-
 infrastructure_ai:
   owner: internal/platform/ai
   sub_dirs: [ai/classifier, ai/reranker, ai/vlm]
-
-
 infrastructure_media:
   owner: internal/platform/media
   rationale: Rust media execution executor (rustexec/VideoProcessor) + processor/render subzones. P1-PLATFORM-ALIGNMENT 2026-08-26: KEEP at platform/media; ffmpeg absorbed into rustexec.
   migrated_from: [internal/media/mediaasset, internal/infrastructure/media]
-
 infrastructure_jobs:
   owner: internal/platform/jobs
   rationale: Local in-process broker (replaces internal/application/jobbroker/local).
@@ -599,12 +603,10 @@ infrastructure_jobs:
       clients:
         - assettransferclient   # HTTP client for asset transfer (worker side)
         - jobbrokerclient       # HTTP client for job broker (worker side)
-
 infrastructure_observability:
   owner: internal/platform/observability
   rationale: metrics, tracing, health checks. Fully migrated to platform/observability (28 files).
   migrated_from: internal/infrastructure/observability
-
 infrastructure_config:
   owner: internal/platform/config
   rationale: Resolved configuration + folder IDs.

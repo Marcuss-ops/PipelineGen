@@ -511,8 +511,8 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 			return nil, fmt.Errorf("intro.text %w", err)
 		}
 		ids := req.Intro.NormalizedClipIDs()
-		if len(ids) != 1 {
-			return nil, fmt.Errorf("intro.clip_ids must contain exactly one clip_id")
+		if len(ids) == 0 || len(ids) > 2 {
+			return nil, fmt.Errorf("intro.clip_ids must contain 1 or 2 clip_ids")
 		}
 	}
 	if req.Outro != nil {
@@ -520,22 +520,25 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 			return nil, fmt.Errorf("outro.text %w", err)
 		}
 		ids := req.Outro.NormalizedClipIDs()
-		if len(ids) != 1 {
-			return nil, fmt.Errorf("outro.clip_ids must contain exactly one clip_id")
+		if len(ids) == 0 || len(ids) > 2 {
+			return nil, fmt.Errorf("outro.clip_ids must contain 1 or 2 clip_ids")
 		}
 	}
-	out := make([]Scene, 0, len(scenes)+2)
+	out := make([]Scene, 0, len(scenes)+4)
 	if req.Intro != nil {
 		ids := req.Intro.NormalizedClipIDs()
 		cleanText := strings.TrimSpace(req.Intro.Text)
-		clipRef := &ClipReference{ID: ids[0]}
+		clips := make([]*ClipReference, 0, len(ids))
+		for _, id := range ids {
+			clips = append(clips, &ClipReference{ID: id})
+		}
 		textMap := map[Language]string{req.SourceLanguage: cleanText}
 		intro := Scene{
 			ID:    "scene-intro",
 			Index: 0,
 			Text:  textMap,
-			Clip:  clipRef,
-			Clips: []*ClipReference{clipRef},
+			Clip:  clips[0],
+			Clips: clips,
 		}
 		out = append(out, intro)
 	}
@@ -543,14 +546,17 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	if req.Outro != nil {
 		ids := req.Outro.NormalizedClipIDs()
 		cleanText := strings.TrimSpace(req.Outro.Text)
-		clipRef := &ClipReference{ID: ids[0]}
+		clips := make([]*ClipReference, 0, len(ids))
+		for _, id := range ids {
+			clips = append(clips, &ClipReference{ID: id})
+		}
 		textMap := map[Language]string{req.SourceLanguage: cleanText}
 		outro := Scene{
 			ID:    "scene-outro",
 			Index: 0, // reindexed below
 			Text:  textMap,
-			Clip:  clipRef,
-			Clips: []*ClipReference{clipRef},
+			Clip:  clips[0],
+			Clips: clips,
 		}
 		out = append(out, outro)
 	}

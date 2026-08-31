@@ -24,13 +24,18 @@ import (
 func TestAggregate_OwnershipDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	// Mini fixture: 2 files with predictably ordered content.
+	// Mini fixture mirrors the canonical shard layout (modules, jobs,
+	// services, app/kernel/capabilities/platform, packages). Keep in
+	// sync with ownershipSplitFiles in main.go.
 	files := map[string]string{
-		"modules.yaml":        "# module section\nmodule_route_map: []\n",
-		"jobs.yaml":           "# job section\njob_handler_map: []\n",
-		"services.yaml":       "# service section\ncanonical_services: []\n",
-		"application.yaml":    "# app section\napplication_jobs:\n  owner: placeholder\n",
-		"infrastructure.yaml": "# infra section\ninfrastructure_db:\n  owner: placeholder\n",
-		"packages.yaml":       "# pkg section\npkg:\n  rule: placeholder\n",
+		"modules.yaml":      "# module section\nmodule_route_map: []\n",
+		"jobs.yaml":         "# job section\njob_handler_map: []\n",
+		"services.yaml":     "# service section\ncanonical_services: []\n",
+		"app.yaml":          "# app section\ncomposition_root:\n  owner: placeholder\n",
+		"kernel.yaml":       "# kernel section\ndomain_job:\n  owner: placeholder\n",
+		"capabilities.yaml": "# capability sections\napplication_jobs:\n  owner: placeholder\n",
+		"platform.yaml":     "# platform sections\ninfrastructure_db:\n  owner: placeholder\n",
+		"packages.yaml":     "# pkg section\npkg:\n  rule: placeholder\n",
 	}
 	// Write into a temporary "ownership" subdir of the t.TempDir.
 	subdir := filepath.Join(dir, "architecture", "ownership")

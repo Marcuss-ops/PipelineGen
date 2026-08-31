@@ -109,7 +109,7 @@ gates_baseline:
     enforce_zero: false
     current: 0
     scope: "internal/**/service.go excluding *_test.go (legacy internal/application/jobs root deleted 2026-08-25)"
-    migration_owner: internal/capabilities/jobs
+    migration_owner: internal/capabilities/jobs/{queue,scheduling,finalize}
   - gate_id: C2-E
     name: "route ≡ manifest ≡ ACTIVE_API_GENERATED.md"
     target_zero: true

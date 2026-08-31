@@ -23,7 +23,6 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	// lexical profile is optional for lightweight callers, but source-span
 	// validation must still run in every execution path.
 	if registry == nil {
-		result.NounChunks = filterGroundedNounChunks(segment, result.NounChunks, nil)
 		return result
 	}
 	profile := registry.Resolve("fallback")
@@ -36,7 +35,6 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti, profile)
 	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali, profile)
 	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases, profile)
-	result.NounChunks = filterGroundedNounChunks(segment, result.NounChunks, profile)
 	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
 
 	if len(result.FrasiImportanti) == 0 {

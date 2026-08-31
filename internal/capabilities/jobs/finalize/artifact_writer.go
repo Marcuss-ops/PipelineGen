@@ -25,7 +25,7 @@
 // artifacts + outbox events get persisted for job X?". Callers
 // MUST route through these methods — never re-implement the
 // loop inline.
-package jobs
+package finalize
 
 import (
 	"context"

@@ -24,7 +24,7 @@
 // request shape look like?" + "what does the optional-audit report
 // look like for job X?". Callers MUST route through these methods
 // — never recompute the validation or cross-reference inline.
-package jobs
+package finalize
 
 import (
 	"fmt"

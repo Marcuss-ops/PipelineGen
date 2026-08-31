@@ -263,41 +263,51 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 	if plan.Intro == nil && plan.Outro == nil {
 		return
 	}
-	out := make([]SpecScene, 0, len(spec.Scenes)+2)
+	out := make([]SpecScene, 0, len(spec.Scenes)+4)
 	if plan.Intro != nil {
 		ids := plan.Intro.NormalizedClipIDs()
-		if len(ids) == 1 {
+		if len(ids) >= 1 && len(ids) <= 2 {
 			cleanText := strings.TrimSpace(plan.Intro.Text)
 			title := plan.Intro.Title
+			clips := make([]ClipBinding, 0, len(ids))
+			for _, id := range ids {
+				clips = append(clips, ClipBinding{ClipID: id})
+			}
+			bindings := SceneBindings{Clips: clips}
+			if len(clips) > 0 {
+				bindings.Clip = &clips[0]
+			}
 			out = append(out, SpecScene{
-				ID:    "scene-intro",
-				Index: 0,
-				Text:  cleanText,
-				Title: title,
-				Kind:  SceneIntro,
-				Bindings: SceneBindings{
-					Clips: []ClipBinding{{ClipID: ids[0]}},
-					Clip:  &ClipBinding{ClipID: ids[0]},
-				},
+				ID:       "scene-intro",
+				Index:    0,
+				Text:     cleanText,
+				Title:    title,
+				Kind:     SceneIntro,
+				Bindings: bindings,
 			})
 		}
 	}
 	out = append(out, spec.Scenes...)
 	if plan.Outro != nil {
 		ids := plan.Outro.NormalizedClipIDs()
-		if len(ids) == 1 {
+		if len(ids) >= 1 && len(ids) <= 2 {
 			cleanText := strings.TrimSpace(plan.Outro.Text)
 			title := plan.Outro.Title
+			clips := make([]ClipBinding, 0, len(ids))
+			for _, id := range ids {
+				clips = append(clips, ClipBinding{ClipID: id})
+			}
+			bindings := SceneBindings{Clips: clips}
+			if len(clips) > 0 {
+				bindings.Clip = &clips[0]
+			}
 			out = append(out, SpecScene{
-				ID:    "scene-outro",
-				Index: 0,
-				Text:  cleanText,
-				Title: title,
-				Kind:  SceneOutro,
-				Bindings: SceneBindings{
-					Clips: []ClipBinding{{ClipID: ids[0]}},
-					Clip:  &ClipBinding{ClipID: ids[0]},
-				},
+				ID:       "scene-outro",
+				Index:    0,
+				Text:     cleanText,
+				Title:    title,
+				Kind:     SceneOutro,
+				Bindings: bindings,
 			})
 		}
 	}

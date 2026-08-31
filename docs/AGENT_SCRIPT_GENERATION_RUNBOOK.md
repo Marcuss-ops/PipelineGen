@@ -108,21 +108,21 @@ Il payload deve avere `version: 2`, `preset: custom` e almeno un elemento in
 - `intro_clip_ids` (legacy) identifica le 2–3 clip introduttive; non sostituisce
   `clip_ids`. Per intro/outro letterali usare il nuovo contratto `intro`/`outro`.
 - **Intro/outro letterali (nuovo contratto)**: `items[0].intro` e `items[0].outro`
-  sono sezioni **letterali non toccate dal LLM**. Solo `text` + `clip_ids` (esattamente
-  1 clip) sono permessi. Il testo viene iniettato verbatim come prima/ultima
+  sono sezioni **letterali non toccate dal LLM**. Solo `text` + `clip_ids` (1 o 2 clip)
+  sono permessi. Il testo viene iniettato verbatim come prima/ultima
   `SpecScene` con `Kind=intro/outro`, mai riscritto da `source_text` o dai
-  transcript. Esempio:
+  transcript. Esempio (2 clip intro + 2 clip outro come richiesto):
 
   ```json
   {
-    "intro": { "text": "Welcome back — today 30 wild Matt Damon moments!", "clip_ids": ["yt_intro_123_v1"] },
-    "outro": { "text": "Thanks for watching — see you next time!", "clip_ids": ["yt_outro_456_v1"] }
+    "intro": { "text": "Welcome back — today 30 wild Matt Damon moments!", "clip_ids": ["yt_intro_123_v1", "yt_intro_124_v1"] },
+    "outro": { "text": "Thanks for watching — see you next time!", "clip_ids": ["yt_outro_456_v1", "yt_outro_457_v1"] }
   }
   ```
 
   Regole: `text` deve passare `ValidateSpeakableText` (no URL, no marker), `clip_ids`
-  esattamente 1 ID esistente nel catalogo, non duplicato con `source.clip_ids` o
-  `segments[].clip_ids`, `intro`/`outro` non possono condividere lo stesso clip,
+  1 o 2 ID esistenti nel catalogo, non duplicati con `source.clip_ids` o
+  `segments[].clip_ids`, `intro`/`outro` non possono condividere clip,
   richiede `source.type` clip-bearing (`clips|search|catalog|curate`). La clip
   viene verificata in preflight e compilata nel timeline — nessuna riscrittura LLM.
 - `output.render` crea esclusivamente le clip localizzate richieste. La
