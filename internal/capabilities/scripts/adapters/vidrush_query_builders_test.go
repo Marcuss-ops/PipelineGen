@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -24,5 +25,25 @@ func TestVidRushProviderQueryBuildersAdaptByProvider(t *testing.T) {
 	}
 	if youtube[0] == artlist[0] || artlist[0] == images[0] || images[0] == generation[0] {
 		t.Fatalf("provider queries were not adapted: yt=%v art=%v img=%v gen=%v", youtube, artlist, images, generation)
+	}
+}
+
+func TestArtlistQueryBuilderDoesNotConsumeEditorialPhrases(t *testing.T) {
+	profile := scriptpkg.SegmentSemanticProfile{
+		VisualTerms: []scriptpkg.WeightedKeyword{
+			{Value: "latte art", Confidence: 1},
+			{Value: "specialty coffee shop", Confidence: .9},
+		},
+		Actions:          []string{"pouring steamed milk"},
+		ImportantPhrases: []string{"Aerial drone footage reveals"},
+		Keywords:         []scriptpkg.WeightedKeyword{{Value: "reveals", Confidence: 1}},
+	}
+	queries := NewVidRushProviderQueryBuilders().Artlist(profile)
+	joined := strings.ToLower(strings.Join(queries, " | "))
+	if !strings.Contains(joined, "latte art") || !strings.Contains(joined, "specialty coffee shop") {
+		t.Fatalf("canonical visual terms missing from Artlist queries: %v", queries)
+	}
+	if strings.Contains(joined, "aerial drone footage reveals") || strings.Contains(joined, "reveals") {
+		t.Fatalf("editorial phrase/keyword leaked into Artlist queries: %v", queries)
 	}
 }

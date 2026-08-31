@@ -32,27 +32,11 @@ func (VidRushProviderQueryBuilders) YouTube(profile scriptpkg.SegmentSemanticPro
 }
 
 func (VidRushProviderQueryBuilders) Artlist(profile scriptpkg.SegmentSemanticProfile) []string {
-	parts := []string{}
-	for _, term := range profile.VisualTerms {
-		parts = append(parts, term.Value)
-	}
-	parts = append(parts, profile.Actions...)
-	for _, term := range profile.Subtopics {
-		parts = append(parts, term)
-	}
-	return normalizedProviderQueries(parts, 5)
+	return scriptpkg.BuildArtlistQueries(profile, 5)
 }
 
 func (VidRushProviderQueryBuilders) InternetImages(profile scriptpkg.SegmentSemanticProfile) []string {
-	parts := []string{}
-	for _, e := range profile.Entities {
-		parts = append(parts, e.Value)
-	}
-	parts = append(parts, profile.VisualConcepts...)
-	for _, term := range profile.VisualTerms {
-		parts = append(parts, term.Value)
-	}
-	return normalizedProviderQueries(parts, 7)
+	return scriptpkg.BuildImageQueries(profile, 7)
 }
 
 func (VidRushProviderQueryBuilders) ImageGeneration(profile scriptpkg.SegmentSemanticProfile) []string {

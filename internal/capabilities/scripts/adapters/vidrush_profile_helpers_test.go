@@ -11,6 +11,7 @@ func TestProfileFromVidRushSegmentUsesCanonicalInsights(t *testing.T) {
 		SegmentID: "seg-1", TextHash: "hash", Text: "tractor history",
 		Insights: scriptpkg.SegmentInsights{
 			Entities:         []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}},
+			NounChunks:       []string{"early gasoline tractor"},
 			ImportantWords:   []string{"tractor"},
 			ImportantPhrases: []string{"first gasoline tractor"},
 			ImageQueries:     []string{"early tractor"},
@@ -18,6 +19,9 @@ func TestProfileFromVidRushSegmentUsesCanonicalInsights(t *testing.T) {
 	})
 	if profile.SegmentID != "seg-1" || len(profile.Entities) != 1 || len(profile.Keywords) != 1 {
 		t.Fatalf("unexpected profile: %+v", profile)
+	}
+	if len(profile.NounChunks) != 1 || len(profile.VisualTerms) != 1 || profile.VisualTerms[0].Value != "early gasoline tractor" {
+		t.Fatalf("noun chunks were not projected as canonical visual terms: %+v", profile)
 	}
 	if got := profileImageQueries(profile); len(got) != 1 || got[0] != "early tractor" {
 		t.Fatalf("image queries = %#v", got)

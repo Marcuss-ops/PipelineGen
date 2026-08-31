@@ -26,18 +26,19 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 }
 
 // BuildArtlistQueries creates visual-first queries from VisualTerms, visual
-// entities and contextual terms. Narrative phrases are used only as a final
-// fallback.
+// entities and contextual terms. Editorial narrative phrases are not provider
+// evidence and therefore never enter this provider projection.
 func BuildArtlistQueries(profile SegmentSemanticProfile, limit int) []string {
 	limit = normalizedQueryLimit(limit, defaultArtlistQueryLimit)
 	var queries []string
 	for _, term := range profile.VisualTerms {
 		queries = append(queries, term.Value)
 	}
-	queries = append(queries, termQuery(profile, TermKindVisual, TermKindContext, TermKindAction))
+	queries = append(queries, termQuery(profile, TermKindVisual, TermKindContext, TermKindAction, TermKindTechnology))
+	queries = append(queries, joinQuery(weightedValues(profile.Keywords)...))
 	for _, entity := range profile.Entities {
-		if isRetrievalEntity(entity) && !isPersonEntity(entity) {
-			queries = append(queries, joinQuery(append([]string{entity.Value}, termValues(profile, TermKindVisual, TermKindContext)...)...))
+		if isVisualEntity(entity) {
+			queries = append(queries, joinQuery(append([]string{entity.Value}, termValues(profile, TermKindVisual, TermKindContext, TermKindTechnology)...)...))
 		}
 	}
 	return uniqueQueries(queries, limit)
@@ -46,6 +47,7 @@ func BuildArtlistQueries(profile SegmentSemanticProfile, limit int) []string {
 // BuildImageQueries creates entity-first image queries, then falls back to
 // visual/context terms. Dates are included only when they accompany an entity
 // or visual concept, preventing bare years from becoming image searches.
+// Editorial narrative phrases remain outside the provider projection.
 func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
 	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
 	var queries []string
@@ -60,7 +62,6 @@ func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
 		queries = append(queries, profile.VisualTerms[0].ValueIfPresent())
 	}
 	queries = append(queries, visual...)
-	queries = append(queries, profile.ImportantPhrases...)
 	return uniqueQueries(queries, limit)
 }
 
@@ -68,6 +69,18 @@ func (k WeightedKeyword) ValueIfPresent() string { return strings.TrimSpace(k.Va
 
 func isPersonEntity(entity ExtractedEntity) bool {
 	return strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON")
+}
+
+func isVisualEntity(entity ExtractedEntity) bool {
+	if strings.TrimSpace(entity.Value) == "" || isPersonEntity(entity) {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(entity.Type)) {
+	case "KEYWORD", "DATE", "TIME", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+		return false
+	default:
+		return true
+	}
 }
 
 func isRetrievalEntity(entity ExtractedEntity) bool {
@@ -101,6 +114,16 @@ func termValues(profile SegmentSemanticProfile, kinds ...TermKind) []string {
 
 func termQuery(profile SegmentSemanticProfile, kinds ...TermKind) string {
 	return joinQuery(termValues(profile, kinds...)...)
+}
+
+func weightedValues(values []WeightedKeyword) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if text := value.ValueIfPresent(); text != "" {
+			out = append(out, text)
+		}
+	}
+	return out
 }
 
 func joinQuery(parts ...string) string {
