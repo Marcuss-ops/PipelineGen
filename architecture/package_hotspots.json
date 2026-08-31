@@ -12,7 +12,7 @@
       },
       "current": {
         "files": 2,
-        "max_loc": 136
+        "max_loc": 138
       },
       "target_packages": [
         "cmd/admin/commands",
@@ -73,7 +73,7 @@
       },
       "current": {
         "files": 63,
-        "max_loc": 11473
+        "max_loc": 588
       },
       "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged.",
       "target_packages": [
@@ -186,16 +186,16 @@
       "path": "internal/app/wiring",
       "owner": "composition-root adapter wiring (clip.render/chronon/voiceover/vidrush adapters)",
       "deadline": "2026-09-30",
-      "baseline_files": 165,
+      "baseline_files": 168,
       "baseline": {
-        "files": 165,
+        "files": 168,
         "max_loc": 0
       },
       "current": {
-        "files": 165,
+        "files": 168,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Baseline ratcheted to measured count (165 files, includes the 2026-08-29 chronon_timing_sidecar.go split); target split into domain subpackages (chronon/voiceover/vidrush/artlist adapters) per package_hotspot governance. Deadline aligns with the internal/app hotspot (2026-09-30).",
+      "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Baseline ratcheted to measured count (165 files, includes the 2026-08-29 chronon_timing_sidecar.go split); target split into domain subpackages (chronon/voiceover/vidrush/artlist adapters) per package_hotspot governance. Deadline aligns with the internal/app hotspot (2026-09-30). RATCHETED 2026-08-31 165->168: +2 pre-existing adapter files landed with the media/preparation waves (clip_render_runtime.go, lifecycle_preparation.go, both 2026-08-30) and +1 from the chronon_clip_renderer.go 600-line split (chronon_clip_render_support.go). Debt stays under the same owner/deadline; subpackage split (chronon/voiceover/vidrush/assets) is the 2026-09-30 resolution.",
       "target_packages": [
         "internal/app/wiring/chronon",
         "internal/app/wiring/voiceover",
@@ -227,16 +227,16 @@
       "path": "internal/capabilities/jobs",
       "owner": "jobs capability (queue/scheduling/finalize)",
       "deadline": "2026-09-30",
-      "baseline_files": 81,
+      "baseline_files": 95,
       "baseline": {
-        "files": 81,
+        "files": 95,
         "max_loc": 0
       },
       "current": {
-        "files": 81,
+        "files": 95,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize).",
+      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). Debt stays under the same owner/deadline; the cohesive preparation family is targeted for an internal/capabilities/jobs/preparation subpackage as the 2026-09-30 resolution.",
       "target_packages": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/scheduling",

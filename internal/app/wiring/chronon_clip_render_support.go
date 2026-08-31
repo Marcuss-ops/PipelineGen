@@ -1,0 +1,191 @@
+package wiring
+
+// chronon_clip_render_support.go holds the pure helper surface of the
+// Chronon complex-render boundary: the capability-probe decoration, the
+// watermark geometry helpers and the process/IPC/audio-mux primitives the
+// executor drives. Keeping them in a dedicated file keeps the executor
+// itself (chronon_clip_renderer.go) focused on render orchestration and
+// satisfies the strict 600-line gate.
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"go.uber.org/zap"
+)
+
+// chrononAwareCapabilityProbe decorates the canonical ffmpeg capability probe
+// with the Chronon render binary's presence. Backend selection is the
+// resolver's single authority, so the probe must honestly report whether the
+// Chronon backend is configured at all — without this flag the resolver could
+// never select chronon_vulkan (the adapter's try-and-fall-back shortcut that
+// used to reach it is gone).
+type chrononAwareCapabilityProbe struct {
+	base       cliprender.BackendCapabilityProbe
+	chrononBin string
+}
+
+func (p chrononAwareCapabilityProbe) ProbeCapabilities(ctx context.Context) (cliprender.RendererCapabilities, error) {
+	caps, err := p.base.ProbeCapabilities(ctx)
+	if err != nil {
+		return caps, err
+	}
+	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != "" || strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET")) != ""
+	return caps, nil
+}
+
+var _ cliprender.BackendCapabilityProbe = (*chrononAwareCapabilityProbe)(nil)
+
+// watermarkPositionForSize resolves the world-space center position for a
+// watermark of the GIVEN size. The ChrononPlanProjector passes the styled
+// size (style.width_px/height_px overrides), so a resized logo keeps its
+// declared position instead of being positioned by the original image size.
+func watermarkPositionForSize(imgW, imgH int, position string, canvasW, canvasH, margin int) []int {
+	if margin < 0 {
+		margin = 0
+	}
+	if imgW <= 0 || imgH <= 0 {
+		return []int{0, 0}
+	}
+	x, y := margin, margin
+	switch position {
+	case cliprender.PositionTopRight:
+		x = canvasW - margin - imgW
+	case cliprender.PositionBottomLeft:
+		y = canvasH - margin - imgH
+	case cliprender.PositionBottomRight:
+		x = canvasW - margin - imgW
+		y = canvasH - margin - imgH
+	case cliprender.PositionCenter:
+		x = (canvasW - imgW) / 2
+		y = (canvasH - imgH) / 2
+	}
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	// Chronon image positions are world-space centers, not top-left pixels.
+	return []int{x + imgW/2 - canvasW/2, y + imgH/2 - canvasH/2}
+}
+
+func watermarkDimensions(path string) (int, int) {
+	imgW, imgH := 0, 0
+	if f, err := os.Open(path); err == nil {
+		if cfg, _, err := image.DecodeConfig(f); err == nil {
+			imgW, imgH = cfg.Width, cfg.Height
+		}
+		_ = f.Close()
+	}
+	return imgW, imgH
+}
+
+func boolPtr(v bool) *bool { return &v }
+func intPtr(v int) *int    { return &v }
+
+// runChrononIPC submits one RENDER_JOB to the persistent Chronon daemon.
+// The wire format is the small stable protocol documented in
+// Chronon3d/apps/chronon3d_cli/daemon/chronon_ipc.hpp:
+// MAGIC|COMMAND|PAYLOAD_LEN|PAYLOAD, all integers big-endian.
+func runChrononIPC(ctx context.Context, socket string, payload []byte, logPath, runID string, log *zap.Logger) (chrononProcessOutput, error) {
+	const (
+		magic       = uint32(0x43484e33) // CHN3
+		renderJob   = uint32(6)
+		maxPayload  = 64 * 1024 * 1024
+		headerBytes = 12
+	)
+	if len(payload) > maxPayload {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC payload too large: %d", len(payload))
+	}
+	dialer := net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC connect %q: %w", socket, err)
+	}
+	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	frame := make([]byte, headerBytes+len(payload))
+	binary.BigEndian.PutUint32(frame[0:4], magic)
+	binary.BigEndian.PutUint32(frame[4:8], renderJob)
+	binary.BigEndian.PutUint32(frame[8:12], uint32(len(payload)))
+	copy(frame[headerBytes:], payload)
+	if _, err := conn.Write(frame); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC write: %w", err)
+	}
+	replyHeader := make([]byte, headerBytes)
+	if _, err := io.ReadFull(conn, replyHeader); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply header: %w", err)
+	}
+	if binary.BigEndian.Uint32(replyHeader[0:4]) != magic {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply has invalid magic")
+	}
+	status := binary.BigEndian.Uint32(replyHeader[4:8])
+	messageLen := binary.BigEndian.Uint32(replyHeader[8:12])
+	if messageLen > maxPayload {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply too large: %d", messageLen)
+	}
+	message := make([]byte, messageLen)
+	if _, err := io.ReadFull(conn, message); err != nil {
+		return chrononProcessOutput{}, fmt.Errorf("chronon IPC reply body: %w", err)
+	}
+	if logFile, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); openErr == nil {
+		_, _ = logFile.Write(message)
+		_, _ = logFile.WriteString("\n")
+		_ = logFile.Close()
+	}
+	if status != 0 {
+		return chrononProcessOutput{Tail: append([]byte(nil), message...), TotalBytes: int64(len(message))}, fmt.Errorf("chronon IPC render failed (status=%d): %s", status, strings.TrimSpace(string(message)))
+	}
+	log.Debug("chronon IPC render completed", zap.String("run_id", runID), zap.String("socket", socket), zap.Int("reply_bytes", len(message)))
+	return chrononProcessOutput{Tail: append([]byte(nil), message...), TotalBytes: int64(len(message))}, nil
+}
+
+func probeDurationMS(ctx context.Context, ffmpeg, path string) int64 {
+	if cached, ok := chrononProbeLookup(path); ok {
+		return cached
+	}
+	ffprobe := "ffprobe"
+	if strings.TrimSpace(ffmpeg) != "" {
+		ffprobe = filepath.Join(filepath.Dir(ffmpeg), "ffprobe")
+	}
+	out, err := exec.CommandContext(ctx, ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path).Output()
+	if err != nil {
+		return 0
+	}
+	sec, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil {
+		return 0
+	}
+	durationMS := int64(sec*1000 + .5)
+	chrononProbeStore(path, durationMS)
+	return durationMS
+}
+
+func muxChrononAudio(ctx context.Context, ffmpeg, video, source, output string) error {
+	bin := ffmpeg
+	if strings.TrimSpace(bin) == "" {
+		bin = "ffmpeg"
+	}
+	tmp := output + ".chronon-mux.tmp.mp4"
+	_ = os.Remove(tmp)
+	cmd := exec.CommandContext(ctx, bin, "-y", "-hide_banner", "-loglevel", "error", "-i", video, "-i", source, "-map", "0:v:0", "-map", "1:a?", "-c:v", "copy", "-c:a", "copy", "-shortest", tmp)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("chronon audio mux: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return os.Rename(tmp, output)
+}
