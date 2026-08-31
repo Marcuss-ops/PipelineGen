@@ -35,7 +35,11 @@
 package script
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -56,6 +60,10 @@ import (
 // Wire contract (godlike/07 fail-closed):
 //   - malformed JSON / wrong top-level shape → HTTP 400 with
 //     {"ok":false,"error":"invalid payload: <gin error>"}
+//   - unknown fields (removed contract keys such as assemble_final) →
+//     HTTP 400 with {"ok":false,"error":"invalid payload: json: unknown field ..."}
+//     — the decoder runs with DisallowUnknownFields so removed contract
+//     surface fails closed instead of being silently ignored.
 //   - typed *PayloadValidationError → HTTP 400 with the typed
 //     {code, message, stage, retryable, extra} envelope
 //   - non-typed validator error       → HTTP 400 (via mapErrorToHTTP)
@@ -64,7 +72,24 @@ import (
 // Validator runs BEFORE the submitter is invoked — P0.A invariant 3.
 func bindGenerateEnvelope(c *gin.Context, validator *usecase.PayloadValidator) (*scriptpkg.GenerationEnvelopeV2, bool) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := c.ShouldBindJSON(&env); err != nil {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
+		return nil, false
+	}
+	// godlike/07 fail-closed: removed contract fields (e.g. assemble_final)
+	// must be rejected at the request boundary, never silently ignored.
+	// The kernel decoders are deliberately lenient (OutputSpec and the
+	// audio intents carry custom UnmarshalJSON that swallow unknown keys),
+	// so retired keys are detected against the RAW body, not the decoded
+	// struct.
+	if reason := removedFieldReason(body); reason != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + reason})
+		return nil, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&env); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
 		return nil, false
 	}
@@ -98,6 +123,46 @@ func bindGenerateEnvelope(c *gin.Context, validator *usecase.PayloadValidator) (
 	}
 
 	return &env, true
+}
+
+// removedGenerateFields maps retired script.generate contract keys to the
+// reason they were removed. Any payload still carrying one fails closed at
+// the request boundary instead of being silently ignored.
+var removedGenerateFields = map[string]string{
+	"assemble_final": "removed from the script.generate contract: localized clip rendering is the only render mode",
+}
+
+// removedFieldReason walks the raw request JSON and returns a descriptive
+// reason when the payload still carries a retired contract key. It returns
+// an empty string for any well-formed document without one; malformed JSON
+// is left to the structured bind below to report.
+func removedFieldReason(body []byte) string {
+	var doc any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return ""
+	}
+	var walk func(any) string
+	walk = func(v any) string {
+		switch node := v.(type) {
+		case map[string]any:
+			for k, child := range node {
+				if reason, removed := removedGenerateFields[k]; removed {
+					return fmt.Sprintf("%q: %s", k, reason)
+				}
+				if reason := walk(child); reason != "" {
+					return reason
+				}
+			}
+		case []any:
+			for _, child := range node {
+				if reason := walk(child); reason != "" {
+					return reason
+				}
+			}
+		}
+		return ""
+	}
+	return walk(doc)
 }
 
 func bindGeneratePreflightError(c *gin.Context, err error) {

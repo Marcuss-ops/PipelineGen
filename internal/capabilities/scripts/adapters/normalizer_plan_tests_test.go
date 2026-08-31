@@ -415,16 +415,16 @@ func TestValidateItemExcessiveSentencesPerImage(t *testing.T) {
 }
 
 func TestNormalizeItemMediaDensityExpandsCadenceAndPreservesOverrides(t *testing.T) {
-	cfg := NormalizationConfig{DefaultSentencesPerImage: 10, DefaultImagesPerScene: 2}
+	cfg := adapters.NormalizationConfig{DefaultSentencesPerImage: 10, DefaultImagesPerScene: 2}
 	item := &scriptpkg.GenerationItemV2{ScriptParams: scriptpkg.ScriptSpec{MediaDensity: "dense"}}
-	NormalizeItem(item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
 	if item.ScriptParams.SentencesPerImage != 4 || item.ScriptParams.ImagesPerScene != 2 {
 		t.Fatalf("dense cadence = (%d,%d), want (4,2)", item.ScriptParams.SentencesPerImage, item.ScriptParams.ImagesPerScene)
 	}
 	item = &scriptpkg.GenerationItemV2{ScriptParams: scriptpkg.ScriptSpec{
 		MediaDensity: "sparse", SentencesPerImage: 3,
 	}}
-	NormalizeItem(item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
 	if item.ScriptParams.SentencesPerImage != 3 || item.ScriptParams.ImagesPerScene != 1 {
 		t.Fatalf("partial cadence override = (%d,%d), want (3,1)", item.ScriptParams.SentencesPerImage, item.ScriptParams.ImagesPerScene)
 	}
