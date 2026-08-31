@@ -721,7 +721,15 @@ func validateArtlistCandidateForContext(ctx *artlistIsolationContext, candidate 
 		return nil
 	}
 	segmentID := strings.TrimSpace(segment.SegmentID)
-	if strings.TrimSpace(candidate.SegmentID) != segmentID || candidate.Position != segment.Position || strings.TrimSpace(candidate.TextHash) != strings.TrimSpace(segment.TextHash) {
+	expectedTextHash := strings.TrimSpace(segment.TextHash)
+	if expectedTextHash == "" {
+		identityText := strings.TrimSpace(segment.Text)
+		if identityText == "" {
+			identityText = segmentID
+		}
+		expectedTextHash = scriptpkg.ComputeCanonicalSegmentTextHash(identityText)
+	}
+	if strings.TrimSpace(candidate.SegmentID) != segmentID || candidate.Position != segment.Position || strings.TrimSpace(candidate.TextHash) != expectedTextHash {
 		return fmt.Errorf("asset %q has foreign segment provenance", candidate.AssetID)
 	}
 	query := normalizeArtlistIsolationQuery(candidate.Query)
@@ -907,6 +915,11 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 		}
 	}
 	out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), in.Insights.Entities...)
+	if in.Insights.VisualProfile != nil {
+		visualProfile := *in.Insights.VisualProfile
+		visualProfile.Terms = append([]string(nil), in.Insights.VisualProfile.Terms...)
+		out.Insights.VisualProfile = &visualProfile
+	}
 	out.Insights.ImportantPhrases = append([]string(nil), in.Insights.ImportantPhrases...)
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
@@ -967,6 +980,7 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 	segmentIndex := make(map[string]int, len(segments))
 	lastAssetByProvider := make(map[string]string)
 	boundAssetOwners := make(map[string]string)
+	artlistContext, artlistContextErr := newArtlistIsolationContext(segments)
 	for _, original := range segments {
 		seg := cloneVidRushSegmentResult(original)
 		normalizeVidRushSegmentAssets(&seg)
@@ -978,12 +992,16 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 		}
 		valid := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.Candidates))
 		seen := make(map[string]struct{}, len(seg.Assets.Candidates))
+		artlistSegmentValid := artlistContextErr == nil
+		if artlistSegmentValid {
+			artlistSegmentValid = validateArtlistQueriesForSegment(artlistContext, seg) == nil
+		}
 		for _, candidate := range seg.Assets.Candidates {
 			if !validVidRushCandidate(candidate) || !readyVidRushCandidate(candidate) {
 				continue
 			}
 			if strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
-				if err := validateArtlistCandidateForSegment(candidate, seg); err != nil {
+				if !artlistSegmentValid || validateArtlistCandidateForContext(artlistContext, candidate, seg) != nil {
 					// A contaminated Artlist candidate is never eligible for
 					// ranking or winner selection, even if it is otherwise
 					// technically durable.

@@ -246,11 +246,10 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 	// on the parent after the probe at step 1 means an external actor
 	// raced us — log at INFO so the operator sees the race without
 	// the package swallowing it silently.
-	res, err := tx.ExecContext(ctx, `DELETE FROM media_assets WHERE id = ?`, id)
+	affected, err := DeleteMediaAssetRow(ctx, tx, id)
 	if err != nil {
 		return fmt.Errorf("HardDeleteTx %s: parent delete: %w", id, err)
 	}
-	affected, _ := res.RowsAffected()
 	log.Info("HardDeleteTx: parent delete",
 		zap.String("id", id),
 		zap.Int64("rows_affected", affected))
@@ -290,15 +289,11 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 		return fmt.Errorf("RestoreTx: id is required")
 	}
 
-	res, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'ACTIVE', deleted_at = NULL WHERE id = ?`, id)
-	if err != nil {
+	if err := RestoreMediaAssetTx(ctx, tx, id); err != nil {
 		return fmt.Errorf("RestoreTx %s: update: %w", id, err)
 	}
-	affected, _ := res.RowsAffected()
 	logger.Load().Info("RestoreTx: lifecycle_state -> ACTIVE",
-		zap.String("id", id),
-		zap.Int64("rows_affected", affected))
+		zap.String("id", id))
 	return nil
 }
 

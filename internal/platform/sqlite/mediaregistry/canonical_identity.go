@@ -17,6 +17,7 @@ import (
 	"time"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // CanonicalIdentityResolver is the SQLite implementation of
@@ -352,15 +353,7 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 			continue
 		}
 		if apply {
-			query := `UPDATE media_assets SET namespace=?, asset_kind=?, source_type=?`
-			args := []any{tax.Namespace, tax.AssetKind, tax.SourceType}
-			if replacementType != "" {
-				query += `, media_type=?`
-				args = append(args, replacementType)
-			}
-			query += `, updated_at=datetime('now') WHERE id=?`
-			args = append(args, id)
-			if _, err := r.db.ExecContext(ctx, query, args...); err != nil {
+			if err := imagesregistry.UpdateMediaAssetTaxonomyBackfill(ctx, r.db, id, tax, replacementType); err != nil {
 				return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: update %q: %w", id, err)
 			}
 		}

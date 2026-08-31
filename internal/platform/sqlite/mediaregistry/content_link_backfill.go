@@ -25,6 +25,7 @@ import (
 	"time"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // contentLinkAssetScope is the media_assets row scope shared by every query in
@@ -200,9 +201,11 @@ func (r *CanonicalIdentityResolver) BackfillContentSHA256(ctx context.Context, a
 			continue
 		}
 		if apply {
-			if _, err := writer.ExecContext(ctx,
-				`UPDATE media_assets SET content_sha256 = ?, binary_sha256 = ? WHERE id = ?`,
-				it.fileHash, it.fileHash, it.id); err != nil {
+			tx, ok := writer.(*sql.Tx)
+			if !ok || tx == nil {
+				return report, fmt.Errorf("content sha256 backfill: canonical writer requires transaction, got %T", writer)
+			}
+			if err := imagesregistry.UpdateMediaAssetContentHashesTx(ctx, tx, it.id, it.fileHash, it.fileHash); err != nil {
 				return report, fmt.Errorf("content sha256 backfill: update %q: %w", it.id, err)
 			}
 		}

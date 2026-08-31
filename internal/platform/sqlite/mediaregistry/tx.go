@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // execer is the narrow write surface shared by *sql.DB and *sql.Tx.
@@ -36,18 +37,14 @@ func (l *Ledger) UpsertTaxonomyTx(ctx context.Context, tx *sql.Tx, t capregistry
 }
 
 func upsertTaxonomy(ctx context.Context, e execer, t capregistry.AssetTaxonomy) error {
-	if err := t.Validate(); err != nil {
-		return err
+	switch writer := e.(type) {
+	case *sql.Tx:
+		return imagesregistry.UpdateMediaAssetTaxonomyTx(ctx, writer, t)
+	case *sql.DB:
+		return imagesregistry.UpdateMediaAssetTaxonomyDB(ctx, writer, t)
+	default:
+		return fmt.Errorf("upsert media taxonomy %q: unsupported writer %T", t.AssetID, e)
 	}
-	result, err := e.ExecContext(ctx, `UPDATE media_assets SET namespace=?, asset_kind=?, source_type=?, semantic_role=?, updated_at=datetime('now') WHERE id=?`,
-		t.Namespace, t.AssetKind, t.SourceType, t.SemanticRole, t.AssetID)
-	if err != nil {
-		return fmt.Errorf("upsert media taxonomy %q: %w", t.AssetID, err)
-	}
-	if n, _ := result.RowsAffected(); n != 1 {
-		return fmt.Errorf("upsert media taxonomy %q: asset not found", t.AssetID)
-	}
-	return nil
 }
 
 // AppendEventTx appends a registry event inside tx and returns its sequence.
@@ -98,15 +95,14 @@ func linkContent(ctx context.Context, e execer, assetID, contentSHA256 string) e
 	if assetID == "" || contentSHA256 == "" {
 		return fmt.Errorf("%w: asset_id and content_sha256 are required", capregistry.ErrAssetSourceInvalid)
 	}
-	res, err := e.ExecContext(ctx,
-		`UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
-	if err != nil {
-		return fmt.Errorf("link content %q -> %q: %w", assetID, contentSHA256, err)
+	switch writer := e.(type) {
+	case *sql.Tx:
+		return imagesregistry.LinkMediaAssetContentTx(ctx, writer, assetID, contentSHA256)
+	case *sql.DB:
+		return imagesregistry.LinkMediaAssetContentDB(ctx, writer, assetID, contentSHA256)
+	default:
+		return fmt.Errorf("link content %q -> %q: unsupported writer %T", assetID, contentSHA256, e)
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("link content %q -> %q: asset not found", assetID, contentSHA256)
-	}
-	return nil
 }
 
 // RegisterSourceTx upserts a provenance record inside tx.

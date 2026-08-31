@@ -2,7 +2,10 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // AssetPatch is the typed partial-update contract for an existing canonical
@@ -87,4 +90,13 @@ type AssetMutator interface {
 type CanonicalAssetWriter interface {
 	AssetCommitter
 	AssetMutator
+
+	// UpsertClipTx is the canonical dispatcher-facing clip mutation. The
+	// dispatcher owns tx and the outbox event; the writer only persists the
+	// asset projection inside that caller-owned transaction.
+	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error
+
+	// SetIndexStateTx is the canonical dispatcher-facing index-state mutation.
+	// It must use the exact transaction supplied by the dispatcher.
+	SetIndexStateTx(ctx context.Context, tx *sql.Tx, assetID string, state asset.IndexState) error
 }

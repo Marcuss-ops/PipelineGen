@@ -56,10 +56,11 @@ const MediaAssetColumns = `
 
 type ClipsRepository struct {
 	*AssetStoreSQLite
-	db             *sql.DB
-	log            *zap.Logger
-	assetCommitter persistence.AssetCommitter
-	assetMutator   persistence.AssetMutator
+	db              *sql.DB
+	log             *zap.Logger
+	assetCommitter  persistence.AssetCommitter
+	assetMutator    persistence.AssetMutator
+	canonicalWriter persistence.CanonicalAssetWriter
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
@@ -88,6 +89,9 @@ func (r *ClipsRepository) SetCanonicalWriter(committer persistence.AssetCommitte
 	r.assetCommitter = committer
 	if mutator, ok := committer.(persistence.AssetMutator); ok {
 		r.assetMutator = mutator
+	}
+	if writer, ok := committer.(persistence.CanonicalAssetWriter); ok {
+		r.canonicalWriter = writer
 	}
 }
 

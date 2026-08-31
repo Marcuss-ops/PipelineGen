@@ -117,25 +117,62 @@ type EntityMediaLink struct {
 	AssetIDs          []string `json:"asset_ids,omitempty"`
 }
 
+// SegmentVisualProfile is the compact, observable Planner output for one
+// segment. It keeps the visual subject, action, context and concrete terms
+// together so downstream assertions can detect generic or cross-scene plans.
+type SegmentVisualProfile struct {
+	Subject string   `json:"subject"`
+	Action  string   `json:"action"`
+	Context string   `json:"context"`
+	Terms   []string `json:"terms"`
+}
+
+// BuildSegmentVisualProfile projects the canonical semantic profile into the
+// visual Planner contract without inventing values. Subject, action and
+// context come from the profile; terms are the profile's visual terms in
+// deterministic order.
+func BuildSegmentVisualProfile(profile SegmentSemanticProfile) SegmentVisualProfile {
+	visual := SegmentVisualProfile{Subject: strings.TrimSpace(profile.Topic)}
+	if len(profile.Actions) > 0 {
+		visual.Action = strings.TrimSpace(profile.Actions[0])
+	}
+	if len(profile.Subtopics) > 0 {
+		visual.Context = strings.TrimSpace(profile.Subtopics[0])
+	}
+	seen := make(map[string]struct{})
+	for _, term := range profile.VisualTerms {
+		value := strings.TrimSpace(term.Value)
+		key := strings.ToLower(value)
+		if value != "" {
+			if _, exists := seen[key]; !exists {
+				visual.Terms = append(visual.Terms, value)
+				seen[key] = struct{}{}
+			}
+		}
+	}
+	return visual
+}
+
 // SegmentInsights collects the per-segment semantic extractions and
 // generated queries used by VidRush.
 type SegmentInsights struct {
-	SegmentID                string              `json:"segment_id"`
-	TextHash                 string              `json:"text_hash"`
-	Entities                 []ExtractedEntity   `json:"entities,omitempty"`
-	ImportantPhrases         []string            `json:"important_phrases,omitempty"`
-	ImportantWords           []string            `json:"important_words,omitempty"`
-	NounChunks               []string            `json:"noun_chunks,omitempty"`
-	ArtlistQueries           []string            `json:"artlist_queries,omitempty"`
-	YouTubeQueries           []string            `json:"youtube_queries,omitempty"`
-	ArtlistIntentHash        string              `json:"artlist_intent_hash,omitempty"`
-	ImageQueries             []string            `json:"image_queries,omitempty"`
-	ImageSearchRequired      bool                `json:"image_search_required,omitempty"`
-	ImageSearchNoImageReason string              `json:"image_search_no_image_reason,omitempty"`
-	ImagePrimaryCanonicalID  string              `json:"image_primary_canonical_id,omitempty"`
-	ImageEntityCanonicalIDs  map[string]string   `json:"image_entity_canonical_ids,omitempty"`
-	ResearchSources          []ResearchWebSource `json:"research_sources,omitempty"`
-	EntityMediaLinks         []EntityMediaLink   `json:"entity_media_links,omitempty"`
+	SegmentID                string                `json:"segment_id"`
+	VisualProfile            *SegmentVisualProfile `json:"visual_profile,omitempty"`
+	TextHash                 string                `json:"text_hash"`
+	Entities                 []ExtractedEntity     `json:"entities,omitempty"`
+	ImportantPhrases         []string              `json:"important_phrases,omitempty"`
+	ImportantWords           []string              `json:"important_words,omitempty"`
+	NounChunks               []string              `json:"noun_chunks,omitempty"`
+	ArtlistQueries           []string              `json:"artlist_queries,omitempty"`
+	YouTubeQueries           []string              `json:"youtube_queries,omitempty"`
+	ArtlistIntentHash        string                `json:"artlist_intent_hash,omitempty"`
+	ImageQueries             []string              `json:"image_queries,omitempty"`
+	ImageSearchRequired      bool                  `json:"image_search_required,omitempty"`
+	ImageSearchNoImageReason string                `json:"image_search_no_image_reason,omitempty"`
+	ImagePrimaryCanonicalID  string                `json:"image_primary_canonical_id,omitempty"`
+	ImageEntityCanonicalIDs  map[string]string     `json:"image_entity_canonical_ids,omitempty"`
+	ResearchSources          []ResearchWebSource   `json:"research_sources,omitempty"`
+	EntityMediaLinks         []EntityMediaLink     `json:"entity_media_links,omitempty"`
 }
 
 // SegmentAssetCandidate is a single candidate found for a segment.

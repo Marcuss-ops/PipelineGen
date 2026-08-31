@@ -1,6 +1,10 @@
 package config
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/storage"
+)
 
 type StorageConfig struct {
 	// DataDir is the root for ALL persisted data (DBs + blobs).
@@ -125,9 +129,12 @@ func (s StorageConfig) ToDatabaseStorageConfig() interface {
 }
 
 // CanonicalPrimaryDBPath returns the only primary SQLite path accepted by
-// the runtime: <AbsDataDir>/media/media.db.sqlite.
+// the runtime: <AbsDataDir>/media/media.db.sqlite. The path components
+// (media.db.sqlite under the media subdirectory) are owned by
+// storage.StorageTopology, the single source of truth for the canonical
+// primary store identity; this method only contributes the resolved DataDir.
 func (s StorageConfig) CanonicalPrimaryDBPath() string {
-	return filepath.Join(s.AbsDataDir(), "media", "media.db.sqlite")
+	return filepath.Join(s.AbsDataDir(), storage.MediaDBDirectory, storage.MediaDBFilename)
 }
 
 // PrimaryDBFullPath derives the primary SQLite path exclusively from DataDir.

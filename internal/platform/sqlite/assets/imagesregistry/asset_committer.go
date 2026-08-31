@@ -1,5 +1,9 @@
 // Package assets — SQLite AssetCommitter adapter (PR-ASSET-COMMITTER).
 //
+// INDEXED_WRITER_SCOPE: clipindexer
+// The terminal INDEXED CAS is exposed here solely as the persistence adapter
+// invoked by the canonical outbox consumer; no workflow writes this state.
+//
 // This file is the sole canonical implementation of
 // persistence.AssetCommitter. It owns the SQL that writes media_assets,
 // asset_locations, and the durable index-request event inside one SQLite

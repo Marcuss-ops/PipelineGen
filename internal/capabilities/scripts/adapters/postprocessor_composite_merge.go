@@ -755,6 +755,11 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if len(src.Insights.Entities) > 0 {
 		out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), src.Insights.Entities...)
 	}
+	if src.Insights.VisualProfile != nil {
+		visualProfile := *src.Insights.VisualProfile
+		visualProfile.Terms = append([]string(nil), src.Insights.VisualProfile.Terms...)
+		out.Insights.VisualProfile = &visualProfile
+	}
 	if len(src.Insights.ImportantPhrases) > 0 {
 		out.Insights.ImportantPhrases = append([]string(nil), src.Insights.ImportantPhrases...)
 	}

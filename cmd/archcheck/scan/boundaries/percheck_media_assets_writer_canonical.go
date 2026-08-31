@@ -17,7 +17,7 @@
 // and emits a violation for any non-canonical SQL write to media_assets.
 //
 // Exemptions:
-//   - exactly the three files in mediaAssetsWriterCanonicalOwners below;
+//   - exactly the five files in mediaAssetsWriterCanonicalOwners below;
 //     they are the canonical AssetCommitter/AssetMutator implementation
 //     family and the only production owners of media_assets SQL.
 //   - *_test.go files (regression-guard surface).
@@ -32,6 +32,8 @@ package boundaries
 
 import (
 	"bufio"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -45,9 +47,11 @@ import (
 // canonical SOLE owners of SQL that writes media_assets. The gate does
 // NOT inspect these files — they ARE the SSOT.
 var mediaAssetsWriterCanonicalOwners = map[string]bool{
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer.go":           true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go": true,
-	"internal/platform/sqlite/assets/imagesregistry/media_committer.go":           true,
+	"internal/platform/sqlite/assets/imagesregistry/asset_committer.go":                      true,
+	"internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go":            true,
+	"internal/platform/sqlite/assets/imagesregistry/asset_committer_projection_mutations.go": true,
+	"internal/platform/sqlite/assets/imagesregistry/canonical_clip_mutations.go":             true,
+	"internal/platform/sqlite/assets/imagesregistry/media_committer.go":                      true,
 }
 
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.
@@ -61,7 +65,13 @@ var mediaAssetsWriterScanRoots = []string{
 // direct SQL write to media_assets (INSERT, UPDATE, DELETE, REPLACE).
 // Case-insensitive, substring match for forward-prevention.
 var mediaAssetsWriterForbiddenRe = regexp.MustCompile(
-	`(?i)\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+media_assets\b`,
+	`(?is)\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+media_assets\b\s*(?:SET|\(|WHERE)`,
+)
+
+// mediaAssetsWriterReferenceRe remains broad because it is used only for
+// comment-residue accounting; it must not classify error strings as writes.
+var mediaAssetsWriterReferenceRe = regexp.MustCompile(
+	`(?i)\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+media_assets\b`,
 )
 
 // mediaAssetsWriterSkipDirs mirrors the standard skip-dir set.
@@ -162,27 +172,27 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 	}
 	defer f.Close()
 
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lineNo := 0
-	commentOnly := 0
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		trimmed := strings.TrimSpace(line)
+	source, err := os.ReadFile(absPath)
+	if err != nil {
+		return
+	}
+	fileSet := token.NewFileSet()
+	parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments)
+	masked := source
+	if parseErr == nil && parsed != nil {
+		masked = maskGoComments(source, fileSet, parsed)
+	}
 
-		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-			if mediaAssetsWriterForbiddenRe.MatchString(line) {
-				commentOnly++
-			}
+	// Scan the complete comment-masked source so SQL split across lines is
+	// still detected. String literals remain intact; comments are blanked.
+	matches := mediaAssetsWriterForbiddenRe.FindAllStringSubmatchIndex(string(masked), -1)
+	for _, match := range matches {
+		if len(match) < 4 {
 			continue
 		}
-
-		m := mediaAssetsWriterForbiddenRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		verb := strings.ToLower(strings.TrimSpace(m[1]))
+		start := match[0]
+		verb := strings.ToLower(strings.TrimSpace(string(masked[match[2]:match[3]])))
+		lineNo := 1 + strings.Count(string(masked[:start]), "\n")
 		r.Violations = append(r.Violations, report.Violation{
 			File:        relPath,
 			Line:        lineNo,
@@ -194,6 +204,20 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 				" | matched verb: " + verb +
 				" | route through persistence.AssetCommitter (canonical SSOT: internal/platform/sqlite/assets/imagesregistry/asset_committer.go)",
 		})
+	}
+
+	// Keep the residue warning for actual comment-only references, but use
+	// the broad matcher only on comment-prefixed lines. Error strings and
+	// other descriptive runtime text are therefore not reported as writes.
+	sc := bufio.NewScanner(strings.NewReader(string(source)))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	commentOnly := 0
+	for sc.Scan() {
+		line := sc.Text()
+		trimmed := strings.TrimSpace(line)
+		if (strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*")) && mediaAssetsWriterReferenceRe.MatchString(line) {
+			commentOnly++
+		}
 	}
 	if commentOnly > 0 {
 		mediaAssetsWriterWarn(r, "forbidden-sql:",

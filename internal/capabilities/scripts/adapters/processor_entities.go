@@ -432,6 +432,8 @@ func buildVidRushSegmentResult(
 			TextHash: canonicalSeg.TextHash,
 		}
 	}
+	visualProfile := scriptpkg.BuildSegmentVisualProfile(profile)
+	insights.VisualProfile = &visualProfile
 	insights.Entities = uniqueLimitedEntities(profile.Entities, entitiesLimit)
 	insights.NounChunks = uniqueLimitedStrings(profile.NounChunks, phrasesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(profile.ImportantPhrases, phrasesLimit)
