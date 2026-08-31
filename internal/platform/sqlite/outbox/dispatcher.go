@@ -45,6 +45,7 @@ type Dispatcher struct {
 	log                *zap.Logger
 	discoveryCommitter DiscoveryCommitter
 	canonicalCommitter persistence.AssetCommitter
+	canonicalWriter    persistence.CanonicalAssetWriter
 }
 
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
@@ -63,10 +64,16 @@ func NewDispatcher(
 ) *Dispatcher {
 	var discoveryCommitter DiscoveryCommitter
 	var canonicalCommitter persistence.AssetCommitter
+	var canonicalWriter persistence.CanonicalAssetWriter
 	for _, value := range extra {
 		if discoveryCommitter == nil {
 			if candidate, ok := value.(DiscoveryCommitter); ok {
 				discoveryCommitter = candidate
+			}
+		}
+		if canonicalWriter == nil {
+			if candidate, ok := value.(persistence.CanonicalAssetWriter); ok {
+				canonicalWriter = candidate
 			}
 		}
 		if canonicalCommitter == nil {
@@ -74,6 +81,9 @@ func NewDispatcher(
 				canonicalCommitter = candidate
 			}
 		}
+	}
+	if canonicalCommitter == nil && canonicalWriter != nil {
+		canonicalCommitter = canonicalWriter
 	}
 	return &Dispatcher{
 		clips:              clips,
@@ -83,5 +93,6 @@ func NewDispatcher(
 		log:                log,
 		discoveryCommitter: discoveryCommitter,
 		canonicalCommitter: canonicalCommitter,
+		canonicalWriter:    canonicalWriter,
 	}
 }

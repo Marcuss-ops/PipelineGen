@@ -30,18 +30,44 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 	if tx == nil {
 		return fmt.Errorf("upsert clip: transaction is required")
 	}
-	if r == nil || r.assetCommitter == nil {
-		return fmt.Errorf("upsert clip: canonical AssetCommitter is required; repository SQL fallback has been removed")
+	if r == nil || r.canonicalWriter == nil {
+		return fmt.Errorf("upsert clip: canonical AssetCommitter is required; CanonicalAssetWriter adapter is not wired")
 	}
+	return r.canonicalWriter.UpsertClipTx(ctx, tx, clip)
+}
 
+// commitClipTxThroughCanonical contains the mapping from the domain Asset to
+// the persistence request. It is called only by the canonical writer adapter;
+// the repository above is merely a compatibility port.
+func commitClipTxThroughCanonical(ctx context.Context, tx *sql.Tx, clip *asset.Asset, committer persistence.AssetCommitter) error {
+	if clip == nil {
+		return fmt.Errorf("upsert clip: asset is required")
+	}
+	if tx == nil {
+		return fmt.Errorf("upsert clip: transaction is required")
+	}
+	if committer == nil {
+		return fmt.Errorf("upsert clip: canonical AssetCommitter is required")
+	}
+	req, err := canonicalClipCommitRequest(clip)
+	if err != nil {
+		return err
+	}
+	_, err = committer.CommitTx(ctx, tx, req)
+	if err != nil {
+		return fmt.Errorf("upsert clip %s through canonical writer: %w", clip.ID, err)
+	}
+	return nil
+}
+
+func canonicalClipCommitRequest(clip *asset.Asset) (persistence.CommitRequest, error) {
 	if clip.SourceURL != "" && clip.MetadataSourceURL() == "" {
 		clip.SetMetadataSourceURL(clip.SourceURL)
 	}
 	taxonomy, err := resolveClipTaxonomy(clip)
 	if err != nil {
-		return err
+		return persistence.CommitRequest{}, err
 	}
-
 	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = clip.ContentHash()
@@ -63,14 +89,10 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		lifecycle = string(asset.StateActive)
 	}
 	metadata := persistence.TypedMetadata{
-		Title:          clip.Title(),
-		Description:    clip.Description(),
+		Title: clip.Title(), Description: clip.Description(),
 		SourceVersion:  clip.GetMetadataString("source_version"),
-		SourceProvider: clip.MetadataSourceProvider(),
-		SourceVideoID:  clip.MetadataSourceVideoID(),
-		Tags:           append([]string(nil), clip.Tags...),
-		Category:       clip.Category,
-		Extra:          clip.Metadata,
+		SourceProvider: clip.MetadataSourceProvider(), SourceVideoID: clip.MetadataSourceVideoID(),
+		Tags: append([]string(nil), clip.Tags...), Category: clip.Category, Extra: clip.Metadata,
 	}
 	if metadata.Title == "" {
 		metadata.Title = name
@@ -78,40 +100,20 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 	if metadata.SourceVersion == "" {
 		metadata.SourceVersion = contentHash
 	}
-
-	_, err = r.assetCommitter.CommitTx(ctx, tx, persistence.CommitRequest{
-		AssetID:        clip.ID,
-		Source:         string(clip.Source),
-		Name:           name,
-		Filename:       filename,
-		MediaType:      mediaType,
-		Category:       clip.Category,
-		GroupName:      clip.Group,
-		DurationMs:     clip.Duration.Milliseconds(),
-		ContentHash:    contentHash,
-		Description:    clip.Description(),
-		SearchText:     clip.SearchText,
-		LifecycleState: lifecycle,
-		IndexState:     clip.GetMetadataString("index_state"),
-		LocalPath:      clip.LocalPath(),
-		FolderID:       clip.FolderID(),
-		FolderPath:     clip.FolderPath(),
-		ThumbnailURL:   clip.ThumbnailURL,
-		SourceURL:      clip.SourceURL,
-		Title:          metadata.Title,
-		SourceProvider: clip.MetadataSourceProvider(),
-		SourceVideoID:  clip.MetadataSourceVideoID(),
-		StartMs:        int64(asset.MetadataFloat(clip.Metadata, "start_sec") * 1000),
-		EndMs:          int64(asset.MetadataFloat(clip.Metadata, "end_sec") * 1000),
-		Metadata:       metadata,
-		Taxonomy:       taxonomy,
-		Locations:      clipLocationsForCanonicalCommit(clip, contentHash),
+	return persistence.CommitRequest{
+		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
+		MediaType: mediaType, Category: clip.Category, GroupName: clip.Group,
+		DurationMs: clip.Duration.Milliseconds(), ContentHash: contentHash,
+		Description: clip.Description(), SearchText: clip.SearchText, LifecycleState: lifecycle,
+		IndexState: clip.GetMetadataString("index_state"), LocalPath: clip.LocalPath(),
+		FolderID: clip.FolderID(), FolderPath: clip.FolderPath(), ThumbnailURL: clip.ThumbnailURL,
+		SourceURL: clip.SourceURL, Title: metadata.Title,
+		SourceProvider: clip.MetadataSourceProvider(), SourceVideoID: clip.MetadataSourceVideoID(),
+		StartMs: int64(asset.MetadataFloat(clip.Metadata, "start_sec") * 1000),
+		EndMs:   int64(asset.MetadataFloat(clip.Metadata, "end_sec") * 1000), Metadata: metadata,
+		Taxonomy: taxonomy, Locations: clipLocationsForCanonicalCommit(clip, contentHash),
 		EmitIndexEvent: false,
-	})
-	if err != nil {
-		return fmt.Errorf("upsert clip %s through canonical writer: %w", clip.ID, err)
-	}
-	return nil
+	}, nil
 }
 
 func clipLocationsForCanonicalCommit(clip *asset.Asset, contentHash string) []persistence.LocationCommit {
@@ -171,15 +173,8 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 	if !state.Valid() {
 		return fmt.Errorf("clips.SetIndexStateTx: state %q is not a canonical IndexState — call sites in production must validate", state)
 	}
-	if r == nil || r.assetMutator == nil {
-		return fmt.Errorf("clips.SetIndexStateTx: canonical AssetMutator is required; repository SQL fallback has been removed")
+	if r == nil || r.canonicalWriter == nil {
+		return fmt.Errorf("clips.SetIndexStateTx: canonical AssetCommitter is required; canonical AssetMutator is required; CanonicalAssetWriter adapter is not wired")
 	}
-	value := string(state)
-	if err := r.assetMutator.PatchAssetTx(ctx, tx, persistence.AssetPatch{
-		AssetID:    id,
-		IndexState: &value,
-	}); err != nil {
-		return fmt.Errorf("clips.SetIndexStateTx(%s, %s): %w", id, state, err)
-	}
-	return nil
+	return r.canonicalWriter.SetIndexStateTx(ctx, tx, id, state)
 }

@@ -63,8 +63,23 @@ func (w *recordingCanonicalClipWriter) ReconcileDriveLocationsTx(context.Context
 	return nil
 }
 
+func (w *recordingCanonicalClipWriter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
+	req, err := canonicalClipCommitRequest(clip)
+	if err != nil {
+		return err
+	}
+	_, err = w.CommitTx(ctx, tx, req)
+	return err
+}
+
+func (w *recordingCanonicalClipWriter) SetIndexStateTx(ctx context.Context, tx *sql.Tx, assetID string, state asset.IndexState) error {
+	value := string(state)
+	return w.PatchAssetTx(ctx, tx, persistence.AssetPatch{AssetID: assetID, IndexState: &value})
+}
+
 var _ persistence.AssetCommitter = (*recordingCanonicalClipWriter)(nil)
 var _ persistence.AssetMutator = (*recordingCanonicalClipWriter)(nil)
+var _ persistence.CanonicalAssetWriter = (*recordingCanonicalClipWriter)(nil)
 
 func newTransactionDelegationTestDB(t *testing.T) (*sql.DB, *sql.Tx) {
 	t.Helper()

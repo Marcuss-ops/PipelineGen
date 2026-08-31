@@ -5,9 +5,9 @@ package adminconsole
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // VersionStore is the SQLite-backed adminconsole.EntityVersionStore.
@@ -34,38 +34,7 @@ func NewVersionStore(db *sql.DB) *VersionStore {
 // This primitive keeps the optimistic concurrency check inside the same
 // UPDATE statement, avoiding read-modify-write races.
 func (s *VersionStore) CheckAndIncrementAssetVersion(ctx context.Context, assetID string, expectedVersion int) (currentVersion int, ok bool, err error) {
-	if assetID == "" {
-		return 0, false, fmt.Errorf("CheckAndIncrementAssetVersion: empty asset id")
-	}
-
-	// Single atomic statement: bump only when the version matches.
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE media_assets
-		SET admin_version = admin_version + 1
-		WHERE id = ? AND admin_version = ?
-	`, assetID, expectedVersion)
-	if err != nil {
-		return 0, false, fmt.Errorf("CheckAndIncrementAssetVersion: update: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return 0, false, fmt.Errorf("CheckAndIncrementAssetVersion: rows affected: %w", err)
-	}
-
-	// Read back the current (now incremented) version for the caller.
-	row := s.db.QueryRowContext(ctx, `SELECT admin_version FROM media_assets WHERE id = ?`, assetID)
-	if err := row.Scan(&currentVersion); err != nil {
-		if err == sql.ErrNoRows {
-			return 0, false, fmt.Errorf("CheckAndIncrementAssetVersion: asset not found")
-		}
-		return 0, false, fmt.Errorf("CheckAndIncrementAssetVersion: scan version: %w", err)
-	}
-
-	if affected == 0 {
-		return currentVersion, false, nil
-	}
-	return currentVersion, true, nil
+	return imagesregistry.CheckAndIncrementMediaAssetVersion(ctx, s.db, assetID, expectedVersion)
 }
 
 // Compile-time check.

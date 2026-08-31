@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -330,6 +331,207 @@ func (c *SQLiteMediaCommitter) reconcileOneDriveLocation(ctx context.Context, tx
 	suffixHash := digest.SHA256Bytes([]byte(change.DriveFileID + "|" + change.DriveLink + "|" + change.DownloadURL))
 	patch.EventKeySuffix = ":location:" + suffixHash[:16]
 	return c.PatchAssetTx(ctx, tx, patch)
+}
+
+// UpdateMediaAssetEnrichState writes the enrichment state and timestamp.
+func UpdateMediaAssetEnrichState(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, updatedAt string) (int64, error) {
+	if strings.TrimSpace(updatedAt) == "" {
+		updatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	result, err := exec.ExecContext(ctx, `
+		UPDATE media_assets
+		SET enrich_state = ?, enrich_state_updated_at = ?, updated_at = ?
+		WHERE id = ?`, state, updatedAt, updatedAt, assetID)
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: enrich state update: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: enrich state rows affected: %w", err)
+	}
+	return affected, nil
+}
+
+// UpdateMediaAssetEnrichStateIfCurrent performs the CAS form of the
+// enrichment transition.
+func UpdateMediaAssetEnrichStateIfCurrent(ctx context.Context, exec mediaAssetSQLExecutor, assetID, from, to, updatedAt string) (int64, error) {
+	if strings.TrimSpace(updatedAt) == "" {
+		updatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	result, err := exec.ExecContext(ctx, `
+		UPDATE media_assets
+		SET enrich_state = ?, enrich_state_updated_at = ?, updated_at = ?
+		WHERE id = ? AND enrich_state = ?`, to, updatedAt, updatedAt, assetID, from)
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: enrich state CAS update: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: enrich state CAS rows affected: %w", err)
+	}
+	return affected, nil
+}
+
+// CheckAndIncrementMediaAssetVersion performs the canonical optimistic
+// concurrency update used by the admin console. The read-back remains here
+// so the compare-and-swap and its SSOT lookup share one writer family.
+func CheckAndIncrementMediaAssetVersion(ctx context.Context, db *sql.DB, assetID string, expectedVersion int) (currentVersion int, ok bool, err error) {
+	if db == nil {
+		return 0, false, fmt.Errorf("asset committer: database is required")
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return 0, false, fmt.Errorf("asset committer: asset id is required")
+	}
+	result, err := db.ExecContext(ctx, `
+		UPDATE media_assets
+		SET admin_version = admin_version + 1
+		WHERE id = ? AND admin_version = ?`, assetID, expectedVersion)
+	if err != nil {
+		return 0, false, fmt.Errorf("asset committer: increment admin version: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, false, fmt.Errorf("asset committer: admin version rows affected: %w", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT admin_version FROM media_assets WHERE id = ?`, assetID).Scan(&currentVersion); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, false, fmt.Errorf("asset committer: asset not found")
+		}
+		return 0, false, fmt.Errorf("asset committer: read admin version: %w", err)
+	}
+	return currentVersion, affected == 1, nil
+}
+
+// UpdateMediaAssetContentHashesTx persists the paired content/binary digest
+// projection for an existing asset inside a caller-owned transaction.
+func UpdateMediaAssetContentHashesTx(ctx context.Context, tx *sql.Tx, assetID, contentSHA256, binarySHA256 string) error {
+	return execAssetUpdate(ctx, tx, assetID, "content hash backfill", `UPDATE media_assets SET content_sha256 = ?, binary_sha256 = ? WHERE id = ?`, contentSHA256, binarySHA256, assetID)
+}
+
+// UpdateMediaAssetTaxonomyTx applies taxonomy dimensions in a caller-owned
+// transaction. It is the bridge used by the media registry adapter.
+func UpdateMediaAssetTaxonomyTx(ctx context.Context, tx *sql.Tx, taxonomy mediaregistry.AssetTaxonomy) error {
+	return UpdateMediaAssetTaxonomy(ctx, tx, taxonomy)
+}
+
+// UpdateMediaAssetTaxonomyDB applies taxonomy through the canonical writer to
+// a standalone database connection.
+func UpdateMediaAssetTaxonomyDB(ctx context.Context, db *sql.DB, taxonomy mediaregistry.AssetTaxonomy) error {
+	return UpdateMediaAssetTaxonomy(ctx, db, taxonomy)
+}
+
+// LinkMediaAssetContentTx links a content digest in a caller-owned
+// transaction. It is the bridge used by the media registry adapter.
+func LinkMediaAssetContentTx(ctx context.Context, tx *sql.Tx, assetID, contentSHA256 string) error {
+	return execAssetUpdate(ctx, tx, assetID, "content link", `UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
+}
+
+// LinkMediaAssetContentDB links a content digest through the canonical writer
+// to a standalone database connection.
+func LinkMediaAssetContentDB(ctx context.Context, db *sql.DB, assetID, contentSHA256 string) error {
+	return execAssetUpdate(ctx, db, assetID, "content link", `UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
+}
+
+// UpdateMediaAssetTaxonomyBackfill applies a complete taxonomy repair while
+// keeping the conditional media_type normalization in the canonical writer.
+func UpdateMediaAssetTaxonomyBackfill(ctx context.Context, db *sql.DB, assetID string, taxonomy mediaregistry.AssetTaxonomy, replacementMediaType string) error {
+	if db == nil {
+		return fmt.Errorf("asset committer: database is required")
+	}
+	if err := taxonomy.Validate(); err != nil {
+		return fmt.Errorf("asset committer: taxonomy backfill: %w", err)
+	}
+	query := `UPDATE media_assets SET namespace=?, asset_kind=?, source_type=?`
+	args := []any{taxonomy.Namespace, taxonomy.AssetKind, taxonomy.SourceType}
+	if replacementMediaType != "" {
+		query += `, media_type=?`
+		args = append(args, replacementMediaType)
+	}
+	query += `, updated_at=datetime('now') WHERE id=?`
+	args = append(args, assetID)
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("asset committer: taxonomy backfill %q: %w", assetID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("asset committer: taxonomy backfill rows affected %q: %w", assetID, err)
+	} else if affected == 0 {
+		return fmt.Errorf("asset committer: taxonomy backfill asset %q not found", assetID)
+	}
+	return nil
+}
+
+// UpdateMediaAssetLifecycleIfNotInDeletionChain performs the first deletion
+// transition while preserving the dispatcher's idempotency predicate.
+func UpdateMediaAssetLifecycleIfNotInDeletionChain(ctx context.Context, tx *sql.Tx, assetID, newState, updatedAt string) (int64, error) {
+	if strings.TrimSpace(updatedAt) == "" {
+		updatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE media_assets SET lifecycle_state = ?, updated_at = ? WHERE id = ? AND lifecycle_state NOT IN ('DELETE_REQUESTED', 'DELETE_PENDING', 'DRIVE_DELETE_PENDING', 'INDEX_DELETE_PENDING', 'DELETED')`, newState, updatedAt, assetID)
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: lifecycle deletion dispatch %q: %w", assetID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: lifecycle deletion dispatch rows affected %q: %w", assetID, err)
+	}
+	return affected, nil
+}
+
+// UpdateMediaAssetLifecycleCAS performs the canonical expected-state guarded
+// lifecycle transition used by outbox workers.
+func UpdateMediaAssetLifecycleCAS(ctx context.Context, tx *sql.Tx, assetID, expectedState, newState, updatedAt string) (int64, error) {
+	if strings.TrimSpace(updatedAt) == "" {
+		updatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE media_assets SET lifecycle_state = ?, updated_at = ? WHERE id = ? AND lifecycle_state = ?`, newState, updatedAt, assetID, expectedState)
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: lifecycle CAS %q: %w", assetID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: lifecycle CAS rows affected %q: %w", assetID, err)
+	}
+	return affected, nil
+}
+
+// UpdateMediaAssetUpdatedAtTx refreshes the canonical timestamp in a caller
+// owned transaction without exposing media_assets SQL to the caller package.
+func UpdateMediaAssetUpdatedAtTx(ctx context.Context, tx *sql.Tx, assetID, updatedAt string) error {
+	return UpdateMediaAssetUpdatedAt(ctx, tx, assetID, updatedAt)
+}
+
+// MarkMediaAssetOrphan persists the maintenance orphan marker through the
+// canonical mutation boundary.
+func MarkMediaAssetOrphan(ctx context.Context, db *sql.DB, assetID string, detectedAt time.Time, kind string) error {
+	return UpdateMediaAssetOrphanMetadata(ctx, db, assetID, detectedAt, kind)
+}
+
+// DeleteMediaAssetRow deletes the parent row after dependent rows have been
+// removed by HardDeleteTx. The SQL remains inside the canonical writer family.
+func DeleteMediaAssetRow(ctx context.Context, tx *sql.Tx, assetID string) (int64, error) {
+	result, err := tx.ExecContext(ctx, `DELETE FROM media_assets WHERE id = ?`, assetID)
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: parent delete %q: %w", assetID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("asset committer: parent delete rows affected %q: %w", assetID, err)
+	}
+	return rows, nil
+}
+
+// RestoreMediaAssetTx restores the canonical lifecycle state in a caller-owned
+// transaction. The SQL is deliberately delegated to the canonical mutation
+// boundary rather than retained by the repository primitive.
+func RestoreMediaAssetTx(ctx context.Context, tx *sql.Tx, assetID string) error {
+	return UpdateMediaAssetLifecycle(ctx, tx, assetID, "ACTIVE", "", time.Now().UTC().Format(time.RFC3339))
+}
+
+// HardDeleteMediaAssetTx is the repository-shaped alias for the canonical
+// tx-bound deletion primitive.
+func HardDeleteMediaAssetTx(ctx context.Context, tx *sql.Tx, assetID string) error {
+	return HardDeleteTx(ctx, tx, assetID)
 }
 
 func normalizeDriveLocationPatches(changes []persistence.DriveLocationPatch) ([]persistence.DriveLocationPatch, error) {

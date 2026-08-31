@@ -1,4 +1,4 @@
-package imagesregistry
+package imagesregistry_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -44,6 +45,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
+    reuse_count INTEGER NOT NULL DEFAULT 0,
+    last_used_at TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    relative_path TEXT NOT NULL DEFAULT '',
     created_at TEXT, updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS asset_locations (
@@ -134,7 +140,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_text_tracks_current
     WHERE is_current = 1;
 `
 
-func newMediaCommitter(t *testing.T) (*SQLiteMediaCommitter, *sql.DB) {
+func newMediaCommitter(t *testing.T) (*imagesregistry.SQLiteMediaCommitter, *sql.DB) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -151,7 +157,7 @@ func newMediaCommitter(t *testing.T) (*SQLiteMediaCommitter, *sql.DB) {
 	if err != nil {
 		t.Fatalf("new ledger: %v", err)
 	}
-	committer := NewSQLiteMediaCommitter(db, box, ledger, nil)
+	committer := imagesregistry.NewSQLiteMediaCommitter(db, box, ledger, nil)
 	return committer, db
 }
 
@@ -382,6 +388,127 @@ func TestMediaCommitter_Validation(t *testing.T) {
 	if _, err := c.CommitMediaAsset(context.Background(), req); err == nil {
 		t.Fatal("expected validation error for empty asset id")
 	}
+}
+
+func TestUpdateMediaAssetUsage_IncrementsReuseCounter(t *testing.T) {
+	c, db := newMediaCommitter(t)
+	res, err := c.CommitMediaAsset(context.Background(), fullCommitRequest())
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	usedAt := "2026-08-31T10:00:00Z"
+	if err := imagesregistry.UpdateMediaAssetUsage(context.Background(), db, res.AssetID, usedAt); err != nil {
+		t.Fatalf("UpdateMediaAssetUsage: %v", err)
+	}
+	if err := imagesregistry.UpdateMediaAssetUsage(context.Background(), db, res.AssetID, usedAt); err != nil {
+		t.Fatalf("UpdateMediaAssetUsage (second): %v", err)
+	}
+
+	var reuseCount int
+	var lastUsedAt string
+	if err := db.QueryRow(`SELECT reuse_count, last_used_at FROM media_assets WHERE id = ?`, res.AssetID).Scan(&reuseCount, &lastUsedAt); err != nil {
+		t.Fatalf("scan usage: %v", err)
+	}
+	if reuseCount != 2 {
+		t.Fatalf("reuse_count = %d, want 2", reuseCount)
+	}
+	if lastUsedAt != usedAt {
+		t.Fatalf("last_used_at = %q, want %q", lastUsedAt, usedAt)
+	}
+}
+
+func TestUpdateMediaAssetUsage_MissingAssetFailsClosed(t *testing.T) {
+	_, db := newMediaCommitter(t)
+	err := imagesregistry.UpdateMediaAssetUsage(context.Background(), db, "does-not-exist", "2026-08-31T10:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for unknown asset")
+	}
+}
+
+func TestUpdateMediaAssetImageFields_PersistsProjection(t *testing.T) {
+	c, db := newMediaCommitter(t)
+	res, err := c.CommitMediaAsset(context.Background(), fullCommitRequest())
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	draft := &mediacommit.ImageDraft{
+		URL:          "https://example.com/image.jpg",
+		TagsJSON:     `["sea","coast"]`,
+		TagsNorm:     "sea coast",
+		Width:        1920,
+		Height:       1080,
+		RelativePath: "images/image.jpg",
+		Origin:       "images",
+		Provider:     "stock",
+	}
+	if err := imagesregistry.UpdateMediaAssetImageFields(context.Background(), db, res.AssetID, draft); err != nil {
+		t.Fatalf("UpdateMediaAssetImageFields: %v", err)
+	}
+
+	var url, tags, tagsNorm, relativePath, origin, provider string
+	var width, height int
+	if err := db.QueryRow(`SELECT url, tags, tags_norm, width, height, relative_path, origin, provider FROM media_assets WHERE id = ?`, res.AssetID).
+		Scan(&url, &tags, &tagsNorm, &width, &height, &relativePath, &origin, &provider); err != nil {
+		t.Fatalf("scan image fields: %v", err)
+	}
+	if url != draft.URL || tags != draft.TagsJSON || tagsNorm != draft.TagsNorm ||
+		width != draft.Width || height != draft.Height || relativePath != draft.RelativePath ||
+		origin != draft.Origin || provider != draft.Provider {
+		t.Fatalf("image fields mismatch: url=%q tags=%q tags_norm=%q w=%d h=%d rel=%q origin=%q provider=%q",
+			url, tags, tagsNorm, width, height, relativePath, origin, provider)
+	}
+}
+
+func TestUpdateMediaAssetLifecycleCAS_GuardedTransition(t *testing.T) {
+	c, db := newMediaCommitter(t)
+	res, err := c.CommitMediaAsset(context.Background(), fullCommitRequest())
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	updatedAt := "2026-08-31T10:00:00Z"
+	affected, err := imagesregistry.UpdateMediaAssetLifecycleCAS(context.Background(), tx, res.AssetID, "ACTIVE", "DELETE_REQUESTED", updatedAt)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("UpdateMediaAssetLifecycleCAS: %v", err)
+	}
+	if affected != 1 {
+		_ = tx.Rollback()
+		t.Fatalf("affected = %d, want 1", affected)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+
+	var lifecycle string
+	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = ?`, res.AssetID).Scan(&lifecycle); err != nil {
+		t.Fatalf("scan lifecycle: %v", err)
+	}
+	if lifecycle != "DELETE_REQUESTED" {
+		t.Fatalf("lifecycle_state = %q, want DELETE_REQUESTED", lifecycle)
+	}
+
+	// A CAS from a stale expected state must be a zero-row idempotent no-op.
+	tx2, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	affected, err = imagesregistry.UpdateMediaAssetLifecycleCAS(context.Background(), tx2, res.AssetID, "ACTIVE", "DELETE_PENDING", updatedAt)
+	if err != nil {
+		_ = tx2.Rollback()
+		t.Fatalf("stale CAS: %v", err)
+	}
+	if affected != 0 {
+		_ = tx2.Rollback()
+		t.Fatalf("stale CAS affected = %d, want 0", affected)
+	}
+	_ = tx2.Rollback()
 }
 
 func TestMediaCommitter_CommitLegacy(t *testing.T) {

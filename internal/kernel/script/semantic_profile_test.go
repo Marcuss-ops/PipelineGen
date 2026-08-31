@@ -286,6 +286,58 @@ func TestBuildSegmentSemanticProfile_PreservesTemporalEntitiesAndClassifiesTerms
 	}
 }
 
+func TestBuildSegmentSemanticProfile_MediterraneanPlannerProfilesStaySceneSpecific(t *testing.T) {
+	fixtures := []struct {
+		id      string
+		subject string
+		action  string
+		context string
+		terms   []string
+	}{
+		{"mediterranean-01-greek-salad", "Greek salad", "preparing and serving", "fresh Mediterranean ingredients", []string{"tomatoes", "cucumbers", "olives", "feta cheese"}},
+		{"mediterranean-02-hummus", "hummus", "blending and serving", "chickpea dip with tahini", []string{"chickpeas", "tahini", "lemon", "olive oil"}},
+		{"mediterranean-03-sardines", "grilled sardines", "grilling and serving", "coastal fish cooking", []string{"sardines", "lemon", "fresh herbs", "hot grill"}},
+		{"mediterranean-04-shakshuka", "shakshuka", "cooking in a skillet", "eggs in tomato and pepper sauce", []string{"eggs", "tomato", "peppers", "skillet"}},
+		{"mediterranean-05-paella", "seafood paella", "cooking rice in a large pan", "Spanish seafood dish", []string{"shrimp", "mussels", "saffron rice", "large pan"}},
+	}
+
+	for _, fixture := range fixtures {
+		t.Run(fixture.id, func(t *testing.T) {
+			profile := BuildSegmentSemanticProfile(
+				CanonicalSegment{ID: fixture.id, TextHash: "hash-" + fixture.id, Text: fixture.subject},
+				EntityResult{
+					Topic: fixture.subject, Subtopics: []string{fixture.context},
+					Actions: []string{fixture.action}, NounChunks: fixture.terms,
+				},
+				"planner-test-model", "planner-test-v1",
+			)
+			if profile.SegmentID != fixture.id || profile.Topic != fixture.subject {
+				t.Fatalf("profile identity/subject = %q/%q, want %q/%q", profile.SegmentID, profile.Topic, fixture.id, fixture.subject)
+			}
+			if len(profile.Actions) == 0 || profile.Actions[0] != fixture.action {
+				t.Fatalf("actions = %v, want %q", profile.Actions, fixture.action)
+			}
+			if len(profile.Subtopics) == 0 || profile.Subtopics[0] != fixture.context {
+				t.Fatalf("context = %v, want %q", profile.Subtopics, fixture.context)
+			}
+			gotTerms := make(map[string]bool, len(profile.VisualTerms))
+			for _, term := range profile.VisualTerms {
+				gotTerms[strings.ToLower(term.Value)] = true
+			}
+			for _, term := range fixture.terms {
+				if !gotTerms[strings.ToLower(term)] {
+					t.Errorf("visual terms=%v missing %q", profile.VisualTerms, term)
+				}
+			}
+			for _, other := range fixtures {
+				if other.id != fixture.id && strings.Contains(strings.ToLower(profile.Topic), strings.ToLower(other.subject)) {
+					t.Errorf("subject %q contaminated by %q", profile.Topic, other.subject)
+				}
+			}
+		})
+	}
+}
+
 func TestTermKindConstantsAreCanonical(t *testing.T) {
 	want := map[TermKind]bool{
 		TermKindSubject:    true,

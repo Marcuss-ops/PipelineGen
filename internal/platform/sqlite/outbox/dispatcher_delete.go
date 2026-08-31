@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 
@@ -115,13 +116,7 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 		// still reflect the original INSERT timestamp). Mirrors the
 		// repository-layer SetLifecycleState at clips_lifecycle_state.go.
 		nowStr := timeutil.FormatRFC3339(time.Now())
-		if _, err := tx.ExecContext(ctx, `
-	UPDATE media_assets
-	   SET lifecycle_state = 'DELETE_REQUESTED',
-	       updated_at = ?
-	 WHERE id = ?
-	   AND lifecycle_state NOT IN ('DELETE_REQUESTED', 'DELETE_PENDING', 'DRIVE_DELETE_PENDING', 'INDEX_DELETE_PENDING', 'DELETED')
-	`, nowStr, assetID); err != nil {
+		if _, err := imagesregistry.UpdateMediaAssetLifecycleIfNotInDeletionChain(ctx, tx, assetID, "DELETE_REQUESTED", nowStr); err != nil {
 			return fmt.Errorf("dispatcher drive-delete: stamp lifecycle_state=DELETE_REQUESTED %s: %w", assetID, err)
 		}
 
@@ -241,8 +236,7 @@ func (d *Dispatcher) EnqueueIndexDelete(ctx context.Context, assetID string) err
 		// same row doesn't re-surface immediately. Mirrors the
 		// updated_at stamping convention from Blocco 3.2 commit 1/2.
 		nowStr := timeutil.FormatRFC3339(time.Now())
-		if _, err := tx.ExecContext(ctx, `UPDATE media_assets SET updated_at = ? WHERE id = ?`,
-			nowStr, assetID); err != nil {
+		if err := imagesregistry.UpdateMediaAssetUpdatedAtTx(ctx, tx, assetID, nowStr); err != nil {
 			return fmt.Errorf("dispatcher index-delete: re-stamp updated_at %s: %w", assetID, err)
 		}
 
@@ -280,8 +274,8 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 	if d.txmgr == nil {
 		return errors.New("Dispatcher: txmgr not configured")
 	}
-	if d.stateWriter == nil {
-		return errors.New("Dispatcher: state writer not configured (required for EnqueueAndRestore — wire *assets.ClipsRepository)")
+	if d.canonicalWriter == nil && d.stateWriter == nil {
+		return errors.New("Dispatcher: CanonicalAssetWriter is required for EnqueueAndRestore")
 	}
 	if d.outboxEventsRepo == nil {
 		return errors.New("Dispatcher: outbox events repo not configured")
@@ -291,8 +285,12 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
-			return fmt.Errorf("dispatcher restore: set index_state=DISCOVERED %s: %w", assetID, err)
+		if d.canonicalWriter != nil {
+			if err := d.canonicalWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
+				return fmt.Errorf("dispatcher restore: canonical SetIndexStateTx=DISCOVERED %s: %w", assetID, err)
+			}
+		} else if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
+			return fmt.Errorf("dispatcher restore: legacy SetIndexStateTx=DISCOVERED %s: %w", assetID, err)
 		}
 
 		eventID := uuid.NewString()

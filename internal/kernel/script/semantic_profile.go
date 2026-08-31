@@ -245,6 +245,8 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 		TextHash:                  seg.TextHash,
 		UnderstandingModelVersion: understandingModelVersion,
 		PromptVersion:             promptVersion,
+		Topic:                     strings.TrimSpace(res.Topic),
+		Subtopics:                 append([]string(nil), res.Subtopics...),
 		ImportantPhrases:          append([]string(nil), res.ImportantPhrases...),
 		NounChunks:                append([]string(nil), res.NounChunks...),
 		Actions:                   append([]string(nil), res.Actions...),

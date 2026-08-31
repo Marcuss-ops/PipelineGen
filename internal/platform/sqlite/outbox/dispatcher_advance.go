@@ -71,6 +71,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -165,13 +166,7 @@ func (d *Dispatcher) AdvanceAndEmit(
 		// when the flip actually happened. Mirrors the repository-layer
 		// SetLifecycleState at clips_lifecycle_state.go.
 		nowStr := timeutil.FormatRFC3339(time.Now())
-		res, err := tx.ExecContext(ctx, `
-			UPDATE media_assets
-			   SET lifecycle_state = ?,
-			       updated_at = ?
-			 WHERE id = ?
-			   AND lifecycle_state = ?
-		`, string(newState), nowStr, assetID, string(expectedState))
+		affected, err := imagesregistry.UpdateMediaAssetLifecycleCAS(ctx, tx, assetID, string(expectedState), string(newState), nowStr)
 		if err != nil {
 			return fmt.Errorf("advance-and-emit: stamp %s -> %s for %s: %w",
 				expectedState, newState, assetID, err)
@@ -181,10 +176,8 @@ func (d *Dispatcher) AdvanceAndEmit(
 		// skip the event emission so a re-enqueue from CRASH-MID-FLOW
 		// does not produce a duplicate EventAssetIndexDeleteRequested
 		// (or whichever event was queued).
-		affected, err := res.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("advance-and-emit: rows-affected for %s: %w", assetID, err)
-		}
+		// The canonical helper performs the expected-state CAS. A zero-row
+		// transition is idempotent and does not need event emission.
 		if affected == 0 {
 			if d.log != nil {
 				d.log.Debug("advance-and-emit: row not in expected state, skipping event emission (idempotent re-enqueue)",

@@ -32,7 +32,10 @@ vidrush_provider_counter() {
 
 vidrush_assert_segments() {
     local result="$1" scenario_file="$2"
-    local min_segments exact_segments exact_entities exact_image_queries expected_total
+    local min_segments exact_segments exact_entities exact_artlist_queries exact_image_queries expected_total
+    local max_artlist_queries
+    local expected_positions expected_unique_segment_ids expected_unique_text_hashes expected_unique_texts expected_visual_profiles
+    local visual_profile_expectations
 
     VIDRUSH_SEG_COUNT=$(jq '[.segments[]?] | length' <<<"$result")
     VIDRUSH_ENTITY_COUNT=$(jq '[.segments[]?.insights.entities[]?] | length' <<<"$result")
@@ -54,10 +57,89 @@ vidrush_assert_segments() {
         printf '%sFAIL%s expected exactly %s segment(s), got %s\n' "$RED" "$RESET" "$exact_segments" "$VIDRUSH_SEG_COUNT"
         VIDRUSH_ASSERT_FAIL=1
     fi
+
+    expected_unique_segment_ids=$(jq -r '.expect.expected_unique_segment_ids // 0' "$scenario_file")
+    if [[ "$expected_unique_segment_ids" -gt 0 ]] && ! jq -e --argjson expected "$expected_unique_segment_ids" '([.segments[].segment_id] | unique | length) == $expected' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s expected %s unique segment_id value(s)\n' "$RED" "$RESET" "$expected_unique_segment_ids"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    expected_unique_text_hashes=$(jq -r '.expect.expected_unique_text_hashes // 0' "$scenario_file")
+    if [[ "$expected_unique_text_hashes" -gt 0 ]] && ! jq -e --argjson expected "$expected_unique_text_hashes" '([.segments[].text_hash] | unique | length) == $expected' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s expected %s unique text_hash value(s)\n' "$RED" "$RESET" "$expected_unique_text_hashes"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    expected_unique_texts=$(jq -r '.expect.expected_unique_texts // 0' "$scenario_file")
+    if [[ "$expected_unique_texts" -gt 0 ]] && ! jq -e --argjson expected "$expected_unique_texts" '([.segments[].text] | unique | length) == $expected' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s expected %s unique segment text value(s)\n' "$RED" "$RESET" "$expected_unique_texts"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    expected_visual_profiles=$(jq -r '.expect.require_visual_profiles // false' "$scenario_file")
+    if [[ "$expected_visual_profiles" == "true" ]] && ! jq -e '
+      all(.segments[];
+        ((.insights.visual_profile.subject // "") | length) > 0
+        and ((.insights.visual_profile.action // "") | length) > 0
+        and ((.insights.visual_profile.context // "") | length) > 0
+        and ((.insights.visual_profile.terms // []) | length) > 0
+        and ((.insights.visual_profile.subject | ascii_downcase) | test("generic|food|cuisine|meal") | not)
+      )
+    ' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s every segment must expose a specific visual Planner profile with subject/action/context/terms\n' "$RED" "$RESET"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    visual_profile_expectations=$(jq -c '.expect.visual_profile_expectations // []' "$scenario_file")
+    if [[ "$visual_profile_expectations" != "[]" ]] && ! jq -e --argjson expected "$visual_profile_expectations" '
+      all($expected[];
+        . as $want
+        | any(.segments[];
+            . as $segment
+            | ($segment.segment_id == $want.segment_id)
+            and (((($segment.insights.visual_profile.subject // "") | ascii_downcase) | contains(($want.subject_contains | ascii_downcase))))
+            and (any(($want.action_contains_any // [])[];
+              . as $term
+              | (((($segment.insights.visual_profile.action // "") | ascii_downcase) | contains(($term | ascii_downcase))))
+            ))
+            and (any(($want.context_contains_any // [])[];
+              . as $term
+              | (((($segment.insights.visual_profile.context // "") | ascii_downcase) | contains(($term | ascii_downcase))))
+            ))
+            and (all(($want.required_terms // [])[];
+              . as $term
+              | any(($segment.insights.visual_profile.terms // [])[];
+                  . as $visual
+                  | (((($visual // "") | ascii_downcase) | contains(($term | ascii_downcase))))
+                )
+            ))
+          )
+      )
+    ' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s visual Planner profile is missing scene-specific subject/action/context/terms\n' "$RED" "$RESET"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    expected_positions=$(jq -c '.expect.expected_positions // []' "$scenario_file")
+    if [[ "$expected_positions" != "[]" ]] && ! jq -e --argjson expected "$expected_positions" '[.segments[].position] == $expected' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s expected segment positions exactly %s\n' "$RED" "$RESET" "$expected_positions"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
     exact_entities=$(jq -r '.expect.exact_entities_per_segment // 0' "$scenario_file")
+    exact_artlist_queries=$(jq -r '.expect.exact_artlist_queries_per_segment // 0' "$scenario_file")
+    max_artlist_queries=$(jq -r '.expect.max_artlist_queries_per_segment // 0' "$scenario_file")
     exact_image_queries=$(jq -r '.expect.exact_image_queries_per_segment // 0' "$scenario_file")
     if [[ "$exact_entities" -gt 0 ]] && ! jq -e --argjson exact "$exact_entities" 'all(.segments[]; (.insights.entities | length) == $exact)' <<<"$result" >/dev/null; then
         printf '%sFAIL%s every segment must contain exactly %s extracted entit(y/ies)\n' "$RED" "$RESET" "$exact_entities"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+    if [[ "$exact_artlist_queries" -gt 0 ]] && ! jq -e --argjson exact "$exact_artlist_queries" 'all(.segments[]; (.insights.artlist_queries | length) == $exact)' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s every segment must contain exactly %s Artlist quer(y/ies)\n' "$RED" "$RESET" "$exact_artlist_queries"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+    if [[ "$max_artlist_queries" -gt 0 ]] && ! jq -e --argjson max "$max_artlist_queries" 'all(.segments[]; (.insights.artlist_queries | length) <= $max)' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s every segment must contain at most %s Artlist quer(y/ies)\n' "$RED" "$RESET" "$max_artlist_queries"
         VIDRUSH_ASSERT_FAIL=1
     fi
     if [[ "$exact_image_queries" -gt 0 ]] && ! jq -e --argjson exact "$exact_image_queries" 'all(.segments[]; (.insights.image_queries | length) == $exact)' <<<"$result" >/dev/null; then
@@ -95,6 +177,68 @@ vidrush_assert_entities() {
             printf '%sFAIL%s entity assertions failed (max=%s, entities=%s)\n' "$RED" "$RESET" "$expect_entities" "$VIDRUSH_ENTITY_COUNT"
             VIDRUSH_ASSERT_FAIL=1
         fi
+    fi
+}
+
+vidrush_assert_artlist_isolation() {
+    local result="$1"
+
+    # Artlist queries are segment-owned. A duplicate query across segments
+    # makes cache/provider results ambiguous and is rejected before binding.
+    if ! jq -e '
+      def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ");
+      [ .segments[] as $segment
+        | ($segment.insights.artlist_queries // [])[]?
+        | select(type == "string" and length > 0)
+        | {segment: $segment.segment_id, query: (norm)}
+      ]
+      | group_by(.query)
+      | all(.[]; ([.[].segment] | unique | length) == 1)
+    ' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s Artlist query contamination detected across segments\n' "$RED" "$RESET"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    # Every Artlist candidate and winner must carry the owning segment
+    # envelope and, when queries are declared, use one of that segment's
+    # queries. This catches a foreign provider response even if the asset
+    # itself is otherwise durable.
+    if ! jq -e '
+      def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ");
+      def candidate_ok($segment):
+        (.segment_id // "") == ($segment.segment_id // "")
+        and (.position // -1) == ($segment.position // -1)
+        and (.text_hash // "") == ($segment.text_hash // "")
+        and (.asset_id // "") != ""
+        and (.provider // "") == "artlist"
+        and (.query // "") != ""
+        and (
+          (($segment.insights.artlist_queries // []) | length) == 0
+          or ((.query | norm) as $query |
+              (($segment.insights.artlist_queries // []) | map(norm) | index($query)) != null)
+        );
+      all(.segments[];
+        . as $segment |
+        all(($segment.assets.candidates // [])[] | select(.provider == "artlist"); candidate_ok($segment))
+        and all(([$segment.assets.primary_video] | map(select(. != null)))[] | select(.provider == "artlist"); candidate_ok($segment))
+      )
+    ' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s Artlist candidate/winner provenance or query ownership failed\n' "$RED" "$RESET"
+        VIDRUSH_ASSERT_FAIL=1
+    fi
+
+    # The same Artlist asset may not be bound to more than one segment.
+    if ! jq -e '
+      [ .segments[] as $segment
+        | ([($segment.assets.candidates // [])[], $segment.assets.primary_video?][])
+        | select(.provider == "artlist" and (.asset_id // "") != "")
+        | {asset_id: (.asset_id | ascii_downcase), segment: $segment.segment_id}
+      ]
+      | group_by(.asset_id)
+      | all(.[]; ([.[].segment] | unique | length) == 1)
+    ' <<<"$result" >/dev/null; then
+        printf '%sFAIL%s Artlist asset winner/candidate is reused across segments\n' "$RED" "$RESET"
+        VIDRUSH_ASSERT_FAIL=1
     fi
 }
 
@@ -242,6 +386,7 @@ vidrush_assert_result() {
     VIDRUSH_ASSERT_FAIL=0
     vidrush_assert_segments "$result" "$scenario_file"
     vidrush_assert_entities "$result" "$scenario_file"
+    vidrush_assert_artlist_isolation "$result"
     vidrush_assert_provider_disabled "$scenario_file" "$metrics_url" "$artlist_before" "$images_before" "$youtube_before" "$generation_before"
     vidrush_assert_live_media "$result" "$scenario_file"
     vidrush_derive_artifact_evidence "$result"

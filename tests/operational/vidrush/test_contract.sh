@@ -189,6 +189,82 @@ else
     failures=$((failures + 1))
 fi
 
+cat >"$TEST_ROOT/visual-profile-manifest.json" <<'EOF'
+{
+  "scenario_id": "visual-profile-contract",
+  "expect": {
+    "require_visual_profiles": true,
+    "visual_profile_expectations": [
+      {
+        "segment_id": "visual-segment-1",
+        "subject_contains": "greek salad",
+        "action_contains_any": ["prepar", "serv"],
+        "context_contains_any": ["fresh", "mediterranean"],
+        "required_terms": ["tomato", "olive", "feta"]
+      }
+    ]
+  }
+}
+EOF
+cat >"$TEST_ROOT/visual-profile-result.json" <<'EOF'
+{
+  "segments": [
+    {
+      "position": 0,
+      "segment_id": "visual-segment-1",
+      "text": "Greek salad is prepared with tomatoes, olives and feta.",
+      "text_hash": "visual-hash-1",
+      "insights": {
+        "visual_profile": {
+          "subject": "Greek salad",
+          "action": "preparing and serving",
+          "context": "fresh Mediterranean ingredients",
+          "terms": ["tomatoes", "olives", "feta cheese"]
+        },
+        "entities": [],
+        "important_phrases": [],
+        "important_words": []
+      },
+      "assets": {
+        "primary_video": null,
+        "secondary_images": [],
+        "generated_images": [],
+        "candidates": []
+      },
+      "cache": {"extraction": "MISS"}
+    }
+  ]
+}
+EOF
+if (
+    RED= GREEN= YELLOW= CYAN= DIM= RESET=""
+    export RED GREEN YELLOW CYAN DIM RESET
+    # shellcheck disable=SC1091
+    source "$ASSERTIONS_LIB"
+    vidrush_assert_segments "$(cat "$TEST_ROOT/visual-profile-result.json")" \
+        "$TEST_ROOT/visual-profile-manifest.json"
+    [[ "$VIDRUSH_ASSERT_FAIL" == "0" ]]
+); then
+    printf '  PASS visual Planner profile accepts scene-specific fields\n'
+else
+    printf '  FAIL visual Planner profile accepts scene-specific fields\n' >&2
+    failures=$((failures + 1))
+fi
+visual_profile_invalid=$(jq '.segments[0].insights.visual_profile.subject = "generic food cuisine"' "$TEST_ROOT/visual-profile-result.json")
+if (
+    RED= GREEN= YELLOW= CYAN= DIM= RESET=""
+    export RED GREEN YELLOW CYAN DIM RESET
+    # shellcheck disable=SC1091
+    source "$ASSERTIONS_LIB"
+    vidrush_assert_segments "$visual_profile_invalid" "$TEST_ROOT/visual-profile-manifest.json"
+    [[ "$VIDRUSH_ASSERT_FAIL" == "1" ]]
+); then
+    printf '  PASS visual Planner profile rejects cross-scene/generic fields\n'
+else
+    printf '  FAIL visual Planner profile rejects cross-scene/generic fields\n' >&2
+    failures=$((failures + 1))
+fi
+
 printf '\n=== VidRush contract: runner exit codes and reports ===\n'
 manifest_count=0
 while IFS= read -r manifest; do
@@ -201,7 +277,38 @@ while IFS= read -r manifest; do
         '.status == "DRY_RUN"' \
         "$report"
 done < <(find "$DIR/scenarios" -maxdepth 1 -type f -name '*.json' -print | sort)
-assert_eq "all scenario manifests covered" "16" "$manifest_count"
+assert_eq "all scenario manifests covered" "17" "$manifest_count"
+
+mediterranean_manifest="$DIR/scenarios/15_mediterranean_images_exact.json"
+assert_json "Mediterranean five-segment payload identity" \
+    '.payload.items[0].script_params.segments as $segments
+     | ($segments | length) == 5
+     and ($segments | map(.id) == [
+       "mediterranean-01-greek-salad",
+       "mediterranean-02-hummus",
+       "mediterranean-03-sardines",
+       "mediterranean-04-shakshuka",
+       "mediterranean-05-paella"
+     ])
+     and ($segments | map(.position) == [0, 1, 2, 3, 4])
+     and (($segments | map(.id) | unique | length) == 5)
+     and (($segments | map(.position) | unique | length) == 5)
+     and (($segments | map(.source_text) | unique | length) == 5)
+     and all($segments[]; (.source_text | length) > 0)' \
+    "$(cat "$mediterranean_manifest")"
+
+final_e2e_manifest="$DIR/scenarios/16_mediterranean_final_e2e.json"
+assert_json "Mediterranean final E2E provider policy" \
+    '.payload.items[0].title == "Top 5 Mediterranean Foods You Should Try"
+     and (.payload.items[0].media_plan.provider_policy.artlist == "enabled")
+     and (.payload.items[0].media_plan.provider_policy.internet_images == "enabled")
+     and (.payload.items[0].media_plan.provider_policy.youtube == "disabled")
+     and (.payload.items[0].media_plan.provider_policy.image_generation == "disabled")
+     and (.expect.rendering == "disabled")
+     and ([.payload.items[0].script_params.segments[]] | length) == 5
+     and ([.payload.items[0].media_plan.searches[] | select(.providers == ["artlist"] and .slot == "primary_video")] | length) == 15
+     and ([.payload.items[0].media_plan.searches[] | select(.providers == ["internet_images"] and .slot == "secondary_image")] | length) == 15' \
+    "$(cat "$final_e2e_manifest")"
 
 capture_rc output rc bash "$RUNNER" "$TEST_ROOT/missing-scenario.json"
 assert_eq "missing scenario is setup error" "2" "$rc"

@@ -182,27 +182,16 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// the concrete *outbox.Dispatcher. The PR 3 fail-closed contract
 	// is preserved: the core handlers registered above abort boot on a
 	// nil mandatory dep before this block ever runs.
-	multiClipsUp := outbox.NewMultiClipsUpserter(
-		map[string]outbox.ClipsUpserter{
-			"youtube": repos.ClipsRepo,
-			"stock":   repos.ClipsRepo,
-			"artlist": repos.ClipsRepo,
-		},
-		repos.ClipsRepo,
-		log,
-	)
-	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
 	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
 	canonicalCommitter := newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log)
-	// UpsertClipTx and SetIndexStateTx are compatibility ports on the
-	// read-oriented ClipsRepository. Bind both to the same canonical writer
-	// instance used by the dispatcher so the repository cannot fall back to
-	// media_assets SQL of its own.
+	// The production dispatcher receives the single canonical writer directly.
+	// Legacy ClipsUpserter/ClipsStateWriter arguments remain accepted by
+	// NewDispatcher only for compatibility with older tests and adapters.
 	if repos.ClipsRepo != nil {
 		repos.ClipsRepo.SetCanonicalWriter(canonicalCommitter)
 	}
-	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log,
-		canonicalCommitter, canonicalCommitter)
+	dispatcher := outbox.NewDispatcher(nil, nil, outboxEventsRepo, outboxTxMgr, log,
+		canonicalCommitter)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
 	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps

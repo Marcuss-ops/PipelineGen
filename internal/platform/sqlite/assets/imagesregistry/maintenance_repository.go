@@ -122,16 +122,10 @@ func (r *MaintenanceRepositorySQLite) ScanDriveOrphans(ctx context.Context, batc
 
 // MarkLocalOrphan stamps metadata_json with orphan_locale=1.
 func (r *MaintenanceRepositorySQLite) MarkLocalOrphan(ctx context.Context, id string, detectedAt time.Time) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.orphan_locale', 1), '$.orphan_reason', 'local_missing'), '$.orphan_detected_at', ?) WHERE id = ?`,
-		detectedAt.Format(time.RFC3339), id)
-	return err
+	return UpdateMediaAssetOrphanMetadata(ctx, r.db, id, detectedAt, "local")
 }
 
 // MarkDriveOrphan stamps metadata_json with orphan_drive=1.
 func (r *MaintenanceRepositorySQLite) MarkDriveOrphan(ctx context.Context, id string, detectedAt time.Time) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.orphan_drive', 1), '$.orphan_reason', 'drive_trashed'), '$.orphan_detected_at', ?) WHERE id = ?`,
-		detectedAt.Format(time.RFC3339), id)
-	return err
+	return UpdateMediaAssetOrphanMetadata(ctx, r.db, id, detectedAt, "drive")
 }

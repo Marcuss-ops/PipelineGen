@@ -1,0 +1,227 @@
+{
+  "scenario_id": "16_mediterranean_final_e2e",
+  "description": "Final VidRush E2E for Top 5 Mediterranean Foods You Should Try: five isolated segments, Artlist-only video, internet_images-only images, exact image cardinality, and no rendering stage.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "min_segments": 5,
+    "exact_segments": 5,
+    "expected_unique_segment_ids": 5,
+    "expected_unique_text_hashes": 5,
+    "expected_unique_texts": 5,
+    "expected_positions": [0, 1, 2, 3, 4],
+    "require_visual_profiles": true,
+    "visual_profile_expectations": [
+      {
+        "segment_id": "mediterranean-01-greek-salad",
+        "subject_contains": "greek salad",
+        "action_contains_any": ["prepar", "serv"],
+        "context_contains_any": ["fresh", "mediterranean"],
+        "required_terms": ["tomato", "cucumber", "olive", "feta"]
+      },
+      {
+        "segment_id": "mediterranean-02-hummus",
+        "subject_contains": "hummus",
+        "action_contains_any": ["prepar", "blend", "serv"],
+        "context_contains_any": ["chickpea", "tahini", "dip"],
+        "required_terms": ["chickpea", "tahini", "lemon", "olive oil"]
+      },
+      {
+        "segment_id": "mediterranean-03-sardines",
+        "subject_contains": "sardine",
+        "action_contains_any": ["grill", "cook", "serv"],
+        "context_contains_any": ["coastal", "fish", "mediterranean"],
+        "required_terms": ["sardine", "lemon", "herb", "grill"]
+      },
+      {
+        "segment_id": "mediterranean-04-shakshuka",
+        "subject_contains": "shakshuka",
+        "action_contains_any": ["cook", "prepar", "serv"],
+        "context_contains_any": ["egg", "tomato", "pepper", "skillet"],
+        "required_terms": ["egg", "tomato", "pepper", "skillet"]
+      },
+      {
+        "segment_id": "mediterranean-05-paella",
+        "subject_contains": "paella",
+        "action_contains_any": ["cook", "prepar", "serv"],
+        "context_contains_any": ["spanish", "seafood", "rice", "pan"],
+        "required_terms": ["shrimp", "mussel", "saffron", "pan"]
+      }
+    ],
+    "max_entities_per_segment": 3,
+    "exact_entities_per_segment": 3,
+    "expected_total_entities": 15,
+    "max_artlist_queries_per_segment": 3,
+    "exact_artlist_queries_per_segment": 3,
+    "max_image_queries_per_segment": 3,
+    "exact_image_queries_per_segment": 3,
+    "exact_secondary_images_per_segment": 3,
+    "expected_total_secondary_images": 15,
+    "allowed_image_provider": "internet_images",
+    "provider_requests_artlist": -1,
+    "provider_requests_internet_images": -1,
+    "provider_requests_youtube": 0,
+    "provider_requests_image_generation": 0,
+    "require_primary_per_segment": true,
+    "require_persisted_images": true,
+    "rendering": "disabled",
+    "cache_extraction": "MISS"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-16-mediterranean-final-e2e",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-16-mediterranean-final-item",
+        "title": "Top 5 Mediterranean Foods You Should Try",
+        "language": "en",
+        "tone": "descriptive",
+        "model": "gemma4:e2b",
+        "source": {
+          "type": "text",
+          "topic": "Top 5 Mediterranean Foods You Should Try",
+          "source_text": "Greek salad is one of the most recognizable dishes of Mediterranean cuisine. Fresh tomatoes and cucumbers are combined with olives, feta cheese and olive oil, creating a simple dish built around fresh ingredients.\n\nHummus is a creamy Mediterranean and Middle Eastern dip traditionally made with chickpeas, tahini, lemon juice and olive oil. It is commonly served with vegetables or warm flatbread.\n\nGrilled sardines are a classic coastal Mediterranean food. The fish is often cooked over a hot grill and served simply with lemon, olive oil and fresh herbs.\n\nShakshuka consists of eggs cooked directly in a rich tomato and pepper sauce. It is usually prepared in a skillet with spices and served hot with bread.\n\nSeafood paella is one of Spain's most recognizable Mediterranean dishes. Rice is cooked in a wide pan and combined with ingredients such as shrimp, mussels, vegetables and saffron."
+        },
+        "script_params": {
+          "target_words": 250,
+          "min_words": 100,
+          "segment_words": 50,
+          "images_per_scene": 3,
+          "skip_quality_gate": true,
+          "use_memory": false,
+          "segments": [
+            {
+              "id": "mediterranean-01-greek-salad",
+              "position": 0,
+              "topic": "Greek salad",
+              "target_words": 50,
+              "source_text": "Greek salad is one of the most recognizable dishes of Mediterranean cuisine. Fresh tomatoes and cucumbers are combined with olives, feta cheese and olive oil, creating a simple dish built around fresh ingredients."
+            },
+            {
+              "id": "mediterranean-02-hummus",
+              "position": 1,
+              "topic": "Hummus",
+              "target_words": 50,
+              "source_text": "Hummus is a creamy Mediterranean and Middle Eastern dip traditionally made with chickpeas, tahini, lemon juice and olive oil. It is commonly served with vegetables or warm flatbread."
+            },
+            {
+              "id": "mediterranean-03-sardines",
+              "position": 2,
+              "topic": "Grilled sardines",
+              "target_words": 50,
+              "source_text": "Grilled sardines are a classic coastal Mediterranean food. The fish is often cooked over a hot grill and served simply with lemon, olive oil and fresh herbs."
+            },
+            {
+              "id": "mediterranean-04-shakshuka",
+              "position": 3,
+              "topic": "Shakshuka",
+              "target_words": 50,
+              "source_text": "Shakshuka consists of eggs cooked directly in a rich tomato and pepper sauce. It is usually prepared in a skillet with spices and served hot with bread."
+            },
+            {
+              "id": "mediterranean-05-paella",
+              "position": 4,
+              "topic": "Seafood paella",
+              "target_words": 50,
+              "source_text": "Seafood paella is one of Spain's most recognizable Mediterranean dishes. Rice is cooked in a wide pan and combined with ingredients such as shrimp, mussels, vegetables and saffron."
+            }
+          ]
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "force_refresh_assets": true,
+          "provider_policy": {
+            "artlist": "enabled",
+            "youtube": "disabled",
+            "internet_images": "enabled",
+            "image_generation": "disabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 3,
+            "max_important_phrases_per_segment": 1,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 3,
+            "max_image_queries_per_segment": 3,
+            "entity_images": {
+              "enabled": false,
+              "max_per_entity": 1
+            }
+          },
+          "planner": {
+            "candidate_limit": 3
+          },
+          "searches": [
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "primary_video", "query": "greek salad preparation", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "primary_video", "query": "greek salad feta tomatoes olives", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "primary_video", "query": "fresh greek salad restaurant", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "secondary_image", "query": "feta cheese mediterranean", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "secondary_image", "query": "fresh tomatoes greek salad", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-01-greek-salad", "slot": "secondary_image", "query": "kalamata olives", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "primary_video", "query": "hummus preparation", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "primary_video", "query": "hummus chickpeas tahini", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "primary_video", "query": "hummus bowl olive oil", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "secondary_image", "query": "chickpeas", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "secondary_image", "query": "tahini", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-02-hummus", "slot": "secondary_image", "query": "hummus olive oil", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "primary_video", "query": "grilled sardines lemon", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "primary_video", "query": "fish grilling mediterranean", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "primary_video", "query": "sardines cooking grill", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "secondary_image", "query": "sardines", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "secondary_image", "query": "lemon sardines", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-03-sardines", "slot": "secondary_image", "query": "fresh herbs fish", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "primary_video", "query": "shakshuka eggs tomato skillet", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "primary_video", "query": "eggs cooking tomato sauce", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "primary_video", "query": "shakshuka preparation", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "secondary_image", "query": "shakshuka eggs tomato", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "secondary_image", "query": "tomato pepper skillet", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-04-shakshuka", "slot": "secondary_image", "query": "eggs cooking sauce", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "primary_video", "query": "seafood paella shrimp mussels", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "primary_video", "query": "paella cooking large pan", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "primary_video", "query": "spanish seafood rice", "providers": ["artlist"], "media_types": ["video"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "secondary_image", "query": "paella shrimp", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "secondary_image", "query": "paella mussels", "providers": ["internet_images"], "media_types": ["image"], "limit": 3},
+            {"segment_id": "mediterranean-05-paella", "slot": "secondary_image", "query": "saffron rice paella", "providers": ["internet_images"], "media_types": ["image"], "limit": 3}
+          ],
+          "materialization": {
+            "mode": "selected",
+            "upload_to_drive": true,
+            "wait_for_ready": true
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null and (.job_id | length) > 0",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "exact_segments": 5,
+      "five_distinct_ids": "5 segment_id unici",
+      "five_distinct_hashes": "5 text_hash unici",
+      "positions_exact": "[0,1,2,3,4]",
+      "texts_distinct": "source text distinto per ogni piatto",
+      "exact_entities": "3 entità per segmento, 15 totali",
+      "exact_images": "3 immagini internet_images per segmento, 15 totali",
+      "artlist_video_only": "winner video pertinenti cercati e selezionati esclusivamente da Artlist",
+      "images_only_internet_images": "immagini selezionate esclusivamente da internet_images",
+      "no_rendering": "nessun rendering eseguito in questo scenario",
+      "segment_isolation": "nessuna query, candidato, winner o asset attraversa i confini dei cinque segmenti"
+    }
+  }
+}

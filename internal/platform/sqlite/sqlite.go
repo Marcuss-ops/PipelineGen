@@ -16,20 +16,25 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // SQLite3 driver (CGO)
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/storage"
 )
 
 func GetAllDBs() []string {
-	return []string{"media/media.db.sqlite"}
+	return []string{filepath.Join(storage.MediaDBDirectory, storage.MediaDBFilename)}
 }
 
 // GetDBPath resolves only the canonical primary database relative path.
 // Returning an empty path makes unsupported or legacy health probes fail
-// closed instead of opening another SQLite file.
+// closed instead of opening another SQLite file. The canonical relative
+// path is owned by storage.StorageTopology; this function only validates
+// the caller-supplied path against it.
 func GetDBPath(dataDir, dbRelPath string) string {
-	if filepath.Clean(dbRelPath) != filepath.Join("media", DBMedia) {
+	canonical := filepath.Join(storage.MediaDBDirectory, storage.MediaDBFilename)
+	if filepath.Clean(dbRelPath) != canonical {
 		return ""
 	}
-	return filepath.Join(dataDir, "media", DBMedia)
+	return filepath.Join(dataDir, canonical)
 }
 
 func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
@@ -55,7 +60,9 @@ func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
 }
 
 // DBMedia is the canonical database filename for the unified media database.
-const DBMedia = "media.db.sqlite"
+// Deprecated: prefer storage.MediaDBFilename from the SSOT topology package;
+// this alias is retained for in-package callers that have not yet migrated.
+const DBMedia = storage.MediaDBFilename
 
 // SQLiteDB wraps a *sql.DB handle with the database file path and logger.
 // It is the single connection point for the unified media database.

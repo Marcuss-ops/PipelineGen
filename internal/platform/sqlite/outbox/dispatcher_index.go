@@ -38,6 +38,33 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if !clip.IsFolder() && contentHash == "" {
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
+	// Production uses the canonical tx-bound writer so the dispatcher keeps
+	// ownership of the transaction that also receives the outbox event. The
+	// fallback below is retained for legacy test doubles that implement only
+	// AssetCommitter.
+	if d.canonicalWriter != nil {
+		if d.txmgr == nil {
+			return errors.New("outbox.Dispatcher: txmgr not configured for canonical clip commit")
+		}
+		if d.outboxEventsRepo == nil {
+			return errors.New("outbox.Dispatcher: outbox events repo not configured for canonical clip commit")
+		}
+		if contentHash != "" {
+			clip.SetMetadataString("legacy_file_md5", contentHash)
+		}
+		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+			if err := d.canonicalWriter.UpsertClipTx(ctx, tx, clip); err != nil {
+				return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical UpsertClipTx: %w", err)
+			}
+			if clip.IsFolder() {
+				return nil
+			}
+			if err := d.EnqueueIndexEvent(ctx, tx, clip.ID, string(clip.Source), contentHash); err != nil {
+				return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical index event: %w", err)
+			}
+			return nil
+		})
+	}
 	name := clip.Name
 	if name == "" {
 		name = clip.ID

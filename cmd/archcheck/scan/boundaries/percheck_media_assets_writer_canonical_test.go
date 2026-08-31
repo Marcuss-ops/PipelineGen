@@ -73,16 +73,24 @@ func TestScanMediaAssetsWriterCanonical_CanonicalOwnerExempt(t *testing.T) {
 	if err := os.MkdirAll(ownerDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ownerFile := filepath.Join(ownerDir, "asset_committer.go")
 	content := `package imagesregistry
 
 func write() {
-	// INSERT INTO media_assets — this is the canonical owner
+	// INSERT INTO media_assets — this is a canonical owner
 	_ = "INSERT INTO media_assets (id) VALUES (?)"
 }
 `
-	if err := os.WriteFile(ownerFile, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
+	for _, filename := range []string{
+		"asset_committer.go",
+		"asset_committer_mutations.go",
+		"asset_committer_projection_mutations.go",
+		"canonical_clip_mutations.go",
+		"media_committer.go",
+	} {
+		ownerFile := filepath.Join(ownerDir, filename)
+		if err := os.WriteFile(ownerFile, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	r := &report.Report{}
@@ -93,6 +101,35 @@ func write() {
 			t.Errorf("canonical owner file should be exempt, got violation: %+v", v)
 		}
 	}
+}
+
+// TestScanMediaAssetsWriterCanonical_PreviouslyExemptFileIsRejected verifies
+// that narrowing the allowlist does not preserve the old repository exemptions.
+func TestScanMediaAssetsWriterCanonical_PreviouslyExemptFileIsRejected(t *testing.T) {
+	tmp := t.TempDir()
+	ownerDir := filepath.Join(tmp, "internal", "platform", "sqlite", "assets", "imagesregistry")
+	if err := os.MkdirAll(ownerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyFile := filepath.Join(ownerDir, "asset_store.go")
+	content := `package imagesregistry
+
+func writeLegacy() {
+	_ = "UPDATE media_assets SET name = ? WHERE id = ?"
+}
+`
+	if err := os.WriteFile(legacyFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &report.Report{}
+	ScanMediaAssetsWriterCanonical(tmp, &policy.Policy{}, r)
+	for _, v := range r.Violations {
+		if v.Rule == mediaAssetsWriterRule {
+			return
+		}
+	}
+	t.Fatal("previously exempt asset_store.go must be rejected by the narrowed canonical allowlist")
 }
 
 // TestScanMediaAssetsWriterCanonical_TestFileExempt verifies that a
