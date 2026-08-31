@@ -1,28 +1,16 @@
-// Package assets — canonical AssetStoreSQLite struct + minimal
-// canonical Get / Save / Delete / List methods.
+// Package assets — canonical AssetStoreSQLite struct + read surface.
 //
-// Wave A / Blocco 1 / PR 1 Asset SSOT (June 2026): created here.
-//
-// HYBRID EMBED strategy (validated by prior thinker, June 2026):
-//
-// On top of the embed, LOCAL canonical methods (Get / Save / Delete /
-// List) shadow the same-named receivers on the embedded legacy struct
-// so callers using `r.AssetStoreSQLite.Save(...)` etc. always hit the
-// new canonical impl. Public composition paths (line 39-40 of
-// build_bundles_core.go) route through sqassets.NewAssetStoreSQLite +
-// sqassets.NewService so the asset.NewAssetStoreSQLite back-compat
-// shim is NOT retained (per user guidance: back-compat would cause
-// domain→infra circular import).
+// The store is a repository/read adapter. Durable writes are delegated to the
+// canonical asset writer wired by composition; there is deliberately no SQL
+// fallback in this file.
 package imagesregistry
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -32,9 +20,10 @@ import (
 // ── AssetStoreSQLite (canonical Wave A receiver) ────────────────────
 
 type AssetStoreSQLite struct {
-	db            *sql.DB
-	log           *zap.Logger
-	canonicalSave func(context.Context, *asset.Details) error
+	db              *sql.DB
+	log             *zap.Logger
+	canonicalSave   func(context.Context, *asset.Details) error
+	canonicalDelete func(context.Context, string) error
 
 	// batchCache is the LRU-style cache for BatchGetByIDs (search
 	// hydration). Lazily initialised on first BatchGetByIDs call.
@@ -47,12 +36,16 @@ func (s *AssetStoreSQLite) SetCanonicalSave(fn func(context.Context, *asset.Deta
 	}
 }
 
+// SetCanonicalDelete wires the canonical lifecycle mutation. Delete remains
+// on the legacy Store interface during cutover, but it no longer owns SQL.
+func (s *AssetStoreSQLite) SetCanonicalDelete(fn func(context.Context, string) error) {
+	if s != nil {
+		s.canonicalDelete = fn
+	}
+}
+
 // NewAssetStoreSQLite creates a new Wave A AssetStoreSQLite with
-// the given database connection and logger (nil-safe). The legacy
-// domain struct (with its 71 receivers) is constructed and embedded
-// so callers can reach UpsertFolder / GetFolder / SearchClips /
-// Locate / Process / Version / SegmentEmbedding
-// receivers via promotion without per-receiver migration.
+// the given database connection and logger (nil-safe).
 func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 	if log == nil {
 		log = zap.NewNop()
@@ -60,12 +53,7 @@ func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 	return &AssetStoreSQLite{db: db, log: log}
 }
 
-// ── canonical Get / Save / Delete / List (overlay) ──────────────────
-//
-// Each method shadows the same-named receiver on the embedded
-// legacy struct so callers using r.AssetStoreSQLite.Save(...) etc.
-// hit the canonical local impl. The legacy receivers are still
-// reachable if explicitly invoked via the embedded field.
+// ── canonical Get / delegated mutations / List ─────────────────────
 
 // Get retrieves a non-tombstoned asset by id, populated via the
 // canonical MediaAssetColumns projection in store_helpers.go and the
@@ -89,132 +77,35 @@ func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*asset.Details, 
 	return &asset.Details{Asset: a}, nil
 }
 
-// Save upserts an asset (canonical INSERT ... ON CONFLICT DO UPDATE
-// pattern). The SQL column projection matches UpsertClipTx in
-// clips_repository.go (QDRANT-002 outbox-driver path) for
-// consistency.
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Production callers
-// that need vector indexing MUST use outbox.Dispatcher
-// .EnqueueAndIndex (single tx UPSERT + outbox_events INSERT).
-//
-// Exempt callers (diagnostic-only, no indexing needed) match the
-// legacy Save: clip_ops.go::verifyClip, deep_cleanup.go.
-// MarkUsed is analytical-only and routed through its own method.
+// Save is retained only as a compatibility surface while callers migrate to
+// persistence.AssetCommitter. It MUST delegate to the composition-wired
+// canonical writer; absence of that writer is a boot/wiring defect and fails
+// closed instead of opening a second SQL path.
 func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) error {
 	if details == nil || details.Asset == nil {
 		return fmt.Errorf("assets.Save: nil details or asset")
 	}
-	a := details.Asset
-	if a.ID == "" {
-		return fmt.Errorf("assets.Save: asset ID is required")
+	if s == nil || s.canonicalSave == nil {
+		return fmt.Errorf("assets.Save: canonical AssetCommitter is required; repository SQL fallback has been removed")
 	}
-	if s.canonicalSave != nil {
-		return s.canonicalSave(ctx, details)
-	}
-
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	a.SyncTagFieldsToMetadata()
-	tagsJSON, _ := json.Marshal(a.Tags)
-	searchTermsJSON, _ := json.Marshal(a.SearchTerms)
-	metadataJSON, _ := json.Marshal(a.Metadata)
-	deletedAtStr := ""
-	if a.DeletedAt != nil {
-		deletedAtStr = timeutil.FormatRFC3339(*a.DeletedAt)
-	}
-	createdAtStr := nowStr
-	if !a.CreatedAt.IsZero() {
-		createdAtStr = timeutil.FormatRFC3339(a.CreatedAt)
-	}
-
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO media_assets (
-			id, source, name, filename, media_type, category, group_name,
-			url, clip_page_url, thumbnail_url, duration_ms, tags, search_terms,
-			search_text, lifecycle_state, deleted_at, metadata_json,
-			created_at, updated_at, folder_id, parent_folder_id, folder_path,
-			scene_type, phash, last_used_at, quality_score, reuse_count,
-			embedding_json, visual_embedding, transcript_embedding,
-			drive_link, download_link, local_path, drive_file_id, legacy_file_md5
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source = excluded.source,
-			name = excluded.name,
-			filename = excluded.filename,
-			media_type = excluded.media_type,
-			category = excluded.category,
-			group_name = excluded.group_name,
-			url = excluded.url,
-			clip_page_url = excluded.clip_page_url,
-			thumbnail_url = excluded.thumbnail_url,
-			duration_ms = excluded.duration_ms,
-			tags = excluded.tags,
-			search_terms = excluded.search_terms,
-			search_text = excluded.search_text,
-			lifecycle_state = excluded.lifecycle_state,
-			deleted_at = excluded.deleted_at,
-			metadata_json = excluded.metadata_json,
-			updated_at = excluded.updated_at,
-			folder_id = excluded.folder_id,
-			parent_folder_id = excluded.parent_folder_id,
-			folder_path = excluded.folder_path,
-			scene_type = excluded.scene_type,
-			phash = excluded.phash,
-			last_used_at = excluded.last_used_at,
-			quality_score = excluded.quality_score,
-			reuse_count = excluded.reuse_count,
-			embedding_json = excluded.embedding_json,
-			visual_embedding = excluded.visual_embedding,
-			transcript_embedding = excluded.transcript_embedding,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			local_path = excluded.local_path,
-			drive_file_id = excluded.drive_file_id,
-			legacy_file_md5 = excluded.legacy_file_md5
-	`,
-		a.ID, string(a.Source), a.Name, a.Filename, string(a.MediaType), a.Category, a.Group,
-		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.Duration.Milliseconds(),
-		string(tagsJSON), string(searchTermsJSON),
-		a.SearchText, string(a.LifecycleState), deletedAtStr, string(metadataJSON),
-		createdAtStr, nowStr,
-		a.FolderID(), a.ParentFolderID(), a.FolderPath(),
-		a.SceneType(), a.PHash(), a.LastUsedAt(), a.QualityScore(), a.ReuseCount(),
-		a.EmbeddingJSON(), a.VisualEmbedding(), a.TranscriptEmbedding(),
-		a.DriveLink(), a.DownloadLink(), a.LocalPath(), a.DriveFileID(), a.LegacyFileMD5(),
-	)
-	if err != nil {
-		return fmt.Errorf("assets.Save: %w", err)
-	}
-
-	// Persist nested locations when provided.
-	if details.Locations != nil {
-		for _, loc := range details.Locations {
-			if loc == nil {
-				continue
-			}
-			loc.AssetID = a.ID
-			if err := s.UpsertLocation(ctx, loc); err != nil {
-				return fmt.Errorf("assets.Save location: %w", err)
-			}
-		}
-	}
-
-	return nil
+	return s.canonicalSave(ctx, details)
 }
 
-// Delete soft-deletes the asset by flipping lifecycle_state to the
-// canonical UPPERCASE 'DELETED' and stamping deleted_at + updated_at.
+// Delete is retained only for the legacy Store contract. The mutation itself
+// belongs to the canonical asset writer and is never performed by this
+// repository.
 func (s *AssetStoreSQLite) Delete(ctx context.Context, id string) error {
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE media_assets SET lifecycle_state = 'DELETED', deleted_at = ?, updated_at = ? WHERE id = ?",
-		nowStr, nowStr, id)
-	return err
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("assets.Delete: asset id is required")
+	}
+	if s == nil || s.canonicalDelete == nil {
+		return fmt.Errorf("assets.Delete: canonical asset mutator is required; repository SQL fallback has been removed")
+	}
+	return s.canonicalDelete(ctx, id)
 }
 
 // List returns canonical asset summaries matching the supplied
-// filter. Implements the same projection as the legacy struct's
-// List, ported verbatim into the canonical path.
+// filter. Implements the same projection as the legacy struct's List.
 func (s *AssetStoreSQLite) List(ctx context.Context, filter asset.Filter) ([]*asset.Summary, error) {
 	args := []any{}
 	conds := []string{SoftDeleteFilter()}
@@ -315,16 +206,9 @@ func (s *AssetStoreSQLite) List(ctx context.Context, filter asset.Filter) ([]*as
 	return out, rows.Err()
 }
 
-// ── Wave B NewService wrapper ──────────────────────────────────────
-
-// NewService is the Wave B canonical surface for constructing the
-// high-level asset Service. The Service type itself stays in the
-// domain package (it's a pure orchestration wrapper around Store),
-// but construction routes through sqassets per the Wave B
-// composition-root migration. This deliberate indirection keeps the
-// import graph clean (domain → infra never inverts) and lets the
-// composition root use one consistent prefix for asset-store +
-// service construction.
+// NewService is the canonical surface for constructing the high-level asset
+// Service. The Service remains in the domain package; persistence writes are
+// injected separately through the canonical writer callbacks above.
 func NewService(store *AssetStoreSQLite, log *zap.Logger) *detail.Service {
 	if log == nil {
 		log = zap.NewNop()
