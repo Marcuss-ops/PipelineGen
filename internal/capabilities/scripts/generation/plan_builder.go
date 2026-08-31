@@ -85,6 +85,8 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	plan.SourceKind = string(item.Source.Type)
 	plan.PromptProfile = "default-v1"
 	plan.Model, plan.Concurrency = resolveModelPolicy(item, plan)
+	plan.Intro = scriptpkg.CloneFixedSection(item.Intro)
+	plan.Outro = scriptpkg.CloneFixedSection(item.Outro)
 	return plan
 }
 

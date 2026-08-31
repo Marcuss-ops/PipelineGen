@@ -196,6 +196,15 @@ type ResolvedGenerationPlan struct {
 	// VideoMetadata is caller-provided YouTube metadata.
 	// It is output metadata and must never be sent to the script LLM.
 	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
+
+	// Intro is a literal intro section prepended verbatim. Never sent to
+	// the LLM. The runner injects it as the first SpecScene (Kind=intro)
+	// with the supplied clip binding. Text is spoken verbatim.
+	Intro *FixedSection `json:"intro,omitempty"`
+
+	// Outro is a literal outro section appended verbatim. Same literal
+	// contract as Intro — injected as the last SpecScene (Kind=outro).
+	Outro *FixedSection `json:"outro,omitempty"`
 }
 
 // HasClips returns true when the plan carries clip evidence (the
@@ -274,5 +283,7 @@ func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan
 		p.Timing = &t
 	}
 	p.VideoMetadata = CloneVideoMetadata(p.VideoMetadata)
+	p.Intro = CloneFixedSection(p.Intro)
+	p.Outro = CloneFixedSection(p.Outro)
 	return &p
 }

@@ -10,7 +10,11 @@
 // No durable field uses any, any, or map[string]any.
 package script
 
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+import (
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
 
 // GenerationEnvelopeV2 is the canonical top-level request for all
 // script generation. The worker unpacks the envelope, normalizes
@@ -121,6 +125,18 @@ type GenerationItemV2 struct {
 	// When present, these values are used directly and the metadata
 	// generator must not be called.
 	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
+
+	// Intro is an optional literal section prepended verbatim. It is NOT
+	// sent to the LLM, NOT rewritten from source_text, and NOT merged
+	// with clip transcripts. The caller supplies the exact narration
+	// (Text) and a single clip_id that must exist in the media catalog.
+	// The runner injects it as kind=intro before LLM-generated scenes.
+	Intro *FixedSection `json:"intro,omitempty"`
+
+	// Outro is an optional literal section appended verbatim. Same
+	// literal contract as Intro — no LLM rewrite, exact Text is spoken
+	// and the supplied clip is bound with kind=outro.
+	Outro *FixedSection `json:"outro,omitempty"`
 }
 
 // OverlayBackgroundSpec is the script.generate payload shape for an
@@ -172,4 +188,48 @@ type DocumentsSpec struct {
 	Enabled   bool     `json:"enabled"`
 	Languages []string `json:"languages,omitempty"`
 	FolderID  string   `json:"folder_id,omitempty"`
+}
+
+// FixedSection is a literal intro/outro section that bypasses the LLM.
+// The caller provides the exact spoken Text and the clip binding; the
+// pipeline injects it verbatim as the first (intro) or last (outro)
+// SpecScene with Kind=intro/outro. Text is never rewritten from
+// source_text or clip transcripts. Allowed only with source.type=clips
+// (or catalog/search/curate) where clip bindings exist.
+type FixedSection struct {
+	// Text is the exact narration spoken for this section. Must pass
+	// ValidateSpeakableText (no URLs, no source markers).
+	Text string `json:"text"`
+	// ClipIDs is the clip binding for this section. Exactly one clip is
+	// required; multiple clips are rejected to keep timeline ownership
+	// unambiguous. Use the media catalog ID (e.g. yt_xxx_..._v1).
+	ClipIDs []string `json:"clip_ids,omitempty"`
+	// Title is an optional human-readable title for the Docs scene.
+	Title string `json:"title,omitempty"`
+}
+
+// NormalizedClipIDs returns trimmed, non-empty clip IDs for this section.
+func (f *FixedSection) NormalizedClipIDs() []string {
+	if f == nil {
+		return nil
+	}
+	out := make([]string, 0, len(f.ClipIDs))
+	for _, id := range f.ClipIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// CloneFixedSection returns a deep copy of a FixedSection.
+func CloneFixedSection(in *FixedSection) *FixedSection {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	if in.ClipIDs != nil {
+		out.ClipIDs = append([]string(nil), in.ClipIDs...)
+	}
+	return &out
 }

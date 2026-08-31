@@ -41,9 +41,18 @@ var _ scriptgen.MediaPreflight = (*mediaPreflightAdapter)(nil)
 // operator sees the COMPLETE picture in one run instead of failing →
 // fixing → failing across N retries.
 func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateRequest) scriptgen.PreflightResult {
-	// Collect clip IDs.
-	clipIDs := make([]string, 0, len(req.Source.ClipIDs))
+	// Collect clip IDs (including literal intro/outro sections which bypass LLM).
+	clipIDs := make([]string, 0, len(req.Source.ClipIDs)+4)
 	clipIDs = append(clipIDs, req.Source.ClipIDs...)
+	for _, seg := range req.ScriptParams.Segments {
+		clipIDs = append(clipIDs, seg.ClipIDs...)
+	}
+	if req.Intro != nil {
+		clipIDs = append(clipIDs, req.Intro.NormalizedClipIDs()...)
+	}
+	if req.Outro != nil {
+		clipIDs = append(clipIDs, req.Outro.NormalizedClipIDs()...)
+	}
 
 	// Collect BGM + SFX IDs.
 	var bgmIDs, sfxIDs []string

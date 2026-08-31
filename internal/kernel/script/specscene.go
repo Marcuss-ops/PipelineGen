@@ -251,6 +251,78 @@ type EntityImageBinding struct {
 	License string `json:"license,omitempty"`
 }
 
+// InjectFixedSections injects literal intro/outro SpecScenes verbatim.
+// It is the SpecScene-level counterpart of the Runner's Scene injection:
+// intro/outro text is never sent to the LLM, never rewritten from
+// source_text, and the supplied clip_id is bound with Kind=intro/outro.
+// The function reindexes scenes sequentially and de-duplicates IDs.
+func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
+	if plan == nil || spec == nil {
+		return
+	}
+	if plan.Intro == nil && plan.Outro == nil {
+		return
+	}
+	out := make([]SpecScene, 0, len(spec.Scenes)+2)
+	if plan.Intro != nil {
+		ids := plan.Intro.NormalizedClipIDs()
+		if len(ids) == 1 {
+			cleanText := strings.TrimSpace(plan.Intro.Text)
+			title := plan.Intro.Title
+			out = append(out, SpecScene{
+				ID:    "scene-intro",
+				Index: 0,
+				Text:  cleanText,
+				Title: title,
+				Kind:  SceneIntro,
+				Bindings: SceneBindings{
+					Clips: []ClipBinding{{ClipID: ids[0]}},
+					Clip:  &ClipBinding{ClipID: ids[0]},
+				},
+			})
+		}
+	}
+	out = append(out, spec.Scenes...)
+	if plan.Outro != nil {
+		ids := plan.Outro.NormalizedClipIDs()
+		if len(ids) == 1 {
+			cleanText := strings.TrimSpace(plan.Outro.Text)
+			title := plan.Outro.Title
+			out = append(out, SpecScene{
+				ID:    "scene-outro",
+				Index: 0,
+				Text:  cleanText,
+				Title: title,
+				Kind:  SceneOutro,
+				Bindings: SceneBindings{
+					Clips: []ClipBinding{{ClipID: ids[0]}},
+					Clip:  &ClipBinding{ClipID: ids[0]},
+				},
+			})
+		}
+	}
+	seen := make(map[string]struct{}, len(out))
+	for i := range out {
+		if strings.TrimSpace(out[i].ID) == "" {
+			out[i].ID = fmt.Sprintf("scene-%d", i)
+		}
+		base := out[i].ID
+		for {
+			if _, exists := seen[base]; !exists {
+				break
+			}
+			base = fmt.Sprintf("%s-%d", out[i].ID, i)
+		}
+		seen[base] = struct{}{}
+		out[i].ID = base
+		out[i].Index = i
+	}
+	spec.Scenes = out
+	if spec.Version == 0 {
+		spec.Version = 1
+	}
+}
+
 // Validate checks structural invariants on a single scene.
 //
 // Rules:

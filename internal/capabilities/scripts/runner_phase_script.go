@@ -201,10 +201,20 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// per-request: clips with no SCENE N: markers in source text
 		// are streamable (no post-gen rebinding).
 		streamable := SceneStreamingEligibility(req)
+		// Literal intro/outro must not be streamed scene-by-scene: they are
+		// injected verbatim post-LLM and never rewritten from source_text.
+		// Force batch when a fixed section is present so SceneTextReady
+		// events are emitted only after injection.
+		if req.Intro != nil || req.Outro != nil {
+			streamable = false
+		}
 		// A declared segment budget requires whole-prose materialization before
 		// SceneCommitted; streaming a model's provisional single scene would
 		// permanently launch VidRush enrichment with the wrong topology.
 		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
+		if req.Intro != nil || req.Outro != nil {
+			segmentTopologyNeedsMaterialization = true
+		}
 		if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
 		}
@@ -258,6 +268,16 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		bindExplicitClipSceneText(req, scenes)
 		if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
+			return result, false
+		}
+		// Literal intro/outro: injected verbatim post-LLM, never rewritten.
+		// They are not part of the LLM prompt and bypass source_text.
+		var fixedErr error
+		scenes, fixedErr = applyFixedSections(req, scenes)
+		if fixedErr != nil {
+			cause := fmt.Errorf("fixed section injection failed: %w", fixedErr)
+			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
 		output := outputFromScenes(scenes, req.SourceLanguage)
@@ -475,6 +495,83 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 		})
 	}
 	return out
+}
+
+// applyFixedSections injects literal intro/outro sections verbatim.
+// Contract: intro/outro are NEVER sent to the LLM, never rewritten from
+// source_text or clip transcripts. Only the supplied Text + clip_id are used
+// (kind=intro/outro). Streaming is disabled when a fixed section is present.
+func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
+	if req.Intro == nil && req.Outro == nil {
+		return scenes, nil
+	}
+	// Validate already done at envelope validation; re-guard speakable.
+	if req.Intro != nil {
+		if err := scriptpkg.ValidateSpeakableText(req.Intro.Text); err != nil {
+			return nil, fmt.Errorf("intro.text %w", err)
+		}
+		ids := req.Intro.NormalizedClipIDs()
+		if len(ids) != 1 {
+			return nil, fmt.Errorf("intro.clip_ids must contain exactly one clip_id")
+		}
+	}
+	if req.Outro != nil {
+		if err := scriptpkg.ValidateSpeakableText(req.Outro.Text); err != nil {
+			return nil, fmt.Errorf("outro.text %w", err)
+		}
+		ids := req.Outro.NormalizedClipIDs()
+		if len(ids) != 1 {
+			return nil, fmt.Errorf("outro.clip_ids must contain exactly one clip_id")
+		}
+	}
+	out := make([]Scene, 0, len(scenes)+2)
+	if req.Intro != nil {
+		ids := req.Intro.NormalizedClipIDs()
+		cleanText := strings.TrimSpace(req.Intro.Text)
+		clipRef := &ClipReference{ID: ids[0]}
+		textMap := map[Language]string{req.SourceLanguage: cleanText}
+		intro := Scene{
+			ID:    "scene-intro",
+			Index: 0,
+			Text:  textMap,
+			Clip:  clipRef,
+			Clips: []*ClipReference{clipRef},
+		}
+		out = append(out, intro)
+	}
+	out = append(out, scenes...)
+	if req.Outro != nil {
+		ids := req.Outro.NormalizedClipIDs()
+		cleanText := strings.TrimSpace(req.Outro.Text)
+		clipRef := &ClipReference{ID: ids[0]}
+		textMap := map[Language]string{req.SourceLanguage: cleanText}
+		outro := Scene{
+			ID:    "scene-outro",
+			Index: 0, // reindexed below
+			Text:  textMap,
+			Clip:  clipRef,
+			Clips: []*ClipReference{clipRef},
+		}
+		out = append(out, outro)
+	}
+	// Reindex and deduplicate IDs.
+	seen := make(map[string]struct{}, len(out))
+	for i := range out {
+		if out[i].ID == "" {
+			out[i].ID = fmt.Sprintf("scene-%d", i)
+		}
+		base := out[i].ID
+		for {
+			if _, exists := seen[base]; !exists {
+				break
+			}
+			base = fmt.Sprintf("%s-%d", out[i].ID, i)
+		}
+		seen[base] = struct{}{}
+		out[i].ID = base
+		out[i].Index = i
+	}
+	return out, nil
 }
 
 // normalizeGeneratedSceneIdentity repairs model-produced duplicate or missing

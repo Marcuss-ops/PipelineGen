@@ -201,6 +201,8 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		DriveFolderID: docsFolderID,
 		SaveToDB:      item.Output.SaveToDB,
 		Title:         item.Title,
+		Intro:         scriptpkg.CloneFixedSection(item.Intro),
+		Outro:         scriptpkg.CloneFixedSection(item.Outro),
 		// Project is the canonical semantic project namespace for artifact
 		// routing, resolved ONCE here from the explicit generation input.
 		// Empty Project for a voiceover-enabled generation fails closed

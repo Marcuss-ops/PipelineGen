@@ -105,8 +105,26 @@ Il payload deve avere `version: 2`, `preset: custom` e almeno un elemento in
   `Clip description:`, `Write...`, istruzioni, URL o JSON nel testo passato al
   modello. Le istruzioni stanno in `style`.
 - Ogni segmento deve avere il proprio `clip_ids` e il proprio `source_text`.
-- `intro_clip_ids` identifica le 2–3 clip introduttive; non sostituisce
-  `clip_ids`.
+- `intro_clip_ids` (legacy) identifica le 2–3 clip introduttive; non sostituisce
+  `clip_ids`. Per intro/outro letterali usare il nuovo contratto `intro`/`outro`.
+- **Intro/outro letterali (nuovo contratto)**: `items[0].intro` e `items[0].outro`
+  sono sezioni **letterali non toccate dal LLM**. Solo `text` + `clip_ids` (esattamente
+  1 clip) sono permessi. Il testo viene iniettato verbatim come prima/ultima
+  `SpecScene` con `Kind=intro/outro`, mai riscritto da `source_text` o dai
+  transcript. Esempio:
+
+  ```json
+  {
+    "intro": { "text": "Welcome back — today 30 wild Matt Damon moments!", "clip_ids": ["yt_intro_123_v1"] },
+    "outro": { "text": "Thanks for watching — see you next time!", "clip_ids": ["yt_outro_456_v1"] }
+  }
+  ```
+
+  Regole: `text` deve passare `ValidateSpeakableText` (no URL, no marker), `clip_ids`
+  esattamente 1 ID esistente nel catalogo, non duplicato con `source.clip_ids` o
+  `segments[].clip_ids`, `intro`/`outro` non possono condividere lo stesso clip,
+  richiede `source.type` clip-bearing (`clips|search|catalog|curate`). La clip
+  viene verificata in preflight e compilata nel timeline — nessuna riscrittura LLM.
 - `output.render` crea esclusivamente le clip localizzate richieste. La
   creazione del video finale completo non appartiene al contratto
   `script.generate`.
@@ -116,6 +134,8 @@ Il payload deve avere `version: 2`, `preset: custom` e almeno un elemento in
   si vuole rigenerare esplicitamente testo/TTS/render.
 - Il nome `drive_subfolder_name` deve essere unico per ogni run. Non riusare un
   nome già presente: Drive può restituire più cartelle omonime.
+- Fingerprint/cache: `intro`/`outro` partecipano al `CacheKey`/`Fingerprint`.
+  Cambiare `intro.text` o `intro.clip_ids` invalida la cache e genera un nuovo run.
 
 ## Invio e polling
 
