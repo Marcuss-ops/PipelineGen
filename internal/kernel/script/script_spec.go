@@ -42,21 +42,24 @@ type ScriptSpec struct {
 	// SingleScene requests one consolidated SpecScene in the generated
 	// output. It is useful for short single-segment documents where the
 	// narrative must remain one continuous scene.
-	SingleScene         bool            `json:"single_scene,omitempty"`
-	Duration            int             `json:"duration,omitempty"`
-	MinWords            int             `json:"min_words,omitempty"`
-	SegmentWords        int             `json:"segment_words,omitempty"`
-	Segments            []ScriptSegment `json:"segments,omitempty"`
-	SegmentTopics       []string        `json:"segment_topics,omitempty"`
-	SentencesPerImage   int             `json:"sentences_per_image,omitempty"`
-	ImagesPerScene      int             `json:"images_per_scene,omitempty"`
-	Style               string          `json:"style,omitempty"`
-	Guidelines          string          `json:"guidelines,omitempty"`
-	TranscriptPolicy    string          `json:"transcript_policy,omitempty"`
-	OrderingStrategy    string          `json:"ordering_strategy,omitempty"`
-	PromptVersion       string          `json:"prompt_version,omitempty"`
-	EditorPromptVersion string          `json:"editor_prompt_version,omitempty"`
-	QAPromptVersion     string          `json:"qa_prompt_version,omitempty"`
+	SingleScene       bool            `json:"single_scene,omitempty"`
+	Duration          int             `json:"duration,omitempty"`
+	MinWords          int             `json:"min_words,omitempty"`
+	SegmentWords      int             `json:"segment_words,omitempty"`
+	Segments          []ScriptSegment `json:"segments,omitempty"`
+	SegmentTopics     []string        `json:"segment_topics,omitempty"`
+	SentencesPerImage int             `json:"sentences_per_image,omitempty"`
+	ImagesPerScene    int             `json:"images_per_scene,omitempty"`
+	// MediaDensity is a readable preset for visual cadence. Explicit
+	// sentences_per_image/images_per_scene values always take precedence.
+	MediaDensity        string `json:"media_density,omitempty"`
+	Style               string `json:"style,omitempty"`
+	Guidelines          string `json:"guidelines,omitempty"`
+	TranscriptPolicy    string `json:"transcript_policy,omitempty"`
+	OrderingStrategy    string `json:"ordering_strategy,omitempty"`
+	PromptVersion       string `json:"prompt_version,omitempty"`
+	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
+	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
 	// PlannerVersion is the scene-planning algorithm version. It is
 	// part of the generation fingerprint so changes to the planner
 	// invalidate cached results.

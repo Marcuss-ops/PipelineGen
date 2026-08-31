@@ -78,6 +78,7 @@ type ResolvedGenerationPlan struct {
 	Segments          []ScriptSegment `json:"segments,omitempty"`
 	SentencesPerImage int             `json:"sentences_per_image,omitempty"`
 	ImagesPerScene    int             `json:"images_per_scene,omitempty"`
+	MediaDensity      string          `json:"media_density,omitempty"`
 
 	// ── Style ─────────────────────────────────────────────────────────
 	Style string `json:"style,omitempty"`
