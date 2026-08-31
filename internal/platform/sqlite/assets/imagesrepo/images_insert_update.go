@@ -25,15 +25,16 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *detail.ImageAsset)
 	if img == nil {
 		return 0, fmt.Errorf("images.AddImage: image is required")
 	}
+	// Preserve the legacy stable-ID fallback before entering the canonical
+	// writer so the same identity is also available to detail-table writes.
+	if strings.TrimSpace(img.Hash) == "" {
+		img.Hash = fmt.Sprintf("img_%d", img.CreatedAt.UnixNano())
+	}
 	rows, err := r.canonicalCommit(ctx, img)
 	if err != nil {
 		return 0, err
 	}
-	assetID := strings.TrimSpace(img.Hash)
-	if assetID == "" {
-		return rows, fmt.Errorf("images.AddImage: canonical image commit requires stable hash identity")
-	}
-	if err := r.dualWriteImageDetails(ctx, assetID, img); err != nil {
+	if err := r.dualWriteImageDetails(ctx, img.Hash, img); err != nil {
 		return 0, fmt.Errorf("dual-write image details: %w", err)
 	}
 	return rows, nil
@@ -60,7 +61,6 @@ func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID st
 	return nil
 }
 
-// UpsertGeneratedDetails writes per-asset provenance for an AI-generated image.
 func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *detail.GeneratedImageDetail) error {
 	if d == nil {
 		return nil
@@ -86,7 +86,6 @@ func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *detail
 	return err
 }
 
-// UpsertRetrievedDetails writes per-asset provenance for a web-retrieved image.
 func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *detail.RetrievedImageDetail) error {
 	if d == nil {
 		return nil
@@ -111,9 +110,6 @@ func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *detail
 	return err
 }
 
-// UpdateDriveDelivery records the post-commit Drive projection through the
-// canonical writer. The repository performs only the SQLite read needed to
-// resolve the hash to the canonical asset id and merge delivery_status.
 func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveFileID, driveLink, downloadLink, status string) error {
 	if strings.TrimSpace(hash) == "" {
 		return fmt.Errorf("UpdateDriveDelivery: hash is empty")
@@ -129,8 +125,6 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 	if err != nil {
 		return fmt.Errorf("UpdateDriveDelivery: merge metadata: %w", err)
 	}
-	// Failed delivery attempts with no new Drive identity keep the previous
-	// canonical location; only the status metadata changes.
 	if strings.HasPrefix(status, "delivery_failed:") && driveFileID == "" && driveLink == "" && downloadLink == "" {
 		return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
 	}
@@ -142,7 +136,6 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
 }
 
-// UpdateImageMetadata replaces metadata_json through the canonical writer.
 func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metadataJSON string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateImageMetadata: canonical asset mutator is required")
@@ -154,8 +147,6 @@ func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metada
 	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &metadataJSON})
 }
 
-// UpdateEmbeddingStatus records the legacy metadata marker through the
-// canonical writer. Qdrant remains a projection; this does not write Qdrant.
 func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, status string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateEmbeddingStatus: canonical asset mutator is required")
@@ -171,8 +162,6 @@ func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, stat
 	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
 }
 
-// UpdateEmbeddingData updates the durable SQLite embedding projection through
-// the canonical writer. The cache/vector store is never authoritative.
 func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, embeddingJSON, status string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateEmbeddingData: canonical asset mutator is required")
@@ -196,10 +185,13 @@ func (r *ImagesRepository) assetIdentityByHash(ctx context.Context, hash string)
 	var assetID, metadataJSON string
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(metadata_json,'{}')
-		FROM media_assets WHERE source='image' AND legacy_file_md5=?`, hash).
+		FROM media_assets
+		WHERE source='image' AND (legacy_file_md5=? OR id=?)
+		ORDER BY CASE WHEN legacy_file_md5=? THEN 0 ELSE 1 END
+		LIMIT 1`, hash, hash, hash).
 		Scan(&assetID, &metadataJSON)
 	if err != nil {
-		return "", "", fmt.Errorf("image asset with hash %q not found: %w", hash, err)
+		return "", "", fmt.Errorf("image asset with identity %q not found: %w", hash, err)
 	}
 	return assetID, metadataJSON, nil
 }
@@ -218,8 +210,6 @@ func mergeMetadataString(raw, key string, value any) (string, error) {
 	}
 	return string(encoded), nil
 }
-
-// ── Subject helpers ─────────────────────────────────────────────────────────
 
 func (r *ImagesRepository) GetSubjectBySlugOrAlias(ctx context.Context, id string) (*asset.Subject, error) {
 	var s asset.Subject
