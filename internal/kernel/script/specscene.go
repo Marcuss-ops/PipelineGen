@@ -90,7 +90,8 @@ func (s *SpecSceneOutput) Validate() error {
 			fmt.Sprintf("unsupported specscene version %d (expected 1)", s.Version))
 	}
 
-	seenIDs := make(map[string]int) // id → first index
+	seenIDs := make(map[string]int)        // id → first index
+	seenSegmentIDs := make(map[string]int) // segment_id → first index
 	for i := range s.Scenes {
 		scene := &s.Scenes[i]
 
@@ -122,6 +123,15 @@ func (s *SpecSceneOutput) Validate() error {
 						i, scene.ID, prev))
 			} else {
 				seenIDs[scene.ID] = i
+			}
+		}
+		if segmentID := strings.TrimSpace(scene.SegmentID); segmentID != "" {
+			if prev, ok := seenSegmentIDs[segmentID]; ok {
+				details = append(details,
+					fmt.Sprintf("scenes[%d]: duplicate segment_id %q (first seen at index %d)",
+						i, segmentID, prev))
+			} else {
+				seenSegmentIDs[segmentID] = i
 			}
 		}
 	}
