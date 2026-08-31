@@ -28,7 +28,7 @@ entity_extraction: |
   - [short visual concept phrase]
 
   ## noun_chunks
-  - [source-grounded noun phrase, 2-4 words]
+  - [source-grounded noun phrase copied verbatim from the segment]
 
   RULES FOR ENTITY PRECISION:
   1. "nomi_speciali": Extract a MAXIMUM of {{.EntityCount}} real named entities.

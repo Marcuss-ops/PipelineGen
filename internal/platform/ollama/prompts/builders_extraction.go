@@ -9,6 +9,12 @@ import (
 // allowing one bounded model call to serve several scenes. The explicit start
 // and end markers make scene association deterministic for small models.
 func BuildEntityExtractionBatchPrompt(segments []string, entityCount int) string {
+	return BuildEntityExtractionBatchPromptForLanguage(segments, entityCount, "")
+}
+
+// BuildEntityExtractionBatchPromptForLanguage builds the canonical batch
+// prompt with the source language explicitly declared for every segment.
+func BuildEntityExtractionBatchPromptForLanguage(segments []string, entityCount int, language string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `Extract metadata independently for each numbered documentary segment.
 Never combine information between segments. Return one block per segment using
@@ -31,28 +37,38 @@ not output JSON, markdown fences, commentary, or missing segment blocks.
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
 	}
-	b.WriteString(GroundedNounChunkContract())
+	b.WriteString(GroundedNounChunkContract(language))
 	return b.String()
 }
 
 // BuildEntityExtractionPrompt builds the canonical per-segment extraction prompt.
 func BuildEntityExtractionPrompt(text string, entityCount int) string {
+	return BuildEntityExtractionPromptForLanguage(text, entityCount, "")
+}
+
+// BuildEntityExtractionPromptForLanguage builds the single-segment prompt
+// using the same grounded noun-chunk contract as the batch path.
+func BuildEntityExtractionPromptForLanguage(text string, entityCount int, language string) string {
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderEntityExtraction(text, entityCount)
 		if err == nil {
-			return rendered + GroundedNounChunkContract()
+			return rendered + GroundedNounChunkContract(language)
 		}
 	}
-	return buildEntityExtractionFallback(text, entityCount) + GroundedNounChunkContract()
+	return buildEntityExtractionFallback(text, entityCount) + GroundedNounChunkContract(language)
 }
 
 // GroundedNounChunkContract is the single source of truth for the
 // noun_chunks field. Both single-segment and batch prompts append this exact
 // contract; format-specific instructions remain owned by their callers.
-func GroundedNounChunkContract() string {
-	return `
+func GroundedNounChunkContract(language string) string {
+	if strings.TrimSpace(language) == "" {
+		language = "infer from the source text; never translate it"
+	}
+	return fmt.Sprintf(`
 
 NOUN_CHUNK GROUNDING CONTRACT (MANDATORY FOR EVERY LANGUAGE):
+- SOURCE_LANGUAGE: %s
 - Every value in noun_chunks MUST be copied VERBATIM from the corresponding source segment.
 - Do not translate, paraphrase, lowercase, lemmatize, normalize, correct, or rewrite any value.
 - Preserve the source language, spelling, accents, diacritics, apostrophes, particles, articles when part of the source span, adjectives, modifiers, possessives, inflections, and grammatical case.
@@ -61,7 +77,7 @@ NOUN_CHUNK GROUNDING CONTRACT (MANDATORY FOR EVERY LANGUAGE):
 - For Japanese, Chinese, Korean, and any language without reliable whitespace boundaries, identify the complete visual expression from the original characters and copy that exact character span. Do not segment it using English or Western whitespace assumptions.
 - It is better to omit a doubtful candidate than to invent, translate, or enrich it. Do not omit a clearly explicit visual noun expression only because it is morphologically inflected.
 - Never include verbs, verbal clauses, adverbs, narrative commentary, or details that are not literally present in the source.
-`
+`, language)
 }
 
 func buildEntityExtractionFallback(text string, entityCount int) string {
@@ -88,7 +104,7 @@ Output EXACTLY six labeled sections. Every item must start with "- ".
 - [short visual concept phrase]
 
 ## noun_chunks
-- [verbatim grounded noun phrase from the segment]
+- [verbatim grounded noun phrase copied from the segment]
 
 ENTITY RULES:
 1. Extract at most %d real named entities in nomi_speciali.
