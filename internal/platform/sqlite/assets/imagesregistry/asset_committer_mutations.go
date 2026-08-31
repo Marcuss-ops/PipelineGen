@@ -15,9 +15,6 @@ import (
 var _ persistence.AssetMutator = (*SQLiteMediaCommitter)(nil)
 var _ persistence.CanonicalAssetWriter = (*SQLiteMediaCommitter)(nil)
 
-// PatchAsset applies a typed partial mutation through the canonical writer.
-// It owns the transaction and optionally emits asset.index.requested in the
-// same commit. There is no repository-local SQL fallback.
 func (c *SQLiteMediaCommitter) PatchAsset(ctx context.Context, patch persistence.AssetPatch) error {
 	if c == nil || c.db == nil {
 		return fmt.Errorf("asset mutator: canonical writer is unavailable")
@@ -42,9 +39,6 @@ func (c *SQLiteMediaCommitter) PatchAsset(ctx context.Context, patch persistence
 	return nil
 }
 
-// PatchAssetTx applies a typed partial mutation inside a caller-owned
-// transaction. The only accepted concrete transaction in production is
-// *sql.Tx, matching AssetCommitter.CommitTx.
 func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.Transaction, patch persistence.AssetPatch) error {
 	if c == nil || c.box == nil {
 		return fmt.Errorf("asset mutator: canonical writer is unavailable")
@@ -57,28 +51,49 @@ func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.
 		return fmt.Errorf("asset mutator: expected *sql.Tx, got %T", tx)
 	}
 
-	sets := make([]string, 0, 16)
-	args := make([]any, 0, 20)
-	add := func(column string, value *string) {
+	sets := make([]string, 0, 24)
+	args := make([]any, 0, 28)
+	addString := func(column string, value *string) {
 		if value == nil {
 			return
 		}
 		sets = append(sets, column+" = ?")
 		args = append(args, *value)
 	}
-	add("name", patch.Name)
-	add("category", patch.Category)
-	add("group_name", patch.Group)
-	add("search_text", patch.SearchText)
-	add("lifecycle_state", patch.LifecycleState)
-	add("enrich_state", patch.EnrichState)
-	add("metadata_json", patch.MetadataJSON)
-	add("embedding_json", patch.EmbeddingJSON)
-	add("collection_version", patch.Collection)
-	add("drive_file_id", patch.DriveFileID)
-	add("drive_link", patch.DriveLink)
-	add("download_link", patch.DownloadLink)
-	add("local_path", patch.LocalPath)
+	addFloat := func(column string, value *float64) {
+		if value == nil {
+			return
+		}
+		sets = append(sets, column+" = ?")
+		args = append(args, *value)
+	}
+	addInt := func(column string, value *int) {
+		if value == nil {
+			return
+		}
+		sets = append(sets, column+" = ?")
+		args = append(args, *value)
+	}
+	addString("name", patch.Name)
+	addString("category", patch.Category)
+	addString("group_name", patch.Group)
+	addString("search_text", patch.SearchText)
+	addString("lifecycle_state", patch.LifecycleState)
+	addString("enrich_state", patch.EnrichState)
+	addString("metadata_json", patch.MetadataJSON)
+	addString("embedding_json", patch.EmbeddingJSON)
+	addString("visual_embedding", patch.VisualEmbedding)
+	addString("transcript_embedding", patch.TranscriptEmbedding)
+	addString("collection_version", patch.Collection)
+	addString("scene_type", patch.SceneType)
+	addString("phash", patch.PHash)
+	addString("last_used_at", patch.LastUsedAt)
+	addFloat("quality_score", patch.QualityScore)
+	addInt("reuse_count", patch.ReuseCount)
+	addString("drive_file_id", patch.DriveFileID)
+	addString("drive_link", patch.DriveLink)
+	addString("download_link", patch.DownloadLink)
+	addString("local_path", patch.LocalPath)
 	if patch.IndexState != nil {
 		sets = append(sets, "index_state = ?")
 		args = append(args, *patch.IndexState)
@@ -159,9 +174,6 @@ func resolveMutationIndexIdentity(ctx context.Context, tx *sql.Tx, patch persist
 	return source, mediaType, sourceVersion, nil
 }
 
-// ReconcileDriveLocations moves the previous standalone reconciliation writer
-// behind the canonical writer. Missing SQLite rows fail closed; Qdrant is never
-// consulted to fabricate catalog truth.
 func (c *SQLiteMediaCommitter) ReconcileDriveLocations(ctx context.Context, changes []persistence.DriveLocationPatch) error {
 	if c == nil || c.db == nil {
 		return fmt.Errorf("asset mutator: canonical writer is unavailable")
