@@ -12,7 +12,7 @@ func BuildEntityExtractionBatchPrompt(segments []string, entityCount int) string
 	var b strings.Builder
 	fmt.Fprintf(&b, `Extract metadata independently for each numbered documentary segment.
 Never combine information between segments. Return one block per segment using
-exactly these markers and the five labeled sections:
+exactly these markers and the six labeled sections:
 
 ### SEGMENT_INDEX: N
 ## frasi_importanti
@@ -20,6 +20,7 @@ exactly these markers and the five labeled sections:
 ## nomi_speciali
 ## parole_importanti
 ## artlist_phrases
+## noun_chunks
 ### END_SEGMENT
 
 Rules: extract at most %d named entities per segment, use only evidence in that
@@ -30,6 +31,7 @@ not output JSON, markdown fences, commentary, or missing segment blocks.
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
 	}
+	b.WriteString(GroundedNounChunkContract())
 	return b.String()
 }
 
@@ -38,17 +40,35 @@ func BuildEntityExtractionPrompt(text string, entityCount int) string {
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderEntityExtraction(text, entityCount)
 		if err == nil {
-			return rendered
+			return rendered + GroundedNounChunkContract()
 		}
 	}
-	return buildEntityExtractionFallback(text, entityCount)
+	return buildEntityExtractionFallback(text, entityCount) + GroundedNounChunkContract()
+}
+
+// GroundedNounChunkContract is the single source of truth for the
+// noun_chunks field. Both single-segment and batch prompts append this exact
+// contract; format-specific instructions remain owned by their callers.
+func GroundedNounChunkContract() string {
+	return `
+
+NOUN_CHUNK GROUNDING CONTRACT (MANDATORY FOR EVERY LANGUAGE):
+- Every value in noun_chunks MUST be copied VERBATIM from the corresponding source segment.
+- Do not translate, paraphrase, lowercase, lemmatize, normalize, correct, or rewrite any value.
+- Preserve the source language, spelling, accents, diacritics, apostrophes, particles, articles when part of the source span, adjectives, modifiers, possessives, inflections, and grammatical case.
+- The returned value must be an exact contiguous source span; if a candidate cannot be copied exactly, omit it.
+- Prefer the complete visually meaningful noun expression explicitly present in the source. Do not shorten away explicit visual adjectives or modifiers merely to make a smaller phrase.
+- For Japanese, Chinese, Korean, and any language without reliable whitespace boundaries, identify the complete visual expression from the original characters and copy that exact character span. Do not segment it using English or Western whitespace assumptions.
+- It is better to omit a doubtful candidate than to invent, translate, or enrich it. Do not omit a clearly explicit visual noun expression only because it is morphologically inflected.
+- Never include verbs, verbal clauses, adverbs, narrative commentary, or details that are not literally present in the source.
+`
 }
 
 func buildEntityExtractionFallback(text string, entityCount int) string {
 	return fmt.Sprintf(`You are extracting structured metadata from ONE documentary script segment for a visual production pipeline.
 
 DO NOT output JSON, markdown fences, code blocks, scene IDs, indexes, or bindings.
-Output EXACTLY five labeled sections. Every item must start with "- ".
+Output EXACTLY six labeled sections. Every item must start with "- ".
 
 ## frasi_importanti
 - [evocative verbatim fragment from the segment]
@@ -67,6 +87,9 @@ Output EXACTLY five labeled sections. Every item must start with "- ".
 ## artlist_phrases
 - [short visual concept phrase]
 
+## noun_chunks
+- [verbatim grounded noun phrase from the segment]
+
 ENTITY RULES:
 1. Extract at most %d real named entities in nomi_speciali.
 2. Every named entity MUST use "TYPE: Value".
@@ -84,7 +107,7 @@ VISUAL SEARCH RULES:
 GOOD: "Vesuvio erupting", "Roman ruins excavation", "Ancient city streets".
 BAD: "pompei prosperò", "sua posizione", "79 d".
 
-Output ONLY the five labeled sections.
+Output ONLY the six labeled sections.
 
 TEXT:
 "%s"`, entityCount, entityCount, text)

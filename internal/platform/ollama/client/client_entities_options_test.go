@@ -15,6 +15,7 @@ import (
 func TestExtractEntitiesFromSegment_UsesBoundedOperationBudget(t *testing.T) {
 	var request struct {
 		Model   string         `json:"model"`
+		Think   *bool          `json:"think"`
 		Options map[string]any `json:"options"`
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +35,8 @@ func TestExtractEntitiesFromSegment_UsesBoundedOperationBudget(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "gemma4:e4b", request.Model)
+	require.NotNil(t, request.Think)
+	require.False(t, *request.Think)
 	require.Equal(t, float64(entityExtractionNumPredict), request.Options["num_predict"])
 }
 

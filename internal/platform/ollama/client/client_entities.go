@@ -19,6 +19,24 @@ const entityExtractionNumPredict = 256
 
 const entityExtractionBatchSize = 5
 
+// entityExtractionJSONSchema is sent as Ollama's top-level structured-output
+// format for the single-segment path. The parser still accepts the historical
+// labeled-text contract for compatibility, while live models are constrained
+// to return one valid extraction object instead of prose or markdown.
+var entityExtractionJSONSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"frasi_importanti":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"entity_senza_testo": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+		"nomi_speciali":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"parole_importanti":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"artlist_phrases":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"noun_chunks":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+	},
+	"required":             []string{"frasi_importanti", "entity_senza_testo", "nomi_speciali", "parole_importanti", "artlist_phrases", "noun_chunks"},
+	"additionalProperties": false,
+}
+
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.
 func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req detail.EntityExtractionRequest) (*detail.EntityExtractionResult, error) {
 	return c.ExtractEntitiesFromSegmentWithModel(ctx, req, "")
@@ -41,11 +59,15 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req de
 		response, err = c.GenerateWithOptions(ctx, model, prompt, map[string]any{
 			"num_predict": entityExtractionNumPredict,
 			"temperature": 0,
+			"think":       false,
+			"format":      entityExtractionJSONSchema,
 		})
 	} else {
 		response, err = c.GenerateWithOptions(ctx, c.model, prompt, map[string]any{
 			"num_predict": entityExtractionNumPredict,
 			"temperature": 0,
+			"think":       false,
+			"format":      entityExtractionJSONSchema,
 		})
 	}
 	if err != nil {
@@ -56,6 +78,9 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req de
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse entity result: %w", err)
 	}
+	// The model response is an untrusted boundary. Apply the same grounding
+	// contract used by the batch path before exposing any structured fields.
+	result = sanitizeEntityExtractionResult(req.SegmentText, result, entityCount, req.Language)
 
 	return result, nil
 }
@@ -257,6 +282,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Conte
 			NomiSpeciali:     result.NomiSpeciali,
 			ParoleImportanti: result.ParoleImportanti,
 			ArtlistPhrases:   result.ArtlistPhrases,
+			NounChunks:       result.NounChunks,
 			Source:           result.Source,
 		})
 
@@ -320,6 +346,7 @@ var sectionHeaders = map[string]string{
 	"nomi_speciali":      "nomi_speciali",
 	"parole_importanti":  "parole_importanti",
 	"artlist_phrases":    "artlist_phrases",
+	"noun_chunks":        "noun_chunks",
 }
 
 // parsePlainTextEntityResult parses the LLM-PLAIN-TEXT-CONTRACT P1 format:
@@ -371,6 +398,8 @@ func parsePlainTextEntityResult(response string, segmentIndex int) (*detail.Enti
 			result.ParoleImportanti = append(result.ParoleImportanti, val)
 		case "artlist_phrases":
 			result.ArtlistPhrases = append(result.ArtlistPhrases, val)
+		case "noun_chunks":
+			result.NounChunks = append(result.NounChunks, val)
 		case "entity_senza_testo":
 			if key, value, ok := parseEntityKeyValue(val); ok {
 				result.EntitaSenzaTesto[key] = value
@@ -439,6 +468,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali     []string        `json:"nomi_speciali"`
 		ParoleImportanti []string        `json:"parole_importanti"`
 		ArtlistPhrases   []string        `json:"artlist_phrases"`
+		NounChunks       []string        `json:"noun_chunks"`
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -484,6 +514,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali:     raw.NomiSpeciali,
 		ParoleImportanti: raw.ParoleImportanti,
 		ArtlistPhrases:   raw.ArtlistPhrases,
+		NounChunks:       raw.NounChunks,
 	}, nil
 }
 
@@ -495,7 +526,8 @@ func resultIsEmpty(result *detail.EntityExtractionResult) bool {
 		len(result.EntitaSenzaTesto) == 0 &&
 		len(result.NomiSpeciali) == 0 &&
 		len(result.ParoleImportanti) == 0 &&
-		len(result.ArtlistPhrases) == 0
+		len(result.ArtlistPhrases) == 0 &&
+		len(result.NounChunks) == 0
 }
 
 func capEntityExtractionResult(result *detail.EntityExtractionResult, limit int) *detail.EntityExtractionResult {
