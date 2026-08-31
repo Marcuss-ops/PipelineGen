@@ -15,27 +15,12 @@ import (
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
-// JobStats holds aggregated job statistics.
-type JobStats struct {
-	Total      int                           `json:"total"`
-	ByStatus   map[job.Status]int            `json:"by_status"`
-	ByType     map[string]map[job.Status]int `json:"by_type"`
-	DurationMs struct {
-		Overall float64 `json:"overall_ms"`
-		ByType  map[string]struct {
-			Count           int     `json:"count"`
-			AvgDurationMs   float64 `json:"avg_duration_ms"`
-			ImagesGenerated int     `json:"images_generated,omitempty"`
-			Errors          int     `json:"errors,omitempty"`
-		} `json:"by_type"`
-	} `json:"durations"`
-	StaleRunning int `json:"stale_running"` // running jobs with expired lease (zombie)
-	Recent24h    struct {
-		Completed       int `json:"completed"`
-		Failed          int `json:"failed"`
-		ImagesGenerated int `json:"images_generated"`
-	} `json:"recent_24h"`
-}
+// JobStats remains a compatibility alias for callers that historically
+// imported the SQLite adapter's DTO. The canonical contract is owned by the
+// kernel package; keeping this alias preserves the existing JSON shape and
+// source compatibility while removing the concrete type from application
+// ports.
+type JobStats = job.JobStats
 
 // GetStats returns aggregated job statistics for monitoring.
 func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {

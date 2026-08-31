@@ -386,7 +386,7 @@ measurements:
 
   - current_symbol: "RunInfo.QueueWaitMs"
     current_owner: "internal/kernel/observability.RunInfo"
-    current_writer: "application/jobs/worker_execution.go:86-109 and application/jobs/worker/runner_execute.go:46-73"
+    current_writer: "internal/capabilities/jobs/worker_execution.go:86-109 and internal/capabilities/jobs/worker/runner_execute.go:46-73"
     current_storage: "In-memory RunReport.QueueWaitMs; Prometheus job_run_queue_wait_seconds"
     current_metric: "job_run_queue_wait_seconds{job_type}; current calculation is created_at to started_at"
     canonical_type: wait_observation
@@ -421,8 +421,8 @@ measurements:
     removal_condition: "No report or runtime path derives attempt identity from retry_count and retry counter parity passes"
 
   - current_symbol: "retry backoff scheduling"
-    current_owner: "internal/capabilities/jobs and retry helpers"
-    current_writer: "worker_finalize_paths.go and SQLiteStore.ScheduleRetry/requeue paths"
+    current_owner: "internal/capabilities/jobs/scheduling and pkg/retry"
+    current_writer: "internal/capabilities/jobs/worker_finalize_paths.go and internal/capabilities/jobs/worker.go via jobs/scheduling; state transitions remain in SQLiteStore.ScheduleRetry/requeue paths"
     current_storage: "jobs status/next availability fields and logs; no canonical aggregate column"
     current_metric: "none for retry_backoff_ms; outbox has jittered next_attempt_at"
     canonical_type: wait_observation
@@ -566,7 +566,7 @@ measurements:
 
   - current_symbol: "MediaIndexDuration"
     current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "application/jobs/outbox/indexing_handle.go:44"
+    current_writer: "internal/capabilities/jobs/indexing_handle.go:44"
     current_storage: "Prometheus histogram"
     current_metric: "media_index_duration_seconds{event_type,outcome}"
     canonical_type: operation
@@ -769,7 +769,7 @@ measurements:
     removal_condition: "CHILD_RUNS_LINKED=PASS and parent/child queries do not reconstruct identity from row order or retry_count"
 
   - current_symbol: "job artifacts and CompleteWithArtifacts results"
-    current_owner: "internal/capabilities/jobs/finalizer and artifact adapters"
+    current_owner: "internal/capabilities/jobs/finalize and internal/capabilities/jobs artifact adapters"
     current_writer: "JobFinalizer.CompleteWithArtifacts and artifact writer/finalization flow"
     current_storage: "artifact staging/catalog rows, outbox events, result JSON"
     current_metric: "artifact counters/bytes and finalizer outcome counters"
@@ -1022,7 +1022,7 @@ measurements:
 
   - current_symbol: "FinalizerWriteArtifactsIterTotal"
     current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "application/jobs/finalizer/artifact_writer.go"
+    current_writer: "internal/capabilities/jobs/finalize/artifact_writer.go"
     current_storage: "Prometheus counter"
     current_metric: "finalizer_write_artifacts_iter_total{outcome}"
     canonical_type: counter
@@ -1034,7 +1034,7 @@ measurements:
 
   - current_symbol: "FinalizerCompleteArtifactsTotal"
     current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "application/jobs/finalizer/job_finalizer.go"
+    current_writer: "internal/capabilities/jobs/finalize/job_finalizer.go"
     current_storage: "Prometheus counter"
     current_metric: "finalizer_complete_artifacts_total{outcome}"
     canonical_type: counter

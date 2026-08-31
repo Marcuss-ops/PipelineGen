@@ -280,6 +280,9 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.GPUCopyBytes != nil {
 		metrics.GPUCopyBytes = cliprender.Metric(int64(*result.GPUCopyBytes))
 	}
+	if result.GPUUploadBytes != nil {
+		metrics.GPUUploadBytes = cliprender.Metric(int64(*result.GPUUploadBytes))
+	}
 	if result.GPUReadbackBytes != nil {
 		metrics.GPUReadbackBytes = cliprender.Metric(int64(*result.GPUReadbackBytes))
 	}
@@ -292,6 +295,26 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	if result.RGBAToNV12Frames != nil {
 		metrics.RGBAToNV12Frames = cliprender.Metric(int64(*result.RGBAToNV12Frames))
 	}
+	if result.CUDACompositeFrames != nil {
+		metrics.CUDACompositeFrames = cliprender.Metric(int64(*result.CUDACompositeFrames))
+	}
+	if result.GPUUtilizationAvg != nil {
+		metrics.GPUUtilizationAvg = cliprender.Metric(int64(*result.GPUUtilizationAvg))
+	}
+	if result.GPUUtilizationPeak != nil {
+		metrics.GPUUtilizationPeak = cliprender.Metric(int64(*result.GPUUtilizationPeak))
+	}
+	if result.NVENCUtilizationAvg != nil {
+		metrics.NVENCUtilizationAvg = cliprender.Metric(int64(*result.NVENCUtilizationAvg))
+	}
+	if result.NVDECUtilizationAvg != nil {
+		metrics.NVDECUtilizationAvg = cliprender.Metric(int64(*result.NVDECUtilizationAvg))
+	}
+	if result.VRAMUsedPeakMB != nil {
+		metrics.VRAMUsedPeakMB = cliprender.Metric(int64(*result.VRAMUsedPeakMB))
+	}
+	// Process/resource metrics are reported by the Rust operation owner and
+	// projected into the canonical clip report only when actually measured.
 	if result.OperationMetrics != nil {
 		if result.OperationMetrics.PeakRSSBytes > 0 {
 			metrics.PeakRSSBytes = cliprender.Metric(result.OperationMetrics.PeakRSSBytes)
@@ -313,23 +336,32 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		metrics.Frames = int(math.Round(result.DurationSec * float64(result.FPSNum) / float64(result.FPSDen)))
 	}
 	metrics.TotalMS = cliprender.Metric(time.Since(renderStart).Milliseconds())
-	metrics.Compute(result.DurationSec)
-
-	return &cliprender.RenderOutcome{
-		OutputPath:        result.OutputPath,
-		SizeBytes:         result.SizeBytes,
-		DurationSec:       result.DurationSec,
-		Width:             result.Width,
-		Height:            result.Height,
-		FPSNum:            result.FPSNum,
-		FPSDen:            result.FPSDen,
-		Backend:           backend,
-		FFmpegMS:          result.FFmpegMS,
-		AudioCopyEligible: result.AudioCopyEligible,
-		AudioEncodePasses: result.AudioEncodePasses,
-		SubtitleRasterCPU: result.SubtitleRasterCPU,
-		GPUCopyBytes:      result.GPUCopyBytes,
-		VideoZeroCopy:     result.VideoZeroCopy,
-		Metrics:           metrics,
+	metrics.Compute(result.DurationSec)	return &cliprender.RenderOutcome{
+		OutputPath:              result.OutputPath,
+		SizeBytes:               result.SizeBytes,
+		DurationSec:             result.DurationSec,
+		Width:                   result.Width,
+		Height:                  result.Height,
+		FPSNum:                  result.FPSNum,
+		FPSDen:                  result.FPSDen,
+		Backend:                 backend,
+		FFmpegMS:                result.FFmpegMS,
+		AudioCopyEligible:       result.AudioCopyEligible,
+		AudioEncodePasses:       result.AudioEncodePasses,
+		SubtitleRasterCPU:       result.SubtitleRasterCPU,
+		GPUCopyBytes:            result.GPUCopyBytes,
+		VideoZeroCopy:           result.VideoZeroCopy,
+		GPUUploadBytes:          result.GPUUploadBytes,
+		GPUReadbackBytes:        result.GPUReadbackBytes,
+		EncoderStagingCopyBytes: result.EncoderStagingCopyBytes,
+		NV12ToRGBAFrames:        result.NV12ToRGBAFrames,
+		RGBAToNV12Frames:        result.RGBAToNV12Frames,
+		CUDACompositeFrames:     result.CUDACompositeFrames,
+		GPUUtilizationAvg:       result.GPUUtilizationAvg,
+		GPUUtilizationPeak:      result.GPUUtilizationPeak,
+		NVENCUtilizationAvg:     result.NVENCUtilizationAvg,
+		NVDECUtilizationAvg:     result.NVDECUtilizationAvg,
+		VRAMUsedPeakMB:          result.VRAMUsedPeakMB,
+		Metrics:                 metrics,
 	}, nil
 }

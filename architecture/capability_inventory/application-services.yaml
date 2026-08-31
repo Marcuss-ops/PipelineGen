@@ -2,6 +2,11 @@ application_capabilities:
   - name: jobs
     path: internal/capabilities/jobs
     has_build_signature: false
+    policy_subpackages:
+      queue: internal/capabilities/jobs/queue  # enqueue, claim capability/wait, retry budget/due policy
+      scheduling: internal/capabilities/jobs/scheduling  # polling/backoff, retry timing, preparation planning, resource speculation
+      finalize: internal/capabilities/jobs/finalize  # artifact-manifest and SQLite contention policy
+    persistence_owner: internal/kernel/job.Store + internal/platform/sqlite/jobs
     direct_register_calls:
       - { symbol: "appjobs.Compose()", file_line: "types.go:192 (composition-root only)", is_test: false }
       - { symbol: "appjobs.NewService(...).WithRegistry(appjobs.Compose())", file_line: "module_media.go:573 (composition-root only)", is_test: false }

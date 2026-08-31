@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 type StorageConfig struct {
@@ -173,13 +175,39 @@ func (s StorageConfig) ToDatabaseStorageConfig() interface {
 	return storageSetAdapter{s: s}
 }
 
+// CanonicalPrimaryDBPath returns the only primary SQLite path accepted by
+// the runtime: <AbsDataDir>/media/media.db.sqlite.
+func (s StorageConfig) CanonicalPrimaryDBPath() string {
+	return filepath.Join(s.AbsDataDir(), "media", "media.db.sqlite")
+}
+
+// ValidatePrimaryDBPath rejects legacy, relative, and arbitrary primary DB
+// paths before they reach the runtime database opener. Tests and migration
+// tools may still open isolated databases directly through the SQLite package;
+// this gate applies to the configured operational primary only.
+func (s StorageConfig) ValidatePrimaryDBPath() error {
+	configured := strings.TrimSpace(s.PrimaryDBPath)
+	if configured == "" {
+		return nil
+	}
+	configuredAbs, err := filepath.Abs(filepath.Clean(configured))
+	if err != nil {
+		return fmt.Errorf("primary SQLite path %q cannot be resolved: %w", configured, err)
+	}
+	canonical := filepath.Clean(s.CanonicalPrimaryDBPath())
+	if configuredAbs != canonical {
+		return fmt.Errorf("non-canonical primary SQLite path %q; use %q", configured, canonical)
+	}
+	return nil
+}
+
 // Path resolution helpers — used by internal/app/bootstrap.go and any
 // subsystem that needs the canonical disk layout under DataDir.
 func (s StorageConfig) PrimaryDBFullPath() string {
-	if s.PrimaryDBPath != "" {
-		return s.PrimaryDBPath
+	if err := s.ValidatePrimaryDBPath(); err != nil {
+		return ""
 	}
-	return s.FullPath(filepath.Join(s.MediaDir, "media.db.sqlite"))
+	return s.CanonicalPrimaryDBPath()
 }
 func (s StorageConfig) ObservabilityDBFullPath() string {
 	if s.ObservabilityDBPath != "" {

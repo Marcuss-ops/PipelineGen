@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
+	indexing "github.com/Marcuss-ops/PipelineGen/internal/kernel/indexing"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -157,7 +157,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		// NOT mark the event COMPLETED and the event is re-emitted
 		// when the operator re-enables the indexer (pending+retry
 		// per godlike/07 fail-closed).
-		if errors.Is(ierr, clipindexer.ErrIndexClipDisabledButEventRequested) {
+		if errors.Is(ierr, indexing.ErrIndexClipDisabledButEventRequested) {
 			metrics.MediaIndexSkippedTotal.WithLabelValues(evt.EventType).Inc()
 			outcome = "skipped_no_indexer"
 			log.Warn("asset.index.requested: indexer disabled, retry pending until re-enabled",
@@ -189,7 +189,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		// matched zero rows — the asset was superseded while embeddings
 		// were being generated. Route to SUPERSEDED so the outbox does
 		// NOT retry and does NOT mark the stale event as SUCCESS.
-		var superseded *clipindexer.ErrIndexSuperseded
+		var superseded *indexing.ErrIndexSuperseded
 		if errors.As(ierr, &superseded) {
 			metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
 			outcome = "superseded"

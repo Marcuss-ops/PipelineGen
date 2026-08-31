@@ -1,20 +1,10 @@
-// Package jobs — enqueue_id.go: job identity generation.
-//
-// 2026-07-06 (Phase 1 decomposition): split from enqueue_service.go per
-// the god-object decomposition plan. generateJobID is the canonical SSOT
-// for job ID derivation (timestamp + random suffix). Zero behavior changes.
-// Same-package visibility preserves all caller paths; Enqueue calls
-// generateJobID() as a package function with no import changes.
+// Package jobs — compatibility adapter for queue identity generation.
+// The canonical implementation lives in jobs/queue so enqueue policy can be
+// reused without importing the root jobs orchestration package.
 package jobs
 
-import (
-	"fmt"
-	"time"
+import jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
-)
-
-// generateJobID creates a unique job ID based on timestamp + random suffix.
 func generateJobID() string {
-	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), hashutil.RandomString(8))
+	return jobqueue.GenerateJobID()
 }

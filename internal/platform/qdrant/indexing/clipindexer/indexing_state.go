@@ -9,27 +9,14 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	indexing "github.com/Marcuss-ops/PipelineGen/internal/kernel/indexing"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
-// ErrIndexSuperseded is returned by setIndexedAt when the CAS fence
-// (source_version + file_hash + index_state='INDEXING') matches zero rows.
-// The indexing event was obsoleted by a newer version of the same asset
-// while embeddings were being generated. The Qdrant point may have been
-// upserted by this goroutine, but the SQLite row must NOT be flipped to
-// INDEXED — the newer event (or the already-indexed state from a parallel
-// goroutine) provides the canonical point.
-//
-// Callers (finalizeIndex, tryFastPath) propagate this error so the outbox
-// handler routes the event to SUPERSEDED instead of SUCCESS.
-type ErrIndexSuperseded struct {
-	ClipID        string
-	SourceVersion string
-}
-
-func (e *ErrIndexSuperseded) Error() string {
-	return fmt.Sprintf("clipindexer: CAS miss for %s (source_version=%q) — index event superseded by newer version", e.ClipID, e.SourceVersion)
-}
+// ErrIndexSuperseded is retained as a provider compatibility alias. The
+// canonical typed error is owned by kernel/indexing so application consumers
+// can classify it without importing the Qdrant provider.
+type ErrIndexSuperseded = indexing.ErrIndexSuperseded
 
 // setIndexState atomically writes the canonical index_state column
 // (media_assets.index_state, QDRANT-002 PR6 / migration 094) + the

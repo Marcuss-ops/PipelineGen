@@ -66,9 +66,9 @@ type VoiceoverSynthesisResult struct {
 //
 //	TTS → file write → hash → (optional) Drive upload → lifecycle finalize
 //
-// Fase 4 (July 2026): embeds VoiceoverSynthesisResult as a promoted
-// sub-field. Callers can access synthesis fields directly (result.LocalPath,
-// result.Voice, etc.) OR via the named field (result.Synthesis.LocalPath).
+// Contract (CONTRACT phase): VoiceoverSynthesisResult is a NAMED field
+// (Synthesis) — never promoted. Callers must read synthesis fields via
+// result.Synthesis.LocalPath / result.Synthesis.Voice, etc.
 type Result struct {
 	// ── Identity ──
 
@@ -78,9 +78,11 @@ type Result struct {
 	// ID is the deterministic command ID (matches GenerateVoiceoverCommand.ID()).
 	ID string
 
-	// ── Synthesis territory (embedded; fields promoted to Result) ──
+	// ── Synthesis territory ──
 
-	VoiceoverSynthesisResult
+	// Synthesis carries the TTS-only output. Not embedded: synthesis
+	// fields are NOT promoted to Result (read via result.Synthesis.*).
+	Synthesis VoiceoverSynthesisResult
 
 	// ── Publication territory (Drive fields) ──
 

@@ -28,6 +28,21 @@ and deadline in `architecture/package_hotspots.json`.
 
 SQLite is authoritative. Qdrant and Drive are external projections or locations and must not become hidden sources of business truth.
 
+### Data-layer unification (August 2026)
+
+The sync direction is **always and only** `SQLite → Outbox → Qdrant`:
+
+| Invariant | Rule |
+|---|---|
+| **SSOT** | SQLite `media_assets` is the single source of truth |
+| **Write gate** | `persistence.AssetCommitter` is the sole canonical writer — no direct SQL to `media_assets` outside it (enforced by `percheck_media_assets_writer_canonical` CI gate) |
+| **Projection** | Qdrant `media_assets` is a derived projection, fully rebuildable from SQLite (`reindex-qdrant --apply --in-place`) |
+| **Runtime collection** | Only `media_assets` (alias `media_assets_current`); recovery/test/synthetic collections are forbidden at runtime (`schema.IsRuntimeCollection` gate) |
+| **Empty projection** | `INDEX_UNAVAILABLE / REBUILD_REQUIRED` — never a fallback to a recovery collection |
+| **Search** | Qdrant returns candidate asset IDs + score; SQLite returns canonical content (name, drive_link, lifecycle, metadata) |
+| **Reconciler** | `ReconcileProjection` is the sole SQLite→Qdrant repair gate (missing→index, stale→reindex, orphan→delete, hash_mismatch→reindex) |
+| **Emergency recovery** | `recover-registry-from-qdrant` is EMERGENCY ONLY (disaster recovery / forensics), lives in `cmd/admin/emergency/` — never a normal sync path |
+
 ## Process entry points
 
 - `cmd/server`: HTTP server and selected background runtime.
@@ -73,6 +88,24 @@ HTTP request
 ```
 
 Job policy, handler registration, retries, concurrency, leases, cancellation, progress, and deduplication are centralized in the job system.
+
+## Job capability layers
+
+The root `internal/capabilities/jobs` package remains the compatibility facade and
+orchestration boundary. Reusable policy slices are owned by focused subpackages:
+
+- `internal/capabilities/jobs/queue` owns enqueue validation and identity, claim
+  capability/wait policy, and retry-budget/due decisions.
+- `internal/capabilities/jobs/scheduling` owns polling state transitions,
+  polling and persisted-retry backoff, preparation planning/registry, and
+  resource-aware speculation. It contains policy only; workers and stores retain
+  I/O, lifecycle effects, persistence, and telemetry.
+- `internal/capabilities/jobs/finalize` owns artifact-manifest conversion and
+  SQLite contention classification shared by finalization consumers.
+
+`kernel/job.Store` remains the canonical persistence contract for enqueue,
+claim, retry, and schedule-retry transitions; the extracted capability layers
+must not duplicate SQLite state transitions or import the root `jobs` package.
 
 ## Transactional outbox
 

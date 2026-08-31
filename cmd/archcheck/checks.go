@@ -59,7 +59,8 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			structure.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
 		{"file_size_strict", structure.ScanFileLinesStrict},
-		{"percheck_asset_state_canonical_14", boundaries.ScanAssetStateCanonical14},
+		{"percheck_finalizer_no_direct_sql", boundaries.ScanFinalizerNoDirectSQL},
+		{"percheck_media_assets_writer_canonical", boundaries.ScanMediaAssetsWriterCanonical},
 		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
 		{"percheck_rights_status_canonical_6", governance.ScanRightsStatusCanonical6},

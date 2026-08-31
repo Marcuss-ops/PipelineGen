@@ -33,7 +33,7 @@
 // godlike/06 SSOT: this file is the canonical owner of "is this
 // retry idempotent?". Callers MUST NOT compute their own
 // fingerprint comparison outside handleIdempotentCompletion.
-package jobs
+package finalize
 
 import (
 	"context"

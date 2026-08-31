@@ -66,19 +66,30 @@ type RenderOutcome struct {
 	Backend     RenderBackend
 	// FFmpegMS is retained as a read-only compatibility projection of the
 	// canonical Metrics report; adapters must not calculate it independently.
-	FFmpegMS          int64
-	AudioCopyEligible *bool
-	AudioEncodePasses *int
-	SubtitleRasterCPU *bool
-	GPUCopyBytes      *uint64
-	VideoZeroCopy     *bool
-	DecodeMS          *int64
-	FilterGraphMS     *int64
-	SubtitleRasterMS  *int64
-	WatermarkRasterMS *int64
-	FrameConversionMS *int64
-	EncodeMS          *int64
-	AudioMuxMS        *int64
+	FFmpegMS                int64
+	AudioCopyEligible       *bool
+	AudioEncodePasses       *int
+	SubtitleRasterCPU       *bool
+	GPUCopyBytes            *uint64
+	VideoZeroCopy           *bool
+	GPUUploadBytes          *uint64
+	GPUReadbackBytes        *uint64
+	EncoderStagingCopyBytes *uint64
+	NV12ToRGBAFrames        *uint64
+	RGBAToNV12Frames        *uint64
+	CUDACompositeFrames     *uint64
+	GPUUtilizationAvg       *float64
+	GPUUtilizationPeak      *float64
+	NVENCUtilizationAvg     *float64
+	NVDECUtilizationAvg     *float64
+	VRAMUsedPeakMB          *uint64
+	DecodeMS                *int64
+	FilterGraphMS           *int64
+	SubtitleRasterMS        *int64
+	WatermarkRasterMS       *int64
+	FrameConversionMS       *int64
+	EncodeMS                *int64
+	AudioMuxMS              *int64
 
 	// Metrics is the sole canonical V2 execution report (metrics.go). All
 	// backends (CUDA, Chronon and FFmpeg) must populate this contract; legacy

@@ -191,7 +191,7 @@ type DocumentsSpec struct {
 }
 
 // FixedSection is a literal intro/outro section that bypasses the LLM.
-// The caller provides the exact spoken Text and the clip binding; the
+// The caller provides the exact spoken Text and the clip bindings; the
 // pipeline injects it verbatim as the first (intro) or last (outro)
 // SpecScene with Kind=intro/outro. Text is never rewritten from
 // source_text or clip transcripts. Allowed only with source.type=clips
@@ -200,9 +200,9 @@ type FixedSection struct {
 	// Text is the exact narration spoken for this section. Must pass
 	// ValidateSpeakableText (no URLs, no source markers).
 	Text string `json:"text"`
-	// ClipIDs is the clip binding for this section. Exactly one clip is
-	// required; multiple clips are rejected to keep timeline ownership
-	// unambiguous. Use the media catalog ID (e.g. yt_xxx_..._v1).
+	// ClipIDs is the clip binding for this section. One or two clips are
+	// allowed (e.g. intro spanning 2 back-to-back clips). Use the media
+	// catalog IDs (e.g. yt_xxx_..._v1).
 	ClipIDs []string `json:"clip_ids,omitempty"`
 	// Title is an optional human-readable title for the Docs scene.
 	Title string `json:"title,omitempty"`

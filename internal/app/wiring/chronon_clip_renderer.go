@@ -55,6 +55,67 @@ type chrononPhaseMetrics struct {
 	TotalMS           int64 `json:"total_ms"`
 }
 
+// chrononTimingProjection is deliberately a small reader for Chronon's
+// canonical timing sidecar. The sidecar itself remains the detailed SSOT;
+// these fields are only the common PipelineGen projection.
+type chrononTimingProjection struct {
+	Job struct {
+		GPU struct {
+			GPUReadbackBytes        *uint64 `json:"gpu_readback_bytes"`
+			GPUUploadBytes          *uint64 `json:"gpu_upload_bytes"`
+			EncoderStagingCopyBytes *uint64 `json:"encoder_staging_copy_bytes"`
+			NV12ToRGBAFrames        *uint64 `json:"nv12_to_rgba_frames"`
+			RGBAToNV12Frames        *uint64 `json:"rgba_to_nv12_frames"`
+			CUDACompositeFrames     *uint64 `json:"cuda_composite_frames"`
+			CUDACompositeWallUS     *uint64 `json:"cuda_composite_wall_us"`
+			VideoDecodeWallMS       *uint64 `json:"video_decode_wall_ms"`
+		} `json:"gpu"`
+		Hardware struct {
+			GPUUtilizationAvg   *float64 `json:"gpu_utilization_avg"`
+			GPUUtilizationPeak  *float64 `json:"gpu_utilization_peak"`
+			NVENCUtilizationAvg *float64 `json:"nvenc_utilization_avg"`
+			NVDECUtilizationAvg *float64 `json:"nvdec_utilization_avg"`
+			VRAMUsedPeakMB      *uint64  `json:"vram_used_peak_mb"`
+		} `json:"hardware"`
+	} `json:"job"`
+}
+
+func readChrononProjection(path string) (rustexec.ClipRenderResult, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return rustexec.ClipRenderResult{}, err
+	}
+	var doc chrononTimingProjection
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return rustexec.ClipRenderResult{}, err
+	}
+	var out rustexec.ClipRenderResult
+	g := doc.Job.GPU
+	out.GPUReadbackBytes, out.GPUUploadBytes = g.GPUReadbackBytes, g.GPUUploadBytes
+	out.EncoderStagingCopyBytes = g.EncoderStagingCopyBytes
+	out.NV12ToRGBAFrames, out.RGBAToNV12Frames = g.NV12ToRGBAFrames, g.RGBAToNV12Frames
+	out.CUDACompositeFrames = g.CUDACompositeFrames
+	if g.VideoDecodeWallMS != nil {
+		out.DecodeMS = i64Ptr(*g.VideoDecodeWallMS)
+	}
+	if g.CUDACompositeWallUS != nil {
+		out.FilterGraphMS = i64Ptr((*g.CUDACompositeWallUS + 999) / 1000)
+	}
+	h := doc.Job.Hardware
+	out.GPUUtilizationAvg, out.GPUUtilizationPeak = h.GPUUtilizationAvg, h.GPUUtilizationPeak
+	out.NVENCUtilizationAvg, out.NVDECUtilizationAvg = h.NVENCUtilizationAvg, h.NVDECUtilizationAvg
+	out.VRAMUsedPeakMB = h.VRAMUsedPeakMB
+	return out, nil
+}
+
+func i64Ptr(v uint64) *int64 {
+	if v > uint64(^uint64(0)>>1) {
+		return nil
+	}
+	n := int64(v)
+	return &n
+}
+
 func (m chrononPhaseMetrics) LogFields() []zap.Field {
 	return []zap.Field{
 		zap.Int64("setup_ms", m.SetupMS),
@@ -432,45 +493,63 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		return rustexec.ClipRenderResult{}, fmt.Errorf("chronon render: %w: %s", renderErr, strings.TrimSpace(string(out)))
 	}
 
+	// Chronon owns these measurements. Read the sidecar once, before the
+	// temporary run directory is cleaned, and project both its measured
+	// phases and its typed GPU counters. The sidecar JSON stays a
+	// transport/debug payload; the durable copy in metrics/ and the
+	// performance-registry projection (when the Chronon Metrics Adapter is
+	// wired) become the canonical history. Best-effort: a read/parse/record
+	// failure is logged, never a render failure. The certified output facts
+	// come from the sealed plan + the chronon.mp4 bytes (the exact artifact
+	// the phases measured).
 	chrononSidecarPath := chrononVideoPath + ".timing.json"
-	measured, timingErr := readChrononMeasuredPhases(chrononSidecarPath, plan)
 	var rawTiming []byte
-	if timingErr != nil {
+	var measured chrononMeasuredPhases
+	var chrononProjection rustexec.ClipRenderResult
+	var timingErr error
+	if rawTiming, timingErr = os.ReadFile(chrononSidecarPath); timingErr != nil {
 		r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
-	} else if metricsDirReady {
-		if raw, readErr := os.ReadFile(chrononSidecarPath); readErr == nil {
-			rawTiming = raw
-			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), raw, 0o644); writeErr != nil {
+	} else {
+		if metricsDirReady {
+			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
 				r.logPhase("metrics_write_failed", plan.RunID, zap.String("artifact", "timing_sidecar"), zap.Error(writeErr))
 			}
 		}
-	}
-	// ── Chronon Metrics Adapter ───────────────────────────────────────
-	// The fine-grained sidecar phases are the engine's own exclusive-wall
-	// measurements (startup/input_open/prepare/render_loop/encoder_drain/
-	// ffprobe/sha256). When the adapter is wired they are promoted to the
-	// canonical durable performance registry (performance_operations) through
-	// the OperationReportProjectionRecorder seam — the sidecar JSON stays a
-	// transport/debug payload, the SQLite registry becomes the canonical
-	// history. Best-effort: a parse/record failure is logged, never a render
-	// failure. The certified output facts come from the sealed plan + the
-	// chronon.mp4 bytes (the exact artifact the phases measured).
-	if r.chrononMetrics != nil && len(rawTiming) > 0 {
-		doc, parseErr := cliprender.ParseChrononSidecar(rawTiming)
-		if parseErr != nil {
-			r.logPhase("chronon_metrics_parse_failed", plan.RunID, zap.Error(parseErr))
+		measured, timingErr = readChrononMeasuredPhases(chrononSidecarPath, plan)
+		chrononProjection, _ = readChrononProjection(chrononSidecarPath)
+		if timingErr != nil {
+			r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
 		} else {
-			opts := cliprender.ChrononMetricsPublishOptions{
-				SourceSHA256:     plan.Source.SHA256,
-				SourceDurationMS: durationMS,
-				Width:            plan.Output.Width,
-				Height:           plan.Output.Height,
-				FPS:              float64(fps),
+			r.logPhase("chronon_timing_projected", plan.RunID,
+				zap.String("sidecar", chrononSidecarPath),
+				zap.Bool("gpu_readback_present", chrononProjection.GPUReadbackBytes != nil),
+				zap.Bool("gpu_upload_present", chrononProjection.GPUUploadBytes != nil),
+			)
+		}
+		// ── Chronon Metrics Adapter ───────────────────────────────────
+		// The fine-grained sidecar phases are the engine's own exclusive-wall
+		// measurements (startup/input_open/prepare/render_loop/encoder_drain/
+		// ffprobe/sha256). When the adapter is wired they are promoted to the
+		// canonical durable performance registry (performance_operations)
+		// through the OperationReportProjectionRecorder seam. A parse/record
+		// failure is logged, never a render failure.
+		if r.chrononMetrics != nil {
+			doc, parseErr := cliprender.ParseChrononSidecar(rawTiming)
+			if parseErr != nil {
+				r.logPhase("chronon_metrics_parse_failed", plan.RunID, zap.Error(parseErr))
+			} else {
+				opts := cliprender.ChrononMetricsPublishOptions{
+					SourceSHA256:     plan.Source.SHA256,
+					SourceDurationMS: durationMS,
+					Width:            plan.Output.Width,
+					Height:           plan.Output.Height,
+					FPS:              float64(fps),
+				}
+				if chrononOut, statErr := os.Stat(chrononVideoPath); statErr == nil {
+					opts.OutputSizeBytes = chrononOut.Size()
+				}
+				r.chrononMetrics.Publish(ctx, doc, opts)
 			}
-			if chrononOut, statErr := os.Stat(chrononVideoPath); statErr == nil {
-				opts.OutputSizeBytes = chrononOut.Size()
-			}
-			r.chrononMetrics.Publish(ctx, doc, opts)
 		}
 	}
 	r.logPhase("chronon_render_done", plan.RunID,
@@ -517,6 +596,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int64("duration_ms", durationMS),
 	}, metrics.LogFields()...)...)
 
+<<<<<<< Updated upstream
 	probeMS := metrics.ProbeDurationMS
 	opMS := metrics.TotalMS
 	return rustexec.ClipRenderResult{
@@ -538,9 +618,61 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		WatermarkRasterMS: measured.WatermarkRasterMS,
 		FrameConversionMS: measured.FrameConversionMS,
 		EncodeMS:          measured.EncodeMS,
+||||||| constructed merge base
+	return rustexec.ClipRenderResult{
+		OutputPath:  plan.OutputPath,
+		SizeBytes:   st.Size(),
+		DurationSec: float64(durationMS) / 1000,
+		Width:       uint32(plan.Output.Width),
+		Height:      uint32(plan.Output.Height),
+		FPSNum:      uint32(plan.Output.FPSNum),
+		FPSDen:      uint32(plan.Output.FPSDen),
+		FFmpegMS:    metrics.TotalMS,
+		// Chronon currently reports one render invocation plus a separately
+		// measured audio mux. Preserve the phase split in the common Rust
+		// result contract; unavailable decode/composite/encode internals remain
+		// nil rather than being fabricated from the coarse duration.
+=======
+	result := rustexec.ClipRenderResult{
+		OutputPath:  plan.OutputPath,
+		SizeBytes:   st.Size(),
+		DurationSec: float64(durationMS) / 1000,
+		Width:       uint32(plan.Output.Width),
+		Height:      uint32(plan.Output.Height),
+		FPSNum:      uint32(plan.Output.FPSNum),
+		FPSDen:      uint32(plan.Output.FPSDen),
+		FFmpegMS:    metrics.TotalMS,
+		// Chronon currently reports one render invocation plus a separately
+		// measured audio mux. Preserve the phase split in the common Rust
+		// result contract; unavailable decode/composite/encode internals remain
+		// nil rather than being fabricated from the coarse duration.
+>>>>>>> Stashed changes
 		AudioMuxMS:        &metrics.AudioMuxMS,
 		AudioCopyEligible: boolPtr(true),
 		AudioEncodePasses: intPtr(0),
 		SubtitleRasterCPU: boolPtr(false),
-	}, nil
+	}
+	if timingErr == nil {
+		result.GPUReadbackBytes = chrononProjection.GPUReadbackBytes
+		result.GPUUploadBytes = chrononProjection.GPUUploadBytes
+		result.EncoderStagingCopyBytes = chrononProjection.EncoderStagingCopyBytes
+		result.NV12ToRGBAFrames = chrononProjection.NV12ToRGBAFrames
+		result.RGBAToNV12Frames = chrononProjection.RGBAToNV12Frames
+		result.CUDACompositeFrames = chrononProjection.CUDACompositeFrames
+		result.DecodeMS = chrononProjection.DecodeMS
+		result.FilterGraphMS = chrononProjection.FilterGraphMS
+		result.GPUUtilizationAvg = chrononProjection.GPUUtilizationAvg
+		result.GPUUtilizationPeak = chrononProjection.GPUUtilizationPeak
+		result.NVENCUtilizationAvg = chrononProjection.NVENCUtilizationAvg
+		result.NVDECUtilizationAvg = chrononProjection.NVDECUtilizationAvg
+		result.VRAMUsedPeakMB = chrononProjection.VRAMUsedPeakMB
+		// Keep a durable copy for the benchmark/operator output.
+		metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
+		if err := os.MkdirAll(metricsDir, 0o755); err == nil {
+			if data, err := os.ReadFile(chrononTimingPath); err == nil {
+				_ = os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), data, 0o644)
+			}
+		}
+	}
+	return result, nil
 }

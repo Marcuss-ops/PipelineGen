@@ -20,24 +20,24 @@
 # in the correct shard instead of silently overflowing to "misc".
 schema_version: 1
 source_directory: architecture/deprecations
-total_records: 11
+total_records: 7
 records:
     - bucket: assets
       file: records/assets.yaml
-      count: 3
+      count: 2
     - bucket: misc
       file: records/misc.yaml
-      count: 5
+      count: 4
     - bucket: qdrant
       file: records/qdrant.yaml
       count: 1
     - bucket: scripts
       file: records/scripts.yaml
-      count: 1
+      count: 0
     - bucket: translation
       file: records/translation.yaml
       count: 0
     - bucket: voiceover
       file: records/voiceover.yaml
-      count: 1
+      count: 0
 audit_file: audit.yaml

@@ -72,7 +72,7 @@
 //   - The dropped-on-full Publish policy is safe: any waiter that
 //     missed the bus event MUST fall back to the DB Get() (godlike/07
 //     fail-closed contract from the migration template above).
-package jobs
+package finalize
 
 import (
 	"context"

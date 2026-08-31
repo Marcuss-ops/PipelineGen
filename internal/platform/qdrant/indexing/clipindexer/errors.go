@@ -12,7 +12,7 @@
 // imports this symbol via the canonical import path.
 package clipindexer
 
-import "errors"
+import indexing "github.com/Marcuss-ops/PipelineGen/internal/kernel/indexing"
 
 // ErrIndexClipDisabledButEventRequested is the canonical typed
 // sentinel returned by Service.IndexClip when cfg.Enabled=false
@@ -57,4 +57,4 @@ import "errors"
 // errors downstream — the sentinel fires ONLY on the
 // runtime-disabled path so retry-time diagnostics are
 // unambiguous.
-var ErrIndexClipDisabledButEventRequested = errors.New("clipindexer disabled but asset.index.requested event arrived")
+var ErrIndexClipDisabledButEventRequested = indexing.ErrIndexClipDisabledButEventRequested

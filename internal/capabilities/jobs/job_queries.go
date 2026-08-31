@@ -3,10 +3,8 @@
 // PR-GODOBJ-6 (July 2026): mechanically extracted from service.go
 // per the god-object decomposition plan. Zero behavior changes.
 //
-// Forward-pointer: GetStats returns *sqljobs.JobStats (infrastructure
-// type leaked to application callers). A follow-up PR will introduce a
-// domain-level JobStats DTO per the decomposition plan's SQL-leakage
-// removal item.
+// GetStats returns the canonical kernel job.JobStats DTO, keeping the
+// application query surface independent from a persistence adapter.
 package jobs
 
 import (
@@ -14,7 +12,6 @@ import (
 	"fmt"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
 type requeueExpiredLeaser interface {
@@ -22,12 +19,12 @@ type requeueExpiredLeaser interface {
 }
 
 type statsProvider interface {
-	GetStats(context.Context) (*sqljobs.JobStats, error)
+	GetStats(context.Context) (*job.JobStats, error)
 }
 
 // awaitingAggregationLister is the narrow Pattern-0 port the parent
 // aggregator's ListAwaitingAggregation relies on. The canonical
-// *sqljobs.SQLiteStore satisfies it (migration 127 + repository.go).
+// The SQLite adapter satisfies it (migration 127 + repository.go).
 //
 // Commit 3 P0 #4 (July 2026): parentType parameter added so script
 // and voiceover aggregators can use the same query.
@@ -92,7 +89,7 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
 }
 
 // GetStats returns aggregated job statistics.
-func (s *Service) GetStats(ctx context.Context) (*sqljobs.JobStats, error) {
+func (s *Service) GetStats(ctx context.Context) (*job.JobStats, error) {
 	provider, ok := s.repo.(statsProvider)
 	if !ok {
 		return nil, fmt.Errorf("get stats: repository does not support GetStats")

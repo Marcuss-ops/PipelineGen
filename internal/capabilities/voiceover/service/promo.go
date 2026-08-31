@@ -200,7 +200,7 @@ func (a *promoVoiceoverAdapter) Generate(ctx context.Context, cmd domainvo.Gener
 	}
 	return &domainvo.Result{
 		OK: true,
-		VoiceoverSynthesisResult: domainvo.VoiceoverSynthesisResult{
+		Synthesis: domainvo.VoiceoverSynthesisResult{
 			Locale:   normalized.Locale,
 			Text:     normalized.Text,
 			Voice:    out.Voice,

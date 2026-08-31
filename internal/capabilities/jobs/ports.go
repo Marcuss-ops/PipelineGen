@@ -112,6 +112,14 @@ type VectorPointDeleter interface {
 	DeleteAssetPoints(ctx context.Context, assetIDs []string) error
 }
 
+// IndexerStateUpdater is the narrow application port used to record that an
+// indexing request is waiting for the indexer to become available. The
+// concrete clip indexer implements this contract in its own package; jobs
+// depends only on this behavior and not on the provider package.
+type IndexerStateUpdater interface {
+	MarkIndexingSkippedNoIndexer(ctx context.Context, assetID string) error
+}
+
 // DriveDeleter is the canonical Blocco 3.1 (June 2026)
 // application-layer port for the Drive side of the deletion state
 // machine. DriveDeleteHandler (asset.drive.delete_requested.v1) routes

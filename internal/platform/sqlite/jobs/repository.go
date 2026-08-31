@@ -126,8 +126,10 @@ func (r *SQLiteStore) queueChanged() {
 // 2026-Q4; new production callers will fail code review.
 func (r *SQLiteStore) DB() *sql.DB { return r.db }
 
-// Compile-time check: SQLiteStore satisfies the canonical job.Store contract.
+// Compile-time checks: the adapter satisfies the canonical persistence and
+// queue-notification contracts without exposing either concrete type upstream.
 var _ job.Store = (*SQLiteStore)(nil)
+var _ job.QueueNotifier = (*SQLiteStore)(nil)
 
 // Compile-time check: SQLiteStore satisfies the canonical job.JobBroker
 // port (PR-B, Wave 22, June 2026). The same assertion will be added at

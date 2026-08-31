@@ -20,23 +20,15 @@
 
 package jobs
 
-import "sync"
+import (
+	"sync"
 
-// QueueNotifier is the canonical typed port for the in-process
-// wake-on-Enqueue primitive (PR-Polling / ADR-0002 §D6.5, June 2026).
-// Single-process scope — a future Postgres adapter ships a separate
-// LISTEN/NOTIFY adapter that also satisfies this interface.
-//
-// Method set is intentionally minimal: Subscribe returns the live
-// notification channel; Broadcast wakes every live subscriber and
-// replaces the channel so the next Subscribe returns the fresh one.
-// Adding methods here is a typed-port drift and requires updating
-// every concrete implementation; the alternate path is to introduce
-// a new interface (e.g. BulkNotifier) that embeds QueueNotifier.
-type QueueNotifier interface {
-	Subscribe() <-chan struct{}
-	Broadcast()
-}
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
+
+// QueueNotifier is retained as an adapter compatibility alias. The canonical
+// provider-neutral contract is owned by kernel/job.QueueNotifier.
+type QueueNotifier = job.QueueNotifier
 
 // notifier is the default QueueNotifier implementation: an internal
 // channel wrapped by a mutex. Broadcast closes + replaces the
@@ -74,4 +66,4 @@ func (n *notifier) Broadcast() {
 
 // Compile-time assertion: the default implementation satisfies the
 // canonical port. Defence-in-depth against accidental drift.
-var _ QueueNotifier = (*notifier)(nil)
+var _ job.QueueNotifier = (*notifier)(nil)

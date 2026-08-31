@@ -125,7 +125,7 @@ jq -r '
 ' /tmp/job_debug_events.json
 ```
 
-`job_events.type` taxonomy (per `internal/domain/job/job.go:47`,
+`job_events.type` taxonomy (per `internal/kernel/job/job.go`,
 aliased to `kerneljob.StatusRetryWait`):
 
 | `job_events.type`  | Meaning                                                                  |
@@ -214,7 +214,7 @@ per `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:5
 
 The full retry path (classification → RETRY_WAIT → retry attempt →
 terminal CANCELLED) is sourced from `internal/kernel/job/finalize_commands.go`
-and `internal/domain/job/job.go:47` (`StatusRetryWait`).
+and `internal/kernel/job/job.go` (`StatusRetryWait`).
 
 Operator-facing next steps (CROSS-REFERENCE — this runbook is
 diagnostic-only, not an action plan):
@@ -238,12 +238,12 @@ diagnostic-only, not an action plan):
 |------------------------------------------------------------------|----------------------------------------------------------------------|
 | `jobs` and `job_events` table schemas                            | `migrations/sqlite/001_velox_core.sql:193`                           |
 | Canonical SELECT projection for `job_events`                     | `internal/platform/sqlite/jobs/repository_events.go`  |
-| Job INSERTs (status / error / retry_count writers)               | `internal/platform/sqlite/jobs/finalize_attempt.go` + `internal/platform/sqlite/jobs/lifecycle_complete.go` + `internal/platform/sqlite/jobs/lifecycle_finalize.go` + `internal/platform/sqlite/jobs/lifecycle_aggregation.go` + `internal/platform/sqlite/jobs/lifecycle_progress.go` + `internal/platform/sqlite/jobs/repository_claims.go` + `internal/application/jobs/finalizer/job_completion_writer.go` (lines 108, 138) |
+| Job INSERTs (status / error / retry_count writers)               | `internal/platform/sqlite/jobs/finalize_attempt.go` + `internal/platform/sqlite/jobs/lifecycle_complete.go` + `internal/platform/sqlite/jobs/lifecycle_finalize.go` + `internal/platform/sqlite/jobs/lifecycle_aggregation.go` + `internal/platform/sqlite/jobs/lifecycle_progress.go` + `internal/platform/sqlite/jobs/repository_claims.go` + `internal/capabilities/jobs/finalize/job_finalizer.go` + `internal/capabilities/jobs/worker_finalize_paths.go` (lines 108, 138) |
 | Finalizer rows-error mapping (`jobs.error` ← `job_events.message`)| `internal/kernel/job/finalize_commands.go:226`                     |
 | `"no candidates found"` literal origin                            | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:52` |
 | `stageDiscoverClips` function entry                              | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:44` |
-| `StatusRetryWait` definition                                     | `internal/domain/job/job.go:47` → `kerneljob.StatusRetryWait`         |
-| `StatusSucceeded` / `StatusFailed` enum split                    | `internal/domain/generation/status.go`                               |
+| `StatusRetryWait` definition                                     | `internal/kernel/job/job.go` → `kerneljob.StatusRetryWait`         |
+| `StatusSucceeded` / `StatusFailed` enum split                    | `internal/kernel/job/job.go`                               |
 
 A rewrite of any of these canonical references (column rename,
 literal rename, schema-creator split) MUST update both the code and
@@ -261,7 +261,7 @@ operator-runnable guard for this lockstep.
   echo '-- canonical job_events INSERT writers (BOTH dirs; per godlike/06 SSOT lockstep) --'
   grep -rnE 'INSERT INTO job_events\b' \
     internal/platform/sqlite/jobs/ \
-    internal/application/jobs/finalizer/ \
+    internal/capabilities/jobs/ \
     | grep -v _test.go
   echo
   echo '-- canonical jobs.error writer --'
@@ -280,8 +280,7 @@ operator-runnable guard for this lockstep.
     internal/platform/sqlite/jobs/finalize_attempt.go \
     internal/kernel/job/finalize_commands.go \
     internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go \
-    internal/domain/job/job.go \
-    internal/domain/generation/status.go; do
+    internal/kernel/job/job.go; do
     if [[ -f "$f" ]]; then
       echo "[OK]  $f"
     else

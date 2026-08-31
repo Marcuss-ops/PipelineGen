@@ -33,7 +33,7 @@
 // godlike/06 SSOT: this file is the canonical owner of "did the
 // lease-fence pass for job X?". Callers MUST route through
 // selectJobForFinalization — never re-implement the SQL fence inline.
-package jobs
+package finalize
 
 import (
 	"context"
