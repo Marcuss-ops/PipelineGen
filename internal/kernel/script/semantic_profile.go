@@ -128,6 +128,12 @@ type SegmentSemanticProfile struct {
 	// retrieval (e.g. "John Froelich early gasoline tractor").
 	ImportantPhrases []string `json:"important_phrases,omitempty"`
 
+	// NounChunks are the source-grounded multi-word noun phrases from
+	// the deterministic NLP layer (e.g. "latte art", "specialty coffee
+	// shop"). They pass through verbatim, like ImportantPhrases, and
+	// are preserved into the per-segment insights surface.
+	NounChunks []string `json:"noun_chunks,omitempty"`
+
 	// Entities are the strongly-typed named entities (PERSON, PLACE,
 	// ORGANIZATION, DATE, EVENT). They are owned by the deterministic
 	// NLP and must never be invented by the small LLM.
@@ -201,6 +207,7 @@ func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
 	clone.VisualTerms = append([]WeightedKeyword(nil), p.VisualTerms...)
 	clone.Terms = append([]SemanticTerm(nil), p.Terms...)
 	clone.ImportantPhrases = append([]string(nil), p.ImportantPhrases...)
+	clone.NounChunks = append([]string(nil), p.NounChunks...)
 	clone.Actions = append([]string(nil), p.Actions...)
 	clone.VisualConcepts = append([]string(nil), p.VisualConcepts...)
 	clone.Entities = append([]ExtractedEntity(nil), p.Entities...)
@@ -234,6 +241,7 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 		UnderstandingModelVersion: understandingModelVersion,
 		PromptVersion:             promptVersion,
 		ImportantPhrases:          append([]string(nil), res.ImportantPhrases...),
+		NounChunks:                append([]string(nil), res.NounChunks...),
 		Actions:                   append([]string(nil), res.Actions...),
 		VisualConcepts:            append([]string(nil), res.VisualConcepts...),
 	}
@@ -241,7 +249,8 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 	profile.Entities = appendEntityGroup(profile.Entities, res.Places, "LOCATION")
 	profile.Entities = appendEntityGroup(profile.Entities, res.Concepts, "CONCEPT")
 	profile.Keywords = weightedTerms(res.ImportantWords)
-	visualValues := append([]string(nil), res.ArtlistPhrases...)
+	visualValues := append([]string(nil), res.NounChunks...)
+	visualValues = append(visualValues, res.ArtlistPhrases...)
 	visualValues = append(visualValues, res.VisualConcepts...)
 	profile.VisualTerms = weightedTerms(visualValues)
 	if profile.Topic == "" {
