@@ -2,13 +2,16 @@
 //
 // Runtime code must not rediscover database paths or Qdrant collection names.
 // The only configurable filesystem root is DataDir; the primary SQLite path is
-// derived from it. Qdrant runtime identity is fixed by code/schema.
+// derived from it. Qdrant runtime identity is fixed by the canonical Qdrant
+// schema package and aggregated here for consumers that need the whole topology.
 package storage
 
 import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 const (
@@ -16,12 +19,6 @@ const (
 	MediaDBFilename = "media.db.sqlite"
 	// MediaDBDirectory is the canonical directory below DataDir.
 	MediaDBDirectory = "media"
-	// QdrantProductionCollection is the sole physical collection available to
-	// runtime readers/writers.
-	QdrantProductionCollection = "media_assets"
-	// QdrantRuntimeAlias is the sole runtime alias. It must resolve to the
-	// production physical collection and never to candidates/recovery builds.
-	QdrantRuntimeAlias = "media_assets_current"
 )
 
 // StorageTopology is the complete runtime identity of the canonical primary
@@ -43,8 +40,8 @@ func CanonicalStorageTopology(dataDir string) StorageTopology {
 	}
 	return StorageTopology{
 		MediaDBPath:      filepath.Join(dataDir, MediaDBDirectory, MediaDBFilename),
-		QdrantCollection: QdrantProductionCollection,
-		QdrantAlias:      QdrantRuntimeAlias,
+		QdrantCollection: schema.ProductionCollection,
+		QdrantAlias:      schema.CanonicalRuntimeAlias,
 	}
 }
 
@@ -53,11 +50,12 @@ func CanonicalMediaDBPath(dataDir string) string {
 	return CanonicalStorageTopology(dataDir).MediaDBPath
 }
 
-// RequireRuntimeCollection fails closed for candidates, versioned,
-// recovery/synthetic/test collections, aliases, and arbitrary names.
+// RequireRuntimeCollection delegates to the Qdrant schema SSOT and therefore
+// fails closed for candidates, versioned, recovery/synthetic/test collections,
+// aliases, and arbitrary names.
 func RequireRuntimeCollection(name string) error {
-	if strings.TrimSpace(name) != QdrantProductionCollection {
-		return fmt.Errorf("runtime Qdrant collection %q is forbidden; only %q is allowed", name, QdrantProductionCollection)
+	if err := schema.ValidateRuntimeCollection(name); err != nil {
+		return fmt.Errorf("canonical storage topology: %w", err)
 	}
 	return nil
 }
@@ -65,8 +63,8 @@ func RequireRuntimeCollection(name string) error {
 // RequireRuntimeAlias fails closed when a runtime path attempts to resolve a
 // non-canonical alias.
 func RequireRuntimeAlias(name string) error {
-	if strings.TrimSpace(name) != QdrantRuntimeAlias {
-		return fmt.Errorf("runtime Qdrant alias %q is forbidden; only %q is allowed", name, QdrantRuntimeAlias)
+	if strings.TrimSpace(name) != schema.CanonicalRuntimeAlias {
+		return fmt.Errorf("runtime Qdrant alias %q is forbidden; only %q is allowed", name, schema.CanonicalRuntimeAlias)
 	}
 	return nil
 }
