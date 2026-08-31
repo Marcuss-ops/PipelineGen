@@ -16,7 +16,6 @@ type AssetPatch struct {
 	Category       *string
 	Group          *string
 	SearchText     *string
-	Description    *string
 	LifecycleState *string
 	IndexState     *string
 	EnrichState    *string
