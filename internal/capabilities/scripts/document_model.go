@@ -45,14 +45,29 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		}
 
 		converted := scriptpkg.SpecScene{
-			ID:          scene.ID,
-			Index:       scene.Index,
-			Text:        text,
-			Kind:        scriptpkg.SceneNarration,
-			Bindings:    scriptpkg.SceneBindings{},
-			Annotations: scene.Annotations,
+			ID:               scene.ID,
+			Index:            scene.Index,
+			Text:             text,
+			Kind:             scriptpkg.SceneNarration,
+			ExecutionMode:    scene.ExecutionMode,
+			FixedPlayback:    cloneFixedPlayback(scene.FixedPlayback),
+			AudioMode:        string(scene.Audio.Mode),
+			AudioAssetID:     scene.Audio.ClipAssetID,
+			AudioSourceInMS:  scene.FixedPlaybackSourceInMS(),
+			AudioSourceOutMS: scene.FixedPlaybackSourceOutMS(),
+			Bindings:         scriptpkg.SceneBindings{},
+			Annotations:      scene.Annotations,
 		}
-		if scene.Clip != nil || len(scene.Clips) > 0 {
+		if scene.ExecutionMode.IsFixedMedia() {
+			switch scene.ID {
+			case "scene-intro":
+				converted.Kind = scriptpkg.SceneIntro
+			case "scene-outro":
+				converted.Kind = scriptpkg.SceneOutro
+			default:
+				converted.Kind = scriptpkg.SceneClip
+			}
+		} else if scene.Clip != nil || len(scene.Clips) > 0 {
 			converted.Kind = scriptpkg.SceneClip
 		}
 		for _, clip := range scene.Clips {
@@ -154,6 +169,15 @@ func documentSkeletonInputForScenes(title string, scenes []Scene, langs []Langua
 	return inputs
 }
 
+func cloneFixedPlayback(in *scriptpkg.FixedPlaybackPolicy) *scriptpkg.FixedPlaybackPolicy {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+// clipBindingFromReference projects a runtime clip into the document contract.
 func clipBindingFromReference(clip *ClipReference) scriptpkg.ClipBinding {
 	if clip == nil {
 		return scriptpkg.ClipBinding{}

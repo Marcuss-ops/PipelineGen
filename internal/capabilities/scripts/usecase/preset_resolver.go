@@ -2,7 +2,7 @@
 // a GenerationItemV2.
 //
 // As of issue 8 / Step 3 (June 2026): the canonical implementation
-// lives in internal/application/scripts/adapters/generation_normalizer.go
+// lives in internal/capabilities/scripts/adapters/generation_normalizer.go
 // (per AGENTS.md Pattern 8 — adapters/ is the canonical dependency
 // boundary for the normalized script pipeline because it also owns
 // applyConfigDefaults and applySafetyDefaults, the other two layers
@@ -33,7 +33,7 @@ import (
 )
 
 // ApplyPreset is a thin wrapper that delegates to the canonical
-// implementation in internal/application/scripts/adapters/. The
+// implementation in internal/capabilities/scripts/adapters/. The
 // adapter is the single source of truth for the full 5-preset
 // semantics (custom / with_images / full_media / catalog / search
 // + pass-through for batch / unknown / empty). This wrapper exists

@@ -27,7 +27,7 @@ const (
 	// voiceover are flipped on when the caller leaves them at zero.
 	// Wires Step 1 of issue 8 (ApplyPreset stub): the constant is
 	// defined here; wiring of the per-field override lives in
-	// internal/application/scripts/adapters/generation_normalizer.go.
+	// internal/capabilities/scripts/adapters/generation_normalizer.go.
 	PresetFullMedia Preset = "full_media"
 
 	// PresetCatalog forces source.kind=catalog so the catalog source

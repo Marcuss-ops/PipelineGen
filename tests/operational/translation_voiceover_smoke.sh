@@ -59,7 +59,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 # ── Configuration ──────────────────────────────────────────────────
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 TOPIC="${TOPIC:-boxing championship highlights}"
 LANGUAGE="${LANGUAGE:-en}"
 TRANSLATE_TO="${TRANSLATE_TO:-it}"

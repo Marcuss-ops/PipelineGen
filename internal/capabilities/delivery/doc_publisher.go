@@ -2,12 +2,12 @@
 //
 // DocPublisher is the canonical application-layer port for Google Docs
 // operations. It covers a subset of drive.DocClient (declared in
-// internal/infrastructure/drive/doc_client.go) — only the methods
+// internal/platform/drive/doc_client.go) — only the methods
 // whose signatures do not reference *drive.Doc / []drive.Doc.
 //
 // CreateDoc and ListRecentDocs are intentionally excluded because they
 // return *drive.Doc / []drive.Doc types that live in the infrastructure
-// package (internal/infrastructure/drive), which already imports
+// package (internal/platform/drive), which already imports
 // delivery for the Publisher port. Including those methods would create
 // an import cycle.
 //
@@ -18,7 +18,7 @@
 // infrastructure owns the concrete).
 //
 // The compile-time assertion that *drive.DocClientImpl satisfies
-// DocPublisher lives in internal/infrastructure/drive/doc_publisher_assert.go.
+// DocPublisher lives in internal/platform/drive/doc_publisher_assert.go.
 package delivery
 
 import "context"

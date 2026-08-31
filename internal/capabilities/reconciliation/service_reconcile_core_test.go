@@ -18,11 +18,10 @@ func TestReconcile_DryRun_DoesNotDispatch(t *testing.T) {
 	mtr := &stubMetrics{}
 	svc := fixtureService(t,
 		defaultSchema(),
-		&stubQdrant{pointsByID: map[string]pointWithID{
-			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
-				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE",
-			}},
+		&stubQdrant{pointsByID: map[string]pointWithID{"a1": {ID: "pt-a1", Payload: map[string]interface{}{
+			"asset_id": "a1", "name": "x", "source": "youtube",
+			"lifecycle_state": "ACTIVE", "content_hash": "h1",
+		}},
 		}},
 		&stubSQLite{rows: []AssetSnapshot{
 			{ID: "a1", LifecycleState: "ACTIVE", ContentHash: "h1"},
@@ -74,6 +73,41 @@ func TestReconcile_DryRun_DoesNotDispatch(t *testing.T) {
 	}
 }
 
+func TestReconcileProjection_HashMismatchUsesSQLiteHashForReindex(t *testing.T) {
+	outbox := &stubOutbox{}
+	svc := fixtureService(t,
+		defaultSchema(),
+		&stubQdrant{pointsByID: map[string]pointWithID{
+			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
+				"asset_id":        "a1",
+				"name":            "x",
+				"source":          "youtube",
+				"lifecycle_state": "ACTIVE",
+				"content_hash":    "qdrant-old-hash",
+			}},
+		}},
+		&stubSQLite{rows: []AssetSnapshot{{
+			ID: "a1", LifecycleState: "ACTIVE", ContentHash: "sqlite-canonical-hash",
+		}}},
+		&stubMetrics{},
+		withOutbox(outbox),
+		withPayload(&stubPayload{}),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+
+	report, err := svc.ReconcileProjection(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.Counts[KindHashMismatch] != 1 {
+		t.Fatalf("HashMismatch=%d, want 1; report=%+v", report.Counts[KindHashMismatch], report)
+	}
+	if len(outbox.reindex) != 1 || outbox.reindex[0].contentHash != "sqlite-canonical-hash" {
+		t.Fatalf("reindex must use SQLite canonical hash, got %+v", outbox.reindex)
+	}
+}
+
 func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 	outbox := &stubOutbox{}
 	payload := &stubPayload{}
@@ -83,25 +117,22 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
 				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state":        "ACTIVE",
-				"embedding_version_text": "2026-06-16-v1",
+				"lifecycle_state": "ACTIVE", "embedding_version_text": "2026-06-16-v1", "content_hash": "h-a1",
 			}},
 			"stale": {ID: "pt-stale", Payload: map[string]interface{}{
 				"asset_id": "stale", "name": "x", "source": "youtube",
-				"lifecycle_state":        "ACTIVE",
-				"embedding_version_text": "v0",
+				"lifecycle_state": "ACTIVE", "embedding_version_text": "v0", "content_hash": "h-stale",
 			}},
 			"orphan": {ID: "pt-orphan", Payload: map[string]interface{}{"asset_id": "orphan"}},
 			"legacy_status": {ID: "pt-legacy_status", Payload: map[string]interface{}{
 				"asset_id": "legacy_status", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE", "status": "ACTIVE",
+				"lifecycle_state": "ACTIVE", "status": "ACTIVE", "content_hash": "h-ls",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
 			"legacy_drive": {ID: "pt-legacy_drive", Payload: map[string]interface{}{
 				"asset_id": "legacy_drive", "name": "x", "source": "youtube",
-				"lifecycle_state":        "ACTIVE",
-				"drive_link":             "https://drive.example/x",
-				"local_path":             "/local/dump/x.mp4",
+				"lifecycle_state": "ACTIVE", "content_hash": "h-ld",
+				"drive_link": "https://drive.example/x", "local_path": "/local/dump/x.mp4",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
 		}},
@@ -266,7 +297,7 @@ func TestReconcile_IdempotentSecondRunProducesZeroDrift(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
 				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE", "embedding_version_text": "2026-06-16-v1",
+				"lifecycle_state": "ACTIVE", "embedding_version_text": "2026-06-16-v1", "content_hash": "h-a1",
 			}},
 			"orphan": {ID: "pt-orphan", Payload: map[string]interface{}{"asset_id": "orphan"}},
 		}},
@@ -292,7 +323,7 @@ func TestReconcile_IdempotentSecondRunProducesZeroDrift(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
 				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE", "embedding_version_text": "2026-06-16-v1",
+				"lifecycle_state": "ACTIVE", "embedding_version_text": "2026-06-16-v1", "content_hash": "h-a1",
 			}},
 		}},
 		&stubSQLite{rows: []AssetSnapshot{

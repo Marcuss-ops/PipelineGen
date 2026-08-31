@@ -4,7 +4,7 @@
 // PG-006.1 (June 2026): the typed SecurityAdapter struct was previously
 // duplicated three times across the codebase:
 //
-//   - serverSecurityAdapter       (internal/api/server.go)
+//   - serverSecurityAdapter       (internal/platform/httpserver/server.go)
 //   - genDocsSecurityAdapter      (cmd/admin/gen_api_docs.go)
 //   - middlewareSecurityAdapter  (internal/app/middleware_security_adapter.go)
 //
@@ -18,13 +18,13 @@
 //
 // Pattern 0 (PG-006.1 round-2, June 2026): a concrete HTTP-middleware
 // adapter that satisfies application-layer auth ports lives in
-// internal/api/middleware, not in internal/app/ (the composition
+// internal/platform/httpserver/middleware, not in internal/app/ (the composition
 // root) and not in pkg/<utility>/ (reserved for leaf-only stdlib
 // utilities). The compile-time assertion that asserts
 // *TokenSecurityAdapter satisfies application/middleware.AuthSecurityPort lives
 // on the implementor side in adapters_assertions.go next to the
 // struct — placed round-2 there to keep ports.go cycle-free after
-// the pkg/middleware → internal/api/middleware relocation.
+// the pkg/middleware → internal/platform/httpserver/middleware relocation.
 //
 // Note: this package is NOT leaf-only — it consumes typed *config.Config
 // from internal/platform/config via snapshot-literal composition at
@@ -52,7 +52,7 @@ func NewOSEnvReader() EnvReader { return osEnvReader{} }
 
 // TokenSecurityAdapter is the canonical SecurityAdapter concrete
 // implementation. It exposes the EnableAuth/AdminToken/WorkerToken
-// method set that internal/application/middleware.AuthSecurityPort
+// method set that internal/capabilities/middleware.AuthSecurityPort
 // (and downstream auth middlewares RequireAdminToken / Auth /
 // WorkerAuth) consume.
 //

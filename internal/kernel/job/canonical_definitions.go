@@ -22,7 +22,7 @@
 //  2. Append the entry to CanonicalJobDefinitions (this file).
 //  3. Append the corresponding typed payload/result structs in
 //     internal/capabilities/jobs/queue/codec.go (C2 surface).
-//  4. Append the type string constant in internal/domain/job/job.go.
+//  4. Append the type string constant in internal/kernel/job/job.go.
 //  5. Append the registry.go re-export alias in internal/capabilities/jobs/queue/registry_types.go.
 //  6. Append the per-family round-trip test in internal/capabilities/jobs/queue/registry_codec_completeness_test.go.
 //  7. Append the job type to workflowRefs in c3ValidateRuntimeGraph (internal/app/registry.go).
@@ -48,7 +48,7 @@ import (
 )
 
 // Canonical type string literals. These mirror the capability-owned
-// constants in internal/domain/<capability>/job_types.go. Keeping the
+// constants in internal/kernel/<capability>/job_types.go. Keeping the
 // literal values here (rather than importing the domain packages)
 // preserves the kernel's stdlib-only import discipline while still
 // giving the composition root a stable set of canonical JobDefinitions.
@@ -65,8 +65,8 @@ const (
 	TypeVoiceoverPromo        = "voiceover.promo"
 
 	// Re-exported canonical job type constants previously in
-	// internal/domain/job (deleted July 2026). Callers that
-	// imported `job "internal/domain/job"` can now import
+	// internal/kernel/job (deleted July 2026). Callers that
+	// imported `job "internal/kernel/job"` can now import
 	// `job "internal/kernel/job"` unmodified.
 	TypeYouTubeClipExtract   = "youtube.clip.extract"
 	TypeScriptGenerate       = "script.generate"

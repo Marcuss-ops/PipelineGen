@@ -78,7 +78,7 @@ func (s *Service) HandleJob(ctx context.Context, j *appjobs.Job, tools *appjobs.
 // Searchers returns the canonical (scraper, pixabay, pexels) Searcher triplet
 // for diagnostic + observability access. Wired at composition time by
 // build_bundles_artlist.go::WireArtlist from the infrastructure-layer
-// concretes (internal/infrastructure/artlist/scraper + fallback); each
+// concretes (internal/platform/artlist/scraper + fallback); each
 // satisfies the same Searcher port (godlike/06 one-canonical-owner-per-fact).
 //
 // Per godlike/06 SSOT the construction is the composition root's exclusive

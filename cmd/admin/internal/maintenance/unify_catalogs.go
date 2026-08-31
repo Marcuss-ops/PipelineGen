@@ -17,9 +17,12 @@ func RunUnifyCatalogs(args []string) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	dataDir := cfg.Storage.DataDir
+	dataDir := cfg.Storage.AbsDataDir()
 
-	mediaPath := dataDir + "/" + storage.DBMedia
+	mediaPath := cfg.Storage.PrimaryDBFullPath()
+	if mediaPath == "" {
+		return fmt.Errorf("canonical primary SQLite path is invalid")
+	}
 	stockPath := dataDir + "/stock/stock.db.sqlite"
 	artlistPath := dataDir + "/artlist/artlist.db.sqlite"
 

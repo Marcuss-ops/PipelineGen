@@ -2,7 +2,7 @@
 // Strategies are registered per source type and dispatched by the Registry.
 //
 // Pattern 0: the compile-time assertion locks the port-implementation
-// contract (internal/application/indexing/searchtext.SearchTextBuilder).
+// contract (internal/capabilities/indexing/searchtext.SearchTextBuilder).
 package searchtext
 
 import (

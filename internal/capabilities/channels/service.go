@@ -8,7 +8,7 @@
 //   - delegate persistence to the Repository port (contract.go)
 //   - return typed Results (contract.go)
 //
-// Handlers (internal/application/channels/handler.go) call Service
+// Handlers (internal/capabilities/channels/handler.go) call Service
 // exclusively — they never reach into asset.CategoryChannel or
 // Repository directly. Admin one-shot CLIs
 // (cmd/admin/backfill_monitored_sources_to_category_channels.go) call

@@ -19,9 +19,9 @@
 // PR-VO-TYPED-PRIMITIVES (July 2026) collapsed two duplicate
 // implementations that were inlined at:
 //
-//   - internal/application/voiceover/planner.go::truncationHash
+//   - internal/capabilities/voiceover/planner.go::truncationHash
 //     (used hashutil.SHA256String(text)[:16])
-//   - internal/application/voiceover/jobs/fanout.go::textHashSHA256
+//   - internal/capabilities/voiceover/jobs/fanout.go::textHashSHA256
 //     (own crypto/sha256 + encoding/hex impl)
 //
 // Both produced the same byte-for-byte 16-hex-char lowercase

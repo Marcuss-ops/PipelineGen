@@ -16,7 +16,17 @@ import (
 // file. Existing local paths are reused; missing paths are materialized once
 // through the optional clip resolver.
 func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source ClipAudioAssetSource, policy capabilityaudio.AudioMixPolicy) (int64, error) {
-	if result == nil || policy.Normalize() != capabilityaudio.MixVoiceoverWithDuckedClip {
+	if result == nil {
+		return 0, nil
+	}
+	needsFixedAudio := false
+	for i := range result.Scenes {
+		if result.Scenes[i].ExecutionMode.IsFixedMedia() {
+			needsFixedAudio = true
+			break
+		}
+	}
+	if policy.Normalize() != capabilityaudio.MixVoiceoverWithDuckedClip && !needsFixedAudio {
 		return 0, nil
 	}
 	started := time.Now()
@@ -30,11 +40,15 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 			if clip == nil || strings.TrimSpace(clip.ID) == "" || !sceneUsesClipAudio(*scene, clip.ID) {
 				continue
 			}
+			fixed := scene.ExecutionMode.IsFixedMedia()
+			if fixed && source == nil {
+				return 0, fmt.Errorf("scene %s fixed media clip %s requires an original audio source", scene.ID, clip.ID)
+			}
 			path := strings.TrimSpace(clip.AudioPath)
 			if path == "" {
 				path = strings.TrimSpace(clip.Path)
 			}
-			if path != "" {
+			if path != "" && !fixed {
 				if _, err := os.Stat(path); err == nil {
 					clip.AudioPath = path
 					continue
@@ -63,7 +77,11 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 				return 0, fmt.Errorf("scene %s clip %s materialized audio is not readable: %w", scene.ID, clip.ID, err)
 			}
 			clip.AudioPath = resolved.Path
-			if err := clampClipAudioRanges(scene, clip.ID, resolved.DurationUS); err != nil {
+			if fixed {
+				if err := applyFixedPlaybackWindow(scene, clip, resolved.DurationUS); err != nil {
+					return 0, fmt.Errorf("scene %s clip %s fixed playback validation failed: %w", scene.ID, clip.ID, err)
+				}
+			} else if err := clampClipAudioRanges(scene, clip.ID, resolved.DurationUS); err != nil {
 				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
 			}
 		}
@@ -106,6 +124,44 @@ func clampClipAudioRanges(scene *Scene, clipID string, durationUS int64) error {
 		clamp(&scene.AudioIntents[i])
 	}
 	clamp(&scene.Audio)
+	return nil
+}
+
+func applyFixedPlaybackWindow(scene *Scene, clip *ClipReference, sourceDurationUS int64) error {
+	if scene == nil || clip == nil || scene.FixedPlayback == nil {
+		return fmt.Errorf("fixed playback policy is missing")
+	}
+	if sourceDurationUS <= 0 {
+		return fmt.Errorf("original audio duration is unknown")
+	}
+	playback := scene.FixedPlayback.Normalize()
+	startUS := playback.SourceInMS * 1000
+	endUS := playback.SourceOutMS * 1000
+	if endUS == 0 {
+		endUS = sourceDurationUS
+	}
+	if startUS < 0 || endUS <= startUS || endUS > sourceDurationUS {
+		return fmt.Errorf("source window [%d,%d]ms exceeds original audio duration %dms", playback.SourceInMS, playback.SourceOutMS, sourceDurationUS/1000)
+	}
+	clip.SourceInMS = playback.SourceInMS
+	clip.SourceOutMS = endUS / 1000
+	for i := range scene.AudioIntents {
+		intent := &scene.AudioIntents[i]
+		if intent.Mode == capabilityaudio.AudioClip && intent.ClipAssetID == clip.ID {
+			intent.SourceInUS = startUS
+			intent.SourceDurationUS = endUS - startUS
+			intent.TimelineDurationUS = endUS - startUS
+		}
+	}
+	if scene.Audio.Mode == capabilityaudio.AudioClip && scene.Audio.ClipAssetID == clip.ID {
+		scene.Audio.SourceInUS = startUS
+		scene.Audio.SourceDurationUS = endUS - startUS
+		scene.Audio.TimelineDurationUS = endUS - startUS
+	}
+	if scene.DurationUS <= 0 {
+		scene.DurationUS = endUS - startUS
+		scene.DurationMS = scene.DurationUS / 1000
+	}
 	return nil
 }
 

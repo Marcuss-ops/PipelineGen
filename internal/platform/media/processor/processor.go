@@ -394,7 +394,7 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 	// godlike/06 "one owner per fact". A Publisher that returns
 	// empty DownloadLink on success is a Publisher BUG and MUST
 	// surface loudly (already pinned at
-	// internal/infrastructure/drive/publisher_policies_test.go,
+	// internal/platform/drive/publisher_policies_test.go,
 	// the F1.6 Canon-URL test). Allowing a silent reconstruction
 	// via "https://drive.google.com/uc?id="+FileID would produce a
 	// URL Drive never actually surfaced — a worse outcome than the

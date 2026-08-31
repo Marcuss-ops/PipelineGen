@@ -2,7 +2,7 @@
 // assets/metadataexport.AssetResolver.
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the legacy
-// internal/application/assets/metadataexport previously inlined SQL
+// internal/capabilities/assets/metadataexport previously inlined SQL
 // against media_assets + outbox_events + delivery_log. After split,
 // those queries live here behind a typed-port adapter. Application
 // layer no longer imports database/sql — the import direction is

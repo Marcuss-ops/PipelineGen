@@ -46,7 +46,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ── Configuration ──────────────────────────────────────────────────
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 SMOKE_DRIVE_TOKEN_FILE="${SMOKE_DRIVE_TOKEN_FILE:-${REPO_ROOT:-$(pwd)}/token.json}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 DRIVE_API_BASE="https://www.googleapis.com"

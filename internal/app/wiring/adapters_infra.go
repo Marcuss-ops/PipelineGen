@@ -1,9 +1,9 @@
 // Package app — adapters satisfying the typed ports declared in
-// internal/application/<feature>/ports.go (or contract.go, after the
+// internal/capabilities/<feature>/ports.go (or contract.go, after the
 // Capability Standard migration).
 //
 // Capability Standard migration (June 2026): channelRepositoryAdapter
-// has been relocated to internal/application/channels/adapters.go so
+// has been relocated to internal/capabilities/channels/adapters.go so
 // the channels capability is the canonical owner of its own
 // infrastructure adapter. This file keeps the cross-capability
 // adapters that have no obvious single owner (sfx, drive, reconciler,

@@ -66,7 +66,7 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	// (July 2026); the Carry value is still json.RawMessage so the unmarshal
 	// shape is byte-stable across the rename. The typed StagedArtifactReference
 	// surface lives on the Sender-side wire envelope at
-	// internal/domain/remote/staged_artifact_reference.go (godlike/06 SSOT).
+	// internal/capabilities/remote/staged_artifact_reference.go (godlike/06 SSOT).
 	var artifacts []finalization.PublishedArtifact
 	if len(cmd.StagedArtifacts) > 0 {
 		var staged remote.StagedArtifacts

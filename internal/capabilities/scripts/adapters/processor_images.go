@@ -96,7 +96,7 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
-	scenes := specScenesFromInput(input)
+	scenes := filterMediaResolutionScenes(specScenesFromInput(input))
 	if len(scenes) == 0 {
 		if p.log != nil {
 			p.log.Debug("image processor: no scenes to render (no specscene scenes)",

@@ -31,7 +31,7 @@ fi
 
 PAYLOAD_FILE="${PAYLOAD_FILE:-$DIR/script_generate_search_e2e_battery.json}"
 NEGATIVE_PAYLOAD_FILE="${NEGATIVE_PAYLOAD_FILE:-$DIR/script_generate_search_e2e_negative.json}"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 RUN_MIXED_BATCH="${RUN_MIXED_BATCH:-0}"
 AUDIT_GOOGLE_DOC_RENDER="${AUDIT_GOOGLE_DOC_RENDER:-0}"
 DOCS_FOLDER_ID="${DOCS_FOLDER_ID:-}"

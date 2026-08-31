@@ -3,7 +3,7 @@
 // the PipelineGen runtime.
 //
 // Pre-2026 the codebase opened a single sqlite DB at
-// `<DataDir>/media.db.sqlite` plus a secondary DB at `<DataDir>/logs/api_requests.db.sqlite`
+// `<DataDir>/media/media.db.sqlite` plus a secondary DB at `<DataDir>/logs/api_requests.db.sqlite`
 // from inside `internal/app/bootstrap.go`. Both open-sites used
 // `database/sql` directly. This file centralises that pattern so callers
 // (notably `internal/app/composition.go`) can open the full set with one
@@ -18,9 +18,9 @@
 //   - Observability — the API request log database at
 //     `<DataDir>/observability/api_requests.db.sqlite`.
 //
-// Defaults preserve the legacy single-file path
-// `<DataDir>/media.db.sqlite` as the Primary DB so existing deployments
-// keep working without migration. The path migration tool
+// Defaults use the canonical unified path
+// `<DataDir>/media/media.db.sqlite`. Legacy single-file paths are rejected
+// before any runtime handle is opened. The path migration tool
 // (`cmd/admin/path_migrate.go`, future PR) performs backup + SHA256
 // checksum + PRAGMA integrity_check + rollback when operators opt in.
 package sqlite
@@ -75,15 +75,15 @@ type StorageConfig struct {
 	ExportDir           string
 }
 
-// ResolveStorageConfig fills zero-valued paths in `cfg` with defaults
-// that preserve the legacy single-file layout (PrimaryDBPath defaults to
-// `<DataDir>/media/media.db.sqlite` to match today's on-disk file).
+// ResolveStorageConfig fills zero-valued paths in `cfg` with the canonical
+// operational layout. PrimaryDBPath is always
+// `<DataDir>/media/media.db.sqlite`; arbitrary primary paths are rejected by
+// OpenSet before any database handle is created.
 func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	if cfg.DataDir == "" {
 		cfg.DataDir = "data"
 	}
 	if cfg.PrimaryDBPath == "" {
-		// Compat: matches today's file via DataDir/media/media.db.sqlite.
 		cfg.PrimaryDBPath = filepath.Join(cfg.DataDir, "media", "media.db.sqlite")
 	}
 	if cfg.ObservabilityDBPath == "" {
@@ -101,6 +101,22 @@ func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	return cfg
 }
 
+func validateCanonicalPrimaryPath(cfg StorageConfig) error {
+	configured, err := filepath.Abs(filepath.Clean(cfg.PrimaryDBPath))
+	if err != nil {
+		return fmt.Errorf("databaseset: resolve primary SQLite path %q: %w", cfg.PrimaryDBPath, err)
+	}
+	dataDir, err := filepath.Abs(filepath.Clean(cfg.DataDir))
+	if err != nil {
+		return fmt.Errorf("databaseset: resolve data directory %q: %w", cfg.DataDir, err)
+	}
+	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
+	if configured != canonical {
+		return fmt.Errorf("databaseset: non-canonical primary SQLite path %q; use %q", cfg.PrimaryDBPath, canonical)
+	}
+	return nil
+}
+
 // OpenSet opens BOTH the Primary and Observability databases with the
 // canonical wal/foreign_keys/busy_timeout pragma set, runs a Ping on
 // each, and returns the typed DatabaseSet. This is the ONLY entry point
@@ -111,6 +127,9 @@ func OpenSet(cfg StorageConfig, log *zap.Logger) (*DatabaseSet, error) {
 		log = zap.NewNop()
 	}
 	cfg = ResolveStorageConfig(cfg)
+	if err := validateCanonicalPrimaryPath(cfg); err != nil {
+		return nil, err
+	}
 
 	primary, err := NewSQLiteDB(filepath.Dir(cfg.PrimaryDBPath), filepath.Base(cfg.PrimaryDBPath), log)
 	if err != nil {

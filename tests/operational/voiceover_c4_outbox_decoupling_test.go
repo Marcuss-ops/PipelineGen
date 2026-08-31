@@ -37,6 +37,7 @@ func TestVoiceoverC4OutboxDecoupling(t *testing.T) {
 	if os.Getenv("VELOX_ADMIN_TOKEN") == "" {
 		t.Skip("VELOX_ADMIN_TOKEN not set; skipping live voiceover C4 test")
 	}
+	requireExplicitSmokeDB(t)
 	if os.Getenv("SMOKE_DRIVE_FOLDER_ID") == "" {
 		t.Skip("SMOKE_DRIVE_FOLDER_ID not set; voiceover C4 needs a real Drive folder_id (same as B1 happy path)")
 	}

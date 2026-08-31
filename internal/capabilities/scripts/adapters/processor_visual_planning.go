@@ -64,6 +64,9 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 	open := make([]mediamemory.SceneSpec, 0, len(input.SpecScene.Scenes))
 	for i, scene := range input.SpecScene.Scenes {
+		if !sceneAllowsMediaResolution(scene) {
+			continue
+		}
 		segmentID := visualSegmentID(plan, scene, i)
 		slots := visualSlotsForPolicy(plan.MediaPlan, segmentID)
 		openSlots := make([]mediadomain.SlotKind, 0, len(slots))
@@ -79,6 +82,9 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 	plans := make([]mediamemory.SceneVisualPlan, 0, len(locked)+len(open))
 	for _, scene := range input.SpecScene.Scenes {
+		if !sceneAllowsMediaResolution(scene) {
+			continue
+		}
 		segmentID := visualSegmentID(plan, scene, sceneIndex(input.SpecScene.Scenes, scene.ID))
 		if v, ok := locked[segmentID+"/primary_video"]; ok {
 			v.SceneID, v.SegmentID, v.Text = scene.ID, segmentID, scene.Text

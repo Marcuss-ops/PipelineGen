@@ -4,8 +4,8 @@ import "fmt"
 
 // FileURLFromID returns the canonical Google Drive view URL for a
 // file ID. Wave 14 PR2 (June 2026): replaces `driveutil.FileURLFromID`
-// (referenced from internal/api/assets/clips/clip_action.go) so the
-// API layer no longer imports internal/infrastructure/drive. This is
+// (referenced from internal/capabilities/assets/clips/clip_action.go) so the
+// API layer no longer imports internal/platform/drive This is
 // a pure string function — the legacy alias `driveutil.FileURLFromID`
 // produced the same URL shape (https://drive.google.com/file/d/<id>/view)
 // so callers see zero behavioral drift.

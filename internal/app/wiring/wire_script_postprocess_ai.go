@@ -10,12 +10,12 @@
 // Cross-references:
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     calls registerAIBackedProcessors after inline registrations.
-//   - internal/application/scripts/adapters: NewEntitiesProcessor,
+//   - internal/capabilities/scripts/adapters: NewEntitiesProcessor,
 //     NewMetadataProcessor, NewTranslationProcessor, NewClipSearchProcessor
 //     (PR-LEGACY-UNAVAILABLE-CLIPSEARCH + PR-LEGACY-UNAVAILABLE-ENTITY-METADATA, 2026-07-10:
 //     NewUnavailable* constructors no longer called from this file — processors
 //     are skipped entirely when backend is absent)
-//   - internal/application/scripts/usecase: NewTranslationUseCaseAdapter,
+//   - internal/capabilities/scripts/usecase: NewTranslationUseCaseAdapter,
 //     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
 //   - internal/platform/ollama/adapters: NewOllamaEntityExtractorAdapter,
 //     NewOllamaMetadataGeneratorAdapter

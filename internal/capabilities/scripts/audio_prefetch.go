@@ -51,13 +51,13 @@ type AudioPrefetchResult struct {
 type audioPrefetchCache struct {
 	mu        sync.RWMutex
 	audio     map[string]capabilityaudio.ResolvedAudioAsset // asset_id → resolved
-	clipAudio map[string]string                             // clip_id → path
+	clipAudio map[string]capabilityaudio.ResolvedAudioAsset // clip_id → resolved original audio
 }
 
 func newAudioPrefetchCache() *audioPrefetchCache {
 	return &audioPrefetchCache{
 		audio:     make(map[string]capabilityaudio.ResolvedAudioAsset),
-		clipAudio: make(map[string]string),
+		clipAudio: make(map[string]capabilityaudio.ResolvedAudioAsset),
 	}
 }
 
@@ -91,9 +91,9 @@ type cachedClipAudioAssetSource struct {
 
 func (c *cachedClipAudioAssetSource) ResolveClipAudioAsset(ctx context.Context, clipID string) (capabilityaudio.ResolvedAudioAsset, error) {
 	c.cache.mu.RLock()
-	if path, ok := c.cache.clipAudio[clipID]; ok {
+	if resolved, ok := c.cache.clipAudio[clipID]; ok {
 		c.cache.mu.RUnlock()
-		return capabilityaudio.ResolvedAudioAsset{AssetID: clipID, Path: path}, nil
+		return resolved, nil
 	}
 	c.cache.mu.RUnlock()
 	if c.real == nil {
@@ -168,7 +168,7 @@ func PrefetchAudioAssets(
 					return fmt.Errorf("materialize clip audio %q: %w", id, err)
 				}
 				cache.mu.Lock()
-				cache.clipAudio[id] = resolved.Path
+				cache.clipAudio[id] = resolved
 				cache.mu.Unlock()
 				return nil
 			})
@@ -188,9 +188,13 @@ func PrefetchAudioAssets(
 		cachedClipAudio = &cachedClipAudioAssetSource{real: clipAudioSource, cache: cache}
 	}
 
+	clipAudioPaths := make(map[string]string, len(cache.clipAudio))
+	for id, resolved := range cache.clipAudio {
+		clipAudioPaths[id] = resolved.Path
+	}
 	return &AudioPrefetchResult{
 		ResolvedAudio:   cache.audio,
-		ClipAudioPaths:  cache.clipAudio,
+		ClipAudioPaths:  clipAudioPaths,
 		AudioSource:     cachedAudio,
 		ClipAudioSource: cachedClipAudio,
 	}, nil

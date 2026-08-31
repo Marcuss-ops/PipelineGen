@@ -1,13 +1,13 @@
 // Package app — DB setup helpers (PG-006 + Cut 6.2 sibling, June/July 2026).
 //
 // Extracted from bootstrap.go so the bootstrap.go entry-point file remains
-// strictly free of `internal/infrastructure/*` imports. The `databases`
+// strictly free of `internal/platform/*` imports. The `databases`
 // struct + `InitDatabases` + `RunAllMigrations` helpers are pure concrete
 // wiring (storage.OpenSet, connection pooling + WAL/busy_timeout config,
 // schema migration); only the composition root is allowed to keep the
 // infra imports.
 //
-// PG-006 (June 2026): `internal/infrastructure/**` is the only file tree
+// PG-006 (June 2026): `internal/platform/**` is the only file tree
 // allowed to import concrete SDK / driver code; `internal/app/**` is the
 // composition root that wires the infra into the application domain.
 // PG-006 narrows the rule: bootstrap.go specifically must stay free of
@@ -30,7 +30,6 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -55,12 +54,9 @@ type CleanupFunc func()
 // DatabaseSet at construction time; the canonical source of truth is
 // `dbs.Set.Primary` / `dbs.Set.Observability`.
 //
-// PR-Queue-Split-EXPAND (June 2026): the `jobs` field is added for the
-// EXPAND-on flag shape. When cfg.Jobs.SplitDBEnabled is true,
-// `InitDatabases` opens a separate jobs.db.sqlite file via
-// storage.OpenSQLiteDB and populates this field; composition.go picks
-// `dbs.Jobs` over `dbs.Main` for the JobsBundle's *SQLiteStore when
-// `dbs.Jobs != nil`. Default behaviour: `jobs` stays nil.
+// A second operational SQLite database is intentionally not supported;
+// the unified runtime uses only Main for business state and Logs for the
+// separate observability axis.
 //
 // Cut 6.2 sibling (July 2026): the `dualPool` field is added for the
 // WAL-mode reader/writer split. Repositories throughout the composition
@@ -78,18 +74,15 @@ type CleanupFunc func()
 //     Production callers (InitDatabases) MUST construct a non-nil
 //     DualPool so the canonical instrumentation surface (Cut 6.2
 //     metrics + EXPLAIN) fires at boot.
-//   - dbs.Jobs: non-nil only when cfg.Jobs.SplitDBEnabled=true.
+//   - dbs.Jobs: always nil in the unified single-primary runtime shape.
 type Databases struct {
 	Set      *storage.DatabaseSet
 	Main     *storage.SQLiteDB
 	Logs     *storage.SQLiteDB
 	DualPool *storage.DualPool
 
-	// jobs is the EXPAND CANONICAL queue DB. nil when SplitDBEnabled is
-	// false (today's default); non-nil when the EXPAND flag is on. Both
-	// `jobs` and `main` may be open simultaneously during the EXPAND
-	// bench window — the closure path closes jobs first to ensure
-	// outbound writes from jobs do not race the main DB's WAL flush.
+	// Jobs is retained as a nil-only compatibility field while callers
+	// migrate away from the retired split-database shape.
 	Jobs *storage.SQLiteDB
 }
 
@@ -131,10 +124,23 @@ func (d *Databases) Close() {
 // failure surfaces as a typed error from CleanupStack rather than as
 // a deadlocked writer tx at first write.
 //
-// PR-Queue-Split-EXPAND (June 2026): when cfg.Jobs.SplitDBEnabled is
-// true, also opens jobs.db.sqlite via storage.OpenSQLiteDB and
-// populates dbs.Jobs.
+// The retired jobs.db.sqlite split is rejected fail-closed; no second
+// operational database is opened.
 func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("init databases: config is nil")
+	}
+	if err := cfg.Storage.ValidatePrimaryDBPath(); err != nil {
+		return nil, fmt.Errorf("init databases: %w", err)
+	}
+
+	// The unified data-layer contract permits exactly one operational
+	// primary SQLite file. Reject the former split jobs configuration
+	// before opening any database handle.
+	if cfg.Jobs.SplitDBEnabled || strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" {
+		return nil, fmt.Errorf("init databases: split jobs SQLite is disabled; use the canonical primary media/media.db.sqlite")
+	}
+
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
 		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
@@ -169,31 +175,6 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 		zap.Int("num_readers", runtime.NumCPU()),
 		zap.String("primary_path", setCfg.PrimaryDBPath),
 	)
-
-	// PR-Queue-Split-EXPAND: gate at InitDatabases so the JobsBundle can
-	// pick the right DB at composition-root call time (BuildJobsBundle's
-	// signature does not need to change — it accepts a *storage.SQLiteDB).
-	if cfg != nil && cfg.Jobs.SplitDBEnabled {
-		jobsPath := jobsDBPathFromPrimary(cfg.Storage.PrimaryDBFullPath())
-		if cfg.Jobs.JobsDBPath != "" {
-			jobsPath = cfg.Jobs.JobsDBPath
-		}
-		jobsDB, jobsOpenErr := storage.OpenSQLiteDB(jobsPath, log)
-		if jobsOpenErr != nil {
-			// Fail-closed: closing any partial state (dualPool +
-			// main DB) so a half-open triple does not leak. The
-			// operator either retries with a fixed path OR flips
-			// SplitDBEnabled=false to fall back to the canonical
-			// single-DB shape.
-			dbs.Close()
-			return nil, fmt.Errorf("init jobs DB %s: %w", jobsPath, jobsOpenErr)
-		}
-		dbs.Jobs = jobsDB
-		log.Info("PR-Queue-Split-EXPAND: Jobs DB opened alongside media DB",
-			zap.String("main_db", dbs.Main.Path()),
-			zap.String("jobs_db", jobsDB.Path()),
-		)
-	}
 
 	return dbs, nil
 }
@@ -250,72 +231,12 @@ func (d *Databases) ValidateControlPlaneIdentity(ctx context.Context) error {
 	return nil
 }
 
-// jobsMigrationsDir is the EXPAND-PR-Queue-Split migration directory
-// scanned at boot time WHEN dbs.Jobs is open (SplitDBEnabled=true). The
-// directory mirrors the canonical migrations/sqlite/ but scoped to the
-// three jobs-domain tables — media-side migrations stay on media.db.sqlite.
-//
-// Why a peer directory instead of re-using migrations/sqlite/:
-//   - the migrations runner's ledger table (schema_migrations) is
-//     per-database: media.db.sqlite has its own ledger, jobs.db.sqlite
-//     has its own. They cannot share a directory because the ledger
-//     entry `INSERT INTO schema_migrations (...)` writes to whichever
-//     DB the runner is connected to at the time.
-//   - peer directory filenames use the standard NNN_<descriptive>.sql
-//     convention so the runner discovers them identically to media's
-//     migrations (no caller-side change to migrateAll required).
-//   - media.db.sqlite's existing migrations (001_velox_core, 022, 053, …)
-//     stay on media's ledger untouched — a split DB never replays the
-//     media-side history because EXPAND assumes a fresh jobs DB starting
-//     from the FINAL canonical shape (see 000_initial_jobs_schema.sql).
-const jobsMigrationsDir = "migrations/sqlite_jobs"
-
-// jobsDBPathFromPrimary derives the default jobs.db.sqlite path by
-// stripping "media.db.sqlite" from the primary path's basename and
-// substituting "jobs.db.sqlite" — the canonical pair lives side-by-side.
-// Returns the primary path verbatim if it does not end in
-// media.db.sqlite (operator-set custom layout); the caller (InitDatabases)
-// decides whether to error or pass through.
-func jobsDBPathFromPrimary(primaryPath string) string {
-	dir := filepath.Dir(primaryPath)
-	base := filepath.Base(primaryPath)
-	if !strings.HasSuffix(base, "media.db.sqlite") {
-		return primaryPath
-	}
-	return filepath.Join(dir, strings.Replace(base, "media.db.sqlite", "jobs.db.sqlite", 1))
-}
-
 func RunAllMigrations(dbs *Databases, log *zap.Logger) error {
 	if err := dbs.Set.Migrate(log); err != nil {
 		return err
 	}
-	// The identity gate runs immediately after the primary migration pass,
-	// before any optional split-database migration can start. This makes a
-	// second writable control-plane database fail closed at boot rather than
-	// allowing it to begin serving writes.
 	if err := dbs.ValidateControlPlaneIdentity(context.Background()); err != nil {
 		return fmt.Errorf("validate control plane identity: %w", err)
-	}
-	// EXPAND / ADR-0003: when the jobs DB is open, run its peer-ledger
-	// migrations from migrations/sqlite_jobs/ . Each DB has its own
-	// schema_migrations table; the runner's per-tx recording is
-	// independent. Fail-closed: any jobs-DB migration error aborts the
-	// boot sequence (per godlike/07 §"Migration sequence" EXPAND phase
-	// invariant). This blocks the case where an operator flips
-	// SplitDBEnabled=true on a deployment with a no-op or half-decoded
-	// jobs.db.sqlite file but expects prod to boot regardless — the
-	// runner must surface the gap, not silently no-op.
-	if dbs.Jobs != nil {
-		// TargetDB="primary" — the EXPAND-OBSERVABILITY
-		// jobs DB is a split-shard of the canonical media DB and shares
-		// the same domain shape. Its peer migrations dir
-		// (migrations/sqlite_jobs/) is disjoint from migrations/sqlite/,
-		// so the scope check is a defensive no-op for the jobs DB
-		// (nothing inside jobsMigrationsDir carries a `-- database:`
-		// directive today).
-		if err := dbs.Jobs.RunMigrations(log, jobsMigrationsDir, "primary"); err != nil {
-			return fmt.Errorf("jobs-db migrations: %w", err)
-		}
 	}
 	return nil
 }

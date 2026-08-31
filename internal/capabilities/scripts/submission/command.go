@@ -2,7 +2,7 @@
 // objects consumed by the script-generation submission factory.
 //
 // PR-SUBMISSION-FACTORY (July 2026): the HTTP transport layer
-// (internal/api/script) builds only this command and delegates
+// (internal/capabilities/script) builds only this command and delegates
 // SubmitRequest assembly to the application layer. This keeps
 // transport concerns (headers, JSON binding, status codes) out of
 // policy/hash/scope decisions.

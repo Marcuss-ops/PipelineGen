@@ -20,7 +20,7 @@
 // (*clips.Handler).FindDuplicates) satisfy these interfaces via
 // duck-typing — the parent's Build wires the per-cluster handler
 // pointer as the interface value so this package has zero imports
-// from internal/api/assets/clips (parent) to avoid cyclic imports.
+// from internal/capabilities/assets/clips (parent) to avoid cyclic imports.
 package catalog
 
 import (

@@ -3,7 +3,7 @@
 // Canonical per-scene voiceover fanout for the voiceover postprocessor
 // and the async job worker path. Two consumers drive the same fanout:
 //
-//   - internal/application/scripts/adapters/processor_voiceover.go
+//   - internal/capabilities/scripts/adapters/processor_voiceover.go
 //     (PostProcess path; ProcessorPolicy = BestEffort — failures
 //     collect as warnings, not errors).
 //   - internal/capabilities/scripts/jobs/job_helpers.go

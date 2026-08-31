@@ -221,6 +221,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			}
 			targetScenes = cloneVoiceoverScenes(baseScenes)
 			for i := range targetScenes {
+				if !targetScenes[i].AllowsTranslation() {
+					continue
+				}
 				translated, err := p.translator.Translate(ctx, targetScenes[i].Text, language)
 				if err != nil || strings.TrimSpace(translated) == "" {
 					if err == nil {
@@ -239,6 +242,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 		items := make([]VoiceoverSceneInput, 0, len(targetScenes))
 		for i, scene := range targetScenes {
+			if !scene.AllowsTTS() || !scene.AllowsGeneratedAudio() {
+				continue
+			}
 			sceneText := scene.Text
 			if sceneText == "" {
 				sceneText = fmt.Sprintf("Scene %d", i+1)

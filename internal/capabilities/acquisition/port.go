@@ -1,7 +1,7 @@
 // Package acquisition — canonical SourceStager port (Stock Cutover §12-4, July 2026).
 //
 // Per godlike/06 "one canonical owner per fact", the SourceStager
-// abstraction lives here (NOT in `internal/application/assets/ports.go`'s
+// abstraction lives here (NOT in `internal/capabilities/assets/ports.go`'s
 // per-call `assets.SourceStager`). The acquisition port's prepare/release
 // lifecycle is persistent across calls: a stage lives until the caller
 // releases it (or it expires), with a deterministic CleanupToken for
@@ -22,7 +22,7 @@
 // consumer pipelines can declare compile-time dependencies without
 // importing infrastructure. Stock, YouTube, and Artlist use this port;
 // remaining compatibility consumers are migrated separately.
-// Concrete implementations live under `internal/infrastructure/acquisition/`.
+// Concrete implementations live under `internal/platform/acquisition/`.
 package acquisition
 
 import (
@@ -186,7 +186,7 @@ type PrepareContext struct {
 
 // SourceStager is the canonical acquisition.SourceStager port. Concrete
 // implementations satisfy this interface (compile-time assertion in
-// `internal/infrastructure/acquisition/*_stager.go`).
+// `internal/platform/acquisition/*_stager.go`).
 //
 // Prepare: fetch + stage the requested source. Idempotent on
 // (SourceRef, IdempotencyKey) — repeat calls within the TTL return

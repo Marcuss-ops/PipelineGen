@@ -33,7 +33,7 @@
 //
 // Format: idempotency.BuildKeyString("stock-enrich", chunkID + ":" + contentHash + ":" + string(version))
 // (colon-separated concatenation, mirroring the ArtifactIdempotencyKey
-// and CompleteJobIdempotencyKey conventions in internal/domain/remote/).
+// and CompleteJobIdempotencyKey conventions in internal/capabilities/remote/).
 // Commit A follow-up (July 2026): the canonical surface is now
 // pkg/idempotency.BuildKeyString (delegated from this package),
 // not a direct hashutil.SHA256String call. The byte-stable output

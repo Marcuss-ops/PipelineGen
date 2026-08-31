@@ -3,7 +3,7 @@
 // DriveVerifierAdapter is the infrastructure-side implementation of the
 // artifacts.DriveVerifier port. It is functionally equivalent to the
 // legacy `APIDriveVerifier` that lived in
-// internal/application/assets/artifacts/verifier.go — PR2.7 moved it
+// internal/capabilities/assets/artifacts/verifier.go — PR2.7 moved it
 // here to break the App → Infra back-edge of the import cycle that the
 // drive <-> artlist cycle had historically introduced (folder_manager.go
 // once imported artlist for `[]artlist.DriveFileRef` return type on

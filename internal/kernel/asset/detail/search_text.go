@@ -8,9 +8,9 @@
 // GeneratedImage) MUST compose search text through this registry instead
 // of inline ad-hoc concatenations.
 //
-// The application-layer port (internal/application/indexing/searchtext)
+// The application-layer port (internal/capabilities/indexing/searchtext)
 // references these types; the infrastructure-layer registry
-// (internal/infrastructure/indexing/searchtext) delegates to these
+// (internal/capabilities/indexing/searchtext) delegates to these
 // strategies. YouTube and Stock map their pipeline-specific DTOs
 // (CanonicalClipMetadata, ClipPlan) to SearchTextInput at the adapter
 // boundary.
@@ -33,7 +33,7 @@ import (
 //
 // godlike/06 SSOT: this type is the canonical owner-of-fact for the
 // search-text composition input shape. The application-layer
-// SearchTextInput (internal/application/indexing/searchtext) is a
+// SearchTextInput (internal/capabilities/indexing/searchtext) is a
 // type alias to this domain type (or will be migrated to reference
 // it in a follow-up PR).
 type SearchTextInput struct {
@@ -130,7 +130,7 @@ type SearchTextInput struct {
 //
 // godlike/06 SSOT: this interface is the SOLE canonical owner of the
 // search-text composition contract. The application-layer
-// SearchTextBuilder (internal/application/indexing/searchtext) will
+// SearchTextBuilder (internal/capabilities/indexing/searchtext) will
 // become a type alias to this domain interface in a follow-up PR.
 type SearchTextComposer interface {
 	// Compose assembles the canonical search text for the given input.
@@ -156,7 +156,7 @@ type SearchTextStrategy func(input SearchTextInput) string
 //
 // godlike/06 SSOT: this is the SOLE canonical registry for search-text
 // composition. The infrastructure-layer Registry
-// (internal/infrastructure/indexing/searchtext) delegates to this
+// (internal/capabilities/indexing/searchtext) delegates to this
 // domain-level registry.
 type ComposerRegistry struct {
 	strategies map[string]SearchTextStrategy
@@ -227,10 +227,10 @@ const (
 // to the youtube.rebuild_search_text post-enrichment job).
 //
 // NOTE: this mirrors Step 9 (composeYouTubeClipSearchText at
-// internal/application/youtube/usecase/process_segment_helpers.go:123).
+// internal/capabilities/youtube/usecase/process_segment_helpers.go:123).
 // For post-enrichment text including Transcript and Channel, use the
 // infra-layer youtubeStrategy at
-// internal/infrastructure/indexing/searchtext/strategies.go. The two
+// internal/capabilities/indexing/searchtext/strategies.go. The two
 // strategies produce DIFFERENT output for the same Source — this is
 // intentional (Step 9 vs post-enrichment text).
 //

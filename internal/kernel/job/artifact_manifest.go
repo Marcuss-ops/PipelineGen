@@ -58,7 +58,7 @@ const (
 	// (internal/capabilities/jobs/worker/runner.go::uploadManifest)
 	// switches on; adding a new kind is a wire-format extension and
 	// is documented here so the next reader can find the originating
-	// handler at internal/api/assets/document/document_handler.go.
+	// handler at internal/capabilities/assets/document/document_handler.go.
 	ArtifactKindPDF = "pdf"
 	// ArtifactKindMarkdown = "markdown" (P0 Commit 12, July 2026)
 	// extends the canonical kind set for the script.generate
@@ -345,7 +345,7 @@ const (
 // ArtifactRequirement mirrors the finalizer-side typed enum without
 // importing the higher-level package into the job manifest contract.
 // The numeric values are intentionally aligned with
-// internal/domain/finalization.ArtifactRequirement so the JSON payload
+// internal/capabilities/finalization.ArtifactRequirement so the JSON payload
 // unmarshals cleanly into the canonical finalizer request.
 type ArtifactRequirement int
 

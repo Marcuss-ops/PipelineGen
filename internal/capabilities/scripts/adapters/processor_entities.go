@@ -104,6 +104,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}
 
 	materializedScenes := materializeNarrativeScenes(plan, input.SpecScene.Scenes, extractionText)
+	materializedScenes = filterNLPScenes(materializedScenes)
 	canonical := buildCanonicalSegments(plan, materializedScenes, extractionText)
 	if len(canonical) == 0 {
 		return &PostProcessResult{}, nil
@@ -762,6 +763,9 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 // shared single-segment enrichment. The returned result is immutable and
 // keyed by the scene content hash.
 func (e *VidRushSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	if !scene.AllowsNLP() {
+		return scriptpkg.VidRushSegmentResult{}, nil
+	}
 	if e.extractor == nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("%w: entities enricher: EntityExtractor not configured", scriptpkg.ErrPostprocessFailed)
 	}

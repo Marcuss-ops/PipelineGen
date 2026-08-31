@@ -7,7 +7,7 @@ source "$DIR/lib/common.sh"
 smoke_require sqlite3 jq curl ffmpeg ffprobe python3 sha256sum
 
 ROOT_DIR=$(cd "$DIR/../.." && pwd)
-SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 VELOX_MASTER_URL="${VELOX_MASTER_URL:-http://127.0.0.1:8000}"
 VELOX_M2M_TOKEN="${VELOX_M2M_TOKEN:-}"
 VELOX_MASTER_ADMIN_TOKEN="${VELOX_MASTER_ADMIN_TOKEN:-${VELOX_ADMIN_TOKEN:-}}"

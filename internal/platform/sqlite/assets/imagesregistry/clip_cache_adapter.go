@@ -2,7 +2,7 @@
 // implementation of the youtubeports.ClipCachePort typed interface.
 //
 // Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the canonical
-// ProcessYouTubeSegmentUseCase (internal/application/youtube/usecase/
+// ProcessYouTubeSegmentUseCase (internal/capabilities/youtube/usecase/
 // process_segment.go) consults the clip cache at Step 2 to short-circuit
 // re-extraction on already-processed clips. Before Commit 1 the
 // composition layer did not wire the port — Cache.GetExisting returned

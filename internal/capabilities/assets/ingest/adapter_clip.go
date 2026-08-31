@@ -20,7 +20,7 @@ type clipStoreAdapter struct {
 	db *sql.DB
 	// repo was renamed from `assets` in Wave 12 follow-up
 	// Phase 2 PR-3 — the original name collided with the
-	// `internal/domain/asset` package alias after the sed
+	// `internal/kernel/asset` package alias after the sed
 	// migration (sed's `\bassets\.` pattern matched the receiver
 	// field `a.ports.Upsert`, producing broken `a.asset.Upsert`
 	// references).

@@ -40,6 +40,9 @@ func TestVoiceoverValidationFailClosed(t *testing.T) {
 	if os.Getenv("VELOX_ADMIN_TOKEN") == "" {
 		t.Skip("VELOX_ADMIN_TOKEN not set; skipping live voiceover validation test")
 	}
+	if os.Getenv("SMOKE_DB") == "" {
+		t.Skip("SMOKE_DB not set; live voiceover validation requires an explicit database path")
+	}
 
 	// Resolve the bash script relative to this test file's directory.
 	// runtime.Caller(0) returns the call-site of runtime.Caller itself,

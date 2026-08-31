@@ -144,7 +144,7 @@ func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 // (this Client) worker executions.
 //
 // Forward-pointer: the server-side handler at
-// internal/api/jobs/handler_workers.go::CompleteWithArtifacts emits
+// internal/capabilities/jobs/handler_workers.go::CompleteWithArtifacts emits
 // a generic 500 today; the typed-error envelope emission lands in
 // a follow-up PR (godlike/06 SSOT discipline: one owner per fact).
 // This client-side decode is already forward-compatible — once
@@ -155,7 +155,7 @@ func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 // byte-stable through the wire) into the POST body and decodes
 // the 200 response into the typed CWA response envelope (forward-
 // declared fields; expected response shape mirrors
-// internal/api/jobs.CompleteArtifactsResponse).
+// internal/capabilities/jobs.CompleteArtifactsResponse).
 func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	bodyBytes, err := json.Marshal(cmd)
 	if err != nil {
@@ -271,7 +271,7 @@ func (c *Client) setAuth(req *http.Request) {
 //
 // The 3-method handshake (PrepareArtifactUpload / UploadArtifactFile /
 // FinalizeArtifactUpload) is the Creator-side HTTP transport surface
-// for the canonical ArtifactUploader port (internal/domain/remote/
+// for the canonical ArtifactUploader port (internal/capabilities/remote/
 // artifact_uploader.go). Command shape mirrors the existing claim /
 // complete / fail pattern on *Client:
 //
@@ -288,7 +288,7 @@ func (c *Client) setAuth(req *http.Request) {
 //                                              body: UploadFinalizeRequest
 //                                              resp: *remote.UploadSession
 //
-// The Creator-side adapter (internal/infrastructure/remote/creator/adapter.go)
+// The Creator-side adapter (internal/platform/remote/creator/adapter.go)
 // composes these 3 commands with state-machine transition gates +
 // idempotency-key derivation. The compile-time assertion pinning
 // *Client to the creator/jobBrokerClient interface lives in the

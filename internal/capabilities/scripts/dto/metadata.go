@@ -45,7 +45,7 @@ type MetadataGenerator interface {
 // it.
 //
 // Honest-limitation forward-pointer: the use case at
-// internal/application/scripts/usecase/postgen_usecase.go:152 ships
+// internal/capabilities/scripts/usecase/postgen_usecase.go:152 ships
 // a SHADOW `BuildMetadataLanguages` stub that returns the payload
 // verbatim (no normalization). That stub is NOT exercised by the
 // canonical dto-side wiring here, but it shadows the canonical

@@ -5,7 +5,7 @@
 // bridge with a long-lived sidecar (scripts/bridges/argos_server.py) so the
 // OpenNMT models are loaded ONCE and shared across every per-language
 // translation. The lifecycle mirrors the TTS worker precedent in
-// internal/infrastructure/audio/worker_process.go:
+// internal/platform/audio/worker_process.go:
 //
 //   - ensureStarted spawns the Python HTTP server, reads the PORT=<n> line
 //     (with a bounded timeout), drains stdout, and validates /health.

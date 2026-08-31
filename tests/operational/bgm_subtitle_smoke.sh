@@ -129,7 +129,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ── Configuration (after common.sh — only override if env var not already set) ──
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 
 BGM_VOLUME="0.15"   # subtle background, voiceover stays prominent
 

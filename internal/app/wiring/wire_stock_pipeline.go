@@ -252,7 +252,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	}
 
 	// PublisherPort: construct the canonical drive.NewArtifactPublisherAdapter
-	// so the application layer stays free of internal/infrastructure/drive imports.
+	// so the application layer stays free of internal/platform/drive imports.
 	var stockPublisherPort finalization.PublisherPort
 	if root.Drive != nil && root.Drive.Publisher != nil {
 		stockPublisherPort = drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)

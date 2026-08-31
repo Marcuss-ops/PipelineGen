@@ -25,7 +25,7 @@ import (
 // PG-006 (June 2026): RouterConfig is now strictly transport-shaped —
 // no concrete `*config.Config`. Auth/Rate/Features flow through the
 // application-layer typed ports defined in
-// internal/application/middleware/ports.go. The composition root
+// internal/capabilities/middleware/ports.go. The composition root
 // (internal/app/wire_services.go and the bootstrap adapters in
 // internal/app/middleware_security_adapter.go) constructs and passes
 // these ports. Runtime fields the router NEEDS at request time are
@@ -35,7 +35,7 @@ import (
 //
 // QDRANT-001 (June 2026) closure: internalMediaHandler is the narrow
 // port for /internal/v1/media/* routes (server-to-server surface) —
-// the production binding is *internal/api/assets/storage.Handler
+// the production binding is *internal/capabilities/assets/storage.Handler
 // (RegisterInternalMediaRoutes method). Keeping it behind an
 // interface prevents this router from importing api/assets/storage.
 //
@@ -78,21 +78,21 @@ type Router struct {
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
-// routes. Production bind: *internal/api/assets/storage.Handler.
+// routes. Production bind: *internal/capabilities/assets/storage.Handler.
 type MediaInternalRouter interface {
 	RegisterInternalMediaRoutes(*gin.RouterGroup)
 }
 
 // InternalOutboxRouter is the narrow port for /internal/v1/outbox/*
 // monitoring routes (QDRANT-002). Production bind:
-// *internal/api/outbox.Handler.
+// *internal/capabilities/outbox
 type InternalOutboxRouter interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
 
 // InternalMediaSearchRouter is the narrow port for
 // /internal/v1/media/search (QDRANT-004). Production bind:
-// *internal/api/mediasearch.Handler.
+// *internal/capabilities/mediasearch
 type InternalMediaSearchRouter interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
@@ -118,7 +118,7 @@ type RouterConfig struct {
 
 	// Structured logger — required by Logger/Recovery/Auth/WorkerAuth
 	// since these now accept *zap.Logger directly instead of going
-	// through `internal/infrastructure/logging`'s package-level aliases.
+	// through `internal/platform/logging`'s package-level aliases.
 	Log *zap.Logger
 
 	// Primitive runtime fields (constructed from *config.Config by

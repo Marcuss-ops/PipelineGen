@@ -43,8 +43,8 @@ import (
 // execution graph.
 //
 // A future contributor adding a 6th canonical job family must:
-//  1. Append the literal to internal/domain/job/canonical_definitions.go.
-//  2. Append the type constant to internal/domain/job/job.go.
+//  1. Append the literal to internal/kernel/job/canonical_definitions.go.
+//  2. Append the type constant to internal/kernel/job/job.go.
 //  3. Update workflowRefs below.
 //  4. Update the per-family round-trip test in registry_codec_completeness_test.go.
 //

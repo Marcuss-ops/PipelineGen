@@ -292,6 +292,7 @@ func entityResultFromAnalysis(result *detail.EntityExtractionResult) *script.Ent
 	out := &script.EntityResult{
 		ArtlistPhrases:   append([]string(nil), result.ArtlistPhrases...),
 		ImportantPhrases: append([]string(nil), result.FrasiImportanti...),
+		NounChunks:       append([]string(nil), result.NounChunks...),
 		// ImportantWords is populated only by the trimming loop below so each
 		// word is emitted exactly once (never duplicated by a second copy).
 		ImportantWords: make([]string, 0, len(result.ParoleImportanti)),

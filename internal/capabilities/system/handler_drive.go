@@ -1,8 +1,8 @@
 // Package system (api/system) — handler_drive.go holds the DriveHandler
 // (reconcile/cleanup/folders/move/resolve-by-id) as a second receiver in
 // the system package. Wave 14 PR4 close (June 24, 2026): this file absorbed
-// the legacy internal/api/drive/handler.go when the standalone
-// internal/api/drive/ directory was eliminated.
+// the legacy internal/platform/drive/handler.go when the standalone
+// internal/platform/drive/ directory was eliminated.
 //
 // The route prefix `/drive` is mounted on the system Module's group
 // in module.go::Module.RegisterRoutes, sibling to /system/doctor.
@@ -15,7 +15,7 @@
 // `DriveAdminOps` port interfaces declared right here.
 // The concrete adapters live in `internal/app/system_adapters.go`
 // (composition root). This keeps the api layer free of
-// `internal/infrastructure/*` imports per AGENTS.md Pattern 8.
+// `internal/platform/*` imports per AGENTS.md Pattern 8.
 package system
 
 import (

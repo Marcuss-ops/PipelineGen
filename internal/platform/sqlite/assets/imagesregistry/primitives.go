@@ -124,7 +124,7 @@ func SetLogger(log *zap.Logger) {
 //	list with `column = id`). There is no `CREATE TABLE asset_dedupe`
 //	migration in the entire migrations/sqlite tree (the closest
 //	reference is the application-layer DedupeService at
-//	internal/application/assets/assetop/dedupe.go, which is in-memory
+//	internal/capabilities/assets/assetop/dedupe.go, which is in-memory
 //	policy — not a SQL table). Keeping `asset_dedupe` in the loop
 //	would force every purge into `no such table: asset_dedupe` on
 //	fresh installs. The fossil is decommissioned.

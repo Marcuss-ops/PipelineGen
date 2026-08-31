@@ -1,7 +1,7 @@
 // Package job — parent_state.go (canonical 5-state machine, Step 12B-C1/5, July 2026).
 //
 // Promotes the typed ParentState enum + state-machine validator from the
-// application-layer result field (internal/application/voiceover/parent_state.go,
+// application-layer result field (internal/capabilities/voiceover/parent_state.go,
 // added by PR-VO-AUDIT-P05 micro-commit #4 of 8 in June 2026) to the canonical
 // domain surface (this file). The 4-value result enum in voiceover pkg remains
 // for wire-shape back-compat until C3 wire-up propagates the canonical names

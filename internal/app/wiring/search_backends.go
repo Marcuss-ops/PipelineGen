@@ -21,7 +21,7 @@
 // This file retains the composition bridge + helpers only.
 //
 // Wave 19 cross-capability rule: this file IS the ONLY place in
-// internal/app/ where multiple internal/application/* domains are
+// internal/app/ where multiple internal/capabilities/* domains are
 // imported at once. The composition root's canonical pattern
 // (per AGENTS.md Pattern 0 + Wave 19 PR-2) is "composition-only
 // bridge in internal/app/"; this file fills that role for the Search

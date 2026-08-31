@@ -85,7 +85,7 @@ type Aggregator struct {
 
 // NewAggregator constructs the Aggregator. backends may be nil —
 // a fresh in-memory registry is substituted (matches patterns in
-// the rest of internal/application/*). log may be nil — a
+// the rest of internal/capabilities/*). log may be nil — a
 // noopLogger is substituted so Search never panics on a missing
 // logger in tests.
 func NewAggregator(backends *BackendRegistry, log Logger) *Aggregator {

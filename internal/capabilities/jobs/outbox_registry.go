@@ -28,6 +28,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -42,7 +43,7 @@ import (
 // paths when jobs is nil. The MetadataExportHandler (Step 2, June
 // 2026) no longer reaches through Deps.DB — the composition root
 // constructs the typed-port adapter (metadataexport.NewSQLiteAdapter)
-// and the FileWriter adapter (internal/infrastructure/files/
+// and the FileWriter adapter (internal/platform/filesystem/
 // metadataexport), then passes the pre-built handler to
 // RegisterOptionalHandlers via the metadataExportHandler arg.
 //
@@ -252,7 +253,7 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 // the pre-Step-2 deps.Infra.DB+deps.MetadataDir construction. The composition
 // root constructs the typed-port adapter (metadataexport.NewSQLiteAdapter
 // at internal/platform/sqlite/metadataexport/ +
-// FileWriter at internal/infrastructure/files/metadataexport/) and
+// FileWriter at internal/platform/filesystem/metadataexport/) and
 // stamps HandlerDeps{Resolver, Writer, OutputDir} onto the handler at
 // wire time. The application package no longer touches *sql.DB or os.
 //
@@ -264,8 +265,8 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
 	}
 	optional := []outboxevents.Handler{
-		&WorkflowStepCompletedHandler{log: log},
-		&WorkflowStepFailedHandler{log: log},
+		finalize.NewWorkflowStepCompletedHandler(log),
+		finalize.NewWorkflowStepFailedHandler(log, nil),
 		NewAssetPublishedHandler(log),
 	}
 	if metadataExportHandler != nil {
@@ -370,7 +371,7 @@ func (e *registryError) Error() string { return e.msg }
 // godlike/06 SSOT: the production IndexClipper concrete
 // (*clipindexer.Service) is the SAME instance that satisfies
 // clipindexer.IndexerStateUpdater (compile-time pinned at
-// internal/infrastructure/indexing/clipindexer/state_writer.go:
+// internal/capabilities/indexing/clipindexer/state_writer.go:
 // `var _ IndexerStateUpdater = (*Service)(nil)`). When RegisterCoreHandlers
 // RegisterCoreHandlers receives a *Service from the composition root; the
 // type-assertion below auto-wires the IndexerStateUpdater port so

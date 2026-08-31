@@ -32,7 +32,7 @@
 // ("API package: thin transport only") applies.
 //
 // Wired at internal/app/registry.go → wiring.MediasearchHandler →
-// internal/api/routes.go::Setup() → internalGroup (/internal/v1)
+// internal/platform/httpserver/routes.go::Setup() → internalGroup (/internal/v1)
 // with WorkerAuth middleware. The routes are:
 //
 //	POST /internal/v1/media/search
@@ -72,8 +72,8 @@
 // is exposed on the canonical /internal/v1/media surface. Bulk
 // indexing in this codebase lives on a separate route tree
 // (Qdrant outbox + clipindexer portals; see
-// internal/api/index_writer.go if it exists). The audit command
-// that confirms this is `rg -i 'index_bulk|bulk_index' internal/api/
+// internal/capabilities/index_writer.go if it exists). The audit command
+// that confirms this is `rg -i 'index_bulk|bulk_index' internal/capabilities/
 // mediasearch/ → 0` (no matches). The user-spec response-shape
 // expectation is therefore vacuously satisfied — there is no
 // endpoint to correct. Future bulk-index exposure on this surface

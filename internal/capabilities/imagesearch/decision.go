@@ -8,7 +8,7 @@ import (
 
 // EntityExtractor is the structural port consumed by the Resolver. It mirrors
 // the canonical adapters.EntityExtractor signature; Go structural typing keeps
-// the conservative CPU extractor (internal/infrastructure/nlp/local) and the
+// the conservative CPU extractor (internal/platform/nlp/local) and the
 // Ollama hybrid adapter assignable here without the capability package
 // importing infrastructure.
 type EntityExtractor interface {

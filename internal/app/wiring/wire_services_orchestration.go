@@ -184,7 +184,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 	// PR3 (June 2026): Wave 14 close — internal/api/workers/ was eliminated
-	// and the handler moved to internal/api/jobs/ as a sibling receiver
+	// and the handler moved to internal/capabilities/jobs/ as a sibling receiver
 	// (WorkersBrokerHandler). The ctor signature is identical so existing
 	// logic is preserved without churn.
 	workerHandler := jobsapi.NewWorkersBrokerHandler(broker, assetSvc, log)

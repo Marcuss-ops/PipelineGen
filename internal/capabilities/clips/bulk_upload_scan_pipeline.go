@@ -2,7 +2,7 @@
 // the "bulk_upload_youtube_clips" bg-job pipeline.
 //
 // P1.7 (July 2026): the scanner was extracted from
-// internal/application/clips/bulk_upload_worker.go as part of the
+// internal/capabilities/clips/bulk_upload_worker.go as part of the
 // 7-file worker-pipeline split. Each step of the per-clip pipeline
 // (scan / publish / sidecar-publish / register / enrich / result) is
 // now its own file; worker.go carries only the struct + ctor + HandleJob

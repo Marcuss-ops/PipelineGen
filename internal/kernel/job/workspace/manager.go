@@ -39,7 +39,7 @@
 //     is detected on the next call.
 //
 // The algorithm mirrors the canonical pattern in
-// `internal/application/clips/bulk_upload_helpers.go::42` (which uses
+// `internal/capabilities/clips/bulk_upload_helpers.go::42` (which uses
 // `filepath.EvalSymlinks` + absolute-path comparison) and the
 // `A4 path-traversal guard on SubfolderName` from
 // `docs/voiceover/p0-bundle-A1-A6.md`. C9 is the next link in the

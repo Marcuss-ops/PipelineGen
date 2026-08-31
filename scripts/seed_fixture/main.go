@@ -1,22 +1,24 @@
-// seed_fixture is a one-shot helper that re-applies all migrations against
-// the pre-existing test fixture at data/media/media.db.sqlite. The fixture
-// historically accumulated an inconsistent state: schema_migrations recorded
-// migrations as applied, but their CREATE TABLE / CREATE TRIGGER statements
-// left the database missing expected tables because the SQLite splitter
-// couldn't handle compound BEGIN...END blocks (Task 9 fix in
-// internal/storage/migrations.go::splitSQLStatements).
+// seed_fixture is a one-shot helper that reapplies all migrations against an
+// isolated SQLite database. It never writes the operational database by
+// default. Set SEED_DB_PATH only when deliberately rebuilding a checked-in
+// fixture under tests/fixtures; otherwise a private temporary database is
+// created and removed automatically.
 //
-// Run via:  go run ./scripts/seed_fixture
-// Safe to re-run: the runner is idempotent on already-applied migrations
-// and uses CREATE TABLE IF NOT EXISTS / DROP TRIGGER IF EXISTS for the
-// patterns that previously broke. ALTER TABLE statements hit "duplicate
-// column" gracefully (the runner logs + warns + continues).
+// Run from the refactored project root:
+//
+//	go run ./scripts/seed_fixture
+//
+// Optional explicit fixture path:
+//
+//	SEED_DB_PATH=tests/fixtures/sqlite/media.db.sqlite go run ./scripts/seed_fixture
 package main
 
 import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
@@ -24,10 +26,8 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
-// canonicalMissingTables are the tables the storage tests expect to exist in
-// data/media/media.db.sqlite. After a successful seed, all of these must be
-// present. If any is missing, the seed is incomplete and the storage tests
-// will fail.
+// canonicalMissingTables are the tables the storage tests expect to exist
+// after migrations have been applied to the isolated fixture database.
 var canonicalMissingTables = []string{
 	"asset_links",
 	"harvester_jobs",
@@ -42,11 +42,6 @@ var canonicalMissingTables = []string{
 }
 
 func main() {
-	const (
-		dbPath        = "data/media/media.db.sqlite"
-		migrationsDir = "migrations/sqlite"
-	)
-
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "logger init: %v\n", err)
@@ -54,35 +49,68 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// Step 1: confirm we're operating on the test fixture (hardcoded path;
-	// refuse to run if the file lives outside the project to avoid
-	// accidentally seeding production-looking databases).
-	if _, err := os.Stat("go.mod"); err != nil {
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: resolve project root: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, "go.mod")); err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL: must be run from project root (go.mod not found): %v\n", err)
 		os.Exit(1)
 	}
 
-	// Step 2: clear schema_migrations so the runner will re-apply every
-	// migration. ALTER TABLE statements hit "duplicate column" gracefully
-	// (the runner logs a WARN and continues), so this is safe even when the
-	// fixture pre-existed.
+	dbPath, cleanup, err := resolveSeedDB(projectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	migrationsDir := filepath.Join(projectRoot, "migrations", "sqlite")
 	if err := clearAndReapply(dbPath, migrationsDir, logger); err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Step 3: verify the canonical tables now exist. Fail loudly if any is
-	// still missing so future contributors can spot incomplete seeds.
 	if err := assertTablesPresent(dbPath, canonicalMissingTables); err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL: post-seed verification: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("OK: %s seeded; all %d canonical tables present\n", dbPath, len(canonicalMissingTables))
+	fmt.Printf("OK: isolated seed database %s; all %d canonical tables present\n", dbPath, len(canonicalMissingTables))
 }
 
-// clearAndReapply wipes schema_migrations for the fixture, then runs
-// RunMigrationsOnDB to re-apply every migration in order.
+// resolveSeedDB returns a temporary DB path unless SEED_DB_PATH explicitly
+// names a fixture under tests/fixtures. The explicit-path restriction prevents
+// this test utility from silently becoming a production-data migration tool.
+func resolveSeedDB(projectRoot string) (string, func(), error) {
+	if configured := strings.TrimSpace(os.Getenv("SEED_DB_PATH")); configured != "" {
+		configuredAbs, err := filepath.Abs(configured)
+		if err != nil {
+			return "", func() {}, fmt.Errorf("resolve SEED_DB_PATH %q: %w", configured, err)
+		}
+		fixturesRoot, err := filepath.Abs(filepath.Join(projectRoot, "tests", "fixtures"))
+		if err != nil {
+			return "", func() {}, fmt.Errorf("resolve fixtures root: %w", err)
+		}
+		if configuredAbs != fixturesRoot && !strings.HasPrefix(configuredAbs, fixturesRoot+string(os.PathSeparator)) {
+			return "", func() {}, fmt.Errorf("SEED_DB_PATH must be inside %s; refusing to open user or operational data", fixturesRoot)
+		}
+		if err := os.MkdirAll(filepath.Dir(configuredAbs), 0o755); err != nil {
+			return "", func() {}, fmt.Errorf("create fixture directory: %w", err)
+		}
+		return configuredAbs, func() {}, nil
+	}
+
+	tmpDir, err := os.MkdirTemp("", "pipelinegen-seed-")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temporary seed directory: %w", err)
+	}
+	path := filepath.Join(tmpDir, "media.db.sqlite")
+	return path, func() { _ = os.RemoveAll(tmpDir) }, nil
+}
+
+// clearAndReapply wipes schema_migrations for the isolated database, then
+// runs RunMigrationsOnDB to apply every primary migration in order.
 func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	db, err := storage.OpenSQLiteDB(dbPath, logger)
 	if err != nil {
@@ -91,66 +119,40 @@ func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	defer db.Close()
 
 	if _, err := db.Exec("DELETE FROM schema_migrations"); err != nil {
-		// schema_migrations may not exist yet on a freshly-created DB;
-		// that's not a real failure for a first-seed scenario.
 		logger.Warn("DELETE FROM schema_migrations failed (probably first seed)", zap.Error(err))
 	}
-	logger.Info("cleared schema_migrations; re-applying all migrations")
+	logger.Info("cleared schema_migrations; reapplying all migrations")
 
-	// TODO #8 (June 2026): scope-aware seed — the fixture is the
-	// canonical primary DB; pass targetDB="primary" so primary-only
-	// migrations (e.g. 109) are included in the reapply pass.
 	if err := storage.RunMigrationsOnDB(dbPath, logger, migrationsDir, "primary"); err != nil {
 		return fmt.Errorf("RunMigrationsOnDB: %w", err)
 	}
 
-	// Fallback: a handful of tables are expected by TestDBIsolation but
-	// their CREATE TABLE definitions never landed in any migration file
-	// (historical drift between TestDBIsolation's expectedTables and the
-	// migrations dir). The test only checks table EXISTENCE via
-	// sqlite_master, not column shape — so a minimal CREATE TABLE with a
-	// single primary-key column is enough to make the test green. If a
-	// future migration author materialises one of these as a real table,
-	// the IF NOT EXISTS guard makes this a no-op.
+	// A few historical test expectations refer to tables whose complete
+	// migrations live outside migrations/sqlite. Keep these minimal stubs
+	// confined to the isolated seed database; never apply them to runtime data.
 	if err := bootstrapUnmigratedTables(db.DB, logger); err != nil {
 		return fmt.Errorf("bootstrap unmigrated tables: %w", err)
 	}
 	return nil
 }
 
-// bootstrapUnmigratedTables creates minimal stub tables for tables the
-// storage tests expect but whose CREATE TABLE definitions are missing
-// from the migrations directory. Each CREATE TABLE uses IF NOT EXISTS
-// so it's a no-op once a real migration lands.
 func bootstrapUnmigratedTables(db *sql.DB, logger *zap.Logger) error {
 	stmts := []string{
-		// 001_velox_core created the harvester_jobs table; if that
-		// migration's CREATE TABLE never landed for the test fixture we
-		// restore it minimally.
 		`CREATE TABLE IF NOT EXISTS harvester_jobs (id TEXT PRIMARY KEY)`,
-		// pipeline_runs + pipeline_run_items — referenced from the jobs
-		// pipeline / workflow runner code paths but no migration file
-		// materialised the schema in this repo.
 		`CREATE TABLE IF NOT EXISTS pipeline_runs (id TEXT PRIMARY KEY)`,
 		`CREATE TABLE IF NOT EXISTS pipeline_run_items (id TEXT PRIMARY KEY)`,
-		// segment_embeddings — originally created by clips_003_create_
-		// segment_embeddings, but the clips migration lives outside
-		// migrations/sqlite/ (subdirectory runner).
 		`CREATE TABLE IF NOT EXISTS segment_embeddings (id TEXT PRIMARY KEY)`,
-		// sketchfab_models — referenced by 3D-asset code paths.
 		`CREATE TABLE IF NOT EXISTS sketchfab_models (id TEXT PRIMARY KEY)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("exec %q: %w", stmt, err)
 		}
-		logger.Info("bootstrapped legacy table", zap.String("stmt", stmt))
+		logger.Info("bootstrapped isolated test table", zap.String("stmt", stmt))
 	}
 	return nil
 }
 
-// assertTablesPresent queries sqlite_master for each expected table and
-// returns an error if any is missing.
 func assertTablesPresent(dbPath string, expected []string) error {
 	db, err := storage.OpenSQLiteDB(dbPath, nil)
 	if err != nil {
@@ -163,20 +165,22 @@ func assertTablesPresent(dbPath string, expected []string) error {
 	if err != nil {
 		return fmt.Errorf("query sqlite_master: %w", err)
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			rows.Close()
 			return fmt.Errorf("scan table name: %w", err)
 		}
 		actual[name] = true
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate table names: %w", err)
+	}
 
 	var missing []string
-	for _, t := range expected {
-		if !actual[t] {
-			missing = append(missing, t)
+	for _, table := range expected {
+		if !actual[table] {
+			missing = append(missing, table)
 		}
 	}
 	if len(missing) > 0 {

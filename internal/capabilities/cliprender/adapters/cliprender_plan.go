@@ -336,7 +336,8 @@ func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		metrics.Frames = int(math.Round(result.DurationSec * float64(result.FPSNum) / float64(result.FPSDen)))
 	}
 	metrics.TotalMS = cliprender.Metric(time.Since(renderStart).Milliseconds())
-	metrics.Compute(result.DurationSec)	return &cliprender.RenderOutcome{
+	metrics.Compute(result.DurationSec)
+	return &cliprender.RenderOutcome{
 		OutputPath:              result.OutputPath,
 		SizeBytes:               result.SizeBytes,
 		DurationSec:             result.DurationSec,

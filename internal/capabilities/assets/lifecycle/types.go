@@ -105,7 +105,7 @@ type UploadOnlyResult struct {
 //
 // Layering note: this struct is **only** the media_assets projection
 // surface — the canonical voiceovers row lives in
-// internal/application/voiceover/persistence.VoiceoverRecord. The
+// internal/capabilities/voiceover/persistence.VoiceoverRecord. The
 // two structs are deliberately separate so a schema evolution to one
 // table does NOT drift the other.
 type VoiceoverProjectionInput struct {

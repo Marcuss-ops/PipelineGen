@@ -7,7 +7,7 @@
 // (FromDomain + ToDomain) live alongside the row types so adapters can
 // convert without leaking SQL details.
 //
-// Pattern rationale: previously internal/domain/asset.MonitoredSource
+// Pattern rationale: previously internal/kernel/asset.MonitoredSource
 // held both json:"..." and db:"..." tags + a TableName() method, leaking
 // the SQLite schema into the domain layer. This file splits the SQL
 // concerns out; callers that need to persist convert via FromDomain /

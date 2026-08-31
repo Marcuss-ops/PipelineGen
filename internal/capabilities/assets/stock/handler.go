@@ -186,7 +186,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 // For broker-level state progression (QUEUED → LEASED → RUNNING →
 // WAITING_CHILDREN → FINALIZING → SUCCEEDED | INDEX_PENDING | FAILED
 // | CANCELLED) clients poll /api/jobs/{id}/full — that endpoint is
-// the canonical broker-state surface (see internal/api/jobs/impl.go
+// the canonical broker-state surface (see internal/capabilities/jobs/impl.go
 // ::buildJobResponse).
 //
 // deduplicated is always false for the first submission; the

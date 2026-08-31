@@ -186,7 +186,7 @@ type deliveryRequest struct {
 // PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): the client field is now
 // httpclient.Client (the canonical narrow port for outbound HTTP) rather
 // than a direct *http.Client. The default constructor routes through
-// internal/infrastructure/httpclient.NewDefaultClient so the
+// internal/platform/httpclient.NewDefaultClient so the
 // application layer no longer touches *http.Client directly. Tests
 // inject a roundtripper-backed fake that satisfies httpclient.Client.
 type DeliveryHandler struct {

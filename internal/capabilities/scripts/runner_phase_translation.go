@@ -36,6 +36,9 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		}
 		work := make([]translationWork, 0, len(result.Scenes)*len(req.Languages))
 		for i := range result.Scenes {
+			if !result.Scenes[i].ExecutionMode.AllowsTranslation() {
+				continue
+			}
 			for _, lang := range req.Languages {
 				if lang == req.SourceLanguage || result.Scenes[i].Text[lang] != "" {
 					continue

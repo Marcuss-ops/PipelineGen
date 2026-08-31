@@ -391,6 +391,7 @@ func TestIndexWriter_ReindexAll_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.IndexedAssets)
 	assert.Equal(t, 2, result.TotalAssets)
+	assert.Equal(t, 2, result.SQLiteIndexableAssets)
 	assert.Equal(t, 0, result.FailedAssets)
 	assert.Equal(t, totalUpserted, result.IndexedAssets)
 }

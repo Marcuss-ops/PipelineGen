@@ -35,7 +35,7 @@
 // SAME persistence.AssetCommitter instance (composition-root enforces).
 //
 // State-traversal mapping (per PR-CATALOG-MULTILINGUA step 7's canonical
-// 14-state ASSET STATE MACHINES — see internal/domain/asset):
+// 14-state ASSET STATE MACHINES — see internal/kernel/asset):
 //
 //	DISCOVERED → DOWNLOADED → NORMALIZED → HASHED → UPLOADED →
 //	TRANSCRIBED → ENRICHED → TRANSLATED → INDEX_PENDING → INDEXED →
@@ -92,7 +92,7 @@ type ArtifactStore interface {
 
 // Transcriber renders an audio transcript from a normalized asset.
 // Production wire-up: youtubeports.WhisperTranscriberPort +
-// internal/infrastructure/youtube/whisper_transcriber.go via the
+// internal/platform/youtube/whisper_transcriber.go via the
 // application-layer facade.
 type Transcriber interface {
 	Transcribe(ctx context.Context, media NormalizedMedia) (detail.TranscriptResult, error)
@@ -149,7 +149,7 @@ type ClipIngestContext struct {
 }
 
 // ClipIngestResult is the Ingest return shape. FinalState is one of the
-// 14 canonical ASSET STATE values from internal/domain/asset.
+// 14 canonical ASSET STATE values from internal/kernel/asset.
 type ClipIngestResult struct {
 	OK         bool
 	AssetID    string

@@ -73,7 +73,7 @@ func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChann
 	// channels.Service.Default, not here. This function is mechanical;
 	// it writes the row and trusts that every field is the canonical
 	// value the application layer chose. Service.toDomain is the single
-	// source of defaults (see internal/application/channels/service.go).
+	// source of defaults (see internal/capabilities/channels/service.go).
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO category_channels (id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority, lookback_days, max_segments, segment_prompt,

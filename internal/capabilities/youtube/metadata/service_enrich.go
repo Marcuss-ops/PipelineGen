@@ -85,7 +85,7 @@ func (s *MetadataService) GenerateClipMetadata(
 
 // FallbackMetadata is the deterministic non-Ollama path
 // EXPORTED for the infrastructure package
-// (internal/infrastructure/youtube/ollama_clip_metadata_builder.go)
+// (internal/platform/youtube/ollama_clip_metadata_builder.go)
 // to call when the Ollama call fails / times-out / returns
 // un-parseable JSON. Exposed so the concrete builder doesn't
 // duplicate the formula body — the spec's verdict is "ONE

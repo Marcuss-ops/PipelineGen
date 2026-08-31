@@ -90,9 +90,9 @@ func TestPromoVoiceoverAdapter_SuccessPath_P0_3(t *testing.T) {
 	require.NoError(t, err, "P0-#3: success path MUST return nil error")
 	require.NotNil(t, result)
 	require.True(t, result.OK, "P0-#3: success path MUST set Result.OK=true")
-	require.Equal(t, "it", result.Locale)
-	require.Equal(t, "Hello world", result.Text)
-	require.Equal(t, "it-IT-IsabellaNeural", result.Voice)
+	require.Equal(t, "it", result.Synthesis.Locale)
+	require.Equal(t, "Hello world", result.Synthesis.Text)
+	require.Equal(t, "it-IT-IsabellaNeural", result.Synthesis.Voice)
 	require.Equal(t, "https://drive.google.com/file/d/test-id/view", result.DriveLink,
 		"P0-#3: DriveLink MUST be threaded from VoiceoverItemResult.DriveLink")
 	require.Equal(t, "test-id", result.DriveFileID,

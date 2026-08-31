@@ -239,9 +239,6 @@ func durationMilliseconds(d time.Duration) int64 {
 // previous scene. It fails closed on a missing enricher or an invalid event;
 // enrichment failures are attributed to their scene and surfaced at Wait.
 func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, event SceneCommitted) error {
-	if c.enricher == nil {
-		return fmt.Errorf("vidrush incremental coordinator: SegmentEnricher not configured")
-	}
 	if event.SceneID == "" {
 		return fmt.Errorf("vidrush incremental coordinator: scene commit missing scene id")
 	}
@@ -254,17 +251,29 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		return fmt.Errorf("vidrush incremental coordinator: scene commit run %q does not match coordinator run %q", event.RunID, c.runID)
 	}
 	c.latest[event.SceneIndex] = event
-	c.wg.Add(1)
+	if !event.ExecutionMode.IsFixedMedia() {
+		c.wg.Add(1)
+	}
 	c.mu.Unlock()
 
 	if c.metrics != nil {
 		c.metrics.SceneCommitted()
 	}
+	if event.ExecutionMode.IsFixedMedia() {
+		// Fixed media is authoritative. It remains visible at the commit
+		// boundary for ordering, but never enters NLP, provider search, or
+		// materialization enrichment.
+		return nil
+	}
+	if c.enricher == nil {
+		return fmt.Errorf("vidrush incremental coordinator: SegmentEnricher not configured")
+	}
 
 	scene := scriptpkg.SpecScene{
-		ID:    event.SceneID,
-		Index: event.SceneIndex,
-		Text:  event.Text,
+		ID:            event.SceneID,
+		Index:         event.SceneIndex,
+		Text:          event.Text,
+		ExecutionMode: event.ExecutionMode,
 	}
 	if event.SemanticProfile != nil {
 		profile := event.SemanticProfile.Clone()

@@ -41,6 +41,9 @@ func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
 		scene := &scenes[i]
+		if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
+			continue
+		}
 		for _, lang := range orderedSceneLanguages(scene.Text, sourceLanguage, targetLanguages) {
 			text := scene.Text[lang]
 			if text == "" {

@@ -72,7 +72,7 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 	// "Fail closed with typed errors. Never represent an unavailable
 	// backend as a successful no-op." Mirrors InspectRuntime at
 	// collection_prepare.go:20-25.
-	activeTarget, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	activeTarget, err := cm.client.ResolveRuntimeCollection(ctx, cm.schema.RuntimeAlias)
 	if err != nil {
 		var notFound *transport.ErrCollectionNotFound
 		if errors.As(err, &notFound) {
@@ -84,7 +84,6 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 			return nil, fmt.Errorf("resolve active target: %w", err)
 		}
 	}
-
 	statuses, err := cm.projectionStatuses(ctx)
 	if err != nil {
 		return nil, err

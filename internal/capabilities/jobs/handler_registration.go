@@ -44,6 +44,7 @@ package jobs
 import (
 	"fmt"
 
+	jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -125,11 +126,8 @@ func (s *Service) ValidateHandlerCompleteness(reg *Registry) error {
 	if s == nil || s.dispatcher == nil || reg == nil {
 		return nil
 	}
-	handlers := s.dispatcher.AllHandlers()
-	for _, jobType := range reg.AllTypes() {
-		if _, ok := handlers[jobType]; !ok {
-			return fmt.Errorf("job.Service.ValidateHandlerCompleteness: job type %q is registered in the canonical Registry but has NO handler bound to the Dispatcher — the server MUST NOT start with a consumable-type-without-handler gap (§15.9 registrazione incompleta)", jobType)
-		}
+	if err := jobqueue.ValidateConsumers(reg, s); err != nil {
+		return fmt.Errorf("job.Service.ValidateHandlerCompleteness: %w — the server MUST NOT start with a consumable-type-without-handler gap (§15.9 registrazione incompleta)", err)
 	}
 	return nil
 }

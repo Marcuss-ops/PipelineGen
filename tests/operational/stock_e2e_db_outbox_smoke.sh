@@ -72,7 +72,7 @@
 set -euo pipefail
 
 # ---- Configuration --------------------------------------------------------
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 LIMIT="${LIMIT:-40}"
 
 # ---- Prerequisite checks (exit 2) ----------------------------------------

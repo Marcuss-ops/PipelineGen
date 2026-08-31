@@ -323,7 +323,7 @@ if [ "$S_HTTP" = "200" ]; then
     if [ "$SEARCH_OURS" -ge "$MIN_SEARCH_HITS" ]; then
         pass "/api/media/search: ${SEARCH_OURS} of our asset_ids present in response (>= ${MIN_SEARCH_HITS} threshold; total artlist results=${SEARCH_FOUND_ARTLIST})"
     elif [ "$SEARCH_FOUND_ARTLIST" -ge "$MIN_SEARCH_HITS" ]; then
-        note "/api/media/search: ${SEARCH_FOUND_ARTLIST} artlist results, but only ${SEARCH_OURS} of our asset_ids present (projection lag — Qdrant scroll is canonical truth)"
+        note "/api/media/search: ${SEARCH_FOUND_ARTLIST} artlist results, but only ${SEARCH_OURS} of our asset_ids present (projection lag — SQLite remains canonical truth; Qdrant scroll is diagnostic only)"
     else
         fail "/api/media/search: only ${SEARCH_FOUND_ARTLIST} artlist results, ${SEARCH_OURS} of our asset_ids present (need >= ${MIN_SEARCH_HITS} of our asset_ids)"
     fi

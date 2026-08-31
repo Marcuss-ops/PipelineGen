@@ -25,7 +25,7 @@
 // (forward-pointer: a future /api/jobs/:id/wait-for-completion HTTP
 // endpoint or a --wait CLI flag) will inherit this test surface as
 // the contract spec.
-package jobs
+package finalize
 
 import (
 	"context"

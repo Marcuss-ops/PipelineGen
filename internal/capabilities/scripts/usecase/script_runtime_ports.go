@@ -41,7 +41,7 @@ import (
 // SubmissionService is the FASE 2 canonical submission surface
 // (atomically: operations + jobs + outbox_events in one TX). The
 // canonical concrete lives at
-// `internal/application/operations/generation_submission_service.go::Service`.
+// `internal/capabilities/operations/generation_submission_service.go::Service`.
 //
 // Why a Go type alias (not a fresh interface):
 //

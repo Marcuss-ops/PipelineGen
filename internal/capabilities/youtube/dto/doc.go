@@ -37,6 +37,6 @@
 //
 // Import discipline:
 //   - MUST NOT import other youtube/ sub-packages.
-//   - MAY import internal/domain/asset (canonical asset types).
+//   - MAY import internal/kernel/asset (canonical asset types).
 //   - All exported types are JSON-tagged where applicable.
 package dto

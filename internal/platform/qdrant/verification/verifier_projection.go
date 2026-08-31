@@ -85,9 +85,6 @@ type ProjectionVerifier struct {
 	schema     *schema.IndexSchema // provides RuntimeAlias
 	log        *zap.Logger
 
-	// CollectionOverride forces verification of a specific collection
-	// instead of the runtime alias target. Empty = resolve the alias.
-	CollectionOverride string
 	// BatchSize is the scroll page size (default 500).
 	BatchSize int
 	// MaxScrolls is the safety cap on scroll pages. A trailing
@@ -112,7 +109,7 @@ func NewProjectionVerifier(client *transport.Client, assetStore indexing.AssetSt
 }
 
 // VerifyActiveProjection runs the full parity check against the active
-// projection (runtime alias target, or CollectionOverride when set).
+// projection resolved from the canonical runtime alias.
 //
 // Returns a populated report plus a non-nil error ONLY on a fatal
 // failure (alias resolution, SQLite listing, or scroll page error) —
@@ -123,21 +120,13 @@ func (v *ProjectionVerifier) VerifyActiveProjection(ctx context.Context) (*Proje
 	}
 
 	// ── 1. Resolve the active collection ────────────────────────────
-	collection := v.CollectionOverride
-	if collection == "" {
-		resolved, err := v.client.GetAliasTarget(ctx, v.schema.RuntimeAlias)
-		if err != nil {
-			return nil, fmt.Errorf("resolve runtime alias %q: %w", v.schema.RuntimeAlias, err)
-		}
-		if resolved == "" {
-			return nil, fmt.Errorf(
-				"runtime alias %q has no target; pass --collection=NAME to verify a specific collection",
-				v.schema.RuntimeAlias,
-			)
-		}
-		collection = resolved
+	collection, err := v.client.ResolveRuntimeCollection(ctx, v.schema.RuntimeAlias)
+	if err != nil {
+		return nil, err
 	}
-
+	if collection == "" {
+		return nil, fmt.Errorf("runtime alias %q has no production target; rebuild the canonical collection %q", v.schema.RuntimeAlias, schema.ProductionCollection)
+	}
 	report := &ProjectionVerificationReport{Collection: collection}
 
 	// ── 2. Eligible SQLite asset IDs (SearchIndexEligibilitySQL SSOT) ─

@@ -1,5 +1,5 @@
 // types/types_asset_location.go — one canonical type per godlike/06 SSOT.
-// Code-motion split from internal/domain/finalization/types.go (674 LOC, LONG-FILES-DECOMPOSITION-2026-07-06 P0 critical band slice, 2026-07-06).
+// Code-motion split from internal/capabilities/finalization/types.go (674 LOC, LONG-FILES-DECOMPOSITION-2026-07-06 P0 critical band slice, 2026-07-06).
 package finalization
 
 // AssetLocation is the canonical descriptor for where a published

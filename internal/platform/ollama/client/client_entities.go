@@ -398,6 +398,7 @@ func parsePlainTextEntityResult(response string, segmentIndex int) (*detail.Enti
 		case "artlist_phrases":
 			result.ArtlistPhrases = append(result.ArtlistPhrases, val)
 		case "noun_chunks":
+			result.NounChunks = append(result.NounChunks, val)
 
 		case "entity_senza_testo":
 			if key, value, ok := parseEntityKeyValue(val); ok {
@@ -467,7 +468,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali     []string        `json:"nomi_speciali"`
 		ParoleImportanti []string        `json:"parole_importanti"`
 		ArtlistPhrases   []string        `json:"artlist_phrases"`
-
+		NounChunks       []string        `json:"noun_chunks"`
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -485,6 +486,9 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 	}
 	if raw.ArtlistPhrases == nil {
 		raw.ArtlistPhrases = []string{}
+	}
+	if raw.NounChunks == nil {
+		raw.NounChunks = []string{}
 	}
 
 	entityMap := make(map[string]string)
@@ -513,7 +517,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		NomiSpeciali:     raw.NomiSpeciali,
 		ParoleImportanti: raw.ParoleImportanti,
 		ArtlistPhrases:   raw.ArtlistPhrases,
-
+		NounChunks:       raw.NounChunks,
 	}, nil
 }
 
@@ -526,7 +530,7 @@ func resultIsEmpty(result *detail.EntityExtractionResult) bool {
 		len(result.NomiSpeciali) == 0 &&
 		len(result.ParoleImportanti) == 0 &&
 		len(result.ArtlistPhrases) == 0 &&
-		len(result.ParoleImportanti) == 0
+		len(result.NounChunks) == 0
 }
 
 func capEntityExtractionResult(result *detail.EntityExtractionResult, limit int) *detail.EntityExtractionResult {
@@ -544,6 +548,9 @@ func capEntityExtractionResult(result *detail.EntityExtractionResult, limit int)
 	}
 	if len(result.ParoleImportanti) > limit {
 		result.ParoleImportanti = result.ParoleImportanti[:limit]
+	}
+	if len(result.NounChunks) > limit {
+		result.NounChunks = result.NounChunks[:limit]
 	}
 	// Artlist phrases have their own stricter cap (max 5) regardless of the general limit
 	artlistCap := 5

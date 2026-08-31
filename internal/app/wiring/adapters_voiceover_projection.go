@@ -10,7 +10,7 @@
 //
 // Note: this file imports database/sql for the *sql.Tx parameter
 // type that the canonical port signatures require (see
-// internal/application/voiceover/ports.go::UpsertVoiceoverProjectionTx
+// internal/capabilities/voiceover/ports.go::UpsertVoiceoverProjectionTx
 // and Verify). The actual SQL work happens in
 // Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) and
 // the bare QueryRowContext calls in voiceoverPostCommitVerifierAdapter.

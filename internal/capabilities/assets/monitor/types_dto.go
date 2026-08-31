@@ -1,5 +1,5 @@
 // Package monitor — types_dto.go: monitor-owned DTOs + typed sentinels +
-// helpers that used to be imported from internal/infrastructure/* before
+// helpers that used to be imported from internal/platform/* before
 // FASE 3.7.
 //
 // FASE 3.7 (June 2026, "Cutover porte monitor"): zero import infrastruttura
@@ -10,7 +10,7 @@
 // either return monitor-typed DTOs directly (the standard Hexagonal
 // Architecture direction: infra → app imports are permitted; the reverse
 // is the violation) OR are wrapped by a thin monitor-adapter in
-// internal/infrastructure/* that translates the infra DTOs into the
+// internal/platform/* that translates the infra DTOs into the
 // monitor DTOs.
 //
 // Layering rule recap (godlike/06 "data and config ownership" + AGENTS.md

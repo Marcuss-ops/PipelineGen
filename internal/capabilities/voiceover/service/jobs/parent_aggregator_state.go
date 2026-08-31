@@ -11,7 +11,7 @@
 //   - this file owns: the typed column name + the dual-write
 //     contract documentation for PR-VO-PARENT-STATE-COLUMN (P1.2).
 //   - The voiceover.ParentState enum lives in
-//     internal/application/voiceover/parent_state.go (STAYS THERE).
+//     internal/capabilities/voiceover/parent_state.go (STAYS THERE).
 //   - The SQL migration that adds the typed column lives in
 //     migrations/sqlite/129_add_parent_state_typed_to_jobs.sql
 //     (canonical SSOT for the schema change).

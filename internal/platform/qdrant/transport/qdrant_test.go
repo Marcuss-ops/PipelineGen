@@ -733,7 +733,7 @@ func TestIndexSchema_PhysicalName(t *testing.T) {
 	t.Parallel()
 
 	s := qdrantSchema.DefaultV3Schema()
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", s.CanonicalName())
+	assert.Equal(t, "media_assets", s.CanonicalName())
 
 	// When PhysicalName is empty, derive from version.
 	s2 := &qdrantSchema.IndexSchema{Version: "v4"}

@@ -33,7 +33,7 @@ type UploadVideoClipResponse struct {
 // Accepts multipart form data with a video file and metadata fields.
 //
 // P1.5 CUTOVER (June 2026): the 10-step orchestration previously inlined
-// here has been extracted into internal/application/clips/upload/UseCase.
+// here has been extracted into internal/capabilities/clips/upload/UseCase.
 // The handler is now thin transport only (AGENTS.md Pattern 8): it parses
 // the multipart form, builds an UploadClipCommand, calls uploadUC.Execute,
 // and maps the result to the JSON response.

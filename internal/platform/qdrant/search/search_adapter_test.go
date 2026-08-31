@@ -25,6 +25,8 @@ import (
 	"testing"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // newTestSearchAdapter creates a SearchAdapter backed by a Searcher
@@ -33,7 +35,7 @@ import (
 // We use this to test filter compilation, which happens before the
 // network call.
 func newTestSearchAdapter() *SearchAdapter {
-	return NewSearchAdapter(&Searcher{}, nil)
+	return NewSearchAdapter(&Searcher{}, nil, nil)
 }
 
 func TestSearchAdapter_Search_AdminIsSystem_PropagatesToFilter(t *testing.T) {
@@ -133,5 +135,98 @@ func TestSearchAdapter_HybridSearch_MissingIsSystem_FailsFilter(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "WorkspaceID is required") {
 		t.Fatalf("expected 'WorkspaceID is required' in error, got: %v", err)
+	}
+}
+
+type searchAdapterAssetStore struct {
+	assets map[string]*indexing.AssetData
+}
+
+func (s *searchAdapterAssetStore) FetchAsset(_ context.Context, assetID string) (*indexing.AssetData, error) {
+	asset, ok := s.assets[assetID]
+	if !ok {
+		return nil, indexing.ErrAssetNotFound
+	}
+	return asset, nil
+}
+
+func (s *searchAdapterAssetStore) ListAllAssetIDs(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (s *searchAdapterAssetStore) FetchAssetBatch(context.Context, string, int) ([]*indexing.AssetData, error) {
+	return nil, nil
+}
+
+func TestSearchAdapter_Hydration_UsesSQLiteMetadataNotQdrantPayload(t *testing.T) {
+	adapter := NewSearchAdapter(nil, &searchAdapterAssetStore{assets: map[string]*indexing.AssetData{
+		"asset-1": {
+			ID:       "asset-1",
+			Name:     "Canonical SQLite name",
+			Source:   "sqlite-source",
+			Category: "canonical-category",
+			Tags:     []string{"canonical"},
+		},
+	}}, nil)
+
+	results, err := adapter.hydrateSearchResults(context.Background(), []schema.SearchResult{{
+		ID:    "point-1",
+		Score: 0.91,
+		Payload: map[string]any{
+			"asset_id": "asset-1",
+			"name":     "Stale Qdrant name",
+			"source":   "stale-qdrant-source",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("hydrateSearchResults() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	got := results[0]
+	if got.AssetID != "asset-1" || got.QdrantPointID != "point-1" || got.Score != 0.91 {
+		t.Fatalf("identity/score projection = %+v", got)
+	}
+	if got.Name != "Canonical SQLite name" || got.Source != "sqlite-source" || got.Category != "canonical-category" {
+		t.Fatalf("result used stale Qdrant metadata: %+v", got)
+	}
+}
+
+func TestSearchAdapter_Hydration_OmitsMissingSQLiteAssets(t *testing.T) {
+	adapter := NewSearchAdapter(nil, &searchAdapterAssetStore{assets: map[string]*indexing.AssetData{
+		"asset-present": {ID: "asset-present", Name: "Present"},
+	}}, nil)
+
+	results, err := adapter.hydrateSearchResults(context.Background(), []schema.SearchResult{
+		{ID: "missing-point", Score: 0.99, Payload: map[string]any{"asset_id": "asset-missing", "name": "Do not return"}},
+		{ID: "present-point", Score: 0.80, Payload: map[string]any{"asset_id": "asset-present"}},
+	})
+	if err != nil {
+		t.Fatalf("hydrateSearchResults() error = %v", err)
+	}
+	if len(results) != 1 || results[0].AssetID != "asset-present" {
+		t.Fatalf("missing SQLite asset was returned: %+v", results)
+	}
+}
+
+func TestSearchAdapter_Hydration_PreservesQdrantOrderAndScores(t *testing.T) {
+	adapter := NewSearchAdapter(nil, &searchAdapterAssetStore{assets: map[string]*indexing.AssetData{
+		"asset-low":  {ID: "asset-low", Name: "Low"},
+		"asset-high": {ID: "asset-high", Name: "High"},
+	}}, nil)
+
+	results, err := adapter.hydrateSearchResults(context.Background(), []schema.SearchResult{
+		{ID: "point-low", Score: 0.40, Payload: map[string]any{"asset_id": "asset-low"}},
+		{ID: "point-high", Score: 0.95, Payload: map[string]any{"asset_id": "asset-high"}},
+	})
+	if err != nil {
+		t.Fatalf("hydrateSearchResults() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+	if results[0].AssetID != "asset-low" || results[0].Score != 0.40 || results[1].AssetID != "asset-high" || results[1].Score != 0.95 {
+		t.Fatalf("Qdrant order/score was not preserved: %+v", results)
 	}
 }

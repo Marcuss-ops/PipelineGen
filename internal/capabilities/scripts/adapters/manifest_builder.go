@@ -91,7 +91,7 @@ func canonicalDefaultVoiceID(language string) string {
 //     "this processor is registered" predicate (one canonical
 //     helper in the domain layer). The document.generate
 //     downstream job is owned by the canonical
-//     internal/application/document/usecase.go pipeline
+//     internal/capabilities/document/usecase.go pipeline
 //     (Sprint 1.0 retirement — script path no longer emits it).
 //
 // Per godlike/07 fail-closed:

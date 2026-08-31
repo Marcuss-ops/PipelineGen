@@ -148,7 +148,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// WhisperTranscriber adapter is the SOLE canonical concrete
 	// for the WhisperTranscriber interface
-	// (internal/infrastructure/youtube/ports.go). Constructed
+	// (internal/platform/youtube/ports.go). Constructed
 	// here so the AIBundle can expose it for the backfill
 	// CLI's 5-priority chain (priority 5: Whisper fallback).
 	// The adapter spawns scripts/bridges/whisper_transcriber.py

@@ -53,7 +53,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     exit 0
 fi
 
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 HEALTH_ENDPOINT="/health"
 READY_ENDPOINT="/ready"
 REGISTER_ENDPOINT="/api/media/register-from-youtube"

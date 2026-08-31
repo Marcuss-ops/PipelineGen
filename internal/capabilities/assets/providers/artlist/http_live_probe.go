@@ -53,7 +53,7 @@ type HTTPSelfLoopProbe struct {
 //
 // baseURL is the server root (e.g. http://localhost:8080 or
 // https://api.example.com). path is "/api/artlist/stats" (canonical
-// liveness endpoint per internal/api/assets/artlist/artlist_handlers.go::Stats).
+// liveness endpoint per internal/capabilities/assets/artlist/artlist_handlers.go::Stats).
 // The probe concatenates baseURL + path internally at Probe time.
 func NewHTTPSelfLoopProbe(baseURL string, path string, timeout time.Duration, log *zap.Logger) *HTTPSelfLoopProbe {
 	if timeout <= 0 {

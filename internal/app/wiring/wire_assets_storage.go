@@ -7,7 +7,7 @@
 //
 // godlike/06 SSOT: this file is the canonical owner of the storage
 // build pipeline. The canonical storage handler lives in
-// internal/api/assets/storage/; this file is composition-root glue only.
+// internal/capabilities/assets/storage/; this file is composition-root glue only.
 //
 // PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): the descriptor
 // type-assertion goes through ClassifyDepGet (DepRequired, production
@@ -37,7 +37,7 @@ import (
 //	    parent /api/media group); AND
 //	(b) the AssetsWiring.InternalMediaHandler forwarder
 //	    (storageDesc.Handler) — the QDRANT-001 closure kept a narrow
-//	    api.MediaInternalRouter port at internal/api/routes.go::Setup().
+//	    api.MediaInternalRouter port at internal/platform/httpserver/routes.go::Setup().
 //	    The Router binds this via Router.SetInternalMediaHandler,
 //	    which calls storageDesc.Handler.RegisterInternalMediaRoutes(...)
 //	    for the /internal/v1/media/sync server-to-server surface.

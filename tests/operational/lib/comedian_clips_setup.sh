@@ -8,7 +8,7 @@ fi
 
 comedian_setup() {
 ROOT_DIR=$(cd "$DIR/../.." && pwd)
-SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 
 # ── Velox Master config ───────────────────────────────────────────────
 VELOX_MASTER_URL="${VELOX_MASTER_URL:-http://127.0.0.1:8000}"

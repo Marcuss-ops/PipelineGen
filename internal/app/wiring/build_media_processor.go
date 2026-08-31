@@ -24,7 +24,7 @@ import (
 // every Drive write from the processor; the legacy direct-uploader
 // bypass is closed. Compile-time assertion
 // `var _ delivery.Publisher = (*drive.Uploader)(nil)` lives in
-// internal/infrastructure/drive/publisher.go (already pinned there)
+// internal/platform/drive/publisher.go (already pinned there)
 // so this wiring is type-safe.
 func wireMediaProcessor(
 	outbox *OutboxBundle,

@@ -2,10 +2,10 @@
 // API middleware package depends on.
 //
 // PG-006 (June 2026): the previous 4 files under
-// internal/api/middleware/admin_token.go + middleware_middleware.go +
+// internal/platform/httpserver/middleware/admin_token.go + middleware_middleware.go +
 // middleware_feature_flags.go + middleware_ratelimit.go reached
-// through 2 concrete internal/infrastructure/* types
-// (*config.Config + internal/infrastructure/logging) plus the
+// through 2 concrete internal/platform/* types
+// (*config.Config + internal/platform/logging) plus the
 // `logger.Error/Warn/Info` package-level aliases. Per AGENTS.md
 // Pattern 0 + PG-006 ticket scope, every infrastructure-shaped
 // dependency now flows through a typed port declared here. Concrete
@@ -13,7 +13,7 @@
 // explicit compile-time `var _ <Port> = (*<Adapter>)(nil)` assertions.
 //
 // PG-006.1 (June 2026): the canonical concrete adapter for
-// AuthSecurityPort is internal/api/middleware.TokenSecurityAdapter
+// AuthSecurityPort is internal/platform/httpserver/middleware.TokenSecurityAdapter
 // (re-located from pkg/middleware on June 2026 — pkg/ is leaf-only
 // by AGENTS.md Pattern 4 and HTTP-middleware concrete adapters cannot
 // legitimately live there). The struct is reachable from internal/api,
@@ -22,9 +22,9 @@
 // adapters in api/server.go + cmd/admin/gen_api_docs.go +
 // internal/app/middleware_security_adapter.go was deleted; callers
 // now snapshot cfg.Security fields into
-// &internal/api/middleware.TokenSecurityAdapter{...} literals. The
+// &internal/platform/httpserver/middleware.TokenSecurityAdapter{...} literals. The
 // compile-time assertion lives on the implementor side at
-// internal/api/middleware/adapters_assertions.go (round-2
+// internal/platform/httpserver/middleware/adapters_assertions.go (round-2
 // relocation; placed there to keep ports.go cycle-free).
 //
 // Rule: define only methods the middleware actually calls — do NOT
@@ -57,7 +57,7 @@ type AuthSecurityPort interface {
 	WorkerToken() string
 }
 
-// Compile-time assertion lives at internal/api/middleware/adapters_assertions.go (round-2 relocation to keep ports.go cycle-free).
+// Compile-time assertion lives at internal/platform/httpserver/middleware/adapters_assertions.go (round-2 relocation to keep ports.go cycle-free).
 
 // RateLimitPort is the canonical narrow surface of *config.Config's
 // Security substruct used by the rate-limit middleware. The 2 methods
@@ -170,4 +170,4 @@ func (c *M2MClient) HasScope(scope string) bool {
 	return false
 }
 
-// Compile-time assertion lives at internal/api/middleware/adapters_assertions.go (round-2 relocation to keep ports.go cycle-free).
+// Compile-time assertion lives at internal/platform/httpserver/middleware/adapters_assertions.go (round-2 relocation to keep ports.go cycle-free).

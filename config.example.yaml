@@ -19,6 +19,8 @@ logging:
 
 storage:
   data_dir: "./data"
+  # Single operational SQLite database; tests must use isolated temporary DBs.
+  primary_db_path: "./data/media/media.db.sqlite"
   temp_dir: "tmp"
 
 security:

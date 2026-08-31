@@ -14,7 +14,7 @@ const (
 
 	// ── Commit 9.2 (PR-KERNEL-JOB-POPULATE follow-up, July 2026) ────
 	// The following constants are required by the back-compat
-	// alias layer in internal/domain/job/job.go (re-added by
+	// alias layer in internal/kernel/job/job.go (re-added by
 	// PipelineGen Bot during the Commit 9 type-rename race).
 	// PR-KERNEL-JOB-POPULATE step 1.6 (commit 9.2) restores them
 	// so the domain/job aliases resolve.

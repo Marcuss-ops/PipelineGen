@@ -83,7 +83,7 @@ var (
 // SSOT drift).
 type AssetPublishInput struct {
 	// Location is the canonical semantic location (godlike/06 SSOT owner:
-	// internal/domain/delivery/location.go).
+	// internal/kernel/delivery/location.go).
 	Location domaindelivery.AssetLocationInput
 
 	// Destination is the canonical Drive destination key. The mapper

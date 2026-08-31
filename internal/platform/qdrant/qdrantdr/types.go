@@ -7,7 +7,7 @@
 // consume the same domain types; the dr_adapter.go translation functions
 // become no-ops.
 //
-// Placement: internal/domain/ (Clean Architecture innermost layer).
+// Placement: internal/kernel/ (Clean Architecture innermost layer).
 // Both infra and application packages may import domain/; domain imports
 // only the standard library.
 package qdrantdr

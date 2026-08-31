@@ -21,7 +21,7 @@ type WorkspaceID string
 //
 // Reserved values: the literal "default" is the singleton
 // un-namespaced workspace and is treated as empty by the middleware
-// (see internal/api/middleware/middleware_workspace_scope.go). The
+// (see internal/platform/httpserver/middleware/middleware_workspace_scope.go). The
 // canonical predicate is `IsEmpty() || s == "default"`.
 func NewWorkspaceID(s string) WorkspaceID { return WorkspaceID(s) }
 

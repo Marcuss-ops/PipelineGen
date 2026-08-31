@@ -162,7 +162,7 @@ type GenerateVoiceoversCommand struct {
 	// `{project}/{language}/` Drive subdirs via delivery.Publisher.
 	//
 	// Propagation chain (godlike/06 SSOT one canonical owner per fact):
-	//   1. GenerateVoiceoversRequest.Project (internal/api/assets/voiceover/types.go)
+	//   1. GenerateVoiceoversRequest.Project (internal/capabilities/assets/voiceover/types.go)
 	//   2. GenerateVoiceoversCommand.Project (this struct)
 	//   3. GenerateVoiceoverItemCommand.Project (per-item, fan-out copy)
 	//   4. delivery.Publisher.Publish (read by VoiceoverPath builder)

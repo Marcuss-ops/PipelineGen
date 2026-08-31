@@ -9,7 +9,7 @@ import "encoding/json"
 //
 // LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): the canonical
 // script pipeline now requests OutputModePlainText. The engine
-// (internal/application/scripts/usecase/engine_generate.go) sets
+// (internal/capabilities/scripts/usecase/engine_generate.go) sets
 // OutputMode = OutputModePlainText unconditionally; the LLM emits
 // raw narrative prose per the plainTextInstruction suffix (see
 // engine_prompt.go), and the downstream SceneSynthesizer + scene

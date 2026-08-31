@@ -86,7 +86,8 @@ type VoiceoverHarness struct {
 	httpTimeout time.Duration // per-Curl --max-time
 	maxRetries  int           // 401-reload retries per Curl (default 2)
 
-	// DB probe surface (sqlite3 CLI shell-out)
+	// DB probe surface (sqlite3 CLI shell-out). A blank path is allowed for
+	// hermetic HTTP-only unit tests; live probes must provide SMOKE_DB.
 	dbPath    string // SMOKE_DB
 	sqliteBin string // resolved at construct time, "" if missing
 
@@ -110,8 +111,8 @@ type HarnessOptions struct {
 	// back to TOKEN_FILE.
 	Token string
 
-	// DBPath overrides SMOKE_DB. Default: SMOKE_DB env var OR
-	// "data/media/media.db.sqlite".
+	// DBPath overrides SMOKE_DB. Live tests must provide one explicitly;
+	// the harness never defaults to a persistent user database.
 	DBPath string
 
 	// ReportPath is where WriteReport() JSON-marshals the report.
@@ -186,13 +187,12 @@ func NewVoiceoverHarness(t *testing.T, opts HarnessOptions) (*VoiceoverHarness, 
 		apiBase = "http://" + base
 	}
 
-	// DB path resolution: explicit option > SMOKE_DB env > canonical default
+	// DB path resolution: explicit option > SMOKE_DB env. Live callers
+	// must opt into a database explicitly so unit tests cannot touch the
+	// operational store by omission.
 	dbPath := opts.DBPath
 	if dbPath == "" {
 		dbPath = os.Getenv("SMOKE_DB")
-	}
-	if dbPath == "" {
-		dbPath = "data/media/media.db.sqlite"
 	}
 
 	// sqlite3 binary resolution: PATH lookup, may be empty if absent

@@ -90,7 +90,7 @@ func NewJobsHandler(jobsSvc job.Service, runRepo scriptgen.RunRepository, log *z
 //
 // The enriched /api/script/jobs/:id/full endpoint is INTENTIONALLY
 // NOT mounted here: its canonical owner is the Jobs module under
-// /api/jobs/:id/full (see internal/api/jobs/impl.go::GetFull).
+// /api/jobs/:id/full (see internal/capabilities/jobs/impl.go::GetFull).
 // Mounting both copies would violate godlike/06 SSOT (one canonical
 // owner per fact) — the strengthened route test in handler_test.go
 // guards against accidental re-introduction.

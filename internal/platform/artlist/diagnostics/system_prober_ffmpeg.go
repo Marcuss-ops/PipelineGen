@@ -75,7 +75,7 @@ func (p *AdminSystemProber) probeFFmpeg(ctx context.Context) artlist.ProbeResult
 	if ffmpegPath == "" {
 		// Fall back to exec.LookPath("ffmpeg") to honour $PATH —
 		// matches the precedent set by
-		// internal/application/clips/upload/usecase.go line 361 +
+		// internal/capabilities/clips/upload/usecase.go line 361 +
 		// cutter_test.go line 60 which use exec.LookPath directly
 		// on the bare "ffmpeg" / "ffprobe" names.
 		resolved, err := exec.LookPath("ffmpeg")

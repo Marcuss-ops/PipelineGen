@@ -33,9 +33,17 @@ func (v *Verifier) Verify(ctx context.Context, assetID, collection string) (oper
 	if v.client == nil {
 		return info, fmt.Errorf("operatorverify: qdrant client not configured")
 	}
-	if collection == "" {
-		return info, fmt.Errorf("operatorverify: collection name is required")
+	// Runtime verification always resolves the canonical alias. A
+	// caller-supplied collection is rejected so retired/recovery/test
+	// collections can never become an operator/runtime truth source.
+	if collection != "" {
+		return info, fmt.Errorf("operatorverify: explicit collection is forbidden; verify the runtime alias %q", transport.RuntimeAlias)
 	}
+	collection, err := v.client.ResolveRuntimeCollection(ctx, transport.RuntimeAlias)
+	if err != nil {
+		return info, fmt.Errorf("operatorverify: resolve runtime collection: %w", err)
+	}
+	info.Collection = collection
 	if assetID == "" {
 		return info, fmt.Errorf("operatorverify: assetID is required")
 	}

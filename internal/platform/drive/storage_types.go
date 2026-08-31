@@ -1,17 +1,17 @@
 // Package drive provides the destination/upload facade that re-exports
-// canonical domain types (SourceType, MediaType from internal/domain/asset)
+// canonical domain types (SourceType, MediaType from internal/kernel/asset)
 // and destination/upload types so legacy call sites continue to compile.
 //
 // Historical context: during PR-Phase 7, types were migrated to their
-// canonical homes (internal/domain/asset for enums + resolver, internal/
+// canonical homes (internal/kernel/asset for enums + resolver, internal/
 // infrastructure/drive for upload logic). This package was re-created as
 // a STOPGAP to keep existing call sites compiling while follow-up
 // migrations landed.
 //
 // Canonical locations (current):
 //
-//   - SourceType / MediaType → internal/domain/asset (re-exported here)
-//   - Drive upload logic     → internal/infrastructure/drive.Uploader
+//   - SourceType / MediaType → internal/kernel/asset (re-exported here)
+//   - Drive upload logic     → internal/platform/drive.Uploader
 //
 // The type aliases below (`storage.SourceImage`, `storage.MediaTypeImage`,
 // etc.) resolve to this package so existing call sites compile without

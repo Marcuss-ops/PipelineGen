@@ -53,7 +53,7 @@ var (
 	//               purpose-built HLS client).
 	//   - "browser": Node Puppeteer fallback (the downloadViaScraper
 	//                path in
-	//                internal/infrastructure/media/processor/processor_download.go;
+	//                internal/platform/media/processor/processor_download.go;
 	//                this Go package doesn't dispatch to it directly
 	//                today, but the label exists for cross-surface
 	//                observability — see PR-ART-002 P0.2 godoc

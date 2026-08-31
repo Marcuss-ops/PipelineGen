@@ -5,7 +5,7 @@
 // package). The types below describe WHAT a caller wants to publish —
 // never WHERE on Drive it should land. The DestinationRegistry (also in
 // this package) maps a DestinationKey to a root folder and path-builder;
-// the concrete Publisher in internal/infrastructure/drive/publisher.go
+// the concrete Publisher in internal/platform/drive/publisher.go
 // resolves the full Drive folder hierarchy and performs the upload.
 //
 // Architecture rule (June 2026):

@@ -48,7 +48,7 @@ func TestProjectionManager_HydratesDurableStateAndUsesCanonicalSequence(t *testi
 		projections: []capregistry.Projection{{
 			ProjectionID:      "old-build",
 			ProjectionType:    "qdrant",
-			CollectionName:    "old-collection",
+			CollectionName:    "media_assets_v3_old",
 			AliasName:         "media_assets_current",
 			Status:            string(capregistry.ProjectionRetired),
 			SourceRegistrySeq: 7,
@@ -62,7 +62,7 @@ func TestProjectionManager_HydratesDurableStateAndUsesCanonicalSequence(t *testi
 	if _, ok := cm.Projection("old-build"); !ok {
 		t.Fatal("durable projection was not hydrated")
 	}
-	if err := cm.BeginProjection(context.Background(), "new-build", "new-collection", 999); err != nil {
+	if err := cm.BeginProjection(context.Background(), "new-build", "media_assets_v3_new", 999); err != nil {
 		t.Fatal(err)
 	}
 	projection, ok := cm.Projection("new-build")
@@ -97,7 +97,7 @@ func TestProjectionManager_ActivationSequenceAdvanceFailsProjection(t *testing.T
 }
 
 func TestProjectionManager_ActivationAndRollbackUpdateAliasAndLifecycle(t *testing.T) {
-	aliasTarget := "old-collection"
+	aliasTarget := "media_assets_v3_old"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
@@ -144,8 +144,8 @@ func TestProjectionManager_ActivationAndRollbackUpdateAliasAndLifecycle(t *testi
 		collection string
 		status     capregistry.ProjectionStatus
 	}{
-		{"old-build", "old-collection", capregistry.ProjectionActive},
-		{"new-build", "new-collection", capregistry.ProjectionReady},
+		{"old-build", "media_assets_v3_old", capregistry.ProjectionActive},
+		{"new-build", "media_assets_v3_new", capregistry.ProjectionReady},
 	} {
 		if err := cm.BeginProjection(context.Background(), projection.id, projection.collection, 41); err != nil {
 			t.Fatal(err)
@@ -165,8 +165,8 @@ func TestProjectionManager_ActivationAndRollbackUpdateAliasAndLifecycle(t *testi
 	if err := cm.ActivateProjection(context.Background(), "new-build", 41); err != nil {
 		t.Fatalf("activation failed: %v", err)
 	}
-	if aliasTarget != "new-collection" {
-		t.Fatalf("alias after activation=%q, want new-collection", aliasTarget)
+	if aliasTarget != "media_assets_v3_new" {
+		t.Fatalf("alias after activation=%q, want media_assets_v3_new", aliasTarget)
 	}
 	oldProjection, _ := cm.Projection("old-build")
 	newProjection, _ := cm.Projection("new-build")
@@ -174,11 +174,11 @@ func TestProjectionManager_ActivationAndRollbackUpdateAliasAndLifecycle(t *testi
 		t.Fatalf("activation lifecycle old=%s new=%s", oldProjection.Status, newProjection.Status)
 	}
 
-	if err := cm.RollbackProjection(context.Background(), "new-build", "old-collection"); err != nil {
+	if err := cm.RollbackProjection(context.Background(), "new-build", "media_assets_v3_old"); err != nil {
 		t.Fatalf("rollback failed: %v", err)
 	}
-	if aliasTarget != "old-collection" {
-		t.Fatalf("alias after rollback=%q, want old-collection", aliasTarget)
+	if aliasTarget != "media_assets_v3_old" {
+		t.Fatalf("alias after rollback=%q, want media_assets_v3_old", aliasTarget)
 	}
 	oldProjection, _ = cm.Projection("old-build")
 	newProjection, _ = cm.Projection("new-build")
@@ -218,7 +218,7 @@ func TestProjectionManager_AliasFailureKeepsReadyState(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"aliases": []map[string]string{{
-				"alias_name": "media_assets_current", "collection_name": "old-collection",
+				"alias_name": "media_assets_current", "collection_name": "media_assets_v3_old",
 			}}}})
 		case r.Method == http.MethodPost && r.URL.Path == "/collections/aliases":
 			http.Error(w, "injected alias outage", http.StatusBadGateway)
@@ -281,7 +281,7 @@ func TestProjectionManager_RollbackFailureKeepsActiveState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := cm.RollbackProjection(context.Background(), "build-1", "old-collection"); err == nil {
+	if err := cm.RollbackProjection(context.Background(), "build-1", "media_assets_v3_old"); err == nil {
 		t.Fatal("RollbackProjection must fail when Qdrant rejects the switch")
 	}
 	projection, ok := cm.Projection("build-1")

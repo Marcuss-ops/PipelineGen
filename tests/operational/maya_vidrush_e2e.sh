@@ -26,7 +26,7 @@ SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-600}"
 source "$DIR/lib/common.sh"
 smoke_require curl jq sqlite3
 
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 METRICS_URL="${METRICS_URL:-http://${SMOKE_API_BASE}/metrics}"
 CASE_PREFIX="maya-vidrush-$(smoke_gen_uuid)"
 

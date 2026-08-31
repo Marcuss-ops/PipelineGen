@@ -36,7 +36,7 @@ import (
 
 // registerSystem wires the system module.
 // PR3 (June 2026): Wave 14 close — the system module absorbed the
-// former `internal/api/drive/` directory as a second receiver
+// former `internal/platform/drive/` directory as a second receiver
 // (DriveHandler) sharing the same /drive sub-group. The ctor takes
 // driveUploader + reconcileSvc so /drive routes can answer (when
 // either is nil the corresponding handler returns 503). The real Drive
@@ -95,7 +95,7 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 	}
 	// NewScriptHistoryModule expects two gin.HandlerFunc gate args
 	// (handler feature gate + enabled bool). The helper in
-	// internal/api/middleware reads the resolved boolean and wraps
+	// internal/platform/httpserver/middleware reads the resolved boolean and wraps
 	// it in a 403-on-disabled middleware. Script history is shared by
 	// all script entrypoints, so we keep it alive whenever any script
 	// feature is enabled.

@@ -27,8 +27,8 @@ import (
 //
 // Compile-time assertion placement rationale (Pattern 0):
 //
-//	The dispatcher (in internal/infrastructure/...) SHOULD NOT import
-//	mutations (in internal/application/...) directly — that would violate
+//	The dispatcher (in internal/platform/) SHOULD NOT import
+//	mutations (in internal/capabilities/) directly — that would violate
 //	the canonical application ← infrastructure layering. Instead, the
 //	assertion lives HERE in the composition root, which is the ONE place
 //	allowed to import both sides. Drift in either the interface or the

@@ -27,7 +27,7 @@
 // (this gate) AND the 9 per-destination folder probe paths (P1.3
 // validator in build_bundles_drive.go:295). Operators opting into
 // soft-mode (StrictStartupValidation=false) reports the validation but
-// preserve the handler-level preflight at internal/api/assets/register/handler.go::BatchRegisterFromYouTube
+// preserve the handler-level preflight at internal/capabilities/assets/register/handler.go::BatchRegisterFromYouTube
 // (defense-in-depth: the request still surfaces HTTP 503 with an
 // actionable error instead of HTTP 500 nil-panic).
 //

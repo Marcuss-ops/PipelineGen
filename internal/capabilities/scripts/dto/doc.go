@@ -12,6 +12,6 @@
 //   - MUST be import-cycle-safe: this package MUST NOT import any
 //     other scripts/ sub-package (consumers depend on us, never
 //     the reverse).
-//   - MAY import internal/domain/* (canonical domain types).
+//   - MAY import internal/kernel/* (canonical domain types).
 //   - All exported types are JSON-tagged where applicable.
 package dto

@@ -29,13 +29,16 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # ── Load environment ───────────────────────────────────────────────────────
 # shellcheck source=scripts/lib/dotenv.sh
 source "$ROOT_DIR/scripts/lib/dotenv.sh"
+# shellcheck source=scripts/lib/canonical_db_path.sh
+source "$ROOT_DIR/scripts/lib/canonical_db_path.sh"
 load_dotenv_missing "$ROOT_DIR/.env"
 
 BASE_URL="${FINGERPRINT_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
 QDRANT_URL="${FINGERPRINT_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${FINGERPRINT_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
-DB_PATH="${FINGERPRINT_DB_PATH:-${VELOX_DB_PATH:-$ROOT_DIR/data/pipelinegen.db}}"
+DB_PATH="${FINGERPRINT_DB_PATH:-${VELOX_DB_PATH:-$(canonical_primary_db_path "$ROOT_DIR")}}"
+DB_PATH="$(validate_canonical_primary_db_path "$DB_PATH")" || exit 2
 
 HAS_PARTIAL=0
 

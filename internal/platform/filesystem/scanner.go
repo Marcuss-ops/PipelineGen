@@ -25,7 +25,7 @@
 //   - LocalFilesystemScanner  : concrete impl using filepath.WalkDir
 //
 // All types are exported; the package is leaf-safe to use from
-// `internal/application/**` ports (composition-root wires the
+// `internal/capabilities/**` ports (composition-root wires the
 // injection).
 package filesystem
 

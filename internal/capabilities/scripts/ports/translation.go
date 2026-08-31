@@ -89,7 +89,7 @@ type TranslationUseCase interface {
 	// identifier-keyed structure. Returns the translated
 	// *ModelScriptOutputV1 + non-fatal warnings + a typed error
 	// envelope (see the sentinel taxonomy in
-	// internal/application/scripts/usecase/translation.go).
+	// internal/capabilities/scripts/usecase/translation.go).
 	TranslateScriptSpec(
 		ctx context.Context,
 		in *scriptpkg.ModelScriptOutputV1,

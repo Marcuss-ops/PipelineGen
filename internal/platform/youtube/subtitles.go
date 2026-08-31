@@ -17,7 +17,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The 5-level acquisition chain (payload → DB → manual subs
 //     → auto subs → Whisper) lives in
-//     internal/application/youtube/usecase/text_track_resolver.go
+//     internal/capabilities/youtube/usecase/text_track_resolver.go
 //     (commit c0bae1612). This infra-level adapter is the priority-3
 //     / priority-4 surface ONLY; the (nil, nil) return from
 //     FetchSegmentSubtitles is the canonical signal that the

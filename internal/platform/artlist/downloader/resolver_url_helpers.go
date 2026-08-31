@@ -7,7 +7,7 @@
 // inside the Resolver file alongside the routing logic; that
 // co-location was a godlike/06 violation because the helpers are
 // callable from any package — notably
-// internal/infrastructure/media/processor/processor_download.go uses
+// internal/platform/media/processor/processor_download.go uses
 // IsArtlistURL / IsDirectMediaURL / IsHLSURL in its own routing
 // decision. Separating them here documents the cross-package surface
 // explicitly and keeps the canonical Resolver type small.

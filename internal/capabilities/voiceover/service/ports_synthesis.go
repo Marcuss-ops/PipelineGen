@@ -17,7 +17,7 @@ import (
 
 // TTSProvider is the canonical port for text-to-speech synthesis.
 // The production concrete is *audioasset.Processor (lowered from
-// internal/infrastructure/audio so voiceover never imports the
+// internal/platform/audio so voiceover never imports the
 // infrastructure package directly).
 type TTSProvider interface {
 	Synthesize(ctx context.Context, input TTSInput) (TTSOutput, error)

@@ -6,7 +6,7 @@
 // and owns NO business semantics.
 //
 // EXPAND-phase placeholder (Wave 19, June 2026). Production platform code
-// authoritatively lives in internal/infrastructure/<x>/ until the
+// authoritatively lives in internal/platform/<x>/ until the
 // per-platform BACKFILL/CUTOVER waves relocate it under this root. Per
 // 02_TARGET_STRUCTURE.md §"internal/platform":
 //

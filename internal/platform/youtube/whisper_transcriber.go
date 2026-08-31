@@ -19,7 +19,7 @@
 //
 // godlike/06 SSOT: this is the SOLE canonical concrete
 // adapter for the WhisperTranscriber interface
-// (internal/infrastructure/youtube/ports.go) and the
+// (internal/platform/youtube/ports.go) and the
 // application-layer WhisperTranscriberPort
 // (internal/capabilities/youtube/ports/ports.go). The
 // application-layer port is a STRUCTURAL subset of the

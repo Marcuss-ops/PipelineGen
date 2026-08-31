@@ -43,7 +43,7 @@ import (
 // youtubeports.ClipAtomicWriter (CommitClipAndIndexEvent) is
 // retained as a STRIPE for callers that don't carry localized
 // text (e.g. announcement text-only writes) — see
-// internal/application/assets/persistence/writer.go for the
+// internal/capabilities/assets/persistence/writer.go for the
 // cross-package alignment story.
 type LocalizedClipWriter interface {
 	CommitClipTextAndIndexEvent(ctx context.Context, cmd CommitLocalizedClipCommand) error

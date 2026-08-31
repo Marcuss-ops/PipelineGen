@@ -16,11 +16,11 @@
 #
 # Usage:
 #   bash scripts/operations/inspect_media_asset.sh <asset_id>
-#   bash scripts/operations/inspect_media_asset.sh <asset_id> --db /var/lib/velox/velox.db
+#   bash scripts/operations/inspect_media_asset.sh <asset_id> --db data/media/media.db.sqlite
 #   bash scripts/operations/inspect_media_asset.sh <asset_id> --json
 #   bash scripts/operations/inspect_media_asset.sh <asset_id> --help
 #
-#   --db <PATH>           SQLite database path (overrides default lookup).
+#   --db <PATH>           Canonical SQLite database path only; non-canonical paths are rejected.
 #   --json                Emit machine-readable single-line JSON summary
 #                         instead of colored PASS/FAIL output. Useful for CI.
 #   -h | --help           Show USAGE.
@@ -123,26 +123,14 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   exit 4
 fi
 
-# ── 2. Resolve DB path (priority: --db, $VELOX_DB, project defaults) ────────
-if [[ -z "$DB_PATH" ]]; then
-  DB_PATH="${VELOX_DB:-}"
-fi
-if [[ -z "$DB_PATH" ]]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  for candidate in \
-      "$PROJECT_ROOT/data/media/media.db.sqlite" \
-      "$PROJECT_ROOT/data/velox.db" \
-      "/var/lib/velox/velox.db"; do
-    if [[ -f "$candidate" ]]; then
-      DB_PATH="$candidate"
-      break
-    fi
-  done
-fi
-
+# ── 2. Resolve and validate the canonical DB path ───────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/canonical_db_path.sh
+source "$PROJECT_ROOT/scripts/lib/canonical_db_path.sh"
+DB_PATH="$(resolve_canonical_primary_db "${DB_PATH:-${VELOX_DB:-}}" "$PROJECT_ROOT")" || exit 3
 if [[ -z "$DB_PATH" || ! -f "$DB_PATH" ]]; then
-  echo "ERROR: SQLite DB not found. Tried \$VELOX_DB, \$PROJECT_ROOT/data/media/media.db.sqlite, /var/lib/velox/velox.db. Pass --db <PATH>." >&2
+  echo "ERROR: canonical SQLite DB not found: $DB_PATH" >&2
   exit 3
 fi
 

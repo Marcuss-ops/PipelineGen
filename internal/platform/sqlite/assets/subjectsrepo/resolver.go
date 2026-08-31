@@ -263,7 +263,7 @@ func (r *Resolver) normalize(displayName string) (displayNameNorm, slug string) 
 // slugify is the resolver-local alias for `slug.SlugifyTitle`.
 //
 // Why a wrapper rather than an import: the resolver is in
-// `internal/infrastructure/...`; pkg/slug is a leaf package
+// `internal/platform/`; pkg/slug is a leaf package
 // (godlike/06 SSOT: leaf packages must not import internal).
 // The wrapper IS the canonical decoupling point — application
 // code MUST go through Resolver and not call pkg/slug directly

@@ -81,10 +81,10 @@ func redactSensitiveQuery(raw string) string {
 // Logger returns a gin middleware for logging requests.
 //
 // PG-006 (June 2026): the previous body called package-level
-// `logger.Error/Info/Warn` from internal/infrastructure/logging. The
+// `logger.Error/Info/Warn` from internal/platform/logging. The
 // middleware now takes a *zap.Logger directly — the AdapterLayer
 // (composition root) hands the standard zap logger at registration
-// time. This file has zero `internal/infrastructure/*` imports.
+// time. This file has zero `internal/platform/*` imports.
 func Logger(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()

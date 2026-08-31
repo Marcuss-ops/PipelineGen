@@ -30,6 +30,12 @@ func (v *ReindexVerifier) verifyCounts(ctx context.Context, target string, expec
 		report.Errors = append(report.Errors, fmt.Sprintf("list SQLite asset IDs: %v", err))
 		return nil, fmt.Errorf("QDRANT-003: cannot verify reindex — SQLite list failed: %w", err)
 	}
+	report.SQLiteIndexableAssets = len(sqliteIDs)
+	if report.ExpectedPoints != report.SQLiteIndexableAssets {
+		report.Errors = append(report.Errors, fmt.Sprintf(
+			"SQLite indexable inventory mismatch: expected rebuild points=%d, SQLite indexable assets=%d",
+			report.ExpectedPoints, report.SQLiteIndexableAssets))
+	}
 	sqliteSet = make(map[string]bool, len(sqliteIDs))
 	for _, id := range sqliteIDs {
 		sqliteSet[id] = true

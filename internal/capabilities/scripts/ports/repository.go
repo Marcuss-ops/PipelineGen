@@ -9,7 +9,7 @@
 //
 // Import discipline (per doc.go):
 //   - MUST NOT import other scripts/ sub-packages.
-//   - MAY import internal/domain/* and stdlib-only.
+//   - MAY import internal/kernel/* and stdlib-only.
 //   - Infrastructure implementations satisfy these ports via
 //     implicit-interface patterns, never via direct import.
 package ports

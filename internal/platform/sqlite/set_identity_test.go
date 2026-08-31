@@ -2,10 +2,39 @@ package sqlite
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"go.uber.org/zap/zaptest"
 )
+
+func TestOpenSetRejectsNonCanonicalPrimaryPath(t *testing.T) {
+	root := t.TempDir()
+	_, err := OpenSet(StorageConfig{
+		DataDir:             root,
+		PrimaryDBPath:       filepath.Join(root, "media.db.sqlite"),
+		ObservabilityDBPath: filepath.Join(root, "observability", "api_requests.db.sqlite"),
+	}, zaptest.NewLogger(t))
+	if err == nil {
+		t.Fatal("OpenSet accepted legacy <DataDir>/media.db.sqlite path")
+	}
+}
+
+func TestSQLiteHealthPathIsCanonicalOnly(t *testing.T) {
+	dataDir := t.TempDir()
+	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
+	if got := GetAllDBs(); len(got) != 1 || got[0] != filepath.Join("media", DBMedia) {
+		t.Fatalf("GetAllDBs() = %v, want [%q]", got, filepath.Join("media", DBMedia))
+	}
+	if got := GetDBPath(dataDir, filepath.Join("media", DBMedia)); got != canonical {
+		t.Fatalf("GetDBPath canonical = %q, want %q", got, canonical)
+	}
+	for _, legacy := range []string{"media.db.sqlite", "cmd/admin/data/media/media.db.sqlite", "stock/stock.db.sqlite"} {
+		if got := GetDBPath(dataDir, legacy); got != "" {
+			t.Fatalf("GetDBPath(%q) = %q, want empty for unsupported path", legacy, got)
+		}
+	}
+}
 
 func TestDatabaseSetValidateControlPlaneIdentityRequiresCanonicalPrimary(t *testing.T) {
 	primary, err := OpenSQLiteDB(t.TempDir()+"/primary.sqlite", zaptest.NewLogger(t))

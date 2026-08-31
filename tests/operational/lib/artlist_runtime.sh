@@ -35,11 +35,24 @@
 
 set -euo pipefail
 
+ARTLIST_RUNTIME_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# shellcheck source=../../../scripts/lib/canonical_db_path.sh
+source "$ARTLIST_RUNTIME_ROOT/scripts/lib/canonical_db_path.sh"
+
 # ── Runtime config (env-overridable, canonical DoD defaults) ──────────────
 HOST="${VELOX_HOST:-127.0.0.1}"
 PIPELINE_PORT="${PIPELINE_PORT:-${VELOX_PORT:-8000}}"
 BASE_URL="http://${HOST}:${PIPELINE_PORT}"
-DB_PATH="${VELOX_DATA_DIR:-./data}/media/media.db.sqlite"
+DB_INPUT="${DB_PATH:-${VELOX_DB_PATH:-}}"
+if [[ "${DRY_RUN:-0}" != "1" && -z "$DB_INPUT" ]]; then
+    printf 'setup error: DB_PATH or VELOX_DB_PATH must be explicitly set to an isolated or approved database\n' >&2
+    return 2 2>/dev/null || exit 2
+fi
+if [[ "${DRY_RUN:-0}" == "1" && -z "$DB_INPUT" ]]; then
+    DB_PATH="$(canonical_primary_db_path "$ARTLIST_RUNTIME_ROOT")"
+else
+    DB_PATH="$(resolve_canonical_primary_db "$DB_INPUT" "$ARTLIST_RUNTIME_ROOT")"
+fi
 SCRAPER_URL="${VELOX_ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 QDRANT_COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"

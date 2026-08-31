@@ -193,6 +193,11 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 		}
 
 		result.TotalAssets += len(batch)
+		// FetchAssetBatch applies SearchIndexEligibilitySQL, so this
+		// inventory is the exact canonical SQLite source set for the
+		// rebuild. Keep it explicit in the result rather than deriving
+		// it from Qdrant write outcomes.
+		result.SQLiteIndexableAssets = result.TotalAssets
 		totalSeen += len(batch)
 
 		// Map each asset to a point and accumulate.

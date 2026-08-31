@@ -18,9 +18,10 @@
 //     legacy w.repo.Complete with lease-lost / path-violation /
 //     generic-error handling.
 //
-// Mechanical split from worker_execution_result.go. Zero behavior
-// change: every log line, error string, CAS call and lease-lost guard
-// is byte-identical to the pre-split flat body.
+// Mechanical split from worker_execution_result.go. Retry eligibility and
+// persisted retry backoff are delegated to jobs/scheduling; this file retains
+// only orchestration and side effects. Zero behavior change is intended for
+// logs, error strings, CAS calls, and lease-lost guards.
 package jobs
 
 import (
@@ -31,6 +32,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -54,7 +56,7 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 	// failures (for example a missing clip in clip_only mode) must become
 	// terminal immediately; otherwise the broker exposes RETRY_WAIT for a
 	// permanent failure and can later re-run the same invalid request.
-	if retry.IsTransient(dispatchErr) && j.RetryCount < j.MaxRetries {
+	if retry.IsTransient(dispatchErr) && jobscheduling.DecideRetry(j) == jobscheduling.RetryScheduled {
 		// Backoff math now routes through pkg/retry.BackoffFor
 		// (the canonical owner of "compute exponential backoff" —
 		// godlike/06 SSOT, see pkg/retry/options.go godlike/06
@@ -66,11 +68,7 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 		// literal so determinism for the server-side `available_at`
 		// schedule is preserved (the SQL stored timestamp is the
 		// persisted retry target, NEVER a random pre-sleep).
-		backoff := retry.BackoffFor(j.RetryCount, retry.Options{
-			InitialBackoff: 2 * time.Second,
-			BackoffFactor:  2.0,
-			MaxBackoff:     30 * time.Second,
-		})
+		backoff := jobscheduling.RetryBackoff(j.RetryCount, jobscheduling.DefaultRetryPolicy)
 		w.log.Info("scheduling job for retry",
 			zap.String("job_id", j.ID),
 			zap.Duration("backoff", backoff))
@@ -291,7 +289,7 @@ func (w *Worker) finalizeJobLegacyComplete(ctx context.Context, j *job.Job, work
 			// call CompleteWithArtifacts — the job.Store interface has
 			// no such method. The canonical typed sentinel
 			// domainremote.ErrCompleteJobPathViolation (per godlike/06
-			// SSOT at internal/domain/remote/complete_job.go) gates the
+			// SSOT at internal/capabilities/remote/complete_job.go) gates the
 			// typoevolee, so this branch fails the job toward a
 			// terminal state instead of staying RUNNING forever
 			// (godlike/07 no-fake-availability).

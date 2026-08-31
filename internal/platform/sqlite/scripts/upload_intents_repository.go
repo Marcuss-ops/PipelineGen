@@ -9,7 +9,7 @@
 //
 // Pattern 0 (AGENTS.md): the concrete implements
 // persistence.UploadIntentsRepository (declared in
-// internal/application/voiceover/upload_intent.go as the application-
+// internal/capabilities/voiceover/upload_intent.go as the application-
 // layer port). Test doubles inject the port interface; production
 // wires the concrete in build_bundles_voiceover.go.
 //
@@ -35,7 +35,7 @@ import (
 
 // Compile-time assertion (AGENTS.md Pattern 0): the concrete
 // satisfies the application-layer port that lives in
-// internal/application/voiceover/upload_intent.go. The interface
+// internal/capabilities/voiceover/upload_intent.go. The interface
 // lives in the application package (consumer declares), so the
 // concrete cannot reference the interface directly (would import
 // cycle). Instead, this structural assertion pins the public

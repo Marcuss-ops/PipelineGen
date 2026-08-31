@@ -7,7 +7,7 @@
 // a staged remote source.
 //
 // PR-MEDIATRANSFORMER-RENAME (July 2026): StagedSource was
-// previously defined at internal/application/assets/ports.go.
+// previously defined at internal/capabilities/assets/ports.go.
 // The new MediaTransformer contract (asset.MediaTransformer.Transform)
 // takes a *StagedSource as a method parameter, so the type MUST
 // live in the domain layer (per AGENTS.md Pattern 8: domain is

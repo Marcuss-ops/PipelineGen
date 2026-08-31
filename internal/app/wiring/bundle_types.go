@@ -95,7 +95,7 @@ type ArtlistBundle struct {
 //
 // PR4d-chunk2 (June 2026): Resolver field removed (historical: at the
 // time, the canonical clip-resolver lived in
-// `internal/application/assets/clipresolver/`, but that package was
+// `internal/capabilities/assets/clipresolver/`, but that package was
 // subsequently completely removed in a downstream refactor — see
 // architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE, closed 2026-07-04).
 // The harvest service was constructed locally in WireRegistry from

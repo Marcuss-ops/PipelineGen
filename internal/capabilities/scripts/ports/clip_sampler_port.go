@@ -13,7 +13,7 @@
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the registry wiring in
 // composition root fails closed at runtime (see
-// internal/application/scripts/usecase/clip_sampler_registry.go).
+// internal/capabilities/scripts/usecase/clip_sampler_registry.go).
 // A nil registry with caller != "" panics with a typed message;
 // callers must wire NewClipSamplerRegistry() at composition time.
 //

@@ -48,7 +48,7 @@ fi
 # ── Prerequisites ──────────────────────────────────────────────────────
 smoke_require sqlite3
 
-DB="${DB_PATH:-data/media/media.db.sqlite}"
+DB="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 FAIL_COUNT=0
 TOTAL=5
 TIMESTAMP_BEFORE=$(date '+%Y-%m-%dT%H:%M:%SZ')

@@ -56,7 +56,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 # ── Configuration ──────────────────────────────────────────────────
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 REQ_ID="script_translate_$(date +%s)_$$"
 SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-180}"
 # Defensive defaults: WORK_DIR for the curl -o destination, SMOKE_HTTP_TIMEOUT_SECONDS

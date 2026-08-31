@@ -30,7 +30,7 @@ var enqueueTimeout = 10 * time.Second
 // empty key, key longer than 255 chars, or any byte outside the
 // printable-ASCII range (0x20..0x7E). The validation matches the
 // behaviour of the canonical middleware-level Idempotency middleware
-// (internal/api/middleware/idempotency.go) so a key produced
+// (internal/platform/httpserver/middleware/idempotency.go) so a key produced
 // valid at the middleware boundary cannot be rejected here.
 func isValidIdempotencyKey(key string) bool {
 	if len(key) == 0 || len(key) > 255 {

@@ -1,8 +1,8 @@
 // Package app — ArtifactServicePort adapter (P0.1, June 2026).
 //
-// Wraps the concrete *artifacts.Service (internal/application/assets/artifacts)
+// Wraps the concrete *artifacts.Service (internal/capabilities/assets/artifacts)
 // into the narrow ArtifactServicePort interface declared in
-// internal/application/clips/upload/ports.go.
+// internal/capabilities/clips/upload/ports.go.
 //
 // The adapter converts between the two DTO shapes at the adapter boundary:
 //   - upload.ArtifactCreateInput → artifacts.CreateInput

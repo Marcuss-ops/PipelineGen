@@ -224,9 +224,9 @@ func (a *aistockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID stri
 // Package app — voiceover use case adapters orchestrator
 // (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
-// Bridges production concretes under internal/infrastructure/* to the
+// Bridges production concretes under internal/platform/* to the
 // 9 canonical narrow ports declared in
-// internal/application/voiceover/ports.go. Per AGENTS.md Pattern 0
+// internal/capabilities/voiceover/ports.go. Per AGENTS.md Pattern 0
 // (port abstraction layer, June 2026) each adapter is a thin
 // bridge; production wiring lives here, NOT inside the voiceover
 // package, so voiceover stays free of *infrastructure and *lifecycle
@@ -253,7 +253,7 @@ func (a *aistockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID stri
 // the port contract surfaces as a compile error at the file where the
 // adapter lives, NOT at the use case Execute call site.
 //
-// See internal/application/voiceover/ports.go for the canonical 9-port
+// See internal/capabilities/voiceover/ports.go for the canonical 9-port
 // surface layout (TTSProvider, AudioPostProcessor, VoiceoverPublisher,
 // VoiceoverRepository, DestinationResolver, VoiceoverDefaultFolderResolver,
 // LifecycleProjectionUpserter, VoiceoverPostCommitVerifier).

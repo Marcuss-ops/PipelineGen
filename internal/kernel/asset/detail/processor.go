@@ -25,8 +25,8 @@
 // Backward compatibility (step 1, July 2026): the legacy `Processor`
 // interface is retained (deprecated) with the same `Process` method
 // signature so the ~50 existing callers in
-// `internal/application/{youtube,clips,artlist,voiceover}` and
-// `internal/api/assets/clips` continue to compile without churn.
+// `internal/capabilities/{youtube,clips,artlist,voiceover}` and
+// `internal/capabilities/assets/clips` continue to compile without churn.
 // The legacy DTOs `ProcessInput` and `ProcessResult` are Go type
 // aliases of `TransformSpec` and `RenditionSet` so a single struct
 // serves both names. The alias is removed in step 2 when the
@@ -199,8 +199,8 @@ type RenditionOutput struct {
 // ── Backward-compatibility aliases (PR-MEDIATRANSFORMER-RENAME step 1) ──
 //
 // These aliases are the minimal-blast-radius bridge that lets the
-// ~50 existing callers in `internal/application/{youtube,clips,
-// artlist,voiceover}` and `internal/api/assets/clips` continue to
+// ~50 existing callers in `internal/capabilities/{youtube,clips,
+// artlist,voiceover}` and `internal/capabilities/assets/clips` continue to
 // compile without churn while the new `MediaTransformer.Transform`
 // contract rolls out. The aliases point to the canonical renamed
 // types so a single struct serves both names:
@@ -228,8 +228,8 @@ type ProcessResult = RenditionSet
 
 // Processor is the legacy god-service interface, retained (NOT removed)
 // for backward compatibility with the ~50 existing callers in
-// `internal/application/{youtube,clips,artlist,voiceover}` and
-// `internal/api/assets/clips`.
+// `internal/capabilities/{youtube,clips,artlist,voiceover}` and
+// `internal/capabilities/assets/clips`.
 //
 // Deprecated: use MediaTransformer instead. The Process method
 // signature stays the same so existing implementations (which adapt

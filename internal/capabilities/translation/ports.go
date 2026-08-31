@@ -9,7 +9,7 @@
 //
 // ── Relationship to the canonical domain types ──────────────────────────
 //
-// `internal/domain/translation/translation.go` (Fase 0 della Spina
+// `internal/capabilities/translation/translation.go` (Fase 0 della Spina
 // Dorsale) already declares domain-layer DTOs of overlapping concept:
 //
 //	domain.TranslationCommand  { SourceText, SourceLanguage, TargetLanguage,
@@ -32,7 +32,7 @@
 // application-layer adapter that converts domain.TranslationCommand
 // to this file's TranslationCommand before forwarding to providers —
 // tracked as forward-pointer (see "Migration to TranslationPort"
-// in `internal/application/translation/migration.go` once it lands).
+// in `internal/capabilities/translation/migration.go` once it lands).
 //
 // ── API surface ────────────────────────────────────────────────────────
 //
@@ -61,7 +61,7 @@ import (
 //	var _ TranslationPort = (*ollamaAdapter)(nil)
 //
 // Today the wire-side port surface still uses the legacy stragglers
-// in `internal/application/scripts/usecase/services.go`:
+// in `internal/capabilities/scripts/usecase/services.go`:
 //
 //	TextTranslationService   (3-arg: ctx, text, lang -> string)
 //	TranslatorService        (4-arg: ctx, text, lang, model -> string)
@@ -151,7 +151,7 @@ type TranslationCommand struct {
 	//
 	// The 5 documented keys above are convention only —
 	// no constants are exposed in this package yet. A future PR
-	// should add `internal/application/translation/hints.go` with
+	// should add `internal/capabilities/translation/hints.go` with
 	// `HintPreserveFormatting = "preserve_formatting"` consts (and the
 	// other 4) so providers and scripts can't drift on misspelled keys.
 	// Out of scope for Fase 9 step 1 (definitions + contract only).

@@ -17,7 +17,7 @@ import (
 )
 
 // RealtimeMatchRequest is a local type replacing the removed
-// mediarealtime.MatchRequest (package internal/application/assets/realtime).
+// mediarealtime.MatchRequest (package internal/capabilities/assets/realtime).
 type RealtimeMatchRequest struct {
 	Query    string   `json:"query"`
 	Source   string   `json:"source"`

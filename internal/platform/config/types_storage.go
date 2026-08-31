@@ -9,10 +9,10 @@ import (
 type StorageConfig struct {
 	// DataDir is the root for ALL persisted data (DBs + blobs).
 	DataDir string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
-	// PrimaryDBPath is the file path for the unified media DB
+	// PrimaryDBPath is the file path for the unified operational media DB
 	// (jobs, assets, scripts, search_queries, worker_nodes, media_assets,
-	//  clip_folders, voiceovers, etc.). Defaults preserve legacy
-	// `<DataDir>/media/media.db.sqlite`.
+	// clip_folders, voiceovers, etc.). It must resolve to
+	// `<DataDir>/media/media.db.sqlite` when explicitly configured.
 	PrimaryDBPath string `yaml:"primary_db_path" env:"VELOX_PRIMARY_DB_PATH" default:""`
 	// ObservabilityDBPath is the file path for the API request log DB
 	// (`api_requests` table + indexes). Distinct from PrimaryDBPath so
@@ -65,7 +65,7 @@ func (s StorageConfig) TempPath() string { return s.FullPath(s.TempDir) }
 // relative. A relative "./data" returned to filepath.EvalSymlinks stays
 // as "data" (the relative form) and breaks the IsLocalFolderAllowed
 // symlink-canonicalization guard at
-// internal/application/clips/bulk_upload_helpers.go (FASE-N EvalSymlinks
+// internal/capabilities/clips/bulk_upload_helpers.go (FASE-N EvalSymlinks
 // audit). The DataDir field itself remains a raw string so existing
 // callers that compose cfg.Storage.DataDir into ad-hoc paths (192+
 // matches) continue to compile; new callers that feed the value into
@@ -204,8 +204,12 @@ func (s StorageConfig) ValidatePrimaryDBPath() error {
 // Path resolution helpers — used by internal/app/bootstrap.go and any
 // subsystem that needs the canonical disk layout under DataDir.
 func (s StorageConfig) PrimaryDBFullPath() string {
-	if err := s.ValidatePrimaryDBPath(); err != nil {
-		return ""
+	if configured := strings.TrimSpace(s.PrimaryDBPath); configured != "" {
+		if err := s.ValidatePrimaryDBPath(); err != nil {
+			// Preserve the invalid value so downstream openers can fail closed;
+			// never turn an invalid override into a default database path.
+			return configured
+		}
 	}
 	return s.CanonicalPrimaryDBPath()
 }

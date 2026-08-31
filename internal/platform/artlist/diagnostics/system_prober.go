@@ -71,7 +71,7 @@ import (
 // DefaultProbeTimeout is the per-probe HTTP/wall-clock budget. 5s
 // matches the precedent set by HTTPSelfLoopProbe (default 5s per
 // http_live_probe.go::DefaultProbeTimeout) and by
-// internal/infrastructure/artlist/health/probe.go::DefaultProbeTimeout
+// internal/platform/artlist/health/probe.go::DefaultProbeTimeout
 // (60s cadence scraper health probe at 5s per attempt).
 //
 // godlike/06 SSOT: this is the canonical DefaultProbeTimeout for the
@@ -180,7 +180,7 @@ type AdminSystemProber struct {
 	// reachability check. Empty FFmpegBinaryPath triggers an
 	// exec.LookPath("ffmpeg") fallback so the probe honours $PATH
 	// (matches the precedent set by
-	// internal/application/clips/upload/usecase.go line 361 +
+	// internal/capabilities/clips/upload/usecase.go line 361 +
 	// cutter_test.go line 60 which use exec.LookPath directly on the
 	// bare "ffmpeg" / "ffprobe" names).
 	FFmpegBinaryPath string
@@ -297,7 +297,7 @@ func (p *AdminSystemProber) ProbeAll(ctx context.Context) artlist.ProbeSet {
 // DefaultRunner is the production implementation of FFmpegRunner.
 // It delegates to exec.CommandContext (mirrors the canonical
 // defaultProcessRunner pattern in
-// internal/infrastructure/media/ffmpeg/ffmpeg.go). Test fixtures
+// internal/platform/media/ffmpeg/ffmpeg.go). Test fixtures
 // can swap a no-op runner to assert argv without spawning a real
 // subprocess.
 //

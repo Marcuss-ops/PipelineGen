@@ -3,8 +3,9 @@
 // type that wraps *sql.DB with WAL mode, foreign keys, and a migration
 // runner attached.
 //
-// All database operations flow through a single media.db.sqlite file
-// located at <DataDir>/media.db.sqlite.
+// All primary database operations flow through a single
+// <DataDir>/media/media.db.sqlite file. Observability has its own
+// explicitly separate database under <DataDir>/observability/.
 package sqlite
 
 import (
@@ -18,11 +19,17 @@ import (
 )
 
 func GetAllDBs() []string {
-	return []string{"media.db.sqlite"}
+	return []string{"media/media.db.sqlite"}
 }
 
+// GetDBPath resolves only the canonical primary database relative path.
+// Returning an empty path makes unsupported or legacy health probes fail
+// closed instead of opening another SQLite file.
 func GetDBPath(dataDir, dbRelPath string) string {
-	return filepath.Join(dataDir, dbRelPath)
+	if filepath.Clean(dbRelPath) != filepath.Join("media", DBMedia) {
+		return ""
+	}
+	return filepath.Join(dataDir, "media", DBMedia)
 }
 
 func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {

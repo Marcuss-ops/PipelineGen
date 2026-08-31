@@ -55,7 +55,7 @@ import (
 // (PENDING→ENRICHING on claim; ENRICHING→ENRICHED on success;
 // ENRICHING→FAILED on error) are owned by the application-layer
 // EnrichStateMachine wrapper
-// (internal/application/assets/enrichment/state_machine.go). The
+// (internal/capabilities/assets/enrichment/state_machine.go). The
 // autotag service is the typed-state consumer: it READS the column
 // and INVOKES the state-machine wrappers, which are injected via the
 // composition root.

@@ -125,7 +125,7 @@ var (
 	// exactly once per Step 10 failure, with the failure_code label
 	// matching the typed error envelope's Code field. Callers MUST
 	// pass the stringified FailureCode constant — the wire format
-	// matches `internal/application/youtube/usecase.FailureCode` so
+	// matches `internal/capabilities/youtube/usecase.FailureCode` so
 	// dashboard queries can join against the typed-error taxonomy
 	// without string parsing.
 	Step10FailAfterClipTotal = promauto.NewCounterVec(prometheus.CounterOpts{

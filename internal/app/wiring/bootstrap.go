@@ -2,7 +2,7 @@
 //
 // bootstrap.go holds AppDeps + sub-bundle types only. Composition-root
 // wiring lives in wire_services.go + composition.go + per-bundle files.
-// bootstrap.go makes zero `internal/infrastructure/*` imports so callers
+// bootstrap.go makes zero `internal/platform/*` imports so callers
 // compose via the AppDeps return value only.
 package wiring
 

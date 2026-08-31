@@ -363,22 +363,11 @@ type mediaMetadata struct {
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
 	// render_clip audio copy policy outcome (copy verbatim vs one certified
 	// conversion) and whether the burn stage rasterized libass (CPU).
-<<<<<<< Updated upstream
-	AudioCopyEligible *bool   `json:"audio_copy_eligible,omitempty"`
-	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
-	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
-	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
-	VideoZeroCopy     *bool   `json:"video_zero_copy,omitempty"`
-||||||| constructed merge base
-	AudioCopyEligible *bool   `json:"audio_copy_eligible,omitempty"`
-	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
-	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
-	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
-=======
 	AudioCopyEligible       *bool    `json:"audio_copy_eligible,omitempty"`
 	AudioEncodePasses       *int     `json:"audio_encode_passes,omitempty"`
 	SubtitleRasterCPU       *bool    `json:"subtitle_raster_cpu,omitempty"`
 	GPUCopyBytes            *uint64  `json:"gpu_copy_bytes,omitempty"`
+	VideoZeroCopy           *bool    `json:"video_zero_copy,omitempty"`
 	GPUUploadBytes          *uint64  `json:"gpu_upload_bytes,omitempty"`
 	GPUReadbackBytes        *uint64  `json:"gpu_readback_bytes,omitempty"`
 	EncoderStagingCopyBytes *uint64  `json:"encoder_staging_copy_bytes,omitempty"`
@@ -390,7 +379,6 @@ type mediaMetadata struct {
 	NVENCUtilizationAvg     *float64 `json:"nvenc_utilization_avg,omitempty"`
 	NVDECUtilizationAvg     *float64 `json:"nvdec_utilization_avg,omitempty"`
 	VRAMUsedPeakMB          *uint64  `json:"vram_used_peak_mb,omitempty"`
->>>>>>> Stashed changes
 	// Fine-grained render phases are optional until the owning executor
 	// measures them; nil preserves NOT_INSTRUMENTED semantics.
 	DecodeMS          *int64 `json:"decode_ms,omitempty"`

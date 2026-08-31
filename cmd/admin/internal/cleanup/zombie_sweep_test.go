@@ -149,16 +149,24 @@ func TestErrZombieSweepOpenDB_IsExported(t *testing.T) {
 	}
 }
 
-// TestResolveDBPath_FlagWins pins the precedence: --db-path flag
-// always wins, even if cfg is non-nil and PrimaryDBFullPath returns
-// a different path. godlike/07 minimum-blast-radius: the flag
-// is the operator-explicit override; cfg is the default.
-func TestResolveDBPath_FlagWins(t *testing.T) {
-	flagPath := "/explicit/override.db.sqlite"
-	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/from/cfg"}}
-	got := cli.ResolveDBPath(cfg, flagPath)
-	if got != flagPath {
-		t.Errorf("resolveDBPath: --db-path flag must win (got %q, want %q)", got, flagPath)
+// TestResolveDBPath_RejectsNonCanonicalFlag pins the fail-closed
+// contract: admin flags cannot select a second operational SQLite
+// database. The configured primary path remains the only accepted path.
+func TestResolveDBPath_RejectsNonCanonicalFlag(t *testing.T) {
+	cfg := &config.Config{Storage: config.StorageConfig{DataDir: t.TempDir()}}
+	got := cli.ResolveDBPath(cfg, "/explicit/override.db.sqlite")
+	if got != "" {
+		t.Errorf("resolveDBPath: non-canonical --db-path must be rejected (got %q)", got)
+	}
+}
+
+func TestResolveDBPath_AcceptsCanonicalFlag(t *testing.T) {
+	dataDir := t.TempDir()
+	cfg := &config.Config{Storage: config.StorageConfig{DataDir: dataDir}}
+	canonical := cfg.Storage.CanonicalPrimaryDBPath()
+	got := cli.ResolveDBPath(cfg, canonical)
+	if got != canonical {
+		t.Errorf("resolveDBPath: canonical --db-path must resolve (got %q, want %q)", got, canonical)
 	}
 }
 
@@ -177,26 +185,18 @@ func TestResolveDBPath_CfgNil_FallsThroughToEmpty(t *testing.T) {
 
 // TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath pins the
 // canonical SSOT delegation: when the flag is empty AND cfg is
-// non-nil, the function delegates to cfg.Storage.PrimaryDBFullPath()
-// (the canonical helper, shared by 24+ cmd/admin/ callers per
-// the qdrant_readiness.go precedent). We do not assert the
-// exact path value here (that is the config package's job); we
-// assert the delegation happens AND the result is non-empty
-// (the config helper has a default <MediaDir>/media.db.sqlite).
-//
-// godlike/07 minimum-blast-radius: the test sets MediaDir
-// (NOT DataDir — the canonical helper reads MediaDir per
-// internal/platform/config/types.go:485; using DataDir would
-// silently break on a future FullPath refactor).
+// non-nil, the function delegates to cfg.Storage.PrimaryDBFullPath().
+// The primary path is always rooted at DataDir/media/media.db.sqlite;
+// MediaDir controls media blobs and cannot redirect the database.
 func TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath(t *testing.T) {
-	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/data/from/cfg"}}
+	cfg := &config.Config{Storage: config.StorageConfig{DataDir: t.TempDir(), MediaDir: "/ignored-for-db"}}
 	got := cli.ResolveDBPath(cfg, "")
 	want := cfg.Storage.PrimaryDBFullPath()
 	if got != want {
 		t.Errorf("resolveDBPath: must delegate to cfg.Storage.PrimaryDBFullPath() (got %q, want %q)", got, want)
 	}
-	if got == "" {
-		t.Error(`resolveDBPath: cfg provided + PrimaryDBFullPath must return non-empty (the helper has a default <MediaDir>/media.db.sqlite); got empty string - config defaults broken?`)
+	if got != cfg.Storage.CanonicalPrimaryDBPath() {
+		t.Errorf("resolveDBPath: got %q, want canonical %q", got, cfg.Storage.CanonicalPrimaryDBPath())
 	}
 }
 

@@ -2,7 +2,7 @@
 //
 // The registry exposes a schema-driven view of every administrative
 // entity in PipelineGen. It is consumed by the HTTP facade in
-// internal/api/adminconsole and by future UI pages (Database Explorer,
+// internal/capabilities/adminconsole and by future UI pages (Database Explorer,
 // Audit Log, etc.).
 package adminconsole
 

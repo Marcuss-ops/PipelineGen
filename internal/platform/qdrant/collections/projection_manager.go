@@ -30,6 +30,9 @@ func (cm *CollectionManager) BeginProjection(ctx context.Context, projectionID, 
 	if projectionID == "" || collection == "" || registrySequence < 0 {
 		return fmt.Errorf("%w: projection_id, collection and non-negative registry sequence are required", ErrProjectionInvalidState)
 	}
+	if err := schema.ValidateProjectionTarget(collection); err != nil {
+		return fmt.Errorf("%w: %v", ErrProjectionInvalidState, err)
+	}
 	resolvedSequence, err := cm.resolveRegistrySequence(ctx, registrySequence)
 	if err != nil {
 		return err
@@ -66,6 +69,13 @@ func (cm *CollectionManager) Projection(projectionID string) (capregistry.Projec
 	defer cm.projectionMu.RUnlock()
 	projection, ok := cm.projections[projectionID]
 	return projection, ok
+}
+
+// TransitionProjection applies one validated lifecycle transition. It is
+// exposed for orchestration adapters that need to drive an already-prepared
+// projection without bypassing the state machine.
+func (cm *CollectionManager) TransitionProjection(ctx context.Context, projectionID string, next capregistry.ProjectionStatus) error {
+	return cm.transitionProjection(ctx, projectionID, next)
 }
 
 // GetStatus returns the explicit persisted/in-memory lifecycle state.
@@ -138,10 +148,9 @@ func (cm *CollectionManager) Validate(ctx context.Context, projectionID string, 
 	return cm.ValidateProjection(ctx, projectionID, registrySequence, expectedPoints)
 }
 
-// ValidateProjection performs the full verifier gate when one is wired. A
-// schema-only fallback is retained for tools that intentionally construct a
-// collection manager without SQLite asset data. In both modes a stale or
-// ahead projection is rejected before Qdrant validation and marked FAILED.
+// ValidateProjection performs the SQLite-authoritative verifier gate.
+// A projection cannot be validated or promoted through schema-only Qdrant
+// inspection: without the SQLite inventory there is no runtime truth.
 func (cm *CollectionManager) ValidateProjection(ctx context.Context, projectionID string, registrySequence int64, expectedPoints int) (*schema.SwitchReport, error) {
 	projection, err := cm.requireProjection(projectionID)
 	if err != nil {
@@ -164,7 +173,14 @@ func (cm *CollectionManager) ValidateProjection(ctx context.Context, projectionI
 	cm.projectionMu.RLock()
 	verifier := cm.reindexVerifier
 	cm.projectionMu.RUnlock()
-	if verifier != nil {
+	if verifier == nil {
+		failure := fmt.Errorf("validate projection %q: SQLite-authoritative projection verifier is not configured", projectionID)
+		if failErr := cm.failProjection(ctx, projectionID); failErr != nil {
+			return nil, fmt.Errorf("%w; persist FAILED state: %v", failure, failErr)
+		}
+		return nil, failure
+	}
+	{
 		report, verifyErr := verifier.VerifyReindex(ctx, projection.CollectionName, expectedPoints)
 		if verifyErr != nil {
 			failure := fmt.Errorf("validate projection %q: %w", projectionID, verifyErr)
@@ -185,18 +201,6 @@ func (cm *CollectionManager) ValidateProjection(ctx context.Context, projectionI
 		}
 		return report, nil
 	}
-
-	if err := cm.VerifyCandidate(ctx, projection.CollectionName); err != nil {
-		failure := fmt.Errorf("validate projection %q: %w", projectionID, err)
-		if failErr := cm.failProjection(ctx, projectionID); failErr != nil {
-			return nil, fmt.Errorf("%w; persist FAILED state: %v", failure, failErr)
-		}
-		return nil, failure
-	}
-	if err := cm.transitionProjection(ctx, projectionID, capregistry.ProjectionReady); err != nil {
-		return nil, err
-	}
-	return nil, nil
 }
 
 // Activate is the concise canonical operation name.
@@ -413,6 +417,9 @@ func (cm *CollectionManager) ReconcileProjection(ctx context.Context) error {
 	if target == "" {
 		return fmt.Errorf("%w: runtime alias %q has no target while projection state exists", ErrProjectionInvalidState, cm.schema.RuntimeAlias)
 	}
+	if err := schema.ValidateRuntimeCollection(target); err != nil {
+		return fmt.Errorf("%w: runtime alias %q resolved to forbidden collection: %v", ErrProjectionInvalidState, cm.schema.RuntimeAlias, err)
+	}
 
 	projectionID, ok := cm.projectionByCollection(target)
 	if !ok {
@@ -425,15 +432,14 @@ func (cm *CollectionManager) ReconcileProjection(ctx context.Context) error {
 	}
 	if err := capregistry.ValidateProjectionSequence(projection.SourceRegistrySeq, latestSequence); err != nil {
 		if errors.Is(err, capregistry.ErrProjectionSequenceAhead) {
-			// Qdrant is a rebuildable projection. A projection ahead of the
-			// SQLite registry is drift, not a reason to stop unrelated
-			// PipelineGen capabilities at startup. Keep the live alias and
-			// let reconciliation/rebuild repair it asynchronously.
-			cm.log.Warn("projection ahead of canonical registry; continuing startup in DIRTY mode",
+			// The alias must never be treated as authoritative when its
+			// projection is ahead of SQLite. Stop startup/reconciliation
+			// and require a rebuild from the canonical registry.
+			cm.log.Error("projection is ahead of canonical registry; rebuild required",
 				zap.String("projection_id", projectionID),
 				zap.Int64("projection_seq", projection.SourceRegistrySeq),
 				zap.Int64("registry_seq", latestSequence))
-			return nil
+			return fmt.Errorf("reconcile projection %q: %w; runtime projection is not authoritative, rebuild required", projectionID, err)
 		}
 		return fmt.Errorf("reconcile projection %q: %w", projectionID, err)
 	}

@@ -142,7 +142,7 @@ func (a *orchestratorRunner) RunFingerprint() string {
 }
 
 // sha256String returns the lowercase hex-encoded SHA-256 digest of text.
-// Replaces the direct internal/infrastructure/files.SHA256String import
+// Replaces the direct internal/platform/filesystem.SHA256String import
 // (godlike/06 import-boundary discipline).
 func sha256String(text string) string {
 	h := digest.SHA256Bytes([]byte(text))

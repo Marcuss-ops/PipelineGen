@@ -31,7 +31,7 @@ import (
 // composition time. The 503 status + this message together mark the
 // regression shape the operator checks for when investigating
 // "Generate returned empty clip_id" — see
-// internal/api/assets/soundeffect/dispatcher_fail_closed_test.go for the
+// internal/capabilities/assets/soundeffect/dispatcher_fail_closed_test.go for the
 // contract pinning.
 const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via sfxDispatcherAdapter)"
 
@@ -309,7 +309,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	// Stash the MD5 content hash on the asset so the dispatcher's
 	// supersede-gate dedup uses the ingest-time fingerprint (mirrors
 	// the contract pinned at
-	// internal/application/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
+	// internal/capabilities/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
 	clip.SetLegacyFileMD5(hashStr)
 
 	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy

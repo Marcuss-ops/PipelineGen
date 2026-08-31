@@ -10,7 +10,7 @@
 //
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
-// must NOT import `internal/infrastructure/media/ffmpeg` OR
+// must NOT import `internal/platform/media/ffmpeg` OR
 // `internal/platform/process`. Both are infra concerns; the app layer
 // only depends on the typed ports declared in the companion files below.
 //

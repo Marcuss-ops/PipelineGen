@@ -3,7 +3,7 @@
 // health-check RunnerProbe reads this timestamp to verify the broker
 // goroutine is alive (not just the jobs table).
 //
-// Canonical update site: internal/infrastructure/jobs/local/broker.go::Heartbeat()
+// Canonical update site: internal/platform/jobs/local/broker.go::Heartbeat()
 // Canonical read site:  internal/app/build_bundles_core.go::buildHealthService()
 //
 // Staleness threshold (60s): the heartbeat ticker runs every 25s, so a

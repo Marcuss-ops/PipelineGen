@@ -46,7 +46,7 @@ fi
 
 # ── Configuration ──────────────────────────────────────────────────────────
 BASE="${BASE:-http://127.0.0.1:8000}"
-DB="${DB:-data/media/media.db.sqlite}"
+DB="${DB:?DB must be explicitly set to an isolated or approved database}"
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 QDRANT_COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"
 TEST_VIDEO_ID="${TEST_VIDEO_ID:-jNQXAC9IVRw}"

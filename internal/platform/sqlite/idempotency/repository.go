@@ -1,11 +1,11 @@
 // Package idempotency — concrete SQLite adapter for the
-// IdempotencyStore port (PR8, internal/application/middleware/idempotency_store.go).
+// IdempotencyStore port (PR8, internal/capabilities/middleware/idempotency_store.go).
 //
 // The repository owns the canonical idempotency_keys table
 // (migration 095_create_idempotency_keys.sql). It implements the
 // typed port (TryInsert / Complete / Get / DeleteExpired) and is
 // consumed by the Gin middleware
-// (internal/api/middleware/idempotency.go).
+// (internal/platform/httpserver/middleware/idempotency.go).
 //
 // Schema invariants enforced here:
 //   - PRIMARY KEY on `key` enables INSERT-or-FAIL atomic acquisition.

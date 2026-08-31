@@ -11,7 +11,7 @@
 // Import discipline:
 //   - MUST NOT import other scripts/ sub-packages (ports are the
 //     seam — circular deps would defeat the abstraction).
-//   - MAY import internal/domain/* and stdlib-only.
+//   - MAY import internal/kernel/* and stdlib-only.
 //   - Internal infrastructure implementations satisfy these ports
 //     via implicit-interface patterns, never via direct import.
 package ports

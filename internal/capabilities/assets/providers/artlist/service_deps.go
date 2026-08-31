@@ -84,7 +84,7 @@ type ServicePorts struct {
 	// drive_folder / sqlite_writable / outbox_dispatcher /
 	// qdrant_reachable / embedding_provider). Composition root injects
 	// an *AdminSystemProber concrete from
-	// internal/infrastructure/artlist/diagnostics; tests can pass
+	// internal/platform/artlist/diagnostics; tests can pass
 	// probe stubs (or rely on the fallback stubSystemProber in
 	// NewDiagnosticsService, which reports every probe as failed
 	// rather than fake-availability).

@@ -187,7 +187,7 @@ type SourceCacheDeps struct {
 //
 // PublisherPort is the pre-constructed finalization.PublisherPort adapter
 // (created at the composition root via drive.NewArtifactPublisherAdapter)
-// so the application layer stays free of internal/infrastructure/drive
+// so the application layer stays free of internal/platform/drive
 // imports (godlike/06 import-boundary discipline).
 type DeliveryDeps struct {
 	Publisher     delivery.Publisher
@@ -200,7 +200,7 @@ type DeliveryDeps struct {
 
 // DriveFileInfo is the application-layer representation of a Google Drive
 // file entry returned by ListFiles. Defined locally so the DriveReaderPort
-// stays free of internal/infrastructure/drive imports (godlike/06
+// stays free of internal/platform/drive imports (godlike/06
 // import-boundary discipline). The composition root adapts the concrete
 // drive.DriveFileInfo to this type.
 type DriveFileInfo struct {

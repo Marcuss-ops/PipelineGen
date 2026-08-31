@@ -24,7 +24,7 @@ import (
 // godlike/07 PR-REFACTOR-P0-IO-BINDER (July 2026): the application
 // layer MUST NOT import "os" or call os.* directly. Every file
 // read/write/stat call goes through this port; the concrete
-// implementation lives in internal/infrastructure/filesystem and
+// implementation lives in internal/platform/filesystem and
 // is injected via the SourceCacheDeps.LocalFS dependency at
 // composition time.
 //

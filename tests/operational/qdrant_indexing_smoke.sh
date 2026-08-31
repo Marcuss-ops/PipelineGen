@@ -48,7 +48,7 @@ printf '  Qdrant URL      : %s\n' "$QDRANT_URL"
 printf '  Qdrant Collection: %s\n' "$QDRANT_COLLECTION"
 printf '  DB_PATH         : %s\n' "${DB_PATH:-data/media/media.db.sqlite}"
 
-DB="${DB_PATH:-data/media/media.db.sqlite}"
+DB="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 if [ ! -f "$DB" ]; then
     printf '%sFAIL: SQLite DB not found at %s (exit 2)%s\n' "$RED" "$DB" "$RESET" >&2
     exit 2

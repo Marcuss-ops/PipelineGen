@@ -39,9 +39,9 @@ import (
 // MUST use EnqueueDriveDelete(assetID, permanently) to express
 // intent (permanent delete vs. recoverable trash). The shim
 // routes Trashed=false so legacy callers (the AssetMutationDispatcher
-// port surface in internal/application/assets/mutations/dispatcher.go,
+// port surface in internal/capabilities/assets/mutations/dispatcher.go,
 // admin tooling in cmd/admin/qdrant_maintenance.go, test stubs in
-// internal/application/assets/artifacts/dispatcher_fail_closed_test.go
+// internal/capabilities/assets/artifacts/dispatcher_fail_closed_test.go
 // etc.) continue to operate under the new chain.
 func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error {
 	return d.EnqueueDriveDelete(ctx, assetID, false)

@@ -13,7 +13,7 @@
 // Curation scope per FASE 2.A spec: "media_curator, scene_builder,
 // evidence_builder, clip_source_builder". Today the COMPLETE
 // clip_source_builder implementation lives inside
-// internal/application/scripts/usecase.ClipSourceBuilder (used by
+// internal/capabilities/scripts/usecase.ClipSourceBuilder (used by
 // the source-cluster). MediaCurator lives in
 // internal/capabilities/scripts/dto.MediaCurator. This file owns
 // the composition-root-local adapter (imageGenSvcAdapter) that
@@ -45,12 +45,12 @@
 //     (registerScriptPostProcessors constructs & uses
 //     imageGenSvcAdapter inline in the image processor
 //     registration block at line ~109).
-//   - internal/application/scripts/adapters/processor_images.go:
+//   - internal/capabilities/scripts/adapters/processor_images.go:
 //     the consumer (adapters.ImageGenService + imagePrewarmer
 //     typed-port shapes).
 //   - internal/capabilities/images/workflow: *imgservice.Service (the
 //     concrete implementation the adapter wraps).
-//   - internal/domain/asset: ImageAsset (the concrete result
+//   - internal/kernel/asset: ImageAsset (the concrete result
 //     shape the adapter unwraps to SourceURL).
 package wiring
 
@@ -114,7 +114,7 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, to
 // an EMPTY ImageResult (SourceURL="") so the downstream
 // ImageProcessor gets a typed non-nil pointer — matching the
 // existing processor code path in
-// internal/application/scripts/adapters/processor_images.go::Process.
+// internal/capabilities/scripts/adapters/processor_images.go::Process.
 //
 // AI-first: GenerateSmartImage is called with the scene query as
 // prompt. On failure the error is propagated — no web search fallback.
@@ -159,7 +159,7 @@ var (
 )
 
 // imagePrewarmer mirrors the typed-port interface declared in
-// internal/application/scripts/adapters/processor_images.go. The
+// internal/capabilities/scripts/adapters/processor_images.go. The
 // shim satisfies this interface so the consumer's
 // prewarmer, ok := p.gen.(imagePrewarmer) type-assertion idiom works
 // without requiring app to import the adapters package (which

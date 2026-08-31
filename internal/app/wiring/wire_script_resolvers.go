@@ -24,9 +24,9 @@
 //     clipSearchPort (AZIONE 2 companion file).
 //   - internal/app/wire_script_sources.go: adapter types used
 //     inline (qdrantSemanticSearchPort, clipSearchPortAdapter).
-//   - internal/application/scripts/adapters: SourceRegistry,
+//   - internal/capabilities/scripts/adapters: SourceRegistry,
 //     NormalizationConfig (the canonical types this factory builds).
-//   - internal/application/scripts/usecase: source-resolver
+//   - internal/capabilities/scripts/usecase: source-resolver
 //     constructors (NewTextSourceResolver, NewClipsSourceResolver,
 //     NewCatalogSourceResolver, NewSearchSourceResolver,
 //     NewCurateSourceResolver, ClipSourceBuilder).
@@ -256,7 +256,9 @@ func buildScriptSourceResolvers(
 	// ── canonical AssetSearchPort (Qdrant) ───────────────────────
 	var clipSearchPort scriptports.AssetSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && textEmbedder != nil {
-		clipSearchPort = search.NewSemanticAssetSearchAdapter(root.Process.QdrantSearcher, textEmbedder, "text", search.KindClip, log)
+		if root.Process.QdrantRuntime != nil {
+			clipSearchPort = search.NewSemanticAssetSearchAdapterWithStore(root.Process.QdrantSearcher, textEmbedder, "text", search.KindClip, root.Process.QdrantRuntime.Store, log)
+		}
 		log.Info("AssetSearchPort wired for clip catalog (Qdrant + E5 sidecar embedder)")
 	}
 

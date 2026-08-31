@@ -2,7 +2,7 @@
 // media catalog. Integrations with the outside world (scraper, downloader,
 // Drive, clip indexer, semantic tagger) live behind the following port
 // interfaces so the application layer can be exercised with fakes and so
-// the legacy concretes can move to internal/infrastructure/artlist/*
+// the legacy concretes can move to internal/platform/artlist/*
 // without breaking callers.
 //
 // Rules enforced here:
@@ -154,7 +154,7 @@ type AssetStore interface {
 	// orphaned callers) MUST go through outbox.Dispatcher.EnqueueAndIndex
 	// (the canonical outbox-compliant path). The lower-level UpsertClip
 	// remains on *assets.ClipsRepository for the dispatcher's exclusive
-	// use; see internal/application/assets/mutations/primitives.go for
+	// use; see internal/capabilities/assets/mutations/primitives.go for
 	// the narrowed surface.
 	Upsert(ctx context.Context, clip *asset.Asset) error
 	SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error)
@@ -245,7 +245,7 @@ type Dispatcher interface {
 //
 // Only ArtlistRootFolderID is exposed because that is the only value
 // the handler currently reads from config (see
-// internal/api/assets/artlist/artlist_handlers.go::RunTagPipeline).
+// internal/capabilities/assets/artlist/artlist_handlers.go::RunTagPipeline).
 // New defaults land here as additional methods; do NOT widen this to a
 // whole-config accessor — expanding the surface would defeat the
 // Pattern 0 minimal-port discipline (AGENTS.md).

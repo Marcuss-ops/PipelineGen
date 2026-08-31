@@ -20,7 +20,7 @@
 //     MUST aggregate on the enum (NOT string-match Err patterns).
 //   - The "mai nil con zero output" invariant is enforced by the
 //     noOpCutter test fixture (in render_ports.go) AND by the
-//     production RustCutter in internal/infrastructure/media/render/.
+//     production RustCutter in internal/platform/media/render/.
 //   - Clip.Succeeded() is the canonical "file-on-disk-playable"
 //     predicate; Source-fed consumers (InterleaveClips,
 //     renderChunk) skip non-Succeeded clips at iteration time via
@@ -132,8 +132,8 @@ type RenderResult struct {
 // probe yet; PR-STOCK-SOURCE-DURATION-WIRE is the forward-pointer
 // for production wiring).
 //
-// Implementations live in `internal/infrastructure/media/probe/`
-// (ffprobe-backed) or `internal/application/youtube/usecase/`
+// Implementations live in `internal/platform/media/probe/`
+// (ffprobe-backed) or `internal/capabilities/youtube/usecase/`
 // (yt-dlp --print-duration-backed). The port is declared on the
 // application layer per AGENTS.md Pattern 0; the infrastructure
 // concrete is injected via composition root.

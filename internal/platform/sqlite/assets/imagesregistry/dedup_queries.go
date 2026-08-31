@@ -6,7 +6,7 @@
 // MediaAsset records for the same source content. All queries
 // exclude soft-deleted clips via lifecycle_state column.
 //
-// Wave C / Phase 3 fix: dropped the unused `internal/domain/asset`
+// Wave C / Phase 3 fix: dropped the unused `internal/kernel/asset`
 // import — the SQL receivers migrated to Local infra and do not
 // reference any domain symbol directly.
 package imagesregistry

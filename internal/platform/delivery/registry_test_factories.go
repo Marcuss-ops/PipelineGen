@@ -13,7 +13,7 @@
 // Build tag (June 2026): //go:build drivepolicypkgtest. Default
 // `go build` skips this file; `go test -tags drivepolicypkgtest` compiles
 // it. The companion test file
-// internal/infrastructure/drive/publisher_policies_test.go carries the
+// internal/platform/drive/publisher_policies_test.go carries the
 // same tag so the 3 dependent tests are only compiled in the same
 // `go test` invocation that enables the factory.
 package delivery

@@ -15,7 +15,7 @@ import (
 //
 // godlike/06 SSOT: this type lives here (alongside AssetData) because
 // it is the airlock's canonical input shape; the domain type
-// (internal/domain/asset.TextTrackResolvedBundle) is the SSOT for the
+// (internal/kernel/asset.TextTrackResolvedBundle) is the SSOT for the
 // ROW shape, but the SLICE projection needed by the composer is a
 // distinct concern and this file is the canonical owner.
 //
@@ -93,7 +93,7 @@ type AssetData struct {
 	// media_assets.local_path for ingest-time tracking only; never
 	// shipped to the vector index. NOTE: future readers, please do
 	// NOT remove this field on a cleanup pass; it is required by
-	// `internal/application/{assets|clips}/ingest/*.go` flow
+	// `internal/capabilities/{assets|clips}/ingest/*.go` flow
 	// diagnostics, and removing it would silently break ingest
 	// crash-trace logs.
 	LocalPath      string `json:"local_path,omitempty"`
@@ -178,7 +178,7 @@ type AssetData struct {
 
 	// ── VLM visual summary block (FASE-9 + visual-summary reindex) ────
 	// Populated by the visual-summary reindex service
-	// (internal/application/indexing/visual_summary.go) at
+	// (internal/capabilities/indexing/visual_summary.go) at
 	// cmd/admin/reindex_visual_summary.go time. Six fields map 1:1 to
 	// IndexedMetadata; the airlock in index_airlock.go copies them
 	// verbatim with omitempty on the wire. All six are required for

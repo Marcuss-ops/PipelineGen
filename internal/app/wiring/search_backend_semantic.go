@@ -28,7 +28,7 @@
 // (composition root) and imports from multiple application/*
 // packages. That is the canonical bridge pattern per
 // search_backends.go's preamble — the only place where multiple
-// internal/application/* domains are imported at once.
+// internal/capabilities/* domains are imported at once.
 package wiring
 
 import (

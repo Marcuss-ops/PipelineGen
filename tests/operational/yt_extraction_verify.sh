@@ -42,7 +42,7 @@ trap 'echo "[ABORTED] line $LINENO: $BASH_COMMAND" >&2' ERR
 PREFIX="${1:-yt_vdC5GXxS-qU}"
 PORT="${VELOX_PORT:-8000}"
 QDRANT="${QDRANT_URL:-http://127.0.0.1:6333}"
-DB="${DB_PATH:-data/media/media.db.sqlite}"
+DB="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 PASS=0
 FAIL=0
 WARN=0

@@ -15,7 +15,7 @@ import (
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
-// See `SourceStager.Prepare` in `internal/application/acquisition/port.go`
+// See `SourceStager.Prepare` in `internal/capabilities/acquisition/port.go`
 // for the contract; this method only adds persistence semantics.
 func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareRequest) (*appacq.PrepareContext, error) {
 	if f == nil || f.stagingRoot == "" {
@@ -145,7 +145,7 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 }
 
 // Release is the canonical SourceStager.Release implementation.
-// See `SourceStager.Release` in `internal/application/acquisition/port.go`
+// See `SourceStager.Release` in `internal/capabilities/acquisition/port.go`
 
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)

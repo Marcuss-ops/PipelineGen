@@ -11,7 +11,7 @@
 //
 // PR-YOUTUBE-SERVICE-SPLIT phase 1 (this commit): typed-narrow
 // contract + DriveAdapter that delegates to
-// internal/application/assets/sourcing/youtube/usecase.PublishClipToDrive
+// internal/capabilities/assets/sourcing/youtube/usecase.PublishClipToDrive
 // (the canonical existing use case). Zero behaviour change.
 //
 // Phase 2 (next commit) will relocate the PublishClipToDrive +

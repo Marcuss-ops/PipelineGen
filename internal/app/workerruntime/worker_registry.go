@@ -52,7 +52,7 @@ func BuildProfileWorkerRegistry(root *wiring.ComposeRoot, allowedTypes []string)
 	// P1 #13 (July 2026): jobs.Dispatcher.AllHandlers returns
 	// canonical `appjobs.Handler` values which are now Go-type-aliases
 	// for `kerneljob.Handler` (the canonical SSOT in
-	// internal/domain/job/handler.go). worker.Handler is the same
+	// internal/kernel/job/handler.go). worker.Handler is the same
 	// alias, so the handler passes directly — no adaptHandler bridge
 	// is needed at registration time. The worker runtime translates
 	// `worker.Tools` (broker facade) into `*kerneljob.JobExecutionTools`
@@ -133,7 +133,7 @@ func BuildWorkerRegistry(root *wiring.ComposeRoot) (*worker.Registry, []string, 
 
 // adaptHandler was RETIRED in P1 #13 (July 2026): appjobs.Handler and
 // worker.Handler are both Go-type-aliases for kerneljob.Handler (see
-// internal/domain/job/handler.go for the canonical SSOT). Re-introducing
+// internal/kernel/job/handler.go for the canonical SSOT). Re-introducing
 // a bridge here is forward-forbidden — the runtime handles worker.Tools
 // → *kerneljob.JobExecutionTools translation at Dispatch time
 // (worker/registry.go::translateToolsToExecutionTools). The two

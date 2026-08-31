@@ -32,7 +32,7 @@
 // stops the ticker.
 //
 // Reference: migration 095_create_idempotency_keys.sql,
-// internal/application/middleware/idempotency_store.go (port),
+// internal/capabilities/middleware/idempotency_store.go (port),
 // internal/platform/sqlite/idempotency (concrete).
 package middleware
 

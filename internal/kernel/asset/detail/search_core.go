@@ -127,6 +127,7 @@ type EntityExtractionResult struct {
 	NomiSpeciali     []string          `json:"nomi_speciali"`
 	ParoleImportanti []string          `json:"parole_importanti"`
 	ArtlistPhrases   []string          `json:"artlist_phrases"`
+	NounChunks       []string          `json:"noun_chunks"`
 	Source           string            `json:"source,omitempty"`
 }
 

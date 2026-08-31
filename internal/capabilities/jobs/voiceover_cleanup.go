@@ -64,7 +64,7 @@ const VoiceoverCleanupSchemaVersion = "voiceover.cleanup.requested.v1"
 
 // VoiceoverCleanupDriver is the narrow Drive surface the
 // VoiceoverCleanupHandler uses for orphan file deletion. Declared
-// locally so the handler does NOT import internal/application/voiceover
+// locally so the handler does NOT import internal/capabilities/voiceover
 // directly (per AGENTS.md Pattern 0 — port abstraction layer, June
 // 2026): sibling application-layer packages communicate through
 // narrow ports, not cross-package concrete sharing.

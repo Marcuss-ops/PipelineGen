@@ -38,9 +38,9 @@ func TestPayloadsScriptsDoNotReferenceFinalVideoAssembly(t *testing.T) {
 	}
 
 	exempt := map[string]bool{
-		"scripts/ci/pre-removal-verify.sh":                       true,
-		"internal/capabilities/scripts/runner_final_video_boundary_test.go": true,
-		"internal/capabilities/script/handler_unknown_fields_test.go":       true,
+		"scripts/ci/pre-removal-verify.sh":                                   true,
+		"internal/capabilities/scripts/runner_final_video_boundary_test.go":  true,
+		"internal/capabilities/script/handler_unknown_fields_test.go":        true,
 		"internal/capabilities/scripts/payloads_no_final_video_flag_test.go": true,
 	}
 

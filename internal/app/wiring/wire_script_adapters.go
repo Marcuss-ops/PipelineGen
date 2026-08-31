@@ -34,11 +34,11 @@
 //     populates the ppReg that validateRequiredProcessors scans.
 //   - internal/capabilities/jobs/queue: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
-//   - internal/domain/job: job.TypeScriptGenerate (the canonical
+//   - internal/kernel/job: job.TypeScriptGenerate (the canonical
 //     job-type ID validated in step (a) of the 3-invariant check).
 //   - internal/kernel/script: scriptpkg.PlanInvalidError (the
 //     typed error returned from validateRequiredProcessors).
-//   - internal/application/scripts/adapters: PostProcessorRegistry
+//   - internal/capabilities/scripts/adapters: PostProcessorRegistry
 //   - ProcessorRequired policy classification (the validator's
 //     scanning surface).
 package wiring

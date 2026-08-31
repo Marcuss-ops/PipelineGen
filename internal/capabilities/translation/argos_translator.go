@@ -4,7 +4,7 @@
 // Argos Translate is the deterministic, CPU-only OpenNMT translator
 // (scripts/bridges/argos_translator.py). This adapter spawns the bridge
 // via subprocess — mirroring the Whisper bridge contract in
-// internal/infrastructure/youtube/whisper_transcriber.go — and projects
+// internal/platform/youtube/whisper_transcriber.go — and projects
 // its JSON output onto the canonical TranslationResult.
 //
 // godlike/07 fail-closed:

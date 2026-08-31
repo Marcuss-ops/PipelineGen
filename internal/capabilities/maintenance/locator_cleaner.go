@@ -78,14 +78,10 @@ const deleteBatchSize = 200
 // is tracked inline (no redundant iteration). When CountPoints fails the
 // slice starts nil — Go's append doubling handles it gracefully.
 func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*schema.LocatorCleanupReport, error) {
-	collection, err := c.client.GetAliasTarget(ctx, c.schema.RuntimeAlias)
+	collection, err := c.client.ResolveRuntimeCollection(ctx, c.schema.RuntimeAlias)
 	if err != nil {
 		return nil, fmt.Errorf("resolve alias target: %w", err)
 	}
-	if collection == "" {
-		return nil, fmt.Errorf("runtime alias %q has no target — run EnsureSchema first", c.schema.RuntimeAlias)
-	}
-
 	report := &schema.LocatorCleanupReport{
 		DryRun:     !apply,
 		Collection: collection,

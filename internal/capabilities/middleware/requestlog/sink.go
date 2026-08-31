@@ -1,7 +1,7 @@
 // Package requestlog owns the canonical types for persistent HTTP
 // request logging. middleware and the SQLite-backed logsink adapter
 // both import this package; placing the types in
-// internal/application/middleware/requestlog keeps the dependency
+// internal/capabilities/middleware/requestlog keeps the dependency
 // direction canonical per AGENTS.md Pattern 0 (infrastructure
 // implements ports declared in application, never the reverse).
 package requestlog

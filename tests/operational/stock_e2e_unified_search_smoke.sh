@@ -43,7 +43,7 @@ done
 # -------------------------------------------------------------------
 BASE="${VELOX_API_BASE:-${SMOKE_API_BASE:-http://localhost:8080}}"
 ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
-DB_PATH="${VELOX_DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${VELOX_DB_PATH:?VELOX_DB_PATH must be explicitly set to an isolated or approved database}"
 OUT_JSON="${TMPDIR:-/tmp}/stk-e2e-f-response.$$.json"
 FORMATTED="${TMPDIR:-/tmp}/stk-e2e-f-formatted.$$.txt"
 JQ_ERR_LOG="${TMPDIR:-/tmp}/stk-e2e-f-jq-err.$$.log"

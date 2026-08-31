@@ -22,7 +22,7 @@
 //     beside the probe (retry uses pkg/retry.IsTransient).
 //   - The concrete adapter (delivery.DriveRootsValidator) lives in
 //     this file alongside the typed port, matching the
-//     internal/domain/job/startup_validator.go P0 Commit 3 pattern.
+//     internal/kernel/job/startup_validator.go P0 Commit 3 pattern.
 //   - Capability-disable infrastructure is deferred to a follow-up
 //     wave; in P1.3, the composition root read of the report either
 //     halts the process (strict mode, default) or logs the failures

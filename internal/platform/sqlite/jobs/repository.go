@@ -3,7 +3,7 @@
 //
 // States: queued → leased → running → finalizing → succeeded / retry_wait / failed / cancelled
 //
-// Implements the canonical job.Store contract from internal/domain/job directly,
+// Implements the canonical job.Store contract from internal/kernel/job directly,
 // without conversion through legacy model types (PR4: job.Job SSOT).
 //
 // queue_notifier.go holds the in-process wake-up broadcast primitive
@@ -134,7 +134,7 @@ var _ job.QueueNotifier = (*SQLiteStore)(nil)
 // Compile-time check: SQLiteStore satisfies the canonical job.JobBroker
 // port (PR-B, Wave 22, June 2026). The same assertion will be added at
 // the top of any future PostgreSQL adapter's repository file — the
-// port + this assertion is the seam that lets internal/application/**
+// port + this assertion is the seam that lets internal/capabilities/**
 // depend on a portable interface instead of *SQLiteStore directly.
 //
 // Rationale for the embedding-not-alias choice (and the call sites a

@@ -3,7 +3,7 @@
 //
 // WHY THIS PACKAGE EXISTS — QDRANT-asset-mutation isolation (June 2026)
 // --------------------------------------------------------------------
-// AssetMutationPrimitives (internal/application/assets/mutations) is the
+// AssetMutationPrimitives (internal/capabilities/assets/mutations) is the
 // surface for the OUTBOX DISPATCHER. Production writes — even from
 // the admin CLI at runtime — go through outbox.Dispatcher because the
 // worker pool is live; physical deletes need to cascade to Qdrant via
@@ -18,11 +18,11 @@
 //     runs against a standalone SQLite snapshot — needs raw
 //     HardDelete without going through the live outbox)
 //
-// Production code paths in internal/application/** and internal/api/**
+// Production code paths in internal/capabilities/** and internal/capabilities/**
 // MUST NOT import this package. The CI lint
 // scripts/ci-architectural-checks.sh enforces that boundary — a hit
 // on `internal/platform/sqlite/admin` from
-// `internal/application/**` or `internal/api/**` fails the gate.
+// `internal/capabilities/**` or `internal/capabilities/**` fails the gate.
 //
 // Bifurcation rationale:
 //   - AssetMutationPrimitives: in-process, called by the dispatcher

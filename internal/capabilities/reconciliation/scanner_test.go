@@ -110,6 +110,52 @@ func TestClassify_Missing(t *testing.T) {
 	}
 }
 
+func TestClassify_HashMismatch_IsDrivenBySQLite(t *testing.T) {
+	schema := defaultSchema()
+	sqlite := map[string]AssetSnapshot{
+		"a1": {ID: "a1", LifecycleState: "ACTIVE", ContentHash: "sqlite-canonical-hash"},
+	}
+	qdrant := map[string]pointWithID{
+		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
+			"asset_id":        "a1",
+			"name":            "x",
+			"source":          "youtube",
+			"lifecycle_state": "ACTIVE",
+			"content_hash":    "qdrant-stale-hash",
+		}},
+	}
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
+	if len(got) != 1 || got[0].Kind != KindHashMismatch {
+		t.Fatalf("expected HashMismatch, got %#v", got)
+	}
+	if got[0].ContentHash != "sqlite-canonical-hash" {
+		t.Fatalf("repair fingerprint=%q, want SQLite canonical hash", got[0].ContentHash)
+	}
+	if got[0].Details == "" {
+		t.Fatal("hash mismatch should explain SQLite and Qdrant values")
+	}
+}
+
+func TestClassify_HashMismatch_DoesNotPromoteQdrantWhenSQLiteHashAbsent(t *testing.T) {
+	schema := defaultSchema()
+	sqlite := map[string]AssetSnapshot{
+		"a1": {ID: "a1", LifecycleState: "ACTIVE", ContentHash: ""},
+	}
+	qdrant := map[string]pointWithID{
+		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
+			"asset_id":        "a1",
+			"name":            "x",
+			"source":          "youtube",
+			"lifecycle_state": "ACTIVE",
+			"content_hash":    "qdrant-only-hash",
+		}},
+	}
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
+	if len(got) != 0 {
+		t.Fatalf("Qdrant hash must not become authoritative when SQLite hash is absent, got %#v", got)
+	}
+}
+
 func TestClassify_Orphan(t *testing.T) {
 	schema := defaultSchema()
 	sqlite := map[string]AssetSnapshot{}
@@ -328,6 +374,25 @@ func TestClassify_Mixed_DeterministicOrdering(t *testing.T) {
 	}
 	if got[2].Kind != KindVersionStale || got[2].AssetID != "stale" {
 		t.Fatalf("expected VersionStale(stale) third, got %s(%s)", got[2].Kind, got[2].AssetID)
+	}
+}
+
+func TestClassify_HashMismatch_MissingProjectedHashIsClassified(t *testing.T) {
+	schema := defaultSchema()
+	sqlite := map[string]AssetSnapshot{
+		"a1": {ID: "a1", LifecycleState: "ACTIVE", ContentHash: "sqlite-canonical-hash"},
+	}
+	qdrant := map[string]pointWithID{
+		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
+			"asset_id":        "a1",
+			"name":            "x",
+			"source":          "youtube",
+			"lifecycle_state": "ACTIVE",
+		}},
+	}
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
+	if len(got) != 1 || got[0].Kind != KindHashMismatch {
+		t.Fatalf("missing projected hash must be reindexed from SQLite's canonical value, got %#v", got)
 	}
 }
 

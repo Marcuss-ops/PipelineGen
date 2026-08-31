@@ -119,6 +119,11 @@ func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Conte
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
 		updated := cloneVidRushSegmentResult(seg)
+		if !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position) {
+			updated.Cache.InternetImages = "BYPASSED"
+			updatedSegments = append(updatedSegments, updated)
+			continue
+		}
 		imageQueries := updated.Insights.ImageQueries
 		// Explicit media_plan.searches are the caller's retrieval intent and
 		// take precedence over entity-image expansion for the image slot.

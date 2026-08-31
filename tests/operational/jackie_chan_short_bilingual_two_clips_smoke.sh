@@ -16,7 +16,7 @@ smoke_require sqlite3 curl jq
 
 ROOT_DIR=$(cd "$DIR/../.." && pwd)
 FIXTURE="$ROOT_DIR/tests/fixtures/script-generation/jackie_chan_short_bilingual_two_clips.json"
-SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 REQ_ID="jackie_short_bilingual_$(date +%s)_$$"
 SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-300}"
 

@@ -1,5 +1,5 @@
 // Package clips (bulk_upload_helpers) — pure helper functions extracted from
-// internal/api/assets/clips/bulk_upload_helpers.go during Wave 14 PR2 slice 2
+// internal/capabilities/assets/clips/bulk_upload_helpers.go during Wave 14 PR2 slice 2
 // (June 2026). The helpers previously lived in the API transport layer and
 // `isLocalFolderAllowed` imported `internal/platform/config` — a direct
 // infrastructure import from the transport layer in violation of AGENTS.md

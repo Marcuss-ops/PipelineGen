@@ -20,6 +20,7 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -27,6 +28,7 @@ import (
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
@@ -45,6 +47,7 @@ type semanticAssetSearchAdapter struct {
 	embedder   TextEmbedder
 	vectorName string
 	kind       KindAsset
+	assetStore indexing.AssetStore
 	log        *zap.Logger
 }
 
@@ -73,11 +76,28 @@ func NewSemanticAssetSearchAdapter(
 	kind KindAsset,
 	log *zap.Logger,
 ) ports.AssetSearchPort {
+	return NewSemanticAssetSearchAdapterWithStore(searcher, embedder, vectorName, kind, nil, log)
+}
+
+// NewSemanticAssetSearchAdapterWithStore constructs the semantic asset
+// search adapter with the canonical SQLite asset store. Qdrant supplies
+// only ranked identities; the store supplies the fields returned to the
+// caller. The legacy constructor remains available for non-API compatibility
+// tests and callers that only exercise preflight guards.
+func NewSemanticAssetSearchAdapterWithStore(
+	searcher *Searcher,
+	embedder TextEmbedder,
+	vectorName string,
+	kind KindAsset,
+	assetStore indexing.AssetStore,
+	log *zap.Logger,
+) ports.AssetSearchPort {
 	return &semanticAssetSearchAdapter{
 		searcher:   searcher,
 		embedder:   embedder,
 		vectorName: vectorName,
 		kind:       kind,
+		assetStore: assetStore,
 		log:        log,
 	}
 }
@@ -205,7 +225,7 @@ func (a *semanticAssetSearchAdapter) searchAssetsClip(ctx context.Context, q por
 	if err != nil {
 		return nil, fmt.Errorf("clip search: %w", err)
 	}
-	return convertAssetHitsByKind(results, a.kind), nil
+	return a.hydrateAssetSearchHits(ctx, results)
 }
 
 // searchAssetsStock is the per-path implementation for KindStock.
@@ -259,7 +279,47 @@ func (a *semanticAssetSearchAdapter) searchAssetsStock(ctx context.Context, q po
 	if err != nil {
 		return nil, fmt.Errorf("stock search: %w", err)
 	}
-	return convertAssetHitsByKind(results, a.kind), nil
+	return a.hydrateAssetSearchHits(ctx, results)
+}
+
+// hydrateAssetSearchHits keeps the Qdrant ranking while resolving every
+// returned field from SQLite. A missing/tombstoned row is omitted because
+// Qdrant is a derived projection and may lag behind the canonical registry.
+func (a *semanticAssetSearchAdapter) hydrateAssetSearchHits(ctx context.Context, results []schema.SearchResult) ([]ports.AssetSearchHit, error) {
+	if len(results) == 0 {
+		return []ports.AssetSearchHit{}, nil
+	}
+	if a.assetStore == nil {
+		return nil, fmt.Errorf("semantic search hydration: SQLite asset store not configured")
+	}
+
+	out := make([]ports.AssetSearchHit, 0, len(results))
+	for _, result := range results {
+		assetID := payloadString(result.Payload, "asset_id")
+		if assetID == "" {
+			continue
+		}
+		asset, err := a.assetStore.FetchAsset(ctx, assetID)
+		if err != nil {
+			if errors.Is(err, indexing.ErrAssetNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("hydrate asset %q from SQLite: %w", assetID, err)
+		}
+		if asset == nil || asset.ID != assetID || asset.DeletedAt != "" {
+			continue
+		}
+		out = append(out, ports.AssetSearchHit{
+			AssetID: asset.ID,
+			Name:    asset.Name,
+			Score:   result.Score,
+			Source:  asset.Source,
+			// DriveLink is canonical SQLite data. It is never read
+			// from the Qdrant payload, even for the stock path.
+			DriveLink: asset.DriveLink,
+		})
+	}
+	return out, nil
 }
 
 // validateScope is the per-adapter fail-closed gate on the

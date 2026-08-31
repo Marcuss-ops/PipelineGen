@@ -67,7 +67,7 @@ type DispatcherPort interface {
 // surface that the Service needs (GetAliasTarget). The concrete adapter
 // is injected at NewService time.
 type qdrantClient interface {
-	GetAliasTarget(ctx context.Context, alias string) (string, error)
+	ResolveRuntimeCollection(ctx context.Context, alias string) (string, error)
 }
 
 // Service is the canonical qdrant-maintenance use-case orchestrator for
@@ -269,14 +269,10 @@ func (s *Service) initHeavy(ctx context.Context, limit int) error {
 		Timeout: s.cfg.Qdrant.Timeout,
 	}, s.log)
 	idxSchema := schema.DefaultV3Schema()
-	active, err := client.GetAliasTarget(ctx, idxSchema.RuntimeAlias)
+	active, err := client.ResolveRuntimeCollection(ctx, idxSchema.RuntimeAlias)
 	if err != nil {
 		return fmt.Errorf("resolve active collection: %w", err)
 	}
-	if active == "" {
-		return fmt.Errorf("runtime alias %q has no target; run EnsureSchema first", idxSchema.RuntimeAlias)
-	}
-
 	s.client = client
 	s.activeCol = active
 	s.scanner = NewQdrantScannerAdapter(client, active, limit)

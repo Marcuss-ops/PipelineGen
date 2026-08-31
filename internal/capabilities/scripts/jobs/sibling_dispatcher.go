@@ -56,7 +56,7 @@ import (
 
 // ── Sibling job types (Step 11B) ──────────────────────────────────────
 //
-// Canonical type strings live in internal/domain/job/job.go
+// Canonical type strings live in internal/kernel/job/job.go
 // (TypeScriptVoiceoverSibling, TypeScriptImageSibling — per godlike/02
 // capability-specific constants stay in their owning domain package).
 // We import the domain surface here and reference qualified
@@ -80,7 +80,7 @@ const DefaultSiblingConcurrency = 4
 // type. The User-spec-step-11 prior scope declared a similar type at
 // internal/domain/sceneplan (per audit) — the dispatcher's local
 // mirror is a structural alias to avoid the cross-package cycle on
-// internal/application/scripts → internal/domain/sceneplan.
+// internal/capabilities/scripts → internal/domain/sceneplan.
 // Existing sceneplan.AssetRequirements callers continue to compile
 // against their own package; the dispatcher operates against type
 // aliases below.
@@ -257,9 +257,9 @@ var _ SiblingDispatcherInterface = (*SiblingDispatcher)(nil)
 
 // ── Back-compat type alias for domain/job.Type* constants ────────────
 //
-// The user-spec Step 11B references `internal/domain/job/registry.go`
+// The user-spec Step 11B references `internal/kernel/job/registry.go`
 // adding the type constants. The canonical surface for those
-// constants is `internal/domain/job/job.go` (Phase A.2 layered
+// constants is `internal/kernel/job/job.go` (Phase A.2 layered
 // structure: kernel/job for status, domain/job for capability-specific
 // type strings + aliases). The dispatcher references the locally-
 // declared TypeScriptVoiceoverSibling / TypeScriptImageSibling here;

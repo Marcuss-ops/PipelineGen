@@ -1,6 +1,6 @@
 // Package youtube contains concrete YouTube-specific infrastructure adapters.
 //
-// Port contract: the application layer (internal/application/youtube) depends
+// Port contract: the application layer (internal/capabilities/youtube) depends
 // ONLY on the interfaces declared in its own ports.go. This package provides
 // the concrete implementations: yt-dlp execution, subtitle parsing, metadata
 // fetching, whisper transcription, and file management.
@@ -8,7 +8,7 @@
 // Mapping to architectural rule (AGENTS.md Pattern 8):
 //
 //	application/youtube/** must NOT import database/sql, oauth sdk,
-//	os/exec, internal/infrastructure/media/ffmpeg, or the concrete
+//	os/exec, internal/platform/media/ffmpeg, or the concrete
 //	downloader. Instead it imports these ports and the composition root
 //	(internal/app/dependencies.go) wire the concrete adapters.
 package youtube

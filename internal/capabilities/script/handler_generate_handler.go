@@ -7,7 +7,7 @@
 // ScriptFlowHandler God Object decomposition action plan. The
 // Generate method binds the JSON body into a GenerationEnvelopeV2
 // and delegates to the application submission service contract
-// declared in internal/application/operations.
+// declared in internal/capabilities/operations
 //
 // FASE 2 (July 2026): the pre-FASE-2 package-level enqueueEnvelopeFn
 // is REMOVED. HandlerGenerate now talks to the canonical

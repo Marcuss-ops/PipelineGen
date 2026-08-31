@@ -228,7 +228,7 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	}
 	health := disasterrecovery.NewHealthProbe(client)
 	cleaner := maintenance.NewLocatorCleaner(client, schema, log)
-	searchAdapter := search.NewSearchAdapter(searcher, log)
+	searchAdapter := search.NewSearchAdapter(searcher, store, log)
 
 	log.Info("QdrantRuntime constructed",
 		zap.String("schema_version", schema.Version),

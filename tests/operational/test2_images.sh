@@ -22,8 +22,11 @@ smoke_require curl jq sqlite3 file
 HOST="${VELOX_HOST:-127.0.0.1}"
 PIPELINE_PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://${HOST}:${PIPELINE_PORT}"
-# Project-root relative data dir so the script can be run from tests/operational.
-DB_PATH="${VELOX_DATA_DIR:-${DIR}/../../data}/media/media.db.sqlite"
+# Resolve the canonical primary DB; never fall back to <DataDir>/media.db.sqlite.
+# shellcheck source=../../scripts/lib/canonical_db_path.sh
+source "$DIR/../../scripts/lib/canonical_db_path.sh"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
+DB_PATH="$(resolve_canonical_primary_db "$DB_PATH" "$DIR/../..")"
 
 QUERIES=(
     "Eiffel Tower Paris at night"

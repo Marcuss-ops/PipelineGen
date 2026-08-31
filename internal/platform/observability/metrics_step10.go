@@ -18,7 +18,7 @@
 // the stringified FailureCode constant (e.g.
 // string(usecase.FailureCodeMetadataFailed) = "metadata_failed") so
 // dashboard queries can join against the typed-error taxonomy in
-// internal/application/youtube/usecase/errors.go without string
+// internal/capabilities/youtube/usecase/errors.go without string
 // parsing. Passing a free-form string would orphan the metric label
 // from the canonical taxonomy.
 package observability

@@ -13,7 +13,6 @@
 //
 //	go run ./cmd/admin verify-projection
 //	go run ./cmd/admin verify-projection --json
-//	go run ./cmd/admin verify-projection --collection=media_assets_v4_xxx
 //	go run ./cmd/admin verify-projection --batch-size=1000
 package audit
 
@@ -36,9 +35,8 @@ import (
 
 // verifyProjectionDeps holds the parsed flags for RunVerifyProjection.
 type verifyProjectionDeps struct {
-	JSON       bool
-	Collection string
-	BatchSize  int
+	JSON      bool
+	BatchSize int
 }
 
 // parseVerifyProjectionArgs parses CLI args.
@@ -54,8 +52,6 @@ func parseVerifyProjectionArgs(args []string) (verifyProjectionDeps, error) {
 		switch {
 		case a == "--json":
 			deps.JSON = true
-		case strings.HasPrefix(a, "--collection="):
-			deps.Collection = strings.TrimPrefix(a, "--collection=")
 		case strings.HasPrefix(a, "--batch-size="):
 			n, err := cli.ParsePositiveFlag(a, "--batch-size")
 			if err != nil {
@@ -94,9 +90,8 @@ func RunVerifyProjection(args []string) error {
 	ctx := cli.CmdContext()
 
 	log.Info("verify-projection starting",
-		zap.String("collection_override", deps.Collection),
-		zap.Int("batch_size", deps.BatchSize),
-		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
+		zap.String("runtime_alias", qdrantschema.DefaultV3Schema().RuntimeAlias),
+		zap.Int("batch_size", deps.BatchSize), zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 	)
 
 	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
@@ -113,7 +108,6 @@ func RunVerifyProjection(args []string) error {
 	}, log)
 
 	verifier := verification.NewProjectionVerifier(client, indexing.NewSQLiteAssetStore(sqliteDB.DB), schema, log)
-	verifier.CollectionOverride = deps.Collection
 	verifier.BatchSize = deps.BatchSize
 
 	report, err := verifier.VerifyActiveProjection(ctx)

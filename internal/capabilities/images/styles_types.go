@@ -136,7 +136,7 @@ type StyleID = asset.StyleID
 // itself aliases asset.StyleDefinition; the chain is transparent for
 // purposes of type identity and method-set lookup) so application code
 // under package styles can refer to it via the styles namespace without
-// importing internal/domain/asset directly.
+// importing internal/kernel/asset directly.
 //
 // Per AGENTS.md Pattern 0 + the wrapper role documented in registry.go,
 // StyleDefinition is governance-locked at this alias; future changes

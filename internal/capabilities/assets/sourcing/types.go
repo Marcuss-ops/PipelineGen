@@ -36,7 +36,7 @@ type RegisterClipCommand struct {
 	Group           string
 	// Location (SEMANTIC-LOCATION-API-2026-07-06 Wave 6) is the
 	// canonical semantic-location DTO (godlike/06 SSOT owner:
-	// internal/domain/delivery/location.go). When non-empty,
+	// internal/kernel/delivery/location.go). When non-empty,
 	// the service-layer LocationResolver port (forward-pointer to
 	// Wave 7) is intended to resolve this into a concrete FolderID.
 	// Today the resolver port is out of scope so the service falls

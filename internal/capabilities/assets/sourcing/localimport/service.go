@@ -3,7 +3,7 @@
 // PR-CLIPS-ENQUEUE-ONLY (July 2026): the LocalImporter is now a pure
 // enqueue wrapper. It validates the minimal payload, enqueues a
 // bulk_upload_youtube_clips job, and returns the job_id. The worker
-// (internal/application/clips/bulk_upload_worker.go) is the SOLE owner
+// (internal/capabilities/clips/bulk_upload_worker.go) is the SOLE owner
 // of filesystem scanning — no pre-scan happens here.
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per

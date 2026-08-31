@@ -154,31 +154,29 @@ func NewServiceFromDeps(deps ServiceDeps) *Service {
 	}
 }
 
-// Reconcile runs the full scan + classify + (optional) repair pipeline.
+// ReconcileProjection is the canonical SQLite → Qdrant projection
+// reconciliation entry point. SQLite supplies the complete asset set,
+// lifecycle, workspace and content hash; Qdrant is inspected only as a
+// derived projection and never supplies runtime truth.
 //
-// Returns the populated report.
-//   - An error is returned for ANY infrastructure failure OR any PR 10
-//     fail-closed scroll gate violation. The report is still populated
-//     with whatever was gathered so the operator sees the partial state.
-//   - report.Applied = true ONLY when every gate passed AND at least one
-//     repair kind executed successfully (ReindexEnqueued/DeleteEnqueued/
-//     PayloadStrips > 0).
-//   - When DryRun is true, Applied stays false in all cases (no
-//     dispatch happened).
+// Reconcile is retained below as a compatibility spelling for existing
+// callers; new callers MUST use ReconcileProjection.
 //
 // Repair actions:
-//   - KindMissing, KindPayloadIncomplete, KindVersionStale, etc. —
+//   - KindMissing, KindPayloadIncomplete, KindVersionStale, KindHashMismatch, etc. —
 //     outbox.EnqueueReindex(assetID, contentHash). The contentHash
 //     rides on Classification (PR-11 fingerprint) so the worker
 //     supersede gate + outbox dedupe share one shape.
 //   - KindOrphan: outbox.EnqueueDelete(assetID).
+//   - KindHashMismatch: outbox.EnqueueReindex(assetID, contentHash), with
+//     the SQLite hash retained as the repair fingerprint.
 //   - KindLifecycleKeyLegacy, KindLocatorLegacy: payload.DeletePayloadKeys
 //     (no outbox primitive for partial-payload mutation).
 //
 // Metrics emission (QDRANT-005C): findings + errors + run-complete
 // ALWAYS emit; dispatches + legacy-key strips emit ONLY on Apply AND
 // only when the scroll gates passed AND repairs executed.
-func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*ReconcileReport, error) {
+func (s *Service) ReconcileProjection(ctx context.Context, opts ReconcileOptions) (*ReconcileReport, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -320,6 +318,13 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 
 	s.emitRunMetrics(mode, report, startedAt)
 	return report, nil
+}
+
+// Reconcile is the compatibility spelling of ReconcileProjection.
+// Deprecated: use ReconcileProjection to make the SQLite → Qdrant
+// projection boundary explicit at call sites.
+func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*ReconcileReport, error) {
+	return s.ReconcileProjection(ctx, opts)
 }
 
 // emitRunMetrics centralises the "always emitted" metric family:

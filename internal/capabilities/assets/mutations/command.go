@@ -6,7 +6,7 @@
 // collapses the per-action method proliferation
 // (Upsert + UpsertFolder + UpsertClip + UpsertClipTx + SoftDelete + ...)
 // into a SINGLE audit-friendly surface. Future callers in
-// internal/application/** and internal/api/** SHOULD use
+// internal/capabilities/** and internal/capabilities/** SHOULD use
 // Mutate(ctx, AssetMutationCommand{}) instead of the legacy public
 // methods (which remain on *assets.ClipsRepository for backward
 // compatibility and adapter delegation, but are explicitly gated for

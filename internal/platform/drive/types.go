@@ -15,7 +15,7 @@
 //
 // \tartlist → ... → assets/assetop → drive → artlist  (cycle, rejected)
 //
-// PR2.7 placed the DriveFileRef struct in internal/infrastructure/drive
+// PR2.7 placed the DriveFileRef struct in internal/platform/drive
 // (this file) so the folder_manager.go adapter could return a
 // domain-shaped slice ([]DriveFileRef) without importing the artlist
 // application package. The artlist package aliased the type via
@@ -27,7 +27,7 @@
 package drive
 
 // Doc is the canonical Google Docs reference returned by DocClient
-// (internal/infrastructure/drive/doc_client.go). It bundles the IDs
+// (internal/platform/drive/doc_client.go). It bundles the IDs
 // and human-facing metadata needed by callers (CreateDoc, ListRecentDocs,
 // UpdateDoc) — content is populated only for newly created docs.
 type Doc struct {

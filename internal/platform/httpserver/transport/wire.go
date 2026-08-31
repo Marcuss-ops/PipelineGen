@@ -47,7 +47,7 @@ var knownCapabilities = []struct {
 	// voiceover mounts via internal/app/wire_assets.go::WireAssets which
 	// wraps the Assets module under prefix "/media" (assetsRouteMod) +
 	// the voiceover capability's own prefix "/voiceover"
-	// (internal/api/assets/voiceover/module.go::Build), all beneath
+	// (internal/capabilities/assets/voiceover/module.go::Build), all beneath
 	// routes.go's `api := engine.Group("/api")`. The resulting URL
 	// is `/api/media/voiceover/*` — the wire scanner must scan this
 	// prefix (NOT `/api/voiceover`, which would only match a
@@ -57,7 +57,7 @@ var knownCapabilities = []struct {
 	// prefix `/media` is owned by wire_assets.go; both lock together.
 	{name: "voiceover", prefix: "/api/media/voiceover"},
 	// youtube (legacy YouTube clip handler) mounts under /api/clips/*
-	// (see internal/api/assets/youtube/youtube_handlers.go).
+	// (see internal/capabilities/assets/youtube/youtube_handlers.go).
 	{name: "youtube", prefix: "/api/clips"},
 	{name: "register", prefix: "/api/register"},
 	{name: "storage", prefix: "/api/storage"},
@@ -66,7 +66,7 @@ var knownCapabilities = []struct {
 	{name: "admin", prefix: "/api/drive"},
 	// clips (canonical clips capability) mounts under /api/media/clips/*
 	// via the assets module (see internal/app/wire_assets.go and
-	// internal/api/assets/clips/module.go). This includes the new
+	// internal/capabilities/assets/clips/module.go). This includes the new
 	// POST /api/media/clips/ingest/ai-stock endpoint.
 	{name: "clips", prefix: "/api/media/clips"},
 	// script mounts under /api/script/* (ScriptFlow module, prefix

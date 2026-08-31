@@ -1,6 +1,6 @@
 // Package ytdlp centralizes yt-dlp command construction and output verification.
 // Both internal/platform/downloader (media retrieval) and
-// internal/infrastructure/youtube (metadata/search) depend on yt-dlp for
+// internal/platform/youtube (metadata/search) depend on yt-dlp for
 // different operations. This package provides the shared baseline so neither
 // domain package duplicates path resolution, cookie handling, JS runtime
 // setup, warning suppression, or extractor-arg selection.

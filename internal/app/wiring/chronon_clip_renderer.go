@@ -596,10 +596,9 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		zap.Int64("duration_ms", durationMS),
 	}, metrics.LogFields()...)...)
 
-<<<<<<< Updated upstream
 	probeMS := metrics.ProbeDurationMS
 	opMS := metrics.TotalMS
-	return rustexec.ClipRenderResult{
+	result := rustexec.ClipRenderResult{
 		OutputPath:        plan.OutputPath,
 		SizeBytes:         st.Size(),
 		DurationSec:       float64(durationMS) / 1000,
@@ -618,35 +617,6 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		WatermarkRasterMS: measured.WatermarkRasterMS,
 		FrameConversionMS: measured.FrameConversionMS,
 		EncodeMS:          measured.EncodeMS,
-||||||| constructed merge base
-	return rustexec.ClipRenderResult{
-		OutputPath:  plan.OutputPath,
-		SizeBytes:   st.Size(),
-		DurationSec: float64(durationMS) / 1000,
-		Width:       uint32(plan.Output.Width),
-		Height:      uint32(plan.Output.Height),
-		FPSNum:      uint32(plan.Output.FPSNum),
-		FPSDen:      uint32(plan.Output.FPSDen),
-		FFmpegMS:    metrics.TotalMS,
-		// Chronon currently reports one render invocation plus a separately
-		// measured audio mux. Preserve the phase split in the common Rust
-		// result contract; unavailable decode/composite/encode internals remain
-		// nil rather than being fabricated from the coarse duration.
-=======
-	result := rustexec.ClipRenderResult{
-		OutputPath:  plan.OutputPath,
-		SizeBytes:   st.Size(),
-		DurationSec: float64(durationMS) / 1000,
-		Width:       uint32(plan.Output.Width),
-		Height:      uint32(plan.Output.Height),
-		FPSNum:      uint32(plan.Output.FPSNum),
-		FPSDen:      uint32(plan.Output.FPSDen),
-		FFmpegMS:    metrics.TotalMS,
-		// Chronon currently reports one render invocation plus a separately
-		// measured audio mux. Preserve the phase split in the common Rust
-		// result contract; unavailable decode/composite/encode internals remain
-		// nil rather than being fabricated from the coarse duration.
->>>>>>> Stashed changes
 		AudioMuxMS:        &metrics.AudioMuxMS,
 		AudioCopyEligible: boolPtr(true),
 		AudioEncodePasses: intPtr(0),
@@ -669,7 +639,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		// Keep a durable copy for the benchmark/operator output.
 		metricsDir := filepath.Join(filepath.Dir(plan.OutputPath), "metrics")
 		if err := os.MkdirAll(metricsDir, 0o755); err == nil {
-			if data, err := os.ReadFile(chrononTimingPath); err == nil {
+			if data, err := os.ReadFile(chrononSidecarPath); err == nil {
 				_ = os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), data, 0o644)
 			}
 		}

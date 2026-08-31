@@ -47,7 +47,7 @@ type RemoteAssetReader interface {
 // PR 7 (June 2026): added `dispatcher` as the 3rd positional arg
 // (after proc) so media_assets writes enforce the canonical outbox
 // path. Composition-root pre-rejection lives in the wiring site
-// (internal/api/assets/clips/handler.go NewHandler) which surfaces
+// (internal/capabilities/assets/clips/handler.go NewHandler) which surfaces
 // a configure-time error if dispatcher is nil.
 func NewReprocessUseCase(repo detail.Repository, proc detail.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
 	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}

@@ -51,7 +51,7 @@ var (
 // respectively — they satisfy the artlist.ServicePorts.PexelsSearcher /
 // PixabaySearcher INTERFACE fields downstream without an explicit
 // shim layer. AssetProcRepo / AssetVerRepo are the INTERFACE types
-// declared in internal/domain/asset (the SQLite-backed AssetStore
+// declared in internal/kernel/asset (the SQLite-backed AssetStore
 // methods return these interfaces).
 type artlistProviders struct {
 	IsLiveProbe       *artlist.HTTPSelfLoopProbe

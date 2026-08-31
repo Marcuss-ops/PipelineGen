@@ -23,7 +23,9 @@ func (p *StockBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Pro
 func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if plan != nil && plan.MediaMode == scriptpkg.MediaModeStockOnly {
 		for i := range input.SpecScene.Scenes {
-			input.SpecScene.Scenes[i].Bindings.Clip = nil
+			if input.SpecScene.Scenes[i].AllowsMediaReplacement() {
+				input.SpecScene.Scenes[i].Bindings.Clip = nil
+			}
 		}
 	}
 	// Explicit segment payloads define the canonical scene cardinality for
@@ -56,6 +58,9 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		}
 		seen[in.Index] = struct{}{}
 		scene := &input.SpecScene.Scenes[in.Index]
+		if !scene.AllowsMediaReplacement() {
+			continue
+		}
 		if strings.TrimSpace(in.SceneID) != "" && in.SceneID != scene.ID {
 			return nil, fmt.Errorf("%w: stock binding index %d targets scene_id %q, want %q", scriptpkg.ErrPostprocessFailed, in.Index, in.SceneID, scene.ID)
 		}

@@ -59,7 +59,7 @@ func (e *acquisitionError) Error() string { return e.msg }
 // is for human + log enrichment only.
 //
 // Exported as `Wrap` so the infrastructure concrete
-// (`internal/infrastructure/acquisition/`) can compose wrapped
+// (`internal/platform/acquisition/`) can compose wrapped
 // errors across packages. The lowercase `wrap` was insufficient
 // for cross-package callers (Go's unexported-identifier rule); the
 // rename + `%w` format-verb preserves the typed-error contract.

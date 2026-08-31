@@ -9,6 +9,7 @@ package verification
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
@@ -223,6 +224,10 @@ func computeMissingOrphan(sqliteSet, qdrantIDs map[string]bool, report *schema.S
 			}
 		}
 	}
+	// Keep machine-readable parity reports stable across map iteration
+	// order; operators and tests can diff rebuild reports reliably.
+	sort.Strings(report.MissingIDs)
+	sort.Strings(report.OrphanIDs)
 }
 
 // validatePayloadMinimum checks that a Qdrant point's payload contains the

@@ -5,7 +5,7 @@
 // Lease, terminal states, WorkerSession contract used cross-capability).
 //
 // EXPAND-phase placeholder (Wave 19, June 2026). Production content
-// authoritatively lives in internal/domain/job/ until BACKFILL/CUTOVER
+// authoritatively lives in internal/kernel/job/ until BACKFILL/CUTOVER
 // waves relocate it under this import path. Per the kernel rules in
 // 02_TARGET_STRUCTURE.md, no repository implementation, no Gin, no
 // database/sql, no transport-specific type lives here.

@@ -1,7 +1,7 @@
 // Package youtube holds the application-layer orchestrator for the YouTube
 // clip-extraction pipeline. Persistence, IO, and external-process execution
 // are delegated to ports declared in the ports sub-package and implemented
-// under internal/infrastructure/youtube.
+// under internal/platform/youtube
 //
 // Per PR1.7 (June 2026):
 //   - The setter cascade has been collapsed into a single

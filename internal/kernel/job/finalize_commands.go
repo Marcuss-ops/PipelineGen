@@ -131,7 +131,7 @@ type ArtifactStatePatch struct {
 // event emitted by FinalizeAttempt in the SAME tx as the job status
 // transition. The canonical outbox is at
 // internal/platform/sqlite/outboxevents and its
-// domain mirror at internal/domain/outboxevents; this struct is the
+// domain mirror at internal/platform/sqlite/outboxevents; this struct is the
 // typed-narrow kernel surface that bridges the two namespaces without
 // the kernel importing either.
 //
@@ -146,7 +146,7 @@ type OutboxEventSpec struct {
 	// Type is the outbox event type (mirrors outbox_events.type
 	// column wire-string). Required, non-empty. The canonical
 	// enum of values lives in
-	// internal/domain/outboxevents/types.go (P1 SSOT discipline).
+	// internal/platform/sqlite/outboxevents/types.go (P1 SSOT discipline).
 	Type string
 
 	// EventKey is the idempotency key (mirrors outbox_events.event_key

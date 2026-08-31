@@ -63,6 +63,9 @@ func (c *sceneReadyCoordinator) submit(scene Scene) {
 
 func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	out := scene
+	if !out.ExecutionMode.AllowsTranslation() || !out.ExecutionMode.AllowsTTS() || !out.ExecutionMode.AllowsGeneratedAudio() {
+		return out, nil
+	}
 	if out.Text == nil {
 		out.Text = make(map[Language]string)
 	}

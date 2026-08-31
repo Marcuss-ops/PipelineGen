@@ -22,10 +22,19 @@ import (
 )
 
 func ResolveDBPath(cfg *config.Config, explicitPath ...string) string {
-	if len(explicitPath) > 0 && strings.TrimSpace(explicitPath[0]) != "" {
-		return explicitPath[0]
-	}
 	if cfg == nil {
+		return ""
+	}
+	if len(explicitPath) > 0 && strings.TrimSpace(explicitPath[0]) != "" {
+		candidate := strings.TrimSpace(explicitPath[0])
+		configured := cfg.Storage
+		configured.PrimaryDBPath = candidate
+		if err := configured.ValidatePrimaryDBPath(); err != nil {
+			return ""
+		}
+		return configured.CanonicalPrimaryDBPath()
+	}
+	if err := cfg.Storage.ValidatePrimaryDBPath(); err != nil {
 		return ""
 	}
 	return cfg.Storage.PrimaryDBFullPath()

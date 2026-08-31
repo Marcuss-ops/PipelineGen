@@ -1,5 +1,5 @@
 // Package adminconsole provides SQLite-backed implementations of the
-// admin console ports defined in internal/application/adminconsole.
+// admin console ports defined in internal/capabilities/adminconsole
 package adminconsole
 
 import (

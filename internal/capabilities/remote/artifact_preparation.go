@@ -7,7 +7,7 @@
 // SHA-256(jobID:artifactID:sha256:sourceVersion).
 //
 // This supersedes the lightweight non-empty-string checks in
-// internal/application/assets/finalizer/artifact_preparation.go::validate,
+// internal/capabilities/assets/finalizer/artifact_preparation.go::validate,
 // which never called os.Stat / sha256 on the actual file — the
 // "verified" in VerifiedArtifact was misleading. P0.5 makes it real.
 //

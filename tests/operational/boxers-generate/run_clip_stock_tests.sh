@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEST_DIR="$REPO_DIR/tests/operational/boxers-generate"
 API_BASE="${VELOX_BASE_URL:-${SMOKE_API_BASE:-http://127.0.0.1:8000}}"
-DB_PATH="${VELOX_DB:-$REPO_DIR/data/media/media.db.sqlite}"
+DB_PATH="${VELOX_DB:?VELOX_DB must be explicitly set to an isolated or approved database}"
 MODE="${1:-all}"
 PAYLOAD="${BOXERS_PAYLOAD:-$TEST_DIR/five_boxers_stock_post_segments.json}"
 FULL_OUTPUT="${BOXERS_FULL:-}"

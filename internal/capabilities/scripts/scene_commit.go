@@ -9,40 +9,29 @@ package scriptgeneration
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // SceneCommitted is the stable per-scene boundary consumed by incremental
 // VidRush enrichment. It is emitted exactly once per scene version after the
 // scene text is complete and immutable. It never carries partial tokens.
 type SceneCommitted struct {
-	// RunID is the canonical generation run identifier.
-	RunID string `json:"run_id"`
+	RunID      string    `json:"run_id"`
+	SceneID    string    `json:"scene_id"`
+	SceneIndex int       `json:"scene_index"`
+	Text       string    `json:"text"`
+	TextHash   string    `json:"text_hash"`
+	Revision   int64     `json:"revision"`
+	Language   string    `json:"language"`
+	ReadyAt    time.Time `json:"ready_at"`
 
-	// SceneID is the stable scene identifier within the run.
-	SceneID string `json:"scene_id"`
-
-	// SceneIndex is the zero-based canonical scene position.
-	SceneIndex int `json:"scene_index"`
-
-	// Text is the complete, stable scene text in Language.
-	Text string `json:"text"`
-
-	// TextHash is the deterministic content hash of Text. It is the identity
-	// used for stale-result fencing: a result derived from older text must
-	// never be applied to a newer revision.
-	TextHash string `json:"text_hash"`
-
-	// Revision is the monotonic version of the scene text. It increments
-	// whenever the scene is regenerated (for now, the run attempt number).
-	Revision int64 `json:"revision"`
-
-	// Language is the ISO 639-1 source language of Text.
-	Language string    `json:"language"`
-	ReadyAt  time.Time `json:"ready_at"`
+	// ExecutionMode carries the canonical scene authorization policy through
+	// the incremental boundary. Empty is backward-compatible generated mode.
+	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
 
 	// SemanticProfile is populated by the canonical segment-understanding
 	// stage when the event is emitted. It is optional for compatibility with
@@ -68,14 +57,15 @@ type SceneCommitObserver interface {
 func NewSceneCommitted(runID string, scene Scene, language Language, revision int64) SceneCommitted {
 	text := scene.Text[language]
 	return SceneCommitted{
-		RunID:      runID,
-		SceneID:    scene.ID,
-		SceneIndex: scene.Index,
-		Text:       text,
-		TextHash:   SceneTextHash(text),
-		Revision:   revision,
-		Language:   string(language),
-		ReadyAt:    time.Now().UTC(),
+		RunID:         runID,
+		SceneID:       scene.ID,
+		SceneIndex:    scene.Index,
+		Text:          text,
+		TextHash:      SceneTextHash(text),
+		Revision:      revision,
+		Language:      string(language),
+		ExecutionMode: scene.ExecutionMode,
+		ReadyAt:       time.Now().UTC(),
 	}
 }
 

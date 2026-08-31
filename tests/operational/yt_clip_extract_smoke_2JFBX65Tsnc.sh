@@ -55,7 +55,7 @@ set -euo pipefail
 # ---- Configuration --------------------------------------------------------
 URL_BASE="${URL_BASE:-http://127.0.0.1:8000}"
 ENV_FILE="${ENV_FILE:-.env}"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 
 # Canonical fixture path (overridable via FIXTURE env var).
 DIR=$(cd "$(dirname "$0")" && pwd)

@@ -29,6 +29,23 @@ func emptyDoc() *IndexDocument {
 	}
 }
 
+func TestBuildPayloadFromDocument_ContentHashProjectedFromCanonicalDocument(t *testing.T) {
+	doc := emptyDoc()
+	doc.ContentHash = "sqlite-canonical-hash"
+	p := BuildPayloadFromDocument(doc, nil)
+	if got, ok := p["content_hash"]; !ok || got != "sqlite-canonical-hash" {
+		t.Fatalf("payload[content_hash]=%v, present=%v; want SQLite canonical hash", got, ok)
+	}
+}
+
+func TestBuildPayloadFromDocument_EmptyContentHashOmitted(t *testing.T) {
+	doc := emptyDoc()
+	p := BuildPayloadFromDocument(doc, nil)
+	if _, ok := p["content_hash"]; ok {
+		t.Fatal("payload[content_hash] must be absent when SQLite has no canonical hash")
+	}
+}
+
 func TestBuildPayloadFromDocument_AIStockAudioFields(t *testing.T) {
 	doc := emptyDoc()
 	hasDialogue := false

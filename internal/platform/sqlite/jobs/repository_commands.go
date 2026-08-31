@@ -15,7 +15,7 @@ import (
 // cutover (P0.F regression surface, July 2026):
 //
 //   - The CANONICAL declarations of ErrLeaseLost, ErrTransitionConflict,
-//     and ErrJobNotFound live in internal/domain/job/errors.go (Fase 5(a)
+//     and ErrJobNotFound live in internal/kernel/job/errors.go (Fase 5(a)
 //     homing; godlike/06 SSOT). The 3 re-export aliases below share the
 //     same `error` value with the canonical decls (`var X = job.X` is a
 //     Go var-alias, not a wrapper) so `errors.Is(err, jobs.ErrLeaseLost)`
@@ -47,7 +47,7 @@ var (
 	ErrInvalidState      = errors.New("invalid state transition")
 	ErrInvalidResultJSON = errors.New("finalize aggregate parent: result JSON malformed (cannot extract parent_state for typed-column dual-write)")
 
-	// Re-export aliases of internal/domain/job/errors.go (Fase 5(b) cutover
+	// Re-export aliases of internal/kernel/job/errors.go (Fase 5(b) cutover
 	// completion). godlike/06 SSOT: same `error` value as canonical decl;
 	// errors.Is probes are symmetric across import paths.
 	ErrLeaseLost          = job.ErrLeaseLost

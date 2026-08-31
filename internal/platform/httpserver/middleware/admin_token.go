@@ -14,10 +14,10 @@ import (
 //
 // PG-006 (June 2026): the previous signature took *config.Config
 // (`internal/platform/config`) and called the package-level
-// logger.Error/Info/Warn from `internal/infrastructure/logging`. The
+// logger.Error/Info/Warn from `internal/platform/logging`. The
 // middleware is now strictly transport — security settings flow
 // through middleware.AuthSecurityPort (defined in
-// internal/application/middleware/ports.go) and the structured logger
+// internal/capabilities/middleware/ports.go) and the structured logger
 // is injected as a *zap.Logger arg. The adapter at
 // internal/app/middleware_security_adapter.go wraps *config.Config at
 // composition time.
