@@ -12,10 +12,15 @@ func profileFromVidRushSegment(segment scriptpkg.VidRushSegmentResult) scriptpkg
 		TextHash:         segment.TextHash,
 		Topic:            segment.Text,
 		Keywords:         weightedKeywordsFromStrings(segment.Insights.ImportantWords),
-		VisualTerms:      weightedKeywordsFromStrings(segment.Insights.ImageQueries),
+		NounChunks:       append([]string(nil), segment.Insights.NounChunks...),
+		VisualTerms:      weightedKeywordsFromStrings(segment.Insights.NounChunks),
 		ImportantPhrases: append([]string(nil), segment.Insights.ImportantPhrases...),
 		Entities:         append([]scriptpkg.ExtractedEntity(nil), segment.Insights.Entities...),
 	}
+	// Image queries are already provider-specific output. Keep them in the
+	// retrieval projection, but never feed them back as canonical visual
+	// terms: doing so would make a downstream provider query the previous
+	// provider's wording instead of the grounded segment evidence.
 	profile.Retrieval = &scriptpkg.RetrievalIntent{
 		YouTube: append([]string(nil), segment.Insights.YouTubeQueries...),
 		Artlist: append([]string(nil), segment.Insights.ArtlistQueries...),

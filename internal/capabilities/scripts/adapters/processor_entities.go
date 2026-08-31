@@ -445,14 +445,23 @@ func buildVidRushSegmentResult(
 	if len(manualArtlistQueries) > 0 {
 		insights.ArtlistQueries = uniqueLimitedStrings(manualArtlistQueries, artlistLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotPrimaryVideo) {
-		fallbackArtlistQueries := buildArtlistQueries(visualText, append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...), insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-		llmArtlistQueries := normalizeRetrievalQueries(weightedKeywordValues(profile.VisualTerms), 6)
-		llmArtlistQueries = uniqueLimitedStrings(llmArtlistQueries, artlistLimit)
-		insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
+		// Artlist consumes the provider projection of the canonical profile.
+		// Editorial phrases and words are deliberately not a retrieval fallback:
+		// they describe importance, not necessarily visible footage. Explicit
+		// plan directives remain an intentional provider override.
+		builders := NewVidRushProviderQueryBuilders()
+		profileArtlistQueries := builders.Artlist(profile)
+		explicitQueries := append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...)
+		queries := append(explicitQueries, profileArtlistQueries...)
+		// The source-text query is a bounded lexical supplement for degraded
+		// local extraction (where the model returns neither noun chunks nor
+		// entities). It never consumes editorial phrases or words and is
+		// always placed after the canonical profile projection.
+		queries = append(queries, buildArtlistQueries(visualText, nil, insights.Entities, nil, nil, "")...)
+		insights.ArtlistQueries = uniqueLimitedStrings(queries, artlistLimit)
 	}
 
 	imagePhrases := append([]string(nil), weightedKeywordValues(profile.VisualTerms)...)
-	imagePhrases = append(imagePhrases, insights.ImportantPhrases...)
 	manualImageQueries := ResolveManualSegmentQueries(plan, canonicalSeg, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
 	if len(manualImageQueries) > 0 {
 		insights.ImageQueries = uniqueLimitedStrings(manualImageQueries, imageLimit)
