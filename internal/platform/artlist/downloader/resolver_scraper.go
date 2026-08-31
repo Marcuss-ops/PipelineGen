@@ -195,7 +195,7 @@ func (r *Resolver) downloadViaScraper(ctx context.Context, req artapp.DownloadRe
 // buffered filesystems. The pre-fix signature used a plain `err`
 // parameter; the deferred `err = cerr` mutated the local AFTER the
 // naked return had already copied the value, silently dropping the
-// Close error (P0-1 bug; see REPORT_ARCH.md verdict).
+// Close error (P0-1 bug).
 //
 // On any failure path the partial destination is unlinked so callers
 // never observe a half-written file masquerading as a real download
