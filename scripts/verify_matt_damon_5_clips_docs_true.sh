@@ -105,7 +105,29 @@ echo "fanout=$(jq -c '.timing.fanout // []' "$BODY.poll")"
 # the Master; final-video assembly is owned by the Master and never runs here.
 MASTER_PAYLOAD=$(mktemp)
 MASTER_RESPONSE=$(mktemp)
-trap 'rm -f "$BODY" "$BODY.poll" "$MASTER_PAYLOAD" "$MASTER_RESPONSE"' EXIT INT TERM
+PREFETCH_ASSETS_FILE=$(mktemp)
+trap 'rm -f "$BODY" "$BODY.poll" "$MASTER_PAYLOAD" "$MASTER_RESPONSE" "$PREFETCH_ASSETS_FILE"' EXIT INT TERM
+
+# Build the eager-preparation manifest from the selected localized clips.
+# Only the verified Drive locator, SHA-256 and byte size cross the machine
+# boundary; local_path is deliberately never included in the Master payload.
+jq -c '(.result.data.result // .result.data.result.result // .result.output // .result) | .localized_renders[]' "$BODY.poll" |
+while IFS= read -r render; do
+  local_path=$(jq -r '.local_path // empty' <<<"$render")
+  size_bytes=0
+  if [[ -n "$local_path" && -f "$local_path" ]]; then
+    size_bytes=$(stat -c '%s' -- "$local_path" 2>/dev/null || echo 0)
+  fi
+  [[ "$size_bytes" =~ ^[1-9][0-9]*$ ]] || { echo "selected clip has no positive local size" >&2; exit 1; }
+  jq -n \
+    --arg asset_id "$(jq -r '.clip_id' <<<"$render")" \
+    --arg url "$(jq -r '.drive_link' <<<"$render")" \
+    --arg sha256 "$(jq -r '.sha256' <<<"$render")" \
+    --argjson size_bytes "$size_bytes" \
+    '{asset_id:$asset_id,kind:"source_clip",availability:"known",producer:"pipelinegen",url:$url,sha256:$sha256,size_bytes:$size_bytes,mime_type:"video/mp4",profile_id:"velox-h264-copy-v1",required:true,state:"ready"}' \
+    >> "$PREFETCH_ASSETS_FILE"
+done
+PREFETCH_ASSETS_JSON=$(jq -s . "$PREFETCH_ASSETS_FILE")
 jq -n \
   --arg source_provider "pipelinegen-77" \
   --arg source_job_id "${MASTER_SOURCE_JOB_ID:-$JOB_ID}" \
@@ -113,12 +135,22 @@ jq -n \
   --arg video_name "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).title // "PipelineGen video"' "$BODY.poll")" \
   --arg script_text "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).output.text // ""' "$BODY.poll")" \
   --arg voiceover "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).final_audio.drive_link // ""' "$BODY.poll")" \
+  --arg timeline_hash "pipelinegen:${MASTER_SOURCE_JOB_ID:-$JOB_ID}:1" \
+  --argjson prefetch_assets "$PREFETCH_ASSETS_JSON" \
   --slurpfile result "$BODY.poll" '
     ($result[0].result.data.result // $result[0].result.data.result.result // $result[0].result.output // $result[0].result) as $r
     | {
         source_provider: $source_provider,
         source_job_id: $source_job_id,
         target_executor_id: $target_executor_id,
+        assembly: {
+          send_to_velox: true,
+          timeline_revision: 1,
+          timeline_hash: $timeline_hash,
+          output_profile: "velox-h264-copy-v1",
+          assets: $prefetch_assets,
+          timeline: ($prefetch_assets | map({scene_id: .asset_id, asset_id: .asset_id}))
+        },
         payload: {
           status: "completed",
           pipeline: "scene.composite.v1",
