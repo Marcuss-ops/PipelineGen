@@ -44,6 +44,7 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -677,7 +678,11 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 	db := youTubeQdrantDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := clipwriter.NewClipAtomicWriterAdapter(db, box, zap.NewNop())
+	ledger, err := sqlitemediaregistry.NewLedger(db)
+	if err != nil {
+		t.Fatalf("ledger: %v", err)
+	}
+	adapter := clipwriter.NewSQLiteMediaCommitter(db, box, ledger, zap.NewNop())
 
 	const clipID = "yt_qdrant_e2e_10_60_v1"
 	fileHash := "abcdef0123456789abcdef0123456789" // 32-char MD5 hex

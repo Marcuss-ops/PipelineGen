@@ -42,6 +42,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -195,8 +196,10 @@ func TestMetadataAnalysisFailure_E2E_NoCommit(t *testing.T) {
 	require.NoError(t, os.WriteFile(realPath, []byte("fake clip bytes for E2E partial-state test"), 0o644))
 
 	// ── 3) Wire the REAL ClipAtomicWriterAdapter (not a stub) ──
-	writer := assetsdb.NewClipAtomicWriterAdapter(db, outboxRepo, zap.NewNop())
-	require.NotNil(t, writer, "NewClipAtomicWriterAdapter must succeed with db + outbox repo")
+	ledger, err := sqlitemediaregistry.NewLedger(db)
+	require.NoError(t, err)
+	writer := assetsdb.NewSQLiteMediaCommitter(db, outboxRepo, ledger, zap.NewNop())
+	require.NotNil(t, writer, "NewSQLiteMediaCommitter must succeed with db + outbox repo + ledger")
 
 	// ── 4) Wire a captured logger so we can assert on the Warn log ──
 	obsCore, recorded := observer.New(zapcore.WarnLevel)
@@ -254,7 +257,7 @@ func TestMetadataAnalysisFailure_E2E_NoCommit(t *testing.T) {
 	// commit, so the writer must never be reached and no media_assets
 	// row may exist (the former partial-state class is eliminated).
 	var count int
-	err := db.QueryRowContext(context.Background(),
+	err = db.QueryRowContext(context.Background(),
 		`SELECT COUNT(*) FROM media_assets WHERE id = ?`,
 		expectedClipID,
 	).Scan(&count)

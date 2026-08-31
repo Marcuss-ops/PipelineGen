@@ -9,6 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
+	texttracksport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
@@ -31,6 +32,7 @@ import (
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"go.uber.org/zap"
+	"time"
 )
 
 // buildDomainMediaServices constructs the YouTube clip pipeline service
@@ -55,7 +57,8 @@ func buildDomainMediaServices(
 	mediaConfig mediaexec.ExecutionConfig,
 ) (
 	voMetaWriter semantic.MetadataWriterPort,
-	clipWriter *imagesregistry.ClipAtomicWriterAdapter,
+	clipWriter *imagesregistry.SQLiteMediaCommitter,
+	folderPathWriter texttracksport.FolderPathWriter,
 	err error,
 ) {
 	// P0-#2 (July 2026): the composition root no longer constructs
@@ -91,10 +94,10 @@ func buildDomainMediaServices(
 
 	searchRunnerAdapter := ytinfra.NewSearchRunnerAdapter(cfg, log)
 	if searchRunnerAdapter == nil {
-		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
+		return nil, nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
 	}
 	if portutil.IsNilPort(searchRunnerAdapter) {
-		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
+		return nil, nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
 	hashAdapter := ytinfra.NewHashAdapter()
@@ -113,7 +116,7 @@ func buildDomainMediaServices(
 		return spec.TranslateClips
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("compose domains: subtitle languages: %w", err)
+		return nil, nil, nil, fmt.Errorf("compose domains: subtitle languages: %w", err)
 	}
 	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
 		ytinfra.SubtitleCacheConfig{
@@ -127,17 +130,21 @@ func buildDomainMediaServices(
 	)
 	clipCache := imagesregistry.NewClipCacheAdapter(repos.ClipsRepo, log)
 	if committer == nil {
-		return nil, nil, fmt.Errorf("compose domains: canonical asset committer is required")
+		return nil, nil, nil, fmt.Errorf("compose domains: canonical asset committer is required")
 	}
-	clipWriter = imagesregistry.NewClipAtomicWriterAdapterWithCommitter(
-		dbs.DualPool.Writer,
-		outbox.EventsRepo,
-		committer,
-		log,
-	)
+	// PR-SINGLE-WRITER (August 2026): ClipAtomicWriterAdapter is
+	// eliminated. The canonical SQLiteMediaCommitter now satisfies
+	// youtubeports.ClipAtomicWriter + localized.LocalizedClipWriter
+	// directly, collapsing 8 clip_atomic_writer*.go files into the
+	// single canonical writer.
+	canonicalMediaCommitter, ok := committer.(*imagesregistry.SQLiteMediaCommitter)
+	if !ok || canonicalMediaCommitter == nil {
+		return nil, nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter must be *SQLiteMediaCommitter (got %T) — single-writer invariant", committer)
+	}
+	clipWriter = canonicalMediaCommitter
 	canonicalMutator, ok := committer.(persistence.AssetMutationCommitter)
 	if !ok || canonicalMutator == nil {
-		return nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter does not implement AssetMutationCommitter")
+		return nil, nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter does not implement AssetMutationCommitter")
 	}
 	clipMetadataWriter := imagesregistry.NewClipMetadataWriterAdapterWithMutator(
 		dbs.DualPool.Writer,
@@ -145,6 +152,7 @@ func buildDomainMediaServices(
 		canonicalMutator,
 		log,
 	)
+	folderPathWriter = &folderPathWriterAdapter{committer: canonicalMediaCommitter, log: log}
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
@@ -159,7 +167,7 @@ func buildDomainMediaServices(
 		JobGroup: "general",
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
+		return nil, nil, nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
 	}
 
 	// Compile-time pin: Step10MetricsRecorder port ↔ Step10MetricsAdapter.
@@ -320,7 +328,7 @@ func buildDomainMediaServices(
 		DriveFolderMgr:  youtubePubAdapter,
 	}
 	if err := youtube.ValidateServiceDepsFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter); err != nil {
-		return nil, nil, fmt.Errorf("compose youtube: %w", err)
+		return nil, nil, nil, fmt.Errorf("compose youtube: %w", err)
 	}
 	bundle.YoutubeClipService = youtube.NewServiceFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter)
 
@@ -346,7 +354,51 @@ func buildDomainMediaServices(
 		_ = commit.NewTxAdapter
 	)
 
-	return voMetaWriter, clipWriter, nil
+	return voMetaWriter, clipWriter, folderPathWriter, nil
+}
+
+// folderPathWriterAdapter bridges the texttracks.FolderPathWriter port
+// (3-arg UpdateFolderPath) to SQLiteMediaCommitter's 5-arg
+// UpdateFolderPathTx. PR-SINGLE-WRITER (August 2026): replaces the
+// ClipAtomicWriterAdapter.UpdateFolderPath method.
+type folderPathWriterAdapter struct {
+	committer *imagesregistry.SQLiteMediaCommitter
+	log       *zap.Logger
+}
+
+func (a *folderPathWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {
+	if a == nil || a.committer == nil {
+		return fmt.Errorf("folderPathWriterAdapter: committer not wired")
+	}
+	tx, err := a.committer.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	var sourceVersion string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(source_version,'') FROM media_assets WHERE id=?`, assetID).Scan(&sourceVersion); err != nil {
+		return fmt.Errorf("folderPathWriterAdapter: asset: %w", err)
+	}
+	updatedAt := time.Now().UTC().Format(time.RFC3339)
+	if err := a.committer.UpdateFolderPathTx(ctx, tx, assetID, "", folderPath, updatedAt); err != nil {
+		return err
+	}
+	if _, err := imagesregistry.CommitIndexRequestTx(ctx, tx, a.committer.OutboxRepo(), imagesregistry.IndexRequest{
+		AssetID: assetID, Source: "youtube", MediaType: "video",
+		SourceVersion: sourceVersion, RequestedAt: time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // buildBcp47CSV was removed: unused after the SubtitleFetcherAdapter wiring

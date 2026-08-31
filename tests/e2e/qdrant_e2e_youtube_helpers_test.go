@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -600,7 +601,7 @@ type e2eFixture struct {
 	Writer    *qsearch.IndexWriter
 	Mapper    *qsearch.PayloadMapper
 	Transport *transport.Client
-	Adapter   *clipwriter.ClipAtomicWriterAdapter
+	Adapter   *clipwriter.SQLiteMediaCommitter
 	Events    *outboxevents.Repository
 	Schema    *schema.IndexSchema
 	Log       *zap.Logger
@@ -645,7 +646,9 @@ func newE2EFixture(t *testing.T, collection string) *e2eFixture {
 
 	writer := qsearch.NewIndexWriter(client, idxSchema, mapper, log)
 	events := outboxevents.NewRepository(db)
-	adapter := clipwriter.NewClipAtomicWriterAdapter(db, events, log)
+	ledger, err := sqlitemediaregistry.NewLedger(db)
+	require.NoError(t, err, "ledger setup")
+	adapter := clipwriter.NewSQLiteMediaCommitter(db, events, ledger, log)
 
 	t.Cleanup(closeQdrant)
 
