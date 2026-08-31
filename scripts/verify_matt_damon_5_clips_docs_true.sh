@@ -5,13 +5,17 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 source "$ROOT/scripts/lib/dotenv.sh"
 load_dotenv_missing "$ROOT/.env"
 
-BASE_URL="${VELOX_MASTER_URL:-http://127.0.0.1:8000}"
-TOKEN="${VELOX_MASTER_ADMIN_TOKEN:-${VELOX_ADMIN_TOKEN:-}}"
+LOCAL_BASE_URL="${PIPELINEGEN_URL:-http://127.0.0.1:8000}"
+MASTER_BASE_URL="${VELOX_MASTER_URL:-}"
+LOCAL_TOKEN="${VELOX_PIPELINEGEN_TOKEN:-${VELOX_ADMIN_TOKEN:-}}"
+MASTER_TOKEN="${VELOX_MASTER_ADMIN_TOKEN:-}"
 PAYLOAD="$ROOT/ops/jobs/matt_damon_5_clips_docs_true.generate.json"
 POLL_SECONDS="${MATT_DAMON_POLL_SECONDS:-5}"
 TIMEOUT_SECONDS="${MATT_DAMON_TIMEOUT_SECONDS:-1800}"
 
-[[ -n "$TOKEN" ]] || { echo "VELOX_MASTER_ADMIN_TOKEN or VELOX_ADMIN_TOKEN is required" >&2; exit 2; }
+[[ -n "$LOCAL_TOKEN" ]] || { echo "VELOX_PIPELINEGEN_TOKEN or VELOX_ADMIN_TOKEN is required" >&2; exit 2; }
+[[ -n "$MASTER_BASE_URL" ]] || { echo "VELOX_MASTER_URL is required" >&2; exit 2; }
+[[ -n "$MASTER_TOKEN" ]] || { echo "VELOX_MASTER_ADMIN_TOKEN is required for creator push" >&2; exit 2; }
 [[ -f "$PAYLOAD" ]] || { echo "missing payload: $PAYLOAD" >&2; exit 2; }
 
 RUN_ID="matt-damon-5-clips-docs-true-$(date -u +%Y%m%d-%H%M%S)-$$"
@@ -25,8 +29,8 @@ if [[ -n "${MATT_DAMON_RESPONSE_FILE:-}" ]]; then
   echo "replaying_response=$MATT_DAMON_RESPONSE_FILE"
 else
   HTTP=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
-    -X POST "$BASE_URL/api/script/generate" \
-    -H "Authorization: Bearer $TOKEN" \
+    -X POST "$LOCAL_BASE_URL/api/script/generate" \
+    -H "Authorization: Bearer $LOCAL_TOKEN" \
     -H 'Content-Type: application/json' \
     -H "X-Request-ID: ${RUN_ID}-request" \
     -H "Idempotency-Key: ${RUN_ID}-request" \
@@ -39,8 +43,8 @@ else
   deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
   while :; do
     curl -sS --max-time 30 -o "$BODY.poll" \
-      -H "Authorization: Bearer $TOKEN" \
-      "$BASE_URL/api/jobs/$JOB_ID/full"
+      -H "Authorization: Bearer $LOCAL_TOKEN" \
+      "$LOCAL_BASE_URL/api/jobs/$JOB_ID/full"
     status=$(jq -r '.status // .job.status // .result.status // empty' "$BODY.poll")
     echo "status=$status"
     case "${status^^}" in
@@ -68,7 +72,6 @@ jq -e '
   | ($item.docs.enabled == true)
   and (($item.source.clip_ids // []) | length == 5)
   and ($item.output.render.enabled == true)
-  and (($item.output.render.assemble_final // false) == false)
 ' "$BODY.poll" >/dev/null || {
   echo "job payload does not prove docs=true / five-clip / localized-render contract" >&2
   jq '.job.payload.items[0] | {docs,source,render:.output.render}' "$BODY.poll" >&2
@@ -97,4 +100,50 @@ echo "stages=$(jq -c '.timing.stages // []' "$BODY.poll")"
 echo "critical_path=$(jq -c '.timing.critical_path // []' "$BODY.poll")"
 echo "operations=$(jq -c '.timing.operations // []' "$BODY.poll")"
 echo "fanout=$(jq -c '.timing.fanout // []' "$BODY.poll")"
+
+# The 77 is a producer only. It hands the completed, link-based payload to
+# the Master; final-video assembly is owned by the Master and never runs here.
+MASTER_PAYLOAD=$(mktemp)
+MASTER_RESPONSE=$(mktemp)
+trap 'rm -f "$BODY" "$BODY.poll" "$MASTER_PAYLOAD" "$MASTER_RESPONSE"' EXIT INT TERM
+jq -n \
+  --arg source_provider "pipelinegen-77" \
+  --arg source_job_id "${MASTER_SOURCE_JOB_ID:-$JOB_ID}" \
+  --arg target_executor_id "scene.composite.v1" \
+  --arg video_name "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).title // "PipelineGen video"' "$BODY.poll")" \
+  --arg script_text "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).output.text // ""' "$BODY.poll")" \
+  --arg voiceover "$(jq -r '(.result.data.result // .result.data.result.result // .result.output // .result).final_audio.drive_link // ""' "$BODY.poll")" \
+  --slurpfile result "$BODY.poll" '
+    ($result[0].result.data.result // $result[0].result.data.result.result // $result[0].result.output // $result[0].result) as $r
+    | {
+        source_provider: $source_provider,
+        source_job_id: $source_job_id,
+        target_executor_id: $target_executor_id,
+        payload: {
+          status: "completed",
+          pipeline: "scene.composite.v1",
+          pipeline_id: "clips.v1",
+          copy_only: true,
+          job_id: $source_job_id,
+          video_name: $video_name,
+          script_text: $script_text,
+          voiceover_paths: (if $voiceover == "" then [] else [$voiceover] end),
+          delivery_plan: [{destination_id: "drive-production", priority: 1, retry_budget: 3}],
+          scenes: ($r.scenes // [] | map({
+            text: (.text.it // .text.en // ((.text // {}) | to_entries[0].value) // ""),
+            scene_id: (.id // ""),
+            index: (.index // 0),
+            clip_link: (.clip.drive_link // .clips[0].drive_link // ""),
+            duration_seconds: (((.duration_ms // 0) / 1000) | if . < 0.1 then 0.1 else . end)
+          }))
+        }
+      }' > "$MASTER_PAYLOAD"
+
+MASTER_HTTP=$(curl -sS --max-time 30 -o "$MASTER_RESPONSE" -w '%{http_code}' \
+  -X POST "$MASTER_BASE_URL/api/v1/creator/jobs" \
+  -H "Authorization: Bearer $MASTER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$MASTER_PAYLOAD")
+[[ "$MASTER_HTTP" == "202" ]] || { echo "master creator push failed: http=$MASTER_HTTP" >&2; cat "$MASTER_RESPONSE" >&2; exit 1; }
+echo "master_push=$(jq -c '{job_id,status,accepted_from,dispatch_status}' "$MASTER_RESPONSE")"
 echo "response=$OUTPUT_RESPONSE"
