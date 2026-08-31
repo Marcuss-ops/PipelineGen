@@ -90,7 +90,6 @@ scripts/
 ├── seed_fixture/                 # Fixture seeding tool
 │   └── main.go
 ├── start_embedding_server.sh      #  Embedding sidecar launcher
-├── operate_script_generate.sh     #  Operational script generation
 ├── worker-bootstrap-smoke.sh      #  Worker bootstrap smoke test
 ├── verify-ffmpeg.sh               #  FFmpeg verification
 ├── verify-image-digest.sh         #  Image digest verification
