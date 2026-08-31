@@ -70,7 +70,6 @@ func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.
 	add("category", patch.Category)
 	add("group_name", patch.Group)
 	add("search_text", patch.SearchText)
-	add("description", patch.Description)
 	add("lifecycle_state", patch.LifecycleState)
 	add("enrich_state", patch.EnrichState)
 	add("metadata_json", patch.MetadataJSON)
@@ -114,13 +113,9 @@ func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.
 			return err
 		}
 		if _, err := CommitIndexRequestTx(ctx, sqlTx, c.box, IndexRequest{
-			AssetID:        patch.AssetID,
-			Source:         source,
-			MediaType:      mediaType,
-			SourceVersion:  sourceVersion,
-			RequestedAt:    time.Now().UTC(),
-			Priority:       patch.IndexPriority,
-			EventKeySuffix: patch.EventKeySuffix,
+			AssetID: patch.AssetID, Source: source, MediaType: mediaType,
+			SourceVersion: sourceVersion, RequestedAt: time.Now().UTC(),
+			Priority: patch.IndexPriority, EventKeySuffix: patch.EventKeySuffix,
 		}); err != nil {
 			return fmt.Errorf("asset mutator: enqueue index request for %q: %w", patch.AssetID, err)
 		}
