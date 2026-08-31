@@ -49,3 +49,16 @@ func TestEntityExtractionBatchPrompt_ConsolidatesPerSceneSections(t *testing.T) 
 		t.Fatalf("batch prompt must address both segments, got:\n%s", prompt)
 	}
 }
+
+func TestEntityExtractionPromptsShareLanguageAwareGroundingContract(t *testing.T) {
+	single := BuildEntityExtractionPromptForLanguage("L'astice blu vive nel mare.", 5, "it")
+	batch := BuildEntityExtractionBatchPromptForLanguage([]string{"L'astice blu vive nel mare."}, 5, "it")
+	for name, prompt := range map[string]string{"single": single, "batch": batch} {
+		if !strings.Contains(prompt, "SOURCE_LANGUAGE: it") {
+			t.Errorf("%s prompt missing source language", name)
+		}
+		if !strings.Contains(prompt, "copied VERBATIM") || !strings.Contains(prompt, "Do not translate") {
+			t.Errorf("%s prompt missing shared verbatim grounding contract", name)
+		}
+	}
+}

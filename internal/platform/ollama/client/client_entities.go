@@ -49,7 +49,7 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req de
 		entityCount = 2
 	}
 
-	prompt := prompts.BuildEntityExtractionPrompt(req.SegmentText, entityCount)
+	prompt := prompts.BuildEntityExtractionPromptForLanguage(req.SegmentText, entityCount, req.Language)
 
 	var (
 		response string
@@ -94,7 +94,7 @@ func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments
 	if entityCount <= 0 {
 		entityCount = 2
 	}
-	prompt := prompts.BuildEntityExtractionBatchPrompt(segments, entityCount)
+	prompt := prompts.BuildEntityExtractionBatchPromptForLanguage(segments, entityCount, language)
 	response, err := c.GenerateWithOptions(ctx, model, prompt, map[string]any{
 		"num_predict": entityExtractionNumPredict * len(segments),
 		"temperature": 0,
