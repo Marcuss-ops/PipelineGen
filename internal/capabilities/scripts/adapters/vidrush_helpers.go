@@ -125,8 +125,9 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 			if id == "" {
 				id = fmt.Sprintf("segment-%03d", i+1)
 			}
+			sceneID := explicitSegmentSceneID(scenes, id, i)
 			out = append(out, scriptpkg.CanonicalSegment{
-				ID: id, Position: i, Text: segText, SourceText: segText,
+				ID: id, SceneID: sceneID, Position: i, Text: segText, SourceText: segText,
 				TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 			})
 		}
@@ -136,6 +137,23 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 		return buildCanonicalSegmentsFromScenes(scenes, text)
 	}
 	return buildCanonicalSegmentsFromScenes(nil, text)
+}
+
+func explicitSegmentSceneID(scenes []scriptpkg.SpecScene, segmentID string, position int) string {
+	for _, scene := range scenes {
+		if strings.TrimSpace(scene.SegmentID) == strings.TrimSpace(segmentID) {
+			return strings.TrimSpace(scene.ID)
+		}
+	}
+	for _, scene := range scenes {
+		if strings.TrimSpace(scene.ID) == strings.TrimSpace(segmentID) {
+			return strings.TrimSpace(scene.ID)
+		}
+	}
+	if position >= 0 && position < len(scenes) {
+		return strings.TrimSpace(scenes[position].ID)
+	}
+	return ""
 }
 
 func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {

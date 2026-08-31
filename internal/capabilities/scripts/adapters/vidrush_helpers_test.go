@@ -26,7 +26,10 @@ func TestBuildCanonicalSegments_ExplicitSegmentsOverrideGeneratedScenes(t *testi
 			{ID: "trail-runner", SourceText: "A runner climbs a ridge."},
 		},
 	}
-	scenes := []scriptpkg.SpecScene{{ID: "scene-0", Text: "All generated prose in one scene."}}
+	scenes := []scriptpkg.SpecScene{
+		{ID: "scene-latte", SegmentID: "latte-art", Text: "Latte scene."},
+		{ID: "scene-coastal", SegmentID: "coastal-road", Text: "Coastal scene."},
+	}
 
 	got := buildCanonicalSegments(plan, scenes, "generated document text")
 	if len(got) != len(plan.Segments) {
@@ -36,6 +39,9 @@ func TestBuildCanonicalSegments_ExplicitSegmentsOverrideGeneratedScenes(t *testi
 		if got[i].ID != want.ID || got[i].Text != want.SourceText || got[i].SourceText != want.SourceText {
 			t.Fatalf("segment[%d] = %#v, want id=%q source=%q", i, got[i], want.ID, want.SourceText)
 		}
+	}
+	if got[0].SceneID != "scene-coastal" || got[1].SceneID != "scene-latte" {
+		t.Fatalf("scene identity mapping = %#v, want SegmentID-based mapping", got)
 	}
 }
 
