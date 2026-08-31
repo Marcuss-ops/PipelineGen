@@ -55,12 +55,24 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 		clipIDs = append(clipIDs, req.Outro.NormalizedClipIDs()...)
 	}
 	fixedClips := make([]scriptgen.FixedClipPreflight, 0, 4)
-	for _, section := range []*scriptpkg.FixedSection{req.Intro, req.Outro} {
+	fixedSections := make([]scriptgen.FixedSectionPreflight, 0, 2)
+	for _, fixedSection := range []struct {
+		name    string
+		section *scriptpkg.FixedSection
+	}{
+		{name: "intro", section: req.Intro},
+		{name: "outro", section: req.Outro},
+	} {
+		name, section := fixedSection.name, fixedSection.section
 		if section == nil {
 			continue
 		}
 		playback := section.NormalizedPlayback()
-		for _, clipID := range section.NormalizedClipIDs() {
+		clipIDs := section.NormalizedClipIDs()
+		fixedSections = append(fixedSections, scriptgen.FixedSectionPreflight{
+			Name: name, ClipIDs: clipIDs, Playback: playback,
+		})
+		for _, clipID := range clipIDs {
 			fixedClips = append(fixedClips, scriptgen.FixedClipPreflight{
 				ClipID: clipID, SourceInMS: playback.SourceInMS, SourceOutMS: playback.SourceOutMS,
 			})
@@ -97,6 +109,7 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 		ClipIDs:            clipIDs,
 		IntroClipIDs:       req.Source.IntroClipIDs,
 		FixedClips:         fixedClips,
+		FixedSections:      fixedSections,
 		ClipProber:         a.clipProber,
 		ClipAudioSource:    a.clipAudioAssetSource,
 		MixPolicy:          req.MixPolicy,

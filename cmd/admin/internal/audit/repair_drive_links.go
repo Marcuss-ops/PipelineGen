@@ -17,13 +17,11 @@
 package audit
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-
 	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"os"
 	"strings"
 	"time"
@@ -31,6 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -342,7 +341,10 @@ func RunRepairDriveLinks(args []string) error {
 		for _, change := range locationChanges {
 			changes = append(changes, change)
 		}
-		committer := imagesregistry.NewSQLiteAssetLocationCommitter(db, root.Outbox.EventsRepo, log)
+		mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
+		if !ok || mutator == nil {
+			return fmt.Errorf("repair requires the canonical asset mutator location port")
+		}
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("repair durable transaction begin failed: %w", err)
@@ -353,8 +355,15 @@ func RunRepairDriveLinks(args []string) error {
 				_ = tx.Rollback()
 			}
 		}()
-		commitResult, err := committer.CommitAssetLocationsTx(ctx, tx, changes)
-		if err != nil {
+		patches := make([]persistence.DriveLocationPatch, 0, len(changes))
+		for _, change := range changes {
+			patches = append(patches, persistence.DriveLocationPatch{
+				AssetID:     change.AssetID,
+				DriveFileID: change.DriveFileID,
+				DriveLink:   change.DriveLink,
+			})
+		}
+		if err := mutator.ReconcileDriveLocationsTx(ctx, tx, patches); err != nil {
 			return fmt.Errorf("repair durable location commit failed: %w", err)
 		}
 		raw, err := json.Marshal(envelope)
@@ -370,10 +379,9 @@ func RunRepairDriveLinks(args []string) error {
 			return fmt.Errorf("repair durable transaction commit failed: %w", err)
 		}
 		committed = true
-		report.SQLiteUpdated = commitResult.RowsUpdated > 0
-		// This is the number of newly inserted idempotent outbox events;
-		// projection processing remains asynchronous and is not claimed here.
-		report.QdrantEventsEmitted = commitResult.EventsInserted
+		report.SQLiteUpdated = len(changes) > 0
+		// Projection processing remains asynchronous and is not claimed here.
+		report.QdrantEventsEmitted = len(changes)
 	}
 
 	// ── Step 7: Refresh Google Docs ───────────────────────────

@@ -25,6 +25,7 @@
 package adapters
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -32,8 +33,8 @@ import (
 // in the SpecScene bindings and reconciles them against the
 // canonical AssetLocationVerifier.
 type AssetLocationReconciliationProcessor struct {
-	verifier  scriptpkg.AssetLocationVerifier
-	committer scriptpkg.AssetLocationCommitter
+	verifier scriptpkg.AssetLocationVerifier
+	mutator  persistence.AssetMutator
 }
 
 // NewAssetLocationReconciliationProcessor creates the processor.
@@ -45,14 +46,13 @@ func NewAssetLocationReconciliationProcessor(
 }
 
 // NewDurableAssetLocationReconciliationProcessor adds the canonical
-// SQLite/outbox commit port. Keeping this as a separate constructor makes
-// the durable dependency explicit and prevents silently ignoring a second
-// committer at composition time.
+// location commit port. The production value is implemented by the same
+// SQLiteMediaCommitter instance used by every other asset mutation path.
 func NewDurableAssetLocationReconciliationProcessor(
 	verifier scriptpkg.AssetLocationVerifier,
-	committer scriptpkg.AssetLocationCommitter,
+	mutator persistence.AssetMutator,
 ) *AssetLocationReconciliationProcessor {
-	return &AssetLocationReconciliationProcessor{verifier: verifier, committer: committer}
+	return &AssetLocationReconciliationProcessor{verifier: verifier, mutator: mutator}
 }
 
 func (p *AssetLocationReconciliationProcessor) Name() ProcessorName {
@@ -60,13 +60,13 @@ func (p *AssetLocationReconciliationProcessor) Name() ProcessorName {
 }
 
 // Policy is BestEffort for verification-only composition. A configured
-// committer makes the complete reconciliation Required because the
+// canonical mutator makes the complete reconciliation Required because the
 // downstream SpecScene must not be published when its durable asset
 // mutation and Qdrant outbox event could not be committed.
 func (p *AssetLocationReconciliationProcessor) Policy(
 	_ *scriptpkg.ResolvedGenerationPlan,
 ) ProcessorPolicy {
-	if p == nil || p.verifier == nil || p.committer != nil {
+	if p == nil || p.verifier == nil || p.mutator != nil {
 		return ProcessorRequired
 	}
 	return ProcessorBestEffort

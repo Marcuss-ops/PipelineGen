@@ -66,7 +66,9 @@ func newTestServiceForStateMachine(t *testing.T, log *zap.Logger) *Service {
 		t.Fatalf("apply test schema: %v", err)
 	}
 
-	return NewService(cfg, db, db.Path(), log)
+	svc := NewService(cfg, db, db.Path(), log)
+	svc.SetAssetMutationCommitter(newTestAssetMutationCommitter(db.DB))
+	return svc
 }
 
 // TestSetIndexState_WritesColumn pins that setIndexState writes the

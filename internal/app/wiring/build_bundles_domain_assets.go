@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
@@ -34,20 +35,21 @@ import (
 // PR-YAGNI-DOMAIN-ASSETS-WIRING (July 2026): replaces the 14 positional
 // arguments of buildDomainAssetServices with a single struct.
 type buildDomainAssetServicesParams struct {
-	ctx           context.Context
-	cfg           *config.Config
-	dbs           *Databases
-	log           *zap.Logger
-	drive         *DriveBundle
-	repos         *RepoBundle
-	search        *SearchBundle
-	process       *ProcessBundle
-	ai            *AIBundle
-	outbox        *OutboxBundle
-	mutationsDisp mutations.AssetMutationDispatcher
-	voMetaWriter  semantic.MetadataWriterPort
-	bundle        *DomainBundle
-	mediaConfig   mediaexec.ExecutionConfig
+	ctx                context.Context
+	cfg                *config.Config
+	dbs                *Databases
+	log                *zap.Logger
+	drive              *DriveBundle
+	repos              *RepoBundle
+	search             *SearchBundle
+	process            *ProcessBundle
+	ai                 *AIBundle
+	outbox             *OutboxBundle
+	canonicalCommitter persistence.AssetCommitter
+	mutationsDisp      mutations.AssetMutationDispatcher
+	voMetaWriter       semantic.MetadataWriterPort
+	bundle             *DomainBundle
+	mediaConfig        mediaexec.ExecutionConfig
 }
 
 // buildDomainAssetServices constructs the voiceover, books, ingest,
@@ -73,11 +75,17 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		voiceoverDestResolver = resolved
 	}
-	canonicalCommitter := newCanonicalAssetCommitter(params.dbs.DualPool.Writer, params.outbox.EventsRepo, params.log)
-	if params.repos != nil && params.repos.ClipsRepo != nil {
-		mediacommitadapters.WireCanonicalAssetStore(params.repos.ClipsRepo.AssetStoreSQLite, canonicalCommitter)
+	canonicalCommitter := params.canonicalCommitter
+	if canonicalCommitter == nil {
+		return fmt.Errorf("compose domains: canonical asset writer is required")
 	}
 	if params.repos != nil {
+		if params.repos.AssetsStore != nil {
+			mediacommitadapters.WireCanonicalAssetStore(params.repos.AssetsStore, canonicalCommitter)
+		}
+		if params.repos.ClipsRepo != nil {
+			mediacommitadapters.WireCanonicalAssetStore(params.repos.ClipsRepo.AssetStoreSQLite, canonicalCommitter)
+		}
 		mediacommitadapters.WireCanonicalImageCommitter(params.repos.ImageRepo, canonicalCommitter)
 	}
 	voCommitter := canonicalCommitter

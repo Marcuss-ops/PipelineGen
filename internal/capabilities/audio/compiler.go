@@ -52,12 +52,28 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 		MixPolicy:       policy.Normalize(),
 	}
 	for _, s := range t.Segments {
-		for i, intent := range s.EffectiveAudioIntents() {
+		intents := s.EffectiveAudioIntents()
+		fixedMedia := hasProtectedOriginalAudio(intents)
+		for i, intent := range intents {
+			// A protected fixed-media scene is authoritative: an accidental
+			// generated voiceover intent must not reach the plan.
+			if fixedMedia && !intent.ProtectedOriginalAudio {
+				continue
+			}
 			durationUS := s.DurationUS
 			if intent.TimelineDurationUS > 0 {
 				durationUS = intent.TimelineDurationUS
 			}
-			e := AudioEvent{EventID: fmt.Sprintf("%s-%s-%d", s.ID, strings.ToLower(string(intent.Mode)), i), TimelineStartUS: s.TimelineStartUS + intent.TimelineOffsetUS, DurationUS: durationUS, SourceInUS: intent.SourceInUS, SourceDurationUS: intent.SourceDurationUS, UseOriginalAudio: intent.UseOriginalAudio, GainDB: intent.GainDB}
+			e := AudioEvent{
+				EventID:                fmt.Sprintf("%s-%s-%d", s.ID, strings.ToLower(string(intent.Mode)), i),
+				TimelineStartUS:        s.TimelineStartUS + intent.TimelineOffsetUS,
+				DurationUS:             durationUS,
+				SourceInUS:             intent.SourceInUS,
+				SourceDurationUS:       intent.SourceDurationUS,
+				UseOriginalAudio:       intent.UseOriginalAudio,
+				ProtectedOriginalAudio: intent.ProtectedOriginalAudio,
+				GainDB:                 intent.GainDB,
+			}
 			var role AudioTrackRole
 			switch intent.Mode {
 			case AudioVoiceover:
@@ -85,14 +101,18 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 	// BGM/SFX levels are policy, not user-controlled asset metadata. Keep the
 	// payload gain fields for wire compatibility, but normalize them here so
 	// every producer (including translated runs) reaches the same master mix.
-	for i, layer := range bgm {
+	protected := protectedAudioWindows(t)
+	filteredBGM := filterAudioLayersOutsideProtectedWindows(bgm, protected)
+	filteredSFX := filterAudioLayersOutsideProtectedWindows(sfx, protected)
+	for i, layer := range filteredBGM {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackBGM, "bgm")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: audio.BackgroundMusicGainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: audio.BackgroundMusicGainDB})
 	}
-	for i, layer := range sfx {
+	for i, layer := range filteredSFX {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")
 		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: audio.SoundEffectGainDB})
 	}
+	p.Automation = filterAutomationOutsideProtectedWindows(p.Automation, protected)
 	applyMixPolicy(&p)
 	if err := p.Seal(); err != nil {
 		return CompiledAudioPlan{}, err
@@ -103,10 +123,114 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 // applyMixPolicy mutates the compiled plan in place to honour its recorded
 // mix policy. It runs after all primary and layer events are materialized so
 // it can see whether a voiceover is actually present before ducking the clip.
+type audioWindow struct {
+	start int64
+	end   int64
+}
+
+func hasProtectedOriginalAudio(intents []AudioIntent) bool {
+	for _, intent := range intents {
+		if intent.ProtectedOriginalAudio {
+			return true
+		}
+	}
+	return false
+}
+
+func protectedAudioWindows(t CanonicalTimeline) []audioWindow {
+	var out []audioWindow
+	for _, segment := range t.Segments {
+		if !hasProtectedOriginalAudio(segment.EffectiveAudioIntents()) {
+			continue
+		}
+		out = append(out, audioWindow{start: segment.TimelineStartUS, end: segment.TimelineStartUS + segment.DurationUS})
+	}
+	return out
+}
+
+func overlapsProtectedWindow(start, end int64, protected []audioWindow) bool {
+	for _, window := range protected {
+		if start < window.end && window.start < end {
+			return true
+		}
+	}
+	return false
+}
+
+// filterAudioLayersOutsideProtectedWindows cuts layers around protected
+// fixed-media spans. The resulting events remain explicit and deterministic:
+// body audio is preserved, while no BGM/SFX source range can enter a fixed
+// section.
+func filterAudioLayersOutsideProtectedWindows(layers []AudioLayer, protected []audioWindow) []AudioLayer {
+	if len(protected) == 0 {
+		return layers
+	}
+	out := make([]AudioLayer, 0, len(layers))
+	for _, layer := range layers {
+		segments := []audioWindow{{start: layer.TimelineStartUS, end: layer.TimelineStartUS + layer.DurationUS}}
+		for _, blocked := range protected {
+			segments = subtractAudioWindow(segments, blocked)
+		}
+		for _, segment := range segments {
+			if segment.end <= segment.start {
+				continue
+			}
+			offset := segment.start - layer.TimelineStartUS
+			copy := layer
+			copy.TimelineStartUS = segment.start
+			copy.DurationUS = segment.end - segment.start
+			copy.SourceInUS += offset
+			out = append(out, copy)
+		}
+	}
+	return out
+}
+
+func subtractAudioWindow(source []audioWindow, blocked audioWindow) []audioWindow {
+	out := make([]audioWindow, 0, len(source)+1)
+	for _, segment := range source {
+		if blocked.end <= segment.start || blocked.start >= segment.end {
+			out = append(out, segment)
+			continue
+		}
+		if segment.start < blocked.start {
+			out = append(out, audioWindow{start: segment.start, end: blocked.start})
+		}
+		if blocked.end < segment.end {
+			out = append(out, audioWindow{start: blocked.end, end: segment.end})
+		}
+	}
+	return out
+}
+
+func filterAutomationOutsideProtectedWindows(automation []AudioAutomation, protected []audioWindow) []AudioAutomation {
+	if len(protected) == 0 {
+		return automation
+	}
+	out := make([]AudioAutomation, 0, len(automation))
+	for _, item := range automation {
+		segments := []audioWindow{{start: item.StartUS, end: item.EndUS}}
+		for _, blocked := range protected {
+			segments = subtractAudioWindow(segments, blocked)
+		}
+		for _, segment := range segments {
+			if segment.end <= segment.start {
+				continue
+			}
+			copy := item
+			copy.StartUS = segment.start
+			copy.EndUS = segment.end
+			out = append(out, copy)
+		}
+	}
+	return out
+}
+
 func applyMixPolicy(p *CompiledAudioPlan) {
 	switch p.MixPolicy {
 	case audio.MixVoiceoverOnly:
-		removeTrack(&p.Tracks, TrackClipAudio)
+		removeUnprotectedClipEvents(&p.Tracks)
+		removeEmptyTracks(&p.Tracks, TrackClipAudio)
 	case audio.MixVoiceoverWithDuckedClip:
 		if findTrack(p.Tracks, TrackVoiceover) == nil {
 			return // nothing to duck under
@@ -116,6 +240,9 @@ func applyMixPolicy(p *CompiledAudioPlan) {
 			return
 		}
 		for i := range clip.Events {
+			if clip.Events[i].ProtectedOriginalAudio {
+				continue
+			}
 			if clip.Events[i].GainDB == 0 {
 				clip.Events[i].GainDB = audio.DuckClipBaseGainDB
 			}
@@ -141,6 +268,9 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 	voTrackID := strings.ToLower(string(TrackVoiceover))
 	var out []AudioAutomation
 	for _, ce := range clip.Events {
+		if ce.ProtectedOriginalAudio {
+			continue
+		}
 		clipEnd := ce.TimelineStartUS + ce.DurationUS
 		for _, ve := range vo.Events {
 			// Duck only while speech is actually present. DurationUS is the
@@ -189,6 +319,32 @@ func removeTrack(tracks *[]AudioTrack, role AudioTrackRole) {
 		if tr.Role != role {
 			out = append(out, tr)
 		}
+	}
+	*tracks = out
+}
+
+func removeUnprotectedClipEvents(tracks *[]AudioTrack) {
+	for i := range *tracks {
+		if (*tracks)[i].Role != TrackClipAudio {
+			continue
+		}
+		out := (*tracks)[i].Events[:0]
+		for _, event := range (*tracks)[i].Events {
+			if event.ProtectedOriginalAudio {
+				out = append(out, event)
+			}
+		}
+		(*tracks)[i].Events = out
+	}
+}
+
+func removeEmptyTracks(tracks *[]AudioTrack, role AudioTrackRole) {
+	out := (*tracks)[:0]
+	for _, track := range *tracks {
+		if track.Role == role && len(track.Events) == 0 {
+			continue
+		}
+		out = append(out, track)
 	}
 	*tracks = out
 }

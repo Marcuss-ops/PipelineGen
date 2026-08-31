@@ -13,9 +13,12 @@ import (
 
 	"go.uber.org/zap"
 
+	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
@@ -27,9 +30,19 @@ func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsReposit
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = assets.NewClipsRepository(db, log)
-	assetStore := assets.NewAssetStoreSQLite(db, log)
-	assetRepo = assetStore.AssetRepository()
+	committer := assets.NewSQLiteMediaCommitter(db, outboxevents.NewRepository(db), mustNewArtlistLedger(t, db), log)
+	mediacommitadapters.WireCanonicalAssetStore(clipsRepo.AssetStoreSQLite, committer)
+	assetRepo = clipsRepo.AssetRepository()
 	return
+}
+
+func mustNewArtlistLedger(t *testing.T, db *sql.DB) *mediaregistry.Ledger {
+	t.Helper()
+	ledger, err := mediaregistry.NewLedger(db)
+	if err != nil {
+		t.Fatalf("NewLedger: %v", err)
+	}
+	return ledger
 }
 
 // zeroTime is the canonical zero-time used by DeletedAt fixtures so that

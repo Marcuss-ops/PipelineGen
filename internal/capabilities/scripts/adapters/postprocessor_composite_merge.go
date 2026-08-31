@@ -767,12 +767,16 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if len(src.Insights.ImageQueries) > 0 {
 		out.Insights.ImageQueries = append([]string(nil), src.Insights.ImageQueries...)
 	}
-	out.Assets.Candidates = appendProviderCandidatesUnique(out.Assets.Candidates, src.Assets.Candidates)
-	out.Assets.SecondaryImages = appendProviderCandidatesUnique(out.Assets.SecondaryImages, src.Assets.SecondaryImages)
-	out.Assets.GeneratedImages = appendProviderCandidatesUnique(out.Assets.GeneratedImages, src.Assets.GeneratedImages)
+	// Provider deltas are normalized against the owning segment before they
+	// are merged. A stamped candidate from another segment is discarded
+	// instead of being rebound by the last processor to touch this result.
+	out.Assets.Candidates = appendProviderCandidatesUnique(out.Assets.Candidates, normalizeVidRushCandidateList(src.Assets.Candidates, out))
+	out.Assets.SecondaryImages = appendProviderCandidatesUnique(out.Assets.SecondaryImages, normalizeVidRushCandidateList(src.Assets.SecondaryImages, out))
+	out.Assets.GeneratedImages = appendProviderCandidatesUnique(out.Assets.GeneratedImages, normalizeVidRushCandidateList(src.Assets.GeneratedImages, out))
 	if src.Assets.PrimaryVideo != nil {
-		primary := *src.Assets.PrimaryVideo
-		out.Assets.PrimaryVideo = &primary
+		if primary, ok := normalizeVidRushCandidate(*src.Assets.PrimaryVideo, out); ok {
+			out.Assets.PrimaryVideo = &primary
+		}
 	}
 	if src.Assets.SelectionReason != "" {
 		out.Assets.SelectionReason = src.Assets.SelectionReason
@@ -795,6 +799,7 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if src.Cache.Binding != "" {
 		out.Cache.Binding = src.Cache.Binding
 	}
+	normalizeVidRushSegmentAssets(&out)
 	return out
 }
 

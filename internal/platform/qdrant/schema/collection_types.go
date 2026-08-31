@@ -27,6 +27,7 @@ package schema
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
 )
@@ -118,6 +119,26 @@ func IsRuntimeCollection(name string) bool {
 func ValidateRuntimeCollection(name string) error {
 	if !IsRuntimeCollection(name) {
 		return fmt.Errorf("collection %q is forbidden on runtime paths; only %q is allowed", name, ProductionCollection)
+	}
+	return nil
+}
+
+// ValidateEmergencyCollection validates a collection supplied to an explicit
+// emergency/DR command. Emergency tooling may inspect versioned and recovery
+// physical collections, but it must never accept the runtime alias or an
+// ambiguous path-like value. Runtime callers must use ValidateRuntimeCollection.
+func ValidateEmergencyCollection(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("emergency collection name is required")
+	}
+	if name == CanonicalRuntimeAlias {
+		return fmt.Errorf("emergency collection %q is an alias; pass the physical collection name", name)
+	}
+	for _, r := range name {
+		if unicode.IsSpace(r) || !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.') {
+			return fmt.Errorf("emergency collection %q contains an unsafe character", name)
+		}
 	}
 	return nil
 }

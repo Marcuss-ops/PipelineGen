@@ -39,6 +39,7 @@ type AssetDraft struct {
 	Filename       string
 	MediaType      string
 	Category       string
+	GroupName      string
 	DurationMs     int64
 	ContentHash    string
 	Description    string
@@ -49,7 +50,9 @@ type AssetDraft struct {
 	FolderID       string
 	FolderPath     string
 	ThumbnailURL   string
+	DownloadLink   string
 	SourceURL      string
+	ClipPageURL    string
 	Title          string
 	SourceProvider string
 	SourceVideoID  string

@@ -39,8 +39,8 @@ import (
 // `result: []pointEntry` JSON envelope.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req schema.SearchRequest) ([]schema.SearchResult, error) {
 	body := map[string]any{
-		"query":        req.QueryVector,
-		"limit":        req.Limit,
+		"query": req.QueryVector,
+		"limit": req.Limit,
 		// Retrieval returns only the canonical identity needed for
 		// SQLite hydration. Qdrant payload metadata is never an API
 		// source of truth.
@@ -206,9 +206,9 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	}
 
 	body := map[string]any{
-		"prefetch":     prefetch,
-		"query":        map[string]any{"fusion": "rrf"},
-		"limit":        req.Limit,
+		"prefetch": prefetch,
+		"query":    map[string]any{"fusion": "rrf"},
+		"limit":    req.Limit,
 		// Retrieval returns only the canonical identity needed for
 		// SQLite hydration. Qdrant payload metadata is never an API
 		// source of truth.

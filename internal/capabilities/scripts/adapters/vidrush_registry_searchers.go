@@ -59,6 +59,15 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	if plan == nil {
 		return updated, nil
 	}
+	if segment.ExecutionMode.IsFixedMedia() {
+		// Fixed media is authoritative. Preserve its existing binding and do
+		// not invoke any provider, catalog, query builder or ranker.
+		updated.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+		updated.Cache.Artlist = "BYPASSED"
+		updated.Cache.InternetImages = "BYPASSED"
+		updated.Cache.YouTube = "BYPASSED"
+		return updated, nil
+	}
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 
@@ -83,14 +92,17 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	imageQueries := fanoutPlan.imageQueries
 	youtubeSources := fanoutPlan.youtubeSources
 	firstEntity := fanoutPlan.firstEntity
-	artlistIdentity := scriptpkg.VidRushSegmentResult{SegmentID: segmentID}
+	// Keep the complete canonical identity when converting Artlist matches.
+	// Using only SegmentID would silently reset Position/TextHash and make a
+	// valid candidate indistinguishable from a foreign-segment binding.
+	artlistIdentity := updated
 
 	if youtubeEnabled && len(youtubeSources) > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			candidates, err := f.youtube.Search(ctx, scriptports.VidRushSearchRequest{
-				SegmentID: segmentID, SceneID: plan.Title, TextHash: textHash, Text: updated.Text,
+				SegmentID: segmentID, Position: updated.Position, SceneID: plan.Title, TextHash: textHash, Text: updated.Text,
 				Query: youtubeQuery(updated), Limit: 3,
 				TargetDurationMs:    segmentDurationMs,
 				SceneDurationMs:     segmentSceneDurationMs(updated),
@@ -330,7 +342,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						f.metrics.IncProviderRequest("internet_images")
 					}
 					searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
-						SegmentID: segmentID, Query: query, Entity: firstEntity,
+						SegmentID: segmentID, Position: updated.Position, Query: query, Entity: firstEntity,
 						TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 						Provider: "internet_images",
 					})

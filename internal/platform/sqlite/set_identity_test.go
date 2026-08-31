@@ -8,15 +8,19 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-func TestOpenSetRejectsNonCanonicalPrimaryPath(t *testing.T) {
+func TestOpenSetDerivesCanonicalPrimaryPath(t *testing.T) {
 	root := t.TempDir()
-	_, err := OpenSet(StorageConfig{
+	set, err := OpenSet(StorageConfig{
 		DataDir:             root,
-		PrimaryDBPath:       filepath.Join(root, "media.db.sqlite"),
 		ObservabilityDBPath: filepath.Join(root, "observability", "api_requests.db.sqlite"),
 	}, zaptest.NewLogger(t))
-	if err == nil {
-		t.Fatal("OpenSet accepted legacy <DataDir>/media.db.sqlite path")
+	if err != nil {
+		t.Fatalf("OpenSet rejected canonical DataDir-derived path: %v", err)
+	}
+	defer set.Close()
+	want := filepath.Join(root, "media", "media.db.sqlite")
+	if got := set.PrimaryPath(); got != want {
+		t.Fatalf("OpenSet primary path = %q, want %q", got, want)
 	}
 }
 

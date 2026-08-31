@@ -50,7 +50,7 @@ func registerStockEntries(r *Registry) {
 	// signal; ErrEnrichmentInvalidLLMResponse is the canonical
 	// re-think-after-3-failures signal (terminal, not retried).
 	// ProducesArtifacts=false (the enrichment pass persists
-	// media_assets.metadata_json inside the per-chunk tx; no separate
+	// canonical asset metadata inside the per-chunk tx; no separate
 	// finalizer needed).
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaStockRLMEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk: read media_assets -> ollama.Enrich -> UPDATE media_assets.metadata_json -> emit informational asset.published v1; operational reindexing uses asset.index.requested). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (enrichment tx owns its own media_assets write; broker legacy Complete is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaStockRLMEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk canonical metadata transaction; emits informational asset.published v1; operational reindexing uses asset.index.requested). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (the enrichment transaction is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
 }

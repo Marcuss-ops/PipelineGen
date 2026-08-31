@@ -128,7 +128,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../lib/canonical_db_path.sh
 source "$PROJECT_ROOT/scripts/lib/canonical_db_path.sh"
-DB_PATH="$(resolve_canonical_primary_db "${DB_PATH:-${VELOX_DB:-}}" "$PROJECT_ROOT")" || exit 3
+DB_PATH="$(canonical_primary_db_path "$PROJECT_ROOT")"
 if [[ -z "$DB_PATH" || ! -f "$DB_PATH" ]]; then
   echo "ERROR: canonical SQLite DB not found: $DB_PATH" >&2
   exit 3

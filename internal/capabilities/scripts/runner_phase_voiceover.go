@@ -80,18 +80,6 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		return false
 	}
 	needsVoiceover := mode == capabilityaudio.AudioModeChunkedVoiceover || mode == capabilityaudio.AudioModeCombinedTimeline
-	// godlike/07 NO-FAKE-AVAILABILITY: fail BEFORE the first TTS call when a
-	// voiceover-producing mode is active but no Project was resolved. The
-	// publisher already fail-closes on an empty Project
-	// (ErrVoiceoverPublishProjectRequired); this gate moves that failure to
-	// the start of the phase so no TTS work is wasted and no "scene"
-	// namespace is silently invented.
-	if needsVoiceover && routing.Project == "" {
-		cause := fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
-		r.failExecutionStep(ctx, exec, voiceoverStep, cause)
-		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
-		return false
-	}
 	// On retry, scenes that already have a voiceover for a language
 	// are skipped. The Upsert-style DocumentPublisher ensures docs
 	// are not duplicated either.
@@ -129,12 +117,24 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// parallel with SceneAnalysis from the SceneTextReady boundary. Each
 		// item is independent; results are applied in canonical order below.
 		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
+		// A request containing only protected fixed media has no TTS work.
+		// Do not require the voiceover publication project in that case:
+		// fixed_media is intentionally excluded from this phase.
+		if len(work) > 0 && routing.Project == "" {
+			cause := fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
+			r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
+			return false
+		}
 		// Record the dispatch plan before fan-out. VoiceoverReused is
 		// scene-projection reuse only (a reference already attached before
 		// this phase); DB fingerprint hits are counted per item AFTER
 		// dispatch and reported in VoiceoverDBCacheHits.
 		requested, reused := 0, 0
 		for _, scene := range result.Scenes {
+			if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
+				continue
+			}
 			for _, lang := range orderedSceneLanguages(scene.Text, req.SourceLanguage, req.Languages) {
 				if strings.TrimSpace(scene.Text[lang]) == "" {
 					continue

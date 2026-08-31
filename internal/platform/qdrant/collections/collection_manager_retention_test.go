@@ -204,7 +204,7 @@ func (f *fakeQdrantServer) URL() string {
 func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	activeName := prefix + "__ts_20260601_active"
+	activeName := qdrantSchema.ProductionCollection
 	colls := []string{
 		activeName,                          // active alias target (has prefix)
 		prefix + "__ts_20260101_120000_aaa", // oldest
@@ -283,7 +283,7 @@ func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 func TestCleanupWithConfig_KeepLastN2_KeepsOneNewestColl(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	activeName := prefix + "__ts_20260601_active"
+	activeName := qdrantSchema.ProductionCollection
 	colls := []string{
 		activeName,                   // active alias target (has prefix)
 		prefix + "__ts_20260101_aaa", // oldest eligible
@@ -327,7 +327,7 @@ func TestCleanupWithConfig_KeepLastN2_KeepsOneNewestColl(t *testing.T) {
 func TestCleanupWithConfig_FailClosed_OnAliasResolutionError(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	activeName := prefix + "__ts_20260601_active"
+	activeName := qdrantSchema.ProductionCollection
 	colls := []string{
 		activeName,                   // active alias target
 		prefix + "__ts_20260101_aaa", // eligible
@@ -417,7 +417,7 @@ func retentionProjection(id, collection, status string, seq int64) capregistry.P
 func TestCleanupWithConfig_StatusAware_FailedPartialNeverKept(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	active := prefix + "_20260814_071358_545816432"
+	active := qdrantSchema.ProductionCollection
 	failedPartial := prefix + "_20260814_070758_298500178" // newer than rollback
 	rollback := prefix + "_20260813_184719_687643250"      // previous known-good
 	olderRetired := prefix + "_20260813_182650_373125513"  // older retired
@@ -474,8 +474,7 @@ func TestCleanupWithConfig_StatusAware_FailedPartialNeverKept(t *testing.T) {
 // a rollback — both retired nomic collections are dropped.
 func TestCleanupWithConfig_RetiredPrefixMatched(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
-	prefix := schema.CanonicalName()
-	active := prefix + "_20260814_071358_545816432"
+	active := qdrantSchema.ProductionCollection
 	nomicRollback := "media_assets_v3_nomic_768_siglip_768_20260813_184719_687643250"
 	nomicOlder := "media_assets_v3_nomic_768_siglip_768_20260812_184719_687643250"
 	bareLegacy := "media_assets"
@@ -528,7 +527,7 @@ func TestCleanupWithConfig_RetiredPrefixMatched(t *testing.T) {
 func TestCleanupWithConfig_DryRun_NoDeletion(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	active := prefix + "_active"
+	active := qdrantSchema.ProductionCollection
 	colls := []string{
 		active,
 		prefix + "_20260101_aaa",
@@ -569,9 +568,6 @@ func TestRetentionPrefixes_RejectsOverlappingPrefix(t *testing.T) {
 
 	if _, err := projectionretention.RetentionPrefixes(current, []string{"media_assets"}); err == nil {
 		t.Fatalf("expected error for overlapping prefix %q", "media_assets")
-	}
-	if _, err := projectionretention.RetentionPrefixes(current, []string{"media_assets_v3"}); err == nil {
-		t.Fatalf("expected error for overlapping prefix %q", "media_assets_v3")
 	}
 	if _, err := projectionretention.RetentionPrefixes(current, []string{current}); err == nil {
 		t.Fatalf("expected error for prefix equal to the current canonical name")

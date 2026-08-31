@@ -14,23 +14,17 @@
 // infra imports so the API tree's dependency on app remains strictly
 // typed.
 //
-// FASE 6 Cut 6.2 sibling (July 2026): the `dualPool *sqlite.DualPool`
-// field is ADDED alongside the existing `main *storage.SQLiteDB` field.
-// `dbs.DualPool.Writer` is the canonical write-side *sql.DB handle for
-// repository construction (Cut 6.2 A3 verdict: every repo gets Writer
-// by default; Reader migration is a forward-pointer to a future cut).
-// `dbs.Main` (the storage.SQLiteDB wrapper) is RETAINED for health /
-// observability consumers that don't decompose into writer/reader
-// (infrahealth.NewSQLiteChecker, NewDriveRootsValidator). The two
-// pools share the same on-disk file via WAL-mode concurrent-reader +
-// single-writer semantics (see sqlite.go::NewDualPool rationale and
-// sqlite/pool.go / pool_test.go for the canonical Cut 6.2 surface).
+// FASE 6 Cut 6.2 compatibility: the `dualPool *sqlite.DualPool` field
+// remains as a reader/writer-shaped adapter for bundle constructors. It
+// is attached to the already-open DatabaseSet.Primary handle; it does not
+// open a second pool or a second operational connection set. The canonical
+// ownership remains DatabaseSet.Primary, while DatabaseSet.Observability is
+// the only separate database.
 package wiring
 
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -58,22 +52,12 @@ type CleanupFunc func()
 // the unified runtime uses only Main for business state and Logs for the
 // separate observability axis.
 //
-// Cut 6.2 sibling (July 2026): the `dualPool` field is added for the
-// WAL-mode reader/writer split. Repositories throughout the composition
-// tree thread Writer and Reader from the dualPool; health/observability
-// consumers keep using storage.SQLiteDB (`dbs.Main.DB`) because the
-// `infrahealth.NewSQLiteChecker(db)` constructor takes the storage
-// wrapper as its argument. The two pools share the on-disk file via
-// WAL-mode SQLite concurrency.
-//
-// Field population rules (godlike/06 SSOT):
+// Compatibility field population rules (godlike/06 SSOT):
 //   - dbs.Set: always non-nil after a successful OpenSet.
-//   - dbs.Main: storage.SQLiteDB wrapper around dbs.Set.Primary.DB.
-//   - dbs.Logs: storage.SQLiteDB wrapper around dbs.Set.Observability.DB.
-//   - dbs.DualPool: nil in tests that bypass NewDualPool (legacy TestDB).
-//     Production callers (InitDatabases) MUST construct a non-nil
-//     DualPool so the canonical instrumentation surface (Cut 6.2
-//     metrics + EXPLAIN) fires at boot.
+//   - dbs.Main: dbs.Set.Primary.
+//   - dbs.Logs: dbs.Set.Observability.
+//   - dbs.DualPool: an attached adapter over dbs.Set.Primary; it never
+//     opens or owns another SQLite handle.
 //   - dbs.Jobs: always nil in the unified single-primary runtime shape.
 type Databases struct {
 	Set      *storage.DatabaseSet
@@ -87,14 +71,8 @@ type Databases struct {
 }
 
 func (d *Databases) Close() {
-	// Close the dualPool BEFORE storage.DatabaseSet so the
-	// Cut 6.2-instrumented txs (connection_wait_seconds,
-	// tx_duration_seconds, sqlite_busy_total) finish their
-	// observation windows before the underlying *sql.DB handles
-	// disappear. The Media DB and jobs DB share no locks today
-	// (different files), but the order is documented as a
-	// future-proof invariant for when a multi-node pgbroker.Store
-	// replaces the SQLite pair with a single PG backend.
+	// Close the compatibility adapter before DatabaseSet. Attached adapters do
+	// not own the primary handle; DatabaseSet remains the sole owner.
 	if d.DualPool != nil {
 		_ = d.DualPool.Close()
 	}
@@ -110,19 +88,9 @@ func (d *Databases) Close() {
 // canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
 // remains outside `internal/platform/sqlite/**`.
 //
-// Cut 6.2 sibling (July 2026): after the storage set opens, the
-// composition root constructs an additional DualPool via
-// storage.NewDualPool on the SAME primary file. The dual pool holds the
-// writer (MaxOpenConns=1) + reader (MaxOpenConns=runtime.NumCPU())
-// per the canonical Cut 6.2 design. Repositories consumed by Build*
-// Bundle()s migrate to dbs.DualPool.Writer (default canonical writer
-// path per Cut 6.2 A3 verdict); read-only observation paths may
-// migrate to dbs.DualPool.Reader in a follow-up cut.
-//
-// godlike/07 fail-closed: a NewDualPool error aborts the boot sequence
-// rather than silently regressing back to dbs.Main.DB. Migration
-// failure surfaces as a typed error from CleanupStack rather than as
-// a deadlocked writer tx at first write.
+// Bundle constructors may still consume the compatibility DualPool shape,
+// but it is attached to the DatabaseSet primary below. No alternative
+// primary opening is allowed here.
 //
 // The retired jobs.db.sqlite split is rejected fail-closed; no second
 // operational database is opened.
@@ -130,10 +98,6 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 	if cfg == nil {
 		return nil, fmt.Errorf("init databases: config is nil")
 	}
-	if err := cfg.Storage.ValidatePrimaryDBPath(); err != nil {
-		return nil, fmt.Errorf("init databases: %w", err)
-	}
-
 	// The unified data-layer contract permits exactly one operational
 	// primary SQLite file. Reject the former split jobs configuration
 	// before opening any database handle.
@@ -143,7 +107,6 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
-		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
 		ObservabilityDBPath: cfg.Storage.ObservabilityDBFullPath(),
 		WorkspaceDir:        cfg.Storage.WorkspaceDir,
 		CacheDir:            cfg.Storage.CacheDir,
@@ -159,22 +122,15 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 		Logs: set.Observability,
 	}
 
-	// Cut 6.2 sibling: build the canonical WAL-mode DualPool on the
-	// same primary file. The dual pool is the canonical connection
-	// surface for code that wants the connection_wait_seconds +
-	// tx_duration_seconds + sqlite_busy_total instrumentation; legacy
-	// dbs.Main.DB remains for health-check consumers that need the
-	// storage.SQLiteDB wrapper (infrahealth.NewSQLiteChecker).
-	dualPool, dErr := storage.NewDualPool(ctx, setCfg.PrimaryDBPath, runtime.NumCPU())
-	if dErr != nil {
+	// Transitional bundle constructors still consume the reader/writer-shaped
+	// field. Attach it to the already-open canonical primary handle; this
+	// performs no second sql.Open and leaves DatabaseSet as sole owner.
+	dualPool, err := storage.AttachDualPool(set.Primary)
+	if err != nil {
 		dbs.Close()
-		return nil, fmt.Errorf("init databases: NewDualPool: %w", dErr)
+		return nil, fmt.Errorf("init databases: attach canonical primary: %w", err)
 	}
 	dbs.DualPool = dualPool
-	log.Info("Cut 6.2 dualPool wired (WAL-mode; writer=1, readers=NumCPU)",
-		zap.Int("num_readers", runtime.NumCPU()),
-		zap.String("primary_path", setCfg.PrimaryDBPath),
-	)
 
 	return dbs, nil
 }

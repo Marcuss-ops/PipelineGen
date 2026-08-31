@@ -65,6 +65,12 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
+	if err := validateArtlistQueryIsolation(input.VidRushSegments); err != nil {
+		return nil, fmt.Errorf("clip_search: Artlist query isolation failed: %w", err)
+	}
+	if !hasMediaSearchSegments(input) {
+		return markArtlistBypassed(input.VidRushSegments), nil
+	}
 	if p.searcher == nil && !cacheOnly {
 		if vidRushArtlistOnlyPlan(plan) {
 			return nil, fmt.Errorf("clip_search: Artlist is required but the searcher is unavailable")
@@ -113,6 +119,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
 				if payload, ok := cached.(artlistSegmentCachePayload); ok {
 					payload = cloneArtlistSegmentCachePayload(payload)
+					payload.Candidates = filterArtlistCandidatesForSegment(payload.Candidates, updated, input.VidRushSegments)
 					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
 					if len(payload.Candidates) > 0 && readyVidRushCandidate(payload.Candidates[0]) {
 						primary := payload.Candidates[0]
@@ -132,6 +139,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				return nil, cacheErr
 			} else if hit {
 				persisted = cloneArtlistSegmentCachePayload(persisted)
+				persisted.Candidates = filterArtlistCandidatesForSegment(persisted.Candidates, updated, input.VidRushSegments)
 				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
 				updated.Cache.Artlist = "HIT_EXACT"
 				cacheStore(&vidrushArtlistCache, cacheKey, persisted)
@@ -190,12 +198,13 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			matches, searchErr = p.searcher.SearchClips(callCtx, plan.Title, searchQueries)
 			return searchErr
 		})
-		segmentMatches = append(segmentMatches, matches...)
+		segmentMatches = append(segmentMatches, filterArtlistMatchesForSegment(matches, updated, input.VidRushSegments)...)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("clip_search: Artlist provider search failed for segment %s: %v", updated.SegmentID, err))
 		}
 		segmentMatches = dedupeArtlistMatches(segmentMatches)
 		candidates := artlistMatchesToCandidates(updated, segmentMatches)
+		candidates = filterArtlistCandidatesForSegment(candidates, updated, input.VidRushSegments)
 
 		if len(candidates) == 0 {
 			updated.Cache.Artlist = "MISS"
@@ -235,6 +244,9 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 	}
 
+	if err := ValidateVidRushArtlistIsolation(segments); err != nil {
+		return nil, fmt.Errorf("clip_search: Artlist candidate/winner isolation failed: %w", err)
+	}
 	return &PostProcessResult{
 		VidRushSegments:        segments,
 		ArtlistClipSuggestions: dedupeArtlistMatches(aggregated),
@@ -294,6 +306,10 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 			rank++
 			assetID := segmentCacheKey(seg.SegmentID, match.Phrase, name, link)
 			candidate := scriptpkg.SegmentAssetCandidate{
+				SegmentID:       seg.SegmentID,
+				Position:        seg.Position,
+				TextHash:        seg.TextHash,
+				EntityID:        "entity:" + provenanceSlug(name),
 				AssetID:         "artlist-" + assetID[:12],
 				Provider:        "artlist",
 				Query:           strings.TrimSpace(match.Phrase),

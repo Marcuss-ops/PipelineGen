@@ -34,6 +34,7 @@ var controlPlaneSQLCanonicalPrefixes = []string{
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",
 	"internal/capabilities/assets/lifecycle/service_voiceover.go",
 	"internal/capabilities/jobs/policy/job_completion_writer.go",
+	"internal/capabilities/jobs/finalize/job_completion_writer.go",
 	"internal/capabilities/assets/finalizer/asset_finalizer_renditions.go",
 	"internal/capabilities/assets/finalizer/asset_finalizer_versions.go",
 	"internal/capabilities/jobs/job_completion_writer.go",

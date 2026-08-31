@@ -80,10 +80,7 @@ func (a *assetRepositoryAdapter) SoftDelete(ctx context.Context, id string) erro
 
 func (a *assetRepositoryAdapter) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := a.store.db.ExecContext(ctx,
-		"UPDATE media_assets SET lifecycle_state = 'ACTIVE', deleted_at = NULL, updated_at = ? WHERE id = ?",
-		nowStr, id)
-	return err
+	return UpdateMediaAssetLifecycle(ctx, a.store.db, id, "ACTIVE", "", nowStr)
 }
 
 func (a *assetRepositoryAdapter) HardDelete(ctx context.Context, id string) error {
@@ -92,11 +89,7 @@ func (a *assetRepositoryAdapter) HardDelete(ctx context.Context, id string) erro
 		return err
 	}
 	defer tx.Rollback()
-
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_locations WHERE asset_id = ?", id)
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_processing WHERE asset_id = ?", id)
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_versions WHERE asset_id = ?", id)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id); err != nil {
+	if err := HardDeleteMediaAssetTx(ctx, tx, id); err != nil {
 		return err
 	}
 	return tx.Commit()

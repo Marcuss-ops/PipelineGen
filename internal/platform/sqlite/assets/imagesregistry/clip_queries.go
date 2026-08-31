@@ -93,26 +93,3 @@ func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*asset.
 	}
 	return clips, rows.Err()
 }
-
-// UpdateDriveFileID updates the drive_file_id for a clip (canonical
-// column).
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX.
-func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
-	clipID = strings.TrimSpace(clipID)
-	fileID = strings.TrimSpace(fileID)
-	if clipID == "" {
-		return fmt.Errorf("clip id is required")
-	}
-
-	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET drive_file_id = ? WHERE id=?", fileID, clipID)
-	return err
-}
-
-// UpdateLegacyFileMD5 updates the legacy_file_md5 for a clip (canonical column).
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX.
-func (s *AssetStoreSQLite) UpdateLegacyFileMD5(ctx context.Context, clipID, hash string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET legacy_file_md5 = ? WHERE id=?", hash, clipID)
-	return err
-}

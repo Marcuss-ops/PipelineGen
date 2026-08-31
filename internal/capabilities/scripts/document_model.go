@@ -40,14 +40,20 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 	renderedLinks := latestLocalizedRenderLinks(result)
 	for _, scene := range result.Scenes {
 		text := strings.TrimSpace(scene.Text[language])
-		if text != "" {
+		if !scene.ExecutionMode.IsFixedMedia() && text != "" {
 			allText = append(allText, text)
+		}
+		displayText := ""
+		if scene.ExecutionMode.IsFixedMedia() {
+			displayText = text
+			text = ""
 		}
 
 		converted := scriptpkg.SpecScene{
 			ID:               scene.ID,
 			Index:            scene.Index,
 			Text:             text,
+			DisplayText:      displayText,
 			Kind:             scriptpkg.SceneNarration,
 			ExecutionMode:    scene.ExecutionMode,
 			FixedPlayback:    cloneFixedPlayback(scene.FixedPlayback),
@@ -182,12 +188,17 @@ func clipBindingFromReference(clip *ClipReference) scriptpkg.ClipBinding {
 	if clip == nil {
 		return scriptpkg.ClipBinding{}
 	}
+	durationMS := int64(math.Round(clip.Duration * 1000))
+	if clip.SourceOutMS > clip.SourceInMS {
+		durationMS = clip.SourceOutMS - clip.SourceInMS
+	}
 	return scriptpkg.ClipBinding{
 		ClipID:          clip.ID,
 		ClipTitle:       clip.Title,
 		DriveLink:       clip.DriveLink,
 		StartMs:         clip.SourceInMS,
 		EndMs:           clip.SourceOutMS,
+		DurationMs:      durationMS,
 		TotalDurationMs: int64(math.Round(clip.Duration * 1000)),
 	}
 }

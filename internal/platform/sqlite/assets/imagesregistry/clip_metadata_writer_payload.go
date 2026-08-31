@@ -36,6 +36,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -50,6 +51,23 @@ import (
 //
 // Conditional keys (Hook, SearchVisibility) are included only when
 // their CanonicalClipMetadata fields are non-empty.
+type metadataTxPatcher interface {
+	PatchMetadataJSONTx(context.Context, *sql.Tx, string, string, string) error
+}
+
+type sqliteMetadataTxPatcher struct{}
+
+// Pin the narrow helper seam to the canonical application port: production
+// adapters must provide this operation through persistence.AssetCommitter.
+var _ metadataTxPatcher = (persistence.AssetMutationCommitter)(nil)
+
+func (sqliteMetadataTxPatcher) PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error {
+	return PatchMediaAssetMetadataJSON(ctx, tx, assetID, patchJSON, updatedAt)
+}
+
+// updateMediaAssetsMetadataTx keeps the historical test/helper signature;
+// production callers use updateMediaAssetsMetadataTxWithPatcher so the
+// mutation is routed through persistence.AssetCommitter.
 func updateMediaAssetsMetadataTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -57,6 +75,20 @@ func updateMediaAssetsMetadataTx(
 	m youtubetypes.CanonicalClipMetadata,
 	nowStr string,
 ) error {
+	return updateMediaAssetsMetadataTxWithPatcher(ctx, sqliteMetadataTxPatcher{}, tx, clipID, m, nowStr)
+}
+
+func updateMediaAssetsMetadataTxWithPatcher(
+	ctx context.Context,
+	patcher metadataTxPatcher,
+	tx *sql.Tx,
+	clipID string,
+	m youtubetypes.CanonicalClipMetadata,
+	nowStr string,
+) error {
+	if patcher == nil {
+		return fmt.Errorf("updateMediaAssetsMetadataTx: canonical metadata patcher is required")
+	}
 	// Build the metadata JSON in Go — avoids the fragile deeply-nested
 	// json_set chain that was error-prone at 18+ keys (PR-YT-DOD-7).
 	meta := map[string]any{
@@ -155,13 +187,7 @@ func updateMediaAssetsMetadataTx(
 		return fmt.Errorf("marshal metadata JSON: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-		UPDATE media_assets
-		SET metadata_json = json_patch(COALESCE(metadata_json, '{}'), ?),
-		    updated_at = ?
-		WHERE id = ?
-	`, string(metaJSON), nowStr, clipID)
-	return err
+	return patcher.PatchMetadataJSONTx(ctx, tx, clipID, string(metaJSON), nowStr)
 }
 
 // buildMetadataPayload builds the JSON payload the outbox event

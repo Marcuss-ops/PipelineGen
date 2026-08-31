@@ -1,8 +1,14 @@
 package script
 
+import "errors"
+
 // SceneExecutionMode declares which pipeline stages may operate on a scene.
 // The empty value is intentionally treated as generated for backward
 // compatibility with existing SpecScene and Scene payloads.
+// ErrFixedMediaDownstreamForbidden identifies an attempted operation by a
+// mutating downstream processor on an authoritative fixed-media scene.
+var ErrFixedMediaDownstreamForbidden = errors.New("fixed media downstream operation forbidden")
+
 type SceneExecutionMode string
 
 const (
@@ -60,6 +66,12 @@ func (m SceneExecutionMode) AllowsMediaReplacement() bool { return !m.IsFixedMed
 // AllowsGeneratedAudio authorizes adding synthesized or otherwise generated
 // audio. Fixed media may still resolve and play its authoritative source audio.
 func (m SceneExecutionMode) AllowsGeneratedAudio() bool { return !m.IsFixedMedia() }
+
+// CountsTowardBodyWordBudget reports whether a scene contributes to the
+// generated BODY word budget. Protected fixed-media scenes are timeline
+// content only: their DisplayText and any legacy text alias never satisfy
+// target_words or the minimum generated-word gate.
+func (m SceneExecutionMode) CountsTowardBodyWordBudget() bool { return !m.IsFixedMedia() }
 
 // AllowsMediaResolution authorizes resolving generated visual media. This is
 // distinct from resolving the already-authoritative fixed clip itself.

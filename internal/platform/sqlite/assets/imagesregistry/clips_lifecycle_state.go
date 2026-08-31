@@ -69,9 +69,7 @@ func (r *ClipsRepository) SetLifecycleState(ctx context.Context, id string, stat
 		return fmt.Errorf("clips.SetLifecycleState: state %q is not canonical (use LifecycleState.Valid to check)", state)
 	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = ?, updated_at = ? WHERE id = ?`,
-		string(state), nowStr, id)
+	err := UpdateMediaAssetLifecycle(ctx, r.db, id, string(state), "", nowStr)
 	if err != nil {
 		return fmt.Errorf("clips.SetLifecycleState(%s, %s): %w", id, state, err)
 	}

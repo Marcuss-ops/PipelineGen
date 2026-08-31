@@ -168,9 +168,15 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 	var items []row
 	for rows.Next() {
 		var it row
-		if err := rows.Scan(&it.assetID, &it.source, &it.videoID, &it.driveID, &it.sourceURL, &it.startMS, &it.endMS, &it.contentSHA); err != nil {
+		var source, videoID, driveID, sourceURL, contentSHA sql.NullString
+		if err := rows.Scan(&it.assetID, &source, &videoID, &driveID, &sourceURL, &it.startMS, &it.endMS, &contentSHA); err != nil {
 			return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: scan asset: %w", err)
 		}
+		it.source = source.String
+		it.videoID = videoID.String
+		it.driveID = driveID.String
+		it.sourceURL = sourceURL.String
+		it.contentSHA = contentSHA.String
 		items = append(items, it)
 	}
 	if err := rows.Err(); err != nil {
@@ -326,11 +332,12 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 	type legacyRow struct{ id, source, mediaType, filename string }
 	var items []legacyRow
 	for rows.Next() {
-		var id, source, mediaType, filename string
+		var id string
+		var source, mediaType, filename sql.NullString
 		if err := rows.Scan(&id, &source, &mediaType, &filename); err != nil {
 			return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: scan row: %w", err)
 		}
-		items = append(items, legacyRow{id: id, source: source, mediaType: mediaType, filename: filename})
+		items = append(items, legacyRow{id: id, source: source.String, mediaType: mediaType.String, filename: filename.String})
 	}
 	if err := rows.Err(); err != nil {
 		return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: iterate: %w", err)

@@ -88,6 +88,9 @@ func (r *GenerationEngineRunner) Generate(
 	if item.ScriptParams.SingleScene {
 		collapseToSingleScene(engineResult)
 	}
+	if err := alignExplicitSegmentOutput(engineResult, item, plan); err != nil {
+		return nil, fmt.Errorf("align explicit segment output: %w", err)
+	}
 
 	engineMs := stageReport.DurationMs
 	tracker.PhaseGenerateDone()
@@ -109,6 +112,56 @@ func (r *GenerationEngineRunner) Generate(
 		EngineMs:     engineMs,
 		EngineReport: stageReport,
 	}, nil
+}
+
+// alignExplicitSegmentOutput protects the scene identity boundary after the
+// model/parser phase. A generator may return one opaque prose block even when
+// the caller supplied ordered segments. Passing that block unchanged to
+// postprocessors gives every scene the same text hash and contaminates
+// provider queries. Explicit segment source text/topic is authoritative here.
+func alignExplicitSegmentOutput(result *EngineResult, item scriptpkg.GenerationItemV2, plan scriptpkg.ResolvedGenerationPlan) error {
+	if result == nil || len(plan.Segments) == 0 || plan.SingleScene {
+		return nil
+	}
+	paragraphs := nonEmptyParagraphs(item.Source.SourceText)
+	scenes := make([]scriptpkg.SpecScene, 0, len(plan.Segments))
+	for i, segment := range plan.Segments {
+		text := strings.TrimSpace(segment.SourceText)
+		if text == "" && i < len(paragraphs) {
+			text = paragraphs[i]
+		}
+		if text == "" {
+			text = strings.TrimSpace(segment.Topic)
+		}
+		if text == "" {
+			return fmt.Errorf("segment %d has no authoritative text", i)
+		}
+		id := strings.TrimSpace(segment.ID)
+		if id == "" {
+			id = fmt.Sprintf("scene-%d", i)
+		}
+		scenes = append(scenes, scriptpkg.SpecScene{ID: id, Index: i, Kind: scriptpkg.SceneNarration, Text: text})
+	}
+	result.Output.SpecScene.Scenes = scenes
+	result.Output.Text = strings.Join(func() []string {
+		out := make([]string, 0, len(scenes))
+		for _, scene := range scenes {
+			out = append(out, scene.Text)
+		}
+		return out
+	}(), "\n\n")
+	return nil
+}
+
+func nonEmptyParagraphs(source string) []string {
+	parts := strings.Split(strings.TrimSpace(source), "\n\n")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 // collapseToSingleScene preserves the generated prose while making the

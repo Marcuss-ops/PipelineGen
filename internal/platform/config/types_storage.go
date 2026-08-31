@@ -1,22 +1,13 @@
 package config
 
-import (
-	"fmt"
-	"path/filepath"
-	"strings"
-)
+import "path/filepath"
 
 type StorageConfig struct {
 	// DataDir is the root for ALL persisted data (DBs + blobs).
 	DataDir string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
-	// PrimaryDBPath is the file path for the unified operational media DB
-	// (jobs, assets, scripts, search_queries, worker_nodes, media_assets,
-	// clip_folders, voiceovers, etc.). It must resolve to
-	// `<DataDir>/media/media.db.sqlite` when explicitly configured.
-	PrimaryDBPath string `yaml:"primary_db_path" env:"VELOX_PRIMARY_DB_PATH" default:""`
 	// ObservabilityDBPath is the file path for the API request log DB
-	// (`api_requests` table + indexes). Distinct from PrimaryDBPath so
-	// log retention doesn't churn the schema-versioned primary DB.
+	// (`api_requests` table + indexes), distinct from the primary database.
+	// Log retention doesn't churn the schema-versioned primary DB.
 	// Default: `<DataDir>/observability/api_requests.db.sqlite`.
 	ObservabilityDBPath string `yaml:"observability_db_path" env:"VELOX_OBSERVABILITY_DB_PATH" default:""`
 	// WorkspaceDir is for transient job scratch space.
@@ -58,29 +49,10 @@ func (s StorageConfig) TempPath() string { return s.FullPath(s.TempDir) }
 // s.DataDir falls back to the struct's documented default ("./data")
 // and is then resolved via filepath.Abs against the current working
 // directory.
-//
-// godlike/06 SSOT: every disk-layout helper on StorageConfig MUST route
-// through this method so callers receive an absolute path regardless of
-// the operator's process cwd or whether the configured DataDir was
-// relative. A relative "./data" returned to filepath.EvalSymlinks stays
-// as "data" (the relative form) and breaks the IsLocalFolderAllowed
-// symlink-canonicalization guard at
-// internal/capabilities/clips/bulk_upload_helpers.go (FASE-N EvalSymlinks
-// audit). The DataDir field itself remains a raw string so existing
-// callers that compose cfg.Storage.DataDir into ad-hoc paths (192+
-// matches) continue to compile; new callers that feed the value into
-// filesystem APIs preferring an absolute root SHOULD prefer AbsDataDir().
-//
-// Empty DataDir or an Abs() failure falls back to the raw input so the
-// caller surfaces a meaningful error downstream — never silently
-// rewrite to "/".
 func (s StorageConfig) AbsDataDir() string { return s.absDataDir() }
 
 // absDataDir is the private resolver underlying AbsDataDir. Empty
-// s.DataDir is treated as "./data" (the struct field's `default:` tag
-// resolves to "./data" at config-load time; this fallback covers the
-// case where the struct is constructed manually without going through
-// the env-var loader).
+// s.DataDir is treated as "./data" for manually constructed configs.
 func (s StorageConfig) absDataDir() string {
 	raw := s.DataDir
 	if raw == "" {
@@ -88,17 +60,12 @@ func (s StorageConfig) absDataDir() string {
 	}
 	abs, err := filepath.Abs(raw)
 	if err != nil {
-		return raw // best-effort: caller surfaces Err downstream
+		return raw
 	}
 	return abs
 }
 
 // FullPath returns the absolute path to a subdirectory within DataDir.
-// The DataDir root is canonicalized via absDataDir() so the result is
-// always absolute regardless of the operator's process cwd or whether
-// the configured DataDir was relative. An ALREADY-ABSOLUTE subDir is
-// returned verbatim (operator override semantics — see StagingPath for
-// the analogous contract on the staging workspace).
 func (s StorageConfig) FullPath(subDir string) string {
 	if filepath.IsAbs(subDir) {
 		return subDir
@@ -106,9 +73,7 @@ func (s StorageConfig) FullPath(subDir string) string {
 	return filepath.Join(s.absDataDir(), subDir)
 }
 
-// mediaSubPath returns the absolute path to a subdirectory under
-// MediaDir. Routed through absDataDir() for the same cwd-absolute
-// invariant that FullPath provides.
+// mediaSubPath returns the absolute path to a subdirectory under MediaDir.
 func (s StorageConfig) mediaSubPath(sub string) string {
 	return filepath.Join(s.absDataDir(), s.MediaDir, sub)
 }
@@ -137,25 +102,10 @@ func (s StorageConfig) ArtlistPath() string { return s.mediaSubPath("artlist") }
 // ImagesPath returns the full path to the images directory.
 func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
 
-// SubtitlesPath returns the full path to the YouTube subtitle cache
-// directory. Used by the wired SubtitleFetcherAdapter (infrastructure
-// layer) at PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06) to cache
-// per-videoID .vtt files for SliceSubtitles lookups.
+// SubtitlesPath returns the full path to the YouTube subtitle cache directory.
 func (s StorageConfig) SubtitlesPath() string { return s.mediaSubPath("subtitles") }
 
-// StagingPath returns the canonical FASE 3 Spina Dorsale staging
-// workspace root. If StagingDir is empty, defaults to
-// `/var/lib/pipelinegen/staging` (per the `default:` tag on the
-// struct field — the env-var loader applies it at startup; this
-// fallback covers the case where the struct is constructed in a
-// test or admin CLI without going through the env loader).
-//
-// godlike/06 SSOT: the single canonical resolution of the staging
-// workspace dir. The composition root passes the returned value to
-// staging.NewStoreService(repo, workspace); consumers downstream
-// (publisher worker pool, finalizer) MUST NOT re-resolve the path
-// independently — they receive the LocalPath via StageReceipt and
-// rely on the Service's idGen to keep paths unique.
+// StagingPath returns the configured staging workspace root.
 func (s StorageConfig) StagingPath() string {
 	if s.StagingDir == "" {
 		return "/var/lib/pipelinegen/staging"
@@ -165,7 +115,6 @@ func (s StorageConfig) StagingPath() string {
 
 func (s StorageConfig) ToDatabaseStorageConfig() interface {
 	DataDir() string
-	PrimaryDBPath() string
 	ObservabilityDBPath() string
 	WorkspaceDir() string
 	CacheDir() string
@@ -181,56 +130,34 @@ func (s StorageConfig) CanonicalPrimaryDBPath() string {
 	return filepath.Join(s.AbsDataDir(), "media", "media.db.sqlite")
 }
 
-// ValidatePrimaryDBPath rejects legacy, relative, and arbitrary primary DB
-// paths before they reach the runtime database opener. Tests and migration
-// tools may still open isolated databases directly through the SQLite package;
-// this gate applies to the configured operational primary only.
-func (s StorageConfig) ValidatePrimaryDBPath() error {
-	configured := strings.TrimSpace(s.PrimaryDBPath)
-	if configured == "" {
-		return nil
-	}
-	configuredAbs, err := filepath.Abs(filepath.Clean(configured))
-	if err != nil {
-		return fmt.Errorf("primary SQLite path %q cannot be resolved: %w", configured, err)
-	}
-	canonical := filepath.Clean(s.CanonicalPrimaryDBPath())
-	if configuredAbs != canonical {
-		return fmt.Errorf("non-canonical primary SQLite path %q; use %q", configured, canonical)
-	}
-	return nil
-}
-
-// Path resolution helpers — used by internal/app/bootstrap.go and any
-// subsystem that needs the canonical disk layout under DataDir.
+// PrimaryDBFullPath derives the primary SQLite path exclusively from DataDir.
+// There is no configured path override: changing the deployment root is done
+// with DataDir, while the database identity remains fixed.
 func (s StorageConfig) PrimaryDBFullPath() string {
-	if configured := strings.TrimSpace(s.PrimaryDBPath); configured != "" {
-		if err := s.ValidatePrimaryDBPath(); err != nil {
-			// Preserve the invalid value so downstream openers can fail closed;
-			// never turn an invalid override into a default database path.
-			return configured
-		}
-	}
 	return s.CanonicalPrimaryDBPath()
 }
+
 func (s StorageConfig) ObservabilityDBFullPath() string {
 	if s.ObservabilityDBPath != "" {
 		return s.ObservabilityDBPath
 	}
 	return s.FullPath("observability/api_requests.db.sqlite")
 }
+
 func (s StorageConfig) WorkspaceFullPath() string {
 	if s.WorkspaceDir != "" {
 		return s.WorkspaceDir
 	}
 	return s.FullPath("workspace")
 }
+
 func (s StorageConfig) CacheFullPath() string {
 	if s.CacheDir != "" {
 		return s.CacheDir
 	}
 	return s.FullPath("cache")
 }
+
 func (s StorageConfig) ExportFullPath() string {
 	if s.ExportDir != "" {
 		return s.ExportDir
@@ -248,7 +175,7 @@ func (a storageSetAdapter) DataDir() string {
 	}
 	return a.s.DataDir
 }
-func (a storageSetAdapter) PrimaryDBPath() string       { return a.s.PrimaryDBFullPath() }
+
 func (a storageSetAdapter) ObservabilityDBPath() string { return a.s.ObservabilityDBFullPath() }
 func (a storageSetAdapter) WorkspaceDir() string        { return a.s.WorkspaceFullPath() }
 func (a storageSetAdapter) CacheDir() string            { return a.s.CacheFullPath() }

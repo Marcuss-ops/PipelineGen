@@ -61,6 +61,43 @@ func (e *sourceFallbackEntityExtractor) ExtractEntities(_ context.Context, req s
 	}}, nil
 }
 
+func TestVidRushSegmentEnricherCacheIsScopedToSegmentIdentity(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &boundaryEntityExtractor{}
+	enricher := NewVidRushSegmentEnricher(extractor, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language:      "en",
+		Title:         "same text in separate scenes",
+		Model:         "fake",
+		PromptVersion: "cache-identity-v1",
+		MediaPlan:     mediadomain.MediaPlanSpec{ForceRefreshExtraction: false},
+	}
+	first, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID: "scene-0", Index: 0, Text: "Shared narration.",
+	})
+	if err != nil {
+		t.Fatalf("first Enrich returned error: %v", err)
+	}
+	second, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID: "scene-1", Index: 1, Text: "Shared narration.",
+	})
+	if err != nil {
+		t.Fatalf("second Enrich returned error: %v", err)
+	}
+	if len(extractor.calls) != 2 {
+		t.Fatalf("extractor calls = %d, want 2 (one per scene identity)", len(extractor.calls))
+	}
+	if first.SegmentID != "scene-0" || first.SceneID != "scene-0" {
+		t.Fatalf("first result identity = %q/%q, want scene-0", first.SegmentID, first.SceneID)
+	}
+	if second.SegmentID != "scene-1" || second.SceneID != "scene-1" {
+		t.Fatalf("second result identity = %q/%q, want scene-1", second.SegmentID, second.SceneID)
+	}
+	if second.Cache.Extraction == "HIT_EXACT" {
+		t.Fatalf("second scene reused first scene cache entry: %#v", second.Cache)
+	}
+}
+
 func TestVidRushSegmentEnricherFallsBackToResearchSourceForEmptyScene(t *testing.T) {
 	vidrushExtractionCache = sync.Map{}
 	extractor := &sourceFallbackEntityExtractor{}

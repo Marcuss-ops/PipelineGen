@@ -136,7 +136,7 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 	// Use a custom schema without payload indexes so we don't need to mock all 16.
 	idxSchema := &schema.IndexSchema{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768",
+		PhysicalName: "media_assets",
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []schema.EmbeddingSpec{
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
@@ -160,7 +160,7 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 					"aliases": []map[string]interface{}{
 						{
 							"alias_name":      "media_assets_current",
-							"collection_name": "media_assets_v3_e5_768",
+							"collection_name": "media_assets",
 						},
 					},
 				},
@@ -171,7 +171,7 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 		// `config` map. The mock intentionally exercises the nested
 		// decoder path so the test cannot silently pass via the
 		// unmarshalLegacyLeaf fallback.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_e5_768":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"status":        "green",
@@ -189,7 +189,7 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 				},
 			})
 		// PUT collection — should NOT be called.
-		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768":
+		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets":
 			createCalls++
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true})
 		// PromoteCandidate's POST /collections/aliases (create_alias action) — success.

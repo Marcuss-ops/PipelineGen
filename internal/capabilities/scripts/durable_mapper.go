@@ -38,13 +38,18 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	lang := string(inLanguage(in))
 	for _, scene := range in.Scenes {
 		text := scene.Text[Language(lang)]
-		if text == "" {
+		if text == "" && !scene.ExecutionMode.IsFixedMedia() {
 			for _, candidate := range scene.Text {
 				text = candidate
 				break
 			}
 		}
-		ds := domain.SpecScene{ID: scene.ID, Index: scene.Index, Text: text, Kind: sceneKind(scene), ExecutionMode: scene.ExecutionMode, FixedPlayback: cloneFixedPlayback(scene.FixedPlayback)}
+		displayText := ""
+		if scene.ExecutionMode.IsFixedMedia() {
+			displayText = text
+			text = ""
+		}
+		ds := domain.SpecScene{ID: scene.ID, Index: scene.Index, Text: text, DisplayText: displayText, Kind: sceneKind(scene), ExecutionMode: scene.ExecutionMode, FixedPlayback: cloneFixedPlayback(scene.FixedPlayback)}
 		ds.AudioMode = string(scene.Audio.Mode)
 		ds.AudioAssetID = scene.Audio.ClipAssetID
 		if scene.FixedPlayback != nil {
@@ -53,12 +58,19 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 			ds.AudioSourceInMS = scene.FixedPlayback.SourceInMS
 			ds.AudioSourceOutMS = scene.FixedPlayback.SourceOutMS
 		}
-		if scene.Clip != nil {
-			ds.Bindings.Clip = &domain.ClipBinding{
-				ClipID: scene.Clip.ID, ClipTitle: scene.Clip.Title, DriveLink: scene.Clip.DriveLink,
-				StartMs: scene.Clip.SourceInMS, EndMs: scene.Clip.SourceOutMS,
-				DurationMs: int64(scene.Clip.Duration * 1000),
+		clips := scene.Clips
+		if len(clips) == 0 && scene.Clip != nil {
+			clips = []*ClipReference{scene.Clip}
+		}
+		for _, clip := range clips {
+			if clip == nil {
+				continue
 			}
+			binding := durableClipBinding(clip)
+			ds.Bindings.Clips = append(ds.Bindings.Clips, binding)
+		}
+		if len(ds.Bindings.Clips) > 0 {
+			ds.Bindings.Clip = &ds.Bindings.Clips[0]
 		}
 		if vo, ok := scene.Voiceover[Language(lang)]; ok {
 			ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
@@ -93,6 +105,29 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 // SSOT + optional SRT/VTT links + hashes) is preserved per language so the
 // legacy domain envelope exposes the same timing references as the durable
 // capability result.
+func durableClipBinding(clip *ClipReference) domain.ClipBinding {
+	if clip == nil {
+		return domain.ClipBinding{}
+	}
+	durationMS := int64(0)
+	if clip.SourceOutMS > clip.SourceInMS {
+		durationMS = clip.SourceOutMS - clip.SourceInMS
+	} else if clip.DurationUS > 0 {
+		durationMS = clip.DurationUS / 1000
+	} else if clip.Duration > 0 {
+		durationMS = int64(clip.Duration * 1000)
+	}
+	return domain.ClipBinding{
+		ClipID:          clip.ID,
+		ClipTitle:       clip.Title,
+		DriveLink:       clip.DriveLink,
+		StartMs:         clip.SourceInMS,
+		EndMs:           clip.SourceOutMS,
+		DurationMs:      durationMS,
+		TotalDurationMs: int64(clip.Duration * 1000),
+	}
+}
+
 func durableVoiceoverBinding(lang string, vo AudioReference) *domain.VoiceoverBinding {
 	binding := &domain.VoiceoverBinding{
 		Status:     "completed",

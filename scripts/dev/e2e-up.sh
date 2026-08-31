@@ -152,7 +152,7 @@ check_ollama_health() {
 run_preflight() {
     PREFLIGHT_BASE_URL="$BASE_URL" \
     PREFLIGHT_QDRANT_URL="$QDRANT_URL" \
-    PREFLIGHT_DB_PATH="$(resolve_canonical_primary_db "${PREFLIGHT_DB_PATH:-${VELOX_DB_PATH:-}}" "$ROOT_DIR")" \
+    PREFLIGHT_DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")" \
     PREFLIGHT_WORKER_URL="${PREFLIGHT_WORKER_URL:-}" \
     PREFLIGHT_OLLAMA_URL="$OLLAMA_URL" \
     PREFLIGHT_CHRONON_URL="${PREFLIGHT_CHRONON_URL:-${CHRONON_URL:-}}" \

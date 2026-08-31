@@ -68,7 +68,6 @@ type DatabaseSet struct {
 // import cycle when this package is consumed by `config`.
 type StorageConfig struct {
 	DataDir             string
-	PrimaryDBPath       string
 	ObservabilityDBPath string
 	WorkspaceDir        string
 	CacheDir            string
@@ -76,15 +75,11 @@ type StorageConfig struct {
 }
 
 // ResolveStorageConfig fills zero-valued paths in `cfg` with the canonical
-// operational layout. PrimaryDBPath is always
-// `<DataDir>/media/media.db.sqlite`; arbitrary primary paths are rejected by
-// OpenSet before any database handle is created.
+// operational layout. The primary database path is derived exclusively from
+// DataDir and cannot be overridden.
 func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	if cfg.DataDir == "" {
 		cfg.DataDir = "data"
-	}
-	if cfg.PrimaryDBPath == "" {
-		cfg.PrimaryDBPath = filepath.Join(cfg.DataDir, "media", "media.db.sqlite")
 	}
 	if cfg.ObservabilityDBPath == "" {
 		cfg.ObservabilityDBPath = filepath.Join(cfg.DataDir, "observability", "api_requests.db.sqlite")
@@ -101,22 +96,6 @@ func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	return cfg
 }
 
-func validateCanonicalPrimaryPath(cfg StorageConfig) error {
-	configured, err := filepath.Abs(filepath.Clean(cfg.PrimaryDBPath))
-	if err != nil {
-		return fmt.Errorf("databaseset: resolve primary SQLite path %q: %w", cfg.PrimaryDBPath, err)
-	}
-	dataDir, err := filepath.Abs(filepath.Clean(cfg.DataDir))
-	if err != nil {
-		return fmt.Errorf("databaseset: resolve data directory %q: %w", cfg.DataDir, err)
-	}
-	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
-	if configured != canonical {
-		return fmt.Errorf("databaseset: non-canonical primary SQLite path %q; use %q", cfg.PrimaryDBPath, canonical)
-	}
-	return nil
-}
-
 // OpenSet opens BOTH the Primary and Observability databases with the
 // canonical wal/foreign_keys/busy_timeout pragma set, runs a Ping on
 // each, and returns the typed DatabaseSet. This is the ONLY entry point
@@ -127,11 +106,12 @@ func OpenSet(cfg StorageConfig, log *zap.Logger) (*DatabaseSet, error) {
 		log = zap.NewNop()
 	}
 	cfg = ResolveStorageConfig(cfg)
-	if err := validateCanonicalPrimaryPath(cfg); err != nil {
-		return nil, err
+	primaryPath, err := filepath.Abs(filepath.Join(cfg.DataDir, "media", "media.db.sqlite"))
+	if err != nil {
+		return nil, fmt.Errorf("databaseset: resolve primary SQLite path: %w", err)
 	}
 
-	primary, err := NewSQLiteDB(filepath.Dir(cfg.PrimaryDBPath), filepath.Base(cfg.PrimaryDBPath), log)
+	primary, err := NewSQLiteDB(filepath.Dir(primaryPath), filepath.Base(primaryPath), log)
 	if err != nil {
 		return nil, fmt.Errorf("databaseset: open primary: %w", err)
 	}

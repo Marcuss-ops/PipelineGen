@@ -90,6 +90,7 @@ func (b *blockingSegmentEnricher) Enrich(ctx context.Context, _ *scriptpkg.Resol
 		Position:  scene.Index,
 		Text:      scene.Text,
 		TextHash:  SceneTextHash(scene.Text),
+		Insights:  scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(scene.Text)},
 	}, nil
 }
 
@@ -115,6 +116,18 @@ func TestIncrementalCoordinator_EachCommittedSceneProcessedExactlyOnce(t *testin
 	assert.Len(t, results, 3)
 	assert.Equal(t, 3, enricher.callCount(), "each committed scene must be enriched exactly once")
 	assert.Equal(t, 0, coordinator.StaleResults())
+}
+
+func TestIncrementalCoordinator_RejectsMismatchedResultIdentity(t *testing.T) {
+	event := SceneCommitted{SceneID: "latte-art", SceneIndex: 1, Text: "A barista makes latte art.", TextHash: SceneTextHash("A barista makes latte art."), Revision: 1}
+	result := scriptpkg.VidRushSegmentResult{
+		SegmentID: "coastal-road", SceneID: "coastal-road", Position: 0,
+		Text: "Aerial coastal road.", TextHash: SceneTextHash("Aerial coastal road."),
+		Insights: scriptpkg.SegmentInsights{SegmentID: "coastal-road", TextHash: SceneTextHash("Aerial coastal road.")},
+	}
+	if err := validateVidRushResultIdentity(event, result); err == nil {
+		t.Fatal("expected mismatched scene identity to be rejected")
+	}
 }
 
 func TestIncrementalCoordinator_PreservesCanonicalSceneOrder(t *testing.T) {

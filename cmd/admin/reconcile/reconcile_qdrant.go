@@ -24,7 +24,9 @@
 //	go run ./cmd/admin reconcile-qdrant --apply                       # dispatch repairs
 //	go run ./cmd/admin reconcile-qdrant --json                        # JSON-only output
 //	go run ./cmd/admin reconcile-qdrant --apply --report-path=./out.json
-//	go run ./cmd/admin reconcile-qdrant --collection=media_assets_v3
+//	The reconciler always targets the production collection `media_assets`.
+//	Collection overrides are intentionally unsupported here; emergency/DR
+//	collection access belongs under `dr-qdrant`.
 //	go run ./cmd/admin reconcile-qdrant --include-lifecycle=ACTIVE,STAGING
 //	go run ./cmd/admin reconcile-qdrant --batch-size=1000
 package reconcile
@@ -42,7 +44,8 @@ import (
 	"go.uber.org/zap"
 
 	reconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
@@ -72,7 +75,8 @@ type reconcileQdrantDeps struct {
 //	--dry-run                            explicit dry-run
 //	--json                               machine-readable output
 //	--report-path=PATH                   write JSON report to disk
-//	--collection=NAME                    override Qdrant collection
+//	Collection is fixed to the production collection `media_assets`.
+//	Collection overrides are reserved for explicitly validated emergency/DR tools.
 //	--include-lifecycle=ACTIVE,STAGING   restrict SQLite scan to these states
 //	--batch-size=N                       points per scroll page (default 500)
 func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
@@ -89,7 +93,11 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 		case strings.HasPrefix(a, "--report-path="):
 			deps.ReportPath = strings.TrimPrefix(a, "--report-path=")
 		case strings.HasPrefix(a, "--collection="):
-			deps.Collection = strings.TrimPrefix(a, "--collection=")
+			collection := strings.TrimSpace(strings.TrimPrefix(a, "--collection="))
+			if collection != qdrantschema.ProductionCollection {
+				return deps, fmt.Errorf("--collection=%q is forbidden by the production reconciler; only %q is allowed (use an explicitly validated dr-qdrant emergency command for overrides)", collection, qdrantschema.ProductionCollection)
+			}
+			deps.Collection = collection
 		case strings.HasPrefix(a, "--include-lifecycle="):
 			deps.IncludeLifecycle = strings.Split(strings.TrimPrefix(a, "--include-lifecycle="), ",")
 			for i, s := range deps.IncludeLifecycle {
@@ -119,7 +127,7 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 //  1. Load config; require qdrant.enabled=true.
 //  2. Open the media DB.
 //  3. Build canonical stack: DefaultV3Schema, asset store, transport.Client.
-//  4. Resolve target collection (override > runtime alias target).
+//  4. Select the fixed production collection (`media_assets`).
 //  5. Wire service ports from the canonical concrete adapters.
 //  6. Run Service.Reconcile.
 //  7. Pretty-print (or JSON-only) the resulting ReconcileReport.
@@ -147,18 +155,19 @@ func RunReconcileQdrant(args []string) error {
 		zap.Bool("apply", deps.Apply),
 		zap.Bool("dry_run", deps.DryRun || !deps.Apply),
 		zap.String("report_path", deps.ReportPath),
-		zap.String("collection_override", deps.Collection),
+		zap.String("collection", qdrantschema.ProductionCollection),
 		zap.Strings("include_lifecycle", deps.IncludeLifecycle),
 		zap.Int("batch_size", deps.BatchSize),
 		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 	)
 
 	// 1. Open the media DB.
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
+	sqliteDB := dbSet.Primary
 
 	// 2. Build canonical stack.
 	schema := qdrantschema.DefaultV3Schema()
@@ -169,28 +178,25 @@ func RunReconcileQdrant(args []string) error {
 		Timeout: cfg.Qdrant.Timeout,
 	}, log)
 
-	// 3. Resolve collection: explicit override > runtime alias target.
-	collection := deps.Collection
-	if collection == "" {
-		resolved, err := client.GetAliasTarget(ctx, schema.RuntimeAlias)
-		if err != nil {
-			return fmt.Errorf("resolve runtime alias %q: %w", schema.RuntimeAlias, err)
-		}
-		if resolved == "" {
-			return fmt.Errorf(
-				"runtime alias %q has no target; pass --collection=NAME to scrub a specific collection",
-				schema.RuntimeAlias,
-			)
-		}
-		collection = resolved
+	// 3. Runtime reconciliation is production-only. Even when the
+	// compatibility flag is supplied, the target is selected from the
+	// canonical production constant rather than from user input.
+	collection := qdrantschema.ProductionCollection
+	if err := qdrantschema.ValidateRuntimeCollection(collection); err != nil {
+		return fmt.Errorf("validate production reconcile collection: %w", err)
 	}
-	log.Info("reconciling collection", zap.String("collection", collection))
+	log.Info("reconciling production collection", zap.String("collection", collection))
 
 	// 4. Build port adapters.
 	qdrantAdapter := &qdrantListerAdapter{client: client}
 	payloadAdapter := &qdrantPayloadAdapter{client: client}
 	outboxEventsRepo := outboxevents.NewRepository(sqliteDB.DB)
-	outboxAdapter := outbox.NewRepairAdapter(sqliteDB.DB, outboxEventsRepo, schema.Version)
+	ledger, err := regsql.NewLedger(sqliteDB.DB)
+	if err != nil {
+		return fmt.Errorf("create canonical asset ledger: %w", err)
+	}
+	canonicalWriter := imagesregistry.NewSQLiteMediaCommitter(sqliteDB.DB, outboxEventsRepo, ledger, log)
+	outboxAdapter := outbox.NewRepairAdapter(sqliteDB.DB, outboxEventsRepo, schema.Version, canonicalWriter)
 	sqliteAdapter := &reconcileReaderAdapter{store: assetStore}
 	pointIDFor := qdrantschema.AssetIDToQdrantPointID
 

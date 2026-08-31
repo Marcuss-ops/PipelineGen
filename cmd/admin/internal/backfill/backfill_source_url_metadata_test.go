@@ -26,6 +26,7 @@ func newBackfillTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open in-memory sqlite: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`CREATE TABLE media_assets (
 		id TEXT PRIMARY KEY,
@@ -91,7 +92,7 @@ func TestBackfillSourceURLMetadata_BackfillsNonImage(t *testing.T) {
 	// Legacy row with NULL media_type behaves like a non-image row.
 	insertBackfillRow(t, db, "legacy-1", "https://example.com/legacy.mp4", "", `{}`)
 
-	matched, updated, err := backfillSourceURLMetadata(context.Background(), db, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestBackfillSourceURLMetadata_DoesNotOverwriteExistingKey(t *testing.T) {
 	db := newBackfillTestDB(t)
 	insertBackfillRow(t, db, "clip-1", "https://example.com/current.mp4", "clip", `{"source_url":"https://example.com/original.mp4"}`)
 
-	matched, updated, err := backfillSourceURLMetadata(context.Background(), db, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -133,13 +134,13 @@ func TestBackfillSourceURLMetadata_IsIdempotent(t *testing.T) {
 	db := newBackfillTestDB(t)
 	insertBackfillRow(t, db, "clip-1", "https://example.com/a.mp4", "clip", `{"title":"A"}`)
 
-	if _, updated, err := backfillSourceURLMetadata(context.Background(), db, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("first run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 	before, _ := readBackfillRow(t, db, "clip-1")
 
 	// Second run must be a no-op (key now present).
-	matched, updated, err := backfillSourceURLMetadata(context.Background(), db, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestBackfillSourceURLMetadata_RespectsLimit(t *testing.T) {
 		id := "clip-" + time.Duration(i).String() + "-" + string(rune('a'+i))
 		insertBackfillRow(t, db, id, "https://example.com/"+id+".mp4", "clip", `{}`)
 	}
-	matched, updated, err := backfillSourceURLMetadata(context.Background(), db, 2)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 2)
 	if err != nil {
 		t.Fatalf("backfill with limit: %v", err)
 	}

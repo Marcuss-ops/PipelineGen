@@ -81,10 +81,12 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 	clips := &fakeClips{}
 	rec := &recordingOutboxEventsRepo{}
 	d := &Dispatcher{
-		clips:            clips,
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
+		clips:              clips,
+		outboxEventsRepo:   rec,
+		txmgr:              &txMgrRun{},
+		log:                zap.NewNop(),
+		discoveryCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
+		canonicalCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
 	}
 	clip := &asset.Asset{
 		ID:     "artlist_abc123",
@@ -119,12 +121,15 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 // IDs that happen to share the same string MUST still produce
 // distinct JobKeys.
 func TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys(t *testing.T) {
+	clips := &fakeClips{}
 	rec := &recordingOutboxEventsRepo{}
 	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
+		clips:              clips,
+		outboxEventsRepo:   rec,
+		txmgr:              &txMgrRun{},
+		log:                zap.NewNop(),
+		discoveryCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
+		canonicalCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
 	}
 	a := &asset.Asset{ID: "x", Source: asset.Source("artlist")}
 	b := &asset.Asset{ID: "x", Source: asset.Source("youtube")}
@@ -158,6 +163,9 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	clip := &asset.Asset{
 		ID:     "artlist_abc123",
@@ -221,6 +229,9 @@ func TestEnqueueAndIndex_SameInputsSameEventKey(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	clip := &asset.Asset{
 		ID:     "artlist_xyz",
@@ -255,6 +266,9 @@ func TestEnqueueAndIndex_DifferentContentHashDifferentEventKey(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	clip := &asset.Asset{ID: "artlist_xyz", Source: asset.Source("artlist")}
 	if err := d.EnqueueAndIndex(context.Background(), clip, "sha256:aaaa"); err != nil {
@@ -279,6 +293,9 @@ func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	const contentHash = "sha256:cafecafe"
 	yt := &asset.Asset{ID: "vid_1", Source: asset.Source("youtube")}
@@ -313,6 +330,9 @@ func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	const assetID = "vo_voiceover_xyz"
 	const contentHash = "sha256:deadbeef"
@@ -355,11 +375,15 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recordingOutboxEventsRepo{}
+			clips := &fakeClips{}
 			d := &Dispatcher{
-				clips:            &fakeClips{},
+				clips:            clips,
 				outboxEventsRepo: rec,
 				txmgr:            &txMgrRun{},
 				log:              zap.NewNop(),
+				canonicalCommitter: &fakeSQLiteAssetCommitter{
+					outbox: rec, txmgr: &txMgrRun{}, discovery: clips,
+				},
 			}
 			const contentHash = "sha256:1234"
 			if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), tc.assetID, tc.wantSegment, contentHash); err != nil {
@@ -387,6 +411,9 @@ func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), "weird_unknown_xyz", "", "sha256:1234")
 	if err == nil {
@@ -414,6 +441,9 @@ func TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey(t *testing.T) 
 		outboxEventsRepo: rec,
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
+		},
 	}
 	const assetID = "yt_vid_0_60_v1" // DetectSourceFromAssetID → "youtube"
 	const contentHash = "sha256:abcdef"

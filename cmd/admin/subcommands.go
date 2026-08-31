@@ -37,6 +37,7 @@ var commandRegistry = map[string]commandHandler{
 	"apply-asset-metadata":           maintenance.RunApplyAssetMetadata,
 	"audit-google-doc-links":         audit.RunAuditGoogleDocLinks,
 	"audit-google-doc-render":        audit.RunAuditGoogleDocRender,
+	"audit-matt-damon-assets":        audit.RunMattDamonAssetsAudit,
 	"apply-asset-metadata-batch":     maintenance.RunApplyAssetMetadataBatch,
 	"apply-additional-sound-effects": soundeffects.RunApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      backfill.RunBackfillAssetEmbeddings,

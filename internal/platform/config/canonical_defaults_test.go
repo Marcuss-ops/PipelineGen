@@ -89,17 +89,17 @@ func TestConfig_CanonicalPort_Is8000AcrossRuntimeSurfaces(t *testing.T) {
 // FeaturesConfig exactly. Drift between the example yaml and the in-tree
 // flags causes silent drops at load time (yaml unmarshal ignores unknown
 // fields while missing fields silently default to false).
-func TestConfig_PrimaryDBPath_IsExplicitlyCanonical(t *testing.T) {
+func TestConfig_PrimaryDBPath_IsDerivedFromDataDir(t *testing.T) {
 	root := repoRoot(t)
 	content := readFile(t, root, "config.example.yaml")
 	if content == "" {
 		t.Skip("config.example.yaml missing")
 	}
-	if !strings.Contains(content, "primary_db_path: \"./data/media/media.db.sqlite\"") {
-		t.Fatalf("config.example.yaml must explicitly declare the canonical primary DB path")
+	if strings.Contains(content, "primary_db_path:") {
+		t.Fatalf("config.example.yaml must not expose a configurable primary_db_path")
 	}
-	if strings.Contains(content, "primary_db_path: \"./data/media.db.sqlite\"") {
-		t.Fatalf("config.example.yaml still declares the legacy primary DB path")
+	if !strings.Contains(content, "data_dir: \"./data\"") {
+		t.Fatalf("config.example.yaml must declare data_dir as the primary DB root")
 	}
 }
 

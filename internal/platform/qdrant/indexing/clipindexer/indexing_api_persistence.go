@@ -8,7 +8,6 @@ package clipindexer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,55 +58,25 @@ func (s *Service) lookupTranscriptPath(ctx context.Context, clipID string) strin
 	return candidate
 }
 
-func (s *Service) persistEmbeddingJSON(
-	ctx context.Context, clipID string, embedding []float64,
-) error {
-	if s.db == nil {
-		return fmt.Errorf("clipindexer: db handle is nil")
+func (s *Service) persistEmbeddingJSON(ctx context.Context, clipID string, embedding []float64) error {
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("clipindexer: canonical asset mutation committer is not wired")
 	}
-	raw, err := json.Marshal(embedding)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `
-UPDATE media_assets
-   SET embedding_json = ?
- WHERE id = ?`, string(raw), clipID)
-	return err
+	return s.assetMutator.PersistEmbeddingJSON(ctx, clipID, "semantic", embedding, "")
 }
 
-func (s *Service) persistTranscriptEmbedding(
-	ctx context.Context, clipID string, embedding []float64,
-) error {
-	if s.db == nil {
-		return fmt.Errorf("clipindexer: db handle is nil")
+func (s *Service) persistTranscriptEmbedding(ctx context.Context, clipID string, embedding []float64) error {
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("clipindexer: canonical asset mutation committer is not wired")
 	}
-	raw, err := json.Marshal(embedding)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `
-UPDATE media_assets
-   SET transcript_embedding = ?
- WHERE id = ?`, string(raw), clipID)
-	return err
+	return s.assetMutator.PersistEmbeddingJSON(ctx, clipID, "transcript", embedding, "")
 }
 
-func (s *Service) persistVisualEmbedding(
-	ctx context.Context, clipID string, embedding []float64,
-) error {
-	if s.db == nil {
-		return fmt.Errorf("clipindexer: db handle is nil")
+func (s *Service) persistVisualEmbedding(ctx context.Context, clipID string, embedding []float64) error {
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("clipindexer: canonical asset mutation committer is not wired")
 	}
-	raw, err := json.Marshal(embedding)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `
-UPDATE media_assets
-   SET visual_embedding = ?
- WHERE id = ?`, string(raw), clipID)
-	return err
+	return s.assetMutator.PersistEmbeddingJSON(ctx, clipID, "visual", embedding, "")
 }
 
 // persistAudioEmbedding persists the CLAP-HTSAT 512-dim vector to
@@ -123,19 +92,9 @@ UPDATE media_assets
 // PayloadMapper.AssetToPoint → IndexDocumentToPoint). This helper
 // is invoked from indexAudioViaAPI inside the synchronous IndexClip
 // path; the Qdrant write is async via the existing outbox contract.
-func (s *Service) persistAudioEmbedding(
-	ctx context.Context, clipID string, embedding []float64,
-) error {
-	if s.db == nil {
-		return fmt.Errorf("clipindexer: db handle is nil")
+func (s *Service) persistAudioEmbedding(ctx context.Context, clipID string, embedding []float64) error {
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("clipindexer: canonical asset mutation committer is not wired")
 	}
-	raw, err := json.Marshal(embedding)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `
-UPDATE media_assets
-   SET audio_embedding = ?
- WHERE id = ?`, string(raw), clipID)
-	return err
+	return s.assetMutator.PersistEmbeddingJSON(ctx, clipID, "audio", embedding, "")
 }

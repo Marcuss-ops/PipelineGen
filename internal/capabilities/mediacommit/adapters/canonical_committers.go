@@ -11,6 +11,7 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit"
@@ -81,7 +82,7 @@ func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer pe
 				}},
 				Image: &mediacommit.ImageDraft{URL: img.SourceURL, TagsJSON: string(tagsJSON), TagsNorm: normalizeImageTags(img.Tags), Width: img.Width, Height: img.Height, RelativePath: img.PathRel, Origin: string(img.Origin), Provider: string(img.Provider)},
 			},
-			Source: mediacommit.AssetSourceDraft{SourceType: "image", SourceURI: ref, SourceVersion: ref, IsPrimary: true},
+			Source:   mediacommit.AssetSourceDraft{SourceType: "image", SourceURI: ref, SourceVersion: ref, IsPrimary: true},
 			Taxonomy: taxonomy, Content: optionalImageContent(contentHash),
 			IndexPolicy: mediacommit.IndexPolicy{Indexable: true}, Actor: "image-repository",
 		}
@@ -116,23 +117,72 @@ func WireCanonicalAssetStore(store *sqassets.AssetStoreSQLite, committer persist
 		if mediaType == "" {
 			mediaType = "video"
 		}
+		lifecycle := string(a.LifecycleState)
+		if lifecycle == "" {
+			lifecycle = "ACTIVE"
+		}
+		filename := a.Filename
+		if filename == "" {
+			filename = a.ID + ".asset"
+		}
+		metadata := persistence.TypedMetadata{
+			Title:          a.Title(),
+			Description:    a.Description(),
+			SourceVersion:  a.GetMetadataString("source_version"),
+			SourceProvider: a.MetadataSourceProvider(),
+			SourceVideoID:  a.MetadataSourceVideoID(),
+			Tags:           append([]string(nil), a.Tags...),
+			Category:       a.Category,
+			Extra:          a.Metadata,
+		}
+		if metadata.Title == "" {
+			metadata.Title = a.Name
+		}
 		_, err := committer.CommitAsset(ctx, persistence.CommitRequest{
-			AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
-			MediaType: mediaType, Category: a.Category, DurationMs: a.Duration.Milliseconds(),
-			ContentHash: a.LegacyFileMD5(), SearchText: a.SearchText, LifecycleState: string(a.LifecycleState),
-			ThumbnailURL: a.ThumbnailURL, SourceURL: a.SourceURL, Title: a.Name,
-			Metadata: persistence.TypedMetadata{Extra: a.Metadata},
+			AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: filename,
+			MediaType: mediaType, Category: a.Category, GroupName: a.Group, DurationMs: a.Duration.Milliseconds(),
+			ContentHash: a.ContentHash(), SearchText: a.SearchText, LifecycleState: lifecycle,
+			LocalPath: a.LocalPath(), FolderID: a.FolderID(), FolderPath: a.FolderPath(),
+			ThumbnailURL: a.ThumbnailURL, DownloadLink: a.DownloadLink(), SourceURL: a.SourceURL, Title: metadata.Title,
+			SourceProvider: a.MetadataSourceProvider(), SourceVideoID: a.MetadataSourceVideoID(),
+			Metadata: metadata, Locations: assetLocationsFromAsset(a),
 			IndexState: a.GetMetadataString("index_state"), AssetVersion: ref,
 			EmitIndexEvent: false,
 		})
 		return err
 	})
-	if mutator, ok := committer.(persistence.AssetMutator); ok {
+	if mutator, ok := committer.(persistence.AssetMutationCommitter); ok {
 		store.SetCanonicalDelete(func(ctx context.Context, id string) error {
 			state := "DELETED"
-			return mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: id, LifecycleState: &state})
+			deletedAt := time.Now().UTC().Format(time.RFC3339Nano)
+			return mutator.UpdateLifecycle(ctx, id, state, deletedAt, deletedAt)
 		})
 	}
+}
+
+func assetLocationsFromAsset(a *asset.Asset) []asset.LocationCommit {
+	if a == nil {
+		return nil
+	}
+	locations := make([]asset.LocationCommit, 0, 2)
+	if localPath := a.LocalPath(); localPath != "" {
+		locations = append(locations, asset.LocationCommit{
+			Kind: "local", Provider: "local", URI: localPath,
+			MimeType: string(a.MediaType), LegacyFileMD5: a.LegacyFileMD5(),
+		})
+	}
+	if fileID, link := a.DriveFileID(), a.DriveLink(); fileID != "" || link != "" {
+		uri := link
+		if fileID != "" {
+			uri = "drive://" + fileID
+		}
+		locations = append(locations, asset.LocationCommit{
+			Kind: "drive", Provider: "google_drive", ExternalID: fileID,
+			URI: uri, WebViewLink: link, DownloadURL: a.DownloadLink(),
+			MimeType: string(a.MediaType), LegacyFileMD5: a.LegacyFileMD5(), IsPrimary: true,
+		})
+	}
+	return locations
 }
 
 func optionalImageContent(hash string) *mediacommit.ContentIdentity {

@@ -154,43 +154,39 @@ func TestErrZombieSweepOpenDB_IsExported(t *testing.T) {
 // database. The configured primary path remains the only accepted path.
 func TestResolveDBPath_RejectsNonCanonicalFlag(t *testing.T) {
 	cfg := &config.Config{Storage: config.StorageConfig{DataDir: t.TempDir()}}
-	got := cli.ResolveDBPath(cfg, "/explicit/override.db.sqlite")
-	if got != "" {
-		t.Errorf("resolveDBPath: non-canonical --db-path must be rejected (got %q)", got)
+	got := cli.ResolveDBPath(cfg)
+	want := cfg.Storage.PrimaryDBFullPath()
+	if got != want {
+		t.Errorf("resolveDBPath: must derive from DataDir (got %q, want %q)", got, want)
 	}
 }
 
-func TestResolveDBPath_AcceptsCanonicalFlag(t *testing.T) {
+func TestResolveDBPath_IgnoresMediaDir(t *testing.T) {
 	dataDir := t.TempDir()
-	cfg := &config.Config{Storage: config.StorageConfig{DataDir: dataDir}}
-	canonical := cfg.Storage.CanonicalPrimaryDBPath()
-	got := cli.ResolveDBPath(cfg, canonical)
-	if got != canonical {
-		t.Errorf("resolveDBPath: canonical --db-path must resolve (got %q, want %q)", got, canonical)
+	cfg := &config.Config{Storage: config.StorageConfig{DataDir: dataDir, MediaDir: "alternate-media"}}
+	want := cfg.Storage.CanonicalPrimaryDBPath()
+	got := cli.ResolveDBPath(cfg)
+	if got != want {
+		t.Errorf("resolveDBPath: must ignore MediaDir (got %q, want %q)", got, want)
 	}
 }
 
-// TestResolveDBPath_CfgNil_FallsThroughToEmpty pins the cfg=nil
-// fallback: when the flag is empty AND cfg is nil, the function
-// returns "" so the caller surfaces ErrZombieSweepNoDB. Per
-// godlike/07 NO-FAKE-AVAILABILITY: never silently default to a
-// hard-coded path; an unconfigured caller must see the typed
-// error.
+// TestResolveDBPath_CfgNil_ReturnsEmpty pins the nil-config guard:
+// callers must surface a typed error instead of inventing a path.
 func TestResolveDBPath_CfgNil_FallsThroughToEmpty(t *testing.T) {
-	got := cli.ResolveDBPath(nil, "")
+	got := cli.ResolveDBPath(nil)
 	if got != "" {
 		t.Errorf(`resolveDBPath: cfg=nil + empty flag must return empty string (caller surfaces ErrZombieSweepNoDB); got %q`, got)
 	}
 }
 
 // TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath pins the
-// canonical SSOT delegation: when the flag is empty AND cfg is
-// non-nil, the function delegates to cfg.Storage.PrimaryDBFullPath().
+// canonical SSOT delegation from DataDir to PrimaryDBFullPath().
 // The primary path is always rooted at DataDir/media/media.db.sqlite;
 // MediaDir controls media blobs and cannot redirect the database.
 func TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath(t *testing.T) {
 	cfg := &config.Config{Storage: config.StorageConfig{DataDir: t.TempDir(), MediaDir: "/ignored-for-db"}}
-	got := cli.ResolveDBPath(cfg, "")
+	got := cli.ResolveDBPath(cfg)
 	want := cfg.Storage.PrimaryDBFullPath()
 	if got != want {
 		t.Errorf("resolveDBPath: must delegate to cfg.Storage.PrimaryDBFullPath() (got %q, want %q)", got, want)

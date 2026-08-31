@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 
@@ -61,6 +62,7 @@ type Service struct {
 	// source_registry_seq so the startup sequence gate no longer sees a stale
 	// projection after incremental indexing. nil is safe (tests / Qdrant-off).
 	projectionAdvancer capregistry.ProjectionSequenceAdvancer
+	assetMutator       persistence.AssetMutationCommitter
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.
@@ -78,6 +80,15 @@ func NewService(cfg *Config, db *storage.SQLiteDB, dbPath string, log *zap.Logge
 		cfg:        cfg,
 		log:        log,
 		scriptPath: cfg.ScriptPath,
+	}
+}
+
+// SetAssetMutationCommitter wires the canonical media mutation boundary.
+// Production composition must provide the same AssetCommitter used by ingest;
+// a nil value is retained only for isolated read-only tests.
+func (s *Service) SetAssetMutationCommitter(mutator persistence.AssetMutationCommitter) {
+	if s != nil {
+		s.assetMutator = mutator
 	}
 }
 

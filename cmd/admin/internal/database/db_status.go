@@ -39,7 +39,6 @@ func RunDBStatus(ctx context.Context, args []string) error {
 
 	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
-		PrimaryDBPath:       resolved.PrimaryDBPath(),
 		ObservabilityDBPath: resolved.ObservabilityDBPath(),
 	}, log)
 	if err != nil {

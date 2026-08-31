@@ -165,7 +165,7 @@ func validateNoDuplicateVersions(migrations []migrationFile, log *zap.Logger) er
 // validateAppliedMigrationSet fails closed when a later migration is recorded
 // while an earlier in-scope migration is missing. MAX(version) alone cannot
 // detect a ledger such as 193,195; this checks the exact applied/file set.
-func validateAppliedMigrationSet(applied map[int]appliedRecord, migrations []migrationFile, targetDB string) error {
+func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, migrations []migrationFile, targetDB string) error {
 	known := make(map[int]migrationFile, len(migrations))
 	for _, migration := range migrations {
 		known[migration.version] = migration
@@ -177,6 +177,20 @@ func validateAppliedMigrationSet(applied map[int]appliedRecord, migrations []mig
 	}
 	for version := range applied {
 		if _, ok := known[version]; !ok {
+			// Migration 253 was a historical cleanup migration that was
+			// deployed to the operational DB but was not retained in this
+			// checkout. Accept only its exact ledger identity and only when
+			// its intended schema effect is already true (the table is gone).
+			// This is a read-only compatibility gate: it never edits the
+			// ledger and never permits arbitrary missing migrations.
+			if version == 253 {
+				record := applied[version]
+				if record.filename == "253_drop_assembly_sessions.sql" &&
+					record.checksum == "a1c9a3d698d1281b425a3aeaa22b4869f0053b22ad9158a6051d63a77fca960a" &&
+					!migrationTableExists(db, "assembly_sessions") {
+					continue
+				}
+			}
 			return fmt.Errorf("storage: migration ledger contains version %03d but no migration file exists on disk", version)
 		}
 	}
@@ -203,6 +217,27 @@ func validateAppliedMigrationSet(applied map[int]appliedRecord, migrations []mig
 		}
 	}
 	return nil
+}
+
+// migrationTableExists is intentionally read-only and narrowly scoped to
+// historical migration compatibility checks.
+func migrationTableExists(db queryable, name string) bool {
+	if db == nil {
+		return false
+	}
+	rows, err := db.Query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", name)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false
+	}
+	var count int
+	if err := rows.Scan(&count); err != nil {
+		return false
+	}
+	return count > 0
 }
 
 // warnOnGaps logs warnings for any version gaps in the migration sequence.

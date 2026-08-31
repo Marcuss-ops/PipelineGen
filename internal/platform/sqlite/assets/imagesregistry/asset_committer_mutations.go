@@ -77,6 +77,9 @@ func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.
 	addString("name", patch.Name)
 	addString("category", patch.Category)
 	addString("group_name", patch.Group)
+	addString("folder_id", patch.FolderID)
+	addString("folder_path", patch.FolderPath)
+	addString("deleted_at", patch.DeletedAt)
 	addString("search_text", patch.SearchText)
 	addString("lifecycle_state", patch.LifecycleState)
 	addString("enrich_state", patch.EnrichState)
@@ -105,9 +108,26 @@ func (c *SQLiteMediaCommitter) PatchAssetTx(ctx context.Context, tx persistence.
 		args = append(args, updatedAt.Format(time.RFC3339Nano))
 	}
 
+	if patch.MetadataPatchJSON != nil {
+		if strings.TrimSpace(*patch.MetadataPatchJSON) == "" {
+			return fmt.Errorf("asset mutator: metadata patch for %q is empty", patch.AssetID)
+		}
+		updatedAt := ""
+		if patch.UpdatedAt != nil {
+			updatedAt = *patch.UpdatedAt
+		}
+		if err := PatchMediaAssetMetadataJSON(ctx, sqlTx, patch.AssetID, *patch.MetadataPatchJSON, updatedAt); err != nil {
+			return err
+		}
+	}
+
 	if len(sets) > 0 {
+		updatedAt := time.Now().UTC().Format(time.RFC3339Nano)
+		if patch.UpdatedAt != nil {
+			updatedAt = *patch.UpdatedAt
+		}
 		sets = append(sets, "updated_at = ?")
-		args = append(args, time.Now().UTC().Format(time.RFC3339Nano))
+		args = append(args, updatedAt)
 		args = append(args, patch.AssetID)
 		res, err := sqlTx.ExecContext(ctx, "UPDATE media_assets SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
 		if err != nil {
@@ -292,15 +312,24 @@ func (c *SQLiteMediaCommitter) reconcileOneDriveLocation(ctx context.Context, tx
 		return fmt.Errorf("asset mutator: upsert drive location %q: %w", change.AssetID, err)
 	}
 
-	driveFileID, driveLink, downloadURL, lifecycleValue := change.DriveFileID, change.DriveLink, change.DownloadURL, nextLifecycle
-	suffixHash := digest.SHA256Bytes([]byte(change.DriveFileID + "|" + change.DriveLink + "|" + change.DownloadURL))
-	return c.PatchAssetTx(ctx, tx, persistence.AssetPatch{
-		AssetID: change.AssetID,
-		DriveFileID: &driveFileID, DriveLink: &driveLink, DownloadLink: &downloadURL,
+	driveFileID, driveLink, lifecycleValue := change.DriveFileID, change.DriveLink, nextLifecycle
+	patch := persistence.AssetPatch{
+		AssetID:        change.AssetID,
+		DriveFileID:    &driveFileID,
+		DriveLink:      &driveLink,
 		LifecycleState: &lifecycleValue,
-		RequestIndex: true, Source: source, MediaType: mediaType, SourceVersion: sourceVersion,
-		EventKeySuffix: ":location:" + suffixHash[:16],
-	})
+		RequestIndex:   true,
+		Source:         source,
+		MediaType:      mediaType,
+		SourceVersion:  sourceVersion,
+	}
+	if change.DownloadURL != "" {
+		downloadURL := change.DownloadURL
+		patch.DownloadLink = &downloadURL
+	}
+	suffixHash := digest.SHA256Bytes([]byte(change.DriveFileID + "|" + change.DriveLink + "|" + change.DownloadURL))
+	patch.EventKeySuffix = ":location:" + suffixHash[:16]
+	return c.PatchAssetTx(ctx, tx, patch)
 }
 
 func normalizeDriveLocationPatches(changes []persistence.DriveLocationPatch) ([]persistence.DriveLocationPatch, error) {

@@ -301,9 +301,10 @@ type GenerationQuality struct {
 }
 
 // ScriptOutput is the canonical embedded output of script generation.
-// Text is the single canonical script-text field. WordCount is derived
-// from Text by the engine. SpecScene carries the structured scene
-// breakdown with asset bindings.
+// Text is the generated BODY text, excluding protected fixed-media
+// DisplayText/content. WordCount is derived from that BODY text by the
+// engine. SpecScene carries the complete structured timeline breakdown,
+// including fixed-media sections and their bindings.
 type ScriptOutput struct {
 	Text      string          `json:"text"`
 	WordCount int             `json:"word_count"`

@@ -11,8 +11,8 @@
 //	  --root    Drive folder ID of the unified media root (required)
 //	  --apply   Actually create folders (default: dry-run, prints what
 //	            would be created)
-//	  --db-path Override canonical SQLite DB path
 //
+// //
 // Canonical 10 subdirectories:
 //
 //	clips, stock, artlist, images, voiceovers, books, scripts,
@@ -45,14 +45,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 )
 
 // ErrAdminNoDB is surfaced by admin CLI commands when the canonical DB
 // path cannot be resolved. Shared by drive-bootstrap, drive-doctor, and
 // zombie-sweep (which wraps it in its own sentinel).
-var ErrAdminNoDB = errors.New("admin: canonical DB path not configured (set VELOX_DATA_DIR or check cfg.Storage.PrimaryDBPath)")
+var ErrAdminNoDB = errors.New("admin: canonical DB path not configured (set VELOX_DATA_DIR or check cfg.Storage.DataDir)")
 
 // ErrDriveBootstrapNoRoot is surfaced when --root is empty or missing.
 var ErrDriveBootstrapNoRoot = errors.New("drive-bootstrap: --root is required (Drive folder ID of the unified media root)")
@@ -87,7 +86,6 @@ func RunDriveBootstrap(args []string) error {
 	fs.SetOutput(os.Stderr)
 	rootID := fs.String("root", "", "Drive folder ID of the unified media root (required)")
 	apply := fs.Bool("apply", false, "Actually create folders and write to catalog (default: dry-run only)")
-	dbPath := fs.String("db-path", "", "Canonical SQLite DB path (default: $VELOX_DATA_DIR/media.db.sqlite)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -110,23 +108,21 @@ func RunDriveBootstrap(args []string) error {
 	}
 	defer cleanup()
 
-	return executeBootstrap(cli.CmdContext(), cfg, log, *rootID, *dbPath)
+	return executeBootstrap(cli.CmdContext(), cfg, log, *rootID)
 }
 
-func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID, dbPathFlag string) error {
-	// Resolve DB path.
-	path := cli.ResolveDBPath(cfg, dbPathFlag)
-	if path == "" {
+func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID string) error {
+	if cfg == nil {
 		return ErrAdminNoDB
 	}
 
-	sqliteDB, err := storage.OpenSQLiteDB(path, log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("drive-bootstrap: open DB: %w", err)
+		return fmt.Errorf("drive-bootstrap: open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
 
-	catalogRepo := sqlitedelivery.NewRepository(sqliteDB.DB)
+	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 
 	// Build Drive admin client — mirrors build_bundles_drive.go pattern.
 	driveAdmin, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)

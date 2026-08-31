@@ -157,7 +157,10 @@ func (w *IndexWriter) DeleteAssetPoints(ctx context.Context, ids []string) error
 // writer receives complete batches without re-reading.
 func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, limit int) (*schema.ReindexResult, error) {
 	if targetCollection == "" {
-		targetCollection = w.idxSchema.CanonicalName()
+		targetCollection = schema.ProductionCollection
+	}
+	if err := schema.ValidateRuntimeCollection(targetCollection); err != nil {
+		return nil, fmt.Errorf("reindex target: %w", err)
 	}
 
 	const pageSize = 500

@@ -72,12 +72,12 @@ type ServerConfig struct {
 // single root for ALL media files on disk. Per-service subdirectories
 // (voiceovers, images, youtube, etc.) are computed under MediaDir.
 //
-// The 6 explicit DB/dir fields below drive the canonical
+// The storage fields below drive the canonical
 // `internal/platform/sqlite.DatabaseSet` opened at boot
-// (`codex/db-set-and-paths`). Defaults preserve the legacy single-file
-// path PrimaryDBPath = <DataDir>/media/media.db.sqlite so existing
-// deployments keep working without a migration. The path migration
-// tool (`cmd/admin/path_migrate.go`, future PR) performs backup +
+// (`codex/db-set-and-paths`). The primary database is always derived as
+// <DataDir>/media/media.db.sqlite; deployments may change DataDir but cannot
+// redirect the primary database. The path migration tool
+// (`cmd/admin/path_migrate.go`, future PR) performs backup +
 // SHA256 checksum + PRAGMA integrity_check + rollback when operators
 type PathsConfig struct {
 	CredentialsFile  string `yaml:"credentials_file" env:"VELOX_CREDENTIALS_FILE" default:"credentials.json"`

@@ -59,27 +59,13 @@ type SQLiteMediaCommitter struct {
 // enrichment. It keeps media_assets writes behind the same owner as asset
 // commits while remaining idempotent and transactionally isolated.
 func (c *SQLiteMediaCommitter) UpdateAssetMetadata(ctx context.Context, assetID, metadataJSON string) error {
-	if c == nil || c.db == nil {
-		return errors.New("media committer: database is unavailable")
+	if c == nil || c.assets == nil {
+		return errors.New("media committer: canonical asset committer is unavailable")
 	}
 	if assetID == "" {
 		return errors.New("media committer: asset id is required")
 	}
-	tx, err := c.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("media committer: begin metadata tx: %w", err)
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE media_assets
-		SET metadata_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-		WHERE id = ?`, metadataJSON, assetID); err != nil {
-		return fmt.Errorf("media committer: update metadata: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("media committer: commit metadata: %w", err)
-	}
-	return nil
+	return c.assets.ReplaceMetadataJSON(ctx, assetID, metadataJSON, "")
 }
 
 // NewSQLiteMediaCommitter constructs the adapter. db, box and ledger are
@@ -246,12 +232,7 @@ func (c *SQLiteMediaCommitter) updateImageFields(ctx context.Context, tx *sql.Tx
 	if image == nil {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `
-		UPDATE media_assets SET url=?, tags=?, tags_norm=?, width=?, height=?,
-		relative_path=?, origin=?, provider=?, updated_at=datetime('now') WHERE id=?`,
-		image.URL, image.TagsJSON, image.TagsNorm, image.Width, image.Height,
-		image.RelativePath, image.Origin, image.Provider, assetID)
-	if err != nil {
+	if err := UpdateMediaAssetImageFields(ctx, tx, assetID, image); err != nil {
 		return fmt.Errorf("media committer: update image fields: %w", err)
 	}
 	return nil
@@ -308,6 +289,7 @@ func assetDraftToCommitRequest(a mediacommit.AssetDraft) persistence.CommitReque
 		Filename:       a.Filename,
 		MediaType:      a.MediaType,
 		Category:       a.Category,
+		GroupName:      a.GroupName,
 		DurationMs:     a.DurationMs,
 		ContentHash:    a.ContentHash,
 		Description:    a.Description,
@@ -318,7 +300,9 @@ func assetDraftToCommitRequest(a mediacommit.AssetDraft) persistence.CommitReque
 		FolderID:       a.FolderID,
 		FolderPath:     a.FolderPath,
 		ThumbnailURL:   a.ThumbnailURL,
+		DownloadLink:   a.DownloadLink,
 		SourceURL:      a.SourceURL,
+		ClipPageURL:    a.ClipPageURL,
 		Title:          a.Title,
 		SourceProvider: a.SourceProvider,
 		SourceVideoID:  a.SourceVideoID,
@@ -344,6 +328,60 @@ func deterministicCommitEventID(assetID, sourceType, sourceURI, sourceVersion, c
 // CommitTx accepts the caller-owned SQLite transaction used by YouTube and
 // localized-track flows; standalone calls open their transaction internally.
 var _ persistence.AssetCommitter = (*SQLiteMediaCommitter)(nil)
+var _ persistence.AssetMutationCommitter = (*SQLiteMediaCommitter)(nil)
+
+// PersistEmbeddingJSON delegates post-commit embedding persistence to the
+// canonical SQLiteAssetCommitter owned by this same aggregate committer.
+func (c *SQLiteMediaCommitter) PersistEmbeddingJSON(ctx context.Context, assetID, channel string, embedding []float64, status string) error {
+	return c.assets.PersistEmbeddingJSON(ctx, assetID, channel, embedding, status)
+}
+
+func (c *SQLiteMediaCommitter) SetIndexState(ctx context.Context, assetID string, state asset.IndexState, lastError string) error {
+	return c.assets.SetIndexState(ctx, assetID, state, lastError)
+}
+
+func (c *SQLiteMediaCommitter) SetIndexed(ctx context.Context, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash string) (bool, error) {
+	return c.assets.SetIndexed(ctx, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash)
+}
+
+func (c *SQLiteMediaCommitter) PatchMetadataJSON(ctx context.Context, assetID, patchJSON, updatedAt string) error {
+	return c.assets.PatchMetadataJSON(ctx, assetID, patchJSON, updatedAt)
+}
+func (c *SQLiteMediaCommitter) PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error {
+	return c.assets.PatchMetadataJSONTx(ctx, tx, assetID, patchJSON, updatedAt)
+}
+
+func (c *SQLiteMediaCommitter) ReplaceMetadataJSON(ctx context.Context, assetID, metadataJSON, updatedAt string) error {
+	return c.assets.ReplaceMetadataJSON(ctx, assetID, metadataJSON, updatedAt)
+}
+func (c *SQLiteMediaCommitter) UpdateFolderPath(ctx context.Context, assetID, folderID, folderPath, updatedAt string) error {
+	return c.assets.UpdateFolderPath(ctx, assetID, folderID, folderPath, updatedAt)
+}
+func (c *SQLiteMediaCommitter) UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error {
+	return c.assets.UpdateFolderPathTx(ctx, tx, assetID, folderID, folderPath, updatedAt)
+}
+func (c *SQLiteMediaCommitter) UpdateLifecycle(ctx context.Context, assetID string, state, deletedAt, updatedAt string) error {
+	return c.assets.UpdateLifecycle(ctx, assetID, state, deletedAt, updatedAt)
+}
+func (c *SQLiteMediaCommitter) UpdateTaxonomy(ctx context.Context, taxonomy capregistry.AssetTaxonomy) error {
+	return c.assets.UpdateTaxonomy(ctx, taxonomy)
+}
+func (c *SQLiteMediaCommitter) LinkContent(ctx context.Context, assetID, contentSHA256 string) error {
+	return c.assets.LinkContent(ctx, assetID, contentSHA256)
+}
+func (c *SQLiteMediaCommitter) UpdateSearchText(ctx context.Context, assetID, searchText, updatedAt string) error {
+	return c.assets.UpdateSearchText(ctx, assetID, searchText, updatedAt)
+}
+func (c *SQLiteMediaCommitter) RefreshUpdatedAt(ctx context.Context, assetID, updatedAt string) error {
+	return c.assets.RefreshUpdatedAt(ctx, assetID, updatedAt)
+}
+func (c *SQLiteMediaCommitter) UpdateOrphanMetadata(ctx context.Context, assetID string, detectedAt time.Time, kind string) error {
+	return c.assets.UpdateOrphanMetadata(ctx, assetID, detectedAt, kind)
+}
+
+func (c *SQLiteMediaCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Context, hash string, mutation persistence.DriveDeliveryMutation) error {
+	return c.assets.UpdateDriveDeliveryByLegacyHash(ctx, hash, mutation)
+}
 
 // CommitDiscoveredAsset records discovery metadata and provenance in the
 // caller-owned transaction without scheduling semantic indexing.
@@ -419,11 +457,11 @@ func persistenceToMediaRequest(r persistence.CommitRequest) mediacommit.CommitMe
 	return mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{
 			AssetID: r.AssetID, Source: r.Source, Name: r.Name, Filename: r.Filename,
-			MediaType: r.MediaType, Category: r.Category, DurationMs: r.DurationMs,
+			MediaType: r.MediaType, Category: r.Category, GroupName: r.GroupName, DurationMs: r.DurationMs,
 			ContentHash: r.ContentHash, Description: r.Description, SearchText: r.SearchText,
 			LifecycleState: r.LifecycleState, IndexState: r.IndexState, LocalPath: r.LocalPath,
 			FolderID: r.FolderID, FolderPath: r.FolderPath, ThumbnailURL: r.ThumbnailURL,
-			SourceURL: r.SourceURL, Title: r.Title, SourceProvider: r.SourceProvider,
+			DownloadLink: r.DownloadLink, SourceURL: r.SourceURL, ClipPageURL: r.ClipPageURL, Title: r.Title, SourceProvider: r.SourceProvider,
 			SourceVideoID: r.SourceVideoID, StartMs: r.StartMs, EndMs: r.EndMs,
 			Metadata: r.Metadata, Locations: r.Locations,
 			Image: optionalImageDraft(r),
@@ -492,6 +530,7 @@ func legacyToMediaCommitRequest(r persistence.CommitRequest) mediacommit.CommitM
 			Filename:       r.Filename,
 			MediaType:      r.MediaType,
 			Category:       r.Category,
+			GroupName:      r.GroupName,
 			DurationMs:     r.DurationMs,
 			ContentHash:    r.ContentHash,
 			Description:    r.Description,
@@ -502,7 +541,9 @@ func legacyToMediaCommitRequest(r persistence.CommitRequest) mediacommit.CommitM
 			FolderID:       r.FolderID,
 			FolderPath:     r.FolderPath,
 			ThumbnailURL:   r.ThumbnailURL,
+			DownloadLink:   r.DownloadLink,
 			SourceURL:      r.SourceURL,
+			ClipPageURL:    r.ClipPageURL,
 			Title:          r.Title,
 			SourceProvider: r.SourceProvider,
 			SourceVideoID:  r.SourceVideoID,

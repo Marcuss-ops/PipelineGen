@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
@@ -135,7 +137,7 @@ func RunSyncOutros(args []string) error {
 				fileList, err := root.Drive.Reader.SearchFiles(ctx, fileQuery)
 				if err == nil {
 					for _, file := range fileList {
-						err := upsertFileToDB(ctx, root.DB.DB, file.ID, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
+						err := upsertFileToDB(ctx, root, file.ID, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
 						if err != nil {
 							log.Error("failed to upsert file to DB", zap.String("file", file.Name), zap.Error(err))
 						} else {
@@ -185,40 +187,30 @@ func upsertFolderToDB(ctx context.Context, db *sql.DB, folderID, path, source, g
 	return err
 }
 
-func upsertFileToDB(ctx context.Context, db *sql.DB, fileID, name, groupName, lang, driveLink, downloadLink string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	meta := map[string]any{
-		"category":      "outro",
-		"language":      lang,
-		"group_name":    groupName,
-		"drive_link":    driveLink,
-		"download_link": downloadLink,
+func upsertFileToDB(ctx context.Context, root *wiring.ComposeRoot, fileID, name, groupName, lang, driveLink, downloadLink string) error {
+	if root == nil || root.CanonicalAssetWriter == nil {
+		return fmt.Errorf("sync-outros: canonical asset writer is required")
 	}
-	metaJSON, _ := json.Marshal(meta)
-
+	committer, ok := root.CanonicalAssetWriter.(persistence.AssetCommitter)
+	if !ok || committer == nil {
+		return fmt.Errorf("sync-outros: canonical asset committer is unavailable")
+	}
 	// Setup tags
 	tags := []string{"outro", groupName, lang}
-	tagsJSON, _ := json.Marshal(tags)
 	tagsNorm := strings.Join(tags, " ")
 
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO media_assets 
-			(id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_link, download_link, legacy_file_md5, embedding_json, metadata_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source=excluded.source,
-			name=excluded.name,
-			tags=excluded.tags,
-			tags_norm=excluded.tags_norm,
-			url=excluded.url,
-			drive_file_id=excluded.drive_file_id,
-			drive_link=excluded.drive_link,
-			download_link=excluded.download_link,
-			metadata_json=excluded.metadata_json,
-			updated_at=excluded.updated_at
-		`, fileID, "outro", name, string(tagsJSON), tagsNorm,
-		0, driveLink, "video", "ready", "", "", fileID, driveLink, downloadLink, "", "[]", string(metaJSON), now, now)
-
+	_, err := committer.CommitAsset(ctx, persistence.AssetCommitRequest{
+		AssetID: fileID, Source: "outro", Name: name, Filename: name,
+		MediaType: "video", Category: "outro", GroupName: groupName,
+		ContentHash: "", LifecycleState: "ACTIVE", IndexState: "",
+		LocalPath: "", FolderID: "", FolderPath: "", ThumbnailURL: "",
+		DownloadLink: downloadLink, SourceURL: driveLink, Metadata: asset.TypedMetadata{
+			Category: "outro", SourceProvider: "drive", Extra: map[string]any{
+				"language": lang, "group_name": groupName, "drive_link": driveLink,
+				"download_link": downloadLink, "tags_norm": tagsNorm,
+			}, Tags: tags,
+		}, Locations: []persistence.LocationCommit{{Kind: "drive", ExternalID: fileID, URI: "drive://" + fileID, WebViewLink: driveLink, DownloadURL: downloadLink, IsPrimary: true}},
+		EmitIndexEvent: false, RequestedAt: time.Now().UTC(),
+	})
 	return err
 }

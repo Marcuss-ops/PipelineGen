@@ -61,7 +61,7 @@ type Stage string
 
 const (
 	StageNormalizing          Stage = "NORMALIZING"
-	StagePreflight            Stage = "MEDIA_PREFLIGHT" // P0.5: fail-fast asset verification (runs in parallel with GENERATING_SCENE_TEXT)
+	StagePreflight            Stage = "MEDIA_PREFLIGHT" // P0.5: fail-fast asset verification before GENERATING_SCENE_TEXT
 	StageGeneratingSceneText  Stage = "GENERATING_SCENE_TEXT"
 	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
 	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"
@@ -202,6 +202,7 @@ func ShouldRetry(run *GenerationRun) bool {
 // in the ordered list.
 var stageOrder = []Stage{
 	StageNormalizing,
+	StagePreflight,
 	StageGeneratingSceneText,
 	StageTranslatingScenes,
 	StageGeneratingVoiceovers,

@@ -76,7 +76,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
@@ -86,7 +85,7 @@ var (
 	// not configured. Recovery: set VELOX_DATA_DIR env var (default
 	// ./data per cfg.Storage.DataDir; the canonical pipelinegen
 	// DB lives at <DataDir>/media.db.sqlite per AGENTS.md §Storage).
-	ErrZombieSweepNoDB = errors.New("zombie-sweep: canonical DB path not configured (set VELOX_DATA_DIR or check cfg.Storage.PrimaryDBPath)")
+	ErrZombieSweepNoDB = errors.New("zombie-sweep: canonical DB path not configured (set VELOX_DATA_DIR)")
 
 	// ErrZombieSweepOpenDB is surfaced as a typed wrapper around
 	// the storage-layer error (storage.OpenSQLiteDB wraps
@@ -125,32 +124,10 @@ func formatDryRunReport(cutoff time.Time, reason string) string {
 		cutoff.Format(time.RFC3339), reason)
 }
 
-// resolveDBPath determines the canonical SQLite DB path with the
-// following precedence (per AGENTS.md §Storage godlike/06 SSOT
-// one-canonical-owner-per-fact):
-//  1. --db-path flag (operator-explicit override)
-//  2. cfg.Storage.PrimaryDBFullPath() (canonical helper, returns
-//     the cfg-supplied PrimaryDBPath OR the default
-//     <DataDir>/media.db.sqlite)
-//
-// Returns "" if cfg is nil AND the --db-path flag is empty
-// (caller surfaces ErrZombieSweepNoDB). Otherwise returns the
-// resolved canonical path.
-//
-// Round-2b refactor (2026-07-04): replaced the hand-rolled
-// cfg.Storage.DataDir + "/media.db.sqlite" concatenation with the
-// canonical cfg.Storage.PrimaryDBFullPath() helper. The helper
-// is the single source of truth for the canonical DB path
-// (internal/platform/config/types.go:481) and is shared by 24+
-// callers (qdrant_readiness.go, reindex_qdrant.go,
-// backfill_media_assets_search_terms.go, etc.). A drift in the
-// canonical helper now propagates to zombie_sweep automatically;
-// before the refactor, the hand-rolled concat would silently
-// drift if cfg adds a new override knob.
-func ResolveDBPath(cfg *config.Config, dbPathFlag string) string {
-	if dbPathFlag != "" {
-		return dbPathFlag
-	}
+// ResolveDBPath derives the canonical SQLite DB path exclusively from
+// cfg.Storage.DataDir. A nil config returns an empty path so the caller
+// can surface the typed configuration error.
+func ResolveDBPath(cfg *config.Config) string {
 	if cfg == nil {
 		return ""
 	}
@@ -167,7 +144,6 @@ func RunZombieSweep(args []string) error {
 	cutoffDur := fs.Duration("cutoff-duration", defaultCutoff, "How far back to consider a job 'zombie' (default 1h). Jobs with lease_expiry < now-<-cutoff-duration> are swept.")
 	reason := fs.String("reason", defaultReason, "Reason string recorded in jobs.error when a zombie is marked FAILED.")
 	apply := fs.Bool("apply", false, "Actually mark zombie jobs as FAILED (default: dry-run only).")
-	dbPath := fs.String("db-path", "", "Canonical SQLite DB path (default: $VELOX_DATA_DIR/media.db.sqlite per cfg.Storage.PrimaryDBFullPath).")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -188,18 +164,13 @@ func RunZombieSweep(args []string) error {
 	}
 	defer cleanup()
 
-	path := cli.ResolveDBPath(cfg, *dbPath)
-	if path == "" {
-		return ErrZombieSweepNoDB
-	}
-
-	sqliteDB, openErr := storage.OpenSQLiteDB(path, log)
+	dbSet, openErr := cli.OpenDatabaseSet(cfg, log)
 	if openErr != nil {
 		return fmt.Errorf("%w: %w", ErrZombieSweepOpenDB, openErr)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
 
-	store := jobs.NewSQLiteStore(sqliteDB.DB, log)
+	store := jobs.NewSQLiteStore(dbSet.Primary.DB, log)
 	ctx := cli.CmdContext()
 	n, sweepErr := store.MarkRunningJobsOlderThanFailed(ctx, cutoff, *reason)
 	if sweepErr != nil {

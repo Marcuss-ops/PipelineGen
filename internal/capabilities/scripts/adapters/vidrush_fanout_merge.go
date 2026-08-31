@@ -8,6 +8,41 @@ import (
 )
 
 func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcome vidRushProviderOutcome, plan *scriptpkg.ResolvedGenerationPlan, profile scriptpkg.SegmentSemanticProfile, segmentID string) error {
+	if outcome.provider == scriptpkg.VidRushProviderArtlist {
+		// The fanout is also a trust boundary: cached or provider-returned
+		// Artlist candidates must pass the segment-local query/provenance gate
+		// before ranking or winner selection. Legacy provider payloads may not
+		// carry the envelope yet, so normalize them from this owning segment
+		// before applying the strict filter.
+		outcome.candidates = normalizeVidRushCandidateList(outcome.candidates, *updated)
+		outcome.candidates = filterArtlistCandidatesForSegment(outcome.candidates, *updated, nil)
+		if outcome.primary != nil {
+			if normalized, ok := normalizeVidRushCandidate(*outcome.primary, *updated); ok {
+				outcome.primary = &normalized
+			} else {
+				outcome.primary = nil
+			}
+			if outcome.primary != nil {
+				if err := validateArtlistCandidateForSegment(*outcome.primary, *updated); err != nil {
+					outcome.primary = nil
+				}
+			}
+		}
+	}
+	for i := range outcome.candidates {
+		if normalized, ok := normalizeVidRushCandidate(outcome.candidates[i], *updated); ok {
+			outcome.candidates[i] = normalized
+		} else {
+			outcome.candidates[i] = scriptpkg.SegmentAssetCandidate{}
+		}
+	}
+	filtered := outcome.candidates[:0]
+	for _, candidate := range outcome.candidates {
+		if strings.TrimSpace(candidate.AssetID) != "" && strings.TrimSpace(candidate.Provider) != "" {
+			filtered = append(filtered, candidate)
+		}
+	}
+	outcome.candidates = filtered
 	for i := range outcome.candidates {
 		if outcome.candidates[i].SemanticScore == 0 {
 			outcome.candidates[i].SemanticScore = profileSemanticMatch(outcome.candidates[i], profile)

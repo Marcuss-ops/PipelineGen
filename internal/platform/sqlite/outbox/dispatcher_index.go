@@ -25,81 +25,69 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
-	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
-	}
-	if d.clips == nil {
-		return errors.New("outbox.Dispatcher: clips repo not configured")
-	}
-	if d.outboxEventsRepo == nil {
-		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	if d.canonicalCommitter == nil {
+		return errors.New("outbox.Dispatcher: canonical SQLiteAssetCommitter is required")
 	}
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
 	}
 
-	// Folders are not vector-indexable. They are persisted without an index
-	// request, and this branch intentionally precedes the content-hash guard.
-	if clip.IsFolder() {
-		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-			if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
-				return fmt.Errorf("dispatcher upsert folder %s: %w", clip.ID, err)
-			}
-			if d.log != nil {
-				d.log.Debug("dispatcher skipped indexing request for folder",
-					zap.String("asset_id", clip.ID),
-				)
-			}
-			return nil
-		})
-	}
-	if contentHash == "" {
+	// Folders are not vector-indexable, but their canonical media_assets row
+	// still must be committed through SQLiteAssetCommitter. Never bypass the
+	// committer with a direct clips.UpsertClipTx fallback.
+	if !clip.IsFolder() && contentHash == "" {
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
-	if d.canonicalCommitter != nil {
-		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequest{
-			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name, Filename: clip.Filename,
-			MediaType: string(clip.MediaType), ContentHash: contentHash, LifecycleState: string(clip.LifecycleState),
-			IndexState: clip.GetMetadataString("index_state"), EmitIndexEvent: true,
-		}); err != nil {
-			return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical commit: %w", err)
-		}
-		return nil
+	name := clip.Name
+	if name == "" {
+		name = clip.ID
 	}
-
-	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
-			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
-		}
-
-		commitResult, err := imagesregistry.CommitIndexRequestTx(
-			ctx,
-			tx,
-			d.outboxEventsRepo,
-			imagesregistry.IndexRequest{
-				AssetID:       clip.ID,
-				Source:        string(clip.Source),
-				SourceVersion: contentHash,
-				RequestedAt:   time.Now(),
-				MediaType:     string(clip.MediaType),
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("dispatcher commit index request %s: %w", clip.ID, err)
-		}
-
-		if d.log != nil {
-			d.log.Debug("dispatcher committed asset indexing request via canonical AssetCommitter",
-				zap.String("asset_id", clip.ID),
-				zap.String("outbox_event_id", commitResult.EventID),
-				zap.String("outbox_event_key", commitResult.EventKey),
-				zap.String("source", string(clip.Source)),
-				zap.String("source_version", contentHash),
-				zap.String("content_hash_prefix", shortHashPrefix(contentHash)),
-			)
-		}
-		return nil
+	filename := clip.Filename
+	if filename == "" {
+		filename = name + ".asset"
+	}
+	mediaType := string(clip.MediaType)
+	if mediaType == "" {
+		mediaType = "video"
+	}
+	lifecycleState := string(clip.LifecycleState)
+	if lifecycleState == "" {
+		lifecycleState = string(asset.StateActive)
+	}
+	locations := make([]persistence.LocationCommit, 0, 2)
+	if driveID, driveLink := clip.DriveFileID(), clip.DriveLink(); driveID != "" || driveLink != "" {
+		locations = append(locations, persistence.LocationCommit{
+			Kind: "drive", Provider: "drive", ExternalID: driveID,
+			WebViewLink: driveLink, DownloadURL: clip.DownloadLink(), IsPrimary: true,
+		})
+	}
+	if localPath := clip.LocalPath(); localPath != "" {
+		locations = append(locations, persistence.LocationCommit{
+			Kind: "local", Provider: "local", URI: localPath,
+			LegacyFileMD5: contentHash, IsPrimary: len(locations) == 0,
+		})
+	}
+	commitResult, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequest{
+		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
+		MediaType: mediaType, Category: clip.Category, DurationMs: clip.Duration.Milliseconds(),
+		ContentHash: contentHash, Description: clip.Description(), SearchText: clip.SearchText,
+		LifecycleState: lifecycleState, IndexState: clip.GetMetadataString("index_state"),
+		LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
+		ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: name,
+		Metadata: persistence.TypedMetadata{Extra: clip.Metadata}, Locations: locations,
+		EmitIndexEvent: !clip.IsFolder(),
 	})
+	if err != nil {
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical SQLiteAssetCommitter commit: %w", err)
+	}
+	if d.log != nil {
+		d.log.Debug("dispatcher committed asset through canonical SQLiteAssetCommitter",
+			zap.String("asset_id", clip.ID),
+			zap.String("outbox_event_key", commitResult.OutboxEventKey),
+			zap.Bool("index_event_emitted", !clip.IsFolder()),
+		)
+	}
+	return nil
 }
 
 // SaveDiscoveredAsset is the discovery-only upsert path. It writes the clip
@@ -110,11 +98,11 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
+	if d.discoveryCommitter == nil {
+		return errors.New("outbox.Dispatcher: canonical SQLiteAssetCommitter is required for discovery commits")
+	}
 	if d.txmgr == nil {
 		return errors.New("outbox.Dispatcher: txmgr not configured")
-	}
-	if d.clips == nil {
-		return errors.New("outbox.Dispatcher: clips repo not configured")
 	}
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
@@ -136,17 +124,11 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	clip.SetMetadataString("job_key", jobKey)
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if d.discoveryCommitter != nil {
-			if err := d.discoveryCommitter.CommitDiscoveredAsset(ctx, tx, clip, lifecycle, idx); err != nil {
-				return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
-			}
-			return nil
-		}
-		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
-			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
+		if err := d.discoveryCommitter.CommitDiscoveredAsset(ctx, tx, clip, lifecycle, idx); err != nil {
+			return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
 		}
 		if d.log != nil {
-			d.log.Debug("dispatcher saved discovered asset without indexing request",
+			d.log.Debug("dispatcher saved discovered asset through canonical SQLiteAssetCommitter",
 				zap.String("asset_id", clip.ID),
 				zap.String("lifecycle_state", string(lifecycle)),
 				zap.String("index_state", string(idx)),

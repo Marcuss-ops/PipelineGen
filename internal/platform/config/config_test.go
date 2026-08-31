@@ -1,8 +1,30 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestConfigLoaderRejectsRetiredPrimaryDBOverrides(t *testing.T) {
+	t.Run("yaml", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := []byte("storage:\n  data_dir: /srv/pipelinegen/data\n  primary_db_path: /tmp/alternate.sqlite\n")
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := GetFromPath(path); err == nil {
+			t.Fatal("GetFromPath accepted retired storage.primary_db_path")
+		}
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		t.Setenv("VELOX_PRIMARY_DB_PATH", "/tmp/alternate.sqlite")
+		if _, err := GetFromPath(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
+			t.Fatal("GetFromPath accepted retired VELOX_PRIMARY_DB_PATH")
+		}
+	})
+}
 
 func TestConfigValidateFailsWithoutAdminTokenWhenAuthEnabled(t *testing.T) {
 	cfg := &Config{

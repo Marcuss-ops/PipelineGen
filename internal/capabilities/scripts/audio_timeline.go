@@ -345,7 +345,7 @@ func buildCanonicalTimelineAndPrimaryAssets(result GenerateResult, language Lang
 		// COMBINED_TIMELINE scenes carry both original clip audio and the
 		// generated voiceover. Merge them only after the voiceover asset has
 		// been resolved; the canonical segment remains the single timing SSOT.
-		if scene.Clip != nil && scene.Audio.Mode == audio.AudioClip {
+		if !scene.ExecutionMode.IsFixedMedia() && scene.Clip != nil && scene.Audio.Mode == audio.AudioClip {
 			hasVoiceoverIntent := false
 			for _, intent := range intents {
 				if intent.Mode == audio.AudioVoiceover {
@@ -471,6 +471,7 @@ func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeli
 			Index:           i,
 			TimelineStartUS: startUS,
 			DurationUS:      durationUS,
+			FixedMedia:      scene.FixedMedia,
 			Video:           scene.Video,
 			VideoSegments:   videos,
 			Audio:           intents[0],

@@ -220,7 +220,7 @@ func (p *vidRushArtlistProvider) Search(ctx context.Context, req scriptports.Vid
 		// in AssetID and make the page URL the primary retrieval reference.
 		pageURL := strings.TrimSpace(a.PageURL)
 		sourceURL := firstNonEmpty(pageURL, a.SourceRef, a.PreviewURL)
-		out = append(out, scriptpkg.SegmentAssetCandidate{AssetID: assetID, Provider: p.Name(), Query: req.Query, SourceURL: sourceURL, SourcePageURL: pageURL, PreviewURL: firstNonEmpty(a.PreviewURL, pageURL), Score: a.Score, RightsStatus: "unknown", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound})
+		out = append(out, scriptpkg.SegmentAssetCandidate{SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, EntityID: "entity:" + provenanceSlugWiring(req.Query), AssetID: assetID, Provider: p.Name(), Query: req.Query, SourceURL: sourceURL, SourcePageURL: pageURL, PreviewURL: firstNonEmpty(a.PreviewURL, pageURL), Score: a.Score, RightsStatus: "unknown", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound})
 	}
 	return out, nil
 }
@@ -323,7 +323,7 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 	if p == nil || p.searcher == nil {
 		return nil, fmt.Errorf("vidrush images: search resolver unavailable")
 	}
-	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Query: req.Query, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
+	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: req.Query, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
 	return results, err
 }
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
@@ -391,6 +391,25 @@ func safeArtifactFilename(assetID, ext string) string {
 	}
 	return name + ext
 }
+
+func provenanceSlugWiring(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {

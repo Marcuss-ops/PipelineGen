@@ -34,6 +34,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
@@ -118,6 +119,17 @@ func BuildProcessBundle(
 	}
 
 	vlmClient := newVLMClient(cfg)
+
+	// The indexing service is a producer of media_assets mutations (embedding
+	// and index-state sidecars). Bind it to the canonical committer before the
+	// process bundle becomes visible; it must never fall back to db.Exec.
+	if qd.ClipIndexerService != nil && outbox != nil && outbox.CanonicalWriter != nil {
+		mutationCommitter, ok := outbox.CanonicalWriter.(persistence.AssetMutationCommitter)
+		if !ok || mutationCommitter == nil {
+			return nil, fmt.Errorf("BuildProcessBundle: canonical writer does not implement AssetMutationCommitter")
+		}
+		qd.ClipIndexerService.SetAssetMutationCommitter(mutationCommitter)
+	}
 
 	collectionMgr, vectorSvc, qdrantClient, qdrantHealthProbe, locatorCleaner, qdrantSearcher := initQdrantProcessSubsystems(qd, cfg, log)
 

@@ -50,7 +50,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // ── Report types ──────────────────────────────────────────────────────
@@ -128,11 +127,12 @@ func RunBrokenReferences(args []string) error {
 
 	ctx := cli.CmdContext()
 
-	sdb, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sdb.Close()
+	defer dbSet.Close()
+	sdb := dbSet.Primary
 
 	report, err := executeBrokenReferences(ctx, sdb.DB, cfg, log,
 		*skipDrive, *skipLocal, *skipQdrant, *noOrphanDetail, *driveInvPath)

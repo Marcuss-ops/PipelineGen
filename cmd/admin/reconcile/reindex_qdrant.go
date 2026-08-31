@@ -30,7 +30,6 @@ import (
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
@@ -125,11 +124,12 @@ func RunReindexQdrant(args []string) error {
 		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 	)
 
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
+	sqliteDB := dbSet.Primary
 
 	// Build canonical Qdrant stack.
 	schemaObj := qdrantschema.DefaultV3Schema()

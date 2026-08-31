@@ -164,8 +164,14 @@ type SpecScene struct {
 	// Index is the zero-based position in the scene array.
 	Index int `json:"index"`
 
-	// Text is the narrative text for this scene. Must be non-empty.
+	// Text is generated/narrated scene text. Protected fixed-media scenes
+	// deliberately leave this empty; their optional human-readable copy lives
+	// in DisplayText and is never treated as narration.
 	Text string `json:"text"`
+
+	// DisplayText is optional document/timeline copy for fixed media. It is
+	// never translated, synthesized, or included in generated word counts.
+	DisplayText string `json:"display_text,omitempty"`
 
 	// Title is an optional human-readable scene title.
 	Title string `json:"title,omitempty"`
@@ -298,10 +304,8 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 		if len(ids) >= 1 && len(ids) <= 2 {
 			cleanText := plan.Intro.EffectiveDisplayText()
 			title := plan.Intro.Title
-			clips := make([]ClipBinding, 0, len(ids))
-			for _, id := range ids {
-				clips = append(clips, ClipBinding{ClipID: id})
-			}
+			playback := plan.Intro.NormalizedPlayback()
+			clips := fixedPlaybackClipBindings(ids, playback)
 			bindings := SceneBindings{Clips: clips}
 			if len(clips) > 0 {
 				bindings.Clip = &clips[0]
@@ -309,15 +313,16 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 			out = append(out, SpecScene{
 				ID:               "scene-intro",
 				Index:            0,
-				Text:             cleanText,
+				Text:             "",
+				DisplayText:      cleanText,
 				Title:            title,
 				Kind:             SceneIntro,
 				ExecutionMode:    SceneExecutionFixedMedia,
-				FixedPlayback:    fixedPlaybackPointer(plan.Intro),
+				FixedPlayback:    &playback,
 				AudioMode:        "CLIP_AUDIO",
 				AudioAssetID:     ids[0],
-				AudioSourceInMS:  plan.Intro.NormalizedPlayback().SourceInMS,
-				AudioSourceOutMS: plan.Intro.NormalizedPlayback().SourceOutMS,
+				AudioSourceInMS:  playback.SourceInMS,
+				AudioSourceOutMS: playback.SourceOutMS,
 				Bindings:         bindings,
 			})
 		}
@@ -328,10 +333,8 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 		if len(ids) >= 1 && len(ids) <= 2 {
 			cleanText := plan.Outro.EffectiveDisplayText()
 			title := plan.Outro.Title
-			clips := make([]ClipBinding, 0, len(ids))
-			for _, id := range ids {
-				clips = append(clips, ClipBinding{ClipID: id})
-			}
+			playback := plan.Outro.NormalizedPlayback()
+			clips := fixedPlaybackClipBindings(ids, playback)
 			bindings := SceneBindings{Clips: clips}
 			if len(clips) > 0 {
 				bindings.Clip = &clips[0]
@@ -339,15 +342,16 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 			out = append(out, SpecScene{
 				ID:               "scene-outro",
 				Index:            0,
-				Text:             cleanText,
+				Text:             "",
+				DisplayText:      cleanText,
 				Title:            title,
 				Kind:             SceneOutro,
 				ExecutionMode:    SceneExecutionFixedMedia,
-				FixedPlayback:    fixedPlaybackPointer(plan.Outro),
+				FixedPlayback:    &playback,
 				AudioMode:        "CLIP_AUDIO",
 				AudioAssetID:     ids[0],
-				AudioSourceInMS:  plan.Outro.NormalizedPlayback().SourceInMS,
-				AudioSourceOutMS: plan.Outro.NormalizedPlayback().SourceOutMS,
+				AudioSourceInMS:  playback.SourceInMS,
+				AudioSourceOutMS: playback.SourceOutMS,
 				Bindings:         bindings,
 			})
 		}
@@ -382,6 +386,29 @@ func fixedPlaybackPointer(section *FixedSection) *FixedPlaybackPolicy {
 	return &playback
 }
 
+// fixedPlaybackClipBindings projects a protected section's authoritative
+// playback policy onto every consecutive clip binding. The source window is
+// intentionally repeated for each clip; timeline order is represented by the
+// binding order, while the runtime renderer uses the same policy to assign
+// consecutive timeline offsets and protected original-audio intents.
+func fixedPlaybackClipBindings(ids []string, playback FixedPlaybackPolicy) []ClipBinding {
+	playback = playback.Normalize()
+	bindings := make([]ClipBinding, 0, len(ids))
+	segmentDuration := int64(0)
+	if playback.SourceOutMS > playback.SourceInMS {
+		segmentDuration = playback.SourceOutMS - playback.SourceInMS
+	}
+	for _, id := range ids {
+		bindings = append(bindings, ClipBinding{
+			ClipID:     id,
+			StartMs:    playback.SourceInMS,
+			EndMs:      playback.SourceOutMS,
+			DurationMs: segmentDuration,
+		})
+	}
+	return bindings
+}
+
 // Validate checks structural invariants on a single scene.
 //
 // Rules:
@@ -404,6 +431,30 @@ func (s *SpecScene) Validate() error {
 	if !s.ExecutionMode.Valid() {
 		details = append(details,
 			fmt.Sprintf("unknown execution mode %q", s.ExecutionMode))
+	}
+	if s.ExecutionMode.IsFixedMedia() {
+		playback := s.FixedPlayback
+		if playback == nil || !playback.Valid() {
+			details = append(details, "fixed_media requires a valid original_clip playback policy")
+		} else {
+			bindings := s.Bindings.Clips
+			if len(bindings) == 0 && s.Bindings.Clip != nil {
+				bindings = []ClipBinding{*s.Bindings.Clip}
+			}
+			if len(bindings) == 0 || len(bindings) > 2 {
+				details = append(details, "fixed_media requires 1 or 2 clip bindings")
+			} else {
+				expectedDuration := int64(0)
+				if playback.SourceOutMS > playback.SourceInMS {
+					expectedDuration = playback.SourceOutMS - playback.SourceInMS
+				}
+				for i, binding := range bindings {
+					if strings.TrimSpace(binding.ClipID) == "" || binding.StartMs != playback.SourceInMS || binding.EndMs != playback.SourceOutMS || binding.DurationMs != expectedDuration {
+						details = append(details, fmt.Sprintf("fixed_media binding[%d] must match playback source window", i))
+					}
+				}
+			}
+		}
 	}
 
 	if len(details) > 0 {

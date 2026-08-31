@@ -35,15 +35,16 @@ type LegacyVideoSegment struct {
 }
 
 type LegacyAudioIntent struct {
-	Mode             AudioSegmentMode `json:"mode"`
-	VoiceoverAssetID string           `json:"voiceover_asset_id,omitempty"`
-	ClipAssetID      string           `json:"clip_asset_id,omitempty"`
-	SourceInMS       *int64           `json:"source_in_ms,omitempty"`
-	SourceInUS       *int64           `json:"source_in_us,omitempty"`
-	SourceOutMS      *int64           `json:"source_out_ms,omitempty"`
-	SourceDurationUS *int64           `json:"source_duration_us,omitempty"`
-	UseOriginalAudio bool             `json:"use_original_audio,omitempty"`
-	GainDB           float64          `json:"gain_db,omitempty"`
+	Mode                   AudioSegmentMode `json:"mode"`
+	VoiceoverAssetID       string           `json:"voiceover_asset_id,omitempty"`
+	ClipAssetID            string           `json:"clip_asset_id,omitempty"`
+	SourceInMS             *int64           `json:"source_in_ms,omitempty"`
+	SourceInUS             *int64           `json:"source_in_us,omitempty"`
+	SourceOutMS            *int64           `json:"source_out_ms,omitempty"`
+	SourceDurationUS       *int64           `json:"source_duration_us,omitempty"`
+	UseOriginalAudio       bool             `json:"use_original_audio,omitempty"`
+	ProtectedOriginalAudio bool             `json:"protected_original_audio,omitempty"`
+	GainDB                 float64          `json:"gain_db,omitempty"`
 }
 
 // NormalizationReport makes legacy field usage observable during the
@@ -209,7 +210,7 @@ func normalizeAudio(audio LegacyAudioIntent, fallbackDuration int64) (AudioInten
 	if audio.Mode == AudioVoiceover && duration == 0 {
 		duration = fallbackDuration
 	}
-	return AudioIntent{Mode: audio.Mode, VoiceoverAssetID: audio.VoiceoverAssetID, ClipAssetID: audio.ClipAssetID, SourceInUS: in, SourceDurationUS: duration, UseOriginalAudio: audio.UseOriginalAudio, GainDB: audio.GainDB}, usedMS, nil
+	return AudioIntent{Mode: audio.Mode, VoiceoverAssetID: audio.VoiceoverAssetID, ClipAssetID: audio.ClipAssetID, SourceInUS: in, SourceDurationUS: duration, UseOriginalAudio: audio.UseOriginalAudio, ProtectedOriginalAudio: audio.ProtectedOriginalAudio, GainDB: audio.GainDB}, usedMS, nil
 }
 
 func normalizeValue(ms, us *int64, path string) (int64, bool, error) {

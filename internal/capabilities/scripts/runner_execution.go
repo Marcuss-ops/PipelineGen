@@ -10,8 +10,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -44,11 +42,6 @@ type executionRun struct {
 	// run has no VidRush pipeline). It is registered in beginVidRush and
 	// released via defer once the run's phases completed or failed.
 	coordinator *VidRushIncrementalCoordinator
-
-	// preflight is the P0.5 media-preflight result channel started AFTER
-	// normalize and joined AFTER the generate phase. Nil means preflight is
-	// not wired (backward compat).
-	preflight <-chan PreflightResult
 
 	// result is the durable GenerateResult assembled across phases.
 	result *GenerateResult
@@ -147,14 +140,46 @@ func (e *executionRun) normalize() bool {
 	})
 }
 
-// beginMediaPreflight starts the P0.5 fail-fast media verification in a
-// goroutine (it runs in parallel with scene-text generation). Returns false
-// when VidRush wiring fails (terminal). The VidRush coordinator lifetime is
-// owned by the caller (runExecution) so it is released only after all phases
-// that consume the wiring complete.
-func (e *executionRun) beginMediaPreflight() bool {
-	// VidRush wiring is a setup boundary: registering the run's coordinator
-	// must happen before the fan-out. Its timing is owned by the wrapper.
+// mediaPreflightPhase runs the P0.5 fail-fast media verification after
+// normalization and before any scene-text generation. It is deliberately
+// synchronous: fixed intro/outro assets, original audio, and source windows
+// must be certified before the LLM, translator, or TTS can start.
+func (e *executionRun) mediaPreflightPhase() bool {
+	return e.measure(kernobs.StageName(StagePreflight), func(c context.Context) bool {
+		if stageSkipped(e.resumeIdx, StagePreflight) {
+			return true
+		}
+		if err := e.r.updateStage(c, e.runID, RunStatusRunning, StagePreflight); err != nil {
+			return e.fail(StagePreflight, err)
+		}
+		if e.r.mediaPreflight == nil {
+			if e.req.Intro == nil && e.req.Outro == nil {
+				return true
+			}
+			result := PreflightResult{Failures: []PreflightFailure{{
+				Category: "fixed_media",
+				Detail:   "media preflight is not wired — fixed media cannot be certified before generation",
+			}}}
+			return e.fail(StagePreflight, result.AsError())
+		}
+		result := e.r.mediaPreflight.Run(c, e.req)
+		if err := result.AsError(); err != nil {
+			e.r.log.Warn("media preflight FAILED — run aborted before generation",
+				zap.String("run_id", e.runID),
+				zap.String("failures", result.Error()))
+			return e.fail(StagePreflight, err)
+		}
+		e.r.log.Info("media preflight completed",
+			zap.String("run_id", e.runID),
+			zap.Int64("wall_ms", result.WallMS))
+		return true
+	})
+}
+
+// beginVidRushPhase registers run-scoped VidRush wiring only after the
+// synchronous media preflight has passed. The coordinator lifetime remains
+// owned by the caller so concurrent runs stay isolated.
+func (e *executionRun) beginVidRushPhase() bool {
 	var beginVidRushErr error
 	kernobs.MeasureStage(e.ctx, "begin_vidrush", func(stageCtx context.Context) error {
 		e.coordinator, beginVidRushErr = e.r.beginVidRush(stageCtx, e.runID, e.req)
@@ -163,21 +188,11 @@ func (e *executionRun) beginMediaPreflight() bool {
 	if beginVidRushErr != nil {
 		return e.fail(StageNormalizing, beginVidRushErr)
 	}
-
-	// P0.5 Media Preflight (parallel with Gemma). Start the fail-fast asset
-	// verification; join after the generate phase.
-	if e.r.mediaPreflight != nil {
-		pfCh := make(chan PreflightResult, 1)
-		e.preflight = pfCh
-		go func() {
-			pfCh <- e.r.mediaPreflight.Run(e.ctx, e.req)
-		}()
-	}
 	return true
 }
 
 // generate runs scene-text generation (the Gemma phase) and records the
-// generate-phase KPI milestones. It must run after media preflight started.
+// generate-phase KPI milestones. It runs only after media preflight passes.
 func (e *executionRun) generate() bool {
 	ok := e.measure(kernobs.StageGenerate, func(c context.Context) bool {
 		var phaseOK bool
@@ -197,32 +212,6 @@ func (e *executionRun) generate() bool {
 			kernobs.RecordKPIMilestone(e.ctx, "generate_first_scene_ready_ms", elapsed)
 		}
 		kernobs.RecordKPIMilestone(e.ctx, "generate_finished_ms", elapsed)
-	}
-	return true
-}
-
-// joinPreflight joins the media-preflight goroutine (if started) and fails
-// the run fail-closed on any asset-verification failure BEFORE any TTS work.
-func (e *executionRun) joinPreflight() bool {
-	if e.preflight == nil {
-		return true
-	}
-	preflightJoinStarted := time.Now()
-	pfResult := <-e.preflight
-	if pfResult.HasFailures() {
-		kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), fmt.Errorf("preflight: %d failures", len(pfResult.Failures)))
-	} else {
-		kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), nil)
-	}
-	e.r.log.Info("media preflight completed",
-		zap.String("run_id", e.runID),
-		zap.Int("failures", len(pfResult.Failures)),
-		zap.Int64("wall_ms", pfResult.WallMS))
-	if pfResult.HasFailures() {
-		e.r.log.Warn("media preflight FAILED — run aborted before TTS",
-			zap.String("run_id", e.runID),
-			zap.String("failures", pfResult.Error()))
-		return e.fail(StagePreflight, fmt.Errorf("media preflight: %s", pfResult.Error()))
 	}
 	return true
 }

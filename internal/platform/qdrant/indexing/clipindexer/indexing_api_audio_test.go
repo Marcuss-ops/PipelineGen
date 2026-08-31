@@ -97,6 +97,7 @@ func newPhase4TestService(t *testing.T) (*Service, *drive.SQLiteDB, func()) {
 		":memory:",
 		zap.NewNop(),
 	)
+	svc.SetAssetMutationCommitter(newTestAssetMutationCommitter(db))
 	svc.vectorStore = &mockVectorStoreIndexer{} // BLOCKER #3: UpsertVectorStore now fail-closed on nil
 	cleanup := func() { db.Close() }
 	return svc, &drive.SQLiteDB{DB: db}, cleanup

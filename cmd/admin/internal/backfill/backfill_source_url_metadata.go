@@ -1,38 +1,21 @@
-// cmd/admin/backfill_source_url_metadata.go — source_url convergence
-// backfill (Fase D).
-//
-// godlike/06 SSOT: Asset.SourceURL (media_assets.url column) is the
-// canonical owner of the source URL. The metadata_json key "source_url"
-// is a provenance mirror that legacy producers wrote before the url
-// column existed, and that downstream consumers (Qdrant search text,
-// FindBySourceURL dedup, youtube_asset_mapper round-trip) still read.
-//
-// This one-shot reconciliation copies url → metadata_json.$.source_url
-// for rows where the canonical column is non-empty and the mirror is
-// absent. It deliberately EXCLUDES image assets: for images the url
-// column holds the canonicalized Drive web link while the metadata key
-// preserves the original source URL (see ScanMediaAsset in
-// internal/platform/sqlite/assets/scan_helpers.go) — those
-// two values are intentionally different and must not be merged.
-//
-// The command is idempotent (json_extract guard) and additive; it never
-// overwrites an existing source_url key.
+// cmd/admin/backfill_source_url_metadata.go — source_url convergence backfill.
 package backfill
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 )
 
-// runBackfillSourceURLMetadata reconciles the source_url metadata mirror
+// RunBackfillSourceURLMetadata reconciles the source_url metadata mirror
 // from the canonical url column. Non-image rows only; idempotent.
 func RunBackfillSourceURLMetadata(args []string) error {
 	fs := flag.NewFlagSet("backfill-source-url-metadata", flag.ContinueOnError)
@@ -44,16 +27,13 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	if *limit < 0 {
 		return fmt.Errorf("--limit must be non-negative")
 	}
-
 	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-
 	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
@@ -62,8 +42,11 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	if root == nil || root.DB == nil {
 		return fmt.Errorf("database is required")
 	}
-
-	matched, updated, err := backfillSourceURLMetadata(ctx, root.DB, *limit)
+	mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
+	if !ok || mutator == nil {
+		return fmt.Errorf("canonical asset mutation committer is not available")
+	}
+	matched, updated, err := backfillSourceURLMetadataCanonical(ctx, root.DB, mutator, *limit)
 	if err != nil {
 		return err
 	}
@@ -71,54 +54,61 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	return nil
 }
 
-// dbExecer is the minimal query surface the backfill needs. SQLiteDB
-// (the composition-root handle) embeds *sql.DB and satisfies it.
 type dbExecer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-// backfillSourceURLMetadata runs the reconciliation and returns
-// (matched, updated, error). matched counts rows where url is non-empty
-// and the source_url key is absent; updated counts rows actually patched.
-func backfillSourceURLMetadata(ctx context.Context, db dbExecer, limit int) (int, int, error) {
-	// COALESCE(media_type, '') <> 'image': legacy rows with a NULL
-	// media_type are reconciled like any non-image row; image rows keep
-	// their intentional field/key divergence (url column = Drive link,
-	// metadata key = original source) and are excluded.
-	//
-	// SQLite does not support LIMIT on a bare UPDATE; the limit is applied
-	// through an id-subquery so a bounded run stays portable.
-	predicate := `
-		  COALESCE(media_type, '') <> 'image'
-		  AND TRIM(COALESCE(url, '')) <> ''
-		  AND json_extract(COALESCE(metadata_json, '{}'), '$.source_url') IS NULL`
-	nowStr := time.Now().UTC().Format(time.RFC3339)
-	query := `UPDATE media_assets
-		SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.source_url', url),
-		    updated_at = ?
-		WHERE id IN (SELECT id FROM media_assets WHERE ` + predicate
-	args := []any{nowStr}
+func backfillSourceURLMetadataCanonical(ctx context.Context, db dbExecer, mutator persistence.AssetMutator, limit int) (int, int, error) {
+	if db == nil || mutator == nil {
+		return 0, 0, fmt.Errorf("backfill-source-url-metadata: canonical asset mutator is required")
+	}
+	predicate := `COALESCE(media_type, '') <> 'image' AND TRIM(COALESCE(url, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_url') IS NULL`
+	var matched int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+predicate).Scan(&matched); err != nil {
+		return 0, 0, fmt.Errorf("backfill-source-url-metadata: count: %w", err)
+	}
+	query := `SELECT id, url FROM media_assets WHERE ` + predicate + ` ORDER BY id`
+	args := []any{}
 	if limit > 0 {
 		query += ` LIMIT ?`
 		args = append(args, limit)
 	}
-	query += `)`
-
-	// Match count first (same predicate, read-only) for the report.
-	countQuery := `SELECT COUNT(*) FROM media_assets WHERE ` + predicate
-	var matched int
-	if err := db.QueryRowContext(ctx, countQuery).Scan(&matched); err != nil {
-		return 0, 0, fmt.Errorf("backfill-source-url-metadata: count: %w", err)
-	}
-
-	res, err := db.ExecContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return 0, 0, fmt.Errorf("backfill-source-url-metadata: update: %w", err)
+		return 0, 0, fmt.Errorf("backfill-source-url-metadata: candidates: %w", err)
 	}
-	updated, err := res.RowsAffected()
-	if err != nil {
-		return 0, 0, fmt.Errorf("backfill-source-url-metadata: rows affected: %w", err)
+	type candidate struct {
+		assetID   string
+		sourceURL string
 	}
-	return matched, int(updated), nil
+	candidates := make([]candidate, 0)
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.assetID, &item.sourceURL); err != nil {
+			rows.Close()
+			return matched, 0, err
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return matched, 0, err
+	}
+	rows.Close()
+
+	updated := 0
+	for _, item := range candidates {
+		patchJSONBytes, err := json.Marshal(map[string]string{"source_url": item.sourceURL})
+		if err != nil {
+			return matched, updated, fmt.Errorf("backfill-source-url-metadata: marshal %s: %w", item.assetID, err)
+		}
+		patchJSON := string(patchJSONBytes)
+		if err := mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: item.assetID, MetadataPatchJSON: &patchJSON}); err != nil {
+			return matched, updated, fmt.Errorf("backfill-source-url-metadata: patch %s: %w", item.assetID, err)
+		}
+		updated++
+	}
+	return matched, updated, nil
 }

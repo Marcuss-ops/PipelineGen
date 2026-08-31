@@ -61,6 +61,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		item.Source.ForceRefresh = true
 		item.MediaPlan.ForceRefreshAssets = true
 		item.MediaPlan.ForceRefreshExtraction = true
+		item.MediaPlan.ForceRefreshBindings = true
 	}
 	// Rendered clips are grouped under the generated script name. Keep the
 	// source clip IDs untouched; this field only controls Drive routing.

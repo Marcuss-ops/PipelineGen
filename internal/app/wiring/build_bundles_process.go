@@ -194,6 +194,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
 	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
 	canonicalCommitter := newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log)
+	// UpsertClipTx and SetIndexStateTx are compatibility ports on the
+	// read-oriented ClipsRepository. Bind both to the same canonical writer
+	// instance used by the dispatcher so the repository cannot fall back to
+	// media_assets SQL of its own.
+	if repos.ClipsRepo != nil {
+		repos.ClipsRepo.SetCanonicalWriter(canonicalCommitter)
+	}
 	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log,
 		canonicalCommitter, canonicalCommitter)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
@@ -253,12 +260,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	}
 
 	return &OutboxBundle{
-		Dispatcher:     dispatcher,
-		EventsRepo:     outboxEventsRepo,
-		EventsRegistry: eventsRegistry,
-		EventsPool:     eventsPool,
-		Publisher:      publisherHandler,
-		DriveUploader:  driveUploadHandler,
+		CanonicalWriter: canonicalCommitter,
+		Dispatcher:      dispatcher,
+		EventsRepo:      outboxEventsRepo,
+		EventsRegistry:  eventsRegistry,
+		EventsPool:      eventsPool,
+		Publisher:       publisherHandler,
+		DriveUploader:   driveUploadHandler,
 	}, startClosure, nil
 }
 

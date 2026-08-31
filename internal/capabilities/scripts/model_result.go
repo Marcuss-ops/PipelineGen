@@ -124,7 +124,9 @@ type GenerateResult struct {
 	// OutputName is the caller-specified output name.
 	OutputName string `json:"output_name,omitempty"`
 
-	// WordCount is the total generated word count.
+	// WordCount is the generated BODY word count. It excludes DisplayText and
+	// all text/content attached to protected fixed-media scenes; those remain
+	// part of the timeline/specscene surface only.
 	WordCount      int    `json:"word_count"`
 	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 

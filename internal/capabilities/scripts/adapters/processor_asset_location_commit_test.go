@@ -6,18 +6,38 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-type recordingAssetLocationCommitter struct {
+type recordingAssetMutator struct {
 	changes []scriptpkg.AssetLocationChange
 	err     error
 }
 
-func (c *recordingAssetLocationCommitter) CommitAssetLocations(_ context.Context, changes []scriptpkg.AssetLocationChange) error {
-	c.changes = append([]scriptpkg.AssetLocationChange(nil), changes...)
+func (c *recordingAssetMutator) ReconcileDriveLocations(_ context.Context, changes []persistence.DriveLocationPatch) error {
+	c.changes = make([]scriptpkg.AssetLocationChange, 0, len(changes))
+	for _, change := range changes {
+		c.changes = append(c.changes, scriptpkg.AssetLocationChange{
+			AssetID: change.AssetID, DriveFileID: change.DriveFileID, DriveLink: change.DriveLink,
+		})
+	}
 	return c.err
 }
+
+func (c *recordingAssetMutator) ReconcileDriveLocationsTx(context.Context, persistence.Transaction, []persistence.DriveLocationPatch) error {
+	return nil
+}
+
+func (c *recordingAssetMutator) PatchAsset(context.Context, persistence.AssetPatch) error {
+	return nil
+}
+
+func (c *recordingAssetMutator) PatchAssetTx(context.Context, persistence.Transaction, persistence.AssetPatch) error {
+	return nil
+}
+
+var _ persistence.AssetMutator = (*recordingAssetMutator)(nil)
 
 func TestAssetLocationReconciliation_CommitsSortedDeduplicatedChanges(t *testing.T) {
 	oldClip := "https://drive.google.com/file/d/old-clip/view"
@@ -39,7 +59,7 @@ func TestAssetLocationReconciliation_CommitsSortedDeduplicatedChanges(t *testing
 		DriveLink: voiceoverLink, State: scriptpkg.LocationStateVerified,
 	})
 
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 	result, err := processor.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
@@ -76,7 +96,7 @@ func TestAssetLocationReconciliation_PolicyReflectsCommitter(t *testing.T) {
 	if got := withoutCommitter.Policy(nil); got != ProcessorBestEffort {
 		t.Fatalf("verification-only policy = %q, want %q", got, ProcessorBestEffort)
 	}
-	withCommitter := NewDurableAssetLocationReconciliationProcessor(verifier, &recordingAssetLocationCommitter{})
+	withCommitter := NewDurableAssetLocationReconciliationProcessor(verifier, &recordingAssetMutator{})
 	if got := withCommitter.Policy(nil); got != ProcessorRequired {
 		t.Fatalf("durable policy = %q, want %q", got, ProcessorRequired)
 	}
@@ -89,7 +109,7 @@ func TestAssetLocationReconciliation_NoChangesDoesNotCommit(t *testing.T) {
 		AssetID: "clip-1", DriveFileID: "stable", DriveLink: link,
 		State: scriptpkg.LocationStateVerified,
 	})
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 	if _, err := processor.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
@@ -115,7 +135,7 @@ func TestAssetLocationReconciliation_PreservesFileIDAndSkipsSubtitle(t *testing.
 		AssetID: "clip-1", DriveFileID: "subtitle",
 		State: scriptpkg.LocationStateMissing,
 	})
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 	if _, err := processor.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
@@ -141,7 +161,7 @@ func TestAssetLocationReconciliation_ConflictingChangesFailClosed(t *testing.T) 
 		AssetID: "asset-1", DriveFileID: "second", DriveLink: secondLink,
 		State: scriptpkg.LocationStateUpdated,
 	})
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 	result, err := processor.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
@@ -197,7 +217,7 @@ func TestAssetLocationReconciliation_DurableMalformedDocsURLClearsOnlyLink(t *te
 		State:     scriptpkg.LocationStateMalformed,
 		ErrorCode: "MALFORMED_LINK",
 	})
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 
 	result, err := processor.Process(context.Background(), nil, ProcessInput{
@@ -221,7 +241,7 @@ func TestAssetLocationReconciliation_DurableTransportErrorFailsClosed(t *testing
 	link := "https://drive.google.com/file/d/transport-failure/view"
 	verifier := newStubVerifier()
 	verifier.stubError(link, errors.New("drive unavailable"))
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 
 	result, err := processor.Process(context.Background(), nil, ProcessInput{
@@ -247,7 +267,7 @@ func TestAssetLocationReconciliation_CommitFailureIsRequired(t *testing.T) {
 		AssetID: "clip-1", DriveFileID: "changed", DriveLink: "https://drive.google.com/file/d/canonical/view",
 		State: scriptpkg.LocationStateUpdated,
 	})
-	committer := &recordingAssetLocationCommitter{err: errors.New("sqlite unavailable")}
+	committer := &recordingAssetMutator{err: errors.New("sqlite unavailable")}
 
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 	result, err := processor.Process(context.Background(), nil, ProcessInput{

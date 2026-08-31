@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
 
@@ -47,13 +46,13 @@ func RunPerformanceColdWarmReport(args []string) error {
 	}
 	defer cleanup()
 
-	jobsDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open primary database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer jobsDB.Close()
+	defer dbSet.Close()
 
-	store, err := perfstore.NewOperationStore(jobsDB.DB)
+	store, err := perfstore.NewOperationStore(dbSet.Primary.DB)
 	if err != nil {
 		return err
 	}

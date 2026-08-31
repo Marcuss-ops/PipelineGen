@@ -57,10 +57,13 @@ type AudioIntent struct {
 	// TimelineOffsetUS is serialized without omitempty: a voiceover at the
 	// scene origin must still carry timeline_offset_us=0 explicitly, so the
 	// canonical timeline JSON never silently drops the placement decision.
-	TimelineOffsetUS   int64   `json:"timeline_offset_us"`
-	TimelineDurationUS int64   `json:"timeline_duration_us,omitempty"`
-	UseOriginalAudio   bool    `json:"use_original_audio,omitempty"`
-	GainDB             float64 `json:"gain_db,omitempty"`
+	TimelineOffsetUS   int64 `json:"timeline_offset_us"`
+	TimelineDurationUS int64 `json:"timeline_duration_us,omitempty"`
+	UseOriginalAudio   bool  `json:"use_original_audio,omitempty"`
+	// ProtectedOriginalAudio marks fixed_media audio whose original clip
+	// stream is authoritative and must survive every global mix policy.
+	ProtectedOriginalAudio bool    `json:"protected_original_audio,omitempty"`
+	GainDB                 float64 `json:"gain_db,omitempty"`
 }
 
 type AudioTrackRole string
@@ -73,12 +76,16 @@ const (
 )
 
 type TimelineSegment struct {
-	ID              string         `json:"id"`
-	Index           int            `json:"index"`
-	TimelineStartUS int64          `json:"timeline_start_us"`
-	DurationUS      int64          `json:"duration_us"`
-	Video           VideoSegment   `json:"video"`
-	VideoSegments   []VideoSegment `json:"video_segments,omitempty"`
+	ID              string `json:"id"`
+	Index           int    `json:"index"`
+	TimelineStartUS int64  `json:"timeline_start_us"`
+	DurationUS      int64  `json:"duration_us"`
+	// FixedMedia marks an authoritative protected intro/outro span. The
+	// renderer must preserve its declared clip order/source windows; its
+	// corresponding audio intents must be protected original clip streams.
+	FixedMedia    bool           `json:"fixed_media,omitempty"`
+	Video         VideoSegment   `json:"video"`
+	VideoSegments []VideoSegment `json:"video_segments,omitempty"`
 	// Audio is retained for v1 compatibility. New plans use AudioIntents.
 	Audio        AudioIntent   `json:"audio"`
 	AudioIntents []AudioIntent `json:"audio_intents,omitempty"`
@@ -154,7 +161,10 @@ type AudioEvent struct {
 	SourceInUS       int64          `json:"source_in_us,omitempty"`
 	SourceDurationUS int64          `json:"source_duration_us,omitempty"`
 	UseOriginalAudio bool           `json:"use_original_audio,omitempty"`
-	GainDB           float64        `json:"gain_db,omitempty"`
+	// ProtectedOriginalAudio is copied from the fixed_media scene contract;
+	// it prevents VO-only removal and clip ducking from mutating the span.
+	ProtectedOriginalAudio bool    `json:"protected_original_audio,omitempty"`
+	GainDB                 float64 `json:"gain_db,omitempty"`
 }
 
 type AudioLayer struct {
@@ -342,9 +352,16 @@ func (t CanonicalTimeline) Validate() error {
 		if len(videos) > 0 && videoEnd != s.DurationUS {
 			return fmt.Errorf("%w: segment %d video does not cover scene duration", ErrInvalidTimeline, i)
 		}
-		for _, intent := range s.EffectiveAudioIntents() {
+		intents := s.EffectiveAudioIntents()
+		if s.FixedMedia && !hasProtectedOriginalAudio(intents) {
+			return fmt.Errorf("%w: segment %d fixed media lacks protected original audio", ErrInvalidTimeline, i)
+		}
+		for _, intent := range intents {
 			if intent.SourceInUS < 0 || intent.SourceDurationUS < 0 || intent.TimelineOffsetUS < 0 || intent.TimelineOffsetUS > s.DurationUS || intent.TimelineDurationUS < 0 || intent.TimelineDurationUS > s.DurationUS-intent.TimelineOffsetUS || (intent.Mode == AudioClip && intent.SourceDurationUS <= 0) {
 				return fmt.Errorf("%w: segment %d audio source range", ErrInvalidTimeline, i)
+			}
+			if intent.ProtectedOriginalAudio && (intent.Mode != AudioClip || !intent.UseOriginalAudio || intent.ClipAssetID == "") {
+				return fmt.Errorf("%w: segment %d protected audio must be an original clip stream", ErrInvalidTimeline, i)
 			}
 			switch intent.Mode {
 			case AudioVoiceover, AudioClip, AudioSilence:
@@ -429,11 +446,14 @@ func validateEvent(e AudioEvent, role AudioTrackRole) error {
 	if e.Type != EventVoiceover && e.Type != EventClip && e.Type != EventSilence && e.Type != EventBGM && e.Type != EventSFX {
 		return fmt.Errorf("%w: event type", ErrInvalidAudioPlan)
 	}
-	if (e.Type != EventSilence) && strings.TrimSpace(e.AssetID) == "" {
+	if e.Type != EventSilence && strings.TrimSpace(e.AssetID) == "" {
 		return fmt.Errorf("%w: event asset", ErrInvalidAudioPlan)
 	}
 	if e.Type == EventClip && (!e.UseOriginalAudio || e.SourceDurationUS <= 0) {
 		return fmt.Errorf("%w: clip audio requires original source range", ErrInvalidAudioPlan)
+	}
+	if e.ProtectedOriginalAudio && (e.Type != EventClip || !e.UseOriginalAudio) {
+		return fmt.Errorf("%w: protected audio must be an original clip event", ErrInvalidAudioPlan)
 	}
 	if role == TrackVoiceover && e.Type != EventVoiceover && e.Type != EventSilence {
 		return fmt.Errorf("%w: voiceover track contains %s", ErrInvalidAudioPlan, e.Type)

@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -131,7 +132,11 @@ func RunBackfillClipFolderPath(args []string) error {
 		return resolveClipFolderPath(ctx, reader.GetFileMeta, driveFileID, rootFolderID)
 	}
 
-	stats, err := backfillClipFolderPath(ctx, rootCtx.DB.DB, resolve, *limit, *concurrency, *apply)
+	mutator, ok := rootCtx.CanonicalAssetWriter.(persistence.AssetMutator)
+	if !ok || mutator == nil {
+		return fmt.Errorf("canonical asset mutator is not available")
+	}
+	stats, err := backfillClipFolderPath(ctx, rootCtx.DB.DB, resolve, *limit, *concurrency, *apply, mutator)
 	if err != nil {
 		return err
 	}
@@ -155,6 +160,7 @@ func backfillClipFolderPath(
 	resolve clipFolderPathResolver,
 	limit, concurrency int,
 	apply bool,
+	mutators ...persistence.AssetMutator,
 ) (clipFolderPathStats, error) {
 	var stats clipFolderPathStats
 
@@ -221,23 +227,18 @@ func backfillClipFolderPath(
 				res.row.id, res.folderID, res.folderPath)
 			continue
 		}
-		if err := updateClipAssetFolderPath(ctx, db, res.row.id, res.folderID, res.folderPath); err != nil {
-			return stats, err
+		if len(mutators) > 0 && mutators[0] != nil {
+			folderID, folderPath := res.folderID, res.folderPath
+			if err := mutators[0].PatchAsset(ctx, persistence.AssetPatch{
+				AssetID: res.row.id, FolderID: &folderID, FolderPath: &folderPath,
+			}); err != nil {
+				return stats, fmt.Errorf("backfill-clip-folder-path: canonical update %s: %w", res.row.id, err)
+			}
+		} else {
+			return stats, fmt.Errorf("backfill-clip-folder-path: canonical asset mutator is required")
 		}
 	}
 	return stats, nil
-}
-
-// updateClipAssetFolderPath writes the resolved physical folder location
-// onto a single media_assets row.
-func updateClipAssetFolderPath(ctx context.Context, db *sql.DB, id, folderID, folderPath string) error {
-	_, err := db.ExecContext(ctx,
-		`UPDATE media_assets SET folder_id = ?, folder_path = ?, updated_at = ? WHERE id = ?`,
-		folderID, folderPath, time.Now().UTC().Format(time.RFC3339), id)
-	if err != nil {
-		return fmt.Errorf("backfill-clip-folder-path: update %s: %w", id, err)
-	}
-	return nil
 }
 
 // resolveClipFolderPath walks the Drive parent chain of driveFileID up to

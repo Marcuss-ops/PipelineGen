@@ -22,7 +22,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 func RunMigrateLegacyCache(args []string) error {
@@ -41,11 +40,12 @@ func RunMigrateLegacyCache(args []string) error {
 	defer cleanup()
 
 	ctx := cli.CmdContext()
-	sdb, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("migrate-legacy-cache: open DB: %w", err)
+		return fmt.Errorf("migrate-legacy-cache: open database set: %w", err)
 	}
-	defer sdb.Close()
+	defer dbSet.Close()
+	sdb := dbSet.Primary
 
 	// Read all exact-cache rows.
 	rows, err := sdb.DB.QueryContext(ctx,

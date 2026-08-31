@@ -171,9 +171,9 @@ func (s *DeletionService) CompleteAsset(ctx context.Context, assetID string) err
 
 	// (b+c) Atomic post-state-machine cleanup.
 	if s.completionTx == nil {
-		return fmt.Errorf("complete asset: completionTxRunner not wired (production wiring must supply a CompletionTxRunner satisfying the DELETE FROM media_assets + DELETE FROM outbox_events atomic-tx contract; pre-commit-4/3 wiring forward-pointer — see CHANGELOG honest-limitation)")
+		return fmt.Errorf("complete asset: completionTxRunner not wired (production wiring must supply the canonical atomic cleanup runner; see CHANGELOG honest-limitation)")
 	}
-	logger.Info("complete asset: running atomic cleanup (DELETE media_assets + DELETE outbox_events in single TX)",
+	logger.Info("complete asset: running canonical atomic cleanup",
 		zap.String("asset_id", assetID),
 		zap.String("file_id", fileID),
 		zap.String("lifecycle_state_at_entry", string(currentState)),

@@ -23,8 +23,10 @@ func TestFixedPlaybackPolicyRejectsInvalidSourceWindows(t *testing.T) {
 	cases := []FixedPlaybackPolicy{
 		{AudioMode: FixedPlaybackAudioMode("voiceover")},
 		{SourceInMS: 1000},
-		{SourceOutMS: 1000},
-		{SourceInMS: 2000, SourceOutMS: 1000},
+		{AudioMode: FixedPlaybackOriginalClip, SourceInMS: 2000, SourceOutMS: 1000},
+	}
+	if policy := (FixedPlaybackPolicy{AudioMode: FixedPlaybackOriginalClip, SourceInMS: 0, SourceOutMS: 1000}); !policy.Valid() {
+		t.Fatalf("policy %+v unexpectedly invalid", policy)
 	}
 	for _, policy := range cases {
 		if policy.Valid() {

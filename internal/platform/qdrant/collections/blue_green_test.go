@@ -162,7 +162,7 @@ func TestBlueGreen_FailedPopulateNeverChangesAlias(t *testing.T) {
 func TestBlueGreen_FailedProjectionIsCleanupEligible(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
-	active := prefix + "_20260814_071358_active"
+	active := qdrantSchema.ProductionCollection
 	rollback := prefix + "_20260813_184719_rollback"
 	candidate := prefix + "_20260814_070758_candidate"
 

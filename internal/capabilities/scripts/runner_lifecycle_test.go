@@ -141,11 +141,12 @@ func TestResumeFrom(t *testing.T) {
 
 func TestStageIndex(t *testing.T) {
 	assert.Equal(t, 0, StageIndex(StageNormalizing), "NORMALIZING should be index 0")
-	assert.Equal(t, 1, StageIndex(StageGeneratingSceneText))
-	assert.Equal(t, 2, StageIndex(StageTranslatingScenes))
-	assert.Equal(t, 3, StageIndex(StageGeneratingVoiceovers))
-	assert.Equal(t, 4, StageIndex(StageCompilingAudio))
-	assert.Equal(t, 5, StageIndex(StagePublishingDocuments))
+	assert.Equal(t, 1, StageIndex(StagePreflight))
+	assert.Equal(t, 2, StageIndex(StageGeneratingSceneText))
+	assert.Equal(t, 3, StageIndex(StageTranslatingScenes))
+	assert.Equal(t, 4, StageIndex(StageGeneratingVoiceovers))
+	assert.Equal(t, 5, StageIndex(StageCompilingAudio))
+	assert.Equal(t, 6, StageIndex(StagePublishingDocuments))
 	assert.Equal(t, -1, StageIndex(StageCompleted), "terminal stages should return -1")
 	assert.Equal(t, -1, StageIndex(StageFailed), "terminal stages should return -1")
 	assert.Equal(t, -1, StageIndex("UNKNOWN"), "unknown stage should return -1")

@@ -92,17 +92,12 @@ func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPo
 // specScenesFromInput — same-package resolution makes the call
 // transparent (no import surface change).
 func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if p.gen == nil {
-		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
-	}
-
 	scenes := filterMediaResolutionScenes(specScenesFromInput(input))
 	if len(scenes) == 0 {
-		if p.log != nil {
-			p.log.Debug("image processor: no scenes to render (no specscene scenes)",
-				zap.String("item_id", plan.ID))
-		}
 		return &PostProcessResult{}, nil
+	}
+	if p.gen == nil {
+		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
 	if input.Text == "" {

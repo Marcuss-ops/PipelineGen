@@ -86,6 +86,9 @@ func (p *InternetImagesProcessor) handleBypassOrUnavailable(plan *scriptpkg.Reso
 		}
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, true
 	}
+	if !hasMediaSearchSegments(input) {
+		return &PostProcessResult{VidRushSegments: markInternetImagesBypassed(input.VidRushSegments), Changed: true}, true
+	}
 	if p.searcher == nil && !options.cacheOnly {
 		return &PostProcessResult{Changed: true, Warnings: []string{"internet_images: InternetImageSearcher not configured"}}, true
 	}
@@ -183,6 +186,7 @@ func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Conte
 					cacheStore(&vidrushImageCache, cacheKey, persisted)
 				}
 				updatedSegments = append(updatedSegments, updated)
+
 				if p.metrics != nil {
 					p.metrics.IncAssetCache("internet_images", true)
 				}
@@ -331,8 +335,7 @@ func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Conte
 				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "search", Provider: "internet_images",
 			}, func(callCtx context.Context) error {
 				var searchErr error
-				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{
-					SegmentID: updated.SegmentID, Query: query, Entity: firstEntity,
+				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: firstEntity,
 					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
 					Provider: "internet_images",
 				})
@@ -430,7 +433,9 @@ func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Conte
 		}
 		updatedSegments = append(updatedSegments, updated)
 	}
-
+	for i := range updatedSegments {
+		normalizeVidRushSegmentAssets(&updatedSegments[i])
+	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, plan.MediaPlan.Extraction.EntityImages)
 	return &PostProcessResult{
 		VidRushSegments:  updatedSegments,

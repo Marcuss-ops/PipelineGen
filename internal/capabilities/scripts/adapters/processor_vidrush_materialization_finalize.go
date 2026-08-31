@@ -11,6 +11,9 @@ import (
 )
 
 func selectVidRushPrimaryVideoWithPolicy(candidates []scriptpkg.SegmentAssetCandidate, plan *scriptpkg.ResolvedGenerationPlan, profile scriptpkg.SegmentSemanticProfile, targetDurationMs int64, reranker scriptports.CandidateReranker, ctx context.Context) *scriptpkg.SegmentAssetCandidate {
+	if profile.ExecutionMode.IsFixedMedia() {
+		return nil
+	}
 	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube {

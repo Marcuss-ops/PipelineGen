@@ -37,7 +37,7 @@ BASE_URL="${FINGERPRINT_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
 QDRANT_URL="${FINGERPRINT_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${FINGERPRINT_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
-DB_PATH="${FINGERPRINT_DB_PATH:-${VELOX_DB_PATH:-$(canonical_primary_db_path "$ROOT_DIR")}}"
+DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
 DB_PATH="$(validate_canonical_primary_db_path "$DB_PATH")" || exit 2
 
 HAS_PARTIAL=0

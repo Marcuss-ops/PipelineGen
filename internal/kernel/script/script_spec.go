@@ -28,7 +28,10 @@ type ScriptSegment struct {
 }
 
 // ScriptSpec controls the generation behaviour: sizing, style, and
-// prompt versioning. Identity fields (Language, Tone, Model) live
+// prompt versioning. TargetWords and MinWords apply exclusively to the
+// generated BODY. Protected fixed-media sections (including DisplayText)
+// are timeline/document content and are never included in either budget.
+// Identity fields (Language, Tone, Model) live
 // on GenerationItemV2; the normalizer merges them into the resolved
 // plan.
 //

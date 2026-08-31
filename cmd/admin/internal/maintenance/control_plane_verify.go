@@ -26,25 +26,26 @@ func RunControlPlaneVerify(args []string) error {
 		return err
 	}
 	defer cleanup()
-	db, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("control-plane verify: open DB: %w", err)
+		return fmt.Errorf("control-plane verify: open database set: %w", err)
 	}
-	defer db.Close()
+	defer dbSet.Close()
+	db := dbSet.Primary
 	topology := []storage.ConfiguredDatabase{
-		{Name: "primary", Path: cfg.Storage.PrimaryDBFullPath(), Role: storage.ControlPlaneRoleCanonical, Writable: true, ControlPlane: true},
-		{Name: "observability", Path: cfg.Storage.ObservabilityDBFullPath(), Role: storage.ControlPlaneRoleReadOnly, Writable: true, ControlPlane: false},
+		{Name: "primary", Path: dbSet.PrimaryPath(), Role: storage.ControlPlaneRoleCanonical, Writable: true, ControlPlane: true},
+		{Name: "observability", Path: dbSet.ObservabilityPath(), Role: storage.ControlPlaneRoleReadOnly, Writable: true, ControlPlane: false},
 	}
 	if cfg.Jobs.SplitDBEnabled {
 		jobsPath := cfg.Jobs.JobsDBPath
 		if jobsPath == "" {
-			jobsPath = cfg.Storage.PrimaryDBFullPath()
+			jobsPath = dbSet.PrimaryPath()
 		}
 		topology = append(topology, storage.ConfiguredDatabase{
 			Name: "jobs", Path: jobsPath, Role: storage.ControlPlaneRoleCanonical, Writable: true, ControlPlane: true,
 		})
 	}
-	v, err := platformcontrol.NewWithTopology(db.DB, cfg.Storage.PrimaryDBFullPath(), topology)
+	v, err := platformcontrol.NewWithTopology(db.DB, dbSet.PrimaryPath(), topology)
 	if err != nil {
 		return err
 	}

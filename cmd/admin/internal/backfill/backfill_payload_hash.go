@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 )
 
@@ -39,11 +38,12 @@ func RunBackfillPayloadHash(args []string) error {
 	}
 	defer cleanup()
 
-	jobsDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open primary database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer jobsDB.Close()
+	defer dbSet.Close()
+	jobsDB := dbSet.Primary
 
 	reg, err := jobregistry.New(jobsDB.DB)
 	if err != nil {

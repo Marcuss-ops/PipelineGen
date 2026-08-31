@@ -70,6 +70,11 @@ import (
 // itself handles cross-pool coordination (readers see the committed
 // writer's snapshot via the WAL).
 type DualPool struct {
+	// ownsHandles is false when the pool is attached to DatabaseSet.Primary.
+	// In that topology Writer and Reader are views over the already-open
+	// canonical primary handle; Close must not close it a second time.
+	ownsHandles bool
+
 	// Writer is the single-slot write pool (MaxOpenConns=1).
 	// All canonical write paths route through writer.
 	Writer *sql.DB
@@ -166,7 +171,25 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 		return nil, fmt.Errorf("sqlite.NewDualPool: writer ping: %w", err)
 	}
 
-	return &DualPool{Writer: writer, Reader: reader, sourcePath: walUri}, nil
+	return &DualPool{Writer: writer, Reader: reader, sourcePath: walUri, ownsHandles: true}, nil
+}
+
+// AttachDualPool exposes the canonical DatabaseSet primary handle through the
+// legacy reader/writer-shaped adapter used by composition bundles. It never
+// opens another SQLite connection or database file: both views intentionally
+// reference DatabaseSet.Primary.DB. New runtime code should prefer
+// DatabaseSet.Primary directly; this adapter exists only while bundle
+// constructors migrate from the retired second-pool topology.
+func AttachDualPool(primary *SQLiteDB) (*DualPool, error) {
+	if primary == nil || primary.DB == nil {
+		return nil, errors.New("sqlite.AttachDualPool: canonical primary is nil")
+	}
+	return &DualPool{
+		Writer:      primary.DB,
+		Reader:      primary.DB,
+		sourcePath:  primary.Path(),
+		ownsHandles: false,
+	}, nil
 }
 
 func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
@@ -189,13 +212,16 @@ func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
 // close errors are logged via the package-level contract that callers
 // rely on for shutdown sequencing.
 func (p *DualPool) Close() error {
+	if p == nil || !p.ownsHandles {
+		return nil
+	}
 	var firstErr error
 	if p.Writer != nil {
 		if err := p.Writer.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("sqlite.DualPool.Close: writer: %w", err)
 		}
 	}
-	if p.Reader != nil {
+	if p.Reader != nil && p.Reader != p.Writer {
 		if err := p.Reader.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("sqlite.DualPool.Close: reader: %w", err)
 		}

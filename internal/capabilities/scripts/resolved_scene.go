@@ -14,6 +14,9 @@ import (
 type ResolvedScene struct {
 	ID    string `json:"id"`
 	Index int    `json:"index"`
+	// FixedMedia is propagated from Scene.ExecutionMode so the canonical
+	// timeline and renderer cannot lose the protected fixed-section boundary.
+	FixedMedia bool `json:"fixed_media,omitempty"`
 	// TimelineStartUS is the absolute timeline placement of this scene: the
 	// cumulative sum of all preceding scene durations. The scene end is always
 	// derived as TimelineStartUS + DurationUS and is never stored.
@@ -109,6 +112,9 @@ func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clip
 			}
 			intents = []audio.AudioIntent{intent}
 		}
+		if scene.ExecutionMode.IsFixedMedia() {
+			intents = protectedFixedAudioIntents(intents)
+		}
 		durationUS, err := durationResolver.Resolve(scene, mode, clipBound, intents, func() int64 {
 			if vo != nil {
 				return vo.DurationUS
@@ -136,13 +142,31 @@ func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clip
 				clipAudioPaths[clip.ID] = clip.AudioPath
 			}
 		}
-		resolved = append(resolved, ResolvedScene{ID: scene.ID, Index: i, TimelineStartUS: startUS, Text: scene.Text, DurationUS: durationUS, Video: video, VideoSegments: videos, ClipAudioPaths: clipAudioPaths, Voiceover: vo, AudioIntents: intents})
+		resolved = append(resolved, ResolvedScene{ID: scene.ID, Index: i, TimelineStartUS: startUS, Text: scene.Text, DurationUS: durationUS, Video: video, VideoSegments: videos, ClipAudioPaths: clipAudioPaths, Voiceover: vo, AudioIntents: intents, FixedMedia: scene.ExecutionMode.IsFixedMedia()})
 		if startUS > math.MaxInt64-durationUS {
 			return nil, fmt.Errorf("scene %s timeline start overflows", scene.ID)
 		}
 		startUS += durationUS
 	}
 	return resolved, nil
+}
+
+// protectedFixedAudioIntents is the canonical audio firewall for fixed_media
+// scenes. Fixed media has one authoritative source: the original clip audio.
+// Generated voiceover intents are discarded, while every clip intent is made
+// explicit and immune to global VO-only removal or ducking.
+func protectedFixedAudioIntents(intents []audio.AudioIntent) []audio.AudioIntent {
+	out := make([]audio.AudioIntent, 0, len(intents))
+	for _, intent := range intents {
+		if intent.Mode != audio.AudioClip {
+			continue
+		}
+		intent.UseOriginalAudio = true
+		intent.ProtectedOriginalAudio = true
+		intent.GainDB = 0
+		out = append(out, intent)
+	}
+	return out
 }
 
 func checkedUS(value, multiplier int64, field string) (int64, error) {

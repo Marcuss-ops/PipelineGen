@@ -46,6 +46,11 @@ type CanonicalSegment struct {
 	TextHash        string   `json:"text_hash"`
 	SourceTextHash  string   `json:"source_text_hash,omitempty"`
 	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
+	// ExecutionMode mirrors the canonical scene authorization boundary.
+	// Fixed-media segments are authoritative and must never enter semantic
+	// enrichment, provider search, ranking, fallback resolution or media
+	// replacement.
+	ExecutionMode SceneExecutionMode `json:"execution_mode,omitempty"`
 }
 
 // Validate verifies the stable segment identity and hash contract.
@@ -85,6 +90,7 @@ func NormalizeCanonicalSegment(segment CanonicalSegment) CanonicalSegment {
 		segment.SourceTextHash = ComputeCanonicalSegmentTextHash(segment.SourceText)
 	}
 	segment.ArtlistKeywords = append([]string(nil), segment.ArtlistKeywords...)
+	segment.ExecutionMode = segment.ExecutionMode.Normalize()
 	return segment
 }
 
@@ -134,9 +140,16 @@ type SegmentInsights struct {
 
 // SegmentAssetCandidate is a single candidate found for a segment.
 type SegmentAssetCandidate struct {
+	// Provenance is copied onto every discovered, selected and materialized
+	// asset. It is the binding boundary: an asset carrying another segment's
+	// identity must never be accepted by a different segment.
+	SegmentID             string  `json:"segment_id"`
+	Position              int     `json:"position"`
+	TextHash              string  `json:"text_hash"`
+	EntityID              string  `json:"entity_id"`
 	AssetID               string  `json:"asset_id"`
 	Provider              string  `json:"provider"`
-	Query                 string  `json:"query,omitempty"`
+	Query                 string  `json:"query"`
 	Entity                string  `json:"entity,omitempty"`
 	Score                 float64 `json:"score"`
 	RelevanceScore        float64 `json:"relevance_score,omitempty"`
@@ -193,12 +206,15 @@ type SegmentCacheState struct {
 
 // VidRushSegmentResult is the full per-segment output surfaced by script generation.
 type VidRushSegmentResult struct {
-	SegmentID string                `json:"segment_id"`
-	SceneID   string                `json:"scene_id,omitempty"`
-	Position  int                   `json:"position"`
-	Text      string                `json:"text"`
-	TextHash  string                `json:"text_hash"`
-	Insights  SegmentInsights       `json:"insights"`
-	Assets    SegmentAssetSelection `json:"assets"`
-	Cache     SegmentCacheState     `json:"cache"`
+	SegmentID string `json:"segment_id"`
+	SceneID   string `json:"scene_id,omitempty"`
+	Position  int    `json:"position"`
+	Text      string `json:"text"`
+	TextHash  string `json:"text_hash"`
+	// ExecutionMode is copied from SpecScene and remains available to
+	// incremental processors that do not carry the full scene envelope.
+	ExecutionMode SceneExecutionMode    `json:"execution_mode,omitempty"`
+	Insights      SegmentInsights       `json:"insights"`
+	Assets        SegmentAssetSelection `json:"assets"`
+	Cache         SegmentCacheState     `json:"cache"`
 }

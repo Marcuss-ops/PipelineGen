@@ -132,7 +132,10 @@ func (p ProjectionRetentionPolicy) Decide(in Input) (Plan, error) {
 		if IsStalePartial(in.Statuses[name]) {
 			continue
 		}
-		if !strings.HasPrefix(name, activePrefix) {
+		// Prefer the most specific registered prefix. This prevents a
+		// retired schema such as media_assets_v3_nomic from being
+		// misclassified as the active production prefix media_assets.
+		if matchingPrefix(name, prefixes) != activePrefix {
 			continue
 		}
 		tail = append(tail, name)
@@ -192,6 +195,19 @@ func RetentionPrefixes(current string, retired []string) ([]string, error) {
 		prefixes = append(prefixes, p)
 	}
 	return prefixes, nil
+}
+
+// matchingPrefix returns the longest registered prefix matching name.
+// Longest-match semantics keep retired schema generations distinct from
+// the broad production prefix (for example media_assets_v3_* vs media_assets).
+func matchingPrefix(name string, prefixes []string) string {
+	best := ""
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) && len(prefix) > len(best) {
+			best = prefix
+		}
+	}
+	return best
 }
 
 // MatchesAnyPrefix reports whether name has any of the given prefixes.

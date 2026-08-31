@@ -3,7 +3,6 @@ package clipindexer
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -71,41 +70,11 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 	}
 
 	source := s.sourceLabel(ctx, clipID)
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	// Single atomic UPDATE — index_state column + index_state_updated_at column + sidecar last_index_error in metadata_json.
-	// The CASE expression collapses the json_set when lastError == ""
-	// so we don't write a sentinel "$.last_index_error" = "" entry
-	// (which the column-vs-sidecar rationale keeps clean).
-	var err error
-	if lastError != "" {
-		_, err = s.db.ExecContext(ctx,
-			`UPDATE media_assets SET
-				index_state = ?,
-				index_state_updated_at = ?,
-				metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.last_index_error', ?)
-			 WHERE id = ?`,
-			string(state), now, lastError, clipID)
-	} else {
-		// PR6 invariant: BOTH branches write metadata_json so the
-		// $.last_index_error sidecar is idempotent across state
-		// transitions. The empty branch uses json_remove to clear
-		// any prior non-empty error — otherwise operators grep on
-		// `metadata_json LIKE '%last_index_error%'` to find
-		// recently-failed rows would see STALE errors that don't
-		// match the current column state. The two branches run
-		// symmetrically — one UPDATE round-trip each, same shape;
-		// no per-call cost asymmetry.
-		_, err = s.db.ExecContext(ctx,
-			`UPDATE media_assets SET
-				index_state = ?,
-				index_state_updated_at = ?,
-				metadata_json = json_remove(COALESCE(metadata_json, '{}'), '$.last_index_error')
-			 WHERE id = ?`,
-			string(state), now, clipID)
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("setIndexState: canonical asset mutation committer is not wired for %s", clipID)
 	}
-	if err != nil {
-		return fmt.Errorf("setIndexState UPDATE for %s (state=%s): %w", clipID, state, err)
+	if err := s.assetMutator.SetIndexState(ctx, clipID, state, lastError); err != nil {
+		return fmt.Errorf("setIndexState for %s (state=%s): %w", clipID, state, err)
 	}
 
 	// Metric increments: only transient / failure states here.
@@ -178,33 +147,16 @@ func (s *Service) sourceLabel(ctx context.Context, assetID string) string {
 // ordering is defensive in case a future refactor splits the
 // UPDATE in error.
 func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceVersion string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	// BLOCKER #1 closure (audit 2026-07-03): the CAS fence guards on
-	// (id, source_version, index_state='INDEXING') ONLY — file_hash is no
-	// longer compared. file_hash stores the video file MD5 (32 hex chars)
-	// while contentHash is the SHA-256 of searchable text (64 hex chars);
-	// they can never match, so the prior `AND file_hash = ?` caused
-	// ErrIndexSuperseded on EVERY asset, preventing any from reaching
-	// INDEXED. The test TestSetIndexedAt_SucceedsWhenContentHashDiffers-
-	// ButSourceVersionMatches pins this contract.
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE media_assets SET
-			index_state = ?,
-			index_state_updated_at = ?,
-			metadata_json = json_set(json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?), '$.embedding_contract_hash', ?)
-		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
-		string(asset.StateIndexed), now,
-		now, contentHash, embeddingModel, embeddingModelVersion, coreembedding.CanonicalText.Hash(),
-		clipID, sourceVersion)
+	if s == nil || s.assetMutator == nil {
+		return fmt.Errorf("setIndexedAt: canonical asset mutation committer is not wired for %s", clipID)
+	}
+	ok, err := s.assetMutator.SetIndexed(ctx, clipID, contentHash, sourceVersion,
+		embeddingModel, embeddingModelVersion, coreembedding.CanonicalText.Hash())
 	if err != nil {
 		return fmt.Errorf("set indexed_at for %s: %w", clipID, err)
 	}
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return &ErrIndexSuperseded{
-			ClipID:        clipID,
-			SourceVersion: sourceVersion,
-		}
+	if !ok {
+		return &ErrIndexSuperseded{ClipID: clipID, SourceVersion: sourceVersion}
 	}
 	metrics.MediaIndexSuccessTotal.WithLabelValues(s.sourceLabel(ctx, clipID)).Inc()
 	return nil

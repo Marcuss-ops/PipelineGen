@@ -13,7 +13,6 @@
 //	--apply      Actually write to catalog (default: dry-run)
 //	--max-depth  Maximum recursion depth (default: 5)
 //	--sync-assets Cross-reference media_assets and populate missing catalog entries (default: false)
-//	--db-path    Override canonical SQLite DB path
 //
 // godlike/06 SSOT (one canonical owner per fact): the reconcile CLI is the
 // canonical SOLE writer for source=discovered entries in drive_folder_catalog.
@@ -37,7 +36,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 )
 
@@ -58,7 +56,6 @@ func RunDriveReconcile(args []string) error {
 	apply := fs.Bool("apply", false, "Actually write to catalog (default: dry-run only)")
 	maxDepth := fs.Int("max-depth", 5, "Maximum recursion depth")
 	syncAssets := fs.Bool("sync-assets", false, "Cross-reference media_assets and populate missing catalog entries")
-	dbPath := fs.String("db-path", "", "Canonical SQLite DB path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -103,22 +100,17 @@ func RunDriveReconcile(args []string) error {
 	}
 
 	// --apply path.
-	return executeReconcile(cli.CmdContext(), cfg, log, *rootID, *maxDepth, *syncAssets, *dbPath)
+	return executeReconcile(cli.CmdContext(), cfg, log, *rootID, *maxDepth, *syncAssets)
 }
 
-func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID string, maxDepth int, syncAssets bool, dbPathFlag string) error {
-	path := cli.ResolveDBPath(cfg, dbPathFlag)
-	if path == "" {
-		return ErrAdminNoDB
-	}
-
-	sqliteDB, err := storage.OpenSQLiteDB(path, log)
+func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID string, maxDepth int, syncAssets bool) error {
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("drive-reconcile: open DB: %w", err)
+		return fmt.Errorf("drive-reconcile: open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
 
-	catalogRepo := sqlitedelivery.NewRepository(sqliteDB.DB)
+	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 
 	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
@@ -156,7 +148,7 @@ func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	assetSynced := 0
 	if syncAssets {
 		fmt.Println("\n--- Phase 2: media_assets cross-reference ---")
-		n, syncErr := syncMediaAssetsToCatalog(ctx, sqliteDB.DB, catalogRepo)
+		n, syncErr := syncMediaAssetsToCatalog(ctx, dbSet.Primary.DB, catalogRepo)
 		if syncErr != nil {
 			fmt.Printf("  ⚠️  media_assets sync error: %v\n", syncErr)
 			errors++

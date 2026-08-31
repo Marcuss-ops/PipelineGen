@@ -139,6 +139,7 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// drive.NewTestDBWithSchema) into the typed handle. The body uses
 	// method promotion transparently.
 	svc := NewService(cfg, &drive.SQLiteDB{DB: db}, ":memory:", zap.NewNop())
+	svc.SetAssetMutationCommitter(newTestAssetMutationCommitter(db))
 	vs := &mockVectorStoreIndexer{}
 	svc.vectorStore = vs
 

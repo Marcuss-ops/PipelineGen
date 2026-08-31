@@ -19,6 +19,7 @@ var (
 // transport details stay behind the provider implementation.
 type VidRushSearchRequest struct {
 	SegmentID string
+	Position  int
 	SceneID   string
 	TextHash  string
 	Text      string

@@ -18,12 +18,15 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 )
 
@@ -83,7 +86,15 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *asset.Asset) {
 		clip.Metadata = make(map[string]any)
 	}
 
-	repo := assets.NewClipsRepository(db, zap.NewNop())
+	log := zap.NewNop()
+	repo := assets.NewClipsRepository(db, log)
+	box := outboxevents.NewRepository(db)
+	ledger, err := mediaregistry.NewLedger(db)
+	if err != nil {
+		t.Fatalf("failed to create media registry ledger: %v", err)
+	}
+	committer := assets.NewSQLiteMediaCommitter(db, box, ledger, log)
+	mediacommitadapters.WireCanonicalAssetStore(repo.AssetStoreSQLite, committer)
 	if err := repo.UpsertClip(context.Background(), clip); err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}

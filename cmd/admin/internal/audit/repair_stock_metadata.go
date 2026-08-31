@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
@@ -181,6 +182,10 @@ func RunRepairStockMetadata(args []string) error {
 		return fmt.Errorf("database not initialized in composition root")
 	}
 	db := root.DB.DB
+	mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
+	if !ok || mutator == nil {
+		return fmt.Errorf("canonical asset mutator is not available")
+	}
 
 	report := repairStockMetadataReport{Mode: "dry-run", Sources: deps.Sources}
 	if deps.Apply {
@@ -208,7 +213,7 @@ func RunRepairStockMetadata(args []string) error {
 	// Composes search_text from the row's existing fields for the target
 	// sources when the column is empty.
 	if !deps.SkipSearchText {
-		matched, updated, err := backfillSearchText(ctx, db, deps.Sources, deps.Limit, deps.Apply)
+		matched, updated, err := backfillSearchTextCanonical(ctx, db, mutator, deps.Sources, deps.Limit, deps.Apply)
 		if err != nil {
 			return fmt.Errorf("search_text repair: %w", err)
 		}
@@ -219,7 +224,7 @@ func RunRepairStockMetadata(args []string) error {
 	// ── Phase 3: embedding backfill (canonical outbox EnqueueReindex
 	// force=true → worker generates only the missing embeddings + Qdrant).
 	if !deps.SkipEmbeddings {
-		adapter := outbox.NewRepairAdapter(db, outboxevents.NewRepository(db), outboxevents.ReindexEnvelopeV1Schema)
+		adapter := outbox.NewRepairAdapter(db, outboxevents.NewRepository(db), outboxevents.ReindexEnvelopeV1Schema, mutator)
 		embDeps := indexing.Deps{
 			Apply:       deps.Apply,
 			DryRun:      !deps.Apply,
@@ -283,30 +288,30 @@ func printRepairStockMetadataReport(r repairStockMetadataReport) {
 	}
 }
 
-// backfillSearchText composes search_text for rows of the target sources
-// where the column is empty, using the canonical per-source
-// detail.ComposerRegistry. It never overwrites a populated search_text.
-//
-// Returns (matched, updated, error). matched counts rows with empty
-// search_text (always computed, also in dry-run); updated counts rows whose
-// search_text was actually written (apply only). The composed text is
-// bounded to 1024 bytes (the legacy search_text cap) at a word boundary.
-func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit int, apply bool) (int, int, error) {
-	registry := detail.NewComposerRegistry()
-	placeholders := make([]string, len(sources))
-	args := make([]any, len(sources))
-	for i, s := range sources {
-		placeholders[i] = "?"
-		args[i] = s
+// backfillSearchTextCanonical composes search_text from read-only asset data
+// and routes every write through the canonical AssetMutationCommitter. Admin
+// repair commands must not issue SQL mutations against media_assets directly.
+func backfillSearchTextCanonical(ctx context.Context, db *sql.DB, mutator persistence.AssetMutator, sources []string, limit int, apply bool) (int, int, error) {
+	if db == nil || mutator == nil {
+		return 0, 0, fmt.Errorf("canonical search_text repair requires database and asset mutator")
+	}
+	if len(sources) == 0 {
+		return 0, 0, fmt.Errorf("canonical search_text repair requires at least one source")
 	}
 
+	placeholders := make([]string, len(sources))
+	args := make([]any, len(sources))
+	for i, source := range sources {
+		placeholders[i] = "?"
+		args[i] = source
+	}
 	query := `
 		SELECT m.id, COALESCE(m.source, ''), COALESCE(m.name, ''), COALESCE(m.category, ''),
 		       COALESCE(m.tags, '[]'), COALESCE(m.source_url, ''),
 		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.description'), ''),
 		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.summary'), ''),
 		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.title'), ''),
-		       COALESCE((SELECT t.text FROM asset_text_tracks t
+		       COALESCE((SELECT t.text_content FROM asset_text_tracks t
 		                 WHERE t.asset_id = m.id AND t.text_kind = 'transcript' AND t.is_current = 1
 		                 ORDER BY t.id LIMIT 1), '')
 		FROM media_assets m
@@ -320,7 +325,7 @@ func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit
 
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return 0, 0, fmt.Errorf("query search_text candidates: %w", err)
+		return 0, 0, fmt.Errorf("query canonical search_text candidates: %w", err)
 	}
 	defer rows.Close()
 
@@ -329,55 +334,48 @@ func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit
 	}
 	var candidates []candidate
 	for rows.Next() {
-		var c candidate
-		if err := rows.Scan(&c.id, &c.source, &c.name, &c.category, &c.tagsJSON, &c.sourceURL,
-			&c.description, &c.summary, &c.title, &c.transcript); err != nil {
-			return 0, 0, fmt.Errorf("scan search_text candidate: %w", err)
+		var candidate candidate
+		if err := rows.Scan(&candidate.id, &candidate.source, &candidate.name, &candidate.category, &candidate.tagsJSON, &candidate.sourceURL,
+			&candidate.description, &candidate.summary, &candidate.title, &candidate.transcript); err != nil {
+			return 0, 0, fmt.Errorf("scan canonical search_text candidate: %w", err)
 		}
-		candidates = append(candidates, c)
+		candidates = append(candidates, candidate)
 	}
 	if err := rows.Err(); err != nil {
-		return 0, 0, fmt.Errorf("iterate search_text candidates: %w", err)
+		return 0, 0, fmt.Errorf("iterate canonical search_text candidates: %w", err)
 	}
-
 	matched := len(candidates)
-	updated := 0
 	if !apply {
 		return matched, 0, nil
 	}
 
+	registry := detail.NewComposerRegistry()
+	updated := 0
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	for _, c := range candidates {
-		title := c.title
+	for _, candidate := range candidates {
+		title := candidate.title
 		if title == "" {
-			title = c.name
+			title = candidate.name
 		}
 		var tags []string
-		_ = json.Unmarshal([]byte(c.tagsJSON), &tags)
-
-		input := detail.SearchTextInput{
-			AssetID:     c.id,
-			Source:      c.source,
-			Title:       title,
-			Description: c.description,
-			Summary:     c.summary,
-			Transcript:  c.transcript,
-			Tags:        tags,
-			Category:    c.category,
-			SourceURL:   c.sourceURL,
-		}
-		text, err := registry.Compose(input)
+		_ = json.Unmarshal([]byte(candidate.tagsJSON), &tags)
+		text, err := registry.Compose(detail.SearchTextInput{
+			AssetID: candidate.id, Source: candidate.source, Title: title,
+			Description: candidate.description, Summary: candidate.summary,
+			Transcript: candidate.transcript, Tags: tags, Category: candidate.category,
+			SourceURL: candidate.sourceURL,
+		})
 		if err != nil {
 			continue
 		}
 		text = truncateSearchTextBytes(text, 1024)
 		if strings.TrimSpace(text) == "" {
-			continue // nothing composable from the row's existing fields
+			continue
 		}
-		if _, err := db.ExecContext(ctx,
-			`UPDATE media_assets SET search_text = ?, updated_at = ? WHERE id = ?`,
-			text, nowStr, c.id); err != nil {
-			return matched, updated, fmt.Errorf("update search_text for %q: %w", c.id, err)
+		if err := mutator.PatchAsset(ctx, persistence.AssetPatch{
+			AssetID: candidate.id, SearchText: &text, UpdatedAt: &nowStr,
+		}); err != nil {
+			return matched, updated, fmt.Errorf("canonical update search_text for %q: %w", candidate.id, err)
 		}
 		updated++
 	}

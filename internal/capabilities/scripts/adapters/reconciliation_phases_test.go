@@ -34,7 +34,7 @@ func TestApplyReconcilePlanNoopsWithoutCommitter(t *testing.T) {
 }
 
 func TestApplyReconcilePlanPropagatesCommitError(t *testing.T) {
-	committer := &recordingAssetLocationCommitter{err: errors.New("commit failed")}
+	committer := &recordingAssetMutator{err: errors.New("commit failed")}
 	processor := NewDurableAssetLocationReconciliationProcessor(nil, committer)
 	plan := buildReconcilePlan(map[string]scriptpkg.AssetLocationChange{
 		"asset-1": {AssetID: "asset-1", DriveLink: "https://drive/file"},

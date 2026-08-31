@@ -300,11 +300,42 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		if err == nil {
 			result, err = c.materializeSegment(ctx, result)
 		}
+		if err == nil {
+			err = validateVidRushResultIdentity(event, result)
+		}
 		c.recordResult(event, result, err)
 		if c.metrics != nil {
 			c.metrics.EnrichmentCompleted(time.Since(start))
 		}
 	}()
+	return nil
+}
+
+// validateVidRushResultIdentity is the result-side fence for the committed
+// scene identity. Provider/materialization code is untrusted with respect to
+// routing: a successful result with another scene's identity must never be
+// persisted or merged. Empty identity fields are rejected as well so a
+// positional fallback cannot hide a scene mix-up.
+func validateVidRushResultIdentity(event SceneCommitted, result scriptpkg.VidRushSegmentResult) error {
+	if result.SegmentID == "" || result.SegmentID != event.SceneID {
+		return fmt.Errorf("vidrush result identity mismatch: segment_id=%q scene_id=%q", result.SegmentID, event.SceneID)
+	}
+	if result.SceneID == "" || result.SceneID != event.SceneID {
+		return fmt.Errorf("vidrush result identity mismatch: result scene_id=%q committed scene_id=%q", result.SceneID, event.SceneID)
+	}
+	if result.Position != event.SceneIndex {
+		return fmt.Errorf("vidrush result identity mismatch: position=%d scene_index=%d", result.Position, event.SceneIndex)
+	}
+	if result.TextHash == "" || result.TextHash != event.TextHash {
+		return fmt.Errorf("vidrush result identity mismatch: text_hash=%q committed_hash=%q", result.TextHash, event.TextHash)
+	}
+	// Older adapters may omit the optional insights identity block. The
+	// authoritative fencing keys are the result's top-level identity checked
+	// above; when insights identity is supplied, it must agree exactly.
+	if (result.Insights.SegmentID != "" && result.Insights.SegmentID != event.SceneID) ||
+		(result.Insights.TextHash != "" && result.Insights.TextHash != event.TextHash) {
+		return fmt.Errorf("vidrush result identity mismatch: insights segment_id=%q text_hash=%q", result.Insights.SegmentID, result.Insights.TextHash)
+	}
 	return nil
 }
 

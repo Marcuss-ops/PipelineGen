@@ -403,11 +403,10 @@ type ClipAudioAssetSource interface {
 }
 
 // MediaPreflight is the optional fail-fast media requirement verification
-// port (P0.5). When wired, the runner fires it in a goroutine in parallel
-// with Gemma; after scene text generation completes, the runner joins the
-// preflight and fails the run if any check failed. Nil means the preflight
-// is skipped (backward compat for tests and deployments without wired
-// resolvers).
+// port (P0.5). When wired, the runner executes it synchronously after
+// normalization and before scene-text generation. Any failure aborts the run
+// before LLM, translation, or TTS. Nil is tolerated for requests without
+// fixed media; fixed-media requests fail closed when no preflight is wired.
 type MediaPreflight interface {
 	Run(ctx context.Context, req GenerateRequest) PreflightResult
 }

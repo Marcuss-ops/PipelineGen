@@ -28,6 +28,10 @@ import (
 func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*ComposeRoot, error) {
 	mediaConfig := MediaexecConfig(cfg)
 
+	if dbs == nil || dbs.DualPool == nil || dbs.DualPool.Writer == nil {
+		return nil, fmt.Errorf("compose: canonical database writer is required")
+	}
+
 	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose repos: %w", err)
@@ -143,14 +147,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	}
 
 	root := &ComposeRoot{
-		MediaExec:       mediaConfig,
-		DB:              dbs.Main,
-		ObservabilityDB: dbs.Logs,
-		Drive:           driveBundle,
-		Repos:           repos,
-		Search:          search,
-		Process:         process,
-		TextTracks:      textTracks,
+		CanonicalAssetWriter: outbox.CanonicalWriter,
+		MediaExec:            mediaConfig,
+		DB:                   dbs.Main,
+		ObservabilityDB:      dbs.Logs,
+		Drive:                driveBundle,
+		Repos:                repos,
+		Search:               search,
+		Process:              process,
+		TextTracks:           textTracks,
 
 		AI:        ai,
 		Domains:   domains,
