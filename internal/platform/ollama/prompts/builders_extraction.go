@@ -73,8 +73,12 @@ NOUN_CHUNK GROUNDING CONTRACT (MANDATORY FOR EVERY LANGUAGE):
 - Do not translate, paraphrase, lowercase, lemmatize, normalize, correct, or rewrite any value.
 - Preserve the source language, spelling, accents, diacritics, apostrophes, particles, articles when part of the source span, adjectives, modifiers, possessives, inflections, and grammatical case.
 - The returned value must be an exact contiguous source span; if a candidate cannot be copied exactly, omit it.
+- Emit one noun expression per array item. Do not concatenate separate referents or append surrounding clauses.
 - Prefer the complete visually meaningful noun expression explicitly present in the source. Do not shorten away explicit visual adjectives or modifiers merely to make a smaller phrase.
+- Scan the entire source from left to right before deciding. Include every distinct explicit visual referent, including coordinated objects separated by commas or conjunctions; never stop after the first usable noun phrase.
+- When a visual referent has an explicit adjective, participle, possessive, location, or other modifier, preserve that complete contiguous expression instead of returning only its head noun.
 - For Japanese, Chinese, Korean, and any language without reliable whitespace boundaries, identify the complete visual expression from the original characters and copy that exact character span. Do not segment it using English or Western whitespace assumptions.
+- For languages without reliable whitespace boundaries, stop the copied span at the end of the noun expression, before any predicate, auxiliary, or verbal clause; never return the whole sentence as one noun chunk.
 - It is better to omit a doubtful candidate than to invent, translate, or enrich it. Do not omit a clearly explicit visual noun expression only because it is morphologically inflected.
 - Never include verbs, verbal clauses, adverbs, narrative commentary, or details that are not literally present in the source.
 `, language)
