@@ -233,7 +233,11 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d produced %d scenes; want exactly one", index, len(scenes))}
 		}
 		scenes[0].Index = index
-		scenes[0].ID = fmt.Sprintf("scene-%d", index)
+		sceneID := strings.TrimSpace(segment.ID)
+		if sceneID == "" {
+			sceneID = fmt.Sprintf("scene-%d", index)
+		}
+		scenes[0].ID = sceneID
 		if len(scenes[0].Clips) == 0 && scenes[0].Clip == nil && len(segment.ClipIDs) > 0 {
 			for _, clipID := range segment.ClipIDs {
 				clip, err := g.resolveEvidenceClip(ctx, &segmentPlan, clipID, true)
@@ -387,6 +391,10 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 
 	if len(scenes) > 0 && len(plan.Segments) == len(scenes) {
 		for i := range scenes {
+			scenes[i].Index = i
+			if segmentID := strings.TrimSpace(plan.Segments[i].ID); segmentID != "" {
+				scenes[i].ID = segmentID
+			}
 			if len(scenes[i].Clips) == 0 && scenes[i].Clip == nil && len(plan.Segments[i].ClipIDs) > 0 {
 				for _, clipID := range plan.Segments[i].ClipIDs {
 					clip, err := g.resolveEvidenceClip(ctx, plan, clipID, true)
