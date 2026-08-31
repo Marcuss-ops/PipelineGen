@@ -149,7 +149,7 @@ jq -n \
           timeline_hash: $timeline_hash,
           output_profile: "velox-h264-copy-v1",
           assets: $prefetch_assets,
-          timeline: ($prefetch_assets | map({scene_id: .asset_id, asset_id: .asset_id}))
+          timeline: ($r.localized_renders // [] | sort_by(.scene_index) | map({scene_id: .scene_id, asset_id: .clip_id}))
         },
         payload: {
           status: "completed",
