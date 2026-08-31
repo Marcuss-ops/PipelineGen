@@ -242,8 +242,8 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 // TestEditingTimeline_OverlaySpansCarryFullLineage certifies Gate 7's
 // artifact lineage: the editing timeline's overlay span must carry the
 // overlay.render job id, the frozen plan fingerprint, the item render key and
-// the source video asset id, so downstream editing can prove the final video
-// contains exactly this overlay (render job → plan version → item → source
+// the source video asset id, so downstream editing can prove the composed
+// output contains exactly this overlay (render job → plan version → item → source
 // video → Drive artifact) without re-deriving anything.
 func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 	plan := &capabilityoverlay.OverlayPlan{

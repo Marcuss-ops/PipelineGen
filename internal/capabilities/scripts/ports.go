@@ -317,11 +317,9 @@ type LocalizedRenderInput struct {
 
 	// OnRendered, when non-nil, is invoked once per certified produced video
 	// of the fan-out (render + upload completed) with that video's identity.
-	// The runner uses it to record the final video (asset id, sha256, Drive
-	// link) on the run result so the produced MP4 is never orphaned from the
-	// run that produced it — a run that rendered a video must be able to
-	// prove it. A non-nil sink is fail-closed: a sink error fails the
-	// enqueue. Nil means the caller does not need the outcome.
+	// The runner records each produced localized clip (asset id, sha256,
+	// Drive link) on the run result. A non-nil sink is fail-closed: a sink
+	// error fails the enqueue. Nil means the caller does not need the outcome.
 	OnRendered func(LocalizedRenderResult) error `json:"-"`
 	// OnRenderReady is invoked after local render certification and before
 	// upload, allowing durable recovery to retry Drive without rerendering.
@@ -429,17 +427,6 @@ type FinalAudioPublishResult struct {
 // (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
 	PublishFinalAudio(context.Context, string, Language, FinalAudioReference, string) (FinalAudioPublishResult, error)
-}
-
-// FinalVideoAssembler concatenates the certified localized clip files in
-// scene order. It must fail when any input is missing and return the actual
-// output path only after the file has been created.
-type FinalVideoAssembler interface {
-	AssembleFinalVideo(context.Context, []string, string) error
-}
-
-type FinalVideoPublisher interface {
-	PublishFinalVideo(context.Context, string, FinalVideoReference, string) (FinalAudioPublishResult, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through

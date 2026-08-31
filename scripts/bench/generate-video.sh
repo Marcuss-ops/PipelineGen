@@ -409,7 +409,7 @@ print(json.dumps({
     "source": {"type": "text", "topic": topic},
     "script_params": {"target_words": 180, "segment_words": 36},
     "output": {"generate_timeline": True, "voiceover_enabled": True,
-               "render": {"enabled": True, "assemble_final": False,
+               "render": {"enabled": True,
                           "watermark": {"enabled": True, "text": "MATT DAMON", "position": "top_right", "opacity": 1},
                           "subtitles": {"enabled": True, "mode": "burn"}}},
     "audio": {"mode": "COMBINED_TIMELINE", "timing": {"mode": "required", "boundary": "word", "formats": ["json", "srt", "vtt"]}},

@@ -230,7 +230,7 @@ func TestLocalizedRenderEnqueuer_PersistsSourceTrackForSameLanguage(t *testing.T
 // narration lives in the canonical `Text` slot (LLM-generated scene text) and
 // whose SourceText is empty. The old persistTracks required sourceLang !=
 // targetLang on BOTH branches, so it persisted zero tracks and failed with
-// "no text to persist" — blocking the final video before any render. The
+// "no text to persist" — blocking the localized clip render before any
 // source track must fall back to `Text` for the source language.
 func TestLocalizedRenderEnqueuer_SameLanguageUsesCanonicalText(t *testing.T) {
 	l := &recordingLocalizer{}

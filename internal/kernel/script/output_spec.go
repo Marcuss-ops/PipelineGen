@@ -140,11 +140,10 @@ func (o *OutputSpec) HasAnyPostprocessor() bool {
 // definition in the kernel); the capability boundaries project them into
 // their typed equivalents instead of re-defining parallel structs.
 type VideoRenderSpec struct {
-	Enabled       bool                 `json:"enabled,omitempty"`
-	AssembleFinal bool                 `json:"assemble_final,omitempty"`
-	Background    *VideoBackgroundSpec `json:"background,omitempty"`
-	Watermark     *VideoWatermarkSpec  `json:"watermark,omitempty"`
-	Subtitles     *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
+	Enabled    bool                 `json:"enabled,omitempty"`
+	Background *VideoBackgroundSpec `json:"background,omitempty"`
+	Watermark  *VideoWatermarkSpec  `json:"watermark,omitempty"`
+	Subtitles  *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
 	// SubtitlePresets are reusable request-local styles selected by
 	// subtitles.preset or subtitles.style_id.
 	SubtitlePresets   map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`

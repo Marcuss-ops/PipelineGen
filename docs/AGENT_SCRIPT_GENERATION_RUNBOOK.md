@@ -85,7 +85,6 @@ Il payload deve avere `version: 2`, `preset: custom` e almeno un elemento in
       "generate_timeline": true,
       "render": {
         "enabled": true,
-        "assemble_final": false,
         "drive_folder_id": "RENDER_ROOT_FOLDER_ID",
         "drive_subfolder_name": "unique-run-folder",
         "watermark": {
@@ -108,8 +107,9 @@ Il payload deve avere `version: 2`, `preset: custom` e almeno un elemento in
 - Ogni segmento deve avere il proprio `clip_ids` e il proprio `source_text`.
 - `intro_clip_ids` identifica le 2–3 clip introduttive; non sostituisce
   `clip_ids`.
-- `output.render.assemble_final: false` evita la creazione del video finale.
-  Vengono create solo le clip localizzate.
+- `output.render` crea esclusivamente le clip localizzate richieste. La
+  creazione del video finale completo non appartiene al contratto
+  `script.generate`.
 - `audio.mix_policy` va dentro `items[0].audio`. Metterlo dentro
   `output.audio` non viene applicato al percorso canonico.
 - Per un run ripetibile usare `force_refresh: false`. Usare `true` solo quando
@@ -146,7 +146,6 @@ status = SUCCEEDED
 expected_render_count = successful_render_count
 failed_render_count = 0
 documents.en.link presente (se Docs è abilitato)
-assemble_final = false
 ```
 
 Non fermarsi a `QUEUED`, `RUNNING` o alla presenza di un singolo artefatto.
