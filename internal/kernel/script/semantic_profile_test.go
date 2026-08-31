@@ -188,6 +188,18 @@ func TestBuildSegmentSemanticProfile_MapsExtractionBuckets(t *testing.T) {
 	}
 }
 
+func TestBuildSegmentSemanticProfile_PromotesNounChunksToVisualTerms(t *testing.T) {
+	seg := CanonicalSegment{ID: "scene-1", TextHash: "hash-1", Text: "A barista makes latte art."}
+	profile := BuildSegmentSemanticProfile(seg, EntityResult{
+		NounChunks:     []string{"latte art", "specialty coffee shop"},
+		ImportantWords: []string{"barista"},
+	}, "gemma4:e2b", "noun-chunks-v1")
+
+	if len(profile.VisualTerms) < 2 || profile.VisualTerms[0].Value != "latte art" || profile.VisualTerms[1].Value != "specialty coffee shop" {
+		t.Fatalf("visual terms = %#v, want noun chunks first", profile.VisualTerms)
+	}
+}
+
 // TestBuildSegmentSemanticProfile_WeightsKeywordsByOrder certifies that the
 // extractor's importance order becomes a deterministic descending confidence:
 // the first ImportantWord/ArtlistPhrase carries the highest score, exactly
