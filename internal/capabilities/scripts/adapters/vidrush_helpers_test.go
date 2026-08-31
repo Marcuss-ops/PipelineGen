@@ -18,6 +18,27 @@ func TestBuildCanonicalSegments_SingleSceneUsesDeclaredMainSegment(t *testing.T)
 	}
 }
 
+func TestBuildCanonicalSegments_ExplicitSegmentsOverrideGeneratedScenes(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "coastal-road", SourceText: "A coastal road."},
+			{ID: "latte-art", SourceText: "A barista makes latte art."},
+			{ID: "trail-runner", SourceText: "A runner climbs a ridge."},
+		},
+	}
+	scenes := []scriptpkg.SpecScene{{ID: "scene-0", Text: "All generated prose in one scene."}}
+
+	got := buildCanonicalSegments(plan, scenes, "generated document text")
+	if len(got) != len(plan.Segments) {
+		t.Fatalf("canonical segment count = %d, want %d: %#v", len(got), len(plan.Segments), got)
+	}
+	for i, want := range plan.Segments {
+		if got[i].ID != want.ID || got[i].Text != want.SourceText || got[i].SourceText != want.SourceText {
+			t.Fatalf("segment[%d] = %#v, want id=%q source=%q", i, got[i], want.ID, want.SourceText)
+		}
+	}
+}
+
 type vidRushMemoryCache struct {
 	values map[string][]byte
 }

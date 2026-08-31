@@ -18,6 +18,26 @@ type boundaryEntityExtractor struct {
 	calls []string
 }
 
+func TestProjectProfileToVidRushSegmentPreservesNounChunks(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "latte-art",
+		Insights:  scriptpkg.SegmentInsights{SegmentID: "latte-art"},
+	}
+	profile := scriptpkg.SegmentSemanticProfile{
+		SegmentID: "latte-art",
+		TextHash:  "text-hash",
+		NounChunks: []string{
+			"latte art",
+			"specialty coffee shop",
+		},
+	}
+
+	got := projectProfileToVidRushSegment(segment, profile)
+	if len(got.Insights.NounChunks) != 2 || got.Insights.NounChunks[0] != "latte art" || got.Insights.NounChunks[1] != "specialty coffee shop" {
+		t.Fatalf("noun_chunks = %#v, want profile noun chunks preserved", got.Insights.NounChunks)
+	}
+}
+
 func (e *boundaryEntityExtractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
 	e.calls = append(e.calls, req.Text)
 	return &scriptpkg.EntityResult{Concepts: []scriptpkg.Entity{{Value: strings.Fields(req.Text)[0], Type: "CONCEPT"}}}, nil
@@ -64,6 +84,54 @@ func TestVidRushSegmentEnricherFallsBackToResearchSourceForEmptyScene(t *testing
 	}
 	if len(extractor.calls) != 2 || extractor.calls[1] != plan.SourceText {
 		t.Fatalf("extraction calls = %q, want scene then research source", extractor.calls)
+	}
+}
+
+func TestBuildCanonicalSegments_ExplicitSegmentNeverUsesDocumentFallback(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "first", SourceText: "First source."},
+			{ID: "second", Topic: "Second topic."},
+			{ID: "third"},
+		},
+	}
+
+	got := buildCanonicalSegments(plan, nil, "Entire document must never be copied into a segment.")
+	if len(got) != 3 {
+		t.Fatalf("canonical segments = %d, want 3: %#v", len(got), got)
+	}
+	if got[0].Text != "First source." || got[1].Text != "Second topic." {
+		t.Fatalf("segment text = %#v, want explicit source/topic text", got[:2])
+	}
+	if got[2].Text != "" || got[2].SourceText != "" {
+		t.Fatalf("missing explicit text was replaced: %#v", got[2])
+	}
+}
+
+func TestVidRushSegmentEnricherExplicitSegmentRetryUsesItsOwnSource(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &sourceFallbackEntityExtractor{}
+	enricher := NewVidRushSegmentEnricher(extractor, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language:   "en",
+		Title:      "visual scenes",
+		Model:      "fake",
+		SourceText: "Entire document source must not leak.",
+		Segments: []scriptpkg.ScriptSegment{{
+			ID:         "scene-a",
+			SourceText: "Canonical scene source.",
+		}},
+		MediaPlan: mediadomain.MediaPlanSpec{ForceRefreshExtraction: true},
+	}
+
+	_, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID: "scene-a", SegmentID: "scene-a", Text: "The",
+	})
+	if err != nil {
+		t.Fatalf("Enrich returned error: %v", err)
+	}
+	if len(extractor.calls) != 2 || extractor.calls[1] != "Canonical scene source." {
+		t.Fatalf("extraction calls = %q, want scene then its explicit source", extractor.calls)
 	}
 }
 

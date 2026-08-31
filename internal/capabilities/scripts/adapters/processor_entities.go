@@ -367,12 +367,14 @@ func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSeg
 	dst.ImportantPhrases = uniqueLimitedStrings(append(dst.ImportantPhrases, seg.Insights.ImportantPhrases...), 5)
 	dst.ImportantWords = uniqueLimitedStrings(append(dst.ImportantWords, seg.Insights.ImportantWords...), 5)
 	dst.ArtlistPhrases = uniqueLimitedStrings(append(dst.ArtlistPhrases, seg.Insights.ArtlistQueries...), 5)
+	dst.NounChunks = uniqueLimitedStrings(append(dst.NounChunks, seg.Insights.NounChunks...), 5)
 }
 
 func projectProfileToVidRushSegment(seg scriptpkg.VidRushSegmentResult, profile scriptpkg.SegmentSemanticProfile) scriptpkg.VidRushSegmentResult {
 	seg.Insights.ImportantPhrases = append([]string(nil), profile.ImportantPhrases...)
 	seg.Insights.ImportantWords = uniqueLimitedStrings(weightedKeywordValues(profile.Keywords), 5)
 	seg.Insights.Entities = uniqueLimitedEntities(profile.Entities, 5)
+	seg.Insights.NounChunks = append([]string(nil), profile.NounChunks...)
 	if profile.Retrieval != nil {
 		seg.Insights.ArtlistQueries = uniqueLimitedStrings(profile.Retrieval.Artlist, 5)
 		seg.Insights.YouTubeQueries = uniqueLimitedStrings(profile.Retrieval.YouTube, 5)
@@ -422,6 +424,7 @@ func buildVidRushSegmentResult(
 		}
 	}
 	insights.Entities = uniqueLimitedEntities(profile.Entities, entitiesLimit)
+	insights.NounChunks = uniqueLimitedStrings(profile.NounChunks, phrasesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(profile.ImportantPhrases, phrasesLimit)
 	// Keep the per-segment insight contract total for short canonical
 	// segments (for example a one-word section heading). The fallback is
@@ -698,11 +701,10 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 	res, err := e.extractor.ExtractEntities(ctx, request)
 	// A malformed/too-short generated scene must not erase the semantic
 	// evidence already resolved by the research source. Retry the same typed
-	// extractor on the canonical plan source only when the scene produced no
-	// entity values; this keeps the fallback source-grounded and avoids a
-	// second extraction when the scene result is valid.
+	// extractor only against this segment's canonical source context. Never
+	// fall back to the complete document: that would cross-contaminate scenes.
 	if err == nil && !entityResultHasValues(res) {
-		sourceText := strings.TrimSpace(plan.SourceText)
+		sourceText := strings.TrimSpace(segmentQueryContext(plan, canonicalSeg))
 		if sourceText != "" && sourceText != request.Text {
 			request.Text = sourceText
 			res, err = e.extractor.ExtractEntities(ctx, request)
