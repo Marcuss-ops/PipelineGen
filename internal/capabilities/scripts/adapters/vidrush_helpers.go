@@ -114,18 +114,12 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 			TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
 		}}
 	}
-	if len(scenes) > 0 {
-		return buildCanonicalSegmentsFromScenes(scenes, text)
-	}
 	if len(plan.Segments) > 0 {
 		out := make([]scriptpkg.CanonicalSegment, 0, len(plan.Segments))
 		for i, seg := range plan.Segments {
 			segText := strings.TrimSpace(seg.SourceText)
 			if segText == "" {
 				segText = strings.TrimSpace(seg.Topic)
-			}
-			if segText == "" {
-				segText = strings.TrimSpace(text)
 			}
 			id := strings.TrimSpace(seg.ID)
 			if id == "" {
@@ -137,6 +131,9 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 			})
 		}
 		return out
+	}
+	if len(scenes) > 0 {
+		return buildCanonicalSegmentsFromScenes(scenes, text)
 	}
 	return buildCanonicalSegmentsFromScenes(nil, text)
 }
