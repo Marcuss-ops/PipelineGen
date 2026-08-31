@@ -49,10 +49,14 @@ type ChatResponse struct {
 
 // GenerateRequest richiesta generazione (Legacy API)
 type GenerateRequest struct {
-	Model   string         `json:"model"`
-	Prompt  string         `json:"prompt"`
-	Context []int          `json:"context,omitempty"`
-	Stream  bool           `json:"stream"`
+	Model   string `json:"model"`
+	Prompt  string `json:"prompt"`
+	Context []int  `json:"context,omitempty"`
+	Stream  bool   `json:"stream"`
+	// Think controls models that expose a separate reasoning channel. A
+	// structured extraction request must disable it so the response budget is
+	// used for the requested contract rather than hidden reasoning tokens.
+	Think   *bool          `json:"think,omitempty"`
 	Images  []string       `json:"images,omitempty"` // Base64 encoded images
 	Format  any            `json:"format,omitempty"`
 	Options map[string]any `json:"options,omitempty"`

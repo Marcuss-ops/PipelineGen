@@ -5,7 +5,7 @@ entity_extraction: |
   DO NOT output markdown fences, code blocks, or backticks.
   DO NOT output scene IDs, indexes, or bindings.
 
-  Output EXACTLY five labeled sections using "## SectionName" headers.
+  Output EXACTLY six labeled sections using "## SectionName" headers.
   Every item must start with "- ".
 
   ## frasi_importanti
@@ -26,6 +26,9 @@ entity_extraction: |
 
   ## artlist_phrases
   - [short visual concept phrase]
+
+  ## noun_chunks
+  - [source-grounded noun phrase, 2-4 words]
 
   RULES FOR ENTITY PRECISION:
   1. "nomi_speciali": Extract a MAXIMUM of {{.EntityCount}} real named entities.
@@ -66,7 +69,7 @@ entity_extraction: |
     3. Would it return relevant Artlist footage?
     4. Is it specific to this segment?
 
-  Output ONLY the five labeled sections.
+  Output ONLY the six labeled sections.
 
   TEXT:
   "{{.Text}}"
