@@ -8,10 +8,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../lib/canonical_db_path.sh
 source "$PROJECT_ROOT/scripts/lib/canonical_db_path.sh"
-DB_PATH="$(resolve_canonical_primary_db "${DB_PATH:-${VELOX_DB_PATH:-}}" "$PROJECT_ROOT")" || exit 2
+DB_PATH="$(canonical_primary_db_path "$PROJECT_ROOT")"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 ALIAS="${QDRANT_ALIAS:-media_assets_current}"
-EXPECTED_COLLECTION_PREFIX="${EXPECTED_COLLECTION_PREFIX:-media_assets_v3_e5_768_siglip_768}"
+EXPECTED_COLLECTION="${EXPECTED_COLLECTION:-media_assets}"
 EXPECTED_MODEL="${EXPECTED_MODEL:-intfloat/multilingual-e5-base}"
 EXPECTED_REVISION="${EXPECTED_REVISION:-2026-06-26-v1}"
 EXPECTED_CONTRACT_HASH="${EXPECTED_CONTRACT_HASH:-0223c229f0657f67a0c51a75b7190bdc7090e25745de47d78b8578efaab493f8}"
@@ -55,7 +55,7 @@ if [[ -n "$health" ]]; then
 		info=$(curl -fsS --max-time 5 "$QDRANT_URL/collections/$active") || info=''
 		points=$(jq -r '.result.points_count // -1' <<<"$info")
 		printf 'QDRANT alias=%s collection=%s points=%s sqlite_eligible=%s\n' "$ALIAS" "$active" "$points" "$eligible"
-		[[ "$active" == "$EXPECTED_COLLECTION_PREFIX"* ]] && pass "active collection uses canonical embedding contract prefix" || fail_check "active collection contract prefix mismatch: $active"
+		[[ "$active" == "$EXPECTED_COLLECTION" ]] && pass "active collection is the sole production collection" || fail_check "active collection mismatch: $active (want $EXPECTED_COLLECTION)"
 		(( points >= 0 && points == eligible )) && pass "missing eligible Qdrant assets = 0" || fail_check "Qdrant/SQLite count mismatch: points=$points eligible=$eligible"
 
 		# A count match is insufficient: verify the canonical asset_id set,

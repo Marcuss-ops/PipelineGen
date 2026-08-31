@@ -190,12 +190,12 @@ func resultWithoutClipAudioIntents(result GenerateResult) GenerateResult {
 		scene := &result.Scenes[i]
 		intents := make([]audio.AudioIntent, 0, len(scene.AudioIntents))
 		for _, intent := range scene.AudioIntents {
-			if intent.Mode != audio.AudioClip {
+			if intent.Mode != audio.AudioClip || intent.ProtectedOriginalAudio {
 				intents = append(intents, intent)
 			}
 		}
 		scene.AudioIntents = intents
-		if scene.Audio.Mode == audio.AudioClip {
+		if scene.Audio.Mode == audio.AudioClip && !scene.Audio.ProtectedOriginalAudio {
 			scene.Audio.Mode = audio.AudioVoiceover
 		}
 	}

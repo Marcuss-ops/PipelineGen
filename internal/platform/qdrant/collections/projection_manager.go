@@ -78,6 +78,13 @@ func (cm *CollectionManager) TransitionProjection(ctx context.Context, projectio
 	return cm.transitionProjection(ctx, projectionID, next)
 }
 
+// FailProjection marks a failed rebuild explicitly. Administrative rebuild
+// paths may need this when preparation happens outside BuildProjectionWith
+// (for example, the in-place production collection reset).
+func (cm *CollectionManager) FailProjection(ctx context.Context, projectionID string) error {
+	return cm.failProjection(ctx, projectionID)
+}
+
 // GetStatus returns the explicit persisted/in-memory lifecycle state.
 func (cm *CollectionManager) GetStatus(projectionID string) (capregistry.ProjectionStatus, error) {
 	projection, err := cm.requireProjection(projectionID)
@@ -480,12 +487,36 @@ func (cm *CollectionManager) projectionByCollection(collection string) (string, 
 	cm.projectionMu.RLock()
 	defer cm.projectionMu.RUnlock()
 	var found string
+	var active string
+	var ready string
 	matches := 0
+	activeMatches := 0
+	readyMatches := 0
 	for id, projection := range cm.projections {
 		if projection.CollectionName == collection {
 			found = id
 			matches++
+			switch capregistry.ProjectionStatus(projection.Status) {
+			case capregistry.ProjectionActive:
+				active = id
+				activeMatches++
+			case capregistry.ProjectionReady:
+				ready = id
+				readyMatches++
+			}
 		}
+	}
+	// A fixed physical production collection can have multiple historical
+	// rebuild rows. Runtime resolution must select the sole ACTIVE row rather
+	// than treating those historical rows as an unknown collection.
+	if activeMatches == 1 {
+		return active, true
+	}
+	if activeMatches > 1 {
+		return "", false
+	}
+	if readyMatches == 1 {
+		return ready, true
 	}
 	return found, matches == 1
 }

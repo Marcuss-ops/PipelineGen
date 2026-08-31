@@ -222,7 +222,7 @@ func TestBackfillClipFolderPath_UpdatesAndIsIdempotent(t *testing.T) {
 	// Row already aligned (must stay untouched).
 	insertClipFolderRow(t, db, "yt_clip-2", uVoFileID, uVoFolderID, uVoFilePath)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true)
+	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestBackfillClipFolderPath_UpdatesAndIsIdempotent(t *testing.T) {
 	}
 
 	// Second run must be a pure no-op.
-	stats, err = backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true)
+	stats, err = backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill run 2: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestBackfillClipFolderPath_DryRunNeverWrites(t *testing.T) {
 	}
 	insertClipFolderRow(t, db, "yt_clip-1", uVoFileID, tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, false)
+	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, false, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill dry-run: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestBackfillClipFolderPath_FailedRowsAreCountedNotSilentlySkipped(t *testin
 	insertClipFolderRow(t, db, "yt_clip-ok", uVoFileID, tomHollandID, tomHollandDir)
 	insertClipFolderRow(t, db, "yt_clip-bad", "missing-file", tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true)
+	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestBackfillClipFolderPath_ExcludesNonClipRows(t *testing.T) {
 	// out of scope (it lives under a different Drive root).
 	insertClipFolderRow(t, db, "planner:abc:1", uVoFileID, tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true)
+	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestBackfillClipFolderPath_RespectsLimit(t *testing.T) {
 		insertClipFolderRow(t, db, fmt.Sprintf("yt_clip-%d", i), uVoFileID, tomHollandID, tomHollandDir)
 	}
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 2, 4, true)
+	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 2, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}

@@ -17,15 +17,9 @@
 // and emits a violation for any non-canonical SQL write to media_assets.
 //
 // Exemptions:
-//   - internal/platform/sqlite/assets/imagesregistry/asset_committer.go
-//     (the canonical SOLE owner — it IS the SSOT).
-//   - internal/platform/sqlite/assets/imagesregistry/asset_store_batch.go
-//     (BatchGetByIDs — read-only SELECT, never a write).
-//   - internal/platform/sqlite/assets/imagesregistry/asset_store.go
-//     (Save — legacy diagnostic-only path, exempt per QDRANT-002 comment).
-//   - internal/platform/sqlite/assets/imagesregistry/clips_repository.go
-//     (UpsertClipTx — the tx-scoped variant used by the dispatcher fallback;
-//     the fail-closed gate in EnqueueAndIndex blocks production use).
+//   - exactly the three files in mediaAssetsWriterCanonicalOwners below;
+//     they are the canonical AssetCommitter/AssetMutator implementation
+//     family and the only production owners of media_assets SQL.
 //   - *_test.go files (regression-guard surface).
 //   - migrations/sqlite/*.sql (canonical schema migration files).
 //   - cmd/archcheck/scan/** (this scanner references the forbidden literals).
@@ -51,16 +45,9 @@ import (
 // canonical SOLE owners of SQL that writes media_assets. The gate does
 // NOT inspect these files — they ARE the SSOT.
 var mediaAssetsWriterCanonicalOwners = map[string]bool{
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer.go":      true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_store.go":          true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_store_batch.go":    true,
-	"internal/platform/sqlite/assets/imagesregistry/clips_repository.go":    true,
-	"internal/platform/sqlite/assets/imagesregistry/clips_crud.go":           true,
-	"internal/platform/sqlite/assets/imagesregistry/primitives.go":           true,
-	"internal/platform/sqlite/assets/imagesregistry/clip_atomic_writer.go":  true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_location_committer.go": true,
-	"internal/platform/sqlite/assets/imagesregistry/media_committer.go":     true,
-	"internal/platform/sqlite/assets/imagesregistry/clip_atomic_writer_cue_repair.go": true,
+	"internal/platform/sqlite/assets/imagesregistry/asset_committer.go":           true,
+	"internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go": true,
+	"internal/platform/sqlite/assets/imagesregistry/media_committer.go":           true,
 }
 
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.

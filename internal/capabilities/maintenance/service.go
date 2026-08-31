@@ -39,7 +39,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // QdrantCleaner is the godlike/06 SSOT port for the drive_link/local_path
@@ -242,13 +241,13 @@ type RunOptions struct {
 	Limit int
 }
 
-// initHeavy populates the lazy fields on the Service: opens the
-// primary SQLite DB, initializes the production composition root, and
-// constructs the QdrantClient + Scanner. Used by Audit + Delete modes;
+// initHeavy populates the lazy fields on the Service from the canonical
+// primary SQLite handle injected by the composition root and constructs
+// the QdrantClient + Scanner. Used by Audit + Delete modes;
 // Repair mode invokes the Cleaner port directly without these fields.
 //
-// Deferred cleanups (sqliteDB.Close + rootCleanup) fire AFTER Run
-// returns — the defers are scoped to Run, not the closure handler.
+// Database ownership remains with DatabaseSet/OpenSet; this service never
+// opens or closes the injected primary handle.
 //
 // Per godlike/07 (post-review fixup): also extracts root.Outbox.Dispatcher
 // into the Service.dispatcher field. The pre-split cmd/admin reached
@@ -256,11 +255,7 @@ type RunOptions struct {
 // so the post-split lazy-init preserves byte-equivalent runtime behavior.
 func (s *Service) initHeavy(ctx context.Context, limit int) error {
 	if s.sqliteDB == nil {
-		sqliteDB, err := storage.OpenSQLiteDB(s.cfg.Storage.PrimaryDBFullPath(), s.log)
-		if err != nil {
-			return fmt.Errorf("open media DB: %w", err)
-		}
-		s.sqliteDB = sqliteDB.DB
+		return fmt.Errorf("maintenance: canonical primary SQLite handle is not injected; use DatabaseSet.Primary.DB")
 	}
 
 	client := transport.NewClient(&schema.Config{

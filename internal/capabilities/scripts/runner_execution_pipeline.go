@@ -20,7 +20,10 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.normalize() {
 		return
 	}
-	if !e.beginMediaPreflight() {
+	if !e.mediaPreflightPhase() {
+		return
+	}
+	if !e.beginVidRushPhase() {
 		return
 	}
 	// The VidRush coordinator wiring lives for the whole run: release it only
@@ -29,9 +32,6 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 		defer r.endVidRush(runID)
 	}
 	if !e.generate() {
-		return
-	}
-	if !e.joinPreflight() {
 		return
 	}
 	e.ensureResult()

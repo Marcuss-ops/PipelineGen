@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -76,6 +77,7 @@ type RepairAdapter struct {
 	db            *sql.DB
 	outboxRepo    *outboxevents.Repository
 	schemaVersion string
+	mutator       persistence.AssetMutator
 }
 
 // NewRepairAdapter constructs a RepairAdapter bound to the supplied
@@ -85,11 +87,13 @@ type RepairAdapter struct {
 // outboxevents.ReindexEnvelopeV1Schema = "media_assets_v3"). It
 // threads into the event_key as the canonical
 // (assetID, schema_version, content_hash) tuple per PR 11 + Card 7.1.
-func NewRepairAdapter(db *sql.DB, outboxRepo *outboxevents.Repository, schemaVersion string) *RepairAdapter {
+func NewRepairAdapter(db *sql.DB, outboxRepo *outboxevents.Repository, schemaVersion string, mutators ...persistence.AssetMutator) *RepairAdapter {
+	var mutator persistence.AssetMutator
+	if len(mutators) > 0 {
+		mutator = mutators[0]
+	}
 	return &RepairAdapter{
-		db:            db,
-		outboxRepo:    outboxRepo,
-		schemaVersion: schemaVersion,
+		db: db, outboxRepo: outboxRepo, schemaVersion: schemaVersion, mutator: mutator,
 	}
 }
 
@@ -132,18 +136,6 @@ func (a *RepairAdapter) EnqueueReindex(ctx context.Context, assetID, contentHash
 	}
 	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
 
-	// Light parity bump: refresh updated_at so monitors can see
-	// the reconcile-repair touched the row. We do NOT mutate
-	// source_version (the worker's supersede gate reads
-	// source_version from metadata).
-	nowStr := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET updated_at = ? WHERE id = ?`,
-		nowStr, assetID,
-	); err != nil {
-		return fmt.Errorf("update updated_at %s: %w", assetID, err)
-	}
-
 	var eventKey, payloadJSON string
 	if force {
 		eventKey, payloadJSON, err = outboxevents.BuildReindexEnvelopeV1Force(assetID, a.schemaVersion, contentHash, time.Now())
@@ -180,14 +172,17 @@ func (a *RepairAdapter) EnqueueDelete(ctx context.Context, assetID string) error
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
-
-	// Stamp DELETE_PENDING so dashboards show the in-flight delete
-	// even if the worker crashes mid-process.
 	nowStr := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'DELETE_PENDING', deleted_at = ?, updated_at = ? WHERE id = ?`,
-		nowStr, nowStr, assetID,
-	); err != nil {
+
+	// Stamp DELETE_PENDING through the canonical asset mutator before
+	// enqueueing the delete request in this transaction.
+	if a.mutator == nil {
+		return errors.New("outbox.RepairAdapter.EnqueueDelete: canonical asset mutator is required")
+	}
+	state := "DELETE_PENDING"
+	deletedAt := nowStr
+	updatedAt := nowStr
+	if err := a.mutator.PatchAssetTx(ctx, tx, persistence.AssetPatch{AssetID: assetID, LifecycleState: &state, DeletedAt: &deletedAt, UpdatedAt: &updatedAt}); err != nil {
 		return fmt.Errorf("set DELETE_PENDING %s: %w", assetID, err)
 	}
 

@@ -58,6 +58,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -70,10 +71,11 @@ import (
 // latter talks into the SAME connection within the same tx per the
 // outboxevents.Repository.Enqueue contract.
 type ClipMetadataWriterAdapter struct {
-	db  *sql.DB
-	box *outboxevents.Repository
-	log *zap.Logger
-	now func() time.Time // injectable clock for tests; production = time.Now
+	db      *sql.DB
+	box     *outboxevents.Repository
+	mutator persistence.AssetMutationCommitter
+	log     *zap.Logger
+	now     func() time.Time // injectable clock for tests; production = time.Now
 }
 
 // NewClipMetadataWriterAdapter constructs the adapter. Both db AND box
@@ -87,11 +89,39 @@ func NewClipMetadataWriterAdapter(db *sql.DB, box *outboxevents.Repository, log 
 	if box == nil {
 		panic("assets.NewClipMetadataWriterAdapter: outboxevents.Repository is required (composition must pass root.Outbox.EventsRepo)")
 	}
+	return NewClipMetadataWriterAdapterWithMutator(db, box, NewSQLiteAssetCommitter(db, box, log), log)
+}
+
+// NewClipMetadataWriterAdapterWithMutator constructs the metadata writer with
+// the shared canonical asset mutation boundary. The production composition
+// root passes the same SQLiteMediaCommitter used by all other producers.
+func NewClipMetadataWriterAdapterWithMutator(db *sql.DB, box *outboxevents.Repository, mutator persistence.AssetMutationCommitter, log *zap.Logger) *ClipMetadataWriterAdapter {
+	if db == nil {
+		panic("assets.NewClipMetadataWriterAdapterWithMutator: db is required")
+	}
+	if box == nil {
+		panic("assets.NewClipMetadataWriterAdapterWithMutator: outboxevents.Repository is required")
+	}
+	if mutator == nil {
+		panic("assets.NewClipMetadataWriterAdapterWithMutator: canonical asset mutator is required")
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &ClipMetadataWriterAdapter{
-		db:  db,
-		box: box,
-		log: log,
-		now: time.Now,
+		db:      db,
+		box:     box,
+		mutator: mutator,
+		log:     log,
+		now:     time.Now,
+	}
+}
+
+// SetCanonicalAssetMutator binds the shared canonical mutation owner. It is
+// intended for composition-root wiring of the compatibility constructor.
+func (w *ClipMetadataWriterAdapter) SetCanonicalAssetMutator(mutator persistence.AssetMutationCommitter) {
+	if w != nil {
+		w.mutator = mutator
 	}
 }
 
@@ -112,8 +142,8 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	clipID string,
 	m youtubetypes.CanonicalClipMetadata,
 ) error {
-	if w == nil || w.db == nil || w.box == nil {
-		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: adapter not wired")
+	if w == nil || w.db == nil || w.box == nil || w.mutator == nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: adapter or canonical asset mutator not wired")
 	}
 	if clipID == "" {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: clipID is required")
@@ -138,12 +168,11 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 		}
 	}()
 
-	// 2) UPDATE media_assets.metadata_json via json_patch — builds
-	// the full JSON object in Go (PR-YT-DOD-7: 18 canonical keys
-	// including the 9 new DoD 7 fields) and merges it with the
-	// existing metadata_json via SQLite's json_patch.
+	// 2) UPDATE media_assets.metadata_json through the canonical
+	// AssetCommitter SQL boundary. The helper builds the complete typed
+	// metadata snapshot and uses this caller-owned transaction.
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	if err := updateMediaAssetsMetadataTx(ctx, tx, clipID, m, nowStr); err != nil {
+	if err := updateMediaAssetsMetadataTxWithPatcher(ctx, w.mutator, tx, clipID, m, nowStr); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: update media_assets: %w", err)
 	}
 
@@ -222,8 +251,8 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 		return w.UpdateClipMetadataAndRequestIndex(ctx, clipID, m)
 	}
 
-	if w == nil || w.db == nil || w.box == nil {
-		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: adapter not wired")
+	if w == nil || w.db == nil || w.box == nil || w.mutator == nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: adapter or canonical asset mutator not wired")
 	}
 	if clipID == "" {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: clipID is required")
@@ -260,7 +289,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 
 	// 3) UPDATE media_assets.metadata_json
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	if err := updateMediaAssetsMetadataTx(ctx, tx, clipID, m, nowStr); err != nil {
+	if err := updateMediaAssetsMetadataTxWithPatcher(ctx, w.mutator, tx, clipID, m, nowStr); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: update media_assets: %w", err)
 	}
 

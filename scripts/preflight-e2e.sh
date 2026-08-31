@@ -32,7 +32,7 @@ BASE_URL="${PREFLIGHT_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
 QDRANT_URL="${PREFLIGHT_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${PREFLIGHT_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 CHRONON_URL="${PREFLIGHT_CHRONON_URL:-${CHRONON_URL:-}}"
-DB_PATH="${PREFLIGHT_DB_PATH:-${VELOX_DB_PATH:-$(canonical_primary_db_path "$ROOT_DIR")}}"
+DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
 REQUIRE_DRIVE="${PREFLIGHT_REQUIRE_DRIVE:-0}"
 REQUIRE_CHRONON="${PREFLIGHT_REQUIRE_CHRONON:-0}"
 HTTP_TIMEOUT="${PREFLIGHT_HTTP_TIMEOUT_SECONDS:-5}"
@@ -43,7 +43,7 @@ if [[ -n "$FINGERPRINT_FILE" ]]; then
     SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     if [[ -x "$SCRIPT_DIR/bench/capture-fingerprint.sh" ]]; then
         PREFLIGHT_BASE_URL="$BASE_URL" \
-        PREFLIGHT_DB_PATH="$DB_PATH" \
+ \
             bash "$SCRIPT_DIR/bench/capture-fingerprint.sh" > "$FINGERPRINT_FILE" 2>/dev/null || true
     else
         {
@@ -143,7 +143,7 @@ check_chronon_binary() {
 
 # Category 3: Storage
 check_primary_db() {
-    DB_PATH="$(resolve_canonical_primary_db "$DB_PATH")" || return 1
+    DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
     [[ -f "$DB_PATH" ]] || return 1
     command -v sqlite3 >/dev/null 2>&1 && sqlite3 -readonly "$DB_PATH" 'PRAGMA integrity_check;' | grep -qx 'ok'
 }

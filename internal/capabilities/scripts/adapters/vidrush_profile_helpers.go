@@ -8,6 +8,7 @@ import (
 
 func profileFromVidRushSegment(segment scriptpkg.VidRushSegmentResult) scriptpkg.SegmentSemanticProfile {
 	profile := scriptpkg.SegmentSemanticProfile{
+		ExecutionMode:    segment.ExecutionMode.Normalize(),
 		SegmentID:        segment.SegmentID,
 		TextHash:         segment.TextHash,
 		Topic:            segment.Text,

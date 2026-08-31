@@ -238,3 +238,71 @@ func TestMaterialization_UnverifiedImageCannotReachBinding(t *testing.T) {
 		t.Fatal("unverified candidate was incorrectly bound as an entity image")
 	}
 }
+
+func TestValidateVidRushSegmentAssetBindings_RequiresCompleteProvenance(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-a", Position: 2, TextHash: "hash-a"}
+	candidate := readyEntityImageCandidate("asset-a", "feta cheese", "feta cheese")
+	candidate.SegmentID = segment.SegmentID
+	candidate.Position = segment.Position
+	candidate.TextHash = segment.TextHash
+	candidate.EntityID = "entity:feta-cheese"
+	video := candidate
+	video.AssetID = "video-a"
+	video.Provider = scriptpkg.VidRushProviderArtlist
+	video.Query = "greek salad preparation"
+	video.EntityID = "entity:greek-salad"
+	segment.Assets = scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate, video}}
+
+	if err := ValidateVidRushSegmentAssetBindings([]scriptpkg.VidRushSegmentResult{segment}); err != nil {
+		t.Fatalf("complete asset provenance rejected: %v", err)
+	}
+	for _, asset := range segment.Assets.Candidates {
+		if asset.SegmentID != segment.SegmentID || asset.Position != segment.Position || asset.TextHash != segment.TextHash || asset.EntityID == "" || asset.Query == "" || asset.AssetID == "" || asset.Provider == "" {
+			t.Fatalf("asset provenance envelope incomplete: %+v", asset)
+		}
+	}
+
+	candidate.EntityID = ""
+	segment.Assets.Candidates[0] = candidate
+	if err := ValidateVidRushSegmentAssetBindings([]scriptpkg.VidRushSegmentResult{segment}); err == nil {
+		t.Fatal("missing entity_id was accepted by the provenance validator")
+	}
+}
+
+func TestFinalizeVidRushBindings_DropsCrossSegmentAssetReuse(t *testing.T) {
+	candidate := readyEntityImageCandidate("shared-image", "feta cheese", "feta cheese")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "segment-a", Position: 0, TextHash: "hash-a", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}},
+		{SegmentID: "segment-b", Position: 1, TextHash: "hash-b", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}},
+	}
+
+	got := FinalizeVidRushBindings(segments, true)
+	if len(got) != 2 {
+		t.Fatalf("finalized segments = %d, want 2", len(got))
+	}
+	if len(got[0].Assets.Candidates) != 1 {
+		t.Fatalf("first segment candidates = %d, want 1", len(got[0].Assets.Candidates))
+	}
+	if len(got[1].Assets.Candidates) != 0 {
+		t.Fatalf("cross-segment asset reuse survived final binding: %+v", got[1].Assets.Candidates)
+	}
+	if err := ValidateVidRushSegmentAssetBindings(got); err != nil {
+		t.Fatalf("finalized provenance invalid: %v", err)
+	}
+}
+
+func TestFinalizeVidRushBindings_RejectsStampedForeignSegment(t *testing.T) {
+	foreign := readyEntityImageCandidate("foreign-image", "paella", "paella")
+	foreign.SegmentID = "segment-b"
+	foreign.Position = 1
+	foreign.TextHash = "hash-b"
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "segment-a", Position: 0, TextHash: "hash-a",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{foreign}},
+	}
+
+	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{segment}, true)
+	if len(got) != 1 || len(got[0].Assets.Candidates) != 0 {
+		t.Fatalf("foreign stamped candidate was rebound: %+v", got)
+	}
+}

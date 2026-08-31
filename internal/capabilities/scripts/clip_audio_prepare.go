@@ -85,6 +85,11 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
 			}
 		}
+		if scene.ExecutionMode.IsFixedMedia() {
+			if err := rebuildFixedMediaTiming(scene); err != nil {
+				return 0, fmt.Errorf("scene %s fixed playback timing rebuild failed: %w", scene.ID, err)
+			}
+		}
 	}
 	return time.Since(started).Milliseconds(), nil
 }
@@ -158,9 +163,66 @@ func applyFixedPlaybackWindow(scene *Scene, clip *ClipReference, sourceDurationU
 		scene.Audio.SourceDurationUS = endUS - startUS
 		scene.Audio.TimelineDurationUS = endUS - startUS
 	}
-	if scene.DurationUS <= 0 {
-		scene.DurationUS = endUS - startUS
-		scene.DurationMS = scene.DurationUS / 1000
+	// The caller rebuilds the complete ordered projection after every fixed
+	// clip has been resolved. Rebuilding here would reject a valid two-clip
+	// section while the later clip is still awaiting its certified duration.
+	return nil
+}
+
+// rebuildFixedMediaTiming seals the ordered fixed-media projection after all
+// original-audio durations are known. Every clip keeps the policy's source
+// window, while TimelineOffsetUS makes the clips consecutive in declaration
+// order and scene duration is the exact sum of their selected windows.
+func rebuildFixedMediaTiming(scene *Scene) error {
+	if scene == nil || !scene.ExecutionMode.IsFixedMedia() {
+		return nil
+	}
+	clips := scene.Clips
+	if len(clips) == 0 && scene.Clip != nil {
+		clips = []*ClipReference{scene.Clip}
+	}
+	if len(clips) == 0 {
+		return fmt.Errorf("no fixed-media clips")
+	}
+	var offsetUS int64
+	for _, clip := range clips {
+		if clip == nil || strings.TrimSpace(clip.ID) == "" {
+			return fmt.Errorf("fixed-media clip id is required")
+		}
+		if clip.SourceInMS < 0 || clip.SourceOutMS <= clip.SourceInMS {
+			return fmt.Errorf("clip %s has no resolved source window", clip.ID)
+		}
+		windowUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
+		matched := false
+		for i := range scene.AudioIntents {
+			intent := &scene.AudioIntents[i]
+			if intent.Mode != capabilityaudio.AudioClip || intent.ClipAssetID != clip.ID {
+				continue
+			}
+			intent.SourceInUS = clip.SourceInMS * 1000
+			intent.SourceDurationUS = windowUS
+			intent.TimelineOffsetUS = offsetUS
+			intent.TimelineDurationUS = windowUS
+			intent.UseOriginalAudio = true
+			intent.ProtectedOriginalAudio = true
+			intent.GainDB = 0
+			matched = true
+		}
+		if !matched {
+			return fmt.Errorf("clip %s has no original-audio intent", clip.ID)
+		}
+		if offsetUS > int64(^uint64(0)>>1)-windowUS {
+			return fmt.Errorf("fixed-media duration overflows")
+		}
+		offsetUS += windowUS
+	}
+	if offsetUS <= 0 {
+		return fmt.Errorf("fixed-media duration is empty")
+	}
+	scene.DurationUS = offsetUS
+	scene.DurationMS = offsetUS / 1000
+	if len(scene.AudioIntents) > 0 {
+		scene.Audio = scene.AudioIntents[0]
 	}
 	return nil
 }

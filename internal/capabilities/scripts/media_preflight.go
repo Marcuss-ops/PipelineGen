@@ -20,6 +20,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -27,7 +28,38 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// ErrMediaPreflight identifies a fail-closed media requirement failure.
+// Callers can probe it with errors.Is and inspect the structured
+// MediaPreflightError with errors.As.
+var ErrMediaPreflight = errors.New("scriptgeneration: media preflight failed")
+
+// MediaPreflightError carries the complete structured preflight result.
+type MediaPreflightError struct {
+	Result PreflightResult
+}
+
+func (e *MediaPreflightError) Error() string {
+	if e == nil {
+		return ErrMediaPreflight.Error()
+	}
+	if message := e.Result.Error(); message != "" {
+		return fmt.Sprintf("%s: %s", ErrMediaPreflight, message)
+	}
+	return ErrMediaPreflight.Error()
+}
+
+func (e *MediaPreflightError) Unwrap() error { return ErrMediaPreflight }
+
+// AsError converts a failed result to the canonical typed error.
+func (r PreflightResult) AsError() error {
+	if !r.HasFailures() {
+		return nil
+	}
+	return &MediaPreflightError{Result: r}
+}
 
 // PreflightResult carries every failure found during the media preflight.
 // A nil or empty PreflightFailure slice means all checks passed.
@@ -82,10 +114,21 @@ type FixedClipPreflight struct {
 	SourceOutMS int64
 }
 
+// FixedSectionPreflight describes one literal intro/outro contract before
+// downstream generation begins. It lets the preflight reject malformed fixed
+// media before the LLM is invoked, rather than discovering it during scene
+// injection after generation.
+type FixedSectionPreflight struct {
+	Name     string
+	ClipIDs  []string
+	Playback scriptpkg.FixedPlaybackPolicy
+}
+
 type MediaPreflightInput struct {
 	ClipIDs           []string
 	IntroClipIDs      []string
 	FixedClips        []FixedClipPreflight
+	FixedSections     []FixedSectionPreflight
 	ClipProber        ClipPreflighter
 	ClipAudioSource   ClipAudioAssetSource
 	MixPolicy         capabilityaudio.AudioMixPolicy
@@ -102,9 +145,9 @@ type MediaPreflightInput struct {
 	BackgroundResolver ClipPreflighter
 }
 
-// RunMediaPreflight executes every check concurrently and returns all
-// failures. Designed to run in a goroutine during Gemma; the join point
-// after Gemma checks result.HasFailures().
+// RunMediaPreflight executes all independent asset checks concurrently and
+// returns every failure. Fixed-section contract validation is performed before
+// probes so malformed fixed media fails closed at the pre-generation gate.
 func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightResult {
 	started := time.Now()
 
@@ -114,11 +157,36 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		wg       sync.WaitGroup
 	)
 
+	// Validate the fixed-media contract synchronously before any asset probe.
+	// A malformed intro/outro is a hard request failure and must not reach the
+	// LLM, translator, or TTS phases.
+	for _, section := range in.FixedSections {
+		name := strings.TrimSpace(section.Name)
+		if name == "" {
+			name = "fixed"
+		}
+		if len(section.ClipIDs) < 1 || len(section.ClipIDs) > 2 {
+			failures = append(failures, PreflightFailure{
+				Category: "fixed_media", AssetID: name,
+				Detail: "fixed section must contain 1 or 2 clip_ids",
+			})
+		}
+		if !section.Playback.Valid() {
+			failures = append(failures, PreflightFailure{
+				Category: "fixed_media", AssetID: name,
+				Detail: "playback must use audio_mode=original_clip with a valid source window",
+			})
+		}
+	}
+
 	// Flatten: one goroutine per check item. Add to wg BEFORE spawning.
 	// ── Clip existence ──────────────────────────────────────────
-	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.IntroClipIDs))
+	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.IntroClipIDs)+len(in.FixedClips))
 	allClipIDs = append(allClipIDs, in.ClipIDs...)
 	allClipIDs = append(allClipIDs, in.IntroClipIDs...)
+	for _, fixed := range in.FixedClips {
+		allClipIDs = append(allClipIDs, fixed.ClipID)
+	}
 	for _, id := range allClipIDs {
 		id := id
 		if in.ClipProber == nil {

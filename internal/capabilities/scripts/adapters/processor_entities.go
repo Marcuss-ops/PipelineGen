@@ -397,6 +397,14 @@ func buildVidRushSegmentResult(
 	imageLimit int,
 	queryText ...string,
 ) scriptpkg.VidRushSegmentResult {
+	if canonicalSeg.ExecutionMode.IsFixedMedia() {
+		mode := canonicalSeg.ExecutionMode.Normalize()
+		return scriptpkg.VidRushSegmentResult{
+			SegmentID: canonicalSeg.ID, SceneID: canonicalSeg.SceneID,
+			Position: canonicalSeg.Position, Text: canonicalSeg.Text,
+			TextHash: canonicalSeg.TextHash, ExecutionMode: mode,
+		}
+	}
 	if res == nil {
 		res = &scriptpkg.EntityResult{}
 	}
@@ -480,14 +488,15 @@ func buildVidRushSegmentResult(
 	}
 
 	return scriptpkg.VidRushSegmentResult{
-		SegmentID: canonicalSeg.ID,
-		SceneID:   canonicalSeg.SceneID,
-		Position:  canonicalSeg.Position,
-		Text:      canonicalSeg.Text,
-		TextHash:  canonicalSeg.TextHash,
-		Insights:  insights,
-		Assets:    scriptpkg.SegmentAssetSelection{},
-		Cache:     scriptpkg.SegmentCacheState{},
+		SegmentID:     canonicalSeg.ID,
+		SceneID:       canonicalSeg.SceneID,
+		Position:      canonicalSeg.Position,
+		Text:          canonicalSeg.Text,
+		TextHash:      canonicalSeg.TextHash,
+		ExecutionMode: canonicalSeg.ExecutionMode,
+		Insights:      insights,
+		Assets:        scriptpkg.SegmentAssetSelection{},
+		Cache:         scriptpkg.SegmentCacheState{},
 	}
 }
 
@@ -648,7 +657,12 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 		e.metrics.IncSegments()
 	}
 	cacheKey := segmentCacheKey(
-		"extraction-v4-local-v1",
+		// Segment identity is part of the cache namespace. Text hashes alone
+		// are not sufficient: two scenes may legitimately share identical
+		// narration, while their extraction result must remain attached to the
+		// committed scene that requested it.
+		"extraction-v5-local-v1",
+		canonicalSeg.ID,
 		canonicalSeg.TextHash,
 		plan.Language,
 		plan.Model,
@@ -827,5 +841,6 @@ func canonicalSegmentFromScene(scene scriptpkg.SpecScene) scriptpkg.CanonicalSeg
 		ID: id, SceneID: strings.TrimSpace(scene.ID), Position: scene.Index,
 		Text: segText, SourceText: segText,
 		TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
+		ExecutionMode: scene.ExecutionMode.Normalize(),
 	}
 }

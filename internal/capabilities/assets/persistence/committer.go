@@ -73,6 +73,7 @@ type CommitRequest struct {
 	Filename       string
 	MediaType      string
 	Category       string
+	GroupName      string
 	DurationMs     int64
 	ContentHash    string
 	Description    string
@@ -83,7 +84,9 @@ type CommitRequest struct {
 	FolderID       string
 	FolderPath     string
 	ThumbnailURL   string
+	DownloadLink   string
 	SourceURL      string
+	ClipPageURL    string
 
 	// AssetVersion is the source-specific version label (e.g. "v1").
 	AssetVersion string
@@ -204,6 +207,37 @@ type Row = *sql.Row
 
 // AssetCommitter is the canonical port for committing an asset and
 // its indexing outbox event in a single atomic transaction.
+// AssetMutationCommitter is the post-commit mutation port owned by the
+// canonical asset persistence boundary. It is intentionally separate from
+// AssetCommitter so existing test doubles for the create/commit contract do
+// not accidentally become second writers. Production implementations are
+// the same canonical committer instance used for AssetCommitter.
+type AssetMutationCommitter interface {
+	PersistEmbeddingJSON(ctx context.Context, assetID, channel string, embedding []float64, status string) error
+	SetIndexState(ctx context.Context, assetID string, state asset.IndexState, lastError string) error
+	SetIndexed(ctx context.Context, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash string) (bool, error)
+	PatchMetadataJSON(ctx context.Context, assetID, patchJSON, updatedAt string) error
+	PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error
+	ReplaceMetadataJSON(ctx context.Context, assetID, metadataJSON, updatedAt string) error
+	UpdateFolderPath(ctx context.Context, assetID, folderID, folderPath, updatedAt string) error
+	UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
+	UpdateLifecycle(ctx context.Context, assetID string, state, deletedAt, updatedAt string) error
+	UpdateTaxonomy(ctx context.Context, taxonomy mediaregistry.AssetTaxonomy) error
+	LinkContent(ctx context.Context, assetID, contentSHA256 string) error
+	UpdateSearchText(ctx context.Context, assetID, searchText, updatedAt string) error
+	RefreshUpdatedAt(ctx context.Context, assetID, updatedAt string) error
+	UpdateOrphanMetadata(ctx context.Context, assetID string, detectedAt time.Time, kind string) error
+	UpdateDriveDeliveryByLegacyHash(ctx context.Context, hash string, mutation DriveDeliveryMutation) error
+}
+
+// DriveDeliveryMutation is the canonical post-commit Drive projection update.
+type DriveDeliveryMutation struct {
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	Status       string
+}
+
 type AssetCommitter interface {
 	// CommitTx writes the asset, locations, metadata and optional
 	// outbox event inside the caller-owned transaction.
@@ -228,6 +262,45 @@ type AssetCommitter interface {
 	// other code path is allowed to insert into outbox_events for
 	// this event_type — the dispatcher is the only consumer.
 	CommitAsset(ctx context.Context, req AssetCommitRequest) (CommittedAsset, error)
+}
+
+// RenditionCommit describes one technical rendition to persist alongside
+// its asset. The persistence port owns the SQL representation so capability
+// finalizers never need to know the schema of asset_locations or
+// asset_renditions.
+type RenditionCommit struct {
+	Kind        string
+	Provider    string
+	FileID      string
+	URI         string
+	WebViewLink string
+	DownloadURL string
+	MimeType    string
+	SizeBytes   int64
+	SHA256      string
+	Width       int
+	Height      int
+	FPS         float64
+	Bitrate     int64
+	Container   string
+	Codec       string
+}
+
+// AssetRenditionCommitter is the canonical tx-bound seam for persisting
+// technical renditions. It is separate from AssetCommitter so existing
+// producer fakes do not gain a second write surface; production committers
+// implement both interfaces.
+type AssetRenditionCommitter interface {
+	CommitRenditionTx(ctx context.Context, tx *sql.Tx, assetID string, rendition RenditionCommit, nowStr string) error
+}
+
+// AssetIndexEventCommitter is the canonical tx-bound seam for emitting an
+// asset.index.requested event when the caller already owns the asset
+// transaction. It is deliberately separate from AssetCommitter so existing
+// producer fakes do not gain a second method, while production adapters can
+// still prove that the outbox write has the same canonical owner.
+type AssetIndexEventCommitter interface {
+	CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
 }
 
 // ── Typed sentinels ──────────────────────────────────────────────────

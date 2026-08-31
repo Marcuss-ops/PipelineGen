@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -159,6 +160,79 @@ func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing
 	}
 	if got := <-searcher.queries; got != "Chichen Itza Maya pyramid Yucatan" {
 		t.Fatalf("provider query = %q, want manual image query", got)
+	}
+}
+
+func TestSelectExactVidRushImagesImagesOnlyKeepsOnePerEntity(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 3, MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+	}}
+	candidates := make([]scriptpkg.SegmentAssetCandidate, 0, 5)
+	for _, query := range []string{"feta cheese", "tomatoes", "olives"} {
+		candidates = append(candidates,
+			readyImageCandidateForSelection("low-"+query, query, .4),
+			readyImageCandidateForSelection("high-"+query, query, .9),
+		)
+	}
+	// A forbidden fallback provider must never occupy an Images-only slot.
+	forbidden := readyImageCandidateForSelection("generated", "saffron rice", 1)
+	forbidden.Provider = scriptpkg.VidRushProviderImageGeneration
+	candidates = append(candidates, forbidden)
+
+	selected := selectExactVidRushImages(candidates, 3, plan)
+	if len(selected) != 3 {
+		t.Fatalf("selected image count = %d, want 3: %+v", len(selected), selected)
+	}
+	seenQueries := map[string]bool{}
+	for _, candidate := range selected {
+		if candidate.Provider != scriptpkg.VidRushProviderInternetImages {
+			t.Fatalf("selected provider = %q, want internet_images", candidate.Provider)
+		}
+		if !strings.HasPrefix(candidate.AssetID, "high-") {
+			t.Fatalf("selected asset = %q, want highest-scored candidate", candidate.AssetID)
+		}
+		if seenQueries[candidate.Query] {
+			t.Fatalf("query %q selected more than once", candidate.Query)
+		}
+		seenQueries[candidate.Query] = true
+	}
+}
+
+func readyImageCandidateForSelection(assetID, query string, score float64) scriptpkg.SegmentAssetCandidate {
+	return scriptpkg.SegmentAssetCandidate{
+		AssetID: assetID, Provider: scriptpkg.VidRushProviderInternetImages, Query: query, Score: score,
+		SourceURL: "https://images.example/" + assetID + ".jpg", DriveLink: "https://drive.example/" + assetID,
+		LegacyFileMD5: "hash-" + assetID, RightsStatus: "unknown_allowed",
+		AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
+	}
+}
+
+func TestFinalizeVidRushBindingsPreservesExactSelectedImages(t *testing.T) {
+	selected := []scriptpkg.SegmentAssetCandidate{
+		readyImageCandidateForSelection("selected-feta", "feta cheese", .9),
+		readyImageCandidateForSelection("selected-tomatoes", "fresh tomatoes", .8),
+		readyImageCandidateForSelection("selected-olives", "kalamata olives", .7),
+	}
+	allCandidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), selected...),
+		readyImageCandidateForSelection("surplus", "extra query", 1),
+	)
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "exact-selected-images", TextHash: "exact-selected-images-hash",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: allCandidates, SecondaryImages: selected},
+	}
+
+	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{segment}, true)
+	if len(got) != 1 {
+		t.Fatalf("finalized segments = %d, want 1", len(got))
+	}
+	if len(got[0].Assets.SecondaryImages) != 3 {
+		t.Fatalf("finalized selected images = %d, want 3", len(got[0].Assets.SecondaryImages))
+	}
+	for _, image := range got[0].Assets.SecondaryImages {
+		if image.AssetID == "surplus" {
+			t.Fatalf("surplus candidate escaped selected image set: %+v", got[0].Assets.SecondaryImages)
+		}
 	}
 }
 

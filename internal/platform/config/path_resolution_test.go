@@ -80,47 +80,20 @@ func TestStorageConfig_PathsAreAbsoluteForAnyCWD(t *testing.T) {
 	}
 }
 
-func TestStorageConfig_PrimaryDBPathDefaultsToCanonicalLocation(t *testing.T) {
+func TestStorageConfig_PrimaryDBPathIsDerivedFromDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	cfg := StorageConfig{DataDir: dataDir, MediaDir: "custom-media"}
 	want := filepath.Join(dataDir, "media", "media.db.sqlite")
 	if got := cfg.PrimaryDBFullPath(); got != want {
 		t.Fatalf("PrimaryDBFullPath() = %q, want %q", got, want)
 	}
-	if err := cfg.ValidatePrimaryDBPath(); err != nil {
-		t.Fatalf("default primary path rejected: %v", err)
-	}
 }
 
-func TestStorageConfig_RejectsNonCanonicalPrimaryDBPaths(t *testing.T) {
+func TestStorageConfig_PrimaryDBPathIgnoresMediaDir(t *testing.T) {
 	dataDir := t.TempDir()
-	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
-	for _, path := range []string{
-		filepath.Join(dataDir, "media.db.sqlite"),
-		filepath.Join(dataDir, "cmd", "admin", "data", "media", "media.db.sqlite"),
-		filepath.Join(dataDir, "legacy", "media.db.sqlite"),
-		"data/media.db.sqlite",
-	} {
-		t.Run(path, func(t *testing.T) {
-			cfg := StorageConfig{DataDir: dataDir, PrimaryDBPath: path}
-			if err := cfg.ValidatePrimaryDBPath(); err == nil {
-				t.Fatalf("ValidatePrimaryDBPath(%q) returned nil; canonical path is %q", path, canonical)
-			}
-			if got := cfg.PrimaryDBFullPath(); got != path {
-				t.Fatalf("PrimaryDBFullPath() = %q, want invalid path %q preserved for fail-closed handling", got, path)
-			}
-		})
-	}
-}
-
-func TestStorageConfig_AcceptsCanonicalPrimaryDBOverride(t *testing.T) {
-	dataDir := t.TempDir()
-	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
-	cfg := StorageConfig{DataDir: dataDir, PrimaryDBPath: canonical}
-	if err := cfg.ValidatePrimaryDBPath(); err != nil {
-		t.Fatalf("canonical override rejected: %v", err)
-	}
-	if got := cfg.PrimaryDBFullPath(); got != canonical {
-		t.Fatalf("PrimaryDBFullPath() = %q, want %q", got, canonical)
+	cfg := StorageConfig{DataDir: dataDir, MediaDir: "arbitrary-media-dir"}
+	want := filepath.Join(dataDir, "media", "media.db.sqlite")
+	if got := cfg.CanonicalPrimaryDBPath(); got != want {
+		t.Fatalf("CanonicalPrimaryDBPath() = %q, want %q", got, want)
 	}
 }

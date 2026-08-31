@@ -10,6 +10,7 @@ package wiring
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -23,8 +24,69 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
+
+// chrononTimingProjection contains the common GPU and hardware metrics
+// projected from Chronon's timing sidecar.
+type chrononTimingProjection struct {
+	Job struct {
+		GPU struct {
+			GPUReadbackBytes        *uint64 `json:"gpu_readback_bytes"`
+			GPUUploadBytes          *uint64 `json:"gpu_upload_bytes"`
+			EncoderStagingCopyBytes *uint64 `json:"encoder_staging_copy_bytes"`
+			NV12ToRGBAFrames        *uint64 `json:"nv12_to_rgba_frames"`
+			RGBAToNV12Frames        *uint64 `json:"rgba_to_nv12_frames"`
+			CUDACompositeFrames     *uint64 `json:"cuda_composite_frames"`
+			CUDACompositeWallUS     *uint64 `json:"cuda_composite_wall_us"`
+			VideoDecodeWallMS       *uint64 `json:"video_decode_wall_ms"`
+		} `json:"gpu"`
+		Hardware struct {
+			GPUUtilizationAvg   *float64 `json:"gpu_utilization_avg"`
+			GPUUtilizationPeak  *float64 `json:"gpu_utilization_peak"`
+			NVENCUtilizationAvg *float64 `json:"nvenc_utilization_avg"`
+			NVDECUtilizationAvg *float64 `json:"nvdec_utilization_avg"`
+			VRAMUsedPeakMB      *uint64  `json:"vram_used_peak_mb"`
+		} `json:"hardware"`
+	} `json:"job"`
+}
+
+func readChrononProjection(path string) (rustexec.ClipRenderResult, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return rustexec.ClipRenderResult{}, err
+	}
+	var doc chrononTimingProjection
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return rustexec.ClipRenderResult{}, err
+	}
+	var out rustexec.ClipRenderResult
+	g := doc.Job.GPU
+	out.GPUReadbackBytes, out.GPUUploadBytes = g.GPUReadbackBytes, g.GPUUploadBytes
+	out.EncoderStagingCopyBytes = g.EncoderStagingCopyBytes
+	out.NV12ToRGBAFrames, out.RGBAToNV12Frames = g.NV12ToRGBAFrames, g.RGBAToNV12Frames
+	out.CUDACompositeFrames = g.CUDACompositeFrames
+	if g.VideoDecodeWallMS != nil {
+		out.DecodeMS = i64Ptr(*g.VideoDecodeWallMS)
+	}
+	if g.CUDACompositeWallUS != nil {
+		out.FilterGraphMS = i64Ptr((*g.CUDACompositeWallUS + 999) / 1000)
+	}
+	h := doc.Job.Hardware
+	out.GPUUtilizationAvg, out.GPUUtilizationPeak = h.GPUUtilizationAvg, h.GPUUtilizationPeak
+	out.NVENCUtilizationAvg, out.NVDECUtilizationAvg = h.NVENCUtilizationAvg, h.NVDECUtilizationAvg
+	out.VRAMUsedPeakMB = h.VRAMUsedPeakMB
+	return out, nil
+}
+
+func i64Ptr(v uint64) *int64 {
+	if v > uint64(^uint64(0)>>1) {
+		return nil
+	}
+	n := int64(v)
+	return &n
+}
 
 // chrononAwareCapabilityProbe decorates the canonical ffmpeg capability probe
 // with the Chronon render binary's presence. Backend selection is the

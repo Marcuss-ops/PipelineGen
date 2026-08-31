@@ -22,7 +22,6 @@ import (
 func RunDBBackup(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("db backup", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "./data", "root data directory")
-	src := fs.String("src", "", "source DB path (default: resolved primary)")
 	out := fs.String("out", "", "output backup path (required)")
 	fs.Parse(args)
 
@@ -37,11 +36,7 @@ func RunDBBackup(ctx context.Context, args []string) error {
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}
-	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
-	srcPath := *src
-	if srcPath == "" {
-		srcPath = resolved.PrimaryDBPath()
-	}
+	srcPath := fullCfg.Storage.PrimaryDBFullPath()
 
 	log, _ := zap.NewProduction()
 	defer log.Sync()

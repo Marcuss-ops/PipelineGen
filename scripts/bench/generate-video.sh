@@ -166,7 +166,7 @@ mkdir -p "$FINGERPRINT_DIR"
 FINGERPRINT_FILE="$FINGERPRINT_DIR/fingerprint-$(date -u +%Y%m%dT%H%M%S).json"
 
 FINGERPRINT_BASE_URL="$BASE_URL" \
-FINGERPRINT_DB_PATH="$(resolve_canonical_primary_db "${PREFLIGHT_DB_PATH:-${VELOX_DB_PATH:-}}" "$ROOT_DIR")" \
+FINGERPRINT_DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")" \
     bash "$ROOT_DIR/scripts/bench/capture-fingerprint.sh" > "$FINGERPRINT_FILE" 2>/dev/null || exit 2
 
 # Extract key fields for the banner
@@ -182,7 +182,7 @@ QDRANT_POINTS=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE'));
 
 # Legacy fields for the JSON report (backward compat)
 GIT_SHA_FULL="$GIT_SHA"
-DB_PATH="$(resolve_canonical_primary_db "${PREFLIGHT_DB_PATH:-${VELOX_DB_PATH:-}}" "$ROOT_DIR")"
+DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
 
 echo "════════════════════════════════════════════════════════════════"
 echo "  PIPELINEGEN BENCHMARK — SETUP"
@@ -606,7 +606,7 @@ TOTAL_ELAPSED=0 # legacy CLI argument; excluded from all metrics
 echo ""
 echo "[bench] ═══ STAGE 4: REPORT (wall / work / critical path) ═══"
 
-BENCH_RESOURCE_DB="$(resolve_canonical_primary_db "${BENCH_RESOURCE_DB:-}" "$ROOT_DIR")" \
+BENCH_RESOURCE_DB="$(canonical_primary_db_path "$ROOT_DIR")" \
 python3 - "$OUTPUT_FILE" "$FINGERPRINT_FILE" \
     "$GIT_SHA" "$GIT_BRANCH" "$CONFIG_SHA" "$DB_SHA" "$WORKER_IDS" "$BASE_URL" \
     "0" "0" "0" \

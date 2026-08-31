@@ -71,7 +71,7 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 				"asset_location_reconciliation: transport error verifying %s link in %s (link cleared): %v",
 				label, sceneID, err),
 		}
-		if p.committer != nil {
+		if p.mutator != nil {
 			return transportResult, fmt.Errorf("%w: asset_location_reconciliation transport verification failed for %s in %s: %w",
 				scriptpkg.ErrPostprocessFailed, label, sceneID, err)
 		}
@@ -87,7 +87,7 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state (verifier returned no result; link cleared): asset=%s",
 				label, sceneID, assetID),
 		}
-		if p.committer != nil {
+		if p.mutator != nil {
 			return unknownResult, fmt.Errorf("%w: asset_location_reconciliation verifier returned no result for %s in %s",
 				scriptpkg.ErrPostprocessFailed, label, sceneID)
 		}

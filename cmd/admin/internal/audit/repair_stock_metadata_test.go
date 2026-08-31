@@ -3,10 +3,13 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -58,7 +61,7 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
 			asset_id TEXT NOT NULL,
 			text_kind TEXT NOT NULL DEFAULT '',
 			is_current INTEGER NOT NULL DEFAULT 0,
-			text TEXT NOT NULL DEFAULT ''
+			text_content TEXT NOT NULL DEFAULT ''
 		);`); err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +80,11 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(`INSERT INTO asset_text_tracks (asset_id, text_kind, is_current, text) VALUES ('stock-1', 'transcript', 1, 'left jab right cross')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO asset_text_tracks (asset_id, text_kind, is_current, text_content) VALUES ('stock-1', 'transcript', 1, 'left jab right cross')`); err != nil {
 		t.Fatal(err)
 	}
 
-	matched, updated, err := backfillSearchText(context.Background(), db, []string{"stock", "youtube"}, 0, true)
+	matched, updated, err := backfillSearchTextCanonical(context.Background(), db, &testAssetMutator{db: db}, []string{"stock", "youtube"}, 0, true)
 	if err != nil {
 		t.Fatalf("backfillSearchText: %v", err)
 	}
@@ -140,7 +143,7 @@ func TestBackfillSearchText_DryRunCountsOnly(t *testing.T) {
 			asset_id TEXT NOT NULL,
 			text_kind TEXT NOT NULL DEFAULT '',
 			is_current INTEGER NOT NULL DEFAULT 0,
-			text TEXT NOT NULL DEFAULT ''
+			text_content TEXT NOT NULL DEFAULT ''
 		);`); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +151,7 @@ func TestBackfillSearchText_DryRunCountsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	matched, updated, err := backfillSearchText(context.Background(), db, []string{"stock"}, 0, false)
+	matched, updated, err := backfillSearchTextCanonical(context.Background(), db, &testAssetMutator{db: db}, []string{"stock"}, 0, false)
 	if err != nil {
 		t.Fatalf("backfillSearchText dry-run: %v", err)
 	}
@@ -204,4 +207,78 @@ func TestTruncateSearchTextBytes(t *testing.T) {
 	if !strings.HasSuffix(got, "word") {
 		t.Fatalf("truncation must end at a word boundary, got %q", got[len(got)-10:])
 	}
+}
+
+// backfillSearchText is a legacy SQL fixture retained only for the historical
+// unit tests above. Production repair uses backfillSearchTextCanonical, which
+// routes writes through persistence.AssetMutator.
+func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit int, apply bool) (int, int, error) {
+	placeholders := make([]string, len(sources))
+	args := make([]any, len(sources))
+	for i, source := range sources {
+		placeholders[i] = "?"
+		args[i] = source
+	}
+	query := `SELECT id, source, name, category, tags, source_url, metadata_json
+		FROM media_assets
+		WHERE (search_text IS NULL OR TRIM(search_text) = '')
+		  AND source IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY id`
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("query search_text fixture: %w", err)
+	}
+	defer rows.Close()
+	type candidate struct {
+		id, source, name, category, tags, sourceURL, metadata string
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var c candidate
+		if err := rows.Scan(&c.id, &c.source, &c.name, &c.category, &c.tags, &c.sourceURL, &c.metadata); err != nil {
+			return 0, 0, err
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+	if !apply {
+		return len(candidates), 0, nil
+	}
+	registry := detail.NewComposerRegistry()
+	updated := 0
+	for _, c := range candidates {
+		var metadata map[string]any
+		_ = json.Unmarshal([]byte(c.metadata), &metadata)
+		var tags []string
+		_ = json.Unmarshal([]byte(c.tags), &tags)
+		title := c.name
+		if value, ok := metadata["title"].(string); ok && value != "" {
+			title = value
+		}
+		text, err := registry.Compose(detail.SearchTextInput{
+			AssetID: c.id, Source: c.source, Title: title,
+			Description: stringValue(metadata["description"]), Summary: stringValue(metadata["summary"]),
+			Tags: tags, Category: c.category, SourceURL: c.sourceURL,
+		})
+		if err != nil || strings.TrimSpace(text) == "" {
+			continue
+		}
+		text = truncateSearchTextBytes(text, 1024)
+		if _, err := db.ExecContext(ctx, `UPDATE media_assets SET search_text = ? WHERE id = ?`, text, c.id); err != nil {
+			return len(candidates), updated, err
+		}
+		updated++
+	}
+	return len(candidates), updated, nil
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
 }

@@ -149,7 +149,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	if applied, err = loadAppliedMigrations(db); err != nil {
 		return fmt.Errorf("storage: reload applied migrations after reconciliation: %w", err)
 	}
-	if err := validateAppliedMigrationSet(applied, migrations, targetDB); err != nil {
+	if err := validateAppliedMigrationSet(db, applied, migrations, targetDB); err != nil {
 		return err
 	}
 

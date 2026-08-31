@@ -231,7 +231,7 @@ func TestRunDriveBootstrap_DryRunReturnsNil(t *testing.T) {
 // ── executeBootstrap guard tests ──────────────────────────────────────
 
 func TestExecuteBootstrap_NoDBPath(t *testing.T) {
-	err := executeBootstrap(context.Background(), nil, nil, "test-root", "")
+	err := executeBootstrap(context.Background(), nil, nil, "test-root")
 	if err == nil {
 		t.Fatal("executeBootstrap: expected ErrAdminNoDB when DB path is empty")
 	}

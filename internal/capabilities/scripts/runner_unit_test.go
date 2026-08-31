@@ -6,8 +6,35 @@ import (
 	"fmt"
 	"testing"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMaterializeGeneratedScenes_PreservesExplicitThreeSceneTopology(t *testing.T) {
+	text := "Aerial drone footage follows a coastal highway.\n\nA barista pours milk into espresso and creates latte art.\n\nA trail runner climbs a mountain ridge at sunrise."
+	req := GenerateRequest{
+		Source:         Source{SourceText: text},
+		SourceLanguage: "en",
+		ScriptParams:   scriptpkg.ScriptSpec{SegmentWords: 60, Segments: []scriptpkg.ScriptSegment{{ID: "coastal-road"}, {ID: "latte-art"}, {ID: "trail-runner"}}},
+	}
+	got := materializeGeneratedScenes(req, []Scene{{ID: "scene-0", Index: 0, Text: map[Language]string{"en": text}}})
+
+	if len(got) != 3 {
+		t.Fatalf("materialized scenes = %d, want 3", len(got))
+	}
+	for i, scene := range got {
+		wantID := []string{"coastal-road", "latte-art", "trail-runner"}[i]
+		if scene.ID != wantID || scene.Index != i {
+			t.Fatalf("scene %d identity = (%q,%d), want (%s,%d)", i, scene.ID, scene.Index, wantID, i)
+		}
+	}
+	if got[0].Text["en"] == got[1].Text["en"] || got[1].Text["en"] == got[2].Text["en"] {
+		t.Fatal("materialization collapsed distinct scene text")
+	}
+	assert.Contains(t, got[0].Text["en"], "coastal highway")
+	assert.Contains(t, got[1].Text["en"], "latte art")
+	assert.Contains(t, got[2].Text["en"], "mountain ridge")
+}
 
 func TestDeriveErrorCode(t *testing.T) {
 	tests := []struct {

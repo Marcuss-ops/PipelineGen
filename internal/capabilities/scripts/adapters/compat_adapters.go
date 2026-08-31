@@ -92,9 +92,10 @@ type ArtlistClipSearcher interface {
 // for web-image retrieval.
 type InternetImageSearchRequest struct {
 	SegmentID string
+	Position  int
+	TextHash  string
 	Query     string
 	Entity    string
-	TextHash  string
 	Language  string
 	Limit     int
 	Provider  string

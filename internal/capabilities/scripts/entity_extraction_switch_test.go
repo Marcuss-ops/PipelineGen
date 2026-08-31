@@ -89,7 +89,7 @@ func (e *entitySwitchEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGe
 		Position:  scene.Index,
 		Text:      scene.Text,
 		TextHash:  SceneTextHash(scene.Text),
-		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+		Insights: scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(scene.Text), Entities: []scriptpkg.ExtractedEntity{
 			{Value: "Jackie Chan", Type: "PERSON", Confidence: 0.9},
 		}},
 	}, nil

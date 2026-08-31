@@ -89,6 +89,7 @@ func (e *countingEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGenera
 		Position:  scene.Index,
 		Text:      scene.Text,
 		TextHash:  SceneTextHash(scene.Text),
+		Insights:  scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(scene.Text)},
 	}, nil
 }
 

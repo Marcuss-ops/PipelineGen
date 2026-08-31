@@ -8,6 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	voservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -96,7 +97,7 @@ func buildIngestService(
 	repos *RepoBundle,
 	search *SearchBundle,
 	mutationsDisp mutations.AssetMutationDispatcher,
-	canonicalCommitter *imagesregistry.SQLiteMediaCommitter,
+	canonicalCommitter persistence.AssetCommitter,
 ) *ingest.Service {
 	if driveUploader == nil {
 		return nil

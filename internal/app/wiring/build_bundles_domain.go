@@ -24,13 +24,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
-	if outbox != nil && outbox.Dispatcher != nil {
+	if outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil {
 		var err error
 		mutationsDisp, err = newMutationsDispatcherAdapter(outbox.Dispatcher)
 		if err != nil {
 			return nil, fmt.Errorf("compose domains: %w", err)
 		}
-		canonicalCommitter = newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, zap.NewNop())
+		canonicalCommitter = outbox.CanonicalWriter
 	} else {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
@@ -47,20 +47,21 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 
 	// ── Assets domain: voiceover, books, ingest, images, lessons ──
 	if err := buildDomainAssetServices(buildDomainAssetServicesParams{
-		ctx:           ctx,
-		cfg:           cfg,
-		dbs:           dbs,
-		log:           log,
-		drive:         drive,
-		repos:         repos,
-		search:        search,
-		process:       process,
-		ai:            ai,
-		outbox:        outbox,
-		mutationsDisp: mutationsDisp,
-		voMetaWriter:  voMetaWriter,
-		bundle:        bundle,
-		mediaConfig:   mediaConfig,
+		ctx:                ctx,
+		cfg:                cfg,
+		dbs:                dbs,
+		log:                log,
+		drive:              drive,
+		repos:              repos,
+		search:             search,
+		process:            process,
+		ai:                 ai,
+		outbox:             outbox,
+		canonicalCommitter: canonicalCommitter,
+		mutationsDisp:      mutationsDisp,
+		voMetaWriter:       voMetaWriter,
+		bundle:             bundle,
+		mediaConfig:        mediaConfig,
 	}); err != nil {
 		return nil, fmt.Errorf("compose domains (assets): %w", err)
 	}

@@ -18,6 +18,6 @@ func (s *VidRushRegistryImageSearcher) SearchImages(ctx context.Context, req Int
 		return nil, scriptports.ErrVidRushProviderNotFound
 	}
 	return s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
-		SegmentID: req.SegmentID, TextHash: req.TextHash, Text: req.Query, Query: req.Query, Limit: req.Limit,
+		SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: req.Query, Query: req.Query, Limit: req.Limit,
 	})
 }

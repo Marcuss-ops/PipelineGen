@@ -2,6 +2,7 @@ package imagesregistry
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"time"
@@ -30,8 +31,18 @@ func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID,
 	if sourceVersion == "" {
 		return fmt.Errorf("UpdateFolderPath: source_version is empty for %s", assetID)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE media_assets SET folder_path=?,updated_at=? WHERE id=?`, folderPath, time.Now().UTC().Format(time.RFC3339), assetID); err != nil {
-		return err
+	if w.committer == nil {
+		return fmt.Errorf("UpdateFolderPath: canonical AssetCommitter is required")
+	}
+	updatedAt := time.Now().UTC().Format(time.RFC3339)
+	if txMutator, ok := w.committer.(interface {
+		UpdateFolderPathTx(context.Context, *sql.Tx, string, string, string, string) error
+	}); ok {
+		if err := txMutator.UpdateFolderPathTx(ctx, tx, assetID, "", folderPath, updatedAt); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("UpdateFolderPath: canonical AssetCommitter lacks tx-bound folder mutation")
 	}
 	if _, err := CommitIndexRequestTx(ctx, tx, w.box, IndexRequest{
 		AssetID: assetID, Source: "youtube", MediaType: "video",

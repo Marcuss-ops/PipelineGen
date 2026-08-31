@@ -1,6 +1,9 @@
 package scriptgeneration
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // deriveErrorCode extracts a stable machine-readable error code from
 // the error chain and the failing stage. Returns a canonical string
@@ -13,6 +16,12 @@ func deriveErrorCode(err error, stage Stage) string {
 		return string(stage) + "_FAILED"
 	}
 	errStr := err.Error()
+
+	// Typed errors take precedence over message heuristics so the durable
+	// error code remains stable even when provider details change.
+	if errors.Is(err, ErrMediaPreflight) {
+		return "MEDIA_PREFLIGHT_FAILED"
+	}
 
 	// Check for known error patterns in the error message.
 	// This is a lightweight heuristic; a future improvement could

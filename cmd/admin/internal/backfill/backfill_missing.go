@@ -13,6 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -43,7 +44,11 @@ func RunBackfillMissing(args []string) error {
 		return fmt.Errorf("database is not initialized or configured")
 	}
 
-	outboxAdapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema)
+	mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
+	if !ok || mutator == nil {
+		return fmt.Errorf("canonical asset mutator is not available")
+	}
+	outboxAdapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema, mutator)
 
 	ctx := cli.CmdContext()
 

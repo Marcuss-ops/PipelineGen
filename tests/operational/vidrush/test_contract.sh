@@ -201,7 +201,7 @@ while IFS= read -r manifest; do
         '.status == "DRY_RUN"' \
         "$report"
 done < <(find "$DIR/scenarios" -maxdepth 1 -type f -name '*.json' -print | sort)
-assert_eq "all scenario manifests covered" "15" "$manifest_count"
+assert_eq "all scenario manifests covered" "16" "$manifest_count"
 
 capture_rc output rc bash "$RUNNER" "$TEST_ROOT/missing-scenario.json"
 assert_eq "missing scenario is setup error" "2" "$rc"

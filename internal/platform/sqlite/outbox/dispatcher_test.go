@@ -3,13 +3,17 @@ package outbox
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -55,6 +59,94 @@ func (f *fakeClips) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, 
 		return f.stateErr
 	}
 	return nil
+}
+
+// fakeSQLiteAssetCommitter is a test-only implementation of the canonical
+// persistence.AssetCommitter port. It deliberately owns the same boundary as
+// production: the Dispatcher never calls fakeClips.UpsertClipTx directly;
+// the fake commits the canonical outbox event through the supplied transaction
+// manager and records discovery commits for the existing assertions.
+type fakeSQLiteAssetCommitter struct {
+	outbox    outboxEnqueuer
+	txmgr     TxManager
+	discovery *fakeClips
+}
+
+var _ persistence.AssetCommitter = (*fakeSQLiteAssetCommitter)(nil)
+var _ DiscoveryCommitter = (*fakeSQLiteAssetCommitter)(nil)
+
+func (f *fakeSQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if f == nil || f.outbox == nil || f.txmgr == nil {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: dependencies are required")
+	}
+	var result persistence.CommitResult
+	err := f.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		committed, err := f.commitIndexEvent(ctx, tx, req)
+		if err != nil {
+			return err
+		}
+		result = committed
+		return nil
+	})
+	return result, err
+}
+
+func (f *fakeSQLiteAssetCommitter) CommitAsset(ctx context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	return f.CommitAndIndex(ctx, persistence.CommitRequest(req))
+}
+
+func (f *fakeSQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok || sqlTx == nil {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: expected *sql.Tx, got %T", tx)
+	}
+	return f.commitIndexEvent(ctx, sqlTx, req)
+}
+
+func (f *fakeSQLiteAssetCommitter) CommitDiscoveredAsset(ctx context.Context, tx *sql.Tx, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+	if f == nil || f.discovery == nil {
+		return fmt.Errorf("fake SQLiteAssetCommitter: discovery dependencies are required")
+	}
+	return f.discovery.UpsertClipTx(ctx, tx, clip)
+}
+
+func (f *fakeSQLiteAssetCommitter) commitIndexEvent(ctx context.Context, tx *sql.Tx, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if req.AssetID == "" || req.Source == "" || req.ContentHash == "" {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: asset id, source and content hash are required")
+	}
+	key, err := idempotency.OutboxKey(outboxevents.EventAssetIndexRequested, req.Source, req.AssetID, req.ContentHash)
+	if err != nil {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: build event key: %w", err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"asset_id":       req.AssetID,
+		"source_version": req.ContentHash,
+	})
+	if err != nil {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: build payload: %w", err)
+	}
+	enqueued, err := f.outbox.Enqueue(ctx, tx, outboxevents.EventAssetIndexRequested, req.AssetID, "media_asset", string(payload), key)
+	if err != nil {
+		return persistence.CommitResult{}, err
+	}
+	if enqueued == nil {
+		return persistence.CommitResult{}, fmt.Errorf("fake SQLiteAssetCommitter: outbox returned nil result")
+	}
+	return persistence.CommitResult{
+		AssetRowsAffected:    1,
+		OutboxEventKey:       key,
+		OutboxInserted:       enqueued.Inserted,
+		OutboxExistingStatus: enqueued.ExistingStatus,
+	}, nil
+}
+
+func newTestDispatcher(clips *fakeClips, events outboxEnqueuer, txmgr TxManager) *Dispatcher {
+	committer := &fakeSQLiteAssetCommitter{
+		outbox:    events,
+		txmgr:     txmgr,
+		discovery: clips,
+	}
+	return NewDispatcher(clips, clips, events, txmgr, zap.NewNop(), committer)
 }
 
 // txMgrNoop is a TxManager that prints a clear failure if anyone actually
@@ -120,6 +212,9 @@ func TestDispatcher_EmptyContentHashRejected(t *testing.T) {
 		outboxEventsRepo: &noopOutboxEventsRepo{},
 		txmgr:            txMgrNoop{},
 		log:              zap.NewNop(),
+		canonicalCommitter: &fakeSQLiteAssetCommitter{
+			outbox: &noopOutboxEventsRepo{}, txmgr: txMgrNoop{}, discovery: &fakeClips{},
+		},
 	}
 	err := d.EnqueueAndIndex(context.Background(), &asset.Asset{ID: "clip-1"}, "")
 	if err == nil {

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -332,10 +333,19 @@ func (p *AssetLocationReconciliationProcessor) Process(
 // applyReconcilePlan is the only durable mutation boundary. It consumes the
 // immutable plan produced by the scan/classify phase and never re-reads scenes.
 func (p *AssetLocationReconciliationProcessor) applyReconcilePlan(ctx context.Context, plan ReconcilePlan) error {
-	if p.committer == nil || plan.Empty() {
+	if p.mutator == nil || plan.Empty() {
 		return nil
 	}
-	return p.committer.CommitAssetLocations(ctx, plan.AssetLocationChanges())
+	changes := plan.AssetLocationChanges()
+	patches := make([]persistence.DriveLocationPatch, 0, len(changes))
+	for _, change := range changes {
+		patches = append(patches, persistence.DriveLocationPatch{
+			AssetID:     change.AssetID,
+			DriveFileID: change.DriveFileID,
+			DriveLink:   change.DriveLink,
+		})
+	}
+	return p.mutator.ReconcileDriveLocations(ctx, patches)
 }
 
 func reconciliationReport(input ProcessInput, reconciled []scriptpkg.SpecScene, changed bool, warnings []string) *PostProcessResult {

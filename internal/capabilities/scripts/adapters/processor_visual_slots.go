@@ -66,7 +66,7 @@ func (p *VisualSlotsProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 	var all []mediadomain.VisualAssignment
 	var warnings []string
-	if plan.MediaPlan.Intro != nil {
+	if plan.MediaPlan.Intro != nil && !sceneIsFixedMedia(input.SpecScene, "", "", 0) {
 		res, err := resolveSlot(ctx, plan, input, "", mediadomain.VisualSlotIntro, *plan.MediaPlan.Intro, seed, p.planner)
 		if err != nil {
 			return nil, err
@@ -105,6 +105,9 @@ func projectPostSegmentClipBindings(scenes []scriptpkg.SpecScene, assignments []
 			if !matchesScene && !matchesSegment {
 				continue
 			}
+			if !scenes[i].AllowsMediaReplacement() {
+				continue
+			}
 			scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{
 				ClipID:     assignment.AssetID,
 				StartMs:    assignment.StartMs,
@@ -117,6 +120,9 @@ func projectPostSegmentClipBindings(scenes []scriptpkg.SpecScene, assignments []
 }
 
 func resolveSlot(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, segmentID string, slot mediadomain.VisualSlot, spec mediadomain.VisualSlotPlan, seed int64, planner visual.Planner) (visual.Result, error) {
+	if sceneIsFixedMedia(input.SpecScene, "", segmentID, 0) {
+		return visual.Result{}, nil
+	}
 	ids := append([]string(nil), spec.CandidateAssetIDs...)
 	for _, clip := range spec.Clips {
 		if clip.AssetID != "" {

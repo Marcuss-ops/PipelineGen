@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,15 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	if result, handled := p.metadataOnlyResult(plan, input); handled {
 		return result, nil
 	}
+	if allSegmentsFixedMedia(input.SpecScene, input.VidRushSegments) {
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
+		for _, segment := range input.VidRushSegments {
+			cloned := cloneVidRushSegmentResult(segment)
+			cloned.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+			segments = append(segments, cloned)
+		}
+		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
+	}
 	if err := materializationDependenciesError(plan, input, p.providers, p.finalizer); err != nil {
 		return nil, err
 	}
@@ -146,6 +156,11 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	}
 	if result, handled := p.metadataOnlyResult(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}); handled {
 		return result.VidRushSegments[0], nil
+	}
+	if segment.ExecutionMode.IsFixedMedia() {
+		cloned := cloneVidRushSegmentResult(segment)
+		cloned.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+		return cloned, nil
 	}
 	if err := materializationDependenciesError(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}, p.providers, p.finalizer); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
@@ -235,6 +250,12 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 // port so the materialization stage is implemented exactly once.
 func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
 	updated := cloneVidRushSegmentResult(segment)
+	if segment.ExecutionMode.IsFixedMedia() {
+		// Fixed media is already authoritative and must not be acquired,
+		// verified, persisted, ranked or replaced by this processor.
+		updated.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+		return vidRushMaterializedSegment{result: updated}, nil
+	}
 	var warnings []string
 	newInternetImageUploads := 0
 	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) []scriptpkg.SegmentAssetCandidate {
@@ -411,7 +432,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// true fallback instead of a parallel source that duplicates valid web
 	// assets.
 	imageTarget := vidRushImageTarget(plan)
-	discoveredCandidates := append([]scriptpkg.SegmentAssetCandidate(nil), updated.Assets.Candidates...)
+	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
 	updated.Assets.Candidates = materialize(discoveredCandidates, imageTarget)
 	generationCandidates, generationState := p.planGenerationFallback(plan, updated)
 	updated.Cache.ImageGeneration = generationState
@@ -423,9 +444,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, generated)
 	}
 	materialized := updated.Assets.Candidates
-	updated.Assets.SecondaryImages = durableVidRushImages(materialized)
-	updated.Assets.GeneratedImages = filterVidRushGeneratedImages(materialized)
-	if imageTarget > 0 && len(updated.Assets.SecondaryImages) < imageTarget {
+	updated.Assets.SecondaryImages = selectExactVidRushImages(materialized, imageTarget, plan)
+	updated.Assets.GeneratedImages = filterVidRushGeneratedImages(updated.Assets.SecondaryImages)
+	if imageTarget > 0 && len(updated.Assets.SecondaryImages) != imageTarget {
 		warnings = append(warnings, fmt.Sprintf(
 			"FAILED_REQUIRED_IMAGE_COUNT: required=%d verified=%d segment=%s",
 			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
@@ -561,4 +582,111 @@ func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []script
 		}
 	}
 	return out
+}
+
+// selectExactVidRushImages is the final selected-image projection. In an
+// Images-only plan, internet_images is the complete provider allowlist and
+// image_generation is deliberately excluded. Candidates are grouped by their
+// entity (or query when the provider did not return an entity), keeping the
+// highest-scored durable result from each group so the selected set contains
+// at most one image per entity.
+func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, target int, plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SegmentAssetCandidate {
+	if target <= 0 {
+		return nil
+	}
+	images := durableVidRushImages(candidates)
+	imagesOnly := plan != nil &&
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&
+		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) &&
+		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) &&
+		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)
+	if !imagesOnly {
+		return images[:minInt(target, len(images))]
+	}
+
+	selected := make([]scriptpkg.SegmentAssetCandidate, 0, minInt(target, len(images)))
+	seenGroups := make(map[string]int, target)
+	seenAssets := make(map[string]struct{}, target)
+	for _, candidate := range images {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			continue
+		}
+		group := strings.ToLower(strings.TrimSpace(candidate.Query))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(candidate.Entity))
+		}
+		if group == "" {
+			group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
+		}
+		if index, exists := seenGroups[group]; exists {
+			if ScoreVidRushCandidate(candidate, false) > ScoreVidRushCandidate(selected[index], false) {
+				selected[index] = candidate
+			}
+			continue
+		}
+		assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
+		if _, exists := seenAssets[assetID]; exists {
+			continue
+		}
+		seenGroups[group] = len(selected)
+		seenAssets[assetID] = struct{}{}
+		selected = append(selected, candidate)
+	}
+	if len(selected) > target {
+		selected = selected[:target]
+	}
+	return selected
+}
+
+func prioritizeExactVidRushImageCandidates(candidates []scriptpkg.SegmentAssetCandidate, target int, plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SegmentAssetCandidate {
+	if target <= 0 || plan == nil ||
+		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) ||
+		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
+		return candidates
+	}
+	groups := make([][]scriptpkg.SegmentAssetCandidate, 0, target)
+	groupIndex := make(map[string]int, target)
+	others := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			others = append(others, candidate)
+			continue
+		}
+		group := strings.ToLower(strings.TrimSpace(candidate.Query))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(candidate.Entity))
+		}
+		if group == "" {
+			group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
+		}
+		index, exists := groupIndex[group]
+		if !exists {
+			index = len(groups)
+			groupIndex[group] = index
+			groups = append(groups, nil)
+		}
+		groups[index] = append(groups[index], candidate)
+	}
+	for _, group := range groups {
+		sort.SliceStable(group, func(i, j int) bool {
+			return ScoreVidRushCandidate(group[i], false) > ScoreVidRushCandidate(group[j], false)
+		})
+	}
+	ordered := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for round := 0; ; round++ {
+		added := false
+		for _, group := range groups {
+			if round >= len(group) {
+				continue
+			}
+			ordered = append(ordered, group[round])
+			added = true
+		}
+		if !added {
+			break
+		}
+	}
+	return append(ordered, others...)
 }

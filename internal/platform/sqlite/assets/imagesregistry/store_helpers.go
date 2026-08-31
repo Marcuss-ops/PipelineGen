@@ -143,13 +143,7 @@ func (s *AssetStoreSQLite) MarkUsed(ctx context.Context, clipID string) error {
 		return nil
 	}
 	now := timeutil.FormatRFC3339(time.Now())
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE media_assets
-		SET reuse_count = reuse_count + 1,
-		    last_used_at = ?
-		WHERE id = ?
-	`, now, clipID)
-	return err
+	return UpdateMediaAssetUsage(ctx, s.db, clipID, now)
 }
 
 // MarkClipsUsed marks multiple clips as used.

@@ -117,8 +117,9 @@ func TestVidRushReplayIsIdempotentAcrossSemanticDiscoveryAndPersistence(t *testi
 
 	run := func(runID string) {
 		coordinator := newReplayCoordinator(cache, semantic, provider, materializer, plan)
+		text := "A stable visual segment"
 		if err := coordinator.OnSceneCommitted(context.Background(), scriptgeneration.SceneCommitted{
-			RunID: runID, SceneID: "scene-1", SceneIndex: 0, Text: "A stable visual segment", TextHash: "replay-hash", Revision: 1, Language: "en",
+			RunID: runID, SceneID: "scene-1", SceneIndex: 0, Text: text, TextHash: scriptgeneration.SceneTextHash(text), Revision: 1, Language: "en",
 		}); err != nil {
 			t.Fatal(err)
 		}

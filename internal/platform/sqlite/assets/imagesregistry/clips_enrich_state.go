@@ -59,13 +59,10 @@ func (r *ClipsRepository) SetEnrichState(ctx context.Context, id string, state a
 			string(state), asset.CanonicalEnrichStateValues())
 	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET enrich_state = ?, enrich_state_updated_at = ? WHERE id = ?`,
-		string(state), nowStr, id)
+	rowsAffected, err := UpdateMediaAssetEnrichState(ctx, r.db, id, string(state), nowStr)
 	if err != nil {
 		return fmt.Errorf("clips.SetEnrichState(%s, %s): %w", id, state, err)
 	}
-	rowsAffected, _ := res.RowsAffected()
 	if rowsAffected == 0 {
 		// Surface typed-error envelope (godlike/07 contract) so the
 		// state-machine wrapper's caller can errors.Is(err,
@@ -108,13 +105,10 @@ func (r *ClipsRepository) SetEnrichStateIfCurrent(ctx context.Context, id string
 			string(to), asset.CanonicalEnrichStateValues())
 	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET enrich_state = ?, enrich_state_updated_at = ? WHERE id = ? AND enrich_state = ?`,
-		string(to), nowStr, id, string(from))
+	rowsAffected, err := UpdateMediaAssetEnrichStateIfCurrent(ctx, r.db, id, string(from), string(to), nowStr)
 	if err != nil {
 		return fmt.Errorf("clips.SetEnrichStateIfCurrent(%s, %s, %s): %w", id, from, to, err)
 	}
-	rowsAffected, _ := res.RowsAffected()
 	if rowsAffected == 0 {
 		return fmt.Errorf("clips.SetEnrichStateIfCurrent(%s, %s, %s): asset row missing or current state mismatch", id, from, to)
 	}

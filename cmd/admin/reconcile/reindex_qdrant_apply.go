@@ -63,8 +63,21 @@ func applyQdrant(
 	targetCollection string,
 	golden collections.GoldenQueryExecutor,
 ) error {
+	// The in-place production rebuild still participates in the durable
+	// projection state machine. A unique build id makes retries safe while
+	// keeping the physical runtime collection fixed at media_assets.
+	projectionID := fmt.Sprintf("production-rebuild-%d", time.Now().UTC().UnixNano())
+	if err := collectionMgr.BeginProjection(ctx, projectionID, targetCollection, 0); err != nil {
+		return fmt.Errorf("begin production projection rebuild: %w", err)
+	}
+	failBuild := func(cause error) error {
+		if failErr := collectionMgr.FailProjection(ctx, projectionID); failErr != nil {
+			return fmt.Errorf("%w; persist FAILED state: %v", cause, failErr)
+		}
+		return cause
+	}
 	if err := collectionMgr.PrepareProductionCollection(ctx); err != nil {
-		return fmt.Errorf("prepare production collection: %w", err)
+		return failBuild(fmt.Errorf("prepare production collection: %w", err))
 	}
 
 	deadLetter := search.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB))
@@ -92,10 +105,10 @@ func applyQdrant(
 	}
 
 	if err := populate(ctx, targetCollection); err != nil {
-		return fmt.Errorf("rebuild production collection %q: %w", targetCollection, err)
+		return failBuild(fmt.Errorf("rebuild production collection %q: %w", targetCollection, err))
 	}
 	if reindexResult == nil {
-		return fmt.Errorf("build projection %q completed without a reindex result", targetCollection)
+		return failBuild(fmt.Errorf("build projection %q completed without a reindex result", targetCollection))
 	}
 	log.Info("projection candidate populated",
 		zap.String("collection", targetCollection),
@@ -106,7 +119,7 @@ func applyQdrant(
 	// verifier. Passing the SQLite inventory count here makes the source
 	// boundary explicit; IndexedAssets is only an operational write result
 	// and must not become runtime truth after partial mapping failures.
-	report, verifyErr := collectionMgr.ValidateProjection(ctx, targetCollection, 0, reindexResult.SQLiteIndexableAssets)
+	report, verifyErr := collectionMgr.ValidateProjection(ctx, projectionID, 0, reindexResult.SQLiteIndexableAssets)
 	if report == nil {
 		return fmt.Errorf("validate projection %q returned no report: %w", targetCollection, verifyErr)
 	}
@@ -126,7 +139,7 @@ func applyQdrant(
 			zap.Int("actual_points", report.ActualPoints),
 			zap.Strings("errors", report.Errors),
 			zap.Error(verifyErr))
-		return &transport.ErrAliasSwitchNotReady{Report: report}
+		return failBuild(&transport.ErrAliasSwitchNotReady{Report: report})
 	}
 
 	// PR-HASH-SEMANTICS (item 14): certify golden query reproducibility before
@@ -138,18 +151,18 @@ func applyQdrant(
 			log.Error("golden query certification blocked activation",
 				zap.String("target", targetCollection),
 				zap.Error(certErr))
-			return fmt.Errorf("golden query certification for %q: %w", targetCollection, certErr)
+			return failBuild(fmt.Errorf("golden query certification for %q: %w", targetCollection, certErr))
 		}
 		log.Info("golden query certification passed",
 			zap.String("target", targetCollection),
 			zap.Int("queries", len(platformschema.CanonicalGoldenQueries())))
 	}
 
-	if err := collectionMgr.ActivateProductionCollection(ctx); err != nil {
+	if err := collectionMgr.ActivateProjection(ctx, projectionID, 0); err != nil {
 		log.Error("production projection validated but runtime alias restoration failed",
 			zap.String("target", targetCollection),
 			zap.Error(err))
-		return fmt.Errorf("activate production collection %q: %w", targetCollection, err)
+		return failBuild(fmt.Errorf("activate production collection %q: %w", targetCollection, err))
 	}
 	log.Info("production projection rebuilt and runtime alias restored",
 		zap.String("alias", schemaObj.RuntimeAlias),

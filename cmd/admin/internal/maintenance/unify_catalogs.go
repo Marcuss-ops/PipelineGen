@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
@@ -19,19 +20,16 @@ func RunUnifyCatalogs(args []string) error {
 	}
 	dataDir := cfg.Storage.AbsDataDir()
 
-	mediaPath := cfg.Storage.PrimaryDBFullPath()
-	if mediaPath == "" {
-		return fmt.Errorf("canonical primary SQLite path is invalid")
-	}
 	stockPath := dataDir + "/stock/stock.db.sqlite"
 	artlistPath := dataDir + "/artlist/artlist.db.sqlite"
 
 	nopLog := zap.NewNop()
-	mediaDB, err := storage.OpenSQLiteDB(mediaPath, nopLog)
+	dbSet, err := cli.OpenDatabaseSet(cfg, nopLog)
 	if err != nil {
-		return fmt.Errorf("failed to open media db: %w", err)
+		return fmt.Errorf("failed to open database set: %w", err)
 	}
-	defer mediaDB.Close()
+	defer dbSet.Close()
+	mediaDB := dbSet.Primary
 
 	// Verify clip_folders table exists (created by migration 093).
 	// PR-MIGRATIONS-SSOT (August 2026): the table is owned by the
@@ -83,7 +81,7 @@ func verifyClipFoldersTable(db *sql.DB) error {
 }
 
 func migrateSource(mediaDB *sql.DB, srcPath, sourceName string, logLabel string, logFn func(string, ...any)) error {
-	srcDB, err := storage.OpenSQLiteDB(srcPath, zap.NewNop())
+	srcDB, err := storage.OpenReadOnly(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to open source db %s: %w", srcPath, err)
 	}
@@ -96,7 +94,7 @@ func migrateSource(mediaDB *sql.DB, srcPath, sourceName string, logLabel string,
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Migrate media_assets
-	rows, err := srcDB.DB.Query(`SELECT id, name, COALESCE(tags,'[]'), COALESCE(tags_norm,''), COALESCE(embedding_json,'[]'), COALESCE(duration_ms,0), COALESCE(url,''), COALESCE(metadata_json,'{}'), created_at FROM media_assets`)
+	rows, err := srcDB.Query(`SELECT id, name, COALESCE(tags,'[]'), COALESCE(tags_norm,''), COALESCE(embedding_json,'[]'), COALESCE(duration_ms,0), COALESCE(url,''), COALESCE(metadata_json,'{}'), created_at FROM media_assets`)
 	if err != nil {
 		return fmt.Errorf("query %s media_assets: %w", sourceName, err)
 	}
@@ -131,7 +129,7 @@ func migrateSource(mediaDB *sql.DB, srcPath, sourceName string, logLabel string,
 	logFn("%s: %d media_assets inserted, %d skipped (already exist)", logLabel, inserted, skipped)
 
 	// Migrate clip_folders
-	fRows, err := srcDB.DB.Query(`SELECT id, COALESCE(source,''), COALESCE(source_url,''), COALESCE(video_id,''), COALESCE(folder_id,''), COALESCE(folder_path,''), COALESCE(local_folder_path,''), COALESCE(group_name,''), COALESCE(manifest_txt_path,''), COALESCE(manifest_json_path,''), COALESCE(clip_count,0), COALESCE(processed_count,0), COALESCE(failed_count,0), COALESCE(skipped_count,0), COALESCE(last_error,''), COALESCE(metadata,'{}'), created_at, updated_at FROM clip_folders`)
+	fRows, err := srcDB.Query(`SELECT id, COALESCE(source,''), COALESCE(source_url,''), COALESCE(video_id,''), COALESCE(folder_id,''), COALESCE(folder_path,''), COALESCE(local_folder_path,''), COALESCE(group_name,''), COALESCE(manifest_txt_path,''), COALESCE(manifest_json_path,''), COALESCE(clip_count,0), COALESCE(processed_count,0), COALESCE(failed_count,0), COALESCE(skipped_count,0), COALESCE(last_error,''), COALESCE(metadata,'{}'), created_at, updated_at FROM clip_folders`)
 	if err != nil {
 		// clip_folders may not exist in source
 		logFn("%s: no clip_folders table (skipping)", logLabel)

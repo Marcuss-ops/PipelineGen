@@ -18,6 +18,92 @@ func combinedTimeline() CanonicalTimeline {
 	}
 }
 
+func protectedFixedTimeline() CanonicalTimeline {
+	return CanonicalTimeline{
+		Version:    TimelineVersion,
+		DurationUS: 10_000_000,
+		Segments: []TimelineSegment{
+			{
+				ID: "intro", Index: 0, TimelineStartUS: 0, DurationUS: 3_000_000,
+				AudioIntents: []AudioIntent{
+					{Mode: AudioVoiceover, VoiceoverAssetID: "fixed-vo-forbidden", SourceDurationUS: 3_000_000, TimelineDurationUS: 3_000_000},
+					{Mode: AudioClip, ClipAssetID: "intro-clip", SourceDurationUS: 3_000_000, TimelineDurationUS: 3_000_000, UseOriginalAudio: true, ProtectedOriginalAudio: true},
+				},
+			},
+			{
+				ID: "body", Index: 1, TimelineStartUS: 3_000_000, DurationUS: 7_000_000,
+				AudioIntents: []AudioIntent{
+					{Mode: AudioVoiceover, VoiceoverAssetID: "body-vo", SourceDurationUS: 7_000_000, TimelineDurationUS: 7_000_000},
+					{Mode: AudioClip, ClipAssetID: "body-clip", SourceDurationUS: 7_000_000, TimelineDurationUS: 7_000_000, UseOriginalAudio: true},
+				},
+			},
+		},
+	}
+}
+
+func TestCompileWithMixPolicy_VoiceoverOnlyKeepsProtectedFixedAudio(t *testing.T) {
+	plan, err := CompileWithMixPolicy(protectedFixedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips := findTrack(plan.Tracks, TrackClipAudio)
+	if clips == nil || len(clips.Events) != 1 || clips.Events[0].AssetID != "intro-clip" || !clips.Events[0].ProtectedOriginalAudio {
+		t.Fatalf("protected fixed clip must survive VOICEOVER_ONLY: %+v", clips)
+	}
+	voiceover := findTrack(plan.Tracks, TrackVoiceover)
+	if voiceover == nil || len(voiceover.Events) != 1 || voiceover.Events[0].AssetID != "body-vo" {
+		t.Fatalf("fixed-media voiceover must be excluded: %+v", voiceover)
+	}
+}
+
+func TestCompileWithMixPolicy_DuckedPolicyDoesNotTouchProtectedFixedAudio(t *testing.T) {
+	plan, err := CompileWithMixPolicy(protectedFixedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips := findTrack(plan.Tracks, TrackClipAudio)
+	if clips == nil || len(clips.Events) != 2 {
+		t.Fatalf("both fixed and body clip audio must remain: %+v", clips)
+	}
+	if clips.Events[0].AssetID != "intro-clip" || clips.Events[0].GainDB != 0 || !clips.Events[0].ProtectedOriginalAudio {
+		t.Fatalf("fixed clip was altered by ducking: %+v", clips.Events[0])
+	}
+	if clips.Events[1].AssetID != "body-clip" || clips.Events[1].GainDB != kernelaudio.DuckClipBaseGainDB {
+		t.Fatalf("body clip should use the normal ducked policy: %+v", clips.Events[1])
+	}
+	if len(plan.Automation) != 1 || plan.Automation[0].StartUS != 3_000_000 || plan.Automation[0].EndUS != 10_000_000 {
+		t.Fatalf("ducking must exclude the fixed span: %+v", plan.Automation)
+	}
+}
+
+func TestCompileWithLayersAndPolicy_DropsImplicitLayersAndAutomationOnFixedMedia(t *testing.T) {
+	bgm := []AudioLayer{{AssetID: "bgm", TimelineStartUS: 0, DurationUS: 10_000_000}}
+	sfx := []AudioLayer{{AssetID: "sfx", TimelineStartUS: 1_000_000, DurationUS: 500_000}}
+	automation := []AudioAutomation{
+		{TargetTrackID: "bgm", StartUS: 1_000_000, EndUS: 2_000_000, GainDB: -30},
+		{TargetTrackID: "bgm", StartUS: 3_000_000, EndUS: 4_000_000, GainDB: -30},
+	}
+	plan, err := CompileWithLayersAndPolicy(protectedFixedTimeline(), DefaultAudioProfile(), bgm, sfx, automation, kernelaudio.MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bgmTrack := findTrack(plan.Tracks, TrackBGM)
+	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].TimelineStartUS != 3_000_000 || bgmTrack.Events[0].DurationUS != 7_000_000 {
+		t.Fatalf("BGM must be retained only outside the fixed-media span: %+v", bgmTrack)
+	}
+	if findTrack(plan.Tracks, TrackSFX) != nil {
+		t.Fatalf("SFX inside the fixed-media span must be removed: %+v", plan.Tracks)
+	}
+	if len(plan.Automation) != 2 {
+		t.Fatalf("body automation should remain while fixed-span automation is removed: %+v", plan.Automation)
+	}
+	for _, item := range plan.Automation {
+		if item.StartUS < 3_000_000 || item.EndUS > 10_000_000 {
+			t.Fatalf("automation must not affect fixed media: %+v", item)
+		}
+	}
+}
+
 func TestCompileWithMixPolicy_VoiceoverOnlyDropsClipAudio(t *testing.T) {
 	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
 	if err != nil {

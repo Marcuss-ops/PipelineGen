@@ -87,6 +87,10 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		if mode != capabilityaudio.AudioVoiceover && mode != capabilityaudio.AudioClip && mode != capabilityaudio.AudioSilence {
 			return fmt.Errorf("scene %s requires explicit audio_mode", scene.ID)
 		}
+		fixedMedia := scene.ExecutionMode.IsFixedMedia()
+		if fixedMedia && mode != capabilityaudio.AudioClip {
+			return fmt.Errorf("scene %s fixed_media requires audio_mode=CLIP_AUDIO", scene.ID)
+		}
 		audioSourceInUS, err := microseconds(scene.AudioSourceInMS)
 		if err != nil {
 			return fmt.Errorf("scene %s audio source start: %w", scene.ID, err)
@@ -102,7 +106,13 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		if err != nil {
 			return fmt.Errorf("scene %s audio source duration: %w", scene.ID, err)
 		}
-		intent := capabilityaudio.AudioIntent{Mode: mode, SourceInUS: audioSourceInUS, SourceDurationUS: audioSourceDurationUS}
+		intent := capabilityaudio.AudioIntent{
+			Mode:                   mode,
+			SourceInUS:             audioSourceInUS,
+			SourceDurationUS:       audioSourceDurationUS,
+			UseOriginalAudio:       fixedMedia,
+			ProtectedOriginalAudio: fixedMedia,
+		}
 		video := capabilityaudio.VideoSegment{}
 		if scene.Bindings.Clip != nil {
 			clipStartUS, err := microseconds(scene.Bindings.Clip.StartMs)

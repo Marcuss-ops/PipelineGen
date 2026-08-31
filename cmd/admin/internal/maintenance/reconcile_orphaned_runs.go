@@ -13,7 +13,6 @@ import (
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"go.uber.org/zap"
 )
 
@@ -51,21 +50,16 @@ func RunReconcileOrphanedRuns(args []string) error {
 	}
 	defer cleanup()
 
-	jobsDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open primary database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer jobsDB.Close()
-	obsDB, err := storage.OpenSQLiteDB(cfg.Storage.ObservabilityDBFullPath(), log)
-	if err != nil {
-		return fmt.Errorf("open observability database: %w", err)
-	}
-	defer obsDB.Close()
+	defer dbSet.Close()
 
 	ctx := context.Background()
-	rec := obsmetrics.NewSQLiteRecorderWithLogger(obsDB.DB, log)
+	rec := obsmetrics.NewSQLiteRecorderWithLogger(dbSet.Observability.DB, log)
 
-	rows, err := obsDB.DB.QueryContext(ctx,
+	rows, err := dbSet.Observability.DB.QueryContext(ctx,
 		`SELECT run_id, job_id, job_type, attempt_id, created_at, started_at, queue_wait_ms, report_json
 		 FROM run_observability
 		 WHERE status = 'RUNNING'
@@ -101,7 +95,7 @@ func RunReconcileOrphanedRuns(args []string) error {
 		var jobStatus, jobErr, completedAtStr, cancelledAtStr string
 		var durationMs int64
 		var completedAt, cancelledAt sql.NullString
-		err := jobsDB.DB.QueryRowContext(ctx,
+		err := dbSet.Primary.DB.QueryRowContext(ctx,
 			`SELECT status, error, completed_at, cancelled_at, duration_ms FROM jobs WHERE id = ?`, o.jobID).
 			Scan(&jobStatus, &jobErr, &completedAt, &cancelledAt, &durationMs)
 		if err == sql.ErrNoRows {

@@ -14,6 +14,10 @@
 //	go run ./cmd/admin verify-projection
 //	go run ./cmd/admin verify-projection --json
 //	go run ./cmd/admin verify-projection --batch-size=1000
+//
+// The verifier always reads the canonical runtime projection through
+// `media_assets_current`; it has no collection override. Historical or
+// recovery collections belong to explicit emergency/DR commands.
 package audit
 
 import (
@@ -30,7 +34,6 @@ import (
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // verifyProjectionDeps holds the parsed flags for RunVerifyProjection.
@@ -43,8 +46,10 @@ type verifyProjectionDeps struct {
 // Flags:
 //
 //	--json                  machine-readable output
-//	--collection=NAME       override Qdrant collection (default: active alias target)
 //	--batch-size=N          points per scroll page (default 500)
+//
+// Collection selection is intentionally not configurable on this normal
+// production verification path.
 func parseVerifyProjectionArgs(args []string) (verifyProjectionDeps, error) {
 	deps := verifyProjectionDeps{BatchSize: 500}
 	for _, a := range args {
@@ -94,11 +99,12 @@ func RunVerifyProjection(args []string) error {
 		zap.Int("batch_size", deps.BatchSize), zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 	)
 
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
+	sqliteDB := dbSet.Primary
 
 	schema := qdrantschema.DefaultV3Schema()
 	client := transport.NewClient(&qdrantschema.Config{

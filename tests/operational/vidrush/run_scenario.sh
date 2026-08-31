@@ -326,9 +326,11 @@ run_script_generate() {
 
     # ── Collect pre-request provider counters ──────────────────────────
     local metrics_url="${METRICS_URL:-http://${SMOKE_API_BASE}/metrics}"
-    local artlist_before images_before
-    artlist_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1) || true
-    images_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1) || true
+    local artlist_before images_before youtube_before generation_before
+    artlist_before=$(vidrush_provider_counter "$metrics_url" "artlist")
+    images_before=$(vidrush_provider_counter "$metrics_url" "internet_images")
+    youtube_before=$(vidrush_provider_counter "$metrics_url" "youtube")
+    generation_before=$(vidrush_provider_counter "$metrics_url" "image_generation")
 
     # ── Dispatch ───────────────────────────────────────────────────────
     echo "  → POST /api/script/generate"
@@ -429,7 +431,7 @@ run_script_generate() {
     fi
 
     # ── Run assertions ─────────────────────────────────────────────────
-    vidrush_assert_result "$result" "$SCENARIO_FILE" "$metrics_url" "$artlist_before" "$images_before"
+    vidrush_assert_result "$result" "$SCENARIO_FILE" "$metrics_url" "$artlist_before" "$images_before" "$youtube_before" "$generation_before"
     local assert_fail="$VIDRUSH_ASSERT_FAIL"
     local seg_count="$VIDRUSH_SEG_COUNT" ent_count="$VIDRUSH_ENTITY_COUNT"
     local segments_with_entities="$VIDRUSH_SEGMENTS_WITH_ENTITIES"

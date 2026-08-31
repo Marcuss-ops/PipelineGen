@@ -9,8 +9,8 @@
 //		go run ./cmd/admin drive-doctor [--json]
 //
 //	  --json    Output as JSON (default: human-readable table)
-//	  --db-path Override canonical SQLite DB path
 //
+// //
 // godlike/06 SSOT (one canonical owner per fact): the doctor CLI is a
 // READ-ONLY diagnostic surface. It never writes to Drive or the catalog.
 //
@@ -32,7 +32,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 )
 
@@ -53,7 +52,6 @@ func RunDriveDoctor(args []string) error {
 	fs := flag.NewFlagSet("drive-doctor", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	jsonOut := fs.Bool("json", false, "Output as JSON")
-	dbPath := fs.String("db-path", "", "Canonical SQLite DB path (default: $VELOX_DATA_DIR/media.db.sqlite)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -64,22 +62,17 @@ func RunDriveDoctor(args []string) error {
 	}
 	defer cleanup()
 
-	return executeDoctor(cli.CmdContext(), cfg, log, *jsonOut, *dbPath)
+	return executeDoctor(cli.CmdContext(), cfg, log, *jsonOut)
 }
 
-func executeDoctor(ctx context.Context, cfg *config.Config, log *zap.Logger, jsonOut bool, dbPathFlag string) error {
-	path := cli.ResolveDBPath(cfg, dbPathFlag)
-	if path == "" {
-		return ErrAdminNoDB
-	}
-
-	sqliteDB, err := storage.OpenSQLiteDB(path, log)
+func executeDoctor(ctx context.Context, cfg *config.Config, log *zap.Logger, jsonOut bool) error {
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("drive-doctor: open DB: %w", err)
+		return fmt.Errorf("drive-doctor: open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
 
-	catalogRepo := sqlitedelivery.NewRepository(sqliteDB.DB)
+	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 	entries, err := catalogRepo.FindAll(ctx)
 	if err != nil {
 		return fmt.Errorf("drive-doctor: read catalog: %w", err)

@@ -12,7 +12,6 @@ func TestDatabaseSetMigrateEnforcesControlPlaneIdentity(t *testing.T) {
 	root := t.TempDir()
 	set, err := OpenSet(StorageConfig{
 		DataDir:             root,
-		PrimaryDBPath:       filepath.Join(root, "media", "media.db.sqlite"),
 		ObservabilityDBPath: filepath.Join(root, "observability", "api_requests.db.sqlite"),
 	}, zaptest.NewLogger(t))
 	if err != nil {

@@ -20,12 +20,18 @@ import (
 // minimums on an 18-word target scene.
 const minimumClipSceneWords = 12
 
-// outputFromScenes builds the single durable narration projection from the
-// ordered scene list. The requested source language wins; a first available
-// language is only a compatibility fallback for older test generators.
+// outputFromScenes builds the single durable BODY narration projection from
+// the ordered scene list. The requested source language wins; a first
+// available language is only a compatibility fallback for older test
+// generators. Protected fixed-media scenes are deliberately excluded: their
+// DisplayText/text belongs to the timeline/document surface, never to the
+// generated BODY word budget or minimum-word gate.
 func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 	parts := make([]string, 0, len(scenes))
 	for _, scene := range scenes {
+		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
+			continue
+		}
 		text := strings.TrimSpace(scene.Text[language])
 		if text == "" {
 			for _, candidate := range scene.Text {
@@ -43,6 +49,9 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 	return GenerateOutput{Text: text, WordCount: len(strings.Fields(text))}
 }
 
+// minimumGeneratedWords returns the minimum number of generated BODY words.
+// It never includes DisplayText or narration attached to fixed-media scenes;
+// those scenes are excluded by outputFromScenes before this gate runs.
 func minimumGeneratedWords(req GenerateRequest) int {
 	if req.ScriptParams.MinWords > 0 {
 		return req.ScriptParams.MinWords
@@ -142,6 +151,9 @@ func SceneStreamingEligibility(req GenerateRequest) bool {
 	return true
 }
 
+// validateMinimumGeneratedOutput enforces the minimum generated BODY word
+// count. GenerateOutput.Text is the BODY-only projection; fixed-media
+// DisplayText and legacy fixed narration are never part of `actual`.
 func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) error {
 	actual := len(strings.Fields(strings.TrimSpace(output.Text)))
 	minimum := minimumGeneratedWords(req)
@@ -212,6 +224,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// SceneCommitted; streaming a model's provisional single scene would
 		// permanently launch VidRush enrichment with the wrong topology.
 		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
+		// An explicit segment plan is also authoritative. Streaming a model
+		// response here can emit one opaque scene before the batch path has a
+		// chance to materialize the declared topology, which would collapse
+		// every downstream VidRush commit onto scene-0. Commit only the
+		// materialized scenes for explicit segment plans.
+		if len(req.ScriptParams.Segments) > 0 {
+			segmentTopologyNeedsMaterialization = true
+		}
 		if req.Intro != nil || req.Outro != nil {
 			segmentTopologyNeedsMaterialization = true
 		}
@@ -468,13 +488,39 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 		return scenes
 	}
 
-	paragraphs := strings.Split(strings.TrimSpace(req.Source.SourceText), "\n\n")
-	n := 0
-	for _, paragraph := range paragraphs {
-		if strings.TrimSpace(paragraph) != "" {
-			n++
+	// An explicit segment plan is authoritative. Some local text generators
+	// return one opaque block (or repeat that block for every requested
+	// segment) even though the request contains independent scene identities.
+	// Never fan that shared block out to every scene: it would give all scenes
+	// the same text_hash and contaminate downstream semantic/provider queries.
+	if len(req.ScriptParams.Segments) > 0 {
+		paragraphs := nonEmptyParagraphs(req.Source.SourceText)
+		out := make([]Scene, 0, len(req.ScriptParams.Segments))
+		for i, segment := range req.ScriptParams.Segments {
+			segmentText := strings.TrimSpace(segment.SourceText)
+			if segmentText == "" && i < len(paragraphs) {
+				segmentText = paragraphs[i]
+			}
+			if segmentText == "" {
+				segmentText = strings.TrimSpace(segment.Topic)
+			}
+			if segmentText == "" {
+				return scenes
+			}
+			id := strings.TrimSpace(segment.ID)
+			if id == "" {
+				id = fmt.Sprintf("scene-%d", i)
+			}
+			out = append(out, Scene{
+				ID: id, Index: i,
+				Text: map[Language]string{req.SourceLanguage: segmentText},
+			})
 		}
+		return out
 	}
+
+	paragraphs := nonEmptyParagraphs(req.Source.SourceText)
+	n := len(paragraphs)
 	wordCount := len(strings.Fields(text))
 	if n < 2 {
 		n = (wordCount + req.ScriptParams.SegmentWords - 1) / req.ScriptParams.SegmentWords
@@ -493,6 +539,17 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 			ID: plannedScene.ID, Index: plannedScene.Index,
 			Text: map[Language]string{req.SourceLanguage: plannedScene.Text},
 		})
+	}
+	return out
+}
+
+func nonEmptyParagraphs(source string) []string {
+	paragraphs := strings.Split(strings.TrimSpace(source), "\n\n")
+	out := make([]string, 0, len(paragraphs))
+	for _, paragraph := range paragraphs {
+		if value := strings.TrimSpace(paragraph); value != "" {
+			out = append(out, value)
+		}
 	}
 	return out
 }
@@ -600,12 +657,13 @@ func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPoli
 	for i, id := range ids {
 		clip := &ClipReference{ID: id}
 		intent := capabilityaudio.AudioIntent{
-			Mode:             capabilityaudio.AudioClip,
-			ClipAssetID:      id,
-			SourceInUS:       playback.SourceInMS * 1000,
-			SourceDurationUS: fixedPlaybackDurationUS(playback),
-			TimelineOffsetUS: durationUS,
-			UseOriginalAudio: true,
+			Mode:                   capabilityaudio.AudioClip,
+			ClipAssetID:            id,
+			SourceInUS:             playback.SourceInMS * 1000,
+			SourceDurationUS:       fixedPlaybackDurationUS(playback),
+			TimelineOffsetUS:       durationUS,
+			UseOriginalAudio:       true,
+			ProtectedOriginalAudio: true,
 		}
 		if intent.SourceDurationUS > 0 {
 			intent.TimelineDurationUS = intent.SourceDurationUS

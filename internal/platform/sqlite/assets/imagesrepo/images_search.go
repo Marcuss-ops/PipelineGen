@@ -8,6 +8,7 @@ package imagesrepo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -40,8 +41,7 @@ func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*detail.ImageAs
 
 // Delete elimina un'immagine
 func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE source = 'image' AND id = ?", id)
-	return err
+	return fmt.Errorf("images.Delete: canonical Dispatcher deletion path is required")
 }
 
 // GetByDriveFileID recupera un'immagine tramite Drive file ID.

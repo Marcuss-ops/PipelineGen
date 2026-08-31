@@ -23,9 +23,12 @@ import (
 
 	"go.uber.org/zap"
 
+	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema
@@ -38,6 +41,13 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepos
 	log := zap.NewNop()
 	clipsRepo = sqassets.NewClipsRepository(db, log)
 	assetStore := sqassets.NewAssetStoreSQLite(db, log)
+	box := outboxevents.NewRepository(db)
+	ledger, err := mediaregistry.NewLedger(db)
+	if err != nil {
+		t.Fatalf("NewLedger: %v", err)
+	}
+	committer := sqassets.NewSQLiteMediaCommitter(db, box, ledger, log)
+	mediacommitadapters.WireCanonicalAssetStore(assetStore, committer)
 	assetRepo = assetStore.AssetRepository()
 	return
 }

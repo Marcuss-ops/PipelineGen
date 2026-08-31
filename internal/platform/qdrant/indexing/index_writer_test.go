@@ -113,7 +113,7 @@ func (s *stubWriteMapper) sortedIDs() []string {
 func testSchema() *schema.IndexSchema {
 	return &schema.IndexSchema{
 		Version:      "v3-test",
-		PhysicalName: "media_assets_test",
+		PhysicalName: "media_assets",
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []schema.EmbeddingSpec{
 			{Channel: "text", Dimensions: 4, Distance: "Cosine", ModelVersion: "test-v1"},
@@ -387,7 +387,7 @@ func TestIndexWriter_ReindexAll_Success(t *testing.T) {
 	}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 0)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.IndexedAssets)
 	assert.Equal(t, 2, result.TotalAssets)
@@ -408,7 +408,7 @@ func TestIndexWriter_ReindexAll_EmptyList(t *testing.T) {
 	mapper := &stubWriteMapper{assets: map[string]*AssetData{}}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 0)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 0)
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.IndexedAssets)
 	assert.Equal(t, 0, result.TotalAssets)
@@ -447,7 +447,7 @@ func TestIndexWriter_ReindexAll_LimitCap(t *testing.T) {
 	}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 2)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 2)
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.IndexedAssets)
 	assert.Equal(t, 2, result.TotalAssets)
@@ -489,7 +489,7 @@ func TestIndexWriter_ReindexAll_PartialFailures(t *testing.T) {
 	}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 0)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 0)
 	assert.NoError(t, err, "ReindexAll should not error on partial mapping failures")
 	assert.Equal(t, 1, result.IndexedAssets)
 	assert.Equal(t, 3, result.TotalAssets)
@@ -517,7 +517,7 @@ func TestIndexWriter_ReindexAll_UpsertError(t *testing.T) {
 	}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 0)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reindex")
 	assert.Equal(t, 0, result.IndexedAssets)
@@ -566,7 +566,7 @@ func TestIndexWriter_ReindexAll_BatchFlushing(t *testing.T) {
 	mapper := &stubWriteMapper{assets: assets}
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 
-	result, err := w.ReindexAll(context.Background(), "media_assets_v3_new", 0)
+	result, err := w.ReindexAll(context.Background(), "media_assets", 0)
 	require.NoError(t, err)
 	assert.Equal(t, 250, result.IndexedAssets)
 	assert.Equal(t, 250, result.TotalAssets)

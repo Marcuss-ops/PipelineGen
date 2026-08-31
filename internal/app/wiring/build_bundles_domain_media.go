@@ -126,13 +126,25 @@ func buildDomainMediaServices(
 		cfg.External.ResolveYouTubeCookiesPath() != "",
 	)
 	clipCache := imagesregistry.NewClipCacheAdapter(repos.ClipsRepo, log)
+	if committer == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical asset committer is required")
+	}
 	clipWriter = imagesregistry.NewClipAtomicWriterAdapterWithCommitter(
 		dbs.DualPool.Writer,
 		outbox.EventsRepo,
-		newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, log),
+		committer,
 		log,
 	)
-	clipMetadataWriter := imagesregistry.NewClipMetadataWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
+	canonicalMutator, ok := committer.(persistence.AssetMutationCommitter)
+	if !ok || canonicalMutator == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter does not implement AssetMutationCommitter")
+	}
+	clipMetadataWriter := imagesregistry.NewClipMetadataWriterAdapterWithMutator(
+		dbs.DualPool.Writer,
+		outbox.EventsRepo,
+		canonicalMutator,
+		log,
+	)
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
@@ -279,7 +291,7 @@ func buildDomainMediaServices(
 				repos.Assets,
 				repos.Assets.LocationRepository(),
 				repos.Assets.ProcessingRepository(),
-				newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, log),
+				committer,
 			),
 			Publisher:   drive.Publisher,
 			DriveReader: drive.DriveUploader,

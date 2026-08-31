@@ -83,8 +83,7 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 		s.cli.HumanLine("=== qdrant-maintenance delete-invalid ===")
 		s.cli.HumanLine(legacyaudit.StringifyReport(report))
 		s.cli.HumanLinef("\nNon-locator assets to delete: %d\n", len(assetIDs))
-		s.cli.HumanLine("\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; " +
-			"never DELETE FROM media_assets directly)...")
+		s.cli.HumanLine("\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path)...")
 	}
 
 	if s.dispatcher == nil {

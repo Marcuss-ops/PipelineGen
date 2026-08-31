@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/performance"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
 
@@ -47,18 +46,13 @@ func RunPerformanceReport(args []string) error {
 	}
 	defer cleanup()
 
-	jobsDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open primary database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer jobsDB.Close()
-	obsDB, err := storage.OpenSQLiteDB(cfg.Storage.ObservabilityDBFullPath(), log)
-	if err != nil {
-		return fmt.Errorf("open observability database: %w", err)
-	}
-	defer obsDB.Close()
+	defer dbSet.Close()
 
-	src, err := perfstore.NewSource(jobsDB.DB, obsDB.DB)
+	src, err := perfstore.NewSource(dbSet.Primary.DB, dbSet.Observability.DB)
 	if err != nil {
 		return err
 	}

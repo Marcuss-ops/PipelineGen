@@ -25,7 +25,8 @@ import (
 // deletion path.
 
 func (r *ClipsRepository) SoftDelete(ctx context.Context, id string) error {
-	return r.AssetStoreSQLite.Delete(ctx, id)
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	return UpdateMediaAssetLifecycle(ctx, r.db, id, string(asset.StateDeleted), nowStr, nowStr)
 }
 
 // SetIndexState writes the canonical media_assets.index_state column
@@ -53,9 +54,7 @@ func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state as
 		return fmt.Errorf("clips.SetIndexState: state is required (got empty string; use the canonical 7-state enum)")
 	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET index_state = ?, index_state_updated_at = ? WHERE id = ?`,
-		string(state), nowStr, id)
+	err := UpdateMediaAssetIndexState(ctx, r.db, id, string(state), nowStr, "")
 	if err != nil {
 		return fmt.Errorf("clips.SetIndexState(%s, %s): %w", id, state, err)
 	}
@@ -105,9 +104,8 @@ func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink s
 	if driveLink == "" {
 		return fmt.Errorf("drive link is required")
 	}
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'DELETED', deleted_at = ? WHERE drive_link = ? OR download_link = ?`,
-		now, driveLink, driveLink)
-	return err
+	// Fail closed: deleting by locator cannot emit the canonical
+	// asset.index.delete_requested outbox event atomically. Callers must use
+	// DeletionService/Dispatcher with the asset ID instead.
+	return fmt.Errorf("DeleteClipByDriveLink is disabled: use the canonical Dispatcher deletion path")
 }

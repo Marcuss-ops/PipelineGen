@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -112,6 +114,7 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 		return []scriptpkg.CanonicalSegment{{
 			ID: id, SceneID: sceneID, Position: 0, Text: segText, SourceText: segText,
 			TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
+			ExecutionMode: sceneExecutionModeFor(scenes, id, 0),
 		}}
 	}
 	if len(plan.Segments) > 0 {
@@ -129,6 +132,7 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 			out = append(out, scriptpkg.CanonicalSegment{
 				ID: id, SceneID: sceneID, Position: i, Text: segText, SourceText: segText,
 				TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
+				ExecutionMode: sceneExecutionModeFor(scenes, id, i),
 			})
 		}
 		return out
@@ -187,6 +191,7 @@ func buildCanonicalSegmentsFromScenes(scenes []scriptpkg.SpecScene, text string)
 				ID: id, SceneID: strings.TrimSpace(scene.ID), Position: i,
 				Text: segText, SourceText: segText,
 				TextHash: segmentTextHash(segText), SourceTextHash: segmentTextHash(segText),
+				ExecutionMode: scene.ExecutionMode.Normalize(),
 			})
 		}
 		if len(out) > 0 {
@@ -453,8 +458,454 @@ func minInt(a, b int) int {
 	return b
 }
 
+// normalizeVidRushCandidate stamps the canonical segment envelope onto a
+// provider candidate. Existing legacy candidates may omit the envelope and
+// are upgraded from their owning segment; an already-stamped candidate with
+// a conflicting identity is rejected rather than rebound to another segment.
+func normalizeVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) (scriptpkg.SegmentAssetCandidate, bool) {
+	segmentID := strings.TrimSpace(segment.SegmentID)
+	if segmentID == "" {
+		return candidate, false
+	}
+	if stamped := strings.TrimSpace(candidate.SegmentID); stamped != "" && stamped != segmentID {
+		return scriptpkg.SegmentAssetCandidate{}, false
+	}
+	if stamped := strings.TrimSpace(candidate.TextHash); stamped != "" && strings.TrimSpace(segment.TextHash) != "" && stamped != strings.TrimSpace(segment.TextHash) {
+		return scriptpkg.SegmentAssetCandidate{}, false
+	}
+	if strings.TrimSpace(candidate.SegmentID) != "" && candidate.Position != segment.Position {
+		return scriptpkg.SegmentAssetCandidate{}, false
+	}
+	candidate.SegmentID = segmentID
+	candidate.Position = segment.Position
+	candidate.TextHash = strings.TrimSpace(candidate.TextHash)
+	if candidate.TextHash == "" {
+		candidate.TextHash = strings.TrimSpace(segment.TextHash)
+	}
+	if candidate.TextHash == "" {
+		identityText := segment.Text
+		if strings.TrimSpace(identityText) == "" {
+			identityText = segment.SegmentID
+		}
+		candidate.TextHash = scriptpkg.ComputeCanonicalSegmentTextHash(identityText)
+	}
+	candidate.Query = strings.TrimSpace(candidate.Query)
+	if candidate.Query == "" {
+		candidate.Query = firstSegmentAssetQuery(segment)
+	}
+	candidate.Provider = strings.TrimSpace(candidate.Provider)
+	candidate.AssetID = strings.TrimSpace(candidate.AssetID)
+	candidate.Entity = strings.TrimSpace(candidate.Entity)
+	if strings.TrimSpace(candidate.EntityID) == "" {
+		identity := candidate.Entity
+		if identity == "" {
+			identity = candidate.Query
+		}
+		if identity == "" {
+			identity = segmentID
+		}
+		candidate.EntityID = "entity:" + provenanceSlug(identity)
+	}
+	return candidate, candidate.AssetID != "" && candidate.Provider != ""
+}
+
+func firstSegmentAssetQuery(segment scriptpkg.VidRushSegmentResult) string {
+	for _, query := range [][]string{segment.Insights.ImageQueries, segment.Insights.ArtlistQueries, segment.Insights.YouTubeQueries} {
+		for _, value := range query {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+	if text := strings.TrimSpace(segment.Text); text != "" {
+		return text
+	}
+	return strings.TrimSpace(segment.SegmentID)
+}
+
+func provenanceSlug(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func normalizeVidRushCandidateList(candidates []scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if normalized, ok := normalizeVidRushCandidate(candidate, segment); ok {
+			out = append(out, normalized)
+		}
+	}
+	return out
+}
+
+// artlistIsolationContext records ownership of explicit Artlist queries and
+// distinctive lexical terms. Query ownership is checked exactly; lexical
+// ownership catches a provider returning another segment's subject under a
+// different query string.
+type artlistIsolationContext struct {
+	termsBySegment map[string]map[string]struct{}
+	queryOwners    map[string]string
+	termOwners     map[string]string
+}
+
+var artlistIsolationStopWords = map[string]struct{}{
+	"about": {}, "after": {}, "also": {}, "and": {}, "are": {}, "around": {},
+	"been": {}, "being": {}, "built": {}, "cooked": {}, "creating": {},
+	"directly": {}, "during": {}, "from": {}, "into": {}, "made": {},
+	"most": {}, "often": {}, "one": {}, "over": {}, "served": {},
+	"should": {}, "such": {}, "that": {}, "their": {}, "these": {},
+	"this": {}, "through": {}, "traditionally": {}, "usually": {},
+	"with": {}, "within": {}, "fresh": {}, "classic": {}, "simple": {},
+	"dish": {}, "dishes": {}, "food": {}, "foods": {}, "cuisine": {},
+	"mediterranean": {}, "middle": {}, "eastern": {}, "coastal": {},
+}
+
+func artlistIsolationLexeme(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+	if strings.HasSuffix(value, "ies") && len(value) > 4 {
+		return value[:len(value)-3] + "y"
+	}
+	if strings.HasSuffix(value, "oes") && len(value) > 4 {
+		return value[:len(value)-2]
+	}
+	if strings.HasSuffix(value, "s") && len(value) > 4 {
+		return value[:len(value)-1]
+	}
+	return value
+}
+
+func artlistSceneTerms(segment scriptpkg.VidRushSegmentResult) map[string]struct{} {
+	terms := make(map[string]struct{})
+	add := func(raw string) {
+		for _, token := range textutil.Tokenize(raw) {
+			term := artlistIsolationLexeme(token)
+			if len(term) < 4 {
+				continue
+			}
+			if _, stop := artlistIsolationStopWords[term]; stop {
+				continue
+			}
+			terms[term] = struct{}{}
+		}
+	}
+	add(segment.Text)
+	for _, entity := range segment.Insights.Entities {
+		add(entity.Value)
+	}
+	for _, nounChunk := range segment.Insights.NounChunks {
+		add(nounChunk)
+	}
+	return terms
+}
+
+func newArtlistIsolationContext(segments []scriptpkg.VidRushSegmentResult) (*artlistIsolationContext, error) {
+	ctx := &artlistIsolationContext{
+		termsBySegment: make(map[string]map[string]struct{}, len(segments)),
+		queryOwners:    make(map[string]string),
+		termOwners:     make(map[string]string),
+	}
+	termCounts := make(map[string]int)
+	for _, segment := range segments {
+		segmentID := strings.TrimSpace(segment.SegmentID)
+		if segmentID == "" {
+			return nil, fmt.Errorf("segment_id is required")
+		}
+		if _, exists := ctx.termsBySegment[segmentID]; exists {
+			return nil, fmt.Errorf("duplicate segment_id %q", segmentID)
+		}
+		terms := artlistSceneTerms(segment)
+		ctx.termsBySegment[segmentID] = terms
+		for term := range terms {
+			termCounts[term]++
+		}
+		for _, rawQuery := range segment.Insights.ArtlistQueries {
+			query := normalizeArtlistIsolationQuery(rawQuery)
+			if query == "" {
+				return nil, fmt.Errorf("segment %s has an empty Artlist query", segmentID)
+			}
+			if owner, exists := ctx.queryOwners[query]; exists && owner != segmentID {
+				return nil, fmt.Errorf("Artlist query %q is shared by segments %s and %s", rawQuery, owner, segmentID)
+			}
+			ctx.queryOwners[query] = segmentID
+		}
+	}
+	for segmentID, terms := range ctx.termsBySegment {
+		for term := range terms {
+			if termCounts[term] == 1 {
+				ctx.termOwners[term] = segmentID
+			}
+		}
+	}
+	return ctx, nil
+}
+
+func normalizeArtlistIsolationQuery(raw string) string {
+	words := textutil.Tokenize(strings.ToLower(strings.TrimSpace(raw)))
+	out := make([]string, 0, len(words))
+	for _, word := range words {
+		term := artlistIsolationLexeme(word)
+		if term == "" {
+			continue
+		}
+		out = append(out, term)
+	}
+	return strings.Join(out, " ")
+}
+
+func artlistForeignTerms(ctx *artlistIsolationContext, segmentID, text string) []string {
+	if ctx == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	for _, token := range textutil.Tokenize(text) {
+		term := artlistIsolationLexeme(token)
+		owner, exists := ctx.termOwners[term]
+		if !exists || owner == segmentID {
+			continue
+		}
+		seen[term] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for term := range seen {
+		out = append(out, term)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func validateArtlistQueryIsolation(segments []scriptpkg.VidRushSegmentResult) error {
+	ctx, err := newArtlistIsolationContext(segments)
+	if err != nil {
+		return err
+	}
+	for _, segment := range segments {
+		if err := validateArtlistQueriesForSegment(ctx, segment); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateArtlistQueriesForSegment(ctx *artlistIsolationContext, segment scriptpkg.VidRushSegmentResult) error {
+	segmentID := strings.TrimSpace(segment.SegmentID)
+	for _, rawQuery := range segment.Insights.ArtlistQueries {
+		query := normalizeArtlistIsolationQuery(rawQuery)
+		if query == "" {
+			return fmt.Errorf("segment %s has an empty Artlist query", segmentID)
+		}
+		if foreign := artlistForeignTerms(ctx, segmentID, rawQuery); len(foreign) > 0 {
+			return fmt.Errorf("segment %s Artlist query %q contains foreign scene term(s): %s", segmentID, rawQuery, strings.Join(foreign, ", "))
+		}
+	}
+	return nil
+}
+
+func validateArtlistCandidateForContext(ctx *artlistIsolationContext, candidate scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) error {
+	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
+		return nil
+	}
+	segmentID := strings.TrimSpace(segment.SegmentID)
+	if strings.TrimSpace(candidate.SegmentID) != segmentID || candidate.Position != segment.Position || strings.TrimSpace(candidate.TextHash) != strings.TrimSpace(segment.TextHash) {
+		return fmt.Errorf("asset %q has foreign segment provenance", candidate.AssetID)
+	}
+	query := normalizeArtlistIsolationQuery(candidate.Query)
+	if query == "" {
+		return fmt.Errorf("asset %q has an empty Artlist query", candidate.AssetID)
+	}
+	if len(segment.Insights.ArtlistQueries) > 0 {
+		if owner, exists := ctx.queryOwners[query]; !exists || owner != segmentID {
+			return fmt.Errorf("asset %q uses Artlist query %q owned by another segment", candidate.AssetID, candidate.Query)
+		}
+	}
+	if foreign := artlistForeignTerms(ctx, segmentID, strings.Join([]string{candidate.Query, candidate.Entity, candidate.AssetID}, " ")); len(foreign) > 0 {
+		return fmt.Errorf("asset %q contains foreign scene term(s): %s", candidate.AssetID, strings.Join(foreign, ", "))
+	}
+	if strings.TrimSpace(candidate.EntityID) == "" || strings.TrimSpace(candidate.AssetID) == "" {
+		return fmt.Errorf("asset %q is missing Artlist identity", candidate.AssetID)
+	}
+	return nil
+}
+
+// ValidateVidRushArtlistIsolation is the fail-closed Artlist gate for all
+// five-segment (or larger) runs. It verifies query ownership, candidate
+// ownership and winner ownership before the result can be exposed.
+func ValidateVidRushArtlistIsolation(segments []scriptpkg.VidRushSegmentResult) error {
+	ctx, err := newArtlistIsolationContext(segments)
+	if err != nil {
+		return fmt.Errorf("Artlist isolation: %w", err)
+	}
+	for _, segment := range segments {
+		if err := validateArtlistQueriesForSegment(ctx, segment); err != nil {
+			return fmt.Errorf("Artlist isolation: %w", err)
+		}
+		candidates := append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.Candidates...)
+		if segment.Assets.PrimaryVideo != nil {
+			candidates = append(candidates, *segment.Assets.PrimaryVideo)
+		}
+		seenAssets := make(map[string]string)
+		for _, candidate := range candidates {
+			if err := validateArtlistCandidateForContext(ctx, candidate, segment); err != nil {
+				return fmt.Errorf("Artlist isolation: segment %s: %w", segment.SegmentID, err)
+			}
+			if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
+				continue
+			}
+			assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if owner, exists := seenAssets[assetID]; exists && owner != segment.SegmentID {
+				return fmt.Errorf("Artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
+			}
+			seenAssets[assetID] = segment.SegmentID
+		}
+	}
+	assetOwners := make(map[string]string)
+	for _, segment := range segments {
+		for _, candidate := range segment.Assets.Candidates {
+			if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if owner, exists := assetOwners[key]; exists && owner != segment.SegmentID {
+				return fmt.Errorf("Artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
+			}
+			assetOwners[key] = segment.SegmentID
+		}
+	}
+	return nil
+}
+
+func validateArtlistCandidateForSegment(candidate scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) error {
+	ctx, err := newArtlistIsolationContext([]scriptpkg.VidRushSegmentResult{segment})
+	if err != nil {
+		return err
+	}
+	return validateArtlistCandidateForContext(ctx, candidate, segment)
+}
+
+func filterArtlistCandidatesForSegment(candidates []scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult, allSegments []scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	segments := allSegments
+	if len(segments) == 0 {
+		segments = []scriptpkg.VidRushSegmentResult{segment}
+	}
+	ctx, err := newArtlistIsolationContext(segments)
+	if err != nil {
+		return nil
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if err := validateArtlistCandidateForContext(ctx, candidate, segment); err == nil {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func filterArtlistMatchesForSegment(matches []ArtlistClipMatch, segment scriptpkg.VidRushSegmentResult, allSegments []scriptpkg.VidRushSegmentResult) []ArtlistClipMatch {
+	segments := allSegments
+	if len(segments) == 0 {
+		segments = []scriptpkg.VidRushSegmentResult{segment}
+	}
+	ctx, err := newArtlistIsolationContext(segments)
+	if err != nil {
+		return nil
+	}
+	out := make([]ArtlistClipMatch, 0, len(matches))
+	for _, match := range matches {
+		probe := scriptpkg.SegmentAssetCandidate{
+			SegmentID: segment.SegmentID, Position: segment.Position, TextHash: segment.TextHash,
+			EntityID: "entity:artlist-query", AssetID: "artlist-query-probe",
+			Provider: scriptpkg.VidRushProviderArtlist, Query: match.Phrase,
+		}
+		if err := validateArtlistCandidateForContext(ctx, probe, segment); err == nil {
+			out = append(out, cloneArtlistMatch(match))
+		}
+	}
+	return out
+}
+
+// ValidateVidRushSegmentAssetBindings is the fail-closed provenance gate for
+// the final asset surface. It verifies all required identity fields and rejects
+// an asset id appearing under more than one segment.
+func ValidateVidRushSegmentAssetBindings(segments []scriptpkg.VidRushSegmentResult) error {
+	assetSegments := make(map[string]string)
+	for _, segment := range segments {
+		segmentID := strings.TrimSpace(segment.SegmentID)
+		if segmentID == "" {
+			return fmt.Errorf("asset provenance: segment_id is required")
+		}
+		if strings.TrimSpace(segment.TextHash) == "" {
+			return fmt.Errorf("asset provenance: text_hash is required for segment %s", segmentID)
+		}
+		candidates := append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.Candidates...)
+		candidates = append(candidates, segment.Assets.SecondaryImages...)
+		candidates = append(candidates, segment.Assets.GeneratedImages...)
+		if segment.Assets.PrimaryVideo != nil {
+			candidates = append(candidates, *segment.Assets.PrimaryVideo)
+		}
+		for _, candidate := range candidates {
+			if strings.TrimSpace(candidate.SegmentID) != segmentID || candidate.Position != segment.Position || strings.TrimSpace(candidate.TextHash) != strings.TrimSpace(segment.TextHash) {
+				return fmt.Errorf("asset provenance: asset %q is bound to segment %s with conflicting segment identity", candidate.AssetID, segmentID)
+			}
+			for field, value := range map[string]string{
+				"entity_id": candidate.EntityID, "query": candidate.Query,
+				"asset_id": candidate.AssetID, "provider": candidate.Provider,
+			} {
+				if strings.TrimSpace(value) == "" {
+					return fmt.Errorf("asset provenance: %s is required for asset in segment %s", field, segmentID)
+				}
+			}
+			assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if previous, exists := assetSegments[assetID]; exists && previous != segmentID {
+				return fmt.Errorf("asset provenance: asset %q is bound to segments %s and %s", candidate.AssetID, previous, segmentID)
+			}
+			assetSegments[assetID] = segmentID
+		}
+	}
+	return nil
+}
+
+func normalizeVidRushSegmentAssets(segment *scriptpkg.VidRushSegmentResult) {
+	if segment == nil || strings.TrimSpace(segment.SegmentID) == "" {
+		return
+	}
+	segment.Assets.Candidates = normalizeVidRushCandidateList(segment.Assets.Candidates, *segment)
+	segment.Assets.SecondaryImages = normalizeVidRushCandidateList(segment.Assets.SecondaryImages, *segment)
+	segment.Assets.GeneratedImages = normalizeVidRushCandidateList(segment.Assets.GeneratedImages, *segment)
+	if segment.Assets.PrimaryVideo != nil {
+		if primary, ok := normalizeVidRushCandidate(*segment.Assets.PrimaryVideo, *segment); ok {
+			segment.Assets.PrimaryVideo = &primary
+		} else {
+			segment.Assets.PrimaryVideo = nil
+		}
+	}
+}
+
 func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
 	out := in
+	if strings.TrimSpace(out.TextHash) == "" {
+		identityText := out.Text
+		if strings.TrimSpace(identityText) == "" {
+			identityText = out.SegmentID
+		}
+		if strings.TrimSpace(identityText) != "" {
+			out.TextHash = scriptpkg.ComputeCanonicalSegmentTextHash(identityText)
+		}
+	}
 	out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), in.Insights.Entities...)
 	out.Insights.ImportantPhrases = append([]string(nil), in.Insights.ImportantPhrases...)
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
@@ -476,6 +927,7 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 		primary := *in.Assets.PrimaryVideo
 		out.Assets.PrimaryVideo = &primary
 	}
+	normalizeVidRushSegmentAssets(&out)
 	return out
 }
 
@@ -514,24 +966,46 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
 	segmentIndex := make(map[string]int, len(segments))
 	lastAssetByProvider := make(map[string]string)
+	boundAssetOwners := make(map[string]string)
 	for _, original := range segments {
 		seg := cloneVidRushSegmentResult(original)
+		normalizeVidRushSegmentAssets(&seg)
+		if seg.ExecutionMode.IsFixedMedia() {
+			// Fixed media is already authoritative. Do not filter, rank,
+			// deduplicate or rewrite its existing binding surface.
+			out = append(out, seg)
+			continue
+		}
 		valid := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.Candidates))
 		seen := make(map[string]struct{}, len(seg.Assets.Candidates))
 		for _, candidate := range seg.Assets.Candidates {
 			if !validVidRushCandidate(candidate) || !readyVidRushCandidate(candidate) {
 				continue
 			}
-			key := strings.ToLower(strings.TrimSpace(candidate.Provider)) + "\x00" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
+				if err := validateArtlistCandidateForSegment(candidate, seg); err != nil {
+					// A contaminated Artlist candidate is never eligible for
+					// ranking or winner selection, even if it is otherwise
+					// technically durable.
+					continue
+				}
+			}
+			key := strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if owner, exists := boundAssetOwners[key]; exists && owner != seg.SegmentID {
+				// The same provider asset may not be rebound to another
+				// segment. Drop the later binding rather than leaking it.
+				continue
+			}
 			if _, ok := seen[key]; ok {
 				continue
 			}
 			seen[key] = struct{}{}
+			boundAssetOwners[key] = seg.SegmentID
 			valid = append(valid, candidate)
 		}
 		seg.Assets.Candidates = valid
-		seg.Assets.SecondaryImages = filterVidRushImages(valid)
-		seg.Assets.GeneratedImages = filterVidRushGeneratedImages(valid)
+		seg.Assets.SecondaryImages = preserveSelectedVidRushImages(seg.Assets.SecondaryImages, valid)
+		seg.Assets.GeneratedImages = filterVidRushGeneratedImages(seg.Assets.SecondaryImages)
 		if primary := chooseVidRushPrimary(valid, lastAssetByProvider); primary != nil {
 			primary.SelectionReason = "highest scored provenance-valid candidate for segment"
 			seg.Assets.PrimaryVideo = primary
@@ -827,6 +1301,35 @@ func profileSemanticMatch(candidate scriptpkg.SegmentAssetCandidate, profile scr
 		return 0
 	}
 	return float64(matched) / float64(len(terms))
+}
+
+func preserveSelectedVidRushImages(selected, valid []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	if len(selected) == 0 {
+		return filterVidRushImages(valid)
+	}
+	validByIdentity := make(map[string]scriptpkg.SegmentAssetCandidate, len(valid))
+	for _, candidate := range valid {
+		if candidate.Provider == scriptpkg.VidRushProviderArtlist || candidate.Provider == scriptpkg.VidRushProviderImageGeneration {
+			continue
+		}
+		validByIdentity[vidRushCandidateIdentity(candidate)] = candidate
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(selected))
+	seen := make(map[string]struct{}, len(selected))
+	for _, candidate := range selected {
+		key := vidRushCandidateIdentity(candidate)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		if canonical, ok := validByIdentity[key]; ok {
+			out = append(out, canonical)
+			seen[key] = struct{}{}
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	return filterVidRushImages(valid)
 }
 
 func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {

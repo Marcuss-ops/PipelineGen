@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"go.uber.org/zap"
 )
 
@@ -102,8 +101,8 @@ func parseRecoverRegistryFlags(args []string) (recoverRegistryFlags, error) {
 	default:
 		return f, errors.New("recover-registry-from-qdrant: --purpose must be one of disaster-recovery, migration-recovery, forensics")
 	}
-	if f.Collection == "" {
-		return f, errors.New("recover-registry-from-qdrant: --collection=<name> is required")
+	if err := qdrantschema.ValidateEmergencyCollection(f.Collection); err != nil {
+		return f, fmt.Errorf("recover-registry-from-qdrant: invalid --collection: %w", err)
 	}
 	if f.All && len(f.AssetIDs) > 0 {
 		return f, errors.New("recover-registry-from-qdrant: --all and --asset-id are mutually exclusive")
@@ -133,11 +132,12 @@ func RunRecoverRegistryFromQdrant(args []string) error {
 
 	ctx := cli.CmdContext()
 	client := transport.NewClient(&qdrantschema.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}, log)
-	db, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer db.Close()
+	defer dbSet.Close()
+	db := dbSet.Primary
 
 	report, err := classifyRecovery(ctx, client, db.DB, flags)
 	if err != nil {

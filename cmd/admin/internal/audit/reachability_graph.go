@@ -42,7 +42,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // ── Ownership model types ───────────────────────────────────────────────
@@ -287,13 +286,12 @@ func RunReachabilityGraph(args []string) error {
 	defer cleanup()
 
 	ctx := cli.CmdContext()
-	path := cfg.Storage.PrimaryDBFullPath()
-
-	sdb, err := storage.OpenSQLiteDB(path, log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sdb.Close()
+	defer dbSet.Close()
+	sdb := dbSet.Primary
 
 	report, err := computeReachabilityGraph(ctx, sdb.DB, *limitIDs)
 	if err != nil {

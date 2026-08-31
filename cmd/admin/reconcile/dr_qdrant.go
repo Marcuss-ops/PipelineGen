@@ -39,7 +39,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
@@ -118,10 +117,15 @@ func RunDrQdrant(args []string) error {
 
 // resolveActiveCollection resolves the active alias target unless the
 // operator passes --collection=NAME explicitly. Shared helper used by
-// ListSnapshots + TakeSnapshot + RestoreSnapshot.
+// ListSnapshots + TakeSnapshot + RestoreSnapshot. Because this helper is
+// only used by explicit DR commands, it validates physical collection names
+// with the emergency policy rather than the runtime-only policy.
 func resolveActiveCollection(ctx context.Context, client *transport.Client, override string, log *zap.Logger) (string, error) {
 	if override != "" {
-		return override, nil
+		if err := qdrantschema.ValidateEmergencyCollection(override); err != nil {
+			return "", fmt.Errorf("validate emergency collection override: %w", err)
+		}
+		return strings.TrimSpace(override), nil
 	}
 	alias := qdrantschema.DefaultV3Schema().RuntimeAlias
 	target, err := client.GetAliasTarget(ctx, alias)
@@ -130,6 +134,9 @@ func resolveActiveCollection(ctx context.Context, client *transport.Client, over
 	}
 	if target == "" {
 		return "", fmt.Errorf("alias %q has no target; pass --collection=NAME explicitly or attach an alias first", alias)
+	}
+	if err := qdrantschema.ValidateEmergencyCollection(target); err != nil {
+		return "", fmt.Errorf("validate resolved emergency collection: %w", err)
 	}
 	log.Info("resolved alias target", zap.String("alias", alias), zap.String("collection", target))
 	return target, nil
@@ -328,11 +335,12 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *trans
 		log.Info("auto-computed expected-points", zap.String("source", collection), zap.Int("n", expectedPoints))
 	}
 
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
+	sqliteDB := dbSet.Primary
 
 	cm := collections.NewCollectionManager(client, schema, log)
 	assetStore := indexing.NewSQLiteAssetStore(sqliteDB.DB)
@@ -453,11 +461,12 @@ func runDrApplyRetention(ctx context.Context, cfg *config.Config, client *transp
 	// partials (FAILED/BUILDING) and never let a failed build crowd out a
 	// rollback target. Hydration failure is fail-closed: without status the
 	// sweep cannot safely drop retired generations.
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer dbSet.Close()
+	sqliteDB := dbSet.Primary
 	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
 	if err != nil {
 		return fmt.Errorf("create media registry ledger: %w", err)
@@ -507,91 +516,5 @@ func runDrApplyRetention(ctx context.Context, cfg *config.Config, client *transp
 			fmt.Printf("               [%d] %s\n", i, e)
 		}
 	}
-	return nil
-}
-
-// ── Subcommand: mark-failed-cleaned ──────────────────────────────────
-
-type markFailedCleanedFlags struct {
-	Collection string
-	JSON       bool
-}
-
-func parseMarkFailedCleanedFlags(args []string) (markFailedCleanedFlags, error) {
-	d := markFailedCleanedFlags{}
-	for _, a := range args {
-		switch {
-		case a == "--json":
-			d.JSON = true
-		case strings.HasPrefix(a, "--collection="):
-			d.Collection = strings.TrimPrefix(a, "--collection=")
-		default:
-			if strings.HasPrefix(a, "-") {
-				return d, fmt.Errorf("mark-failed-cleaned: unknown flag %s", a)
-			}
-		}
-	}
-	if strings.TrimSpace(d.Collection) == "" {
-		return d, errors.New("mark-failed-cleaned: --collection=<name> is required")
-	}
-	return d, nil
-}
-
-// runDrMarkFailedCleaned marks a FAILED projection FAILED_CLEANED after its
-// physical collection has been verified cleaned up. The transition fails
-// closed (inside CollectionManager.MarkFailedCleaned) unless the projection
-// is FAILED and the runtime alias does NOT point at its collection. The
-// attempt history is preserved: only the status changes.
-func runDrMarkFailedCleaned(ctx context.Context, cfg *config.Config, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
-	flags, err := parseMarkFailedCleanedFlags(args)
-	if err != nil {
-		return err
-	}
-	cm := collections.NewCollectionManager(client, schema, log)
-
-	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
-	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
-	}
-	defer sqliteDB.Close()
-	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
-	if err != nil {
-		return fmt.Errorf("create media registry ledger: %w", err)
-	}
-	if err := cm.SetRegistryLedger(ctx, registryLedger); err != nil {
-		return fmt.Errorf("hydrate media registry projection ledger: %w", err)
-	}
-
-	projections, err := registryLedger.ListProjections(ctx)
-	if err != nil {
-		return fmt.Errorf("list projections: %w", err)
-	}
-	projectionID := ""
-	for _, p := range projections {
-		if p.CollectionName == flags.Collection {
-			projectionID = p.ProjectionID
-			break
-		}
-	}
-	if projectionID == "" {
-		return fmt.Errorf("mark-failed-cleaned: no projection registered for collection %q", flags.Collection)
-	}
-
-	if err := cm.MarkFailedCleaned(ctx, projectionID); err != nil {
-		return err
-	}
-
-	if flags.JSON {
-		b, _ := json.MarshalIndent(map[string]any{
-			"projection_id": projectionID,
-			"collection":    flags.Collection,
-			"status":        "FAILED_CLEANED",
-		}, "", "  ")
-		fmt.Println(string(b))
-		return nil
-	}
-	fmt.Printf("=== dr-qdrant mark-failed-cleaned: %s ===\n", flags.Collection)
-	fmt.Printf("  Projection: %s\n", projectionID)
-	fmt.Printf("  Status:     FAILED_CLEANED (attempt history preserved)\n")
 	return nil
 }

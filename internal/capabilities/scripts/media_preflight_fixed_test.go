@@ -25,6 +25,7 @@ func TestRunMediaPreflightFixedMediaRequiresOriginalAudioAndValidWindow(t *testi
 	}
 	base := MediaPreflightInput{
 		FixedClips:      []FixedClipPreflight{{ClipID: "intro-1", SourceInMS: 1000, SourceOutMS: 4000}},
+		ClipProber:      probeStub{ok: map[string]bool{"intro-1": true}},
 		ClipAudioSource: fixedAudioPreflightStub{path: path, durationUS: 5_000_000},
 	}
 	if result := RunMediaPreflight(context.Background(), base); result.HasFailures() {
@@ -41,6 +42,7 @@ func TestRunMediaPreflightFixedMediaRequiresOriginalAudioAndValidWindow(t *testi
 func TestRunMediaPreflightFixedMediaFailsWithoutAudioResolver(t *testing.T) {
 	result := RunMediaPreflight(context.Background(), MediaPreflightInput{
 		FixedClips: []FixedClipPreflight{{ClipID: "intro-1"}},
+		ClipProber: probeStub{ok: map[string]bool{"intro-1": true}},
 	})
 	if !result.HasFailures() || !strings.Contains(result.Error(), "original audio") {
 		t.Fatalf("missing fixed audio resolver must fail closed: %s", result.Error())

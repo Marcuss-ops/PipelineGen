@@ -87,6 +87,10 @@ type RetrievalIntent struct {
 // change and the understanding stack did not change, the profile must be
 // reused without recomputation (warm path straight to retrieval).
 type SegmentSemanticProfile struct {
+	// ExecutionMode mirrors the canonical scene authorization boundary.
+	// Fixed-media profiles are never eligible for visual/media enrichment.
+	ExecutionMode SceneExecutionMode `json:"execution_mode,omitempty"`
+
 	// SegmentID is the stable segment identifier within the current
 	// VidRush plan (matches CanonicalSegment.ID).
 	SegmentID string `json:"segment_id"`
@@ -236,6 +240,7 @@ func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
 // profile per provider.
 func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, understandingModelVersion, promptVersion string) SegmentSemanticProfile {
 	profile := SegmentSemanticProfile{
+		ExecutionMode:             seg.ExecutionMode,
 		SegmentID:                 seg.ID,
 		TextHash:                  seg.TextHash,
 		UnderstandingModelVersion: understandingModelVersion,

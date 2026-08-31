@@ -124,9 +124,9 @@ func (r *Runner) SetVoiceoverPublishDrainer(drainer interface{ Wait() }) {
 }
 
 // SetMediaPreflight wires the fail-fast media requirement verification
-// (P0.5). When wired, the runner fires the preflight in parallel with
-// Gemma and fails the run at the join point if any check failed. Nil
-// means the preflight is skipped (backward compat).
+// (P0.5). When wired, the runner executes it synchronously after normalize
+// and before Gemma; any failure aborts the run before LLM, translation, or
+// TTS. Fixed-media requests fail closed when it is not wired.
 func (r *Runner) SetMediaPreflight(preflight MediaPreflight) {
 	if r != nil {
 		r.mediaPreflight = preflight

@@ -82,15 +82,30 @@ func GetFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("config file %q is malformed: %w", path, err)
 	}
 
+	// The primary database identity is not configurable. Reject the retired
+	// YAML key instead of silently ignoring it, and reject its retired env var
+	// as well. DataDir is the only deployment-level input for the primary DB.
+	var retiredConfig struct {
+		Storage *struct {
+			PrimaryDBPath *string `yaml:"primary_db_path"`
+		} `yaml:"storage"`
+	}
+	if err := yaml.Unmarshal(data, &retiredConfig); err != nil {
+		return nil, fmt.Errorf("config file %q is malformed: %w", path, err)
+	}
+	if retiredConfig.Storage != nil && retiredConfig.Storage.PrimaryDBPath != nil {
+		return nil, fmt.Errorf("config file %q sets retired storage.primary_db_path; derive the primary database from storage.data_dir", path)
+	}
+	if strings.TrimSpace(os.Getenv("VELOX_PRIMARY_DB_PATH")) != "" {
+		return nil, fmt.Errorf("VELOX_PRIMARY_DB_PATH is retired; derive the primary database from VELOX_DATA_DIR")
+	}
+
 	// The resolution order is deliberate and uniform:
 	// YAML → environment overrides → defaults for fields still unset.
 	// This prevents a default pass from masking an explicit YAML value
 	// and makes the final Config ready for validation and freezing.
 	applyEnvVars(cfg)
 	applyCanonicalModelDefaults(cfg)
-	if err := cfg.Storage.ValidatePrimaryDBPath(); err != nil {
-		return nil, fmt.Errorf("storage configuration: %w", err)
-	}
 	return cfg, nil
 }
 
@@ -167,9 +182,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.WriteTimeout <= 0 {
 		return fmt.Errorf("invalid write timeout: %d", c.Server.WriteTimeout)
-	}
-	if err := c.Storage.ValidatePrimaryDBPath(); err != nil {
-		return fmt.Errorf("storage configuration: %w", err)
 	}
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")

@@ -30,7 +30,6 @@ import (
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
@@ -48,11 +47,12 @@ func RunIdentityAudit(args []string) error {
 	}
 	defer cleanup()
 
-	db, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open media database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer db.Close()
+	defer dbSet.Close()
+	db := dbSet.Primary
 
 	resolver, err := sqlitemediaregistry.NewCanonicalIdentityResolver(db.DB)
 	if err != nil {

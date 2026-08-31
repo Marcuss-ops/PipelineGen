@@ -30,6 +30,7 @@ import (
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -232,7 +233,17 @@ func registerScriptPostProcessors(
 			verifier = drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
 			log.Info("AssetLocationReconciliationProcessor (BestEffort, shallow: Drive-only) successfully registered")
 		}
-		if !ppReg.Register(adapters.NewAssetLocationReconciliationProcessor(verifier)) {
+		var locationProcessor *adapters.AssetLocationReconciliationProcessor
+		if root != nil && root.CanonicalAssetWriter != nil {
+			mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
+			if !ok || mutator == nil {
+				return fmt.Errorf("register asset_location_reconciliation processor: canonical writer does not implement AssetMutator")
+			}
+			locationProcessor = adapters.NewDurableAssetLocationReconciliationProcessor(verifier, mutator)
+		} else {
+			locationProcessor = adapters.NewAssetLocationReconciliationProcessor(verifier)
+		}
+		if !ppReg.Register(locationProcessor) {
 			return fmt.Errorf("register asset_location_reconciliation processor: composition bug or duplicate name")
 		}
 	}

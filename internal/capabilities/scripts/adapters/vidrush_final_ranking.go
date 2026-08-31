@@ -58,6 +58,9 @@ type VidRushWindowRanker struct{}
 
 func NewVidRushWindowRanker() VidRushWindowRanker { return VidRushWindowRanker{} }
 func (VidRushWindowRanker) Rank(candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile, targetMs int64) []scriptpkg.SegmentAssetCandidate {
+	if profile.ExecutionMode.IsFixedMedia() {
+		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
+	}
 	return rankWindows(candidates, profile, targetMs)
 }
 
@@ -66,6 +69,9 @@ func (VidRushWindowRanker) Rank(candidates []scriptpkg.SegmentAssetCandidate, pr
 // deterministic. Reranker errors are a safe deterministic fallback.
 func (r VidRushWindowRanker) RankWithOptionalReranker(ctx context.Context, reranker scriptports.CandidateReranker, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile, targetMs int64) []scriptpkg.SegmentAssetCandidate {
 	out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
+	if profile.ExecutionMode.IsFixedMedia() {
+		return out
+	}
 	if reranker != nil {
 		results, err := reranker.Rerank(ctx, scriptports.CandidateRerankRequest{SegmentID: profile.SegmentID, Text: profile.Topic, Topic: profile.Topic, TargetDurationMs: targetMs, Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), out...)})
 		if err == nil {

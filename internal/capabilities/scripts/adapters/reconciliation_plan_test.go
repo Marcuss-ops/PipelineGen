@@ -136,7 +136,7 @@ func TestAssetLocationReconciliation_SecondImmediateReconcileIsZeroDiff(t *testi
 	type recording struct {
 		changes []scriptpkg.AssetLocationChange
 	}
-	committer := &recordingAssetLocationCommitter{}
+	committer := &recordingAssetMutator{}
 	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
 
 	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{

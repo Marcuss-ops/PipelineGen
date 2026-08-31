@@ -37,7 +37,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // ── Audit report types ───────────────────────────────────────────────────
@@ -95,11 +94,12 @@ func RunSQLiteAudit(args []string) error {
 	defer cleanup()
 
 	ctx := cli.CmdContext()
-	sdb, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open DB: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer sdb.Close()
+	defer dbSet.Close()
+	sdb := dbSet.Primary
 
 	report, err := executeAudit(ctx, sdb.DB, !*skipBroken)
 	if err != nil {

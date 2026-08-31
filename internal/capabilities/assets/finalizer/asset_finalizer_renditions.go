@@ -41,6 +41,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
@@ -59,94 +60,29 @@ func (s *AssetTxFinalizer) upsertRenditionLocation(
 	if r.URI == "" {
 		return nil
 	}
-
-	// location_kind is a physical-location enum owned by the schema. Do
-	// not append rendition kind here: asset_renditions.kind is the
-	// canonical discriminator and asset_locations accepts only the three
-	// physical kinds below.
-	locationKind := r.Provider
-	if locationKind != "drive" && locationKind != "object_storage" {
-		locationKind = "local"
+	committer, ok := s.committer.(persistence.AssetRenditionCommitter)
+	if !ok || committer == nil {
+		return fmt.Errorf("asset finalizer: canonical rendition committer is required")
 	}
-
-	// 1. Upsert the rendition's location.
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO asset_locations
-			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
-			uri = excluded.uri,
-			external_id = excluded.external_id,
-			web_view_link = excluded.web_view_link,
-			download_url = excluded.download_url,
-			mime_type = excluded.mime_type,
-			file_size_bytes = excluded.file_size_bytes,
-			legacy_file_md5 = excluded.legacy_file_md5,
-			is_primary = excluded.is_primary,
-			updated_at = excluded.updated_at
-	`,
-		a.ArtifactID,
-		locationKind,
-		r.URI,
-		r.FileID,
-		r.WebViewLink,
-		r.DownloadLink,
-		r.MimeType,
-		r.SizeBytes,
-		r.LegacyFileMD5,
-		nowStr,
-		nowStr,
-	)
-	if err != nil {
-		return fmt.Errorf("asset finalizer: upsert rendition location %s/%s: %w", a.ArtifactID, r.Kind, err)
+	sqlTx, ok := UnwrapSQLTx(tx)
+	if !ok || sqlTx == nil {
+		return fmt.Errorf("asset finalizer: rendition transaction is not a *sql.Tx")
 	}
-
-	// 2. Resolve the location_id after upsert. LastInsertId is unreliable
-	// when the row already existed, so we re-read by the unique key.
-	var locationID int64
-	row := tx.QueryRowContext(ctx,
-		`SELECT id FROM asset_locations WHERE asset_id = ? AND location_kind = ?`,
-		a.ArtifactID, locationKind,
-	)
-	if err := row.Scan(&locationID); err != nil {
-		return fmt.Errorf("asset finalizer: resolve location_id for %s/%s: %w", a.ArtifactID, r.Kind, err)
-	}
-
-	// 3. Upsert the asset_renditions row on (asset_id, kind).
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO asset_renditions
-			(id, asset_id, location_id, kind, container, codec, width, height,
-			 fps, bitrate, sha256, size_bytes, created_at, updated_at)
-		VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(asset_id, kind) DO UPDATE SET
-			location_id = excluded.location_id,
-			container = excluded.container,
-			codec = excluded.codec,
-			width = excluded.width,
-			height = excluded.height,
-			fps = excluded.fps,
-			bitrate = excluded.bitrate,
-			sha256 = excluded.sha256,
-			size_bytes = excluded.size_bytes,
-			updated_at = excluded.updated_at
-	`,
-		a.ArtifactID,
-		locationID,
-		r.Kind,
-		r.Container,
-		r.Codec,
-		r.Width,
-		r.Height,
-		r.FPS,
-		r.Bitrate,
-		r.LegacyFileMD5,
-		r.SizeBytes,
-		nowStr,
-		nowStr,
-	)
-	if err != nil {
-		return fmt.Errorf("asset finalizer: upsert rendition %s/%s: %w", a.ArtifactID, r.Kind, err)
-	}
-	return nil
+	return committer.CommitRenditionTx(ctx, sqlTx, a.ArtifactID, persistence.RenditionCommit{
+		Kind:        r.Kind,
+		Provider:    r.Provider,
+		FileID:      r.FileID,
+		URI:         r.URI,
+		WebViewLink: r.WebViewLink,
+		DownloadURL: r.DownloadLink,
+		MimeType:    r.MimeType,
+		SizeBytes:   r.SizeBytes,
+		SHA256:      r.LegacyFileMD5,
+		Width:       r.Width,
+		Height:      r.Height,
+		FPS:         r.FPS,
+		Bitrate:     r.Bitrate,
+		Container:   r.Container,
+		Codec:       r.Codec,
+	}, nowStr)
 }

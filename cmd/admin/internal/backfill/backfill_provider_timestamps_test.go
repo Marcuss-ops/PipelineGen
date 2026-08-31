@@ -26,6 +26,7 @@ func newProviderTimestampsTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open in-memory sqlite: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`CREATE TABLE media_assets (
 		id TEXT PRIMARY KEY,
@@ -95,7 +96,7 @@ func TestBackfillProviderTimestamps_StampsCanonicalKeys(t *testing.T) {
 	// Row with only provider populated.
 	insertProviderRow(t, db, "stock-1", "clip", "stock", "", 0, 0, `{}`)
 
-	matched, updated, err := backfillProviderTimestamps(context.Background(), db, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestBackfillProviderTimestamps_DoesNotOverwriteExistingKeys(t *testing.T) {
 	insertProviderRow(t, db, "yt-1", "video", "youtube", "abc123XYZ", 12500, 35000,
 		`{"source_provider":"artlist","source_video_id":"keep-me","start_sec":9.0,"end_sec":20.0}`)
 
-	matched, updated, err := backfillProviderTimestamps(context.Background(), db, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -153,11 +154,11 @@ func TestBackfillProviderTimestamps_IsIdempotent(t *testing.T) {
 	db := newProviderTimestampsTestDB(t)
 	insertProviderRow(t, db, "yt-1", "video", "youtube", "abc123XYZ", 12500, 35000, `{}`)
 
-	if _, updated, err := backfillProviderTimestamps(context.Background(), db, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("first run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 
-	matched, updated, err := backfillProviderTimestamps(context.Background(), db, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestBackfillProviderTimestamps_NoNullPollution(t *testing.T) {
 	// canonical keys must stay ABSENT (never written as JSON null).
 	insertProviderRow(t, db, "stock-1", "clip", "stock", "", 0, 0, `{}`)
 
-	if _, updated, err := backfillProviderTimestamps(context.Background(), db, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 
@@ -200,7 +201,7 @@ func TestBackfillProviderTimestamps_RespectsLimit(t *testing.T) {
 	insertProviderRow(t, db, "yt-2", "video", "youtube", "b", 3000, 4000, `{}`)
 	insertProviderRow(t, db, "yt-3", "video", "youtube", "c", 5000, 6000, `{}`)
 
-	matched, updated, err := backfillProviderTimestamps(context.Background(), db, 2)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 2)
 	if err != nil {
 		t.Fatalf("backfill with limit: %v", err)
 	}

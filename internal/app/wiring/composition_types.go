@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -88,6 +89,12 @@ type IOpaqueStartFunc func() error
 
 // ComposeRoot is the assembled root tree. NewComposition returns this.
 type ComposeRoot struct {
+	// CanonicalAssetWriter is the single production asset writer instance
+	// shared by admin repair, script reconciliation, and mutation consumers.
+	// It owns media_assets, asset_locations, metadata, and asset.index.requested
+	// outbox writes; callers receive narrower capability views as needed.
+	CanonicalAssetWriter assetspersistence.CanonicalAssetWriter
+
 	// MediaExec is the single resolved media contract for this composition.
 	// Platform config is mapped before downstream bundles are built.
 	MediaExec mediaexec.ExecutionConfig
@@ -163,8 +170,12 @@ type DriveBundle struct {
 
 // RepoBundle owns all SQLite-backed repositories.
 type RepoBundle struct {
-	ScriptsRepo        *sqlitescripts.ScriptRepository
-	ImageRepo          *imagesrepo.ImagesRepository
+	ScriptsRepo *sqlitescripts.ScriptRepository
+	ImageRepo   *imagesrepo.ImagesRepository
+	// AssetsStore is the concrete read/store adapter behind Assets. It is
+	// retained here only so the composition root can bind the same canonical
+	// writer to every compatibility Save/Delete surface.
+	AssetsStore        *imagesregistry.AssetStoreSQLite
 	ClipsRepo          *assets.ClipsRepository
 	Assets             *detail.Service
 	MonitorsRepo       *monitors.MonitorsRepository
@@ -307,6 +318,11 @@ type DomainBundle struct {
 
 // OutboxBundle aggregates the canonical outbox dispatcher and events pool.
 type OutboxBundle struct {
+	// CanonicalWriter is the single production asset writer instance shared by
+	// all mutation consumers. It is created alongside the outbox repository so
+	// every dispatcher and domain adapter receives the same concrete writer.
+	CanonicalWriter assetspersistence.CanonicalAssetWriter
+
 	Dispatcher     *outbox.Dispatcher
 	EventsRepo     *outboxevents.Repository
 	EventsRegistry *outboxevents.HandlerRegistry

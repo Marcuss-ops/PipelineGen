@@ -87,7 +87,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
 	}
 	return &RepoBundle{
-		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, VoiceoverRepo: voiceoverRepo,
+		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, AssetsStore: assetsStore, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, EntityImageCatalog: entityImageCatalogRepo,
 		SQRepo: sqRepo, IdempotencyStore: idempotencyStore,

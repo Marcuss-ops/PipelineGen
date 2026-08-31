@@ -61,6 +61,9 @@ func (r VidRushSourceResolver) Resolve(ctx context.Context, req SourceResolution
 	if req.Plan == nil {
 		return nil, fmt.Errorf("source resolver: plan is required")
 	}
+	if req.Segment.ExecutionMode.IsFixedMedia() {
+		return nil, fmt.Errorf("%w: source resolver attempted media resolution for fixed segment %q", scriptpkg.ErrFixedMediaDownstreamForbidden, req.Segment.ID)
+	}
 	if locked := lockedSource(req.Plan, req.Segment.ID, req.Slot); locked != nil {
 		return &SourceResolutionCandidate{Source: *locked, Provider: locked.Provider, Stage: "locked"}, nil
 	}

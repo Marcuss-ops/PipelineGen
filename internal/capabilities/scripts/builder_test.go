@@ -25,6 +25,27 @@ func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequest_ForceRefreshReachesGenerationAndVidRush(t *testing.T) {
+	env := scriptpkg.GenerationEnvelopeV2{
+		Items: []scriptpkg.GenerationItemV2{{
+			ID:           "force-refresh",
+			Source:       scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+			ScriptParams: scriptpkg.ScriptSpec{TargetWords: 100},
+		}},
+		ForceRefresh: true,
+	}
+	got, err := BuildGenerateRequest(&env, "force-refresh-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ForceRefresh || !got.ScriptParams.ForceRefresh {
+		t.Fatalf("force refresh was not propagated: request=%v script=%v", got.ForceRefresh, got.ScriptParams.ForceRefresh)
+	}
+	if !got.MediaPlan.ForceRefreshAssets || !got.MediaPlan.ForceRefreshExtraction || !got.MediaPlan.ForceRefreshBindings {
+		t.Fatalf("force refresh did not reach VidRush media plan: %+v", got.MediaPlan)
+	}
+}
+
 func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"persisted","language":"it","source":{"type":"text","topic":"topic"},"output":{"save_to_db":true}}]}`), &env); err != nil {

@@ -12,23 +12,28 @@ import (
 type AssetPatch struct {
 	AssetID string
 
-	Name           *string
-	Category       *string
-	Group          *string
-	SearchText     *string
-	LifecycleState *string
-	IndexState     *string
-	EnrichState    *string
-	MetadataJSON   *string
-	EmbeddingJSON  *string
+	Name                *string
+	Category            *string
+	Group               *string
+	FolderID            *string
+	FolderPath          *string
+	DeletedAt           *string
+	UpdatedAt           *string
+	SearchText          *string
+	LifecycleState      *string
+	IndexState          *string
+	EnrichState         *string
+	MetadataJSON        *string
+	MetadataPatchJSON   *string
+	EmbeddingJSON       *string
 	VisualEmbedding     *string
 	TranscriptEmbedding *string
-	Collection     *string
-	SceneType      *string
-	PHash          *string
-	LastUsedAt     *string
-	QualityScore   *float64
-	ReuseCount     *int
+	Collection          *string
+	SceneType           *string
+	PHash               *string
+	LastUsedAt          *string
+	QualityScore        *float64
+	ReuseCount          *int
 
 	DriveFileID  *string
 	DriveLink    *string

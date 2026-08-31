@@ -221,10 +221,10 @@ func (p FixedPlaybackPolicy) Valid() bool {
 	if p.AudioMode != FixedPlaybackOriginalClip || p.SourceInMS < 0 || p.SourceOutMS < 0 {
 		return false
 	}
-	if (p.SourceInMS == 0) != (p.SourceOutMS == 0) {
-		return false
+	if p.SourceOutMS == 0 {
+		return p.SourceInMS == 0
 	}
-	return p.SourceOutMS == 0 || p.SourceOutMS > p.SourceInMS
+	return p.SourceOutMS > p.SourceInMS
 }
 
 // FixedSection is a protected intro/outro media section that bypasses the

@@ -176,7 +176,9 @@ func enqueueTestEvent(t *testing.T, db *sql.DB, assetID, contentHash string) str
 	clips := &fakeClips{}
 	eventsRepo := outboxevents.NewRepository(db)
 	txMgr := &txMgrCapture{db: db}
-	d := NewDispatcher(clips, clips, eventsRepo, txMgr, zap.NewNop())
+	d := NewDispatcher(clips, clips, eventsRepo, txMgr, zap.NewNop(), &fakeSQLiteAssetCommitter{
+		outbox: eventsRepo, txmgr: txMgr, discovery: clips,
+	})
 	clip := &asset.Asset{
 		ID:     assetID,
 		Source: "youtube",

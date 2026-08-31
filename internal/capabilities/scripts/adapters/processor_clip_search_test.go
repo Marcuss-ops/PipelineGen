@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -355,5 +356,103 @@ func TestClipSearchProcessor_AllCandidatesAreArtlist(t *testing.T) {
 		if c.Provider == "youtube" {
 			t.Errorf("candidate %d has provider=youtube — FORBIDDEN", i)
 		}
+	}
+}
+
+func mediterraneanArtlistSegments() []scriptpkg.VidRushSegmentResult {
+	fixtures := []struct {
+		id, text, query string
+	}{
+		{"mediterranean-01-greek-salad", "Fresh Greek salad combines tomatoes, cucumbers, olives and feta cheese.", "greek salad feta tomatoes olives"},
+		{"mediterranean-02-hummus", "Hummus is a creamy dip made from chickpeas, tahini, lemon juice and olive oil.", "hummus chickpeas tahini"},
+		{"mediterranean-03-sardines", "Grilled sardines are served with lemon, olive oil and fresh herbs.", "grilled sardines lemon"},
+		{"mediterranean-04-shakshuka", "Shakshuka cooks eggs in a tomato and pepper sauce in a skillet.", "shakshuka eggs tomato skillet"},
+		{"mediterranean-05-paella", "Seafood paella combines rice with shrimp, mussels and saffron in a large pan.", "seafood paella shrimp mussels"},
+	}
+	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(fixtures))
+	for position, fixture := range fixtures {
+		hash := "hash-" + fixture.id
+		segments = append(segments, scriptpkg.VidRushSegmentResult{
+			SegmentID: fixture.id, Position: position, Text: fixture.text, TextHash: hash,
+			Insights: scriptpkg.SegmentInsights{SegmentID: fixture.id, TextHash: hash, ArtlistQueries: []string{fixture.query}},
+		})
+	}
+	return segments
+}
+
+func mediterraneanArtlistCandidate(segment scriptpkg.VidRushSegmentResult, assetID string, query string) scriptpkg.SegmentAssetCandidate {
+	return scriptpkg.SegmentAssetCandidate{
+		SegmentID: segment.SegmentID, Position: segment.Position, TextHash: segment.TextHash,
+		EntityID: "entity:" + segment.SegmentID, AssetID: assetID,
+		Provider: scriptpkg.VidRushProviderArtlist, Query: query, Entity: query,
+		SourceURL: "https://cdn.artlist.example/" + assetID + ".m3u8", Score: .9,
+	}
+}
+
+func TestValidateVidRushArtlistIsolationAcrossFiveMediterraneanSegments(t *testing.T) {
+	segments := mediterraneanArtlistSegments()
+	for i := range segments {
+		candidate := mediterraneanArtlistCandidate(segments[i], "asset-"+segments[i].SegmentID, segments[i].Insights.ArtlistQueries[0])
+		segments[i].Assets.Candidates = []scriptpkg.SegmentAssetCandidate{candidate}
+		segments[i].Assets.PrimaryVideo = &candidate
+	}
+	if err := ValidateVidRushArtlistIsolation(segments); err != nil {
+		t.Fatalf("valid five-segment Artlist fixture rejected: %v", err)
+	}
+	if len(segments) != 5 {
+		t.Fatalf("fixture segments = %d, want 5", len(segments))
+	}
+
+	queryContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
+	queryContamination[1] = cloneVidRushSegmentResult(queryContamination[1])
+	queryContamination[1].Insights.ArtlistQueries = []string{"seafood paella shrimp"}
+	if err := ValidateVidRushArtlistIsolation(queryContamination); err == nil {
+		t.Fatal("foreign Paella query was accepted by the Hummus segment")
+	}
+
+	candidateContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
+	candidateContamination[1] = cloneVidRushSegmentResult(candidateContamination[1])
+	candidateContamination[1].Assets.Candidates[0].Query = "seafood paella shrimp"
+	if err := ValidateVidRushArtlistIsolation(candidateContamination); err == nil {
+		t.Fatal("foreign Artlist candidate query was accepted by the Hummus segment")
+	}
+
+	winnerContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
+	winnerContamination[1] = cloneVidRushSegmentResult(winnerContamination[1])
+	winner := *winnerContamination[1].Assets.PrimaryVideo
+	winner.Query = "seafood paella shrimp"
+	winnerContamination[1].Assets.PrimaryVideo = &winner
+	if err := ValidateVidRushArtlistIsolation(winnerContamination); err == nil {
+		t.Fatal("foreign Artlist winner was accepted by the Hummus segment")
+	}
+
+	assetContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
+	assetContamination[4] = cloneVidRushSegmentResult(assetContamination[4])
+	assetContamination[4].Assets.Candidates[0].AssetID = assetContamination[0].Assets.Candidates[0].AssetID
+	if err := ValidateVidRushArtlistIsolation(assetContamination); err == nil {
+		t.Fatal("Artlist asset rebound across segments was accepted")
+	}
+}
+
+type contaminatingArtlistSearcher struct{}
+
+func (contaminatingArtlistSearcher) SearchClips(context.Context, string, []string) ([]ArtlistClipMatch, error) {
+	return []ArtlistClipMatch{{
+		Phrase: "seafood paella shrimp", ClipNames: []string{"foreign paella clip"},
+		ClipDriveLinks: []string{"https://cdn.artlist.example/foreign-paella.m3u8"}, Remote: true,
+	}}, nil
+}
+
+func TestClipSearchProcessorRejectsContaminatedArtlistWinnerBeforeBinding(t *testing.T) {
+	processor := NewClipSearchProcessor(contaminatingArtlistSearcher{})
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+	}}
+	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: mediterraneanArtlistSegments()})
+	if err == nil {
+		t.Fatal("Artlist-only processing accepted a foreign candidate/winner")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "artlist") {
+		t.Fatalf("error = %v, want Artlist isolation context", err)
 	}
 }

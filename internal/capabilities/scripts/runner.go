@@ -229,13 +229,11 @@ type Runner struct {
 	// synchronous publish (backward compat).
 	voiceoverPublishDrainer interface{ Wait() }
 
-	// mediaPreflight runs the fail-fast asset verification in parallel
-	// with Gemma (P0.5). When wired, the preflight verifies clip files,
-	// original audio streams, BGM/SFX assets, Drive folders, and watermark
-	// assets AFTER normalize and concurrently with scene text generation.
-	// Nil means the preflight is skipped (backward compat for tests).
-	// The preflight result is joined after runSceneTextPhase; failures
-	// fail the run before TTS is invoked.
+	// mediaPreflight runs the fail-fast asset verification after normalize
+	// and before scene-text generation (P0.5). When wired, it verifies clip
+	// assets, fixed-media original audio/source windows, BGM/SFX assets,
+	// Drive folders, and watermark assets. Fixed-media requests fail closed
+	// when the preflight is not wired; non-fixed legacy tests may omit it.
 	mediaPreflight MediaPreflight
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch): the editorial/visual decision layer the

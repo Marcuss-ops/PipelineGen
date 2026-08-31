@@ -8,7 +8,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -74,7 +75,28 @@ CREATE TABLE outbox_events (
     updated_at TEXT NOT NULL
 );`
 
-func openAssetLocationCommitterDB(t *testing.T) *sql.DB {
+type testRegistryTxWriter struct{}
+
+func (testRegistryTxWriter) RegisterSourceTx(context.Context, *sql.Tx, mediaregistry.AssetSource) error {
+	return nil
+}
+func (testRegistryTxWriter) LinkContentTx(context.Context, *sql.Tx, string, string) error { return nil }
+func (testRegistryTxWriter) UpsertTaxonomyTx(context.Context, *sql.Tx, mediaregistry.AssetTaxonomy) error {
+	return nil
+}
+func (testRegistryTxWriter) AppendEventTx(context.Context, *sql.Tx, mediaregistry.Event) (int64, error) {
+	return 0, nil
+}
+
+func newTestMediaCommitter(db *sql.DB) *SQLiteMediaCommitter {
+	box := outboxevents.NewRepository(db)
+	return &SQLiteMediaCommitter{
+		db: db, box: box, ledger: testRegistryTxWriter{},
+		assets: NewSQLiteAssetCommitter(db, box, zap.NewNop()),
+	}
+}
+
+func openDriveReconciliationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -99,16 +121,16 @@ func insertAssetLocationTestAsset(t *testing.T, db *sql.DB, id, sourceVersion st
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_AtomicUpdateAndIndexEvent(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_AtomicUpdateAndIndexEvent(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+	committer := newTestMediaCommitter(db)
 
-	err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{
+	err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{{
 		AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "https://drive.google.com/file/d/new-file/view",
 	}})
 	if err != nil {
-		t.Fatalf("CommitAssetLocations: %v", err)
+		t.Fatalf("ReconcileDriveLocations: %v", err)
 	}
 
 	var fileID, link string
@@ -141,8 +163,8 @@ func TestSQLiteAssetLocationCommitter_AtomicUpdateAndIndexEvent(t *testing.T) {
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_ClearsLinkPreservesDriveLocation(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_ClearsLinkPreservesDriveLocation(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
 	if _, err := db.Exec(`UPDATE media_assets SET drive_file_id = '' WHERE id = 'asset-1'`); err != nil {
 		t.Fatal(err)
@@ -150,9 +172,9 @@ func TestSQLiteAssetLocationCommitter_ClearsLinkPreservesDriveLocation(t *testin
 	if _, err := db.Exec(`INSERT INTO asset_locations (asset_id, location_kind, external_id, web_view_link, is_primary) VALUES ('asset-1', 'drive', 'old-file', 'old-link', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
-	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1"}}); err != nil {
-		t.Fatalf("CommitAssetLocations: %v", err)
+	committer := newTestMediaCommitter(db)
+	if err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{{AssetID: "asset-1"}}); err != nil {
+		t.Fatalf("ReconcileDriveLocations: %v", err)
 	}
 	var fileID, link string
 	if err := db.QueryRow(`SELECT drive_file_id, drive_link FROM media_assets WHERE id = 'asset-1'`).Scan(&fileID, &link); err != nil {
@@ -177,12 +199,12 @@ func TestSQLiteAssetLocationCommitter_ClearsLinkPreservesDriveLocation(t *testin
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_RejectsMissingAssetWithoutPartialCommit(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_RejectsMissingAssetWithoutPartialCommit(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+	committer := newTestMediaCommitter(db)
 
-	_, err := committer.CommitAssetLocationsWithResult(context.Background(), []scriptpkg.AssetLocationChange{
+	err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{
 		{AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "new-link"},
 		{AssetID: "missing-asset", DriveFileID: "missing-file", DriveLink: "missing-link"},
 	})
@@ -205,16 +227,16 @@ func TestSQLiteAssetLocationCommitter_RejectsMissingAssetWithoutPartialCommit(t 
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_RollsBackAssetAndOutboxTogether(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_RollsBackAssetAndOutboxTogether(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-a", "hash-a")
 	insertAssetLocationTestAsset(t, db, "asset-b", "")
 	if _, err := db.Exec(`INSERT INTO asset_locations (asset_id, location_kind, external_id, web_view_link, is_primary) VALUES ('asset-a', 'drive', 'old-a', 'old-a-link', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+	committer := newTestMediaCommitter(db)
 
-	err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{
+	err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{
 		{AssetID: "asset-b", DriveFileID: "new-b", DriveLink: "new-b-link"},
 		{AssetID: "asset-a", DriveFileID: "new-a", DriveLink: "new-a-link"},
 	})
@@ -244,15 +266,15 @@ func TestSQLiteAssetLocationCommitter_RollsBackAssetAndOutboxTogether(t *testing
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_DoesNotTreatLinkOnlyAlternateAsUsable(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_DoesNotTreatLinkOnlyAlternateAsUsable(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
 	if _, err := db.Exec(`INSERT INTO asset_locations (asset_id, location_kind, uri, web_view_link, is_primary) VALUES ('asset-1', 'local', '', 'stale-link', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
-	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1"}}); err != nil {
-		t.Fatalf("CommitAssetLocations: %v", err)
+	committer := newTestMediaCommitter(db)
+	if err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{{AssetID: "asset-1"}}); err != nil {
+		t.Fatalf("ReconcileDriveLocations: %v", err)
 	}
 	var lifecycle string
 	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = 'asset-1'`).Scan(&lifecycle); err != nil {
@@ -263,17 +285,17 @@ func TestSQLiteAssetLocationCommitter_DoesNotTreatLinkOnlyAlternateAsUsable(t *t
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_RecognizesVerifiedAlternateLocation(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_RecognizesVerifiedAlternateLocation(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
 	if _, err := db.Exec(`INSERT INTO asset_locations
 		(asset_id, location_kind, uri, legacy_file_md5, file_size_bytes, is_primary)
 		VALUES ('asset-1', 'local', '/data/asset-1.mp4', 'verified-hash', 1024, 1)`); err != nil {
 		t.Fatal(err)
 	}
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
-	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1"}}); err != nil {
-		t.Fatalf("CommitAssetLocations: %v", err)
+	committer := newTestMediaCommitter(db)
+	if err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{{AssetID: "asset-1"}}); err != nil {
+		t.Fatalf("ReconcileDriveLocations: %v", err)
 	}
 	var lifecycle string
 	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = 'asset-1'`).Scan(&lifecycle); err != nil {
@@ -284,14 +306,14 @@ func TestSQLiteAssetLocationCommitter_RecognizesVerifiedAlternateLocation(t *tes
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_PreservesLocalPrimary(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_PreservesLocalPrimary(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
 	if _, err := db.Exec(`INSERT INTO asset_locations (asset_id, location_kind, external_id, is_primary) VALUES ('asset-1', 'local', 'local-file', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
-	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1", DriveFileID: "drive-1", DriveLink: "drive-link"}}); err != nil {
+	committer := newTestMediaCommitter(db)
+	if err := committer.ReconcileDriveLocations(context.Background(), []persistence.DriveLocationPatch{{AssetID: "asset-1", DriveFileID: "drive-1", DriveLink: "drive-link"}}); err != nil {
 		t.Fatal(err)
 	}
 	var drivePrimary, localPrimary int
@@ -306,17 +328,14 @@ func TestSQLiteAssetLocationCommitter_PreservesLocalPrimary(t *testing.T) {
 	}
 }
 
-func TestSQLiteAssetLocationCommitter_RepeatedLocationIsIdempotent(t *testing.T) {
-	db := openAssetLocationCommitterDB(t)
+func TestSQLiteMediaCommitter_ReconcileDriveLocations_RepeatedLocationIsIdempotent(t *testing.T) {
+	db := openDriveReconciliationDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
-	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
-	change := []scriptpkg.AssetLocationChange{{AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "new-link"}}
-	firstResult, err := committer.CommitAssetLocationsWithResult(context.Background(), change)
+	committer := newTestMediaCommitter(db)
+	change := []persistence.DriveLocationPatch{{AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "new-link"}}
+	err := committer.ReconcileDriveLocations(context.Background(), change)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if firstResult.EventsInserted != 1 || firstResult.RowsUpdated != 1 {
-		t.Fatalf("first commit result = %#v, want one event and one updated row", firstResult)
 	}
 	var firstAssetUpdatedAt, firstLocationUpdatedAt string
 	if err := db.QueryRow(`SELECT updated_at FROM media_assets WHERE id = 'asset-1'`).Scan(&firstAssetUpdatedAt); err != nil {
@@ -329,12 +348,9 @@ func TestSQLiteAssetLocationCommitter_RepeatedLocationIsIdempotent(t *testing.T)
 		t.Fatal("first commit must stamp both asset and Drive location timestamps")
 	}
 
-	secondResult, err := committer.CommitAssetLocationsWithResult(context.Background(), change)
+	err = committer.ReconcileDriveLocations(context.Background(), change)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if secondResult.EventsInserted != 0 || secondResult.RowsUpdated != 0 {
-		t.Fatalf("idempotent replay result = %#v, want zero events and rows", secondResult)
 	}
 	var secondAssetUpdatedAt, secondLocationUpdatedAt string
 	if err := db.QueryRow(`SELECT updated_at FROM media_assets WHERE id = 'asset-1'`).Scan(&secondAssetUpdatedAt); err != nil {
@@ -357,8 +373,8 @@ func TestSQLiteAssetLocationCommitter_RepeatedLocationIsIdempotent(t *testing.T)
 	}
 }
 
-func TestNormalizeAssetLocationChanges_RejectsConflicts(t *testing.T) {
-	_, err := normalizeAssetLocationChanges([]scriptpkg.AssetLocationChange{
+func TestNormalizeDriveLocationPatches_RejectsConflicts(t *testing.T) {
+	_, err := normalizeDriveLocationPatches([]persistence.DriveLocationPatch{
 		{AssetID: "asset-1", DriveFileID: "a"},
 		{AssetID: "asset-1", DriveFileID: "b"},
 	})

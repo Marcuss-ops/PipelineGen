@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 	"go.uber.org/zap"
 )
@@ -44,22 +43,17 @@ func RunPerformanceBackfill(args []string) error {
 	}
 	defer cleanup()
 
-	jobsDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	dbSet, err := cli.OpenDatabaseSet(cfg, log)
 	if err != nil {
-		return fmt.Errorf("open primary database: %w", err)
+		return fmt.Errorf("open database set: %w", err)
 	}
-	defer jobsDB.Close()
-	obsDB, err := storage.OpenSQLiteDB(cfg.Storage.ObservabilityDBFullPath(), log)
-	if err != nil {
-		return fmt.Errorf("open observability database: %w", err)
-	}
-	defer obsDB.Close()
+	defer dbSet.Close()
 
-	src, err := perfstore.NewSource(jobsDB.DB, obsDB.DB)
+	src, err := perfstore.NewSource(dbSet.Primary.DB, dbSet.Observability.DB)
 	if err != nil {
 		return err
 	}
-	reg, err := perfstore.New(jobsDB.DB)
+	reg, err := perfstore.New(dbSet.Primary.DB)
 	if err != nil {
 		return err
 	}
@@ -80,7 +74,7 @@ func RunPerformanceBackfill(args []string) error {
 		query += " LIMIT ?"
 		queryArgs = append(queryArgs, *limit)
 	}
-	rows, err := jobsDB.DB.QueryContext(ctx, query, queryArgs...)
+	rows, err := dbSet.Primary.DB.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return fmt.Errorf("select jobs for performance backfill: %w", err)
 	}
