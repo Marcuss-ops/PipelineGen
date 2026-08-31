@@ -281,7 +281,6 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		if req.Source.Type == SourceClips && req.Render.Enabled {
 			result.ExpectedRenderCount = len(scenes)
-			result.FinalVideoRequired = req.Render.AssembleFinal
 			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: req.Render.RenderConcurrency}
 		}
 		// Explicit clip workflows may request real video reconstruction without

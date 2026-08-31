@@ -364,18 +364,6 @@ func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 	}
 }
 
-func (r *Runner) SetFinalVideoAssembler(assembler FinalVideoAssembler) {
-	if r != nil {
-		r.finalVideoAssembler = assembler
-	}
-}
-
-func (r *Runner) SetFinalVideoPublisher(publisher FinalVideoPublisher) {
-	if r != nil {
-		r.finalVideoPublisher = publisher
-	}
-}
-
 // SetScriptPersistence wires the canonical SQLite script-row writer. The
 // runner invokes it only when GenerateRequest.SaveToDB is true.
 func (r *Runner) SetScriptPersistence(persistence ScriptPersistence) {

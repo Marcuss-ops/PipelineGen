@@ -106,7 +106,6 @@
         "voiceover_enabled": false,
         "render": {
           "enabled": true,
-          "assemble_final": false,
           "render_concurrency": 4,
           "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
           "drive_subfolder_name": "matt-damon-20-clips-funny-en-render",

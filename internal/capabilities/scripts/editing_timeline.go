@@ -60,7 +60,7 @@ type EditingSceneSpan struct {
 // combined timeline. StartUS/EndUS come from the same certified surfaces
 // as the OverlayPlan items.
 //
-// The span also carries the artifact lineage that proves the final video
+// The span also carries the artifact lineage that proves the composed
 // contains THIS overlay: the overlay.render queue job id, the frozen plan
 // fingerprint, the item's render key, and the source video asset the overlay
 // is composited over. Downstream editing reads this block (never a second

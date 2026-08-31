@@ -51,7 +51,7 @@
       "generate_timeline": true,
       "save_to_db": false,
       "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
-      "render": {"enabled": false, "assemble_final": false}
+      "render": {"enabled": false}
       },
       "docs": {"enabled": true, "languages": ["en"], "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"},
       "audio": {"mode": "CHUNKED_VOICEOVER", "mix_policy": "VOICEOVER_ONLY"}

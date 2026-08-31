@@ -135,8 +135,6 @@ type Runner struct {
 	documentRenderer      DocumentRenderer
 	combinedAudioRenderer CombinedAudioRenderer
 	finalAudioPublisher   FinalAudioPublisher
-	finalVideoAssembler   FinalVideoAssembler
-	finalVideoPublisher   FinalVideoPublisher
 	// audioAssetSource turns the run's BGM/SFX asset_ids into verified
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that

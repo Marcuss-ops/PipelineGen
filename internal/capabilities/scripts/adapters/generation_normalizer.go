@@ -88,12 +88,39 @@ func NormalizeItem(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset, cf
 
 	// ── Step 1: preset overrides ───────────────────────────────────
 	ApplyPreset(item, preset)
+	applyMediaDensity(&item.ScriptParams)
 
 	// ── Step 2: config defaults ────────────────────────────────────
 	applyConfigDefaults(item, cfg)
 
 	// ── Step 3: safety defaults ────────────────────────────────────
 	applySafetyDefaults(item, cfg)
+}
+
+// applyMediaDensity expands the operator-facing cadence preset into the
+// canonical numeric knobs. Explicit numeric values win independently, so a
+// caller can select a preset and override only one side of the cadence.
+func applyMediaDensity(spec *scriptpkg.ScriptSpec) {
+	if spec == nil {
+		return
+	}
+	var sentences, images int
+	switch strings.ToLower(strings.TrimSpace(spec.MediaDensity)) {
+	case "sparse":
+		sentences, images = 12, 1
+	case "balanced":
+		sentences, images = 8, 2
+	case "dense":
+		sentences, images = 4, 2
+	default:
+		return
+	}
+	if spec.SentencesPerImage <= 0 {
+		spec.SentencesPerImage = sentences
+	}
+	if spec.ImagesPerScene <= 0 {
+		spec.ImagesPerScene = images
+	}
 }
 
 // NormalizeEnvelope applies NormalizeItem to every item in the

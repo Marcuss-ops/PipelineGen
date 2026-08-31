@@ -136,9 +136,8 @@ type GenerateResult struct {
 
 	// LocalizedRenders are the certified produced videos of the localized
 	// render fan-out: one entry per successfully rendered + uploaded video
-	// with its asset id, sha256, and Drive identity. A run that rendered a
-	// final MP4 must prove it — the produced video is never orphaned from
-	// the run result. Nil when the fan-out produced no certified video.
+	// with its asset id, sha256, and Drive identity. Nil when the fan-out
+	// produced no certified video.
 	LocalizedRenders []LocalizedRenderResult `json:"localized_renders,omitempty"`
 	// LocalizedRenderStaged contains locally certified RENDERED artifacts
 	// whose Drive publication has not yet been confirmed. It is the durable
@@ -148,22 +147,11 @@ type GenerateResult struct {
 	LocalizedRenderFailures []LocalizedRenderFailure `json:"localized_render_failures,omitempty"`
 	RenderMetrics           *RenderMetrics           `json:"render_metrics,omitempty"`
 	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`
-	FinalVideoRequired      bool                     `json:"final_video_required,omitempty"`
-	FinalVideo              *FinalVideoReference     `json:"final_video,omitempty"`
 
 	// AudioPrefetch carries pre-resolved audio assets (BGM/SFX paths +
 	// clip audio materialization) populated by the P1.1 prefetch goroutine
 	// during TTS. Nil means prefetch was not needed or not wired.
 	AudioPrefetch *AudioPrefetchResult `json:"-"`
-}
-
-type FinalVideoReference struct {
-	LocalPath   string `json:"local_path,omitempty"`
-	SizeBytes   int64  `json:"size_bytes,omitempty"`
-	AssetID     string `json:"asset_id,omitempty"`
-	SHA256      string `json:"sha256,omitempty"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
 }
 
 type RenderMetrics struct {

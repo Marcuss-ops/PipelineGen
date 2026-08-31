@@ -370,17 +370,11 @@ func (e *executionRun) audioCompile() bool {
 	})
 }
 
-// persist stores the canonical script only. Full-video assembly/rendering is
-// worker-owned and is deliberately forbidden on the PipelineGen master. The
-// master may still produce localized clips, sub-videos and overlay artifacts;
-// any assemble_final request remains part of the downstream render handoff but
-// never causes a local final-video render, concat or upload here.
+// persist stores the canonical script only. The script-generation runtime
+// produces localized clip artifacts; complete-video assembly is outside this
+// capability and is not part of the script.generate contract.
 func (e *executionRun) persist() bool {
 	return e.measure(kernobs.StageName(stagePersistence), func(c context.Context) bool {
-		if e.result != nil {
-			e.result.FinalVideoRequired = false
-			e.result.FinalVideo = nil
-		}
 		e.checkpoint()
 		return e.r.persistScript(c, e.runID, e.req, e.exec, e.resumeIdx, e.result)
 	})

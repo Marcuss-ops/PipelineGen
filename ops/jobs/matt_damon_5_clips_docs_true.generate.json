@@ -64,7 +64,6 @@
         "voiceover_enabled": true,
         "render": {
           "enabled": true,
-          "assemble_final": false,
           "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
           "drive_subfolder_name": "matt-damon-5-clips-docs-true",
           "watermark": {"enabled": true, "text": "MATT DAMON", "position": "top_right", "opacity": 1},
