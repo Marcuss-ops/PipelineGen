@@ -171,7 +171,7 @@ func sha256Hex(seed string) string {
 func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_abc123_10_60_v1"
 	item := youtubetypes.ClipAsset{
@@ -286,7 +286,7 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_idem_001_5_30_v1"
 	fileHash := sha256Hex("idem-content")
@@ -344,7 +344,7 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_supersede_001_10_60_v1"
 	itemA := youtubetypes.ClipAsset{
@@ -416,7 +416,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_terminal_001_10_60_v1"
 	fileHash := sha256Hex("terminal-conflict-content")
@@ -516,7 +516,7 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 	// posture is "no panic + wrapped error"; both are asserted.
 	require.NoError(t, dbWriter.Close(), "precondition: writer DB must close cleanly")
 
-	adapter := NewClipAtomicWriterAdapter(dbWriter, box, nil)
+	adapter := NewSQLiteMediaCommitter(dbWriter, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_closed_db_001_10_60_v1"
 	item := youtubetypes.ClipAsset{
@@ -556,7 +556,7 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	atomicWriter := NewClipAtomicWriterAdapter(db, box, nil)
+	atomicWriter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 	metaWriter := NewClipMetadataWriterAdapter(db, box, nil)
 
 	const clipID = "yt_vdC5GXxS-qU_146_155_v1"
@@ -693,7 +693,7 @@ func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
 func TestClipMetadataWriter_MetadataJSON_AllRequiredFields(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	atomicWriter := NewClipAtomicWriterAdapter(db, box, nil)
+	atomicWriter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 	metaWriter := NewClipMetadataWriterAdapter(db, box, nil)
 
 	const clipID = "yt_audit_shortlist_146_155_v1"

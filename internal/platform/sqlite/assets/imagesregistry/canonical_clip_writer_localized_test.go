@@ -264,7 +264,7 @@ func makeTrackForTest(clipID, lang, content string, kind detail.TextTrackKind, s
 func TestCommitClipTextAndIndexEvent_HappyPath(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_happy_001_10_60_v1"
 	fileHash := sha256Hex("localized-happy-path")
@@ -365,7 +365,7 @@ func TestCommitClipTextAndIndexEvent_HappyPath(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_RollbackOnBadCue(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_rollback_badcue_001_10_60_v1"
 	fileHash := sha256Hex("localized-rollback-badcue")
@@ -427,7 +427,7 @@ func TestCommitClipTextAndIndexEvent_RollbackOnBadCue(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_LocaleNotReady(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_notready_001_10_60_v1"
 	fileHash := sha256Hex("localized-notready")
@@ -484,7 +484,7 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_LocaleNotReady_MissingLang(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_missinglang_001_10_60_v1"
 	fileHash := sha256Hex("localized-missinglang")
@@ -527,7 +527,7 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady_MissingLang(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_IdempotentOnReplay(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_idem_001_10_60_v1"
 	fileHash := sha256Hex("localized-idem-content")
@@ -613,7 +613,7 @@ func TestCommitClipTextAndIndexEvent_IdempotentOnReplay(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_orphan_001_10_60_v1"
 	fileHash := sha256Hex("localized-orphan")
@@ -677,7 +677,7 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	db := newLocalizedWriterDB(t)
 	box := outboxevents.NewRepository(db)
-	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+	adapter := NewSQLiteMediaCommitter(db, box, testRegistryTxWriter{}, nil)
 
 	const clipID = "yt_localized_supersede_001_10_60_v1"
 	fileHashA := sha256Hex("localized-supersede-content-A")

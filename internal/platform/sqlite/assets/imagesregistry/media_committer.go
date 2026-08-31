@@ -96,6 +96,14 @@ func NewSQLiteMediaCommitter(db *sql.DB, box *outboxevents.Repository, ledger Re
 // Compile-time assertion.
 var _ mediacommit.MediaCommitter = (*SQLiteMediaCommitter)(nil)
 
+// DB returns the underlying *sql.DB handle. Exposed so the wiring layer
+// can open caller-owned transactions for legacy port adapters that need
+// a tx-bound folder-path or cue-repair mutation.
+func (c *SQLiteMediaCommitter) DB() *sql.DB { return c.db }
+
+// OutboxRepo returns the canonical outbox events repository.
+func (c *SQLiteMediaCommitter) OutboxRepo() *outboxevents.Repository { return c.box }
+
 // CommitMediaAsset opens a fresh transaction, runs the 8-step canonical
 // commit, and commits atomically.
 func (c *SQLiteMediaCommitter) CommitMediaAsset(ctx context.Context, req mediacommit.CommitMediaAssetRequest) (mediacommit.CommitMediaAssetResult, error) {

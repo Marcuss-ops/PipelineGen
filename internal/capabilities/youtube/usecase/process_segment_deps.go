@@ -328,7 +328,7 @@ func ValidateProcessSegmentSubBundles(
 	// LocalizedWriter. Composition MUST wire it (paths that don't
 	// will silently take the legacy downgrade).
 	if core.Writer == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
+		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire SQLiteMediaCommitter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
 	}
 	if core.SegmentsSvc == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: SegmentsSvc port is required (composition must construct *SegmentsService via youtube.NewSegmentsService())")

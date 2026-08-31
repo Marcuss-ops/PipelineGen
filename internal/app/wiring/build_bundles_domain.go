@@ -38,12 +38,12 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	bundle := &DomainBundle{}
 
 	// ── Media domain: YouTube clip pipeline ──────────────────
-	voMetaWriter, clipWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)
+	voMetaWriter, clipWriter, folderPathWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains (media): %w", err)
 	}
 	bundle.CueWriter = clipWriter
-	bundle.FolderPathWriter = clipWriter
+	bundle.FolderPathWriter = folderPathWriter
 
 	// ── Assets domain: voiceover, books, ingest, images, lessons ──
 	if err := buildDomainAssetServices(buildDomainAssetServicesParams{
