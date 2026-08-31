@@ -14,12 +14,6 @@
 smoke-pipeline:
 	@bash tests/operational/fase_b_clip_pipeline_smoke.sh
 
-# Automatic operational pipeline for script.generate.
-# Flow: build → test → controlled restart → readiness probe → smoke test.
-# No manual server restart is required. The server is torn down on exit.
-operate-script-generate:
-	@bash scripts/operate_script_generate.sh
-
 # Aggregate: every smoke script (no --dry). Use this for the full operational
 # gate; returns non-zero if ANY script exits non-zero.
 smoke-run-all:

@@ -33,9 +33,9 @@ import (
 //     to 'verify' silently; we fail-closed to surface typos)
 //   - parallelism: in [1, 16] (TTS fan-out cap; godlike/07 no-overflow)
 //
-// Idempotency contract: X-Request-ID = MD5(itemID|locale|voice). Matches
-// tests/operational/remote-generate/test_remote_generate_voiceover.sh (LC_ALL=C enforced) so the
-// two tools collide on the same logical key for the same logical inputs.
+// Idempotency contract: X-Request-ID = MD5(itemID|locale|voice), with
+// LC_ALL=C byte order enforced so the hash is locale-independent and
+// collides with the server-side dedup for the same logical inputs.
 // See voiceover/types.go::parentActiveKey for the server-side ActiveKey
 // fingerprint (SHA256 covering Text + Languages + Destination.FolderID
 // + Project) — the worker derives X-Request-ID from logical inputs;
