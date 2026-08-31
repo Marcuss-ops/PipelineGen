@@ -1,19 +1,7 @@
 // Package assets — images_repository.go: canonical ImagesRepository surface.
 //
-// PR-IMAGES-REPO-SPLIT (July 2026): decomposed the original 738-LoC
-// monolithic images_repository.go into 4 single-purpose files per
-// AGENTS.md Pattern 5:
-//
-//   - images_repository.go           — slim orchestrator: struct +
-//     constructor + DB() +
-//     normalizeTags + scanImageAssetFromRow
-//   - images_repository_crud.go      — CRUD operations: AddImage, GetByID,
-//     GetByHash, Delete, Upsert*, Update*,
-//     GetSubjectBySlugOrAlias, etc.
-//   - images_repository_search.go    — search/list: ListImagesBySubject
-//     (deprecated) + ListImages (FASE 6)
-//   - images_repository_aggregate.go — aggregate: ListImagesByOrigin +
-//     ListAll + limit constants
+// The repository owns image reads and typed detail-table persistence. The
+// media_assets row itself is written only through the canonical asset writer.
 package imagesrepo
 
 import (
@@ -23,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -31,11 +20,12 @@ import (
 type ImagesRepository struct {
 	db              *sql.DB
 	canonicalCommit ImageCommitFunc
+	canonicalMutate persistence.AssetMutator
 }
 
-// ImageCommitFunc is the composition-root supplied canonical write path.
-// ImagesRepository keeps this narrow callback to avoid importing application
-// contracts into the infrastructure package.
+// ImageCommitFunc is the composition-root supplied canonical write path for a
+// new/updated image asset. It ultimately delegates to the one production
+// CanonicalAssetWriter.
 type ImageCommitFunc func(context.Context, *detail.ImageAsset) (int64, error)
 
 // NewImagesRepository constructs the canonical repository.
@@ -49,12 +39,20 @@ func (r *ImagesRepository) SetCanonicalCommitter(commit ImageCommitFunc) {
 	}
 }
 
-// DB returns the underlying database connection.
+// SetCanonicalMutator supplies the mutation view of the same production
+// canonical writer used by SetCanonicalCommitter. Repository methods fail
+// closed when it is absent; no direct media_assets SQL fallback remains.
+func (r *ImagesRepository) SetCanonicalMutator(mutator persistence.AssetMutator) {
+	if r != nil {
+		r.canonicalMutate = mutator
+	}
+}
+
+// DB returns the underlying database connection. It is retained for the
+// image-specific detail tables and read queries, not for media_assets writes.
 func (r *ImagesRepository) DB() *sql.DB {
 	return r.db
 }
-
-// ── Shared helpers ──────────────────────────────────────────────────────────
 
 // normalizeTags converte una lista di tag in una stringa normalizzata per ricerca full-text.
 func normalizeTags(tags []string) string {
@@ -65,7 +63,6 @@ func normalizeTags(tags []string) string {
 			continue
 		}
 		low := strings.ToLower(t)
-		// rimuovi accenti/base
 		low = strings.NewReplacer(
 			"Ã ", "a", "Ã¨", "e", "Ã©", "e", "Ã¬", "i", "Ã²", "o", "Ã¹", "u",
 		).Replace(low)
@@ -77,25 +74,8 @@ func normalizeTags(tags []string) string {
 	return b.String()
 }
 
-// scanImageAssetFromRow is the canonical (godlike/06 SSOT) helper that
-// scans a single image row into *detail.ImageAsset. Replaces the
-// pre-B6 byte-equivalent duplication between scanImageAsset
-// (*sql.Row-shaped) and scanImageAssetRows (Rows-shaped). Both old
-// helpers are gone; this single typed-(structural-interface) helper
-// covers every caller because both *sql.Row.Scan(...) and
-// *sql.Rows.Scan(...) satisfy `interface{ Scan(dest ...any) error }`.
-//
-// FASE 1B reads origin and provider as first-class columns (added by
-// migration 115), surfacing them on ImageAsset.Origin / .Provider for
-// downstream ImageSearchResolver routing (FASE 6).
-//
-// Column projection MUST match the SELECT in:
-//   - GetImageByHash, GetByID, GetByDriveFileID (Row path, images_repository_crud.go)
-//   - ListImagesBySubject, ListAll (Rows path, images_repository_search.go / _aggregate.go)
-//
-// B6 SSOT refactor (PR-IMAGES-AI-VS-NORMAL-PLAN, July 2026). Property
-// tests in images_repository_test.go assert byte-equivalence across
-// *sql.Row and *sql.Rows paths.
+// scanImageAssetFromRow is the canonical helper that scans a single image row
+// into *detail.ImageAsset. Both *sql.Row and *sql.Rows satisfy its Scan shape.
 func scanImageAssetFromRow(s interface {
 	Scan(dest ...any) error
 }) (*detail.ImageAsset, error) {
@@ -106,9 +86,6 @@ func scanImageAssetFromRow(s interface {
 	var fileHash, localPath, driveFileID sql.NullString
 
 	err := s.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &driveLink, &origin, &provider)
-	// A lookup miss is a normal dedupe result. Row-based callers use this
-	// scanner for FindExisting; leaking sql.ErrNoRows turns a first-time
-	// image ingest into a spurious finalization failure.
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -139,7 +116,6 @@ func scanImageAssetFromRow(s interface {
 		img.MetadataJSON = metaJSON.String
 		var metaMap map[string]any
 		_ = json.Unmarshal([]byte(metaJSON.String), &metaMap)
-
 		if v, ok := metaMap["subject_id"].(string); ok {
 			img.SubjectID = v
 		}
