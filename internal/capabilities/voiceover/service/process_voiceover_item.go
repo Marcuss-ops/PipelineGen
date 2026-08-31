@@ -171,7 +171,7 @@ type ProcessVoiceoverOutputDeps struct {
 
 // ProcessVoiceoverItemUseCase is the canonical per-item voiceover
 // orchestrator. The 7-port typed dep surface keeps the use case free
-// of any internal/infrastructure/* import (Pattern 0, June 2026) —
+// of any internal/platform/* import (Pattern 0, June 2026) —
 // the composition root satisfies each port by structural conformance
 // (Go's implicit-interface rules). The compile-time assertion at the
 // bottom of this file pins the narrow VoiceoverItemExecutor interface

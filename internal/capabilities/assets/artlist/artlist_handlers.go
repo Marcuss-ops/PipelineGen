@@ -23,7 +23,7 @@ import (
 )
 
 // ClipResolverPort is a local interface replacing the removed
-// clipresolver.Service (package internal/application/assets/clipresolver).
+// clipresolver.Service (package internal/capabilities/assets/clipresolver).
 type ClipResolverPort interface {
 	Recommend(ctx context.Context, req *ClipResolverRecommendRequest) (*ClipResolverRecommendResponse, error)
 }

@@ -14,7 +14,7 @@
 // Commit H Phase 2 (June 2026) + P0 #2 audit closure (July 2026): the
 // durable channel-sync method + the job-type binding were both removed.
 // The TypeYouTubeChannelSync constant + alias have been retired
-// entirely from internal/domain/job/job.go + internal/capabilities/jobs/queue/
+// entirely from internal/kernel/job/job.go + internal/capabilities/jobs/queue/
 // registry.go (P0 #2 audit, see architecture/issues.yaml#
 // PR-RETIRE-DORMANT-TYPEYOUTUBECHANNELSYNC). The canonical scheduler
 // uses the channels_service + monitor.tick path (see scheduler.go)

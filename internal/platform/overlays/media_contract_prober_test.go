@@ -43,8 +43,10 @@ func TestMediaContractProber_MapsProbeFactsAndHashesFile(t *testing.T) {
 		VideoStreamCount: 1,
 		StreamCount:      1,
 		AudioStreamCount: 0,
-		FPSNum:           30,
-		FPSDen:           1,
+		// Match the canonical assembly V2 contract (24/1) so the probed
+		// facts satisfy DefaultOverlayContractV1's exact FPS validation.
+		FPSNum: 24,
+		FPSDen: 1,
 	}}
 	p := NewMediaContractProber(proc)
 	got, err := p.ProbeOverlay(context.Background(), path)
@@ -60,7 +62,7 @@ func TestMediaContractProber_MapsProbeFactsAndHashesFile(t *testing.T) {
 		t.Fatalf("SizeBytes = %d, want %d", got.SizeBytes, len(payload))
 	}
 	if got.Width != 1920 || got.Height != 1080 || got.DurationUS != 5_000_000 ||
-		got.FPSNum != 30 || got.FPSDen != 1 || got.AudioStreams != 0 ||
+		got.FPSNum != 24 || got.FPSDen != 1 || got.AudioStreams != 0 ||
 		got.Codec != "prores" || got.PixelFormat != "yuva444p" ||
 		got.Container != "mov,mp4,m4a,3gp,3g2,mj2" {
 		t.Fatalf("unexpected probe result: %+v", got)

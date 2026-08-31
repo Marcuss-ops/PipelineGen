@@ -2,7 +2,7 @@
 // system module's /system + /drive routes.
 //
 // Wave 14 close (June 2026): the system Module absorbed the
-// standalone internal/api/drive/handler.go as a second receiver
+// standalone internal/platform/drive/handler.go as a second receiver
 // (DriveHandler). The system Module now mounts two sub-groups
 // sharing the same protected router group:
 //
@@ -20,7 +20,7 @@
 // the three concrete infrastructure deps (`*config.Config`,
 // `*drive.Uploader`, `Reconciler`) and now relies on
 // the typed port surface (DoctorConfig + Reconciler + DriveAdminOps)
-// wired at the composition root. No more `internal/infrastructure/*`
+// wired at the composition root. No more `internal/platform/*`
 // imports in the api/system subtree (AGENTS.md Pattern 8).
 package system
 

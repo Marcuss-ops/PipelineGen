@@ -219,7 +219,7 @@ func (r *RateLimitMiddleware) Stop() {
 //
 // PG-006 (June 2026): the previous signature took *config.Config. The
 // middleware now consumes middleware.RateLimitPort (defined in
-// internal/application/middleware/ports.go). Concrete adapter lives
+// internal/capabilities/middleware/ports.go). Concrete adapter lives
 // at internal/app/middleware_security_adapter.go. The returned
 // RateLimitMiddleware must have its Stop() method called during
 // server shutdown to prevent goroutine leaks.

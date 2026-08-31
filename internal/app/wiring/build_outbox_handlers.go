@@ -53,7 +53,7 @@ func buildOutboxDeps(
 	log *zap.Logger,
 ) (*jobsoutbox.Deps, outboxevents.Handler) {
 	// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the outbox http.Client
-	// construction through internal/infrastructure/httpclient.NewDefaultClient
+	// construction through internal/platform/httpclient.NewDefaultClient
 	// (the canonical owner of *http.Client construction for the application
 	// port surface). The result satisfies ports.Client, which is the
 	// field type of InfraDeps.HTTPClient (consumed by the DeliveryHandler).

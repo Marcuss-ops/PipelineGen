@@ -97,13 +97,13 @@ var allowedMetadataKeys = []MetadataKeySpec{
 	},
 	{
 		Key:   "youtube.channel_id",
-		Owner: "internal/application/youtube/",
+		Owner: "internal/capabilities/youtube/",
 		Type:  "string",
 		Doc:   "Canonical YouTube channel ID \u2014 the {channel_id} segment of https://www.youtube.com/channel/{channel_id}.",
 	},
 	{
 		Key:   "youtube.video_id",
-		Owner: "internal/application/youtube/",
+		Owner: "internal/capabilities/youtube/",
 		Type:  "string",
 		Doc:   "Canonical YouTube video ID \u2014 the {video_id} segment of https://youtu.be/{video_id}.",
 	},

@@ -143,8 +143,8 @@ type DeletionService struct {
 	// the Blocco 3.1 commit 4/3 (June 2026) forward-pointer that this
 	// commit resolves. The composition-root wire sites
 	// (internal/app/wire_assets.go, internal/app/build_bundles_maint.go)
-	// + the test fixtures (internal/application/assets/maintenance/
-	// service_test.go, internal/application/assets/deletion/deletion_test.go)
+	// + the test fixtures (internal/capabilities/assets/maintenance/
+	// service_test.go, internal/capabilities/assets/deletion/deletion_test.go)
 	// have been updated to drop the corresponding ctor argument.
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service

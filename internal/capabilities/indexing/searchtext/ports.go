@@ -7,7 +7,7 @@
 // clip indexer) depend on the contract, not on concrete strategies.
 //
 // The concrete registry + per-source strategies live in
-// internal/infrastructure/indexing/searchtext/. A compile-time assertion
+// internal/capabilities/indexing/searchtext/. A compile-time assertion
 // there locks the port-implementation contract.
 package indexing
 

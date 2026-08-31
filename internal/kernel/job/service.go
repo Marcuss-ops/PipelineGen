@@ -1,13 +1,13 @@
 // Package job — kernel canonical Service interface + EnqueueRequest.
 //
-// Phase A.2 (June 2026): migrated from internal/domain/job/. The
+// Phase A.2 (June 2026): migrated from internal/kernel/job/. The
 // domain package re-exports as `type Service = kerneljob.Service`
 // and `type EnqueueRequest = kerneljob.EnqueueRequest` (aliases,
 // transparent at the call-site).
 //
 // Per godlike/02 kernel rules: interface-signature references (Job,
 // Event, Filter, Status) are intra-package — kernel does NOT import
-// internal/domain/job/ to satisfy this interface.
+// internal/kernel/job/ to satisfy this interface.
 package job
 
 import "context"

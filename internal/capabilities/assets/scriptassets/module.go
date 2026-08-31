@@ -38,7 +38,7 @@ import (
 // reconciliation) land here when needed. Per AGENTS.md **Modular edit
 // patterns** §Pattern 0 (Port abstraction layer), new dependencies
 // are added via the typed-port convention used elsewhere in
-// internal/application/.
+// internal/capabilities/.
 type Dependencies struct {
 	// Logger is the canonical structured logger. nil at composition
 	// is replaced with zap.NewNop() so wiring sites do not need a

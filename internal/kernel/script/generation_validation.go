@@ -164,8 +164,15 @@ func validateFixedSections(item GenerationItemV2, ref string) []string {
 		if sec == nil {
 			continue
 		}
-		if err := ValidateSpeakableText(sec.Text); err != nil {
-			d = append(d, ref+": "+pair.name+".text "+err.Error())
+		// DisplayText is visual/document metadata, not narration. Only the
+		// legacy Text alias retains the old speakable-text validation.
+		if strings.TrimSpace(sec.DisplayText) == "" && strings.TrimSpace(sec.Text) != "" {
+			if err := ValidateSpeakableText(sec.Text); err != nil {
+				d = append(d, ref+": "+pair.name+".text "+err.Error())
+			}
+		}
+		if !sec.NormalizedPlayback().Valid() {
+			d = append(d, ref+": "+pair.name+".playback must use audio_mode=original_clip with a valid source window")
 		}
 		ids := sec.NormalizedClipIDs()
 		if len(ids) == 0 {

@@ -1,5 +1,5 @@
 // Package adapters — metadata_generator.go bridges the application-layer
-// MetadataGenerator port (internal/application/scripts/adapters) with the
+// MetadataGenerator port (internal/capabilities/scripts/adapters) with the
 // real ollama.Generator video metadata generation backend.
 //
 // PR-METADATA-GENERATOR-WIRING (July 2026): the V2 postprocessor pipeline

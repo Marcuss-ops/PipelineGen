@@ -2,7 +2,7 @@
 // (FASE 8 image-territories migration, July 2026).
 //
 // The real StyleRegistry implementation was moved here from
-// internal/application/assets/generation/style_registry.go to break
+// internal/capabilities/assets/generation/style_registry.go to break
 // the styles → generation import cycle. generation/ now imports this
 // package and uses Go type aliases for back-compat.
 //

@@ -23,7 +23,7 @@ import (
 // godlike/06 SSOT one-canonical-owner-per-fact: this method is the
 // canonical SOLE application-layer entry point for the generated
 // territory read seam. The handler at
-// internal/api/images/generated_search_handler.go::GeneratedSearch
+// internal/capabilities/images/generated_search_handler.go::GeneratedSearch
 // routes through here; the port interface GeneratedSearchServicePort
 // at internal/capabilities/images/workflow/generated/generated_search.go is the
 // structural contract (parent *ImageStorageService satisfies it

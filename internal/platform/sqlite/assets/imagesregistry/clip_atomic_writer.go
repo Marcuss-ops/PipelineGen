@@ -3,7 +3,7 @@
 // interface.
 //
 // Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the canonical
-// ProcessYouTubeSegmentUseCase (internal/application/youtube/usecase/
+// ProcessYouTubeSegmentUseCase (internal/capabilities/youtube/usecase/
 // process_segment.go) calls the atomic writer at Step 9 as its
 // terminal step. Before Commit 1 the adapter was unbound — the use
 // case's nil-port path silently produced `out.Status = "processed"`

@@ -79,7 +79,7 @@ type BindingServicePort interface {
 // service is reported as 501 by its route handler.
 //
 // godlike/06 SSOT (canonical logger seam): the API handler layer
-// uses ONLY a *zap.Logger (mirrors internal/api/mediasearch).
+// uses ONLY a *zap.Logger (mirrors internal/capabilities/mediasearch).
 // Logger belongs to the application layer; the handler
 // does NOT re-export it (no double logger seam).
 type WireParams struct {
@@ -133,7 +133,7 @@ func (h *Handler) safeError(msg string, fields ...zap.Field) {
 // RegisterRoutes mounts the canonical mediamemory surface under
 // /api/media-memory. Authorization + workspace-scope middleware
 // MUST be applied upstream (composition root owns that decision,
-// parallel to internal/api/mediasearch::RegisterRoutes).
+// parallel to internal/capabilities/mediasearch::RegisterRoutes).
 //
 // Live routes:
 //

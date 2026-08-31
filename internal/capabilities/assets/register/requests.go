@@ -44,7 +44,7 @@ type RegisterFromYouTubeRequest struct {
 	Group           string   `json:"group"`
 	// Location (SEMANTIC-LOCATION-API-2026-07-06 Wave 6) is the
 	// canonical semantic-location DTO (godlike/06 SSOT owner:
-	// internal/domain/delivery/location.go). When non-empty, the
+	// internal/kernel/delivery/location.go). When non-empty, the
 	// service-layer LocationResolver port (forward-pointer to Wave
 	// 7) is intended to resolve this into a concrete FolderID. Today
 	// only the typed contract is accepted at the handler seam; the

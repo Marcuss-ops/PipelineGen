@@ -9,8 +9,8 @@
 //
 // Production code MUST NOT import this package — see purge_ports.go
 // package doc for the rationale. The CI lint
-// scripts/ci-architectural-checks.sh bans `internal/application/**`
-// and `internal/api/**` from importing this path.
+// scripts/ci-architectural-checks.sh bans `internal/capabilities/**`
+// and `internal/capabilities/**` from importing this path.
 package admin
 
 import (

@@ -17,7 +17,7 @@ import (
 // unwritten (transport.ErrCollectionNotFound from the client is swallowed).
 // diff is nil only if target == "".
 func (cm *CollectionManager) InspectRuntime(ctx context.Context) (target string, diff *schema.SchemaDiff, err error) {
-	target, err = cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	target, err = cm.client.ResolveRuntimeCollection(ctx, cm.schema.RuntimeAlias)
 	if err != nil {
 		if _, ok := err.(*transport.ErrCollectionNotFound); ok {
 			return "", nil, nil

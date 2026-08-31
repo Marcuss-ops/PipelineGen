@@ -44,9 +44,15 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 				break
 			}
 		}
-		ds := domain.SpecScene{ID: scene.ID, Index: scene.Index, Text: text, Kind: sceneKind(scene)}
+		ds := domain.SpecScene{ID: scene.ID, Index: scene.Index, Text: text, Kind: sceneKind(scene), ExecutionMode: scene.ExecutionMode, FixedPlayback: cloneFixedPlayback(scene.FixedPlayback)}
 		ds.AudioMode = string(scene.Audio.Mode)
 		ds.AudioAssetID = scene.Audio.ClipAssetID
+		if scene.FixedPlayback != nil {
+			ds.AudioMode = "CLIP_AUDIO"
+			ds.AudioAssetID = scene.Audio.ClipAssetID
+			ds.AudioSourceInMS = scene.FixedPlayback.SourceInMS
+			ds.AudioSourceOutMS = scene.FixedPlayback.SourceOutMS
+		}
 		if scene.Clip != nil {
 			ds.Bindings.Clip = &domain.ClipBinding{
 				ClipID: scene.Clip.ID, ClipTitle: scene.Clip.Title, DriveLink: scene.Clip.DriveLink,
@@ -111,6 +117,16 @@ func inLanguage(in *GenerateResult) Language {
 }
 
 func sceneKind(scene Scene) domain.SceneKind {
+	if scene.ExecutionMode.IsFixedMedia() {
+		switch scene.ID {
+		case "scene-intro":
+			return domain.SceneIntro
+		case "scene-outro":
+			return domain.SceneOutro
+		default:
+			return domain.SceneClip
+		}
+	}
 	if scene.Clip != nil {
 		return domain.SceneClip
 	}

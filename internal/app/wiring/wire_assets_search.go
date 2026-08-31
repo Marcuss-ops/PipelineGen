@@ -6,7 +6,7 @@
 //
 // godlike/06 SSOT: this file is the canonical owner of the search
 // build pipeline. The canonical search handler lives in
-// internal/api/assets/search/; this file is composition-root glue only.
+// internal/capabilities/assets/search/; this file is composition-root glue only.
 //
 // PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): the descriptor
 // type-assertion goes through ClassifyDepGet (DepRequired, production

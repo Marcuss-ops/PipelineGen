@@ -1,6 +1,6 @@
 // Package dto — language helpers are the canonical in-package
 // surface for language-list normalization. Moved down from
-// internal/application/scripts/adapters/ in Commit H Phase 2
+// internal/capabilities/scripts/adapters/ in Commit H Phase 2
 // (June 2026) so dto/metadata.go::BuildMetadataLanguages could
 // reach it without a dto→adapters import cycle (adapters would
 // later inverse-import dto once design aligned). The function

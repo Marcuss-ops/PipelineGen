@@ -11,7 +11,7 @@
 // owner of the post-Phase-2 contracts.
 //
 // The legacy `TextTranslationService` + `TranslatorService` type
-// aliases in internal/application/translation/legacy.go remain
+// aliases in internal/capabilities/translation/legacy.go remain
 // in place for the godlike/07 EXPAND-window grace period (one
 // sole concrete *OllamaTranslator satisfies BOTH the canonical
 // TranslationPort AND the legacy aliases); the godlike/07
@@ -102,8 +102,8 @@ type AssocSearchService interface {
 //
 // PR C8 (July 2026): the `extra any` zombie parameter was
 // removed from SearchAndDownload. Both production callers
-// (internal/application/scripts/usecase/flow_helpers.go::enrichSingleEntity
-// and internal/application/scripts/adapters/processor_images.go::Process)
+// (internal/capabilities/scripts/usecase/flow_helpers.go::enrichSingleEntity
+// and internal/capabilities/scripts/adapters/processor_images.go::Process)
 // historically passed `nil`; the only file with a non-`nil` type-assertion
 // path was internal/app/wire_script_curation.go::imageGenSvcAdapter,
 // where the `extra.([]string)` cast branches into a `tags` arg for

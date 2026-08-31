@@ -12,7 +12,7 @@
 package resolver
 
 // resolverLogger is a narrow logging port for resolver-specific
-// observability. Mirrors internal/application/assets/sourcing.Logger
+// observability. Mirrors internal/capabilities/assets/sourcing.Logger
 // but kept package-local to avoid the import cycle.
 //
 // godlike/07 minimum-blast-radius: a nil logger falls back to a

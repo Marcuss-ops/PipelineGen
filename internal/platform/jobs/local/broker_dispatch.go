@@ -6,6 +6,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 func (b *Broker) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
@@ -45,31 +46,19 @@ func (b *Broker) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 	// makes the rejection loud at the broker layer; BuildWorkerRegistry +
 	// parseAndValidateCaps already prevent this state from being entered in
 	// the first place, but the broker defends in depth.
-	if len(cmd.Capabilities) == 0 {
+	if err := jobqueue.ValidateClaimCapabilities(cmd.Capabilities); err != nil {
 		return nil, appjobs.ErrNoWorkerCapabilities
 	}
 	wait := time.Duration(cmd.WaitSeconds) * time.Second
-	if wait <= 0 {
-		wait = 20 * time.Second
+	wait = jobqueue.NormalizeWait(wait, 20*time.Second)
+	claimed, err := jobqueue.ClaimUntil(ctx, b.jobs, cmd.WorkerID, wait, wait, cmd.Capabilities)
+	if err != nil {
+		return nil, err
 	}
-	deadline := time.Now().UTC().Add(wait)
-	for {
-		claimed, err := b.jobs.ClaimNext(ctx, cmd.WorkerID, wait, cmd.Capabilities)
-		if err != nil {
-			return nil, err
-		}
-		if claimed != nil {
-			return &appjobs.Lease{Job: claimed, LeaseID: claimed.LeaseID, ExpiresAt: time.Now().UTC().Add(wait)}, nil
-		}
-		if time.Now().UTC().After(deadline) {
-			return nil, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(500 * time.Millisecond):
-		}
+	if claimed == nil {
+		return nil, nil
 	}
+	return &appjobs.Lease{Job: claimed, LeaseID: claimed.LeaseID, ExpiresAt: time.Now().UTC().Add(wait)}, nil
 }
 
 func (b *Broker) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error) {

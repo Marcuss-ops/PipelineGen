@@ -30,7 +30,7 @@ func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
 // stockDriveReaderAdapter wraps a stockConcreteDriveReader and adapts
 // its ListFiles return type from []drive.DriveFileInfo to
 // []stockpipeline.DriveFileInfo, keeping the application layer free
-// of internal/infrastructure/drive imports.
+// of internal/platform/drive imports.
 type stockDriveReaderAdapter struct {
 	inner stockConcreteDriveReader
 }

@@ -26,7 +26,7 @@ var (
 // Handler is the canonical job-handler signature used by BOTH
 // jobs.Dispatcher.Register AND worker.Registry.Register (P1 #13
 // unification, July 2026). It is a Go type alias to
-// job.Handler (the canonical SSOT in internal/domain/job/
+// job.Handler (the canonical SSOT in internal/kernel/job/
 // handler.go). Putting the alias on domainjob (NOT jobs.Handler)
 // breaks what would otherwise be a cycle — worker no longer
 // imports its parent package; the canonical SSOT in domain is

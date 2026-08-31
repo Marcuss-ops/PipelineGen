@@ -29,6 +29,7 @@ func TestVoiceoverC1TTSMissing(t *testing.T) {
 	if os.Getenv("VELOX_ADMIN_TOKEN") == "" {
 		t.Skip("VELOX_ADMIN_TOKEN not set; skipping live voiceover C1 test")
 	}
+	requireExplicitSmokeDB(t)
 	if os.Getenv("SMOKE_DRIVE_FOLDER_ID") == "" {
 		t.Skip("SMOKE_DRIVE_FOLDER_ID not set; voiceover C1 needs a real Drive folder_id")
 	}

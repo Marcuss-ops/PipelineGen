@@ -82,7 +82,7 @@ import (
 // RECOMMENDED path forward is the factory.
 //
 // Mirrors the ArtifactIdempotencyKey audit-pin in
-// internal/domain/remote/idempotency.go (Commit A follow-up
+// internal/capabilities/remote/idempotency.go (Commit A follow-up
 // applies the FASE 5/idempotency audit-pin discipline uniformly
 // across the legacy free-function surface).
 //

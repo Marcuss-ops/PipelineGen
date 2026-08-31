@@ -51,6 +51,7 @@ func (c SegmentAssetCandidate) ReadyForBinding() bool {
 		c.VerificationStatus == VidRushStatusVerified &&
 		c.PersistenceStatus == VidRushStatusPersisted &&
 		(strings.EqualFold(c.IndexStatus, "pending") ||
+			strings.EqualFold(c.IndexStatus, "queued") ||
 			strings.EqualFold(c.IndexStatus, "discovered") ||
 			strings.EqualFold(c.IndexStatus, "indexing_skipped_no_indexer")) {
 		return strings.EqualFold(strings.TrimSpace(c.RightsStatus), "verified")

@@ -3,8 +3,8 @@
 // Wave A / Blocco 1 / PR 1 Asset SSOT (June 2026): moved from
 // internal/kernel/asset/store_helpers.go to enforce the layering
 // rule that domain must not own SQL primitives. As an INFRA package
-// (internal/infrastructure/...) this file may freely import
-// database/sql — the AGENTS.md Pattern 8 ban targets internal/api/**
+// (internal/platform/) this file may freely import
+// database/sql — the AGENTS.md Pattern 8 ban targets internal/capabilities/**
 // only.
 //
 // The slim domain/store_helpers.go keeps a back-compat wrapper for

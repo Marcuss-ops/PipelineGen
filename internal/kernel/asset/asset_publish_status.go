@@ -8,7 +8,7 @@
 // is eliminated.
 //
 // This enum is DISTINCT from delivery.DeliveryStatus in
-// internal/domain/delivery/status.go (which tracks
+// internal/kernel/delivery/status.go (which tracks
 // outbox delivery-attempt lifecycle: PENDING/LEASED/RUNNING/...).
 // AssetPublishStatus tracks the per-asset publishing outcome:
 //   - LOCAL_ONLY → PUBLISH_PENDING → PUBLISHING → PUBLISHED

@@ -5,7 +5,7 @@
 //
 // godlike/06 SSOT: this file is the canonical owner of the diagnostics
 // build pipeline. The canonical diagnostics handler lives in
-// internal/api/assets/diagnostics/; this file is composition-root glue only.
+// internal/capabilities/assets/diagnostics/; this file is composition-root glue only.
 //
 // PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): the descriptor
 // type-assertion goes through ClassifyDepGet (DepRequired, production

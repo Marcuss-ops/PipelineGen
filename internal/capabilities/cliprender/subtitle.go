@@ -7,7 +7,7 @@ package cliprender
 //
 // The capability defines the narrow port; the composition root wires the
 // concrete compiler. The canonical ASS generator already exists in the
-// project (internal/application/assets/texttracks/ass_materializer.go) and is
+// project (internal/capabilities/assets/texttracks/ass_materializer.go) and is
 // the single owner of ASS content generation — the port exists so this
 // capability stays free of application-layer imports.
 

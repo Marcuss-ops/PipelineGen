@@ -72,7 +72,7 @@ func (b *localSearchBackend) Search(ctx context.Context, q search.Query) ([]sear
 // are the surface shipped to FindDuplicates; the operator/admin
 // surfaces that legitimately need {LocalPath, DriveLink} consume
 // duplicates.DuplicateMatch from
-// internal/application/assets/duplicates/types.go (the canonical
+// internal/capabilities/assets/duplicates/types.go (the canonical
 // owner per godlike/06 one-owner-per-fact) — same discipline as
 // searchByText below.
 func (b *localSearchBackend) searchByHash(ctx context.Context, q search.Query) ([]search.Candidate, error) {
@@ -163,7 +163,7 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 		// was collapsed during Commit 3-A). When FindDuplicates/
 		// operator surfaces need {LocalPath, DriveLink}, they
 		// consume duplicates.DuplicateMatch from
-		// internal/application/assets/duplicates/types.go (the
+		// internal/capabilities/assets/duplicates/types.go (the
 		// canonical owner) — see the dedicated surface added in
 		// Phase 7 P0 follow-ups.
 		out = append(out, search.Candidate{

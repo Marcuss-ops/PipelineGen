@@ -17,7 +17,7 @@
 // (FindDuplicates). The legacy local-search-backend hash-
 // match path (internal/capabilities/assets/search/dedup.go +
 // localBackend.searchByHash) and the historical
-// internal/application/assets/assetop/dedupe.go "asset-level
+// internal/capabilities/assets/assetop/dedupe.go "asset-level
 // dedupe-by-policy" are independent concerns and remain in their
 // owning capability; this package does NOT subsume them.
 //

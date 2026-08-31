@@ -8,7 +8,7 @@
 // declares the narrow surface so the handler depends ONLY on the two
 // ports, not the concrete infra. The compile-time assertions live at
 // the adapters (internal/platform/sqlite/metadataexport/
-// + internal/infrastructure/files/metadataexport/).
+// + internal/platform/filesystem/metadataexport/).
 //
 // Two ports:
 //

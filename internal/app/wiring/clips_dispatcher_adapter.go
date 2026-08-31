@@ -1,7 +1,7 @@
 // Package app: composition-time adapters that bridge concrete
 // infrastructure to application-layer ports. The composition root is
 // the ONLY place where concrete infra types meet application ports
-// (per AGENTS.md Pattern 8 / "internal/api/** non deve contenere
+// (per AGENTS.md Pattern 8 / "internal/capabilities/** non deve contenere
 // business orchestration").
 package wiring
 

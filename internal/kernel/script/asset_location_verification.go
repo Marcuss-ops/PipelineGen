@@ -121,7 +121,7 @@ type AssetLocationVerifier interface {
 // a SpecScene binding or Google Doc MUST pass through this resolver.
 //
 // The application layer owns this interface; the concrete
-// implementation lives in internal/infrastructure/drive and uses the
+// implementation lives in internal/platform/drive and uses the
 // Reader port (FileIsNotTrashed + GetFileMeta) to verify against the
 // actual Drive API.
 type AssetLocationResolver interface {

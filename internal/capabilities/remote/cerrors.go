@@ -17,7 +17,7 @@
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // single source of truth for the wire envelope taxonomy. The server
 // emits via internal/internal/capabilities/jobs/transport.MapErrorToHTTP; the
-// client reconstructs via internal/infrastructure/remote/jobbrokerclient.
+// client reconstructs via internal/platform/remote/jobbrokerclient.
 // decodeCompletionErrorEnvelope. Both sides share this file's names.
 //
 // godlike/07 typed-error contract: each Kind has its OWN canonical
@@ -42,7 +42,7 @@
 //     owner of "what happened" inside completion.Service; this file
 //     owns the wire envelope only.
 //   - BACKFILL (forward-pointer): migrate the remaining completion-
-//     adjacent call sites in internal/api/jobs/handler_workers.go
+//     adjacent call sites in internal/capabilities/jobs/handler_workers.go
 //     (Complete / Fail / Renew / Progress) from apiutil.InternalError
 //     to internal/capabilities/jobs/transport.MapErrorToHTTP.
 //   - CUTOVER (forward-pointer): retire the apiutil.InternalError

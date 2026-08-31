@@ -14,7 +14,7 @@
 //   - resolver_url_helpers.go: pure URL classification helpers
 //     (IsArtlistURL, IsDirectMediaURL, IsHLSURL) + firstNonEmpty.
 //     No state, no I/O; callable from any package (notably
-//     internal/infrastructure/media/processor/processor_download.go uses
+//     internal/platform/media/processor/processor_download.go uses
 //     the URL helpers in its own routing decision).
 //   - resolver_scraper.go: downloadViaScraper + downloadWithFallback
 //   - copyFile. Network I/O + filesystem ops live here.

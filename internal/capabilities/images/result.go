@@ -8,7 +8,7 @@
 // modification, no ingest.
 //
 // These types are intentionally thin wrappers over the canonical
-// detail.ImageAsset (defined in internal/domain/asset): a catalog
+// detail.ImageAsset (defined in internal/kernel/asset): a catalog
 // query returns either a fully-populated asset (when callers need
 // full metadata) or an AssetSummary (when callers only need
 // preview info).

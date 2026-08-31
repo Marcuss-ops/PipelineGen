@@ -5,7 +5,7 @@
 // live in internal/platform/sqlite/scripts (and in
 // test fakes). Keeping the port in the application layer enforces the
 // PR-REFACTOR-P0-IO-BINDER boundary: no package under
-// internal/application/scripts/adapters may import database/sql.
+// internal/capabilities/scripts/adapters may import database/sql.
 package ports
 
 import "context"

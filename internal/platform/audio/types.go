@@ -31,7 +31,7 @@ type AudioInput struct {
 //
 // PR-VO-B1 (June 2026, Drive upload split): DriveLink and DriveFileID
 // are zero-valued when Processor returns. Lifecycle.ProcessAsset (Step
-// 2 in internal/application/assets/lifecycle/service.go) fills them
+// 2 in internal/capabilities/assets/lifecycle/service.go) fills them
 // after Generate returns. AudioResult keeps the fields for back-compat
 // with callers that read both, but consumers should rely on
 // lifecycleResult for the Drive surface.

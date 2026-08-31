@@ -8,7 +8,7 @@
 // readiness probe the composition root hands to the handler, plus the
 // index-version source.
 //
-// godlike/07 fail-closed contract (see internal/api/mediasearch/
+// godlike/07 fail-closed contract (see internal/capabilities/mediasearch/
 // readiness.go): Ready returns a typed multi-error whose
 // Subsystems() map names EVERY failing sub-system. The handler's
 // buildReadinessReport decomposes that map into per-sub-system

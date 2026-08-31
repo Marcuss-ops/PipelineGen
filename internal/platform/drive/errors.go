@@ -45,7 +45,7 @@ var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multipl
 // produces a nil list without an error. Without this sentinel the
 // next nil-deref on `list.Files` triggers HTTP 500 via panic-recovery
 // in the handler middleware (panic stack frame
-// "internal/infrastructure/drive.(*Uploader).SearchFiles" fired during
+// "internal/platform/drive.(*Uploader).SearchFiles" fired during
 // POST /api/media/register-batch — the wire-shape only flow that
 // reaches SearchFiles through the async clip-enqueue adapter).
 //
@@ -56,7 +56,7 @@ var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multipl
 // failures (HTTP 500 → actionable).
 //
 // Forward-pointer: PR-DRIVE-LIST-NIL-GUARD-AUDIT (deadline 2026-08-01)
-// audits the other internal/infrastructure/drive/*.go list-response
+// audits the other internal/platform/drive/*.go list-response
 // dereferences for the same nil-list edge case.
 var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil error (known client edge case; callers must errors.Is to distinguish from empty)")
 
@@ -117,7 +117,7 @@ var ErrPathBuilderIncompleteForParent = errors.New("drive: PathBuilder incomplet
 // callers don't have to nil-guard before invoking).
 //
 // Production callers: FileIsNotTrashed + FileExists
-// (internal/infrastructure/drive/uploader_file.go) delegate here;
+// (internal/platform/drive/uploader_file.go) delegate here;
 // Other call-sites (verifier_adapter.go, document_builder.go,
 // reconcile.go) consume the (fileID) (bool, error) return shapes
 // unchanged (godlike/07 minimum-blast-radius — port signatures

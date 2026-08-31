@@ -193,7 +193,7 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 		Metadata: r.Options.Metadata,
 		// ThreadingCampaign 2026-07-08: thread the API request's
 		// Project field 1:1 into the parent GenerateVoiceoversCommand
-		// so the fanout loop (internal/application/voiceover/jobs/
+		// so the fanout loop (internal/capabilities/voiceover/jobs/
 		// fanout.go) can propagate it into each
 		// GenerateVoiceoverItemCommand → delivery.Publisher.Publish
 		// for the `{project}/{language}/` Drive subdir layout.

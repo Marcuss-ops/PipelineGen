@@ -116,7 +116,7 @@ set -euo pipefail
 # ─── Configuration (canonical coiled env surface) ────────────────────────
 BASE="${BASE:-http://127.0.0.1:8000}"
 AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 POLL_MAX="${POLL_MAX:-240}"
 POLL_INTERVAL="${POLL_INTERVAL:-15}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-30}"

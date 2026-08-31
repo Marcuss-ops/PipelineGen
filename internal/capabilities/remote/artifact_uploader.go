@@ -1,7 +1,7 @@
 // Package remote defines the canonical domain contracts for remote-worker
 // coordination: typed upload protocol surface, state-machine, and
 // idempotency-key derivation. The interfaces here are implemented by
-// concrete HTTP adapters in internal/infrastructure/remote/* and consumed
+// concrete HTTP adapters in internal/platform/remote/* and consumed
 // by the Sender-side job runner via AGENTS.md Pattern 0 port abstractions.
 //
 // P0 Commit 6 (July 2026) introduces:
@@ -229,10 +229,10 @@ func NewUploadSession(id, leaseID, artifactID string) (*UploadSession, error) {
 
 // ArtifactUploader is the typed port for the canonical 3-phase upload
 // protocol. The Creator-side adapter implementation lives in
-// internal/infrastructure/remote/creator/adapter.go.
+// internal/platform/remote/creator/adapter.go.
 //
 // Wire mapping (single source of truth in
-// internal/infrastructure/remote/jobbrokerclient/client.go):
+// internal/platform/remote/jobbrokerclient/client.go):
 //
 //	Prepare(ctx, req)
 //	        -> POST /internal/v1/jobs/<jobID>/uploads/prepare
@@ -287,8 +287,8 @@ type ArtifactUploader interface {
 // this invariant in its constructor.
 // godlike/06 SSOT: Ctx is the canonical threading point for the
 // ambient job-ctx (cancellation + lease-loss + shutdown drain).
-// The Creator adapter (internal/infrastructure/remote/creator/
-// adapter.go) and the jobbrokerclient.Client (internal/infrastructure/
+// The Creator adapter (internal/platform/remote/creator/
+// adapter.go) and the jobbrokerclient.Client (internal/platform/
 // remote/jobbrokerclient/client.go) both fail-closed with a typed
 // error when Ctx is nil — silent-degrade to context.Background()
 // would mask the exact wiring bug this field was added to fix

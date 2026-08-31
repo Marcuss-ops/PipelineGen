@@ -7,7 +7,7 @@
 // pattern across all write handlers. Per AGENTS.md Pattern 0 the
 // port is defined here and the concrete SQLite adapter lives in
 // internal/platform/sqlite/idempotency. The Gin
-// middleware in internal/api/middleware/idempotency.go consumes
+// middleware in internal/platform/httpserver/middleware/idempotency.go consumes
 // only this port, never a concrete repo (compile-time assertion
 // below pins the contract).
 //

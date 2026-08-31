@@ -37,7 +37,7 @@ source "$DIR/lib/common.sh"
 
 # ---- Configuration --------------------------------------------------------
 SMOKE_LOG_DIR="${SMOKE_LOG_DIR:-/tmp/search-aggregata-smoke-logs}"
-DB="${DB_PATH:-data/media/media.db.sqlite}"
+DB="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 
 # ---- Require binaries -----------------------------------------------------
 smoke_require curl jq

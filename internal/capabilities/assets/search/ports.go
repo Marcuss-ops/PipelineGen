@@ -2,7 +2,7 @@
 // cross-provider search across registered providers, local catalog, and local clips.
 //
 // Semantic search (vector/hybrid) has been consolidated into
-// internal/application/mediasearch. This package retains the vector-store
+// internal/capabilities/mediasearch This package retains the vector-store
 // port types used by mediasearch (VectorStorePort, VectorSearchRequest, etc.).
 package search
 

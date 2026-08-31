@@ -22,9 +22,13 @@ JOB_POLL_TIMEOUT="${JOB_POLL_TIMEOUT:-600}"
 JOB_POLL_INTERVAL="${JOB_POLL_INTERVAL:-10}"
 REQUIRE_QDRANT="${REQUIRE_QDRANT:-1}"
 
+ARTLIST_ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=canonical_db_path.sh
+source "$ARTLIST_ROOT_DIR/scripts/lib/canonical_db_path.sh"
+
 VELOX_PORT="${VELOX_PORT:-8000}"
 BASE="http://127.0.0.1:${VELOX_PORT}"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="$(resolve_canonical_primary_db "${DB_PATH:-${VELOX_DB_PATH:-}}" "$ARTLIST_ROOT_DIR")"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 QDRANT_COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"
 SCRAPER_URL="${SCRAPER_URL:-${VELOX_ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}}"

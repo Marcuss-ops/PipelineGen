@@ -2,7 +2,7 @@ package subjectsrepo
 
 // This file isolates the single line of canonical-slug idiom that
 // reaches outside this package. It exists solely to keep
-// `internal/infrastructure/...` free of `pkg/...` imports in the
+// `internal/platform/` free of `pkg/...` imports in the
 // godlike/06 SSOT path.
 //
 // subjectsrepo lives in internal/infrastructure and may freely

@@ -14,6 +14,8 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/canonical_db_path.sh
+source "$ROOT_DIR/scripts/lib/canonical_db_path.sh"
 STATE_DIR="${E2E_STATE_DIR:-$ROOT_DIR/.tmp/e2e-harness}"
 LOG_DIR="$STATE_DIR/logs"
 COMPOSE_FILE="${E2E_COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
@@ -150,7 +152,7 @@ check_ollama_health() {
 run_preflight() {
     PREFLIGHT_BASE_URL="$BASE_URL" \
     PREFLIGHT_QDRANT_URL="$QDRANT_URL" \
-    PREFLIGHT_DB_PATH="${PREFLIGHT_DB_PATH:-$ROOT_DIR/data/pipelinegen.db}" \
+    PREFLIGHT_DB_PATH="$(resolve_canonical_primary_db "${PREFLIGHT_DB_PATH:-${VELOX_DB_PATH:-}}" "$ROOT_DIR")" \
     PREFLIGHT_WORKER_URL="${PREFLIGHT_WORKER_URL:-}" \
     PREFLIGHT_OLLAMA_URL="$OLLAMA_URL" \
     PREFLIGHT_CHRONON_URL="${PREFLIGHT_CHRONON_URL:-${CHRONON_URL:-}}" \

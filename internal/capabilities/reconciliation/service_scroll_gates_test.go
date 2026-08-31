@@ -129,7 +129,7 @@ func TestReconcile_AppliedFalseOnZeroRepairsInApply(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
 				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE",
+				"lifecycle_state": "ACTIVE", "content_hash": "h-a1",
 			}},
 		}},
 		&stubSQLite{rows: []AssetSnapshot{{ID: "a1", LifecycleState: "ACTIVE", ContentHash: "h-a1"}}},

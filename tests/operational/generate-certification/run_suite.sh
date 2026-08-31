@@ -26,7 +26,7 @@ export SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-1500}"
 export TOKEN_FILE="${TOKEN_FILE:-/etc/pipelinegen/pipelinegen.env}"
 
 OUT_ROOT="$SUITE_DIR/out"
-DB_PATH="${CERT_DB_PATH:-$REPO_ROOT/data/media/media.db.sqlite}"
+DB_PATH="${CERT_DB_PATH:?CERT_DB_PATH must be explicitly set to an isolated or approved database}"
 mkdir -p "$OUT_ROOT"
 
 # common.sh parses positional args as flags; stash ours while sourcing it.

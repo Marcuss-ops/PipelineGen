@@ -14,7 +14,7 @@ import (
 
 // UploadRequest is the JSON body for POST /api/images/upload (legacy
 // image-asset URL ingestion). The canonical multipart clip upload
-// lives at internal/api/assets/clips/ingest.go — this endpoint is
+// lives at internal/capabilities/assets/clips/ingest.go — this endpoint is
 // JSON-only and distinct from that surface.
 type UploadRequest struct {
 	Subject string   `json:"subject" binding:"required"`

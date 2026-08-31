@@ -21,6 +21,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // mediaPreflightAdapter implements MediaPreflight by translating
@@ -53,6 +54,18 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 	if req.Outro != nil {
 		clipIDs = append(clipIDs, req.Outro.NormalizedClipIDs()...)
 	}
+	fixedClips := make([]scriptgen.FixedClipPreflight, 0, 4)
+	for _, section := range []*scriptpkg.FixedSection{req.Intro, req.Outro} {
+		if section == nil {
+			continue
+		}
+		playback := section.NormalizedPlayback()
+		for _, clipID := range section.NormalizedClipIDs() {
+			fixedClips = append(fixedClips, scriptgen.FixedClipPreflight{
+				ClipID: clipID, SourceInMS: playback.SourceInMS, SourceOutMS: playback.SourceOutMS,
+			})
+		}
+	}
 
 	// Collect BGM + SFX IDs.
 	var bgmIDs, sfxIDs []string
@@ -83,6 +96,7 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 	return scriptgen.RunMediaPreflight(ctx, scriptgen.MediaPreflightInput{
 		ClipIDs:            clipIDs,
 		IntroClipIDs:       req.Source.IntroClipIDs,
+		FixedClips:         fixedClips,
 		ClipProber:         a.clipProber,
 		ClipAudioSource:    a.clipAudioAssetSource,
 		MixPolicy:          req.MixPolicy,

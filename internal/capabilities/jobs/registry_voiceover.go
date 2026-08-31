@@ -14,7 +14,7 @@ func registerVoiceoverEntries(r *Registry) {
 	// voiceover artifacts (voiceovers row + media_assets projection +
 	// asset.index outbox event + voiceover.cleanup outbox event) atomically
 	// inside the per-item caller-owned tx through
-	// VoiceoverFinalizer.Finalize (internal/application/voiceover/finalizer.go)
+	// VoiceoverFinalizer.Finalize (internal/capabilities/voiceover/finalizer.go)
 	// — distinct from the JobFinalizer.CompleteWithArtifacts spine that
 	// script.generate uses. Marking ProducesArtifacts=false re-routes the
 	// broker's "mark SUCCEEDED" path through the legacy SQLiteStore.Complete

@@ -21,25 +21,29 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // SearchAdapter adapts qdrant.Searcher to search.VectorStorePort.
 type SearchAdapter struct {
-	searcher *Searcher
-	log      *zap.Logger
+	searcher   *Searcher
+	assetStore indexing.AssetStore
+	log        *zap.Logger
 }
 
 // NewSearchAdapter creates a search.VectorStorePort implementation backed
-// by the Qdrant Searcher. The caller is responsible for wiring the adapter
-// into the application layer (e.g. search.Service's vectorStore field).
-func NewSearchAdapter(searcher *Searcher, log *zap.Logger) *SearchAdapter {
-	return &SearchAdapter{searcher: searcher, log: log}
+// by Qdrant for candidate retrieval and SQLite for canonical result data.
+// assetStore is required for real searches; Qdrant payload fields other
+// than asset_id are intentionally ignored during hydration.
+func NewSearchAdapter(searcher *Searcher, assetStore indexing.AssetStore, log *zap.Logger) *SearchAdapter {
+	return &SearchAdapter{searcher: searcher, assetStore: assetStore, log: log}
 }
 
 // Compile-time assertion.
@@ -92,7 +96,7 @@ func (a *SearchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 		return nil, fmt.Errorf("qdrant search: %w", err)
 	}
 
-	return convertSearchResults(results), nil
+	return a.hydrateSearchResults(ctx, results)
 }
 
 // HybridSearch converts an application-level schema.HybridSearchRequest into a
@@ -163,63 +167,93 @@ func (a *SearchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		return nil, fmt.Errorf("qdrant hybrid search: %w", err)
 	}
 
-	return convertSearchResults(results), nil
+	return a.hydrateSearchResults(ctx, results)
 }
 
-// ── Conversion helpers ─────────────────────────────────────────────────
+// ── Canonical hydration boundary ─────────────────────────────────────
 
-// convertSearchResults maps qdrant.schema.SearchResult → search.VectorSearchResult.
+// hydrateSearchResults converts Qdrant hits into API results by using
+// Qdrant only as a ranked identity/score index. The only payload field
+// consumed is asset_id; all returned metadata is loaded from SQLite.
+// Result order and scores remain those produced by Qdrant. Missing or
+// deleted SQLite rows are omitted rather than reconstructed from stale
+// Qdrant payload data.
+func (a *SearchAdapter) hydrateSearchResults(ctx context.Context, results []schema.SearchResult) ([]appsearch.VectorSearchResult, error) {
+	if len(results) == 0 {
+		return []appsearch.VectorSearchResult{}, nil
+	}
+	if a.assetStore == nil {
+		return nil, fmt.Errorf("qdrant search hydration: SQLite asset store not configured")
+	}
+
+	out := make([]appsearch.VectorSearchResult, 0, len(results))
+	for _, hit := range results {
+		assetID := payloadString(hit.Payload, "asset_id")
+		if assetID == "" {
+			// A Qdrant hit without the identity projection cannot be
+			// hydrated safely and must never be returned using its stale
+			// metadata payload.
+			continue
+		}
+		asset, err := a.assetStore.FetchAsset(ctx, assetID)
+		if err != nil {
+			if errors.Is(err, indexing.ErrAssetNotFound) {
+				// Qdrant can briefly retain a point after the
+				// canonical SQLite row is deleted. It is stale
+				// projection data, never an API result.
+				continue
+			}
+			return nil, fmt.Errorf("hydrate asset %q from SQLite: %w", assetID, err)
+		}
+		if asset == nil || asset.ID != assetID || asset.DeletedAt != "" {
+			// SQLite is authoritative for existence and lifecycle. A
+			// missing/tombstoned row is not a valid API result.
+			continue
+		}
+		out = append(out, assetToVectorSearchResult(asset, hit))
+	}
+	return out, nil
+}
+
+func assetToVectorSearchResult(asset *indexing.AssetData, hit schema.SearchResult) appsearch.VectorSearchResult {
+	return appsearch.VectorSearchResult{
+		AssetID:        asset.ID,
+		QdrantPointID:  hit.ID,
+		Score:          hit.Score,
+		Source:         asset.Source,
+		Name:           asset.Name,
+		Category:       asset.Category,
+		MediaType:      asset.MediaType,
+		Style:          asset.Style,
+		Language:       asset.Language,
+		YouTubeVideoID: asset.YouTubeVideoID,
+		YouTubeURL:     asset.YouTubeURL,
+		StartTime:      asset.StartTime,
+		EndTime:        asset.EndTime,
+		Tags:           append([]string(nil), asset.Tags...),
+		SearchText:     asset.SearchText,
+	}
+}
+
+// searchResultToVectorSearchResult is intentionally limited to the
+// identity/score projection for callers that need the raw boundary in
+// tests or diagnostics. It does not copy arbitrary Qdrant metadata.
+func searchResultToVectorSearchResult(r schema.SearchResult) appsearch.VectorSearchResult {
+	return appsearch.VectorSearchResult{
+		AssetID:       payloadString(r.Payload, "asset_id"),
+		QdrantPointID: r.ID,
+		Score:         r.Score,
+	}
+}
+
+// convertSearchResults is retained as a raw ID/score-only compatibility
+// helper. API-facing paths must call hydrateSearchResults instead.
 func convertSearchResults(results []schema.SearchResult) []appsearch.VectorSearchResult {
 	out := make([]appsearch.VectorSearchResult, 0, len(results))
 	for _, r := range results {
 		out = append(out, searchResultToVectorSearchResult(r))
 	}
 	return out
-}
-
-// searchResultToVectorSearchResult converts a single Qdrant search result
-// to the application-level DTO, extracting known payload fields.
-//
-// QDRANT-001 (June 2026): LocalPath and DriveLink have been removed
-// from both qdrant.schema.SearchResult (infra) and appsearch.VectorSearchResult
-// (application DTO). The search contract is now locator-free.
-func searchResultToVectorSearchResult(r schema.SearchResult) appsearch.VectorSearchResult {
-	sr := appsearch.VectorSearchResult{
-		QdrantPointID: r.ID,
-		Score:         r.Score,
-	}
-	if r.Payload == nil {
-		return sr
-	}
-
-	// Extract scalar fields.
-	sr.AssetID = payloadString(r.Payload, "asset_id")
-	sr.Source = payloadString(r.Payload, "source")
-	sr.Name = payloadString(r.Payload, "name")
-	sr.Category = payloadString(r.Payload, "category")
-	sr.MediaType = payloadString(r.Payload, "media_type")
-	sr.Style = payloadString(r.Payload, "style")
-	sr.Language = payloadString(r.Payload, "language")
-	sr.YouTubeVideoID = payloadString(r.Payload, "youtube_video_id")
-	sr.YouTubeURL = payloadString(r.Payload, "youtube_url")
-	sr.StartTime = payloadString(r.Payload, "start_time")
-	sr.EndTime = payloadString(r.Payload, "end_time")
-	sr.SearchText = payloadString(r.Payload, "search_text")
-
-	// Extract tags ([]any → []string).
-	if raw, ok := r.Payload["tags"]; ok {
-		switch v := raw.(type) {
-		case []string:
-			sr.Tags = append([]string(nil), v...)
-		case []any:
-			sr.Tags = make([]string, len(v))
-			for i, item := range v {
-				sr.Tags[i] = fmt.Sprint(item)
-			}
-		}
-	}
-
-	return sr
 }
 
 // payloadString extracts a string value from a Qdrant payload map.

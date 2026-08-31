@@ -16,7 +16,7 @@
 //
 // godlike/07 EXPAND phase — this commit extends the system without
 // removing the legacy voiceover.batch + voiceover.promo registrations
-// wired in internal/application/voiceover/service.go at lines
+// wired in internal/capabilities/voiceover/service.go at lines
 // 132-133. CUTOVER (B-3) flips call sites to enqueue voiceover.generate
 // instead; CONTRACT (B-4) removes back-compat aliases.
 //

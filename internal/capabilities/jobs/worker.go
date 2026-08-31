@@ -8,8 +8,8 @@
 //   - func (w *Worker) WithRegistry (HC-1 typed Registry attach)
 //   - func (w *Worker) jobTimeoutFor (private helper reading the
 //     HC-1 snapshot)
-//   - func (w *Worker) Start (the outer poll loop with the backoff
-//     state machine inline)
+//   - func (w *Worker) Start (the outer poll loop that applies the
+//     jobs/scheduling polling state machine)
 //   - func mapToRawMessage (free helper used by runJob on success
 //     path; tiny enough to live in the bootstrap file as a stable
 //     utility home)
@@ -62,10 +62,10 @@ import (
 	"go.uber.org/zap"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 var workerIDPrefix string
@@ -261,7 +261,7 @@ func (w *Worker) WithRegistry(reg *Registry) *Worker {
 // composition site.
 //
 // Concrete compatibility: the in-process *local.Broker at
-// internal/infrastructure/jobs/local/broker.go satisfies CompletionPort
+// internal/platform/jobs/local/broker.go satisfies CompletionPort
 // structurally via its
 // (ctx context.Context, cmd CompleteWithArtifactsCommand) ([]string, error)
 // signature. No compile-time pin needed — Go's structural interface
@@ -416,8 +416,7 @@ func (w *Worker) Start(ctx context.Context) {
 
 	// Backoff state machine. Reset to base on successful claim;
 	// grow on empty claims past the threshold.
-	currentBackoff := w.pollEvery
-	consecutiveEmpty := 0
+	polling := jobscheduling.NewPollingState(w.pollEvery)
 
 	// Initial jitter to spread Worker-goroutine startup.
 	jitterInitial := jitterDuration(w.pollEvery/4, 1.0)
@@ -431,8 +430,8 @@ func (w *Worker) Start(ctx context.Context) {
 		if ctx.Err() != nil {
 			w.log.Info("worker stopped",
 				zap.String("worker_id", w.id),
-				zap.Duration("current_backoff", currentBackoff),
-				zap.Int("consecutive_empty", consecutiveEmpty))
+				zap.Duration("current_backoff", polling.CurrentBackoff),
+				zap.Int("consecutive_empty", polling.ConsecutiveEmpty))
 			return
 		}
 
@@ -461,31 +460,19 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 
 		if j == nil {
-			consecutiveEmpty++
 			metrics.WorkerIdleTicksTotal.Inc()
-
-			// Escalate backoff ONLY when threshold exceeded AND
-			// escalation is enabled (threshold > 0). 0 = disabled
-			// (legacy behaviour: stay at BaseInterval forever).
-			if w.backoff.ConsecutiveEmptyThreshold > 0 &&
-				consecutiveEmpty > w.backoff.ConsecutiveEmptyThreshold {
-				prev := currentBackoff
-				next := prev * 2
-				if next > w.backoff.MaxBackoff {
-					next = w.backoff.MaxBackoff
-				}
-				if next > prev {
-					metrics.WorkerBackoffEventsTotal.Inc()
-					currentBackoff = next
-					w.log.Debug("worker backoff escalated",
-						zap.String("worker_id", w.id),
-						zap.Int("consecutive_empty", consecutiveEmpty),
-						zap.Duration("from", prev),
-						zap.Duration("to", next))
-				}
+			previous := polling
+			polling, escalated := polling.RecordEmpty(w.pollEvery, jobscheduling.BackoffConfig(w.backoff))
+			if escalated {
+				metrics.WorkerBackoffEventsTotal.Inc()
+				w.log.Debug("worker backoff escalated",
+					zap.String("worker_id", w.id),
+					zap.Int("consecutive_empty", polling.ConsecutiveEmpty),
+					zap.Duration("from", previous.CurrentBackoff),
+					zap.Duration("to", polling.CurrentBackoff))
 			}
 
-			if !w.sleepBackoff(ctx, w.effectiveSleep(currentBackoff)) {
+			if !w.sleepBackoff(ctx, w.effectiveSleep(polling.CurrentBackoff)) {
 				w.log.Info("worker stopped", zap.String("worker_id", w.id))
 				return
 			}
@@ -493,14 +480,13 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 
 		// Successful claim — reset backoff state.
-		if consecutiveEmpty > 0 || currentBackoff != w.pollEvery {
+		if polling.ConsecutiveEmpty > 0 || polling.CurrentBackoff != w.pollEvery {
 			w.log.Debug("worker backoff reset on successful claim",
 				zap.String("worker_id", w.id),
-				zap.Int("previous_consecutive_empty", consecutiveEmpty),
-				zap.Duration("previous_backoff", currentBackoff))
+				zap.Int("previous_consecutive_empty", polling.ConsecutiveEmpty),
+				zap.Duration("previous_backoff", polling.CurrentBackoff))
 		}
-		consecutiveEmpty = 0
-		currentBackoff = w.pollEvery
+		polling = polling.ResetAfterClaim(w.pollEvery)
 
 		// Claim-time KPI snapshot: the instant ClaimNext returns the job is
 		// claimed and NO unit has executed yet — the pristine readiness
@@ -527,15 +513,7 @@ func (w *Worker) requeueDueRetries(ctx context.Context) {
 	now := time.Now().UTC()
 	for i := range waiting {
 		j := &waiting[i]
-		if j.RetryCount >= j.MaxRetries {
-			continue
-		}
-		backoff := retry.BackoffFor(j.RetryCount-1, retry.Options{
-			InitialBackoff: 2 * time.Second,
-			BackoffFactor:  2.0,
-			MaxBackoff:     30 * time.Second,
-		})
-		if now.Sub(j.UpdatedAt) < backoff {
+		if !jobscheduling.RetryDue(j, now) {
 			continue
 		}
 		if _, err := w.repo.Retry(ctx, j.ID); err != nil && !errors.Is(err, job.ErrTransitionConflict) {

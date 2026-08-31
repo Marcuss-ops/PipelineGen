@@ -4,7 +4,7 @@
 // PublishAndCompleteUseCase is the godlike/06-SSOT-conformant conversion+
 // orchestration surface for the complete-with-artifacts HTTP endpoint AFTER
 // the wire-format rename (PublishedArtifacts -> StagedArtifacts). The HTTP
-// handler (internal/api/jobs/handler_workers.go) hands the use case:
+// handler (internal/capabilities/jobs/handler_workers.go) hands the use case:
 //
 //  1. *remote.CompleteWithArtifactsRequest  — the canonical Sender-side envelope
 //     (WorkerID, JobID, Attempt, LeaseID,
@@ -138,7 +138,7 @@ type PublishAndCompleteUseCase struct {
 	// preparation is the canonical publish-pipeline seam (Pattern 0 port
 	// per godlike/06 SSOT). NOT the concrete *finalizer.ArtifactPreparation
 	// — the use case consumes finalization.ArtifactPreparationService
-	// (the typed port defined in internal/domain/finalization/interfaces.go)
+	// (the typed port defined in internal/capabilities/finalization/interfaces.go)
 	// so tests can inject a mock without wiring production concretes, and
 	// the future finalizer.PublisherPort adapter swap doesn't ripple
 	// surface changes here.
@@ -401,7 +401,7 @@ func firstNonEmpty(value, fallback string) string {
 }
 
 // kindFromDestination maps the canonical 9-key destination directory
-// (internal/domain/remote/staged_artifact_reference.go::CanonicalDestinationKeys)
+// (internal/capabilities/remote/staged_artifact_reference.go::CanonicalDestinationKeys)
 // to the canonical finalization.ArtifactKind enum. FASE 3 (July 2026):
 // the function NOW returns error — unmapped destinations are a HARD error
 // (auto-cast to KindDocument is FORBIDDEN, godlike/07 NO-FAKE-AVAILABILITY).

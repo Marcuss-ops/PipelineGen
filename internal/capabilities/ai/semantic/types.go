@@ -180,7 +180,7 @@ type Payload struct {
 // metadata map. The struct is consumed by BuildAssetMetadata (in
 // metadata_builder.go) and is part of the canonical shared surface
 // that production callers thread through the nop. Pre-fix callers
-// from internal/application/clips/enrich.go +
+// from internal/capabilities/clips/enrich.go +
 // internal/capabilities/assets/providers/artlist/semantic_enricher.go
 // + others persisted this struct to wire payloads; the P0-#2
 // closure keeps the type for forward-compat (the real semantic

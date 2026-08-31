@@ -14,7 +14,7 @@
 // timeout at the adapter).
 //
 // Sprint 3.4 step1: the handler imports ONLY
-// internal/application/system/health (the QdrantEndpointPort port).
+// internal/capabilities/system/health (the QdrantEndpointPort port).
 // Composition-root adapter lives in
 // internal/app/qdrant_transport_health_adapter.go and is the ONLY
 // place allowed to wire disasterrecovery.HealthProbe +

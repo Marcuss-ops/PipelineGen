@@ -31,7 +31,7 @@
 //     (asset_locations, asset_processing,
 //     asset_versions, asset_dedupe) inside
 //     a caller-owned *sql.Tx. The admin
-//     adapter (`internal/infrastructure/
+//     adapter (`internal/platform/
 //     database/sqlite/admin/purge.go`)
 //     opens the tx, gate-checks
 //     lifecycle_state='DELETED' AND
@@ -77,9 +77,9 @@
 // Production-layer import discipline (enforced by
 // scripts/ci-architectural-checks.sh Check 5):
 //
-//   - internal/application/**    — MUST NOT import this package
+//   - internal/capabilities/**    — MUST NOT import this package
 //     (uses outbox.Dispatcher, which routes via the safe path).
-//   - internal/api/**             — MUST NOT import this package
+//   - internal/capabilities/**             — MUST NOT import this package
 //     (admin tooling runs offline via cmd/admin/**).
 //   - internal/platform/sqlite/admin/ purge.go — the
 //     only legitimate caller (QDRANT-asset-mutation isolation, June

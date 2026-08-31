@@ -3,7 +3,7 @@
 // entry point invoked by the thin HTTP handler in
 // internal/api/content/lessons.go.
 //
-// See internal/application/books for the boundary contract; this
+// See internal/capabilities/books for the boundary contract; this
 // package mirrors it. asyncEnqueuer and lessonProcessor are
 // unexported interfaces declared in this file so the production
 // wiring in internal/app/ passes the concrete pointers

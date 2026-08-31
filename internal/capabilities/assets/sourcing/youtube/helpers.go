@@ -6,7 +6,7 @@
 // and exported so they can be invoked from youtube.Service.Register
 // without a cross-package reach-up into the parent sourcing package.
 //
-// P0-1 / commit 1 — moved out of internal/application/assets/sourcing/helpers.go
+// P0-1 / commit 1 — moved out of internal/capabilities/assets/sourcing/helpers.go
 // as part of the use-case extraction. The parent sourcing/helpers.go now
 // keeps only ScanLocalMp4 (which belongs to the LocalImporter use case,
 // slated for commit 4 of P0-1).
@@ -143,7 +143,7 @@ func CleanFolderName(name string) string {
 //
 // godlike/06 SSOT: this helper does NOT own the canonical enum —
 // the canonical 4-state lifecycle + Validation + Marshal/Unmarshal
-// contracts live in internal/domain/sourcing/index_status.go. The
+// contracts live in internal/capabilities/sourcing/index_status.go. The
 // application-layer `sourcing.IndexingStatus` is a transparent Go
 // type-alias to that enum; this helper writes the canonical typed
 // value directly so the wire emission stays byte-stable.

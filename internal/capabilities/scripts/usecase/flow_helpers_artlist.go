@@ -185,7 +185,7 @@ func (a *phraseTranslatorAdapter) Translate(ctx context.Context, phrase string) 
 
 // DefaultArtlistMinScore is the canonical fallback minimum score
 // for artlist clip search. Matches the legacy SearchScriptAssets
-// (internal/application/scripts/usecase/clip_source.go) hard-coded
+// (internal/capabilities/scripts/usecase/clip_source.go) hard-coded
 // value of 0.7. Named here (per code-review SHOULD-FIX) so future
 // operators can grep for the literal without diving into the
 // adapter body.

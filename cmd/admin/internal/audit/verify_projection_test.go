@@ -11,19 +11,19 @@ func TestParseVerifyProjectionArgs(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, deps.JSON)
 	require.Equal(t, 500, deps.BatchSize, "default batch size 500")
-	require.Empty(t, deps.Collection, "default collection: resolve active alias")
 
-	deps, err = parseVerifyProjectionArgs([]string{"--collection=media_assets_v4_test", "--batch-size=1000"})
+	deps, err = parseVerifyProjectionArgs([]string{"--batch-size=1000"})
 	require.NoError(t, err)
-	require.Equal(t, "media_assets_v4_test", deps.Collection)
 	require.Equal(t, 1000, deps.BatchSize)
 	require.False(t, deps.JSON)
 
-	deps, err = parseVerifyProjectionArgs([]string{"--json", "--collection=media_assets_v4_test", "--batch-size=250"})
+	deps, err = parseVerifyProjectionArgs([]string{"--json", "--batch-size=250"})
 	require.NoError(t, err)
 	require.True(t, deps.JSON)
-	require.Equal(t, "media_assets_v4_test", deps.Collection)
 	require.Equal(t, 250, deps.BatchSize)
+
+	_, err = parseVerifyProjectionArgs([]string{"--collection=media_assets_v4_test"})
+	require.Error(t, err, "explicit collection overrides must be rejected")
 
 	_, err = parseVerifyProjectionArgs([]string{"--bogus"})
 	require.Error(t, err, "unknown flag must error")

@@ -41,7 +41,10 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req schema
 	body := map[string]any{
 		"query":        req.QueryVector,
 		"limit":        req.Limit,
-		"with_payload": true,
+		// Retrieval returns only the canonical identity needed for
+		// SQLite hydration. Qdrant payload metadata is never an API
+		// source of truth.
+		"with_payload": []string{"asset_id"},
 	}
 	if req.VectorName != "" {
 		body["using"] = req.VectorName
@@ -206,7 +209,10 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		"prefetch":     prefetch,
 		"query":        map[string]any{"fusion": "rrf"},
 		"limit":        req.Limit,
-		"with_payload": true,
+		// Retrieval returns only the canonical identity needed for
+		// SQLite hydration. Qdrant payload metadata is never an API
+		// source of truth.
+		"with_payload": []string{"asset_id"},
 	}
 	if req.MinScore > 0 {
 		body["score_threshold"] = req.MinScore

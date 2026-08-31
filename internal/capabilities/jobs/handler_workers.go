@@ -9,7 +9,7 @@
 //   - WorkersBrokerHandler mounts on remoteshared.InternalPathPrefix
 //     (typically /internal/v1/) → NOT under /api/.
 //
-// See internal/api/server.go::Router.SetWorkerHandler and
+// See internal/platform/httpserver/server.go::Router.SetWorkerHandler and
 // remoteshared.InternalPathPrefix for the exact routing context.
 //
 // Two receivers coexist in the same package: the public-facing JobsHandler

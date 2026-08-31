@@ -15,7 +15,7 @@ import (
 // to compute the canonical folder hierarchy. The legacy
 // driveutil.EnsureFolderPath walking is gone; the legacy
 // `s.driveAdmin driveup.Admin` surface is gone (see
-// `internal/infrastructure/drive` import).
+// `internal/platform/drive` import).
 
 // formatDuration converts a float64 seconds value to HH:MM:SS.mmm format.
 func formatDuration(sec float64) string {

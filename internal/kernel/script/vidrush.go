@@ -119,6 +119,7 @@ type SegmentInsights struct {
 	Entities                 []ExtractedEntity   `json:"entities,omitempty"`
 	ImportantPhrases         []string            `json:"important_phrases,omitempty"`
 	ImportantWords           []string            `json:"important_words,omitempty"`
+	NounChunks               []string            `json:"noun_chunks,omitempty"`
 	ArtlistQueries           []string            `json:"artlist_queries,omitempty"`
 	YouTubeQueries           []string            `json:"youtube_queries,omitempty"`
 	ArtlistIntentHash        string              `json:"artlist_intent_hash,omitempty"`

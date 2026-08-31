@@ -5,7 +5,7 @@
 // concrete-infrastructure dependency (Qdrant Searcher, SQLite
 // ClipsRepository, ports.ClipSearchPort) into the typed-port
 // shape that source-resolver constructors in
-// internal/application/scripts/usecase (NewTextSourceResolver,
+// internal/capabilities/scripts/usecase (NewTextSourceResolver,
 // NewClipsSourceResolver, NewSearchSourceResolver,
 // NewCurateSourceResolver) consume.
 //
@@ -23,7 +23,7 @@
 // Cross-references:
 //   - internal/app/wire_script.go: the caller (wireScriptFlow
 //     constructs & uses every type here inline).
-//   - internal/application/scripts/usecase: the typed-port
+//   - internal/capabilities/scripts/usecase: the typed-port
 //     shapes each adapter implements (SemanticSearchPort,
 //     ClipSearchPort).
 //   - internal/capabilities/scripts/ports: ClipSearchQuery

@@ -34,12 +34,17 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # supplied overrides BEFORE sourcing so the assertion can read the canonical
 # DoD defaults the lib publishes. PASS/WARN/FAIL / WORK_DIR are also
 # cleared so we observe the lib-assigned value, not a pre-existing one.
+TEST_DATA_DIR="$(mktemp -d /tmp/pipelinegen-artlist-test.XXXXXX)"
+trap 'rm -rf "$TEST_DATA_DIR"' EXIT
+
 unset HOST PIPELINE_PORT BASE_URL DB_PATH SCRAPER_URL QDRANT_URL \
       QDRANT_COLLECTION ARTLIST_ROOT_FOLDER ARTLIST_TERM \
       VELOX_HOST VELOX_PORT VELOX_DATA_DIR \
       VELOX_ARTLIST_SCRAPER_SERVER_URL \
       VELOX_DRIVE_ARTLIST_ROOT ROOT_FOLDER_ID \
       PASS WARN FAIL WORK_DIR
+export VELOX_DATA_DIR="$TEST_DATA_DIR"
+export DB_PATH="$TEST_DATA_DIR/media/media.db.sqlite"
 # common.sh is intentionally NOT sourced here — this test exercises
 # artlist_runtime.sh in isolation (the same way a focused regression net
 # should), confirming it can stand on its own. common.sh's smoke_require jq
@@ -77,7 +82,7 @@ echo '🧪 1. Runtime vars default to canonical DoD values'
 assert_eq "HOST"                   "127.0.0.1"                            "${HOST}"
 assert_eq "PIPELINE_PORT"          "8000"                                  "${PIPELINE_PORT}"
 assert_eq "BASE_URL"               "http://127.0.0.1:8000"                 "${BASE_URL}"
-assert_eq "DB_PATH"                "./data/media/media.db.sqlite"           "${DB_PATH}"
+assert_eq "DB_PATH"                "$TEST_DATA_DIR/media/media.db.sqlite"   "${DB_PATH}"
 assert_eq "SCRAPER_URL"            "http://127.0.0.1:9123"                 "${SCRAPER_URL}"
 assert_eq "QDRANT_URL"             "http://127.0.0.1:6333"                 "${QDRANT_URL}"
 assert_eq "QDRANT_COLLECTION"      "media_assets_current"                  "${QDRANT_COLLECTION}"

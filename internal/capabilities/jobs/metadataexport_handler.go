@@ -1,7 +1,7 @@
 // Package outbox contains the technical adapter for metadata export events.
 //
 // The metadata export capability itself lives in
-// internal/application/assets/metadataexport. This file is deliberately
+// internal/capabilities/assets/metadataexport. This file is deliberately
 // limited to the outboxevents.Handler contract: decode and validate the
 // event, resolve its scope through the capability port, then dispatch to
 // the capability service. It is kept here because outboxevents is a

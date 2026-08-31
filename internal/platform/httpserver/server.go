@@ -124,7 +124,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	if cfg != nil {
 		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
 		// — the canonical concrete is
-		// internal/api/middleware.TokenSecurityAdapter (re-located from
+		// internal/platform/httpserver/middleware.TokenSecurityAdapter (re-located from
 		// pkg/middleware round-2; pkg/ is leaf-only and HTTP-middleware
 		// concrete adapters cannot legitimately live there). cfg.Security
 		// is snapshotted into the canonical adapter literal here; the
@@ -415,13 +415,13 @@ func (s *Server) GetRouter() *gin.Engine {
 //
 // PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
 // was deleted. The canonical concrete is
-// internal/api/middleware.TokenSecurityAdapter (re-located from
+// internal/platform/httpserver/middleware.TokenSecurityAdapter (re-located from
 // pkg/middleware round-2). The cfg-wrapping trio that lived in
 // api/server.go + cmd/admin/gen_api_docs.go +
 // internal/app/middleware_security_adapter.go is now collapsed into
 // construction-site snapshots. Only the rate-limit and feature-flags
 // inline adapters remain below (their canonical equivalents are NOT
-// yet tracked under internal/api/middleware; a separate consolidation
+// yet tracked under internal/platform/httpserver/middleware; a separate consolidation
 // would promote them — out of scope for PG-006.1).
 
 // serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's

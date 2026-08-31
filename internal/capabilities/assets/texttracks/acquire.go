@@ -23,7 +23,7 @@
 // godlike/06 SSOT: this is the SOLE canonical place where the
 // 5-priority chain is assembled for the BACKFILL path. The
 // YouTube per-segment path has its own resolver
-// (internal/application/youtube/usecase/text_track_resolver.go)
+// (internal/capabilities/youtube/usecase/text_track_resolver.go)
 // that is intentionally separate — the two paths have different
 // contexts (per-segment streaming vs. operator-driven batch).
 //

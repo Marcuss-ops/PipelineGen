@@ -1,6 +1,6 @@
 // Package asset — enrich_state.go is the canonical 4-state typed enum
 // for the media_assets.enrich_state column (PR-ENRICHMENT-STATE-MACHINE,
-// July 2026, owner: internal/application/assets/enrichment).
+// July 2026, owner: internal/capabilities/assets/enrichment).
 //
 // State machine (canonical 4-state closed set — godlike/06 SSOT one
 // owner per fact):
@@ -25,7 +25,7 @@
 // is "mai classificato".
 //
 // godlike/07 typed-error contract (surface:
-// internal/application/assets/enrichment/errors.go): the state-machine
+// internal/capabilities/assets/enrichment/errors.go): the state-machine
 // wrapper rejects illegal transitions via ErrIllegalEnrichTransition
 // (typed envelope {From, To}). Callers errors.As(err, &ite) to inspect
 // the rejected edge.

@@ -4,7 +4,11 @@
 # stale alias or incomplete registry is not a PASS.
 set -euo pipefail
 
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/canonical_db_path.sh
+source "$PROJECT_ROOT/scripts/lib/canonical_db_path.sh"
+DB_PATH="$(resolve_canonical_primary_db "${DB_PATH:-${VELOX_DB_PATH:-}}" "$PROJECT_ROOT")" || exit 2
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 ALIAS="${QDRANT_ALIAS:-media_assets_current}"
 EXPECTED_COLLECTION_PREFIX="${EXPECTED_COLLECTION_PREFIX:-media_assets_v3_e5_768_siglip_768}"

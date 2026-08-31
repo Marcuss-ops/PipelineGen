@@ -4,7 +4,7 @@
 // PG-002 (June 2026) renewed for the Capability Standard migration:
 // RepositoryAdapter wraps the SQLite-backed *channels.ChannelsRepository
 // so the application package can consume it through the narrow
-// channels.Repository interface without importing internal/infrastructure/*
+// channels.Repository interface without importing internal/platform/*
 // directly. The adapter is intentionally thin — every method is a
 // one-line delegate — because the channel surface today is pure CRUD;
 // if/when application orchestration lands in service.go, the adapter

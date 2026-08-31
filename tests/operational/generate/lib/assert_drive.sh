@@ -4,7 +4,7 @@
 generate_assert_drive() {
     local result="$1" script_id db_path doc_link
     script_id=$(jq -r '.script_id // empty' <<<"$result")
-    db_path="${SMOKE_DB_PATH:-${GENERATE_REPO_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}/data/media/media.db.sqlite}"
+    db_path="${SMOKE_DB_PATH:?SMOKE_DB_PATH must be explicitly set to an isolated or approved database}"
     [[ -f "$db_path" ]] || { echo "FAIL: SQLite database not found: $db_path" >&2; return 1; }
     [[ "$script_id" =~ ^[0-9]+$ && "$script_id" -gt 0 ]] || { echo "FAIL: API did not return a valid script_id: $script_id" >&2; return 1; }
     local row

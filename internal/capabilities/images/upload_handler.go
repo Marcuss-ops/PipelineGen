@@ -1,7 +1,7 @@
 // ARCH-ALLOWLIST: im-001-multipart-canonical-surface
 // Per IMAGES-T04-MULTIPART (Phase 9 cycle 2, 2026-07-04):
 // the canonical multipart-form upload surface for clip assets
-// lives in internal/api/assets/clips/ingest.go::UploadVideoClip
+// lives in internal/capabilities/assets/clips/ingest.go::UploadVideoClip
 // (the IngestHandler POST /upload-video route), NOT in this
 // package. This package's /upload handler binds JSON (UploadRequest
 // with image_url field), not multipart. The two surfaces are

@@ -1,10 +1,10 @@
 // Package clips (conversions) — typed conversions between the canonical
-// domain shape (internal/domain/asset.Asset + internal/domain/asset.AssetNode)
-// and the infra-shaped sqlite/assettree node (internal/infrastructure/
+// domain shape (internal/kernel/asset.Asset + internal/kernel/asset.AssetNode)
+// and the infra-shaped sqlite/assettree node (internal/platform/
 // database/sqlite/assets.AssetNode).
 //
 // Wave 14 — PR2 slice 1/8 (June 2026): previously inlined in
-// internal/api/assets/clips/helpers.go as `ClipToAssetNode` (CamelCase
+// internal/capabilities/assets/clips/helpers.go as `ClipToAssetNode` (CamelCase
 // exported) and `treeNodeToAssetNode` (lowercase — only call sites are
 // inside the same api/ package). Both helpers were grandfathered on
 // the retired API/infrastructure boundary because they reached into a
@@ -14,7 +14,7 @@
 // application layer is the canonical seam above the infra, so it is
 // the right place for cross-boundary type adapters. The api/ handlers
 // now call appclips.ClipToAssetNode(...) / appclips.TreeNodeToAssetNode(...)
-// without themselves importing infra. internal/api/assets/clips/helpers.go
+// without themselves importing infra. internal/capabilities/assets/clips/helpers.go
 // is REMOVED and its line dropped from the allowlist.
 //
 // Why CamelCase (was lowercase `treeNodeToAssetNode`): a same-package
@@ -25,7 +25,7 @@
 // (rather than collapsing to a single domain-only helper): the caller
 // pattern is `node := ClipToAssetNode(clip); assetTreeSvc.UpsertNode(ctx,
 // node)` — UpsertNode's signature in
-// internal/application/assets/assettree.Service accepts *assets.AssetNode
+// internal/capabilities/assets/assettree.Service accepts *assets.AssetNode
 // from the sqlite/assettree domain. A deeper unification (collapse
 // *assets.AssetNode + *asset.AssetNode in Wave 16) is out of scope for
 // this slice — the goal is to remove ONE api/ file from the allowlist
@@ -39,7 +39,7 @@ import (
 
 // ClipToAssetNode converts a canonical asset.Asset to the shared
 // sqlite/assettree AssetNode shape. Exported so api-layer handlers
-// (internal/api/assets/clips/*) can build asset-tree nodes from a
+// (internal/capabilities/assets/clips/*) can build asset-tree nodes from a
 // domain clip without themselves importing infrastructure types.
 func ClipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 	if clip == nil {
@@ -76,7 +76,7 @@ func ClipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 // reshape infra-shaped tree rows for the api response (folder_tree.go,
 // GetFolderChildren, GetTree fallbacks).
 //
-// Pre-PR2: lowercase `treeNodeToAssetNode` in internal/api/assets/clips/helpers.go.
+// Pre-PR2: lowercase `treeNodeToAssetNode` in internal/capabilities/assets/clips/helpers.go.
 func TreeNodeToAssetNode(tn *assets.AssetNode) *asset.AssetNode {
 	if tn == nil {
 		return nil

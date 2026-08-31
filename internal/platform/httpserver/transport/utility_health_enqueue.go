@@ -4,14 +4,14 @@
 //
 // Historical scope (Phase 4 / June 2026, REMOVED):
 //   - UtilityHandler struct + ctor + Slugify method → absorbed into
-//     internal/api/system/handler.go (2026-08-23 Cleanup Day).
+//     internal/capabilities/system/handler.go (2026-08-23 Cleanup Day).
 //     Prior location `utility.go` deleted; no standalone UtilityModule.
 //   - HealthHandler struct + ctor + Health/Ready methods → relocated
 //     to `health.go` (the deep-check `/health` URL contract from the
 //     codex/health-ready-contract, June 2026, lives there now).
 //
 // Remaining in this file: ONLY the async-enqueue helper that caller
-// sites in `internal/api/assets/{voiceover,clips/bulk_upload_transport,
+// sites in `internal/capabilities/assets/{voiceover,clips/bulk_upload_transport,
 // storage/{local_to_drive,sync_drive_folder,internal_sync_drive_folder},
 // youtube}/handler.go` route through with concrete `job.Service` and
 // the typed `*EnqueueInput` literal envelope below.
@@ -56,10 +56,10 @@ type EnqueueInput struct {
 // response — the caller should `return` immediately.
 //
 // Mirrors the contract pinned by
-// internal/api/assets/voiceover/handler.go (Wave 18 follow-up),
-// internal/api/assets/clips/bulk_upload_transport.go (Wave 18),
-// internal/api/assets/storage/sync_drive_folder.go + local_to_drive.go
-// (Wave 17/18), and internal/api/assets/youtube/youtube_handlers.go.
+// internal/capabilities/assets/voiceover/handler.go (Wave 18 follow-up),
+// internal/capabilities/assets/clips/bulk_upload_transport.go (Wave 18),
+// internal/capabilities/assets/storage/sync_drive_folder.go + local_to_drive.go
+// (Wave 17/18), and internal/capabilities/assets/youtube/youtube_handlers.go.
 func EnqueueAsync(c *gin.Context, jobsSvc job.Service, in *EnqueueInput, msg string) bool {
 	if jobsSvc == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not configured")

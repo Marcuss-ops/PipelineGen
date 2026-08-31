@@ -1,5 +1,5 @@
 // Package adapters — YouTube acquisition phase-1 typed-narrow
-// godlike/06 SSOT surface (internal/application/youtube/adapters).
+// godlike/06 SSOT surface (internal/capabilities/youtube/adapters).
 //
 // FORWARD-ARCHAEOLOGY: this file replaces
 // internal/youtube/acquisition/acquisition.go, retired in P1-4

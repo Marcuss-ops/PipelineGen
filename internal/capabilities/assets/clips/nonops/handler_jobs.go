@@ -28,10 +28,10 @@ import (
 //
 //  1. ClipsDescriptor.RegisterJobHandlers(svc api.JobRegistrar)
 //     — composition-root entry point
-//     (internal/api/assets/clips/module.go)
+//     (internal/capabilities/assets/clips/module.go)
 //  2. Handler.RegisterJobHandlers()
 //     — 1-line delegator on the orchestrator *Handler
-//     (internal/api/assets/clips/handler.go)
+//     (internal/capabilities/assets/clips/handler.go)
 //  3. NonOpsHandler.RegisterJobHandlers() (this method)
 //     — writes h.jobsSvc.RegisterHandler(string(TypeBulkUploadYouTubeClips), ...)
 //

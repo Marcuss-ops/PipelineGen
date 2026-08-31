@@ -11,5 +11,5 @@
 //
 // Import discipline:
 //   - MUST NOT import other youtube/ sub-packages.
-//   - MAY import internal/domain/asset and stdlib-only.
+//   - MAY import internal/kernel/asset and stdlib-only.
 package ports

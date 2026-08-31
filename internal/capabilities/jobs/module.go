@@ -12,7 +12,7 @@
 // ready to be registered into the api.Registry by the composition root.
 //
 // This file is part of Blocco C1-Step 13 (June 2026): every capability
-// in `internal/api/**` and `internal/application/**` MUST expose a
+// in `internal/capabilities/**` and `internal/capabilities/**` MUST expose a
 // Build(d) signature. Direct canonical-registry Calls inside a
 // capability package are forbidden (godlike/07 + the canonical
 // `internal/app/capability_registry.go` hoist site landed in

@@ -21,7 +21,7 @@
 //
 // godlike/06 SSOT: there is exactly ONE owner of the lifecycle enum and
 // its wire serialization. The application-layer `sourcing.IndexingStatus`
-// alias in internal/application/assets/sourcing/types.go is a TRANSPARENT
+// alias in internal/capabilities/assets/sourcing/types.go is a TRANSPARENT
 // Go type-alias — no parallel state, no forked serialization.
 package sourcing
 

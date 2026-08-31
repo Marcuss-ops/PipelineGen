@@ -12,7 +12,7 @@ func registerTextTrackEntries(r *Registry) {
 	// TypeAssetTextMaterialize is the canonical job type
 	// for the text-track materialization pipeline. The
 	// handler is registered via
-	// internal/application/assets/texttracks/jobs.go.
+	// internal/capabilities/assets/texttracks/jobs.go.
 	//
 	//   - Timeout: 2h covers a 6-language fan-out × per-language
 	//     translation round-trip (3-15s on ollama) + outbox emission.

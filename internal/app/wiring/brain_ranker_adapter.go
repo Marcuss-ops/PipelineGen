@@ -2,7 +2,7 @@
 // brain.CandidateRanker port. It lives in the composition root
 // (internal/app) because it is a pure cross-package bridge that must
 // depend on both the brain types and the mediamemory ranker; keeping
-// it out of internal/application/brain/ranker removes the
+// it out of internal/capabilities/brain/ranker removes the
 // brain <-> mediamemory architectural import cycle.
 //
 // godlike/06 SSOT: this is the canonical production implementation of

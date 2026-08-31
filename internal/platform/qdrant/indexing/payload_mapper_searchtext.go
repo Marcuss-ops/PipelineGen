@@ -32,7 +32,7 @@ func parseMetadataJSON(asset *AssetData) {
 // SearchTextInput that the per-source strategies consume. The mapping
 // is intentionally permissive: every field on SearchTextInput is a
 // zero-or-more-value contract; strategies only read the subset they
-// document (per `internal/infrastructure/indexing/searchtext/strategies.go`).
+// document (per `internal/capabilities/indexing/searchtext/strategies.go`).
 //
 // AssetData field priorities:
 //   - Title         ← asset.Name (canonical human-readable label)

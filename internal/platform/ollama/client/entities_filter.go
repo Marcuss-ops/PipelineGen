@@ -35,6 +35,7 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti, profile)
 	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali, profile)
 	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases, profile)
+	result.NounChunks = filterGroundedNounChunks(segment, result.NounChunks, profile)
 	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
 
 	if len(result.FrasiImportanti) == 0 {

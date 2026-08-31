@@ -1,7 +1,7 @@
 // Package cliprender owns the canonical clip.render capability: the
 // typed request contract, its fail-fast validation, and the job-type
 // identity for the async Master job. The HTTP transport lives in
-// internal/api/assets/cliprender; the render worker (ClipRenderPlanV1
+// internal/capabilities/assets/cliprender; the render worker (ClipRenderPlanV1
 // compilation, transcript/subtitle resolution, Rust single-pass render,
 // validation, Drive upload, derived-asset commit) lands in follow-up
 // steps and stays inside this package.

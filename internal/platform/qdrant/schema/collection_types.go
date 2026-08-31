@@ -25,6 +25,9 @@
 package schema
 
 import (
+	"fmt"
+	"strings"
+
 	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
 )
 
@@ -94,6 +97,49 @@ func DefaultConfig() *Config {
 		Timeout:                 10,
 		CollectionRetentionDays: 7,
 	}
+}
+
+// ProductionCollection is the only Qdrant collection that runtime data
+// paths may read or write. Versioned/candidate/recovery collections are
+// rebuild or emergency artifacts, never runtime truth.
+const ProductionCollection = "media_assets"
+
+// CanonicalRuntimeAlias is the control-plane alias associated with the
+// production projection. Runtime readers must resolve it to ProductionCollection.
+const CanonicalRuntimeAlias = "media_assets_current"
+
+// IsRuntimeCollection reports whether name is the single production
+// collection allowed on runtime data paths.
+func IsRuntimeCollection(name string) bool {
+	return strings.TrimSpace(name) == ProductionCollection
+}
+
+// ValidateRuntimeCollection rejects every collection except production.
+func ValidateRuntimeCollection(name string) error {
+	if !IsRuntimeCollection(name) {
+		return fmt.Errorf("collection %q is forbidden on runtime paths; only %q is allowed", name, ProductionCollection)
+	}
+	return nil
+}
+
+// ValidateProjectionTarget validates a physical build target. It is broader
+// than ValidateRuntimeCollection because rebuild tooling may prepare a
+// non-runtime candidate, but it still excludes recovery, test, synthetic and
+// the runtime alias from normal projection lifecycle state.
+func ValidateProjectionTarget(name string) error {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" || name == CanonicalRuntimeAlias {
+		return fmt.Errorf("collection %q is not a valid projection target", name)
+	}
+	for _, token := range []string{"recovery", "synthetic", "test"} {
+		if strings.Contains(name, token) {
+			return fmt.Errorf("collection %q is reserved for emergency or fixture use", name)
+		}
+	}
+	if name == ProductionCollection || strings.HasPrefix(name, "media_assets_") || strings.HasPrefix(name, "candidate-") {
+		return nil
+	}
+	return fmt.Errorf("collection %q is not a recognized media-assets projection target", name)
 }
 
 // ── Collection info (public wire surface) ─────────────────────────────
@@ -206,6 +252,11 @@ type ReindexResult struct {
 	FailedAssetIDs   []string `json:"failed_asset_ids,omitempty"`
 	TargetCollection string   `json:"target_collection"`
 	DryRun           bool     `json:"dry_run"`
+	// SQLiteIndexableAssets is the number of rows selected by the
+	// canonical SearchIndexEligibilitySQL predicate for this rebuild.
+	// It is kept separate from TotalAssets so the report cannot
+	// accidentally imply that ineligible catalog rows were projected.
+	SQLiteIndexableAssets int `json:"sqlite_indexable_assets"`
 }
 
 // MaxErrors is the safety cap for the report.Errors slice. Beyond this
@@ -263,8 +314,13 @@ const MaxMissingOrphanIDs = 1000
 //     incomplete diagnostic surface and blocks the switch.
 type SwitchReport struct {
 	TargetCollection string `json:"target_collection"`
-	ExpectedPoints   int    `json:"expected_points"`
-	ActualPoints     int    `json:"actual_points"`
+	// SQLiteIndexableAssets is the authoritative source cardinality for
+	// this candidate. It is loaded from SearchIndexEligibilitySQL and
+	// is the count used by the rebuild gate; writer success counts must
+	// never redefine the expected projection set.
+	SQLiteIndexableAssets int `json:"sqlite_indexable_assets"`
+	ExpectedPoints        int `json:"expected_points"`
+	ActualPoints          int `json:"actual_points"`
 	// CompleteScan: see type doc. Initialised to false; flipped true
 	// only when the verifier ran the full scroll loop without any
 	// truncating condition (page error | cap hit | trailing NextOffset).

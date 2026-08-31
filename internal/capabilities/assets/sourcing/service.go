@@ -163,7 +163,7 @@ func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipC
 
 // RegisterFromYouTube delegates to the YouTube sub-package service.
 // The legacy method body has moved to
-// internal/application/assets/sourcing/youtube/service.go::Service.Register.
+// internal/capabilities/assets/sourcing/youtube/service.go::Service.Register.
 // Behavior is identical — the façade only changes the lookup direction.
 //
 // PR-RESOLVER-PORT-EXTRACT (SEMANTIC-LOCATION-API Wave 7, July 2026):
@@ -212,7 +212,7 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 // BatchRegisterFromYouTube processes a batch of clip registration
 // commands sequentially, delegating to the batch sub-package service
 // (P0-1 / commit 2). The legacy inline loop has moved to
-// internal/application/assets/sourcing/batch/service.go::Service.BatchRegister.
+// internal/capabilities/assets/sourcing/batch/service.go::Service.BatchRegister.
 func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []RegisterClipCommand) *BatchRegisterResult {
 	if s == nil || s.batch == nil {
 		return &BatchRegisterResult{
@@ -254,7 +254,7 @@ func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []Regis
 
 // SyncDriveFolder delegates to the drivesync sub-package service.
 // The legacy method body has moved to
-// internal/application/assets/sourcing/drivesync/service.go::Service.Sync.
+// internal/capabilities/assets/sourcing/drivesync/service.go::Service.Sync.
 // Behavior is identical — the façade only changes the lookup direction.
 // Nil-svc guard preserved at the façade boundary so test fixtures that
 // construct sourcing.NewService with a nil drvSvc continue to surface
@@ -269,7 +269,7 @@ func (s *Service) SyncDriveFolder(ctx context.Context, cmd SyncDriveFolderComman
 
 // LocalToDrive delegates to the localimport sub-package service.
 // The legacy method body has moved to
-// internal/application/assets/sourcing/localimport/service.go::Service.Import.
+// internal/capabilities/assets/sourcing/localimport/service.go::Service.Import.
 // Behavior is identical — the façade only changes the lookup direction.
 // Nil-svc guard at the façade boundary so test fixtures with a nil
 // localimport continue to surface the error message consistently with

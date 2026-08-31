@@ -3,16 +3,18 @@
 # Source-only library. The caller owns strict mode, common.sh, and invocation.
 
 boxers_initialize() {
-    # 1. Resolve DB Path
+    # 1. Resolve the canonical DB path only.
+    # shellcheck source=../../../scripts/lib/canonical_db_path.sh
+    source "$PROJECT_ROOT/scripts/lib/canonical_db_path.sh"
     DB_PATH="${VELOX_DB:-}"
-    if [[ -z "$DB_PATH" ]]; then
-        if [[ -f "$PROJECT_ROOT/data/media/media.db.sqlite" ]]; then
-            DB_PATH="$PROJECT_ROOT/data/media/media.db.sqlite"
-        elif [[ -f "$PROJECT_ROOT/data/velox.db" ]]; then
-            DB_PATH="$PROJECT_ROOT/data/velox.db"
-        else
-            DB_PATH="/var/lib/velox/velox.db"
-        fi
+    if [[ "$DRY_RUN" != "1" && -z "$DB_PATH" ]]; then
+        printf '%ssetup error: VELOX_DB must be explicitly set to an isolated or approved database%s\n' "$RED" "$RESET" >&2
+        exit 2
+    fi
+    if [[ "$DRY_RUN" == "1" && -z "$DB_PATH" ]]; then
+        DB_PATH="$(canonical_primary_db_path "$PROJECT_ROOT")"
+    else
+        DB_PATH="$(resolve_canonical_primary_db "$DB_PATH" "$PROJECT_ROOT")" || exit 2
     fi
 
     if [[ ! -f "$DB_PATH" && "$DRY_RUN" != "1" ]]; then

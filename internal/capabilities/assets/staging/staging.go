@@ -163,7 +163,7 @@ type StagedReceipt struct {
 	// this receipt. Diagnostic-only: not consumed by the FASE 3-B
 	// INSERT. Future PRs may derive JobID from this layout
 	// (workspace/jobID/artifactID convention matches the existing
-	// staging convention in internal/application/scripts/adapters/
+	// staging convention in internal/capabilities/scripts/adapters/
 	// artifacts_persistence.go).
 	WorkspacePath string
 }

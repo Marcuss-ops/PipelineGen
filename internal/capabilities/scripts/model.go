@@ -520,6 +520,13 @@ type Scene struct {
 	Text       map[Language]string         `json:"text"`
 	Voiceover  map[Language]AudioReference `json:"voiceover,omitempty"`
 
+	// ExecutionMode is the canonical authorization boundary shared with
+	// SpecScene. Empty is generated for backward compatibility.
+	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
+	// FixedPlayback is present only for protected fixed-media scenes and
+	// carries the authoritative original-clip source window.
+	FixedPlayback *scriptpkg.FixedPlaybackPolicy `json:"fixed_playback,omitempty"`
+
 	// TextReadyAt is the wall-clock instant this scene's text became final
 	// (the SceneTextReady boundary). TranslationStartedAt and TTSStartedAt
 	// mark when this scene's downstream branches first began. Together they
@@ -559,6 +566,28 @@ type Scene struct {
 	// scene. It is projected read-only into the job view; nil when no
 	// enrichment produced a result for this scene.
 	VidRush *scriptpkg.VidRushSegmentResult `json:"vidrush,omitempty"`
+}
+
+// FixedPlaybackSourceInMS returns the protected source-window start for
+// document projections. Runtime audio intent is the fallback when the
+// playback pointer is absent on a legacy scene.
+func (s Scene) FixedPlaybackSourceInMS() int64 {
+	if s.FixedPlayback != nil {
+		return s.FixedPlayback.SourceInMS
+	}
+	return s.Audio.SourceInUS / 1000
+}
+
+// FixedPlaybackSourceOutMS returns the protected source-window end for
+// document projections. A zero value means the complete source clip.
+func (s Scene) FixedPlaybackSourceOutMS() int64 {
+	if s.FixedPlayback != nil {
+		return s.FixedPlayback.SourceOutMS
+	}
+	if s.Audio.SourceDurationUS > 0 {
+		return s.FixedPlaybackSourceInMS() + s.Audio.SourceDurationUS/1000
+	}
+	return 0
 }
 
 // GenerateOutput is the durable plain-text projection of the generated

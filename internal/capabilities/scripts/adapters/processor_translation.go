@@ -239,7 +239,7 @@ func (p *TranslationProcessor) Process(
 	// which delegates to the canonical pure function byte-for-byte).
 	// The useCase wraps the function-value to the typed-port
 	// signature internally (see
-	// internal/application/scripts/usecase/translation.go).
+	// internal/capabilities/scripts/usecase/translation.go).
 	translated, tWarnings, tErr := p.useCase.TranslateScriptSpec(
 		ctx,
 		modelIn,
@@ -366,6 +366,12 @@ func preserveTranslatedSceneContract(original, translated scriptpkg.SpecSceneOut
 		current.SegmentID = prior.SegmentID
 		current.Index = prior.Index
 		current.Kind = prior.Kind
+		current.ExecutionMode = prior.ExecutionMode
+		current.FixedPlayback = prior.FixedPlayback
+		current.AudioMode = prior.AudioMode
+		current.AudioAssetID = prior.AudioAssetID
+		current.AudioSourceInMS = prior.AudioSourceInMS
+		current.AudioSourceOutMS = prior.AudioSourceOutMS
 		current.Bindings = prior.Bindings
 		if current.Title == "" {
 			current.Title = prior.Title

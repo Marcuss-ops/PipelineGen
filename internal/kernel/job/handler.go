@@ -7,13 +7,13 @@
 // (godlike/06 SSOT: cross-cutting contracts owned by the layer
 // dependency-free of every consumer).
 //
-// MIGRATION FROM internal/domain/job/handler.go (Phase A.2 → commit 9):
-//   - Pre-commit-9: Handler was declared in internal/domain/job/ as
+// MIGRATION FROM internal/kernel/job/handler.go (Phase A.2 → commit 9):
+//   - Pre-commit-9: Handler was declared in internal/kernel/job/ as
 //     the canonical surface; the kernel owned reading-of-types
 //     (Status / Filter / Job / Event) but the handler shape was
 //     the domain subzone's responsibility.
 //   - Post-commit-9: Handler is the kernel-level canonical.
-//     internal/domain/job/handler.go re-exports
+//     internal/kernel/job/handler.go re-exports
 //     `type Handler = kerneljob.Handler` and
 //     `type JobExecutionTools = kerneljob.JobExecutionTools`
 //     for back-compat with 31 in-tree pre-P1-#13 references.

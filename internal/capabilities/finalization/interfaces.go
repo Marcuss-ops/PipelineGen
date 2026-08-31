@@ -22,7 +22,7 @@
 // Production concretes live in:
 //
 //	internal/capabilities/jobs/policy/   (JobFinalizer)
-//	internal/application/assets/finalizer/ (ArtifactPreparationService, AssetFinalizerTx)
+//	internal/capabilities/assets/finalizer/ (ArtifactPreparationService, AssetFinalizerTx)
 //
 // Canonical reference: Piano d'Azione Completo § 4.2–5.2.
 package finalization
@@ -82,11 +82,11 @@ type JobFinalizer interface {
 //
 // It is the narrow publish-only seam consumed by ArtifactPreparation.
 // The concrete implementation lives in
-// internal/infrastructure/drive/artifact_publisher_adapter.go and
+// internal/platform/drive/artifact_publisher_adapter.go and
 // wraps delivery.Publisher.
 //
 // Drive cutover P0.4 (July 2026): extracted from the local Publisher
-// interface in internal/application/assets/finalizer/. The port lives
+// interface in internal/capabilities/assets/finalizer/. The port lives
 // at the domain boundary (Pattern 0) so the infrastructure adapter
 // can implement it without importing the application layer.
 type PublisherPort interface {

@@ -2,8 +2,8 @@
 // API handler depends on.
 //
 // PG-005 (June 2026): the previous 7 handler files under
-// internal/api/assets/clips/** reached through 6 concrete
-// internal/infrastructure/* types (*config.Config,
+// internal/capabilities/assets/clips/** reached through 6 concrete
+// internal/platform/* types (*config.Config,
 // *assets.ClipsRepository, *assets.VoiceoversRepository,
 // *imagesrepo.ImagesRepository, *drive.Uploader, semantic.MetadataWriterPort,
 // *clipindexer.Service, *foldermemory.Service) plus a raw hashutil
@@ -78,7 +78,7 @@ type ClipMetaPayload struct {
 
 // ClipVectorAssetDTO was retired. The vector
 // capability was deleted; the clip indexer
-// (internal/infrastructure/indexing/clipindexer) is now the single
+// (internal/platform/indexing/clipindexer) is now the single
 // canonical semantic-search backend.
 
 // ClipVoiceoverRecordDTO mirrors sqlite/assets.Record. PG-005
@@ -197,7 +197,7 @@ type ClipMetaWriterPort interface {
 //
 // HC-1 (June 2026): adds JobTimeout(t) — the typed config-port for
 // per-job-type execution timeouts. Consumed by the bulk_upload worker
-// (`internal/application/clips/bulk_upload_worker.go::HandleJob` —
+// (`internal/capabilities/clips/bulk_upload_worker.go::HandleJob` —
 // was `context.WithTimeout(ctx, 2*time.Hour)` pre-HC-1, now
 // `w.cfg.JobTimeout(job.TypeBulkUploadYouTubeClips)`). The concrete
 // adapter at internal/app/clips_adapters_cfg.go delegates to
@@ -255,7 +255,7 @@ type ClipPublisherPort interface {
 //
 // Pattern 8 rationale: the API layer was previously importing the
 // concrete *outbox.Dispatcher directly, in violation of AGENTS.md
-// Pattern 0 / Pattern 8 ("internal/api/** non deve contenere business
+// Pattern 0 / Pattern 8 ("internal/capabilities/** non deve contenere business
 // orchestration, no concrete infrastructure imports"). The handler
 // now depends on this interface; the concrete wiring lives in the
 // composition root at `internal/app/clips_dispatcher_adapter.go` with

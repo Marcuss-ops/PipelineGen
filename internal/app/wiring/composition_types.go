@@ -435,7 +435,7 @@ type StagingBundle struct {
 // (test stubs in 3.1c / 3.1d extensions) is type-safe without
 // re-wiring the bundle. The compile-time conformance anchor is
 // `var _ Finalizer = (*finalizerService)(nil)` in
-// internal/application/artifact_finalize/service.go.
+// internal/capabilities/artifact_finalize/service.go.
 type FinalizerBundle struct {
 	Finalizer artifactfinalize.Finalizer
 }

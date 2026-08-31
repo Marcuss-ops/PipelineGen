@@ -4,7 +4,7 @@
 //
 // Scope (from docs/architecture/qdrant/QDRANT-005.md):
 //   - Compare real ID sets, NOT counts.
-//   - Classify into the 9 categories below.
+//   - Classify into the canonical drift and hygiene categories below.
 //   - Repair routes: missing/stale -> outbox EnqueueAndIndex;
 //     orphan -> outbox EnqueueAndDelete; locator_legacy /
 //     lifecycle_key_legacy -> qdrant.Client.DeletePayloadKeys
@@ -21,7 +21,7 @@ import ()
 
 import "time"
 
-// ClassificationKind enumerates the 12 categories a paired (asset_id,
+// ClassificationKind enumerates the categories a paired (asset_id,
 // qdrantPoint) can fall into. Priority order (highest first; used by
 // classifyPair when multiple conditions apply):
 //
@@ -32,20 +32,22 @@ import "time"
 //     subsequent occurrences are flagged)
 //  4. NonCanonicalPointID  — Qdrant point ID does NOT match the
 //     AssetIDToQdrantPointID(asset_id) contract
-//  5. PayloadIncomplete    — missing required payload key
-//  6. VersionStale         — any channel embedding_version_<ch>
+//  5. PayloadIncomplete  — missing required payload key
+//  6. VersionStale        — any channel embedding_version_<ch>
 //     mismatches the manifest ModelVersion
-//  7. MissingVectors       — payload present but point has zero or
+//  7. HashMismatch        — SQLite's canonical content_hash is non-empty
+//     and differs from the Qdrant payload content_hash
+//  8. MissingVectors      — payload present but point has zero or
 //     empty vector channels (detected via verifier; reconciler scrolls
 //     with with_vector=false so this is a placeholder gate)
-//  8. DimensionMismatch    — vector dimension mismatch vs schema
+//  9. DimensionMismatch   — vector dimension mismatch vs schema
 //     (detected via verifier; reconciler scrolls with with_vector=false
 //     so this is a placeholder gate)
-//  9. LifecycleMismatch    — sqlite lifecycle_state != payload
-//  10. WorkspaceMismatch   — sqlite workspace_id != payload
-//  11. LifecycleKeyLegacy  — payload uses retired "status" key
+//  10. LifecycleMismatch  — sqlite lifecycle_state != payload
+//  11. WorkspaceMismatch  — sqlite workspace_id != payload
+//  12. LifecycleKeyLegacy — payload uses retired "status" key
 //     (instead of canonical "lifecycle_state"; QDRANT-004 SSOT)
-//  12. LocatorLegacy       — payload carries "drive_link" /
+//  13. LocatorLegacy      — payload carries "drive_link" /
 //     "local_path" (retired by QDRANT-001)
 type ClassificationKind string
 
@@ -56,6 +58,7 @@ const (
 	KindNonCanonicalPointID ClassificationKind = "non_canonical_point_id"
 	KindPayloadIncomplete   ClassificationKind = "payload_incomplete"
 	KindVersionStale        ClassificationKind = "version_stale"
+	KindHashMismatch        ClassificationKind = "hash_mismatch"
 	KindMissingVectors      ClassificationKind = "missing_vectors"
 	KindDimensionMismatch   ClassificationKind = "dimension_mismatch"
 	KindLifecycleMismatch   ClassificationKind = "lifecycle_mismatch"
@@ -103,7 +106,8 @@ type ReconcileOptions struct {
 // is the Qdrant point ID observed during the scan; empty when the
 // asset is missing entirely from Qdrant. Channel applies only when
 // Kind == KindVersionStale and identifies the embedding channel whose
-// payload value mismatched the schema.
+// payload value mismatched the schema. For KindHashMismatch, ContentHash
+// contains SQLite's canonical value used for the repair fingerprint.
 //
 // LocatorKeys applies only when Kind == KindLocatorLegacy and lists
 // the retired locator keys observed in this particular point's payload
@@ -143,8 +147,8 @@ type CategoryGroup struct {
 // DimensionMismatches, Duplicates — each backed by the underlying
 // ClassificationKind enumeration and its detection logic.
 //
-// The 5 remaining classification kinds (VersionStale, LifecycleMismatch,
-// WorkspaceMismatch, LifecycleKeyLegacy, LocatorLegacy) are NOT surfaced
+// The remaining diagnostic classification kinds (VersionStale, HashMismatch,
+// LifecycleMismatch, WorkspaceMismatch, LifecycleKeyLegacy, LocatorLegacy) are NOT surfaced
 // as named groups here — they are diagnostics that already appear in the
 // Counts map and Classifications list; the named groups are the
 // action/dispatch categories.
@@ -157,6 +161,7 @@ type CategoryGroup struct {
 type ReconciliationReport struct {
 	Missing             CategoryGroup `json:"missing"`
 	Orphans             CategoryGroup `json:"orphans"`
+	HashMismatches      CategoryGroup `json:"hash_mismatches"`
 	InvalidPayloads     CategoryGroup `json:"invalid_payloads"`
 	NonCanonicalIDs     CategoryGroup `json:"non_canonical_ids"`
 	MissingVectors      CategoryGroup `json:"missing_vectors"`
@@ -285,7 +290,7 @@ const MaxClassifications = 10000
 // AllClassificationKinds is the canonical, deterministic enumeration of
 // every ClassificationKind value, in priority order top-to-bottom.
 // Used by dashboards and the cmd/admin reconcile command to render all
-// 12 categories (including zero-count entries) so operators see exactly
+// all categories (including zero-count entries) so operators see exactly
 // which categories the scan covered.
 var AllClassificationKinds = []ClassificationKind{
 	KindMissing,
@@ -294,6 +299,7 @@ var AllClassificationKinds = []ClassificationKind{
 	KindNonCanonicalPointID,
 	KindPayloadIncomplete,
 	KindVersionStale,
+	KindHashMismatch,
 	KindMissingVectors,
 	KindDimensionMismatch,
 	KindLifecycleMismatch,
@@ -318,6 +324,7 @@ func (r *ReconcileReport) ToReconciliationReport() ReconciliationReport {
 	return ReconciliationReport{
 		Missing:             extractCategory(pairs, KindMissing, MaxClassifications),
 		Orphans:             extractCategory(pairs, KindOrphan, MaxClassifications),
+		HashMismatches:      extractCategory(pairs, KindHashMismatch, MaxClassifications),
 		InvalidPayloads:     extractCategory(pairs, KindPayloadIncomplete, MaxClassifications),
 		NonCanonicalIDs:     extractCategory(pairs, KindNonCanonicalPointID, MaxClassifications),
 		MissingVectors:      extractCategory(pairs, KindMissingVectors, MaxClassifications),

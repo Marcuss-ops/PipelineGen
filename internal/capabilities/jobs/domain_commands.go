@@ -1,6 +1,6 @@
 // Package jobs — cross-layer Worker command types. Every command struct here
 // is a thin type alias pointing at the canonical definition in
-// internal/domain/job (added in ondata-5 stage 10). This preserves package
+// internal/kernel/job (added in ondata-5 stage 10). This preserves package
 // name `jobs` (`jobs.RegisterWorkerCommand`) for in-package callers while
 // letting downstream consumers (`job.RegisterWorkerCommand` in internal/domain
 // or internal/infrastructure) see the same struct.

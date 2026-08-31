@@ -116,7 +116,7 @@ type StockRuntimeDeps struct {
 // this pair is both-nil or both-non-nil. PublisherPort is the pre-constructed
 // finalization.PublisherPort adapter (drive.NewArtifactPublisherAdapter)
 // created at the composition root so the application layer stays free of
-// internal/infrastructure/drive imports. Field count: 3.
+// internal/platform/drive imports. Field count: 3.
 type StockDeliveryDeps struct {
 	Publisher     delivery.Publisher           // optional (nil → backcompat; finalizer nil → OK)
 	PublisherPort finalization.PublisherPort   // optional (nil → backcompat; constructed from Publisher at composition root)
@@ -127,7 +127,7 @@ type StockDeliveryDeps struct {
 // stockConcreteDriveReader is the raw interface matched by the concrete
 // drive types (*drive.Uploader, drive.Reader). Defined in the composition
 // root so the application layer's DriveReaderPort can stay free of
-// internal/infrastructure/drive imports. chooseDriveReader wraps the
+// internal/platform/drive imports. chooseDriveReader wraps the
 // concrete with a stockDriveReaderAdapter that converts
 // drive.DriveFileInfo → stockpipeline.DriveFileInfo.
 type stockConcreteDriveReader interface {

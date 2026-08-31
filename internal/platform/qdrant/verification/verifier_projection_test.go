@@ -140,7 +140,7 @@ func TestProjectionReport_PassesRule(t *testing.T) {
 func TestVerifyActiveProjection_HappyPath(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{
 				point("asset-1"),
@@ -155,7 +155,7 @@ func TestVerifyActiveProjection_HappyPath(t *testing.T) {
 
 	report, err := verifier.VerifyActiveProjection(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v4_test", report.Collection)
+	assert.Equal(t, "media_assets", report.Collection)
 	assert.Equal(t, 2, report.EligibleSQLite)
 	assert.Equal(t, 2, report.QdrantPoints)
 	assert.Equal(t, 0, report.MissingCount)
@@ -170,7 +170,7 @@ func TestVerifyActiveProjection_HappyPath(t *testing.T) {
 func TestVerifyActiveProjection_MissingBlocks(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{point("asset-1")},
 		},
@@ -192,7 +192,7 @@ func TestVerifyActiveProjection_MissingBlocks(t *testing.T) {
 func TestVerifyActiveProjection_OrphanBlocks(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{point("asset-1"), point("asset-9")},
 		},
@@ -214,7 +214,7 @@ func TestVerifyActiveProjection_OrphanBlocks(t *testing.T) {
 func TestVerifyActiveProjection_PointWithoutAssetIDBlocks(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{{"id": "uuid-point-without-asset-id", "payload": map[string]any{"name": "n"}}},
 		},
@@ -235,7 +235,7 @@ func TestVerifyActiveProjection_PointWithoutAssetIDBlocks(t *testing.T) {
 func TestVerifyActiveProjection_MultiPage(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{point("asset-1")},
 			{point("asset-2")},
@@ -258,7 +258,7 @@ func TestVerifyActiveProjection_MultiPage(t *testing.T) {
 func TestVerifyActiveProjection_ScrollErrorFatal(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		// Two pages so the loop performs a second scroll request; the
 		// injected error fires on page 1.
 		Pages:        [][]map[string]any{{point("asset-1")}, {point("asset-2")}},
@@ -287,7 +287,7 @@ func TestVerifyActiveProjection_AliasHasNoTarget(t *testing.T) {
 
 	_, err := verifier.VerifyActiveProjection(context.Background())
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "has no target"), "must explain the missing alias target: %v", err)
+	assert.True(t, strings.Contains(err.Error(), "no production target"), "must explain the missing production target: %v", err)
 }
 
 // ─── Mock Qdrant for the projection verifier ────────────────────────

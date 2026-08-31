@@ -7,7 +7,7 @@
 // The leaf placement is canonical for shared domain types per
 // godlike/06 §"Database and config ownership": a type owned by
 // multiple packages lives in a leaf package with no side-imports.
-// Both `internal/application/assets/monitor/ports.go` and
+// Both `internal/capabilities/assets/monitor/ports.go` and
 // `internal/capabilities/transcripts/*` import this package.
 //
 // Field-level invariants preserved verbatim from the original

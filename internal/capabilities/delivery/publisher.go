@@ -28,7 +28,7 @@ import "context"
 //	  YouTubeClip, Artlist, Stock, Image, Voiceover, Book, Script, SoundEffect
 //
 // The concrete implementation lives in
-// internal/infrastructure/drive/publisher.go.
+// internal/platform/drive/publisher.go.
 //
 // Architecture rule (June 2026):
 //

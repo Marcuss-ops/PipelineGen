@@ -13,7 +13,7 @@ import (
 
 // jobsEnqueuer is the narrowed surface of the jobs service that
 // StockUseCase needs: just Enqueue. Mirrors the same-named narrowed
-// surface in internal/application/clips (Wave 14 PR2 pattern); the
+// surface in internal/capabilities/clips (Wave 14 PR2 pattern); the
 // worker registrant (Service.RegisterHandler) is unaffected.
 //
 // We use the canonical job.EnqueueRequest / *job.Job

@@ -176,7 +176,7 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 //      and commits. A future caller that skips the tx boundary won't
 //      compile because *sql.Tx is a non-optional parameter.
 //
-// The internal/application/assets/mutations/AssetMutationPrimitives
+// The internal/capabilities/assets/mutations/AssetMutationPrimitives
 // interface ALSO drops Restore/HardDelete (UpsertClip stays — fixtures
 // rely on it). The outbox dispatcher, which already implements
 // AssetMutationDispatcher (3-method, not Primitives), is unaffected.

@@ -69,7 +69,7 @@ type MultilingualConfig struct {
 	// The legacy metadata_json["transcript"] / metadata_json["clean_transcript"] read is
 	// RETIRED; the video pipeline reads transcripts EXCLUSIVELY from asset_text_tracks
 	// via the TextTrackReader port. See
-	// internal/application/scripts/usecase/clip_source_builder_transcript.go for the
+	// internal/capabilities/scripts/usecase/clip_source_builder_transcript.go for the
 	// canonical audit trail.
 	// TranslationPolicy controls the application-layer model
 	// selection passed to the TranslationPort for the

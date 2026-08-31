@@ -26,7 +26,7 @@ import (
 // P1-2 (June 2026): the application layer no longer constructs the
 // production *audioasset.Processor. Construction moves UP to the
 // composition root (this file) so the voiceover package can stay free
-// of any internal/infrastructure/* import. The processor is wrapped by
+// of any internal/platform/* import. The processor is wrapped by
 // newUseCaseTTSAdapter so the voiceover.Service only sees the canonical
 // TTSProvider port.
 func buildVoiceoverTTSProvider(

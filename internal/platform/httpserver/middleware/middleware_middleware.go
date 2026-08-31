@@ -18,9 +18,9 @@ import (
 //
 // PG-006 (June 2026): the previous signature took *config.Config
 // (`internal/platform/config`) and used the package-level
-// logger aliases from `internal/infrastructure/logging`. The middleware
+// logger aliases from `internal/platform/logging`. The middleware
 // is now strictly domain-shaped — AuthSecurityPort (defined in
-// internal/application/middleware/ports.go) carries the bool + token
+// internal/capabilities/middleware/ports.go) carries the bool + token
 // values, and *zap.Logger is passed at registration time.
 func Auth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {

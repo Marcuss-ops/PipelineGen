@@ -78,14 +78,14 @@ func TestCleanLocators_PreAllocCapacityGreaterOrEqualToAffected(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"points_count": totalPoints,
 					"status":       "green",
 				},
 			})
-		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets_v3/points/scroll":
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets/points/scroll":
 			if pageIdx >= len(allPages) {
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"result": map[string]interface{}{"points": []interface{}{}, "next_page_offset": nil},
@@ -114,7 +114,7 @@ func TestCleanLocators_PreAllocCapacityGreaterOrEqualToAffected(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"aliases": []map[string]interface{}{
-						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+						{"alias_name": "media_assets_current", "collection_name": "media_assets"},
 					},
 				},
 			})
@@ -126,7 +126,7 @@ func TestCleanLocators_PreAllocCapacityGreaterOrEqualToAffected(t *testing.T) {
 
 	schema := &qdrantSchema.IndexSchema{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3",
+		PhysicalName: "media_assets",
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []qdrantSchema.EmbeddingSpec{
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
@@ -161,11 +161,11 @@ func TestCleanLocators_NoLegacyKeys_DryRun(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{"points_count": 3, "status": "green"},
 			})
-		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets_v3/points/scroll":
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets/points/scroll":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"points": []interface{}{
@@ -180,7 +180,7 @@ func TestCleanLocators_NoLegacyKeys_DryRun(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"aliases": []map[string]interface{}{
-						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+						{"alias_name": "media_assets_current", "collection_name": "media_assets"},
 					},
 				},
 			})
@@ -191,7 +191,7 @@ func TestCleanLocators_NoLegacyKeys_DryRun(t *testing.T) {
 	defer srv.Close()
 
 	schema := &qdrantSchema.IndexSchema{
-		Version: "v3", PhysicalName: "media_assets_v3", RuntimeAlias: "media_assets_current",
+		Version: "v3", PhysicalName: "media_assets", RuntimeAlias: "media_assets_current",
 		DenseVectors: []qdrantSchema.EmbeddingSpec{{Channel: "text", Dimensions: 768, Distance: "Cosine"}},
 	}
 	client := transport.NewClient(&qdrantSchema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
@@ -213,9 +213,9 @@ func TestCleanLocators_CountPointsError_Fallback(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets":
 			http.Error(w, "qdrant overloaded", http.StatusServiceUnavailable)
-		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets_v3/points/scroll":
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets/points/scroll":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"points": []interface{}{
@@ -230,7 +230,7 @@ func TestCleanLocators_CountPointsError_Fallback(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"aliases": []map[string]interface{}{
-						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+						{"alias_name": "media_assets_current", "collection_name": "media_assets"},
 					},
 				},
 			})
@@ -241,7 +241,7 @@ func TestCleanLocators_CountPointsError_Fallback(t *testing.T) {
 	defer srv.Close()
 
 	schema := &qdrantSchema.IndexSchema{
-		Version: "v3", PhysicalName: "media_assets_v3", RuntimeAlias: "media_assets_current",
+		Version: "v3", PhysicalName: "media_assets", RuntimeAlias: "media_assets_current",
 		DenseVectors: []qdrantSchema.EmbeddingSpec{{Channel: "text", Dimensions: 768, Distance: "Cosine"}},
 	}
 	client := transport.NewClient(&qdrantSchema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())

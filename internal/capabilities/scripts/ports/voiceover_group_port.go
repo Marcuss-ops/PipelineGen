@@ -6,7 +6,7 @@
 //
 // PR-VOICEOVER-GROUPSRESOLVER-RETIRE (P0 #15, deadline 2026-07-22):
 // the legacy type-alias shim at
-// internal/application/voiceover/groups_resolver.go is RETIRED
+// internal/capabilities/voiceover/groups_resolver.go is RETIRED
 // (file physically git-rm'd). The canonical concrete is now
 // destination.Resolver directly; this port adapter bridges it
 // from the *destination.Resolver struct into the canonical

@@ -53,7 +53,7 @@ import (
 // godlike/06 SSOT (one canonical owner per fact): this struct
 // lives ONLY here. A future package that needs a model-facing
 // scene surface imports this type from
-// internal/application/scripts/usecase, NOT a parallel fork.
+// internal/capabilities/scripts/usecase, NOT a parallel fork.
 // Re-exporting via a ports re-shim is acceptable when the
 // consumer lives in a different domain layer; the canonical
 // definition stays here.

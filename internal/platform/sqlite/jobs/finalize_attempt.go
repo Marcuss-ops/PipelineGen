@@ -97,7 +97,7 @@ import (
 //
 // Fase 5(a) canonical-home alignment (July 2026): the 6 sentinels
 // below are thin re-export aliases of the canonical declarations at
-// `internal/domain/job/errors.go`. Identity is preserved (same
+// `internal/kernel/job/errors.go`. Identity is preserved (same
 // `error` value); Push 4.2 callers (`errors.Is(err,
 // jobs.ErrFinalizeAttemptOutcomeInvalid)`) compile and probe
 // unchanged. The `.Error()` message returns the domjob-formatted

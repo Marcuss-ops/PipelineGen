@@ -66,7 +66,7 @@ func (a *SourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	// P0-#1 (July 2026): the function now returns real errors. The
 	// pre-fix adapter hard-returned nil which masked the silent
 	// data-loss window in production. Upstream callers
-	// (e.g. internal/application/assets/sourcing/youtube/register_helpers.go)
+	// (e.g. internal/capabilities/assets/sourcing/youtube/register_helpers.go)
 	// currently `_ = s.metadata.UpdateCumulativeJSON(...)` so the
 	// returned error is observed at the adapter boundary but not
 	// propagated to the registration handler. The registration
@@ -136,7 +136,7 @@ func (a *ZapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 // ── SourcingEnrichmentAdapter ─────────────────────────────────────────
 //
 // Card 10 (July 2026): the adapter no longer holds a raw *clips.Handler —
-// the only non-HTTP consumer of internal/api/assets/clips/. Instead it
+// the only non-HTTP consumer of internal/capabilities/assets/clips/. Instead it
 // depends on the canonical appclips.ClipEnricher typed port (godlike/06
 // SSOT one-canonical-owner-per-fact). The slim boundary lets the
 // descriptor expose ONLY routes + job handlers (no Handler field), and

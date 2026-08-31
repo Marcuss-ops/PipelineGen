@@ -5,7 +5,7 @@
 // SQLite implementation satisfies that port. Both sql.Result and *sql.Row
 // structurally satisfy capcontrol.ExecResult and capcontrol.Row respectively,
 // so no Result/Row re-wrapping is needed (mirrors
-// internal/application/assets/finalizer/tx_adapter.go).
+// internal/capabilities/assets/finalizer/tx_adapter.go).
 package controlplane
 
 import (

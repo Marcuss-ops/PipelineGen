@@ -10,7 +10,7 @@
 package shared
 
 // InternalPathPrefix is the URL prefix the server mounts the worker
-// broker handler on (see `internal/api/routes.go::Setup`,
+// broker handler on (see `internal/platform/httpserver/routes.go::Setup`,
 // `engine.Group("/internal/v1")`). Kept in sync with the server's
 // route registration; updating one without the other breaks every
 // remote-worker claim.

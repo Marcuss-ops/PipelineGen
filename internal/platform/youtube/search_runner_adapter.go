@@ -9,7 +9,7 @@
 //	The existing `YTDLPAdapter` (also in this package) wraps os/exec yt-dlp
 //	calls but returns **`infra`-layer types** (`[]LiveSearchResult`,
 //	`VideoInfo`). It therefore satisfies a DIFFERENT interface — the
-//	infra-only `SearchRunner` in `internal/infrastructure/youtube/ports.go`,
+//	infra-only `SearchRunner` in `internal/platform/youtube/ports.go`,
 //	which is reserved for callers that live below the application seam
 //	(e.g. service-lifecycle tooling, ECS pre-build hooks). The
 //	application-layer `SearchRunnerPort` in

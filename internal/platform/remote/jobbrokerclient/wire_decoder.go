@@ -7,7 +7,7 @@
 // contract.
 //
 // godlike/06 SSOT: the wire shape on this side mirrors the
-// canonical taxonomy declared in internal/domain/remote/cerrors.go
+// canonical taxonomy declared in internal/capabilities/remote/cerrors.go
 // (ErrorKind closed-set + RemoteCompletionError envelope). One
 // decoder implementation, no per-client-site drift — the file
 // lowers the canonical wire-shape to one place.

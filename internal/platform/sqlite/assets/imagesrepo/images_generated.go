@@ -39,7 +39,7 @@ const ListImagesByOriginMaxLimit = 200
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this is the SOLE
 // canonical read seam for origin-based image queries. The handler
-// at internal/api/images/territory_handlers.go::GeneratedSearch is
+// at internal/capabilities/images/territory_handlers.go::GeneratedSearch is
 // the SOLE production caller today; future callers (CLI tools,
 // admin commands) MUST route through this method to preserve the
 // limit cap + ordering invariants. The thin-delegate on

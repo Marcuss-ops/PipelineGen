@@ -6,7 +6,7 @@
 // slide thumbnails containing text, not AI-generated images. The real AI
 // generation pipeline uses Playwright → Chrome → slides.new → Nano Banana Pro
 // and is implemented by the infrastructure adapter in
-// internal/infrastructure/images/chrome.
+// internal/platform/images/chrome.
 //
 // The port is structural (signature-bearing) so compile-time assertions
 // catch drift between the consumer and the concrete implementation.

@@ -105,7 +105,7 @@ set -euo pipefail
 : "${VELOX_ADMIN_TOKEN:?❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth (or export manually before rerunning).}"
 
 # ---- Configuration --------------------------------------------------------
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 BASE="${BASE:-http://127.0.0.1:8000}"
 AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 OUT_DIR="${OUT_DIR:-/tmp/stock-tests}"

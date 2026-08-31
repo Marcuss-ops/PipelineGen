@@ -56,7 +56,7 @@ fi
 
 SUBFOLDER_NAME="Manny Pacquiao vs Adrien Broner"
 CLIP_PREFIX="yt_RRJvrDKunyA_"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 
 payload=$(jq --arg folder_id "$SMOKE_DRIVE_FOLDER_ID" '
     .destination.folder_id = $folder_id

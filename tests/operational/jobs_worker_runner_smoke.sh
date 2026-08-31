@@ -62,7 +62,7 @@ if [[ "$HEALTH" != "200" ]]; then
 fi
 printf '%sServer reachable at %s%s\n' "$GREEN" "$SMOKE_API_BASE" "$RESET"
 
-DB="${DB_PATH:-data/media/media.db.sqlite}"
+DB="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 FAIL_COUNT=0
 TOTAL=7
 

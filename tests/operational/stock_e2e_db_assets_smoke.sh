@@ -42,7 +42,7 @@
 set -euo pipefail
 
 # ---- Configuration --------------------------------------------------------
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 
 # ---- Prerequisite checks (exit 2) ----------------------------------------
 command -v sqlite3 >/dev/null 2>&1 || \

@@ -5,7 +5,7 @@
 // Mirrors clips_index_state.go::SetIndexState EXACTLY in shape:
 // atomic UPDATE of (enrich_state, enrich_state_updated_at) on the
 // canonical media_assets row. The typed-enum + state-machine wrapper
-// guard at the application layer (internal/application/assets/
+// guard at the application layer (internal/capabilities/assets/
 // enrichment/state_machine.go) is the only place where state-
 // transition validity is enforced. The SQL primitive is intentionally
 // permissive — accepts any valid typed enum so future direct-call
@@ -30,7 +30,7 @@ import (
 // absent (UPDATE RowsAffected=0).
 //
 // Called by EnrichStateMachine.Transition (the typed state-machine
-// wrapper in internal/application/assets/enrichment/) and directly by
+// wrapper in internal/capabilities/assets/enrichment/) and directly by
 // the VLM 15-min sweeper's claim-fence path
 // (startVLMAutoTagSweeper in internal/app/lifecycle_sweepers.go).
 //

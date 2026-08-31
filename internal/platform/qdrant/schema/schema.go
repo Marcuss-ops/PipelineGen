@@ -42,7 +42,7 @@ const (
 func DefaultV3Schema() *IndexSchema {
 	return &IndexSchema{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		PhysicalName: ProductionCollection,
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []EmbeddingSpec{
 			{

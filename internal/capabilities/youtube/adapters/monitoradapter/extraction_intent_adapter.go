@@ -4,7 +4,7 @@
 //
 // Fase 8 (July 2026, Spina Dorsale): previously, the concrete binding
 // that wires jobs.Service + channels.Service to the monitor's
-// JobEnqueuer port lived at internal/application/assets/monitor/
+// JobEnqueuer port lived at internal/capabilities/assets/monitor/
 // extraction_enqueuer.go. That file imported youtubetypes for the
 // marshal step (EnqueueExtractRequest → youtubetypes.ExtractRequest),
 // creating a one-way adverse coupling between monitor and youtube.

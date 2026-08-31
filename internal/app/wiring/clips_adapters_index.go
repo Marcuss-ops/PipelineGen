@@ -26,7 +26,7 @@ import (
 // clipsAdapterBundle are all REMOVED. The empty-marker
 // ClipFolderMemoryPort (interface{}) was never invoked by any handler
 // or use case; the canonical `*foldermemory.Service` consumer at
-// `internal/api/assets/clips/handler.go:76::FolderMemSvc *foldermemory.Service`
+// `internal/capabilities/assets/clips/handler.go:76::FolderMemSvc *foldermemory.Service`
 // is PRESERVED (the real OpsHandler consumer, not the dead-code port
 // adapter). Future typed-port additions must land as a new
 // `clips.<X>Port` interface + concrete adapter per godlike/06 SSOT
@@ -74,7 +74,7 @@ func (a *clipsHashAdapter) MD5File(path string) (string, error) {
 // clipsAssetTreeAdapter wraps *assettree.Service to satisfy
 // clips.ClipTreeBuilderPort. UpsertFromAsset bridges the domain
 // *asset.Asset → concrete *assets.AssetNode at the infra seam, so
-// internal/application/clips has zero infra imports. The node shape
+// internal/capabilities/clips has zero infra imports. The node shape
 // conversion lives here (not in the use case) because it touches the
 // infrastructure type.
 type clipsAssetTreeAdapter struct {
@@ -103,7 +103,7 @@ func (a *clipsAssetTreeAdapter) UpsertFromAsset(ctx context.Context, clip *asset
 }
 
 // clipToAssetNode is the domain-to-infra asset-node converter. PG-005
-// (June 2026): moved from internal/application/clips/bulk_tags.go
+// (June 2026): moved from internal/capabilities/clips/bulk_tags.go
 // into the adapter layer so the use case has zero infra imports.
 // Updates to the asset-tree node shape land here as the only place
 // that knows about both the domain *asset.Asset and the concrete

@@ -3,7 +3,7 @@
 //
 // Wave 14 EXPAND produced command.go, ports.go, and result.go. The
 // CUTOVER moves the 13-step orchestration previously inlined in
-// internal/api/assets/clips/ingest.go::IngestHandler.UploadVideoClip
+// internal/capabilities/assets/clips/ingest.go::IngestHandler.UploadVideoClip
 // into a typed use case behind the ports declared in this package.
 // The handler is now thin transport only (AGENTS.md Pattern 8).
 package clips

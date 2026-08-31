@@ -201,9 +201,9 @@ func (s *Searcher) SearchByText(ctx context.Context, text string, embedder TextE
 	})
 }
 
-// resolveCollection returns the physical collection name for the runtime
-// alias, using a local cache with a 30s TTL to avoid paying an HTTP
-// round-trip on every search query.
+// resolveCollection returns the sole production collection for the runtime
+// alias, using a local cache with a 30s TTL. The centralized transport
+// resolver rejects every non-production target before it can be cached.
 //
 // QDRANT-ALIAS-CACHE (July 2026): the hot-path read uses a RWMutex so
 // concurrent searches don't contend. Only a cache miss (first call or
@@ -301,12 +301,15 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 
 		// Cache miss: execute the network call WITHOUT holding cacheMu.
 		observability.QdrantAliasCacheMissTotal.Inc()
-		collection, callErr := s.client.GetAliasTarget(ctx, s.schema.RuntimeAlias)
+		collection, callErr := s.client.ResolveRuntimeCollection(ctx, s.schema.RuntimeAlias)
 		if callErr != nil {
 			return "", fmt.Errorf("resolve alias target: %w", callErr)
 		}
 		if collection == "" {
 			return "", fmt.Errorf("runtime alias %q has no target — run EnsureSchema first", s.schema.RuntimeAlias)
+		}
+		if err := schema.ValidateRuntimeCollection(collection); err != nil {
+			return "", fmt.Errorf("runtime alias %q resolved to forbidden collection: %w", s.schema.RuntimeAlias, err)
 		}
 
 		// Populate cache — mutex ONLY for the cache write, not the network call.

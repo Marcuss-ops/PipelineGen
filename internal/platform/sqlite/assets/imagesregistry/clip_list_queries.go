@@ -4,7 +4,7 @@
 // After Wave C, the source `internal/kernel/asset/clips_list.go` is
 // deleted (no types reside in it). The filesystem scanner
 // (ScanDirectory + MediaFile) was migrated to
-// `internal/infrastructure/files/scanner.go` in PR 3 of Blocco 1.
+// `internal/platform/filesystem/scanner.go` in PR 3 of Blocco 1.
 package imagesregistry
 
 import (

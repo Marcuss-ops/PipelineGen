@@ -300,7 +300,7 @@ var (
 // triggering the Qdrant index request OR the metadata sidecar write).
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this port lives ONLY
-// at internal/application/assets/sourcing/ports.go (the canonical
+// at internal/capabilities/assets/sourcing/ports.go (the canonical
 // typed-contract surface per the codebase's Pattern-0 discipline).
 // Concrete adapters live at internal/app/youtube_adapters_meta.go
 // (sourcingMetadataAdapter + sourcingEnrichmentAdapter are the canonical
@@ -369,8 +369,8 @@ var (
 //
 // SEMANTIC-LOCATION-API-2026-07-06 Wave 7 (PR-RESOLVER-PORT-EXTRACT):
 // the port is the canonical Pattern-0 typed contract that consumes
-// internal/domain/delivery.AssetLocationInput (godlike/06 SSOT owner:
-// internal/domain/delivery/location.go) and returns a folder-id string.
+// internal/kernel/delivery.AssetLocationInput (godlike/06 SSOT owner:
+// internal/kernel/delivery/location.go) and returns a folder-id string.
 // Downstream YouTubeRegistrar / BatchRegistrar sub-services MUST NOT
 // build a folder-id from raw Location fields directly — they invoke
 // this port and merge the resolved id into RegisterClipCommand.FolderID
@@ -383,8 +383,8 @@ var (
 // a godlike/07 violation — callers cannot probe typed errors.
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this port lives
-// ONLY in internal/application/assets/sourcing/ports.go. Concrete
-// adapters live in internal/infrastructure/drive/resolver/ (C3
+// ONLY in internal/capabilities/assets/sourcing/ports.go. Concrete
+// adapters live in internal/platform/drive/resolver/ (C3
 // hybrid — interface in app, adapter in infra).
 type LocationResolverPort interface {
 	Resolve(ctx context.Context, loc domaindelivery.AssetLocationInput, dest delivery.DestinationKey) (folderID string, err error)

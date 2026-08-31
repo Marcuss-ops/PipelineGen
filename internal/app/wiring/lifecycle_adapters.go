@@ -134,7 +134,7 @@ func eventToDTO(e outboxevents.Event) jobs.EventDTO {
 // FASE 3.7 Commit 1b (2026-07-04): the request-shape translation is
 // added because `monitor.MonitorDownloaderPort.ListChannelVideos` was
 // migrated to `monitor.ListChannelVideosQuery` to drop the downloader
-// import from `internal/application/assets/monitor/ports_downloader.go`.
+// import from `internal/capabilities/assets/monitor/ports_downloader.go`.
 // The composition root is the canonical bridge between the two
 // request shapes — no monitor-side caller now needs to import
 // `internal/platform/downloader`.
@@ -206,7 +206,7 @@ var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
 //
 // Per godlike/06 (one owner per fact) + godlike/07 (no-fake-availability)
 // + the FASE 3.7 commitment (zero infra imports in
-// `internal/application/assets/monitor/`), the canonical resolution is
+// `internal/capabilities/assets/monitor/`), the canonical resolution is
 // the composition-root adapter pattern: monitor owns canonical
 // sentinels + DTOs locally; infra owns its own sentinels + row shapes;
 // the ONLY point where both come together is the composition root

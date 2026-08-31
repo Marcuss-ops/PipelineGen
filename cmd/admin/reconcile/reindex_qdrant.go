@@ -1,50 +1,23 @@
-// cmd/admin/reindex_qdrant.go — QDRANT-003 + QDRANT-004 closure + PR 13 (June 2026)
+// cmd/admin/reindex_qdrant.go — canonical SQLite → Qdrant rebuild command.
 //
-// One-shot reindex of media_assets into Qdrant using the canonical
+// One-shot reindex of SQLite-indexable media assets into the single
+// production collection `media_assets` using the canonical
 // IndexWriter.ReindexAll pipeline (AssetStore → PayloadMapper → IndexWriter).
-// This command replaces the legacy reindex (reindex.go, removed in QDRANT-003)
-// which used raw SQL + VectorAsset directly without schema validation.
-//
-// 3-file split layout (LONG-FILES-DECOMPOSITION-V2-2026-07-06 P3 BASSA, July 2026):
-//
-//   - reindex_qdrant.go          (this file, slim) — package doc + reindexQdrantDeps + parseReindexQdrantArgs + timestampedTargetCollection + RunReindexQdrant (thin dispatch)
-//   - reindex_qdrant_dryrun.go   (sibling)         — dryRunQdrant helper (the side-effect-free enumeration path)
-//   - reindex_qdrant_apply.go    (sibling)         — applyQdrant helper (the 4-phase apply path)
-//
-// QDRANT-003 PR fix (June 2026): wired CollectionManager for schema creation,
-// post-reindex verification, and atomic alias swap. The old code wrote into
-// the target collection but never ensured the schema existed, never verified
-// the result, and never switched the alias.
-//
-// QDRANT-004 closure: the alias switch is GATED on a SwitchReport.Ready=true
-// verification. On failure it returns *transport.ErrAliasSwitchNotReady
-// and never touches the alias.
-//
-// PR 13 (June 2026) closure — Blue-green reindex:
-//
-//	Apply mode NEVER reuses schema.PhysicalName as the target
-//	collection. Each `--apply` invocation creates a brand-new
-//	timestamped collection, indexes into it, runs the strict PR 12
-//	verifier, and only switches the runtime alias on Ready=true.
-//	The previous collection is RETAINED — never deleted — so the
-//	operator can `retry --target-collection=<old>` to rollback
-//	manually. Operator escape hatch: `--target-collection=<NAME>`
-//	writes into the explicit target (no timestamp override).
+// Runtime routing is production-only: this command has no blue-green,
+// versioned-target, recovery, synthetic, or collection override mode.
 //
 // Usage:
 //
-//	go run ./cmd/admin reindex-qdrant                           # dry-run (counts only)
-//	go run ./cmd/admin reindex-qdrant --apply                    # apply, target = media_assets_v3_<UTC> (PR 13 blue-green)
-//	go run ./cmd/admin reindex-qdrant --apply --target-collection=media_assets_recovery_v9  # explicit recovery target
-//	go run ./cmd/admin reindex-qdrant --apply --limit=500        # cap rows
-//	go run ./cmd/admin reindex-qdrant --json                     # machine-readable dry-run / apply
+//	go run ./cmd/admin reindex-qdrant                         # dry-run (counts only)
+//	go run ./cmd/admin reindex-qdrant --apply                 # rebuild media_assets in place
+//	go run ./cmd/admin reindex-qdrant --dry-run --limit=500    # preview a capped subset
+//	go run ./cmd/admin reindex-qdrant --json                  # machine-readable output
 package reconcile
 
 import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
@@ -76,8 +49,8 @@ type reindexQdrantDeps struct {
 //	--apply              actually write to Qdrant (default: dry-run)
 //	--dry-run            explicit dry-run (default, omit when --apply)
 //	--json               machine-readable output
-//	--limit=N            cap number of assets
-//	--target-collection=X  override target collection name
+//	--limit=N            cap number of assets (dry-run only)	//	--target-collection=X  rejected: runtime target is always media_assets
+
 func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 	deps := reindexQdrantDeps{}
 	for _, a := range args {
@@ -96,7 +69,7 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 			}
 			deps.Limit = n
 		case strings.HasPrefix(a, "--target-collection="):
-			deps.TargetCollection = strings.TrimPrefix(a, "--target-collection=")
+			return deps, fmt.Errorf("--target-collection is not supported; runtime rebuild target is always %q", platformschema.ProductionCollection)
 		default:
 			if strings.HasPrefix(a, "-") {
 				return deps, fmt.Errorf("unknown flag: %s", a)
@@ -106,33 +79,13 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 	if deps.Apply && deps.DryRun {
 		return deps, fmt.Errorf("--apply and --dry-run are mutually exclusive")
 	}
-	return deps, nil
-}
-
-// timestampedTargetCollection (PR 13, June 2026 + follow-up, June 2026) —
-// builds the canonical blue-green target name from the schema's
-// PhysicalName base + a UTC nanosecond timestamp suffix. The schema's
-// PhysicalName is the "logical" name; the timestamped variant is the
-// immutable physical collection the apply flow writes into.
-//
-// Format: <base>_<UTC-YYYYMMDD-HHMMSS-nnnnnnnnn>
-//
-// Deterministically derived from `now time.Time` so tests can
-// assert against a frozen clock. Nanosecond resolution via
-// time.Now()'s monotonic clock source on Linux/macOS gives
-// sub-microsecond uniqueness for sequential calls; this
-// resolves the human-driven blue-green collision case (the
-// user spec).
-//
-// Returns a string that — by construction — does NOT equal
-// schema.PhysicalName (the suffix is non-empty). PR 13's
-// `new != active` invariant is structurally guaranteed.
-func timestampedTargetCollection(base string, now time.Time) string {
-	if base == "" {
-		base = "media_assets_v3"
+	if deps.Apply && deps.Limit > 0 {
+		return deps, fmt.Errorf("--limit is supported only for dry-run; apply always rebuilds every SQLite-indexable asset")
 	}
-	utc := now.UTC()
-	return fmt.Sprintf("%s_%s_%09d", base, utc.Format("20060102_150405"), utc.Nanosecond())
+	if deps.TargetCollection != "" {
+		return deps, fmt.Errorf("target collection overrides are not supported; runtime target is always %q", platformschema.ProductionCollection)
+	}
+	return deps, nil
 }
 
 // RunReindexQdrant is the entry point registered in cmd/admin/main.go.
@@ -197,34 +150,9 @@ func RunReindexQdrant(args []string) error {
 		return fmt.Errorf("hydrate media registry projection ledger: %w", err)
 	}
 
-	// Determine the target collection.
-	targetCollection := deps.TargetCollection
-	if targetCollection == "" && !deps.Apply {
-		targetCollection = schemaObj.PhysicalName
-	}
-	// PR-HASH-SEMANTICS (item 13): Apply mode auto-targets the SIGNED
-	// media_assets_v4 name — schema version + embedding contract hash +
-	// semantic document version + dimension — unless the operator
-	// explicitly chose one. The name is derived from the committed
-	// embedding SSOT, never hand-authored, so two generations that
-	// disagree on the contract never collide. Dry-run still uses the
-	// canonical physical name (side-effect-free enumeration).
-	if deps.Apply && targetCollection == "" {
-		sig := platformschema.CanonicalV4Signature()
-		name, sigErr := sig.PhysicalName()
-		if sigErr != nil {
-			return fmt.Errorf("canonical v4 signature: %w", sigErr)
-		}
-		targetCollection = name
-	}
-
-	// Sanity warning for the operator on same-collection overwrite.
-	// Apply-only path (matches pre-PR behavior; the warning is about
-	// the apply path's same-collection overwrite hazard, not dry-run).
-	if deps.Apply && deps.TargetCollection != "" && deps.TargetCollection == schemaObj.PhysicalName {
-		log.Warn("PR 13: --target-collection matches schema.PhysicalName — same-collection overwrite. Use the auto-signed v4 path unless you are recovering from a failed blue-green run.",
-			zap.String("target_collection", deps.TargetCollection))
-	}
+	// Both dry-run and apply report the same immutable production target.
+	// There is intentionally no target override or generated collection.
+	targetCollection := platformschema.ProductionCollection
 
 	// Wire the golden query executor against the canonical E5 sidecar so the
 	// apply flow can certify deterministic top-K before the alias switch.

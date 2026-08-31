@@ -3,8 +3,8 @@
 //
 // godlike/06 SSOT: this file is the SOLE canonical owner of the
 // SQL projection + scan helper for the operations table. Domain
-// types live in `internal/domain/operations`; the application
-// service in `internal/application/operations` consumes only
+// types live in `internal/capabilities/operations`; the application
+// service in `internal/capabilities/operations` consumes only
 // the `Repository` port defined here.
 //
 // godlike/07 minimum-blast-radius: every public method takes an
@@ -35,7 +35,7 @@ import (
 // Implementations must be safe for concurrent use.
 //
 // godlike/06 SSOT: this interface is the typed-port surface that
-// `internal/application/operations` consumes. The concrete SQLite
+// `internal/capabilities/operations` consumes. The concrete SQLite
 // adapter (`*SQLiteRepository`) is the only production
 // implementation; tests may use in-memory fakes.
 type Repository interface {

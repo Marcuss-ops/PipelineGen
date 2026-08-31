@@ -15,6 +15,12 @@ import "fmt"
 // Drive location and timestamp keys, plus the per-channel embedding
 // version loop. Guards moved verbatim from the pre-split emitter.
 func fillContentPayload(payload map[string]any, doc *IndexDocument) {
+	// content_hash is the canonical SQLite content identity. It is
+	// projected verbatim so ReconcileProjection can compare Qdrant
+	// without ever treating Qdrant as the source of truth.
+	if doc.ContentHash != "" {
+		payload["content_hash"] = doc.ContentHash
+	}
 	if doc.Metadata.Language != "" {
 		payload["language"] = doc.Metadata.Language
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 // (June 2026) the Storage field type migrated from *storage.Handler to
-// api.Descriptor (Blocco C1-Step 12), so the `internal/api/assets/storage`
+// api.Descriptor (Blocco C1-Step 12), so the `internal/capabilities/assets/storage`
 // import is no longer needed in this file — the type is referenced
 // indirectly via the api.Descriptor interface and the canonical binding
 // is constructed by the composition root via assetstorage.Build(...).
@@ -34,7 +34,7 @@ type Dependencies struct {
 	// capability has a non-HTTP consumer at the Router level
 	// (the QDRANT-001 server-to-server /internal/v1/media/sync
 	// surface invoked via api.MediaInternalRouter.RegisterInternalMediaRoutes
-	// — see internal/api/routes.go::Setup() and the canonical
+	// — see internal/platform/httpserver/routes.go::Setup() and the canonical
 	// Router.SetInternalMediaHandler binding); therefore the
 	// StorageDescriptor keeps a Handler field (matches the clips
 	// precedent exactly — register / soundeffect / stock / voiceover
@@ -93,7 +93,7 @@ type Dependencies struct {
 	//
 	// CLIPS-T05-001 audit-pin (2026-07-04, Phase 9 closure): the
 	// clips module's canonical HTTP surface lives in
-	// `internal/api/assets/clips/` (routes `GET /:source/clips`,
+	// `internal/capabilities/assets/clips/` (routes `GET /:source/clips`,
 	// `GET /:source/clips/:id`, `POST /:source/clips/:id/status`,
 	// `POST /:source/clips/:id/verify`, `POST /:source/clips/:id/fix-hash`,
 	// `DELETE /:source/clips/:id`) and is mounted on the parent

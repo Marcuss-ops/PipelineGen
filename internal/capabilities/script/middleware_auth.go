@@ -7,7 +7,7 @@
 // RequireAdminToken free func + extractHeaderToken free func.
 //
 // godlike/07 minimum-blast-radius: the AdminTokenProvider interface
-// stays in package script (NOT moved to internal/api/middleware/) so
+// stays in package script (NOT moved to internal/platform/httpserver/middleware/) so
 // ScriptFlowHandler continues to satisfy the port structurally — moving
 // it out of the package would break the downstream surface contract
 // because every handler that wants the auth middleware is passed in as
@@ -30,7 +30,7 @@ import (
 // ── Local AdminTokenProvider port ──────────────────────────────────────────
 //
 // Two-method interface consumed by RequireAdminToken. The canonical
-// concrete is internal/api/middleware.TokenSecurityAdapter;
+// concrete is internal/platform/httpserver/middleware.TokenSecurityAdapter;
 // ScriptFlowHandler itself satisfies the port structurally so it can
 // be passed in without an intermediate adapter struct.
 type AdminTokenProvider interface {

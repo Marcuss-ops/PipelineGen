@@ -113,7 +113,7 @@ func constructArtlistProviders(
 		// with an empty-string fallback. The prober interprets an empty
 		// FFmpegBinaryPath as "use exec.LookPath("ffmpeg") to honour $PATH"
 		// (matches the precedent in
-		// internal/application/clips/upload/usecase.go line 361 +
+		// internal/capabilities/clips/upload/usecase.go line 361 +
 		// cutter_test.go line 60 which use exec.LookPath directly on the
 		// bare "ffmpeg" / "ffprobe" names).
 		FFmpegBinaryPath: cfg.External.FfmpegPath,
@@ -161,7 +161,7 @@ func constructArtlistProviders(
 	// isDirectURL / isHLSURL detection in processor_download.go is
 	// superseded by the canonical routing in resolver.go.
 	//
-	// godlike/06 SSOT: internal/infrastructure/artlist/downloader.Resolver
+	// godlike/06 SSOT: internal/platform/artlist/downloader.Resolver
 	// is the SINGLE canonical owner of Artlist download routing.
 	// ResolverConfig{ScraperURL: cfg.External.ArtlistScraperServerURL}
 	// feeds the Node scraper path; Config defaults (3 retries, 1s/30s

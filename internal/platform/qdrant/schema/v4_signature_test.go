@@ -75,6 +75,39 @@ func TestV4Signature_ValidateFailClosed(t *testing.T) {
 	}
 }
 
+func TestRuntimeCollectionPolicy_FailsClosedForRecoveryAndFixtures(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{name: "production collection", want: true},
+		{name: "legacy canonical physical", want: false},
+		{name: "timestamped canonical", want: false},
+		{name: "recovery collection", want: false},
+		{name: "synthetic collection", want: false},
+		{name: "test collection", want: false},
+		{name: "runtime alias", want: false},
+		{name: "empty", want: false},
+	}
+	names := map[string]string{
+		"production collection":     ProductionCollection,
+		"legacy canonical physical": "media_assets_v3_e5_768_siglip_768",
+		"timestamped canonical":     "media_assets_v4_manual_20260831_120000_000000000",
+		"recovery collection":       "media_assets_v4_recovery_20260817_1712",
+		"synthetic collection":      "synthetic_assets_v3",
+		"test collection":           "media_assets_v4_test",
+		"runtime alias":             "media_assets_current",
+		"empty":                     "",
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsRuntimeCollection(names[tc.name]); got != tc.want {
+				t.Fatalf("IsRuntimeCollection(%q) = %v, want %v", names[tc.name], got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseV4Signature_RejectsMalformed(t *testing.T) {
 	for _, bad := range []string{
 		"", "media_assets_v4", "other_v4_" + strings.Repeat("a", 64) + "_v3_768",

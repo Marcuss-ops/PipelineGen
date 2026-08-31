@@ -20,7 +20,7 @@
 // composition-root adapter in
 // `internal/app/lifecycle.go::monitorDiscoveriesAdapter` translates
 // the infra-row projection into the monitor canonical projection so
-// this file NEVER imports `internal/infrastructure/*`. Zero infra
+// this file NEVER imports `internal/platform/*`. Zero infra
 // import in this file.
 package monitor
 

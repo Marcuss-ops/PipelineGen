@@ -1,7 +1,7 @@
 // Package clips (upload_helpers) — port-typed helpers supporting the
 // upload + cumulative-metadata workflow.
 //
-// Wave 14 PR2 (June 2026): migrated from internal/api/assets/clips/upload_helpers.go.
+// Wave 14 PR2 (June 2026): migrated from internal/capabilities/assets/clips/upload_helpers.go.
 // The previous file's only non-pure dependency was `*drive.Uploader`
 // (concrete google drive SDK), required by
 // UpdateCumulativeMetadataJSON's drive search call. The replacement
@@ -10,7 +10,7 @@
 // remaining helpers (ExtractDriveFolderID, CleanFolderName,
 // BuildDriveDescription) are pure string functions and have always
 // been infra-free — they only migrated to follow the Wave 14 PR2
-// rule "API package files must not import any internal/infrastructure/*".
+// rule "API package files must not import any internal/platform/*".
 package clips
 
 import (

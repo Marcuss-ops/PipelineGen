@@ -1,6 +1,6 @@
-// Package resolver — internal/infrastructure/drive/resolver — stub
+// Package resolver — internal/platform/drive/resolver — stub
 // adapter for the canonical Pattern-0 LocationResolverPort declared in
-// internal/application/assets/sourcing/ports.go.
+// internal/capabilities/assets/sourcing/ports.go.
 //
 // SEMANTIC-LOCATION-API-2026-07-06 Wave 7 (PR-RESOLVER-PORT-EXTRACT):
 // this adapter is the production-time stub that ships with the Wave 7
@@ -64,11 +64,11 @@ type FolderEnsurer interface {
 // ── adapter struct ────────────────────────────────────────────────────────
 
 // Adapter implements the canonical Pattern-0 LocationResolverPort
-// (declared in internal/application/assets/sourcing/ports.go).
+// (declared in internal/capabilities/assets/sourcing/ports.go).
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this struct is the
 // canonical SOLE adapter for the resolver port. No other file in
-// `internal/infrastructure/drive/` produces a LocationResolverPort
+// `internal/platform/drive/` produces a LocationResolverPort
 // implementation. Composition root wires ONE instance per process
 // boot (newAssetRegisterService) and shares it across the sourcing
 // façade via .WithLocationResolver(...).
@@ -355,7 +355,7 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 // ── compile-time pin (godlike/06 SSOT) ───────────────────────────────────
 //
 // Compile-time assertion: *Adapter satisfies the canonical Pattern-0
-// port declared in internal/application/assets/sourcing/ports.go.
+// port declared in internal/capabilities/assets/sourcing/ports.go.
 // Future drift in Resolve signature surfaces as a build failure, NOT
 // a runtime nil-panic.
 var _ sourcing.LocationResolverPort = (*Adapter)(nil)

@@ -72,7 +72,7 @@
 // intentional to keep this PR focused on Step 10 only.
 //
 // Composition wiring: the canonical `*drive.Publisher` from
-// `internal/infrastructure/drive/publisher.go` satisfies the inline
+// `internal/platform/drive/publisher.go` satisfies the inline
 // port verbatim (same Publish signature). Callers wire it via
 // `internal/app/build_bundles_youtube.go` once the Step 10 ingest
 // job is composed (WIRE-UP is out of scope for this PR — the
@@ -134,7 +134,7 @@ var (
 
 // AssetPublisherPort is the canonical port that PublishRenditionsToYouTubeAsset
 // consumes. The signature mirrors delivery.Publisher verbatim so the
-// concrete *drive.Publisher from internal/infrastructure/drive satisfies
+// concrete *drive.Publisher from internal/platform/drive satisfies
 // it without adapter wrapping. Defined inline to mirror the
 // TranscriptFetcherPort / AnalyzerPort pattern
 // established by segment_selection.go (godlike/06 FASE-X
@@ -238,7 +238,7 @@ type PublishedRenditionOutcome struct {
 //     threading the canonical per-rendition file hash (SHA-256) +
 //     SizeBytes into PublishRequest so the post-upload verify gate
 //     fires (verification gate lives at
-//     internal/infrastructure/drive/verifier.go, run by
+//     internal/platform/drive/verifier.go, run by
 //     delivery.Publisher.Publish inside PutFile).
 //  3. Invokes delivery.Publisher.Publish with DestinationYouTubeAsset
 //     (the new Step 9 canonical destination; the registry resolves

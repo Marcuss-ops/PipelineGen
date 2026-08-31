@@ -4,7 +4,7 @@
 // godlike/06 SSOT (one canonical owner per fact): this file is
 // the SOLE canonical owner of the FS-side implementation of the
 // FASE 3 (a) "ArtifactStagingStore infrastrutturale" cut. The
-// typed port lives in internal/application/assets/staging. FASE 3-C
+// typed port lives in internal/capabilities/assets/staging. FASE 3-C
 // (a separate cut) wires the LocalStore into the per-artifact
 // outbox pipeline + the SQLite StagesRepository (3-B).
 //

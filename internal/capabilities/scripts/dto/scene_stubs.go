@@ -12,14 +12,14 @@
 // `dto.PipelineResult` was REMOVED (PR-DTO-PIPELINERESULT-DEDUPE, 2026-07-09;
 // follows PR-5/PR-6 SCRIPT-DOWNSTREAM-CUTOVER at canonical ship_sha
 // `4bf91e52c`): the canonical postprocessor-output aggregator lives
-// at `internal/application/scripts/adapters.PipelineResult`
+// at `internal/capabilities/scripts/adapters.PipelineResult`
 // (declared in `adapters/postprocessor_document.go`). The dto-package
 // duplicate was a residual from a previous consolidation wave
 // (zero callers verified via `rg 'dto\.PipelineResult' internal/`).
 //
 // A future re-introduction of any type retired from this file MUST be
-// a fresh canonical implementation in `internal/application/scripts/usecase/`
-// or `internal/application/scripts/adapters/` (NOT a stub re-added here)
+// a fresh canonical implementation in `internal/capabilities/scripts/usecase/`
+// or `internal/capabilities/scripts/adapters/` (NOT a stub re-added here)
 // per godlike/07 minimum-blast-radius.
 package dto
 

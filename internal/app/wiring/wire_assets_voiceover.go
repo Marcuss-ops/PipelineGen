@@ -11,7 +11,7 @@
 //
 // godlike/06 SSOT: this file is the canonical owner of the voiceover
 // build pipeline. The canonical voiceover handler lives in
-// internal/api/assets/voiceover/; this file is composition-root glue only.
+// internal/capabilities/assets/voiceover/; this file is composition-root glue only.
 //
 // PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): the descriptor
 // type-assertion goes through ClassifyDepGet (DepRequired, production

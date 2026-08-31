@@ -4,7 +4,7 @@
 // SAME Drive folder that clip_pub resolved for the .mp4.
 //
 // P1.7 (July 2026): extracted from
-// internal/application/clips/bulk_upload_worker.go as part of the
+// internal/capabilities/clips/bulk_upload_worker.go as part of the
 // 7-file worker-pipeline split.
 //
 // Pre-extraction behaviour (preserved verbatim):

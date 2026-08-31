@@ -54,7 +54,7 @@
 set -euo pipefail
 
 # ---- Configuration ---------------------------------------------------------
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 BASE="${VELOX_API_BASE:-${SMOKE_API_BASE:-http://localhost:8080}}"
 TOKEN="${VELOX_ADMIN_TOKEN:-${SMOKE_TOKEN:-}}"
 SAMPLE_MAX="${SAMPLE_MAX:-50}"

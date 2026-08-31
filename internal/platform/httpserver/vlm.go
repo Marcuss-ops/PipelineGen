@@ -55,7 +55,7 @@ func registerVLMRoutes(engine *gin.Engine) {
 	// every request is rejected with HTTP 503 + the typed
 	// ErrVLMUnavailable. A future PR that wires the real Python sidecar
 	// bridge (scripts/bridges/semantic_tagger/vlm.py per
-	// internal/application/indexing/visual_summary.go) will replace this
+	// internal/capabilities/indexing/visual_summary.go) will replace this
 	// handler with a thin proxy that preserves the typed surface.
 	engine.POST("/vlm/autotag/analyze-file", func(c *gin.Context) {
 		// Warn-log the failure with normalized request context so the

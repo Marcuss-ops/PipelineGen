@@ -223,7 +223,7 @@ func (a *ParentAggregator) Tick(ctx context.Context) {
 //
 // godlike/06 SSOT (one canonical owner per fact): the canonical
 // value space is the voiceover.ParentState enum at
-// internal/application/voiceover/parent_state.go. This helper is
+// internal/capabilities/voiceover/parent_state.go. This helper is
 // a thin mirror of the 4 known values for the read-side
 // validation; the canonical 4-value list is re-declared here
 // (rather than imported + iterated) to keep the import surface

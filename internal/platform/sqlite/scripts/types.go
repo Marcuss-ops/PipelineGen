@@ -8,7 +8,7 @@
 //
 // Architecture rationale: pre-66c646b5 these structs lived inline in
 // memory.go alongside the SQL. They were promoted to a shared types
-// file so that engine.go in internal/application/scripts can also
+// file so that engine.go in internal/capabilities/scripts can also
 // reference them (SaveMemory returns *GenerationOutput, MemoryGateContext
 // carries *Gemmamemory.GenerationOutput). Build closure for the
 // application scripts package requires these shapes to live in this

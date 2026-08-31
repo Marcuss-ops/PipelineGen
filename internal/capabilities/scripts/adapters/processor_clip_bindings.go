@@ -69,7 +69,9 @@ func (p *ClipBindingsProcessor) Process(
 	_ = ctx
 	if plan != nil && plan.MediaMode == scriptpkg.MediaModeClipOnly {
 		for i := range input.SpecScene.Scenes {
-			input.SpecScene.Scenes[i].Bindings.Stock = nil
+			if input.SpecScene.Scenes[i].AllowsMediaReplacement() {
+				input.SpecScene.Scenes[i].Bindings.Stock = nil
+			}
 		}
 	}
 
@@ -205,6 +207,9 @@ func (p *ClipBindingsProcessor) Process(
 		// preserving stale bindings).
 		clipCount := len(candidates)
 		for i := range scenes {
+			if !scenes[i].AllowsMediaReplacement() {
+				continue
+			}
 			if binding, ok := res.Bindings[scenes[i].ID]; ok {
 				// The binder owns clip selection, while subtitle provenance
 				// comes from the resolved clip evidence. Preserve that
@@ -232,7 +237,7 @@ func (p *ClipBindingsProcessor) Process(
 	}
 	if plan.MediaMode == scriptpkg.MediaModeClipOnly {
 		for i := range scenes {
-			if scenes[i].Bindings.Clip != nil {
+			if scenes[i].AllowsMediaReplacement() && scenes[i].Bindings.Clip != nil {
 				scenes[i].Kind = scriptpkg.SceneClip
 			}
 		}

@@ -3,7 +3,7 @@
 // FASE 3.7 Commit 2 (2026-07-04): the canonical
 // ChannelMonitor*Counter/Histogram declared in metrics_workers.go
 // (line 26/31/36/41) were previously consumed directly by
-// `internal/application/assets/monitor/{analyzer.go,discovery.go}`
+// `internal/capabilities/assets/monitor/{analyzer.go,discovery.go}`
 // via `metrics.ChannelMonitor*...WithLabelValues(...).Inc()`-style
 // calls. The direct-import pattern violated the FASE 3.7 zero-
 // infra-import commitment in the monitor package (the same

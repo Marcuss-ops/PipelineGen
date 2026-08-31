@@ -3,7 +3,7 @@ package artifacts
 // DriveVerifier is the application-side port for verifying Google Drive
 // links. PR2.7 (June 2026) extracted the SDK-wired concrete
 // (formerly APIDriveVerifier) to
-// internal/infrastructure/drive/verifier_adapter.go::DriveVerifierAdapter
+// internal/platform/drive/verifier_adapter.go::DriveVerifierAdapter
 // because the concrete imported google.golang.org/api/drive/v3 +
 // the drive.Uploader adapter — a direct application → infrastructure
 // import. The DriveVerifierAdapter in drive/ implements this interface
@@ -40,7 +40,7 @@ import "context"
 
 // DriveVerifier is the canonical port for verifying Google Drive links.
 // The single production concrete is
-// internal/infrastructure/drive.DriveVerifierAdapter, which uses
+// internal/platform/drive.DriveVerifierAdapter, which uses
 // Reader.FileIsNotTrashed (semantically better than FileExists because
 // a trashed file should not be considered "verified"). Test doubles
 // satisfy this interface structurally via Go's implicit-interface

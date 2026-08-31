@@ -8,7 +8,7 @@
 // (alias for legibility on the application side).
 //
 // Backing metrics for the orphan sweeper (consumed in
-// internal/application/voiceover/orphan_sweeper.go):
+// internal/capabilities/voiceover/orphan_sweeper.go):
 //   - orphan_sweeper_runs_total (counter, no labels)
 //   - orphan_sweeper_reconciled_total (counter, label: outcome)
 //

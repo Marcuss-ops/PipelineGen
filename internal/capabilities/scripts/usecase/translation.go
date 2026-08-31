@@ -288,15 +288,32 @@ func TranslateScriptSpec(
 	}
 
 	// ── 3. Translate full-script text ──
-	translatedFullText, fullEqualSource, fullErr := translateTextSegment(
-		ctx, translator, in.Text, targetLang, "full-text",
-	)
-	if fullErr != nil {
-		return nil, warnings, fullErr
+	// A document containing protected scenes must not send their text to the
+	// aggregate translator call. When any fixed scene is present, the final
+	// full-text surface is rebuilt from the per-scene results below.
+	translateAnyScene := false
+	hasFixedScene := false
+	for _, scene := range enriched.Scenes {
+		if scene.AllowsTranslation() {
+			translateAnyScene = true
+		} else {
+			hasFixedScene = true
+		}
 	}
-	if fullEqualSource {
-		warnings = append(warnings,
-			fmt.Sprintf("[full-text] %s", WarnTranslationEqualToSource))
+	translatedFullText := in.Text
+	if !hasFixedScene && (translateAnyScene || len(enriched.Scenes) == 0) {
+		var fullEqualSource bool
+		var fullErr error
+		translatedFullText, fullEqualSource, fullErr = translateTextSegment(
+			ctx, translator, in.Text, targetLang, "full-text",
+		)
+		if fullErr != nil {
+			return nil, warnings, fullErr
+		}
+		if fullEqualSource {
+			warnings = append(warnings,
+				fmt.Sprintf("[full-text] %s", WarnTranslationEqualToSource))
+		}
 	}
 
 	// ── 4. Build output struct (deep clone preserving identifier fields) ──
@@ -318,9 +335,29 @@ func TranslateScriptSpec(
 		scene := enriched.Scenes[i]
 		inputScene := in.SpecScene.Scenes[i]
 		translated := scriptpkg.SpecScene{
-			ID:    scene.ID,
-			Index: scene.Index,
-			Kind:  scene.Kind,
+			ID:            scene.ID,
+			SegmentID:     scene.SegmentID,
+			Index:         scene.Index,
+			Kind:          scene.Kind,
+			ExecutionMode: scene.ExecutionMode,
+			FixedPlayback: cloneFixedPlaybackPolicy(scene.FixedPlayback),
+		}
+
+		if !scene.AllowsTranslation() {
+			// Protected fixed media keeps its text, title, bindings and
+			// execution policy byte-stable; no translator call is allowed.
+			translated.Text = scene.Text
+			translated.Title = scene.Title
+			translated.Metadata = scene.Metadata
+			translated.VisualPlan = scene.VisualPlan
+			translated.FixedPlayback = cloneFixedPlaybackPolicy(scene.FixedPlayback)
+			translated.AudioMode = scene.AudioMode
+			translated.AudioAssetID = scene.AudioAssetID
+			translated.AudioSourceInMS = scene.AudioSourceInMS
+			translated.AudioSourceOutMS = scene.AudioSourceOutMS
+			translated.Bindings = scene.Bindings
+			out.SpecScene.Scenes[i] = translated
+			continue
 		}
 
 		// Scene.Text translation (early return on failure).
@@ -388,5 +425,22 @@ func TranslateScriptSpec(
 		out.SpecScene.Scenes[i] = translated
 	}
 
+	if hasFixedScene {
+		parts := make([]string, 0, len(out.SpecScene.Scenes))
+		for _, scene := range out.SpecScene.Scenes {
+			if text := strings.TrimSpace(scene.Text); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		out.Text = strings.Join(parts, "\n\n")
+	}
 	return out, warnings, nil
+}
+
+func cloneFixedPlaybackPolicy(in *scriptpkg.FixedPlaybackPolicy) *scriptpkg.FixedPlaybackPolicy {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
 }

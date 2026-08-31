@@ -153,7 +153,7 @@ type DiagnosticsResponse struct {
 // re-aggregate.
 //
 // Mirrors the canonical state-machine pattern in
-// internal/application/voiceover/parent_state.go (succeeded /
+// internal/capabilities/voiceover/parent_state.go (succeeded /
 // partial_success / failed) — the partial_success string is the
 // precedent for a 3-state machine. The Fase 3 enum uses upper-case
 // SUCCEEDED / FAILED / PARTIAL_SUCCESS to match the user-spec

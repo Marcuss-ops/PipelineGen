@@ -178,7 +178,7 @@ func boolToInt64(v bool) int64 {
 //
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
-// must NOT import `internal/infrastructure/media/ffmpeg` OR
+// must NOT import `internal/platform/media/ffmpeg` OR
 // `internal/platform/process`. Both are infra concerns; the app
 // layer only depends on the StockRenderer + VideoCutter ports
 // declared here.
@@ -190,7 +190,7 @@ func boolToInt64(v bool) int64 {
 // typed RenderRequest (declared in render_dto.go) and returns a
 // RenderResult (declared in render_dto.go).
 //
-// Implementations live in `internal/infrastructure/media/render/`.
+// Implementations live in `internal/platform/media/render/`.
 type StockRenderer interface {
 	// Render concatenates (and optionally decorates) the input clips into
 	// the output video file at OutputPath, honouring the request's
@@ -206,7 +206,7 @@ type StockRenderer interface {
 // Callers receive a structured CutBatchResult (declared in
 // render_dto.go) carrying per-job outcomes in input-Jobs order (see
 // CutBatchResult invariant documentation). Implementations live in
-// `internal/infrastructure/media/render/`.
+// `internal/platform/media/render/`.
 type VideoCutter interface {
 	// Cut extracts N clips from a single source video. The batch of
 	// jobs shares the same SourcePath; encoding policy (codec / preset
@@ -288,11 +288,11 @@ var ErrNoOpCutter = errors.New("cutter: noOpCutter (test fixture)")
 // Nth overlays, encoding params) and produces a neutral
 // `stock.RenderRequest` that the canonical `StockRenderer` port consumes.
 // The FFmpeg-specific code lives in
-// `internal/infrastructure/media/render/ffmpeg.go` (see package docs).
+// `internal/platform/media/render/ffmpeg.go` (see package docs).
 //
 // Import-boundary invariant:
 //
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
-// must NOT import `internal/infrastructure/media/ffmpeg` OR
+// must NOT import `internal/platform/media/ffmpeg` OR
 // `internal/platform/process`. This file respects the invariant.

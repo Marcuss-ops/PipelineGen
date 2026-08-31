@@ -1,7 +1,7 @@
 // Package books — books.Service is the apply-layer orchestrator
 // for the book-summarisation pipeline (Fase 7 Spina Dorsale,
 // July 2026). All Python-execution responsibility moved OUT of
-// this file into internal/infrastructure/books/pythontransformer/.
+// this file into internal/platform/books/pythontransformer/.
 // The Service now routes the summarisation work through the
 // canonical BookTransformer port (godlike/06 "one owner per
 // fact" — apply layer has zero Python subprocess dependency).
@@ -51,7 +51,7 @@ import (
 // Fase 7 review-fix #3 BACKFILL (July 2026): the ScriptPath /
 // PythonBin / Enabled fields have been moved OUT of books.Config
 // and INTO the canonical pythontransformer concrete's own Config
-// (internal/infrastructure/books/pythontransformer/python_transformer.go).
+// (internal/platform/books/pythontransformer/python_transformer.go).
 // godlike/06 "one canonical owner per fact" — the apply-layer
 // Service does not need to know about Python-execution details
 // (script path, interpreter binary). The apply-layer Config now

@@ -1,6 +1,6 @@
 // Package admin hosts system-level HTTP handlers accessible only to
 // operators holding a valid admin token. Unlike the per-feature
-// handlers in internal/api/assets/, internal/api/script/, etc., this
+// handlers in internal/capabilities/assets/, internal/capabilities/script/, etc., this
 // surface exposes cross-cutting operational data: worker mTLS
 // identities, broker state, cert inventory.
 //

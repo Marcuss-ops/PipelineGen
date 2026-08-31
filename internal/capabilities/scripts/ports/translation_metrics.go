@@ -16,11 +16,11 @@
 // `TranslationMetricsRecorder` for the 8 existing call sites
 // in:
 //
-//   - internal/application/scripts/usecase/translation.go
+//   - internal/capabilities/scripts/usecase/translation.go
 //     (TranslationWarningReason + TranslationMetricsRecorder)
-//   - internal/application/scripts/adapters/processor_translation.go
+//   - internal/capabilities/scripts/adapters/processor_translation.go
 //     (local interface mirrors TranslationMetricsRecorder)
-//   - internal/application/scripts/adapters/processor_translation_integration_test.go
+//   - internal/capabilities/scripts/adapters/processor_translation_integration_test.go
 //     (compiles against the type)
 //
 // godlike/06 SSOT (one canonical owner per fact):

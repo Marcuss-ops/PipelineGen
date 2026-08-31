@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -56,7 +57,7 @@ func aliasCacheTestServer(t *testing.T, targetCollection string) (*httptest.Serv
 func TestSearcher_AliasCache_Hit(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -68,12 +69,12 @@ func TestSearcher_AliasCache_Hit(t *testing.T) {
 	// First call: cache miss → HTTP round-trip.
 	c1, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c1)
+	assert.Equal(t, "media_assets", c1)
 
 	// Second call: cache hit → NO HTTP round-trip.
 	c2, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c2)
+	assert.Equal(t, "media_assets", c2)
 
 	// Exactly ONE GetAliasTarget call should have been made.
 	assert.Equal(t, int32(1), atomic.LoadInt32(callCount),
@@ -86,7 +87,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 	// is a const, we test expiry by directly manipulating the Searcher's
 	// cachedAt field to simulate a time jump.
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -108,7 +109,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 	// Next call: TTL expired → fresh HTTP round-trip.
 	c, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c)
+	assert.Equal(t, "media_assets", c)
 	assert.Equal(t, int32(2), atomic.LoadInt32(callCount),
 		"expired cache should trigger a fresh GetAliasTarget call")
 }
@@ -116,7 +117,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 func TestSearcher_AliasCache_Invalidation(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -143,7 +144,7 @@ func TestSearcher_AliasCache_Invalidation(t *testing.T) {
 func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -171,7 +172,7 @@ func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 				errs <- err
 				return
 			}
-			if c != "media_assets_v3_nomic_768_siglip_768" {
+			if c != "media_assets" {
 				errs <- err
 			}
 		}()
@@ -191,7 +192,7 @@ func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 func TestSearcher_AliasCache_ConcurrentCacheFill(t *testing.T) {
 	// NOT parallel — this test spawns goroutines that race to fill the cache.
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -216,7 +217,7 @@ func TestSearcher_AliasCache_ConcurrentCacheFill(t *testing.T) {
 				errs <- err
 				return
 			}
-			if c != "media_assets_v3_nomic_768_siglip_768" {
+			if c != "media_assets" {
 				errs <- err
 			}
 		}()
@@ -252,7 +253,7 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 	// Build a schema with a single dense vector to keep the mock simple.
 	schema := &qdrantSchema.IndexSchema{
 		Version:      "v3-minimal",
-		PhysicalName: "media_assets_v3_minimal",
+		PhysicalName: "media_assets",
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []qdrantSchema.EmbeddingSpec{
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
@@ -282,13 +283,13 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 					"aliases": []map[string]interface{}{
 						{
 							"alias_name":      "media_assets_current",
-							"collection_name": "media_assets_v3_minimal",
+							"collection_name": "media_assets",
 						},
 					},
 				},
 			})
 		// Physical collection check.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_minimal":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets":
 			if !collectionCreated {
 				http.NotFound(w, r)
 				return
@@ -308,7 +309,7 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 				},
 			})
 		// Create collection.
-		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_minimal":
+		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets":
 			collectionCreated = true
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true, "status": "ok"})
 		// Create alias (PromoteCandidate).
@@ -333,14 +334,20 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 	// Wire cache invalidation (as runtime.go does).
 	cm.OnAliasSwitch = searcher.ResetSearchCache
 
-	// ── Phase 1: run EnsureSchema to create collection + promote ──
-	result, err := cm.EnsureSchema(context.Background())
-	require.NoError(t, err)
-	assert.True(t, result.Created)
-	assert.True(t, result.Compatible)
+	// ── Phase 1: prepare and promote a registered projection. ───────
+	// This fixture intentionally exercises the explicit lifecycle path so
+	// it does not bypass the mandatory SQLite-authoritative verifier gate
+	// through EnsureSchema.
+	ctx := context.Background()
+	require.NoError(t, cm.BeginProjection(ctx, "build-cache", "media_assets", 0))
+	require.NoError(t, cm.PrepareCandidate(ctx, "media_assets"))
+	require.NoError(t, cm.TransitionProjection(ctx, "build-cache", capregistry.ProjectionValidating))
+	require.NoError(t, cm.TransitionProjection(ctx, "build-cache", capregistry.ProjectionReady))
+	cm.MarkVerified("media_assets")
+	require.NoError(t, cm.PromoteCandidate(ctx, "media_assets"))
 
-	// After EnsureSchema, PromoteCandidate was called, which should
-	// have reset the searcher's cache. Verify via direct cache inspection:
+	// After PromoteCandidate, the alias switch callback should have reset
+	// the searcher's cache. Verify via direct cache inspection:
 	// the cachedTarget must be empty (cache was invalidated).
 	searcher.cacheMu.RLock()
 	assert.Empty(t, searcher.cachedTarget, "PromoteCandidate→OnAliasSwitch must clear cachedTarget")
@@ -350,11 +357,11 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 	// First resolveCollection after cache invalidation: must go to the wire.
 	c, err := searcher.resolveCollection(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_minimal", c)
+	assert.Equal(t, "media_assets", c)
 
 	// Cache must now be populated.
 	searcher.cacheMu.RLock()
-	assert.Equal(t, "media_assets_v3_minimal", searcher.cachedTarget)
+	assert.Equal(t, "media_assets", searcher.cachedTarget)
 	assert.False(t, searcher.cachedAt.IsZero())
 	searcher.cacheMu.RUnlock()
 
@@ -363,14 +370,14 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 	beforeHit := atomic.LoadInt32(&aliasTargetCallCount)
 	c2, err := searcher.resolveCollection(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_minimal", c2)
+	assert.Equal(t, "media_assets", c2)
 	assert.Equal(t, beforeHit, atomic.LoadInt32(&aliasTargetCallCount),
 		"second resolveCollection must hit cache, not call GetAliasTarget")
 
 	// ── Phase 3: PromoteCandidate again → cache invalidated. Verify via
 	// direct cache inspection: cachedTarget must be empty after the second promote.
-	cm.MarkVerified("media_assets_v3_minimal")
-	err = cm.PromoteCandidate(context.Background(), "media_assets_v3_minimal")
+	cm.MarkVerified("media_assets")
+	err = cm.PromoteCandidate(context.Background(), "media_assets")
 	require.NoError(t, err)
 
 	// Cache must be empty after second PromoteCandidate.
@@ -381,7 +388,7 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 	// After PromoteCandidate, resolveCollection must go to the wire.
 	c3, err := searcher.resolveCollection(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_minimal", c3)
+	assert.Equal(t, "media_assets", c3)
 }
 
 // ── ResetSearchCache is safe when Searcher is zero-valued ─────────────

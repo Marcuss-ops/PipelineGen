@@ -15,7 +15,7 @@
 // repository in internal/platform/sqlite/assets/) read
 // the cert row independently from the session row and pass both into
 // FromSessionCertIdentity (the API-helper builder in
-// internal/api/admin/handler_workers_cert.go).
+// internal/capabilities/admin/handler_workers_cert.go).
 //
 // Worker cert lifecycle:
 //

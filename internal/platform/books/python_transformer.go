@@ -3,7 +3,7 @@
 // July 2026). The transformer wraps the book_summarizer.py
 // subprocess invocation and lives at the
 // internal/infrastructure layer so the books apply layer
-// (internal/application/books) is free of os/exec imports
+// (internal/capabilities/books) is free of os/exec imports
 // (godlike/06 "one owner per fact" — Python execution is an
 // implementation detail, not a domain concern).
 //
@@ -221,7 +221,7 @@ func (t *SubprocessTransformer) TransformWithProgress(ctx context.Context, req *
 
 // buildArgs constructs the CLI args for book_summarizer.py from
 // a TransformRequest. Moved verbatim from
-// internal/application/books/service.go (pre-Fase-7). Kept private
+// internal/capabilities/books/service.go (pre-Fase-7). Kept private
 // to the concrete — book TransformerRequest fields are the public
 // contract; CLI flag shape is an internal detail.
 func (t *SubprocessTransformer) buildArgs(req *books.TransformRequest) ([]string, error) {
@@ -295,7 +295,7 @@ func (t *SubprocessTransformer) buildArgs(req *books.TransformRequest) ([]string
 
 // parseOutput extracts the canonical TransformResult from the
 // Python script's stdout. Moved verbatim from
-// internal/application/books/service.go::parseOutput (pre-Fase-7).
+// internal/capabilities/books/service.go::parseOutput (pre-Fase-7).
 // Output de-truncation at 300 chars preserved for log brevity.
 func (t *SubprocessTransformer) parseOutput(outputStr string, req *books.TransformRequest) *books.TransformResult {
 	preview := outputStr

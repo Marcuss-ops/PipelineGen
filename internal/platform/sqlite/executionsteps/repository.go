@@ -5,13 +5,13 @@
 // `execution_steps` table reads/writes for the Stock pipeline's
 // resumable-step-store surface. Application-layer callers (orchestrators,
 // worker startup scaffolding) MUST consume `steps.Store` via this concrete
-// (or its hermetic test fakes at internal/application/execution/steps/store_test.go),
+// (or its hermetic test fakes at internal/capabilities/execution/steps/store_test.go),
 // NOT a parallel sqlite3.Conn, NOT a hand-rolled query. Drift between
 // port contracts and SQL surface is caught at compile time by the
 // `var _ steps.Store = (*Repository)(nil)` assertion below.
 //
 // godlike/07 typed-error contract: each SQL failure maps to ONE typed
-// sentinel from `internal/application/execution/steps` via `fmt.Errorf("...: %w", sentinel)`.
+// sentinel from `internal/capabilities/execution/steps` via `fmt.Errorf("...: %w", sentinel)`.
 // Callers can `errors.Is(err, steps.ErrStepAlreadyCompleted)` etc. from
 // any seam.
 //

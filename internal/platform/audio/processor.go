@@ -23,7 +23,7 @@ import (
 // Processor — PR-VO-B1 (June 2026): the previous direct Drive
 // coupling has been removed. Processor writes ONLY to the local
 // filesystem; the Drive upload belongs to Lifecycle (which already
-// owns Step 2 of ProcessAsset in internal/application/assets/lifecycle/
+// owns Step 2 of ProcessAsset in internal/capabilities/assets/lifecycle/
 // service.go). voiceover.go now calls NewProcessor with only
 // (pythonScriptsDir, log) and the audioasset package no longer
 // imports infrastructure/drive or domain/asset.
@@ -58,7 +58,7 @@ type Processor struct {
 
 // processorShape mirrors the GENERATE-side surface of
 // voiceover.TTSProvider. The canonical port lives in
-// internal/application/voiceover/ports.go::TTSProvider (signature:
+// internal/capabilities/voiceover/ports.go::TTSProvider (signature:
 // Synthesize(ctx, TTSInput) (TTSOutput, error)); *Processor satisfies
 // it via the useCaseTTSAdapter at
 // internal/app/adapters_voiceover_use_case.go which adapts the
@@ -336,7 +336,7 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	// ARCH-ALLOWLIST: legacy-tts-spawn-per-call — backward-compat fallback
 	// for environments where tts_edge_server.py is not deployed. This is
-	// the ONLY site in internal/infrastructure/audio/ that calls
+	// the ONLY site in internal/platform/audio/ that calls
 	// exec.CommandContext("python3", ...). Superseded by the persistent
 	// worker path above; will be removed in CUTOVER phase.
 	// See: architecture/current.yaml#VO-DECOMPOSITION-2026-07-04.

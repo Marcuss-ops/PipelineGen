@@ -154,7 +154,7 @@ type memoryGateResult struct {
 }
 
 // memoryGateAdapter bridges the canonical gemmamemory adapter
-// (internal/application/scripts/adapters.Service) to the engine's
+// (internal/capabilities/scripts/adapters.Service) to the engine's
 // in-package memoryGateChecker interface. This keeps the engine's
 // narrow contract local while still allowing the real SQLite-backed
 // service to be injected from the composition root.

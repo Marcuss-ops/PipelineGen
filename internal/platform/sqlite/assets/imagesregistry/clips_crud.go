@@ -80,7 +80,7 @@ func (r *ClipsRepository) SourceVersionFor(ctx context.Context, id string) (stri
 // performs the UPSERT and outbox_events INSERT in a single atomic tx.
 //
 // QDRANT-asset-mutation isolation (June 2026): //nolint:production.
-// Production callers (internal/application/**, internal/api/**)
+// Production callers (internal/capabilities/**, internal/capabilities/**)
 // MUST NOT call this directly. The legitimate callers are:
 //  1. The dispatcher itself, which wraps this call inside an
 //     outbox transaction via UpsertClipTx + emits an outbox event
@@ -119,7 +119,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 // dispatcher-promotion can route Mutate → outbox.Dispatcher.EnqueueAndIndex
 // without changing the caller's struct literal.
 //
-// Production callers in internal/application/** and internal/api/**
+// Production callers in internal/capabilities/** and internal/capabilities/**
 // SHOULD prefer this entry point (or the upstream
 // AssetMutationDispatcher SSOT — `mutations.AssetMutationDispatcher`)
 // instead of the legacy methods. The legacy methods stay public for
@@ -179,7 +179,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 // Layering note: the receiver lives in
 // internal/platform/sqlite/assets/ and consumes the
 // mutations.AssetMutationCommand type from
-// internal/application/assets/mutations/. This is the same cross-layer
+// internal/capabilities/assets/mutations/. This is the same cross-layer
 // pattern documented for the existing `jobsoutbox
 // "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"`
 // import above — the application layer owns the canonical SSOT type

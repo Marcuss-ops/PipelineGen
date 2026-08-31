@@ -5,7 +5,7 @@
 // + AUDIO post-processing through the media execution port.
 //
 // Both adapters satisfy Pattern 0 narrow ports declared in
-// internal/application/voiceover/ports.go. Per AGENTS.md Pattern 0
+// internal/capabilities/voiceover/ports.go. Per AGENTS.md Pattern 0
 // (port abstraction layer, June 2026) each adapter is a thin
 // bridge; production wiring lives here, NOT inside the voiceover
 // package, so voiceover stays free of *infrastructure and *audio

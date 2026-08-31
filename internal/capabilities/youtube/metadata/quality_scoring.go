@@ -30,7 +30,7 @@ var isSponsorSegmentRegex = regexp.MustCompile(
 // false (no segments to sponsor). The regex is anchored so
 // noise like "SponSored" (no space) still matches.
 //
-// Exported so the Ollama builder (internal/infrastructure/youtube)
+// Exported so the Ollama builder (internal/platform/youtube)
 // and any other consumer can share the canonical pattern
 // instead of duplicating it (the duplicate-copy was a
 // post-Commit-4 code-review finding; consolidation keeps
@@ -51,7 +51,7 @@ func isSponsorSegment(transcript string) bool {
 
 // CalculateQualityScore is the exported form of the
 // canonical deterministic formula. Exposed so the Ollama
-// builder (internal/infrastructure/youtube) and any other
+// builder (internal/platform/youtube) and any other
 // consumer can share the exact same math — the duplicate
 // copy in the infra package was a post-Commit-4 code-review
 // finding.
@@ -150,7 +150,7 @@ func countWords(s string) int {
 }
 
 // CountWords is the exported form so the Ollama builder
-// (internal/infrastructure/youtube) can share the canonical
+// (internal/platform/youtube) can share the canonical
 // word-counting definition instead of inlining a copy.
 func CountWords(s string) int {
 	return countWords(s)

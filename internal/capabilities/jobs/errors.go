@@ -88,12 +88,13 @@
 // `appjobs.ErrLeaseLost` re-export alias was removed (its only purpose
 // was a back-compat shim for the pre-Fase-5(a) assignment chain
 // appjobs ← sqljobs ← domjob). The canonical home is
-// `internal/domain/job/errors.go`; callers probe via
+// `internal/kernel/job/errors.go`; callers probe via
 // `errors.Is(err, kerneljob.ErrLeaseLost)`.
 package jobs
 
 import (
 	"errors"
+	jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -101,7 +102,7 @@ import (
 // when reg is nil. Composition-root contract — fail-closed at startup.
 //
 // Errors.Is(err, ErrRegistryRequired) is the canonical probe.
-var ErrRegistryRequired = errors.New("appjobs.Service: registry is required (constructor enforces fail-closed registry attachment; pass appjobs.Compose() at composition time)")
+var ErrRegistryRequired = jobqueue.ErrRegistryRequired
 
 // ErrRepoRequired is returned by NewService when repo is nil. Mirrors
 // ErrRegistryRequired's fail-closed contract — every constructor
@@ -125,7 +126,7 @@ var ErrLogRequired = errors.New("appjobs.Service: log is required (constructor e
 // net (which is REMOVED in this PR — godlike/07 no-fake-availability).
 //
 // Errors.Is(err, ErrMaxRetriesUnknown) is the canonical probe.
-var ErrMaxRetriesUnknown = errors.New("appjobs.Registry: no entry for jobType (GetMaxRetries rejects unknown types; resolve via appjobs.Compose().Register(...) at the composition root)")
+var ErrMaxRetriesUnknown = jobqueue.ErrMaxRetriesUnknown
 
 // ErrUniqueConstraintViolation marks a SQLite UNIQUE-constraint failure
 // on (job.type, job.correlation_id) that the Enqueue() rescue path
@@ -212,7 +213,7 @@ var ErrJobsSvcRequiredAtRegistration = errors.New("appjobs: JobsSvc is required 
 // assetindex import path).
 //
 // Pre-commit-8 Build failure: ~10 callsites
-// (`internal/infrastructure/indexing/clipindexer/batch.go:113`,
+// (`internal/capabilities/indexing/clipindexer/batch.go:113`,
 // `register_wiring_test.go`, `generate_item_handler.go`,
 // `clipindexer_enqueue.go` + others) referenced `appjobs.ErrMissingDeps`
 // but the symbol did not exist in the package; `go build` rejected

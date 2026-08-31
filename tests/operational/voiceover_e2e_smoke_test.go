@@ -52,6 +52,9 @@ func TestVoiceoverE2ESmoke(t *testing.T) {
 	if folderID == "" {
 		t.Skip("SMOKE_DRIVE_FOLDER_ID not set; voiceover E2E needs a real Drive folder_id for destination.kind=explicit")
 	}
+	if os.Getenv("SMOKE_DB") == "" {
+		t.Skip("SMOKE_DB not set; live voiceover E2E requires an explicit database path")
+	}
 
 	h, err := NewVoiceoverHarness(t, HarnessOptions{
 		FASE:   "E2E-SMOKE",

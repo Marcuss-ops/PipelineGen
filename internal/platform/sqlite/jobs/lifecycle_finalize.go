@@ -31,9 +31,9 @@ import (
 // godlike/07 minimum-blast-radius: this constant is package-private
 // (lowercase) — the application-layer canonical surface remains the
 // single source of truth for cross-package consumers (e.g.,
-// `internal/application/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn`).
+// `internal/capabilities/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn`).
 // A future cross-package audit may promote this to a shared
-// `internal/domain/job/parent_state_column.go` if the layering evolves.
+// `internal/kernel/job/parent_state_column.go` if the layering evolves.
 const parentStateTypedColumn = "parent_state_typed"
 
 // ── FinalizeAggregateParent (post-fan-out parent state finalisation, no-lease CAS) ───

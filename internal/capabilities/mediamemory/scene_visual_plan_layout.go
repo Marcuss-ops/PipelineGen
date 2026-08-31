@@ -3,7 +3,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // SINGLE owner of the layer layout string vocabulary. The renderer
-// (internal/infrastructure/media/render/cutter.go + transitions.go)
+// (internal/platform/media/render/cutter.go + transitions.go)
 // reads `Layer.Layout` as one of these values; drift surfaces as
 // godlike/07 NO-FAKE-AVAILABILITY at the renderer's predicate
 // (`IsKnownLayout`) so a stale binding never silently degrades to

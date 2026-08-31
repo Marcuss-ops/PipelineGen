@@ -4,7 +4,7 @@
 //
 //   - MonitorPort — Wave 14 (June 2026) addition; narrow read-only
 //     surface consumed by the outbox-events HTTP handler
-//     (internal/api/outbox/handler.go). Production adapter:
+//     (internal/capabilities/outbox/handler.go). Production adapter:
 //     outboxMonitorAdapter (internal/app/outbox_monitor_adapter.go)
 //     wraps *outboxevents.Repository. Pre-existing before PR 4.
 //
@@ -18,8 +18,8 @@
 //     outbox/index_delete.go) — there is now ONE VectorPointDeleter
 //     per the PR 4 acceptance criterion.
 //
-// AGENTS.md Pattern 0: ports live in internal/application/.../ports.go
-// — never in internal/infrastructure/.
+// AGENTS.md Pattern 0: ports live in internal/capabilities//ports.go
+// — never in internal/platform/.
 package jobs
 
 import (
@@ -31,7 +31,7 @@ import (
 
 // MonitorPort is the canonical narrow surface for the outbox events
 // monitoring HTTP endpoint. The two methods exposed are exactly the
-// ones exercised by internal/api/outbox/handler.go (handleStatus +
+// ones exercised by internal/capabilities/outbox/handler.go (handleStatus +
 // handleEvents). Other *outboxevents.Repository methods (Enqueue,
 // ClaimNext, MarkCompleted, MarkFailed, MarkDeadLetter, MarkSuperseded,
 // RequeueExpiredLeases, RenewLease) are intentionally NOT on the port

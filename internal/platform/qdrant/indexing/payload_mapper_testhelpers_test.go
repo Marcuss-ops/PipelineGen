@@ -61,7 +61,7 @@ type fakeAssetStore struct {
 
 func (f *fakeAssetStore) FetchAsset(ctx context.Context, id string) (*AssetData, error) {
 	if f.asset == nil || f.asset.ID != id {
-		return nil, &ErrAssetNotFound{ID: id}
+		return nil, &testErrAssetNotFound{ID: id}
 	}
 	return f.asset, nil
 }
@@ -114,10 +114,10 @@ func (b *ctxRecordingBuilder) Build(ctx context.Context, input appsearchtext.Sea
 	return b.capturedText, nil
 }
 
-// ErrAssetNotFound is a test-only typed sentinel used by
-// fakeAssetStore.FetchAsset. Distinct from production
-// errors.ErrAssetNotFound so tests can fail-fast with a known
-// identity without cross-coupling.
-type ErrAssetNotFound struct{ ID string }
+// testErrAssetNotFound is a test-only typed sentinel used by
+// fakeAssetStore.FetchAsset. It is distinct from the production
+// ErrAssetNotFound sentinel (same package) so tests can fail-fast
+// with a known identity without cross-coupling.
+type testErrAssetNotFound struct{ ID string }
 
-func (e *ErrAssetNotFound) Error() string { return "asset not found: " + e.ID }
+func (e *testErrAssetNotFound) Error() string { return "asset not found: " + e.ID }

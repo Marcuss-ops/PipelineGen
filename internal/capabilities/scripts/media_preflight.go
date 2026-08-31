@@ -76,9 +76,16 @@ type ClipPreflighter interface {
 
 // MediaPreflightInput carries everything needed to verify media
 // requirements for one run.
+type FixedClipPreflight struct {
+	ClipID      string
+	SourceInMS  int64
+	SourceOutMS int64
+}
+
 type MediaPreflightInput struct {
 	ClipIDs           []string
 	IntroClipIDs      []string
+	FixedClips        []FixedClipPreflight
 	ClipProber        ClipPreflighter
 	ClipAudioSource   ClipAudioAssetSource
 	MixPolicy         capabilityaudio.AudioMixPolicy
@@ -137,9 +144,45 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		}()
 	}
 
-	// ── Original audio stream (VOICEOVER_DUCKED_CLIP only) ─────
+	// ── Original audio stream ───────────────────────────────────
+	// Fixed media always requires its authoritative original audio, regardless
+	// of the request-level mix policy. Ordinary generated clip audio retains
+	// the legacy VOICEOVER_DUCKED_CLIP gate below.
+	fixedIDs := make(map[string]struct{}, len(in.FixedClips))
+	for _, fixed := range in.FixedClips {
+		fixedIDs[fixed.ClipID] = struct{}{}
+		if in.ClipAudioSource == nil {
+			mu.Lock()
+			failures = append(failures, PreflightFailure{
+				Category: "fixed_clip_audio", AssetID: fixed.ClipID,
+				Detail: "clip audio source not wired — cannot verify authoritative original audio",
+			})
+			mu.Unlock()
+			continue
+		}
+		fixed := fixed
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resolved, err := in.ClipAudioSource.ResolveClipAudioAsset(ctx, fixed.ClipID)
+			if err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: fmt.Sprintf("authoritative original audio unavailable: %v", err)})
+				mu.Unlock()
+				return
+			}
+			if err := validateFixedClipAudio(resolved, fixed); err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: err.Error()})
+				mu.Unlock()
+			}
+		}()
+	}
 	if in.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip {
 		for _, id := range in.ClipIDs {
+			if _, isFixed := fixedIDs[id]; isFixed {
+				continue
+			}
 			id := id
 			if in.ClipAudioSource == nil {
 				mu.Lock()
@@ -306,6 +349,31 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		Failures: failures,
 		WallMS:   time.Since(started).Milliseconds(),
 	}
+}
+
+func validateFixedClipAudio(resolved capabilityaudio.ResolvedAudioAsset, fixed FixedClipPreflight) error {
+	if strings.TrimSpace(resolved.Path) == "" {
+		return fmt.Errorf("authoritative original audio resolved to an empty path")
+	}
+	if _, err := os.Stat(resolved.Path); err != nil {
+		return fmt.Errorf("authoritative original audio path not readable: %s: %w", resolved.Path, err)
+	}
+	if fixed.SourceInMS < 0 || fixed.SourceOutMS < 0 || (fixed.SourceOutMS > 0 && fixed.SourceOutMS <= fixed.SourceInMS) {
+		return fmt.Errorf("source window is invalid")
+	}
+	if resolved.DurationUS <= 0 {
+		if fixed.SourceOutMS == 0 {
+			return fmt.Errorf("complete-clip source window requires a certified original audio duration")
+		}
+		return nil
+	}
+	if fixed.SourceInMS*1000 >= resolved.DurationUS {
+		return fmt.Errorf("source window starts at %dms beyond original audio duration %dms", fixed.SourceInMS, resolved.DurationUS/1000)
+	}
+	if fixed.SourceOutMS > 0 && fixed.SourceOutMS*1000 > resolved.DurationUS {
+		return fmt.Errorf("source window [%d,%d]ms exceeds original audio duration %dms", fixed.SourceInMS, fixed.SourceOutMS, resolved.DurationUS/1000)
+	}
+	return nil
 }
 
 func uniqueCanonicalAudioIDs(ids []string) []string {

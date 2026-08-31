@@ -22,7 +22,7 @@ smoke_require curl jq
 # but give this provider-backed battery enough time to finish its cold run.
 SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-300}"
 
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 CASE_PREFIX="vidrush-e2e-$(smoke_gen_uuid)"
 METRICS_URL="${METRICS_URL:-http://${SMOKE_API_BASE}/metrics}"
 

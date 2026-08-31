@@ -97,7 +97,7 @@ func (e *PartialSuccessError) Unwrap() error { return e.Err }
 // Forward-pointer Cut 6.1.F: a future 'youtube extractor must emit
 // typed errors' cut will replace this substring-matcher with a
 // typed classifier registered at init() (mirrors the Qdrant + SQLite
-// distributed registries under internal/infrastructure/).
+// distributed registries under internal/platform/).
 func classifyItemError(itemError string) bool {
 	s := strings.ToLower(itemError)
 	for _, marker := range []string{

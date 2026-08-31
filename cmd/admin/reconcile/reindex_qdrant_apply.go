@@ -1,4 +1,4 @@
-// cmd/admin/reindex_qdrant_apply.go — canonical blue-green Qdrant apply path.
+// cmd/admin/reindex_qdrant_apply.go — canonical in-place production rebuild path.
 package reconcile
 
 import (
@@ -21,10 +21,9 @@ import (
 )
 
 // newGoldenQueryExecutor builds the GoldenQueryExecutor that embeds the query
-// text via the canonical E5 sidecar and searches the candidate collection
-// DIRECTLY (never the runtime alias — the alias still points at the previous
-// generation during validation). Returned IDs are the Qdrant point IDs, which
-// are deterministic (SHA-256 of the canonical asset ID).
+// text via the canonical E5 sidecar and searches the production collection.
+// Returned IDs are the Qdrant point IDs, deterministic from the canonical
+// asset ID.
 func newGoldenQueryExecutor(client *transport.Client, embedder search.TextEmbedder) collections.GoldenQueryExecutor {
 	return func(ctx context.Context, collection, query string, topK int) ([]string, error) {
 		vec, err := embedder.Embed(ctx, query)
@@ -47,11 +46,10 @@ func newGoldenQueryExecutor(client *transport.Client, embedder search.TextEmbedd
 	}
 }
 
-// applyQdrant executes the blue-green lifecycle owned by ProjectionManager:
-// BUILDING (create + populate), VALIDATING (strict verifier), golden
-// certification, READY, and ACTIVE (atomic alias switch). A failed build,
-// validation or golden run never mutates the runtime alias; the candidate
-// collection is retained for diagnosis/retry.
+// applyQdrant rebuilds the single production collection in place:
+// remove the runtime alias, recreate media_assets, populate it from SQLite,
+// verify parity and golden queries, then restore the alias. During the
+// rebuild the alias is absent, so runtime reads fail closed.
 func applyQdrant(
 	ctx context.Context,
 	log *zap.Logger,
@@ -65,9 +63,8 @@ func applyQdrant(
 	targetCollection string,
 	golden collections.GoldenQueryExecutor,
 ) error {
-	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
-	if err != nil {
-		log.Warn("could not read active collection before projection build; rollback target will be empty", zap.Error(err))
+	if err := collectionMgr.PrepareProductionCollection(ctx); err != nil {
+		return fmt.Errorf("prepare production collection: %w", err)
 	}
 
 	deadLetter := search.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB))
@@ -94,8 +91,8 @@ func applyQdrant(
 		return nil
 	}
 
-	if err := collectionMgr.RebuildProjection(ctx, targetCollection, targetCollection, 0, populate); err != nil {
-		return fmt.Errorf("build projection %q: %w", targetCollection, err)
+	if err := populate(ctx, targetCollection); err != nil {
+		return fmt.Errorf("rebuild production collection %q: %w", targetCollection, err)
 	}
 	if reindexResult == nil {
 		return fmt.Errorf("build projection %q completed without a reindex result", targetCollection)
@@ -105,11 +102,15 @@ func applyQdrant(
 		zap.Int("indexed", reindexResult.IndexedAssets),
 		zap.Int("failed", reindexResult.FailedAssets))
 
-	report, verifyErr := collectionMgr.ValidateProjection(ctx, targetCollection, 0, reindexResult.IndexedAssets)
+	// The expected projection cardinality is reloaded from SQLite by the
+	// verifier. Passing the SQLite inventory count here makes the source
+	// boundary explicit; IndexedAssets is only an operational write result
+	// and must not become runtime truth after partial mapping failures.
+	report, verifyErr := collectionMgr.ValidateProjection(ctx, targetCollection, 0, reindexResult.SQLiteIndexableAssets)
 	if report == nil {
 		return fmt.Errorf("validate projection %q returned no report: %w", targetCollection, verifyErr)
 	}
-	report.RollbackTarget = oldTarget
+	report.RollbackTarget = ""
 	report.OldCollection = targetCollection
 
 	if deps.JSON {
@@ -117,10 +118,10 @@ func applyQdrant(
 		fmt.Println(string(b))
 	}
 	if verifyErr != nil || !report.Ready {
-		log.Error("projection validation blocked activation",
+		log.Error("production projection validation failed; runtime alias remains absent",
 			zap.String("target", targetCollection),
-			zap.String("rollback_target", report.RollbackTarget),
 			zap.Bool("complete_scan", report.CompleteScan),
+			zap.Int("sqlite_indexable_assets", report.SQLiteIndexableAssets),
 			zap.Int("expected_points", report.ExpectedPoints),
 			zap.Int("actual_points", report.ActualPoints),
 			zap.Strings("errors", report.Errors),
@@ -144,18 +145,15 @@ func applyQdrant(
 			zap.Int("queries", len(platformschema.CanonicalGoldenQueries())))
 	}
 
-	if err := collectionMgr.ActivateProjection(ctx, targetCollection, 0); err != nil {
-		log.Error("projection activation failed; previous alias remains authoritative",
+	if err := collectionMgr.ActivateProductionCollection(ctx); err != nil {
+		log.Error("production projection validated but runtime alias restoration failed",
 			zap.String("target", targetCollection),
-			zap.String("rollback_target", oldTarget),
 			zap.Error(err))
-		return fmt.Errorf("activate projection %q (rollback to %q): %w", targetCollection, oldTarget, err)
+		return fmt.Errorf("activate production collection %q: %w", targetCollection, err)
 	}
-	log.Info("projection ACTIVE; alias switched atomically",
+	log.Info("production projection rebuilt and runtime alias restored",
 		zap.String("alias", schemaObj.RuntimeAlias),
-		zap.String("old", oldTarget),
-		zap.String("new", targetCollection),
-		zap.String("rollback_target", oldTarget))
+		zap.String("collection", targetCollection))
 
 	if deps.JSON {
 		b, _ := json.Marshal(reindexResult)

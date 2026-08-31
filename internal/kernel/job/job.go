@@ -3,14 +3,14 @@
 // (canonical Job shape, JobType, Lease, terminal states, WorkerSession).
 //
 // Phase A.2 (June 2026): Status lifecycle + canonical Job entity
-// migrated from internal/domain/job/ into the kernel subzone. The
+// migrated from internal/kernel/job/ into the kernel subzone. The
 // domain package preserves type aliases (type Job = kerneljob.Job, etc.)
 // for back-compat with 107 import sites in 93 files across the codebase.
 //
 // Per godlike/02 kernel rules:
 //   - Stdlib-only imports (no repository, no Gin, no transport).
 //   - Canonical definitions; consumer capability code must import
-//     `internal/kernel/job` (or `internal/domain/job` for back-compat).
+//     `internal/kernel/job` (or `internal/kernel/job` for back-compat).
 package job
 
 import (
@@ -101,7 +101,7 @@ type Filter struct {
 
 // Job is the canonical domain entity for a job in the system.
 //
-// Migrated from internal/domain/job/ in Phase A.2 (June 2026). The
+// Migrated from internal/kernel/job/ in Phase A.2 (June 2026). The
 // domain package re-exports as `type Job = kerneljob.Job` (alias, transparent).
 type Job struct {
 	ID             string          `json:"id"`
@@ -154,7 +154,7 @@ type Job struct {
 	// string (matches the migration's DEFAULT '' contract). A reader
 	// that sees "" must fall back to the JSON resultMap["parent_state"]
 	// (per the BACKFILL contract in
-	// internal/application/voiceover/jobs/parent_aggregator_state.go).
+	// internal/capabilities/voiceover/jobs/parent_aggregator_state.go).
 	ParentStateTyped string `json:"parent_state_typed,omitempty"`
 	// ClientID is the M2M client identifier resolved from the Bearer
 	// VELOX_M2M_SECRET by JobClientAuthMiddleware (the non-secret
@@ -194,7 +194,7 @@ func (j *Job) CanRetry() bool {
 
 // Event represents a discrete event in a job's timeline.
 //
-// Migrated from internal/domain/job/ in Phase A.2 (June 2026). The
+// Migrated from internal/kernel/job/ in Phase A.2 (June 2026). The
 // domain package re-exports as `type Event = kerneljob.Event` (alias, transparent).
 type Event struct {
 	ID        string         `json:"id"`

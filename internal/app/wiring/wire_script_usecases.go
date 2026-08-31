@@ -42,16 +42,16 @@
 //   - internal/app/wire_script_resolvers.go: the sibling factory
 //     that produces normCfg, sourceReg, clipSourceBuilder,
 //     clipSearchPort (AZIONE 2 companion file).
-//   - internal/application/scripts/usecase: use-case constructors.
+//   - internal/capabilities/scripts/usecase: use-case constructors.
 //   - internal/capabilities/scripts/jobs: GenerateJobHandler,
 //     ScriptGenerateItemPayload, FanoutItemBroker port.
 //   - internal/capabilities/scripts/ports: VoiceoverGroupsAdapter.
-//   - internal/application/assets/destination: Resolver (canonical
+//   - internal/capabilities/assets/destination: Resolver (canonical
 //     concrete post-2026-07-22 PR-VOICEOVER-GROUPSRESOLVER-RETIRE;
 //     retired the legacy type-alias shim at
-//     internal/application/voiceover/groups_resolver.go).
+//     internal/capabilities/voiceover/groups_resolver.go).
 //   - internal/capabilities/jobs/queue: appjobs.Service (Enqueue surface).
-//   - internal/domain/job: EnqueueRequest, TypeScriptGenerateItem.
+//   - internal/kernel/job: EnqueueRequest, TypeScriptGenerateItem.
 //   - internal/kernel/script: GenerationItemV2, Preset.
 package wiring
 

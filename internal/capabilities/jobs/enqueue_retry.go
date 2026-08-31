@@ -13,6 +13,8 @@
 // with no import changes.
 package jobs
 
+import jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+
 // resolveMaxRetries encodes the strict typed MaxRetries fallback
 // semantic in a single testable helper. Enqueue() delegates to this
 // helper so the logic is decoupled from repo/dispatcher concerns
@@ -39,16 +41,8 @@ package jobs
 // hasRegistry() guard + the legacy `return 3` line. Removing those
 // shapes eliminates two silent-success surfaces in one sweep.
 func (s *Service) resolveMaxRetries(jobType string, currentMR int) (int, error) {
-	if currentMR < 0 {
-		return 0, nil
-	}
-	if currentMR > 0 {
-		return currentMR, nil
-	}
-	// currentMR == 0 — single typed lookup.
-	if s.registry == nil {
-		// Defense-in-depth — should be unreachable given 4-arg NewService.
+	if s == nil || s.registry == nil {
 		return 0, ErrRegistryRequired
 	}
-	return s.registry.GetMaxRetries(jobType)
+	return jobqueue.ResolveMaxRetries(s.registry, jobType, currentMR)
 }

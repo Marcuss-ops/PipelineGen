@@ -181,6 +181,14 @@ type SpecScene struct {
 	// Kind tags the scene's primary visual treatment.
 	Kind SceneKind `json:"kind"`
 
+	// ExecutionMode is the canonical authorization boundary for downstream
+	// processors. Empty is backward-compatible generated mode; fixed_media is
+	// authoritative and protected from mutating processors.
+	ExecutionMode SceneExecutionMode `json:"execution_mode,omitempty"`
+	// FixedPlayback is present for protected fixed-media scenes and records
+	// the authoritative original-clip playback contract.
+	FixedPlayback *FixedPlaybackPolicy `json:"fixed_playback,omitempty"`
+
 	// AudioMode and source range are explicit render intent. Combined audio
 	// jobs must populate these fields; adapters never infer clip audio from
 	// filenames or from the mere presence of a clip binding.
@@ -200,6 +208,17 @@ type SpecScene struct {
 	// use omitempty and are absent when nil.
 	Bindings SceneBindings `json:"bindings"`
 }
+
+// The following helpers keep downstream scene authorization on the canonical
+// scene contract instead of duplicating Kind or ID checks in processors.
+func (s SpecScene) AllowsTranslation() bool      { return s.ExecutionMode.AllowsTranslation() }
+func (s SpecScene) AllowsTTS() bool              { return s.ExecutionMode.AllowsTTS() }
+func (s SpecScene) AllowsNLP() bool              { return s.ExecutionMode.AllowsNLP() }
+func (s SpecScene) AllowsVisualIntent() bool     { return s.ExecutionMode.AllowsVisualIntent() }
+func (s SpecScene) AllowsMediaSearch() bool      { return s.ExecutionMode.AllowsMediaSearch() }
+func (s SpecScene) AllowsMediaReplacement() bool { return s.ExecutionMode.AllowsMediaReplacement() }
+func (s SpecScene) AllowsGeneratedAudio() bool   { return s.ExecutionMode.AllowsGeneratedAudio() }
+func (s SpecScene) AllowsMediaResolution() bool  { return s.ExecutionMode.AllowsMediaResolution() }
 
 // SceneAnnotations is the versioned semantic surface for one scene. Offsets
 // are Unicode-rune offsets into SpecScene.Text, never UTF-8 byte offsets.
@@ -277,7 +296,7 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 	if plan.Intro != nil {
 		ids := plan.Intro.NormalizedClipIDs()
 		if len(ids) >= 1 && len(ids) <= 2 {
-			cleanText := strings.TrimSpace(plan.Intro.Text)
+			cleanText := plan.Intro.EffectiveDisplayText()
 			title := plan.Intro.Title
 			clips := make([]ClipBinding, 0, len(ids))
 			for _, id := range ids {
@@ -288,12 +307,18 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 				bindings.Clip = &clips[0]
 			}
 			out = append(out, SpecScene{
-				ID:       "scene-intro",
-				Index:    0,
-				Text:     cleanText,
-				Title:    title,
-				Kind:     SceneIntro,
-				Bindings: bindings,
+				ID:               "scene-intro",
+				Index:            0,
+				Text:             cleanText,
+				Title:            title,
+				Kind:             SceneIntro,
+				ExecutionMode:    SceneExecutionFixedMedia,
+				FixedPlayback:    fixedPlaybackPointer(plan.Intro),
+				AudioMode:        "CLIP_AUDIO",
+				AudioAssetID:     ids[0],
+				AudioSourceInMS:  plan.Intro.NormalizedPlayback().SourceInMS,
+				AudioSourceOutMS: plan.Intro.NormalizedPlayback().SourceOutMS,
+				Bindings:         bindings,
 			})
 		}
 	}
@@ -301,7 +326,7 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 	if plan.Outro != nil {
 		ids := plan.Outro.NormalizedClipIDs()
 		if len(ids) >= 1 && len(ids) <= 2 {
-			cleanText := strings.TrimSpace(plan.Outro.Text)
+			cleanText := plan.Outro.EffectiveDisplayText()
 			title := plan.Outro.Title
 			clips := make([]ClipBinding, 0, len(ids))
 			for _, id := range ids {
@@ -312,12 +337,18 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 				bindings.Clip = &clips[0]
 			}
 			out = append(out, SpecScene{
-				ID:       "scene-outro",
-				Index:    0,
-				Text:     cleanText,
-				Title:    title,
-				Kind:     SceneOutro,
-				Bindings: bindings,
+				ID:               "scene-outro",
+				Index:            0,
+				Text:             cleanText,
+				Title:            title,
+				Kind:             SceneOutro,
+				ExecutionMode:    SceneExecutionFixedMedia,
+				FixedPlayback:    fixedPlaybackPointer(plan.Outro),
+				AudioMode:        "CLIP_AUDIO",
+				AudioAssetID:     ids[0],
+				AudioSourceInMS:  plan.Outro.NormalizedPlayback().SourceInMS,
+				AudioSourceOutMS: plan.Outro.NormalizedPlayback().SourceOutMS,
+				Bindings:         bindings,
 			})
 		}
 	}
@@ -343,6 +374,14 @@ func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
 	}
 }
 
+func fixedPlaybackPointer(section *FixedSection) *FixedPlaybackPolicy {
+	if section == nil {
+		return nil
+	}
+	playback := section.NormalizedPlayback()
+	return &playback
+}
+
 // Validate checks structural invariants on a single scene.
 //
 // Rules:
@@ -355,12 +394,16 @@ func (s *SpecScene) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
 		details = append(details, "id is required")
 	}
-	if strings.TrimSpace(s.Text) == "" {
+	if strings.TrimSpace(s.Text) == "" && !s.ExecutionMode.IsFixedMedia() {
 		details = append(details, "text is required")
 	}
 	if !s.Kind.Valid() {
 		details = append(details,
 			fmt.Sprintf("unknown scene kind %q", s.Kind))
+	}
+	if !s.ExecutionMode.Valid() {
+		details = append(details,
+			fmt.Sprintf("unknown execution mode %q", s.ExecutionMode))
 	}
 
 	if len(details) > 0 {

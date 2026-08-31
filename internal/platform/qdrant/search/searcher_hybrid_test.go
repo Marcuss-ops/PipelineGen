@@ -49,13 +49,13 @@ func (m *hybridSearchMock) handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"result": []map[string]interface{}{
-				{"alias_name": "media_assets_current", "collection_name": "media_assets_v3_nomic_768_siglip_768"},
+				{"alias_name": "media_assets_current", "collection_name": "media_assets"},
 			},
 		})
 	})
 
 	// /points/query — record body, return canned hit.
-	mux.HandleFunc("/collections/media_assets_v3_nomic_768_siglip_768/points/query", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/collections/media_assets/points/query", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -82,7 +82,7 @@ func (aliasOnlyMock) handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"result": []map[string]interface{}{
-				{"alias_name": "media_assets_current", "collection_name": "media_assets_v3_nomic_768_siglip_768"},
+				{"alias_name": "media_assets_current", "collection_name": "media_assets"},
 			},
 		})
 	})

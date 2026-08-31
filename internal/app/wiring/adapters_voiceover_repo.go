@@ -12,7 +12,7 @@
 // The persistence.Repository compile-time pin lives at the top of
 // this file because useCaseRepoAdapter is the sole structural
 // conformer to that package-surface port (the persistence sub-package
-// in internal/application/voiceover/persistence is unimported from
+// in internal/capabilities/voiceover/persistence is unimported from
 // voiceover but applies the canonical Repository contract).
 //
 // Fail-closed: nil deps panic at construction (fail-fast per
@@ -85,7 +85,7 @@ func (a *useCaseRepoAdapter) BeginTx(ctx context.Context) (*sql.Tx, error) {
 //
 // P1-2 (June 2026): the application-layer helper
 // applyDedupeByDriveFileID that lived in
-// internal/application/voiceover/dedupe.go and consumed raw
+// internal/capabilities/voiceover/dedupe.go and consumed raw
 // *sql.DB + *sql.Tx is NOT re-implemented here. The port
 // method takes the tx parameter from the caller (which is
 // already inside the PR-VO-A2 atomic-swap transaction) so the

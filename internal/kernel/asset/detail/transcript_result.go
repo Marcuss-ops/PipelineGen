@@ -4,7 +4,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - TranscriptResult lives here (domain layer) so the application-
 //     layer port (internal/capabilities/youtube/ports/ports.go) and
-//     the infrastructure-layer port (internal/infrastructure/youtube/ports.go)
+//     the infrastructure-layer port (internal/platform/youtube/ports.go)
 //     BOTH reference the same type without import cycles. The
 //     godlike/06 SSOT invariant (one canonical owner per fact) is
 //     preserved: a future drift on the Whisper output shape is

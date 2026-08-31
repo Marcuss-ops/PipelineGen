@@ -199,8 +199,9 @@ func (h *Handler) handleFacets(c *gin.Context) {
 	apiutil.OK(c, facets)
 }
 
-// handleVerifyIndex performs a live Qdrant check for the asset and
-// compares it with the persisted SQLite read-model projection.
+// handleVerifyIndex performs a live check against the canonical runtime
+// alias and compares it with the persisted SQLite read-model projection.
+// Retired/recovery collection names stored as diagnostics are ignored.
 func (h *Handler) handleVerifyIndex(c *gin.Context) {
 	if h.readModel == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
@@ -225,12 +226,10 @@ func (h *Handler) handleVerifyIndex(c *gin.Context) {
 		return
 	}
 
-	collection := inspection.CollectionVersion
-	if collection == "" {
-		collection = "media_assets_current"
-	}
-
-	qdrantInfo, err := h.indexVerifier.Verify(ctx, id, collection)
+	// The operator endpoint may inspect only the runtime projection.
+	// CollectionVersion is persisted diagnostic metadata, not a routing
+	// authority; using it here could query a retired/recovery collection.
+	qdrantInfo, err := h.indexVerifier.Verify(ctx, id, "")
 	if err != nil {
 		h.log.Error("failed to verify asset index", zap.String("id", id), zap.Error(err))
 		apiutil.InternalError(c, err)

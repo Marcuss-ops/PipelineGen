@@ -115,13 +115,16 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 	cm := NewCollectionManager(client, idxSchema, zap.NewNop())
 
 	result, err := cm.EnsureSchema(context.Background())
-	require.NoError(t, err)
-	assert.True(t, result.Created)
-	assert.True(t, result.Compatible)
+	// A newly-created projection must not become runtime-visible without the
+	// SQLite-authoritative verifier. This fixture intentionally does not wire
+	// one, so EnsureSchema must fail closed after preparing the candidate.
+	require.Error(t, err)
+	assert.Nil(t, result)
 	assert.True(t, collectionCreated)
-	assert.True(t, aliasCreated)
+	assert.False(t, aliasCreated)
 	assert.NotEmpty(t, payloadIndexes)
-	// Verify at least some expected indexes were created.
+	// Verify at least some expected indexes were created before validation
+	// blocked activation.
 	for _, idx := range idxSchema.PayloadIndexes {
 		assert.True(t, payloadIndexes[idx.FieldName], "missing payload index %q", idx.FieldName)
 	}

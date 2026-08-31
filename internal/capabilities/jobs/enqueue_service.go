@@ -26,6 +26,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
@@ -179,8 +180,10 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 	// handlers check (which only covers 2 required types). The gate closes
 	// the silent-queue-buildup class by surfacing the typed sentinel at
 	// enqueue time.
-	if s.dispatcher != nil && !s.HasHandler(j.Type) {
-		return nil, fmt.Errorf("%w: %s", ErrNoHandlerForJobType, j.Type)
+	if s.dispatcher != nil {
+		if err := jobqueue.RequireConsumer(j.Type, s); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrNoHandlerForJobType, j.Type)
+		}
 	}
 
 	// PR-jobs-retry-contract (July 2026): strict typed MaxRetries resolution

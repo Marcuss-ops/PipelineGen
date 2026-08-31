@@ -41,6 +41,8 @@ ROOT_DIR="$(cd -- "$SCRIPTS_DIR/.." && pwd)"
 # ── Load environment (deterministic, no clobber) ──────────────────────────
 # shellcheck source=scripts/lib/dotenv.sh
 source "$SCRIPTS_DIR/lib/dotenv.sh"
+# shellcheck source=scripts/lib/canonical_db_path.sh
+source "$SCRIPTS_DIR/lib/canonical_db_path.sh"
 load_dotenv_missing "$ROOT_DIR/.env"
 
 # Canonical token file (production). Only used when VELOX_ADMIN_TOKEN
@@ -54,7 +56,10 @@ fi
 # ── Resolved defaults ──────────────────────────────────────────────────────
 PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://127.0.0.1:${PORT}"
-DB_PATH="${VELOX_DB_PATH:-$ROOT_DIR/data/pipelinegen.db}"
+DB_PATH="$(resolve_canonical_primary_db "${VELOX_DB_PATH:-}" "$ROOT_DIR")" || {
+    printf '[velox] ERROR: VELOX_DB_PATH must equal the canonical primary SQLite path\n' >&2
+    exit 2
+}
 OBS_DB_PATH="${VELOX_OBSERVABILITY_DB_PATH:-$ROOT_DIR/data/observability/api_requests.db.sqlite}"
 QDRANT_URL="${VELOX_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
@@ -71,7 +76,7 @@ require_server() {
 }
 
 require_db() {
-    [[ -f "$DB_PATH" ]] || fail "Primary database not found: $DB_PATH"
+    DB_PATH="$(require_canonical_primary_db "$DB_PATH")" || fail "Primary database is not canonical or not found"
     command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 not on PATH"
 }
 

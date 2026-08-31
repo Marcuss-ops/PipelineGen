@@ -31,7 +31,7 @@ func TestParityCheckerAdapter_UnwiredVerifierFailsClosed(t *testing.T) {
 func TestParityCheckerAdapter_MapsVerifierReport(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{point("asset-1"), point("asset-2")},
 		},
@@ -44,7 +44,7 @@ func TestParityCheckerAdapter_MapsVerifierReport(t *testing.T) {
 
 	parity, err := checker.CheckProjectionParity(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v4_test", parity.Collection)
+	assert.Equal(t, "media_assets", parity.Collection)
 	assert.Equal(t, 2, parity.EligibleSQLite)
 	assert.Equal(t, 2, parity.QdrantPoints)
 	assert.Equal(t, 0, parity.MissingCount)
@@ -58,7 +58,7 @@ func TestParityCheckerAdapter_MapsVerifierReport(t *testing.T) {
 func TestParityCheckerAdapter_PropagatesDrift(t *testing.T) {
 	t.Parallel()
 	srv := mockProjectionQdrant(t, projectionMockSpec{
-		AliasTarget: "media_assets_v4_test",
+		AliasTarget: "media_assets",
 		Pages: [][]map[string]any{
 			{point("asset-1"), point("asset-9")},
 		},
@@ -84,7 +84,7 @@ func TestParityCheckerAdapter_PropagatesDrift(t *testing.T) {
 func TestParityMetricsAdapter_SetsGauges(t *testing.T) {
 	t.Parallel()
 	parity := projection.ProjectionParity{
-		Collection:           "media_assets_v4_test",
+		Collection:           "media_assets",
 		EligibleSQLite:       527,
 		QdrantPoints:         527,
 		MissingCount:         0,

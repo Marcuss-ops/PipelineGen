@@ -81,7 +81,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ── Configuration ────────────────────────────────────────────────
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 # SMOKE_DRIVE_FOLDER_ID is the REAL folder (used for the reference, not here)
 # SMOKE_DRIVE_FOLDER_ID_INVALID is the fake one used by the actual POST
 SMOKE_DRIVE_FOLDER_ID_INVALID="${SMOKE_DRIVE_FOLDER_ID_INVALID:-}"

@@ -20,7 +20,7 @@
 //
 //	BookTransformer   — turn a source + request shape into a
 //	                   TransformResult. The Fase 7 concrete is
-//	                   internal/infrastructure/books/
+//	                   internal/platform/books/
 //	                   pythontransformer.SubprocessTransformer
 //	                   (wraps scripts/bridges/book_summarizer.py).
 //	                   The transformer is the ONLY Python-aware

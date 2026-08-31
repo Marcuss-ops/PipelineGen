@@ -11,7 +11,7 @@
 //
 // FASE 1 close-out: ErrRequiredArtifactMissing is now ALSO
 // reachable from the job package as a typed alias. The canonical
-// pointer remains in internal/domain/finalization (godlike/06
+// pointer remains in internal/capabilities/finalization (godlike/06
 // SSOT — the publisher-side atomic commit is what enforces the
 // invariant). The alias below re-exports the SAME *errors.errorString
 // so errors.Is against either name resolves identically.
@@ -72,7 +72,7 @@ var (
 // ErrRequiredArtifactMissing is the canonical typed sentinel for a
 // required artifact that is missing from the publisher-side atomic
 // commit surface. The CANONICAL pointer is owned by
-// internal/domain/finalization (publisher-side SSOT per godlike/06
+// internal/capabilities/finalization (publisher-side SSOT per godlike/06
 // one-canonical-owner-per-fact); this file re-exports the SAME
 // *errors.errorString pointer so worker-side callers can probe
 // errors.Is(err, job.ErrRequiredArtifactMissing) without importing
@@ -87,7 +87,7 @@ var (
 // "Aggiungi sentinels tipizzati nel package job: ErrArtifact-
 // ManifestMissing, ErrArtifactManifestInvalid, ErrRequiredArtifact-
 // Missing." Without this alias the third sentinel would only be
-// reachable from internal/domain/finalization, forcing every
+// reachable from internal/capabilities/finalization, forcing every
 // producer-side code path to dual-import the two packages.
 var ErrRequiredArtifactMissing = errors.New("artifact manifest: required artifact missing")
 

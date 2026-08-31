@@ -497,18 +497,18 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 	return out
 }
 
-// applyFixedSections injects literal intro/outro sections verbatim.
-// Contract: intro/outro are NEVER sent to the LLM, never rewritten from
-// source_text or clip transcripts. Only the supplied Text + clip_id are used
-// (kind=intro/outro). Streaming is disabled when a fixed section is present.
+// applyFixedSections injects protected fixed-media intro/outro sections.
+// Fixed sections carry optional display text only; their authoritative output
+// is the bound clip media and original clip audio.
 func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	if req.Intro == nil && req.Outro == nil {
 		return scenes, nil
 	}
-	// Validate already done at envelope validation; re-guard speakable.
+	// Validate already done at envelope validation; re-guard the protected
+	// media contract without requiring narration text.
 	if req.Intro != nil {
-		if err := scriptpkg.ValidateSpeakableText(req.Intro.Text); err != nil {
-			return nil, fmt.Errorf("intro.text %w", err)
+		if !req.Intro.NormalizedPlayback().Valid() {
+			return nil, fmt.Errorf("intro.playback must use audio_mode=original_clip with a valid source window")
 		}
 		ids := req.Intro.NormalizedClipIDs()
 		if len(ids) == 0 || len(ids) > 2 {
@@ -516,8 +516,8 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 		}
 	}
 	if req.Outro != nil {
-		if err := scriptpkg.ValidateSpeakableText(req.Outro.Text); err != nil {
-			return nil, fmt.Errorf("outro.text %w", err)
+		if !req.Outro.NormalizedPlayback().Valid() {
+			return nil, fmt.Errorf("outro.playback must use audio_mode=original_clip with a valid source window")
 		}
 		ids := req.Outro.NormalizedClipIDs()
 		if len(ids) == 0 || len(ids) > 2 {
@@ -527,36 +527,44 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	out := make([]Scene, 0, len(scenes)+4)
 	if req.Intro != nil {
 		ids := req.Intro.NormalizedClipIDs()
-		cleanText := strings.TrimSpace(req.Intro.Text)
-		clips := make([]*ClipReference, 0, len(ids))
-		for _, id := range ids {
-			clips = append(clips, &ClipReference{ID: id})
-		}
+		playback := req.Intro.NormalizedPlayback()
+		cleanText := req.Intro.EffectiveDisplayText()
+		clips, intents, durationUS := fixedMediaClipProjection(ids, playback)
 		textMap := map[Language]string{req.SourceLanguage: cleanText}
 		intro := Scene{
-			ID:    "scene-intro",
-			Index: 0,
-			Text:  textMap,
-			Clip:  clips[0],
-			Clips: clips,
+			ID:            "scene-intro",
+			Index:         0,
+			Text:          textMap,
+			DurationUS:    durationUS,
+			DurationMS:    durationUS / 1000,
+			Clip:          clips[0],
+			Clips:         clips,
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+			FixedPlayback: &playback,
+			Audio:         intents[0],
+			AudioIntents:  intents,
 		}
 		out = append(out, intro)
 	}
 	out = append(out, scenes...)
 	if req.Outro != nil {
 		ids := req.Outro.NormalizedClipIDs()
-		cleanText := strings.TrimSpace(req.Outro.Text)
-		clips := make([]*ClipReference, 0, len(ids))
-		for _, id := range ids {
-			clips = append(clips, &ClipReference{ID: id})
-		}
+		playback := req.Outro.NormalizedPlayback()
+		cleanText := req.Outro.EffectiveDisplayText()
+		clips, intents, durationUS := fixedMediaClipProjection(ids, playback)
 		textMap := map[Language]string{req.SourceLanguage: cleanText}
 		outro := Scene{
-			ID:    "scene-outro",
-			Index: 0, // reindexed below
-			Text:  textMap,
-			Clip:  clips[0],
-			Clips: clips,
+			ID:            "scene-outro",
+			Index:         0, // reindexed below
+			Text:          textMap,
+			DurationUS:    durationUS,
+			DurationMS:    durationUS / 1000,
+			Clip:          clips[0],
+			Clips:         clips,
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+			FixedPlayback: &playback,
+			Audio:         intents[0],
+			AudioIntents:  intents,
 		}
 		out = append(out, outro)
 	}
@@ -578,6 +586,47 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 		out[i].Index = i
 	}
 	return out, nil
+}
+
+// fixedMediaClipProjection creates the authoritative clip/audio projection
+// for a protected section. A partial playback window applies to each bound
+// clip; a zero window remains unresolved until the clip registry supplies the
+// complete source duration.
+func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPolicy) ([]*ClipReference, []capabilityaudio.AudioIntent, int64) {
+	playback = playback.Normalize()
+	clips := make([]*ClipReference, 0, len(ids))
+	intents := make([]capabilityaudio.AudioIntent, 0, len(ids))
+	var durationUS int64
+	for i, id := range ids {
+		clip := &ClipReference{ID: id}
+		intent := capabilityaudio.AudioIntent{
+			Mode:             capabilityaudio.AudioClip,
+			ClipAssetID:      id,
+			SourceInUS:       playback.SourceInMS * 1000,
+			SourceDurationUS: fixedPlaybackDurationUS(playback),
+			TimelineOffsetUS: durationUS,
+			UseOriginalAudio: true,
+		}
+		if intent.SourceDurationUS > 0 {
+			intent.TimelineDurationUS = intent.SourceDurationUS
+			clip.SourceInMS = playback.SourceInMS
+			clip.SourceOutMS = playback.SourceOutMS
+			durationUS += intent.SourceDurationUS
+		}
+		if i == 0 {
+			clip.AudioAssetID = id
+		}
+		clips = append(clips, clip)
+		intents = append(intents, intent)
+	}
+	return clips, intents, durationUS
+}
+
+func fixedPlaybackDurationUS(playback scriptpkg.FixedPlaybackPolicy) int64 {
+	if playback.SourceOutMS <= playback.SourceInMS || playback.SourceOutMS == 0 {
+		return 0
+	}
+	return (playback.SourceOutMS - playback.SourceInMS) * 1000
 }
 
 // normalizeGeneratedSceneIdentity repairs model-produced duplicate or missing

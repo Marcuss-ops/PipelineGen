@@ -2,7 +2,7 @@
 //
 // FilesystemStager is the canonical concrete for the
 // `acquisition.SourceStager` port. It is INFRASTRUCTURE-LEVEL
-// (lives under `internal/infrastructure/acquisition/`) per
+// (lives under `internal/platform/acquisition/`) per
 // AGENTS.md Pattern 0: the port lives in application; the
 // concrete lives in infrastructure.
 //

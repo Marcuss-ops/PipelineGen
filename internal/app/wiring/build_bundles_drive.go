@@ -81,7 +81,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 	// caused *drive.Uploader.Service to be nil and POST register-batch
 	// with folder_id non-empty to 500-panic). Soft-mode operators
 	// (StrictStartupValidation=false) leaves this validation soft; the
-	// handler-level preflight at internal/api/assets/register/handler.go::BatchRegisterFromYouTube
+	// handler-level preflight at internal/capabilities/assets/register/handler.go::BatchRegisterFromYouTube
 	// still fail-closes 503 at request time.
 	if err := validateDriveServiceAvailability(cfg); err != nil {
 		return nil, nil, err
@@ -99,7 +99,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 	// two interface types with identical method-sets, so we type-assert.
 	// The assertion is safe because NewDocClient always returns
 	// *DocClientImpl, and the compile-time assertion at
-	// internal/infrastructure/drive/doc_publisher_assert.go locks the
+	// internal/platform/drive/doc_publisher_assert.go locks the
 	// conformance at build time. nil-safe: if docClient is nil (Drive
 	// not configured), DocPublisher stays nil.
 	var docPublisher delivery.DocPublisher
@@ -199,7 +199,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 	// ports (Admin / Reader) alongside the deprecated DriveClient /
 	// DriveUploader fields. *drive.Uploader satisfies both ports
 	// structurally — the compile-time asserts at the bottom of
-	// internal/infrastructure/drive/ports.go pin conformance.
+	// internal/platform/drive/ports.go pin conformance.
 	//
 	// Typed-nil-safety: assigning a nil *drive.Uploader directly to a
 	// drive.Admin field produces a non-nil interface holding a nil

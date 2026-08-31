@@ -1,12 +1,12 @@
 // Package job — kernel canonical Store + JobBroker interfaces.
 //
-// Phase A.2 (June 2026): migrated from internal/domain/job/. The
+// Phase A.2 (June 2026): migrated from internal/kernel/job/. The
 // domain package re-exports as `type Store = kerneljob.Store` and
 // `type JobBroker = kerneljob.JobBroker` (aliases, transparent).
 //
 // Per godlike/02 kernel rules: interface-signature references are
 // intra-package (Status, Filter, Job, Event) or stdlib (context,
-// encoding/json, time). Kernel does NOT import internal/domain/job/.
+// encoding/json, time). Kernel does NOT import internal/kernel/job/.
 package job
 
 import (
@@ -22,7 +22,7 @@ import (
 // Phase A.2 (June 2026): canonical home is internal/kernel/job/.
 // Adapters (SQLiteStore etc.) continue to satisfy this interface via
 // `var _ job.Store = (*SQLiteStore)(nil)`; the alias in
-// internal/domain/job/ makes the assertion structurally identical
+// internal/kernel/job/ makes the assertion structurally identical
 // to a pre-Phase-A.2 build.
 type Store interface {
 	// Create inserts a new job in queued state.

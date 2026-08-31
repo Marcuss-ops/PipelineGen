@@ -275,7 +275,7 @@ func (cm *CollectionManager) EnsureSchema(ctx context.Context) (*EnsureResult, e
 
 // GetActiveCollection returns the collection currently pointed to by the runtime alias.
 func (cm *CollectionManager) GetActiveCollection(ctx context.Context) (string, error) {
-	return cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	return cm.client.ResolveRuntimeCollection(ctx, cm.schema.RuntimeAlias)
 }
 
 // InspectCollection returns detailed info about a collection.
@@ -286,7 +286,7 @@ func (cm *CollectionManager) InspectCollection(ctx context.Context, name string)
 // CompareActiveCollection compares the active (aliased) collection against the
 // expected schema and returns the diff.
 func (cm *CollectionManager) CompareActiveCollection(ctx context.Context) (*schema.SchemaDiff, error) {
-	target, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	target, err := cm.client.ResolveRuntimeCollection(ctx, cm.schema.RuntimeAlias)
 	if err != nil {
 		return nil, fmt.Errorf("get alias target: %w", err)
 	}
@@ -313,7 +313,7 @@ func (cm *CollectionManager) CreateSnapshot(ctx context.Context, collection stri
 }
 
 func (cm *CollectionManager) ListSnapshots(ctx context.Context) ([]schema.SnapshotDescription, error) {
-	target, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	target, err := cm.client.ResolveRuntimeCollection(ctx, cm.schema.RuntimeAlias)
 	if err != nil {
 		return nil, fmt.Errorf("get active collection: %w", err)
 	}
@@ -326,6 +326,66 @@ func (cm *CollectionManager) ListSnapshots(ctx context.Context) ([]schema.Snapsh
 func (cm *CollectionManager) RestoreSnapshot(ctx context.Context, collection, snapshotURL string) error {
 	cm.log.Warn("restoring collection from snapshot", zap.String("collection", collection), zap.String("snapshot_url", snapshotURL))
 	return cm.client.RestoreSnapshot(ctx, collection, snapshotURL)
+}
+
+// PrepareProductionCollection resets the sole production projection in place.
+// It deliberately removes the runtime alias while the collection is rebuilt,
+// so runtime readers fail closed instead of observing a partial projection.
+// No candidate collection or blue-green promotion is involved.
+func (cm *CollectionManager) PrepareProductionCollection(ctx context.Context) error {
+	if err := schema.ValidateRuntimeCollection(cm.schema.PhysicalName); err != nil {
+		return fmt.Errorf("prepare production collection: %w", err)
+	}
+
+	current, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("resolve production alias before rebuild: %w", err)
+		}
+		current = ""
+	}
+	if current != "" && current != schema.ProductionCollection {
+		return fmt.Errorf("prepare production collection: alias %q points to forbidden collection %q", cm.schema.RuntimeAlias, current)
+	}
+	if current != "" {
+		if err := cm.client.DeleteAlias(ctx, cm.schema.RuntimeAlias); err != nil {
+			return fmt.Errorf("remove production alias before rebuild: %w", err)
+		}
+	}
+	if err := cm.client.DeleteCollection(ctx, schema.ProductionCollection); err != nil {
+		return fmt.Errorf("reset production collection %q: %w", schema.ProductionCollection, err)
+	}
+	if err := cm.CreateCollection(ctx, schema.ProductionCollection); err != nil {
+		return fmt.Errorf("create production collection %q: %w", schema.ProductionCollection, err)
+	}
+	return nil
+}
+
+// ActivateProductionCollection recreates the canonical runtime alias after a
+// validated in-place rebuild. The alias can only point to media_assets.
+func (cm *CollectionManager) ActivateProductionCollection(ctx context.Context) error {
+	if err := schema.ValidateRuntimeCollection(cm.schema.PhysicalName); err != nil {
+		return fmt.Errorf("activate production collection: %w", err)
+	}
+	current, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("resolve production alias after rebuild: %w", err)
+		}
+		current = ""
+	}
+	if current == schema.ProductionCollection {
+		return nil
+	}
+	if current != "" {
+		return fmt.Errorf("activate production collection: alias %q points to forbidden collection %q", cm.schema.RuntimeAlias, current)
+	}
+	if err := cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, schema.ProductionCollection); err != nil {
+		return fmt.Errorf("create production alias %q: %w", cm.schema.RuntimeAlias, err)
+	}
+	return nil
 }
 
 // ── Bootstrap / Create / Deprecated ───────────────────────────────────

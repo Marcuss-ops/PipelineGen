@@ -1,7 +1,7 @@
 // Package youtube — subtitles_normalize.go is the canonical
 // normalization leaf of the 5-file subtitle split. It owns:
 //   - BCP-47 language normalization for the configured langs CSV
-//     (delegates to internal/domain/asset.Normalize, the SSOT);
+//     (delegates to internal/kernel/asset.Normalize, the SSOT);
 //   - the VTT timestamp regex (the canonical time-pattern used by
 //     subtitles_parse.go::loadCues);
 //   - the cross-file text-collapse heuristics

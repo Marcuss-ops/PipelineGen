@@ -11,10 +11,10 @@
 //   - this file owns: domainToVoiceoverParentState (the mapping
 //     function). No new enum is created here — the "Phase" term
 //     in the action plan refers to the existing voiceover.ParentState
-//     enum (defined in internal/application/voiceover/parent_state.go).
-//   - voiceover.ParentState lives in internal/application/voiceover/parent_state.go
+//     enum (defined in internal/capabilities/voiceover/parent_state.go).
+//   - voiceover.ParentState lives in internal/capabilities/voiceover/parent_state.go
 //     (STAYS THERE; this file is the consumer, not the owner).
-//   - domain job.ParentState lives in internal/domain/job/state_machine.go
+//   - domain job.ParentState lives in internal/kernel/job/state_machine.go
 //     (STAYS THERE; this file is the consumer, not the owner).
 //   - parent_aggregator.go owns the orchestrator (Tick, aggregateOne,
 //     finalizeParent).
@@ -59,7 +59,7 @@ import (
 // This file is the SINGLE canonical owner of the state-machine
 // MAPPING (the function), NOT a new "Phase" typed enum. The
 // existing voiceover.ParentState (4-value typed enum in
-// internal/application/voiceover/parent_state.go) is the "Phase"
+// internal/capabilities/voiceover/parent_state.go) is the "Phase"
 // the action plan refers to. The mapping function is the bridge
 // between the domain 5-state machine (job.ParentState) and the
 // voiceover 4-state wire enum (voiceover.ParentState). The enums

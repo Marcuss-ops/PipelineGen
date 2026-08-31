@@ -19,7 +19,7 @@ const (
 	// clip from the batch-register endpoint becomes an
 	// independent job; yt-dlp + cut + Drive upload + DB write
 	// happen off the request thread. Canonical JobDefinition
-	// literal lives at internal/domain/job.CanonicalClipRegister.
+	// literal lives at internal/kernel/job.CanonicalClipRegister.
 	//
 	// Wire-string: "media.clip". The owner-side identifier
 	// (domain/job.TypeClipRegister) is a typed alias to this
@@ -30,7 +30,7 @@ const (
 
 	// ── Commits 9.1 (PR-KERNEL-JOB-POPULATE follow-up, July 2026) ───
 	// The following constants are required by the back-compat
-	// alias layer in internal/domain/job/job.go (re-added by
+	// alias layer in internal/kernel/job/job.go (re-added by
 	// PipelineGen Bot during the Commit 9 type-rename race).
 	// Each constant's wire-string is the canonical package-scoped
 	// discriminator used by the C3 dispatcher routing table; the

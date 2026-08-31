@@ -18,7 +18,7 @@
 //
 // godlike/06 SSOT: this file is the SOLE canonical owner of the
 // FASE 2 submission flow. The HTTP layer in
-// `internal/api/script/handler_enqueue.go` consumes ONLY the
+// `internal/capabilities/script/handler_enqueue.go` consumes ONLY the
 // typed `Submit` signature declared here; the handler must NOT
 // bypass it with direct repository access (godlike/07 fail-
 // closed at the application boundary).
@@ -58,7 +58,7 @@ import (
 //
 // godlike/06 SSOT: this struct is the SOLE canonical
 // submission-input shape. The HTTP layer in
-// `internal/api/script/handler_enqueue.go` MUST build a
+// `internal/capabilities/script/handler_enqueue.go` MUST build a
 // SubmitRequest from the inbound HTTP envelope + headers and
 // pass it verbatim to `Submit`. Direct `Service.Enqueue` calls
 // on the underlying `jobs.Service` are FORBIDDEN in the

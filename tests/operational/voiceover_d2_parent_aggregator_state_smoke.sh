@@ -78,7 +78,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ── Configuration ────────────────────────────────────────────────
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 SMOKE_TTS_WORKER_PATH="${SMOKE_TTS_WORKER_PATH:-scripts/bridges/tts_edge_server.py}"
 SMOKE_DRIVE_FOLDER_ID="${SMOKE_DRIVE_FOLDER_ID:-}"
 ENDPOINT="/api/media/voiceover/generate"

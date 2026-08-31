@@ -45,7 +45,7 @@ import (
 // port implicitly by passing *appjobs.Service (whose Enqueue method
 // matches the signature exactly).
 //
-// Test injectability: handlers under internal/application/voiceover/
+// Test injectability: handlers under internal/capabilities/voiceover/
 // jobs/generate_handler_test.go can now construct a FanoutUseCase
 // with a stub Enqueuer, without standing up a full
 // appjobs.NewService(repo, dispatcher, logger) (the heavyweight
@@ -141,7 +141,7 @@ func NewFanoutVoiceoversUseCase(deps FanoutDeps) *FanoutVoiceoversUseCase {
 // GenerateVoiceoversCommand). Each item has its own text/lang/voice/
 // filename so each child carries the exact per-item payload.
 //
-// Payload shape: EnqueueRequest.Payload is `any` (internal/application/
+// Payload shape: EnqueueRequest.Payload is `any` (internal/capabilities/
 // jobs/types.go). We pass the struct directly so the dispatcher can
 // marshal it as JSON; passing pre-marshalled bytes would cause a
 // re-marshal into a base64 string and break the consumer's JSON
@@ -326,7 +326,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 
 // textHashSHA256 — REMOVED in PR-VO-TYPED-PRIMITIVES (July 2026).
 // The canonical impl is now voiceover.ComputeTextHash
-// (internal/application/voiceover/texthash.go). The pre-refactor
+// (internal/capabilities/voiceover/texthash.go). The pre-refactor
 // helper was a byte-equivalent duplicate of
 // voiceover.ComputeTextHash (per the audit-pin in the canonical
 // impl's package doc) and the consolidation collapses both

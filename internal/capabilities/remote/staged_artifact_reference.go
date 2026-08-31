@@ -16,7 +16,7 @@
 // (internal/capabilities/jobs/queue/domain_commands.go::CompleteWithArtifactsCommand
 // .PublishedArtifacts json.RawMessage) is now renamed StagedArtifacts and
 // carries a typed []*StagedArtifactReference slice (replacing the json.
-// RawMessage opaque-bytes convention). This package (internal/domain/remote/)
+// RawMessage opaque-bytes convention). This package (internal/capabilities/remote/)
 // is the godlike/06-canonical home for the remote-domain wire types
 // (alongside CompleteArtifactsRequest/Response in complete_artifacts.go).
 //
@@ -33,12 +33,12 @@
 //     the on-disk LocalPath from media_assets (NOT from the wire) because
 //     the LocalPath is an internal detail (godlike/07 typed LocalPath ban).
 //   - "Drive FileID/link/checksum" semantics for the post-publish envelope
-//     come from the canonical asset publicator concrete (internal/infrastructure/
+//     come from the canonical asset publicator concrete (internal/platform/
 //     drive/publisher.go) — flagged here as the single-source-of-truth.
 //
 // godlike/06 SSOT (one canonical owner per fact) — IMPORTANT: this type
 // MUST NOT duplicate fields that already exist on the canonical envelope
-// (internal/domain/finalization/types.go::VerifiedArtifact or
+// (internal/capabilities/finalization/types.go::VerifiedArtifact or
 // PublishedArtifact). If a needed field already lives there, prefer
 // embedding/reference to duplication (Pattern 5 — slim type surface).
 package remote

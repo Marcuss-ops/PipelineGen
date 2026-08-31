@@ -126,16 +126,13 @@ type GenerationItemV2 struct {
 	// generator must not be called.
 	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
 
-	// Intro is an optional literal section prepended verbatim. It is NOT
-	// sent to the LLM, NOT rewritten from source_text, and NOT merged
-	// with clip transcripts. The caller supplies the exact narration
-	// (Text) and a single clip_id that must exist in the media catalog.
-	// The runner injects it as kind=intro before LLM-generated scenes.
+	// Intro is an optional protected fixed-media section prepended verbatim.
+	// It is not sent to the LLM, translated, synthesized, or replaced by
+	// generated media. Clip IDs and playback policy are authoritative.
 	Intro *FixedSection `json:"intro,omitempty"`
 
-	// Outro is an optional literal section appended verbatim. Same
-	// literal contract as Intro — no LLM rewrite, exact Text is spoken
-	// and the supplied clip is bound with kind=outro.
+	// Outro is an optional protected fixed-media section appended verbatim.
+	// It follows the same authoritative playback contract as Intro.
 	Outro *FixedSection `json:"outro,omitempty"`
 }
 
@@ -190,22 +187,85 @@ type DocumentsSpec struct {
 	FolderID  string   `json:"folder_id,omitempty"`
 }
 
-// FixedSection is a literal intro/outro section that bypasses the LLM.
-// The caller provides the exact spoken Text and the clip bindings; the
-// pipeline injects it verbatim as the first (intro) or last (outro)
-// SpecScene with Kind=intro/outro. Text is never rewritten from
-// source_text or clip transcripts. Allowed only with source.type=clips
-// (or catalog/search/curate) where clip bindings exist.
+// FixedPlaybackAudioMode declares the authoritative audio source for a
+// protected fixed-media section.
+type FixedPlaybackAudioMode string
+
+const (
+	// FixedPlaybackOriginalClip keeps the clip's original audio authoritative;
+	// it is never replaced by generated voiceover.
+	FixedPlaybackOriginalClip FixedPlaybackAudioMode = "original_clip"
+)
+
+// FixedPlaybackPolicy is the explicit playback contract for fixed media.
+// A zero policy normalizes to original_clip with the whole source window.
+type FixedPlaybackPolicy struct {
+	AudioMode   FixedPlaybackAudioMode `json:"audio_mode"`
+	SourceInMS  int64                  `json:"source_in_ms,omitempty"`
+	SourceOutMS int64                  `json:"source_out_ms,omitempty"`
+}
+
+// Normalize returns the canonical fixed playback policy.
+func (p FixedPlaybackPolicy) Normalize() FixedPlaybackPolicy {
+	if p.AudioMode == "" {
+		p.AudioMode = FixedPlaybackOriginalClip
+	}
+	return p
+}
+
+// Valid reports whether the fixed playback policy is structurally valid.
+// A zero source window means the complete source clip; a partial window must
+// have both endpoints and a strictly positive duration.
+func (p FixedPlaybackPolicy) Valid() bool {
+	p = p.Normalize()
+	if p.AudioMode != FixedPlaybackOriginalClip || p.SourceInMS < 0 || p.SourceOutMS < 0 {
+		return false
+	}
+	if (p.SourceInMS == 0) != (p.SourceOutMS == 0) {
+		return false
+	}
+	return p.SourceOutMS == 0 || p.SourceOutMS > p.SourceInMS
+}
+
+// FixedSection is a protected intro/outro media section that bypasses the
+// LLM and all generated-scene processors. ClipIDs are authoritative media
+// bindings; DisplayText is optional visual/document text and is never sent to
+// translation or TTS. Playback explicitly selects original clip audio and a
+// source window. Text remains only as a legacy compatibility alias.
 type FixedSection struct {
-	// Text is the exact narration spoken for this section. Must pass
-	// ValidateSpeakableText (no URLs, no source markers).
-	Text string `json:"text"`
-	// ClipIDs is the clip binding for this section. One or two clips are
-	// allowed (e.g. intro spanning 2 back-to-back clips). Use the media
-	// catalog IDs (e.g. yt_xxx_..._v1).
+	// ClipIDs is the authoritative clip binding for this section. One or two
+	// clips are allowed (e.g. a section spanning two back-to-back clips).
 	ClipIDs []string `json:"clip_ids,omitempty"`
 	// Title is an optional human-readable title for the Docs scene.
 	Title string `json:"title,omitempty"`
+	// DisplayText is optional text shown alongside the fixed media. It is not
+	// narration and is never translated or synthesized.
+	DisplayText string `json:"display_text,omitempty"`
+	// Playback is the authoritative original-audio and source-window policy.
+	Playback FixedPlaybackPolicy `json:"playback"`
+	// Text is the deprecated legacy narration field. Existing callers may
+	// still populate it; new protected-media payloads should use DisplayText.
+	Text string `json:"text,omitempty"`
+}
+
+// EffectiveDisplayText returns the visual text without inviting generated
+// narration. Text is used only for legacy payload compatibility.
+func (f *FixedSection) EffectiveDisplayText() string {
+	if f == nil {
+		return ""
+	}
+	if text := strings.TrimSpace(f.DisplayText); text != "" {
+		return text
+	}
+	return strings.TrimSpace(f.Text)
+}
+
+// NormalizedPlayback returns the canonical playback policy for this section.
+func (f *FixedSection) NormalizedPlayback() FixedPlaybackPolicy {
+	if f == nil {
+		return FixedPlaybackPolicy{AudioMode: FixedPlaybackOriginalClip}
+	}
+	return f.Playback.Normalize()
 }
 
 // NormalizedClipIDs returns trimmed, non-empty clip IDs for this section.
@@ -231,5 +291,6 @@ func CloneFixedSection(in *FixedSection) *FixedSection {
 	if in.ClipIDs != nil {
 		out.ClipIDs = append([]string(nil), in.ClipIDs...)
 	}
+	out.Playback = in.Playback.Normalize()
 	return &out
 }

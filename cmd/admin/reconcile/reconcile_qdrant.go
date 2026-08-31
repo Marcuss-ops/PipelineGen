@@ -223,7 +223,7 @@ func RunReconcileQdrant(args []string) error {
 	})
 
 	// 7. Run.
-	report, err := svc.Reconcile(ctx, reconciler.ReconcileOptions{
+	report, err := svc.ReconcileProjection(ctx, reconciler.ReconcileOptions{
 		DryRun:                 !deps.Apply,
 		BatchSize:              deps.BatchSize,
 		Collection:             collection,
@@ -259,6 +259,7 @@ func RunReconcileQdrant(args []string) error {
 	rr := report.Reconciliation
 	fmt.Printf("    Missing:             %d\n", rr.Missing.Count)
 	fmt.Printf("    Orphans:             %d\n", rr.Orphans.Count)
+	fmt.Printf("    HashMismatches:      %d\n", rr.HashMismatches.Count)
 	fmt.Printf("    InvalidPayloads:     %d\n", rr.InvalidPayloads.Count)
 	fmt.Printf("    NonCanonicalIDs:     %d\n", rr.NonCanonicalIDs.Count)
 	fmt.Printf("    MissingVectors:      %d\n", rr.MissingVectors.Count)

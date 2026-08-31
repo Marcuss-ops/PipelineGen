@@ -2,7 +2,7 @@
 //
 // Canonical SSOT for HTTP route registration. Replaces the implicit
 // `engine.GET / engine.POST / engine.PUT / engine.DELETE` calls scattered
-// across internal/api/** with a single typed Descriptor struct that
+// across internal/capabilities/** with a single typed Descriptor struct that
 // routes can opt-in to and that drives Check 70 (route descriptor drift
 // detection) — drift fails CI.
 //
@@ -19,7 +19,7 @@
 //     that fails to register here is a fail-closed compile error.
 //
 // Implementation note (Push 7 follow-up): integration with the existing
-// gin engine (internal/api/routes.go::Setup) is sequential — the
+// gin engine (internal/capabilities/routes.go::Setup) is sequential — the
 // composition root will iterate every registered RouteDescriptor and
 // invoke the gin method on its behalf. Until that integration lands,
 // RouteDescriptor is the CANONICAL intent but is NOT yet enforced as

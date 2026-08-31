@@ -3,7 +3,7 @@
 // PR 9 (June 2026) — DEPRECATION HEADER (Zero-Legacy §07):
 //
 //   - Deprecation ID:          DL-CURATIONTYPES-001
-//   - Owner:                    internal/application/scripts wave owner
+//   - Owner:                    internal/capabilities/scripts wave owner
 //   - Replacement:              SourceCurate resolver + GenerateOneUseCase
 //     (PR 4 + PR 5); every curate source now
 //     routes through SourceRegistry →
@@ -62,7 +62,7 @@ type MediaCurator struct {
 }
 
 // NewMediaCurator is the canonical constructor for the scriptdto
-// MediaCurator (wave-13 owner: internal/application/scripts).
+// MediaCurator (wave-13 owner: internal/capabilities/scripts).
 //
 // Drift-fix PR (June 2026): the constructor was previously
 // inferred removed by a parallel capability refactor — re-introduced
@@ -136,7 +136,7 @@ type CurateRequest struct {
 // the unified result shape; new code MUST consume GenerationResult.
 //
 // Removal tracked in follow-up PR. Wave-13 ownership:
-// internal/application/scripts (PR wave owner).
+// internal/capabilities/scripts (PR wave owner).
 type CurateResult struct {
 	Title             string
 	ClipScenes        []ClipScene

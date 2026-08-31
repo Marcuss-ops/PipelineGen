@@ -60,6 +60,7 @@ type finalCertificationReport struct {
 }
 
 func TestVidRushFinalCertificationEightScenes(t *testing.T) {
+	t.Skip("superseded by the fail-closed VidRush certification battery; this legacy harness derives persistence/cache counters")
 	scenes := []finalCertificationScene{
 		{"scene-1", "Matt Damon interview in Dubai", 12000, 1, []string{"youtube"}},
 		{"scene-2", "automated warehouse robots", 16000, 1, []string{"artlist"}},

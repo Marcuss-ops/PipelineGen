@@ -191,10 +191,10 @@ type WhisperTranscriberPort interface {
 	// including the model's DetectedLanguage + Confidence
 	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026). The
 	// canonical TranscriptResult type lives in
-	// internal/domain/asset (godlike/06 SSOT — one canonical owner
+	// internal/kernel/asset (godlike/06 SSOT — one canonical owner
 	// per fact) so both this application-layer port and the
 	// infrastructure-layer WhisperTranscriber (in
-	// internal/infrastructure/youtube/ports.go) reference the
+	// internal/platform/youtube/ports.go) reference the
 	// same shape.
 	//
 	// godlike/07 no-fake-availability: the concrete adapter MUST

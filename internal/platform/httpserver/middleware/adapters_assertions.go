@@ -1,11 +1,11 @@
 // Package middleware — compile-time assertions that the concrete
 // HTTP-middleware adapters here satisfy the application-layer
 // SecurityAdapter ports declared in
-// internal/application/middleware/ports.go.
+// internal/capabilities/middleware/ports.go.
 //
 // PG-006.1 round-2 (June 2026): the previous home of this assertion
-// was internal/application/middleware/ports.go (port-side). After
-// the pkg/middleware → internal/api/middleware relocation, ports.go
+// was internal/capabilities/middleware/ports.go (port-side). After
+// the pkg/middleware → internal/platform/httpserver/middleware relocation, ports.go
 // importing the api/middleware package would create an import cycle
 // (admin_token.go already imports the ports the other direction).
 // Per Pattern 0, the implementor side now self-attests the contract:

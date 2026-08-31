@@ -284,7 +284,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// P1 #13 (July 2026): adapter was retired. dispatcher.AllHandlers
 	// returns canonical `appjobs.Handler` values which are Go-type-aliases
 	// for `job.Handler` (canonical SSOT in
-	// internal/domain/job/handler.go). worker.Handler is also an alias
+	// internal/kernel/job/handler.go). worker.Handler is also an alias
 	// for the same job.Handler, so the handler passes directly
 	// without an inline-wrapped closure. The worker runtime translates
 	// `worker.Tools` (broker facade) into `*job.JobExecutionTools`

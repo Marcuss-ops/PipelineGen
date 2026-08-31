@@ -61,7 +61,7 @@ var enrichMetaMu sync.Mutex
 //
 //   - drive.Reader for ListByQuery (mapped to SearchFiles) +
 //     Download (mapped to DownloadFile). The canonical Pattern 0
-//     Reader port in internal/infrastructure/drive/ports.go owns
+//     Reader port in internal/platform/drive/ports.go owns
 //     the read surface.
 //
 //   - delivery.Publisher.Publish for the upload of the regenerated
@@ -102,7 +102,7 @@ type SemanticEnricher struct {
 	// metadata.json before re-uploading. Drives off the composition
 	// root's bundle.DriveUploader (concrete *drive.Uploader satisfies
 	// drive.Reader structurally per the compile-time assertion at
-	// internal/infrastructure/drive/ports.go).
+	// internal/platform/drive/ports.go).
 	reader drivepkg.Reader
 	// CARD-3 (June 2026): file-lifecycle port split out from
 	// DriveFolderManagerAdapter per godlike/06 "one owner per fact".

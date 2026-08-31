@@ -125,6 +125,7 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 		switch c.Kind {
 		case KindMissing,
 			KindVersionStale,
+			KindHashMismatch,
 			KindPayloadIncomplete,
 			KindLifecycleMismatch,
 			KindWorkspaceMismatch,

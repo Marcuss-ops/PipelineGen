@@ -1,5 +1,5 @@
 // Package job — job_definition.go (PR-KERNEL-JOB-POPULATE, commit 9, July 2026).
-// Migration of canonical JobDefinition from internal/domain/job/.
+// Migration of canonical JobDefinition from internal/kernel/job/.
 //
 // JobDefinition is the canonical, complete description of a job type
 // as it lives in the registry. It is the SSOT for runtime gating:
@@ -20,12 +20,12 @@
 // ResultCodec, ArtifactPolicy. HandlerKey was removed in PR-AUDIT-7
 // (binding is by def.Type directly in c3ValidateRuntimeGraph).
 //
-// MIGRATION FROM internal/domain/job/job_definition.go:
-//   - Pre-commit-9: JobDefinition was declared in internal/domain/job/
+// MIGRATION FROM internal/kernel/job/job_definition.go:
+//   - Pre-commit-9: JobDefinition was declared in internal/kernel/job/
 //     as the canonical surface; the kernel owned mechanism types
 //     only.
 //   - Post-commit-9: JobDefinition is the kernel-level canonical.
-//     internal/domain/job/job_definition.go re-exports
+//     internal/kernel/job/job_definition.go re-exports
 //     `type JobDefinition = kerneljob.JobDefinition` and the
 //     accompanying ExecutionClass / Capability / ArtifactPolicy
 //     aliases for back-compat with the C1-C2 registry migration
@@ -221,8 +221,8 @@ type JobDefinition struct {
 	// job's purpose (e.g. "script generation (clips -> voiceover/script
 	// manifests)"). It is purely informational; Validate() does NOT
 	// check it. The field was preserved from the pre-commit-9
-	// internal/domain/job/ canonical so legacy callers and per-owner
-	// MustRegister() struct literals in internal/application/**/job_types.go
+	// internal/kernel/job/ canonical so legacy callers and per-owner
+	// MustRegister() struct literals in internal/capabilities/**/job_types.go
 	// continue to compile without churn (Card 9 baseline-repair,
 	// July 2026).
 	//
@@ -232,7 +232,7 @@ type JobDefinition struct {
 	// parenthetical data-flow summary in the form "input -> output".
 	// No embedded newlines, no leading whitespace, no terminal
 	// punctuation. The canonical MustRegister sites in
-	// internal/application/*/job_types.go follow this convention;
+	// internal/capabilities/*/job_types.go follow this convention;
 	// human / observability / CLI surfaces may rely on the
 	// single-line shape.
 	Description string

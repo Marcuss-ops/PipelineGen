@@ -88,6 +88,9 @@ func GetFromPath(path string) (*Config, error) {
 	// and makes the final Config ready for validation and freezing.
 	applyEnvVars(cfg)
 	applyCanonicalModelDefaults(cfg)
+	if err := cfg.Storage.ValidatePrimaryDBPath(); err != nil {
+		return nil, fmt.Errorf("storage configuration: %w", err)
+	}
 	return cfg, nil
 }
 
@@ -164,6 +167,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.WriteTimeout <= 0 {
 		return fmt.Errorf("invalid write timeout: %d", c.Server.WriteTimeout)
+	}
+	if err := c.Storage.ValidatePrimaryDBPath(); err != nil {
+		return fmt.Errorf("storage configuration: %w", err)
 	}
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")

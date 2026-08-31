@@ -82,7 +82,7 @@ type ClipRepositoryPort interface {
 // longer reached from the sfx package — DestinationSoundEffect's
 // PathBuilder provides folder resolution internally on every
 // Publish. The legacy `*drive.Uploader` plumbing is gone from
-// internal/application/assets/soundeffect/.
+// internal/capabilities/assets/soundeffect/.
 
 // SemanticMetadataWriterPort produces the semantic metadata.json for
 // the generated sfx asset. The handler reads only SearchText + Tags;

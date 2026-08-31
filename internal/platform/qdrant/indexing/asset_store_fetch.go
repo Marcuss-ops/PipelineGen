@@ -20,9 +20,15 @@ package indexing
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrAssetNotFound indicates that SQLite has no canonical row for the
+// requested asset ID. Search hydration treats this as a stale Qdrant
+// candidate and omits it; other store errors remain fatal.
+var ErrAssetNotFound = errors.New("asset not found")
 
 // FetchAsset reads one row from media_assets and populates an AssetData.
 //
@@ -50,7 +56,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	err := s.db.QueryRowContext(ctx, `SELECT `+canonicalQuery+` WHERE id = ?`, assetID).Scan(row.scanArgs(a)...)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("asset %q not found in media_assets", assetID)
+			return nil, fmt.Errorf("%w in media_assets: %q", ErrAssetNotFound, assetID)
 		}
 		return nil, fmt.Errorf("fetch asset %q: %w", assetID, err)
 	}

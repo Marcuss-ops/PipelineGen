@@ -35,7 +35,7 @@ set -euo pipefail
 # ─── CONFIG ─────────────────────────────────────────────────────
 BASE="${BASE:-http://127.0.0.1:8000}"
 ENV_FILE="${ENV_FILE:-.env}"
-DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
+DB_PATH="${DB_PATH:?DB_PATH must be explicitly set to an isolated or approved database}"
 CORRELATION_ID="${CORRELATION_ID:-vo-e2e-smoke-$(date +%Y%m%d-%H%M%S)}"
 ITEM_ID="${ITEM_ID:-vo-e2e-smoke-item}"
 TOPIC="${TOPIC:-pugilato italiano}"

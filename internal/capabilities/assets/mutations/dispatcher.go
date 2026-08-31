@@ -9,7 +9,7 @@
 // mediacommit.MediaCommitter.CommitMediaAsset. This dispatcher now owns
 // only EXISTING-ASSET lifecycle mutations: restore and delete.
 //
-// Placement: internal/application/assets/mutations/
+// Placement: internal/capabilities/assets/mutations/
 // ----------------------------------------------------
 // This is the canonical home for the dispatcher port — the file sits
 // alongside mutations/primitives.go (the auxiliary surface that

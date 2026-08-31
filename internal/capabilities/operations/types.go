@@ -7,7 +7,7 @@
 // and the typed error sentinels. Repository implementations in
 // `internal/platform/sqlite/operations` and the
 // application service in
-// `internal/application/operations/generation_submission_service.go`
+// `internal/capabilities/operations/generation_submission_service.go`
 // consume ONLY the types declared here.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a bogus Scope or State value
@@ -233,7 +233,7 @@ func WrapOperationNotFound(operationID string) error {
 // ── Validation helpers (godlike/07 fail-closed at the input boundary) ──
 
 // IsValidIdempotencyKey mirrors the existing `Idempotency-Key`
-// header validation in internal/api/middleware/idempotency.go:
+// header validation in internal/platform/httpserver/middleware/idempotency.go:
 // printable ASCII only, 1..255 chars.
 //
 // Whitespace is allowed (matches the canonical middleware

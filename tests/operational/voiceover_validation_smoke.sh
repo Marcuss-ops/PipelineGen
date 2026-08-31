@@ -55,7 +55,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # Constants
-SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+SMOKE_DB="${SMOKE_DB:?SMOKE_DB must be explicitly set to an isolated or approved database}"
 ENDPOINT="/api/media/voiceover/generate"
 TAG_PREFIX="vo_validation_$(date +%s)_$$"
 RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)"

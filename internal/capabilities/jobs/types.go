@@ -19,7 +19,7 @@ import (
 //   • jobs.StartJob              → internal/platform/sqlite/jobs.StartJob
 //   • jobs.RequeueResult         → internal/platform/sqlite/jobs.RequeueResult
 // The single in-tree consumer that switched to direct imports is
-// internal/infrastructure/jobs/local/broker.go. The application-layer
+// internal/platform/jobs/local/broker.go. The application-layer
 // Runner/NewRunner are now typed against the canonical jobs.Store interface.
 // PR4.A2 (June 2026): removed the SQLiteStore and ErrLeaseLost aliases;
 // callers use the canonical kernel contracts and provider-specific adapter
@@ -56,7 +56,7 @@ type EnqueueRequest struct {
 }
 
 // Canonical Handler / JobExecutionTools / Result types live in
-// internal/domain/job/handler.go (P1 #13 SSOT, July 2026). The
+// internal/kernel/job/handler.go (P1 #13 SSOT, July 2026). The
 // canonical placement is the domain layer — NOT this package —
 // because worker.Registry.Register (a sub-package of jobs) needs
 // the SAME Handler type, and putting it in jobs would force worker
@@ -72,7 +72,7 @@ type EnqueueRequest struct {
 // The application-layer aliases preserve the 96 in-tree pre-P1-#13
 // references that imported HandlerFunc / JobTools directly from
 // jobs — they compile unchanged via Go type-alias semantics. New
-// code MUST prefer to import internal/domain/job directly.
+// code MUST prefer to import internal/kernel/job directly.
 //
 // godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT migration:
 //
@@ -157,6 +157,18 @@ func (d *Dispatcher) AllHandlers() map[string]Handler {
 		out[k] = v
 	}
 	return out
+}
+
+// HasHandler reports whether a consumer is bound for jobType. It is the
+// narrow consumer-presence port consumed by jobs/queue validation.
+func (d *Dispatcher) HasHandler(jobType string) bool {
+	if d == nil || jobType == "" {
+		return false
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	_, ok := d.handlers[jobType]
+	return ok
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecutionTools) (result Result, err error) {

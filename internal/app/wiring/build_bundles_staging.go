@@ -106,7 +106,7 @@ func BuildStagingBundle(dbs *Databases, cfg *config.Config, log *zap.Logger) (*S
 	}
 	// Conformance with staging.Store is pinned at the
 	// StagingBundle.Store field type + the canonical anchor at
-	// internal/application/staging/service.go:53
+	// internal/capabilities/staging/service.go:53
 	// (`var _ Store = (*StoreService)(nil)`). The compiler
 	// checks the port conformance at the &StagingBundle{...}
 	// literal in this function's return.

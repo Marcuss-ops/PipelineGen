@@ -2,13 +2,13 @@
 // Split metadata-export handler.
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the legacy
-// internal/application/assets/metadataexport::atomicWrite
+// internal/capabilities/assets/metadataexport::atomicWrite
 // helper inlined the POSIX-atomic .tmp + rename pattern. After split,
 // the atomic primitive lives here (private helper) and is wrapped by
 // the three format-specific writers in the sibling files of this
 // package. All four files implement the metadataexport.ExportWriter
 // port declared in
-// internal/application/assets/metadataexport/ports.go.
+// internal/capabilities/assets/metadataexport/ports.go.
 //
 // Atomicity guarantee: write to a sibling .tmp file (same directory
 // as the final destination) then os.Rename. On linux/macos the rename
@@ -33,7 +33,7 @@ import (
 //
 // Lives here (not in the application package) because os.MkdirAll is a
 // filesystem-shaped concern — keeping it out of the application layer
-// preserves AGENTS.md Pattern 8 ("internal/application/** non deve
+// preserves AGENTS.md Pattern 8 ("internal/capabilities/** non deve
 // contenere business orchestration, no concrete infrastructure
 // imports").
 func ensureDir(dir string) error {

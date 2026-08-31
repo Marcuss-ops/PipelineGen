@@ -1,4 +1,4 @@
-package reconcile
+package emergency
 
 import (
 	"context"
@@ -24,6 +24,14 @@ const (
 	recoveryConflict   = "CONFLICT"
 )
 
+type recoveryPurpose string
+
+const (
+	purposeDisasterRecovery  recoveryPurpose = "disaster-recovery"
+	purposeMigrationRecovery recoveryPurpose = "migration-recovery"
+	purposeForensics         recoveryPurpose = "forensics"
+)
+
 type recoverRegistryFlags struct {
 	Collection string
 	AssetIDs   []string
@@ -31,6 +39,7 @@ type recoverRegistryFlags struct {
 	JSON       bool
 	Apply      bool
 	PageSize   int
+	Purpose    recoveryPurpose
 }
 
 type recoveryItem struct {
@@ -59,6 +68,8 @@ func parseRecoverRegistryFlags(args []string) (recoverRegistryFlags, error) {
 			f.JSON = true
 		case arg == "--all":
 			f.All = true
+		case strings.HasPrefix(arg, "--purpose="):
+			f.Purpose = recoveryPurpose(strings.TrimSpace(strings.TrimPrefix(arg, "--purpose=")))
 		case strings.HasPrefix(arg, "--collection="):
 			f.Collection = strings.TrimSpace(strings.TrimPrefix(arg, "--collection="))
 		case strings.HasPrefix(arg, "--asset-id="):
@@ -83,6 +94,13 @@ func parseRecoverRegistryFlags(args []string) (recoverRegistryFlags, error) {
 				return f, fmt.Errorf("recover-registry-from-qdrant: unknown flag %s", arg)
 			}
 		}
+	}
+	switch f.Purpose {
+	case purposeDisasterRecovery, purposeMigrationRecovery, purposeForensics:
+		// Explicit purpose is required so this command cannot be used as an
+		// accidental replacement for the normal SQLite -> Qdrant reconciler.
+	default:
+		return f, errors.New("recover-registry-from-qdrant: --purpose must be one of disaster-recovery, migration-recovery, forensics")
 	}
 	if f.Collection == "" {
 		return f, errors.New("recover-registry-from-qdrant: --collection=<name> is required")
@@ -136,14 +154,14 @@ func RunRecoverRegistryFromQdrant(args []string) error {
 		fmt.Println(string(encoded))
 		return nil
 	}
-	fmt.Printf("=== recover-registry-from-qdrant (DRY-RUN) ===\n  Collection: %s\n  Complete:   %v\n  Total:      %d\n", report.Collection, report.Complete, report.Total)
+	fmt.Printf("=== recover-registry-from-qdrant (EMERGENCY DRY-RUN) ===\n  Purpose:    %s\n  Collection: %s\n  Complete:   %v\n  Total:      %d\n", flags.Purpose, report.Collection, report.Complete, report.Total)
 	for _, status := range []string{recoveryHealthy, recoveryMissing, recoveryRepairable, recoveryInvalid, recoveryConflict} {
 		fmt.Printf("  %-11s %d\n", status, report.Counts[status])
 	}
 	for _, item := range report.Items {
 		fmt.Printf("  %s  %-11s %s\n", item.AssetID, item.Status, item.Reason)
 	}
-	log.Info("recovery dry-run complete", zap.Int("total", report.Total))
+	log.Info("emergency recovery dry-run complete", zap.String("purpose", string(flags.Purpose)), zap.Int("total", report.Total))
 	return nil
 }
 
