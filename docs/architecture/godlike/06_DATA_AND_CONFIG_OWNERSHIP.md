@@ -29,7 +29,7 @@ The primary DB owns the following facts (one canonical owner each; tables cited,
 | Fact | Canonical tables | Notes |
 |---|---|---|
 | Job lifecycle + execution | `jobs`, `job_events` | immutable logical request; retry/lease/CAS state lives here |
-| Media asset record | `media_assets` | one canonical SQLite row per asset; deterministic asset ID |
+| Media asset record | `media_assets` | one canonical SQLite row per asset; deterministic asset ID. All durable writes route through the canonical `persistence.AssetCommitter` / `persistence.CanonicalAssetWriter` family (see below) |
 | Asset indexes + links | `asset_index`, `asset_links` | content-addressed search indexes |
 | Clip folders | `clip_folders` | Drive folder registry |
 | Voiceovers | `voiceovers` | per-item row (id, text_hash, language, drive ids) |
@@ -88,6 +88,33 @@ Derived caches are projections keyed by their canonical SQLite record and are sa
 ## One owner per fact
 
 Every fact in the system has one canonical owner. No two packages may independently compute or store the same fact.
+
+## Canonical media_assets writer family
+
+`media_assets` writes have exactly one owner: the `persistence.AssetCommitter`
+port (implemented by `SQLiteAssetCommitter`) and its sibling
+`persistence.CanonicalAssetWriter` surface (`SQLiteMediaCommitter`). Every
+asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST
+route through `AssetCommitter.CommitAndIndex` / `CommitTx`; the runtime Qdrant
+collection is `media_assets` (alias `media_assets_current`) and an empty
+projection means `INDEX_UNAVAILABLE/REBUILD_REQUIRED`, never a fallback to a
+recovery collection. Direct SQL writes to `media_assets` outside this family
+are banned and enforced by the `percheck_media_assets_writer_canonical` CI
+gate (see godlike/08).
+
+The canonical SQL-owning files (the SSOT family, 5 files as of the
+asset-persistence unification cutover, August 2026):
+
+1. `internal/platform/sqlite/assets/imagesregistry/asset_committer.go`
+2. `internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go`
+3. `internal/platform/sqlite/assets/imagesregistry/asset_committer_projection_mutations.go`
+4. `internal/platform/sqlite/assets/imagesregistry/canonical_clip_mutations.go`
+5. `internal/platform/sqlite/assets/imagesregistry/media_committer.go`
+
+The gate's allowlist (`mediaAssetsWriterCanonicalOwners` in
+`cmd/archcheck/scan/boundaries/percheck_media_assets_writer_canonical.go`)
+holds exactly these five files; any other file that writes `media_assets`
+SQL must delegate to this family or be migrated before it can be committed.
 
 ## Database rules
 

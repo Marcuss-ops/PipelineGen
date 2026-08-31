@@ -44,6 +44,17 @@ Keep the codebase aligned with the canonical architecture by catching dependency
 
 - SQLite is the canonical state store.
 - Qdrant projections must be rebuildable from SQLite.
+- `percheck_media_assets_writer_canonical` bans direct SQL writes to
+  `media_assets` from every package except the canonical
+  `AssetCommitter` family (data-layer unification SSOT, August 2026).
+  The gate allowlist (`mediaAssetsWriterCanonicalOwners` in
+  `cmd/archcheck/scan/boundaries/percheck_media_assets_writer_canonical.go`)
+  holds exactly five files: `asset_committer.go`,
+  `asset_committer_mutations.go`, `asset_committer_projection_mutations.go`,
+  `canonical_clip_mutations.go`, and `media_committer.go` under
+  `internal/platform/sqlite/assets/imagesregistry/`. New canonical mutation
+  files must be added to the allowlist when they join the SSOT family;
+  every other `media_assets` write is a hard violation.
 
 ## Complexity budgets
 
