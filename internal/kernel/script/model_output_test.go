@@ -306,6 +306,21 @@ func TestSpecSceneOutputValidateDuplicateID(t *testing.T) {
 	}
 }
 
+func TestSpecSceneOutputValidateDuplicateSegmentID(t *testing.T) {
+	out := script.SpecSceneOutput{
+		Version: 1,
+		Scenes: []script.SpecScene{
+			{ID: "scene-a", SegmentID: "segment-a", Index: 0, Text: "first", Kind: script.SceneStock},
+			{ID: "scene-b", SegmentID: "segment-a", Index: 1, Text: "second", Kind: script.SceneStock},
+		},
+	}
+
+	err := out.Validate()
+	if err == nil || !strings.Contains(err.Error(), "duplicate segment_id") {
+		t.Fatalf("expected duplicate segment_id validation error, got %v", err)
+	}
+}
+
 func TestSpecSceneOutputValidateIndexMismatch(t *testing.T) {
 	out := script.SpecSceneOutput{
 		Version: 1,
