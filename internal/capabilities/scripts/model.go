@@ -11,7 +11,7 @@
 //	    service.go    — Linear orchestrator (Start)
 //	    runner.go     — Durable stage-based execution with checkpoint
 //
-// The HTTP layer (internal/api/script) calls service.Start; the
+// The HTTP layer (internal/capabilities/script) calls service.Start; the
 // runner owns the durable background execution. No I/O happens
 // inside the builder (ingress registry) — the builder is demoted
 package scriptgeneration
@@ -259,9 +259,9 @@ type FinalAudioReference struct {
 // observability stages and operations. It is not an authority and must not
 // acquire independent timers or persistence writers.
 //
-// Relationship to the legacy domain contract: internal/domain/script
+// Relationship to the legacy domain contract: internal/kernel/script
 // .GenerationTimings carries an overlapping set of flat *_ms audio fields used
-// only by the migration-only internal/application/scripts/usecase path. That
+// only by the migration-only internal/capabilities/scripts/usecase path. That
 // struct is a legacy projection; this struct is the authority. Field map:
 //
 //	GenerationTimings (domain, legacy)  AudioPipelineMetrics (projection)
@@ -493,6 +493,15 @@ type GenerateRequest struct {
 	// replaced by the configured default (mirror of plan.VoiceoverFolderID
 	// honored by the legacy processor_voiceover path).
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
+
+	// Intro is a literal intro section prepended verbatim. Never sent to
+	// the LLM — the runner injects it as the first scene (kind=intro)
+	// with the supplied clip binding. Text is spoken verbatim.
+	Intro *scriptpkg.FixedSection `json:"intro,omitempty"`
+
+	// Outro is a literal outro section appended verbatim. Same literal
+	// contract as Intro — injected as the last scene (kind=outro).
+	Outro *scriptpkg.FixedSection `json:"outro,omitempty"`
 }
 
 // Scene represents a single scene within the generated output.

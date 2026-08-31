@@ -102,6 +102,12 @@ type GenerationFingerprintInput struct {
 	// audio intent was requested (legacy identity preserved byte for
 	// byte).
 	AudioIntent *AudioOutputConfig `json:"audio_intent,omitempty"`
+
+	// Intro is the literal intro fixed section (verbatim, not LLM).
+	Intro *FixedSection `json:"intro,omitempty"`
+
+	// Outro is the literal outro fixed section (verbatim, not LLM).
+	Outro *FixedSection `json:"outro,omitempty"`
 }
 
 // BuildFingerprint returns the canonical 64-bit hex fingerprint for
@@ -205,6 +211,13 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 		input.Topic = plan.Topic
 	}
 
+	if plan.Intro != nil {
+		input.Intro = CloneFixedSection(plan.Intro)
+	}
+	if plan.Outro != nil {
+		input.Outro = CloneFixedSection(plan.Outro)
+	}
+
 	return input
 }
 
@@ -245,6 +258,13 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 {
 		audioCfg := item.Audio
 		input.AudioIntent = &audioCfg
+	}
+
+	if item.Intro != nil {
+		input.Intro = CloneFixedSection(item.Intro)
+	}
+	if item.Outro != nil {
+		input.Outro = CloneFixedSection(item.Outro)
 	}
 
 	return input
@@ -342,6 +362,12 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	// (or future similar transforms) would mutate the caller's slice.
 	if input.Segments != nil {
 		input.Segments = append([]ScriptSegment(nil), input.Segments...)
+	}
+	if input.Intro != nil {
+		input.Intro = CloneFixedSection(input.Intro)
+	}
+	if input.Outro != nil {
+		input.Outro = CloneFixedSection(input.Outro)
 	}
 	return input
 }
