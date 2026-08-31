@@ -21,7 +21,14 @@ type AssetPatch struct {
 	EnrichState    *string
 	MetadataJSON   *string
 	EmbeddingJSON  *string
+	VisualEmbedding     *string
+	TranscriptEmbedding *string
 	Collection     *string
+	SceneType      *string
+	PHash          *string
+	LastUsedAt     *string
+	QualityScore   *float64
+	ReuseCount     *int
 
 	DriveFileID  *string
 	DriveLink    *string
