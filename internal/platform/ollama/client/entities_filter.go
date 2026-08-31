@@ -19,11 +19,11 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	// words and verb suffixes instead of hardcoded maps. Unknown or empty
 	// languages fall back to the cross-linguistic fallback profile.
 	registry := linguistics.DefaultLexiconOrNil()
+	// Grounding is a protocol boundary, not an optional lexicon feature. The
+	// lexical profile is optional for lightweight callers, but source-span
+	// validation must still run in every execution path.
 	if registry == nil {
-		// Low-level client tests and lightweight callers may exercise the
-		// parser before the application composition root installs the
-		// lexicon. Keep extraction usable; production wiring still installs
-		// the registry before this filter is needed.
+		result.NounChunks = filterGroundedNounChunks(segment, result.NounChunks, nil)
 		return result
 	}
 	profile := registry.Resolve("fallback")
@@ -36,6 +36,7 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti, profile)
 	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali, profile)
 	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases, profile)
+	result.NounChunks = filterGroundedNounChunks(segment, result.NounChunks, profile)
 	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
 
 	if len(result.FrasiImportanti) == 0 {
@@ -57,6 +58,31 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 		}
 	}
 	return result
+}
+
+// filterGroundedNounChunks verifies model-produced syntax without enriching
+// it. A chunk must occur in the source and may not begin with a function word;
+// no translation, blacklist, or creative detail is introduced here.
+func filterGroundedNounChunks(segment string, items []string, profile *linguistics.LexiconProfile) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		words := strings.Fields(item)
+		if item == "" || len(words) == 0 || len(words) > 6 || !strings.Contains(segment, item) {
+			continue
+		}
+		if profile != nil {
+			first := strings.ToLower(strings.Trim(words[0], ".,;:!?\"'’"))
+			if _, ok := profile.FunctionWords[first]; ok {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	return uniqueLocalStrings(out)
 }
 
 func filterExactPhrases(segment string, items []string, profile *linguistics.LexiconProfile) []string {

@@ -98,6 +98,7 @@ func TestNounChunkGoldenCorpusWithOllama(t *testing.T) {
 	var cases []struct {
 		Name      string   `json:"name"`
 		Language  string   `json:"language"`
+		Scope     string   `json:"scope"`
 		Text      string   `json:"text"`
 		Required  []string `json:"required"`
 		Forbidden []string `json:"forbidden"`
@@ -105,11 +106,16 @@ func TestNounChunkGoldenCorpusWithOllama(t *testing.T) {
 	if err := json.Unmarshal(corpus, &cases); err != nil {
 		t.Fatal(err)
 	}
+	deferred := 0
 	var totalRequired, foundRequired int
 	var totalForbidden, foundForbidden int
 	var totalOutput, groundedOutput, duplicateOutput int
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if tc.Scope == "deferred" {
+				deferred++
+				t.Skip("language is outside the current US/Europe extraction scope")
+			}
 			result, err := NewClient(endpoint, model, 120).ExtractEntitiesFromSegmentWithModel(t.Context(), detail.EntityExtractionRequest{
 				SegmentText: tc.Text, Language: tc.Language, EntityCount: 8,
 			}, model)
@@ -140,7 +146,8 @@ func TestNounChunkGoldenCorpusWithOllama(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("metrics: required_chunk_recall=%.2f%% forbidden_phrase_rate=%.2f%% grounding_accuracy=%.2f%% duplicate_rate=%.2f%%",
+	t.Logf("metrics: active_cases=%d deferred_cases=%d required_chunk_recall=%.2f%% forbidden_phrase_rate=%.2f%% grounding_accuracy=%.2f%% duplicate_rate=%.2f%%",
+		len(cases)-deferred, deferred,
 		percent(foundRequired, totalRequired), percent(foundForbidden, totalForbidden), percent(groundedOutput, totalOutput), percent(duplicateOutput, totalOutput))
 }
 
@@ -175,6 +182,19 @@ func TestSanitizeNounChunksRejectsHallucinatedDetailsAndFunctionLeads(t *testing
 				t.Fatalf("invalid noun chunk survived: %q", got)
 			}
 		}
+	}
+}
+
+func TestFilterGroundedNounChunksRequiresExactSourceSpans(t *testing.T) {
+	text := "L'ancienne cathédrale domine le centre historique."
+	got := filterGroundedNounChunks(text, []string{
+		"ancienne cathédrale",
+		"il centro storico",
+		"centre historique",
+	}, nil)
+	want := []string{"ancienne cathédrale", "centre historique"}
+	if !sameStrings(got, want) {
+		t.Fatalf("grounded noun chunks = %v, want %v", got, want)
 	}
 }
 
