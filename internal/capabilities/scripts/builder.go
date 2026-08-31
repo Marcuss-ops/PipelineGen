@@ -52,6 +52,16 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	item := env.Items[0]
+	// Envelope-level force refresh is authoritative across every cache layer,
+	// not only the job/idempotency boundary. A fresh job that leaves the
+	// script, extraction, or asset caches warm can replay stale scene text and
+	// provider bindings, defeating a real cold VidRush certification.
+	if env.ForceRefresh {
+		item.ScriptParams.ForceRefresh = true
+		item.Source.ForceRefresh = true
+		item.MediaPlan.ForceRefreshAssets = true
+		item.MediaPlan.ForceRefreshExtraction = true
+	}
 	// Rendered clips are grouped under the generated script name. Keep the
 	// source clip IDs untouched; this field only controls Drive routing.
 	if strings.TrimSpace(item.Output.Render.DriveSubfolderName) == "" {
