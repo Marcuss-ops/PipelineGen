@@ -1,20 +1,6 @@
-// Package adapters — canonical_committers.go: image/asset-store to
-// mediacommit bridge adapters.
-//
-// The composition root keeps newCanonicalAssetCommitter (the factory
-// that constructs the SQLiteMediaCommitter concrete); this package owns
-// the business mapping that turns a platform repository's canonical
-// write hook into a mediacommit commit request:
-//
-//   - WireCanonicalImageCommitter — ImagesRepository hook: maps an
-//     *detail.ImageAsset into a mediacommit.CommitMediaAssetRequest
-//     (taxonomy resolution, tag normalization, content identity).
-//   - WireCanonicalAssetStore     — AssetStoreSQLite hook: maps an
-//     *asset.Details into a persistence.CommitRequest.
-//
-// Both are fail-closed: a nil repository/committer is a no-op registration
-// (the hook simply stays unset), mirroring the previous composition-root
-// behaviour.
+// Package adapters — canonical_committers.go: repository to canonical writer
+// bridge adapters. Repositories keep read/detail-table responsibilities while
+// every media_assets mutation routes through the one production writer.
 package adapters
 
 import (
@@ -36,12 +22,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
 
-// WireCanonicalImageCommitter registers the canonical image commit path on
-// the ImagesRepository: every image write converges on mediacommit instead of
-// a repo-local insert.
+// WireCanonicalImageCommitter registers both creation and mutation views of
+// the SAME canonical writer on ImagesRepository. Missing mutation capability
+// is left unwired so write methods fail closed rather than falling back to SQL.
 func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer persistence.AssetCommitter) {
 	if repo == nil || committer == nil {
 		return
+	}
+	if mutator, ok := committer.(persistence.AssetMutator); ok {
+		repo.SetCanonicalMutator(mutator)
 	}
 	repo.SetCanonicalCommitter(func(ctx context.Context, img *detail.ImageAsset) (int64, error) {
 		if img == nil {
@@ -72,10 +61,7 @@ func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer pe
 			kind = capregistry.AssetWebImage
 		}
 		taxonomy, taxErr := capregistry.ResolveTaxonomy(capregistry.TaxonomyInput{
-			AssetID:   assetID,
-			Provider:  "image",
-			MediaType: capregistry.MediaImage,
-			AssetKind: kind,
+			AssetID: assetID, Provider: "image", MediaType: capregistry.MediaImage, AssetKind: kind,
 		})
 		if taxErr != nil {
 			return 0, fmt.Errorf("canonical image commit: resolve taxonomy: %w", taxErr)
@@ -95,24 +81,27 @@ func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer pe
 				}},
 				Image: &mediacommit.ImageDraft{URL: img.SourceURL, TagsJSON: string(tagsJSON), TagsNorm: normalizeImageTags(img.Tags), Width: img.Width, Height: img.Height, RelativePath: img.PathRel, Origin: string(img.Origin), Provider: string(img.Provider)},
 			},
-			Source:      mediacommit.AssetSourceDraft{SourceType: "image", SourceURI: ref, SourceVersion: ref, IsPrimary: true},
-			Taxonomy:    taxonomy,
-			Content:     optionalImageContent(contentHash),
-			IndexPolicy: mediacommit.IndexPolicy{Indexable: true},
-			Actor:       "image-repository",
+			Source: mediacommit.AssetSourceDraft{SourceType: "image", SourceURI: ref, SourceVersion: ref, IsPrimary: true},
+			Taxonomy: taxonomy, Content: optionalImageContent(contentHash),
+			IndexPolicy: mediacommit.IndexPolicy{Indexable: true}, Actor: "image-repository",
 		}
 		if canonical, ok := committer.(*sqmedia.SQLiteMediaCommitter); ok {
 			_, err := canonical.CommitMediaAsset(ctx, request)
 			return 0, err
 		}
-		result, err := committer.CommitAsset(ctx, persistence.CommitRequest{AssetID: assetID, Source: "image", Name: name, Filename: filename, MediaType: "image", ContentHash: contentHash, LifecycleState: "STAGING", LocalPath: img.LocalPath, FolderPath: img.PathRel, SourceURL: img.SourceURL, Title: name, EmitIndexEvent: true, AssetVersion: ref})
-		_ = result
+		_, err := committer.CommitAsset(ctx, persistence.CommitRequest{
+			AssetID: assetID, Source: "image", Name: name, Filename: filename,
+			MediaType: "image", ContentHash: contentHash, LifecycleState: "STAGING",
+			LocalPath: img.LocalPath, FolderPath: img.PathRel, SourceURL: img.SourceURL,
+			Title: name, EmitIndexEvent: true, AssetVersion: ref, Taxonomy: taxonomy,
+		})
 		return 0, err
 	})
 }
 
-// WireCanonicalAssetStore registers the canonical save path on the
-// AssetStoreSQLite: details commits converge on the AssetCommitter port.
+// WireCanonicalAssetStore registers the compatibility Save/Delete surfaces on
+// AssetStoreSQLite. They are thin delegators only; the repository contains no
+// media_assets write SQL.
 func WireCanonicalAssetStore(store *sqassets.AssetStoreSQLite, committer persistence.AssetCommitter) {
 	if store == nil || committer == nil {
 		return
@@ -132,12 +121,18 @@ func WireCanonicalAssetStore(store *sqassets.AssetStoreSQLite, committer persist
 			MediaType: mediaType, Category: a.Category, DurationMs: a.Duration.Milliseconds(),
 			ContentHash: a.LegacyFileMD5(), SearchText: a.SearchText, LifecycleState: string(a.LifecycleState),
 			ThumbnailURL: a.ThumbnailURL, SourceURL: a.SourceURL, Title: a.Name,
-			Metadata:   persistence.TypedMetadata{Extra: a.Metadata},
+			Metadata: persistence.TypedMetadata{Extra: a.Metadata},
 			IndexState: a.GetMetadataString("index_state"), AssetVersion: ref,
 			EmitIndexEvent: false,
 		})
 		return err
 	})
+	if mutator, ok := committer.(persistence.AssetMutator); ok {
+		store.SetCanonicalDelete(func(ctx context.Context, id string) error {
+			state := "DELETED"
+			return mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: id, LifecycleState: &state})
+		})
+	}
 }
 
 func optionalImageContent(hash string) *mediacommit.ContentIdentity {
