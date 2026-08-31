@@ -3,93 +3,16 @@ package imagesregistry
 import (
 	"database/sql"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
-// ── PR1 (June 2026) — file role ───────────────────────────────────────────
-//
-// clips_repository.go is the canonical home of the *ClipsRepository
-// receiver: struct, constructors, MediaAssetColumns constant, the
-// SourceVersionQuerier (PR 11) compile-time assertion, and a
-// handful of utility accessors (Canonical, SoftDeleteFilter, Log, DB).
-//
-// Method-bearing files (PR1 strict-6 split):
-//   - clips_crud.go         Upsert, Get, GetClip, SourceVersionFor,
-//                           UpsertClip, DeleteClip, Mutate
-//   - clips_queries.go      Count (caller-filtered)
-//   - clips_resolution.go   ResolveByMediaAssetID, ResolveByYouTubeVideoID,
-//                           ResolveByDriveFileID, ResolveByExternalProviderID,
-//                           GetByDriveFileID, GetClipFolderByVideoID
-//   - clips_index_state.go  SoftDelete, SetIndexState,
-//                           DeleteClipByDriveLink
-//   - clips_transactions.go BeginTx, UpsertClipTx, SetIndexStateTx
-//   - clips_statistics.go   (intentionally empty — metric home reserved
-//                           for future unconditional aggregation methods)
-//
-// Plus the Wave 15 split already on disk:
-//   - clips_repository_queries.go   CountAll / CountIndexed / CountIndexable /
-//                                    CountPendingOutbox / CountDeadLetter /
-//                                    ListIndexedIDs / List / StreamAssetIDs /
-//                                    inClause / AdvancedSearch* aliases
-//   - clips_repository_folders.go   UpsertFolder / GetFolder /
-//                                    GetFolderByVideoID / GetFolderByPath /
-//                                    ListFolders / DriveFolderAttrs /
-//                                    LookupDriveFolderIDBySourcePath /
-//                                    UpsertDriveFolder
-//   - txmutation/ subpackage        RestoreTx / HardDeleteTx (the
-//                                    raw-mutation replacements — see
-//                                    PR-CLIP-RAW-MUTATIONS, Wave 22)
-
-// Compile-time assertion (Wave 16, June 2026; PR 11 followup
-// June 2026): *ClipsRepository statically implements
-// jobsoutbox.SourceVersionQuerier (pre-flight idempotency surface
-// for the source_version supersede gate in IndexingHandler). Per
-// AGENTS.md Pattern 0, the assertion lives at the adapter
-// (infrastructure) home so port-drift bugs surface at compile
-// time, not at the first index.requested replay.
-//
-// PR 11 follow-up: AssetSourceChecker interface (which exposed
-// GetClip(ctx, id) (*asset.Asset, error)) was replaced with the
-// narrower SourceVersionQuerier (SourceVersionFor(ctx, id)
-// (string, error)). The replacement eliminates the producer-side
-// ↔ consumer-side priority-chain drift that pre-PR-11-followup
-// code carried (producer scanned via inline COALESCE; consumer
-// walked the Asset struct — different chains, same name). Both
-// sides now route through SourceVersionFor from
-// source_version.go above, which is the single source of truth.
-//
-// Two-method-or-more port guidance (now vacated): the legacy note
-// referenced the GetClip-only interface, but SourceVersionQuerier
-// also has a single method. Adding a second method to the
-// upstream port will trip this assertion and force the concrete
-// to implement the new method — same compile-time behaviour under
-// the new name. The same pattern as
-// qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
 var _ detail.SourceVersionQuerier = (*ClipsRepository)(nil)
 
 // MediaAssetColumns is the canonical SELECT projection used by every
-// Get / List / Search / Resolve path in this package. The projection
-// is locked to ScanMediaAsset's scan signature in scan_helpers.go;
-// every AS alias here MUST appear at the same positional index in
-// ScanMediaAsset's `s.Scan(&dest...)` argument list.
-//
-// FASE 4 (June 2026): re-aligned from a drifted 38-column version to
-// 39 columns matching ScanMediaAsset. The previous version was missing
-// six columns (media_type, drive_folder_id, drive_link,
-// download_link, group_name, status) and contained three ghost columns no
-// longer in the canonical schema (web_view_link, is_folder, depth —
-// removed by migration 059's json_remove). `status` was later removed
-// (July 2026) because migration 101 dropped the DB column.
-//
-// If you change this constant, update scans in lockstep:
-//   - scan_helpers.go::ScanMediaAsset  (consumes the AS aliases)
-//   - clips_crud_test.go::canonicalMediaAssetColumns  (pins the order)
-//
-// `status` column was REMOVED (PR-search-handler-provider-errors, July 2026):
-// migration 101 removed the DB column but the SELECT still referenced it,
-// causing "no such column: status" on every SearchClipsAdvanced query.
-// The paired ScanMediaAsset edit removed the corresponding scan target.
+// Get/List/Search/Resolve path in this package. It is read-only topology; all
+// writes route through the composition-wired canonical asset writer.
 const MediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
@@ -132,9 +55,11 @@ const MediaAssetColumns = `
 	COALESCE(last_used_at, '') AS last_used_at`
 
 type ClipsRepository struct {
-	*AssetStoreSQLite // Wave C / Phase 3: embed LOCAL *assets.AssetStoreSQLite (the canonical infra struct) instead of legacy *asset.AssetStoreSQLite. LOCAL has the canonical Save/Get/Delete/List methods AND transitively exposes legacy receivers via its own HYBRID embed of legacy. Existing call sites like `r.AssetStoreSQLite.Save(...)` auto-resolve because the embedded-field name is unchanged.
-	db                *sql.DB
-	log               *zap.Logger
+	*AssetStoreSQLite
+	db             *sql.DB
+	log            *zap.Logger
+	assetCommitter persistence.AssetCommitter
+	assetMutator   persistence.AssetMutator
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
@@ -146,52 +71,29 @@ func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
 }
 
 func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *ClipsRepository {
-	return NewClipsRepository(db, log)
+	repo := NewClipsRepository(db, log)
+	if committer, ok := canonical.(persistence.AssetCommitter); ok {
+		repo.SetCanonicalWriter(committer)
+	}
+	return repo
 }
 
-// ── Dangerous-mutation removal — Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS ───
-//
-// Restore, HardDelete, and HardDeleteClip are REMOVED from this concrete
-// repository as of PR-CLIP-RAW-MUTATIONS (June 2026). Their replacements live
-// in the restricted tx-scoped package
-// `internal/platform/sqlite/assets/txmutation/`:
-//
-//   - RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
-//                                          'ready' inside a caller-owned tx.
-//   - HardDeleteTx(ctx, tx, id) — physically removes the row
-//                                          + dependent rows inside a
-//                                          caller-owned tx.
-//
-// Rationale:
-//   1. Production-reachability ban. The presence of public methods on
-//      *assets.ClipsRepository made it trivial for non-canonical callers
-//      to skip the outbox + the InternalAdminPurge safety validation. Removing
-//      them from this receiver breaks all direct-producer paths. The CI
-//      lint (`scripts/ci-architectural-checks.sh::Check 5`) bans any
-//      direct caller regardless.
-//   2. Tx-scoped only. The replacements REQUIRE the caller to hold an
-//      open *sql.Tx. The caller — `admin.PurgeService` in
-//      `internal/platform/sqlite/admin/purge.go::HardDeleteClip`
-//      and `RestoreClip` — opens the tx, calls the tx-scoped primitive,
-//      and commits. A future caller that skips the tx boundary won't
-//      compile because *sql.Tx is a non-optional parameter.
-//
-// The internal/capabilities/assets/mutations/AssetMutationPrimitives
-// interface ALSO drops Restore/HardDelete (UpsertClip stays — fixtures
-// rely on it). The outbox dispatcher, which already implements
-// AssetMutationDispatcher (3-method, not Primitives), is unaffected.
-//
-// Reference: architecture/deprecations.yaml → PR-CLIP-RAW-MUTATIONS.
-
-func (r *ClipsRepository) Canonical() *ClipsRepository {
-	return r
+// SetCanonicalWriter attaches the single production writer to the repository.
+// The repository keeps reader/query responsibilities; compatibility mutation
+// methods delegate to these narrow ports and fail closed if they are absent.
+func (r *ClipsRepository) SetCanonicalWriter(committer persistence.AssetCommitter) {
+	if r == nil {
+		return
+	}
+	r.assetCommitter = committer
+	if mutator, ok := committer.(persistence.AssetMutator); ok {
+		r.assetMutator = mutator
+	}
 }
+
+func (r *ClipsRepository) Canonical() *ClipsRepository { return r }
 
 func (r *ClipsRepository) SoftDeleteFilter() string {
-	// Phase 4 unification (June 2026): thin-wrapper that delegates
-	// to the canonical detail.SoftDeleteFilter — the single SSOT for
-	// the soft-delete SQL fragment. PR 1 (Lifecycle state SSOT)
-	// semantics live on the canonical function in domain/asset.
 	return detail.SoftDeleteFilter()
 }
 
