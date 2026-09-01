@@ -15,6 +15,8 @@ import "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 type VisualEntity struct {
 	// Text is the entity surface form (e.g. "feta cheese").
 	Text string `json:"text"`
+	// Type is the closed VisualNER entity vocabulary shared with Rust.
+	Type script.EntityType `json:"type"`
 	// SourceTextHash binds the evidence to the exact canonical source.
 	SourceTextHash string `json:"source_text_hash"`
 	// Score is the deterministic visualness score in [0,1]; higher is

@@ -76,7 +76,7 @@ func (a *VisualNERAdapter) ExtractEntities(ctx context.Context, req scriptpkg.En
 	result := &scriptpkg.EntityResult{NounChunks: make([]string, 0, len(entities)), Concepts: make([]scriptpkg.Entity, 0, len(entities))}
 	for _, entity := range entities {
 		result.NounChunks = append(result.NounChunks, entity.Text)
-		result.Concepts = append(result.Concepts, scriptpkg.Entity{Value: entity.Text, Type: "CONCEPT", Score: entity.Score})
+		result.Concepts = append(result.Concepts, scriptpkg.Entity{Value: entity.Text, Type: string(entity.Type), Score: entity.Score})
 	}
 	return result, nil
 }

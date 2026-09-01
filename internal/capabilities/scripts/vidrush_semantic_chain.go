@@ -33,11 +33,12 @@ import (
 // Rust crate. It mirrors rust/visualner::VisualEntity so the FFI adapter
 // can decode the crate's JSON output without translation.
 type VisualEntity struct {
-	Text     string  `json:"text"`
-	Score    float32 `json:"score"`
-	Start    int     `json:"start"`
-	End      int     `json:"end"`
-	Evidence string  `json:"evidence,omitempty"`
+	Text     string               `json:"text"`
+	Type     scriptpkg.EntityType `json:"type"`
+	Score    float32              `json:"score"`
+	Start    int                  `json:"start"`
+	End      int                  `json:"end"`
+	Evidence string               `json:"evidence,omitempty"`
 }
 
 // VisualNERPort extracts source-grounded visual entities from a scene's
@@ -138,9 +139,16 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	imageQueries := make([]string, 0, len(entities))
 	for _, ve := range entities {
+		entityType := ve.Type
+		if strings.TrimSpace(string(entityType)) == "" {
+			// Test/dry-run ports predating the typed contract are treated as
+			// visual concepts; the production Rust adapter always supplies a
+			// concrete value from the closed vocabulary.
+			entityType = scriptpkg.EntityTypeVisualConcept
+		}
 		extractedEntities = append(extractedEntities, scriptpkg.ExtractedEntity{
 			Value:      ve.Text,
-			Type:       "VISUAL_SUBJECT",
+			Type:       string(entityType),
 			Confidence: float64(ve.Score),
 		})
 		imageQueries = append(imageQueries, ve.Text)
