@@ -62,7 +62,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // PersistGeneratedArtifacts writes the canonical §8.4 multi-artifact

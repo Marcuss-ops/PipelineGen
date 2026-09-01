@@ -12,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // TestStockRustRenderTenClips drives the REAL Rust canonical renderer over 10

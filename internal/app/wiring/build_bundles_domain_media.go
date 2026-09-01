@@ -24,7 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/portutil"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"

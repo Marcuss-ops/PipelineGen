@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 )
 
 // RepairOptions is the typed-input envelope for Service.Repair.

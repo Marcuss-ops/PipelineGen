@@ -110,21 +110,16 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
-			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
+			correlation_id, progress, error, retry_count, max_retries,
 			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
 			client_id, idempotency_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
 	if payloadJSON == "" || payloadJSON == "null" {
 		payloadJSON = "{}"
 	}
-	resultJSON := string(j.Result)
-	if resultJSON == "" || resultJSON == "null" {
-		resultJSON = "{}"
-	}
-
 	revision := j.Revision
 	if revision <= 0 {
 		revision = 1
@@ -133,7 +128,7 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 	_, err := tx.ExecContext(ctx, query,
 		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
 		j.CorrelationID,
-		payloadJSON, resultJSON, j.Progress, j.Error,
+		j.Progress, j.Error,
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
@@ -141,6 +136,14 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 		j.ClientID, j.IdempotencyKey)
 	if err != nil {
 		return fmt.Errorf("jobs.CreateInTx: %w", err)
+	}
+	if err := persistJobPayload(ctx, tx, j.ID, payloadJSON); err != nil {
+		return err
+	}
+	if len(j.Result) > 0 {
+		if err := persistJobResult(ctx, tx, j.ID, j.RetryCount, string(j.Result)); err != nil {
+			return err
+		}
 	}
 	// Intentionally NOT calling r.queueChanged() — see doc comment
 	// above (godlike/07 minimum-blast-radius: queue wake is the
@@ -159,21 +162,16 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
-			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
+			correlation_id, progress, error, retry_count, max_retries,
 			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
 			client_id, idempotency_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
 	if payloadJSON == "" || payloadJSON == "null" {
 		payloadJSON = "{}"
 	}
-	resultJSON := string(j.Result)
-	if resultJSON == "" || resultJSON == "null" {
-		resultJSON = "{}"
-	}
-
 	// Revision is per-row monotonic counter; on creation it is 1 (the
 	// first revision before any transition fired).
 	revision := j.Revision
@@ -181,10 +179,15 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 		revision = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, query,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create job: begin: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, query,
 		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
 		j.CorrelationID,
-		payloadJSON, resultJSON, j.Progress, j.Error,
+		j.Progress, j.Error,
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
@@ -192,6 +195,17 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 		j.ClientID, j.IdempotencyKey)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
+	}
+	if err := persistJobPayload(ctx, tx, j.ID, payloadJSON); err != nil {
+		return fmt.Errorf("failed to create job payload: %w", err)
+	}
+	if len(j.Result) > 0 {
+		if err := persistJobResult(ctx, tx, j.ID, j.RetryCount, string(j.Result)); err != nil {
+			return fmt.Errorf("failed to create job result: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to create job: commit: %w", err)
 	}
 
 	r.queueChanged()
@@ -224,6 +238,9 @@ func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, err
 		if err := scanJobColumns(rows, &j); err != nil {
 			return nil, fmt.Errorf("PeekQueued: scan: %w", err)
 		}
+		if err := r.hydrateJob(ctx, &j); err != nil {
+			return nil, fmt.Errorf("PeekQueued: hydrate result: %w", err)
+		}
 		out = append(out, j)
 	}
 	if err := rows.Err(); err != nil {
@@ -241,6 +258,9 @@ func (r *SQLiteStore) Get(ctx context.Context, id string) (*job.Job, error) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
+	}
+	if err := r.hydrateJob(ctx, j); err != nil {
+		return nil, fmt.Errorf("failed to hydrate job result: %w", err)
 	}
 	return j, nil
 }
@@ -291,6 +311,9 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 		j := &job.Job{}
 		if err := scanJobColumns(rows, j); err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
+		}
+		if err := r.hydrateJob(ctx, j); err != nil {
+			return nil, fmt.Errorf("failed to hydrate job result: %w", err)
 		}
 		out = append(out, *j)
 	}
@@ -378,6 +401,9 @@ LIMIT ?`
 		if err := scanJobColumns(rows, j); err != nil {
 			return nil, fmt.Errorf("ListAwaitingAggregation: scan: %w", err)
 		}
+		if err := r.hydrateJob(ctx, j); err != nil {
+			return nil, fmt.Errorf("ListAwaitingAggregation: hydrate result: %w", err)
+		}
 		out = append(out, *j)
 	}
 	return out, nil
@@ -393,6 +419,9 @@ func (r *SQLiteStore) FindActiveByKey(ctx context.Context, activeKey string) (*j
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by active key: %w", err)
+	}
+	if err := r.hydrateJob(ctx, j); err != nil {
+		return nil, fmt.Errorf("failed to hydrate active job result: %w", err)
 	}
 	return j, nil
 }
@@ -412,6 +441,9 @@ func (r *SQLiteStore) FindByTypeAndCorrelation(ctx context.Context, jobType stri
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by type+correlation: %w", err)
+	}
+	if err := r.hydrateJob(ctx, j); err != nil {
+		return nil, fmt.Errorf("failed to hydrate correlated job result: %w", err)
 	}
 	return j, nil
 }
@@ -438,6 +470,9 @@ func (r *SQLiteStore) FindByClientAndIdempotencyKey(ctx context.Context, clientI
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by client+idempotency_key: %w", err)
+	}
+	if err := r.hydrateJob(ctx, j); err != nil {
+		return nil, fmt.Errorf("failed to hydrate idempotent job result: %w", err)
 	}
 	return j, nil
 }

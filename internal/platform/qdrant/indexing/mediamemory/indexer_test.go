@@ -18,7 +18,7 @@
 //  3. A paraphrase round-trip via httptest server recomputes
 //     scores via cosine(query, hit) so the test validates real
 //     ANN-style recall (not just wire-shape echo).
-package qdrantmm
+package mediamemory
 
 import (
 	"context"

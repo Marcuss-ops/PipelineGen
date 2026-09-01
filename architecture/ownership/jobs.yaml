@@ -30,3 +30,12 @@ job_handler_map:
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
 # Each canonical service is constructed EXACTLY ONCE.
+#
+# Ownership matrix:
+#   queue        = enqueue/claim/retry/lease policy and queue contracts
+#   scheduling   = polling, backoff, resource-fit and preparation planning
+#   finalize     = artifact finalization and publication policy
+#   worker       = execution adapter and worker lifecycle
+#   completion   = terminal completion events and idempotent completion handling
+#   root facade  = public contracts, registration and composition-facing API only
+# No second job manager, broker policy or terminal-state writer may be introduced.

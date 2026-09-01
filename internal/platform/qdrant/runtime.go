@@ -35,8 +35,9 @@ import (
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	capmediaregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
@@ -101,7 +102,7 @@ type QdrantRuntime struct {
 	Manager *collections.CollectionManager
 	// Health is the canonical readiness probe. Replaces the previous
 	// `QdrantHealthProbe any` carrier field on ProcessBundle.
-	Health *disasterrecovery.HealthProbe
+	Health *health.Probe
 	// Cleaner is the canonical LocatorCleaner (QDRANT-005 Fase 3).
 	Cleaner *maintenance.LocatorCleaner
 	// Mapper is the canonical PayloadMapper used by the Writer.
@@ -226,7 +227,7 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 				zap.Strings("names", res.DroppedNames))
 		}
 	}
-	health := disasterrecovery.NewHealthProbe(client)
+	health := health.NewProbe(client)
 	cleaner := maintenance.NewLocatorCleaner(client, schema, log)
 	searchAdapter := search.NewSearchAdapter(searcher, store, log)
 

@@ -295,10 +295,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Log:           log,
 			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
 			ResearchPreflight: func() usecase.ResearchPreflight {
-				if root.DB == nil {
+				if root.CacheDB == nil || root.CacheDB.DB == nil {
 					return nil
 				}
-				preflight := usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.DB.DB))
+				preflight := usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.CacheDB.DB))
 				// Same provider-policy token as the worker resolver
 				// (wire_script_resolvers.go) so preflight and worker derive
 				// identical research cache keys.

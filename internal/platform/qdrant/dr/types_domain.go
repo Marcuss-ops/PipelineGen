@@ -1,4 +1,4 @@
-// Package qdrantdr — canonical DR/snapshot types shared across layers.
+// Package dr — canonical DR/snapshot types shared across layers.
 //
 // PR-QDRANT-WIRE-MIRROR (June 2026): unifies the previously duplicated
 // SnapshotDescription, RetentionConfig, and RetentionResult types that
@@ -10,7 +10,7 @@
 // Placement: internal/kernel/ (Clean Architecture innermost layer).
 // Both infra and application packages may import domain/; domain imports
 // only the standard library.
-package qdrantdr
+package dr
 
 import (
 	"encoding/json"

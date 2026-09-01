@@ -4,7 +4,7 @@
 //
 // Sprint 3.4 step1 (godlike/06 SSOT — single canonical owner per fact):
 // this is the only legal site to bind the 3 infrastructure-layer
-// Qdrant types (disasterrecovery.HealthProbe, collections.CollectionManager,
+// Qdrant types (qdrant.HealthProbe, collections.CollectionManager,
 // search.Searcher + search.TextEmbedder) into the application-layer
 // port consumed by the transport handler. The api layer (transport,
 // routes, server) consumes ONLY the port — no infrastructure import.
@@ -36,7 +36,7 @@ import (
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
@@ -52,7 +52,7 @@ const qdrantEndpointCanaryQuery = "canary probe"
 // against real Qdrant infra. Lives in the composition root because
 // godlike/06 forbids the transport layer from importing infrastructure.
 type qdrantEndpointAdapter struct {
-	probe    *disasterrecovery.HealthProbe
+	probe    *qdranthealth.Probe
 	collMgr  *collections.CollectionManager
 	searcher *search.Searcher
 	embedder search.TextEmbedder
@@ -69,7 +69,7 @@ type qdrantEndpointAdapter struct {
 // All deps may be nil; nil deps fail-closed according to the
 // matching transport handler's not-configured semantics.
 func newQdrantEndpointAdapter(
-	probe *disasterrecovery.HealthProbe,
+	probe *qdranthealth.Probe,
 	collMgr *collections.CollectionManager,
 	searcher *search.Searcher,
 	embedder search.TextEmbedder,

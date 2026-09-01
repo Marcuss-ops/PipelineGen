@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // TestStockRustPerformanceRTF drives a realistic 10-clip × 7s (70s) canonical

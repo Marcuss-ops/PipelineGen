@@ -5,7 +5,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/portutil"
 )
 
 // ServiceDeps wires the health checkers into the Service.

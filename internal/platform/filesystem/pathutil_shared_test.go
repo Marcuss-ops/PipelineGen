@@ -15,7 +15,7 @@
 //   - "intro", "Foo Bar 2024", "2024-q4", "日本", "+trailing-period",
 //     hyphen/underscore/dot/space only.
 
-package pathutil
+package filesystem
 
 import (
 	"path/filepath"

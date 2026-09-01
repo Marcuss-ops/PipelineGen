@@ -14,14 +14,17 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
@@ -127,6 +130,14 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 
 	executor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+	visualNER, err := rustexec.NewVisualNERAdapter(executor)
+	if err != nil {
+		return nil, fmt.Errorf("build VisualNER adapter: %w", err)
+	}
+	mediaSampler, err := rustexec.NewMediaSamplerAdapter(executor)
+	if err != nil {
+		return nil, fmt.Errorf("build MediaSampler adapter: %w", err)
+	}
 	videoProcessor := rustexec.NewConfiguredVideoProcessorWithExecutor(executor, root.MediaExec.Policy, root.MediaExec.Profile, log)
 	audioRenderer, err := rustexec.NewCombinedAudioRenderer(videoProcessor)
 	if err != nil {
@@ -290,8 +301,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics)
 	}
-	runner.SetVidRushPipeline(&scriptgen.VidRushPipeline{
-		Enricher:         vidRushEnricher,
+	semanticEnricher := vidRushEnricher
+	if visualNER != nil {
+		semanticEnricher = nil
+	}
+	pipeline := &scriptgen.VidRushPipeline{
+		Enricher:         semanticEnricher,
 		ProviderResolver: vidRushFanout,
 		Materializer:     vidRushMaterializer,
 		Metrics:          vidRushMetrics,
@@ -299,7 +314,20 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			return root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
 		}),
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
-	})
+		NERPort:      visualNER,
+		SamplerPort:  mediaSampler,
+	}
+	if root.Process != nil && root.Process.QdrantSearcher != nil && root.Repos != nil && root.Repos.Assets != nil {
+		var embedder qdrantsearch.TextEmbedder
+		if cfg.ClipIndexer.ServerURL != "" {
+			embedder = qdrantsearch.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
+		}
+		if embedder != nil {
+			local := stockintelligence.QdrantLocalSearchAdapter{Searcher: root.Process.QdrantSearcher, Embedder: embedder, VectorName: "text"}
+			_ = local
+		}
+	}
+	runner.SetVidRushPipeline(pipeline)
 	// Shared worker pools: NLP/entity extraction and script text generation
 	// have independent gates and tunables. The TTS voiceover pool defaults to
 	// 4. Docs publishing and the Rust final-audio render remain single-threaded.

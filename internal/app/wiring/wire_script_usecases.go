@@ -119,8 +119,8 @@ func buildScriptUseCases(
 		oneUC.SetMemoryService(root.AI.MemorySvc)
 		log.Info("wireScriptFlow: gemmamemory service wired to GenerateOneUseCase")
 	}
-	if root.DB != nil {
-		oneUC.SetTopicSourceCache(topicsourcecache.NewRepository(root.DB.DB))
+	if root.CacheDB != nil && root.CacheDB.DB != nil {
+		oneUC.SetTopicSourceCache(topicsourcecache.NewRepository(root.CacheDB.DB))
 	}
 
 	// ── Voiceover group → folder routing ────────────────────────

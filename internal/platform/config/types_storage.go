@@ -14,12 +14,19 @@ type StorageConfig struct {
 	// Log retention doesn't churn the schema-versioned primary DB.
 	// Default: `<DataDir>/observability/api_requests.db.sqlite`.
 	ObservabilityDBPath string `yaml:"observability_db_path" env:"VELOX_OBSERVABILITY_DB_PATH" default:""`
+	// CacheDBPath optionally overrides the disposable cache database location.
+	// An unavailable cache is a miss and never blocks business-state startup.
+	CacheDBPath string `yaml:"cache_db_path" env:"VELOX_CACHE_DB_PATH" default:""`
 	// WorkspaceDir is for transient job scratch space.
 	WorkspaceDir string `yaml:"workspace_dir" env:"VELOX_WORKSPACE_DIR" default:""`
 	// CacheDir is for derived artifacts (re-rendered thumbnails, etc.).
 	CacheDir string `yaml:"cache_dir" env:"VELOX_CACHE_DIR" default:""`
 	// ExportDir is for one-off exports (download bundles, audit dumps).
 	ExportDir string `yaml:"export_dir" env:"VELOX_EXPORT_DIR" default:""`
+	// SQLiteReaderMaxOpenConns controls the media reader pool size. Values
+	// below two use the platform default (runtime.NumCPU, with a minimum of 2).
+	SQLiteReaderMaxOpenConns int `yaml:"sqlite_reader_max_open_conns" env:"VELOX_SQLITE_READER_MAX_OPEN_CONNS" default:"0"`
+
 	// ObservabilityMaxAgeDays is the retention cutoff for the
 	// observability DB (`admin db rotate`). Rows with ts older than
 	// this are offloaded to <DataDir>/backups/observability-<DATE>.db.sqlite
@@ -144,11 +151,24 @@ func (s StorageConfig) PrimaryDBFullPath() string {
 	return s.CanonicalPrimaryDBPath()
 }
 
+func (s StorageConfig) SQLiteReaderCount() int { return s.SQLiteReaderMaxOpenConns }
+
 func (s StorageConfig) ObservabilityDBFullPath() string {
 	if s.ObservabilityDBPath != "" {
 		return s.ObservabilityDBPath
 	}
 	return s.FullPath("observability/api_requests.db.sqlite")
+}
+
+func (s StorageConfig) CacheDBFullPath() string {
+	if s.CacheDBPath != "" {
+		return s.CacheDBPath
+	}
+	return s.FullPath("cache/cache.db.sqlite")
+}
+
+func (s StorageConfig) JobsDBFullPath() string {
+	return s.FullPath("jobs/jobs.db.sqlite")
 }
 
 func (s StorageConfig) WorkspaceFullPath() string {

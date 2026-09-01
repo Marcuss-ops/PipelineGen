@@ -156,12 +156,12 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 // invalidation does not depend on Drive being wired: the only requirement is
 // the media DB (research_cache lives in root.DB.DB).
 func registerResearchCacheAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
-	if root.DB == nil || root.DB.DB == nil {
-		log.Warn("research cache admin module skipped: DB not wired")
+	if root.CacheDB == nil || root.CacheDB.DB == nil {
+		log.Warn("research cache admin module skipped: cache DB not wired")
 		return nil
 	}
 
-	handler := admin.NewResearchCacheInvalidateHandler(topicsourcecache.NewRepository(root.DB.DB), log)
+	handler := admin.NewResearchCacheInvalidateHandler(topicsourcecache.NewRepository(root.CacheDB.DB), log)
 	mod := module.NewRouteModule(
 		"admin-research-cache",
 		func() bool { return true },

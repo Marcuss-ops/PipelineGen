@@ -43,7 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
@@ -165,7 +165,7 @@ func initQdrantProcessSubsystems(
 	collectionMgr *collections.CollectionManager,
 	vectorSvc assetsearch.VectorStorePort,
 	qdrantClient *qdranttransport.Client,
-	qdrantHealthProbe *disasterrecovery.HealthProbe,
+	qdrantHealthProbe *qdranthealth.Probe,
 	locatorCleaner *qdrantmaintenance.LocatorCleaner,
 	qdrantSearcher *qdrantsearch.Searcher,
 ) {

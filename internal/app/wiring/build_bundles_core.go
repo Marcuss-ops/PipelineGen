@@ -45,7 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
@@ -124,8 +124,8 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
-	svc := buildHealthService(cfg, db)
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
+	svc := buildHealthService(cfg, db, jobsDB)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithTools(processinfra.NewToolsChecker()).
 		WithClipsPath("data/media/clips")
@@ -208,7 +208,7 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 	}
 }
 
-func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
+func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storage.SQLiteDB) *systemhealth.Service {
 	if cfg == nil {
 		return nil
 	}
@@ -236,9 +236,16 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 	_ = validateQdrantIndexerCompatibility(cfg)
 	if cfg.Qdrant.Enabled {
 		qdrantCfg := &schema.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}
-		qdrantChecker = disasterrecovery.NewHealthProbe(qdranttransport.NewClient(qdrantCfg, zap.NewNop()))
+		qdrantChecker = qdranthealth.NewProbe(qdranttransport.NewClient(qdrantCfg, zap.NewNop()))
 	}
-	jobsChecker := infrahealth.NewJobsChecker(db)
+	// The execution-plane health check must follow the jobs split. Keep the
+	// media DB as the canonical "db" check, but never report jobs health from
+	// that handle when jobs.db.sqlite is enabled.
+	jobsHealthDB := db
+	if jobsDB != nil {
+		jobsHealthDB = jobsDB
+	}
+	jobsChecker := infrahealth.NewJobsChecker(jobsHealthDB)
 	const heartbeatStaleness = 60 * time.Second
 	jobsChecker.RunnerProbe = func(ctx context.Context) error {
 		age := appjobs.BrokerHeartbeatAge()

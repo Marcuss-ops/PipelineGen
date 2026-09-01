@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -25,7 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantmm"
+	mediamemoryindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to
@@ -135,17 +135,17 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	// Optional multi-frame video analysis ports. Each constructor is
 	// best-effort: if any dependency is missing the autotag service
 	// falls back to single-shot VLM analysis for video assets.
-	var videoSampler indexing.PercentageFrameSampler
+	var videoSampler capindexing.PercentageFrameSampler
 	proc := rustexec.NewConfiguredVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.mediaConfig.Policy, params.mediaConfig.Profile, params.log)
-	if sampler, err := indexing.NewFFMPEGFrameSampler(proc); err == nil {
+	if sampler, err := capindexing.NewFFMPEGFrameSampler(proc); err == nil {
 		videoSampler = sampler
 	} else {
 		params.log.Warn("compose domains: failed to build ffmpeg percentage sampler", zap.Error(err))
 	}
 
-	var visualVLM indexing.VLMClient
+	var visualVLM capindexing.VLMClient
 	if params.cfg.VLM.URL != "" {
-		visualVLM = indexing.NewHTTPVLMClient(params.cfg.VLM.URL, 0)
+		visualVLM = capindexing.NewHTTPVLMClient(params.cfg.VLM.URL, 0)
 	}
 
 	var imageEmbedder qdrantsearch.ImageEmbedder
@@ -159,7 +159,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 
 	var frameIndexer mediamemory.KeyframeVisualIndexer
 	if params.process.QdrantClient != nil {
-		frameIndexer = qdrantmm.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
+		frameIndexer = mediamemoryindexing.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
 	}
 
 	autotagSvc := autotag.NewService(autotag.ServiceDeps{

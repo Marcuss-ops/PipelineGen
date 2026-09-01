@@ -34,9 +34,9 @@ import (
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	qdrantmm "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantmm"
+	qdrantmediamemory "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
 	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -98,8 +98,8 @@ func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrant
 		log = zap.NewNop()
 	}
 	return &MediaMemoryQdrantStack{
-		Indexer: qdrantmm.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
-		Lookup:  qdrantmm.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
+		Indexer: qdrantmediamemory.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
+		Lookup:  qdrantmediamemory.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
 	}, nil
 }
 
@@ -125,7 +125,7 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
 	mmRanker := mediamemory.NewDefaultRanker(nil, logAdapter)
-	adapter, err := mmadapters.NewSearchFanOutAdapter(searchFanOut)
+	adapter, err := qdrantmm.NewSearchFanOutAdapter(searchFanOut)
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: search fanout adapter: %w", err)
 	}

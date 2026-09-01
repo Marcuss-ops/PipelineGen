@@ -99,7 +99,7 @@ var upsertPointsSoleOwnerSkipPathPrefixes = []string{
 // canonical translation layer for those calls.
 var upsertPointsSoleOwnerCanonicalCallers = []string{
 	"internal/platform/qdrant/indexing/",
-	"internal/platform/qdrant/qdrantmm/",
+	"internal/platform/qdrant/indexing/mediamemory/",
 	"internal/platform/qdrant/indexing/",
 }
 
@@ -138,7 +138,7 @@ const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.U
 // production call site of `.DeletePoints(`. It is the destructive twin of
 // upsertPointsSoleOwnerNote: a direct DeletePoints bypasses the projection
 // writer's retention/alias contract and can silently orphan points.
-const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json."
+const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/indexing/mediamemory/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json."
 
 // upsertPointsSoleOwnerWarn is the residue-emitter for
 // comment-only references.

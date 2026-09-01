@@ -12,7 +12,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: a nil dependency at any
 // slot is a literal ErrSemanticNotConfigured. A HybridSearch
 // envelope error surfaces as wrapped ErrSemanticBackendFailed.
-package qdrantmm
+package mediamemory
 
 import (
 	"context"

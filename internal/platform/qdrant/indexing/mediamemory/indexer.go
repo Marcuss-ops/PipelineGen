@@ -1,4 +1,4 @@
-// Package qdrantmm — qdrant_indexer.go is the canonical concrete
+// Package mediamemory — Qdrant concept indexer is the canonical concrete
 // mediamemory.EmbeddingIndexer that bridges the mediamemory
 // capability to Qdrant via the canonical EmbeddingChannelRegistry.
 //
@@ -12,7 +12,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: an absent EmbeddingChannelRegistry
 // or Qdrant client is fail-closed: IndexConcept / DeindexConcept
 // return wrapped ErrSemanticNotConfigured.
-package qdrantmm
+package mediamemory
 
 import (
 	"context"

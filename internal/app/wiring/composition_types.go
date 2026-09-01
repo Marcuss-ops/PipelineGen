@@ -64,7 +64,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -104,6 +104,7 @@ type ComposeRoot struct {
 
 	DB              *storage.SQLiteDB
 	ObservabilityDB *storage.SQLiteDB
+	CacheDB         *storage.SQLiteDB
 
 	Drive      *DriveBundle
 	Repos      *RepoBundle
@@ -219,7 +220,7 @@ type ProcessQdrantBundle struct {
 	QdrantRuntime     *qdrant.QdrantRuntime
 	VectorSvc         assetsearch.VectorStorePort
 	QdrantClient      *qdranttransport.Client
-	QdrantHealthProbe *disasterrecovery.HealthProbe
+	QdrantHealthProbe *qdranthealth.Probe
 	LocatorCleaner    *qdrantmaintenance.LocatorCleaner
 	QdrantSearcher    *qdrantsearch.Searcher
 }
@@ -327,6 +328,9 @@ type OutboxBundle struct {
 	EventsRepo     *outboxevents.Repository
 	EventsRegistry *outboxevents.HandlerRegistry
 	EventsPool     *outboxevents.Pool
+	// JobsEventsPool is present only in split mode and drains the execution
+	// plane's local outbox independently from the media outbox.
+	JobsEventsPool *outboxevents.Pool
 	// Publisher is the canonical outboxevents.Handler that drains
 	// `artifact.publish_requested.v1` events into staging.Store.Stage
 	// (FASE 3 / Push 3.1c, July 2026). The concrete is registered

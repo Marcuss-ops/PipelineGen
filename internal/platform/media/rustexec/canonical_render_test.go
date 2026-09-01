@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T) {
@@ -44,7 +44,7 @@ func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
 	stock := &StockRenderer{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T
 	}
 
 	plan.PlanSHA256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-	if _, err := render.ValidateRenderPlan(plan, filesystem.NewOS()); err == nil {
+	if _, err := render.ValidateRenderPlan(plan, pathutil.NewOS()); err == nil {
 		t.Fatal("tampered plan hash must be rejected before executor call")
 	}
 }
@@ -117,7 +117,7 @@ func TestStockRendererRenderCanonicalPlanCopiesCertifiedFinalAudio(t *testing.T)
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
 	stock := &StockRenderer{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}

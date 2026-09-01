@@ -171,6 +171,15 @@ job_handler_map:
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
 # Each canonical service is constructed EXACTLY ONCE.
+#
+# Ownership matrix:
+#   queue        = enqueue/claim/retry/lease policy and queue contracts
+#   scheduling   = polling, backoff, resource-fit and preparation planning
+#   finalize     = artifact finalization and publication policy
+#   worker       = execution adapter and worker lifecycle
+#   completion   = terminal completion events and idempotent completion handling
+#   root facade  = public contracts, registration and composition-facing API only
+# No second job manager, broker policy or terminal-state writer may be introduced.
 
 # PipelineGen — split ownership section: services
 # This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
@@ -539,9 +548,15 @@ application_assets:
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
 application_images:
   owner: internal/capabilities/images
-  target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
+  rationale: Image generation, search, validation, ingest and delivery; root remains the public facade and registration boundary.
+  target_subdirs: [images/service, images/generation, images/search, images/validation, images/ingest, images/delivery, images/styles]
+application_audio:
+  owner: internal/capabilities/audio
+  rationale: Generic audio assets, loops, mixing, ducking and audio timeline execution. Script-specific translation to AudioIntent remains under scripts and consumes kernel/audio contracts.
+  target_subdirs: [audio]
 application_voiceover:
-  owner: internal/capabilities/voiceover/service
+  owner: internal/capabilities/voiceover
+  rationale: Voiceover-specific generation and synchronization; generic audio execution is owned by capabilities/audio.
   target_subdirs: [voiceover/service, voiceover/sync]
 application_books:
   owner: internal/capabilities/books
@@ -605,8 +620,20 @@ infrastructure_jobs:
         - jobbrokerclient       # HTTP client for job broker (worker side)
 infrastructure_observability:
   owner: internal/platform/observability
-  rationale: metrics, tracing, health checks. Fully migrated to platform/observability (28 files).
+  rationale: metrics, tracing and health checks. Resource/process metrics belong under observability/resource; no parallel procmetrics owner.
+  target_subdirs: [observability/resource]
   migrated_from: internal/infrastructure/observability
+infrastructure_shared:
+  owner: DELETE
+  rationale: No shared/common/utils/helpers dumping grounds. Each utility must move to its technical owner or become a leaf-local helper.
+  forbidden_paths: [internal/platform/shared, '**/shared', '**/common', '**/utils', '**/helpers']
+
+infrastructure_qdrant_projection:
+  owner: internal/platform/qdrant/indexing
+  rationale: The single PayloadMapper/IndexDocument airlock owns RetrievalProjection-to-wire conversion; Qdrant stores retrieval projection only, never canonical business state.
+  contracts: [asset_id, segment_id, workspace_id, vectors, semantic_document, retrieval_filters, projection_integrity]
+  forbidden_fields: [download_url, drive_link, local_path, usage_counters, render_state, job_lifecycle, workflow_state, mutable_delivery_metadata]
+
 infrastructure_config:
   owner: internal/platform/config
   rationale: Resolved configuration + folder IDs.

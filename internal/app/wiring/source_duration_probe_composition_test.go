@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"

@@ -40,7 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
 	"go.uber.org/zap"
 
@@ -158,8 +158,8 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 
 	// 4 sweepers — call into lifecycle_sweepers.go helpers per
 	// AGENTS.md "Code Reuse: Always reuse helper functions" rule.
-	if deps.root.Repos.ScriptsRepo != nil {
-		repo := deps.root.Repos.ScriptsRepo
+	if deps.root.CacheDB != nil && deps.root.CacheDB.DB != nil {
+		repo := sqlitescripts.NewScriptRepository(deps.root.CacheDB.DB)
 		steps = append(steps, StartupStep{
 			Name: "research-cache-sweeper", Required: false,
 			Start: func(startCtx context.Context) error {
@@ -281,7 +281,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 	// Drive.Trash + MarkFailed; stale 'pending' rows via MarkFailed
 	// only. Wiring gates: root.DB.DB != nil + root.Drive.Lifecycle != nil.
 	if deps.root.DB != nil && deps.root.DB.DB != nil && deps.root.Drive != nil && deps.root.Drive.Lifecycle != nil {
-		uploadRepo := scripts.NewUploadIntentsRepository(deps.root.DB.DB)
+		uploadRepo := sqlitescripts.NewUploadIntentsRepository(deps.root.DB.DB)
 		driveLifecycle := deps.root.Drive.Lifecycle
 		orphanSweeper := voiceover.NewOrphanSweeper(voiceover.OrphanSweeperDeps{
 			Repo:         newUploadIntentsAdapter(uploadRepo),

@@ -29,6 +29,7 @@ import (
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/metadataexport"
 
@@ -321,16 +322,16 @@ func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxe
 // missing DB handle or a construction error logs a Warn and skips — the
 // performance-backfill admin command remains the recovery path. It never
 // aborts boot.
-func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, log *zap.Logger) {
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, log *zap.Logger) {
 	if eventsRegistry == nil {
 		return
 	}
-	if dbs == nil || dbs.Set == nil || dbs.Set.Primary == nil || dbs.Set.Primary.DB == nil ||
+	if dbs == nil || dbs.Set == nil || executionDB == nil || executionDB.DB == nil ||
 		dbs.Set.Observability == nil || dbs.Set.Observability.DB == nil {
 		log.Warn("outbox job.completed performance handler NOT wired (primary/observability DB missing)")
 		return
 	}
-	proj, err := perfstore.NewProjection(dbs.Set.Primary.DB, dbs.Set.Observability.DB)
+	proj, err := perfstore.NewProjection(executionDB.DB, dbs.Set.Observability.DB)
 	if err != nil {
 		log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
 		return

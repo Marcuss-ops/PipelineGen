@@ -221,7 +221,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 
 	// Derived performance projection: job.completed events → performance_runs/
 	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
-	registerPerformanceProjectionHandler(eventsRegistry, dbs, log)
+	registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, log)
 
 	// ── Pool construction (post fail-closed). ─────────────────────
 	cfgPoll := 500 * time.Millisecond
@@ -244,8 +244,21 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	}
 	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
 
+	// In split mode job.completed is committed to the execution DB's local
+	// outbox. It gets its own registry/pool so media outbox events remain
+	// transactionally owned and consumed by media.db.sqlite.
+	var jobsEventsPool *outboxevents.Pool
+	if dbs.Jobs != nil {
+		jobsRegistry := outboxevents.NewHandlerRegistry()
+		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, log)
+		jobsEventsPool = outboxevents.NewPool("jobs-outbox-events", outboxevents.NewRepository(dbs.Jobs.DB), jobsRegistry, log, outboxEventsCfg)
+	}
+
 	startClosure := func() error {
-		return startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log)
+		if err := startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log); err != nil {
+			return err
+		}
+		return startOutboxEventsPool(ctx, jobsEventsPool, outboxEventsCfg, log)
 	}
 
 	return &OutboxBundle{
@@ -254,6 +267,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		EventsRepo:      outboxEventsRepo,
 		EventsRegistry:  eventsRegistry,
 		EventsPool:      eventsPool,
+		JobsEventsPool:  jobsEventsPool,
 		Publisher:       publisherHandler,
 		DriveUploader:   driveUploadHandler,
 	}, startClosure, nil

@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // compileStockPlan builds a valid, sealed canonical render plan whose single
@@ -100,7 +100,7 @@ func stockRendererWith(runner commandRunner) *StockRenderer {
 func validatedStockPlan(t *testing.T) render.ValidatedRenderPlan {
 	t.Helper()
 	plan, _ := compileStockPlan(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func validatedStockPlan(t *testing.T) render.ValidatedRenderPlan {
 
 func TestStockRenderer_RejectsTamperedManifestBeforeRust(t *testing.T) {
 	plan, clipPath := compileStockPlan(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestStockRenderer_RejectsTamperedManifestBeforeRust(t *testing.T) {
 func TestStockRenderer_RejectsTamperedPlanHashBeforeRust(t *testing.T) {
 	plan, clipPath := compileStockPlan(t)
 	plan.PlanSHA256 = strings.Repeat("f", 64)
-	if _, err := render.ValidateRenderPlan(plan, filesystem.NewOS()); err == nil {
+	if _, err := render.ValidateRenderPlan(plan, pathutil.NewOS()); err == nil {
 		t.Fatal("tampered plan hash must be rejected before handoff")
 	} else if !errors.Is(err, render.ErrPlanDrift) {
 		t.Fatalf("tampered plan hash error = %v, want ErrPlanDrift", err)
@@ -150,7 +150,7 @@ func TestStockRenderer_RejectsTamperedPlanHashBeforeRust(t *testing.T) {
 func TestStockRenderer_RejectsTamperedManifestHashBeforeRust(t *testing.T) {
 	plan, clipPath := compileStockPlan(t)
 	plan.ManifestSHA256 = strings.Repeat("e", 64)
-	if _, err := render.ValidateRenderPlan(plan, filesystem.NewOS()); err == nil {
+	if _, err := render.ValidateRenderPlan(plan, pathutil.NewOS()); err == nil {
 		t.Fatal("tampered manifest hash must be rejected before handoff")
 	} else if !errors.Is(err, render.ErrManifestDrift) {
 		t.Fatalf("tampered manifest hash error = %v, want ErrManifestDrift", err)
@@ -172,7 +172,7 @@ func TestStockRenderer_RejectsTamperedAssetHashBeforeRust(t *testing.T) {
 	// Tamper the per-asset SHA256 inside the manifest; the sealed manifest hash
 	// no longer matches, so the plan is rejected before any executor runs.
 	plan.Manifest[0].SHA256 = strings.Repeat("d", 64)
-	if _, err := render.ValidateRenderPlan(plan, filesystem.NewOS()); err == nil {
+	if _, err := render.ValidateRenderPlan(plan, pathutil.NewOS()); err == nil {
 		t.Fatal("tampered manifest asset hash must be rejected before handoff")
 	} else if !errors.Is(err, render.ErrManifestDrift) {
 		t.Fatalf("tampered asset hash error = %v, want ErrManifestDrift", err)
@@ -189,7 +189,7 @@ func TestStockRenderer_RejectsTamperedAssetHashBeforeRust(t *testing.T) {
 
 func TestStockRenderer_RejectsMissingInputFileBeforeRust(t *testing.T) {
 	plan, clipPath := compileStockPlan(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestStockRenderer_RejectsEmptyManifest(t *testing.T) {
 	if len(plan.Manifest) != 0 {
 		t.Fatalf("expected empty manifest, got %d entries", len(plan.Manifest))
 	}
-	if _, err := render.ValidateRenderPlan(plan, filesystem.NewOS()); err == nil {
+	if _, err := render.ValidateRenderPlan(plan, pathutil.NewOS()); err == nil {
 		t.Fatal("empty manifest render plan must be rejected before handoff")
 	}
 }
@@ -281,7 +281,7 @@ func TestStockRenderer_UsesCanonicalEncoderPolicy(t *testing.T) {
 
 func TestStockRenderer_FinalAudioUsesMuxAudioCopy(t *testing.T) {
 	plan, audioPath := compileStockPlanWithFinalAudio(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestStockRenderer_FinalAudioUsesMuxAudioCopy(t *testing.T) {
 
 func TestStockRenderer_FinalAudioNeverReencodesAudio(t *testing.T) {
 	plan, _ := compileStockPlanWithFinalAudio(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +362,7 @@ func (r *intermediateRemovalRunner) Run(_ context.Context, _ string, input []byt
 
 func TestStockRenderer_RemovesIntermediateVideoOnFailure(t *testing.T) {
 	plan, _ := compileStockPlanWithFinalAudio(t)
-	validated, err := render.ValidateRenderPlan(plan, filesystem.NewOS())
+	validated, err := render.ValidateRenderPlan(plan, pathutil.NewOS())
 	if err != nil {
 		t.Fatal(err)
 	}

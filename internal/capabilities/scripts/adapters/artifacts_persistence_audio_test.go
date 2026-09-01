@@ -8,7 +8,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 func TestPersistGeneratedArtifactsRequiresAndPublishesCertifiedFinalAudio(t *testing.T) {
