@@ -47,7 +47,7 @@ import (
 // blast-radius — see repository_lifecycle_dualwrite_test.go header
 // for the explicit rationale.
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
-	correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
+	correlation_id, '' AS payload_json, '' AS result_json, progress, error, retry_count, max_retries,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn + `,
 	parent_job_id, root_job_id, client_id, idempotency_key`
 
@@ -321,8 +321,8 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 	return out, nil
 }
 
-// ListAwaitingAggregation returns parent jobs of the given type whose
-// result_json carries parent_state = 'waiting_children' AND whose broker
+// ListAwaitingAggregation returns parent jobs of the given type whose typed
+// parent state is 'waiting_children' AND whose broker
 // status is RUNNING, FINALIZING, or SUCCEEDED. Uses the composite index
 // idx_jobs_type_status (migration 127) to narrow the scan before applying
 // json_extract.
@@ -368,8 +368,7 @@ func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType st
 	if limit <= 0 {
 		limit = 100
 	}
-	// PR-P1.2-SQL-DUAL-WRITE: typed column is PRIMARY; JSON is
-	// SECONDARY fallback ONLY when typed is empty.
+	// The typed parent-state column is the canonical execution-plane field.
 	//
 	// FASE 1 (July 2026): added WAITING_CHILDREN to the broker-status
 	// tail of the query. The canonical post-fan-out parent lifecycle
@@ -379,14 +378,17 @@ func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType st
 	// worker. The pre-FASE-1 brokers RUNNING/FINALIZING/SUCCEEDED
 	// are retained for back-compat with rows whose parent_state
 	// = waiting_children was carried solely in the JSON result column.
+	parentStateClause := "parent_state_typed = 'waiting_children'"
+	if hasJobsColumn(ctx, r.db, "result_json") {
+		parentStateClause += ` OR (parent_state_typed = '' AND (
+			json_extract(result_json,'$.parent_state') = 'waiting_children'
+			OR json_extract(result_json,'$.data.parent_state') = 'waiting_children'
+		))`
+	}
 	query := `SELECT ` + jobColumns + ` FROM jobs
 WHERE type = ?
   AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
-  AND (parent_state_typed = 'waiting_children'
-       OR (parent_state_typed = '' AND (
-            json_extract(result_json,'$.parent_state') = 'waiting_children'
-            OR json_extract(result_json,'$.data.parent_state') = 'waiting_children'
-       )))
+  AND (` + parentStateClause + `)
 ORDER BY created_at DESC
 LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, query, parentType, limit)

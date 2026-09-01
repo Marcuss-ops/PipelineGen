@@ -35,11 +35,11 @@ func (r *Registry) RecordJob(ctx context.Context, j capregistry.Job) error {
 	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO jobs
-		(id,type,status,project,video_name,correlation_id,payload_json,payload_hash,result_json,error,worker_id,
+		(id,type,status,project,video_name,correlation_id,payload_hash,error,worker_id,
 		 created_at,updated_at,started_at,completed_at,project_id,video_id,parent_job_id,root_job_id,host,duration_ms,git_sha,app_version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.JobID, j.JobType, nonEmpty(j.Status, "QUEUED"), j.ProjectID, j.VideoID, j.CorrelationID,
-		nonEmpty(j.PayloadJSON, "{}"), hash, nonEmpty(j.ResultJSON, "{}"), j.ErrorMessage, j.WorkerID,
+		hash, j.ErrorMessage, j.WorkerID,
 		nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt),
 		j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID, j.Host, j.DurationMS, j.GitSHA, j.AppVersion)
 	if err != nil {
@@ -53,12 +53,30 @@ func (r *Registry) UpdateJob(ctx context.Context, j capregistry.Job) error {
 	if hash == "" {
 		hash = hashPayload(j.PayloadJSON)
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET status=?, correlation_id=?, project_id=?, video_id=?, parent_job_id=?, root_job_id=?, payload_json=?, payload_hash=?, result_json=?, error=?, worker_id=?, started_at=?, completed_at=?, duration_ms=?, git_sha=?, app_version=?, updated_at=COALESCE(?, updated_at) WHERE id=?`,
+	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET status=?, correlation_id=?, project_id=?, video_id=?, parent_job_id=?, root_job_id=?, payload_hash=?, error=?, worker_id=?, started_at=?, completed_at=?, duration_ms=?, git_sha=?, app_version=?, updated_at=COALESCE(?, updated_at) WHERE id=?`,
 		nonEmpty(j.Status, "QUEUED"), j.CorrelationID, j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID,
-		nonEmpty(j.PayloadJSON, "{}"), hash, nonEmpty(j.ResultJSON, "{}"), j.ErrorMessage, j.WorkerID,
+		hash, j.ErrorMessage, j.WorkerID,
 		nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt), j.DurationMS, j.GitSHA, j.AppVersion, nullIfEmpty(j.CompletedAt), j.JobID)
 	if err != nil {
 		return fmt.Errorf("update job %q: %w", j.JobID, err)
+	}
+	return r.persistPayloadResult(ctx, j)
+}
+
+func (r *Registry) persistPayloadResult(ctx context.Context, j capregistry.Job) error {
+	if j.PayloadJSON != "" && j.PayloadJSON != "null" {
+		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_payloads (job_id,codec_id,payload,payload_hash,created_at) VALUES (?, 'json', ?, ?, ?) ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload,payload_hash=excluded.payload_hash`, j.JobID, j.PayloadJSON, hashPayload(j.PayloadJSON), nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z")); err != nil {
+			if _, legacyErr := r.db.ExecContext(ctx, `UPDATE jobs SET payload_json=? WHERE id=?`, j.PayloadJSON, j.JobID); legacyErr != nil {
+				return fmt.Errorf("persist payload %q: %w", j.JobID, err)
+			}
+		}
+	}
+	if j.ResultJSON != "" && j.ResultJSON != "null" {
+		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_results (job_id,attempt,result_hash,codec_id,result_payload,created_at) VALUES (?,0,?,'json',?,?) ON CONFLICT(job_id,attempt,result_hash) DO NOTHING`, j.JobID, hashPayload(j.ResultJSON), j.ResultJSON, nonEmpty(j.CompletedAt, nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"))); err != nil {
+			if _, legacyErr := r.db.ExecContext(ctx, `UPDATE jobs SET result_json=? WHERE id=?`, j.ResultJSON, j.JobID); legacyErr != nil {
+				return fmt.Errorf("persist result %q: %w", j.JobID, err)
+			}
+		}
 	}
 	return nil
 }

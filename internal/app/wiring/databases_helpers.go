@@ -64,8 +64,8 @@ type Databases struct {
 	Cache    *storage.SQLiteDB
 	DualPool *storage.DualPool
 
-	// Jobs is retained as a nil-only compatibility field while callers
-	// migrate away from the retired split-database shape.
+	// Jobs is the execution-plane handle when the canonical split is enabled;
+	// it remains nil only for explicit rollback/staged deployments.
 	Jobs *storage.SQLiteDB
 }
 

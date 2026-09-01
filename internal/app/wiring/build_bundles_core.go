@@ -124,9 +124,10 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storage.SQLiteDB, storagePlanes func(context.Context) map[string]systemhealth.CheckResult, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
 	svc := buildHealthService(cfg, db, jobsDB)
 	rc := systemhealth.NewReadyChecker(svc).
+		WithStoragePlanes(storagePlanes).
 		WithTools(processinfra.NewToolsChecker()).
 		WithClipsPath("data/media/clips")
 

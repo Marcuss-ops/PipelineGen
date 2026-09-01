@@ -130,6 +130,13 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	// parentStateTypedColumn constant (the SQL-side mirror of
 	// voiceover.JobParentStateColumn) — the literal is NEVER repeated
 	// elsewhere in this package.
+	parentStatePredicate := parentStateTypedColumn + ` IN ('waiting_children','partial_success')`
+	if hasJobsColumn(ctx, tx, "result_json") {
+		parentStatePredicate += ` OR (` + parentStateTypedColumn + ` = '' AND (
+			json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
+			OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
+		))`
+	}
 	query := `UPDATE jobs SET status = ?,
 		completed_at = COALESCE(completed_at, ?),
 		error = CASE WHEN ? = '' THEN error ELSE ? END,
@@ -138,13 +145,7 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
 		AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
-		AND (
-			` + parentStateTypedColumn + ` IN ('waiting_children','partial_success')
-			OR (` + parentStateTypedColumn + ` = '' AND (
-				json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
-				OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
-			))
-		)`
+		AND (` + parentStatePredicate + `)`
 	args := []any{string(targetStatus), nowStr, errMsg, errMsg, parentStateTyped, nowStr, id}
 	if expectedVersion > 0 {
 		query += `
@@ -165,10 +166,9 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		// CAS guard rejected: distinguish "already terminal" from
 		// "pre-flip retry path" by re-reading the row's status.
 		var currentStatus job.Status
-		var currentResult string
 		err := tx.QueryRowContext(ctx,
-			`SELECT status, COALESCE(result_json,'{}') FROM jobs WHERE id = ?`, id,
-		).Scan(&currentStatus, &currentResult)
+			`SELECT status FROM jobs WHERE id = ?`, id,
+		).Scan(&currentStatus)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("%w: job %q not found", ErrJobNotFound, id)

@@ -28,6 +28,10 @@ import "context"
 // deploy profiles.
 type ReadyChecker struct {
 	svc *Service
+	// storagePlanes is an independent storage-plane probe. Media and jobs are
+	// readiness-critical; cache and observability are reported diagnostically
+	// but do not make the runtime unavailable.
+	storagePlanes func(context.Context) map[string]CheckResult
 
 	// Step 8 severe checks (July 2026).
 	tools        ToolsChecker
@@ -62,6 +66,16 @@ func NewReadyChecker(svc *Service) *ReadyChecker {
 	return &ReadyChecker{svc: svc}
 }
 
+// WithStoragePlanes adds the independent media/jobs/cache/observability
+// storage report to /ready. The callback is kept as a narrow function so the
+// health capability does not depend on the concrete SQLite package.
+func (r *ReadyChecker) WithStoragePlanes(check func(context.Context) map[string]CheckResult) *ReadyChecker {
+	if r != nil {
+		r.storagePlanes = check
+	}
+	return r
+}
+
 // CheckReady runs the deep health set (db + drive + qdrant + jobs) and
 // returns the aggregated HealthResponse. Callers map the response.OK
 // to HTTP 200 vs 503 — the status-mapping lives at the transport layer.
@@ -86,6 +100,21 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 		}
 	}
 	resp := r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
+	if r.storagePlanes != nil {
+		for name, result := range r.storagePlanes(ctx) {
+			resp.Checks["storage_"+name] = result
+			// A cache or observability outage is a degradation, not a reason
+			// to take the media/execution service out of readiness.
+			if name != "cache" && name != "observability" {
+				if applicable, ok := result["applicable"].(bool); !ok || applicable {
+					if healthy, ok := result["ok"].(bool); !ok || !healthy {
+						resp.OK = false
+						resp.Status = "unhealthy"
+					}
+				}
+			}
+		}
+	}
 
 	// Step 8: run severe checks (tools, clips path, Drive canary, handlers).
 	// Each nil dep reports applicable=false, preserving the allOK logic.

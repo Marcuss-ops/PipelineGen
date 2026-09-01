@@ -81,4 +81,12 @@ func TestDatabaseSetMigrateJobsPlane(t *testing.T) {
 	if n != 0 {
 		t.Fatal("media_assets must not be created in the jobs plane")
 	}
+	for _, column := range []string{"payload_json", "result_json"} {
+		if err := set.Jobs.QueryRow("SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = ?", column).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Fatalf("jobs hot table must not contain heavy inline column %q", column)
+		}
+	}
 }

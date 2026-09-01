@@ -51,7 +51,13 @@ func (r *Reader) ListHistory(ctx context.Context, f appjobs.HistoryFilter) ([]ap
 		offset = 0
 	}
 	args = append(args, limit, offset)
-	rows, err := r.jobs.QueryContext(ctx, `SELECT id,type,status,correlation_id,result_json,error,created_at,updated_at,started_at,completed_at FROM jobs WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
+	resultExpr := "'{}'"
+	if historyTableExists(ctx, r.jobs, "job_results") {
+		resultExpr = `(SELECT COALESCE(result_payload,'{}') FROM job_results jr WHERE jr.job_id = jobs.id ORDER BY jr.attempt DESC, jr.id DESC LIMIT 1)`
+	} else if historyColumnExists(ctx, r.jobs, "result_json") {
+		resultExpr = "COALESCE(result_json,'{}')"
+	}
+	rows, err := r.jobs.QueryContext(ctx, `SELECT id,type,status,correlation_id,`+resultExpr+`,error,created_at,updated_at,started_at,completed_at FROM jobs WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list history jobs: %w", err)
 	}
@@ -124,6 +130,16 @@ func (r *Reader) ListHistory(ctx context.Context, f appjobs.HistoryFilter) ([]ap
 		}
 	}
 	return items, nil
+}
+
+func historyTableExists(ctx context.Context, db *sql.DB, table string) bool {
+	var count int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count) == nil && count > 0
+}
+
+func historyColumnExists(ctx context.Context, db *sql.DB, column string) bool {
+	var count int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name=?`, column).Scan(&count) == nil && count > 0
 }
 
 // GetRunReport returns the canonical run report JSON for the most recent run
