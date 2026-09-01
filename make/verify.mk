@@ -225,6 +225,15 @@ certify-storage:
 certify-storage-json:
 	@bash scripts/ci/certify-storage.sh --json
 
+# certify-data-layer — stable four-plane data-layer contract. The detailed
+# SQLite/Qdrant/outbox rules remain owned by certify-storage.sh; this target
+# exposes the final verdict required by release certification.
+certify-data-layer:
+	@bash scripts/ci/certify-data-layer.sh
+
+certify-data-layer-json:
+	@bash scripts/ci/certify-data-layer.sh --json
+
 # ─── Sidecar Node scraper (PR-LIVE-VERIFY-1, P0) ───────────────────────────
 #
 # scraper-up — launches the Node.js artlist scraper sidecar as a background
