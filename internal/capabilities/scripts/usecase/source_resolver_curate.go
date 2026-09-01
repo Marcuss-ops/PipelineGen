@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ptrutil"
 
 	"go.uber.org/zap"
 )

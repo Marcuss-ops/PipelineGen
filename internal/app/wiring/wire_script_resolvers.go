@@ -177,8 +177,8 @@ func buildScriptSourceResolvers(
 		if err := researchResolver.SetLexicon(linguistics.DefaultLexicon()); err != nil {
 			panic(fmt.Sprintf("script research resolver: %v", err))
 		}
-		if root.DB != nil {
-			researchResolver.SetCache(topicsourcecache.NewRepository(root.DB.DB))
+		if root.CacheDB != nil && root.CacheDB.DB != nil {
+			researchResolver.SetCache(topicsourcecache.NewRepository(root.CacheDB.DB))
 		}
 
 		// Wire the subject-aware search coordinator.

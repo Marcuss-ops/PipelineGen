@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/stretchr/testify/assert"

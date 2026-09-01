@@ -42,7 +42,7 @@
 package schema
 
 import (
-	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 )
 
 // ── Point (canonical upsert wire shape) ────────────────────────────────

@@ -23,7 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/reconcile"
 	capfinalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // ─── Legacy naming entry points ──────────────────────────────────────────────

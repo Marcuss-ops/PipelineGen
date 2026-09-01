@@ -20,6 +20,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -93,6 +94,23 @@ func TestNewDualPool_MaxOpenConns_PerPool(t *testing.T) {
 		"writer pool MaxOpenConnections MUST stay at 1 (canonical single-writer)")
 	assert.Equal(t, numReaders, pool.Reader.Stats().MaxOpenConnections,
 		"reader pool MaxOpenConnections MUST equal numReaders argument (canonical concurrent-reader affordance)")
+	assert.NotSame(t, pool.Writer, pool.Reader,
+		"writer and reader must be independent sql.DB pools")
+}
+
+func TestAttachDualPoolIsNotUsedForProductionReaderIsolation(t *testing.T) {
+	primary, err := NewSQLiteDB(t.TempDir(), "media.db.sqlite", zap.NewNop())
+	require.NoError(t, err)
+	defer primary.Close()
+
+	pool, err := NewDualPool(context.Background(), primary.Path(), 2)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	assert.NotSame(t, primary.DB, pool.Reader,
+		"production dual pool reader must not alias DatabaseSet.Primary")
+	assert.NotSame(t, primary.DB, pool.Writer,
+		"production dual pool writer must not alias DatabaseSet.Primary")
 }
 
 // TestNewDualPool_EmptyURIFailsClosed pins the godlike/07 contract.

@@ -51,8 +51,20 @@ infrastructure_jobs:
         - jobbrokerclient       # HTTP client for job broker (worker side)
 infrastructure_observability:
   owner: internal/platform/observability
-  rationale: metrics, tracing, health checks. Fully migrated to platform/observability (28 files).
+  rationale: metrics, tracing and health checks. Resource/process metrics belong under observability/resource; no parallel procmetrics owner.
+  target_subdirs: [observability/resource]
   migrated_from: internal/infrastructure/observability
+infrastructure_shared:
+  owner: DELETE
+  rationale: No shared/common/utils/helpers dumping grounds. Each utility must move to its technical owner or become a leaf-local helper.
+  forbidden_paths: [internal/platform/shared, '**/shared', '**/common', '**/utils', '**/helpers']
+
+infrastructure_qdrant_projection:
+  owner: internal/platform/qdrant/indexing
+  rationale: The single PayloadMapper/IndexDocument airlock owns RetrievalProjection-to-wire conversion; Qdrant stores retrieval projection only, never canonical business state.
+  contracts: [asset_id, segment_id, workspace_id, vectors, semantic_document, retrieval_filters, projection_integrity]
+  forbidden_fields: [download_url, drive_link, local_path, usage_counters, render_state, job_lifecycle, workflow_state, mutable_delivery_metadata]
+
 infrastructure_config:
   owner: internal/platform/config
   rationale: Resolved configuration + folder IDs.

@@ -49,7 +49,7 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 
 // parseMigrationScope reads the optional `-- database:` directive from a
 // migration file's SQL comment header. Returns the parsed scope string
-// (e.g. "primary", "observability", "primary,observability", or "all")
+// (e.g. "primary", "observability", "cache", "jobs", "primary,observability", or "all")
 // and falls back to "all" when no directive is present OR when the
 // directive references an unknown scope.
 //
@@ -59,7 +59,7 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 //
 //	-- database: <scope>[, <scope>...]
 //
-// Valid scope values: "primary", "observability", "all".
+// Valid scope values: "primary", "observability", "cache", "jobs", "all".
 // Case-insensitive (the directive is normalised to lowercase before
 // validation). The directive must be the FIRST non-blank line AND must
 // begin with `-- database:` (the exact prefix; `-- db:` and `-- target:`
@@ -103,7 +103,7 @@ func parseMigrationScope(content []byte) string {
 		for _, s := range parts {
 			s = strings.TrimSpace(s)
 			switch s {
-			case "primary", "observability", "all":
+			case "primary", "observability", "cache", "jobs", "all":
 			default:
 				return "all"
 			}
@@ -122,7 +122,7 @@ func parseMigrationScope(content []byte) string {
 // covers the runner's targetDB. scope is the comma-separated string
 // from the file's `-- database:` directive (or the default "all" when
 // absent); targetDB is the canonically-named DB the runner is
-// processing ("primary", "observability", or "all").
+// processing ("primary", "observability", "cache", "jobs", or "all").
 //
 // See migrationFile and parseMigrationScope.
 //

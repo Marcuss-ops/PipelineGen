@@ -216,16 +216,16 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 		"lease_expiry = NULL",
 	}
 	args := []any{targetStatus, nowStr, nowStr, errorMessage}
+	resultJSON := "{}"
 
 	if cmd.Outcome == domjob.OutcomeSucceeded {
-		resultJSON := string(cmd.Result)
+		resultJSON = string(cmd.Result)
 		if resultJSON == "" || resultJSON == "null" {
 			// Defensive — cmd.Result was non-empty in the precondition,
 			// but content might be JSON-null; normalize to "{}".
 			resultJSON = "{}"
 		}
-		setClauses = append(setClauses, "result_json = ?", "progress = 100")
-		args = append(args, resultJSON)
+		setClauses = append(setClauses, "progress = 100")
 	}
 	if incrementRetry {
 		setClauses = append(setClauses, "retry_count = retry_count + 1")
@@ -244,6 +244,11 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	if affected == 0 {
 		observability.JobTransitionConflictTotal.WithLabelValues("finalize_attempt").Inc()
 		return domjob.FinalizeAttemptResult{}, domjob.ErrTransitionConflict
+	}
+	if cmd.Outcome == domjob.OutcomeSucceeded {
+		if err := persistJobResult(ctx, tx, cmd.JobID, retryCount, resultJSON); err != nil {
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: %w", err)
+		}
 	}
 
 	// ── Step 5: optional DLQ archive ──────────────────────────────────

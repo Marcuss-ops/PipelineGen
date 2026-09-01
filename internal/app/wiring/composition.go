@@ -47,9 +47,10 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
 
-	// The unified runtime has one business-state SQLite database. A non-nil
-	// split jobs handle is rejected by InitDatabases and is not selectable here.
 	jobsDB := dbs.Main
+	if dbs.Jobs != nil {
+		jobsDB = dbs.Jobs
+	}
 	// Cross-domain dependencies are threaded into JobsBundle here so that
 	// downstream constructors can keep strict, narrow signatures.
 	jobs, err := BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
@@ -118,7 +119,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.Main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
+	utility := BuildUtilityBundle(cfg, dbs.Main, dbs.Jobs, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
 	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
@@ -151,6 +152,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		MediaExec:            mediaConfig,
 		DB:                   dbs.Main,
 		ObservabilityDB:      dbs.Logs,
+		CacheDB:              dbs.Cache,
 		Drive:                driveBundle,
 		Repos:                repos,
 		Search:               search,

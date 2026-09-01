@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // Language is the typed BCP-47 envelope for voiceover languages

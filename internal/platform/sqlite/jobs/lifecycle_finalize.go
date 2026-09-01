@@ -133,17 +133,19 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	query := `UPDATE jobs SET status = ?,
 		completed_at = COALESCE(completed_at, ?),
 		error = CASE WHEN ? = '' THEN error ELSE ? END,
-		result_json = ?,
 		` + parentStateTypedColumn + ` = ?,
 		progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
 		AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
 		AND (
-			json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
-			OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
+			` + parentStateTypedColumn + ` IN ('waiting_children','partial_success')
+			OR (` + parentStateTypedColumn + ` = '' AND (
+				json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
+				OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
+			))
 		)`
-	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, parentStateTyped, nowStr, id}
+	args := []any{string(targetStatus), nowStr, errMsg, errMsg, parentStateTyped, nowStr, id}
 	if expectedVersion > 0 {
 		query += `
 		AND revision = ?`
@@ -183,6 +185,9 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		// caller errors.Is()-probe intake. The Retry path (queue→requeued) is
 		// not a flip race and does NOT bump a separate counter.
 		return fmt.Errorf("%w: parent %q status=%q not in (WAITING_CHILDREN|RUNNING|FINALIZING|SUCCEEDED), or parent_state not awaiting", domainremote.ErrAggregateCASConflict, id, currentStatus)
+	}
+	if err := persistJobResult(ctx, tx, id, 0, resultJSON); err != nil {
+		return fmt.Errorf("terminalFlip: persist result: %w", err)
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))

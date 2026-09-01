@@ -54,6 +54,9 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 		}
 		return nil, fmt.Errorf("ClaimNext: scan: %w", err)
 	}
+	if err := r.hydrateJob(ctx, j); err != nil {
+		return nil, fmt.Errorf("ClaimNext: hydrate result: %w", err)
+	}
 
 	// Generate lease ID.
 	leaseID := fmt.Sprintf("lease_%d_%s", now.UnixNano(), hashutil.RandomString(8))

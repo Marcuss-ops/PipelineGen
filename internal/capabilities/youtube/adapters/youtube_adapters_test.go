@@ -11,7 +11,7 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/portutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

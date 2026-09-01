@@ -29,7 +29,7 @@ var ErrInvalidColumn = fmt.Errorf("invalid column: not in jobs table allowlist")
 var allowedJobColumns = map[string]bool{
 	"id": true, "type": true, "status": true, "priority": true,
 	"project": true, "video_name": true, "active_key": true,
-	"correlation_id": true, "payload_json": true, "result_json": true,
+	"correlation_id": true, "payload_json": true,
 	"progress": true, "error": true, "retry_count": true, "max_retries": true,
 	"worker_id": true, "lease_id": true, "lease_expiry": true,
 	"created_at": true, "updated_at": true, "started_at": true,
@@ -168,11 +168,11 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 		}
 	}
 
+	var resultPayload string
 	// Handle special fields.
 	if req.Result != nil {
 		resultBytes, _ := json.Marshal(req.Result)
-		setClauses = append(setClauses, "result_json = ?")
-		args = append(args, string(resultBytes))
+		resultPayload = string(resultBytes)
 	}
 	if req.Error != nil {
 		setClauses = append(setClauses, "error = ?")
@@ -213,7 +213,12 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	query := fmt.Sprintf("UPDATE jobs SET %s %s", setClause, whereClause)
 	allArgs := append(args, whereArgs...)
 
-	result, err := r.db.ExecContext(ctx, query, allArgs...)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("transition: begin: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, query, allArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("transition: exec: %w", err)
 	}
@@ -221,6 +226,14 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return nil, fmt.Errorf("transition %s: %w", req.JobID, ErrOptimisticLockFailed)
+	}
+	if resultPayload != "" {
+		if err := persistJobResult(ctx, tx, req.JobID, 0, resultPayload); err != nil {
+			return nil, fmt.Errorf("transition: persist result: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("transition: commit: %w", err)
 	}
 
 	// Re-fetch the updated row.

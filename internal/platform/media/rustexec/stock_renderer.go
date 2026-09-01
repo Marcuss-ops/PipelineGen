@@ -10,7 +10,7 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"go.uber.org/zap"
 )
 
@@ -90,7 +90,7 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, validated rende
 	// Re-check physical identity immediately before invoking Velox. The
 	// validator mints the typed handoff, while this final check closes the
 	// replacement window between validation and process execution.
-	if err := plan.ValidateManifestFiles(filesystem.NewOS()); err != nil {
+	if err := plan.ValidateManifestFiles(pathutil.NewOS()); err != nil {
 		return fmt.Errorf("canonical render plan changed after validation: %w", err)
 	}
 	planJSON, err := json.Marshal(validated)

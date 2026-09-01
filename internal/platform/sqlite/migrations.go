@@ -38,7 +38,7 @@ func currentAppGitSHA() string {
 //
 // Scope-aware migrations: the runner reads each
 // file's first non-blank SQL comment line for the optional header
-// `-- database: primary|observability|all` (comma-separated, default
+// `-- database: primary|observability|cache|jobs|all` (comma-separated, default
 // "all"). When the runner's targetDB does not match a migration's scope,
 // the migration is skipped before the checksum check — see
 // parseMigrationScope + migrationAppliesToTargetDB in
@@ -61,8 +61,8 @@ type migrationFile struct {
 // checksum differs from the recorded one.
 //
 // Scope-aware migrations: targetDB names the
-// canonical DB the receiver represents ("primary" or "observability" in
-// the canonical DatabaseSet; "all" for tests / fixtures that don't
+// canonical DB the receiver represents ("primary", "observability", or
+// "cache", or "jobs" in the canonical DatabaseSet; "all" for tests / fixtures that don't
 // care). Migrations whose `-- database:` header directive excludes
 // targetDB are skipped before the checksum check, so a primary-only
 // migration (e.g. 109) is never attempted on the observability DB.

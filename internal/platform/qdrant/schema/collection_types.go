@@ -29,7 +29,7 @@ import (
 	"strings"
 	"unicode"
 
-	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 )
 
 // ── Config ───────────────────────────────────────────────────────────

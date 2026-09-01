@@ -7,7 +7,7 @@ import (
 	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/operatorverify"
+	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/operatorread"
 	"go.uber.org/zap"
 )
@@ -35,7 +35,7 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 
 	var verifier operator.IndexVerifier
 	if root.Process != nil && root.Process.QdrantClient != nil {
-		verifier = operatorverify.NewVerifier(root.Process.QdrantClient)
+		verifier = operatorverify.NewOperatorIndexVerifier(root.Process.QdrantClient)
 	}
 
 	desc, err := operatorapi.Build(operatorapi.Dependencies{

@@ -69,7 +69,8 @@ type PayloadCodec interface {
 // / DecodeResult bodies. The complete-flow contract is:
 // complete_artifacts_service.go calls ResultCodec.EncodeResult
 // after the artifact manifest is captured, the result bytes are
-// persisted in jobs.result_json + job_results.result_json; the
+// persisted in job_results.result_payload (the canonical owner per
+// migration 119; jobs.result_json is NOT a second persistence site); the
 // read-flow calls ResultCodec.DecodeResult to recover the typed
 // shape.
 type ResultCodec interface {

@@ -13,7 +13,7 @@
 // resolution; using a heavier check (e.g. ScrollPoints) would stall
 // the readiness barrier under transient Qdrant slowness without
 // adding signal.
-package disasterrecovery
+package health
 
 import (
 	"context"
@@ -33,7 +33,7 @@ import (
 // shared transport (was previously duplicated here as X-Api-Key). The
 // probe still holds its own *http.Client for a per-call Timeout ceiling
 // — the defense-in-depth invariant from earlier versions is intact.
-type HealthProbe struct {
+type Probe struct {
 	client  *transport.Client
 	http    *http.Client
 	probeTO time.Duration
@@ -51,15 +51,15 @@ type HealthProbe struct {
 // internal client Timeout enforces a second ceiling so a future
 // operator wiring AddProbe(...) without a context wrapper cannot
 // stall the barrier indefinitely.
-func NewHealthProbe(client *transport.Client) *HealthProbe {
+func NewProbe(client *transport.Client) *Probe {
 	probeTO := 5 * time.Second
 	if client == nil {
-		return &HealthProbe{
+		return &Probe{
 			probeTO: probeTO,
 			http:    &http.Client{Timeout: probeTO},
 		}
 	}
-	return &HealthProbe{
+	return &Probe{
 		client:  client,
 		probeTO: probeTO,
 		http:    &http.Client{Timeout: probeTO},
@@ -80,7 +80,7 @@ func NewHealthProbe(client *transport.Client) *HealthProbe {
 // `req.Header.Set("X-Api-Key", key)`, which used a different header
 // capitalization than the transport.Client and could drift apart under future
 // changes.
-func (h *HealthProbe) Probe(ctx context.Context) error {
+func (h *Probe) Probe(ctx context.Context) error {
 	if h == nil || h.client == nil {
 		return fmt.Errorf("qdrant: health probe not configured (nil client)")
 	}
@@ -111,7 +111,7 @@ func (h *HealthProbe) Probe(ctx context.Context) error {
 // healthport.CheckResult map. This makes HealthProbe the SINGLE Qdrant
 // liveness check implementation, eliminating the duplicated
 // infrahealth.QdrantChecker (QDRANT-005 Blocker 3, June 2026).
-func (h *HealthProbe) CheckQdrant(ctx context.Context) healthport.CheckResult {
+func (h *Probe) CheckQdrant(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 	if err := h.Probe(ctx); err != nil {
 		return healthport.CheckResult{
@@ -131,6 +131,6 @@ func (h *HealthProbe) CheckQdrant(ctx context.Context) healthport.CheckResult {
 //   - the readiness-barrier Probe contract (`Probe(context.Context) error`)
 //   - the /health endpoint QdrantChecker contract (`CheckQdrant(context.Context) CheckResult`)
 var (
-	_ interface{ Probe(context.Context) error } = (*HealthProbe)(nil)
-	_ healthport.QdrantChecker                  = (*HealthProbe)(nil)
+	_ interface{ Probe(context.Context) error } = (*Probe)(nil)
+	_ healthport.QdrantChecker                  = (*Probe)(nil)
 )

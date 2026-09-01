@@ -14,12 +14,11 @@
 // infra imports so the API tree's dependency on app remains strictly
 // typed.
 //
-// FASE 6 Cut 6.2 compatibility: the `dualPool *sqlite.DualPool` field
-// remains as a reader/writer-shaped adapter for bundle constructors. It
-// is attached to the already-open DatabaseSet.Primary handle; it does not
-// open a second pool or a second operational connection set. The canonical
-// ownership remains DatabaseSet.Primary, while DatabaseSet.Observability is
-// the only separate database.
+//	// FASE 6 Cut 6.2: DualPool owns an independent writer handle and reader
+//
+// pool over the same canonical media database file. The DatabaseSet primary
+// remains available to legacy callers, while all bundle DB access uses the
+// true reader/writer split.
 package wiring
 
 import (
@@ -48,21 +47,21 @@ type CleanupFunc func()
 // DatabaseSet at construction time; the canonical source of truth is
 // `dbs.Set.Primary` / `dbs.Set.Observability`.
 //
-// A second operational SQLite database is intentionally not supported;
-// the unified runtime uses only Main for business state and Logs for the
-// separate observability axis.
+// Jobs is a separate execution-plane database when the canonical split is
+// enabled; Main remains the media control-plane database and Logs remains the
+// observability axis.
 //
 // Compatibility field population rules (godlike/06 SSOT):
 //   - dbs.Set: always non-nil after a successful OpenSet.
 //   - dbs.Main: dbs.Set.Primary.
 //   - dbs.Logs: dbs.Set.Observability.
-//   - dbs.DualPool: an attached adapter over dbs.Set.Primary; it never
-//     opens or owns another SQLite handle.
-//   - dbs.Jobs: always nil in the unified single-primary runtime shape.
+//   - dbs.DualPool: a true reader/writer pool over the canonical primary file.
+//   - dbs.Jobs: non-nil only when the explicit jobs split is enabled.
 type Databases struct {
 	Set      *storage.DatabaseSet
 	Main     *storage.SQLiteDB
 	Logs     *storage.SQLiteDB
+	Cache    *storage.SQLiteDB
 	DualPool *storage.DualPool
 
 	// Jobs is retained as a nil-only compatibility field while callers
@@ -76,15 +75,13 @@ func (d *Databases) Close() {
 	if d.DualPool != nil {
 		_ = d.DualPool.Close()
 	}
-	if d.Jobs != nil {
-		_ = d.Jobs.Close()
-	}
 	if d.Set != nil {
 		_ = d.Set.Close()
 	}
 }
 
-// InitDatabases opens BOTH the primary + observability DBs via the
+// InitDatabases opens the primary + observability DBs and, when enabled, the
+// jobs + cache planes via the
 // canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
 // remains outside `internal/platform/sqlite/**`.
 //
@@ -92,43 +89,49 @@ func (d *Databases) Close() {
 // but it is attached to the DatabaseSet primary below. No alternative
 // primary opening is allowed here.
 //
-// The retired jobs.db.sqlite split is rejected fail-closed; no second
-// operational database is opened.
+// The jobs.db.sqlite split is opt-in and opens an independent execution-plane
+// database. It is never used for media transactions or cross-DB atomicity.
 func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("init databases: config is nil")
 	}
-	// The unified data-layer contract permits exactly one operational
-	// primary SQLite file. Reject the former split jobs configuration
-	// before opening any database handle.
-	if cfg.Jobs.SplitDBEnabled || strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" {
-		return nil, fmt.Errorf("init databases: split jobs SQLite is disabled; use the canonical primary media/media.db.sqlite")
+	if strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" && !cfg.Jobs.SplitDBEnabled {
+		return nil, fmt.Errorf("init databases: jobs_db_path requires jobs.split_db_enabled=true")
 	}
 
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
 		ObservabilityDBPath: cfg.Storage.ObservabilityDBFullPath(),
+		CacheDBPath:         cfg.Storage.CacheDBFullPath(),
 		WorkspaceDir:        cfg.Storage.WorkspaceDir,
 		CacheDir:            cfg.Storage.CacheDir,
 		ExportDir:           cfg.Storage.ExportDir,
+	}
+	if cfg.Jobs.SplitDBEnabled {
+		setCfg.JobsDBPath = cfg.Storage.JobsDBFullPath()
+		if strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" {
+			setCfg.JobsDBPath = cfg.Jobs.JobsDBPath
+		}
 	}
 	set, err := storage.OpenSet(setCfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("init databases: %w", err)
 	}
 	dbs := &Databases{
-		Set:  set,
-		Main: set.Primary,
-		Logs: set.Observability,
+		Set:   set,
+		Main:  set.Primary,
+		Logs:  set.Observability,
+		Cache: set.Cache,
+		Jobs:  set.Jobs,
 	}
 
-	// Transitional bundle constructors still consume the reader/writer-shaped
-	// field. Attach it to the already-open canonical primary handle; this
-	// performs no second sql.Open and leaves DatabaseSet as sole owner.
-	dualPool, err := storage.AttachDualPool(set.Primary)
+	// Transitional bundle constructors consume the reader/writer-shaped field.
+	// Open a real reader pool over the same media file; unlike AttachDualPool,
+	// this prevents reads from queueing behind the primary's single connection.
+	dualPool, err := storage.NewDualPool(ctx, set.Primary.Path(), cfg.Storage.SQLiteReaderCount())
 	if err != nil {
 		dbs.Close()
-		return nil, fmt.Errorf("init databases: attach canonical primary: %w", err)
+		return nil, fmt.Errorf("init databases: open media dual pool: %w", err)
 	}
 	dbs.DualPool = dualPool
 
@@ -176,9 +179,9 @@ func (d *Databases) ValidateControlPlaneIdentity(ctx context.Context) error {
 		databases = append(databases, storage.ConfiguredDatabase{
 			Name:         "jobs",
 			Path:         d.Jobs.Path(),
-			Role:         storage.ControlPlaneRoleCanonical,
+			Role:         storage.ControlPlaneRoleReadOnly,
 			Writable:     true,
-			ControlPlane: true,
+			ControlPlane: false,
 		})
 	}
 	if err := storage.ValidateConfiguredControlPlaneWriters(databases); err != nil {

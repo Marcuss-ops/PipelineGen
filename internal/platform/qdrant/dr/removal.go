@@ -1,4 +1,4 @@
-package qdrantdr
+package dr
 
 import "time"
 

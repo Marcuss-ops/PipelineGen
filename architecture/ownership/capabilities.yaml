@@ -90,9 +90,15 @@ application_assets:
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
 application_images:
   owner: internal/capabilities/images
-  target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
+  rationale: Image generation, search, validation, ingest and delivery; root remains the public facade and registration boundary.
+  target_subdirs: [images/service, images/generation, images/search, images/validation, images/ingest, images/delivery, images/styles]
+application_audio:
+  owner: internal/capabilities/audio
+  rationale: Generic audio assets, loops, mixing, ducking and audio timeline execution. Script-specific translation to AudioIntent remains under scripts and consumes kernel/audio contracts.
+  target_subdirs: [audio]
 application_voiceover:
-  owner: internal/capabilities/voiceover/service
+  owner: internal/capabilities/voiceover
+  rationale: Voiceover-specific generation and synchronization; generic audio execution is owned by capabilities/audio.
   target_subdirs: [voiceover/service, voiceover/sync]
 application_books:
   owner: internal/capabilities/books

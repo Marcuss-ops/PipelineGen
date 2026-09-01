@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +36,97 @@ type BackupResult struct {
 	SHA256      string    // hex-encoded SHA256 of the file
 	DurationMs  int64     // wall-clock duration
 	CompletedAt time.Time // UTC
+}
+
+// PlaneBackup describes one durable storage-plane backup. Cache is
+// intentionally absent from StorageBackupManifest: it is derived state and
+// must be recreated as misses after recovery.
+type PlaneBackup struct {
+	Name          string       `json:"name"`
+	SourcePath    string       `json:"source_path"`
+	Backup        BackupResult `json:"backup"`
+	SchemaVersion int64        `json:"schema_version"`
+}
+
+// StorageBackupManifest is the recovery unit for the durable SQLite planes.
+// Media, jobs, and observability are backed up independently; IDs and
+// idempotency keys make reconciliation safe when their snapshots are not from
+// one globally atomic instant. Cache is explicitly excluded.
+type StorageBackupManifest struct {
+	Format      string        `json:"format"`
+	CreatedAt   time.Time     `json:"created_at"`
+	Planes      []PlaneBackup `json:"planes"`
+	CachePolicy string        `json:"cache_policy"`
+}
+
+// BackupSet creates one independently verifiable backup per durable plane and
+// writes a manifest beside them. The manifest is the operator-facing recovery
+// unit; it never claims cross-database atomicity and never includes cache.
+func (s *DatabaseSet) BackupSet(ctx context.Context, destinationDir string) (*StorageBackupManifest, error) {
+	if s == nil || s.closed.Load() {
+		return nil, fmt.Errorf("backup set: database set is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if destinationDir == "" {
+		return nil, fmt.Errorf("backup set: destination directory is required")
+	}
+	if err := os.MkdirAll(destinationDir, 0755); err != nil {
+		return nil, fmt.Errorf("backup set: create destination: %w", err)
+	}
+
+	manifest := &StorageBackupManifest{
+		Format:      "pipelinegen-storage-backup/v1",
+		CreatedAt:   time.Now().UTC(),
+		CachePolicy: "excluded; rebuild on miss",
+		Planes:      make([]PlaneBackup, 0, 3),
+	}
+	planes := []struct {
+		name string
+		db   *SQLiteDB
+	}{
+		{name: "media", db: s.Primary},
+		{name: "jobs", db: s.Jobs},
+		{name: "observability", db: s.Observability},
+	}
+	for _, plane := range planes {
+		if plane.db == nil || plane.db.DB == nil {
+			if plane.name == "jobs" { // jobs is optional until split is enabled.
+				continue
+			}
+			return nil, fmt.Errorf("backup set: %s database is unavailable", plane.name)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var schemaVersion int64
+		if err := plane.db.DB.QueryRowContext(ctx, "PRAGMA user_version").Scan(&schemaVersion); err != nil {
+			return nil, fmt.Errorf("backup set: read %s schema version: %w", plane.name, err)
+		}
+		result, err := Backup(plane.db.Path(), filepath.Join(destinationDir, plane.name+".db.sqlite"))
+		if err != nil {
+			return nil, fmt.Errorf("backup set: %s: %w", plane.name, err)
+		}
+		manifest.Planes = append(manifest.Planes, PlaneBackup{
+			Name: plane.name, SourcePath: plane.db.Path(), Backup: *result, SchemaVersion: schemaVersion,
+		})
+	}
+
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("backup set: encode manifest: %w", err)
+	}
+	manifestPath := filepath.Join(destinationDir, "manifest.json")
+	tmpPath := manifestPath + ".tmp"
+	if err := os.WriteFile(tmpPath, append(encoded, '\n'), 0644); err != nil {
+		return nil, fmt.Errorf("backup set: write manifest: %w", err)
+	}
+	if err := os.Rename(tmpPath, manifestPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("backup set: publish manifest: %w", err)
+	}
+	return manifest, nil
 }
 
 // Backup copies the database at srcPath to outPath using SQLite's

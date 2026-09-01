@@ -8,7 +8,7 @@
 //     / ErrSemanticNotConfigured).
 //  3. Deterministic point ID: same (videoID, tsMs) → same point
 //     ID across calls (Upsert idempotence).
-package qdrantmm
+package mediamemory
 
 import (
 	"bytes"

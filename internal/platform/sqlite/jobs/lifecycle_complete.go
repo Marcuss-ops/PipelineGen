@@ -57,9 +57,9 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 	// Validate ownership — also read the job type to gate artifact producers.
 	var status job.Status
 	var curWorkerID, curLeaseID, jobType string
-	var revision int
-	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, type, revision FROM jobs WHERE id = ?`, id).
-		Scan(&status, &curWorkerID, &curLeaseID, &jobType, &revision)
+	var revision, retryCount int
+	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, type, revision, retry_count FROM jobs WHERE id = ?`, id).
+		Scan(&status, &curWorkerID, &curLeaseID, &jobType, &revision, &retryCount)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ErrJobNotFound
@@ -83,11 +83,11 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 
 	// Atomic update
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
-		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
+		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?,
+			 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING') AND worker_id = ? AND lease_id = ? AND revision = ?`,
-		nowStr, resultJSON, nowStr,
+		nowStr, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
 		return fmt.Errorf("complete: update: %w", err)
@@ -102,6 +102,9 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		// so by the time we reach here, validateOwnership has already passed.
 		observability.JobTransitionConflictTotal.WithLabelValues("complete").Inc()
 		return job.ErrTransitionConflict
+	}
+	if err := persistJobResult(ctx, tx, id, retryCount, resultJSON); err != nil {
+		return fmt.Errorf("complete: %w", err)
 	}
 
 	// Insert event

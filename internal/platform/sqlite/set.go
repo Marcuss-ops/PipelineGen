@@ -11,9 +11,9 @@
 //
 // The set is split into two roles:
 //
-//   - Primary       — the unified media database (jobs, assets, scripts,
-//     research_cache, media_assets, clip_folders,
-//     search_queries, worker_nodes, voiceovers, etc.)
+//   - Primary       — the canonical media database (assets, scripts,
+//     media_assets, clip_folders, search_queries, worker_nodes, voiceovers,
+//     and media outbox).
 //     historically at `<DataDir>/media/media.db.sqlite`.
 //   - Observability — the API request log database at
 //     `<DataDir>/observability/api_requests.db.sqlite`.
@@ -55,6 +55,14 @@ type DatabaseSet struct {
 	// so log retention doesn't churn the schema-versioned Primary DB.
 	Observability *SQLiteDB
 
+	// Cache holds rebuildable cache state. Cache failures are intentionally
+	// non-fatal to business-state startup and callers must treat them as misses.
+	Cache *SQLiteDB
+
+	// Jobs holds the optional execution-plane database. It is opened only when
+	// the composition root explicitly enables the jobs split.
+	Jobs *SQLiteDB
+
 	cfg StorageConfig
 	log *zap.Logger
 
@@ -69,6 +77,8 @@ type DatabaseSet struct {
 type StorageConfig struct {
 	DataDir             string
 	ObservabilityDBPath string
+	CacheDBPath         string
+	JobsDBPath          string
 	WorkspaceDir        string
 	CacheDir            string
 	ExportDir           string
@@ -84,6 +94,9 @@ func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	if cfg.ObservabilityDBPath == "" {
 		cfg.ObservabilityDBPath = filepath.Join(cfg.DataDir, "observability", "api_requests.db.sqlite")
 	}
+	if cfg.CacheDBPath == "" {
+		cfg.CacheDBPath = filepath.Join(cfg.DataDir, "cache", "cache.db.sqlite")
+	}
 	if cfg.WorkspaceDir == "" {
 		cfg.WorkspaceDir = filepath.Join(cfg.DataDir, "workspace")
 	}
@@ -96,7 +109,8 @@ func ResolveStorageConfig(cfg StorageConfig) StorageConfig {
 	return cfg
 }
 
-// OpenSet opens BOTH the Primary and Observability databases with the
+// OpenSet opens the Primary and Observability databases, plus the optional
+// Cache and Jobs planes, with the
 // canonical wal/foreign_keys/busy_timeout pragma set, runs a Ping on
 // each, and returns the typed DatabaseSet. This is the ONLY entry point
 // in the runtime that creates a `*sql.DB` — every other consumer calls
@@ -120,29 +134,65 @@ func OpenSet(cfg StorageConfig, log *zap.Logger) (*DatabaseSet, error) {
 		_ = primary.Close()
 		return nil, fmt.Errorf("databaseset: open observability: %w", err)
 	}
+	// Cache is deliberately best-effort: it is derived state, so a bad or
+	// temporarily unavailable cache path must degrade to misses rather than
+	// prevent the canonical media plane from starting.
+	var cache *SQLiteDB
+	cache, err = NewSQLiteDB(filepath.Dir(cfg.CacheDBPath), filepath.Base(cfg.CacheDBPath), log)
+	if err != nil {
+		log.Warn("DatabaseSet cache unavailable; continuing with cache misses", zap.Error(err), zap.String("cache", cfg.CacheDBPath))
+		cache = nil
+	}
 
 	// The set topology is fixed at the composition boundary: Primary is the
 	// sole writable Control Plane database; Observability is an operational
 	// log store and is deliberately not part of the Control Plane writer set.
 	// Validate this before migrations or services can be started.
-	if err := ValidateConfiguredControlPlaneWriters([]ConfiguredDatabase{
+	databases := []ConfiguredDatabase{
 		{Name: "primary", Path: primary.Path(), Role: ControlPlaneRoleCanonical, Writable: true, ControlPlane: true},
 		{Name: "observability", Path: observability.Path(), Role: ControlPlaneRoleReadOnly, Writable: true, ControlPlane: false},
-	}); err != nil {
+	}
+	if cache != nil {
+		databases = append(databases, ConfiguredDatabase{Name: "cache", Path: cache.Path(), Role: ControlPlaneRoleReadOnly, Writable: true, ControlPlane: false})
+	}
+	if err := ValidateConfiguredControlPlaneWriters(databases); err != nil {
+		if cache != nil {
+			_ = cache.Close()
+		}
 		_ = observability.Close()
 		_ = primary.Close()
 		return nil, fmt.Errorf("databaseset: validate control-plane topology: %w", err)
 	}
 
+	var jobs *SQLiteDB
+	if strings.TrimSpace(cfg.JobsDBPath) != "" {
+		jobs, err = NewSQLiteDB(filepath.Dir(cfg.JobsDBPath), filepath.Base(cfg.JobsDBPath), log)
+		if err != nil {
+			if cache != nil {
+				_ = cache.Close()
+			}
+			_ = observability.Close()
+			_ = primary.Close()
+			return nil, fmt.Errorf("databaseset: open jobs: %w", err)
+		}
+	}
+
+	cachePath := "unavailable (cache miss mode)"
+	if cache != nil {
+		cachePath = cache.Path()
+	}
 	log.Info("DatabaseSet opened",
 		zap.String("primary", primary.Path()),
 		zap.String("observability", observability.Path()),
+		zap.String("cache", cachePath),
 		zap.String("control_plane_role", string(ControlPlaneRoleCanonical)),
 	)
 
 	return &DatabaseSet{
 		Primary:       primary,
 		Observability: observability,
+		Cache:         cache,
+		Jobs:          jobs,
 		cfg:           cfg,
 		log:           log,
 	}, nil
@@ -176,6 +226,16 @@ func (s *DatabaseSet) Migrate(log *zap.Logger) error {
 	}
 	if err := s.Observability.RunMigrations(log, migrationsDir, "observability"); err != nil {
 		return fmt.Errorf("databaseset: migrate observability: %w", err)
+	}
+	if s.Cache != nil {
+		if err := s.Cache.RunMigrations(log, migrationsDir, "cache"); err != nil {
+			return fmt.Errorf("databaseset: migrate cache: %w", err)
+		}
+	}
+	if s.Jobs != nil {
+		if err := s.Jobs.RunMigrations(log, resolveJobsMigrationsDir(), "jobs"); err != nil {
+			return fmt.Errorf("databaseset: migrate jobs: %w", err)
+		}
 	}
 	if err := s.ValidateControlPlaneIdentity(context.Background()); err != nil {
 		return fmt.Errorf("databaseset: validate control-plane identity: %w", err)
@@ -242,6 +302,26 @@ func resolveMigrationsDir() string {
 	return filepath.Join("migrations", "sqlite")
 }
 
+func resolveJobsMigrationsDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return filepath.Join("migrations", "sqlite_jobs")
+	}
+	dir := filepath.Dir(file)
+	for {
+		candidate := filepath.Join(dir, "migrations", "sqlite_jobs")
+		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join("migrations", "sqlite_jobs")
+}
+
 // Health runs `PRAGMA quick_check` on BOTH databases. Returns the
 // first error encountered (primary first, then observability) so the
 // caller can log a structured failure.
@@ -258,7 +338,52 @@ func (s *DatabaseSet) Health(ctx context.Context) error {
 	if err := quickCheck(ctx, s.Observability.DB); err != nil {
 		return fmt.Errorf("databaseset: observability health: %w", err)
 	}
+	if s.Cache != nil {
+		if err := quickCheck(ctx, s.Cache.DB); err != nil {
+			return fmt.Errorf("databaseset: cache health: %w", err)
+		}
+	}
+	if s.Jobs != nil {
+		if err := quickCheck(ctx, s.Jobs.DB); err != nil {
+			return fmt.Errorf("databaseset: jobs health: %w", err)
+		}
+	}
 	return nil
+}
+
+// PlaneHealth is the independent health result for one storage plane. A
+// degraded cache or observability plane is reported without masking the
+// canonical media/jobs result.
+type PlaneHealth struct {
+	Available bool
+	Error     error
+}
+
+// HealthByPlane checks every configured SQLite plane independently. Unlike
+// Health, this method never stops at the first failure and is intended for
+// readiness surfaces that distinguish CORE, EXECUTION, DERIVED and
+// OBSERVABILITY availability.
+func (s *DatabaseSet) HealthByPlane(ctx context.Context) map[string]PlaneHealth {
+	result := map[string]PlaneHealth{}
+	if s == nil || s.closed.Load() {
+		return result
+	}
+	check := func(name string, db *SQLiteDB) {
+		if db == nil || db.DB == nil {
+			result[name] = PlaneHealth{Error: fmt.Errorf("%s database unavailable", name)}
+			return
+		}
+		if err := quickCheck(ctx, db.DB); err != nil {
+			result[name] = PlaneHealth{Error: err}
+			return
+		}
+		result[name] = PlaneHealth{Available: true}
+	}
+	check("media", s.Primary)
+	check("jobs", s.Jobs)
+	check("cache", s.Cache)
+	check("observability", s.Observability)
+	return result
 }
 
 // quickCheck runs PRAGMA quick_check which returns ok/integer-coded error.
@@ -276,7 +401,7 @@ func quickCheck(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// Close closes BOTH databases in idempotent fashion. Safe to call
+// Close closes all configured databases in idempotent fashion. Safe to call
 // multiple times — the second call is a no-op.
 func (s *DatabaseSet) Close() error {
 	if !s.closed.CompareAndSwap(false, true) {
@@ -294,6 +419,16 @@ func (s *DatabaseSet) Close() error {
 	if s.Observability != nil {
 		if err := s.Observability.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("databaseset: close observability: %w", err)
+		}
+	}
+	if s.Cache != nil {
+		if err := s.Cache.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("databaseset: close cache: %w", err)
+		}
+	}
+	if s.Jobs != nil {
+		if err := s.Jobs.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("databaseset: close jobs: %w", err)
 		}
 	}
 	return firstErr

@@ -77,13 +77,10 @@ type JobsConfig struct {
 	// 0 = unlimited. Default 10/hour is safe for YouTube free tier (100 units/day).
 	SearchRateLimit int `yaml:"search_rate_limit" default:"10"`
 
-	// PR-Queue-Split-EXPAND / ADR-0003 §"Decider choice" PR #1 (June 2026):
-	// Three knobs gate the EXPAND phase of jobs.db.sqlite split. Default
-	// behavior today: every flag is OFF — jobs.db.sqlite is NOT opened;
-	// *SQLiteStore reads/writes hit the jobs/job_events/dead_letter_jobs
-	// tables in media.db.sqlite (unchanged). EXPAND-only; CUTOVER is a
-	// future PR after the bench-driven gate in ADR-0003 §"Trigger
-	// conditions" §1 lands empirical data.
+	// PR-Queue-Split / ADR-0003: the jobs plane is now the canonical
+	// execution store. The split is enabled by default after the benchmark
+	// gate was exceeded; the flag remains as an explicit rollback switch for
+	// staged deployments and migrations.
 	//
 	// SplitDBEnabled — when true (and cfg boot wiring succeeds), the
 	// composition root opens jobs.db.sqlite alongside media.db.sqlite,
@@ -91,16 +88,13 @@ type JobsConfig struct {
 	// reads/writes to the new jobs DB instead of media.db.sqlite. Default
 	// OFF to keep today's production deployments unaffected.
 	//
-	// JobsDBPath — filesystem path for jobs.db.sqlite. When empty
-	// (default), the composition root derives the path from
-	// cfg.Storage.PrimaryDBFullPath() by stripping "media.db.sqlite" from
-	// the basename and substituting "jobs.db.sqlite" — the canonical
-	// pair lives side-by-side in <DataDir>/media/ (or whatever
-	// Storage.MediaDir resolves to). Operators can override for alternate
-	// layouts (e.g. a network-mounted queue DB for multi-node prep).
+	// JobsDBPath — filesystem path for jobs.db.sqlite. When empty (default),
+	// the composition root derives the canonical path at
+	// <DataDir>/jobs/jobs.db.sqlite. Operators can override for alternate
+	// layouts (for example a dedicated local volume for queue I/O).
 	// The override is a string substitution, not a remap; operators
 	// who need the jobs DB on a different volume set the path explicitly.
-	SplitDBEnabled bool   `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"false"`
+	SplitDBEnabled bool   `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"true"`
 	JobsDBPath     string `yaml:"jobs_db_path" env:"VELOX_JOBS_DB_PATH" default:""`
 
 	// EnableBackgroundJobs controls whether background workers/schedulers run.

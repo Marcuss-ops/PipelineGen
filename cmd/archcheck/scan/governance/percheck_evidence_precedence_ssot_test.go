@@ -88,7 +88,7 @@ func TestEvidencePrecedenceSSOT_DescriptionOnlyReconstructionPasses(t *testing.T
 	// not a copy of the grounding precedence and must NOT be flagged.
 	dir := t.TempDir()
 	evidencePrecedenceWriteTree(t, dir, map[string]string{
-		"internal/platform/qdrant/recovery/reader.go": `package recovery
+		"internal/platform/qdrant/dr/recovery/reader.go": `package recovery
 func firstString(m map[string]any, keys ...string) string { return "" }
 func load(p map[string]any) { _ = firstString(p, "description", "semantic_description", "visual_summary") }
 `,

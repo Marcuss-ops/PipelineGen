@@ -36,7 +36,7 @@ func TestDatabasesValidateControlPlaneIdentityRejectsReadOnlyPrimary(t *testing.
 	}
 }
 
-func TestDatabasesValidateControlPlaneIdentityRejectsSplitWritableJobsDB(t *testing.T) {
+func TestDatabasesValidateControlPlaneIdentityAcceptsSeparateExecutionJobsDB(t *testing.T) {
 	mainDB, err := storage.OpenSQLiteDB(t.TempDir()+"/media.sqlite", zaptest.NewLogger(t))
 	if err != nil {
 		t.Fatal(err)
@@ -51,8 +51,8 @@ func TestDatabasesValidateControlPlaneIdentityRejectsSplitWritableJobsDB(t *test
 
 	dbs := &Databases{Main: mainDB, Jobs: jobsDB}
 	err = dbs.ValidateControlPlaneIdentity(context.Background())
-	if err == nil || !containsIdentityError(err.Error(), "multiple control-plane writers detected") {
-		t.Fatalf("error = %v, want multiple-writer failure", err)
+	if err != nil {
+		t.Fatalf("separate jobs execution plane must not be treated as a second control-plane writer: %v", err)
 	}
 }
 
