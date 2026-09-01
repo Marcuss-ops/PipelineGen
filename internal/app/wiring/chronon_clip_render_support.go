@@ -104,7 +104,11 @@ func (p chrononAwareCapabilityProbe) ProbeCapabilities(ctx context.Context) (cli
 	if err != nil {
 		return caps, err
 	}
-	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != "" || strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET")) != ""
+	socket := strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET"))
+	if socket == "" {
+		socket = strings.TrimSpace(os.Getenv("CHRONON_SOCKET_PATH"))
+	}
+	caps.ChrononVulkan = strings.TrimSpace(p.chrononBin) != "" || socket != ""
 	return caps, nil
 }
 

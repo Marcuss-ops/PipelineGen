@@ -2,7 +2,10 @@
 # Shared result extraction for GenerationEnvelopeV2 jobs.
 
 generate_extract_result() {
-    GENERATE_RESULT=$(jq -c '.result.data.result // .result.data.data // .result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$GENERATE_FULL_BODY")
+    # Canonical jobs-plane results are the artifact-manifest envelope with
+    # the generated payload under result.result. Keep the older async
+    # envelope paths for deployed clients during the transition.
+    GENERATE_RESULT=$(jq -c '.result.data.result // .result.data.data // .result.data.items[0].result // .result.items[0].result // .result.result // .result.output // .result // empty' "$GENERATE_FULL_BODY")
     [[ -n "$GENERATE_RESULT" && "$GENERATE_RESULT" != "null" ]] || {
         echo "FAIL: missing canonical generation result" >&2
         return 1

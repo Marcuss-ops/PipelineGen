@@ -43,6 +43,7 @@ func wireMediaProcessor(
 	mp := InitMediaProcessor(
 		cfg,
 		dbs.Main,
+		dbs.Cache,
 		repos.Assets.Repository(),
 		repos.Assets,
 		repos.Assets.LocationRepository(),

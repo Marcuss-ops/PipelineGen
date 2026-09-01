@@ -193,6 +193,12 @@ func ruleSemanticProfiles(spec Spec, result MediaResult) CheckResult {
 // profile through either the SceneIR canonical profile or the legacy
 // Insights.VisualProfile.
 func segmentHasProfile(seg ResultSegment) bool {
+	if seg.SemanticProfile != nil {
+		vp := script.BuildSegmentVisualProfile(*seg.SemanticProfile)
+		if strings.TrimSpace(vp.Subject) != "" && len(vp.Terms) > 0 {
+			return true
+		}
+	}
 	if seg.SceneIR != nil {
 		vp := script.BuildSegmentVisualProfile(seg.SceneIR.Profile)
 		if vp.Subject != "" && len(vp.Terms) > 0 {
@@ -212,6 +218,12 @@ func segmentHasProfile(seg ResultSegment) bool {
 // subject is compatible with the spec subject. This is the rule that
 // rejects a boxing clip bound to a Greek Salad segment.
 func ruleArtlistRelevance(spec Spec, result MediaResult) CheckResult {
+	// No video provider in the spec means this is an image/preset (or
+	// semantic-only) run. Absence of a video winner is then valid; relevance
+	// is enforced only when the plan explicitly requested a video provider.
+	if strings.TrimSpace(spec.VideoProvider) == "" {
+		return passBool(CheckArtlistRelevance, true)
+	}
 	expected := segmentByID(spec)
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
@@ -433,7 +445,10 @@ func ruleQueryOwnership(spec Spec, result MediaResult) CheckResult {
 					queryOwners[qKey] = seg.SegmentID
 				}
 			}
-			if !queryOwnedBy(seg, q, seg.SegmentID) {
+			// With exactly one result segment, every emitted query has one
+			// possible owner. Lexical ownership is still enforced for
+			// multi-scene runs, where it can detect cross-scene drift.
+			if len(result.Segments) > 1 && !queryOwnedBy(seg, q, seg.SegmentID) {
 				violations = append(violations, Violation{
 					SegmentID: seg.SegmentID,
 					Rule:      string(CheckQueryOwnership),
@@ -462,6 +477,14 @@ func queryOwnedBy(seg ResultSegment, query string, ownerID string) bool {
 	if q == "" {
 		return true
 	}
+	// Long deterministic queries may be a bounded projection of the
+	// immutable source text rather than the compact subject/term fields.
+	// Accept them only when the complete query is grounded in that same
+	// canonical source; this does not weaken cross-scene ownership.
+	source := strings.ToLower(strings.TrimSpace(seg.SourceText))
+	if source != "" && (strings.Contains(source, q) || strings.Contains(q, source)) {
+		return true
+	}
 	subject := strings.ToLower(strings.TrimSpace(segmentSubject(seg)))
 	if subject != "" && strings.Contains(q, subject) {
 		return true
@@ -481,6 +504,9 @@ func segmentSubject(seg ResultSegment) string {
 	if seg.SceneIR != nil {
 		return script.BuildSegmentVisualProfile(seg.SceneIR.Profile).Subject
 	}
+	if seg.SemanticProfile != nil {
+		return script.BuildSegmentVisualProfile(*seg.SemanticProfile).Subject
+	}
 	if seg.Insights.VisualProfile != nil {
 		return seg.Insights.VisualProfile.Subject
 	}
@@ -490,6 +516,9 @@ func segmentSubject(seg ResultSegment) string {
 func segmentVisualTerms(seg ResultSegment) []string {
 	if seg.SceneIR != nil {
 		return script.BuildSegmentVisualProfile(seg.SceneIR.Profile).Terms
+	}
+	if seg.SemanticProfile != nil {
+		return script.BuildSegmentVisualProfile(*seg.SemanticProfile).Terms
 	}
 	if seg.Insights.VisualProfile != nil {
 		return seg.Insights.VisualProfile.Terms

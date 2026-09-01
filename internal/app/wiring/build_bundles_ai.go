@@ -107,9 +107,13 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := sqlitescripts.NewCache(dbs.DualPool.Writer)
-	scriptGen.SetTranslationCache(translationCache)
-	log.Info("translation cache initialized", zap.String("db", dbs.Main.Path()))
+	if dbs.Cache != nil && dbs.Cache.DB != nil {
+		translationCache := sqlitescripts.NewCache(dbs.Cache.DB)
+		scriptGen.SetTranslationCache(translationCache)
+		log.Info("translation cache initialized", zap.String("db", dbs.Cache.Path()))
+	} else {
+		log.Warn("translation cache unavailable; continuing without persistent cache")
+	}
 
 	// Construct the single application-layer OllamaTranslator per
 	// process and route the canonical TranslationPort through it. Wrap
@@ -179,19 +183,21 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 		whisperAdapter = whisperConcrete
 		// Derived transcript cache: source bytes + Whisper processor version
 		// identify the result; local temporary paths never become cache keys.
-		if cache, cacheErr := NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
-			// The Whisper bridge has its own execution contract; the Ollama
-			// chat model is unrelated and must not invalidate or alias
-			// transcription artifacts.
-			version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
-			if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
-				whisperAdapter = cached
-				log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
+		if dbs.Cache != nil && dbs.Cache.DB != nil {
+			if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, log); cacheErr == nil {
+				// The Whisper bridge has its own execution contract; the Ollama
+				// chat model is unrelated and must not invalidate or alias
+				// transcription artifacts.
+				version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
+				if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+					whisperAdapter = cached
+					log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
+				} else {
+					log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
+				}
 			} else {
-				log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
+				log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
 			}
-		} else {
-			log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
 		}
 	}
 

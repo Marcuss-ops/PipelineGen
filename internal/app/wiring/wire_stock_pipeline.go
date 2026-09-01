@@ -229,14 +229,14 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// every download is fresh (no cross-run dedup).
 	var stockCacheReader stockpipeline.SourceCacheReader
 	var stockCacheWriter stockpipeline.SourceCacheWriter
-	if stockDB != nil {
-		cacheRepo := stocksourcecache.NewRepository(stockDB)
+	if root.CacheDB != nil && root.CacheDB.DB != nil {
+		cacheRepo := stocksourcecache.NewRepository(root.CacheDB.DB)
 		stockCacheReader = cacheRepo
 		stockCacheWriter = cacheRepo
 		log.Info("WireStockPipeline: source cache wired",
 			zap.Bool("cache_enabled", true))
 	} else {
-		log.Info("WireStockPipeline: source cache disabled (no DB)")
+		log.Info("WireStockPipeline: source cache disabled (cache plane unavailable)")
 	}
 
 	// Batch repository (Fase 2 durable state) — wired when DB is available.

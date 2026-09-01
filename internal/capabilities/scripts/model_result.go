@@ -95,6 +95,11 @@ type GenerateResult struct {
 	// no derivable overlay surface.
 	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
 
+	// SemanticRenderBundle is the cross-stage audit contract assembled from
+	// the same certified surfaces as OverlayPlan. It is a projection, never a
+	// second extraction, resolver or timing source.
+	SemanticRenderBundle *capabilityoverlay.SemanticRenderBundleV1 `json:"semantic_render_bundle,omitempty"`
+
 	// OverlayRender is populated after the timing-frozen Chronon render has
 	// completed and its media contract has been certified.
 	OverlayRender *RenderReference `json:"overlay_render,omitempty"`

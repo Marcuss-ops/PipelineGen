@@ -232,19 +232,28 @@ func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, err
 	}
 	defer rows.Close()
 
+	// Drain and close the result set before hydrating payload/result. The
+	// production jobs DB is deliberately a single-writer connection; issuing
+	// a second query while rows is still open blocks that same connection and
+	// can wedge the worker/preparation loop indefinitely.
 	out := make([]job.Job, 0)
 	for rows.Next() {
 		var j job.Job
 		if err := scanJobColumns(rows, &j); err != nil {
 			return nil, fmt.Errorf("PeekQueued: scan: %w", err)
 		}
-		if err := r.hydrateJob(ctx, &j); err != nil {
-			return nil, fmt.Errorf("PeekQueued: hydrate result: %w", err)
-		}
 		out = append(out, j)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("PeekQueued: rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("PeekQueued: close: %w", err)
+	}
+	for i := range out {
+		if err := r.hydrateJob(ctx, &out[i]); err != nil {
+			return nil, fmt.Errorf("PeekQueued: hydrate result: %w", err)
+		}
 	}
 	return out, nil
 }
@@ -312,12 +321,19 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 		if err := scanJobColumns(rows, j); err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
-		if err := r.hydrateJob(ctx, j); err != nil {
-			return nil, fmt.Errorf("failed to hydrate job result: %w", err)
-		}
 		out = append(out, *j)
 	}
-
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read jobs: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close jobs: %w", err)
+	}
+	for i := range out {
+		if err := r.hydrateJob(ctx, &out[i]); err != nil {
+			return nil, fmt.Errorf("failed to hydrate job result: %w", err)
+		}
+	}
 	return out, nil
 }
 
@@ -403,10 +419,18 @@ LIMIT ?`
 		if err := scanJobColumns(rows, j); err != nil {
 			return nil, fmt.Errorf("ListAwaitingAggregation: scan: %w", err)
 		}
-		if err := r.hydrateJob(ctx, j); err != nil {
+		out = append(out, *j)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListAwaitingAggregation: rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("ListAwaitingAggregation: close: %w", err)
+	}
+	for i := range out {
+		if err := r.hydrateJob(ctx, &out[i]); err != nil {
 			return nil, fmt.Errorf("ListAwaitingAggregation: hydrate result: %w", err)
 		}
-		out = append(out, *j)
 	}
 	return out, nil
 }

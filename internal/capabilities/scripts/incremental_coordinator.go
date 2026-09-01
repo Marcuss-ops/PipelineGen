@@ -69,6 +69,11 @@ type segmentResultRecord struct {
 	err      error
 }
 
+// Per-scene enrichment must have a finite budget. The worker context can live
+// for the whole job, but a remote/provider stall must never hold the terminal
+// job transition (or its lease) forever.
+const vidRushSceneEnrichmentTimeout = 2 * time.Minute
+
 // NewVidRushIncrementalCoordinator constructs an incremental coordinator.
 // maxConcurrency bounds the provider-search stage; values <= 0 default to 4.
 // Extraction is single-slot by default (the local Ollama model) and
@@ -280,6 +285,8 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	}
 	go func() {
 		defer c.wg.Done()
+		enrichCtx, cancel := context.WithTimeout(ctx, vidRushSceneEnrichmentTimeout)
+		defer cancel()
 		c.markEnrichmentStart()
 		if c.metrics != nil {
 			c.metrics.EnrichmentStarted()
@@ -289,15 +296,15 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		// Stage 1 — entity extraction. Single-slot by default (local Ollama),
 		// and low-priority against the generation gate so scene generation is
 		// never starved when both share the same model.
-		result, err := c.enrichSegment(ctx, scene)
+		result, err := c.enrichSegment(enrichCtx, scene)
 		if err == nil {
-			result, err = c.researchSegment(ctx, result)
+			result, err = c.researchSegment(enrichCtx, result)
 		}
 		if err == nil {
-			result, err = c.searchProviders(ctx, result)
+			result, err = c.searchProviders(enrichCtx, result)
 		}
 		if err == nil {
-			result, err = c.materializeSegment(ctx, result)
+			result, err = c.materializeSegment(enrichCtx, result)
 		}
 		if err == nil {
 			err = validateVidRushResultIdentity(event, result)

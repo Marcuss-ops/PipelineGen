@@ -88,12 +88,21 @@ func (r *Resolver) Resolve(ctx context.Context, req ResolveRequest) (ResolveResu
 		if err != nil {
 			return ResolveResult{}, fmt.Errorf("stockintelligence: hydrate: %w", err)
 		}
+		verified := localCands[:0]
 		for i := range localCands {
 			if label, ok := labels[localCands[i].AssetID]; ok && localCands[i].Label == "" {
 				localCands[i].Label = label
 			}
+			// Qdrant is only a search projection. A hit with no SQLite truth
+			// is an orphan and must not influence thresholds or become a
+			// selected asset.
+			if localCands[i].Label == "" {
+				continue
+			}
 			localCands[i].Source = "local"
+			verified = append(verified, localCands[i])
 		}
+		localCands = verified
 	}
 
 	result := ResolveResult{

@@ -322,16 +322,21 @@ func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxe
 // missing DB handle or a construction error logs a Warn and skips — the
 // performance-backfill admin command remains the recovery path. It never
 // aborts boot.
-func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, log *zap.Logger) {
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, registryDB *storage.SQLiteDB, log *zap.Logger) {
 	if eventsRegistry == nil {
 		return
 	}
-	if dbs == nil || dbs.Set == nil || executionDB == nil || executionDB.DB == nil ||
+	if dbs == nil || dbs.Set == nil || executionDB == nil || executionDB.DB == nil || registryDB == nil || registryDB.DB == nil ||
 		dbs.Set.Observability == nil || dbs.Set.Observability.DB == nil {
-		log.Warn("outbox job.completed performance handler NOT wired (primary/observability DB missing)")
+		log.Warn("outbox job.completed performance handler NOT wired (execution/registry/observability DB missing)")
 		return
 	}
-	proj, err := perfstore.NewProjection(executionDB.DB, dbs.Set.Observability.DB)
+	var performanceTable string
+	if err := registryDB.DB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='performance_runs'`).Scan(&performanceTable); err != nil || performanceTable == "" {
+		log.Warn("outbox job.completed performance handler skipped (performance registry table is unavailable)")
+		return
+	}
+	proj, err := perfstore.NewSplitProjection(executionDB.DB, registryDB.DB, dbs.Set.Observability.DB)
 	if err != nil {
 		log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
 		return

@@ -201,6 +201,15 @@ func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, mi
 		if _, ok := applied[migration.version]; ok {
 			continue
 		}
+		// The execution-plane cutover (265) quarantines the legacy jobs
+		// tables from the primary database. Some databases were cut over
+		// before the historical 262 marker was recorded. In that already
+		// quarantined state, replaying 262 would fail because its INSERT
+		// reads from the deliberately removed jobs table. Accept only this
+		// exact, observable state; arbitrary migration gaps remain fatal.
+		if skipMigrationAfterExecutionCutover(db, applied, migration, targetDB) {
+			continue
+		}
 		// One deployment omitted the historical 196 index marker from its
 		// ledger. Its restored migration is idempotent and is applied by the
 		// normal runner below, so allow this specific repair to proceed.
@@ -217,6 +226,15 @@ func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, mi
 		}
 	}
 	return nil
+}
+
+func skipMigrationAfterExecutionCutover(db queryable, applied map[int]appliedRecord, migration migrationFile, targetDB string) bool {
+	if migration.version != 262 || targetDB != "primary" {
+		return false
+	}
+	cutover, ok := applied[265]
+	return ok && cutover.filename == "265_execution_plane_quarantine.sql" &&
+		migrationTableExists(db, "legacy_jobs") && !migrationTableExists(db, "jobs")
 }
 
 // migrationTableExists is intentionally read-only and narrowly scoped to

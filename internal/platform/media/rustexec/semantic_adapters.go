@@ -21,6 +21,10 @@ type visualNERRequest struct {
 	TextHash   string `json:"text_hash"`
 	SourceText string `json:"source_text"`
 	Limit      int    `json:"limit"`
+	// EntityCount is the canonical VisualNER v1 field. Limit is retained for
+	// compatibility with older runners; sending both lets the dedicated
+	// visualner binary enforce the caller's requested bound.
+	EntityCount int `json:"entity_count"`
 }
 type visualNERResponse struct {
 	Entities []scriptgen.VisualEntity `json:"entities"`
@@ -39,7 +43,7 @@ func (a *VisualNERAdapter) Extract(ctx context.Context, sourceText string, limit
 		return nil, fmt.Errorf("visualner: executor is not configured")
 	}
 	sum := sha256.Sum256([]byte(sourceText))
-	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: hex.EncodeToString(sum[:]), SourceText: sourceText, Limit: limit}
+	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: hex.EncodeToString(sum[:]), SourceText: sourceText, Limit: limit, EntityCount: limit}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, err

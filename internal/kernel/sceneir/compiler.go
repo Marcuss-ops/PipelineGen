@@ -108,6 +108,15 @@ func MustCompile(in CompileInput) SceneIR {
 func buildFullProfile(segment script.CanonicalSegment, res *script.EntityResult, modelVersion, promptVersion string) *script.SegmentSemanticProfile {
 	if res != nil {
 		profile := script.BuildSegmentSemanticProfile(segment, *res, modelVersion, promptVersion)
+		if len(profile.Terms) == 0 {
+			fallback := strings.TrimSpace(segment.SourceText)
+			if len([]rune(fallback)) > 160 {
+				fallback = string([]rune(fallback)[:160])
+			}
+			profile.Topic = fallback
+			profile.VisualTerms = []script.WeightedKeyword{{Value: fallback, Confidence: 1}}
+			profile.Terms = []script.SemanticTerm{{Value: fallback, Kind: script.TermKindVisual, Score: 1}}
+		}
 		return &profile
 	}
 	profile := script.SegmentSemanticProfile{

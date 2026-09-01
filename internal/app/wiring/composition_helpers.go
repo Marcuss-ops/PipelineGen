@@ -309,8 +309,13 @@ func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.S
 	if root == nil || root.DB == nil || root.Jobs == nil || root.Jobs.Repo == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, fmt.Errorf("script submission: required runtime dependencies are nil")
 	}
-	opsRepo := sqliteops.NewSQLiteRepository(root.DB.DB)
-	txMgr := &sqliteTxManager{db: root.DB.DB}
+	// operations + jobs + outbox_events form one atomic submission unit and
+	// therefore must use the same execution-plane database connection.
+	if root.Jobs.DB == nil || root.Jobs.DB.DB == nil {
+		return nil, fmt.Errorf("script submission: jobs database is not configured")
+	}
+	opsRepo := sqliteops.NewSQLiteRepository(root.Jobs.DB.DB)
+	txMgr := &sqliteTxManager{db: root.Jobs.DB.DB}
 	// FASE 2 close-out: jobsStore satisfies JobGetter natively
 	// (its Get(ctx, id) method matches the port shape). Wired
 	// twice — once as JobEnqueuer (CreateInTx use) and once as

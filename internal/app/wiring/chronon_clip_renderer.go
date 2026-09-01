@@ -77,6 +77,12 @@ var chrononRuntimeControlInit sync.Once
 // render boundary decision and phase timing is emitted through it.
 func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chrononClipRenderExecutor {
 	socket := strings.TrimSpace(os.Getenv("CHRONON_RENDER_SOCKET"))
+	if socket == "" {
+		// RenderingGen's warm-worker entrypoint publishes the same daemon
+		// through CHRONON_SOCKET_PATH. Accept it here as the canonical
+		// deployment spelling while retaining the PipelineGen-specific alias.
+		socket = strings.TrimSpace(os.Getenv("CHRONON_SOCKET_PATH"))
+	}
 	if strings.TrimSpace(binary) == "" && socket == "" {
 		return nil
 	}
@@ -437,10 +443,11 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	// phases and its typed GPU counters. The sidecar JSON stays a
 	// transport/debug payload; the durable copy in metrics/ and the
 	// performance-registry projection (when the Chronon Metrics Adapter is
-	// wired) become the canonical history. Best-effort: a read/parse/record
-	// failure is logged, never a render failure. The certified output facts
-	// come from the sealed plan + the chronon.mp4 bytes (the exact artifact
-	// the phases measured).
+	// wired) become the canonical history. A sidecar read/parse failure is
+	// best-effort only for non-certified fallback renders. Direct-YUV renders
+	// fail closed: without the engine-owned measurement there is no valid
+	// certification claim. The certified output facts come from the sealed
+	// plan + the chronon.mp4 bytes (the exact artifact the phases measured).
 	chrononSidecarPath := chrononVideoPath + ".timing.json"
 	var rawTiming []byte
 	var measured chrononMeasuredPhases
@@ -448,6 +455,9 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 	var timingErr error
 	if rawTiming, timingErr = os.ReadFile(chrononSidecarPath); timingErr != nil {
 		r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
+		if directYUV {
+			return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: direct-yuv certification failed: timing sidecar unavailable: %w", timingErr)
+		}
 	} else {
 		if metricsDirReady {
 			if writeErr := os.WriteFile(filepath.Join(metricsDir, plan.RunID+".chronon.timing.json"), rawTiming, 0o644); writeErr != nil {
@@ -458,7 +468,17 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		chrononProjection, _ = readChrononProjection(chrononSidecarPath)
 		if timingErr != nil {
 			r.logPhase("chronon_timing_unavailable", plan.RunID, zap.Error(timingErr))
+			if directYUV {
+				return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: direct-yuv certification failed: invalid timing sidecar: %w", timingErr)
+			}
 		} else {
+			if directYUV && measured.ExecutionPath != "direct_yuv" {
+				r.logPhase("chronon_direct_yuv_gate_failed", plan.RunID,
+					zap.String("execution_path", measured.ExecutionPath),
+					zap.String("required", "direct_yuv"),
+				)
+				return rustexec.ClipRenderResult{}, fmt.Errorf("chronon: direct-yuv certification failed: execution_path=%q", measured.ExecutionPath)
+			}
 			r.logPhase("chronon_timing_projected", plan.RunID,
 				zap.String("sidecar", chrononSidecarPath),
 				zap.Bool("gpu_readback_present", chrononProjection.GPUReadbackBytes != nil),

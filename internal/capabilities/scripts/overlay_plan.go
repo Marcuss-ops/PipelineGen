@@ -326,6 +326,17 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 		return err
 	}
 	result.OverlayPlan = plan
+	if plan == nil {
+		return nil
+	}
+	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
+		// Once a render plan exists, the semantic bundle is part of the
+		// canonical contract, not optional telemetry. Never enqueue a render
+		// whose entity/timing/asset provenance cannot be audited.
+		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
+	} else {
+		result.SemanticRenderBundle = bundle
+	}
 	return nil
 }
 

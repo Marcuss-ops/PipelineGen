@@ -191,6 +191,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
 		DB:                root.DB,
+		CacheDB:           root.CacheDB,
 		Assets:            root.Repos.Assets,
 		DriveUploader:     root.Drive.DriveUploader,
 		Lifecycle:         root.Drive.Lifecycle,

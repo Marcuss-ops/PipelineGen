@@ -73,7 +73,7 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 // bypass is closed. The driveup import is no longer needed in this
 // file (Wave A Item 15, June 2026) — the ensureStyleDriveFolders
 // helper that used it has been removed.
-func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo detail.Repository, querySvc *detail.Service, locations detail.LocationRepository, processing detail.ProcessingRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, publisher delivery.Publisher, mediaConfig mediaexec.ExecutionConfig) detail.Processor {
+func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *storage.SQLiteDB, assetsRepo detail.Repository, querySvc *detail.Service, locations detail.LocationRepository, processing detail.ProcessingRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, publisher delivery.Publisher, mediaConfig mediaexec.ExecutionConfig) detail.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
@@ -88,11 +88,13 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo det
 	// config + processor version identify the artifact. Without it every
 	// reprocess re-executes Rust/FFmpeg (warm runs would be cold).
 	// Fail-soft: a cache wiring failure degrades to uncached processing.
-	if cache, cacheErr := NewArtifactCache(cfg, db.DB, log); cacheErr == nil {
-		proc.SetArtifactCache(cache)
-		log.Info("media processor artifact cache wired")
-	} else {
-		log.Warn("media processor artifact cache unavailable; media runs uncached", zap.Error(cacheErr))
+	if cacheDB != nil && cacheDB.DB != nil {
+		if cache, cacheErr := NewArtifactCache(cfg, cacheDB.DB, log); cacheErr == nil {
+			proc.SetArtifactCache(cache)
+			log.Info("media processor artifact cache wired")
+		} else {
+			log.Warn("media processor artifact cache unavailable; media runs uncached", zap.Error(cacheErr))
+		}
 	}
 	return proc
 }

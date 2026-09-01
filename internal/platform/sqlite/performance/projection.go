@@ -28,15 +28,24 @@ type Projection struct {
 // ProjectionService port consumed by the outbox job.completed handler.
 var _ capperformance.ProjectionService = (*Projection)(nil)
 
-// NewProjection builds a projection over the primary database (jobs table +
-// performance registry) and the observability database (run_observability).
-// Both are required; a nil database makes ProjectCompletedJob fail closed.
+// NewProjection builds a projection where the job table and performance
+// registry share one database. It remains the compatibility constructor for
+// deployments that have not enabled the execution-plane split.
 func NewProjection(jobsDB, obsDB *sql.DB) (*Projection, error) {
+	return NewSplitProjection(jobsDB, jobsDB, obsDB)
+}
+
+// NewSplitProjection builds a projection for the split topology. Job
+// lifecycle rows and job_steps are read from jobsDB, while the derived
+// performance registry is written to registryDB. Keeping these handles
+// distinct is essential: the jobs plane must not grow media-plane tables,
+// and the media plane no longer contains the canonical jobs table.
+func NewSplitProjection(jobsDB, registryDB, obsDB *sql.DB) (*Projection, error) {
 	src, err := NewSource(jobsDB, obsDB)
 	if err != nil {
 		return nil, err
 	}
-	reg, err := New(jobsDB)
+	reg, err := New(registryDB)
 	if err != nil {
 		return nil, err
 	}

@@ -30,6 +30,7 @@ import (
 // typed port (ClipIndexDispatcherPort) inline at the wire_assets_clips.go:187
 // call site, NOT through JobsBundle (type mismatch).
 type JobsBundle struct {
+	DB         *storage.SQLiteDB
 	Repo       *sqljobs.SQLiteStore
 	Dispatcher *appjobs.Dispatcher
 	Service    *appjobs.Service
@@ -104,6 +105,7 @@ func BuildJobsBundle(
 	}
 
 	return &JobsBundle{
+		DB:             db,
 		Repo:           repo,
 		Dispatcher:     dispatcher,
 		Service:        svc,

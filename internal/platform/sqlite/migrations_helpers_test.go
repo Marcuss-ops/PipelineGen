@@ -49,7 +49,9 @@ const smokeDBConnString = "_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000
 //
 // At June 2026 HEAD: jobs (001), scripts (003), media_assets (059),
 // outbox_events (092).
-var essentialTables = []string{"jobs", "scripts", "media_assets", "outbox_events"}
+// jobs is intentionally absent from the primary smoke fixture: execution
+// ownership is asserted separately by set_jobs_test.go against jobs.db.
+var essentialTables = []string{"scripts", "media_assets", "outbox_events"}
 
 // openSmokeDB opens a fresh sql.DB handle on path with the smoke DSN
 // and pings it; failures fail the caller. Caller is responsible for

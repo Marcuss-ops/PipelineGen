@@ -166,6 +166,12 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// event dead-lettered).
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
+	// A split jobs plane has its own outbox registry. It must receive
+	// execution-plane completion events (not the media outbox registry).
+	jobsRegistry := eventsRegistry
+	if dbs.Jobs != nil {
+		jobsRegistry = outboxevents.NewHandlerRegistry()
+	}
 
 	// Deps + handler registration sub-blocks (extracted July 2026 to
 	// build_outbox_handlers.go). Same order as the pre-split flat
@@ -221,7 +227,11 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 
 	// Derived performance projection: job.completed events → performance_runs/
 	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
-	registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, log)
+	if dbs.Jobs != nil {
+		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, dbs.Main, log)
+	} else {
+		registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, dbs.Main, log)
+	}
 
 	// ── Pool construction (post fail-closed). ─────────────────────
 	cfgPoll := 500 * time.Millisecond
@@ -249,8 +259,6 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// transactionally owned and consumed by media.db.sqlite.
 	var jobsEventsPool *outboxevents.Pool
 	if dbs.Jobs != nil {
-		jobsRegistry := outboxevents.NewHandlerRegistry()
-		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, log)
 		jobsEventsPool = outboxevents.NewPool("jobs-outbox-events", outboxevents.NewRepository(dbs.Jobs.DB), jobsRegistry, log, outboxEventsCfg)
 	}
 

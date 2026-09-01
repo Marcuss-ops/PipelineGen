@@ -46,6 +46,7 @@ type chrononTimingReport struct {
 		EncoderMS        float64 `json:"encoder_ms"`
 	} `json:"frame_times_ms"`
 	Job struct {
+		ExecutionPath    *string  `json:"execution_path"`
 		EngineInitMS     *float64 `json:"engine_init_ms"`
 		BackendInitMS    *float64 `json:"backend_init_ms"`
 		PlanReadMS       *float64 `json:"plan_read_ms"`
@@ -79,6 +80,7 @@ type chrononTimingReport struct {
 }
 
 type chrononMeasuredPhases struct {
+	ExecutionPath     string
 	StartupMS         *int64
 	DecodeMS          *int64
 	CompositeMS       *int64
@@ -125,6 +127,9 @@ func readChrononMeasuredPhases(path string, plan cliprender.ClipRenderPlanV1) (c
 	}
 
 	phases := chrononMeasuredPhases{}
+	if report.Job.ExecutionPath != nil {
+		phases.ExecutionPath = strings.TrimSpace(*report.Job.ExecutionPath)
+	}
 	phases.StartupMS = sumMeasuredMS(
 		report.Job.EngineInitMS,
 		report.Job.BackendInitMS,

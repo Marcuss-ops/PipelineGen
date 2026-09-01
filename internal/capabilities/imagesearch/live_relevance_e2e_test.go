@@ -55,7 +55,6 @@ import (
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/fallback"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/images/pexels"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 const (
@@ -564,7 +563,7 @@ func TestLiveImageSearchRelevance_Record(t *testing.T) {
 	searchers := liveSearchers(t)
 	limit := liveQueryLimit()
 	filter := caseFilter()
-	resolver := NewResolver(localnlp.NewExtractor())
+	resolver := NewResolver(nil)
 
 	snap := liveSnapshot{
 		Schema:     liveSnapshotSchema,

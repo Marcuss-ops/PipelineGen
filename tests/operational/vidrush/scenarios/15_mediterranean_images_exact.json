@@ -53,35 +53,30 @@
           "segments": [
             {
               "id": "mediterranean-01-greek-salad",
-              "position": 0,
               "topic": "Greek salad",
               "target_words": 50,
               "source_text": "Greek salad is one of the most recognizable dishes of Mediterranean cuisine. Fresh tomatoes and cucumbers are combined with olives, feta cheese and olive oil, creating a simple dish built around fresh ingredients."
             },
             {
               "id": "mediterranean-02-hummus",
-              "position": 1,
               "topic": "Hummus",
               "target_words": 50,
               "source_text": "Hummus is a creamy Mediterranean and Middle Eastern dip traditionally made with chickpeas, tahini, lemon juice and olive oil. It is commonly served with vegetables or warm flatbread."
             },
             {
               "id": "mediterranean-03-sardines",
-              "position": 2,
               "topic": "Grilled sardines",
               "target_words": 50,
               "source_text": "Grilled sardines are a classic coastal Mediterranean food. The fish is often cooked over a hot grill and served simply with lemon, olive oil and fresh herbs."
             },
             {
               "id": "mediterranean-04-shakshuka",
-              "position": 3,
               "topic": "Shakshuka",
               "target_words": 50,
               "source_text": "Shakshuka consists of eggs cooked directly in a rich tomato and pepper sauce. It is usually prepared in a skillet with spices and served hot with bread."
             },
             {
               "id": "mediterranean-05-paella",
-              "position": 4,
               "topic": "Seafood paella",
               "target_words": 50,
               "source_text": "Seafood paella is one of Spain's most recognizable Mediterranean dishes. Rice is cooked in a wide pan and combined with ingredients such as shrimp, mussels, vegetables and saffron."

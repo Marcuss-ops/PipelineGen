@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -75,6 +76,7 @@ func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName st
 // verify read surface.
 type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
+	CacheDB           *storage.SQLiteDB
 	Assets            *detail.Service
 	DriveUploader     *driveutil.Uploader
 	Lifecycle         driveutil.FileLifecycle
@@ -129,7 +131,11 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// the CAS layer cannot be wired (media acquisition must never be
 		// blocked by the optional cache layer).
 		if bundle.DB != nil && bundle.DB.DB != nil {
-			if casDL, casErr := buildSourceAwareDownloader(cfg, bundle.DB.DB, log); casErr == nil {
+			var cacheDB *sql.DB
+			if bundle.CacheDB != nil {
+				cacheDB = bundle.CacheDB.DB
+			}
+			if casDL, casErr := buildSourceAwareDownloader(cfg, bundle.DB.DB, cacheDB, log); casErr == nil {
 				downloader = casDL
 			} else {
 				log.Warn("CAS-backed downloader not wired — falling back to plain media downloader",

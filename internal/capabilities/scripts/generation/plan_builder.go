@@ -213,7 +213,7 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 		processors = append(processors, adapters.ProcessorTranslation)
 	}
 	if extractEntities {
-		processors = append(processors, adapters.ProcessorEntities, adapters.ProcessorClipSearch)
+		processors = append(processors, adapters.ProcessorClipSearch)
 	}
 	if output.GenerateMetadata.AsBool() {
 		processors = append(processors, adapters.ProcessorMetadata)

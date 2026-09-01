@@ -20,9 +20,8 @@ type OutputSpec struct {
 	Audio AudioOutputConfig `json:"audio,omitempty"`
 	// ── Postprocessors (Toggle tri-state) ──────────────────────────
 	//
-	// ExtractEntities is an ACTIVE inline postprocessor
-	// (ProcessorEntities) registered conditionally on
-	// DefaultPolicyFor("entities") == ProcessorRequired. Caller
+	// ExtractEntities is resolved by the semantic runner before the
+	// postprocessor walk. Caller
 	// explicit ToggleDisabled is preserved through the resolution
 	// chain.
 	ExtractEntities Toggle `json:"extract_entities,omitempty"`

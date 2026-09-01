@@ -360,7 +360,11 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 		var violations []string
 		for _, c := range report.Checks {
 			if !c.Passed {
-				violations = append(violations, string(c.Name))
+				detail := string(c.Name)
+				if len(c.Violations) > 0 {
+					detail += ": " + c.Violations[0].Detail
+				}
+				violations = append(violations, detail)
 			}
 		}
 		return nil, fmt.Errorf("vidrush semantic certification failed: CERTIFIED=false (%s)", strings.Join(violations, ", "))
@@ -375,13 +379,20 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 func toMediaResultSegments(segments []scriptpkg.VidRushSegmentResult) []mediacert.ResultSegment {
 	out := make([]mediacert.ResultSegment, 0, len(segments))
 	for _, seg := range segments {
+		profile := seg.CanonicalSemanticProfile()
+		insights := seg.Insights
+		if insights.VisualProfile == nil {
+			visual := scriptpkg.BuildSegmentVisualProfile(profile)
+			insights.VisualProfile = &visual
+		}
 		out = append(out, mediacert.ResultSegment{
-			SegmentID:      seg.SegmentID,
-			Position:       seg.Position,
-			SourceText:     seg.Text,
-			SourceTextHash: seg.TextHash,
-			Insights:       seg.Insights,
-			Assets:         seg.Assets,
+			SegmentID:       seg.SegmentID,
+			Position:        seg.Position,
+			SourceText:      seg.Text,
+			SourceTextHash:  seg.TextHash,
+			SemanticProfile: &profile,
+			Insights:        insights,
+			Assets:          seg.Assets,
 		})
 	}
 	return out
