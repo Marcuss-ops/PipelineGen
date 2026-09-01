@@ -224,6 +224,19 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if dbs.Jobs != nil {
+		// Generation submission writes script.generate.queued to the
+		// execution-plane outbox. The handler is a validation-only consumer;
+		// register the same typed handler on that plane so the event is acked
+		// there instead of being dead-lettered as "no handler registered".
+		queuedHandler, queuedErr := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
+		if queuedErr != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: split jobs script.generate.queued handler: %w", queuedErr)
+		}
+		if regErr := jobsRegistry.Register(queuedHandler); regErr != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: register split jobs script.generate.queued handler: %w", regErr)
+		}
+	}
 
 	// Derived performance projection: job.completed events → performance_runs/
 	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
