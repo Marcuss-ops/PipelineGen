@@ -2,9 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
@@ -46,17 +48,19 @@ type stubMediaSampler struct {
 	winnerID  string
 	err       error
 	calls     int
-	lastCands []MediaSamplerCandidate
+	lastCands []scriptpkg.SegmentAssetCandidate
 }
 
-func (s *stubMediaSampler) SampleScene(_ context.Context, _, _ string, _ []string, candidates []MediaSamplerCandidate, _ bool) ([]MediaSamplerResult, string, error) {
+func (s *stubMediaSampler) Sample(_ context.Context, _, _ string, _ []string, candidates []scriptpkg.SegmentAssetCandidate, _ bool) (string, error) {
 	s.calls++
 	s.lastCands = candidates
 	if s.err != nil {
-		return nil, "", s.err
+		return "", s.err
 	}
-	return nil, s.winnerID, nil
+	return s.winnerID, nil
 }
+
+var _ scriptports.MediaSamplerPort = (*stubMediaSampler)(nil)
 
 // stubMediaCertifier is a MediaCertifierPort stub returning a fixed report.
 type stubMediaCertifier struct {
@@ -85,10 +89,15 @@ func (s stubBarrier) WaitForVidRush(_ context.Context, _ string) ([]scriptpkg.Vi
 }
 
 func greekSaladEntities() []VisualEntity {
+	text := "Greek salad contains tomatoes, feta cheese and olives."
+	span := func(value string, score float32) VisualEntity {
+		start := strings.Index(text, value)
+		return VisualEntity{Text: value, Score: score, Start: start, End: start + len(value), Evidence: value}
+	}
 	return []VisualEntity{
-		{Text: "feta", Score: 0.9, Start: 0, End: 4, Evidence: "feta"},
-		{Text: "tomatoes", Score: 0.85, Start: 0, End: 8, Evidence: "tomatoes"},
-		{Text: "olives", Score: 0.8, Start: 0, End: 6, Evidence: "olives"},
+		span("feta", 0.9),
+		span("tomatoes", 0.85),
+		span("olives", 0.8),
 	}
 }
 
@@ -126,6 +135,23 @@ func TestSceneIRSegmentEnricherCompilesIdentityAndExtractsEntities(t *testing.T)
 	for _, e := range result.Insights.Entities {
 		require.NotEmpty(t, e.Value)
 	}
+}
+
+// TestSceneIRSegmentEnricherPrefersCanonicalSegmentID prevents the legacy
+// scene-N identifier from replacing the source segment identity.
+func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: greekSaladEntities()})
+	require.NoError(t, err)
+
+	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+		ID:        "scene-1",
+		SegmentID: "mediterranean-01-greek-salad",
+		Index:     0,
+		Text:      "Greek salad contains tomatoes, feta cheese and olives.",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "mediterranean-01-greek-salad", result.SegmentID)
+	require.Equal(t, "scene-1", result.SceneID)
 }
 
 // TestSemanticProviderResolverBindsWinnerFromLocalFirst pins the Fase 4 +

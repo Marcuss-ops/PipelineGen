@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -21,9 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
@@ -250,16 +250,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// VidRush enrichment (entities → queries → provider fan-out) overlap in the
 	// real flow instead of running as two sequential blocks. The Runner builds
 	// a fresh coordinator per run from these immutable dependencies.
-	var vidRushEntityExtractor documentadapters.EntityExtractor
-	if root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptGen.GetClient() != nil {
-		primary := ollamaadapters.NewOllamaEntityExtractorAdapter(root.AI.ScriptGen.GetClient())
-		// Keep the durable path source-grounded when the model returns an
-		// empty/placeholder scene: the deterministic CPU extractor is the
-		// fail-safe semantic fallback, never a fabricated success.
-		vidRushEntityExtractor = documentadapters.NewFallbackEntityExtractor(primary, localnlp.NewHybridExtractor())
-	} else {
-		vidRushEntityExtractor = localnlp.NewHybridExtractor()
-	}
+	// VidRush entity decisions are deterministic and source-grounded. LLM
+	// extraction is intentionally not wired here: Ollama may enrich script
+	// copy, but it must not own the visual entities that drive media search.
+	var vidRushEntityExtractor entityports.EntityExtractor = visualNER
 
 	// ── Image Search Intent resolver (capabilities/imagesearch) ────────
 	// The deterministic editorial/visual decision layer the golden battery
@@ -272,19 +266,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
-	vidRushEnricher := documentadapters.NewVidRushSegmentEnricher(vidRushEntityExtractor, vidRushCache, vidRushMetrics)
-	// The enricher consumes the SAME resolver: the ordered image search
-	// queries (primary first, negated excluded) drive the segment fan-out.
-	vidRushEnricher.WithImageSearchResolver(imageSearchResolver)
 	var vidRushFanout scriptgen.SegmentProviderResolver
 	if vidRushProviders != nil {
 		var entityImageCatalogRepo entitycatalog.Repository
 		if root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithCatalog(
-			&documentadapters.VidRushRegistryClipSearcher{Registry: vidRushProviders},
-			&documentadapters.VidRushRegistryImageSearcher{Registry: vidRushProviders},
+		registryMediaResolver := &documentadapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
+		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithResolver(
+			registryMediaResolver,
 			vidRushCache,
 			entityImageCatalogRepo,
 			vidRushMetrics,
@@ -299,14 +289,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics)
-	}
-	semanticEnricher := vidRushEnricher
-	if visualNER != nil {
-		semanticEnricher = nil
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler)
 	}
 	pipeline := &scriptgen.VidRushPipeline{
-		Enricher:         semanticEnricher,
+		// SceneIRSegmentEnricher is constructed by Runner.beginVidRush from
+		// NERPort. SceneIR is the only semantic enrichment path wired here.
+		Enricher:         nil,
 		ProviderResolver: vidRushFanout,
 		Materializer:     vidRushMaterializer,
 		Metrics:          vidRushMetrics,
@@ -316,15 +304,35 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
 		NERPort:      visualNER,
 		SamplerPort:  mediaSampler,
+		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
+			return mediacert.Certify(spec, result), nil
+		}),
+		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
 	}
-	if root.Process != nil && root.Process.QdrantSearcher != nil && root.Repos != nil && root.Repos.Assets != nil {
+	// Local Stock Intelligence is the canonical resolver path. Qdrant is
+	// search projection, SQLite media_assets is truth, and the provider
+	// registry is consulted only by the resolver's explicit fallback policy.
+	if root.Process != nil && root.Process.QdrantSearcher != nil && root.Repos != nil && root.Repos.AssetsStore != nil && vidRushProviders != nil {
 		var embedder qdrantsearch.TextEmbedder
 		if cfg.ClipIndexer.ServerURL != "" {
 			embedder = qdrantsearch.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
 		}
 		if embedder != nil {
 			local := stockintelligence.QdrantLocalSearchAdapter{Searcher: root.Process.QdrantSearcher, Embedder: embedder, VectorName: "text"}
-			_ = local
+			hydrator := stockintelligence.SQLiteAssetHydrator{Store: root.Repos.AssetsStore}
+			provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
+			sampler := func(ctx context.Context, candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
+				converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+				for _, candidate := range candidates {
+					converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
+				}
+				return mediaSampler.Sample(ctx, segmentID, subject, terms, converted, false)
+			}
+			if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
+				if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
+					pipeline.StockResolverPort = service
+				}
+			}
 		}
 	}
 	runner.SetVidRushPipeline(pipeline)
@@ -375,6 +383,30 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		zap.Bool("serial_mode", cfg.Scripts.SerialMode))
 
 	return runner, nil
+}
+
+// buildRuntimeMediaCertSpec projects only the resolved plan contract into
+// MediaCert. Semantic rules remain exclusively in mediacert; this function
+// supplies run identity and policy, never a second rule engine.
+func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
+	spec := mediacert.Spec{VideoProvider: scriptpkg.VidRushProviderArtlist}
+	if plan == nil {
+		return spec
+	}
+	spec.Segments = len(plan.Segments)
+	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
+	spec.ImagesPerSegment = plan.ImagesPerScene
+	for _, segment := range plan.Segments {
+		id := strings.TrimSpace(segment.ID)
+		if id == "" {
+			continue
+		}
+		subject := strings.TrimSpace(segment.Topic)
+		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
+			ID: id, Subject: subject, WinnerSubjectMatch: subject,
+		})
+	}
+	return spec
 }
 
 // wireRenderAttemptRecorder builds the SQLite render-attempt analytics

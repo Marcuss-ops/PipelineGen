@@ -19,8 +19,7 @@ import (
 
 // VidRushBarrier is the run-scoped final barrier for incremental VidRush
 // enrichment. The runner awaits it after generation completes; it blocks only
-// for enrichments still running and never re-runs the whole-document
-// EntitiesProcessor.
+// for enrichments still running and never re-runs a whole-document extractor.
 type VidRushBarrier interface {
 	WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error)
 }
@@ -477,8 +476,8 @@ func (c *VidRushIncrementalCoordinator) Wait(ctx context.Context) ([]scriptpkg.V
 
 // WaitForVidRush is the run-scoped final barrier. It validates that the
 // requested run owns this coordinator (fail closed on mismatch), then waits
-// only for the enrichments still running — it never re-runs the whole-document
-// EntitiesProcessor — and returns the immutable results in canonical order.
+// only for the enrichments still running — it never re-runs whole-document
+// extraction — and returns the immutable results in canonical order.
 func (c *VidRushIncrementalCoordinator) WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
 	if runID == "" {
 		return nil, fmt.Errorf("vidrush barrier: missing run id")

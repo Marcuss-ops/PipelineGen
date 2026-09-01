@@ -44,7 +44,7 @@ func (VidRushProviderSelector) Select(plan *scriptpkg.ResolvedGenerationPlan, se
 		}, nil
 	}
 
-	profile := profileFromVidRushSegment(segment)
+	profile := canonicalSegmentProfile(segment)
 	if profile.SegmentID == "" {
 		profile.SegmentID = segment.SegmentID
 	}

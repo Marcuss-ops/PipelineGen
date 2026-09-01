@@ -76,17 +76,15 @@ func Compile(in CompileInput) (SceneIR, error) {
 		narration = segment.SourceText
 	}
 
-	fullProfile := buildFullProfile(segment, in.EntityResult, in.UnderstandingModelVersion, in.PromptVersion)
-	compact := projectSemanticProfile(fullProfile, segment, in.EntityResult)
+	profile := buildFullProfile(segment, in.EntityResult, in.UnderstandingModelVersion, in.PromptVersion)
 
 	ir := SceneIR{
-		SegmentID:       segment.ID,
-		Position:        segment.Position,
-		SourceText:      segment.SourceText,
-		SourceTextHash:  segment.SourceTextHash,
-		NarrationText:   narration,
-		Profile:         compact,
-		SemanticProfile: fullProfile,
+		SegmentID:      segment.ID,
+		Position:       segment.Position,
+		SourceText:     segment.SourceText,
+		SourceTextHash: segment.SourceTextHash,
+		NarrationText:  narration,
+		Profile:        *profile,
 	}
 	return ir, nil
 }
@@ -118,97 +116,8 @@ func buildFullProfile(segment script.CanonicalSegment, res *script.EntityResult,
 		ExecutionMode:             segment.ExecutionMode.Normalize(),
 		UnderstandingModelVersion: modelVersion,
 		PromptVersion:             promptVersion,
+		Topic:                     strings.TrimSpace(segment.SourceText),
+		VisualTerms:               []script.WeightedKeyword{{Value: strings.TrimSpace(segment.SourceText), Confidence: 1}},
 	}
 	return &profile
-}
-
-// projectSemanticProfile projects the canonical SegmentSemanticProfile into
-// the compact SceneIR SemanticProfile, guaranteeing a non-empty Subject
-// and at least one VisualTerm. The projection goes through the canonical
-// script.BuildSegmentVisualProfile so the subject/action/context/terms
-// derivation is owned in exactly one place; when that produces an empty
-// subject (no entities, no keywords, no visual terms), the source text
-// itself becomes the subject so a compiled SceneIR can never reach the
-// query planners with visual_profile = null.
-func projectSemanticProfile(profile *script.SegmentSemanticProfile, segment script.CanonicalSegment, res *script.EntityResult) SemanticProfile {
-	visual := script.BuildSegmentVisualProfile(*profile)
-	compact := SemanticProfile{
-		Subject:     strings.TrimSpace(visual.Subject),
-		VisualTerms: append([]string(nil), visual.Terms...),
-		Context:     strings.TrimSpace(visual.Context),
-		Action:      strings.TrimSpace(visual.Action),
-	}
-	if compact.Subject == "" {
-		compact.Subject = deriveMinimalSubject(segment, res)
-	}
-	if len(compact.VisualTerms) == 0 {
-		compact.VisualTerms = deriveMinimalVisualTerms(segment, res, compact.Subject)
-	}
-	if compact.Action == "" {
-		compact.Action = "preparation"
-	}
-	if compact.Context == "" {
-		compact.Context = "mediterranean cuisine"
-	}
-	return compact
-}
-
-// deriveMinimalSubject produces a non-empty subject when the canonical
-// projection had none. It prefers the first important phrase from the
-// entity result, then the first noun chunk, then the trimmed source text.
-// It never invents a subject that is not grounded in the input.
-func deriveMinimalSubject(segment script.CanonicalSegment, res *script.EntityResult) string {
-	if res != nil {
-		for _, phrase := range res.ImportantPhrases {
-			if v := strings.TrimSpace(phrase); v != "" {
-				return v
-			}
-		}
-		for _, chunk := range res.NounChunks {
-			if v := strings.TrimSpace(chunk); v != "" {
-				return v
-			}
-		}
-		if v := strings.TrimSpace(res.Topic); v != "" {
-			return v
-		}
-	}
-	return strings.TrimSpace(segment.SourceText)
-}
-
-// deriveMinimalVisualTerms produces at least one visual term when the
-// canonical projection had none. It prefers entity-result noun chunks and
-// important phrases, then falls back to the subject itself so the compact
-// profile is never empty (a scene with a subject but zero visual terms
-// still has a query planners can ground).
-func deriveMinimalVisualTerms(segment script.CanonicalSegment, res *script.EntityResult, subject string) []string {
-	var terms []string
-	seen := make(map[string]struct{})
-	add := func(v string) {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			return
-		}
-		key := strings.ToLower(v)
-		if _, ok := seen[key]; ok {
-			return
-		}
-		seen[key] = struct{}{}
-		terms = append(terms, v)
-	}
-	if res != nil {
-		for _, chunk := range res.NounChunks {
-			add(chunk)
-		}
-		for _, phrase := range res.ImportantPhrases {
-			add(phrase)
-		}
-		for _, word := range res.ImportantWords {
-			add(word)
-		}
-	}
-	if len(terms) == 0 && subject != "" {
-		add(subject)
-	}
-	return terms
 }

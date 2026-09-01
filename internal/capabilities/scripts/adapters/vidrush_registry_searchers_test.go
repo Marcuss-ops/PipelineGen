@@ -77,7 +77,7 @@ func (*boundedVidRushSearchProvider) Verify(context.Context, scriptports.LocalAr
 	return scriptports.VerifiedArtifact{}, nil
 }
 
-func TestVidRushRegistryClipSearcherUsesBoundedFanout(t *testing.T) {
+func TestVidRushRegistryMediaResolverUsesBoundedFanout(t *testing.T) {
 	provider := &boundedVidRushSearchProvider{}
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -86,7 +86,7 @@ func TestVidRushRegistryClipSearcherUsesBoundedFanout(t *testing.T) {
 	registry.Freeze()
 
 	phrases := []string{"one", "two", "three", "four", "five"}
-	matches, err := (&VidRushRegistryClipSearcher{Registry: registry}).SearchClips(context.Background(), "scene", phrases)
+	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", phrases)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestVidRushRegistryClipSearcherUsesBoundedFanout(t *testing.T) {
 	}
 }
 
-func TestVidRushRegistryClipSearcherPreservesPartialResultsAndError(t *testing.T) {
+func TestVidRushRegistryMediaResolverPreservesPartialResultsAndError(t *testing.T) {
 	provider := &boundedVidRushSearchProvider{failQuery: "bad"}
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -109,7 +109,7 @@ func TestVidRushRegistryClipSearcherPreservesPartialResultsAndError(t *testing.T
 	}
 	registry.Freeze()
 
-	matches, err := (&VidRushRegistryClipSearcher{Registry: registry}).SearchClips(context.Background(), "scene", []string{"good", "bad"})
+	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", []string{"good", "bad"})
 	if err == nil || !strings.Contains(err.Error(), "bad") {
 		t.Fatalf("error = %v, want failed query context", err)
 	}
@@ -118,7 +118,7 @@ func TestVidRushRegistryClipSearcherPreservesPartialResultsAndError(t *testing.T
 	}
 }
 
-func TestVidRushRegistryClipSearcherRetriesRateLimit(t *testing.T) {
+func TestVidRushRegistryMediaResolverRetriesRateLimit(t *testing.T) {
 	provider := &rateLimitedVidRushSearchProvider{}
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -126,7 +126,7 @@ func TestVidRushRegistryClipSearcherRetriesRateLimit(t *testing.T) {
 	}
 	registry.Freeze()
 
-	matches, err := (&VidRushRegistryClipSearcher{Registry: registry}).SearchClips(context.Background(), "scene", []string{"coastal road"})
+	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", []string{"coastal road"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,8 +227,11 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	if artlist.calls.Load() != 1 || images.calls.Load() != 1 {
 		t.Fatalf("artlist calls=%d images calls=%d, want 1 each", artlist.calls.Load(), images.calls.Load())
 	}
-	if result.Assets.PrimaryVideo == nil || result.Assets.PrimaryVideo.Provider != "artlist" {
-		t.Fatalf("primary video = %+v, want artlist primary", result.Assets.PrimaryVideo)
+	if result.Assets.PrimaryVideo != nil {
+		t.Fatalf("provider fanout selected a primary: %+v", result.Assets.PrimaryVideo)
+	}
+	if len(result.Assets.Candidates) == 0 {
+		t.Fatal("expected discovered candidates")
 	}
 	if len(result.Assets.SecondaryImages) == 0 {
 		t.Fatal("expected internet image candidates in secondary images")

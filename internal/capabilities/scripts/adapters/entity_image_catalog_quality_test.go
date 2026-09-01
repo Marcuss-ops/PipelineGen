@@ -27,7 +27,7 @@ func TestEntityImageCatalogRejectsWrongPersonWithGoodTechnicalQuality(t *testing
 		Entity: "Michael B. Jordan", Query: "Michael Jordan",
 		SourceURL: "https://images.example/michael-b-jordan.jpg", Width: 1920, Height: 1080,
 	}}}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("semantic-wrong", "Michael Jordan"))
 	if err != nil {
@@ -54,7 +54,7 @@ func TestEntityImageCatalogRejectsTechnicallyInsufficientCandidate(t *testing.T)
 		Entity: "Michael Jordan", Query: "Michael Jordan",
 		SourceURL: "https://images.example/michael-jordan-small.jpg", Width: 320, Height: 240,
 	}}}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("technical-small", "Michael Jordan"))
 	if err != nil {
@@ -81,7 +81,7 @@ func TestEntityImageCatalogAcceptsExactPersonAndPersistsQualityMetadata(t *testi
 		Entity: "MICHAEL   JORDAN", Query: "Michael Jordan",
 		SourceURL: "https://images.example/michael-jordan.jpg", Width: 1920, Height: 1080,
 	}}}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("semantic-exact", "Michael Jordan"))
 	if err != nil {

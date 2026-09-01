@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -282,150 +281,6 @@ func weightedKeywordValues(keywords []scriptpkg.WeightedKeyword) []string {
 		}
 	}
 	return out
-}
-
-// buildArtlistQueries is retained only for source compatibility with legacy tests.
-// Production callers use script.BuildArtlistQueries directly.
-func buildArtlistQueries(segmentText string, explicitKeywords []string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
-	candidates := make([]string, 0, 12+len(explicitKeywords))
-	for _, keyword := range explicitKeywords {
-		if keyword = strings.TrimSpace(keyword); keyword != "" {
-			candidates = append(candidates, keyword)
-		}
-	}
-	explicitCount := len(candidates)
-	if visual := compactVisualQuery(segmentText); visual != "" {
-		candidates = append(candidates, compactArtlistQuery(visual))
-	}
-	for _, entity := range entities {
-		v := strings.TrimSpace(entity.Value)
-		if v == "" {
-			continue
-		}
-		candidates = append(candidates, v)
-	}
-	candidates = append(candidates, phrases...)
-	return uniqueLimitedStrings(append(candidates[:explicitCount], normalizeRetrievalQueries(candidates[explicitCount:], 6)...), 5)
-}
-
-// buildImageQueries is retained only for source compatibility with legacy tests.
-// Production callers use script.BuildImageQueries directly.
-func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
-	candidates := make([]string, 0, 12)
-	if visual := compactVisualQuery(segmentText); visual != "" {
-		candidates = append(candidates, visual)
-	}
-	for _, entity := range entities {
-		v := strings.TrimSpace(entity.Value)
-		if v == "" {
-			continue
-		}
-		candidates = append(candidates, v)
-	}
-	candidates = append(candidates, phrases...)
-	return normalizeRetrievalQueries(candidates, 8)
-}
-
-// compactVisualQuery converts a source or narration sentence into a bounded
-// provider query. Retrieval providers rank short visual noun phrases more
-// reliably than model prose containing several clauses and editorial filler.
-// It is deterministic, language-agnostic at the tokenizer boundary, and
-// never replaces the original segment text or its hash.
-func compactVisualQuery(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	if end := strings.IndexAny(text, ".!?\n"); end > 0 {
-		text = text[:end]
-	}
-	// A very long sentence is narration, not a retrieval query. Moderately
-	// sized source descriptions may still provide useful visual grounding;
-	// compact those only after stop-word removal.
-	if len(textutil.Tokenize(text)) > 15 {
-		return ""
-	}
-	tokens := textutil.TokenizeWithStopWords(text, linguistics.DefaultStopWords())
-	if len(tokens) > 8 {
-		tokens = tokens[:8]
-	}
-	if len(tokens) < 2 {
-		return ""
-	}
-	return normalizeRetrievalQuery(strings.Join(tokens, " "), 8)
-}
-
-func compactArtlistQuery(query string) string {
-	tokens := textutil.TokenizeWithStopWords(query, linguistics.DefaultStopWords())
-	if len(tokens) > 6 {
-		tokens = tokens[len(tokens)-6:]
-	}
-	if len(tokens) < 2 {
-		return ""
-	}
-	return normalizeRetrievalQuery(strings.Join(tokens, " "), 6)
-}
-
-func normalizeRetrievalQueries(candidates []string, maxWords int) []string {
-	if maxWords < 2 {
-		return nil
-	}
-	out := make([]string, 0, minInt(5, len(candidates)))
-	seen := make(map[string]struct{}, len(candidates))
-	for _, candidate := range candidates {
-		query := normalizeRetrievalQuery(candidate, maxWords)
-		if query == "" {
-			continue
-		}
-		key := strings.ToLower(query)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, query)
-		if len(out) == 5 {
-			break
-		}
-	}
-	return out
-}
-
-func normalizeRetrievalQuery(raw string, maxWords int) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.ContainsAny(raw, "\n\r.!?,;:\"`") {
-		return ""
-	}
-	lower := strings.ToLower(raw)
-	for _, placeholder := range []string{
-		"type", "subject", "item", "concrete keyword", "short visual concept phrase",
-		"cinematic scene", "action scene", "visual scene", "visual concept",
-	} {
-		if lower == placeholder || strings.Contains(lower, placeholder) {
-			return ""
-		}
-	}
-	rawTokens := textutil.Tokenize(raw)
-	if len(rawTokens) > maxWords {
-		return ""
-	}
-	tokens := textutil.TokenizeWithStopWords(raw, linguistics.DefaultStopWords())
-	if len(tokens) < 2 || len(tokens) > maxWords {
-		return ""
-	}
-	for _, token := range tokens {
-		if retrievalNoiseWords[token] {
-			return ""
-		}
-	}
-	return strings.Join(tokens, " ")
-}
-
-var retrievalNoiseWords = map[string]bool{
-	"best": true, "understood": true, "often": true, "relentless": true,
-	"endeavor": true, "endeavors": true, "march": true, "moment": true,
-	"moments": true, "important": true, "importance": true, "history": true,
-	"humanity": true, "tapestry": true, "manifestation": true, "manifestations": true,
-	"ingenuity": true, "perhaps": true, "progress": true, "advancement": true,
 }
 
 func versionedSegmentCacheKey(stage string, version scriptports.CacheVersion, parts ...string) string {
@@ -982,7 +837,6 @@ func DeduplicateVidRushSegments(segments []scriptpkg.VidRushSegmentResult) []scr
 func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.VidRushSegmentResult, forceRefresh bool, cache scriptports.VidRushCachePort) []scriptpkg.VidRushSegmentResult {
 	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
 	segmentIndex := make(map[string]int, len(segments))
-	lastAssetByProvider := make(map[string]string)
 	boundAssetOwners := make(map[string]string)
 	artlistContext, artlistContextErr := newArtlistIsolationContext(segments)
 	for _, original := range segments {
@@ -1033,12 +887,9 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			fmt.Printf("MEDITERRANEAN deterministic secondary for %s queries %v\n", seg.SegmentID, seg.Insights.ImageQueries)
 			seg.Assets.SecondaryImages = mediterraneanSecondaryImages(seg)
 		}
-		if primary := chooseVidRushPrimary(valid, lastAssetByProvider); primary != nil {
-			primary.SelectionReason = "highest scored provenance-valid candidate for segment"
-			seg.Assets.PrimaryVideo = primary
-			lastAssetByProvider[primary.Provider] = primary.AssetID
-			seg.Assets.SelectionReason = primary.SelectionReason
-		} else if len(seg.Assets.SecondaryImages) > 0 {
+		// Binding finalization validates and persists discovered candidates. It
+		// deliberately does not choose a winner; MediaSampler owns selection.
+		if len(seg.Assets.SecondaryImages) > 0 {
 			// Image-only plans have no primary video by design. The durable,
 			// rights-verified secondary image set is nevertheless the scene's
 			// definitive VidRush binding and must be surfaced as such.
@@ -1047,63 +898,7 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			seg.Assets.PrimaryVideo = nil
 			seg.Assets.SelectionReason = "no provenance-valid candidate available"
 		}
-		// Mediterranean deterministic primary: ensure distinct Artlist winner per segment
-		// even when live Artlist search returned no verified candidate or hallucinated query.
-		if len(seg.Insights.ArtlistQueries) == 3 {
-			needsPrimary := seg.Assets.PrimaryVideo == nil
-			if !needsPrimary {
-				// If primary query is hallucinated (not in manual ArtlistQueries), replace.
-				q := strings.ToLower(strings.TrimSpace(seg.Assets.PrimaryVideo.Query))
-				foundInManual := false
-				for _, mq := range seg.Insights.ArtlistQueries {
-					if strings.ToLower(strings.TrimSpace(mq)) == q {
-						foundInManual = true
-						break
-					}
-				}
-				if !foundInManual && len(seg.Insights.ArtlistQueries) > 0 {
-					needsPrimary = true
-				}
-				// Also ensure asset not reused across segments.
-				if !needsPrimary {
-					key := strings.ToLower(strings.TrimSpace(seg.Assets.PrimaryVideo.AssetID))
-					if owner, exists := boundAssetOwners[key]; exists && owner != seg.SegmentID {
-						needsPrimary = true
-					}
-				}
-			}
-			if needsPrimary {
-				medPrimary := mediterraneanPrimaryVideo(seg)
-				seg.Assets.PrimaryVideo = medPrimary
-				seg.Assets.Candidates = append(seg.Assets.Candidates, *medPrimary)
-				seg.Assets.SelectionReason = medPrimary.SelectionReason
-				lastAssetByProvider[medPrimary.Provider] = medPrimary.AssetID
-			} else if seg.Assets.PrimaryVideo != nil {
-				// Ensure distinct asset_id per segment.
-				seg.Assets.PrimaryVideo.AssetID = fmt.Sprintf("artlist-%s-%s", strings.ToLower(strings.ReplaceAll(seg.SegmentID, "_", "-")), segmentTextHash(seg.SegmentID)[:8])
-				seg.Assets.PrimaryVideo.SegmentID = seg.SegmentID
-				seg.Assets.PrimaryVideo.Position = seg.Position
-				seg.Assets.PrimaryVideo.TextHash = seg.TextHash
-				seg.Assets.PrimaryVideo.Provider = scriptpkg.VidRushProviderArtlist
-				if len(seg.Assets.PrimaryVideo.Query) == 0 && len(seg.Insights.ArtlistQueries) > 0 {
-					seg.Assets.PrimaryVideo.Query = seg.Insights.ArtlistQueries[0]
-				}
-				// Update candidates entry for this primary if present.
-				for i := range seg.Assets.Candidates {
-					if strings.EqualFold(seg.Assets.Candidates[i].AssetID, seg.Assets.PrimaryVideo.AssetID) {
-						seg.Assets.Candidates[i] = *seg.Assets.PrimaryVideo
-					}
-				}
-			}
-			// Ensure candidate set reflects Mediterranean deterministic primary.
-			seg.Assets.CandidateSetHash = candidateSetHash(seg.Assets.Candidates)
-			// Track bound owners for cross-segment deduplication.
-			if seg.Assets.PrimaryVideo != nil {
-				boundAssetOwners[strings.ToLower(strings.TrimSpace(seg.Assets.PrimaryVideo.AssetID))] = seg.SegmentID
-			}
-		} else {
-			seg.Assets.CandidateSetHash = candidateSetHash(valid)
-		}
+		seg.Assets.CandidateSetHash = candidateSetHash(valid)
 		for i := range seg.Assets.Candidates {
 			seg.Assets.Candidates[i].CandidateSetHash = seg.Assets.CandidateSetHash
 		}
@@ -1257,133 +1052,6 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		return true
 	}
 	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.LegacyFileMD5) != "" && strings.TrimSpace(candidate.DriveLink) != ""
-}
-
-// VidRushRankingWeights is the shared deterministic ranking policy used by
-// every provider. Scores are expected in the [0,1] range and are clamped.
-type VidRushRankingWeights struct {
-	Relevance           float64
-	TechnicalQuality    float64
-	Rights              float64
-	Diversity           float64
-	ProviderReliability float64
-}
-
-var defaultVidRushRankingWeights = VidRushRankingWeights{
-	Relevance: 0.40, TechnicalQuality: 0.20, Rights: 0.20, Diversity: 0.10, ProviderReliability: 0.10,
-}
-
-func ScoreVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, repeated bool) float64 {
-	return scoreVidRushCandidateWithProfile(candidate, scriptpkg.SegmentSemanticProfile{}, repeated)
-}
-
-func scoreVidRushCandidateWithProfile(candidate scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile, repeated bool) float64 {
-	if candidate.RelevanceScore == 0 && candidate.TechnicalQualityScore == 0 && candidate.RightsScore == 0 && candidate.DiversityScore == 0 && candidate.ProviderReliability == 0 && candidate.SemanticScore == 0 && len(profile.Keywords) == 0 && len(profile.VisualTerms) == 0 && len(profile.Entities) == 0 && strings.TrimSpace(profile.Topic) == "" {
-		return candidate.Score
-	}
-	clamp := func(v float64) float64 {
-		if v < 0 {
-			return 0
-		}
-		if v > 1 {
-			return 1
-		}
-		return v
-	}
-	w := defaultVidRushRankingWeights
-	semantic := clamp(candidate.SemanticScore)
-	if semantic == 0 {
-		semantic = profileSemanticMatch(candidate, profile)
-	}
-	relevance := clamp(candidate.RelevanceScore)
-	if relevance == 0 {
-		relevance = semantic
-	}
-	score := w.Relevance*relevance +
-		w.TechnicalQuality*clamp(candidate.TechnicalQualityScore) +
-		w.Rights*clamp(candidate.RightsScore) +
-		w.Diversity*clamp(candidate.DiversityScore) +
-		w.ProviderReliability*clamp(candidate.ProviderReliability) + 0.10*semantic
-	if repeated {
-		score *= 0.75
-	}
-	return score
-}
-
-func compareVidRushPrimaryCandidates(a, b scriptpkg.SegmentAssetCandidate) int {
-	aScore := ScoreVidRushCandidate(a, false)
-	bScore := ScoreVidRushCandidate(b, false)
-	if aScore > bScore {
-		return 1
-	}
-	if aScore < bScore {
-		return -1
-	}
-	// Stable deterministic tie-breakers: provider, then asset identity.
-	if strings.ToLower(a.Provider) < strings.ToLower(b.Provider) {
-		return 1
-	}
-	if strings.ToLower(a.Provider) > strings.ToLower(b.Provider) {
-		return -1
-	}
-	if strings.ToLower(a.AssetID) < strings.ToLower(b.AssetID) {
-		return 1
-	}
-	if strings.ToLower(a.AssetID) > strings.ToLower(b.AssetID) {
-		return -1
-	}
-	return 0
-}
-
-func chooseVidRushPrimaryWithProfile(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
-	var best *scriptpkg.SegmentAssetCandidate
-	for i := range candidates {
-		candidate := candidates[i]
-		if candidate.Provider != scriptpkg.VidRushProviderArtlist && candidate.Provider != scriptpkg.VidRushProviderYouTube {
-			continue
-		}
-		repeated := previous[candidate.Provider] == candidate.AssetID
-		if repeated && len(candidates) > 1 {
-			continue
-		}
-		candidate.Score = scoreVidRushCandidateWithProfile(candidate, profile, repeated)
-		if best == nil || compareVidRushPrimaryCandidates(candidate, *best) > 0 {
-			selected := candidate
-			best = &selected
-		}
-	}
-	return best
-}
-
-func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
-	return chooseVidRushPrimaryWithProfile(candidates, previous, scriptpkg.SegmentSemanticProfile{})
-}
-
-func profileSemanticMatch(candidate scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) float64 {
-	if len(profile.Keywords) == 0 && len(profile.VisualTerms) == 0 && len(profile.Entities) == 0 && strings.TrimSpace(profile.Topic) == "" {
-		return 0
-	}
-	text := strings.ToLower(strings.Join([]string{candidate.Query, candidate.Entity, candidate.SourceURL}, " "))
-	terms := []string{profile.Topic}
-	for _, keyword := range profile.Keywords {
-		terms = append(terms, keyword.Value)
-	}
-	for _, term := range profile.VisualTerms {
-		terms = append(terms, term.Value)
-	}
-	for _, entity := range profile.Entities {
-		terms = append(terms, entity.Value)
-	}
-	matched := 0
-	for _, term := range terms {
-		if value := strings.TrimSpace(term); value != "" && strings.Contains(text, strings.ToLower(value)) {
-			matched++
-		}
-	}
-	if matched == 0 {
-		return 0
-	}
-	return float64(matched) / float64(len(terms))
 }
 
 func preserveSelectedVidRushImages(selected, valid []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {

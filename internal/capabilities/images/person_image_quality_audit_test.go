@@ -215,7 +215,7 @@ func inspectCatalogTables(t *testing.T, ctx context.Context, client *http.Client
 	db := openLiveEntityImageCatalog(t, dbPath)
 	repo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
 	searcher := newLiveCatalogDDGSearcher(client)
-	processor := adapters.NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := adapters.NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := liveCatalogPlan()
 
 	// Populate via the real search→persist path.

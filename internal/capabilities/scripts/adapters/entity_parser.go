@@ -4,8 +4,8 @@
 // EntityResult.Raw) and the typed Persons/Places/Concepts slices
 // that downstream dashboards read at runtime.
 //
-// PR 7 (June 2026): processor_entities.go now calls ParseEntities
-// instead of stuffing the raw string into EntityResult.Raw. With
+// PR 7 (June 2026): the entity boundary calls ParseEntities instead
+// of stuffing the raw string into EntityResult.Raw. With
 // this, result.Artifacts.Entities.Persons is populated without
 // the consumer having to fall back to Raw.
 //

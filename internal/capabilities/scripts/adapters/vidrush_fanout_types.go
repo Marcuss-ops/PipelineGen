@@ -8,7 +8,6 @@ import (
 type vidRushProviderOutcome struct {
 	provider     string
 	candidates   []scriptpkg.SegmentAssetCandidate
-	primary      *scriptpkg.SegmentAssetCandidate
 	allCacheHits bool
 	err          error
 }

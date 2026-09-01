@@ -394,7 +394,7 @@ func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
 // SetVidRushBarrier wires the final barrier awaited after scene generation
 // completes. A nil barrier is safe and skips the wait; a non-nil barrier is
 // fail-closed (a barrier error fails the run) and blocks only for enrichments
-// still running, never re-running the whole-document EntitiesProcessor. This
+// still running, never re-running whole-document extraction. This
 // is the injection seam used by tests; per-run wiring registered by
 // beginVidRush takes precedence.
 func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {

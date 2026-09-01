@@ -93,7 +93,7 @@ func TestFixedMediaSkipsArtlistAndInternetImageSearch(t *testing.T) {
 		t.Fatalf("fixed scene entered Artlist search: calls=%d result=%+v", artlist.calls, artlistResult)
 	}
 
-	imageResult, err := NewInternetImagesProcessor(images).Process(context.Background(), plan, input)
+	imageResult, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,23 +128,8 @@ func TestFixedMediaBlocksIncrementalFanoutAndSourceFallback(t *testing.T) {
 	}
 }
 
-func TestFixedMediaSkipsRankerMaterializerAndSemanticQueryBuilding(t *testing.T) {
-	candidate := scriptpkg.SegmentAssetCandidate{AssetID: "intro-clip", Provider: "youtube", Score: .9}
-	reranker := &testCandidateReranker{}
-	profile := scriptpkg.SegmentSemanticProfile{ExecutionMode: scriptpkg.SceneExecutionFixedMedia, SegmentID: "intro-segment", TextHash: "intro-hash", Topic: "fixed"}
-	ranked := NewVidRushWindowRanker().RankWithOptionalReranker(context.Background(), reranker, []scriptpkg.SegmentAssetCandidate{candidate}, profile, 8000)
-	if reranker.calls != 0 || len(ranked) != 1 || ranked[0] != candidate {
-		t.Fatalf("fixed ranker changed candidates: calls=%d ranked=%+v", reranker.calls, ranked)
-	}
-
-	built := buildVidRushSegmentResult(context.Background(), nil, nil, scriptpkg.CanonicalSegment{
-		ID: "intro-segment", SceneID: "intro", Position: 0, Text: "fixed", TextHash: "intro-hash", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
-	}, nil, 5, 5, 5, 5, 5)
-	if len(built.Insights.ArtlistQueries) != 0 || len(built.Insights.ImageQueries) != 0 || !built.ExecutionMode.IsFixedMedia() {
-		t.Fatalf("fixed semantic builder produced downstream intent: %+v", built)
-	}
-
-	materializer := NewVidRushMaterializationProcessor(nil, nil)
+func TestFixedMediaSkipsMaterializerAndPreservesAuthoritativeAsset(t *testing.T) {
+	materializer := newTestMaterializationProcessor(nil, nil)
 	segment := fixedMediaSegment()
 	materialized, err := materializer.Materialize(context.Background(), nil, segment)
 	if err != nil {

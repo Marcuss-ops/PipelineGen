@@ -7,35 +7,22 @@ import (
 )
 
 func TestProfileFromVidRushSegmentUsesCanonicalInsights(t *testing.T) {
-	profile := profileFromVidRushSegment(scriptpkg.VidRushSegmentResult{
+	profile := canonicalSegmentProfile(scriptpkg.VidRushSegmentResult{
 		SegmentID: "seg-1", TextHash: "hash", Text: "tractor history",
-		Insights: scriptpkg.SegmentInsights{
-			Entities:         []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}},
-			NounChunks:       []string{"early gasoline tractor"},
-			ImportantWords:   []string{"tractor"},
-			ImportantPhrases: []string{"first gasoline tractor"},
-			ImageQueries:     []string{"early tractor"},
+		SemanticProfile: &scriptpkg.SegmentSemanticProfile{
+			SegmentID: "seg-1", TextHash: "hash",
+			Entities:    []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}},
+			VisualTerms: []scriptpkg.WeightedKeyword{{Value: "early gasoline tractor", Confidence: 1}},
+			Retrieval:   &scriptpkg.RetrievalIntent{Images: []string{"early tractor"}},
 		},
 	})
-	if profile.SegmentID != "seg-1" || len(profile.Entities) != 1 || len(profile.Keywords) != 1 {
+	if profile.SegmentID != "seg-1" || len(profile.Entities) != 1 {
 		t.Fatalf("unexpected profile: %+v", profile)
 	}
-	if len(profile.NounChunks) != 1 || len(profile.VisualTerms) != 1 || profile.VisualTerms[0].Value != "early gasoline tractor" {
-		t.Fatalf("noun chunks were not projected as canonical visual terms: %+v", profile)
+	if len(profile.VisualTerms) != 1 || profile.VisualTerms[0].Value != "early gasoline tractor" {
+		t.Fatalf("canonical visual terms were not preserved: %+v", profile)
 	}
-	if got := profileImageQueries(profile); len(got) != 1 || got[0] != "early tractor" {
-		t.Fatalf("image queries = %#v", got)
-	}
-}
-
-func TestScoreVidRushCandidateUsesProfileSemanticMatch(t *testing.T) {
-	profile := scriptpkg.SegmentSemanticProfile{
-		Topic:    "early gasoline tractor",
-		Keywords: []scriptpkg.WeightedKeyword{{Value: "farm machinery", Confidence: 1}},
-	}
-	matched := scriptpkg.SegmentAssetCandidate{Provider: scriptpkg.VidRushProviderArtlist, AssetID: "a", Query: "early gasoline tractor farm machinery"}
-	unmatched := scriptpkg.SegmentAssetCandidate{Provider: scriptpkg.VidRushProviderArtlist, AssetID: "b", Query: "abstract city skyline"}
-	if scoreVidRushCandidateWithProfile(matched, profile, false) <= scoreVidRushCandidateWithProfile(unmatched, profile, false) {
-		t.Fatalf("semantic profile did not improve matching candidate")
+	if profile.Retrieval == nil || len(profile.Retrieval.Images) != 1 || profile.Retrieval.Images[0] != "early tractor" {
+		t.Fatalf("canonical image queries were not preserved: %#v", profile.Retrieval)
 	}
 }

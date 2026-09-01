@@ -35,7 +35,7 @@ func TestEntityImageCatalogSamplePersonIdentitiesHaveUniquePoolsAndRanks(t *test
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &rankedIdentitySearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	samples := []struct {
 		name string
@@ -113,7 +113,7 @@ func TestEntityImageCatalogNormalizesPersonVariantsWithoutCreatingAnotherPool(t 
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &rankedIdentitySearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 
 	first, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan-original", "Michael Jordan"))
@@ -144,7 +144,7 @@ func TestEntityImageCatalogMiddleNameCreatesDistinctURLPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &rankedIdentitySearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 
 	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan", "Michael Jordan")); err != nil {

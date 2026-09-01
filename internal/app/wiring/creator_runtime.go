@@ -423,22 +423,6 @@ var _ = func() any { var _ *sql.DB = nil; return nil }
 func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegistry {
 	ppReg := adapters.NewPostProcessorRegistry(log)
 
-	// entities -> typed-fail adapter wrapped in BestEffort policy.
-	// PR-noop-adapters-purge (2026-07-25): the silent-success noop
-	// (which returned EntityResult{} with nil error) was replaced
-	// by NewUnavailableEntityExtractionAdapter (= fail-closed per
-	// godlike/07 NO-FAKE-AVAILABILITY). The BestEffort wrapper
-	// downgrades the processor policy so the Creator composes
-	// without a backend while the runtime surfaces typed errors
-	// when a plan requests entities.
-	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
-	entityProc := adapters.NewEntitiesProcessor(entityAdapter)
-	if !ppReg.Register(&creatorBestEffort{inner: entityProc, name: "entities"}) {
-		if log != nil {
-			log.Warn("creator: failed to register entities processor")
-		}
-	}
-
 	// metadata -> typed-fail adapter wrapped in BestEffort policy.
 	// PR-noop-adapters-purge (2026-07-25): see entities comment
 	// above — same godlike/07 NO-FAKE-AVAILABILITY rationale.

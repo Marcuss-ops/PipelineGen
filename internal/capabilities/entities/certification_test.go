@@ -129,13 +129,13 @@ type sceneEvidence struct {
 // compiles EntityTimeline → OverlayPlan → chronon.
 func certifyJob(t *testing.T, job certJob) {
 	t.Helper()
-	extractor := localnlp.NewHybridExtractor()
+	extractor := localnlp.NewExtractor()
 
 	// ── NLP phase + word timing fixtures ─────────────────────────
 	evidence := make([]sceneEvidence, len(job.scenes))
 	for i, scene := range job.scenes {
 		result, err := extractor.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
-			Text: scene.text, Title: job.title, Language: job.language, Device: localnlp.DeviceCPU, EntityCount: 10,
+			Text: scene.text, Title: job.title, Language: job.language, EntityCount: 10,
 		})
 		require.NoError(t, err, "scene %s: NLP extraction failed", scene.id)
 		sources := sourcesFromEntityResult(result)

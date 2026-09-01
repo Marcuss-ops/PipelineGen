@@ -36,10 +36,10 @@ func TestVidRushFanoutPlanPreservesProviderPolicyAndInputs(t *testing.T) {
 	}
 }
 
-func TestVidRushFanoutMergeKeepsCandidatesAndSelectsArtlistPrimary(t *testing.T) {
+func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	updated := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}
-	profile := profileFromVidRushSegment(updated)
+	profile := canonicalSegmentProfile(updated)
 	outcome := vidRushProviderOutcome{
 		provider: scriptpkg.VidRushProviderArtlist,
 		candidates: []scriptpkg.SegmentAssetCandidate{{
@@ -53,7 +53,7 @@ func TestVidRushFanoutMergeKeepsCandidatesAndSelectsArtlistPrimary(t *testing.T)
 	if len(updated.Assets.Candidates) != 1 {
 		t.Fatalf("candidate count = %d, want 1", len(updated.Assets.Candidates))
 	}
-	if updated.Assets.PrimaryVideo == nil || updated.Assets.PrimaryVideo.AssetID != "clip-1" {
-		t.Fatalf("primary = %+v, want clip-1", updated.Assets.PrimaryVideo)
+	if updated.Assets.PrimaryVideo != nil {
+		t.Fatalf("provider discovery selected a primary: %+v", updated.Assets.PrimaryVideo)
 	}
 }

@@ -6,7 +6,13 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func profileFromVidRushSegment(segment scriptpkg.VidRushSegmentResult) scriptpkg.SegmentSemanticProfile {
+// canonicalSegmentProfile is the migration seam for old serialized results.
+// New SceneIR results always take the canonical profile path; only payloads
+// created before the SceneIR cutover use the legacy projection below.
+func canonicalSegmentProfile(segment scriptpkg.VidRushSegmentResult) scriptpkg.SegmentSemanticProfile {
+	if segment.SemanticProfile != nil {
+		return segment.SemanticProfile.Clone()
+	}
 	profile := scriptpkg.SegmentSemanticProfile{
 		ExecutionMode:    segment.ExecutionMode.Normalize(),
 		SegmentID:        segment.SegmentID,

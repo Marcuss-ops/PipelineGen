@@ -39,9 +39,8 @@ type PipelineResult struct {
 	// callers that did not opt into the heuristic.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings          []string              `json:"warnings,omitempty"`
-	// ArtlistClipSuggestions carries Artlist clip matches discovered
-	// by the ClipSearchProcessor from the artlist_phrases extracted
-	// by the upstream EntitiesProcessor. PR-CLIP-SEARCH-WIRING (July 2026).
+	// ArtlistClipSuggestions carries Artlist clip matches discovered by the
+	// canonical ClipSearch/QueryBuilder path. PR-CLIP-SEARCH-WIRING (July 2026).
 	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
 	// FinalSpecScene (Issue #1, June 2026) is the canonical
 	// post-walk SpecScene surface consumed by buildGenerationResult.

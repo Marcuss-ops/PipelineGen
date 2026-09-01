@@ -2,22 +2,22 @@
 //
 // FASE 2.A PR3 split (July 2026): AI-backed postprocessor registration
 // extracted from wire_script_postprocess.go per AGENTS.md Pattern 5
-// godlike/06 SSOT one-canonical-owner-per-fact. The 4 AI-backed processors
-// (entities, metadata, translation, clip_search) form
+// godlike/06 SSOT one-canonical-owner-per-fact. The AI-backed processors
+// (metadata, translation, clip_search) form
 // a natural group: they all wire through Ollama/Qdrant backends with
 // nil-tolerant graceful degradation.
 //
 // Cross-references:
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     calls registerAIBackedProcessors after inline registrations.
-//   - internal/capabilities/scripts/adapters: NewEntitiesProcessor,
-//     NewMetadataProcessor, NewTranslationProcessor, NewClipSearchProcessor
+//   - internal/capabilities/scripts/adapters: NewMetadataProcessor,
+//     NewTranslationProcessor, NewClipSearchProcessor
 //     (PR-LEGACY-UNAVAILABLE-CLIPSEARCH + PR-LEGACY-UNAVAILABLE-ENTITY-METADATA, 2026-07-10:
 //     NewUnavailable* constructors no longer called from this file — processors
 //     are skipped entirely when backend is absent)
 //   - internal/capabilities/scripts/usecase: NewTranslationUseCaseAdapter,
 //     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
-//   - internal/platform/ollama/adapters: NewOllamaEntityExtractorAdapter,
+//   - internal/platform/ollama/adapters: metadata and visual-planning adapters,
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/platform/embeddings: NewOllamaEmbedderAdapter
 //   - internal/platform/observability: NewTranslationMetricsAdapter
@@ -29,7 +29,6 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -37,7 +36,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	"github.com/prometheus/client_golang/prometheus"
@@ -45,26 +43,21 @@ import (
 	"go.uber.org/zap"
 )
 
-// The single-segment VidRush enricher is the canonical adapter implementing
-// the capability's SegmentEnricher port. Asserted here (composition root)
-// because the migration-zone adapters package must not import the capability
-// package (that would invert the application → capability migration direction).
-var _ scriptgen.SegmentEnricher = (*adapters.VidRushSegmentEnricher)(nil)
 var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
 var _ scriptgen.SegmentSceneMerger = (*adapters.VidRushSceneMerger)(nil)
 var _ scriptgen.VidRushMetrics = (*observability.VidRushMetricsAdapter)(nil)
 var _ scriptgen.SegmentMaterializer = (*adapters.VidRushMaterializationProcessor)(nil)
 
 // registerAIBackedProcessors registers the AI-backed postprocessors:
-// entities, metadata, translation, clip_search, and internet_images.
+// metadata, translation, clip_search, and internet_images.
 // Each processor is gated on its required infrastructure dependency
-// (Ollama client for entities/metadata/translation, OllamaTranslator
+// (Ollama client for metadata/translation, OllamaTranslator
 // for clip_search) — when the dep
 // is absent, the processor is silently skipped (BestEffort policy).
 //
 // Canonical ordering (per CanonicalProcessorNames):
 //
-//	Entities → ClipSearch → Metadata → Translation → ClipBindings → InternetImages
+//	ClipSearch → Metadata → Translation → ClipBindings → InternetImages
 //
 // ClipBindings is registered BEFORE this function is called (in the
 // orchestrator), so this function handles the remaining 4 processors
@@ -80,29 +73,6 @@ func registerAIBackedProcessors(
 ) error {
 	vidrushMetrics := observability.NewVidRushMetricsAdapter()
 	ppReg.SetVidRushTimingMetrics(vidrushMetrics)
-	// ── Entities ──────────────────────────────────────────────────────
-	// Entity extraction uses the bounded Ollama batch path when the canonical
-	// local client is wired; the adapter selects the small gemma3:1b model.
-	// Keep the deterministic local extractor for deployments that deliberately
-	// omit Ollama.
-	var entityAdapter adapters.EntityExtractor
-	if root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptGen.GetClient() != nil {
-		entityAdapter = ollamaadapters.NewOllamaEntityExtractorAdapter(root.AI.ScriptGen.GetClient())
-		log.Info("EntitiesProcessor wired with bounded Ollama batches")
-	} else {
-		entityAdapter = localnlp.NewHybridExtractor()
-		log.Info("EntitiesProcessor wired with local auto CPU/GPU extractor")
-	}
-	// The deterministic Image Search Intent resolver (the same one the golden
-	// battery certifies) drives the entity-bearing segments' image queries:
-	// ordered primary-first, negated entities excluded, MONEY/DATE routed to
-	// the visual system. Entity-less scenes keep the compact B-roll fallback.
-	entitiesProcessor := adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)
-	entitiesProcessor.WithImageSearchResolver(capabilityimagesearch.NewResolver(entityAdapter))
-	if !ppReg.Register(entitiesProcessor) {
-		return fmt.Errorf("register entities processor: composition bug")
-	}
-
 	// ── Metadata ─────────────────────────────────────────────────────
 	var metadataAdapter adapters.MetadataGenerator
 
@@ -158,9 +128,11 @@ func registerAIBackedProcessors(
 	// not require Ollama translation; only the legacy ClipServices fallback
 	// does.
 	var clipSearchAdapter adapters.ArtlistClipSearcher
+	var registryMediaResolver *adapters.VidRushRegistryMediaResolver
 	if vidRushProviders != nil {
 		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
-			clipSearchAdapter = &adapters.VidRushRegistryClipSearcher{Registry: vidRushProviders}
+			registryMediaResolver = &adapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
+			clipSearchAdapter = registryMediaResolver
 			log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
 		}
 	}
@@ -212,24 +184,10 @@ func registerAIBackedProcessors(
 		}
 	}
 
-	// ── Internet images ─────────────────────────────────────────────
-	var imageSearcher adapters.InternetImageSearcher
-	if vidRushProviders != nil {
-		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderInternetImages); err == nil {
-			imageSearcher = &adapters.VidRushRegistryImageSearcher{Registry: vidRushProviders}
-		}
-	}
-	if imageSearcher == nil && root.Domains != nil && root.Domains.ImageSearchResolver != nil {
-		imageSearcher = newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
-	}
-	if imageSearcher != nil {
-		if !ppReg.Register(adapters.NewInternetImagesProcessorWithCatalog(imageSearcher, vidRushCache, root.Repos.EntityImageCatalog, vidrushMetrics)) {
-			return fmt.Errorf("register internet_images processor: composition bug")
-		}
-		log.Info("InternetImagesProcessor wired through the VidRush provider registry")
-	} else {
-		log.Warn("InternetImagesProcessor: ImageSearchResolver not available; postprocessor not registered (internet_images will be skipped)")
-	}
+	// Internet image discovery is owned by the unified VidRush MediaResolver
+	// and its Local Stock/MediaSampler chain. The former standalone
+	// Standalone image processor is intentionally not registered here, avoiding a
+	// second provider pipeline in production.
 
 	// ── Visual planning ──────────────────────────────────────────────
 	// The processor owns no provider or database implementation: the

@@ -113,8 +113,9 @@ func TestCompilerProducesVisualProfileForEveryScene(t *testing.T) {
 
 	// Each profile must have a non-empty subject and at least one term.
 	for i, ir := range irs {
-		require.NotEmpty(t, ir.Profile.Subject, "scene %d (%s) must have a subject", i, ir.SegmentID)
-		require.NotEmpty(t, ir.Profile.VisualTerms, "scene %d (%s) must have at least one visual term", i, ir.SegmentID)
+		visual := script.BuildSegmentVisualProfile(ir.Profile)
+		require.NotEmpty(t, visual.Subject, "scene %d (%s) must have a subject", i, ir.SegmentID)
+		require.NotEmpty(t, visual.Terms, "scene %d (%s) must have at least one visual term", i, ir.SegmentID)
 		require.NoError(t, ir.Validate(), "scene %d (%s) must pass structural validation", i, ir.SegmentID)
 	}
 }
@@ -162,13 +163,14 @@ func TestMinimalProfileIsSourceGrounded(t *testing.T) {
 	input := mediterraneanGreekSaladSegment()
 	ir, err := Compile(CompileInput{Segment: input})
 	require.NoError(t, err)
-	require.NotEmpty(t, ir.Profile.Subject)
-	require.NotEmpty(t, ir.Profile.VisualTerms)
+	visual := script.BuildSegmentVisualProfile(ir.Profile)
+	require.NotEmpty(t, visual.Subject)
+	require.NotEmpty(t, visual.Terms)
 	// The subject must be a substring of, or equal to, the source text
 	// (no invented subjects like "Mediterranean" or "ready").
 	require.True(t,
-		strings.Contains(strings.ToLower(ir.SourceText), strings.ToLower(ir.Profile.Subject)) ||
-			strings.Contains(strings.ToLower(ir.Profile.Subject), strings.ToLower(ir.SourceText)) ||
-			ir.Profile.Subject == strings.TrimSpace(input.Text),
-		"subject %q must be grounded in the source text %q", ir.Profile.Subject, ir.SourceText)
+		strings.Contains(strings.ToLower(ir.SourceText), strings.ToLower(visual.Subject)) ||
+			strings.Contains(strings.ToLower(visual.Subject), strings.ToLower(ir.SourceText)) ||
+			visual.Subject == strings.TrimSpace(input.Text),
+		"subject %q must be grounded in the source text %q", visual.Subject, ir.SourceText)
 }

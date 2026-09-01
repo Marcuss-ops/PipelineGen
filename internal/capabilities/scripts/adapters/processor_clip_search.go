@@ -121,10 +121,6 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 					payload = cloneArtlistSegmentCachePayload(payload)
 					payload.Candidates = filterArtlistCandidatesForSegment(payload.Candidates, updated, input.VidRushSegments)
 					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
-					if len(payload.Candidates) > 0 && readyVidRushCandidate(payload.Candidates[0]) {
-						primary := payload.Candidates[0]
-						updated.Assets.PrimaryVideo = &primary
-					}
 					updated.Cache.Artlist = "HIT_EXACT"
 					segments = append(segments, updated)
 					aggregated = append(aggregated, payload.Matches...)
@@ -169,7 +165,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		// Use the two highest-priority queries for the live fan-out so one slow
 		// tail query cannot consume the whole postprocessor budget.
 		searchQueries := updated.Insights.ArtlistQueries
-		if _, liveRegistrySearcher := p.searcher.(*VidRushRegistryClipSearcher); liveRegistrySearcher {
+		if _, liveRegistrySearcher := p.searcher.(*VidRushRegistryMediaResolver); liveRegistrySearcher {
 			// A provider-specific query can legitimately return no clips even
 			// when the scene is searchable. Prefer one compact source-text query
 			// first: the browser search is serialized and a slow narrative query
@@ -222,10 +218,6 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
-		if readyVidRushCandidate(candidates[0]) {
-			primary := candidates[0]
-			updated.Assets.PrimaryVideo = &primary
-		}
 		updated.Cache.Artlist = "MISS"
 		if plan.MediaPlan.ForceRefreshAssets {
 			updated.Cache.Artlist = "REFRESHED"
@@ -275,7 +267,6 @@ func compactLiveFallbackQuery(text string) string {
 func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []ArtlistClipMatch) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0)
 	seen := make(map[string]struct{})
-	rank := 0
 	for _, match := range matches {
 		count := len(match.ClipNames)
 		if len(match.ClipDriveLinks) > count {
@@ -299,11 +290,6 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 			}
 			seen[identity] = struct{}{}
 
-			score := 1.0 - float64(rank)*0.02
-			if score < 0.1 {
-				score = 0.1
-			}
-			rank++
 			assetID := segmentCacheKey(seg.SegmentID, match.Phrase, name, link)
 			candidate := scriptpkg.SegmentAssetCandidate{
 				SegmentID:       seg.SegmentID,
@@ -314,12 +300,11 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 				Provider:        "artlist",
 				Query:           strings.TrimSpace(match.Phrase),
 				Entity:          name,
-				Score:           score,
 				SourceURL:       link,
 				SourcePageURL:   strings.TrimSpace(match.FolderLink),
 				PreviewURL:      link,
 				RightsStatus:    "unknown",
-				SelectionReason: "ranked Artlist clip matching a segment visual query",
+				SelectionReason: "Artlist clip discovered for a segment visual query",
 			}
 			if match.Remote {
 				candidate.AcquisitionStatus = scriptpkg.VidRushStatusCandidateFound

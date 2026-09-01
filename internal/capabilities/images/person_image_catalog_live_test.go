@@ -178,7 +178,7 @@ func TestPersonImageCatalogLiveRounds_6_8(t *testing.T) {
 	db8 := openLiveEntityImageCatalog(t, dbPath)
 	repo8 := sqentity.NewSQLiteEntityImageCatalogAdapter(db8)
 	searcher8 := newLiveCatalogDDGSearcher(client)
-	processor8 := adapters.NewInternetImagesProcessorWithCatalog(searcher8, nil, repo8)
+	processor8 := adapters.NewMediaResolverImageStageWithCatalog(searcher8, nil, repo8)
 	plan8 := liveCatalogPlan()
 
 	var wg8 sync.WaitGroup
@@ -235,7 +235,7 @@ func TestPersonImageCatalogLiveRounds_6_8(t *testing.T) {
 	db6 := openLiveEntityImageCatalog(t, dbPath)
 	repo6 := sqentity.NewSQLiteEntityImageCatalogAdapter(db6)
 	searcher6 := newLiveCatalogDDGSearcher(client)
-	processor6 := adapters.NewInternetImagesProcessorWithCatalog(searcher6, nil, repo6)
+	processor6 := adapters.NewMediaResolverImageStageWithCatalog(searcher6, nil, repo6)
 	plan6 := liveCatalogPlan()
 
 	result6, err := processor6.Process(ctx, plan6, liveCatalogPersonInput("mj-warm", "Michael Jordan"))
@@ -272,7 +272,7 @@ func TestPersonImageCatalogLiveRounds_6_8(t *testing.T) {
 	db7 := openLiveEntityImageCatalog(t, dbPath)
 	repo7 := sqentity.NewSQLiteEntityImageCatalogAdapter(db7)
 	searcher7 := newLiveCatalogDDGSearcher(client)
-	processor7 := adapters.NewInternetImagesProcessorWithCatalog(searcher7, nil, repo7)
+	processor7 := adapters.NewMediaResolverImageStageWithCatalog(searcher7, nil, repo7)
 	plan7 := liveCatalogPlan()
 	plan7.Topic = "NBA legends and iconic athletes"
 

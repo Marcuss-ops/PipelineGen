@@ -17,7 +17,9 @@ type replaySemanticProbe struct {
 }
 
 func (p *replaySemanticProbe) Enrich(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
-	canonical := canonicalSegmentFromScene(scene)
+	canonical := scriptpkg.NormalizeCanonicalSegment(scriptpkg.CanonicalSegment{
+		ID: scene.ID, SceneID: scene.ID, Position: scene.Index, Text: scene.Text,
+	})
 	key := segmentCacheKey("replay-semantic-v1", canonical.TextHash, plan.Language, plan.Model, plan.PromptVersion)
 	if payload, hit, err := p.cache.Get(ctx, "replay-semantic", key); err == nil && hit {
 		var result scriptpkg.VidRushSegmentResult

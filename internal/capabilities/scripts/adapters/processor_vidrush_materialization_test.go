@@ -16,6 +16,49 @@ import (
 
 type materializationProviderStub struct{}
 
+type mediaSamplerStub struct {
+	winner string
+	calls  int
+}
+
+func (s *mediaSamplerStub) Sample(_ context.Context, _ string, _ string, _ []string, _ []scriptpkg.SegmentAssetCandidate, _ bool) (string, error) {
+	s.calls++
+	if s.winner == "" {
+		return "", nil
+	}
+	return s.winner, nil
+}
+
+func newTestMaterializationProcessor(registry *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer) *VidRushMaterializationProcessor {
+	return NewVidRushMaterializationProcessor(registry, finalizer).WithMediaSampler(&firstCandidateMediaSampler{})
+}
+
+type firstCandidateMediaSampler struct{}
+
+func (*firstCandidateMediaSampler) Sample(_ context.Context, _ string, _ string, _ []string, candidates []scriptpkg.SegmentAssetCandidate, _ bool) (string, error) {
+	if len(candidates) == 0 {
+		return "", nil
+	}
+	return candidates[0].AssetID, nil
+}
+
+func TestMaterializationUsesCanonicalMediaSamplerWhenConfigured(t *testing.T) {
+	sampler := &mediaSamplerStub{winner: "sampler-winner"}
+	processor := (&VidRushMaterializationProcessor{sampler: sampler})
+	profile := scriptpkg.SegmentSemanticProfile{SegmentID: "seg-1", TextHash: "hash", Topic: "greek salad", VisualTerms: []scriptpkg.WeightedKeyword{{Value: "feta", Confidence: 1}}}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "legacy-winner", Provider: scriptpkg.VidRushProviderArtlist, DriveLink: "/tmp/legacy.mp4", Query: "boxing"},
+		{AssetID: "sampler-winner", Provider: scriptpkg.VidRushProviderArtlist, DriveLink: "/tmp/sampler.mp4", Query: "greek salad"},
+	}
+	got := processor.selectPrimaryWithMediaSampler(context.Background(), candidates, profile)
+	if got == nil || got.AssetID != "sampler-winner" {
+		t.Fatalf("selected candidate = %#v, want sampler-winner", got)
+	}
+	if sampler.calls != 1 {
+		t.Fatalf("sampler calls = %d, want 1", sampler.calls)
+	}
+}
+
 func (materializationProviderStub) Name() string { return scriptpkg.VidRushProviderArtlist }
 func (materializationProviderStub) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	return nil, nil
@@ -128,7 +171,7 @@ func TestVidRushMaterializationGeneratesOnlyMissingImagesAndWarmsCache(t *testin
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "test-v1", ImagesPerScene: 2}
 	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
@@ -160,7 +203,7 @@ func TestVidRushMaterializationUsesDefaultImageTargetForGeneration(t *testing.T)
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "default-target-v1"}
 	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
 
@@ -185,7 +228,7 @@ func TestVidRushMaterializationReportsRequiredImageCountFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "required-count-v1", ImagesPerScene: 2}
 	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
 	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
@@ -226,7 +269,7 @@ func TestVidRushMaterializationFailsClosedWhenEnabledDependenciesAreMissing(t *t
 func TestVidRushMaterializationFailsClosedWhenEnabledProviderIsNotRegistered(t *testing.T) {
 	registry := NewVidRushAssetProviderRegistry()
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
 	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
@@ -243,7 +286,7 @@ func TestVidRushMaterializationArtlistOnlyFailsWhenPrimaryCannotBePersisted(t *t
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
 	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
@@ -271,7 +314,7 @@ func TestVidRushMaterializationVerifiesWebImagesBeforeGenerationFallback(t *test
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "fallback-order-v1", ImagesPerScene: 1}
 	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
@@ -300,7 +343,7 @@ func TestVidRushMaterializationRequiresPersistedCandidateForPrimary(t *testing.T
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	result, err := processor.Process(context.Background(), nil, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-1",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
@@ -328,7 +371,7 @@ func TestVidRushMaterializationDoesNotBindUnknownRightsImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	result, err := processor.Process(context.Background(), nil, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-1",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
@@ -371,7 +414,7 @@ func TestVidRushMaterializationRetriesAfterFinalizerFailure(t *testing.T) {
 	}
 	registry.Freeze()
 	finalizer := &retryingMaterializationFinalizer{}
-	processor := NewVidRushMaterializationProcessor(registry, finalizer)
+	processor := newTestMaterializationProcessor(registry, finalizer)
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "recovery-segment",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
@@ -431,7 +474,7 @@ func TestVidRushMaterializationMaterializeReusesSingleSegmentBoundary(t *testing
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "single-materialize",
@@ -480,7 +523,7 @@ func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Language: "en",

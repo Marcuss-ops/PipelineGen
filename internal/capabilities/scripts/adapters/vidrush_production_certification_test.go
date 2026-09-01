@@ -103,7 +103,7 @@ func newCertificationProcessor(t *testing.T, provider *certificationArtlistProvi
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	return NewVidRushMaterializationProcessor(registry, finalizer)
+	return newTestMaterializationProcessor(registry, finalizer)
 }
 
 func certificationSegment(id, text string, candidates ...scriptpkg.SegmentAssetCandidate) scriptpkg.VidRushSegmentResult {
@@ -160,28 +160,6 @@ func TestVidRushCertification_SemanticProfileArtlistQueriesAreVisual(t *testing.
 	for _, forbidden := range []string{"creates a", "he begins", "remains closely", "reveals how", "carved out"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("non-visual phrase %q leaked into queries=%q", forbidden, queries)
-		}
-	}
-}
-
-func TestVidRushCertification_DeterministicRankingAndScoreBreakdown(t *testing.T) {
-	profile := scriptpkg.SegmentSemanticProfile{SegmentID: "barista", Topic: "barista latte art", VisualTerms: []scriptpkg.WeightedKeyword{{Value: "latte art", Confidence: 1}}}
-	candidates := []scriptpkg.SegmentAssetCandidate{
-		{AssetID: "asset-b", Provider: scriptpkg.VidRushProviderArtlist, Query: "barista latte art", SemanticScore: .8, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9, DurationMs: 10000},
-		{AssetID: "asset-a", Provider: scriptpkg.VidRushProviderArtlist, Query: "coffee shop", SemanticScore: .8, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9, DurationMs: 10000},
-	}
-	ranker := NewVidRushWindowRanker()
-	expected := ""
-	for i := 0; i < 100; i++ {
-		got := ranker.Rank(candidates, profile, 10000)
-		if len(got) != 2 {
-			t.Fatal("ranking dropped candidates")
-		}
-		if i == 0 {
-			expected = got[0].AssetID
-		}
-		if got[0].AssetID != expected || got[0].Score != FinalScore(FinalScoreComponents{Semantic: got[0].SemanticScore, Transcript: got[0].RelevanceScore, Visual: profileSemanticMatch(got[0], profile), Technical: got[0].TechnicalQualityScore, DurationFit: durationFitScore(got[0].DurationMs, 10000), ProviderTrust: providerTrustScore(got[0])}) {
-			t.Fatalf("non-deterministic/incomplete score at run %d: %#v", i, got)
 		}
 	}
 }

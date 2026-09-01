@@ -44,8 +44,53 @@ verify-stockintelligence:
 # Aggregate local intelligence gate: runtime contracts plus deterministic
 # semantic certification across the SceneIR → VisualNER → MediaSampler →
 # Local Stock → MediaCert chain. It never contacts live providers.
-verify-media-intelligence: verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning verify-vidrush-binding
+verify-media-intelligence: verify-media-architecture verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning verify-vidrush-binding
 	@echo "✅ verify-media-intelligence passed"
+
+# verify-media-architecture — static ownership guard for the canonical chain.
+# This gate is intentionally small and fail-closed: it prevents the known
+# regressions (LLM entity ownership, duplicate query builders and an unwired
+# Rust sampler) from being reintroduced while the compatibility seams are
+# removed incrementally.
+verify-media-architecture:
+	@test "$$(rg -n '^type EntityExtractor interface' internal/capabilities/entities/ports/extractor.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n '^type MediaSamplerPort interface' internal/capabilities/scripts/ports/media_sampler.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n '^type MediaSamplerPort interface' internal/capabilities/scripts --glob '*.go' | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'func Build(Artlist|Image)Queries\(' internal/kernel/script/retrieval_query_builders.go | wc -l | tr -d ' ')" = 2
+	@test "$$(rg -n 'WithMediaSampler\(mediaSampler\)' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'CertifierPort:.*MediaCertifierFunc' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'CertSpecResolver:.*MediaCertSpecResolverFunc' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'NewOllamaEntityExtractorAdapter' internal/app/wiring/script_generation_runtime.go internal/app/wiring/wire_script_postprocess_ai.go | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'localnlp\.NewExtractor|NewHybridExtractor' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'NewVidRushSegmentEnricher\(' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'NewEntitiesProcessor\(' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
+	@test ! -e internal/platform/ollama/adapters/entity_extractor.go
+	@test ! -e internal/platform/nlp/gpu_extractor.go
+	@test ! -e internal/capabilities/scripts/adapters/vidrush_final_ranking.go
+	@test ! -e internal/capabilities/scripts/adapters/compat_adapters.go
+	@test ! -e internal/capabilities/scripts/adapters/processor_entities.go
+	@test "$$(rg -n 'EntitiesProcessor|VidRushSegmentEnricher|NewEntitiesProcessor|NewVidRushSegmentEnricher' internal --glob '*.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n '^type (ArtlistClipSearcher|InternetImageSearcher|MetadataGenerator) interface' internal/capabilities/scripts/adapters/media_ports.go | wc -l | tr -d ' ')" = 3
+	@test "$$(rg -n 'VidRushWindowRanker|selectVidRushPrimaryVideoWithPolicy|ScoreVidRushCandidate|chooseVidRushPrimary' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'rankInternetImageCandidates|preRankYouTubeCandidates|deterministicYouTubeScore' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n '^type MediaResolver interface' internal/capabilities/scripts/adapters/vidrush_registry_searchers.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'NewVidRushProviderFanoutWithResolver\(' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n 'NewInternetImagesProcessor' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n '^type InternetImagesProcessor |NewInternetImagesProcessor' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'candidate_ok|Artlist query contamination detected|Artlist asset winner/candidate is reused' tests/operational/vidrush/lib/assertions.sh | wc -l | tr -d ' ')" = 0
+	@test "$$(rg -n 'verify-operational|MediaCert ownership certification' tests/operational/vidrush/lib/assertions.sh | wc -l | tr -d ' ')" -ge 2
+	@echo "MEDIA INTELLIGENCE ARCHITECTURE"
+	@echo "SceneIR canonical profile owner    PASS"
+	@echo "EntityExtractor port owner         PASS"
+	@echo "MediaSampler port owner            PASS"
+	@echo "Canonical query builders           PASS"
+	@echo "Ollama entity extraction           0 PASS"
+	@echo "Legacy rankers/extractors          0 PASS"
+	@echo "Unified MediaResolver wiring       PASS"
+	@echo "Standalone image processor runtime 0 PASS"
+	@echo "Rust MediaSampler wiring           PASS"
+	@echo "MediaCert runtime wiring           PASS"
+	@echo "FINAL_MEDIA_ARCHITECTURE = TRUE"
 
 # vidrush-pre-final — the full VIDRUSH PRE-FINAL CERTIFICATION report.
 # Runs the complete media-intelligence chain and prints the canonical

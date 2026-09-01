@@ -28,7 +28,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	if segment.ExecutionMode.IsFixedMedia() {
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	profile := profileFromVidRushSegment(segment)
+	profile := canonicalSegmentProfile(segment)
 	decision := buildSegmentProviderDecision(plan, segment, "video")
 	if hasCanonicalSourceForSegment(plan, segment.SegmentID) {
 		// A caller-supplied canonical asset is complete at the source

@@ -297,8 +297,12 @@ type VidRushSegmentResult struct {
 	TextHash  string `json:"text_hash"`
 	// ExecutionMode is copied from SpecScene and remains available to
 	// incremental processors that do not carry the full scene envelope.
-	ExecutionMode SceneExecutionMode    `json:"execution_mode,omitempty"`
-	Insights      SegmentInsights       `json:"insights"`
-	Assets        SegmentAssetSelection `json:"assets"`
-	Cache         SegmentCacheState     `json:"cache"`
+	ExecutionMode SceneExecutionMode `json:"execution_mode,omitempty"`
+	// SemanticProfile is the canonical profile compiled for this segment.
+	// New pipeline stages must consume this value instead of reconstructing a
+	// profile from the legacy Insights projection.
+	SemanticProfile *SegmentSemanticProfile `json:"semantic_profile,omitempty"`
+	Insights        SegmentInsights         `json:"insights"`
+	Assets          SegmentAssetSelection   `json:"assets"`
+	Cache           SegmentCacheState       `json:"cache"`
 }

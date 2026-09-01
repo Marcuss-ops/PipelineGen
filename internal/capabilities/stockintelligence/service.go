@@ -26,6 +26,16 @@ func NewService(resolver *Resolver) (*Service, error) {
 	return &Service{resolver: resolver}, nil
 }
 
+// Resolve exposes the single-request capability surface used by the VidRush
+// pipeline. BatchResult remains available for catalog warmup and reporting;
+// request execution must not duplicate resolver policy at the caller.
+func (s *Service) Resolve(ctx context.Context, req ResolveRequest) (ResolveResult, error) {
+	if s == nil || s.resolver == nil {
+		return ResolveResult{}, ErrResolverNotWired
+	}
+	return s.resolver.Resolve(ctx, req)
+}
+
 // BatchResult is the aggregated outcome of resolving a batch of requests.
 // TotalProviderLiveRequests is the metric MediaCert checks: 0 when
 // local-first served the whole batch, >0 on any fallback.

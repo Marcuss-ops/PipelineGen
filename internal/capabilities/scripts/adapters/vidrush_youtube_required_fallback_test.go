@@ -54,8 +54,11 @@ func TestYouTubeSuggestedFailureFallsBackToArtlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.Provider != scriptpkg.VidRushProviderArtlist {
-		t.Fatalf("primary video = %+v, want Artlist fallback", got.Assets.PrimaryVideo)
+	if got.Assets.PrimaryVideo != nil {
+		t.Fatalf("provider fallback selected a primary: %+v", got.Assets.PrimaryVideo)
+	}
+	if len(got.Assets.Candidates) == 0 || got.Assets.Candidates[0].Provider != scriptpkg.VidRushProviderArtlist {
+		t.Fatalf("discovered candidates = %+v, want Artlist candidate", got.Assets.Candidates)
 	}
 }
 

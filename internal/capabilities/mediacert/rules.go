@@ -190,11 +190,12 @@ func ruleSemanticProfiles(spec Spec, result MediaResult) CheckResult {
 }
 
 // segmentHasProfile reports whether a segment carries a non-null visual
-// profile through either the SceneIR compact profile or the legacy
+// profile through either the SceneIR canonical profile or the legacy
 // Insights.VisualProfile.
 func segmentHasProfile(seg ResultSegment) bool {
 	if seg.SceneIR != nil {
-		if seg.SceneIR.Profile.Subject != "" && len(seg.SceneIR.Profile.VisualTerms) > 0 {
+		vp := script.BuildSegmentVisualProfile(seg.SceneIR.Profile)
+		if vp.Subject != "" && len(vp.Terms) > 0 {
 			return true
 		}
 	}
@@ -308,7 +309,8 @@ func subjectCompatible(c *script.SegmentAssetCandidate, wantSubject string, seg 
 // falling back to the SceneIR profile visual terms.
 func requiredConceptsFor(seg ResultSegment) []string {
 	if seg.SceneIR != nil {
-		return seg.SceneIR.Profile.VisualTerms
+		visual := script.BuildSegmentVisualProfile(seg.SceneIR.Profile)
+		return visual.Terms
 	}
 	return nil
 }
@@ -414,27 +416,37 @@ func allForSegment(violations []Violation, segID string) int {
 func ruleQueryOwnership(spec Spec, result MediaResult) CheckResult {
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
+	queryOwners := make(map[string]string)
 	for _, seg := range result.Segments {
 		drift := false
-		for _, q := range seg.Insights.ImageQueries {
+		checkQuery := func(q string, rejectDuplicate bool) {
+			qKey := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(q)), " "))
+			if rejectDuplicate && qKey != "" {
+				if owner, exists := queryOwners[qKey]; exists && owner != seg.SegmentID {
+					violations = append(violations, Violation{
+						SegmentID: seg.SegmentID,
+						Rule:      string(CheckQueryOwnership),
+						Detail:    fmt.Sprintf("query %q is also owned by segment %q", q, owner),
+					})
+					drift = true
+				} else {
+					queryOwners[qKey] = seg.SegmentID
+				}
+			}
 			if !queryOwnedBy(seg, q, seg.SegmentID) {
 				violations = append(violations, Violation{
 					SegmentID: seg.SegmentID,
 					Rule:      string(CheckQueryOwnership),
-					Detail:    fmt.Sprintf("image query %q does not belong to this segment", q),
+					Detail:    fmt.Sprintf("query %q does not belong to this segment", q),
 				})
 				drift = true
 			}
 		}
+		for _, q := range seg.Insights.ImageQueries {
+			checkQuery(q, false)
+		}
 		for _, q := range seg.Insights.ArtlistQueries {
-			if !queryOwnedBy(seg, q, seg.SegmentID) {
-				violations = append(violations, Violation{
-					SegmentID: seg.SegmentID,
-					Rule:      string(CheckQueryOwnership),
-					Detail:    fmt.Sprintf("artlist query %q does not belong to this segment", q),
-				})
-				drift = true
-			}
+			checkQuery(q, true)
 		}
 		if !drift {
 			pass++
@@ -467,7 +479,7 @@ func queryOwnedBy(seg ResultSegment, query string, ownerID string) bool {
 
 func segmentSubject(seg ResultSegment) string {
 	if seg.SceneIR != nil {
-		return seg.SceneIR.Profile.Subject
+		return script.BuildSegmentVisualProfile(seg.SceneIR.Profile).Subject
 	}
 	if seg.Insights.VisualProfile != nil {
 		return seg.Insights.VisualProfile.Subject
@@ -477,7 +489,7 @@ func segmentSubject(seg ResultSegment) string {
 
 func segmentVisualTerms(seg ResultSegment) []string {
 	if seg.SceneIR != nil {
-		return seg.SceneIR.Profile.VisualTerms
+		return script.BuildSegmentVisualProfile(seg.SceneIR.Profile).Terms
 	}
 	if seg.Insights.VisualProfile != nil {
 		return seg.Insights.VisualProfile.Terms
