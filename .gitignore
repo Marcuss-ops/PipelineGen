@@ -254,6 +254,15 @@ local.env
 #   go build -o worker_integration ./tests/operational/worker-integration/main.go
 /worker_integration
 
+# mediacert binary (built locally from cmd/mediacert/main.go).
+# Anchored with leading '/' so the pattern matches only the root-level build artifact
+# (NOT recursive exclusion of cmd/mediacert/ source). 6.1 MB ELF dynamically linked,
+# includes debug info; not a test fixture (zero Go/MD/sh/py/yaml references repo-wide
+# outside cmd/mediacert itself) — same forward-prevention pattern as /archcheck,
+# /_reindex_qdrant, /seed_test_asset, /worker_integration. Rebuild on demand:
+#   go build -o mediacert ./cmd/mediacert/main.go
+/mediacert
+
 # Docker secrets (never commit tokens)
 secrets/
 
