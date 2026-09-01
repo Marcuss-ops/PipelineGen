@@ -1,19 +1,12 @@
 package imagesearch
 
 import (
-	"context"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 )
 
-// EntityExtractor is the structural port consumed by the Resolver. It mirrors
-// the canonical adapters.EntityExtractor signature; Go structural typing keeps
-// the conservative CPU extractor (internal/platform/nlp/local) and the
-// Ollama hybrid adapter assignable here without the capability package
-// importing infrastructure.
-type EntityExtractor interface {
-	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
-}
+// EntityExtractor aliases the shared neutral extraction port for compatibility
+// with existing resolver constructors.
+type EntityExtractor = entityports.EntityExtractor
 
 // Request is the self-contained input of one image search decision. Text is
 // the scene's narration sentence (or paragraph); PriorPersons carries the

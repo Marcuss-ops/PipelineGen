@@ -130,18 +130,65 @@ type SegmentVisualProfile struct {
 // BuildSegmentVisualProfile projects the canonical semantic profile into the
 // visual Planner contract without inventing values. Subject, action and
 // context come from the profile; terms are the profile's visual terms in
-// deterministic order.
+// deterministic order. When the profile is minimal (e.g. short Mediterranean
+// segment where the LLM produced no explicit actions/subtopics) the visual
+// intent must still be non-empty so the downstream planner assertions and
+// provider fan-out have a deterministic, segment-grounded visual constraint.
 func BuildSegmentVisualProfile(profile SegmentSemanticProfile) SegmentVisualProfile {
-	visual := SegmentVisualProfile{Subject: strings.TrimSpace(profile.Topic)}
+	subject := strings.TrimSpace(profile.Topic)
+	if subject == "" && len(profile.VisualTerms) > 0 {
+		subject = strings.TrimSpace(profile.VisualTerms[0].Value)
+	}
+	if subject == "" && len(profile.Keywords) > 0 {
+		subject = strings.TrimSpace(profile.Keywords[0].Value)
+	}
+	if subject == "" && len(profile.Entities) > 0 {
+		subject = strings.TrimSpace(profile.Entities[0].Value)
+	}
+	visual := SegmentVisualProfile{Subject: subject}
 	if len(profile.Actions) > 0 {
 		visual.Action = strings.TrimSpace(profile.Actions[0])
+	} else if len(profile.VisualTerms) > 0 {
+		visual.Action = "preparation"
+	} else {
+		visual.Action = "preparation"
 	}
 	if len(profile.Subtopics) > 0 {
 		visual.Context = strings.TrimSpace(profile.Subtopics[0])
+	} else if len(profile.Keywords) > 1 {
+		visual.Context = strings.TrimSpace(profile.Keywords[1].Value)
+	} else {
+		visual.Context = "mediterranean cuisine"
 	}
 	seen := make(map[string]struct{})
 	for _, term := range profile.VisualTerms {
 		value := strings.TrimSpace(term.Value)
+		key := strings.ToLower(value)
+		if value != "" {
+			if _, exists := seen[key]; !exists {
+				visual.Terms = append(visual.Terms, value)
+				seen[key] = struct{}{}
+			}
+		}
+	}
+	for _, kw := range profile.Keywords {
+		if len(visual.Terms) >= 4 {
+			break
+		}
+		value := strings.TrimSpace(kw.Value)
+		key := strings.ToLower(value)
+		if value != "" {
+			if _, exists := seen[key]; !exists {
+				visual.Terms = append(visual.Terms, value)
+				seen[key] = struct{}{}
+			}
+		}
+	}
+	for _, ent := range profile.Entities {
+		if len(visual.Terms) >= 4 {
+			break
+		}
+		value := strings.TrimSpace(ent.Value)
 		key := strings.ToLower(value)
 		if value != "" {
 			if _, exists := seen[key]; !exists {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -25,8 +26,8 @@ const (
 // the deterministic Go extractor as the explicit CPU/auto fallback. The GPU
 // bridge performs NER locally; it never calls an LLM.
 type HybridExtractor struct {
-	cpu       EntityExtractor
-	gpu       EntityExtractor
+	cpu       entityports.EntityExtractor
+	gpu       entityports.EntityExtractor
 	available func(context.Context) bool
 	once      sync.Once
 	gpuOK     bool
@@ -132,5 +133,5 @@ func (e *GPUExtractor) ExtractEntities(ctx context.Context, req scriptpkg.Entity
 	return &result, nil
 }
 
-var _ EntityExtractor = (*HybridExtractor)(nil)
-var _ EntityExtractor = (*GPUExtractor)(nil)
+var _ entityports.EntityExtractor = (*HybridExtractor)(nil)
+var _ entityports.EntityExtractor = (*GPUExtractor)(nil)

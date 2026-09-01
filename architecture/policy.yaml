@@ -76,7 +76,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, errors, observability, embedding, semanticdoc, digest, media, indexing, assembly, delivery, primitives, transcript, idempotency, models, audio
+kernel_subzones: asset, job, script, event, errors, observability, embedding, semanticdoc, digest, media, indexing, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,

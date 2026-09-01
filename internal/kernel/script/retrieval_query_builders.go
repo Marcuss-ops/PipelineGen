@@ -61,6 +61,11 @@ func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
 	if len(profile.VisualTerms) > 0 {
 		queries = append(queries, profile.VisualTerms[0].ValueIfPresent())
 	}
+	// A source-grounded topic is the deterministic fallback when extraction
+	// yields no typed entity or visual term. Keep it bounded and provider-safe.
+	if len(queries) == 0 && strings.TrimSpace(profile.Topic) != "" {
+		queries = append(queries, profile.Topic)
+	}
 	queries = append(queries, visual...)
 	return uniqueQueries(queries, limit)
 }

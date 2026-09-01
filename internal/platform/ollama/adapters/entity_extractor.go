@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -25,7 +26,7 @@ type OllamaEntityExtractorAdapter struct {
 
 const segmentUnderstandingRole = models.RoleSegmentUnderstanding
 
-func NewOllamaEntityExtractorAdapter(c *client.Client) scriptadapters.EntityExtractor {
+func NewOllamaEntityExtractorAdapter(c *client.Client) entityports.EntityExtractor {
 	return &OllamaEntityExtractorAdapter{client: c}
 }
 
@@ -399,4 +400,4 @@ func splitIntoSegments(text string) []string {
 	return segments
 }
 
-var _ scriptadapters.EntityExtractor = (*OllamaEntityExtractorAdapter)(nil)
+var _ entityports.EntityExtractor = (*OllamaEntityExtractorAdapter)(nil)

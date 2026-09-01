@@ -48,7 +48,7 @@
 	test-youtube-stock-resilience test-youtube-stock-live test-youtube-stock-release benchmark-youtube-stock \
 	diagnose-youtube-stock \
 	verify-images-live verify-script-live test-intro-hook-stock-live verify-vidrush-live verify-artlist-scale-live verify-live \
-	verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning \
+	verify-vidrush-contract verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-media-intelligence vidrush-pre-final verify-vidrush-extraction verify-vidrush-query-planning \
 	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
 	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \
 	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \

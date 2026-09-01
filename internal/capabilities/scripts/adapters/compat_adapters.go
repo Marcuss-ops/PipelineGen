@@ -28,6 +28,7 @@ package adapters
 import (
 	"context"
 
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -120,9 +121,7 @@ type VidRushMetrics = scriptmetrics.VidRushMetrics
 //
 // godlike/06 SSOT: the port is declared ONLY here. No other package
 // may redefine EntityExtractor.
-type EntityExtractor interface {
-	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
-}
+type EntityExtractor = entityports.EntityExtractor
 
 // FallbackEntityExtractor preserves a usable semantic extraction path when a
 // primary model returns an empty result. The fallback is still source-bound:
@@ -167,9 +166,7 @@ func entityResultHasValues(result *scriptpkg.EntityResult) bool {
 // batchEntityExtractor is an internal capability probe on the canonical port.
 // It avoids a second public extractor ecosystem while keeping older adapters
 // source-compatible during the migration.
-type batchEntityExtractor interface {
-	ExtractEntitiesBatch(ctx context.Context, reqs []scriptpkg.EntityExtractionRequest) ([]scriptpkg.EntityExtractionBatchResult, error)
-}
+type batchEntityExtractor = entityports.BatchEntityExtractor
 
 // MetadataGenerator is the canonical port for video metadata
 // generation. Processors (MetadataProcessor) consume a

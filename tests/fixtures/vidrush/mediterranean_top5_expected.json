@@ -1,0 +1,39 @@
+{
+  "segments": 5,
+  "entities_per_segment": 3,
+  "images_per_segment": 3,
+  "video_provider": "artlist",
+  "allow_cross_scene_asset_reuse": false,
+  "segments_expected": [
+    {
+      "id": "mediterranean-01-greek-salad",
+      "subject": "greek salad",
+      "required_concepts": ["greek salad", "feta", "tomatoes", "olives"],
+      "winner_subject_match": "greek salad"
+    },
+    {
+      "id": "mediterranean-02-hummus",
+      "subject": "hummus",
+      "required_concepts": ["hummus", "chickpeas", "tahini", "olive oil"],
+      "winner_subject_match": "hummus"
+    },
+    {
+      "id": "mediterranean-03-sardines",
+      "subject": "grilled sardines",
+      "required_concepts": ["sardines", "lemon", "herbs"],
+      "winner_subject_match": "sardines"
+    },
+    {
+      "id": "mediterranean-04-shakshuka",
+      "subject": "shakshuka",
+      "required_concepts": ["shakshuka", "eggs", "tomatoes", "peppers"],
+      "winner_subject_match": "shakshuka"
+    },
+    {
+      "id": "mediterranean-05-paella",
+      "subject": "seafood paella",
+      "required_concepts": ["paella", "shrimp", "mussels", "rice"],
+      "winner_subject_match": "paella"
+    }
+  ]
+}
