@@ -153,7 +153,7 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilWriter(t *testing.T) {
 	core, media, metadata, observability := validProcessSegmentDeps()
 	core.Writer = nil
 	require.PanicsWithValue(t,
-		"usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')",
+		"usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire SQLiteMediaCommitter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')",
 		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil Writer MUST panic at ctor (P0 #3 silent-success regression) ")
 }
