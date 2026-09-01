@@ -89,6 +89,7 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		duration_ms INTEGER NOT NULL DEFAULT 0,
 		drive_file_id TEXT, drive_link TEXT, download_link TEXT,
 		local_path TEXT, legacy_file_md5 TEXT,
+		content_sha256 TEXT NOT NULL DEFAULT '',
 		folder_id TEXT, folder_path TEXT,
 		source_version TEXT NOT NULL DEFAULT '',
 		lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
@@ -134,6 +135,7 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		updated_at TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (asset_id, location_kind)
 	);`
+	schema += registryEventsSchema
 	schema += clipAtomicWriterOutboxSchema
 
 	if _, err := db.Exec(schema); err != nil {
@@ -141,6 +143,26 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 	}
 	return db
 }
+
+// registryEventsSchema mirrors migration 203's control-plane ledger
+// table; the canonical SQLiteMediaCommitter appends a
+// MEDIA_ASSET_COMMITTED registry event on every commit.
+const registryEventsSchema = `
+CREATE TABLE IF NOT EXISTS registry_events (
+	seq INTEGER PRIMARY KEY AUTOINCREMENT,
+	event_id TEXT NOT NULL UNIQUE,
+	asset_id TEXT,
+	event_type TEXT NOT NULL,
+	run_id TEXT,
+	actor TEXT NOT NULL DEFAULT '',
+	before_hash TEXT NOT NULL DEFAULT '',
+	after_hash TEXT NOT NULL DEFAULT '',
+	payload_json TEXT NOT NULL DEFAULT '{}',
+	git_sha TEXT NOT NULL DEFAULT '',
+	app_version TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL
+);
+`
 
 // clipAtomicWriterOutboxSchema is the outbox half shared between
 // the existing qdrantFlowDB and the new youTubeQdrantDB.
