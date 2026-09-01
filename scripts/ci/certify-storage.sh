@@ -311,13 +311,15 @@ if [[ $FAIL -ne 0 ]]; then FINAL="FALSE"; fi
 
 if $JSON_OUT; then
   python3 - <<PY
-import json, sys
+import json
 gates=[]
-for line in """$(printf "%s\n" "${GATE_RESULTS[@]}")""".splitlines():
+raw="""$(printf "%s\n" "${GATE_RESULTS[@]}")"""
+for line in raw.splitlines():
     if not line.strip(): continue
     parts=line.split("|",2)
     gates.append({"name":parts[0],"status":parts[1],"detail":parts[2] if len(parts)>2 else ""})
-print(json.dumps({"FINAL_CERTIFIED": $FINAL=="TRUE", "pass": $PASS, "fail": $FAIL, "gates": gates}, indent=2))
+final = """$FINAL""" == "TRUE"
+print(json.dumps({"FINAL_CERTIFIED": final, "pass": $PASS, "fail": $FAIL, "gates": gates}, indent=2))
 PY
 else
   echo ""
