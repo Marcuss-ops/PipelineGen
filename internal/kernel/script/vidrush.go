@@ -306,3 +306,43 @@ type VidRushSegmentResult struct {
 	Assets          SegmentAssetSelection   `json:"assets"`
 	Cache           SegmentCacheState       `json:"cache"`
 }
+
+// CanonicalSemanticProfile returns the profile owned by SceneIR. The
+// Insights fallback is read-only compatibility for results persisted before
+// the SceneIR cutover; new pipeline stages must always populate
+// SemanticProfile.
+func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile {
+	if s.SemanticProfile != nil {
+		return s.SemanticProfile.Clone()
+	}
+	profile := SegmentSemanticProfile{
+		ExecutionMode:    s.ExecutionMode.Normalize(),
+		SegmentID:        s.SegmentID,
+		TextHash:         s.TextHash,
+		Topic:            s.Text,
+		Keywords:         weightedKeywordsFromStrings(s.Insights.ImportantWords),
+		NounChunks:       append([]string(nil), s.Insights.NounChunks...),
+		VisualTerms:      weightedKeywordsFromStrings(s.Insights.NounChunks),
+		ImportantPhrases: append([]string(nil), s.Insights.ImportantPhrases...),
+		Entities:         append([]ExtractedEntity(nil), s.Insights.Entities...),
+	}
+	profile.Retrieval = &RetrievalIntent{
+		YouTube: append([]string(nil), s.Insights.YouTubeQueries...),
+		Artlist: append([]string(nil), s.Insights.ArtlistQueries...),
+		Images:  append([]string(nil), s.Insights.ImageQueries...),
+	}
+	return profile
+}
+
+func weightedKeywordsFromStrings(values []string) []WeightedKeyword {
+	out := make([]WeightedKeyword, 0, len(values))
+	for i, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		confidence := 1.0 - float64(i)/float64(len(values)+1)
+		out = append(out, WeightedKeyword{Value: value, Confidence: confidence})
+	}
+	return out
+}

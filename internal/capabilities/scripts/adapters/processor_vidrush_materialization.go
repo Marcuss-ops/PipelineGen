@@ -461,7 +461,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
 		))
 	}
-	profile := canonicalSegmentProfile(updated)
+	profile := updated.CanonicalSemanticProfile()
 	if p.sampler != nil {
 		updated.Assets.PrimaryVideo = p.selectPrimaryWithMediaSampler(ctx, materialized, profile)
 	} else {

@@ -20,9 +20,60 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 		}
 	}
 	queries = append(queries, profile.ImportantPhrases...)
+	queries = append(queries, weightedValues(profile.VisualTerms)...)
 	queries = append(queries, joinQuery(append([]string{profile.Topic}, append(termValues(profile, TermKindTechnology, TermKindSubject), temporalTerms(profile)...)...)...))
 	queries = append(queries, termQuery(profile, TermKindSubject, TermKindContext))
 	return uniqueQueries(queries, limit)
+}
+
+// QueriesForArtlist uses a persisted canonical retrieval projection when one
+// exists, otherwise it derives the provider query from the semantic profile.
+// This is the only compatibility read path for pre-SceneIR results.
+func QueriesForArtlist(profile SegmentSemanticProfile, limit int) []string {
+	if profile.Retrieval != nil && len(profile.Retrieval.Artlist) > 0 {
+		return uniqueRetrievalQueries(profile.Retrieval.Artlist, normalizedQueryLimit(limit, defaultArtlistQueryLimit))
+	}
+	return BuildArtlistQueries(profile, limit)
+}
+
+// QueriesForImages is the image equivalent of QueriesForArtlist.
+func QueriesForImages(profile SegmentSemanticProfile, limit int) []string {
+	if profile.Retrieval != nil && len(profile.Retrieval.Images) > 0 {
+		return uniqueRetrievalQueries(profile.Retrieval.Images, normalizedQueryLimit(limit, defaultImageQueryLimit))
+	}
+	return BuildImageQueries(profile, limit)
+}
+
+func uniqueRetrievalQueries(candidates []string, limit int) []string {
+	seen := make(map[string]struct{}, len(candidates))
+	out := make([]string, 0, limit)
+	for _, candidate := range candidates {
+		query := strings.Join(strings.Fields(strings.TrimSpace(candidate)), " ")
+		if query == "" {
+			continue
+		}
+		key := strings.ToLower(query)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, query)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
+}
+
+// BuildYouTubeQueriesWithExplicit preserves a caller-supplied exact query
+// while keeping the rest of the query ladder owned by this package.
+func BuildYouTubeQueriesWithExplicit(profile SegmentSemanticProfile, explicit string, limit int) []string {
+	queries := make([]string, 0, limit+1)
+	if explicit = strings.TrimSpace(explicit); explicit != "" {
+		queries = append(queries, explicit)
+	}
+	queries = append(queries, BuildYouTubeQueries(profile, limit)...)
+	return uniqueQueries(queries, normalizedQueryLimit(limit, defaultYouTubeQueryLimit))
 }
 
 // BuildArtlistQueries creates visual-first queries from VisualTerms, visual

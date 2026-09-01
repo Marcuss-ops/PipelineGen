@@ -31,15 +31,15 @@ func TestVidRushFanoutPlanPreservesProviderPolicyAndInputs(t *testing.T) {
 	if fanout.perQueryLimit != 50 {
 		t.Fatalf("per-query limit = %d, want capped at 50", fanout.perQueryLimit)
 	}
-	if len(fanout.artlistQueries) != 1 || fanout.artlistQueries[0] != " artlist " {
-		t.Fatalf("artlist queries = %#v, want original query preserved", fanout.artlistQueries)
+	if len(fanout.artlistQueries) != 1 || fanout.artlistQueries[0] != "artlist" {
+		t.Fatalf("artlist queries = %#v, want normalized canonical query", fanout.artlistQueries)
 	}
 }
 
 func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	updated := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}
-	profile := canonicalSegmentProfile(updated)
+	profile := updated.CanonicalSemanticProfile()
 	outcome := vidRushProviderOutcome{
 		provider: scriptpkg.VidRushProviderArtlist,
 		candidates: []scriptpkg.SegmentAssetCandidate{{

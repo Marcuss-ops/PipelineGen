@@ -15,16 +15,14 @@ func TestVidRushProviderQueryBuildersAdaptByProvider(t *testing.T) {
 		VisualConcepts: []string{"German tanks advancing"},
 		VisualTerms:    []scriptpkg.WeightedKeyword{{Value: "historical battlefield footage", Confidence: 1}},
 	}
-	builders := NewVidRushProviderQueryBuilders()
-	youtube := builders.YouTube(profile, "Operation Barbarossa 1941 footage")
-	artlist := builders.Artlist(profile)
-	images := builders.InternetImages(profile)
-	generation := builders.ImageGeneration(profile)
-	if len(youtube) == 0 || len(artlist) == 0 || len(images) == 0 || len(generation) == 0 {
-		t.Fatal("all provider builders must produce focused queries")
+	youtube := scriptpkg.BuildYouTubeQueriesWithExplicit(profile, "Operation Barbarossa 1941 footage", 5)
+	artlist := scriptpkg.BuildArtlistQueries(profile, 5)
+	images := scriptpkg.BuildImageQueries(profile, 7)
+	if len(youtube) == 0 || len(artlist) == 0 || len(images) == 0 {
+		t.Fatal("all canonical provider builders must produce focused queries")
 	}
-	if youtube[0] == artlist[0] || artlist[0] == images[0] || images[0] == generation[0] {
-		t.Fatalf("provider queries were not adapted: yt=%v art=%v img=%v gen=%v", youtube, artlist, images, generation)
+	if youtube[0] == artlist[0] || artlist[0] == images[0] {
+		t.Fatalf("provider queries were not adapted: yt=%v art=%v img=%v", youtube, artlist, images)
 	}
 }
 
@@ -38,7 +36,7 @@ func TestArtlistQueryBuilderDoesNotConsumeEditorialPhrases(t *testing.T) {
 		ImportantPhrases: []string{"Aerial drone footage reveals"},
 		Keywords:         []scriptpkg.WeightedKeyword{{Value: "reveals", Confidence: 1}},
 	}
-	queries := NewVidRushProviderQueryBuilders().Artlist(profile)
+	queries := scriptpkg.BuildArtlistQueries(profile, 5)
 	joined := strings.ToLower(strings.Join(queries, " | "))
 	if !strings.Contains(joined, "latte art") || !strings.Contains(joined, "specialty coffee shop") {
 		t.Fatalf("canonical visual terms missing from Artlist queries: %v", queries)

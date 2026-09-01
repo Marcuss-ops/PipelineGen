@@ -242,14 +242,7 @@ func buildYouTubeQueryPlan(req scriptports.VidRushSearchRequest) scriptports.Pro
 
 // appendRung adds one intent rung's phrases with decaying weights.
 func youtubeProfileQueries(profile scriptpkg.SegmentSemanticProfile, explicit string) []string {
-	values := make([]string, 0, 1+len(profile.VisualTerms))
-	if explicit = strings.TrimSpace(explicit); explicit != "" {
-		values = append(values, explicit)
-	}
-	for _, term := range profile.VisualTerms {
-		values = append(values, strings.TrimSpace(term.Value))
-	}
-	return normalizedProviderQueries(values, 8)
+	return scriptpkg.BuildYouTubeQueriesWithExplicit(profile, explicit, 5)
 }
 
 func appendRung(out *[]scriptports.ProviderQuery, intent scriptports.QueryIntent, phrases []string, top float64) {
