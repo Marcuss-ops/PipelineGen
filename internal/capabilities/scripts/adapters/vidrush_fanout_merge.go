@@ -16,18 +16,6 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 		// before applying the strict filter.
 		outcome.candidates = normalizeVidRushCandidateList(outcome.candidates, *updated)
 		outcome.candidates = filterArtlistCandidatesForSegment(outcome.candidates, *updated, nil)
-		if outcome.primary != nil {
-			if normalized, ok := normalizeVidRushCandidate(*outcome.primary, *updated); ok {
-				outcome.primary = &normalized
-			} else {
-				outcome.primary = nil
-			}
-			if outcome.primary != nil {
-				if err := validateArtlistCandidateForSegment(*outcome.primary, *updated); err != nil {
-					outcome.primary = nil
-				}
-			}
-		}
 	}
 	for i := range outcome.candidates {
 		if normalized, ok := normalizeVidRushCandidate(outcome.candidates[i], *updated); ok {
@@ -43,14 +31,8 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 		}
 	}
 	outcome.candidates = filtered
-	for i := range outcome.candidates {
-		if outcome.candidates[i].SemanticScore == 0 {
-			outcome.candidates[i].SemanticScore = profileSemanticMatch(outcome.candidates[i], profile)
-		}
-		if outcome.candidates[i].RelevanceScore == 0 {
-			outcome.candidates[i].RelevanceScore = outcome.candidates[i].SemanticScore
-		}
-	}
+	// Providers contribute discovery metadata only. Semantic scoring and
+	// winner selection belong to MediaSampler during materialization.
 	updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
 	if outcome.provider == scriptpkg.VidRushProviderInternetImages {
 		updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
@@ -68,10 +50,8 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 	case scriptpkg.VidRushProviderYouTube:
 		updated.Cache.YouTube = fanoutCacheState(plan, outcome.allCacheHits)
 	case scriptpkg.VidRushProviderArtlist:
-		if outcome.primary == nil {
-			outcome.primary = chooseVidRushPrimaryWithProfile(outcome.candidates, nil, profile)
-		}
-		updated.Assets.PrimaryVideo = outcome.primary
+		// Discovery never selects a winner. PrimaryVideo is assigned only by
+		// MediaSampler during materialization.
 		updated.Cache.Artlist = fanoutCacheState(plan, outcome.allCacheHits)
 	case scriptpkg.VidRushProviderInternetImages:
 		updated.Cache.InternetImages = fanoutCacheState(plan, outcome.allCacheHits)

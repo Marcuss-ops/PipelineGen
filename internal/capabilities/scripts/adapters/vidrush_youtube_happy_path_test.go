@@ -91,14 +91,14 @@ func TestYouTubeHappyPathPlansTranscriptWindowMaterializesAndBinds(t *testing.T)
 		SegmentID: "segment-001", SceneID: "scene-001", TextHash: "paragraph-hash",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: materialized},
 	}}, false)
-	if len(bound) != 1 || bound[0].Assets.PrimaryVideo == nil {
-		t.Fatalf("binding result = %+v, want primary video", bound)
+	if len(bound) != 1 || len(bound[0].Assets.Candidates) != 1 {
+		t.Fatalf("binding result = %+v, want one durable candidate", bound)
 	}
-	primary := bound[0].Assets.PrimaryVideo
+	primary := bound[0].Assets.Candidates[0]
 	if primary.AssetID != "asset-poland-1939" || primary.SourceStartMs != 151000 || primary.SourceEndMs != 161000 {
 		t.Fatalf("final binding = %+v", primary)
 	}
-	if bound[0].Assets.PrimaryVideo.Provider != scriptpkg.VidRushProviderYouTube {
-		t.Fatalf("unexpected provider binding: %s", bound[0].Assets.PrimaryVideo.Provider)
+	if primary.Provider != scriptpkg.VidRushProviderYouTube {
+		t.Fatalf("unexpected provider candidate: %s", primary.Provider)
 	}
 }

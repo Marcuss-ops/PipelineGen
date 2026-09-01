@@ -92,7 +92,7 @@ func TestEntityImageCatalogPersistsAcrossRestartAndIgnoresTopicChanges(t *testin
 	repo1 := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db1)
 	plan1 := catalogPersonPlan()
 	plan1.Topic = "Michael Jordan career"
-	coldResult, err := NewInternetImagesProcessorWithCatalog(searcher, nil, repo1).Process(
+	coldResult, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo1).Process(
 		context.Background(), plan1, catalogPersonInput("restart-before", "Michael Jordan"),
 	)
 	if err != nil {
@@ -112,7 +112,7 @@ func TestEntityImageCatalogPersistsAcrossRestartAndIgnoresTopicChanges(t *testin
 	repo2 := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db2)
 	plan2 := catalogPersonPlan()
 	plan2.Topic = "NBA legends and iconic athletes"
-	result, err := NewInternetImagesProcessorWithCatalog(searcher, nil, repo2).Process(
+	result, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo2).Process(
 		context.Background(), plan2, catalogPersonInput("restart-after", "MICHAEL   JORDAN"),
 	)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestEntityImageCatalogSerializesConcurrentFirstPopulationOnPersistentSQLite
 	db := openPersistentEntityImageCatalog(t, filepath.Join(t.TempDir(), "concurrent.db"))
 	repo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 
 	var wg sync.WaitGroup
@@ -155,7 +155,7 @@ func TestEntityImageCatalogForceRefreshBypassesWarmPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	if _, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("refresh-cold", "Michael Jordan")); err != nil {
 		t.Fatal(err)
@@ -193,7 +193,7 @@ func TestEntityImageCatalogBrokenURLFallsBackWithoutProviderCall(t *testing.T) {
 	}
 
 	searcher := &catalogIntegrationSearcher{}
-	result, err := NewInternetImagesProcessorWithCatalog(searcher, nil, repo).Process(
+	result, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).Process(
 		context.Background(), catalogPersonPlan(), catalogPersonInput("broken-fallback", "Michael Jordan"),
 	)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestEntityImageCatalogRefreshesWhenPoolIsExhausted(t *testing.T) {
 	}
 
 	searcher := &catalogIntegrationSearcher{}
-	result, err := NewInternetImagesProcessorWithCatalog(searcher, nil, repo).Process(
+	result, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).Process(
 		context.Background(), catalogPersonPlan(), catalogPersonInput("pool-exhausted", "Michael Jordan"),
 	)
 	if err != nil {
@@ -339,7 +339,7 @@ func TestEntityImageCatalogTopicVariantsShareCanonicalPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	for i, topic := range []string{"Michael Jordan biography", "NBA legends", "Chicago Bulls history"} {
 		plan := catalogPersonPlan()

@@ -19,6 +19,8 @@ package sceneir
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Validate is the fail-closed structural check for a compiled SceneIR. It
@@ -41,10 +43,11 @@ func (s SceneIR) Validate() error {
 	if s.RecomputeSourceTextHash() != s.SourceTextHash {
 		return fmt.Errorf("sceneir: source_text_hash does not match a fresh hash of source_text (tampered source)")
 	}
-	if strings.TrimSpace(s.Profile.Subject) == "" {
+	visual := script.BuildSegmentVisualProfile(s.Profile)
+	if strings.TrimSpace(visual.Subject) == "" {
 		return fmt.Errorf("sceneir: profile.subject is required (visual_profile must not be null)")
 	}
-	if len(s.Profile.VisualTerms) == 0 {
+	if len(visual.Terms) == 0 {
 		return fmt.Errorf("sceneir: profile.visual_terms must not be empty (visual_profile must not be null)")
 	}
 	return nil
@@ -61,7 +64,8 @@ func (s SceneIR) Validate() error {
 func MissingProfileCount(irs []SceneIR) (missing, total int) {
 	total = len(irs)
 	for _, ir := range irs {
-		if strings.TrimSpace(ir.Profile.Subject) == "" || len(ir.Profile.VisualTerms) == 0 {
+		visual := script.BuildSegmentVisualProfile(ir.Profile)
+		if strings.TrimSpace(visual.Subject) == "" || len(visual.Terms) == 0 {
 			missing++
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -75,11 +76,14 @@ type VidRushPipeline struct {
 	// SamplerPort is the MediaSampler Rust crate adapter (Fase 4). When
 	// set (with StockResolverPort), the SemanticProviderResolver ranks
 	// candidates via this port.
-	SamplerPort MediaSamplerPort
+	SamplerPort scriptports.MediaSamplerPort
 	// CertifierPort is the MediaCert certifier (Fase 2). When set (with
 	// CertSpec), the coordinator's barrier is wrapped by MediaCertBarrier
 	// so a CERTIFIED=false run fails the job.
 	CertifierPort MediaCertifierPort
+	// CertSpecResolver derives the per-run contract after PlanResolver has
+	// produced the canonical segment list. It takes precedence over CertSpec.
+	CertSpecResolver MediaCertSpecResolver
 	// CertSpec is the certification spec the MediaCertBarrier certifies
 	// against. In production this is the golden Mediterranean fixture spec.
 	CertSpec mediacert.Spec

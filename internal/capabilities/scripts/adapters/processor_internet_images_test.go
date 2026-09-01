@@ -68,7 +68,7 @@ var _ scriptports.VidRushCachePort = (*memoryVidRushCache)(nil)
 // TestInternetImagesProcessorCachesEmptyResultsInL2).
 func TestInternetImagesProcessorDoesNotCacheProviderMisses(t *testing.T) {
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -94,7 +94,7 @@ func TestInternetImagesProcessorDoesNotCacheProviderMisses(t *testing.T) {
 
 func TestInternetImagesProcessorCacheOnlyNeverCallsProvider(t *testing.T) {
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ForceRefresh: true,
 		MediaPlan: media.MediaPlanSpec{
@@ -141,7 +141,7 @@ func (s recordingInternetImageSearcher) SearchImages(_ context.Context, req Inte
 
 func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing.T) {
 	searcher := recordingInternetImageSearcher{queries: make(chan string, 1)}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ForceRefresh: true,
 		MediaPlan: media.MediaPlanSpec{
@@ -188,8 +188,8 @@ func TestSelectExactVidRushImagesImagesOnlyKeepsOnePerEntity(t *testing.T) {
 		if candidate.Provider != scriptpkg.VidRushProviderInternetImages {
 			t.Fatalf("selected provider = %q, want internet_images", candidate.Provider)
 		}
-		if !strings.HasPrefix(candidate.AssetID, "high-") {
-			t.Fatalf("selected asset = %q, want highest-scored candidate", candidate.AssetID)
+		if !strings.HasPrefix(candidate.AssetID, "low-") {
+			t.Fatalf("selected asset = %q, want first discovered candidate", candidate.AssetID)
 		}
 		if seenQueries[candidate.Query] {
 			t.Fatalf("query %q selected more than once", candidate.Query)
@@ -237,7 +237,7 @@ func TestFinalizeVidRushBindingsPreservesExactSelectedImages(t *testing.T) {
 }
 
 func TestInternetImagesProcessorRetainsResultsAcrossAllQueries(t *testing.T) {
-	processor := NewInternetImagesProcessor(multipleInternetImageSearcher{})
+	processor := NewMediaResolverImageStage(multipleInternetImageSearcher{})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -284,7 +284,7 @@ func (rogueInternetImageSearcher) SearchImages(_ context.Context, req InternetIm
 // the processor MUST filter them out at ingest time. Only candidates with
 // provider="internet_images" (or empty, which gets defaulted) survive.
 func TestInternetImagesProcessor_RejectsNonInternetImagesProviders(t *testing.T) {
-	processor := NewInternetImagesProcessor(rogueInternetImageSearcher{})
+	processor := NewMediaResolverImageStage(rogueInternetImageSearcher{})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -337,7 +337,7 @@ func (s *recordingImageSearcher) SearchImages(_ context.Context, req InternetIma
 
 func TestInternetImagesProcessor_SearchesPrimaryEntity(t *testing.T) {
 	searcher := &recordingImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
 		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
 		Extraction:     media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"GPE"}, MaxPerEntity: 1}},
@@ -372,7 +372,7 @@ func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageS
 
 func TestInternetImagesProcessorProjectsAndCachesEntityImages(t *testing.T) {
 	searcher := &entityImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
 		Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
 			Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 1,
@@ -426,7 +426,7 @@ func (s *countingImageSearcher) SearchImages(_ context.Context, req InternetImag
 func TestInternetImagesCacheColdWarmForcedRefresh(t *testing.T) {
 	vidrushImageCache = sync.Map{}
 	searcher := &countingImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 
 	buildPlan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -495,7 +495,7 @@ func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
 	vidrushImageCache = sync.Map{}
 	entityImageCache = sync.Map{}
 	searcher := &entityImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 
 	entityPlan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -576,7 +576,7 @@ func TestInternetImagesResearchPathCacheColdWarm(t *testing.T) {
 	vidrushImageCache = sync.Map{}
 	entityImageCache = sync.Map{}
 	searcher := &countingImageSearcher{}
-	processor := NewInternetImagesProcessor(searcher)
+	processor := NewMediaResolverImageStage(searcher)
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -643,7 +643,7 @@ func TestInternetImagesProcessorCachesEmptyResultsInL2(t *testing.T) {
 	vidrushImageCache = sync.Map{}
 	entityImageCache = sync.Map{}
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewInternetImagesProcessorWithCache(searcher, newMemoryVidRushCache())
+	processor := NewMediaResolverImageStageWithCache(searcher, newMemoryVidRushCache())
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{

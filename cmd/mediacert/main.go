@@ -21,24 +21,31 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 4 || os.Args[1] != "verify" {
+	if len(os.Args) < 3 || (os.Args[1] != "verify" && os.Args[1] != "verify-operational") {
 		printUsage()
 		os.Exit(2)
 	}
 	resultPath := os.Args[2]
-	specPath := os.Args[3]
-
-	spec, err := loadSpec(specPath)
-	if err != nil {
-		fail("load spec: %v", err)
-	}
 	result, err := loadResult(resultPath)
 	if err != nil {
 		fail("load result: %v", err)
 	}
 	result = normalizeResultHashes(result)
 
-	report := mediacert.Certify(spec, result)
+	var report mediacert.Report
+	if os.Args[1] == "verify-operational" {
+		report = mediacert.OperationalOwnershipReport(result)
+	} else {
+		if len(os.Args) < 4 {
+			printUsage()
+			os.Exit(2)
+		}
+		spec, err := loadSpec(os.Args[3])
+		if err != nil {
+			fail("load spec: %v", err)
+		}
+		report = mediacert.Certify(spec, result)
+	}
 	fmt.Print(mediacert.HumanReport(report))
 	if !report.Certified {
 		os.Exit(1)
@@ -91,4 +98,5 @@ func fail(format string, args ...any) {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: mediacert verify <result.json> <spec.json>")
+	fmt.Fprintln(os.Stderr, "       mediacert verify-operational <result.json>")
 }

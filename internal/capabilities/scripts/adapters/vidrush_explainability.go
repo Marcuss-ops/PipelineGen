@@ -34,15 +34,9 @@ func ExplainVidRushSegment(plan *scriptpkg.ResolvedGenerationPlan, segment scrip
 	if out.ProvidersConsidered == nil {
 		out.ProvidersConsidered = []ProviderPreference{}
 	}
+	// Explainability reports the authoritative binding only. It must not
+	// reconstruct a winner from candidates; MediaSampler is the sole selector.
 	winner := segment.Assets.PrimaryVideo
-	if winner == nil && len(segment.Assets.Candidates) > 0 {
-		for i := range segment.Assets.Candidates {
-			c := &segment.Assets.Candidates[i]
-			if winner == nil || c.Score > winner.Score || (c.Score == winner.Score && (c.Provider < winner.Provider || (c.Provider == winner.Provider && c.AssetID < winner.AssetID))) {
-				winner = c
-			}
-		}
-	}
 	if winner != nil {
 		reason := strings.TrimSpace(winner.SelectionReason)
 		if reason == "" {

@@ -39,7 +39,7 @@ func TestYouTubeReadyCandidateUsesFastPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry.Freeze()
-	processor := NewVidRushMaterializationProcessor(registry, finalizer)
+	processor := newTestMaterializationProcessor(registry, finalizer)
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "segment-youtube",

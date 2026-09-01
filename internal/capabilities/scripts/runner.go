@@ -75,7 +75,7 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 // to result after the join.
 func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
 	// Final VidRush barrier: wait only for enrichments still running, never
-	// re-running the whole-document EntitiesProcessor. The fenced per-scene
+	// re-running whole-document extraction. The fenced per-scene
 	// results are projected onto the durable result after the join.
 	segments, err := r.waitForVidRush(ctx, runID)
 	if err != nil {
@@ -336,6 +336,10 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	if err != nil {
 		return nil, fmt.Errorf("resolve vidrush plan: %w", err)
 	}
+	certSpec := p.CertSpec
+	if p.CertSpecResolver != nil {
+		certSpec = p.CertSpecResolver.ResolveMediaCertSpec(plan)
+	}
 	backpressure := p.Backpressure
 	if r.serialMode {
 		backpressure.ExtractionLimit = 1
@@ -358,7 +362,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// when the inner barrier returned no error.
 	barrier := VidRushBarrier(coordinator)
 	if p.CertifierPort != nil {
-		certBarrier, err := NewMediaCertBarrier(barrier, p.CertifierPort, p.CertSpec)
+		certBarrier, err := NewMediaCertBarrier(barrier, p.CertifierPort, certSpec)
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)
 		}

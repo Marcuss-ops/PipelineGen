@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -46,31 +47,6 @@ type VisualNERPort interface {
 	Extract(ctx context.Context, sourceText string, entityCount int) ([]VisualEntity, error)
 }
 
-// MediaSamplerCandidate mirrors rust/mediasampler::Candidate so the FFI
-// adapter can decode the crate's JSON output without translation.
-type MediaSamplerCandidate struct {
-	ID                string  `json:"id"`
-	Label             string  `json:"label"`
-	GenericSimilarity float32 `json:"generic_similarity"`
-	OwnerSegmentID    string  `json:"owner_segment_id,omitempty"`
-}
-
-// MediaSamplerResult is the per-candidate outcome from the Rust sampler.
-type MediaSamplerResult struct {
-	CandidateID string  `json:"candidate_id"`
-	Label       string  `json:"label"`
-	Score       float32 `json:"score"`
-	Rejection   string  `json:"rejection,omitempty"`
-	Reason      string  `json:"reason"`
-}
-
-// MediaSamplerPort ranks candidates for a scene through the hard-constraint
-// + soft-scoring pipeline and returns the winner. The deterministic Rust
-// crate (rust/mediasampler) is the production implementation.
-type MediaSamplerPort interface {
-	SampleScene(ctx context.Context, sceneID, subject string, terms []string, candidates []MediaSamplerCandidate, allowReuse bool) ([]MediaSamplerResult, string, error)
-}
-
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
 // stockintelligence.Service is the production implementation; it consults the
 // local Qdrant search + SQLite hydrate first and falls back to the provider
@@ -84,6 +60,26 @@ type LocalStockResolverPort interface {
 // CERTIFIED=false report must fail the job even when JobStatus=SUCCEEDED.
 type MediaCertifierPort interface {
 	Certify(ctx context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error)
+}
+
+// MediaCertifierFunc adapts the canonical mediacert.Certify function to the
+// pipeline boundary. It deliberately contains no certification rules.
+type MediaCertifierFunc func(context.Context, mediacert.Spec, mediacert.MediaResult) (mediacert.Report, error)
+
+func (f MediaCertifierFunc) Certify(ctx context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
+	return f(ctx, spec, result)
+}
+
+// MediaCertSpecResolver creates the run-specific contract from the resolved
+// plan instead of using a hard-coded fixture in production.
+type MediaCertSpecResolver interface {
+	ResolveMediaCertSpec(*scriptpkg.ResolvedGenerationPlan) mediacert.Spec
+}
+
+type MediaCertSpecResolverFunc func(*scriptpkg.ResolvedGenerationPlan) mediacert.Spec
+
+func (f MediaCertSpecResolverFunc) ResolveMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
+	return f(plan)
 }
 
 // SceneIRSegmentEnricher implements SegmentEnricher using the new chain:
@@ -107,15 +103,25 @@ func NewSceneIRSegmentEnricher(nerPort VisualNERPort) (*SceneIRSegmentEnricher, 
 // Enrich compiles a SceneIR from the committed scene and extracts entities.
 // It is the Fase 1 + Fase 3 replacement for the legacy entity extractor.
 func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	segmentID := strings.TrimSpace(scene.SegmentID)
+	if segmentID == "" {
+		segmentID = strings.TrimSpace(scene.ID)
+	}
+	sourceText := canonicalSourceText(plan, scene, segmentID)
+	narrationText := strings.TrimSpace(scene.Text)
+	if narrationText == "" {
+		narrationText = sourceText
+	}
 	segment := scriptpkg.CanonicalSegment{
-		ID:       scene.ID,
-		Position: scene.Index,
-		Text:     scene.Text,
+		ID:         segmentID,
+		Position:   scene.Index,
+		Text:       sourceText,
+		SourceText: sourceText,
 	}
 	if scene.ExecutionMode != "" {
 		segment.ExecutionMode = scene.ExecutionMode
 	}
-	ir, err := sceneir.Compile(sceneir.CompileInput{Segment: segment})
+	ir, err := sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText})
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich: %w", err)
 	}
@@ -125,40 +131,102 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
 	}
+	if err := validateVisualEntities(ir, entities); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
+	}
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	imageQueries := make([]string, 0, len(entities))
 	for _, ve := range entities {
 		extractedEntities = append(extractedEntities, scriptpkg.ExtractedEntity{
 			Value:      ve.Text,
-			Type:       "CONCEPT",
+			Type:       "VISUAL_SUBJECT",
 			Confidence: float64(ve.Score),
 		})
 		imageQueries = append(imageQueries, ve.Text)
 	}
-
-	visualProfile := &scriptpkg.SegmentVisualProfile{
-		Subject: ir.Profile.Subject,
-		Terms:   ir.Profile.VisualTerms,
+	// Recompile the same SceneIR with the extractor result. This keeps the
+	// canonical profile as the only semantic owner while making the newly
+	// grounded visual entities available to the canonical query builders.
+	entityResult := scriptpkg.EntityResult{
+		NounChunks: entitiesToStrings(entities),
+		Concepts:   extractedToConcepts(extractedEntities),
 	}
-	profile := ir.SemanticProfile
+	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
+	if err != nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich profile: %w", err)
+	}
+
+	visual := scriptpkg.BuildSegmentVisualProfile(ir.Profile)
+	visualProfile := &visual
+	artlistQueries := scriptpkg.BuildArtlistQueries(ir.Profile, 5)
+	imageQueries = scriptpkg.BuildImageQueries(ir.Profile, entityCount)
 	result := scriptpkg.VidRushSegmentResult{
-		SegmentID:     ir.SegmentID,
-		SceneID:       scene.ID,
-		Position:      ir.Position,
-		Text:          ir.SourceText,
-		TextHash:      ir.SourceTextHash,
-		ExecutionMode: scene.ExecutionMode,
+		SegmentID:       ir.SegmentID,
+		SceneID:         scene.ID,
+		Position:        ir.Position,
+		Text:            ir.SourceText,
+		TextHash:        ir.SourceTextHash,
+		ExecutionMode:   scene.ExecutionMode,
+		SemanticProfile: &ir.Profile,
 		Insights: scriptpkg.SegmentInsights{
-			SegmentID:     ir.SegmentID,
-			TextHash:      ir.SourceTextHash,
-			VisualProfile: visualProfile,
-			Entities:      extractedEntities,
-			ImageQueries:  imageQueries,
+			SegmentID:      ir.SegmentID,
+			TextHash:       ir.SourceTextHash,
+			VisualProfile:  visualProfile,
+			Entities:       extractedEntities,
+			ArtlistQueries: artlistQueries,
+			ImageQueries:   imageQueries,
 		},
 	}
-	_ = profile // retained on the SceneIR; the full profile is available via ir
 	return result, nil
+}
+
+// canonicalSourceText selects the source wording committed by the plan.
+// Generated scene copy is narration only and must never replace it.
+func canonicalSourceText(plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene, segmentID string) string {
+	if plan != nil {
+		for _, candidate := range plan.Segments {
+			if strings.EqualFold(strings.TrimSpace(candidate.ID), segmentID) && strings.TrimSpace(candidate.SourceText) != "" {
+				return strings.TrimSpace(candidate.SourceText)
+			}
+		}
+		if scene.Index >= 0 && scene.Index < len(plan.Segments) {
+			if source := strings.TrimSpace(plan.Segments[scene.Index].SourceText); source != "" {
+				return source
+			}
+		}
+	}
+	return strings.TrimSpace(scene.Text)
+}
+
+func validateVisualEntities(ir sceneir.SceneIR, entities []VisualEntity) error {
+	for i, entity := range entities {
+		text := strings.TrimSpace(entity.Text)
+		if text == "" || entity.Start < 0 || entity.End <= entity.Start || entity.End > len(ir.SourceText) {
+			return fmt.Errorf("entity[%d] has invalid source span", i)
+		}
+		if ir.SourceText[entity.Start:entity.End] != entity.Evidence ||
+			!strings.EqualFold(ir.SourceText[entity.Start:entity.End], text) {
+			return fmt.Errorf("entity[%d] %q is not grounded in source_text", i, text)
+		}
+	}
+	return nil
+}
+
+func entitiesToStrings(entities []VisualEntity) []string {
+	out := make([]string, 0, len(entities))
+	for _, entity := range entities {
+		out = append(out, entity.Text)
+	}
+	return out
+}
+
+func extractedToConcepts(entities []scriptpkg.ExtractedEntity) []scriptpkg.Entity {
+	out := make([]scriptpkg.Entity, 0, len(entities))
+	for _, entity := range entities {
+		out = append(out, scriptpkg.Entity{Value: entity.Value, Type: entity.Type, Score: float32(entity.Confidence)})
+	}
+	return out
 }
 
 // SemanticProviderResolver implements SegmentProviderResolver using the new
@@ -168,11 +236,11 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 // consulted only when local-first did not satisfy the thresholds.
 type SemanticProviderResolver struct {
 	stockResolver LocalStockResolverPort
-	samplerPort   MediaSamplerPort
+	samplerPort   scriptports.MediaSamplerPort
 }
 
 // NewSemanticProviderResolver wires the new resolver. Both ports must be non-nil.
-func NewSemanticProviderResolver(stockResolver LocalStockResolverPort, samplerPort MediaSamplerPort) (*SemanticProviderResolver, error) {
+func NewSemanticProviderResolver(stockResolver LocalStockResolverPort, samplerPort scriptports.MediaSamplerPort) (*SemanticProviderResolver, error) {
 	if stockResolver == nil {
 		return nil, fmt.Errorf("scriptgeneration: LocalStockResolverPort is required for SemanticProviderResolver")
 	}
@@ -207,16 +275,13 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 		return segment, fmt.Errorf("stockintelligence resolve: %w", err)
 	}
 
-	samplerCands := make([]MediaSamplerCandidate, 0, len(stockRes.Candidates))
+	samplerCands := make([]scriptpkg.SegmentAssetCandidate, 0, len(stockRes.Candidates))
 	for _, c := range stockRes.Candidates {
-		samplerCands = append(samplerCands, MediaSamplerCandidate{
-			ID:                c.AssetID,
-			Label:             c.Label,
-			GenericSimilarity: c.GenericSimilarity,
-			OwnerSegmentID:    c.OwnerSegmentID,
+		samplerCands = append(samplerCands, scriptpkg.SegmentAssetCandidate{
+			AssetID: c.AssetID, Entity: c.Label, RelevanceScore: float64(c.GenericSimilarity), SegmentID: c.OwnerSegmentID,
 		})
 	}
-	_, winnerID, err := r.samplerPort.SampleScene(ctx, segment.SegmentID, subject, terms, samplerCands, false)
+	winnerID, err := r.samplerPort.Sample(ctx, segment.SegmentID, subject, terms, samplerCands, false)
 	if err != nil {
 		return segment, fmt.Errorf("mediasampler sample: %w", err)
 	}

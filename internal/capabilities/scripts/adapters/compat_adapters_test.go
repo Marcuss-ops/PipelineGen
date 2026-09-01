@@ -1,4 +1,4 @@
-// Package adapters — compat_adapters_test.go (PR-noop-adapters-purge, 2026-07-25).
+// Package adapters — typed fail-closed adapter contract tests.
 //
 // TDD-first contract tests for the typed-fail adapter pattern that
 // replaces the noopEntityExtractionAdapter + noopMetadataGenerationAdapter
@@ -6,9 +6,7 @@
 // an unwired backend returns a typed error sentinel that callers can probe
 // via errors.Is, NOT a successful empty payload.
 //
-// Per godlike/06 SSOT one-canonical-owner-per-fact: EntityExtractor +
-// MetadataGenerator ports live ONLY in compat_adapters.go (= this package).
-// The dto/compat_types.go duplicate was retired in this PR.
+// The production ports live in media_ports.go and entities/ports.
 package adapters
 
 import (
@@ -82,41 +80,8 @@ func TestUnavailableMetadataGenerationAdapter_ReturnsTypedSentinel(t *testing.T)
 	}
 }
 
-// TestEntitiesProcessor_NilExtractor_ReturnsErrPostprocessFailed pins
-// the EXISTING processor-level nil-check contract (ProcessorRequired
-// posture per PR 3). Refactoring the outer typed-fail adapter MUST NOT
-// regress this internal guard. The processor continues to wrap
-// ErrPostprocessFailed for nil-extractor at PROCESS time.
-func TestEntitiesProcessor_NilExtractor_ReturnsErrPostprocessFailed(t *testing.T) {
-	p := NewEntitiesProcessor(nil)
-	if p == nil {
-		t.Fatal("NewEntitiesProcessor(nil) returned nil processor")
-	}
-
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:    "Test",
-		Language: "en",
-		Model:    "test-model",
-	}
-	input := ProcessInput{
-		Text: "Test script body",
-	}
-
-	got, err := p.Process(context.Background(), plan, input)
-
-	if got != nil {
-		t.Errorf("expected nil PostProcessResult on nil-extractor, got %+v", got)
-	}
-	if err == nil {
-		t.Fatal("expected nil-extractor error, got nil")
-	}
-	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
-		t.Fatalf("expected ErrPostprocessFailed wrap, got: %v", err)
-	}
-}
-
 // TestMetadataProcessor_NilGenerator_ReturnsErrPostprocessFailed mirrors
-// the entities nil-check pin. See TestEntitiesProcessor_NilExtractor_ReturnsErrPostprocessFailed.
+// the former entity processor nil-check pin.
 func TestMetadataProcessor_NilGenerator_ReturnsErrPostprocessFailed(t *testing.T) {
 	p := NewMetadataProcessor(nil)
 	if p == nil {

@@ -28,38 +28,39 @@ var (
 	entityImageLocks sync.Map // canonical entity key -> *sync.Mutex
 )
 
-// InternetImagesProcessor searches web images per canonical segment and
+// MediaResolverImageStage handles image discovery for the canonical media
+// resolver path. It attaches provider candidates but never selects a winner.
 // attaches every unique result returned for the segment queries.
-type InternetImagesProcessor struct {
+type MediaResolverImageStage struct {
 	searcher InternetImageSearcher
 	metrics  VidRushMetrics
 	cache    scriptports.VidRushCachePort
 	catalog  entitycatalog.Repository
 }
 
-func NewInternetImagesProcessor(searcher InternetImageSearcher, metrics ...VidRushMetrics) *InternetImagesProcessor {
-	return NewInternetImagesProcessorWithCatalog(searcher, nil, nil, metrics...)
+func NewMediaResolverImageStage(searcher InternetImageSearcher, metrics ...VidRushMetrics) *MediaResolverImageStage {
+	return NewMediaResolverImageStageWithCatalog(searcher, nil, nil, metrics...)
 }
 
-func NewInternetImagesProcessorWithCache(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *InternetImagesProcessor {
-	return NewInternetImagesProcessorWithCatalog(searcher, cache, nil, metrics...)
+func NewMediaResolverImageStageWithCache(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *MediaResolverImageStage {
+	return NewMediaResolverImageStageWithCatalog(searcher, cache, nil, metrics...)
 }
 
-func NewInternetImagesProcessorWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *InternetImagesProcessor {
+func NewMediaResolverImageStageWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *MediaResolverImageStage {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &InternetImagesProcessor{searcher: searcher, metrics: m, cache: cache, catalog: catalog}
+	return &MediaResolverImageStage{searcher: searcher, metrics: m, cache: cache, catalog: catalog}
 }
 
-func (p *InternetImagesProcessor) Name() ProcessorName { return ProcessorInternetImages }
+func (p *MediaResolverImageStage) Name() ProcessorName { return ProcessorInternetImages }
 
-func (p *InternetImagesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+func (p *MediaResolverImageStage) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
-func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+func (p *MediaResolverImageStage) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
@@ -78,7 +79,7 @@ type internetImageProcessOptions struct {
 	entityImagesEnabled bool
 }
 
-func (p *InternetImagesProcessor) handleBypassOrUnavailable(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, bool) {
+func (p *MediaResolverImageStage) handleBypassOrUnavailable(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, bool) {
 	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && !options.entityImagesEnabled {
 		segments := markInternetImagesBypassed(input.VidRushSegments)
 		if len(segments) == 0 {
@@ -105,7 +106,7 @@ func markInternetImagesBypassed(input []scriptpkg.VidRushSegmentResult) []script
 	return segments
 }
 
-func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, error) {
+func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, error) {
 	cacheOnly := options.cacheOnly
 	entityImagesEnabled := options.entityImagesEnabled
 	perQueryLimit := internetImageCandidateLimit(plan)
@@ -373,10 +374,7 @@ func (p *InternetImagesProcessor) processInternetImageSegments(ctx context.Conte
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
 		}
 		for _, queryResult := range queryResults {
-			queryResult.candidates = runInternetImageCandidatePipeline(internetImagePipelineInput{
-				Candidates: queryResult.candidates,
-				Query:      queryResult.query,
-			})
+			queryResult.candidates = filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(queryResult.candidates, queryResult.query)))
 			if queryResult.err != nil {
 				if p.metrics != nil {
 					p.metrics.IncProviderFailure("internet_images")

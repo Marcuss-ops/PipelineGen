@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +26,7 @@ type VidRushMaterializationProcessor struct {
 	cache     scriptports.VidRushCachePort
 	catalog   entitycatalog.Repository
 	metrics   VidRushTimingMetrics
+	sampler   scriptports.MediaSamplerPort
 }
 
 type vidRushMaterializedSegment struct {
@@ -71,6 +71,15 @@ func NewVidRushMaterializationProcessorWithCatalog(providers *VidRushAssetProvid
 		m = metrics[0]
 	}
 	return &VidRushMaterializationProcessor{providers: providers, finalizer: finalizer, cache: cache, catalog: catalog, metrics: m}
+}
+
+// WithMediaSampler installs the canonical selection port. Materialization
+// requires this port before binding a primary video.
+func (p *VidRushMaterializationProcessor) WithMediaSampler(sampler scriptports.MediaSamplerPort) *VidRushMaterializationProcessor {
+	if p != nil {
+		p.sampler = sampler
+	}
+	return p
 }
 
 func (p *VidRushMaterializationProcessor) Name() ProcessorName {
@@ -452,8 +461,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
 		))
 	}
-	targetDurationMs, _ := segmentDurationBudgetMs(updated, plan)
-	updated.Assets.PrimaryVideo = selectVidRushPrimaryVideoWithPolicy(materialized, plan, profileFromVidRushSegment(updated), targetDurationMs, nil, ctx)
+	profile := canonicalSegmentProfile(updated)
+	if p.sampler != nil {
+		updated.Assets.PrimaryVideo = p.selectPrimaryWithMediaSampler(ctx, materialized, profile)
+	} else {
+		// Selection is fail-closed when the canonical sampler is absent. The
+		// legacy VidRush ranker is not a production fallback; wiring must
+		// provide MediaSampler before a primary can be bound.
+		updated.Assets.PrimaryVideo = nil
+	}
 	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
 		diagnostics := make([]string, 0, minInt(len(materialized), 3))
 		diagnostics = vidRushArtlistDiagnostics(materialized)
@@ -474,6 +490,31 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// reused, 1 per freshly finalized internet_images candidate otherwise.
 	updated.Cache.InternetImagesNewUploads = newInternetImageUploads
 	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
+}
+
+func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
+	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if (candidate.Provider == scriptpkg.VidRushProviderArtlist || candidate.Provider == scriptpkg.VidRushProviderYouTube) && readyVidRushCandidate(candidate) {
+			eligible = append(eligible, candidate)
+		}
+	}
+	if len(eligible) == 0 {
+		return nil
+	}
+	visual := scriptpkg.BuildSegmentVisualProfile(profile)
+	winnerID, err := p.sampler.Sample(ctx, profile.SegmentID, visual.Subject, visual.Terms, eligible, false)
+	if err != nil || strings.TrimSpace(winnerID) == "" {
+		return nil
+	}
+	for i := range eligible {
+		if eligible[i].AssetID == winnerID {
+			winner := eligible[i]
+			winner.SelectionReason = "MediaSampler selected verified candidate"
+			return &winner
+		}
+	}
+	return nil
 }
 
 func vidRushMaterializationRequested(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
@@ -618,10 +659,9 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 		if group == "" {
 			group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
 		}
-		if index, exists := seenGroups[group]; exists {
-			if ScoreVidRushCandidate(candidate, false) > ScoreVidRushCandidate(selected[index], false) {
-				selected[index] = candidate
-			}
+		if _, exists := seenGroups[group]; exists {
+			// Candidate order is discovery order. Semantic selection belongs to
+			// MediaSampler and must not be reconstructed in this boundary.
 			continue
 		}
 		assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
@@ -668,11 +708,6 @@ func prioritizeExactVidRushImageCandidates(candidates []scriptpkg.SegmentAssetCa
 			groups = append(groups, nil)
 		}
 		groups[index] = append(groups[index], candidate)
-	}
-	for _, group := range groups {
-		sort.SliceStable(group, func(i, j int) bool {
-			return ScoreVidRushCandidate(group[i], false) > ScoreVidRushCandidate(group[j], false)
-		})
 	}
 	ordered := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for round := 0; ; round++ {

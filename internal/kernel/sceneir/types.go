@@ -3,35 +3,7 @@
 // travel downstream from the compiler; the compiler is the only producer.
 package sceneir
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-)
-
-// SemanticProfile is the per-scene semantic understanding contract carried
-// inside a SceneIR. It is intentionally a small, structurally-required
-// surface so a compiled scene can never reach the query planners without a
-// concrete subject and at least one visual term — the LIVE test failed
-// exactly because visual_profile arrived null for 5/5 segments.
-//
-// Subject is the single canonical subject of the scene (e.g. "greek salad");
-// VisualTerms are the concrete, source-grounded anchors that must appear on
-// screen (e.g. "feta cheese", "tomatoes", "olives"). The profile is derived
-// from the canonical SegmentSemanticProfile by the compiler; it never
-// invents values the underlying profile did not carry.
-type SemanticProfile struct {
-	// Subject is the single canonical subject of the scene.
-	// Equivalent to SegmentVisualProfile.Subject. MUST be non-empty on a
-	// compiled SceneIR — a scene without a subject cannot be grounded.
-	Subject string `json:"subject"`
-	// VisualTerms are the concrete, source-grounded visual anchors that
-	// must appear on screen. They feed the Artlist / image query planners
-	// directly. MUST be non-empty on a compiled SceneIR.
-	VisualTerms []string `json:"visual_terms"`
-	// Context is the setting/background of the scene, optional.
-	Context string `json:"context,omitempty"`
-	// Action is the activity/process shown on screen, optional.
-	Action string `json:"action,omitempty"`
-}
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // VisualEntity is a single source-grounded visual entity extracted from a
 // scene. V1 of the deterministic Rust extractor (VisualNER) produces these;
@@ -118,19 +90,10 @@ type SceneIR struct {
 	// planners MUST NOT consume NarrationText.
 	NarrationText string `json:"narration_text,omitempty"`
 
-	// Profile is the per-scene semantic understanding. It is ALWAYS
-	// populated by the compiler (a compiled SceneIR with an empty profile
-	// is a compile failure). This is the surface that fixes the LIVE-test
-	// bug where visual_profile arrived null for 5/5 segments.
-	Profile SemanticProfile `json:"profile"`
-
-	// SemanticProfile is the full canonical per-segment semantic profile
-	// (the richer script.SegmentSemanticProfile). It is the single point
-	// where deterministic NLP entities and small-LLM semantics merge. It
-	// is optional on the compact SceneIR envelope so the compiler can
-	// produce a minimal SceneIR before the full extraction runs; when
-	// present, Profile is its projection.
-	SemanticProfile *script.SegmentSemanticProfile `json:"semantic_profile,omitempty"`
+	// Profile is the single canonical per-scene semantic understanding. It is
+	// ALWAYS populated by the compiler. Visual profiles are projections of
+	// this value (script.BuildSegmentVisualProfile), never a second owner.
+	Profile script.SegmentSemanticProfile `json:"profile"`
 
 	// Entities are the source-grounded visual entities for this scene.
 	// Populated by the deterministic VisualNER stage (Rust) after the

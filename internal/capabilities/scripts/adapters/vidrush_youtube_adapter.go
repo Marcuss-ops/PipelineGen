@@ -102,7 +102,24 @@ func (p *VidRushYouTubeProvider) planWindows(ctx context.Context, req scriptport
 	for i := range candidates {
 		candidates[i].SemanticStatus = "planned_transcript"
 	}
-	return preRankYouTubeCandidates(candidates, req.Query, req.SceneID, youtubeCandidateLimit(req)), nil
+	return capYouTubeDiscoveryCandidates(candidates, youtubeCandidateLimit(req)), nil
+}
+
+func youtubeCandidateLimit(req scriptports.VidRushSearchRequest) int {
+	limit := req.Limit
+	if limit <= 0 || limit > 8 {
+		return 8
+	}
+	return limit
+}
+
+func capYouTubeDiscoveryCandidates(candidates []scriptpkg.SegmentAssetCandidate, limit int) []scriptpkg.SegmentAssetCandidate {
+	if limit <= 0 || len(candidates) <= limit {
+		return candidates
+	}
+	// Discovery order is preserved. Semantic selection belongs to
+	// MediaSampler, never to the provider adapter.
+	return candidates[:limit]
 }
 
 // discoverURLs runs autonomous discovery and returns canonical watch URLs.

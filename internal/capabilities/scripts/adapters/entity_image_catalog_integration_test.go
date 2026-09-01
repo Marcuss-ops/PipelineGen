@@ -229,7 +229,7 @@ func TestInternetImagesProcessorUsesFreshAndStalePoolWithoutRefresh(t *testing.T
 	}
 	seedCatalogStatuses(t, repo, "Michael Jordan", statuses)
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("pool-sufficient", "Michael Jordan"))
 	if err != nil {
@@ -260,7 +260,7 @@ func TestInternetImagesProcessorRefreshesInsufficientPoolAndKeepsFallback(t *tes
 	}
 	seedCatalogStatuses(t, repo, "Michael Jordan", statuses)
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("pool-insufficient", "Michael Jordan"))
 	if err != nil {
@@ -289,7 +289,7 @@ func TestInternetImagesProcessorCatalogHitSkipsProvider(t *testing.T) {
 	repo := newIntegrationEntityImageCatalog()
 	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/mj/1.jpg", "https://images.example/mj/2.jpg")
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 
 	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("mj-1", "MICHAEL   JORDAN"))
 	if err != nil {
@@ -307,7 +307,7 @@ func TestInternetImagesProcessorCatalogMissPopulatesAndReusesCanonicalEntity(t *
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 
 	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("mj-1", "Michael Jordan")); err != nil {
@@ -330,7 +330,7 @@ func TestInternetImagesProcessorKeepsMichaelBJordanDistinct(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("mj", "Michael Jordan")); err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestInternetImagesProcessorCatalogLockSharesFirstPopulation(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
 	plan := catalogPersonPlan()
 
 	var wg sync.WaitGroup

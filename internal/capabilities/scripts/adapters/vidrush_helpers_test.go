@@ -75,11 +75,11 @@ func TestVidRushSourcePerSegmentRankingCacheAndBinding(t *testing.T) {
 		{SegmentID: "segment-002", TextHash: "hash-002", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "wrong-segment", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/wrong", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, LegacyFileMD5: "hash-wrong", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/wrong.mp4"}}}},
 	}
 	first := FinalizeVidRushBindingsWithCache(context.Background(), segments, false, cache)
-	if first[0].Assets.PrimaryVideo == nil || first[0].Assets.PrimaryVideo.AssetID != "yt-1" {
-		t.Fatalf("ranking selected %+v, want highest-scoring YouTube candidate", first[0].Assets.PrimaryVideo)
+	if first[0].Assets.PrimaryVideo != nil || first[1].Assets.PrimaryVideo != nil {
+		t.Fatalf("binding finalizer selected a winner: %+v / %+v", first[0].Assets.PrimaryVideo, first[1].Assets.PrimaryVideo)
 	}
-	if first[1].Assets.PrimaryVideo == nil || first[1].Assets.PrimaryVideo.AssetID != "wrong-segment" {
-		t.Fatalf("segment-local candidate set leaked: %+v", first[1].Assets.PrimaryVideo)
+	if len(first[0].Assets.Candidates) != 2 || len(first[1].Assets.Candidates) != 1 {
+		t.Fatalf("candidate discovery set was not preserved: %+v", first)
 	}
 	if first[0].Cache.Binding != "MISS" {
 		t.Fatalf("first binding cache = %q, want MISS", first[0].Cache.Binding)
@@ -120,8 +120,8 @@ func TestFinalizeVidRushBindings(t *testing.T) {
 	if len(seg.Assets.Candidates) != 2 {
 		t.Fatalf("candidates = %d, want invalid/duplicate candidates removed", len(seg.Assets.Candidates))
 	}
-	if seg.Assets.PrimaryVideo == nil || seg.Assets.PrimaryVideo.AssetID != "video-1" {
-		t.Fatalf("primary video = %+v, want video-1", seg.Assets.PrimaryVideo)
+	if seg.Assets.PrimaryVideo != nil {
+		t.Fatalf("binding finalizer selected a winner: %+v", seg.Assets.PrimaryVideo)
 	}
 	if len(seg.Assets.SecondaryImages) != 1 || seg.Assets.SecondaryImages[0].AssetID != "image-1" {
 		t.Fatalf("secondary images = %+v, want one image-1", seg.Assets.SecondaryImages)

@@ -238,7 +238,7 @@ func TestIncrementalCoordinator_WaitForVidRushWaitsOnlyForPendingScenes(t *testi
 	}
 
 	// Enricher must have been called exactly once per committed scene — the
-	// barrier never re-runs the whole-document EntitiesProcessor.
+	// barrier never re-runs whole-document extraction.
 	assert.Equal(t, 2, enricher.callCount(), "barrier must not re-run enrichment")
 }
 

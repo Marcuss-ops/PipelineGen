@@ -66,7 +66,7 @@ func TestEntityImageCatalogOperationalMetricsLookupRefreshAndProvider(t *testing
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
 	metrics := &entityImageCatalogMetricsProbe{}
-	processor := NewInternetImagesProcessorWithCatalog(searcher, nil, repo, metrics)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo, metrics)
 
 	if _, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("metrics-cold", "Michael Jordan")); err != nil {
 		t.Fatal(err)

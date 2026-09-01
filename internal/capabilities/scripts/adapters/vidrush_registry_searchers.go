@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -9,7 +10,126 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
+
+var vidRushArtlistSearchGate = make(chan struct{}, 1)
+
+func acquireVidRushArtlistSearch(ctx context.Context) error {
+	select {
+	case vidRushArtlistSearchGate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func releaseVidRushArtlistSearch() { <-vidRushArtlistSearchGate }
+
+func isArtlistRateLimited(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "429")
+}
+
+func isM3U8URL(raw string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(raw)), ".m3u8")
+}
+
+// VidRushRegistryMediaResolver is the single provider-registry discovery
+// adapter. It implements both discovery ports consumed by the fan-out; it
+// never acquires, scores, ranks or selects a winner.
+type VidRushRegistryMediaResolver struct {
+	Registry *VidRushAssetProviderRegistry
+}
+
+// MediaResolver is the unified provider discovery boundary used by the
+// production fan-out. A resolver may expose several provider queries, but it
+// never owns acquisition or winner selection.
+type MediaResolver interface {
+	ArtlistClipSearcher
+	InternetImageSearcher
+}
+
+func NewVidRushProviderFanoutWithResolver(resolver MediaResolver, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	return NewVidRushProviderFanoutWithCatalog(resolver, resolver, cache, catalog, metrics...)
+}
+
+func (s *VidRushRegistryMediaResolver) SearchClips(ctx context.Context, title string, phrases []string) ([]ArtlistClipMatch, error) {
+	if s == nil || s.Registry == nil {
+		return nil, scriptports.ErrVidRushProviderNotFound
+	}
+	type queryResult struct {
+		match ArtlistClipMatch
+		err   error
+	}
+	results, mapErr := concurrent.Map(ctx, phrases, 3, func(ctx context.Context, _ int, rawPhrase string) (queryResult, error) {
+		phrase := strings.TrimSpace(rawPhrase)
+		if phrase == "" {
+			return queryResult{}, nil
+		}
+		if err := acquireVidRushArtlistSearch(ctx); err != nil {
+			return queryResult{err: fmt.Errorf("artlist query %q: acquire search slot: %w", phrase, err)}, nil
+		}
+		defer releaseVidRushArtlistSearch()
+		var candidates []scriptpkg.SegmentAssetCandidate
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			candidates, err = s.Registry.Search(queryCtx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{SceneID: title, Text: title, Query: phrase, Limit: 10})
+			cancel()
+			if !isArtlistRateLimited(err) || attempt == 2 {
+				break
+			}
+			backoff := time.Duration(1<<attempt) * time.Second
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return queryResult{err: fmt.Errorf("artlist query %q: retry canceled: %w", phrase, ctx.Err())}, nil
+			}
+		}
+		if err != nil {
+			return queryResult{err: fmt.Errorf("artlist query %q: %w", phrase, err)}, nil
+		}
+		match := ArtlistClipMatch{Phrase: phrase, Remote: true}
+		for _, candidate := range candidates {
+			link := strings.TrimSpace(candidate.SourceURL)
+			if !isM3U8URL(link) {
+				link = strings.TrimSpace(candidate.PreviewURL)
+			}
+			if !isM3U8URL(link) {
+				continue
+			}
+			match.ClipNames = append(match.ClipNames, candidate.AssetID)
+			match.ClipDriveLinks = append(match.ClipDriveLinks, link)
+			if match.FolderLink == "" {
+				match.FolderLink = candidate.SourcePageURL
+			}
+		}
+		return queryResult{match: match}, nil
+	})
+	if mapErr != nil {
+		return nil, mapErr
+	}
+	out := make([]ArtlistClipMatch, 0, len(results))
+	var firstErr error
+	for _, result := range results {
+		if result.err != nil && firstErr == nil {
+			firstErr = result.err
+		}
+		if len(result.match.ClipDriveLinks) > 0 {
+			out = append(out, result.match)
+		}
+	}
+	return out, firstErr
+}
+
+func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if s == nil || s.Registry == nil {
+		return nil, scriptports.ErrVidRushProviderNotFound
+	}
+	return s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
+		SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: req.Query, Query: req.Query, Limit: req.Limit,
+	})
+}
 
 // VidRushProviderFanout resolves a single enriched segment's visual providers
 // in parallel through the shared searcher ports (which dispatch the canonical
@@ -71,7 +191,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 
-	profile := profileFromVidRushSegment(updated)
+	profile := canonicalSegmentProfile(updated)
 	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.artlist, f.images, f.youtube)
 	semanticProfile := &profile
 	segmentDurationMs, _ := segmentDurationBudgetMs(updated, plan)
@@ -136,15 +256,10 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
 					if payload, ok := cached.(artlistSegmentCachePayload); ok {
 						candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
-						var primary *scriptpkg.SegmentAssetCandidate
-						if len(candidates) > 0 && readyVidRushCandidate(candidates[0]) {
-							selected := candidates[0]
-							primary = &selected
-						}
 						if f.metrics != nil {
 							f.metrics.IncAssetCache("artlist", true)
 						}
-						outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, primary: primary, allCacheHits: true}
+						outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, allCacheHits: true}
 						return
 					}
 				}
@@ -157,15 +272,10 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					if len(persisted.Candidates) > 0 {
 						cacheStore(&vidrushArtlistCache, cacheKey, persisted)
 					}
-					var primary *scriptpkg.SegmentAssetCandidate
-					if len(persisted.Candidates) > 0 && readyVidRushCandidate(persisted.Candidates[0]) {
-						selected := persisted.Candidates[0]
-						primary = &selected
-					}
 					if f.metrics != nil {
 						f.metrics.IncAssetCache("artlist", true)
 					}
-					outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: persisted.Candidates, primary: primary, allCacheHits: true}
+					outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: persisted.Candidates, allCacheHits: true}
 					return
 				}
 			}
@@ -184,11 +294,6 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				return
 			}
 			candidates := artlistMatchesToCandidates(artlistIdentity, dedupeArtlistMatches(matches))
-			var primary *scriptpkg.SegmentAssetCandidate
-			if len(candidates) > 0 && readyVidRushCandidate(candidates[0]) {
-				selected := candidates[0]
-				primary = &selected
-			}
 			payload := artlistSegmentCachePayload{
 				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 				Matches:    cloneArtlistMatches(dedupeArtlistMatches(matches)),
@@ -198,7 +303,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				outcomes <- vidRushProviderOutcome{provider: "artlist", err: cacheErr}
 				return
 			}
-			outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, primary: primary}
+			outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates}
 		}()
 	}
 	if imagesEnabled {
@@ -206,7 +311,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		go func() {
 			defer wg.Done()
 			// Segment-level cache is keyed on segment identity (SegmentID +
-			// TextHash + prompt/model/limit), mirroring InternetImagesProcessor.
+			// TextHash + prompt/model/limit), matching the canonical resolver cache.
 			// On the text path the TextHash is deterministic across a warm
 			// replay (memory gate), so this cache produces HIT_EXACT without
 			// re-calling the provider.

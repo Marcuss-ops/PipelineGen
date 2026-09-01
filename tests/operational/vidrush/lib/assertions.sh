@@ -183,61 +183,32 @@ vidrush_assert_entities() {
 vidrush_assert_artlist_isolation() {
     local result="$1"
 
-    # Artlist queries are segment-owned. A duplicate query across segments
-    # makes cache/provider results ambiguous and is rejected before binding.
-    if ! jq -e '
-      def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ");
-      [ .segments[] as $segment
-        | ($segment.insights.artlist_queries // [])[]?
-        | select(type == "string" and length > 0)
-        | {segment: $segment.segment_id, query: (norm)}
-      ]
-      | group_by(.query)
-      | all(.[]; ([.[].segment] | unique | length) == 1)
-    ' <<<"$result" >/dev/null; then
-        printf '%sFAIL%s Artlist query contamination detected across segments\n' "$RED" "$RESET"
-        VIDRUSH_ASSERT_FAIL=1
+    # Query ownership, asset provenance and cross-scene reuse are semantic
+    # rules owned by MediaCert. The shell layer only delegates them.
+    local tmp_result cert_rc
+    tmp_result=$(mktemp "${TMPDIR:-/tmp}/vidrush-mediacert.XXXXXX")
+    printf '%s\n' "$result" >"$tmp_result"
+    if [[ -n "${MEDIACERT_BIN:-}" && -x "${MEDIACERT_BIN}" ]]; then
+        if "$MEDIACERT_BIN" verify-operational "$tmp_result"; then
+            cert_rc=0
+        else
+            cert_rc=$?
+        fi
+    elif command -v go >/dev/null 2>&1; then
+        local repo_root
+        repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+        if (cd "$repo_root" && go run ./cmd/mediacert verify-operational "$tmp_result"); then
+            cert_rc=0
+        else
+            cert_rc=$?
+        fi
+    else
+        printf '%sFAIL%s MediaCert verifier is unavailable\n' "$RED" "$RESET"
+        cert_rc=2
     fi
-
-    # Every Artlist candidate and winner must carry the owning segment
-    # envelope and, when queries are declared, use one of that segment's
-    # queries. This catches a foreign provider response even if the asset
-    # itself is otherwise durable.
-    if ! jq -e '
-      def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ");
-      def candidate_ok($segment):
-        (.segment_id // "") == ($segment.segment_id // "")
-        and (.position // -1) == ($segment.position // -1)
-        and (.text_hash // "") == ($segment.text_hash // "")
-        and (.asset_id // "") != ""
-        and (.provider // "") == "artlist"
-        and (.query // "") != ""
-        and (
-          (($segment.insights.artlist_queries // []) | length) == 0
-          or ((.query | norm) as $query |
-              (($segment.insights.artlist_queries // []) | map(norm) | index($query)) != null)
-        );
-      all(.segments[];
-        . as $segment |
-        all(($segment.assets.candidates // [])[] | select(.provider == "artlist"); candidate_ok($segment))
-        and all(([$segment.assets.primary_video] | map(select(. != null)))[] | select(.provider == "artlist"); candidate_ok($segment))
-      )
-    ' <<<"$result" >/dev/null; then
-        printf '%sFAIL%s Artlist candidate/winner provenance or query ownership failed\n' "$RED" "$RESET"
-        VIDRUSH_ASSERT_FAIL=1
-    fi
-
-    # The same Artlist asset may not be bound to more than one segment.
-    if ! jq -e '
-      [ .segments[] as $segment
-        | ([($segment.assets.candidates // [])[], $segment.assets.primary_video?][])
-        | select(.provider == "artlist" and (.asset_id // "") != "")
-        | {asset_id: (.asset_id | ascii_downcase), segment: $segment.segment_id}
-      ]
-      | group_by(.asset_id)
-      | all(.[]; ([.[].segment] | unique | length) == 1)
-    ' <<<"$result" >/dev/null; then
-        printf '%sFAIL%s Artlist asset winner/candidate is reused across segments\n' "$RED" "$RESET"
+    rm -f -- "$tmp_result"
+    if [[ "$cert_rc" -ne 0 ]]; then
+        printf '%sFAIL%s MediaCert ownership certification failed\n' "$RED" "$RESET"
         VIDRUSH_ASSERT_FAIL=1
     fi
 }

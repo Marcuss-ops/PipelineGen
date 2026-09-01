@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,16 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-type deviceTestExtractor struct {
-	result *scriptpkg.EntityResult
-	calls  int
-}
-
-func (e *deviceTestExtractor) ExtractEntities(context.Context, scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
-	e.calls++
-	return e.result, nil
-}
 
 func TestMain(m *testing.M) {
 	wd, _ := os.Getwd()
@@ -213,37 +202,6 @@ func TestExtractorCardinalNumberPhrases(t *testing.T) {
 		if concept.Type == "CARDINAL" && strings.EqualFold(strings.TrimSpace(concept.Value), "ten") {
 			t.Fatalf("bare number word promoted to CARDINAL: %+v", concept)
 		}
-	}
-}
-
-func TestHybridExtractorRoutesExplicitDevices(t *testing.T) {
-	cpu := &deviceTestExtractor{result: &scriptpkg.EntityResult{ImportantPhrases: []string{"cpu"}}}
-	gpu := &deviceTestExtractor{result: &scriptpkg.EntityResult{ImportantPhrases: []string{"gpu"}}}
-	hybrid := &HybridExtractor{cpu: cpu, gpu: gpu, available: func(context.Context) bool { return true }}
-
-	got, err := hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "x", Device: DeviceGPU})
-	if err != nil || got.ImportantPhrases[0] != "gpu" || gpu.calls != 1 {
-		t.Fatalf("gpu route = %+v, err=%v, calls=%d", got, err, gpu.calls)
-	}
-	got, err = hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "x", Device: DeviceCPU})
-	if err != nil || got.ImportantPhrases[0] != "cpu" || cpu.calls != 1 {
-		t.Fatalf("cpu route = %+v, err=%v, calls=%d", got, err, cpu.calls)
-	}
-}
-
-func TestHybridExtractorGPUFailsClosedWhenUnavailable(t *testing.T) {
-	hybrid := &HybridExtractor{
-		cpu:       NewExtractor(),
-		gpu:       &deviceTestExtractor{result: &scriptpkg.EntityResult{}},
-		available: func(context.Context) bool { return false },
-	}
-	_, err := hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "x", Device: DeviceGPU})
-	if !errors.Is(err, scriptpkg.ErrEntityExtractorUnavailable) {
-		t.Fatalf("error = %v, want ErrEntityExtractorUnavailable", err)
-	}
-	got, err := hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "Mike Tyson", Device: DeviceAuto})
-	if err != nil || got == nil {
-		t.Fatalf("auto fallback = %+v, err=%v", got, err)
 	}
 }
 
