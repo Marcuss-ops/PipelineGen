@@ -101,6 +101,21 @@ func ComputeCanonicalSegmentTextHash(text string) string {
 	return ComputeSourceHash(strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " "))
 }
 
+// EntityType is the closed vocabulary shared by VisualNER, SceneIR and
+// overlay/media consumers. Values are strings on the JSON boundary so Rust
+// and Go remain wire-compatible.
+type EntityType string
+
+const (
+	EntityTypePerson        EntityType = "PERSON"
+	EntityTypeOrganization  EntityType = "ORGANIZATION"
+	EntityTypeLocation      EntityType = "LOCATION"
+	EntityTypeProduct       EntityType = "PRODUCT"
+	EntityTypeEvent         EntityType = "EVENT"
+	EntityTypeWork          EntityType = "WORK"
+	EntityTypeVisualConcept EntityType = "VISUAL_CONCEPT"
+)
+
 // ExtractedEntity is a typed entity extracted from one segment.
 type ExtractedEntity struct {
 	Value      string  `json:"value"`

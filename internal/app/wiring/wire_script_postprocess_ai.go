@@ -28,7 +28,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -123,58 +122,15 @@ func registerAIBackedProcessors(
 	}
 
 	// ── ClipSearch ───────────────────────────────────────────────────
-	// ClipSearchProcessor can use the canonical VidRush provider registry
-	// directly. Manual media_plan.searches and locally extracted phrases do
-	// not require Ollama translation; only the legacy ClipServices fallback
-	// does.
+	// ClipSearchProcessor is available only through the canonical provider
+	// registry. If that registry is unavailable this postprocessor is skipped;
+	// the old ClipServices/Drive/Jobs/remote fallback is intentionally gone.
 	var clipSearchAdapter adapters.ArtlistClipSearcher
-	var registryMediaResolver *adapters.VidRushRegistryMediaResolver
 	if vidRushProviders != nil {
 		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
-			registryMediaResolver = &adapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
-			clipSearchAdapter = registryMediaResolver
+			clipSearchAdapter = &adapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
 			log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
 		}
-	}
-	if clipSearchAdapter == nil && root.AI != nil && root.AI.OllamaTranslator != nil {
-		clipSvc := usecase.ClipServices{
-			TranslationPort: root.AI.OllamaTranslator,
-			Logger:          log,
-			ArtlistFolder:   cfg.Drive.ArtlistFolder(),
-		}
-		if root.Repos != nil && root.Repos.ClipsRepo != nil {
-			clipSvc.RealtimeSvc = &sqliteRealtimeSearchAdapter{repo: root.Repos.ClipsRepo}
-		}
-		if root.Drive != nil && root.Drive.DriveUploader != nil {
-			clipSvc.DriveSvc = &driveCheckServiceAdapter{
-				up: root.Drive.DriveUploader,
-			}
-		}
-		if root.Jobs != nil && root.Jobs.Service != nil {
-			clipSvc.JobsSvc = &jobsEnqueueServiceAdapter{
-				svc: root.Jobs.Service,
-			}
-		}
-		if root.Domains != nil && root.Domains.AssocService != nil {
-			clipSvc.AssocSvc = root.Domains.AssocService
-		}
-		if clipSearchAdapter == nil {
-			remoteClipSearchAdapter := &artlistClipSearchAdapter{svc: clipSvc}
-			if artlistWiring != nil && artlistWiring.ProviderAssets != nil {
-				remoteClipSearchAdapter.remoteSearch = func(ctx context.Context, req providerassets.SearchRequest) (providerassets.SearchResult, error) {
-					return artlistWiring.ProviderAssets.Search(ctx, "artlist", req)
-				}
-				log.Info("ClipSearchProcessor wired through the canonical remote Artlist provider registry")
-			}
-			clipSearchAdapter = remoteClipSearchAdapter
-		}
-		log.Info("ClipSearchProcessor wired with rich ClipServices",
-			zap.Bool("drive_svc", clipSvc.DriveSvc != nil),
-			zap.Bool("jobs_svc", clipSvc.JobsSvc != nil),
-			zap.Bool("assoc_svc", clipSvc.AssocSvc != nil),
-			zap.Bool("realtime_svc", clipSvc.RealtimeSvc != nil),
-			zap.Bool("artlist_folder", clipSvc.ArtlistFolder != ""),
-		)
 	}
 	if clipSearchAdapter == nil {
 		log.Warn("ClipSearchProcessor: Artlist searcher not available; postprocessor not registered (clip_search will be skipped)")
