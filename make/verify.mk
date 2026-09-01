@@ -214,6 +214,17 @@ regen-routes-yaml:
 archcheck-strict:
 	@$(GO) run ./cmd/archcheck --strict
 
+# certify-storage — canonical storage certification (20 gate, binary PASS/FAIL).
+# Permanent regression gate for the double-DB / double-writer / Qdrant-as-second-DB invariant.
+# SQLite is the only truth (data/media/media.db.sqlite), Qdrant is a rebuildable projection (media_assets),
+# all asset commits route through persistence.AssetCommitter, producers never UpsertPoints directly.
+# Produces FINAL_CERTIFIED=true only when all gates pass. Use --json for machine-readable output.
+certify-storage:
+	@bash scripts/ci/certify-storage.sh
+
+certify-storage-json:
+	@bash scripts/ci/certify-storage.sh --json
+
 # ─── Sidecar Node scraper (PR-LIVE-VERIFY-1, P0) ───────────────────────────
 #
 # scraper-up — launches the Node.js artlist scraper sidecar as a background
