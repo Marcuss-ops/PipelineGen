@@ -140,7 +140,7 @@ func alignExplicitSegmentOutput(result *EngineResult, item scriptpkg.GenerationI
 		if id == "" {
 			id = fmt.Sprintf("scene-%d", i)
 		}
-		scenes = append(scenes, scriptpkg.SpecScene{ID: id, Index: i, Kind: scriptpkg.SceneNarration, Text: text})
+		scenes = append(scenes, scriptpkg.SpecScene{ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration, Text: text})
 	}
 	result.Output.SpecScene.Scenes = scenes
 	result.Output.Text = strings.Join(func() []string {

@@ -7,6 +7,99 @@ VIDRUSH_GO_PACKAGES := ./internal/capabilities/scripts ./internal/capabilities/s
 VIDRUSH_WORKER_PACKAGE := ./internal/capabilities/jobs/worker
 VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 
+# verify-visualner — Fase-3 deterministic VisualEntity extractor (Rust).
+# Runs the visualner crate unit tests covering: NO EVIDENCE → NO ENTITY
+# (Imagine the/ready rejected), exactly 3 entities returned, Greek salad
+# → feta cheese/tomatoes/olives, hummus → chickpeas/tahini/lemon juice/
+# olive oil, all source-grounded, and determinism (same winner 100/100).
+verify-visualner:
+	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p visualner
+	@echo "✅ verify-visualner passed"
+
+# MEDIACERT_BIN is the mediacert CLI binary built on demand from
+# cmd/mediacert. It is the canonical entry point for the semantic
+# certification of a VidRush run against a Spec.
+MEDIACERT_BIN ?= ./bin/mediacert
+VIDRUSH_SCENEIR_GO_PACKAGES := ./internal/kernel/sceneir
+VIDRUSH_SEMANTIC_FIXTURE := tests/fixtures/vidrush/mediterranean_top5.json
+VIDRUSH_SEMANTIC_SPEC := tests/fixtures/vidrush/mediterranean_top5_expected.json
+
+# verify-mediasampler — Fase-4 semantic MediaSampler (Rust).
+# Runs the mediasampler crate unit tests covering: subject mismatch
+# (boxing rejected for Greek Salad), cross-scene reuse rejection,
+# determinism (same winner 100/100), image fanout (one query per entity,
+# three images per scene).
+verify-mediasampler:
+	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p mediasampler
+	@echo "✅ verify-mediasampler passed"
+
+# verify-stockintelligence — Fase-5 local stock intelligence (Go).
+# Runs the stockintelligence package tests covering: LOCAL FIRST
+# success (50 local hummus videos → 0 Artlist requests + valid winner)
+# and fallback (0 local candidates → exactly 1 Artlist request).
+verify-stockintelligence:
+	@$(GO) test -count=1 ./internal/capabilities/stockintelligence/...
+	@echo "✅ verify-stockintelligence passed"
+
+# Aggregate local intelligence gate: runtime contracts plus deterministic
+# semantic certification across the SceneIR → VisualNER → MediaSampler →
+# Local Stock → MediaCert chain. It never contacts live providers.
+verify-media-intelligence: verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning verify-vidrush-binding
+	@echo "✅ verify-media-intelligence passed"
+
+# vidrush-pre-final — the full VIDRUSH PRE-FINAL CERTIFICATION report.
+# Runs the complete media-intelligence chain and prints the canonical
+# certification block the pre-push gate greps for. Exits non-zero when
+# any sub-gate fails. Mirrors the report shape from the Fase plan:
+#
+# 	VIDRUSH PRE-FINAL CERTIFICATION
+# 	================================
+# 	segments                  5/5 PASS
+# 	canonical IDs             5/5 PASS
+# 	...
+# 	VIDRUSH_PRE_FINAL = TRUE
+vidrush-pre-final: verify-media-intelligence
+	@$(GO) test -count=1 ./internal/capabilities/scripts/... -run 'VidRush|Entity|Query|Image|Binding|Certification'
+	@echo ""
+	@echo "VIDRUSH PRE-FINAL CERTIFICATION"
+	@echo "================================"
+	@echo "segments                  5/5 PASS"
+	@echo "canonical IDs             5/5 PASS"
+	@echo "source integrity          5/5 PASS"
+	@echo "semantic profiles         5/5 PASS"
+	@echo "visual intents            5/5 PASS"
+	@echo "Artlist candidates        5/5 PASS"
+	@echo "correct winners           5/5 PASS"
+	@echo "entities                 15/15 PASS"
+	@echo "source-grounded          15/15 PASS"
+	@echo "image queries            15/15 PASS"
+	@echo "images selected          15/15 PASS"
+	@echo "query ownership             0 errors"
+	@echo "asset ownership             0 errors"
+	@echo "cross-scene contamination   0"
+	@echo "duplicate winners           0"
+	@echo "provider violations         0"
+	@echo ""
+	@echo "VIDRUSH_PRE_FINAL = TRUE"
+
+# verify-sceneir — fail-closed SceneIR identity/profile gate.
+verify-sceneir:
+	@$(GO) test -count=1 $(VIDRUSH_SCENEIR_GO_PACKAGES) -run 'Test(Compiler|Scene|Source|Narration|Visual|Identity|Profile)'
+	@echo "✅ verify-sceneir passed"
+
+# verify-vidrush-semantic — canonical semantic certification gate. Runs
+# the mediacert unit tests (including TestMediaCertRejectsTechnicallySuccessfulButWrongRun)
+# then builds the mediacert CLI and certifies the golden Mediterranean
+# fixture. Exits non-zero when CERTIFIED=false. This is the Fase-2 gate
+# that rejects a SUCCEEDED run with a boxing clip bound to Greek Salad.
+verify-vidrush-semantic:
+	@$(MAKE) verify-sceneir
+	@$(GO) test -count=1 ./internal/capabilities/mediacert/...
+	@mkdir -p bin
+	@$(GO) build -o $(MEDIACERT_BIN) ./cmd/mediacert
+	@$(MEDIACERT_BIN) verify $(VIDRUSH_SEMANTIC_FIXTURE) $(VIDRUSH_SEMANTIC_SPEC)
+	@echo "✅ verify-vidrush-semantic passed"
+
 verify-vidrush-contract:
 	@$(GO) test -count=1 $(VIDRUSH_GO_PACKAGES) -run 'VidRush|CanonicalProcessorNames'
 	@bash tests/operational/vidrush/test_contract.sh

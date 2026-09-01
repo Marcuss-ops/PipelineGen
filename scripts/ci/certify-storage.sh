@@ -21,7 +21,7 @@ PASS=0; FAIL=0
 WARN=""
 pass() { PASS=$((PASS+1)); }
 fail() { FAIL=$((FAIL+1)); }
-section() { echo ""; echo "=== $* ==="; }
+section() { if ! $JSON_OUT; then echo ""; echo "=== $* ==="; fi; }
 
 # Track per-gate results for FINAL_CERTIFIED
 GATE_RESULTS=()
@@ -304,7 +304,7 @@ else
 fi
 
 # ── Final verdict ──────────────────────────────────────────────────────────
-section "FINAL"
+if ! $JSON_OUT; then section "FINAL"; fi
 TOTAL=$((PASS+FAIL))
 FINAL="TRUE"
 if [[ $FAIL -ne 0 ]]; then FINAL="FALSE"; fi

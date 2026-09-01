@@ -365,8 +365,8 @@ func TestVidRushSegmentEnricherResolverNoImageDecision(t *testing.T) {
 	require.Empty(t, seg.Insights.ImageQueries, "no-image decision must yield an empty query set so the provider fan-out is disabled")
 }
 
-// TestVidRushSegmentEnricherWithoutResolverKeepsLegacyPath certifies that an
-// unwired resolver leaves the legacy ad-hoc builder in charge (Required=true).
+// TestVidRushSegmentEnricherWithoutResolverKeepsCanonicalPath certifies that
+// an unwired resolver still uses the canonical profile query builder.
 func TestVidRushSegmentEnricherWithoutResolverKeepsLegacyPath(t *testing.T) {
 	vidrushExtractionCache = sync.Map{}
 	enricher := NewVidRushSegmentEnricher(localnlp.NewExtractor(), nil)
@@ -375,7 +375,7 @@ func TestVidRushSegmentEnricherWithoutResolverKeepsLegacyPath(t *testing.T) {
 	seg, err := enricher.Enrich(context.Background(), plan, scene)
 	require.NoError(t, err)
 	require.True(t, seg.Insights.ImageSearchRequired)
-	require.Contains(t, strings.Join(seg.Insights.ImageQueries, " | "), "floyd mayweather")
+	require.Contains(t, strings.ToLower(strings.Join(seg.Insights.ImageQueries, " | ")), "floyd mayweather")
 }
 
 func TestSegmentQueryContextPrefersSourceSegmentOverGeneratedProse(t *testing.T) {
@@ -551,18 +551,14 @@ func TestVidRushSegmentEnricher_EnrichCacheHitSkipsEntityProviderCall(t *testing
 }
 
 func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
-	artlist := buildArtlistQueries(
-		"In the summer of 1969, millions watched as American astronauts prepared for one of the most important missions in human history.",
-		nil,
-		[]scriptpkg.ExtractedEntity{{Value: "Apollo 11 astronauts", Type: "EVENT"}},
-		[]string{
-			"NASA mission control",
-			"astronauts prepared for one of the most important missions",
-			"TYPE action scene",
-		},
-		[]string{"Saturn", "V launch", "moon mission"},
-		"historical documentary",
-	)
+	profile := scriptpkg.SegmentSemanticProfile{
+		Topic:            "historical documentary",
+		Entities:         []scriptpkg.ExtractedEntity{{Value: "Apollo 11 astronauts", Type: "EVENT"}},
+		ImportantPhrases: []string{"NASA mission control"},
+		Keywords:         []scriptpkg.WeightedKeyword{{Value: "Saturn"}, {Value: "V launch"}, {Value: "moon mission"}},
+		VisualTerms:      []scriptpkg.WeightedKeyword{{Value: "NASA mission control"}},
+	}
+	artlist := scriptpkg.BuildArtlistQueries(profile, 5)
 	if len(artlist) == 0 || len(artlist) > 5 {
 		t.Fatalf("artlist queries = %v, want 1-5 search queries", artlist)
 	}
@@ -582,13 +578,11 @@ func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
 		t.Errorf("narrative sentence leaked into Artlist queries: %v", artlist)
 	}
 
-	images := buildImageQueries(
-		"Elon Musk presented the new spacecraft at SpaceX headquarters in Texas.",
-		[]scriptpkg.ExtractedEntity{{Value: "Elon Musk", Type: "PERSON"}},
-		[]string{"Elon Musk SpaceX presentation", "Subject visual scene"},
-		[]string{"spacecraft", "presentation", "Texas"},
-		"generic topic",
-	)
+	images := scriptpkg.BuildImageQueries(scriptpkg.SegmentSemanticProfile{
+		Topic:       "generic topic",
+		Entities:    []scriptpkg.ExtractedEntity{{Value: "Elon Musk", Type: "PERSON"}},
+		VisualTerms: []scriptpkg.WeightedKeyword{{Value: "Elon Musk SpaceX presentation"}, {Value: "Subject visual scene"}},
+	}, 8)
 	for _, query := range images {
 		words := strings.Fields(query)
 		if len(words) < 2 || len(words) > 8 {
@@ -601,8 +595,11 @@ func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
 }
 
 func TestExplicitArtlistKeywordsArePrioritized(t *testing.T) {
-	queries := buildArtlistQueries("Top 10 foods", []string{"bread", "wine", "olive"}, nil, nil, nil, "foods")
-	if len(queries) < 3 || strings.Join(queries[:3], "|") != "bread|wine|olive" {
+	queries := scriptpkg.BuildArtlistQueries(scriptpkg.SegmentSemanticProfile{
+		Topic:       "foods recipes",
+		VisualTerms: []scriptpkg.WeightedKeyword{{Value: "fresh bread"}, {Value: "red wine"}, {Value: "green olive"}},
+	}, 5)
+	if len(queries) < 3 || strings.Join(queries[:3], "|") != "fresh bread|red wine|green olive" {
 		t.Fatalf("queries = %v, want explicit keywords first", queries)
 	}
 }

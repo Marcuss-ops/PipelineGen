@@ -77,6 +77,36 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		if count == 0 {
 			count = 1
 		}
+		// When explicit segments are provided (Mediterranean pre-final), the
+		// authoritative source_text per segment must be preserved verbatim
+		// instead of splitting LLM-generated prose which may hallucinate
+		// promotional prefixes ("Get ready...").
+		if len(plan.Segments) > 0 {
+			scenes := make([]scriptgen.Scene, 0, count)
+			for i, seg := range plan.Segments {
+				text := strings.TrimSpace(seg.SourceText)
+				if text == "" {
+					text = strings.TrimSpace(seg.Topic)
+				}
+				if text == "" {
+					return nil, fmt.Errorf("text scene %d has empty source_text/topic", i)
+				}
+				segID := strings.TrimSpace(seg.ID)
+				if segID == "" {
+					segID = fmt.Sprintf("scene-%d", i)
+				}
+				scenes = append(scenes, scriptgen.Scene{
+					ID:    segID,
+					Index: i,
+					Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
+					Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+					AudioIntents: []capabilityaudio.AudioIntent{{
+						Mode: capabilityaudio.AudioVoiceover,
+					}},
+				})
+			}
+			return scenes, nil
+		}
 		draft := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
 		if len(draft) != count {
 			return nil, fmt.Errorf("planned %d text scenes, synthesized %d", count, len(draft))

@@ -301,8 +301,33 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		return nil, nil
 	}
 	p := r.vidRushPipeline
-	if p == nil || p.Enricher == nil {
+	if p == nil {
 		return nil, nil
+	}
+	// Fase 1-5 semantic cutover (big-bang): when the new ports are wired,
+	// build the SceneIRSegmentEnricher + SemanticProviderResolver and use
+	// them in place of the legacy Enricher/ProviderResolver. The new chain
+	// compiles a SceneIR (immutable identity), extracts source-grounded
+	// entities via VisualNER, resolves candidates LOCAL FIRST via
+	// stockintelligence, ranks via MediaSampler, and certifies via MediaCert.
+	enricher := p.Enricher
+	if p.NERPort != nil {
+		newEnricher, err := NewSceneIRSegmentEnricher(p.NERPort)
+		if err != nil {
+			return nil, fmt.Errorf("vidrush pipeline: %w", err)
+		}
+		enricher = newEnricher
+	}
+	if enricher == nil {
+		return nil, nil
+	}
+	providerResolver := p.ProviderResolver
+	if p.StockResolverPort != nil && p.SamplerPort != nil {
+		newResolver, err := NewSemanticProviderResolver(p.StockResolverPort, p.SamplerPort)
+		if err != nil {
+			return nil, fmt.Errorf("vidrush pipeline: %w", err)
+		}
+		providerResolver = newResolver
 	}
 	if p.PlanResolver == nil {
 		return nil, fmt.Errorf("scriptgeneration: vidrush pipeline requires a plan resolver")
@@ -315,8 +340,8 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	if r.serialMode {
 		backpressure.ExtractionLimit = 1
 	}
-	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(p.Enricher, plan, backpressure)
-	coordinator.SetSegmentProviderResolver(p.ProviderResolver)
+	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, plan, backpressure)
+	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
 	nlpGate := r.nlpGenerationGate
@@ -328,9 +353,21 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	}
 	coordinator.SetGenerationGate(nlpGate)
 
+	// Fase 2 barrier wrap: when the MediaCertifierPort is wired, wrap the
+	// coordinator's barrier so a CERTIFIED=false run fails the job even
+	// when the inner barrier returned no error.
+	barrier := VidRushBarrier(coordinator)
+	if p.CertifierPort != nil {
+		certBarrier, err := NewMediaCertBarrier(barrier, p.CertifierPort, p.CertSpec)
+		if err != nil {
+			return nil, fmt.Errorf("vidrush pipeline: %w", err)
+		}
+		barrier = certBarrier
+	}
+
 	r.registerVidRush(runID, vidRushWiring{
 		observer: coordinator,
-		barrier:  coordinator,
+		barrier:  barrier,
 		timing:   coordinator,
 	})
 	return coordinator, nil

@@ -7,19 +7,13 @@ import (
 	"sort"
 	"strings"
 
+	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// EntityExtractor is the structural port consumed by HybridExtractor. It
-// mirrors the canonical adapters.EntityExtractor signature; Go structural
-// typing keeps every implementation here assignable to the canonical port
-// at the wiring sites without importing the adapters package (which would
-// pull capabilities/scripts → capabilities/entities into this dependency
-// graph).
-type EntityExtractor interface {
-	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
-}
+// EntityExtractor aliases the shared neutral extraction port.
+type EntityExtractor = entityports.EntityExtractor
 
 // Extractor is deliberately conservative: it only emits text found in the
 // input and never calls a model or an external provider.
@@ -451,4 +445,4 @@ func isNonNarrativeInstruction(sentence string) bool {
 	return false
 }
 
-var _ EntityExtractor = (*Extractor)(nil)
+var _ entityports.EntityExtractor = (*Extractor)(nil)

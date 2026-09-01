@@ -92,9 +92,9 @@ vidrush_assert_segments() {
 
     visual_profile_expectations=$(jq -c '.expect.visual_profile_expectations // []' "$scenario_file")
     if [[ "$visual_profile_expectations" != "[]" ]] && ! jq -e --argjson expected "$visual_profile_expectations" '
-      all($expected[];
+      . as $in | all($expected[];
         . as $want
-        | any(.segments[];
+        | any($in.segments[];
             . as $segment
             | ($segment.segment_id == $want.segment_id)
             and (((($segment.insights.visual_profile.subject // "") | ascii_downcase) | contains(($want.subject_contains | ascii_downcase))))

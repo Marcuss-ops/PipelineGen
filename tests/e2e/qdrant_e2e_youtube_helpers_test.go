@@ -437,6 +437,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     drive_link TEXT,
     download_link TEXT,
     legacy_file_md5 TEXT NOT NULL DEFAULT '',
+    content_sha256 TEXT NOT NULL DEFAULT '',
     file_hash TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
     audio_embedding TEXT NOT NULL DEFAULT '[]',
@@ -551,6 +552,45 @@ CREATE TABLE IF NOT EXISTS asset_locations (
     UNIQUE(asset_id, location_kind)
 );
 CREATE INDEX IF NOT EXISTS idx_asset_locations_asset ON asset_locations(asset_id);
+-- media_asset_sources records PROVENANCE (migrations/sqlite/197_asset_content_link.sql):
+-- the same bytes can be discovered via multiple independent sources. The
+-- canonical media committer (SQLiteMediaCommitter) registers each source
+-- here and links logical assets to physical CAS bytes via
+-- media_assets.content_sha256. Mirrors the production migration so the
+-- RegisterSource/LinkContent commit steps surface here at e2e time instead
+-- of drifting silently.
+CREATE TABLE IF NOT EXISTS media_asset_sources (
+    source_id      TEXT PRIMARY KEY,
+    asset_id       TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL DEFAULT '',
+    source_type    TEXT NOT NULL,
+    source_uri     TEXT NOT NULL,
+    source_version TEXT NOT NULL DEFAULT '',
+    discovered_at  TEXT NOT NULL,
+    is_primary     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_media_asset_sources_asset_id
+    ON media_asset_sources(asset_id);
+CREATE INDEX IF NOT EXISTS idx_media_asset_sources_content_sha256
+    ON media_asset_sources(content_sha256)
+    WHERE content_sha256 != '';
+-- registry_events is the canonical media-registry audit trail the
+-- SQLiteMediaCommitter appends every commit to (AppendEventTx). Mirrors the
+-- reference schema in internal/platform/sqlite/assets/imagesregistry tests.
+CREATE TABLE IF NOT EXISTS registry_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL UNIQUE,
+    asset_id TEXT,
+    event_type TEXT NOT NULL,
+    run_id TEXT,
+    actor TEXT NOT NULL DEFAULT '',
+    before_hash TEXT NOT NULL DEFAULT '',
+    after_hash TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    git_sha TEXT NOT NULL DEFAULT '',
+    app_version TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS outbox_events (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	event_type TEXT NOT NULL,
