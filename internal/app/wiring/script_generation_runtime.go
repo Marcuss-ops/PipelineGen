@@ -321,12 +321,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			local := stockintelligence.QdrantLocalSearchAdapter{Searcher: root.Process.QdrantSearcher, Embedder: embedder, VectorName: "text"}
 			hydrator := stockintelligence.SQLiteAssetHydrator{Store: root.Repos.AssetsStore}
 			provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
-			sampler := func(ctx context.Context, candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
+			sampler := func(candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
 				converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 				for _, candidate := range candidates {
 					converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
 				}
-				return mediaSampler.Sample(ctx, segmentID, subject, terms, converted, false)
+				return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
 			}
 			if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
 				if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
@@ -389,11 +389,21 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 // MediaCert. Semantic rules remain exclusively in mediacert; this function
 // supplies run identity and policy, never a second rule engine.
 func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
-	spec := mediacert.Spec{VideoProvider: scriptpkg.VidRushProviderArtlist}
+	// Artlist relevance is a contract only for clip-backed plans. A generic
+	// text scene may legitimately have no video winner: its visual output is
+	// resolved as entity images/presets. Hard-coding Artlist here made every
+	// text-only run fail certification with a misleading "no winner asset".
+	spec := mediacert.Spec{}
 	if plan == nil {
 		return spec
 	}
+	if plan.MediaMode == scriptpkg.MediaModeClipOnly || plan.MediaMode == scriptpkg.MediaModeMixed {
+		spec.VideoProvider = scriptpkg.VidRushProviderArtlist
+	}
 	spec.Segments = len(plan.Segments)
+	if spec.Segments == 0 && plan.Mode == "text" {
+		spec.Segments = 1
+	}
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
 	spec.ImagesPerSegment = plan.ImagesPerScene
 	for _, segment := range plan.Segments {
@@ -405,6 +415,16 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
 		})
+	}
+	// Text generation plans may intentionally omit authored ScriptSegment IDs:
+	// the canonical scene synthesizer assigns scene-N at the stable scene
+	// boundary. Materialize that same deterministic identity in the contract
+	// so MediaCert validates the generated result instead of comparing it to an
+	// empty expected-ID list.
+	if len(spec.SegmentsExpected) == 0 && spec.Segments > 0 {
+		for i := 0; i < spec.Segments; i++ {
+			spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{ID: fmt.Sprintf("scene-%d", i)})
+		}
 	}
 	return spec
 }

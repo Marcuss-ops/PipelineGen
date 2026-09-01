@@ -49,6 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"go.uber.org/zap"
 
@@ -154,8 +155,21 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
 		}
-		finalizer := jobsfinalizer.New(root.DB.DB, root.Outbox.EventsRepo, assetTx, log)
-		broker.WithFinalizer(finalizer)
+		jobDB := root.DB.DB
+		if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil {
+			jobDB = root.Jobs.DB.DB
+		}
+		jobOutbox := outboxevents.NewRepository(jobDB)
+		finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
+		if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != root.DB.DB {
+			broker.WithFinalizer(&splitPlaneFinalizer{
+				mediaDB: root.DB.DB, mediaOutbox: root.Outbox.EventsRepo,
+				assetTx: assetTx, jobsFinalizer: finalizer,
+			})
+		} else {
+			finalizer = jobsfinalizer.New(jobDB, jobOutbox, assetTx, log)
+			broker.WithFinalizer(finalizer)
+		}
 		if root.Drive != nil && root.Drive.Publisher != nil {
 			preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 			broker.WithArtifactPreparation(preparation)

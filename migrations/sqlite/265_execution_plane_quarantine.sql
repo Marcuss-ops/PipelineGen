@@ -1,0 +1,8 @@
+-- database: primary
+-- Execution ownership is moved by OpenSet to the explicit jobs database.
+-- Keep the historical primary schema readable during rolling upgrades: a
+-- fresh primary DB and an older primary DB must both remain migratable, and
+-- the runtime never opens these tables for job execution once JobsDBPath is
+-- configured. The explicit data-plane migration script performs archival
+-- after verifying the jobs database copy; SQL migrations must not rename
+-- tables blindly (that would break empty-DB compatibility and FK lineage).

@@ -328,7 +328,19 @@ type VidRushSegmentResult struct {
 // SemanticProfile.
 func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile {
 	if s.SemanticProfile != nil {
-		return s.SemanticProfile.Clone()
+		profile := s.SemanticProfile.Clone()
+		if len(profile.VisualTerms) == 0 && len(profile.Terms) == 0 {
+			fallback := strings.TrimSpace(s.Text)
+			if fallback != "" {
+				if len([]rune(fallback)) > 160 {
+					fallback = string([]rune(fallback)[:160])
+				}
+				profile.Topic = fallback
+				profile.VisualTerms = []WeightedKeyword{{Value: fallback, Confidence: 1}}
+				profile.Terms = []SemanticTerm{{Value: fallback, Kind: TermKindVisual, Score: 1}}
+			}
+		}
+		return profile
 	}
 	profile := SegmentSemanticProfile{
 		ExecutionMode:    s.ExecutionMode.Normalize(),
@@ -341,6 +353,14 @@ func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile 
 		ImportantPhrases: append([]string(nil), s.Insights.ImportantPhrases...),
 		Entities:         append([]ExtractedEntity(nil), s.Insights.Entities...),
 	}
+	if len(profile.VisualTerms) == 0 && strings.TrimSpace(s.Text) != "" {
+		fallback := strings.TrimSpace(s.Text)
+		if len([]rune(fallback)) > 160 {
+			fallback = string([]rune(fallback)[:160])
+		}
+		profile.VisualTerms = []WeightedKeyword{{Value: fallback, Confidence: 1}}
+	}
+	profile.Terms = deriveSemanticTerms(profile)
 	profile.Retrieval = &RetrievalIntent{
 		YouTube: append([]string(nil), s.Insights.YouTubeQueries...),
 		Artlist: append([]string(nil), s.Insights.ArtlistQueries...),

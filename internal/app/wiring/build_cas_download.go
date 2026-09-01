@@ -50,7 +50,7 @@ func (a *casContentStoreAdapter) Size(ctx context.Context, sha256 string) (int64
 	return obj.SizeBytes, nil
 }
 
-func buildSourceAwareDownloader(cfg *config.Config, db *sql.DB, log *zap.Logger) (assets.MediaDownloader, error) {
+func buildSourceAwareDownloader(cfg *config.Config, db *sql.DB, cacheDB *sql.DB, log *zap.Logger) (assets.MediaDownloader, error) {
 	if cfg == nil || db == nil || log == nil {
 		return nil, fmt.Errorf("build source-aware downloader: nil cfg/db/log")
 	}
@@ -81,10 +81,12 @@ func buildSourceAwareDownloader(cfg *config.Config, db *sql.DB, log *zap.Logger)
 	} else {
 		log.Warn("CAS downloader content-object registry unavailable", zap.Error(registryErr))
 	}
-	if cache, cacheErr := NewArtifactCache(cfg, db, log); cacheErr == nil {
-		wrapped.SetMetrics(cache)
-	} else {
-		log.Warn("CAS downloader durable cache metrics unavailable", zap.Error(cacheErr))
+	if cacheDB != nil {
+		if cache, cacheErr := NewArtifactCache(cfg, cacheDB, log); cacheErr == nil {
+			wrapped.SetMetrics(cache)
+		} else {
+			log.Warn("CAS downloader durable cache metrics unavailable", zap.Error(cacheErr))
+		}
 	}
 	log.Info("CAS-backed source-aware downloader wired (dedup + source identity registry)", zap.String("cas_root", casRoot))
 	return wrapped, nil

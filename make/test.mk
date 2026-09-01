@@ -18,7 +18,7 @@ test-all: test-unit test-js
 
 # Run unit tests with race detector
 test-unit:
-	$(GO) test -v -race -coverprofile=coverage.out ./internal/... ./pkg/...
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) test -v -race -coverprofile=coverage.out ./internal/... ./pkg/...
 
 # Run JavaScript test suite (node-scraper).
 # Equivalent: cd node-scraper && npm install --silent && npm test.

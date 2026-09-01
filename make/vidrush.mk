@@ -7,6 +7,12 @@ VIDRUSH_GO_PACKAGES := ./internal/capabilities/scripts ./internal/capabilities/s
 VIDRUSH_WORKER_PACKAGE := ./internal/capabilities/jobs/worker
 VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 
+# certify-rust-migration — practical local certification of the Rust
+# workspace, release binaries, semantic golden paths, determinism,
+# fail-closed media protocol, ownership boundaries, and legacy cleanup.
+certify-rust-migration:
+	@bash scripts/ci/certify-rust-migration.sh
+
 # verify-visualner — Fase-3 deterministic VisualEntity extractor (Rust).
 # Runs the visualner crate unit tests covering: NO EVIDENCE → NO ENTITY
 # (Imagine the/ready rejected), exactly 3 entities returned, Greek salad

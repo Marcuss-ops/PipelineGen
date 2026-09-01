@@ -50,7 +50,6 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 		want := adapterspkg.ProcessorPolicy("")
 		switch name {
 		case adapterspkg.ProcessorPersistence,
-			adapterspkg.ProcessorEntities,
 			adapterspkg.ProcessorMetadata,
 			adapterspkg.ProcessorStockBindings,
 			adapterspkg.ProcessorNarrationSanitizer:

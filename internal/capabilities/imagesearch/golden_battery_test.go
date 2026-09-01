@@ -42,12 +42,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 // TestMain installs the same repository lexicon the composition root loads,
-// because the local NLP extractor resolves stop/function words through
-// linguistics.DefaultLexicon(). No test-only word lists are allowed.
+// because the resolver uses the repository's canonical lexicon. No test-only
+// word lists are allowed.
 func TestMain(m *testing.M) {
 	_, filename, _, _ := runtime.Caller(0)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../config/lexicons"))
@@ -98,7 +97,9 @@ func TestGoldenBattery_ImageSearch_IT(t *testing.T) {
 // runBattery runs the whole battery for one language, asserts the
 // certification floor, and prints the per-sentence metric table.
 func runBattery(t *testing.T, lang string, cases []goldenCase) {
-	resolver := NewResolver(localnlp.NewExtractor())
+	// Resolver policy is certified independently from VisualNER extraction;
+	// the Rust extractor has its own grounding suite.
+	resolver := NewResolver(nil)
 
 	var rows []caseMetrics
 	var noImageRows []caseMetrics
@@ -201,7 +202,7 @@ func TestGoldenBattery_FullParagraph_IT(t *testing.T) {
 // aggregate semantic extraction. The expected queries and canonical ids are
 // language-invariant.
 func assertParagraph(t *testing.T, lang string, paragraph []string) {
-	resolver := NewResolver(localnlp.NewExtractor())
+	resolver := NewResolver(nil)
 
 	var prior []string
 	aggregate := map[string]bool{}

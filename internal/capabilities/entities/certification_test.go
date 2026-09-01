@@ -21,9 +21,12 @@
 package entities
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -35,12 +38,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 // TestMain installs the same repository lexicon the composition root loads,
-// because the local NLP extractor resolves stop/function words through
-// linguistics.DefaultLexicon(). No test-only word lists are allowed.
+// because the entity certification uses the repository's canonical lexicon;
+// no test-only word lists are allowed.
 func TestMain(m *testing.M) {
 	_, filename, _, _ := runtime.Caller(0)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../config/lexicons"))
@@ -54,10 +56,55 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+type rustVisualNERExtractor struct{ binary string }
+
+func newRustVisualNERExtractor(t *testing.T) *rustVisualNERExtractor {
+	t.Helper()
+	path := os.Getenv("PIPELINEGEN_VISUALNER_BIN")
+	if path == "" {
+		path = filepath.Join("..", "..", "..", "rust", "target", "debug", "visualner")
+	}
+	return &rustVisualNERExtractor{binary: path}
+}
+
+func (e *rustVisualNERExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	payload, err := json.Marshal(map[string]any{"version": "visualner.v1", "operation": "extract", "source_text": req.Text, "limit": req.EntityCount, "entity_count": req.EntityCount})
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, e.binary)
+	cmd.Stdin = bytes.NewReader(append(payload, '\n'))
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Entities []struct {
+			Text  string  `json:"text"`
+			Type  string  `json:"type"`
+			Score float32 `json:"score"`
+		} `json:"entities"`
+	}
+	if err := json.Unmarshal(out, &response); err != nil {
+		return nil, err
+	}
+	result := &scriptpkg.EntityResult{}
+	for _, entity := range response.Entities {
+		// This certification asserts person-card timing. Keep the fixture
+		// scoped to the named-person contract; location/object extraction has
+		// its own VisualNER and image-search coverage.
+		if entity.Type != "PERSON" {
+			continue
+		}
+		result.Persons = append(result.Persons, scriptpkg.Entity{Value: entity.Text, Type: entity.Type, Score: entity.Score})
+	}
+	return result, nil
+}
+
 type certScene struct {
 	id   string
 	text string
-	// keyEntity is the entity the certification must prove the NLP extracted
+	// keyEntity is the entity the certification must prove VisualNER extracted
 	// for this scene (the value, not the exact type — classification is the
 	// extractor's business).
 	keyEntity string
@@ -129,7 +176,7 @@ type sceneEvidence struct {
 // compiles EntityTimeline → OverlayPlan → chronon.
 func certifyJob(t *testing.T, job certJob) {
 	t.Helper()
-	extractor := localnlp.NewExtractor()
+	extractor := newRustVisualNERExtractor(t)
 
 	// ── NLP phase + word timing fixtures ─────────────────────────
 	evidence := make([]sceneEvidence, len(job.scenes))

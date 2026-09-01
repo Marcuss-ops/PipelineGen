@@ -42,17 +42,16 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	//    index 5; internet_images added at index 9; document added
 	//    at index 11; see file godoc above
 	//    for EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 16 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 16: %v", len(names), names)
+	if len(names) != 15 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 15: %v", len(names), names)
 	}
 
-	// 2. Expected EXECUTION order (entities → clip_search → metadata →
+	// 2. Expected EXECUTION order (clip_search → metadata →
 	//    translation → clip_bindings → stock_bindings → visual_planning →
 	//    voiceover → images → internet_images → persistence). See processor_names.go
 	//    goddoc for why this differs from the REGISTRATION order in
 	//    internal/app/wire_script_postprocess.go.
 	expected := []adapterspkg.ProcessorName{
-		adapterspkg.ProcessorEntities,
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorMetadata,
 		adapterspkg.ProcessorTranslation,
@@ -145,9 +144,9 @@ func TestCanonicalProcessorNames_IncludesClipSearch(t *testing.T) {
 	//    break the ordering invariant: clip_search must run AFTER
 	//    entities (reads Entities.ArtlistPhrases) and BEFORE
 	//    metadata (so the enriched SpecScene text is visible).
-	const wantIndex = 1
+	const wantIndex = 0
 	if foundIndex != wantIndex {
-		t.Errorf("ProcessorClipSearch is at index %d, want %d (between entities and metadata per EXECUTION order). "+
+		t.Errorf("ProcessorClipSearch is at index %d, want %d (before metadata per EXECUTION order). "+
 			"A future refactor that moves clip_search would break the ordering invariant "+
 			"documented in processor_names.go godoc.",
 			foundIndex, wantIndex)
@@ -162,15 +161,8 @@ func TestCanonicalProcessorNames_IncludesClipSearch(t *testing.T) {
 		t.Errorf("string(ProcessorClipSearch) = %q, want %q (canonical wire-shape invariant)", got, "clip_search")
 	}
 
-	// 4. Neighbours at the canonical index MUST be entities and
-	//    metadata respectively (locks the EXECUTION order around
-	//    the clip_search slot — a future re-ordering that swaps
-	//    the neighbours would silently break the read-of-
-	//    Entities.ArtlistPhrases ordering dependency).
-	if foundIndex > 0 && names[foundIndex-1] != adapterspkg.ProcessorEntities {
-		t.Errorf("names[%d] = %q, want %q (clip_search must follow entities in EXECUTION order)",
-			foundIndex-1, names[foundIndex-1], adapterspkg.ProcessorEntities)
-	}
+	// 4. The next canonical processor must be metadata, locking the
+	//    execution order around the clip_search slot.
 	if foundIndex < len(names)-1 && names[foundIndex+1] != adapterspkg.ProcessorMetadata {
 		t.Errorf("names[%d] = %q, want %q (clip_search must precede metadata in EXECUTION order)",
 			foundIndex+1, names[foundIndex+1], adapterspkg.ProcessorMetadata)

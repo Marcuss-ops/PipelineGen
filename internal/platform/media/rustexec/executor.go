@@ -1,21 +1,18 @@
 package rustexec
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/rustworker"
 	"go.uber.org/zap"
 )
 
@@ -30,34 +27,11 @@ const (
 // RustProcessRunner owns the lifecycle of one Rust executor process. It is
 // kept as a port so tests can exercise Executor without depending on a real
 // binary.
-type RustProcessRunner interface {
-	Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error)
-}
-
-// ResourceLimiter bounds concurrent Rust/FFmpeg executions owned by one
-// composition-root Executor. Waiting is cancellation-aware.
-type ResourceLimiter struct {
-	slots chan struct{}
-}
+type RustProcessRunner = rustworker.Runner
+type ResourceLimiter = rustworker.ResourceLimiter
 
 func NewResourceLimiter(capacity int) *ResourceLimiter {
-	if capacity < 1 {
-		capacity = 1
-	}
-	return &ResourceLimiter{slots: make(chan struct{}, capacity)}
-}
-
-func (l *ResourceLimiter) Acquire(ctx context.Context) (func(), error) {
-	if l == nil {
-		return func() {}, nil
-	}
-	select {
-	case l.slots <- struct{}{}:
-		var once sync.Once
-		return func() { once.Do(func() { <-l.slots }) }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return rustworker.NewResourceLimiter(capacity)
 }
 
 // Executor is the shared owner of the Rust process runner, cancellation
@@ -169,34 +143,7 @@ func (e *Executor) FFmpegPath() string {
 	return e.ffmpegPath
 }
 
-// rustProcessRunner runs the Rust binary in its own process group. Both direct
-// cancellation and timeout kill the group, preventing descendant FFmpeg
-// processes from surviving the Rust adapter.
-type rustProcessRunner struct{}
-
-func (rustProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, binary)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil {
-			return nil
-		}
-		return cmd.Process.Kill()
-	}
-	cmd.Stdin = bytes.NewReader(input)
-	stdout := &boundedBuffer{limit: outputLimit}
-	stderr := &boundedBuffer{limit: outputLimit}
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	err := cmd.Run()
-	if err != nil {
-		return stdout.Bytes(), stderr.Bytes(), err
-	}
-	return stdout.Bytes(), stderr.Bytes(), nil
-}
+type rustProcessRunner = rustworker.ProcessRunner
 
 // persistentRustProcessRunner keeps the newline-delimited Rust dispatcher
 // alive across requests. Requests are serialized per runner because run_stdio
@@ -208,120 +155,27 @@ func (rustProcessRunner) Run(ctx context.Context, binary string, input []byte, o
 // the safe optimization here is persistent Rust dispatch plus bounded CUDA
 // concurrency, while a future native libavcodec path can reuse AVCodecContext
 // directly without changing this contract.
-type persistentRustProcessRunner struct {
-	mu     sync.Mutex
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	stderr *boundedBuffer
+type persistentRustProcessRunner struct{ inner RustProcessRunner }
+
+func (r *persistentRustProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
+	if r.inner == nil {
+		r.inner = rustworker.NewPersistentRunner()
+	}
+	return r.inner.Run(ctx, binary, input, outputLimit)
+}
+
+func (r *persistentRustProcessRunner) reset() {
+	if runner, ok := r.inner.(*rustworker.PersistentRunner); ok {
+		runner.Reset()
+	}
 }
 
 func newPersistentRustProcessRunner() RustProcessRunner {
 	return &persistentRustProcessRunner{}
 }
 
-func (r *persistentRustProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if err := r.ensure(binary, outputLimit); err != nil {
-		return nil, nil, err
-	}
-
-	if len(input) == 0 || input[len(input)-1] != '\n' {
-		input = append(input, '\n')
-	}
-	if _, err := r.stdin.Write(input); err != nil {
-		r.reset()
-		return nil, nil, fmt.Errorf("write persistent Rust request: %w", err)
-	}
-
-	cancelled := make(chan struct{})
-	// Capture the process handles before starting the cancellation watcher.
-	// reset() clears the runner fields after the read fails; the watcher must
-	// not race on those shared fields while it tears the process down.
-	stdin := r.stdin
-	cmd := r.cmd
-	go func() {
-		select {
-		case <-ctx.Done():
-			if stdin != nil {
-				_ = stdin.Close()
-			}
-			if cmd != nil && cmd.Process != nil {
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
-		case <-cancelled:
-		}
-	}()
-	line, err := r.stdout.ReadBytes('\n')
-	close(cancelled)
-	if err != nil {
-		stderr := r.stderr.Bytes()
-		r.reset()
-		if ctx.Err() != nil {
-			return nil, stderr, ctx.Err()
-		}
-		return line, stderr, fmt.Errorf("read persistent Rust response: %w", err)
-	}
-	if outputLimit > 0 && int64(len(line)) > outputLimit {
-		stderr := r.stderr.Bytes()
-		r.reset()
-		return nil, stderr, fmt.Errorf("persistent Rust response exceeds output limit")
-	}
-	return line, r.stderr.Bytes(), nil
-}
-
-func (r *persistentRustProcessRunner) ensure(binary string, outputLimit int64) error {
-	if r.cmd != nil {
-		return nil
-	}
-	cmd := exec.Command(binary)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("open persistent Rust stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return fmt.Errorf("open persistent Rust stdout: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return fmt.Errorf("open persistent Rust stderr: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return fmt.Errorf("start persistent Rust: %w", err)
-	}
-	r.cmd = cmd
-	r.stdin = stdin
-	r.stdout = bufio.NewReader(stdout)
-	r.stderr = &boundedBuffer{limit: outputLimit}
-	go func() {
-		_, _ = io.Copy(r.stderr, stderr)
-	}()
-	return nil
-}
-
-func (r *persistentRustProcessRunner) reset() {
-	if r.cmd == nil {
-		return
-	}
-	if r.stdin != nil {
-		_ = r.stdin.Close()
-	}
-	if r.cmd.Process != nil {
-		_ = syscall.Kill(-r.cmd.Process.Pid, syscall.SIGKILL)
-	}
-	_ = r.cmd.Wait()
-	r.cmd = nil
-	r.stdin = nil
-	r.stdout = nil
-	r.stderr = nil
-}
-
+// boundedBuffer remains a small compatibility seam for package-local tests;
+// production process lifecycle and output handling live in rustworker.
 type boundedBuffer struct {
 	mu        sync.Mutex
 	buf       bytes.Buffer
@@ -344,15 +198,13 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	_, _ = b.buf.Write(p)
 	if int64(b.buf.Len()) > b.limit {
 		all := b.buf.Bytes()
-		start := len(all) - int(b.limit)
-		tail := append([]byte(nil), all[start:]...)
+		tail := append([]byte(nil), all[len(all)-int(b.limit):]...)
 		b.buf.Reset()
 		_, _ = b.buf.Write(tail)
 		b.truncated = true
 	}
 	return len(p), nil
 }
-
 func (b *boundedBuffer) Bytes() []byte {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -368,8 +220,7 @@ func (b *boundedBuffer) Bytes() []byte {
 	if len(result) > keep {
 		result = result[len(result)-keep:]
 	}
-	result = append(result, marker...)
-	return result
+	return append(result, marker...)
 }
 
 func cleanupPartFilesForRequest(req request) {

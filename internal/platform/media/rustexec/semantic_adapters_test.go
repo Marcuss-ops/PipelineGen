@@ -43,6 +43,9 @@ func TestVisualNERAdapterSendsV1AndAcceptsGroundedEntities(t *testing.T) {
 	if req.Version != "visualner.v1" || req.Operation != "extract" {
 		t.Fatalf("bad request: %+v", req)
 	}
+	if req.EntityCount != 3 {
+		t.Fatalf("entity_count=%d, want 3", req.EntityCount)
+	}
 }
 func TestMediaSamplerAdapterSendsV1AndReturnsWinner(t *testing.T) {
 	r := &semanticRunner{output: []byte(`{"results":[],"winner_id":"salad"}`)}

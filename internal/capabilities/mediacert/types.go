@@ -77,6 +77,9 @@ type ResultSegment struct {
 	// certifier uses its immutable identity + profile; when absent, the
 	// certifier falls back to the flat fields above + the Insights.
 	SceneIR *sceneir.SceneIR `json:"scene_ir,omitempty"`
+	// SemanticProfile is the canonical profile when the producer cannot
+	// attach the full SceneIR at this decoupled boundary.
+	SemanticProfile *script.SegmentSemanticProfile `json:"semantic_profile,omitempty"`
 	// VideoQueries and ImageQueries carry explicit query ownership from the
 	// runtime planner. Legacy Insights strings remain supported for replay.
 	VideoQueries []sceneir.SearchQuery `json:"video_queries,omitempty"`

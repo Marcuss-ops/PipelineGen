@@ -117,8 +117,8 @@ func buildPreparationCoordinatorStep(deps jobRunnerDeps) *StartupStep {
 	// best-effort/fail-open: when the cache is unavailable the router simply
 	// routes every unit onto the preparation_units lease.
 	var claimer appjobs.ArtifactClaimer
-	if deps.root.DB != nil && deps.root.DB.DB != nil {
-		if cache, cacheErr := NewArtifactCache(deps.cfg, deps.root.DB.DB, deps.log); cacheErr == nil {
+	if deps.root.CacheDB != nil && deps.root.CacheDB.DB != nil {
+		if cache, cacheErr := NewArtifactCache(deps.cfg, deps.root.CacheDB.DB, deps.log); cacheErr == nil {
 			// *platformcache.Cache implements capcache.ClaimStore; convert to the
 			// interface so the adapter can type-assert the singleflight surface.
 			claimer = artifactCacheClaimer{inner: capcache.ClaimStore(cache)}

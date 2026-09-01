@@ -21,6 +21,14 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Use: make build GO=/opt/go-1.25/bin/go
 GO ?= go
 
+# Fast local/CI defaults. They remain overridable for constrained workers:
+# `make GO_PARALLEL=8` or `make GOFLAGS_EXTRA=...`.
+GO_PARALLEL ?= 20
+GOFLAGS_EXTRA ?=
+GO_BUILD_GOFLAGS ?= -p=$(GO_PARALLEL) $(GOFLAGS_EXTRA)
+GO_LINKER ?= mold
+GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then printf '%s' '-linkmode external -extldflags -fuse-ld=$(GO_LINKER)'; fi)
+
 # Rust execution-plane build. Keep the toolchain explicit so rustup does not
 # silently select a host default while the migration is being rolled out.
 RUST_CARGO ?= rustup run stable cargo
@@ -86,15 +94,15 @@ build-muscles:
 
 build: go-version-check build-muscles
 	@mkdir -p bin
-	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen      ./cmd/server
-	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin            ./cmd/admin
-	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/worker           ./cmd/worker
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen      ./cmd/server
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/admin            ./cmd/admin
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/worker           ./cmd/worker
 
 # Build only the server binary. This is the canonical target for server
 # smoke checks and lightweight container builds.
 build-server: go-version-check build-muscles
 	@mkdir -p bin
-	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen ./cmd/server
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen ./cmd/server
 
 # Run Go unit tests (Go is the canonical test surface; tests here run
 # for every `make test` invocation and in CI without requiring Node).

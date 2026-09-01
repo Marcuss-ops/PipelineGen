@@ -83,8 +83,9 @@ CREATE TABLE IF NOT EXISTS job_registry_events (
 CREATE INDEX IF NOT EXISTS idx_job_registry_events_job ON job_registry_events(job_id, created_at);
 CREATE TABLE IF NOT EXISTS job_asset_relations (
     job_id TEXT NOT NULL, asset_id TEXT NOT NULL, relation TEXT NOT NULL,
-    ordinal INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
-    PRIMARY KEY(job_id, asset_id, relation)
+    step_id TEXT NOT NULL DEFAULT '', ordinal INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(job_id, asset_id, relation, step_id)
 );
 
 CREATE TABLE IF NOT EXISTS job_checkpoints (

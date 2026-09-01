@@ -34,7 +34,6 @@ const (
 // (godlike/06 SSOT one-owner-per-fact) — do NOT redeclare these in
 // sibling files.
 const (
-	ProcessorEntities                    ProcessorName = "entities"
 	ProcessorClipSearch                  ProcessorName = "clip_search"
 	ProcessorMetadata                    ProcessorName = "metadata"
 	ProcessorTranslation                 ProcessorName = "translation"
@@ -65,8 +64,7 @@ type ProcessorDescriptor struct {
 // metadata. The Order field encodes the canonical EXECUTION order
 // (the order the registry walks processors in Run()).
 var canonicalDescriptors = []ProcessorDescriptor{
-	{Name: ProcessorEntities, Policy: ProcessorRequired, Order: 0, Active: true},
-	{Name: ProcessorClipSearch, Policy: ProcessorBestEffort, Order: 1, Active: true},
+	{Name: ProcessorClipSearch, Policy: ProcessorBestEffort, Order: 0, Active: true},
 	{Name: ProcessorMetadata, Policy: ProcessorRequired, Order: 2, Active: true},
 	{Name: ProcessorTranslation, Policy: ProcessorBestEffort, Order: 3, Active: true},
 	{Name: ProcessorClipBindings, Policy: ProcessorBestEffort, Order: 4, Active: true},

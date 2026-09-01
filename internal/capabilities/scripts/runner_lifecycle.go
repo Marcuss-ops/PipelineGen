@@ -2,7 +2,10 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -26,7 +29,51 @@ func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateR
 			zap.Error(err),
 		)
 	}
+	if result != nil && result.SemanticRenderBundle != nil {
+		if err := persistSemanticBundleSidecar(runID, result.SemanticRenderBundle); err != nil {
+			r.log.Warn("semantic bundle sidecar save failed", zap.String("run_id", runID), zap.Error(err))
+		}
+	}
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
+}
+
+// persistSemanticBundleSidecar keeps the audit bundle beside the job's other
+// generated artifacts. The write is atomic so a reader never observes a
+// partially serialized semantic contract during retries/restarts.
+func persistSemanticBundleSidecar(runID string, bundle any) error {
+	if runID == "" || bundle == nil {
+		return nil
+	}
+	outDir := filepath.Join(os.TempDir(), "pipelinegen", "jobs", runID, "output")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir semantic bundle output: %w", err)
+	}
+	raw, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal semantic bundle: %w", err)
+	}
+	raw = append(raw, '\n')
+	tmp, err := os.CreateTemp(outDir, ".semantic_bundle-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create semantic bundle temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write semantic bundle: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close semantic bundle: %w", err)
+	}
+	if err := os.Rename(tmpName, filepath.Join(outDir, "semantic_bundle.json")); err != nil {
+		return fmt.Errorf("commit semantic bundle: %w", err)
+	}
+	return nil
 }
 
 // failRunWithRetry marks the run as FAILED and persists all failure

@@ -78,7 +78,23 @@ func SanitizedURLBasename(raw string) string {
 		s = parsed.Path
 	}
 	base := filepath.Base(s)
-	return SanitizedRootName(strings.TrimSuffix(base, filepath.Ext(base)))
+	return sanitizeURLSegment(strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+func sanitizeURLSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return strings.Trim(b.String(), "_")
 }
 func TimestampGroupName(in *RunInput) string { return stockpublish.TimestampGroupName(namingInput(in)) }
 func ClipFolderName(in *RunInput, plan ClipPlan, fallback string) string {

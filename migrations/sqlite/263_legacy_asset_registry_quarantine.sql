@@ -1,3 +1,4 @@
+-- database: primary
 -- Canonical asset identity contraction.
 --
 -- The old generic registry is no longer a runtime write/read surface:

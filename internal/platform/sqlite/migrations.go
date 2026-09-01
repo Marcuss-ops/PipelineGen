@@ -172,6 +172,12 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 			}
 			continue
 		}
+		if skipMigrationAfterExecutionCutover(db, applied, m, targetDB) {
+			if log != nil {
+				log.Warn("skipping historical migration after completed execution-plane cutover", zap.Int("version", m.version), zap.String("filename", m.filename))
+			}
+			continue
+		}
 		content, err := os.ReadFile(m.path)
 		if err != nil {
 			return fmt.Errorf("storage: read %s: %w", m.filename, err)

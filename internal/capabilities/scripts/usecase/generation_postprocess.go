@@ -142,7 +142,9 @@ func (p *GenerationPostprocessor) Process(
 // durations. It performs no measurement and owns no timing state.
 func VidRushTimingFields(stageDurations map[string]int64) scriptpkg.GenerationTimings {
 	var t scriptpkg.GenerationTimings
-	t.SegmentExtractionMs = stageDurations[string(adapters.ProcessorEntities)]
+	// VisualNER extraction runs in the semantic runner before the
+	// postprocessor walk; there is no legacy entities stage to time here.
+	t.SegmentExtractionMs = 0
 	t.QueryGenerationMs = t.SegmentExtractionMs
 	t.ArtlistSearchMs = stageDurations[string(adapters.ProcessorClipSearch)]
 	t.InternetImageSearchMs = stageDurations[string(adapters.ProcessorInternetImages)]

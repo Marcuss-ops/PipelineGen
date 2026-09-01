@@ -209,7 +209,6 @@ func registerScriptPostProcessors(
 	if !ppReg.Register(adapters.NewNarrationSanitizer()) {
 		return fmt.Errorf("register narration_sanitizer processor: composition bug")
 	}
-
 	// AssetLocationReconciliationProcessor verifies every drive_link
 	// in the SpecScene bindings before the document is published.
 	// BestEffort policy: transport errors become warnings, link
