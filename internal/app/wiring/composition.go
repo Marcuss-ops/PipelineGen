@@ -119,7 +119,21 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.Main, dbs.Jobs, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
+	storagePlanes := func(checkCtx context.Context) map[string]systemhealth.CheckResult {
+		result := make(map[string]systemhealth.CheckResult)
+		for name, plane := range dbs.Set.HealthByPlane(checkCtx) {
+			check := systemhealth.CheckResult{"ok": plane.Available}
+			if plane.Error != nil {
+				check["error"] = plane.Error.Error()
+			}
+			if name == "cache" || name == "observability" {
+				check["applicable"] = true
+			}
+			result[name] = check
+		}
+		return result
+	}
+	utility := BuildUtilityBundle(cfg, dbs.Main, dbs.Jobs, storagePlanes, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
 	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,

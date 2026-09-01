@@ -50,10 +50,19 @@ func (r *SQLiteStore) hydrateLatestResult(ctx context.Context, j *job.Job) error
 		SELECT result_payload FROM job_results
 		WHERE job_id = ? ORDER BY attempt DESC, id DESC LIMIT 1`, j.ID).Scan(&payload)
 	if err == sql.ErrNoRows {
+		// Compatibility read for pre-contraction databases. New jobs planes
+		// have no result_json column, so the probe is schema-gated.
+		if legacy, legacyErr := r.legacyJobJSON(ctx, j.ID, "result_json"); legacyErr == nil && legacy != "" {
+			j.Result = []byte(legacy)
+		}
 		return nil
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table: job_results") {
+			legacy, legacyErr := r.legacyJobJSON(ctx, j.ID, "result_json")
+			if legacyErr == nil && legacy != "" {
+				j.Result = []byte(legacy)
+			}
 			return nil
 		}
 		return err
@@ -94,16 +103,46 @@ func (r *SQLiteStore) hydrateLatestPayload(ctx context.Context, j *job.Job) erro
 	var payload string
 	err := r.db.QueryRowContext(ctx, `SELECT payload FROM job_payloads WHERE job_id = ?`, j.ID).Scan(&payload)
 	if err == sql.ErrNoRows {
+		if legacy, legacyErr := r.legacyJobJSON(ctx, j.ID, "payload_json"); legacyErr == nil && legacy != "" {
+			j.Payload = []byte(legacy)
+		}
 		return nil
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table: job_payloads") {
+			legacy, legacyErr := r.legacyJobJSON(ctx, j.ID, "payload_json")
+			if legacyErr == nil && legacy != "" {
+				j.Payload = []byte(legacy)
+			}
 			return nil
 		}
 		return err
 	}
 	j.Payload = []byte(payload)
 	return nil
+}
+
+// legacyJobJSON reads one retired inline JSON field only when it still exists
+// on an older database. Column names are selected from a closed allowlist.
+func (r *SQLiteStore) legacyJobJSON(ctx context.Context, jobID, column string) (string, error) {
+	if column != "payload_json" && column != "result_json" {
+		return "", fmt.Errorf("unsupported legacy jobs column %q", column)
+	}
+	var value string
+	err := r.db.QueryRowContext(ctx, `SELECT `+column+` FROM jobs WHERE id = ?`, jobID).Scan(&value)
+	return value, err
+}
+
+type rowQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func hasJobsColumn(ctx context.Context, q rowQueryer, column string) bool {
+	var present int
+	err := q.QueryRowContext(ctx,
+		`SELECT 1 FROM pragma_table_info('jobs') WHERE name = ? LIMIT 1`, column,
+	).Scan(&present)
+	return err == nil && present == 1
 }
 
 func (r *SQLiteStore) hydrateJob(ctx context.Context, j *job.Job) error {

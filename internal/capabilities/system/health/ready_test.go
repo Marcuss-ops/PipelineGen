@@ -63,6 +63,25 @@ func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 	require.Len(t, resp.Checks, 18)
 }
 
+func TestReadyChecker_ReportsIndependentStoragePlanes(t *testing.T) {
+	mock := &scenarioMock{name: "all", mandatory: true, ok: true}
+	ready := NewReadyChecker(NewService(ServiceDeps{DB: mock, Jobs: mock})).WithStoragePlanes(
+		func(context.Context) map[string]CheckResult {
+			return map[string]CheckResult{
+				"media":         {"ok": true},
+				"jobs":          {"ok": false, "error": "jobs unavailable"},
+				"cache":         {"ok": false, "applicable": true},
+				"observability": {"ok": false, "applicable": true},
+			}
+		},
+	)
+	resp := ready.CheckReady(context.Background())
+	require.False(t, resp.OK, "jobs outage must block readiness")
+	require.False(t, resp.Checks["storage_jobs"]["ok"].(bool))
+	require.False(t, resp.Checks["storage_cache"]["ok"].(bool))
+	require.Contains(t, resp.Checks, "storage_observability")
+}
+
 // TestReadyChecker_Deterministic verifies that calling CheckReady
 // multiple times with the same fakes returns identical results
 // (excluding duration_ms which is time-dependent).

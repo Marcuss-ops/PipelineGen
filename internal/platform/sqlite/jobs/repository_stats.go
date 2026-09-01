@@ -87,7 +87,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 		SELECT type,
 			COUNT(*) as cnt,
 			AVG((julianday(COALESCE(completed_at, updated_at)) - julianday(started_at)) * 86400.0) as avg_ms,
-			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0) as imgs_gen,
+			COALESCE(SUM(CAST(json_extract((SELECT result_payload FROM job_results jr WHERE jr.job_id = jobs.id ORDER BY jr.attempt DESC, jr.id DESC LIMIT 1), '$.stats.images_generated') AS INTEGER)), 0) as imgs_gen,
 			SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as errs
 		FROM jobs
 		WHERE status IN ('SUCCEEDED', 'FAILED')
@@ -134,7 +134,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 		SELECT
 			COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0)
+			COALESCE(SUM(CAST(json_extract((SELECT result_payload FROM job_results jr WHERE jr.job_id = jobs.id ORDER BY jr.attempt DESC, jr.id DESC LIMIT 1), '$.stats.images_generated') AS INTEGER)), 0)
 		FROM jobs
 		WHERE created_at > datetime('now', '-1 day')
 	`).Scan(&stats.Recent24h.Completed, &stats.Recent24h.Failed, &stats.Recent24h.ImagesGenerated); err != nil {

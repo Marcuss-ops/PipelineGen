@@ -29,8 +29,8 @@ var ErrInvalidColumn = fmt.Errorf("invalid column: not in jobs table allowlist")
 var allowedJobColumns = map[string]bool{
 	"id": true, "type": true, "status": true, "priority": true,
 	"project": true, "video_name": true, "active_key": true,
-	"correlation_id": true, "payload_json": true,
-	"progress": true, "error": true, "retry_count": true, "max_retries": true,
+	"correlation_id": true,
+	"progress":       true, "error": true, "retry_count": true, "max_retries": true,
 	"worker_id": true, "lease_id": true, "lease_expiry": true,
 	"created_at": true, "updated_at": true, "started_at": true,
 	"completed_at": true, "cancelled_at": true, "revision": true,
@@ -81,7 +81,7 @@ type TransitionRequest struct {
 	// ExtraSets are raw SQL snippets appended to the SET clause.
 	ExtraSets []string
 
-	// Result, when non-nil, is serialised to result_json.
+	// Result, when non-nil, is stored in the dedicated job_results table.
 	Result map[string]any
 
 	// Error, when non-nil, is stored in the error column.

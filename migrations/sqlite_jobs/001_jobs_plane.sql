@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'QUEUED',
     priority INTEGER NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '',
     video_name TEXT NOT NULL DEFAULT '', active_key TEXT NOT NULL DEFAULT '',
-    payload_json TEXT NOT NULL DEFAULT '{}', result_json TEXT NOT NULL DEFAULT '{}',
+    -- Large request/result JSON lives in job_payloads/job_results. These
+    -- columns are intentionally absent from the execution hot row.
     error TEXT NOT NULL DEFAULT '', worker_id TEXT NOT NULL DEFAULT '',
     lease_id TEXT NOT NULL DEFAULT '', lease_expiry TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3,

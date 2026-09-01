@@ -32,13 +32,19 @@ func (r *ReportReader) PerformanceReport(ctx context.Context, jobID string) (cap
 	var out capperformance.PerformanceReport
 	out.JobID = jobID
 	var resultJSON sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT type,status,COALESCE(worker_id,''),COALESCE(host,''),COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(duration_ms,0),COALESCE(result_json,'{}') FROM jobs WHERE id=?`, jobID).
-		Scan(&out.Job.Type, &out.Job.Status, &out.Job.WorkerID, &out.Job.Host, &out.Job.StartedAt, &out.Job.CompletedAt, &out.Job.WallTimeMS, &resultJSON)
+	err := r.db.QueryRowContext(ctx, `SELECT type,status,COALESCE(worker_id,''),COALESCE(host,''),COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(duration_ms,0) FROM jobs WHERE id=?`, jobID).
+		Scan(&out.Job.Type, &out.Job.Status, &out.Job.WorkerID, &out.Job.Host, &out.Job.StartedAt, &out.Job.CompletedAt, &out.Job.WallTimeMS)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return out, fmt.Errorf("performance report: job %s not found", jobID)
 		}
 		return out, fmt.Errorf("performance report: read job %s: %w", jobID, err)
+	}
+	resultJSON.String = "{}"
+	if hasTable(ctx, r.db, "job_results") {
+		_ = r.db.QueryRowContext(ctx, `SELECT result_payload FROM job_results WHERE job_id=? ORDER BY attempt DESC, id DESC LIMIT 1`, jobID).Scan(&resultJSON)
+	} else if hasColumn(ctx, r.db, "jobs", "result_json") {
+		_ = r.db.QueryRowContext(ctx, `SELECT COALESCE(result_json,'{}') FROM jobs WHERE id=?`, jobID).Scan(&resultJSON)
 	}
 	var metrics []struct {
 		Name  string
@@ -115,6 +121,16 @@ func (r *ReportReader) PerformanceReport(ctx context.Context, jobID string) (cap
 		out.Derived.CriticalPathPercent = float64(out.Preparation.TotalMS) / float64(out.Job.WallTimeMS) * 100
 	}
 	return out, nil
+}
+
+func hasTable(ctx context.Context, db *sql.DB, table string) bool {
+	var n int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n) == nil && n > 0
+}
+
+func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
+	var n int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, table, column).Scan(&n) == nil && n > 0
 }
 
 func (r *ReportReader) OperationStats(ctx context.Context, jobID string) ([]capperformance.OperationStats, error) {
