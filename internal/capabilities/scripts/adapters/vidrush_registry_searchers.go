@@ -191,7 +191,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 
-	profile := canonicalSegmentProfile(updated)
+	profile := updated.CanonicalSemanticProfile()
 	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.artlist, f.images, f.youtube)
 	semanticProfile := &profile
 	segmentDurationMs, _ := segmentDurationBudgetMs(updated, plan)

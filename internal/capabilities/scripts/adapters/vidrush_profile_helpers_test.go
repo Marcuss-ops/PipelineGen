@@ -7,7 +7,7 @@ import (
 )
 
 func TestProfileFromVidRushSegmentUsesCanonicalInsights(t *testing.T) {
-	profile := canonicalSegmentProfile(scriptpkg.VidRushSegmentResult{
+	profile := (scriptpkg.VidRushSegmentResult{
 		SegmentID: "seg-1", TextHash: "hash", Text: "tractor history",
 		SemanticProfile: &scriptpkg.SegmentSemanticProfile{
 			SegmentID: "seg-1", TextHash: "hash",
@@ -15,7 +15,7 @@ func TestProfileFromVidRushSegmentUsesCanonicalInsights(t *testing.T) {
 			VisualTerms: []scriptpkg.WeightedKeyword{{Value: "early gasoline tractor", Confidence: 1}},
 			Retrieval:   &scriptpkg.RetrievalIntent{Images: []string{"early tractor"}},
 		},
-	})
+	}).CanonicalSemanticProfile()
 	if profile.SegmentID != "seg-1" || len(profile.Entities) != 1 {
 		t.Fatalf("unexpected profile: %+v", profile)
 	}

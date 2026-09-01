@@ -28,16 +28,15 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	if segment.ExecutionMode.IsFixedMedia() {
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	profile := canonicalSegmentProfile(segment)
+	profile := segment.CanonicalSemanticProfile()
 	decision := buildSegmentProviderDecision(plan, segment, "video")
 	if hasCanonicalSourceForSegment(plan, segment.SegmentID) {
 		// A caller-supplied canonical asset is complete at the source
 		// boundary; no external provider should be queried for this segment.
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	builders := NewVidRushProviderQueryBuilders()
-	artlistQueries := queriesOrProfile(segment.Insights.ArtlistQueries, builders.Artlist(profile))
-	imageQueries := queriesOrProfile(segment.Insights.ImageQueries, builders.InternetImages(profile))
+	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
+	imageQueries := scriptpkg.QueriesForImages(profile, 7)
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
 		limit = plan.MediaPlan.Planner.CandidateLimit
