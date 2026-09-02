@@ -157,6 +157,7 @@ verify-integration: go-version-check
 # verify-architecture — governance and architecture checks. Kept separate
 # so architecture drift surfaces under its own target.
 verify-architecture:
+	@bash scripts/ci/check_clip_render_cutover.sh && \
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
 	$(GO) run ./cmd/archcheck && \
 	$(GO) run -tags=c2_source_catalog_only scripts/archcheck/gates/gate_c2_source_catalog_only_main.go . && \

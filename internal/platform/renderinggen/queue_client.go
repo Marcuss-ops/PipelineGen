@@ -7,9 +7,12 @@ package renderinggen
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
 )
@@ -176,4 +179,102 @@ func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
 	return 0
 }
 
+// ClipRenderQueue is the minimal public queue seam used by clip rendering.
+type ClipRenderQueue interface {
+	Submit(context.Context, scriptgen.RenderQueueJob) error
+	Get(context.Context, string) (scriptgen.RenderQueueJob, error)
+}
+
+// ClipRenderExecutor submits one complete clip segment to RenderingGen. It
+// never invokes Rust or Chronon locally and fails closed on missing artifacts.
+type ClipRenderExecutor struct {
+	queue    ClipRenderQueue
+	interval time.Duration
+}
+
+func NewClipRenderExecutor(queue ClipRenderQueue) (*ClipRenderExecutor, error) {
+	if queue == nil {
+		return nil, fmt.Errorf("renderinggen clip executor: queue client is required")
+	}
+	return &ClipRenderExecutor{queue: queue, interval: 2 * time.Second}, nil
+}
+
+func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRenderExecutor {
+	if e != nil && interval > 0 {
+		e.interval = interval
+	}
+	return e
+}
+
+func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+	if e == nil || e.queue == nil {
+		return nil, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
+	}
+	if err := plan.Validate(); err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
+	}
+	rawPlan, err := json.Marshal(plan)
+	if err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: marshal plan: %w", err)
+	}
+	assets := []queueclient.AssetRef{{Hash: plan.Source.SHA256, LogicalPath: plan.Source.Path}}
+	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
+		assets = append(assets, queueclient.AssetRef{Hash: plan.Background.SHA256, LogicalPath: plan.Background.Path})
+	}
+	if plan.Watermark != nil && plan.Watermark.Path != "" {
+		assets = append(assets, queueclient.AssetRef{Hash: plan.Watermark.SHA256, LogicalPath: plan.Watermark.Path})
+	}
+	if plan.Subtitles != nil {
+		assets = append(assets, queueclient.AssetRef{Hash: plan.Subtitles.SHA256, LogicalPath: plan.Subtitles.Path})
+	}
+	if err := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)}); err != nil && !errors.Is(err, scriptgen.ErrJobExists) {
+		return nil, fmt.Errorf("renderinggen clip executor: submit: %w", err)
+	}
+	completed, err := waitClipQueue(ctx, e.queue, plan.RunID, e.interval)
+	if err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)
+	}
+	if completed.State != string(queueclient.StateCompleted) || completed.Artifact == nil {
+		return nil, fmt.Errorf("renderinggen clip executor: job %s completed without certified artifact", plan.RunID)
+	}
+	a := completed.Artifact
+	if a.SHA256 == "" || a.SizeBytes <= 0 || a.URL == "" {
+		return nil, fmt.Errorf("renderinggen clip executor: job %s returned incomplete artifact certification", plan.RunID)
+	}
+	return &cliprender.RenderOutcome{OutputPath: a.URL, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.BackendChrononVulkan, AudioCopyEligible: boolPtr(a.CopyEligible), VideoZeroCopy: boolPtr(true), Metrics: cliprender.NewRenderMetricsV2()}, nil
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
+	out := make([]scriptgen.RenderQueueAsset, len(in))
+	for i, a := range in {
+		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath}
+	}
+	return out
+}
+
+func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval time.Duration) (scriptgen.RenderQueueJob, error) {
+	if interval <= 0 {
+		interval = time.Second
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		job, err := q.Get(ctx, id)
+		if err != nil {
+			return scriptgen.RenderQueueJob{}, err
+		}
+		if job.State == string(queueclient.StateCompleted) || job.State == string(queueclient.StateFailed) {
+			return job, nil
+		}
+		select {
+		case <-ctx.Done():
+			return scriptgen.RenderQueueJob{}, ctx.Err()
+		case <-t.C:
+		}
+	}
+}
+
 var _ scriptgen.RenderQueueClient = (*Client)(nil)
+var _ cliprender.RenderExecutor = (*ClipRenderExecutor)(nil)

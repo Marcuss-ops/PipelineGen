@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	obsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
@@ -105,11 +104,11 @@ func RunMultilingualRender(args []string) error {
 		return fmt.Errorf("multilingual-render: new renderer: %w", err)
 	}
 	mediaProfile := root.MediaExec.Profile.WithDefaults()
-	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	rustClipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, mediaProfile, log)
-	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
-	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer, resolver: backendResolver, probe: backendProbe}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPSNum, mediaProfile.FPSDen)
+	renderRuntime, runtimeErr := wiring.BuildClipRenderRuntime(cfg, root, log)
+	if runtimeErr != nil {
+		return fmt.Errorf("multilingual-render: build RenderingGen clip runtime: %w", runtimeErr)
+	}
+	renderer.WithRustRenderer(multilingualQueueRenderer{executor: renderRuntime.RenderingGenExecutor}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPSNum, mediaProfile.FPSDen)
 	subMat := texttracks.NewSubtitleArtifactMaterializer(root.Repos.SubtitleArtifactRepo, "data/media/subtitles", root.Drive.Publisher)
 	cueRepair, err := texttracks.NewCueRepairService(root.Domains.CueWriter)
 	if err != nil {
@@ -212,13 +211,11 @@ func RunMultilingualRender(args []string) error {
 	return nil
 }
 
-// adminRustRenderer keeps the application renderer independent of the
-// concrete Rust adapter while making this operational command use the same
-// sealed render_clip boundary as the main clip-render capability.
-type adminRustRenderer struct {
-	renderer *rustexec.ClipRenderer
-	resolver *cliprender.RenderBackendResolver
-	probe    cliprender.BackendCapabilityProbe
+// multilingualQueueRenderer keeps localization on the shared RenderingGen
+// queue boundary. RenderingGen owns semantic lowering, Chronon execution, and
+// artifact certification; this adapter only maps the certified output.
+type multilingualQueueRenderer struct {
+	executor cliprender.RenderExecutor
 }
 
 type overlayAssets struct {
@@ -300,12 +297,11 @@ func resolveOverlayAssets(ctx context.Context, reader drive.Reader, backgroundID
 	return assets, nil
 }
 
-func (a adminRustRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (multilingual.RustRenderResult, error) {
-	backend, err := cliprender.ResolveBackend(ctx, a.probe, a.resolver, plan)
-	if err != nil {
-		return multilingual.RustRenderResult{}, err
+func (a multilingualQueueRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (multilingual.RustRenderResult, error) {
+	if a.executor == nil {
+		return multilingual.RustRenderResult{}, fmt.Errorf("multilingual queue renderer: RenderingGen executor is not configured")
 	}
-	result, err := a.renderer.RenderClip(ctx, plan, backend)
+	result, err := a.executor.Render(ctx, plan)
 	if err != nil {
 		return multilingual.RustRenderResult{}, err
 	}

@@ -266,7 +266,7 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 		TextWatermark:  true,
 		Shadow:         true,
 		Transition:     true,
-		BurnSubtitles:  false,
+		BurnSubtitles:  true,
 		GPUAlpha:       true,
 		Scale:          true,
 	})
