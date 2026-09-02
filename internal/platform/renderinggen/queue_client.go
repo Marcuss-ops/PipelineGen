@@ -7,7 +7,6 @@ package renderinggen
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -213,19 +212,22 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
-	rawPlan, err := json.Marshal(plan)
+	// MapClipPlanToOverlayPlan produces the renderinggen.overlay-plan.v1
+	// semantic contract. Sending a raw ClipRenderPlanV1 (no schema_version)
+	// would cause the RenderingGen worker to treat it as a Chronon concrete
+	// plan pass-through — a silent data corruption. This function is the
+	// single authoritative serialisation point for clip render jobs.
+	rawPlan, err := MapClipPlanToOverlayPlan(plan)
 	if err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: marshal plan: %w", err)
+		return nil, fmt.Errorf("renderinggen clip executor: map plan: %w", err)
 	}
-	assets := []queueclient.AssetRef{{Hash: plan.Source.SHA256, LogicalPath: plan.Source.Path}}
-	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
-		assets = append(assets, queueclient.AssetRef{Hash: plan.Background.SHA256, LogicalPath: plan.Background.Path})
-	}
-	if plan.Watermark != nil && plan.Watermark.Path != "" {
-		assets = append(assets, queueclient.AssetRef{Hash: plan.Watermark.SHA256, LogicalPath: plan.Watermark.Path})
-	}
-	if plan.Subtitles != nil {
-		assets = append(assets, queueclient.AssetRef{Hash: plan.Subtitles.SHA256, LogicalPath: plan.Subtitles.Path})
+	// Build hash-addressed asset refs. LogicalPath uses the content-addressed
+	// object-store key so remote RenderingGen workers can materialise each
+	// asset by hash — local VPS paths are never forwarded to the queue.
+	refs := overlayPlanAssets(plan)
+	assets := make([]queueclient.AssetRef, len(refs))
+	for i, r := range refs {
+		assets[i] = queueclient.AssetRef{Hash: r.Hash, LogicalPath: r.LogicalPath}
 	}
 	if err := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)}); err != nil && !errors.Is(err, scriptgen.ErrJobExists) {
 		return nil, fmt.Errorf("renderinggen clip executor: submit: %w", err)

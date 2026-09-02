@@ -3,6 +3,7 @@ package renderinggen
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -29,7 +30,7 @@ func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 	plan := cliprender.ClipRenderPlanV1{
 		Version:    cliprender.PlanVersion,
 		RunID:      "clip-1",
-		Source:     cliprender.PlanSource{AssetID: "source", Path: "/tmp/source.mp4", SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		Source:     cliprender.PlanSource{AssetID: "source-asset-001", Path: "/vps/local/source.mp4", SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		Background: &cliprender.PlanBackground{Mode: cliprender.BackgroundModeNone},
 		Output:     cliprender.PlanOutput{ContractID: "VELOX_ASSEMBLY_READY_V1", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1},
 		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
@@ -41,7 +42,11 @@ func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 	return plan
 }
 
-func TestClipRenderExecutorSubmitsOneCompleteSegment(t *testing.T) {
+// TestClipRenderExecutorSubmitsOverlayPlanV1 verifies the critical contract:
+// the submitted JSON carries schema_version="renderinggen.overlay-plan.v1",
+// NOT a raw ClipRenderPlanV1 (which would be silently pass-through'd by the
+// RenderingGen worker and corrupt the render pipeline).
+func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 	q := &fakeClipQueue{result: queueclient.Job{State: queueclient.StateCompleted, Artifact: &queueclient.Artifact{
 		ArtifactHash: "artifact-sha", ArtifactURL: "https://store/out.mp4", SizeBytes: 10,
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
@@ -57,17 +62,83 @@ func TestClipRenderExecutorSubmitsOneCompleteSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if q.submitted.JobType != "render_segment" || q.submitted.ID != plan.RunID {
-		t.Fatalf("submitted job = %+v", q.submitted)
+		t.Fatalf("submitted job metadata wrong: job_type=%q id=%q", q.submitted.JobType, q.submitted.ID)
 	}
-	var submitted cliprender.ClipRenderPlanV1
-	if err := json.Unmarshal(q.submitted.RenderPlan, &submitted); err != nil {
-		t.Fatal(err)
+
+	// Decode as the overlay-plan wire type (NOT ClipRenderPlanV1).
+	var overlay struct {
+		SchemaVersion string `json:"schema_version"`
+		PlanID        string `json:"plan_id"`
+		VideoID       string `json:"video_id"`
+		Width         int    `json:"width"`
+		Height        int    `json:"height"`
+		FPSNum        int    `json:"fps_num"`
+		FPSDen        int    `json:"fps_den"`
+		Source        struct {
+			AssetID string `json:"asset_id"`
+			SHA256  string `json:"sha256"`
+		} `json:"source"`
 	}
-	if submitted.RunID != plan.RunID || submitted.PlanSHA256 != plan.PlanSHA256 {
-		t.Fatalf("submitted plan = %+v", submitted)
+	if err := json.Unmarshal(q.submitted.RenderPlan, &overlay); err != nil {
+		t.Fatalf("submitted plan is not valid JSON: %v", err)
 	}
+	if overlay.SchemaVersion != SemanticSchema {
+		t.Errorf("schema_version = %q, want %q (raw ClipRenderPlanV1 would pass-through to Chronon broken)",
+			overlay.SchemaVersion, SemanticSchema)
+	}
+	if overlay.PlanID != plan.RunID {
+		t.Errorf("plan_id = %q, want %q", overlay.PlanID, plan.RunID)
+	}
+	if overlay.VideoID != plan.Source.AssetID {
+		t.Errorf("video_id = %q, want %q", overlay.VideoID, plan.Source.AssetID)
+	}
+	if overlay.FPSNum != plan.Output.FPSNum || overlay.FPSDen != plan.Output.FPSDen {
+		t.Errorf("fps = %d/%d, want %d/%d", overlay.FPSNum, overlay.FPSDen, plan.Output.FPSNum, plan.Output.FPSDen)
+	}
+	if overlay.Source.SHA256 != plan.Source.SHA256 {
+		t.Errorf("source.sha256 = %q, want %q", overlay.Source.SHA256, plan.Source.SHA256)
+	}
+
+	// Verify local VPS path is NOT in the submitted JSON.
+	if strings.Contains(string(q.submitted.RenderPlan), "/vps/local/source.mp4") {
+		t.Error("submitted plan must NOT contain local VPS path — must use hash-addressed object-store key")
+	}
+
 	if outcome.Backend != cliprender.BackendChrononVulkan || outcome.SizeBytes != 10 {
 		t.Fatalf("outcome = %+v", outcome)
+	}
+}
+
+// TestClipRenderExecutorAssetRefsAreHashAddressed verifies that asset logical
+// paths use the content-addressed object-store format, not local VPS paths.
+func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	plan := cliprender.ClipRenderPlanV1{
+		Version:    cliprender.PlanVersion,
+		RunID:      "clip-asset-test",
+		Source:     cliprender.PlanSource{AssetID: "src", Path: "/home/pierone/clips/source.mp4", SHA256: sha},
+		Background: &cliprender.PlanBackground{Mode: cliprender.BackgroundModeNone},
+		Output:     cliprender.PlanOutput{ContractID: "C", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1},
+		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
+		OutputPath: "/tmp/out.mp4",
+	}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	refs := overlayPlanAssets(plan)
+	if len(refs) == 0 {
+		t.Fatal("no asset refs returned")
+	}
+	for _, ref := range refs {
+		if strings.HasPrefix(ref.LogicalPath, "/") {
+			t.Errorf("asset ref LogicalPath %q is a local path — must be hash-addressed (sha256/...)", ref.LogicalPath)
+		}
+		if !strings.HasPrefix(ref.LogicalPath, "sha256/") {
+			t.Errorf("asset ref LogicalPath %q does not start with sha256/", ref.LogicalPath)
+		}
+		if !strings.Contains(ref.LogicalPath, ref.Hash) {
+			t.Errorf("asset ref LogicalPath %q does not contain hash %q", ref.LogicalPath, ref.Hash)
+		}
 	}
 }
 
