@@ -6,15 +6,32 @@ import (
 	"strings"
 	"time"
 	"unicode"
-
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// SafeFolderName replaces filesystem-unsafe characters with spaces.
-// Note: the behavior has been unified with textutil.SafeName which now
-// also converts hyphens, underscores, and dots to spaces.
+// SafeFolderName sanitises a name for use as a filesystem folder.
+// Replaces unsafe characters with underscores and trims whitespace.
+// Hyphens, underscores, and spaces are preserved (dots are not):
+// the legacy pkg/pathutil contract that naming tests and drive/
+// stockpipeline folder layouts are pinned against.
 func SafeFolderName(name string) string {
-	return textutil.SafeName(name)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "untitled"
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	result := strings.TrimSpace(b.String())
+	if result == "" {
+		return "untitled"
+	}
+	return result
 }
 
 // ExtractStyleFromPath extracts the style segment from a relative image path.

@@ -110,15 +110,14 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			TargetWords: 12,
 		},
 		Output: scriptpkg.OutputSpec{
-			// Required-class procs the test exercises:
-			ExtractEntities:  scriptpkg.ToggleEnabled,
+			// Procs the test exercises:
+			ExtractEntities:  scriptpkg.ToggleEnabled, // selects clip_search + provider search
 			GenerateMetadata: scriptpkg.ToggleEnabled,
-			// Opt-out of every other postprocessor so
-			// plan.Postprocessors stays to: entities, metadata,
-			// clip_bindings, visual_planning, persistence —
-			// (persistence is an unconditional best-effort per
-			// buildPostprocessorList and missing-registered
-			// in this test, surfacing as a warning only).
+			// Opt out of every optional postprocessor; the plan
+			// still gains the unconditional clip_bindings /
+			// asset_location_reconciliation / persistence stages,
+			// but only the registered-and-planned stubs
+			// (clip_search, metadata, persistence) execute.
 			SaveToDB: false,
 		},
 	}
@@ -139,13 +138,15 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	gen := &fakeOllamaGen{}
 	e := buildTestEngine(gen, nil) // nil memory gate → fresh path
 
-	// Two Required-class stubs with distinctive sleep budgets.
-	// Both registered, both reachable via buildPostprocessorList
-	// when OutputSpec.ExtractEntities / GenerateMetadata are
-	// true, both populate PostProcessResult fields that satisfy
+	// Two stubs with distinctive sleep budgets. Both registered and
+	// both reachable from the plan built for OutputSpec.ExtractEntities
+	// / GenerateMetadata (clip_search is the stage that
+	// ExtractEntities now selects — entity extraction no longer runs
+	// as an "entities" postprocessor; it moved to the semantic
+	// runner). Both populate PostProcessResult fields that satisfy
 	// IsEmpty==false so the registry doesn't flag them "empty".
-	entitiesProc := &stubPostProcessor{
-		name:    "entities",
+	clipSearchProc := &stubPostProcessor{
+		name:    "clip_search",
 		sleepMs: 5,
 		// Changed=true is the cheapest way to signal
 		// "non-empty" without depending on the typed
@@ -169,7 +170,7 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	}
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(entitiesProc), "entities stub must register")
+	require.True(t, ppReg.Register(clipSearchProc), "clip_search stub must register")
 	require.True(t, ppReg.Register(metadataProc), "metadata stub must register")
 	// persistence stub — safety default (July 2026) adds
 	// "persistence" to postprocessor list (Required-class),
@@ -208,56 +209,55 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	// Required-canonical procs must both be present (Issue #3
 	// plumbing surfaces the keys that the registry actually
 	// ran).
-	assert.Contains(t, result.Timings.PostprocessMs, "entities",
-		"Issue #3: entities must be plumbed through to timings.PostprocessMs")
+	assert.Contains(t, result.Timings.PostprocessMs, "clip_search",
+		"Issue #3: clip_search must be plumbed through to timings.PostprocessMs")
 	assert.Contains(t, result.Timings.PostprocessMs, "metadata",
 		"Issue #3: metadata must be plumbed through to timings.PostprocessMs")
 
 	// Per-stage variance captured: the registry records
 	// `elapsed = time.Since(start)` per processor so the
-	// entities→metadata gap ≈ sleep differential.
-	entitiesMs := result.Timings.PostprocessMs["entities"]
+	// clip_search→metadata gap ≈ sleep differential.
+	clipSearchMs := result.Timings.PostprocessMs["clip_search"]
 	metadataMs := result.Timings.PostprocessMs["metadata"]
 	t.Logf(
-		"Issue #3 timings.PostprocessMs: entities=%dms metadata=%dms gap=%dms",
-		entitiesMs, metadataMs, metadataMs-entitiesMs,
+		"Issue #3 timings.PostprocessMs: clip_search=%dms metadata=%dms gap=%dms",
+		clipSearchMs, metadataMs, metadataMs-clipSearchMs,
 	)
 
 	// Lower bounds honour the registry's elapsed windows
 	// (each sleep is ≥ requested, scheduler-dependent).
-	// Generous lower bound on entities so a slow CI runner
+	// Generous lower bound on clip_search so a slow CI runner
 	// resolving time.Sleep(5ms) in 0–6ms doesn't flake the
 	// test.
-	assert.GreaterOrEqual(t, entitiesMs, int64(1),
-		"entities must record ≥1ms (5ms sleep; scheduler-dependent bound, generous lower limit)")
+	assert.GreaterOrEqual(t, clipSearchMs, int64(1),
+		"clip_search must record ≥1ms (5ms sleep; scheduler-dependent bound, generous lower limit)")
 	assert.GreaterOrEqual(t, metadataMs, int64(45),
 		"metadata must record ≥45ms (50ms sleep; scheduler-dependent bound)")
 
 	// Discriminant (absolute margin, NOT a ratio): the gap
-	// between metadata and entities must be wide enough to
+	// between metadata and clip_search must be wide enough to
 	// distinguish the new maps.Clone wiring from the old
 	// uniform-division loop, even on a slow CI runner.
 	// The old loop would have produced roughly equal
 	// per-stage values (≈13ms each for ~110ms total across
-	// 4 procs with entities 5+metadata 50+overhead); Issue #3
-	// maps.Clone preserves actual elapsed (≈5ms entities,
+	// 4 procs with clip_search 5+metadata 50+overhead); Issue #3
+	// maps.Clone preserves actual elapsed (≈5ms clip_search,
 	// ≈50ms metadata), so the gap should be approximately
 	// 45ms. Required ≥30ms margin to absorb scheduler jitter
 	// without false-positive uniform-division readings.
-	assert.GreaterOrEqual(t, metadataMs-entitiesMs, int64(30),
-		"Issue #3: metadata - entities wall-clock gap must be at least 30ms (per-stage variance captured, not uniform division)")
+	assert.GreaterOrEqual(t, metadataMs-clipSearchMs, int64(30),
+		"Issue #3: metadata - clip_search wall-clock gap must be at least 30ms (per-stage variance captured, not uniform division)")
 
 	// Identity assertion: keys present in timings must be a
-	// strict subset of names the registry actually ran. The
-	// best-effort unconditional postprocessors
-	// (clip_bindings + visual_planning) are NOT registered
-	// here; the registry's Run loop only writes
-	// result.StageDurations entries for successfully-ran
-	// procs, so timings.PostprocessMs MUST NOT include any
-	// unregistered name.
+	// strict subset of names the registry actually ran. Planned
+	// but unregistered postprocessors (clip_bindings,
+	// internet_images, vidrush_materialization,
+	// asset_location_reconciliation) never run and must NOT
+	// surface here; the registry's Run loop only writes
+	// result.StageDurations entries for successfully-ran procs.
 	for key := range result.Timings.PostprocessMs {
 		assert.Contains(t,
-			[]string{"entities", "metadata", "persistence"}, key,
+			[]string{"clip_search", "metadata", "persistence"}, key,
 			"Issue #3: timings.PostprocessMs must mirror the registry's registered-and-ran keys; got unexpected %q", key)
 	}
 }
@@ -755,9 +755,13 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 		e := buildTestEngine(gen, nil)
 
 		// Register a Required-class postprocessor that errors.
+		// clip_search is the stage ExtractEntities selects (entity
+		// extraction no longer runs as a legacy "entities"
+		// postprocessor stage), so it is the processor guaranteed
+		// to execute during the postprocess phase for this item.
 		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 		ppErrProc := &errPostProcessor{
-			name: "entities",
+			name: "clip_search",
 			err:  errors.New("forced postprocess error"),
 		}
 		require.True(t, ppReg.Register(ppErrProc))
@@ -782,7 +786,7 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 				SourceText: "text body long enough for validator — please.",
 			},
 			Output: scriptpkg.OutputSpec{
-				ExtractEntities: scriptpkg.ToggleEnabled, // forces "entities" into plan.Postprocessors
+				ExtractEntities: scriptpkg.ToggleEnabled, // forces clip_search (et al.) into plan.Postprocessors
 			},
 		}
 

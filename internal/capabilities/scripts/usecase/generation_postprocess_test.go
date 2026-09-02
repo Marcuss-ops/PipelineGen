@@ -13,6 +13,11 @@ import (
 
 func TestVidRushTimingFieldsProjectsCanonicalStages(t *testing.T) {
 	got := VidRushTimingFields(map[string]int64{
+		// The legacy "entities" stage is passed in on purpose to pin
+		// the post-cutover projection: VisualNER extraction now runs in
+		// the semantic runner before the postprocessor walk, so the
+		// entities duration must NOT leak into SegmentExtractionMs /
+		// QueryGenerationMs anymore.
 		"entities":        11,
 		"clip_search":     22,
 		"internet_images": 33,
@@ -20,7 +25,7 @@ func TestVidRushTimingFieldsProjectsCanonicalStages(t *testing.T) {
 		"persistence":     55,
 		"clip_bindings":   66,
 	})
-	if got.SegmentExtractionMs != 11 || got.QueryGenerationMs != 11 ||
+	if got.SegmentExtractionMs != 0 || got.QueryGenerationMs != 0 ||
 		got.ArtlistSearchMs != 22 || got.InternetImageSearchMs != 33 ||
 		got.ImageGenerationMs != 44 || got.SQLiteMs != 55 || got.BindingMs != 66 {
 		t.Fatalf("unexpected VidRush timing projection: %+v", got)
