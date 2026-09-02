@@ -36,6 +36,8 @@ EXIT_TIMEOUT = 124
 ALL_COMPONENT_EXACT_FILES = frozenset(
     {
         "Makefile",
+		"ARCHITECTURE.md",
+		"docker-compose.test-postgres.yml",
         ".gitignore",
         "operator-console",
         "regen-current-yaml",
