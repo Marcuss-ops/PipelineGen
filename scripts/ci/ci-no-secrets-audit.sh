@@ -15,7 +15,7 @@
 # for cleanup on EXIT. The scan itself reads + greps only.
 #
 # Three-tier detection (each tier is auto-detected):
-#   Tier 1: `gitleaks detect --source .` (when `gitleaks` is on PATH).
+#   Tier 1: `gitleaks detect --source . --no-git` (when `gitleaks` is on PATH).
 #   Tier 2: `trufflehog filesystem . --no-banner` OR `trufflehog3`
 #           (when either binary is on PATH).
 #   Tier 3: regex fallback via ripgrep (when neither is installed).
@@ -57,7 +57,7 @@ FILES_LIST=$(mktemp -t ci-no-secrets-audit-files.XXXXXX.log) || {
     echo "[$SCRIPT_NAME] FATAL: mktemp failed" >&2
     exit 2
 }
-trap 'rm -f "$HIT_LOG" "$FILES_LIST"' EXIT
+trap 'rm -f "$HIT_LOG" "$FILES_LIST" "${HIT_LOG}.gitleaks" "${HIT_LOG}.gitleaks.stderr" "${HIT_LOG}.trufflehog" "${HIT_LOG}.trufflehog3" "${HIT_LOG}.regex"' EXIT
 
 EXIT_CODE=0
 log() { echo "[$SCRIPT_NAME] $(date '+%H:%M:%S') $*"; }
@@ -94,19 +94,28 @@ log "scanning ${n} tracked file(s)"
 # ============================================================
 if command -v gitleaks >/dev/null 2>&1; then
     log "T1: gitleaks"
-    # gitleaks exit code is non-zero on hits. We always run with --no-banner
-    # and write to HIT_LOG so any false positives are inspectable.
+    # Scan the working tree rather than git history. Explicit report format
+    # keeps behavior stable across gitleaks releases. stderr is preserved on
+    # execution failure so CI never collapses a tool/config error into the
+    # misleading "no report file produced" message.
+    GITLEAKS_REPORT="${HIT_LOG}.gitleaks"
+    GITLEAKS_STDERR="${HIT_LOG}.gitleaks.stderr"
     if ! gitleaks detect \
             --source . \
-            --no-banner \
             --no-git \
-            --report-path "${HIT_LOG}.gitleaks" \
-            >/dev/null 2>&1; then
-        if [[ -s "${HIT_LOG}.gitleaks" ]]; then
-            log_fail "gitleaks detected secrets (see ${HIT_LOG}.gitleaks)"
-            cat "${HIT_LOG}.gitleaks" >&2
+            --redact \
+            --exit-code 2 \
+            --report-format json \
+            --report-path "$GITLEAKS_REPORT" \
+            >/dev/null 2>"$GITLEAKS_STDERR"; then
+        if [[ -s "$GITLEAKS_REPORT" ]]; then
+            log_fail "gitleaks detected secrets (see $GITLEAKS_REPORT)"
+            cat "$GITLEAKS_REPORT" >&2
         else
-            log_fail "gitleaks exited non-zero (no report file produced)"
+            log_fail "gitleaks execution failed"
+            if [[ -s "$GITLEAKS_STDERR" ]]; then
+                cat "$GITLEAKS_STDERR" >&2
+            fi
         fi
     else
         log_pass "gitleaks: no secrets"
