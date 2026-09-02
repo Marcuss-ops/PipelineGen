@@ -28,7 +28,7 @@ require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/Marcuss-ops/RenderginGen/queue v0.0.0
+	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-20260902155112-fb4938103f42
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
@@ -76,5 +76,3 @@ require (
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/Marcuss-ops/RenderginGen/queue => ../RenderingGen/queue
