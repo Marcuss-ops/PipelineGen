@@ -96,51 +96,73 @@ func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
 	e.recorder = r
 }
 
-// EnqueueChrononPlan compiles the semantic OverlayPlan into the concrete
-// chronon.render-plan.v1 document and submits it to the central queue. This is
-// the production path that turns PipelineGen's visual instructions into the
-// document the RenderingGen worker writes to plan.json and hands to
-// chronon3d_cli. It then blocks until the render completes (or fails) and
-// returns the certified artifact reference.
+// EnqueueChrononPlan submits the semantic OverlayPlan to RenderingGen. The
+// worker is the sole owner of the semantic→Chronon v2 compilation and writes
+// the concrete plan it actually executes. Keeping this boundary semantic is
+// important: sending PipelineGen's old v1 concrete document makes the worker
+// validate it against the v2 schema and fail before Chronon starts.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
 	if e == nil || e.client == nil {
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
-	compiled, err := capoverlay.CompileChrononPlan(plan)
-	if err != nil {
-		return RenderReference{}, fmt.Errorf("chronon plan compile failed: %w", err)
+	semanticPlan := plan
+	// Older callers represented an image background as an item with template
+	// BACKGROUND. RenderingGen's semantic contract has a first-class
+	// background block, so normalize that legacy spelling at this boundary.
+	items := make([]capoverlay.OverlayItem, 0, len(plan.Items))
+	for _, item := range plan.Items {
+		if item.TemplateID == "BACKGROUND" && len(item.AssetRefs) > 0 && semanticPlan.Background == nil {
+			semanticPlan.Background = &capoverlay.OverlayBackground{
+				Kind: "image", Fit: "cover", AssetRefs: item.AssetRefs,
+			}
+			continue
+		}
+		items = append(items, item)
 	}
-	spec, err := compiled.Marshal()
+	semanticPlan.Items = items
+	spec, err := json.Marshal(semanticPlan)
 	if err != nil {
-		return RenderReference{}, err
+		return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
 	}
-	assets := make([]RenderQueueAsset, 0, len(compiled.Assets))
-	for _, a := range compiled.Assets {
-		assets = append(assets, RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
+	assets := make([]RenderQueueAsset, 0, len(plan.Items)+1)
+	seen := make(map[string]struct{})
+	addAsset := func(ref capoverlay.OverlayAssetRef) {
+		if ref.SHA256 == "" {
+			return
+		}
+		hash := strings.ToLower(ref.SHA256)
+		if _, ok := seen[hash]; ok {
+			return
+		}
+		seen[hash] = struct{}{}
+		url := ref.URL
+		if url == "" {
+			url = "assets/" + ref.AssetID
+		}
+		assets = append(assets, RenderQueueAsset{Hash: hash, URL: url})
+	}
+	if semanticPlan.Background != nil {
+		for _, ref := range semanticPlan.Background.AssetRefs {
+			addAsset(ref)
+		}
+	}
+	for _, item := range semanticPlan.Items {
+		for _, ref := range item.AssetRefs {
+			addAsset(ref)
+		}
 	}
 	// Chronon's VisualPresetRegistry preflights the preset-owned font before
 	// applying a layer's explicit font_asset override. Keep both content-
 	// addressed fonts in the queue payload: the explicit PipelineGen font
 	// remains authoritative for the layer, while Poppins satisfies the
 	// registry dependency during plan preparation.
-	for _, layer := range compiled.Plan.Layers {
-		if layer.Type != "text" {
-			continue
-		}
-		found := false
-		for _, a := range assets {
-			if a.URL == capoverlay.CanonicalPresetFontPath {
-				found = true
-				break
+	for _, item := range semanticPlan.Items {
+		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" {
+			if _, ok := seen[capoverlay.GoldenPresetFontHash]; !ok {
+				assets = append(assets, RenderQueueAsset{Hash: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath})
 			}
+			break
 		}
-		if !found {
-			assets = append(assets, RenderQueueAsset{
-				Hash: capoverlay.GoldenPresetFontHash,
-				URL:  capoverlay.CanonicalPresetFontPath,
-			})
-		}
-		break
 	}
 	// Keep the queue dispatch explicit. RenderingGen uses this discriminator to
 	// route the job through the overlay renderer (and to apply the overlay media
