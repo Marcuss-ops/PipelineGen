@@ -166,7 +166,26 @@ func (s *StockStager) stageSource(ctx context.Context, ref assets.SourceRef) (re
 
 	leaderPath := stagedAsset.LocalPath
 	if leader {
-		s.publishSharedLease(lease, leaderPath, true)
+		// The downloader may return either a file created under our tmpDir
+		// (direct yt-dlp) or a persistent file owned by another stager
+		// (the production acquisition.SourceStager path). Only the former
+		// belongs to this lease and may be removed when the last caller
+		// releases it. Deleting an externally-owned path invalidates the
+		// cross-run source cache and forces the next job to invoke yt-dlp
+		// again.
+		removeLeaderOnRelease := pathWithinDir(tmpDir, leaderPath)
+		s.publishSharedLease(lease, leaderPath, removeLeaderOnRelease)
+		if !removeLeaderOnRelease {
+			// The first caller still owns its local tmpDir copy, but it must
+			// not be treated as the owner of the external persistent source.
+			// Clearing ownerPath makes cleanup remove this caller's tmpDir
+			// while releaseSharedLease leaves leaderPath untouched.
+			lease.mu.Lock()
+			if lease.ownerPath == finalLocalPath {
+				lease.ownerPath = ""
+			}
+			lease.mu.Unlock()
+		}
 	}
 	if leaderPath != outputPath {
 		if cpErr := copyFileToPath(leaderPath, outputPath, fs); cpErr != nil {
@@ -181,6 +200,16 @@ func (s *StockStager) stageSource(ctx context.Context, ref assets.SourceRef) (re
 		LocalPath: finalLocalPath,
 		Bytes:     stagedAsset.Bytes,
 	}, nil
+}
+
+func pathWithinDir(dir, path string) bool {
+	dir = filepath.Clean(dir)
+	path = filepath.Clean(path)
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func isYouTubeSourceURL(raw string) bool {
