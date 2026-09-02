@@ -3,7 +3,6 @@
     "paths": [
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
-      "internal/platform/nlp/",
       "scripts/bridges/local_nlp_gpu.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
@@ -16,8 +15,7 @@
     ],
     "go_packages": [
       "./internal/kernel/script/...",
-      "./internal/capabilities/scripts/...",
-      "./internal/platform/nlp/..."
+      "./internal/capabilities/scripts/..."
     ],
     "node_tests": [],
     "python_tests": [],

@@ -29,6 +29,13 @@ import (
 // a parallel subtest verifies the same outcome for "observability" to lock in
 // the scope-correctness contract.
 //
+// Observability divergence (deliberate, migration 267): the observability
+// plane is not a second business registry — 267_observability_business_quarantine.sql
+// (scope=observability) renames the business tables created by 092/093 to
+// legacy_observability_outbox_events / legacy_observability_clip_folders. The
+// observability round therefore asserts the same canonical columns/indexes on
+// the quarantined names and pins that the plain business names are gone.
+//
 // Mirrors the pattern of TestMigrations_Smoke (ApplyFirstTime + IdempotencySecondApply)
 // but focuses on the two migrations most relevant to the 091-redundant drift fix.
 func TestMigrations_092_093_FreshDB(t *testing.T) {
@@ -46,6 +53,14 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 		t.Run("scope="+targetDB, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			dbPath := filepath.Join(tmpDir, "fresh.sqlite")
+
+			// On observability, migration 267 quarantines the business tables
+			// that 092/093 created, so the post-migration surface carries the
+			// legacy_observability_* names instead of the plain business names.
+			outboxTable, clipTable := "outbox_events", "clip_folders"
+			if targetDB == "observability" {
+				outboxTable, clipTable = "legacy_observability_outbox_events", "legacy_observability_clip_folders"
+			}
 
 			t.Run("round1_apply_first_time", func(t *testing.T) {
 				log := zaptest.NewLogger(t)
@@ -70,9 +85,11 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 				require.NoError(t, err, "migration 093 must be in schema_migrations ledger")
 				require.NotEmpty(t, m093Checksum, "migration 093 checksum must be non-empty")
 
-				// 2. outbox_events table must exist and have the canonical 17 columns
-				//    the application code scans into outboxevents.Event.
-				outboxCols := mustReadColumnNames(t, db, "outbox_events")
+				// 2. The 092 table must exist and have the canonical 17 columns
+				//    the application code scans into outboxevents.Event — under
+				//    the plain name on primary, the quarantined name on
+				//    observability.
+				outboxCols := mustReadColumnNames(t, db, outboxTable)
 				require.Equal(t,
 					[]string{
 						"id", "event_type", "aggregate_id", "aggregate_type",
@@ -82,23 +99,24 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 						"updated_at", "priority", // migration 186 appends priority
 					},
 					outboxCols,
-					"outbox_events column order MUST match canonical order in 092 (Repository.Enqueue projection)",
+					"092 table column order MUST match canonical order (Repository.Enqueue projection)",
 				)
 
-				// 3. outbox_events declares one UNIQUE INDEX + one composite INDEX
-				//    in 092. The INTEGER PRIMARY KEY does NOT generate a
-				//    sqlite_autoindex_* entry (SQLite stores INTEGER PRIMARY KEY
-				//    cols as the rowid), and explicit UNIQUE INDEX names do not
-				//    get auto-renamed — they keep their declared name.
-				outboxIndexes := mustReadIndexNames(t, db, "outbox_events")
+				// 3. The 092 table declares one UNIQUE INDEX + one composite INDEX.
+				//    The INTEGER PRIMARY KEY does NOT generate a sqlite_autoindex_*
+				//    entry (SQLite stores INTEGER PRIMARY KEY cols as the rowid),
+				//    and explicit UNIQUE INDEX names do not get auto-renamed — they
+				//    keep their declared name (including after the 267 quarantine
+				//    RENAME, which only moves the table).
+				outboxIndexes := mustReadIndexNames(t, db, outboxTable)
 				require.Contains(t, outboxIndexes, "ux_outbox_events_event_key",
 					"unique index on outbox_events.event_key is REQUIRED for ON CONFLICT DO NOTHING in Repository.Enqueue")
 				require.Contains(t, outboxIndexes, "idx_outbox_events_status_next_attempt",
 					"composite (status, next_attempt_at, id) index from 092 must exist for ClaimNext performance")
 
-				// 4. clip_folders table exists with 19 columns, in the canonical
+				// 4. The 093 table exists with 19 columns, in the canonical
 				//    application-order used by 093.
-				clipCols := mustReadColumnNames(t, db, "clip_folders")
+				clipCols := mustReadColumnNames(t, db, clipTable)
 				expectedClipCols := []string{
 					"id", "source", "source_url", "video_id", "folder_id",
 					"folder_path", "local_folder_path", "group_name",
@@ -110,12 +128,21 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 				require.Equal(t, expectedClipCols, clipCols,
 					"clip_folders column order MUST match 093 declaration")
 
-				// 5. clip_folders has its declared search_key index.
-				clipIndexes := mustReadIndexNames(t, db, "clip_folders")
+				// 5. The 093 table has its declared search_key index.
+				clipIndexes := mustReadIndexNames(t, db, clipTable)
 				require.Contains(t, clipIndexes, "idx_clip_folders_search_key",
 					"clip_folders.search_key index from 093 must exist")
 
-				// 6. schema_migrations ledger row count sanity: should include
+				// 6. On observability the plain business names must be gone after
+				//    the 267 quarantine (observability is not a business registry).
+				if targetDB == "observability" {
+					require.Empty(t, mustReadColumnNames(t, db, "outbox_events"),
+						"outbox_events must be quarantined away on observability (267)")
+					require.Empty(t, mustReadColumnNames(t, db, "clip_folders"),
+						"clip_folders must be quarantined away on observability (267)")
+				}
+
+				// 7. schema_migrations ledger row count sanity: should include
 				//    every in-scope migration from 001 through 093 (plus any
 				//    later in-scope migrations). Hard floor: >= 93 if every
 				//    migration through to 093 is in scope for targetDB.
@@ -132,8 +159,8 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 			// WAL-mode DB tolerates a long-lived reader so long as writers
 			// (round-2 RunMigrationsOnDB) reconcile at commit time.
 			round1RO := openReadOnly(t, dbPath)
-			round1OutboxCols := mustReadColumnNames(t, round1RO, "outbox_events")
-			round1ClipCols := mustReadColumnNames(t, round1RO, "clip_folders")
+			round1OutboxCols := mustReadColumnNames(t, round1RO, outboxTable)
+			round1ClipCols := mustReadColumnNames(t, round1RO, clipTable)
 			round1Ledger092, _ := mustReadChecksum(t, round1RO, 92)
 			round1Ledger093, _ := mustReadChecksum(t, round1RO, 93)
 			t.Cleanup(func() { _ = round1RO.Close() })
@@ -160,13 +187,13 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 					"checksum for 093 must NOT change after second apply (ledger invariant)")
 
 				// Schema fingerprint must NOT change.
-				outboxCols2 := mustReadColumnNames(t, round2RO, "outbox_events")
+				outboxCols2 := mustReadColumnNames(t, round2RO, outboxTable)
 				require.Equal(t, round1OutboxCols, outboxCols2,
-					"outbox_events columns must NOT change after second apply")
+					"092 table columns must NOT change after second apply")
 
-				clipCols2 := mustReadColumnNames(t, round2RO, "clip_folders")
+				clipCols2 := mustReadColumnNames(t, round2RO, clipTable)
 				require.Equal(t, round1ClipCols, clipCols2,
-					"clip_folders columns must NOT change after second apply")
+					"093 table columns must NOT change after second apply")
 
 				t.Logf("round-2 idempotency verified for scope=%s: ledger + schema fingerprints byte-identical to round-1 baseline", targetDB)
 			})
