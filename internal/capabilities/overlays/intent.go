@@ -81,18 +81,25 @@ type IntentPayload struct {
 // OverlayIntents are deterministic: the same scenes + entities + registry
 // always produce the same intents in the same order.
 type OverlayIntent struct {
-	Version     int           `json:"version"`
-	IntentID    string        `json:"intent_id"`
-	SceneID     string        `json:"scene_id"`
-	SceneIndex  int           `json:"scene_index"`
-	Entity      EntityBinding `json:"entity"`
-	Source      IntentSource  `json:"source"`
-	SourceID    string        `json:"source_id,omitempty"`
-	SourceText  string        `json:"source_text,omitempty"`
-	Kind        string        `json:"kind"`
-	TemplateID  string        `json:"template_id"`
-	Payload     IntentPayload `json:"payload"`
-	TimingState TimingState   `json:"timing_state"`
+	Version    int           `json:"version"`
+	IntentID   string        `json:"intent_id"`
+	SceneID    string        `json:"scene_id"`
+	SceneIndex int           `json:"scene_index"`
+	Entity     EntityBinding `json:"entity"`
+	Source     IntentSource  `json:"source"`
+	SourceID   string        `json:"source_id,omitempty"`
+	SourceText string        `json:"source_text,omitempty"`
+	Kind       string        `json:"kind"`
+	TemplateID string        `json:"template_id"`
+	Payload    IntentPayload `json:"payload"`
+	// The following fields are empty during overlay.prepare and are filled
+	// only when the certified timeline is lowered into the final overlay plan.
+	// They make the intent self-contained at the render boundary.
+	PresetID    string            `json:"preset_id,omitempty"`
+	AssetRefs   []OverlayAssetRef `json:"asset_refs,omitempty"`
+	StartMs     int64             `json:"start_ms,omitempty"`
+	EndMs       int64             `json:"end_ms,omitempty"`
+	TimingState TimingState       `json:"timing_state"`
 }
 
 // Validate checks structural invariants on a single intent.

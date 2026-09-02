@@ -57,12 +57,13 @@ type RenderPlanExecutor interface {
 // background (mode + materialized asset for mode=asset), and the subtitle
 // visual overrides. All fields are optional; nil/empty means "no such layer".
 type RenderOptions struct {
-	Watermark      *cliprender.MaterializedAsset
-	WatermarkSpec  *cliprender.WatermarkSpec
-	WatermarkText  string
-	Background     *cliprender.MaterializedAsset
-	BackgroundMode string
-	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+	Watermark              *cliprender.MaterializedAsset
+	WatermarkSpec          *cliprender.WatermarkSpec
+	WatermarkText          string
+	Background             *cliprender.MaterializedAsset
+	BackgroundMode         string
+	ForegroundScalePercent int
+	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 }
 
 // ExtendedRenderPlanExecutor is the full-fidelity executor implemented by
@@ -137,16 +138,17 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 	// 3. Rust render boundary.
 	var facts RenderFacts
 	opts := RenderOptions{
-		Watermark:      plan.Watermark,
-		WatermarkSpec:  plan.WatermarkSpec,
-		WatermarkText:  plan.WatermarkText,
-		Background:     plan.Background,
-		BackgroundMode: plan.BackgroundMode,
-		SubtitlesStyle: plan.SubtitlesStyle,
+		Watermark:              plan.Watermark,
+		WatermarkSpec:          plan.WatermarkSpec,
+		WatermarkText:          plan.WatermarkText,
+		Background:             plan.Background,
+		BackgroundMode:         plan.BackgroundMode,
+		ForegroundScalePercent: plan.ForegroundScalePercent,
+		SubtitlesStyle:         plan.SubtitlesStyle,
 	}
 	hasVisual := plan.Watermark != nil ||
 		(plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "") ||
-		plan.Background != nil || plan.BackgroundMode != ""
+		plan.Background != nil || plan.BackgroundMode != "" || plan.ForegroundScalePercent > 0
 	if extended, ok := r.executor.(ExtendedRenderPlanExecutor); ok && hasVisual {
 		// Full fidelity: background + subtitle style ride the same sealed
 		// render_clip invocation as the watermark (no second pass).

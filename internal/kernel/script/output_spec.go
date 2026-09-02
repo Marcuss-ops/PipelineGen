@@ -1,6 +1,10 @@
 package script
 
-import audio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+import (
+	"strings"
+
+	audio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+)
 
 // OutputSpec declares which post-generation artifacts to produce.
 // ExtractEntities and GenerateMetadata are Toggle tri-state values.
@@ -145,9 +149,10 @@ type VideoRenderSpec struct {
 	Subtitles  *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
 	// SubtitlePresets are reusable request-local styles selected by
 	// subtitles.preset or subtitles.style_id.
-	SubtitlePresets   map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`
-	RenderConcurrency int                             `json:"render_concurrency,omitempty"`
-	OutputDir         string                          `json:"output_dir,omitempty"`
+	SubtitlePresets        map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`
+	RenderConcurrency      int                             `json:"render_concurrency,omitempty"`
+	ForegroundScalePercent int                             `json:"foreground_scale_percent,omitempty"`
+	OutputDir              string                          `json:"output_dir,omitempty"`
 	// DriveFolderID is the parent Drive folder for rendered clips. When
 	// DriveSubfolderName is set, the renderer creates/reuses that child.
 	DriveFolderID      string `json:"drive_folder_id,omitempty"`
@@ -229,6 +234,9 @@ func (r *VideoRenderSpec) Normalize() {
 	if r.RenderConcurrency < 1 {
 		r.RenderConcurrency = 2
 	}
+	if r.ForegroundScalePercent < 0 || r.ForegroundScalePercent > 100 {
+		r.ForegroundScalePercent = 100
+	}
 	if r.Background != nil {
 		if r.Background.Mode == "" {
 			r.Background.Mode = "none"
@@ -251,18 +259,59 @@ func (r *VideoRenderSpec) Normalize() {
 		if r.Subtitles.Mode == "" {
 			r.Subtitles.Mode = "burn"
 		}
-		presetID := r.Subtitles.Preset
+		presetID := strings.ToLower(strings.TrimSpace(r.Subtitles.Preset))
 		if presetID == "" {
-			presetID = r.Subtitles.StyleID
+			presetID = strings.ToLower(strings.TrimSpace(r.Subtitles.StyleID))
 		}
-		if r.Subtitles.Style == nil && presetID != "" {
-			if preset, ok := r.SubtitlePresets[presetID]; ok {
-				style := preset
-				r.Subtitles.Style = &style
+		if r.Subtitles.Style == nil {
+			r.Subtitles.Style = &VideoVisualStyleSpec{}
+		}
+		if r.Subtitles.Style.Font == "" && presetID != "" {
+			switch presetID {
+			case "impact":
+				r.Subtitles.Style.Font = "Impact"
+				if r.Subtitles.Style.FontSizePX == 0 {
+					r.Subtitles.Style.FontSizePX = 58
+				}
+			case "anton":
+				r.Subtitles.Style.Font = "Anton"
+				if r.Subtitles.Style.FontSizePX == 0 {
+					r.Subtitles.Style.FontSizePX = 56
+				}
+			case "bebas", "bebas_neue", "bebas neue":
+				r.Subtitles.Style.Font = "Bebas Neue"
+				if r.Subtitles.Style.FontSizePX == 0 {
+					r.Subtitles.Style.FontSizePX = 60
+				}
+			case "roboto", "roboto_bold":
+				r.Subtitles.Style.Font = "Roboto"
+				if r.Subtitles.Style.FontSizePX == 0 {
+					r.Subtitles.Style.FontSizePX = 52
+				}
+			case "montserrat", "montserrat_bold":
+				r.Subtitles.Style.Font = "Montserrat"
+				if r.Subtitles.Style.FontSizePX == 0 {
+					r.Subtitles.Style.FontSizePX = 54
+				}
+			default:
+				if preset, ok := r.SubtitlePresets[presetID]; ok {
+					style := preset
+					r.Subtitles.Style = &style
+				}
 			}
 		}
-		if r.Subtitles.Style != nil && r.Subtitles.Style.FontSizePX == 0 && r.Subtitles.Style.Size > 0 {
-			r.Subtitles.Style.FontSizePX = r.Subtitles.Style.Size
+		if r.Subtitles.Style.Font == "" {
+			r.Subtitles.Style.Font = "Montserrat"
+		}
+		if r.Subtitles.Style.Position == "" {
+			r.Subtitles.Style.Position = "bottom_center"
+		}
+		if r.Subtitles.Style.FontSizePX == 0 {
+			if r.Subtitles.Style.Size > 0 {
+				r.Subtitles.Style.FontSizePX = r.Subtitles.Style.Size
+			} else {
+				r.Subtitles.Style.FontSizePX = 54
+			}
 		}
 	}
 }

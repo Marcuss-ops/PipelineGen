@@ -247,22 +247,48 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 		rec.CreatedAt = time.Now()
 	}
 	rec.UpdatedAt = time.Now()
+	// Legacy test/database compatibility: migrations after 232 moved
+	// location and filename facts to media_assets. Older isolated callers
+	// may still provide the pre-232 voiceovers table, so detect it once at
+	// the SQL boundary rather than duplicating schema assumptions upstream.
+	var legacyLocations int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pragma_table_info('voiceovers')
+		 WHERE name = 'filename'
+	`).Scan(&legacyLocations); err != nil {
+		return err
+	}
+	if legacyLocations > 0 {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO voiceovers (
+				id, request_id, text_hash, text_preview, language, voice,
+				filename, local_path, cleaned_path, folder_id, folder_path,
+				drive_file_id, drive_link, download_link, file_hash,
+				duration_seconds, status, error, strategy, metadata,
+				fingerprint, idempotency_key, job_id, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language,
+			rec.Voice, rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID,
+			rec.FolderPath, rec.DriveFileID, rec.DriveLink, rec.DownloadLink,
+			rec.LegacyFileMD5, rec.DurationSeconds, rec.Status, rec.Error,
+			rec.Strategy, rec.Metadata, rec.Fingerprint, rec.IdempotencyKey,
+			rec.JobID, timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt))
+		return err
+	}
+	// Since migration 232, location and filename facts are owned by the
+	// media_assets projection. Keep voiceovers limited to its durable
+	// semantic/job fields; inserting the removed legacy columns makes the
+	// production finalizer fail against the live schema.
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice,
-			filename, local_path, cleaned_path, folder_id, folder_path,
-			drive_file_id, drive_link, download_link, file_hash,
-			duration_seconds, status,
-			error, strategy, metadata, fingerprint, idempotency_key, job_id,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			file_hash, duration_seconds, status, error, strategy, metadata,
+			fingerprint, idempotency_key, job_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language,
-		rec.Voice, rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5,
-		rec.DurationSeconds,
-		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
-		rec.IdempotencyKey, rec.JobID,
+		rec.Voice, rec.LegacyFileMD5, rec.DurationSeconds, rec.Status, rec.Error,
+		rec.Strategy, rec.Metadata, rec.Fingerprint, rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
 	)
 	return err

@@ -146,13 +146,14 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 			}
 			return opts.WatermarkSpec.Text
 		}(),
-		Background:     opts.Background,
-		BackgroundMode: opts.BackgroundMode,
-		Subtitles:      sub,
-		SubtitlesStyle: opts.SubtitlesStyle,
-		Contract:       contract,
-		AudioMode:      cliprender.AudioModeCopyIfCompatible,
-		OutputPath:     plan.OutputPath,
+		Background:             opts.Background,
+		BackgroundMode:         opts.BackgroundMode,
+		ForegroundScalePercent: opts.ForegroundScalePercent,
+		Subtitles:              sub,
+		SubtitlesStyle:         opts.SubtitlesStyle,
+		Contract:               contract,
+		AudioMode:              cliprender.AudioModeCopyIfCompatible,
+		OutputPath:             plan.OutputPath,
 	})
 	compileMS := time.Since(compileStart).Milliseconds()
 	if err != nil {

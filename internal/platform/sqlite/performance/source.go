@@ -97,6 +97,8 @@ func projectAudioMetrics(run kernobs.RunReport) scriptgeneration.AudioPipelineMe
 					audio.TTSCalls++
 				}
 			}
+		case "audio_asset_resolve":
+			audio.AudioAssetResolveMS += op.DurationMs
 		case "timeline_compile":
 			audio.TimelineCompileMS += op.DurationMs
 		case "audio_plan_compile":
@@ -118,7 +120,7 @@ func projectAudioMetrics(run kernobs.RunReport) scriptgeneration.AudioPipelineMe
 		}
 	}
 	if audio.TotalMS == 0 {
-		audio.TotalMS = audio.TTSMS + audio.TimelineCompileMS + audio.AudioPlanCompileMS + audio.ClipAudioPrepareMS + audio.MixMS + audio.AACEncodeMS + audio.ProbeMS + audio.HashMS + audio.UploadMS
+		audio.TotalMS = audio.TTSMS + audio.AudioAssetResolveMS + audio.TimelineCompileMS + audio.AudioPlanCompileMS + audio.ClipAudioPrepareMS + audio.MixMS + audio.AACEncodeMS + audio.ProbeMS + audio.HashMS + audio.UploadMS
 	}
 	if audio.AudioDurationMS > 0 {
 		audio.AudioRTF = float64(audio.TotalMS) / float64(audio.AudioDurationMS)

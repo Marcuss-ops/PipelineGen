@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -138,6 +139,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	imageQueries := make([]string, 0, len(entities))
+	imageAnchor := visualImageAnchor(ir.SourceText)
 	for _, ve := range entities {
 		entityType := ve.Type
 		if strings.TrimSpace(string(entityType)) == "" {
@@ -151,7 +153,11 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			Type:       string(entityType),
 			Confidence: float64(ve.Score),
 		})
-		imageQueries = append(imageQueries, ve.Text)
+		query := strings.TrimSpace(ve.Text)
+		if imageAnchor != "" && query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
+			query = imageAnchor + " " + query
+		}
+		imageQueries = append(imageQueries, query)
 	}
 	// Recompile the same SceneIR with the extractor result. This keeps the
 	// canonical profile as the only semantic owner while making the newly
@@ -169,6 +175,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	visualProfile := &visual
 	artlistQueries := scriptpkg.BuildArtlistQueries(ir.Profile, 5)
 	imageQueries = scriptpkg.BuildImageQueries(ir.Profile, entityCount)
+	if imageAnchor != "" {
+		for i, query := range imageQueries {
+			if query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
+				imageQueries[i] = imageAnchor + " " + query
+			}
+		}
+	}
 	result := scriptpkg.VidRushSegmentResult{
 		SegmentID:       ir.SegmentID,
 		SceneID:         scene.ID,
@@ -187,6 +200,24 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		},
 	}
 	return result, nil
+}
+
+// visualImageAnchor extracts the subject phrase from the first source clause.
+// VisualNER may return useful ingredients or actions while omitting the main
+// subject; retaining this short source-grounded anchor prevents searches for
+// "olive oil" or "wide pan" from drifting to unrelated stock imagery.
+func visualImageAnchor(source string) string {
+	first := strings.TrimSpace(strings.SplitN(source, ".", 2)[0])
+	if first == "" {
+		return ""
+	}
+	lower := strings.ToLower(first)
+	for _, marker := range []string{" consists ", " contains ", " combines ", " is ", " are ", " was ", " were "} {
+		if idx := strings.Index(lower, marker); idx > 0 {
+			return strings.TrimSpace(first[:idx])
+		}
+	}
+	return first
 }
 
 // canonicalSourceText selects the source wording committed by the plan.
@@ -247,6 +278,38 @@ type SemanticProviderResolver struct {
 	samplerPort   scriptports.MediaSamplerPort
 }
 
+// SemanticAndFanoutResolver composes local-first video selection with the
+// canonical provider fanout. The semantic cutover must not suppress image
+// discovery: stock intelligence owns primary-video selection, while the
+// existing fanout remains responsible for internet images/generation.
+type SemanticAndFanoutResolver struct {
+	semantic SegmentProviderResolver
+	fanout   SegmentProviderResolver
+}
+
+func NewSemanticAndFanoutResolver(semantic, fanout SegmentProviderResolver) (SegmentProviderResolver, error) {
+	if semantic == nil || fanout == nil {
+		return nil, fmt.Errorf("scriptgeneration: semantic and provider fanout are required")
+	}
+	return &SemanticAndFanoutResolver{semantic: semantic, fanout: fanout}, nil
+}
+
+func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	updated, err := r.semantic.ResolveProviders(ctx, plan, segment)
+	if err != nil {
+		return segment, err
+	}
+	if plan == nil {
+		return updated, nil
+	}
+	fanoutPlan := *plan
+	fanoutPlan.MediaPlan = plan.MediaPlan.Clone()
+	// Artlist was already handled by the semantic resolver. Prevent a second
+	// live search while preserving the caller's image/generation policy.
+	fanoutPlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
+	return r.fanout.ResolveProviders(ctx, &fanoutPlan, updated)
+}
+
 // NewSemanticProviderResolver wires the new resolver. Both ports must be non-nil.
 func NewSemanticProviderResolver(stockResolver LocalStockResolverPort, samplerPort scriptports.MediaSamplerPort) (*SemanticProviderResolver, error) {
 	if stockResolver == nil {
@@ -261,6 +324,14 @@ func NewSemanticProviderResolver(stockResolver LocalStockResolverPort, samplerPo
 // ResolveProviders resolves candidates LOCAL FIRST and ranks them via the
 // MediaSampler. It is the Fase 4 + Fase 5 replacement for the legacy chooser.
 func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	// The stock resolver owns video discovery and must never bypass the plan's
+	// provider policy. Image-only/generation-only plans still use the later
+	// image materialization stages, but must not probe local video stock or
+	// fall back to Artlist.
+	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+		segment.Cache.InternetImagesProviderSearches = 0
+		return segment, nil
+	}
 	subject := ""
 	terms := []string{}
 	if segment.Insights.VisualProfile != nil {

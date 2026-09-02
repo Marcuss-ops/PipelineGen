@@ -12,7 +12,7 @@ func TestRecordAudioOperationsProjectsSubtimings(t *testing.T) {
 	ctx := kernobs.WithRun(context.Background(), run)
 	r := &Runner{}
 
-	r.recordAudioCompileOperations(ctx, AudioCompileTimings{TimelineCompileMS: 30, ClipAudioPrepareMS: 40, AudioPlanCompileMS: 25})
+	r.recordAudioCompileOperations(ctx, AudioCompileTimings{AudioAssetResolveMS: 12, TimelineCompileMS: 30, ClipAudioPrepareMS: 40, AudioPlanCompileMS: 25})
 	r.recordAudioRenderOperations(ctx, AudioPipelineMetrics{MixMS: 5000, AACEncodeMS: 8000, ProbeMS: 390, HashMS: 280})
 	r.recordAudioOperation(ctx, "upload", "drive", 3700)
 	run.Finish()
@@ -22,14 +22,15 @@ func TestRecordAudioOperationsProjectsSubtimings(t *testing.T) {
 		component string
 		ms        int64
 	}{
-		"timeline_compile":   {component: "audio", ms: 30},
-		"clip_audio_prepare": {component: "audio", ms: 40},
-		"audio_plan_compile": {component: "audio", ms: 25},
-		"mix":                {component: "audio", ms: 5000},
-		"aac_encode":         {component: "audio", ms: 8000},
-		"probe":              {component: "audio", ms: 390},
-		"hash":               {component: "audio", ms: 280},
-		"upload":             {component: "drive", ms: 3700},
+		"audio_asset_resolve": {component: "audio", ms: 12},
+		"timeline_compile":    {component: "audio", ms: 30},
+		"clip_audio_prepare":  {component: "audio", ms: 40},
+		"audio_plan_compile":  {component: "audio", ms: 25},
+		"mix":                 {component: "audio", ms: 5000},
+		"aac_encode":          {component: "audio", ms: 8000},
+		"probe":               {component: "audio", ms: 390},
+		"hash":                {component: "audio", ms: 280},
+		"upload":              {component: "drive", ms: 3700},
 	}
 	if len(ops) != len(want) {
 		t.Fatalf("operations = %d, want %d", len(ops), len(want))

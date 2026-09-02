@@ -31,10 +31,10 @@ import (
 )
 
 func buildVidRushCache(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCachePort {
-	if root == nil || root.DB == nil || root.DB.DB == nil {
+	if root == nil || root.CacheDB == nil || root.CacheDB.DB == nil {
 		return nil
 	}
-	return sqlitescripts.NewSQLiteVidRushCacheAdapter(root.DB.DB, log)
+	return sqlitescripts.NewSQLiteVidRushCacheAdapter(root.CacheDB.DB, log)
 }
 
 // vidRushProviderWiring is composition-root-only. It creates one closed
@@ -59,7 +59,7 @@ func buildVidRushMaterialization(cfg *config.Config, root *ComposeRoot, artlistW
 		_ = registry.Register(&vidRushArtlistProvider{search: artlistWiring.ProviderAssets, downloader: artlistWiring.ArtlistDownloader, probe: rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log)})
 	}
 	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
-		_ = registry.Register(&vidRushInternetImageProvider{searcher: newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)})
+		_ = registry.Register(&vidRushInternetImageProvider{searcher: newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log), log: log})
 	}
 	if root.Domains != nil && root.Domains.ImageService != nil {
 		_ = registry.Register(&vidRushImageGenerationProvider{generator: root.Domains.ImageService})
@@ -270,6 +270,7 @@ func (p *vidRushArtlistProvider) Verify(ctx context.Context, artifact scriptport
 
 type vidRushInternetImageProvider struct {
 	searcher adapters.InternetImageSearcher
+	log      *zap.Logger
 }
 
 // vidRushImageGenerationProvider is the VidRush adapter for the existing
@@ -329,6 +330,9 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	data, mime, err := adapters.DownloadVidRushImageForCandidate(ctx, http.DefaultClient, candidate, adapters.DefaultVidRushImagePolicy())
 	if err != nil {
+		if p.log != nil {
+			p.log.Warn("VidRush internet image acquire failed", zap.String("query", candidate.Query), zap.String("source_url", candidate.SourceURL), zap.Error(err))
+		}
 		return scriptports.LocalArtifact{}, err
 	}
 	file, err := os.CreateTemp("", "vidrush-image-*")
@@ -353,6 +357,9 @@ func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate sc
 func (p *vidRushInternetImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	verified, err := adapters.VerifyVidRushImageFile(artifact.Candidate, artifact.LocalPath, adapters.DefaultVidRushImagePolicy())
 	if err != nil {
+		if p.log != nil {
+			p.log.Warn("VidRush internet image verify failed", zap.String("query", artifact.Candidate.Query), zap.String("source_url", artifact.Candidate.SourceURL), zap.Error(err))
+		}
 		return scriptports.VerifiedArtifact{}, err
 	}
 	candidate := verified.Candidate

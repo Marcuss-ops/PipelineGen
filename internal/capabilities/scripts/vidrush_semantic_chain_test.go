@@ -8,6 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
@@ -181,7 +182,11 @@ func TestSemanticProviderResolverBindsWinnerFromLocalFirst(t *testing.T) {
 			VisualProfile: &scriptpkg.SegmentVisualProfile{Subject: "greek salad", Terms: []string{"feta", "tomatoes", "olives"}},
 		},
 	}
-	res, err := resolver.ResolveProviders(context.Background(), nil, segment)
+	res, err := resolver.ResolveProviders(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
+			Artlist: mediadomain.MediaToggleEnabled,
+		}},
+	}, segment)
 	require.NoError(t, err)
 
 	// The winner is bound as the primary asset.

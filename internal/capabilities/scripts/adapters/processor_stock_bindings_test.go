@@ -37,6 +37,37 @@ func TestStockBindingsProcessorBindsPerSceneAndKeepsClip(t *testing.T) {
 	}
 }
 
+func TestStockBindingsProcessorDoesNotReplaceShortGeneratedNarrationWithBrief(t *testing.T) {
+	brief := "Explain the funny reaction and do not repeat the clip verbatim."
+	generated := strings.TrimSpace(strings.Repeat("Generated narration. ", 30))
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{{ID: "segment-a", Topic: "Matt Damon", SourceText: brief}},
+	}
+	input := ProcessInput{
+		StockEnabled:  scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{Index: 0, SceneID: "scene-0", SegmentID: "segment-a", AssetID: "stock-a", StartMs: 0, EndMs: 5000}},
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, SegmentID: "segment-a", Text: generated}}},
+	}
+	result, err := NewStockBindingsProcessor().Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.UpdatedSpecScene.Scenes[0].Text; got != generated {
+		t.Fatalf("generated narration was replaced by editorial brief: got %q", got)
+	}
+}
+
+func TestStockBindingsProcessorRejectsBindingForFixedMedia(t *testing.T) {
+	_, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
+		StockEnabled:  scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{Index: 0, SceneID: "scene-0", AssetID: "stock-a", StartMs: 0, EndMs: 5000}},
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, ExecutionMode: scriptpkg.SceneExecutionFixedMedia}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "protected fixed_media") {
+		t.Fatalf("fixed-media stock binding must fail closed, got %v", err)
+	}
+}
+
 func TestStockBindingsProcessorTrimsYouTubeFieldsSetsStockAndBuildsDriveURL(t *testing.T) {
 	got, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
 		StockEnabled: scriptpkg.ToggleEnabled,
@@ -225,8 +256,8 @@ func TestStockBindingsProcessorRepairsCrossSegmentNarrative(t *testing.T) {
 	if got.UpdatedSpecScene.Scenes[0].Text != strings.TrimSpace(segments[0].SourceText) {
 		t.Fatal("scene 0 did not restore its explicit source text")
 	}
-	if got.UpdatedSpecScene.Scenes[1].Text != strings.TrimSpace(segments[1].SourceText) {
-		t.Fatal("short scene 1 did not restore its explicit source text")
+	if got.UpdatedSpecScene.Scenes[1].Text != "Muhammad Ali" {
+		t.Fatalf("valid short generated scene was replaced by source text: %q", got.UpdatedSpecScene.Scenes[1].Text)
 	}
 }
 

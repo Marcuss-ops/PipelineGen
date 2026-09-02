@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
@@ -60,7 +62,14 @@ func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgUR
 		return nil, fmt.Errorf("open staged source %q: %w", prepared.LocalPath, openErr)
 	}
 	defer f.Close()
-	return s.IngestImage(ctx, slug, style, "", f, filepath.Base(imgURL), imgURL, description, tags, false, false)
+	filename := filepath.Base(imgURL)
+	if parsed, err := url.Parse(imgURL); err == nil && parsed.Path != "" {
+		filename = filepath.Base(parsed.Path)
+	}
+	if filename == "." || filename == "/" || strings.TrimSpace(filename) == "" {
+		filename = slug + ".jpg"
+	}
+	return s.IngestImage(ctx, slug, style, "", f, filename, imgURL, description, tags, false, false)
 }
 
 // IngestImage takes a streamed byte payload and writes it through

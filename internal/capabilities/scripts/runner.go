@@ -323,11 +323,23 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	}
 	providerResolver := p.ProviderResolver
 	if p.StockResolverPort != nil && p.SamplerPort != nil {
-		newResolver, err := NewSemanticProviderResolver(p.StockResolverPort, p.SamplerPort)
+		semanticResolver, err := NewSemanticProviderResolver(p.StockResolverPort, p.SamplerPort)
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)
 		}
-		providerResolver = newResolver
+		if p.ProviderResolver != nil {
+			providerResolver, err = NewSemanticAndFanoutResolver(semanticResolver, p.ProviderResolver)
+			if err != nil {
+				return nil, fmt.Errorf("vidrush pipeline: %w", err)
+			}
+		} else {
+			providerResolver = semanticResolver
+		}
+	}
+	// In an images-only plan the shared fanout still owns image discovery, but
+	// the semantic stock resolver must not run the video/Artlist path.
+	if req.MediaPlan.ProviderPolicy.Artlist == "disabled" {
+		providerResolver = p.ProviderResolver
 	}
 	if p.PlanResolver == nil {
 		return nil, fmt.Errorf("scriptgeneration: vidrush pipeline requires a plan resolver")
@@ -335,6 +347,17 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	plan, err := p.PlanResolver.ResolveVidRushPlan(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("resolve vidrush plan: %w", err)
+	}
+	// The ingress media policy is an explicit caller contract. Keep it
+	// authoritative at the coordinator boundary as well: plan builders may
+	// enrich editorial fields, but they must not silently re-enable a provider
+	// that the durable request disabled (notably Artlist in images-only runs).
+	if plan != nil {
+		requestedPolicy := req.MediaPlan.ProviderPolicy
+		if requestedPolicy.Artlist != "" || requestedPolicy.YouTube != "" ||
+			requestedPolicy.InternetImages != "" || requestedPolicy.ImageGeneration != "" {
+			plan.MediaPlan.ProviderPolicy = requestedPolicy
+		}
 	}
 	certSpec := p.CertSpec
 	if p.CertSpecResolver != nil {

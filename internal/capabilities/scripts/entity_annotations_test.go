@@ -47,6 +47,26 @@ func TestProjectEntityAnnotations_GroundsAndClassifies(t *testing.T) {
 	}
 }
 
+func TestProjectEntityAnnotations_PromotesGroundedConceptToImportantPhrase(t *testing.T) {
+	text := "Dwayne The Rock Johnson built his career as a former professional wrestler."
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-0",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Dwayne The Rock Johnson", Type: "PERSON", Confidence: 0.95},
+			{Value: "former professional wrestler", Type: "CONCEPT", Confidence: 0.86},
+		}},
+	}
+
+	ann := projectEntityAnnotations(text, "en", seg)
+	require.NotNil(t, ann)
+	require.Len(t, ann.PrimaryEntities, 1)
+	assert.Equal(t, "PERSON", ann.PrimaryEntities[0].Type)
+	require.Len(t, ann.ImportantPhrases, 1)
+	assert.Equal(t, "former professional wrestler", ann.ImportantPhrases[0].Text)
+	assert.Equal(t, "IMPORTANT_PHRASE", ann.ImportantPhrases[0].Kind)
+	assert.Empty(t, ann.SecondaryEntities, "editorial concept must not become a second NER entity")
+}
+
 func TestProjectEntityAnnotations_NilWhenNoGroundedEntity(t *testing.T) {
 	seg := scriptpkg.VidRushSegmentResult{
 		Insights: scriptpkg.SegmentInsights{

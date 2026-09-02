@@ -17,6 +17,8 @@ type ExternalConfig struct {
 	YoutubeMaxSleepSeconds      int      `yaml:"youtube_max_sleep_seconds" env:"YTDLP_MAX_SLEEP_SECONDS" default:"0"`
 	FfmpegPath                  string   `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
+	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
+	RustMediaSamplerPath        string   `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
 	NvidiaAPIKey                string   `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
 	NvidiaModel                 string   `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
 	NvidiaLocalNIMURL           string   `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`

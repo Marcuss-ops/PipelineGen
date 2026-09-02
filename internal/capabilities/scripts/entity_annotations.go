@@ -74,6 +74,18 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		if kind == "PERSON" {
 			canonical = expandPersonName(text, value)
 		}
+		// A multi-word CONCEPT is editorial emphasis, not a second NER
+		// entity. Keep it source-grounded and feed the canonical phrase
+		// planner; single-word concepts remain secondary semantic entities.
+		if kind == "CONCEPT" && len(strings.Fields(value)) >= 2 {
+			if len(ann.ImportantPhrases) == 0 {
+				ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
+					Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
+					Score: 0.86, Kind: "IMPORTANT_PHRASE",
+				})
+			}
+			continue
+		}
 		key := kind + "\x00" + strings.ToLower(canonical)
 		if seen[key] {
 			continue

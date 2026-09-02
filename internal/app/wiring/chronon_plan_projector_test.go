@@ -36,7 +36,7 @@ func TestChrononPlanProjector_GoldenMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	want := `{"canvas":{"duration_frames":240,"fps_num":30,"fps_den":1,"height":720,"width":1280},"job_id":"run-1","layers":[{"duration_frames":240,"fit":"stretch","id":"video","source":"clip.mp4","start_frame":0,"type":"video"}],"output":{"codec":"h264","format":"mp4","path":"chronon.mp4"},"schema":"chronon.render-plan","version":1}`
+	want := `{"canvas":{"duration_frames":240,"fps_num":30,"fps_den":1,"height":720,"width":1280},"job_id":"run-1","layers":[{"duration_frames":240,"fit":"stretch","id":"video","source":"clip.mp4","start_frame":0,"type":"video"}],"output":{"codec":"h264","format":"mp4","path":"chronon.mp4"},"schema":"chronon.render-plan.v2","version":2}`
 	if string(raw) != want {
 		t.Fatalf("golden plan mismatch\n got: %s\nwant: %s", raw, want)
 	}
@@ -205,8 +205,6 @@ func TestChrononPlanProjector_SubtitlesStyleAndTransition(t *testing.T) {
 
 // TestChrononPlanProjector_BackgroundAssetAndBlurFailClosed verifies the
 // background projection: mode=asset rides on the video layer's background
-// block, and mode=blur_source is REFUSED (Chronon has no video blur
-// primitive — silently dropping the background would publish a wrong video).
 func TestChrononPlanProjector_BackgroundAssetAndBlurFailClosed(t *testing.T) {
 	asset := projectorPlan()
 	asset.Background = &cliprender.PlanBackground{Mode: cliprender.BackgroundModeAsset, AssetID: "bg", Path: "/tmp/bg.png"}
@@ -214,9 +212,16 @@ func TestChrononPlanProjector_BackgroundAssetAndBlurFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project(asset): %v", err)
 	}
-	video := rp.Layers[0]
-	if video.Background == nil || video.Background.Asset != "background.png" || video.Background.Fit != "cover" {
-		t.Fatalf("video background = %+v, want {background.png cover}", video.Background)
+	if len(rp.Layers) < 2 {
+		t.Fatalf("layers count = %d, want at least 2 (bg + video)", len(rp.Layers))
+	}
+	bg := rp.Layers[0]
+	if bg.Type != "image" || bg.Asset != "background.png" || bg.Fit != "cover" {
+		t.Fatalf("background layer = %+v, want {image background.png cover}", bg)
+	}
+	video := rp.Layers[1]
+	if video.Type != "video" || video.Source != "clip.mp4" {
+		t.Fatalf("video layer = %+v, want {video clip.mp4}", video)
 	}
 
 	blur := projectorPlan()
@@ -227,6 +232,26 @@ func TestChrononPlanProjector_BackgroundAssetAndBlurFailClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), cliprender.BackgroundModeBlurSource) {
 		t.Fatalf("error must name the unsupported mode, got: %v", err)
+	}
+}
+
+func TestChrononPlanProjector_ForegroundScalePercent(t *testing.T) {
+	plan := projectorPlan()
+	plan.Output.ForegroundScalePercent = 80
+	rp, err := (ChrononPlanProjector{}).Project(plan, 8000)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	video := rp.Layers[0]
+	if len(video.Scale) != 2 || video.Scale[0] != 0.8 || video.Scale[1] != 0.8 {
+		t.Fatalf("video.Scale = %v, want [0.8 0.8]", video.Scale)
+	}
+	// 1280x720 canvas * 0.8 = 1024x576
+	if len(video.Size) != 2 || video.Size[0] != 1024 || video.Size[1] != 576 {
+		t.Fatalf("video.Size = %v, want [1024 576]", video.Size)
+	}
+	if len(video.Position) != 2 || video.Position[0] != 0 || video.Position[1] != 0 {
+		t.Fatalf("video.Position = %v, want [0 0]", video.Position)
 	}
 }
 

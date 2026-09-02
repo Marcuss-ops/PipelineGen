@@ -48,7 +48,7 @@ func (DefaultPhaseResolver) Resolve(run kernobs.RunReport, audio scriptgeneratio
 			"tts_calls":  float64(audio.TTSCalls),
 			"tts_scenes": float64(len(audio.TTSScenes)),
 		}),
-		measure(PhaseAudioPrepare, srcAudioMetrics+".timeline_compile_ms+clip_audio_prepare_ms", prepareMS, nil),
+		measure(PhaseAudioPrepare, srcAudioMetrics+".audio_asset_resolve_ms+timeline_compile_ms+clip_audio_prepare_ms", audio.AudioAssetResolveMS+prepareMS, nil),
 		measure(PhaseAudioPlan, srcAudioMetrics+".audio_plan_compile_ms", audio.AudioPlanCompileMS, nil),
 		measure(PhaseRustMix, srcAudioMetrics+".mix_ms", audio.MixMS, nil),
 		measure(PhaseRustEncode, srcAudioMetrics+".aac_encode_ms", audio.AACEncodeMS, nil),

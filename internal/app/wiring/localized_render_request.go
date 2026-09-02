@@ -157,7 +157,8 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
 		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
 		WatermarkText: watermarkText(in), Background: built.background, BackgroundMode: built.backgroundMode,
-		SubtitlesStyle: subtitleStyle(in),
+		ForegroundScalePercent: in.Render.ForegroundScalePercent,
+		SubtitlesStyle:         subtitleStyle(in),
 		OnRendered: func(artifact localization.LocalizedClipArtifact) error {
 			if in.OnRenderReady == nil {
 				return nil

@@ -11,6 +11,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -92,10 +93,19 @@ func (r *PersistentRunner) Run(ctx context.Context, binary string, input []byte,
 		return nil, nil, fmt.Errorf("write persistent Rust request: %w", err)
 	}
 	stop := make(chan struct{})
+	finished := atomic.Bool{}
+	watcherDone := make(chan struct{})
 	stdin, cmd := r.stdin, r.cmd
 	go func() {
+		defer close(watcherDone)
 		select {
 		case <-ctx.Done():
+			// A successful response may race with context cancellation at the
+			// scene boundary. Once ReadBytes has completed, never tear down the
+			// worker underneath the next request.
+			if finished.Load() {
+				return
+			}
 			_ = stdin.Close()
 			if cmd.Process != nil {
 				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
@@ -104,7 +114,11 @@ func (r *PersistentRunner) Run(ctx context.Context, binary string, input []byte,
 		}
 	}()
 	line, err := r.stdout.ReadBytes('\n')
+	if err == nil {
+		finished.Store(true)
+	}
 	close(stop)
+	<-watcherDone
 	if err != nil {
 		stderr := r.stderr.Bytes()
 		r.reset()

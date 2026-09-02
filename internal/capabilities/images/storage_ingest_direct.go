@@ -62,7 +62,18 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// owns the canonical image-path shape (source-prefixed
 	// `<source>/<slug>.<ext>`). The images package imports it
 	// without taking a destination-resolver interface change.
-	localPath, relativePath := LocalPathFor(s.imagesDir, slug, source, ext)
+	// `source` is also the persisted source URL for retrieved images. Never
+	// use that URL as a filesystem directory (it produces paths such as
+	// `images/https:/...`). Keep the URL for provenance, but derive the path
+	// segment from the canonical retrieval provider.
+	pathSource := source
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(pathSource)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(pathSource)), "https://") {
+		pathSource = "retrieved"
+		if retriever, ok := ctx.Value(RetrieverKey).(string); ok && strings.TrimSpace(retriever) != "" {
+			pathSource = strings.TrimSpace(retriever)
+		}
+	}
+	localPath, relativePath := LocalPathFor(s.imagesDir, slug, pathSource, ext)
 	if err := persistImageBytes(localPath, content); err != nil {
 		return nil, err
 	}

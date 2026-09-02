@@ -397,7 +397,7 @@ run_script_generate() {
 
     # ── Extract result ─────────────────────────────────────────────────
     local result
-    result=$(jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result.items // .result.output // .result // empty' <<<"$full_body")
+    result=$(jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result.items // .result.result // .result.output // .result // empty' <<<"$full_body")
     if [[ -z "$result" || "$result" == "null" ]]; then
         # Batch parents expose the aggregate envelope rather than a single
         # item result. Fetch every child after the parent aggregator reports
@@ -417,7 +417,7 @@ run_script_generate() {
                     child_failures=$((child_failures + 1))
                     continue
                 fi
-                jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result // empty' <<<"$child_body" > "$child_dir/${child_id}.json"
+                jq -c '.result.data.result // .result.data.items[0].result // .result.items[0].result // .result.result // .result // empty' <<<"$child_body" > "$child_dir/${child_id}.json"
             done <<<"$child_ids"
             if [[ "$child_failures" -eq 0 ]]; then
                 result=$(jq -s '{segments: [.[].segments[]?]}' "$child_dir"/*.json 2>/dev/null || true)

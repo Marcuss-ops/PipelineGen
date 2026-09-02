@@ -36,7 +36,38 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
 	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
-	imageQueries := scriptpkg.QueriesForImages(profile, 7)
+	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
+	// Keep source-anchored queries first, then add the canonical profile
+	// ladder as a bounded discovery fallback. The materializer still selects
+	// exactly the requested number of durable images, while rate-limited or
+	// over-specific engines retain enough real candidates to complete fanout.
+	for _, query := range scriptpkg.QueriesForImages(profile, 7) {
+		duplicate := false
+		for _, existing := range imageQueries {
+			if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(query)) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			imageQueries = append(imageQueries, query)
+		}
+	}
+	// A complete source sentence is a final provider fallback for scenes whose
+	// extracted entity terms are too generic (for example "wide pan"). It is
+	// still source-grounded and bounded by the same provider result limit.
+	if source := strings.TrimSpace(segment.Text); source != "" && len(imageQueries) >= 3 {
+		duplicate := false
+		for _, existing := range imageQueries {
+			if strings.EqualFold(strings.TrimSpace(existing), source) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			imageQueries = append(imageQueries, source)
+		}
+	}
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
 		limit = plan.MediaPlan.Planner.CandidateLimit

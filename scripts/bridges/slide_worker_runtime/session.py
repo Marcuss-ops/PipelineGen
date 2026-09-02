@@ -46,6 +46,31 @@ from .config import MASTER_STORAGE, PROFILE_DIR
 from .diagnostics import _log, _log_diag
 
 
+def _browser_launch_options(headless: bool) -> dict:
+    """Return stable launch options with an explicit system-browser fallback.
+
+    Playwright's managed Chromium is not guaranteed to be present on a
+    production host. When it is absent, use the operator-provided browser
+    or a distro-installed Chrome so the worker reports the real next
+    readiness error (for example authentication) instead of an opaque
+    executable-missing failure.
+    """
+    options = {
+        "headless": headless,
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+        ],
+    }
+    executable = os.getenv("PIPELINEGEN_CHROME_EXECUTABLE", "").strip()
+    if not executable:
+        executable = shutil.which("google-chrome") or shutil.which("chromium") or ""
+    if executable:
+        options["executable_path"] = executable
+    return options
+
+
 class BrowserSession:
     """One persistent browser session: profile_dir + context + page.
 
@@ -106,13 +131,7 @@ class BrowserSession:
         try:
             os.makedirs(self.profile_dir, exist_ok=True)
             self.context = self.playwright.chromium.launch_persistent_context(
-                self.profile_dir,
-                headless=not self.headful,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                ],
+                self.profile_dir, **_browser_launch_options(not self.headful)
             )
             _log(
                 f"[profile-{self.profile_id}] warmup: launched browser "
@@ -126,13 +145,7 @@ class BrowserSession:
                 f"locked ({le}), falling back to {self.profile_dir}"
             )
             self.context = self.playwright.chromium.launch_persistent_context(
-                self.profile_dir,
-                headless=not self.headful,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                ],
+                self.profile_dir, **_browser_launch_options(not self.headful)
             )
 
         # The master snapshot is the login helper's canonical output and is

@@ -9,20 +9,21 @@ import (
 
 func fullAudio() scriptgeneration.AudioPipelineMetrics {
 	return scriptgeneration.AudioPipelineMetrics{
-		TTSMS:              120,
-		TimelineCompileMS:  30,
-		ClipAudioPrepareMS: 40,
-		AudioPlanCompileMS: 25,
-		MixMS:              5000,
-		AACEncodeMS:        8000,
-		ProbeMS:            390,
-		HashMS:             280,
-		UploadMS:           3700,
-		TotalMS:            18000,
-		AudioDurationMS:    90000,
-		TTSCalls:           14,
-		AudioRTF:           0.2,
-		TTSScenes:          []scriptgeneration.TTSSSceneMetric{{SceneID: "s1"}},
+		TTSMS:               120,
+		TimelineCompileMS:   30,
+		AudioAssetResolveMS: 0,
+		ClipAudioPrepareMS:  40,
+		AudioPlanCompileMS:  25,
+		MixMS:               5000,
+		AACEncodeMS:         8000,
+		ProbeMS:             390,
+		HashMS:              280,
+		UploadMS:            3700,
+		TotalMS:             18000,
+		AudioDurationMS:     90000,
+		TTSCalls:            14,
+		AudioRTF:            0.2,
+		TTSScenes:           []scriptgeneration.TTSSSceneMetric{{SceneID: "s1"}},
 	}
 }
 

@@ -364,10 +364,10 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 	out := make([]capentity.RecertificationCandidate, 0, limit)
 	for rows.Next() {
 		var item capentity.RecertificationCandidate
-		var firstSeen, lastSeen, updatedAt string
-		var lastValidationAt, nextRetryAt string
+		var firstSeen, lastSeen, updatedAt sql.NullString
+		var lastValidationAt, nextRetryAt sql.NullString
 		var materialization capentity.Materialization
-		var materializedAt, verifiedAt, materializationCreatedAt, materializationUpdatedAt string
+		var materializedAt, verifiedAt, materializationCreatedAt, materializationUpdatedAt sql.NullString
 		var assetID, fileHash, driveFileID, driveLink, localPath, materializationStatus, materializationError sql.NullString
 		var validationAttempts int
 		if err := rows.Scan(
@@ -382,17 +382,17 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		); err != nil {
 			return nil, fmt.Errorf("entity image catalog: scan recertification candidate: %w", err)
 		}
-		item.FirstSeenAt, item.LastSeenAt, item.UpdatedAt = parseCatalogTime(firstSeen), parseCatalogTime(lastSeen), parseCatalogTime(updatedAt)
+		item.FirstSeenAt, item.LastSeenAt, item.UpdatedAt = parseCatalogTime(firstSeen.String), parseCatalogTime(lastSeen.String), parseCatalogTime(updatedAt.String)
 		item.FailureCount = validationAttempts
-		item.LastValidationAt, item.NextRetryAt = parseCatalogTime(lastValidationAt), parseCatalogTime(nextRetryAt)
+		item.LastValidationAt, item.NextRetryAt = parseCatalogTime(lastValidationAt.String), parseCatalogTime(nextRetryAt.String)
 		if assetID.Valid || fileHash.Valid || driveFileID.Valid || driveLink.Valid || localPath.Valid || materializationStatus.Valid {
 			materialization.CandidateID = item.ID
 			materialization.AssetID, materialization.LegacyFileMD5 = assetID.String, fileHash.String
 			materialization.DriveFileID, materialization.DriveLink = driveFileID.String, driveLink.String
 			materialization.LocalPath, materialization.Status = localPath.String, materializationStatus.String
-			materialization.MaterializedAt, materialization.LastVerifiedAt = parseCatalogTime(materializedAt), parseCatalogTime(verifiedAt)
+			materialization.MaterializedAt, materialization.LastVerifiedAt = parseCatalogTime(materializedAt.String), parseCatalogTime(verifiedAt.String)
 			materialization.LastError = materializationError.String
-			materialization.CreatedAt, materialization.UpdatedAt = parseCatalogTime(materializationCreatedAt), parseCatalogTime(materializationUpdatedAt)
+			materialization.CreatedAt, materialization.UpdatedAt = parseCatalogTime(materializationCreatedAt.String), parseCatalogTime(materializationUpdatedAt.String)
 			item.Materialization = &materialization
 		}
 		out = append(out, item)

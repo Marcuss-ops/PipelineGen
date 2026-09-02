@@ -221,6 +221,12 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	if result == nil {
 		t.Fatal("ingestDirect returned nil result")
 	}
+	if strings.Contains(result.PathRel, "https:") || strings.Contains(result.PathRel, "http:") {
+		t.Fatalf("retrieved image path must not contain the source URL: %q", result.PathRel)
+	}
+	if !strings.HasPrefix(filepath.ToSlash(result.PathRel), "retrieved/") {
+		t.Fatalf("retrieved image path = %q, want retrieved/<slug> layout", result.PathRel)
+	}
 
 	// Verify the local file was written (inline path computation: slug+ext).
 	dest := filepath.Join(svc.imagesDir, result.PathRel)

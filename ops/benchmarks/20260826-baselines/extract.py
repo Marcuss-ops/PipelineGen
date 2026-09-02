@@ -177,7 +177,7 @@ def render_md(s):
     L.append("")
     L.append("| Metrica | ms |")
     L.append("| --- | --- |")
-    for k in ["tts_ms", "media_fetch_ms", "timeline_compile_ms", "audio_plan_compile_ms",
+    for k in ["tts_ms", "media_fetch_ms", "audio_asset_resolve_ms", "timeline_compile_ms", "audio_plan_compile_ms",
               "clip_audio_prepare_ms", "mix_ms", "aac_encode_ms", "probe_ms", "hash_ms",
               "upload_ms", "total_ms"]:
         v = s["audio_metrics"].get(k)

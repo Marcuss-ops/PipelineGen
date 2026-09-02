@@ -123,6 +123,9 @@ type LocalizedClipPlan struct {
 	BackgroundMode string                        `json:"background_mode,omitempty"`
 	Background     *cliprender.MaterializedAsset `json:"background,omitempty"`
 
+	// ForegroundScalePercent scales the foreground video clip (1..100).
+	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
+
 	// ── Subtitle visual overrides ────────────────────────────────
 	// SubtitlesStyle carries the caller's explicit subtitle visual block
 	// (color, size, shadow, transition). It rides alongside the compiled

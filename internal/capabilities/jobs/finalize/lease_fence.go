@@ -90,8 +90,12 @@ func (f *Finalizer) selectJobForFinalization(
 	lease *finalization.Lease,
 ) (*jobRow, error) {
 	var row jobRow
+	resultExpr := "''"
+	if hasJobsColumn(ctx, tx, "result_json") {
+		resultExpr = "COALESCE(result_json, '')"
+	}
 	err := tx.QueryRowContext(ctx,
-		`SELECT status, worker_id, lease_id, revision, retry_count, lease_expiry, COALESCE(result_json, '')
+		`SELECT status, worker_id, lease_id, revision, retry_count, lease_expiry, `+resultExpr+`
 		 FROM jobs
 		 WHERE id = ?
 		   AND (lease_expiry IS NULL OR lease_expiry > CURRENT_TIMESTAMP)`,

@@ -48,6 +48,7 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 		Operations: []kernobs.OperationReport{
 			{Operation: "generate", Component: "ollama", Provider: "gemma", DurationMs: 18340, Items: 1},
 			{Operation: "synthesize", Stage: "voiceover", Component: "tts", DurationMs: 12410},
+			{Operation: "audio_asset_resolve", Stage: "audio_compile", Component: "audio", DurationMs: 120},
 			{Operation: "mix", Stage: "audio_compile", Component: "audio", DurationMs: 4120},
 			{Operation: "aac_encode", Stage: "audio_compile", Component: "audio", DurationMs: 7130},
 			{Operation: "upload", Stage: "audio_compile", Component: "drive", DurationMs: 2380, Items: 1},
@@ -63,17 +64,18 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	}{
 		Result: &scriptgeneration.GenerateResult{
 			AudioMetrics: &scriptgeneration.AudioPipelineMetrics{
-				TTSMS:              12410,
-				TimelineCompileMS:  920,
-				AudioPlanCompileMS: 31,
-				MixMS:              4120,
-				AACEncodeMS:        7130,
-				ProbeMS:            281,
-				HashMS:             144,
-				UploadMS:           2380,
-				TotalMS:            18400,
-				AudioDurationMS:    93650,
-				TTSCalls:           14,
+				TTSMS:               12410,
+				TimelineCompileMS:   920,
+				AudioAssetResolveMS: 120,
+				AudioPlanCompileMS:  31,
+				MixMS:               4120,
+				AACEncodeMS:         7130,
+				ProbeMS:             281,
+				HashMS:              144,
+				UploadMS:            2380,
+				TotalMS:             18400,
+				AudioDurationMS:     93650,
+				TTSCalls:            14,
 			},
 		},
 	}
@@ -115,10 +117,10 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	if run.JobID != jobID || run.WallTimeMs != 87431 || run.QueueWaitMs != 1850 {
 		t.Fatalf("run = %+v", run)
 	}
-	if len(run.Operations) != 5 || run.Operations[0].Operation != "generate" || run.Operations[4].Operation != "upload" {
+	if len(run.Operations) != 6 || run.Operations[0].Operation != "generate" || run.Operations[5].Operation != "upload" {
 		t.Fatalf("operations = %+v", run.Operations)
 	}
-	if audio.MixMS != 4120 || audio.AACEncodeMS != 7130 || audio.TTSCalls != 1 || audio.TTSMS != 12410 {
+	if audio.AudioAssetResolveMS != 120 || audio.MixMS != 4120 || audio.AACEncodeMS != 7130 || audio.TTSCalls != 1 || audio.TTSMS != 12410 {
 		t.Fatalf("audio = %+v", audio)
 	}
 	if len(got) != 2 {

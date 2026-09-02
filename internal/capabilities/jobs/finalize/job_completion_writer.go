@@ -95,17 +95,25 @@ func (f *Finalizer) markSucceeded(
 	}
 
 	// Atomic UPDATE with lease fence (same pattern as the existing
-	// SQLiteStore.Complete in repository_lifecycle.go). Accepts both
-	// RUNNING and FINALIZING to cover the FASE 2b state transition.
-	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
+	// SQLiteStore.Complete in repository_lifecycle.go). Split-plane jobs DBs
+	// intentionally removed the legacy result_json column; job_results above
+	// is the canonical result store there. Keep the column only for older
+	// schemas that still expose it.
+	updateJobs := `UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?,
 		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
-		 AND worker_id = ? AND lease_id = ?`,
-		nowStr, resultJSON, nowStr,
-		req.Result.JobID, req.Lease.WorkerID, req.Lease.LeaseID,
-	)
+		 AND worker_id = ? AND lease_id = ?`
+	args := []any{nowStr, nowStr, req.Result.JobID, req.Lease.WorkerID, req.Lease.LeaseID}
+	if hasJobsColumn(ctx, tx, "result_json") {
+		updateJobs = `UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
+		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
+		 AND worker_id = ? AND lease_id = ?`
+		args = []any{nowStr, resultJSON, nowStr, req.Result.JobID, req.Lease.WorkerID, req.Lease.LeaseID}
+	}
+	res, err := tx.ExecContext(ctx, updateJobs, args...)
 	if err != nil {
 		return fmt.Errorf("finalizer: update jobs: %w", err)
 	}
@@ -163,6 +171,27 @@ func (f *Finalizer) markSucceeded(
 	}
 
 	return nil
+}
+
+func hasJobsColumn(ctx context.Context, tx *sql.Tx, wanted string) bool {
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(jobs)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	var cid int
+	var name, columnType string
+	var notNull, primaryKey int
+	var defaultValue sql.NullString
+	for rows.Next() {
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false
+		}
+		if name == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

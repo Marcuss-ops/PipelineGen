@@ -132,7 +132,7 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 		// Prefer the original source image so the technical minimum
 		// dimensions can be satisfied. Keep DuckDuckGo's real thumbnail as
 		// fallback when an origin host rejects server-side acquisition.
-		for _, candidate := range []string{result.Image, result.Thumbnail} {
+		for _, candidate := range []string{normalizeDDGImageURL(result.Image), normalizeDDGImageURL(result.Thumbnail)} {
 			if !strings.HasPrefix(candidate, "http") {
 				continue
 			}
@@ -147,6 +147,22 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 		}
 	}
 	return out
+}
+
+// normalizeDDGImageURL repairs the URL shape emitted by a few DDG response
+// variants. A single slash after the scheme is not an absolute URL and makes
+// the canonical downloader treat the host as a path, so it must be repaired at
+// the provider boundary before the value reaches persistence or materializing.
+func normalizeDDGImageURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	switch {
+	case strings.HasPrefix(trimmed, "https:/") && !strings.HasPrefix(trimmed, "https://"):
+		return "https://" + strings.TrimPrefix(trimmed, "https:/")
+	case strings.HasPrefix(trimmed, "http:/") && !strings.HasPrefix(trimmed, "http://"):
+		return "http://" + strings.TrimPrefix(trimmed, "http:/")
+	default:
+		return trimmed
+	}
 }
 
 func ddgImageScore(r ddgImageResult) int {

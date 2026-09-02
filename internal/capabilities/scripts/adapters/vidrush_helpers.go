@@ -858,6 +858,16 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			if !validVidRushCandidate(candidate) || !readyVidRushCandidate(candidate) {
 				continue
 			}
+			// Candidates are untrusted provider output, including replayed
+			// durable-cache rows. Never rebind a candidate stamped for another
+			// segment during finalization.
+			if owner := strings.TrimSpace(candidate.SegmentID); owner != "" && owner != strings.TrimSpace(seg.SegmentID) {
+				continue
+			}
+			if candidate.Position != seg.Position ||
+				(strings.TrimSpace(candidate.TextHash) != "" && strings.TrimSpace(candidate.TextHash) != strings.TrimSpace(seg.TextHash)) {
+				continue
+			}
 			if strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
 				if !artlistSegmentValid || validateArtlistCandidateForContext(artlistContext, candidate, seg) != nil {
 					// A contaminated Artlist candidate is never eligible for
@@ -880,13 +890,19 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			valid = append(valid, candidate)
 		}
 		seg.Assets.Candidates = valid
-		seg.Assets.SecondaryImages = preserveSelectedVidRushImages(seg.Assets.SecondaryImages, valid)
-		seg.Assets.GeneratedImages = filterVidRushGeneratedImages(seg.Assets.SecondaryImages)
-		// Mediterranean pre-final: deterministic 3×3 images (source-grounded).
-		if len(seg.Insights.ImageQueries) == 3 {
-			fmt.Printf("MEDITERRANEAN deterministic secondary for %s queries %v\n", seg.SegmentID, seg.Insights.ImageQueries)
-			seg.Assets.SecondaryImages = mediterraneanSecondaryImages(seg)
+		selectedImages := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.SecondaryImages))
+		for _, image := range seg.Assets.SecondaryImages {
+			if owner := strings.TrimSpace(image.SegmentID); owner != "" && owner != strings.TrimSpace(seg.SegmentID) {
+				continue
+			}
+			if image.Position != seg.Position ||
+				(strings.TrimSpace(image.TextHash) != "" && strings.TrimSpace(image.TextHash) != strings.TrimSpace(seg.TextHash)) {
+				continue
+			}
+			selectedImages = append(selectedImages, image)
 		}
+		seg.Assets.SecondaryImages = preserveSelectedVidRushImages(selectedImages, valid)
+		seg.Assets.GeneratedImages = filterVidRushGeneratedImages(seg.Assets.SecondaryImages)
 		// Binding finalization validates and persists discovered candidates. It
 		// deliberately does not choose a winner; MediaSampler owns selection.
 		if len(seg.Assets.SecondaryImages) > 0 {
@@ -1114,84 +1130,4 @@ func candidateSetHash(candidates []scriptpkg.SegmentAssetCandidate) string {
 		}, "\x00"))
 	}
 	return segmentCacheKey(parts...)
-}
-
-// Mediterranean deterministic helpers for pre-final certification.
-// They ensure the 5×3 image contract and distinct Artlist winners even when
-// live provider searches are rate-limited or return generic results.
-func mediterraneanImageCandidate(seg scriptpkg.VidRushSegmentResult, query string, idx int) scriptpkg.SegmentAssetCandidate {
-	q := strings.TrimSpace(query)
-	if q == "" {
-		q = fmt.Sprintf("mediterranean image %d", idx)
-	}
-	hash := segmentTextHash(seg.SegmentID + ":" + q + fmt.Sprint(idx))[:12]
-	return scriptpkg.SegmentAssetCandidate{
-		SegmentID: seg.SegmentID, Position: seg.Position, TextHash: seg.TextHash,
-		EntityID: "entity:" + provenanceSlug(q), AssetID: fmt.Sprintf("img-%s-%d-%s", strings.ToLower(strings.ReplaceAll(seg.SegmentID, "_", "-")), idx, hash[:8]),
-		Provider: scriptpkg.VidRushProviderInternetImages, Query: q, Entity: q,
-		Score: 0.85, RelevanceScore: 0.85, SemanticScore: 0.85,
-		SourceURL:     fmt.Sprintf("https://images.example.com/%s/%d.jpg", hash[:8], idx),
-		SourcePageURL: fmt.Sprintf("https://images.example.com/%s/%d.jpg", hash[:8], idx),
-		PreviewURL:    fmt.Sprintf("https://images.example.com/%s/%d.jpg", hash[:8], idx),
-		DriveLink:     fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", hash[:12]),
-		Width:         1920, Height: 1080, RightsStatus: "unknown_allowed",
-		LegacyFileMD5: hash[:16], MIMEType: "image/jpeg",
-		LocalPath:         fmt.Sprintf("/tmp/vidrush-image-%s-%d", hash[:8], idx),
-		AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
-		PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
-		RightsBasis: "source-license metadata required",
-	}
-}
-
-func mediterraneanSecondaryImages(seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
-	queries := seg.Insights.ImageQueries
-	if len(queries) != 3 {
-		queries = []string{"feta cheese", "tomatoes", "olives"}
-		if strings.Contains(strings.ToLower(seg.SegmentID), "hummus") {
-			queries = []string{"chickpeas", "tahini", "olive oil"}
-		} else if strings.Contains(strings.ToLower(seg.SegmentID), "sardines") {
-			queries = []string{"sardines", "lemon", "herbs"}
-		} else if strings.Contains(strings.ToLower(seg.SegmentID), "shakshuka") {
-			queries = []string{"eggs", "tomatoes", "peppers"}
-		} else if strings.Contains(strings.ToLower(seg.SegmentID), "paella") {
-			queries = []string{"shrimp", "mussels", "saffron rice"}
-		}
-	}
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, 3)
-	for i, q := range queries {
-		out = append(out, mediterraneanImageCandidate(seg, q, i))
-	}
-	return out
-}
-
-func mediterraneanPrimaryVideo(seg scriptpkg.VidRushSegmentResult) *scriptpkg.SegmentAssetCandidate {
-	q := ""
-	if len(seg.Insights.ArtlistQueries) > 0 {
-		q = seg.Insights.ArtlistQueries[0]
-	}
-	if strings.TrimSpace(q) == "" {
-		q = strings.TrimSpace(seg.Text)
-		if q == "" {
-			q = seg.SegmentID
-		}
-	}
-	hash := segmentTextHash(seg.SegmentID)[:12]
-	assetID := fmt.Sprintf("artlist-%s-%s", strings.ToLower(strings.ReplaceAll(seg.SegmentID, "_", "-")), hash[:8])
-	return &scriptpkg.SegmentAssetCandidate{
-		SegmentID: seg.SegmentID, Position: seg.Position, TextHash: seg.TextHash,
-		EntityID: "entity:" + provenanceSlug(q), AssetID: assetID,
-		Provider: scriptpkg.VidRushProviderArtlist, Query: q, Entity: hash[:8],
-		Score: 0.85, RelevanceScore: 0.85, SemanticScore: 0.85,
-		SourceURL:     fmt.Sprintf("https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/%s_playlist.m3u8", hash[:8]),
-		SourcePageURL: fmt.Sprintf("https://artlist.io/stock-footage/clip/%s/%s", strings.ToLower(seg.SegmentID), hash[:8]),
-		PreviewURL:    fmt.Sprintf("https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/%s_playlist.m3u8", hash[:8]),
-		DriveLink:     fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", hash[:12]),
-		DurationMs:    5000, Width: 1920, Height: 1080, RightsStatus: "verified",
-		SelectionReason: "highest scored provenance-valid candidate for segment",
-		LegacyFileMD5:   hash[:16], MIMEType: "video/mp4",
-		LocalPath:         fmt.Sprintf("/tmp/artlist-%s.mp4", hash[:8]),
-		AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
-		PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
-		RightsBasis: "artlist licensed-provider policy",
-	}
 }

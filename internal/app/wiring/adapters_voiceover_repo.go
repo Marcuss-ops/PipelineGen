@@ -107,9 +107,12 @@ func (a *useCaseRepoAdapter) CountByDriveFileIDTx(
 	if err := ctx.Err(); err != nil {
 		return "", 0, err
 	}
+	// Location/hash facts were moved out of voiceovers by the asset
+	// projection migrations.  Query the canonical media_assets projection;
+	// the old voiceovers columns are absent in the live schema.
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(legacy_file_md5,'')
-		  FROM voiceovers
+		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(file_hash,'')
+		  FROM media_assets
 		 WHERE drive_file_id = ? AND id != ?
 		 LIMIT 1
 	`, driveFileID, currentID)
@@ -122,7 +125,7 @@ func (a *useCaseRepoAdapter) CountByDriveFileIDTx(
 	}
 	var count int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM voiceovers WHERE drive_file_id = ? AND id != ?`,
+		`SELECT COUNT(*) FROM media_assets WHERE drive_file_id = ? AND id != ?`,
 		driveFileID, currentID,
 	).Scan(&count); err != nil {
 		// Count failed but we DID find the row: degrade to count=1

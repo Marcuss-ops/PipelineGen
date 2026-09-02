@@ -79,6 +79,19 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		if kind == "PERSON" {
 			canonical = expandPersonCanonicalName(text, value)
 		}
+		// CONCEPT is an NLP hint, not a renderable entity type. A grounded
+		// multi-word concept is promoted to the editorial emphasis surface so
+		// it converges with phrases through the single overlay planner.
+		if kind == "CONCEPT" && len(strings.Fields(value)) >= 2 {
+			if len(ann.ImportantPhrases) == 0 {
+				phrase := span
+				phrase.ID = fmt.Sprintf("phrase-%s-concept", safeAnnotationID(seg.SegmentID))
+				phrase.Score = 0.86
+				phrase.Kind = "IMPORTANT_PHRASE"
+				ann.ImportantPhrases = append(ann.ImportantPhrases, phrase)
+			}
+			continue
+		}
 		entityKey := kind + "\x00" + strings.ToLower(canonical)
 		if seen[entityKey] {
 			continue

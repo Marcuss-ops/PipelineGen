@@ -39,6 +39,7 @@ func (r *Runner) recordAudioOperation(ctx context.Context, operation, component 
 // recordAudioCompileOperations projects the compile-time subtimings
 // (timeline build, clip/voiceover audio preparation, audio plan compile).
 func (r *Runner) recordAudioCompileOperations(ctx context.Context, t AudioCompileTimings) {
+	r.recordAudioOperation(ctx, "audio_asset_resolve", "audio", t.AudioAssetResolveMS)
 	r.recordAudioOperation(ctx, "timeline_compile", "audio", t.TimelineCompileMS)
 	r.recordAudioOperation(ctx, "clip_audio_prepare", "audio", t.ClipAudioPrepareMS)
 	r.recordAudioOperation(ctx, "audio_plan_compile", "audio", t.AudioPlanCompileMS)
