@@ -2,8 +2,6 @@ package rustexec
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,6 +9,7 @@ import (
 	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -42,8 +41,7 @@ func (a *VisualNERAdapter) Extract(ctx context.Context, sourceText string, limit
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("visualner: executor is not configured")
 	}
-	sum := sha256.Sum256([]byte(sourceText))
-	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: hex.EncodeToString(sum[:]), SourceText: sourceText, Limit: limit, EntityCount: limit}
+	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: digest.SHA256String(sourceText), SourceText: sourceText, Limit: limit, EntityCount: limit}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, err

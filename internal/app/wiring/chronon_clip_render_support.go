@@ -22,11 +22,39 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
+
+// Process-wide Chronon lifecycle is initialized once, but GPU work is admitted
+// through a bounded semaphore (default C=2) instead of a global render mutex.
+// The semaphore is context-aware and is shared by every Chronon render in this
+// process; mux and publication happen after the permit is released.
+var chrononRuntimeControlInit sync.Once
+
+// WithChrononMetrics attaches the Chronon Metrics Adapter. It is optional and
+// nil-tolerant: without it the render simply skips the performance-registry
+// projection.
+func (r *chrononClipRenderExecutor) WithChrononMetrics(a *cliprender.ChrononMetricsAdapter) *chrononClipRenderExecutor {
+	if r != nil {
+		r.chrononMetrics = a
+	}
+	return r
+}
+
+// logPhase emits a single chronon render phase line with consistent fields so
+// the server log can be grep'd by run_id or phase to reconstruct timelines.
+func (r *chrononClipRenderExecutor) logPhase(phase, runID string, fields ...zap.Field) {
+	all := append([]zap.Field{
+		zap.String("subsystem", "chronon_render"),
+		zap.String("phase", phase),
+		zap.String("run_id", runID),
+	}, fields...)
+	r.log.Info("clip.render.chronon.phase", all...)
+}
 
 // chrononTimingProjection contains the common GPU and hardware metrics
 // projected from Chronon's timing sidecar.
