@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/gin-gonic/gin"
@@ -428,7 +427,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if runtimeErr != nil {
 		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}
-	worker.WithRenderExecutor(renderRuntime.Executor)
+	worker.WithRenderExecutor(renderRuntime.RenderingGenExecutor)
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
@@ -461,14 +460,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		mediaConfig.Policy.Preset,
 		mediaConfig.Policy.CRF,
 	))
-	// Post-render OutputProber: probes actual bytes on disk via the canonical
-	// Rust probe boundary. Mandatory for overlay compositing; validates
-	// rendered output against the assembly-ready contract before publication.
-	outputProber := clipadapters.NewRustOutputProber(rustexec.NewConfiguredVideoProcessorWithExecutor(renderRuntime.RustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
-	worker.WithOutputProber(outputProber)
-	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary + OutputProber)",
-		zap.String("rust_muscles", cfg.External.RustMusclesPath),
-		zap.String("ffmpeg", cfg.External.FfmpegPath),
+	log.Info("registerClipRender: clip render boundary wired (RenderingGen queue → Chronon certified artifact)",
+		zap.String("renderinggen_queue", cfg.External.RenderingGenQueueURL),
 		zap.String("encoder", mediaConfig.Policy.Codec),
 		zap.String("preset", mediaConfig.Policy.Preset),
 		zap.Int("crf", mediaConfig.Policy.CRF),

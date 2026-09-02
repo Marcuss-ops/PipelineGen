@@ -337,7 +337,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	if runtimeErr != nil {
 		return nil, fmt.Errorf("localization service: build shared render runtime: %w", runtimeErr)
 	}
-	executor := localizationadapters.NewRenderPlanExecutor(renderRuntime.Executor, root.MediaExec.Profile, log)
+	executor := localizationadapters.NewRenderPlanExecutor(renderRuntime.RenderingGenExecutor, root.MediaExec.Profile, log)
 
 	uploader := localizationadapters.NewDriveUploader(root.Drive.Publisher)
 	docPublisher := localizationadapters.NewDocPublisher(root.Drive.DocClient)

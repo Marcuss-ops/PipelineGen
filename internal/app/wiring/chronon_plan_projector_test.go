@@ -102,11 +102,8 @@ func TestChrononPlanProjector_TextWatermarkStyleAndTransition(t *testing.T) {
 		t.Fatalf("layers = %d, want 2 (video + watermark)", len(rp.Layers))
 	}
 	wm := rp.Layers[1]
-	if wm.Type != "text" || wm.FontSize != 58 {
+	if wm.Type != "text" || wm.Style == nil || wm.Style.FontSize != 58 {
 		t.Fatalf("watermark = %+v, want text with font_size 58", wm)
-	}
-	if len(wm.Color) != 4 || wm.Color[0] != 1 || wm.Color[1] != 1 || wm.Color[2] != 1 || wm.Color[3] != 0.9 {
-		t.Fatalf("color = %v, want [1 1 1 0.9] (fill RGB + watermark opacity)", wm.Color)
 	}
 	if wm.Style == nil || wm.Style.Fill != "#FFFFFF" || wm.Style.FontSize != 58 || wm.Style.Shadow == nil {
 		t.Fatalf("style = %+v, want fill/font_size/shadow", wm.Style)
@@ -123,7 +120,7 @@ func TestChrononPlanProjector_TextWatermarkStyleAndTransition(t *testing.T) {
 }
 
 // TestChrononPlanProjector_ImageWatermarkStyleDims verifies the image
-// watermark projects style.width_px/height_px onto the layer box AND that the
+// watermark projects style.width_px/height_px onto the layer size AND that the
 // position is resolved against the STYLED size (not the original image size,
 // which may not even exist yet).
 func TestChrononPlanProjector_ImageWatermarkStyleDims(t *testing.T) {
@@ -144,8 +141,8 @@ func TestChrononPlanProjector_ImageWatermarkStyleDims(t *testing.T) {
 		t.Fatalf("Project: %v", err)
 	}
 	wm := rp.Layers[1]
-	if wm.Type != "image" || wm.BoxWidth != 180 || wm.BoxHeight != 90 {
-		t.Fatalf("watermark = %+v, want image box 180x90 from style", wm)
+	if wm.Type != "image" || len(wm.Size) != 2 || wm.Size[0] != 180 || wm.Size[1] != 90 {
+		t.Fatalf("watermark = %+v, want image size [180 90] from style", wm)
 	}
 	// top_right, canvas 1280x720, margin 24, styled 180x90:
 	// x = 1280−24−180 = 1076, y = 24 → world center x = 1076+90−640 = 526,
@@ -189,8 +186,8 @@ func TestChrononPlanProjector_SubtitlesStyleAndTransition(t *testing.T) {
 		t.Fatalf("Project: %v", err)
 	}
 	sub := rp.Layers[1]
-	if sub.Type != "subtitle_track" || sub.Format != "ass" || sub.BoxWidth != 1184 {
-		t.Fatalf("subtitle layer = %+v, want subtitle_track/ass box 1184 (1280−96)", sub)
+	if sub.Type != "text" || sub.Text != "hello" {
+		t.Fatalf("subtitle layer = %+v, want text with 'hello'", sub)
 	}
 	if sub.Style == nil || sub.Style.Fill != "#FFFFFF" || sub.Style.FontSize != 54 || sub.Style.Shadow == nil {
 		t.Fatalf("style = %+v, want fill/font_size/shadow", sub.Style)

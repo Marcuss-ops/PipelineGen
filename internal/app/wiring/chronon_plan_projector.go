@@ -60,41 +60,29 @@ type chrononOutput struct {
 }
 
 type chrononLayer struct {
-	Animation      *chrononAnimation       `json:"animation,omitempty"`
-	Asset          string                  `json:"asset,omitempty"`
-	Background     *chrononLayerBackground `json:"background,omitempty"`
-	BoxHeight      float64                 `json:"box_height,omitempty"`
-	BoxWidth       float64                 `json:"box_width,omitempty"`
-	Color          []float64               `json:"color,omitempty"`
-	DurationFrames int                     `json:"duration_frames,omitempty"`
-	Fit            string                  `json:"fit,omitempty"`
-	Font           string                  `json:"font,omitempty"`
-	FontSize       float64                 `json:"font_size,omitempty"`
-	Format         string                  `json:"format,omitempty"`
-	ID             string                  `json:"id"`
-	Opacity        *float64                `json:"opacity,omitempty"`
-	Position       []int                   `json:"position,omitempty"`
-	Scale          []float64               `json:"scale,omitempty"`
-	Size           []int                   `json:"size,omitempty"`
-	Source         string                  `json:"source,omitempty"`
-	StartFrame     int                     `json:"start_frame"`
-	Style          *chrononLayerStyle      `json:"style,omitempty"`
-	Text           string                  `json:"text,omitempty"`
-	Type           string                  `json:"type"`
+	Animation      *chrononAnimation  `json:"animation,omitempty"`
+	Asset          string             `json:"asset,omitempty"`
+	Color          []float64          `json:"color,omitempty"`
+	DurationFrames int                `json:"duration_frames,omitempty"`
+	Fit            string             `json:"fit,omitempty"`
+	ID             string             `json:"id"`
+	Opacity        *float64           `json:"opacity,omitempty"`
+	Position       []int              `json:"position,omitempty"`
+	Rotation       []float64          `json:"rotation,omitempty"`
+	Scale          []float64          `json:"scale,omitempty"`
+	Size           []int              `json:"size,omitempty"`
+	Source         string             `json:"source,omitempty"`
+	StartFrame     int                `json:"start_frame"`
+	Style          *chrononLayerStyle `json:"style,omitempty"`
+	Text           string             `json:"text,omitempty"`
+	Type           string             `json:"type"`
 }
 
-// chrononLayerBackground is the optional per-layer image background (asset
-// behind the owning layer). Projected ONLY for background mode=asset.
-type chrononLayerBackground struct {
-	Asset string `json:"asset"`
-	Fit   string `json:"fit,omitempty"`
-}
-
-// chrononLayerStyle is the LayerStylePlan projection: fill (#RRGGBB),
-// font_size and a single shadow. Absent fields stay absent — no fabricated
-// defaults (mirrors the omitempty wire contract of script.generate).
+// chrononLayerStyle is the LayerStylePlan projection: font, font_size, fill (#RRGGBB),
+// and a single shadow.
 type chrononLayerStyle struct {
 	Fill     string             `json:"fill,omitempty"`
+	Font     string             `json:"font,omitempty"`
 	FontSize float64            `json:"font_size,omitempty"`
 	Shadow   *chrononShadowSpec `json:"shadow,omitempty"`
 }
@@ -174,7 +162,7 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 			ID:             "background",
 			Type:           "image",
 			Asset:          "background" + filepath.Ext(plan.Background.Path),
-			Source:         "background" + filepath.Ext(plan.Background.Path),
+			Size:           []int{plan.Output.Width, plan.Output.Height},
 			Fit:            "cover",
 			StartFrame:     0,
 			DurationFrames: frames,
@@ -189,13 +177,6 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 		Fit:            "stretch",
 		StartFrame:     0,
 		DurationFrames: frames,
-	}
-	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset &&
-		strings.TrimSpace(plan.Background.Path) != "" {
-		video.Background = &chrononLayerBackground{
-			Asset: "background" + filepath.Ext(plan.Background.Path),
-			Fit:   "cover",
-		}
 	}
 	if scalePercent != 100 {
 		s := float64(scalePercent) / 100.0
@@ -215,12 +196,11 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 		}
 	}
 	// An artifact can exist even when subtitle compilation produced no cues.
-	// Do not project an empty subtitle node: it would make an otherwise simple
-	// video non-simple and incorrectly route it away from Direct-YUV.
-	// Only project subtitle layer into Chronon when subtitle mode is burn.
-	if plan.Subtitles != nil && plan.Subtitles.Mode == "burn" && len(plan.Subtitles.Cues) > 0 && strings.TrimSpace(plan.Subtitles.Path) != "" {
-		rp.Layers = append(rp.Layers, projectSubtitles(
-			plan.Subtitles, plan.Output.Width, frames, fps))
+	// Only project subtitle layers into Chronon when subtitle mode is burn.
+	if plan.Subtitles != nil && plan.Subtitles.Mode == "burn" && len(plan.Subtitles.Cues) > 0 {
+		subLayers := projectSubtitles(
+			plan.Subtitles, plan.Output.Width, plan.Output.Height, frames, fps)
+		rp.Layers = append(rp.Layers, subLayers...)
 	}
 	return rp, nil
 }
@@ -230,26 +210,33 @@ func projectTextWatermark(wm *cliprender.PlanWatermark, canvasW, canvasH, frames
 	if wm.Style != nil && wm.Style.FontSizePX > 0 {
 		fontSize = wm.Style.FontSizePX
 	}
-	color := []float64{1, 1, 1, wm.Opacity}
-	if wm.Style != nil && strings.TrimSpace(wm.Style.Color) != "" {
-		// Style fill replaces the white RGB; the watermark opacity stays the
-		// alpha (same composition as the unstyled path).
-		if rgb, ok := parseHexColor(wm.Style.Color); ok {
-			color = []float64{rgb[0], rgb[1], rgb[2], wm.Opacity}
-		}
+	fill := "#FFFFFF"
+	if wm.Style != nil && strings.TrimSpace(wm.Style.Color) != "" && strings.HasPrefix(wm.Style.Color, "#") {
+		fill = wm.Style.Color
 	}
 	layer := chrononLayer{
-		ID:             "watermark",
-		Type:           "text",
-		Text:           wm.Text,
-		Font:           chrononFont,
-		FontSize:       fontSize,
-		Color:          color,
-		Position:       []int{canvasW / 2, canvasH / 2},
+		ID:       "watermark",
+		Type:     "text",
+		Text:     wm.Text,
+		Position: []int{canvasW / 2, canvasH / 2},
+		Style: &chrononLayerStyle{
+			Font:     chrononFont,
+			FontSize: fontSize,
+			Fill:     fill,
+		},
 		StartFrame:     0,
 		DurationFrames: frames,
 	}
 	if style := projectLayerStyle(wm.Style); style != nil {
+		if style.Font == "" {
+			style.Font = chrononFont
+		}
+		if style.FontSize == 0 {
+			style.FontSize = fontSize
+		}
+		if style.Fill == "" {
+			style.Fill = fill
+		}
 		layer.Style = style
 	}
 	if anim := projectTransition(wm.Style, fps); anim != nil {
@@ -271,10 +258,9 @@ func projectImageWatermark(wm *cliprender.PlanWatermark, canvasW, canvasH, frame
 	layer := chrononLayer{
 		ID:             "watermark",
 		Type:           "image",
-		Source:         "watermark" + filepath.Ext(wm.Path),
+		Asset:          "watermark" + filepath.Ext(wm.Path),
+		Size:           []int{wmW, wmH},
 		Fit:            "none",
-		BoxWidth:       float64(wmW),
-		BoxHeight:      float64(wmH),
 		Position:       watermarkPositionForSize(wmW, wmH, wm.Position, canvasW, canvasH, wm.MarginPX),
 		Opacity:        &wm.Opacity,
 		StartFrame:     0,
@@ -286,25 +272,60 @@ func projectImageWatermark(wm *cliprender.PlanWatermark, canvasW, canvasH, frame
 	return layer
 }
 
-func projectSubtitles(subs *cliprender.PlanSubtitles, canvasW, frames, fps int) chrononLayer {
-	layer := chrononLayer{
-		ID:             "subtitles",
-		Type:           "subtitle_track",
-		Source:         "subtitles.ass",
-		Format:         "ass",
-		Font:           chrononFont,
-		BoxWidth:       float64(canvasW - 2*chrononSubtitleSideMargin),
-		BoxHeight:      200,
-		StartFrame:     0,
-		DurationFrames: frames,
+func projectSubtitles(subs *cliprender.PlanSubtitles, canvasW, canvasH, frames, fps int) []chrononLayer {
+	var layers []chrononLayer
+	fontSize := 48.0
+	fill := "#FFFFFF"
+	if subs.Style != nil {
+		if subs.Style.FontSizePX > 0 {
+			fontSize = subs.Style.FontSizePX
+		}
+		if strings.TrimSpace(subs.Style.Color) != "" && strings.HasPrefix(subs.Style.Color, "#") {
+			fill = subs.Style.Color
+		}
 	}
-	if style := projectLayerStyle(subs.Style); style != nil {
-		layer.Style = style
+	for i, cue := range subs.Cues {
+		if strings.TrimSpace(cue.Text) == "" {
+			continue
+		}
+		startF := int((cue.StartMs * int64(fps)) / 1000)
+		endF := int((cue.EndMs*int64(fps) + 999) / 1000)
+		durF := endF - startF
+		if durF < 1 {
+			durF = 1
+		}
+		style := &chrononLayerStyle{
+			Font:     chrononFont,
+			FontSize: fontSize,
+			Fill:     fill,
+		}
+		if userStyle := projectLayerStyle(subs.Style); userStyle != nil {
+			if userStyle.Font != "" {
+				style.Font = userStyle.Font
+			}
+			if userStyle.FontSize > 0 {
+				style.FontSize = userStyle.FontSize
+			}
+			if userStyle.Fill != "" {
+				style.Fill = userStyle.Fill
+			}
+			style.Shadow = userStyle.Shadow
+		}
+		layer := chrononLayer{
+			ID:             fmt.Sprintf("subtitle_%d", i),
+			Type:           "text",
+			Text:           cue.Text,
+			Position:       []int{canvasW / 2, int(float64(canvasH) * 0.85)},
+			Style:          style,
+			StartFrame:     startF,
+			DurationFrames: durF,
+		}
+		if anim := projectTransition(subs.Style, fps); anim != nil {
+			layer.Animation = anim
+		}
+		layers = append(layers, layer)
 	}
-	if anim := projectTransition(subs.Style, fps); anim != nil {
-		layer.Animation = anim
-	}
-	return layer
+	return layers
 }
 
 // ── Style + transition lowering (shared by watermark and subtitles) ───────
