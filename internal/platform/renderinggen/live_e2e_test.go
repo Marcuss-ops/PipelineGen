@@ -33,14 +33,14 @@ func TestLivePipelineGenToRenderingGen(t *testing.T) {
 	}
 
 	background := mustRead(t, filepath.Join(fixtureRoot, "background.jpg"))
-	apple := mustRead(t, filepath.Join(fixtureRoot, "apple.png"))
+	poppins := mustRead(t, filepath.Join(fixtureRoot, "Poppins-Bold.ttf"))
 	backgroundHash := sha256Hex(background)
-	appleHash := sha256Hex(apple)
-	if backgroundHash != capoverlay.GoldenBackgroundHash || appleHash != capoverlay.GoldenAppleHash {
-		t.Fatalf("golden asset drift: background=%s apple=%s", backgroundHash, appleHash)
+	poppinsHash := sha256Hex(poppins)
+	if backgroundHash != capoverlay.GoldenBackgroundHash || poppinsHash != capoverlay.GoldenPresetFontHash {
+		t.Fatalf("golden asset drift: background=%s poppins=%s", backgroundHash, poppinsHash)
 	}
 	putObject(t, storeURL, backgroundHash, background)
-	putObject(t, storeURL, appleHash, apple)
+	putObject(t, storeURL, poppinsHash, poppins)
 
 	jobID := getenvOr("PIPELINEGEN_E2E_JOB_ID", "pipelinegen-live-overlay-v1")
 	plan := capoverlay.OverlayPlan{
@@ -48,14 +48,34 @@ func TestLivePipelineGenToRenderingGen(t *testing.T) {
 		PlanID:        jobID,
 		VideoID:       jobID,
 		ProjectID:     "pipelinegen-live",
-		Width:         1280,
-		Height:        720,
+		Width:         640,
+		Height:        360,
 		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
+		Background:      &capoverlay.OverlayBackground{Kind: "color", Color: []float64{0.03, 0.03, 0.03, 1}},
 		Items: []capoverlay.OverlayItem{
-			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 5000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},
-			{ID: "image_overlay", TemplateID: "IMAGE_OVERLAY", StartMs: 1000, EndMs: 4000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "apple", URL: "assets/apple.png", SHA256: appleHash}}},
+			// The box is 300×100, so [170,130] is the actual top-left
+			// coordinate that centers it on the 640×360 canvas.
+			{ID: "center_text", TemplateID: "IMPORTANT_WORD", PresetID: "static_text_smoke", Text: "CIAO", StartMs: 200, EndMs: 900, Params: map[string]any{"position": []any{170, 130}, "box_width": 300, "box_height": 100}},
+			// Basic subtitle smoke: a timed, lower-screen text layer. It
+			// exercises the same Chronon text path and timing contract used by
+			// the subtitle compiler, while remaining compatible with the v2
+			// render-plan schema (which has no subtitle_track layer).
+			{ID: "subtitle_basic", TemplateID: "lower_third", PresetID: "static_text_smoke", Text: "Sottotitolo base", StartMs: 400, EndMs: 2000, Params: map[string]any{"position": []any{120, 295}, "box_width": 400, "box_height": 60}},
 		},
+	}
+	compiled, err := capoverlay.CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatalf("compile centered-text/subtitle smoke plan: %v", err)
+	}
+	if len(compiled.Plan.Layers) != 3 {
+		t.Fatalf("expected background + centered text + subtitle layers, got %d", len(compiled.Plan.Layers))
+	}
+	if got := compiled.Plan.Layers[1].Position; len(got) != 2 || got[0] != 170 || got[1] != 130 {
+		t.Fatalf("center text geometry is not centered: position=%v", got)
+	}
+	if got := compiled.Plan.Layers[2].Text; got != "Sottotitolo base" {
+		t.Fatalf("subtitle text missing from Chronon plan: %q", got)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -71,7 +91,7 @@ func TestLivePipelineGenToRenderingGen(t *testing.T) {
 	if ref.JobID != jobID || ref.Status != "COMPLETED" || ref.Artifact == nil {
 		t.Fatalf("unexpected live render reference: %+v", ref)
 	}
-	if ref.Artifact.SHA256 == "" || ref.Artifact.SizeBytes <= 0 || ref.Artifact.Width != 1280 || ref.Artifact.Height != 720 || ref.Artifact.DurationUS != 5_000_000 {
+	if ref.Artifact.SHA256 == "" || ref.Artifact.SizeBytes <= 0 || ref.Artifact.Width != 640 || ref.Artifact.Height != 360 || ref.Artifact.DurationUS < 1_900_000 || ref.Artifact.DurationUS > 2_100_000 {
 		t.Fatalf("live artifact is not certified: %+v", ref.Artifact)
 	}
 	t.Logf("live PipelineGen -> RenderingGen PASS: job=%s artifact=%s sha256=%s size=%d duration_us=%d", jobID, ref.Artifact.ID, ref.Artifact.SHA256, ref.Artifact.SizeBytes, ref.Artifact.DurationUS)

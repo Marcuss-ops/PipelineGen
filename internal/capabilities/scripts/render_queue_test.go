@@ -96,11 +96,9 @@ func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
 }
 
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes
-// PipelineGen produce visual instructions for Chronon: the semantic
-// GoldenOverlayPlanV1 is compiled to the chronon.render-plan.v1 document and
-// submitted through the queue exactly as the RenderingGen worker expects it
-// (render_plan + content-addressed assets), then the enqueuer waits for the
-// certified artifact.
+// PipelineGen submit semantic visual instructions to RenderingGen. RenderingGen
+// owns the final semantic→Chronon v2 compilation and submits the certified
+// artifact only after that concrete plan has actually rendered.
 func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	client := newFakeRenderQueueClient()
 	enqueuer, err := NewQueueRenderEnqueuer(client)
@@ -109,23 +107,20 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	}
 	enqueuer.pollInterval = time.Millisecond
 
-	// Compile the golden semantic plan up front so the pre-seeded completion
-	// can carry the right job id and the already-recorded spec/assets.
-	compiled, err := capoverlay.CompileChrononPlan(capoverlay.GoldenOverlayPlanV1())
+	// Pre-seed the semantic document so the idempotent replay path observes
+	// the same payload shape production submits.
+	spec, err := json.Marshal(capoverlay.GoldenOverlayPlanV1())
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := compiled.Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	client.jobs[compiled.Plan.JobID] = RenderQueueJob{
-		ID:          compiled.Plan.JobID,
+	client.jobs["golden-overlay-v1"] = RenderQueueJob{
+		ID:          "golden-overlay-v1",
 		JobType:     capoverlay.JobTypeRender,
 		OverlaySpec: spec,
 		Assets: []RenderQueueAsset{
 			{Hash: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
 			{Hash: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
+			{Hash: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath},
 		},
 		State: "completed",
 		Artifact: &RenderArtifact{
@@ -155,9 +150,9 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 		t.Fatalf("artifact not propagated: %+v", ref.Artifact)
 	}
 
-	// The submitted job must carry the chronon.render-plan.v1 document (not
-	// the media render-plan.v2) and the content-addressed golden assets, so
-	// the RenderingGen worker writes the plan Chronon actually executes.
+	// The submitted job must carry the semantic overlay-plan.v1 document (not
+	// an old PipelineGen-owned concrete Chronon v1 plan). RenderingGen then
+	// compiles the v2 document immediately before invoking Chronon.
 	submitted, ok := client.jobs["golden-overlay-v1"]
 	if !ok {
 		t.Fatal("job was not submitted to the queue")
@@ -166,16 +161,16 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 		t.Fatalf("submitted job type = %q, want %q", submitted.JobType, capoverlay.JobTypeRender)
 	}
 	var doc struct {
-		Schema string `json:"schema"`
+		SchemaVersion string `json:"schema_version"`
 	}
 	if err := json.Unmarshal(submitted.OverlaySpec, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Schema != capoverlay.ChrononSchema {
-		t.Fatalf("submitted plan schema = %q, want %q", doc.Schema, capoverlay.ChrononSchema)
+	if doc.SchemaVersion != capoverlay.SchemaVersionPlan {
+		t.Fatalf("submitted plan schema = %q, want %q", doc.SchemaVersion, capoverlay.SchemaVersionPlan)
 	}
-	if len(submitted.Assets) != 2 {
-		t.Fatalf("submitted assets = %d, want 2", len(submitted.Assets))
+	if len(submitted.Assets) != 3 {
+		t.Fatalf("submitted assets = %d, want 3", len(submitted.Assets))
 	}
 	if submitted.Assets[0].Hash != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
 		t.Fatalf("asset 0 not projected: %+v", submitted.Assets[0])
