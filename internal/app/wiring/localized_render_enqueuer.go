@@ -2,7 +2,7 @@ package wiring
 
 // localized_render_enqueuer.go bridges the script-generation runner's
 // per-(scene, language) localized-render fan-out to the canonical
-// LocalizationService (the Rust render_clip boundary). The runner emits a
+// LocalizationService (the RenderingGen/Chronon render boundary). The runner emits a
 // LocalizedRenderInput the moment one scene's translation + TTS for a language
 // are final; this adapter turns it into a single-language LocalizeInput so
 // Rust starts on that clip without waiting for the other scenes/languages.
@@ -503,7 +503,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
 	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo)
 	runner.SetLocalizedRenderEnqueuer(adapter)
-	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (Rust render_clip)",
+	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (RenderingGen/Chronon)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),
 		zap.String("clips_folder", cfg.Drive.ClipsFolder()))
 }

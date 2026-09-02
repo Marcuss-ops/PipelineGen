@@ -15,7 +15,7 @@ import (
 
 // RenderPlanExecutor implements localization.RenderPlanExecutor.
 // It is fail-closed: an unwired render executor, an invalid plan, or a missing
-// source/subtitle artifact is a typed error before any Rust process starts.
+// source/subtitle artifact is a typed error before the Chronon render starts.
 type RenderPlanExecutor struct {
 	renderer cliprender.RenderExecutor
 	profile  mediaexec.VideoProfile
@@ -47,7 +47,7 @@ func (a *RenderPlanExecutor) logPhase(phase, planID string, fields ...zap.Field)
 // ClipRenderPlanV1 and runs it through the render_clip boundary. The returned
 // RenderFacts carry the certified output path, the content SHA-256 (read from
 // the actual bytes on disk), the size, the duration, and the codecs pinned by
-// the output contract (Rust re-audits these before reporting success).
+// the output contract (Chronon re-audits these before reporting success).
 func (a *RenderPlanExecutor) Execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset) (localization.RenderFacts, error) {
 	return a.execute(ctx, plan, subtitle, localization.RenderOptions{})
 }

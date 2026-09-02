@@ -150,6 +150,7 @@ type Config struct {
 	Server           ServerConfig               `yaml:"server"`
 	Logging          LoggingConfig              `yaml:"logging"`
 	Storage          StorageConfig              `yaml:"storage"`
+	MediaPostgreSQL  PostgreSQLMediaConfig      `yaml:"media_postgresql"`
 	Security         SecurityConfig             `yaml:"security"`
 	External         ExternalConfig             `yaml:"external"`
 	Paths            PathsConfig                `yaml:"paths"`

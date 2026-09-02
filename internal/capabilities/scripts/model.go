@@ -204,6 +204,8 @@ type RenderArtifact struct {
 	CodecProfile       string `json:"codec_profile,omitempty"`
 	ClosedGOP          bool   `json:"closed_gop,omitempty"`
 	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
+	Backend            string `json:"backend,omitempty"`
+	ChrononVersion     string `json:"chronon_version,omitempty"`
 	// RenderMS and EncodeMS are the worker-measured wall durations of the
 	// Chronon render and encode phases (from the queue artifact's metrics
 	// map: render_ms / encode_ms). Zero means the worker did not report them.

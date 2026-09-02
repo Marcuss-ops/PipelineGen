@@ -24,8 +24,11 @@ package renderinggen
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // SemanticSchema is the overlay-plan contract version owned by RenderingGen.
@@ -56,6 +59,7 @@ type overlayPlan struct {
 
 type overlaySource struct {
 	AssetID string `json:"asset_id"`
+	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
 }
 
@@ -77,6 +81,7 @@ type overlaySubtitles struct {
 type overlayWatermark struct {
 	Text      string            `json:"text,omitempty"`
 	AssetRefs []overlayAssetRef `json:"asset_refs,omitempty"`
+	FontRef   *overlayAssetRef  `json:"font_ref,omitempty"`
 	Position  string            `json:"position,omitempty"`
 	Opacity   *float64          `json:"opacity,omitempty"`
 }
@@ -98,12 +103,15 @@ type overlayAssetRef struct {
 	MediaType string `json:"media_type,omitempty"`
 }
 
-// hashAddressedPath returns the canonical object-store key for an asset
-// identified by sha256 + original filename. RenderingGen workers resolve this
-// key against the configured object-store root; the originating machine's
-// local path is never forwarded.
-func hashAddressedPath(sha256, filename string) string {
-	return "sha256/" + sha256 + "/" + filename
+// hashAddressedPath returns the logical path used both by the concrete plan
+// and by workspace materialization. The bytes remain addressed by SHA-256 in
+// the queue/object store; this path is only the Chronon-mounted filename.
+func hashAddressedPath(assetID, filename string) string {
+	id := strings.TrimSpace(assetID)
+	if id == "" {
+		id = "asset"
+	}
+	return "assets/semantic/" + id + "/" + filename
 }
 
 // MapClipPlanToOverlayPlan converts a sealed ClipRenderPlanV1 into the
@@ -137,6 +145,7 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		OutputProfileID: plan.Output.ContractID,
 		Source: &overlaySource{
 			AssetID: plan.Source.AssetID,
+			Path:    hashAddressedPath(plan.Source.AssetID, "source.mp4"),
 			SHA256:  plan.Source.SHA256,
 		},
 		// items is always emitted as an explicit empty array, never null,
@@ -150,10 +159,10 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		op.ForegroundScale = plan.Output.ForegroundScalePercent
 	}
 
-	// DurationMS: ClipRenderPlanV1 does not carry an explicit duration yet.
-	// Leave it zero so RenderingGen derives it from item end_ms. When items
-	// is empty the compiler will gate on duration_ms > 0 (after the fix).
-	// TODO(next): add DurationMS to ClipRenderPlanV1 and propagate it here.
+	if plan.DurationMS <= 0 {
+		return nil, fmt.Errorf("clip plan mapper: duration_ms must be positive")
+	}
+	op.DurationMS = plan.DurationMS
 
 	// Background
 	if plan.Background != nil {
@@ -169,7 +178,7 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 				AssetRefs: []overlayAssetRef{{
 					AssetID: plan.Source.AssetID,
 					SHA256:  plan.Source.SHA256,
-					URL:     hashAddressedPath(plan.Source.SHA256, "source.mp4"),
+					URL:     hashAddressedPath(plan.Source.AssetID, "source.mp4"),
 				}},
 				Fit:  "blur_cover",
 				Loop: true,
@@ -180,7 +189,7 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 				AssetRefs: []overlayAssetRef{{
 					AssetID: plan.Background.AssetID,
 					SHA256:  plan.Background.SHA256,
-					URL:     hashAddressedPath(plan.Background.SHA256, "background.mp4"),
+					URL:     hashAddressedPath(plan.Background.AssetID, "background.mp4"),
 				}},
 				Fit:  "cover",
 				Loop: true,
@@ -216,11 +225,18 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		}
 		if plan.Watermark.SHA256 != "" {
 			wm.AssetRefs = []overlayAssetRef{{
-				AssetID:   plan.Watermark.AssetID,
-				SHA256:    plan.Watermark.SHA256,
-				URL:       hashAddressedPath(plan.Watermark.SHA256, "watermark.png"),
+					AssetID:   plan.Watermark.AssetID,
+					SHA256:    plan.Watermark.SHA256,
+					URL:       hashAddressedPath(plan.Watermark.SHA256, "watermark.png"),
 				MediaType: "image/png",
 			}}
+		}
+		if wm.Text != "" && len(wm.AssetRefs) == 0 {
+			font, err := watermarkFontAsset()
+			if err != nil {
+				return nil, fmt.Errorf("clip plan mapper: watermark font: %w", err)
+			}
+			wm.FontRef = &overlayAssetRef{AssetID: "font-dejavu-sans", SHA256: font.Hash, URL: font.LogicalPath, MediaType: "font/ttf"}
 		}
 		op.Watermark = wm
 	}
@@ -244,15 +260,15 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 // to a ClipRenderPlanV1. These refs use the same hash-addressed logical paths
 // as the serialised overlay plan so the worker can materialise each asset from
 // the object store.
-func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) []assetRef {
+func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 	refs := []assetRef{{
 		Hash:        plan.Source.SHA256,
-		LogicalPath: hashAddressedPath(plan.Source.SHA256, "source.mp4"),
+		LogicalPath: hashAddressedPath(plan.Source.AssetID, "source.mp4"),
 	}}
 	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
 		refs = append(refs, assetRef{
 			Hash:        plan.Background.SHA256,
-			LogicalPath: hashAddressedPath(plan.Background.SHA256, "background.mp4"),
+			LogicalPath: hashAddressedPath(plan.Background.AssetID, "background.mp4"),
 		})
 	}
 	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeBlurSource {
@@ -267,14 +283,31 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) []assetRef {
 	if plan.Watermark != nil && plan.Watermark.SHA256 != "" {
 		refs = append(refs, assetRef{
 			Hash:        plan.Watermark.SHA256,
-			LogicalPath: hashAddressedPath(plan.Watermark.SHA256, "watermark.png"),
+			LogicalPath: hashAddressedPath(plan.Watermark.AssetID, "watermark.png"),
 		})
 	}
-	return refs
+	if plan.Watermark != nil && plan.Watermark.Text != "" && plan.Watermark.SHA256 == "" {
+		font, err := watermarkFontAsset()
+		if err != nil {
+			return nil, fmt.Errorf("watermark font: %w", err)
+		}
+		refs = append(refs, font)
+	}
+	return refs, nil
 }
 
 // assetRef is a hash-addressed asset pointer used internally by this package.
 type assetRef struct {
 	Hash        string
 	LogicalPath string
+	LocalPath   string
+}
+
+func watermarkFontAsset() (assetRef, error) {
+	const path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-dejavu-sans", "DejaVuSans.ttf"), LocalPath: path}, nil
 }

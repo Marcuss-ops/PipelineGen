@@ -26,6 +26,19 @@ func TestConfigLoaderRejectsRetiredPrimaryDBOverrides(t *testing.T) {
 	})
 }
 
+func TestConfigLoaderResolvesMediaPostgreSQLEnvironment(t *testing.T) {
+	t.Setenv("PIPELINEGEN_MEDIA_POSTGRES_ENABLED", "true")
+	t.Setenv("PIPELINEGEN_MEDIA_POSTGRES_DSN", "postgres://user:pass@localhost/media")
+	t.Setenv("PIPELINEGEN_MEDIA_POSTGRES_MAX_OPEN_CONNECTIONS", "12")
+	cfg, err := GetFromPath(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("GetFromPath: %v", err)
+	}
+	if !cfg.MediaPostgreSQL.Enabled || cfg.MediaPostgreSQL.DSN == "" || cfg.MediaPostgreSQL.MaxOpenConnections != 12 {
+		t.Fatalf("media PostgreSQL environment was not resolved: %+v", cfg.MediaPostgreSQL)
+	}
+}
+
 func TestConfigValidateFailsWithoutAdminTokenWhenAuthEnabled(t *testing.T) {
 	cfg := &Config{
 		Security: SecurityConfig{

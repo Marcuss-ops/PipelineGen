@@ -101,6 +101,11 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	//    that define EventAssetIndexRequested as the literal
 	//    value (single source of truth for the literal value).
 	"internal/platform/sqlite/outboxevents/",
+	// 2b. The PostgreSQL media outbox adapter — engine mirror of the
+	//     outboxevents constants for the staged media-domain cutover;
+	//     defines the same canonical literal values for the pgvector
+	//     engine adapter (one fact family, two engine adapters).
+	"internal/platform/postgres/media/",
 	// 3. Mutations.AssetMutationDispatcher — the canonical
 	//    envelope surface (EnqueueAndIndex emits the canonical
 	//    envelope inside the commit pipeline).

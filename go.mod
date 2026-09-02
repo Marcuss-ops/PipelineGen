@@ -3,6 +3,7 @@ module github.com/Marcuss-ops/PipelineGen
 go 1.25.0
 
 require (
+	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-00010101000000-000000000000
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
@@ -22,6 +23,12 @@ require (
 	golang.org/x/text v0.40.0
 	google.golang.org/api v0.274.0
 	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.10.0
 )
 
 require (
@@ -47,6 +54,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect

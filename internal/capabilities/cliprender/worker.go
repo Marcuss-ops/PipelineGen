@@ -6,7 +6,7 @@ package cliprender
 //
 //	decode payload → Normalize + Validate → parallel preparation
 //	(Preparer) → compile ASS artifact (when subtitles enabled) →
-//	compile + seal ClipRenderPlanV1 → single-pass Rust render_clip.
+//	compile + seal ClipRenderPlanV1 → RenderingGen/Chronon render.
 //
 // The renderer and publisher remain mandatory at execution time: a plan
 // that is only sealed or only rendered locally is never reported as a
@@ -74,7 +74,7 @@ func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 	return w
 }
 
-// WithRenderExecutor attaches the Rust render_clip boundary. A missing
+// WithRenderExecutor attaches the RenderingGen/Chronon render boundary. A missing
 // executor remains a typed failure; a sealed plan is never reported as a
 // rendered clip.
 func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
@@ -242,6 +242,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	plan, err := Compile(CompileInput{
 		RunID:          j.ID,
 		Source:         prepared.Source,
+		DurationMS:     prepared.Source.DurationMS,
 		Watermark:      prepared.Watermark,
 		WatermarkSpec:  watermarkSpec,
 		WatermarkText:  watermarkText,
@@ -257,7 +258,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: compile plan: %w", err)
 	}
 
-	emit("clip.render.plan.sealed", "ClipRenderPlanV1 sealed — fully resolved before Rust", map[string]any{
+	emit("clip.render.plan.sealed", "ClipRenderPlanV1 sealed — fully resolved before Chronon", map[string]any{
 		"plan_version": plan.Version,
 		"plan_sha256":  plan.PlanSHA256,
 		"output_path":  plan.OutputPath,
@@ -274,7 +275,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
 	}
 
-	progress(90, "plan sealed; rendering with Rust")
+	progress(90, "plan sealed; rendering with Chronon")
 	renderSlotStart := time.Now()
 	renderSlotEnd := renderSlotStart
 	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderSlotEnd, kernobs.StageStatusCompleted, nil)
@@ -287,13 +288,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("output_path", plan.OutputPath),
 	)
 	// The render boundary is both a stage (wall, owner-measured anchors) and
-	// an operation (rust.render_clip accumulated work) on the RunReport, so
+	// an operation (chronon.render_clip accumulated work) on the RunReport, so
 	// the benchmark can compare render WALL against render WORK exactly like
 	// the script.generate phases.
 	outcome, err := func() (o *RenderOutcome, e error) {
 		e = kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 			Stage:     StageClipRender,
-			Component: kernobs.ComponentName("rust"),
+			Component: kernobs.ComponentName("chronon"),
 			Operation: kernobs.OperationName("render_clip"),
 		}, func(opCtx context.Context) error {
 			var rErr error
@@ -331,8 +332,8 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// served by the software fallback. The GPU backends are Chronon (only
 	// when certified) and the PATH B CUDA hybrid (only on hosts with the
 	// NVDEC/NVENC chain and for plans it can render device-local).
-	if req.Execution.RequireGPU && outcome.Backend != BackendChrononVulkan && outcome.Backend != BackendCudaNative {
-		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (a GPU backend is required)", outcome.Backend)
+	if outcome.Backend != BackendChrononVulkan {
+		return nil, fmt.Errorf("clip.render: backend resolved to %q; only Chronon (%s) is permitted", outcome.Backend, BackendChrononVulkan)
 	}
 	if req.Execution.RequireZeroCopy && (outcome.VideoZeroCopy == nil || !*outcome.VideoZeroCopy) {
 		return nil, fmt.Errorf("clip.render: execution.require_zero_copy=true but renderer did not certify video_zero_copy=true (backend=%q)", outcome.Backend)
@@ -372,7 +373,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	// ── Canonical projection of the renderer-owned phase timings ────────
-	// The render engine (Chronon/CUDA/FFmpeg) measured every render phase in
+	// Chronon measured every render phase in
 	// the V2 report; project them onto the Run as owner-measured operations
 	// (typed projection, never a second timer) so the benchmark can answer
 	// "where did the render seconds go" from the canonical run — the same
@@ -492,7 +493,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		// executor may be used by benchmarks and preparation tests without a
 		// publication port; return the canonical render facts and leave the
 		// publication projection absent.
-		emit("clip.render.completed", "Rust render_clip completed without publication", map[string]any{
+		emit("clip.render.completed", "Chronon render completed without publication", map[string]any{
 			"output_path": outcome.OutputPath, "size_bytes": outcome.SizeBytes,
 			"duration_sec": outcome.DurationSec, "ffmpeg_ms": outcome.FFmpegMS,
 			"backend": outcome.Backend,
@@ -535,7 +536,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	//   drive_upload_ms      = max(video, sidecar upload) — the uploads run
 	//                          concurrently, so the phase wall is the max,
 	//                          never the sum.
-	// The renderer finalize timing (Rust publish_ms → renderer_finalize_ms)
+	// The renderer finalize timing (Chronon publish_ms → renderer_finalize_ms)
 	// was recorded by the Rust adapter and is never overwritten here. The
 	// publisher owns publication_total_ms, artifact_publish_ms and
 	// drive_upload_ms. If it does not provide a report, those fields remain
@@ -556,7 +557,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if publication == nil || publication.AssetID == "" || publication.DriveFileID == "" {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
-	emit("clip.render.completed", "Rust render_clip completed", map[string]any{
+	emit("clip.render.completed", "Chronon render completed", map[string]any{
 		"output_path":  outcome.OutputPath,
 		"size_bytes":   outcome.SizeBytes,
 		"duration_sec": outcome.DurationSec,

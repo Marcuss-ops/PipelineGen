@@ -6,7 +6,7 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 
 | Concern | Owner |
 |---|---|
-| Canonical business state | SQLite |
+| Canonical business state | PostgreSQL + pgvector (media domain); SQLite remains canonical for non-media domains during staged migration |
 | Long-running execution | SQLite-backed jobs and workers |
 | Durable post-commit work | Transactional outbox |
 | Semantic and lexical retrieval | Qdrant projection |
@@ -26,7 +26,7 @@ migration work, correctness/security fixes required to keep the system
 running, or removal of legacy code, and must have a registered migration owner
 and deadline in `architecture/package_hotspots.json`.
 
-SQLite is authoritative. Qdrant and Drive are external projections or locations and must not become hidden sources of business truth.
+PostgreSQL + pgvector is authoritative for the media domain. SQLite remains authoritative for non-media domains during staged migration. Qdrant is no longer a media authority and may not be used as a fallback search or write path. Drive and local storage remain external locations and must not become hidden sources of business truth.
 
 ### Data-layer unification (August 2026)
 

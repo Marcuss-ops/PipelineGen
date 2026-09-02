@@ -24,10 +24,11 @@ const (
 )
 
 var (
-	chrononGPUAdmission   chan struct{}
-	chrononGPUConcurrency int
-	chrononProbeMu        sync.Mutex
-	chrononProbeCache     = map[chrononProbeKey]chrononProbeEntry{}
+	chrononRuntimeControlInit sync.Once
+	chrononGPUAdmission       chan struct{}
+	chrononGPUConcurrency     int
+	chrononProbeMu            sync.Mutex
+	chrononProbeCache         = map[chrononProbeKey]chrononProbeEntry{}
 )
 
 type chrononProbeKey struct {

@@ -17,7 +17,7 @@ package wiring
 // godlike/06 SSOT (one canonical owner per fact): this is the SINGLE wiring
 // of the localization capability. It composes the capability ports with the
 // already-wired concrete adapters (asset registry, text-track store, Drive
-// publisher, Doc client, Rust render boundary) — no second path, no direct
+// publisher, Doc client, RenderingGen/Chronon render boundary) — no second path, no direct
 // FFmpeg/ffprobe, no duplicated Drive/docs logic.
 
 import (
@@ -69,7 +69,7 @@ type LocalizationConfig struct {
 // LocalizationRendererVersion is the canonical renderer version for the
 // localized clip render boundary. It is a fingerprint input: bumping it
 // invalidates every cached localized artifact.
-const LocalizationRendererVersion = "rust-render/localization-v1"
+const LocalizationRendererVersion = "chronon-render/localization-v1"
 
 // LocalizationSubtitleStyleHash is the canonical ASS style identifier for
 // localized subtitle burn. It is a fingerprint input (changing the style
@@ -280,7 +280,7 @@ func (s *LocalizationService) UploadRendered(ctx context.Context, artifact local
 // BuildLocalizationService is the composition-root factory: it wires the
 // concrete adapters from the *ComposeRoot into the localization
 // capability. Fail-closed: a missing dependency (asset registry, text-track
-// store, Drive publisher, Doc client, Rust render boundary, or media config)
+// store, Drive publisher, Doc client, RenderingGen/Chronon render boundary, or media config)
 // is a typed error, never a silently degraded fan-out.
 func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*LocalizationService, error) {
 	if root == nil {
@@ -330,7 +330,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
 	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
-	// Rust/Chronon render boundary: reuse the composition-root runtime shared
+	// RenderingGen/Chronon render boundary: reuse the composition-root runtime shared
 	// with /api/clips/render. This is deliberately not rebuilt here: the
 	// resolver, capability probe and native certifier are single owners.
 	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)

@@ -58,6 +58,7 @@
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
 	docker-verify-digest docker-verify-ffmpeg docker-verify-whisper docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
+	test-postgres test-postgres-down \
 	doctor artlist auth-check regenerate-token scraper-up \
 	smoke-pipeline smoke-run-all smoke-dry smoke-voiceover \
 	deps tidy-check vuln bench benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml

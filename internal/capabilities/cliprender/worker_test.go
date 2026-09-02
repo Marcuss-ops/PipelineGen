@@ -143,6 +143,7 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 		Height:      1080,
 		FPSNum:      24,
 		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
 		FFmpegMS:    1234,
 	}}
 	w.WithRenderExecutor(renderer)
@@ -401,6 +402,7 @@ func TestWorker_RecordsRunReportStages(t *testing.T) {
 		Height:      1080,
 		FPSNum:      24,
 		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
 	}})
 	w.WithRenderPublisher(&fakeRenderPublisher{})
 
@@ -422,15 +424,15 @@ func TestWorker_RecordsRunReportStages(t *testing.T) {
 	}
 
 	// The render boundary must also be recorded as an operation (work),
-	// attributed to the clip.render stage with the rust component.
+	// attributed to the clip.render stage with the Chronon component.
 	var renderOp bool
 	for _, op := range report.Operations {
-		if op.Stage == string(StageClipRender) && op.Component == string(kernobs.ComponentName("rust")) && op.Operation == string(kernobs.OperationName("render_clip")) {
+		if op.Stage == string(StageClipRender) && op.Component == string(kernobs.ComponentName("chronon")) && op.Operation == string(kernobs.OperationName("render_clip")) {
 			renderOp = true
 		}
 	}
 	if !renderOp {
-		t.Errorf("rust.render_clip operation must be recorded under clip.render, got %+v", report.Operations)
+		t.Errorf("chronon.render_clip operation must be recorded under clip.render, got %+v", report.Operations)
 	}
 
 	// The stages are strictly sequential, so the run's critical path must be
@@ -465,6 +467,7 @@ func TestWorker_NoRunBoundRecordsNothing(t *testing.T) {
 		Height:      1080,
 		FPSNum:      24,
 		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
 	}})
 	w.WithRenderPublisher(&fakeRenderPublisher{})
 
@@ -516,6 +519,7 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		Height:      1080,
 		FPSNum:      24,
 		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
 	}}
 	publisher := &fakeRenderPublisher{}
 	w.WithRenderExecutor(renderer)
@@ -664,6 +668,7 @@ func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
 				Height:      1080,
 				FPSNum:      24,
 				FPSDen:      1,
+				Backend:     BackendChrononVulkan,
 			}})
 			wire(w)
 
@@ -704,6 +709,7 @@ func TestWorker_OverlayCompositing_FailClosedOnResolutionError(t *testing.T) {
 				Height:      1080,
 				FPSNum:      24,
 				FPSDen:      1,
+				Backend:     BackendChrononVulkan,
 			}})
 			publisher := &fakeRenderPublisher{}
 			w.WithRenderPublisher(publisher)

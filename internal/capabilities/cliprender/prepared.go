@@ -8,8 +8,8 @@ package cliprender
 // internal/capabilities/scripts/ports.go).
 //
 // The Preparer (preparer.go) fans out the phases concurrently and returns a
-// *Prepared. The next step (ClipRenderPlanV1 compilation + single-pass Rust
-// render) consumes every resolved value here; Rust never makes business
+// *Prepared. The next step (ClipRenderPlanV1 compilation + Chronon render
+// through RenderingGen) consumes every resolved value here; Chronon never makes business
 // selections.
 
 // AssetRef is the resolved canonical asset identity handed to the

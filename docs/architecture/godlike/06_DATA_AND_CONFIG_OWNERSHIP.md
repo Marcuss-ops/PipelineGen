@@ -4,7 +4,7 @@ This document defines canonical ownership for data, configuration, and state in 
 
 ## Durable authority
 
-SQLite is the durable authority for all canonical state. Any other store is a projection and must be rebuildable from SQLite.
+PostgreSQL + pgvector is the durable authority for the media domain. SQLite remains the durable authority for non-media domains during staged migration. Any derived media projection must be rebuildable from PostgreSQL; Qdrant is not a media fallback.
 
 ## Data store inventory
 
@@ -14,7 +14,8 @@ Concrete owner-per-fact map. Canonical business state is SQLite; every other sto
 
 | Store | Path (canonical resolver) | Role | Rebuildable from |
 |---|---|---|---|
-| Primary SQLite | `cfg.Storage.PrimaryDBFullPath()` → `media/media.db.sqlite` | **SSOT** — canonical business state (jobs, assets, scripts, voiceovers, outbox) | — |
+| Primary SQLite | `cfg.Storage.PrimaryDBFullPath()` → `media/media.db.sqlite` | **SSOT for non-media domains during staged migration** (jobs, scripts, voiceovers, outbox) | — |
+| Media PostgreSQL | canonical composition-root PostgreSQL DSN | **SSOT** — `media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings` | — |
 | acquisition.SourceStager | `internal/application/acquisition/port.go` | **SSOT** — canonical source staging port (Prepare/Release lifecycle). All consumers (YouTube, Artlist, Stock, Images, Jobs/assets) use this port. The legacy `assets.SourceStager` has been removed (CONTRACT completed 2026-08-22). | — |
 | Observability SQLite | `cfg.Storage.ObservabilityDBFullPath()` → `observability/api_requests.db.sqlite` | **SSOT for the observability axis** (run/attempt/stage/operation timing + API audit) | distinct concern; derived from job execution, not from business tables |
 | Qdrant | runtime alias per `ProjectionContract` | **Projection** — semantic/lexical retrieval | primary SQLite |
@@ -22,14 +23,14 @@ Concrete owner-per-fact map. Canonical business state is SQLite; every other sto
 | Local filesystem | `MediaDir`/`CacheDir`/`StagingDir`/`WorkspaceDir` | **Side-effect surface** — staging/cache blobs | redownloadable / regenerable |
 | Legacy catalog DBs | `data/stock/stock.db.sqlite`, `data/artlist/artlist.db.sqlite`, `data/artlist_videos.db`, `data/clips.db.sqlite` | **ELIMINATED** — merged into primary via `unify-catalogs` (run the tool, reconcile rows/hashes/locations, backup, then rm) | primary `media_assets` (source='stock'/'artlist') |
 
-### Primary SQLite — fact families (SSOT)
+### Primary SQLite — non-media fact families (SSOT during staged migration)
 
 The primary DB owns the following facts (one canonical owner each; tables cited, not exhaustive):
 
 | Fact | Canonical tables | Notes |
 |---|---|---|
 | Job lifecycle + execution | `jobs`, `job_events` | immutable logical request; retry/lease/CAS state lives here |
-| Media asset record | `media_assets` | one canonical SQLite row per asset; deterministic asset ID. All durable writes route through the canonical `persistence.AssetCommitter` / `persistence.CanonicalAssetWriter` family (see below) |
+| Media asset record | PostgreSQL `media_assets` | one canonical PostgreSQL row per asset; deterministic asset ID. All durable writes route through `persistence.AssetCommitter` |
 | Asset indexes + links | `asset_index`, `asset_links` | content-addressed search indexes |
 | Clip folders | `clip_folders` | Drive folder registry |
 | Voiceovers | `voiceovers` | per-item row (id, text_hash, language, drive ids) |
@@ -51,7 +52,13 @@ The primary DB owns the following facts (one canonical owner each; tables cited,
 | Capability workflow payload | `run_workflow_payload` | script request/result envelope (not a second run ledger) |
 | API audit log | `api_requests` | append-only; retention-rotated via `admin db rotate` |
 
-### Qdrant projections (rebuildable)
+### Media PostgreSQL schema (SSOT)
+
+The media database owns four surfaces: `media_assets`, `asset_locations`, `media_asset_features`, and `media_embeddings`. The embeddings table uses pgvector and keeps model/type identity in the primary key so incompatible vector families cannot share an index. Hard scalar filters are indexed before vector indexes; HNSW is used for vector search where the selected embedding family has a fixed dimension.
+
+During migration, PostgreSQL is first deployed and backfilled, then reads and writes are cut over behind the existing typed ports. No direct dual-write is permitted, and missing PostgreSQL configuration must fail closed rather than fall back to SQLite or Qdrant.
+
+### Qdrant projections (retained only for non-cutover compatibility)
 
 The three projections are closed over by `internal/platform/qdrant/schema/projection_contract.go` and must never share a point ID, alias, or retention scope (`ValidateProjectionSeparation`).
 
@@ -92,7 +99,7 @@ Every fact in the system has one canonical owner. No two packages may independen
 ## Canonical media_assets writer family
 
 `media_assets` writes have exactly one owner: the `persistence.AssetCommitter`
-port (implemented by `SQLiteAssetCommitter`) and its sibling
+port (implemented by `PostgresAssetCommitter`; `SQLiteAssetCommitter` is migration-only) and its sibling
 `persistence.CanonicalAssetWriter` surface (`SQLiteMediaCommitter`). Every
 asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST
 route through `AssetCommitter.CommitAndIndex` / `CommitTx`; the runtime Qdrant
@@ -124,7 +131,7 @@ SQL must delegate to this family or be migrated before it can be committed.
 
 ## Qdrant projection
 
-Qdrant is a derived projection and must be completely rebuildable from SQLite. It is never the source of truth.
+Qdrant is not part of the PostgreSQL media SSOT path. Media Qdrant reads and writes must remain disabled during and after cutover; PostgreSQL + pgvector is the canonical media search store. Any remaining Qdrant usage must be explicitly outside the media domain.
 
 ## Drive and filesystem
 

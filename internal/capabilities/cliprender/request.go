@@ -2,7 +2,7 @@
 // typed request contract, its fail-fast validation, and the job-type
 // identity for the async Master job. The HTTP transport lives in
 // internal/capabilities/assets/cliprender; the render worker (ClipRenderPlanV1
-// compilation, transcript/subtitle resolution, Rust single-pass render,
+// compilation, transcript/subtitle resolution, RenderingGen/Chronon render,
 // validation, Drive upload, derived-asset commit) lands in follow-up
 // steps and stays inside this package.
 //
