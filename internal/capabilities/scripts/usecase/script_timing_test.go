@@ -135,8 +135,11 @@ func TestScriptTiming_TotalUsesCanonicalRunClock(t *testing.T) {
 
 	// A sleeping postprocessor guarantees the canonical clock advances a
 	// measurable amount during Execute (so the bounds below are meaningful).
+	// clip_search is the stage itemForTimingsTest's ExtractEntities flag
+	// selects (entity extraction no longer runs as a legacy "entities"
+	// postprocessor stage), so the sleeping stub is guaranteed to run.
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "entities", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&stubPostProcessor{name: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
 	require.True(t, ppReg.Register(&stubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	require.True(t, ppReg.Register(&stubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()

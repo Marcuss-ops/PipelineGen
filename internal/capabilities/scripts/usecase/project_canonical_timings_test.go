@@ -18,6 +18,10 @@ func TestProjectCanonicalTimingsRegeneratesVidRushFields(t *testing.T) {
 			{Name: "source.resolve", DurationMs: 100},
 			{Name: "script.plan", DurationMs: 200},
 			{Name: "script.engine", DurationMs: 300},
+			// A legacy "entities" stage is included on purpose: it may
+			// still surface in PostprocessMs, but the cutover to the
+			// semantic runner means it no longer feeds
+			// SegmentExtractionMs / QueryGenerationMs.
 			{Name: "entities", DurationMs: 11},
 			{Name: "clip_search", DurationMs: 22},
 			{Name: "internet_images", DurationMs: 33},
@@ -33,7 +37,7 @@ func TestProjectCanonicalTimingsRegeneratesVidRushFields(t *testing.T) {
 	if got.SourceResolveMs != 100 || got.PlanBuildMs != 200 || got.EngineMs != 300 || got.TotalMs != 9999 {
 		t.Fatalf("orchestration projection = %+v", got)
 	}
-	if got.SegmentExtractionMs != 11 || got.QueryGenerationMs != 11 ||
+	if got.SegmentExtractionMs != 0 || got.QueryGenerationMs != 0 ||
 		got.ArtlistSearchMs != 22 || got.InternetImageSearchMs != 33 ||
 		got.ImageGenerationMs != 44 || got.SQLiteMs != 55 || got.BindingMs != 66 {
 		t.Fatalf("VidRush named-field projection = %+v", got)

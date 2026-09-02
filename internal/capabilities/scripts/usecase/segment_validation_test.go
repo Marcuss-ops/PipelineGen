@@ -147,7 +147,22 @@ func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.
 	if len(gen.prompts) != 2 {
 		t.Fatalf("provider calls = %d, want 2", len(gen.prompts))
 	}
-	if !strings.Contains(gen.prompts[0], "Topic: one") || !strings.Contains(gen.prompts[1], "Topic: two") {
+	// Segment generation fans out across workers, so prompt ARRIVAL order is
+	// nondeterministic. What is pinned is ownership: each segment request must
+	// carry exactly its own topic (see the sibling evidence-routing test, which
+	// matches on topic rather than index for the same reason).
+	seen := map[string]bool{}
+	for _, prompt := range gen.prompts {
+		switch {
+		case strings.Contains(prompt, "Topic: one"):
+			seen["one"] = true
+		case strings.Contains(prompt, "Topic: two"):
+			seen["two"] = true
+		default:
+			t.Fatalf("segment prompt lost canonical topic ownership: %q", prompt)
+		}
+	}
+	if !seen["one"] || !seen["two"] {
 		t.Fatalf("segment prompts lost canonical topic ownership: %q", gen.prompts)
 	}
 }
