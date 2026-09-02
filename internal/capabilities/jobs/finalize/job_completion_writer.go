@@ -28,16 +28,15 @@ package finalize
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -79,12 +78,12 @@ func (f *Finalizer) markSucceeded(
 		return fmt.Errorf("finalizer: marshal wrapped result: %w", err)
 	}
 	resultJSON := string(wrapped)
-	resultHash := sha256.Sum256(req.Result.Data)
+	resultHash := digest.SHA256Bytes(req.Result.Data)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO job_results (job_id, attempt, result_hash, codec_id, result_payload, created_at)
 		VALUES (?, ?, ?, 'json', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		ON CONFLICT(job_id, attempt, result_hash) DO NOTHING`,
-		req.Result.JobID, req.Result.Attempt, hex.EncodeToString(resultHash[:]), string(req.Result.Data)); err != nil {
+		req.Result.JobID, req.Result.Attempt, resultHash, string(req.Result.Data)); err != nil {
 		// Minimal/legacy fixtures can predate the normalized result table.
 		// Production migrated jobs DBs always take the canonical branch;
 		// retaining this schema-gated fallback keeps the terminal transition

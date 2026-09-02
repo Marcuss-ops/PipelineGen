@@ -2,12 +2,11 @@ package jobs
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -21,12 +20,12 @@ func persistJobResult(ctx context.Context, tx *sql.Tx, jobID string, attempt int
 	if payload == "" || payload == "null" {
 		payload = "{}"
 	}
-	sum := sha256.Sum256([]byte(payload))
+	resultHash := digest.SHA256String(payload)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO job_results (job_id, attempt, result_hash, codec_id, result_payload, created_at)
 		VALUES (?, ?, ?, 'json', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		ON CONFLICT(job_id, attempt, result_hash) DO NOTHING`,
-		jobID, attempt, hex.EncodeToString(sum[:]), payload)
+		jobID, attempt, resultHash, payload)
 	if err != nil {
 		// Legacy/minimal fixtures may predate migration 119. This fallback is
 		// intentionally schema-gated; migrated production databases never
@@ -78,13 +77,13 @@ func persistJobPayload(ctx context.Context, tx *sql.Tx, jobID string, payload st
 	if payload == "" || payload == "null" {
 		payload = "{}"
 	}
-	sum := sha256.Sum256([]byte(payload))
+	payloadHash := digest.SHA256String(payload)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO job_payloads (job_id, codec_id, payload, payload_hash, created_at)
 		VALUES (?, 'json', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		ON CONFLICT(job_id) DO UPDATE SET codec_id=excluded.codec_id,
 		payload=excluded.payload, payload_hash=excluded.payload_hash`,
-		jobID, payload, hex.EncodeToString(sum[:]))
+		jobID, payload, payloadHash)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table: job_payloads") {
 			if _, legacyErr := tx.ExecContext(ctx, `UPDATE jobs SET payload_json = ? WHERE id = ?`, payload, jobID); legacyErr == nil {

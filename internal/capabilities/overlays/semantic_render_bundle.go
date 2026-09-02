@@ -1,12 +1,13 @@
 package overlays
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 var contentHashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -75,17 +76,15 @@ type SemanticRenderBundleV1 struct {
 }
 
 func NewSceneIR(segmentID string, position int, sourceText, narrationText string, profile SegmentSemanticProfile) SceneIR {
-	h := sha256.Sum256([]byte(sourceText))
 	return SceneIR{SegmentID: segmentID, Position: position, SourceText: sourceText,
-		SourceTextHash: hex.EncodeToString(h[:]), NarrationText: narrationText, Profile: profile}
+		SourceTextHash: digest.SHA256String(sourceText), NarrationText: narrationText, Profile: profile}
 }
 
 func (s SceneIR) Validate() error {
 	if strings.TrimSpace(s.SegmentID) == "" || s.Position < 0 || s.SourceText == "" {
 		return fmt.Errorf("scene ir: missing immutable identity")
 	}
-	h := sha256.Sum256([]byte(s.SourceText))
-	if s.SourceTextHash != hex.EncodeToString(h[:]) {
+	if s.SourceTextHash != digest.SHA256String(s.SourceText) {
 		return fmt.Errorf("scene ir: source_text_hash does not match source_text")
 	}
 	return nil

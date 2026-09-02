@@ -18,7 +18,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -67,12 +66,6 @@ func (m chrononPhaseMetrics) LogFields() []zap.Field {
 	}
 }
 
-// Process-wide Chronon lifecycle is initialized once, but GPU work is admitted
-// through a bounded semaphore (default C=2) instead of a global render mutex.
-// The semaphore is context-aware and is shared by every Chronon render in this
-// process; mux and publication happen after the permit is released.
-var chrononRuntimeControlInit sync.Once
-
 // NewChrononClipRenderExecutor constructs the adapter. log is mandatory: every
 // render boundary decision and phase timing is emitted through it.
 func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chrononClipRenderExecutor {
@@ -91,27 +84,6 @@ func NewChrononClipRenderExecutor(binary, ffmpeg string, log *zap.Logger) *chron
 	}
 	// The projector is stateless; the zero value is the canonical projector.
 	return &chrononClipRenderExecutor{binary: binary, socket: socket, ffmpeg: ffmpeg, log: log}
-}
-
-// WithChrononMetrics attaches the Chronon Metrics Adapter. It is optional and
-// nil-tolerant: without it the render simply skips the performance-registry
-// projection.
-func (r *chrononClipRenderExecutor) WithChrononMetrics(a *cliprender.ChrononMetricsAdapter) *chrononClipRenderExecutor {
-	if r != nil {
-		r.chrononMetrics = a
-	}
-	return r
-}
-
-// logPhase emits a single chronon render phase line with consistent fields so
-// the server log can be grep'd by run_id or phase to reconstruct timelines.
-func (r *chrononClipRenderExecutor) logPhase(phase, runID string, fields ...zap.Field) {
-	all := append([]zap.Field{
-		zap.String("subsystem", "chronon_render"),
-		zap.String("phase", phase),
-		zap.String("run_id", runID),
-	}, fields...)
-	r.log.Info("clip.render.chronon.phase", all...)
 }
 
 func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1, _ cliprender.RenderBackend) (rustexec.ClipRenderResult, error) {
