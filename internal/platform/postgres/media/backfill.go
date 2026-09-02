@@ -125,10 +125,12 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 			return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 		}
 	}
+	box := NewOutboxRepository(pg)
+	committer := NewPostgresAssetCommitter(pg, box, nil)
 
 	report := &BackfillReport{VerifyOnly: cfg.VerifyOnly}
 	if !cfg.VerifyOnly {
-		if report.AssetsCopied, report.AssetsScanned, err = backfillAssets(ctx, sqliteDB, pg, batch, cfg.Limit); err != nil {
+		if report.AssetsCopied, report.AssetsScanned, err = backfillAssets(ctx, sqliteDB, committer, batch, cfg.Limit); err != nil {
 			return nil, err
 		}
 		if report.LocationsCopied, report.LocationsScanned, report.LocationsSkipped, err = backfillLocations(ctx, sqliteDB, pg, batch); err != nil {
@@ -154,7 +156,7 @@ type backfillAssetRow struct {
 
 // backfillAssets streams SQLite media_assets in id keyset order and upserts
 // the mapped projection into PostgreSQL. Returns (copied, scanned).
-func backfillAssets(ctx context.Context, sqliteDB, pg *sql.DB, batch, limit int) (int, int, error) {
+func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAssetCommitter, batch, limit int) (int, int, error) {
 	query := "SELECT " + assetBackfillColumns + " FROM media_assets WHERE id > ? ORDER BY id LIMIT ?"
 	cols := strings.Fields(assetBackfillColumns)
 	copied, scanned := 0, 0
@@ -207,7 +209,7 @@ func backfillAssets(ctx context.Context, sqliteDB, pg *sql.DB, batch, limit int)
 		}
 		lastID = batchRows[len(batchRows)-1].id
 
-		inserted, err := upsertBackfillAssets(ctx, pg, cols, batchRows)
+		inserted, err := committer.UpsertBackfillAssets(ctx, cols, batchRows)
 		if err != nil {
 			return copied, scanned, err
 		}
@@ -217,67 +219,6 @@ func backfillAssets(ctx context.Context, sqliteDB, pg *sql.DB, batch, limit int)
 		}
 	}
 	return copied, scanned, nil
-}
-
-// upsertBackfillAssets writes one batch with per-row lifecycle_state
-// substitution (SQLite `status` → PostgreSQL lifecycle_state) and full
-// column sync so re-runs converge.
-func upsertBackfillAssets(ctx context.Context, pg *sql.DB, cols []string, rows []backfillAssetRow) (int, error) {
-	if len(rows) == 0 {
-		return 0, nil
-	}
-	// Target columns: all mapped SQLite columns except `status`, plus
-	// lifecycle_state.
-	target := make([]string, 0, len(cols))
-	for _, c := range cols {
-		if c != "status" {
-			target = append(target, c)
-		}
-	}
-	target = append(target, "lifecycle_state")
-
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO media_assets (")
-	sb.WriteString(strings.Join(target, ", "))
-	sb.WriteString(") VALUES ")
-	params := make([]any, 0, len(rows)*len(target))
-	for i, r := range rows {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString("(")
-		for j, c := range target {
-			if j > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(fmt.Sprintf("$%d", len(params)+1))
-			if c == "lifecycle_state" {
-				if strings.TrimSpace(r.status) == "" {
-					params = append(params, "ACTIVE")
-				} else {
-					params = append(params, r.status)
-				}
-				continue
-			}
-			params = append(params, r.vals[indexOf(cols, c)])
-		}
-		sb.WriteString(")")
-	}
-	// Full sync on conflict: every mapped column takes the SQLite value so
-	// re-running the backfill converges (FASE-3 idempotence contract).
-	sb.WriteString(" ON CONFLICT (id) DO UPDATE SET ")
-	for j, c := range target {
-		if j > 0 {
-			sb.WriteString(", ")
-		}
-		fmt.Fprintf(&sb, "%s = EXCLUDED.%s", c, c)
-	}
-	res, err := pg.ExecContext(ctx, sb.String(), params...)
-	if err != nil {
-		return 0, fmt.Errorf("media backfill: upsert postgres media_assets: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
 }
 
 // backfillLocations streams SQLite asset_locations and upserts the mapped
