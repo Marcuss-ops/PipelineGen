@@ -233,10 +233,44 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	return output, nil
 }
 
+type FontPreset struct {
+	FontName string
+	FontSize int
+	Bold     int
+	Outline  float64
+	Shadow   int
+	MarginV  int
+}
+
+var defaultFontPresets = map[string]FontPreset{
+	"montserrat": {FontName: "Montserrat", FontSize: 54, Bold: 1, Outline: 3.5, Shadow: 2, MarginV: 32},
+	"impact":     {FontName: "Impact", FontSize: 58, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
+	"anton":      {FontName: "Anton", FontSize: 56, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
+	"bebas":      {FontName: "Bebas Neue", FontSize: 60, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
+	"roboto":     {FontName: "Roboto", FontSize: 52, Bold: 1, Outline: 3.0, Shadow: 2, MarginV: 32},
+}
+
+// ResolveFontPreset maps a style ID or preset name to standard typography parameters.
+func ResolveFontPreset(styleID string) FontPreset {
+	norm := strings.ToLower(strings.TrimSpace(styleID))
+	if strings.Contains(norm, "impact") {
+		return defaultFontPresets["impact"]
+	}
+	if strings.Contains(norm, "anton") {
+		return defaultFontPresets["anton"]
+	}
+	if strings.Contains(norm, "bebas") {
+		return defaultFontPresets["bebas"]
+	}
+	if strings.Contains(norm, "roboto") {
+		return defaultFontPresets["roboto"]
+	}
+	return defaultFontPresets["montserrat"]
+}
+
 // CompileASSContent is the canonical, deterministic ASS content generator
-// (single owner of ASS content generation — clip.render's subtitle compiler
-// and the durable materializer both consume this). Identical cues + style
-// ALWAYS produce identical bytes: no timestamps, no random identifiers, no
+// shared by the durable materializer and clip.render's subtitle compiler.
+// Identical cues + style ALWAYS produce identical bytes; it generates no
 // absolute paths. Fail-closed: empty cues are a typed error, never an
 // empty/placeholder ASS (speech recognition is never regenerated just to
 // build subtitles).
@@ -247,6 +281,7 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 	if styleID == "" {
 		styleID = "vidrush-default"
 	}
+	preset := ResolveFontPreset(styleID)
 	var sb strings.Builder
 	sb.WriteString("[Script Info]\n")
 	sb.WriteString("Title: PipelineGen Auto Subtitles\n")
@@ -257,7 +292,8 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 
 	sb.WriteString("[V4+ Styles]\n")
 	sb.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-	sb.WriteString(fmt.Sprintf("Style: %s,Arial,56,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,24,1\n\n", styleID))
+	sb.WriteString(fmt.Sprintf("Style: %s,%s,%d,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%.1f,%d,2,10,10,%d,1\n\n",
+		styleID, preset.FontName, preset.FontSize, preset.Bold, preset.Outline, preset.Shadow, preset.MarginV))
 
 	sb.WriteString("[Events]\n")
 	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")

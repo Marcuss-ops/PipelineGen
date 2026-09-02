@@ -374,8 +374,17 @@ func (c *Client) executeQuery(ctx context.Context, collection string, body map[s
 	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
 	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("query %q: %w", collection, err)
+		// Keep validation failures diagnosable without logging dense vectors or
+		// raw query text. The filter is a bounded, policy-generated object and
+		// is the part Qdrant parses when it reports a malformed condition.
+		filterJSON, _ := json.Marshal(body["filter"])
+		return nil, fmt.Errorf("query %q: %w (filter=%s)", collection, err, filterJSON)
 	}
 	defer resp.Body.Close()
-	return c.decodeSearchResults(resp)
+	results, err := c.decodeSearchResults(resp)
+	if err != nil {
+		filterJSON, _ := json.Marshal(body["filter"])
+		return nil, fmt.Errorf("query %q: %w (filter=%s)", collection, err, filterJSON)
+	}
+	return results, nil
 }

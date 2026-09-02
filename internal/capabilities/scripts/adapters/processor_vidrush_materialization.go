@@ -14,6 +14,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // VidRushMaterializationProcessor is the single acquisition boundary for
@@ -27,6 +28,16 @@ type VidRushMaterializationProcessor struct {
 	catalog   entitycatalog.Repository
 	metrics   VidRushTimingMetrics
 	sampler   scriptports.MediaSamplerPort
+	log       *zap.Logger
+}
+
+// WithLogger makes materialization failures observable in live runs without
+// changing the provider/finalizer ports or leaking infrastructure into them.
+func (p *VidRushMaterializationProcessor) WithLogger(log *zap.Logger) *VidRushMaterializationProcessor {
+	if p != nil {
+		p.log = log
+	}
+	return p
 }
 
 type vidRushMaterializedSegment struct {
@@ -180,9 +191,15 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	if err := requireVidRushEnabledProviders(plan, p.providers); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
+	if p.log != nil {
+		p.log.Info("VidRush materialization started", zap.String("segment_id", segment.SegmentID), zap.Int("candidates", len(segment.Assets.Candidates)), zap.Int("secondary_images", len(segment.Assets.SecondaryImages)), zap.String("mode", plan.MediaPlan.Materialization.Mode))
+	}
 	out, err := p.materializeOne(ctx, plan, segment)
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	if p.log != nil {
+		p.log.Info("VidRush materialization completed", zap.String("segment_id", segment.SegmentID), zap.Int("selected_images", len(out.result.Assets.SecondaryImages)), zap.Int("materialized_candidates", len(out.result.Assets.Candidates)), zap.Strings("warnings", out.warnings))
 	}
 	return out.result, nil
 }
@@ -272,6 +289,12 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		attempts := make(map[string]int, 3)
 		readyImages := 0
 		for _, candidate := range candidates {
+			// Materialized caches are shared across runs, so a cached artifact is
+			// untrusted with respect to the current scene. Never let a stale
+			// candidate from another segment enter selection or certification.
+			if owner := strings.TrimSpace(candidate.SegmentID); owner != "" && owner != strings.TrimSpace(segment.SegmentID) {
+				continue
+			}
 			isImage := candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration
 			catalogImage := p.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
 				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"))
@@ -309,26 +332,33 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 				continue
 			}
-			if key := vidRushCandidateIdentity(candidate); key != "" {
-				if cached, ok := vidrushMaterializedCache.Load(key); ok {
-					if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok && readyVidRushCandidate(persisted) {
+			refreshMaterialized := plan != nil && (plan.ForceRefresh || plan.MediaPlan.ForceRefreshAssets)
+			if !refreshMaterialized {
+				if key := vidRushCandidateIdentity(candidate); key != "" {
+					if cached, ok := vidrushMaterializedCache.Load(key); ok {
+						if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok &&
+							(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
+							readyVidRushCandidate(persisted) {
+							materialized = append(materialized, persisted)
+							if isImage {
+								readyImages++
+							}
+							continue
+						}
+					}
+					var persisted scriptpkg.SegmentAssetCandidate
+					if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "materialized", key, &persisted); cacheErr != nil {
+						warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache read %s: %v", key, cacheErr))
+					} else if hit &&
+						(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
+						readyVidRushCandidate(persisted) {
 						materialized = append(materialized, persisted)
+						vidrushMaterializedCache.Store(key, persisted)
 						if isImage {
 							readyImages++
 						}
 						continue
 					}
-				}
-				var persisted scriptpkg.SegmentAssetCandidate
-				if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "materialized", key, &persisted); cacheErr != nil {
-					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache read %s: %v", key, cacheErr))
-				} else if hit && readyVidRushCandidate(persisted) {
-					materialized = append(materialized, persisted)
-					vidrushMaterializedCache.Store(key, persisted)
-					if isImage {
-						readyImages++
-					}
-					continue
 				}
 			}
 			providerName := strings.ToLower(strings.TrimSpace(candidate.Provider))

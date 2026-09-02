@@ -11,6 +11,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 var vidRushArtlistSearchGate = make(chan struct{}, 1)
@@ -143,6 +144,14 @@ type VidRushProviderFanout struct {
 	cache   scriptports.VidRushCachePort
 	catalog entitycatalog.Repository
 	metrics VidRushMetrics
+	log     zap.Logger
+}
+
+func (f *VidRushProviderFanout) WithLogger(log *zap.Logger) *VidRushProviderFanout {
+	if f != nil && log != nil {
+		f.log = *log
+	}
+	return f
 }
 
 func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
@@ -462,6 +471,19 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: catalogFallback, err: err}
 						return
 					}
+					if f.log.Core() != nil {
+						f.log.Info("VidRush image candidates received", zap.String("segment_id", segmentID), zap.String("query", query), zap.Int("count", len(searched)), zap.String("first_asset_id", func() string {
+							if len(searched) > 0 {
+								return searched[0].AssetID
+							}
+							return ""
+						}()), zap.String("first_source_url", func() string {
+							if len(searched) > 0 {
+								return searched[0].SourceURL
+							}
+							return ""
+						}()))
+					}
 					providerResults := normalizeInternetImageCatalogResults(searched, query)
 					if catalogEligible && f.catalog != nil {
 						providerResults = filterPersonEntityImageCandidates(catalogIdentity, providerResults)
@@ -481,11 +503,12 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						results = []scriptpkg.SegmentAssetCandidate{}
 					}
 					if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
-						if releaseCatalog != nil {
-							releaseCatalog()
+						// The per-query cache is only a replay projection. Keep the
+						// live provider results and continue fan-out when that
+						// projection is unavailable.
+						if f.log.Core() != nil {
+							f.log.Warn("VidRush image query cache write failed; retaining live candidates", zap.String("query", query), zap.Error(cacheErr))
 						}
-						outcomes <- vidRushProviderOutcome{provider: "internet_images", err: cacheErr}
-						return
 					}
 				}
 				if releaseCatalog != nil {
@@ -520,8 +543,14 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				cacheStore(&vidrushImageCache, segmentCacheKeyStr, payload)
 			}
 			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
-				outcomes <- vidRushProviderOutcome{provider: "internet_images", err: cacheErr}
+				// Cache persistence is a projection, not the source of truth for
+				// provider discovery. Preserve the live candidates so a cache
+				// outage cannot erase usable media before materialization.
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: cacheErr}
 				return
+			}
+			if f.log.Core() != nil {
+				f.log.Info("VidRush image fanout merged candidates", zap.String("segment_id", segmentID), zap.Int("count", len(candidates)))
 			}
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
 		}()

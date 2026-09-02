@@ -24,8 +24,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"path/filepath"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
@@ -171,6 +173,8 @@ type LocalizeInput struct {
 	// (color, size, shadow, transition) into the sealed render plan.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
 
+	ForegroundScalePercent int
+
 	// Request is the ordered language fan-out + render concurrency.
 	Request localization.LocalizationRequest
 
@@ -215,22 +219,23 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 	}
 
 	sourceInput := localization.SourceInput{
-		JobID:             in.JobID,
-		SceneID:           in.SceneID,
-		AssetID:           facts.AssetID,
-		ClipID:            in.ClipID,
-		SourceLanguage:    sourceLanguage,
-		SourceSHA256:      facts.SHA256,
-		DurationMS:        facts.DurationMS,
-		OutputProfileHash: s.cfg.OutputProfileHash,
-		RendererVersion:   s.cfg.RendererVersion,
-		SubtitleStyleHash: s.cfg.SubtitleStyleHash,
-		Watermark:         in.Watermark,
-		WatermarkSpec:     in.WatermarkSpec,
-		WatermarkText:     in.WatermarkText,
-		Background:        in.Background,
-		BackgroundMode:    in.BackgroundMode,
-		SubtitlesStyle:    in.SubtitlesStyle,
+		JobID:                  in.JobID,
+		SceneID:                in.SceneID,
+		AssetID:                facts.AssetID,
+		ClipID:                 in.ClipID,
+		SourceLanguage:         sourceLanguage,
+		SourceSHA256:           facts.SHA256,
+		DurationMS:             facts.DurationMS,
+		OutputProfileHash:      s.cfg.OutputProfileHash,
+		RendererVersion:        s.cfg.RendererVersion,
+		SubtitleStyleHash:      s.resolveSubtitleStyleHash(in.SubtitlesStyle),
+		Watermark:              in.Watermark,
+		WatermarkSpec:          in.WatermarkSpec,
+		WatermarkText:          in.WatermarkText,
+		Background:             in.Background,
+		BackgroundMode:         in.BackgroundMode,
+		ForegroundScalePercent: in.ForegroundScalePercent,
+		SubtitlesStyle:         in.SubtitlesStyle,
 	}
 
 	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)
@@ -250,6 +255,17 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		SkipDocument:           in.SkipDocument,
 		Plans:                  plans,
 	})
+}
+
+func (s *LocalizationService) resolveSubtitleStyleHash(style *scriptpkg.VideoVisualStyleSpec) string {
+	if s == nil || style == nil || strings.TrimSpace(style.Font) == "" {
+		if s != nil && s.cfg.SubtitleStyleHash != "" {
+			return s.cfg.SubtitleStyleHash
+		}
+		return LocalizationSubtitleStyleHash
+	}
+	font := strings.ToLower(strings.TrimSpace(style.Font))
+	return fmt.Sprintf("%s-%s", LocalizationSubtitleStyleHash, font)
 }
 
 // UploadRendered republishes a locally certified artifact without invoking

@@ -103,7 +103,12 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if cmd.Timing != nil {
 		timingPolicy = cmd.Timing.Normalized()
 	}
-	if u.deps.Cache.VoiceoverCache != nil {
+	// A cache hit contains durable audio metadata and timing links, but not
+	// the word-level SpeechTimingArtifact required by the in-memory script
+	// overlay compiler.  Until the cache port can hydrate that artifact,
+	// timing-bearing requests must execute the canonical synthesis/publish
+	// path so the exact artifact is returned with the audio result.
+	if u.deps.Cache.VoiceoverCache != nil && timingPolicy.Mode == audio.TimingDisabled {
 		fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
 		hit, lookupErr := u.deps.Cache.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
 		if lookupErr != nil {
@@ -253,7 +258,15 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// DriveFileID, DriveLink, DownloadLink, and Timing are NOT populated —
 	// they are committed to the DB by the async goroutine and become
 	// visible to downstream DB readers after the publish pool drains.
-	if u.deps.Cache.AsyncPublish != nil {
+	// The script-generation runner consumes the returned result immediately to
+	// compile phrase/entity overlays.  When timing is requested, returning
+	// StatusGenerated here would race that compiler with the background
+	// publish and silently drop the canonical SpeechTimingArtifact.  Timing is
+	// therefore a synchronous boundary: the caller receives the published
+	// artifact (or the required-timing error) before it can build a plan.
+	// Async publish remains valid for audio-only callers, where no downstream
+	// consumer needs timing at this boundary.
+	if u.deps.Cache.AsyncPublish != nil && timingPolicy.Mode == audio.TimingDisabled {
 		out.Status = StatusGenerated
 		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		observability.VoiceoverJobsTotal.WithLabelValues("generated").Inc()

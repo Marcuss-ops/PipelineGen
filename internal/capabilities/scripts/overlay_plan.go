@@ -337,7 +337,40 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	} else {
 		result.SemanticRenderBundle = bundle
 	}
+	// Keep the prepare input immutable: it may already be in flight while
+	// this final timing projection is being built.
+	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
+	freezeOverlayIntents(resolved, plan.Items)
+	result.ResolvedOverlayIntents = resolved
 	return nil
+}
+
+// freezeOverlayIntents promotes the pre-timing authoring bindings to the
+// same certified timing/preset/asset facts emitted by OverlayPlan. The plan
+// remains the renderer input; this projection keeps the persisted intent
+// surface honest at the render boundary (no PENDING intents after lowering).
+func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) {
+	for i := range intents {
+		intent := &intents[i]
+		for _, item := range items {
+			matches := intent.SceneID == item.SceneID
+			if intent.Source == capabilityoverlay.IntentSourceEntity {
+				matches = matches && intent.Entity.CanonicalName == item.Text
+			} else {
+				matches = matches && intent.SourceText == item.Text
+			}
+			if !matches {
+				continue
+			}
+			intent.PresetID = item.PresetID
+			intent.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
+			intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
+			intent.StartMs = item.StartMs
+			intent.EndMs = item.EndMs
+			intent.TimingState = capabilityoverlay.TimingStateFrozen
+			break
+		}
+	}
 }
 
 // overlaySceneInput projects ONE real scene onto the planner's neutral

@@ -194,8 +194,8 @@ func TestScriptVoiceoverGenerator_CommandShape(t *testing.T) {
 	assert.Equal(t, "Hello world", exec.gotCmd.Text)
 	assert.Equal(t, voiceover.Language("en"), exec.gotCmd.Language)
 	assert.Equal(t, voiceover.ComputeTextHash("Hello world"), exec.gotCmd.TextHash)
-	assert.True(t, exec.gotCmd.RemoveSilence,
-		"RemoveSilence must be enabled for canonical Edge TTS cleanup")
+	assert.False(t, exec.gotCmd.RemoveSilence,
+		"per-scene word timing must not be invalidated by silence cleanup without an edit map")
 	require.NotNil(t, exec.gotCmd.Timing)
 	assert.Equal(t, capabilityaudio.TimingBestEffort, exec.gotCmd.Timing.Mode)
 	assert.Equal(t, capabilityaudio.BoundaryWord, exec.gotCmd.Timing.BoundaryMode)

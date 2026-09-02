@@ -170,7 +170,11 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// Canonical Edge cleanup: remove every silence run longer than 800 ms
 		// in the post-TTS media stage. The cleaned duration is propagated back
 		// into the scene timing before the script artifact is published.
-		RemoveSilence: true,
+		// Word boundaries are captured from the exact synthesized bytes.
+		// Do not trim this per-scene asset here: without an edit map the
+		// cleanup would invalidate the canonical timing artifact before the
+		// script runner lowers overlays.
+		RemoveSilence: false,
 		Strategy:      asset.StrategyVerify,
 	}
 	// Destination is the caller-explicit voiceover folder threaded verbatim

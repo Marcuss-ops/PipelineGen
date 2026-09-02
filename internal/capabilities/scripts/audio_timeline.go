@@ -227,9 +227,10 @@ func ValidateChunkedVoiceovers(result GenerateResult) error {
 // compilation: timeline build, clip/voiceover audio asset preparation, and
 // final audio plan compile. It feeds the durable AudioPipelineMetrics fields.
 type AudioCompileTimings struct {
-	TimelineCompileMS  int64
-	ClipAudioPrepareMS int64
-	AudioPlanCompileMS int64
+	AudioAssetResolveMS int64
+	TimelineCompileMS   int64
+	ClipAudioPrepareMS  int64
+	AudioPlanCompileMS  int64
 }
 
 // CompileCanonicalAudioPlan is the timing-insensitive spelling of

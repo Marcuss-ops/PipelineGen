@@ -58,9 +58,6 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		}
 		seen[in.Index] = struct{}{}
 		scene := &input.SpecScene.Scenes[in.Index]
-		if !scene.AllowsMediaReplacement() {
-			continue
-		}
 		if strings.TrimSpace(in.SceneID) != "" && in.SceneID != scene.ID {
 			return nil, fmt.Errorf("%w: stock binding index %d targets scene_id %q, want %q", scriptpkg.ErrPostprocessFailed, in.Index, in.SceneID, scene.ID)
 		}
@@ -81,6 +78,9 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		}
 		if in.StartMs < 0 || in.EndMs <= in.StartMs {
 			return nil, fmt.Errorf("%w: stock binding index %d requires end_ms > start_ms", scriptpkg.ErrPostprocessFailed, in.Index)
+		}
+		if !scene.AllowsMediaReplacement() {
+			return nil, fmt.Errorf("%w: stock binding index %d targets protected fixed_media scene %q", scriptpkg.ErrPostprocessFailed, in.Index, scene.ID)
 		}
 		driveLink := strings.TrimSpace(in.DriveLink)
 		assetID := strings.TrimSpace(in.AssetID)
@@ -169,10 +169,13 @@ func explicitSegmentTextNeedsRepair(text string, segment scriptpkg.ScriptSegment
 	if strings.TrimSpace(segment.SourceText) == "" {
 		return strings.TrimSpace(text) == ""
 	}
+	// source_text is an editorial brief, not a minimum narration length.
+	// Any non-empty generated narration is authoritative; replacing it based
+	// on a universal word threshold can speak the brief verbatim (for example
+	// "Explain ..." / "Focus on ...") and leak authoring instructions into
+	// TTS. Recovery is limited to an empty result or explicit cross-segment
+	// contamination checks below.
 	body := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(text)), " "))
-	if len(strings.Fields(body)) < 100 {
-		return true
-	}
 	primary := strings.ToLower(strings.TrimSpace(segment.Topic))
 	if strings.Contains(segment.ID, "boxer-") && primary != "" && !strings.Contains(body, primary) {
 		return true

@@ -58,6 +58,9 @@ type SourceInput struct {
 	Background     *cliprender.MaterializedAsset
 	BackgroundMode string
 
+	// ForegroundScalePercent scales the foreground video clip (1..100).
+	ForegroundScalePercent int
+
 	// SubtitlesStyle is the caller's subtitle visual override block.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
 }
@@ -151,29 +154,30 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 		}
 
 		plan := LocalizedClipPlan{
-			Version:           LocalizedClipPlanVersion,
-			JobID:             jobID,
-			SceneID:           source.SceneID,
-			ClipID:            clipID,
-			SourceAssetID:     source.AssetID,
-			SourceSHA256:      source.SourceSHA256,
-			SourceLanguage:    source.SourceLanguage,
-			TargetLanguage:    lang,
-			TranscriptTrackID: transcript.TrackID,
-			TranscriptSHA256:  transcript.SHA256,
-			SubtitleTrackID:   subtitle.TrackID,
-			SubtitleSHA256:    subtitle.SHA256,
-			SubtitleStyleHash: source.SubtitleStyleHash,
-			DurationMS:        source.DurationMS,
-			OutputProfileHash: source.OutputProfileHash,
-			RendererVersion:   source.RendererVersion,
-			Priority:          lr.Priority,
-			Watermark:         source.Watermark,
-			WatermarkSpec:     source.WatermarkSpec,
-			WatermarkText:     source.WatermarkText,
-			Background:        source.Background,
-			BackgroundMode:    source.BackgroundMode,
-			SubtitlesStyle:    source.SubtitlesStyle,
+			Version:                LocalizedClipPlanVersion,
+			JobID:                  jobID,
+			SceneID:                source.SceneID,
+			ClipID:                 clipID,
+			SourceAssetID:          source.AssetID,
+			SourceSHA256:           source.SourceSHA256,
+			SourceLanguage:         source.SourceLanguage,
+			TargetLanguage:         lang,
+			TranscriptTrackID:      transcript.TrackID,
+			TranscriptSHA256:       transcript.SHA256,
+			SubtitleTrackID:        subtitle.TrackID,
+			SubtitleSHA256:         subtitle.SHA256,
+			SubtitleStyleHash:      source.SubtitleStyleHash,
+			DurationMS:             source.DurationMS,
+			OutputProfileHash:      source.OutputProfileHash,
+			RendererVersion:        source.RendererVersion,
+			Priority:               lr.Priority,
+			Watermark:              source.Watermark,
+			WatermarkSpec:          source.WatermarkSpec,
+			WatermarkText:          source.WatermarkText,
+			Background:             source.Background,
+			BackgroundMode:         source.BackgroundMode,
+			ForegroundScalePercent: source.ForegroundScalePercent,
+			SubtitlesStyle:         source.SubtitlesStyle,
 		}
 		plan.Fingerprint = Fingerprint(plan)
 		if err := plan.Validate(); err != nil {

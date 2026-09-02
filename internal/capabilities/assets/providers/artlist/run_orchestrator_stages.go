@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"os"
 	"strings"
 	"sync"
 
@@ -83,6 +84,14 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			LocalPath:     defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
 			LegacyFileMD5: defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
 			Metadata:      cloneMetadata(clip.Metadata),
+		}
+		// A durable Drive hit is enough to skip reacquisition, but a stale
+		// local_path must never be returned as if the file were still usable.
+		// The response remains honest about the available location.
+		if item.LocalPath != "" {
+			if _, statErr := os.Stat(item.LocalPath); statErr != nil {
+				item.LocalPath = ""
+			}
 		}
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
 		item.Name = defaults.String(item.Name, clip.Name)

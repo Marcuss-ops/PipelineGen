@@ -110,6 +110,10 @@ type GenerateResult struct {
 	// enabling overlay.prepare to start template resolution and asset
 	// prefetch in parallel with TTS. Empty when no entities were extracted.
 	OverlayIntents []capabilityoverlay.OverlayIntent `json:"overlay_intents,omitempty"`
+	// ResolvedOverlayIntents is the render-boundary projection of the same
+	// intents after certified timing, preset and asset lowering. The original
+	// OverlayIntents remains immutable for the parallel overlay.prepare stage.
+	ResolvedOverlayIntents []capabilityoverlay.OverlayIntent `json:"resolved_overlay_intents,omitempty"`
 
 	// EditingTimeline is the canonical editing projection built from frozen
 	// facts (CanonicalTimeline + FinalAudio + OverlayPlan + EntityTimeline).

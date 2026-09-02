@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	chrononSchema     = "chronon.render-plan"
-	chrononVersion    = 1
+	chrononSchema     = "chronon.render-plan.v2"
+	chrononVersion    = 2
 	chrononFont       = "fonts/DejaVuSans.ttf"
 	chrononOutputPath = "chronon.mp4"
 	// Subtitle safe-area: the burned box spans the canvas minus a 48px side
@@ -61,6 +61,7 @@ type chrononOutput struct {
 
 type chrononLayer struct {
 	Animation      *chrononAnimation       `json:"animation,omitempty"`
+	Asset          string                  `json:"asset,omitempty"`
 	Background     *chrononLayerBackground `json:"background,omitempty"`
 	BoxHeight      float64                 `json:"box_height,omitempty"`
 	BoxWidth       float64                 `json:"box_width,omitempty"`
@@ -73,6 +74,8 @@ type chrononLayer struct {
 	ID             string                  `json:"id"`
 	Opacity        *float64                `json:"opacity,omitempty"`
 	Position       []int                   `json:"position,omitempty"`
+	Scale          []float64               `json:"scale,omitempty"`
+	Size           []int                   `json:"size,omitempty"`
 	Source         string                  `json:"source,omitempty"`
 	StartFrame     int                     `json:"start_frame"`
 	Style          *chrononLayerStyle      `json:"style,omitempty"`
@@ -160,6 +163,25 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 			plan.Background.Mode)
 	}
 
+	scalePercent := plan.Output.ForegroundScalePercent
+	if scalePercent <= 0 || scalePercent > 100 {
+		scalePercent = 100
+	}
+
+	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset &&
+		strings.TrimSpace(plan.Background.Path) != "" {
+		bg := chrononLayer{
+			ID:             "background",
+			Type:           "image",
+			Asset:          "background" + filepath.Ext(plan.Background.Path),
+			Source:         "background" + filepath.Ext(plan.Background.Path),
+			Fit:            "cover",
+			StartFrame:     0,
+			DurationFrames: frames,
+		}
+		rp.Layers = append(rp.Layers, bg)
+	}
+
 	video := chrononLayer{
 		ID:             "video",
 		Type:           "video",
@@ -174,6 +196,12 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 			Asset: "background" + filepath.Ext(plan.Background.Path),
 			Fit:   "cover",
 		}
+	}
+	if scalePercent != 100 {
+		s := float64(scalePercent) / 100.0
+		video.Scale = []float64{s, s}
+		video.Size = []int{int(float64(plan.Output.Width) * s), int(float64(plan.Output.Height) * s)}
+		video.Position = []int{0, 0}
 	}
 	rp.Layers = append(rp.Layers, video)
 

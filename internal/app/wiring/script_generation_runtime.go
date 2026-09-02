@@ -130,11 +130,13 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 
 	executor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	visualNER, err := rustexec.NewVisualNERAdapter(executor)
+	visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
+	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
+	visualNER, err := rustexec.NewVisualNERAdapter(visualNERExecutor)
 	if err != nil {
 		return nil, fmt.Errorf("build VisualNER adapter: %w", err)
 	}
-	mediaSampler, err := rustexec.NewMediaSamplerAdapter(executor)
+	mediaSampler, err := rustexec.NewMediaSamplerAdapter(mediaSamplerExecutor)
 	if err != nil {
 		return nil, fmt.Errorf("build MediaSampler adapter: %w", err)
 	}
@@ -278,7 +280,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			vidRushCache,
 			entityImageCatalogRepo,
 			vidRushMetrics,
-		)
+		).WithLogger(log)
 	}
 	// The materialization stage (acquire → verify → finalize) is wired through
 	// the same processor the batch flow registers, so the incremental
@@ -289,7 +291,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler)
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithLogger(log)
 	}
 	pipeline := &scriptgen.VidRushPipeline{
 		// SceneIRSegmentEnricher is constructed by Runner.beginVidRush from
@@ -299,7 +301,8 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		Materializer:     vidRushMaterializer,
 		Metrics:          vidRushMetrics,
 		PlanResolver: scriptgen.VidRushPlanResolverFunc(func(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
-			return root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
+			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
+			return plan, err
 		}),
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
 		NERPort:      visualNER,

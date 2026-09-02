@@ -106,6 +106,21 @@ func TestSearchDDGWideManyFollowsContinuationURL(t *testing.T) {
 	}
 }
 
+func TestSearchDDGWideManyRepairsSingleSlashScheme(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `<script>vqd="12345-678"</script>`
+		if req.URL.Path == "/i.js" {
+			body = `{"results":[{"image":"https:/images.example/repaired.jpg","width":1920,"height":1080}]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+	got := service.searchDDGWideMany(context.Background(), "repaired url", 1)
+	if len(got) != 1 || got[0] != "https://images.example/repaired.jpg" {
+		t.Fatalf("repaired DDG URL = %#v, want absolute URL", got)
+	}
+}
+
 type commonsRESTRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f commonsRESTRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {

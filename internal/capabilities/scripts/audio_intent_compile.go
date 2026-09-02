@@ -30,8 +30,9 @@ import (
 // the sealed plan plus the resolved asset table the renderer consumes
 // alongside it.
 type AudioIntentCompileResult struct {
-	Plan   audio.CompiledAudioPlan
-	Assets audio.ResolvedAudioAssets
+	Plan                audio.CompiledAudioPlan
+	Assets              audio.ResolvedAudioAssets
+	AudioAssetResolveMS int64
 }
 
 // CompileAudioWithIntents compiles the audio intent block (BGM + SFX)
@@ -57,6 +58,7 @@ func CompileAudioWithIntents(
 	}
 
 	// 1. Asset resolution: asset_ids → paths + certified durations.
+	assetResolveStarted := time.Now()
 	assetResolver, err := NewAudioAssetResolver(source)
 	if err != nil {
 		return fail(err)
@@ -65,6 +67,9 @@ func CompileAudioWithIntents(
 	if err != nil {
 		return fail(err)
 	}
+	// This timing is returned through the canonical compile result so the
+	// resolver boundary remains distinct from plan compilation.
+	assetResolveMS := time.Since(assetResolveStarted).Milliseconds()
 	durationByID := make(map[string]int64, len(assets))
 	for _, a := range assets {
 		durationByID[a.AssetID] = a.DurationUS
@@ -138,7 +143,7 @@ func CompileAudioWithIntents(
 	if err != nil {
 		return fail(err)
 	}
-	return AudioIntentCompileResult{Plan: plan, Assets: assets}, nil
+	return AudioIntentCompileResult{Plan: plan, Assets: assets, AudioAssetResolveMS: assetResolveMS}, nil
 }
 
 // CompileCanonicalAudioPlanAudioOnlyWithIntents is the audio-compile entry
@@ -177,6 +182,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	planStarted := time.Now()
 	compiled, err := CompileAudioWithIntents(ctx, timeline, profile, policy, bgm, sfx, source)
 	timings.AudioPlanCompileMS = time.Since(planStarted).Milliseconds()
+	timings.AudioAssetResolveMS = compiled.AudioAssetResolveMS
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
 	}

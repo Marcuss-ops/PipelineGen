@@ -132,12 +132,9 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 			// Older clip projections use media_type=clip; the current
 			// canonical media registry uses media_type=video. Both are
 			// video clip evidence and must enter the same hydration gate.
-			"should": map[string]any{
-				"conditions": []any{
-					map[string]any{"key": "media_type", "match": map[string]any{"value": "clip"}},
-					map[string]any{"key": "media_type", "match": map[string]any{"value": "video"}},
-				},
-				"min_count": 1,
+			"should": []any{
+				map[string]any{"key": "media_type", "match": map[string]any{"value": "clip"}},
+				map[string]any{"key": "media_type", "match": map[string]any{"value": "video"}},
 			},
 			// Clip evidence is indexed as ACTIVE while stock/media
 			// projections are commonly PUBLISHED. Keep the source

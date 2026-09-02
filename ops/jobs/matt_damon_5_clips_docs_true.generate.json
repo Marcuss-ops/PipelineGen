@@ -1,7 +1,6 @@
 {
   "version": 2,
   "preset": "custom",
-  "project": "matt-damon-5-clips-docs-true",
   "correlation_id": "matt-damon-5-clips-docs-true",
   "force_refresh": true,
   "items": [

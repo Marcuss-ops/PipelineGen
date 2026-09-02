@@ -460,8 +460,15 @@ func ruleQueryOwnership(spec Spec, result MediaResult) CheckResult {
 		for _, q := range seg.Insights.ImageQueries {
 			checkQuery(q, false)
 		}
-		for _, q := range seg.Insights.ArtlistQueries {
-			checkQuery(q, true)
+		// Artlist queries are an ownership contract only when the resolved
+		// media plan actually allows Artlist video. In image-only runs a model
+		// may still populate the optional legacy Artlist projection; treating
+		// those unused strings as globally unique would reject valid shared
+		// ingredient queries such as "olive oil".
+		if spec.VideoProvider == script.VidRushProviderArtlist {
+			for _, q := range seg.Insights.ArtlistQueries {
+				checkQuery(q, true)
+			}
 		}
 		if !drift {
 			pass++
