@@ -26,9 +26,9 @@ const (
 	// StageClipSubtitles is the deterministic ASS compile phase (burn-in
 	// artifact). Recorded only when subtitles are enabled.
 	StageClipSubtitles kernobs.StageName = "clip.subtitles"
-	// StageClipRender is the Rust render_clip boundary (backend selection +
+	// StageClipRender is the RenderingGen/Chronon render boundary (queue +
 	// single-pass render). Its wall includes the whole renderer port call;
-	// the rust.render_clip operation carries the accumulated work.
+	// the chronon.render_clip operation carries the accumulated work.
 	StageClipRender kernobs.StageName = "clip.render"
 	// StageClipProbe is the post-render byte certification (probe + exact
 	// contract validation). Part of the render-side serial chain.

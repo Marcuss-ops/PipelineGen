@@ -112,3 +112,26 @@ test-qdrant-fixtures:
 # test-qdrant-fixtures-down: Tear down the test Qdrant container.
 # Use this to clean up after a failed/aborted test run.
 test-qdrant-fixtures-down:
+
+# test-postgres: Run the PostgreSQL media-domain parity suite against an
+# ephemeral PostgreSQL 18 + pgvector container (pgvector/pgvector:pg18).
+# Mirrors the test-qdrant-fixtures flow: up --wait → go test → down.
+# The suite skips (never fakes availability) when the container is absent.
+test-postgres:
+	@echo "→ Starting ephemeral PostgreSQL 18 + pgvector on port 16432..."
+	docker compose -f docker-compose.test-postgres.yml up -d --wait 2>/dev/null || \
+		docker compose -f docker-compose.test-postgres.yml up -d
+	@echo "→ Running PostgreSQL media parity tests..."
+	TEST_POSTGRES_DSN="postgres://pipelinegen:pipelinegen@localhost:16432/pipelinegen_media_test?sslmode=disable" \
+		$(GO) test -count=1 -v ./internal/platform/postgres/media/ || \
+		(echo "→ Tests failed — tearing down PostgreSQL..."; \
+		 docker compose -f docker-compose.test-postgres.yml down --volumes 2>/dev/null; \
+		 exit 1)
+	@echo "→ Tests passed — tearing down PostgreSQL..."
+	docker compose -f docker-compose.test-postgres.yml down --volumes 2>/dev/null
+	@echo "✅ test-postgres OK"
+
+# test-postgres-down: Tear down the test PostgreSQL container.
+# Use this to clean up after a failed/aborted test run.
+test-postgres-down:
+	docker compose -f docker-compose.test-postgres.yml down --volumes 2>/dev/null

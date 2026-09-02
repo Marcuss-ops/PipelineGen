@@ -6,13 +6,19 @@
 package renderinggen
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
 )
 
@@ -147,6 +153,8 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		HashMS:             metricMillisEither(in.Metrics, "sha256_ms", "sha256_us"),
 		UploadMS:           metricMillisEither(in.Metrics, "objectstore_upload_ms", "objectstore_upload_us"),
 		DrivePublishMS:     metricMillisEither(in.Metrics, "drive_publish_ms", "drive_upload_us"),
+		Backend:            in.Backend,
+		ChrononVersion:     in.ChrononVersion,
 		DriveFileID:        in.DriveFileID,
 		DriveLink:          in.DriveLink,
 	}
@@ -184,8 +192,10 @@ type ClipRenderQueue interface {
 	Get(context.Context, string) (scriptgen.RenderQueueJob, error)
 }
 
-// ClipRenderExecutor submits one complete clip segment to RenderingGen. It
-// never invokes Rust or Chronon locally and fails closed on missing artifacts.
+// ClipRenderExecutor submits one complete clip segment to RenderingGen. The
+// RenderingGen worker is the sole clip-rendering boundary; it lowers the
+// semantic plan and executes it with Chronon. This client never invokes a
+// local renderer and fails closed on missing or non-Chronon artifacts.
 type ClipRenderExecutor struct {
 	queue    ClipRenderQueue
 	interval time.Duration
@@ -224,7 +234,13 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	// Build hash-addressed asset refs. LogicalPath uses the content-addressed
 	// object-store key so remote RenderingGen workers can materialise each
 	// asset by hash — local VPS paths are never forwarded to the queue.
-	refs := overlayPlanAssets(plan)
+	refs, err := overlayPlanAssets(plan)
+	if err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: asset refs: %w", err)
+	}
+	if err := prefetchClipAssets(ctx, plan, refs); err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: prefetch assets: %w", err)
+	}
 	assets := make([]queueclient.AssetRef, len(refs))
 	for i, r := range refs {
 		assets[i] = queueclient.AssetRef{Hash: r.Hash, LogicalPath: r.LogicalPath}
@@ -243,7 +259,68 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	if a.SHA256 == "" || a.SizeBytes <= 0 || a.URL == "" {
 		return nil, fmt.Errorf("renderinggen clip executor: job %s returned incomplete artifact certification", plan.RunID)
 	}
-	return &cliprender.RenderOutcome{OutputPath: a.URL, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.BackendChrononVulkan, AudioCopyEligible: boolPtr(a.CopyEligible), VideoZeroCopy: boolPtr(true), Metrics: cliprender.NewRenderMetricsV2()}, nil
+	if a.Backend != string(cliprender.BackendChrononVulkan) {
+		return nil, fmt.Errorf("renderinggen clip executor: job %s rendered with backend %q; clip.render requires Chronon (%s)", plan.RunID, a.Backend, cliprender.BackendChrononVulkan)
+	}
+	// VideoZeroCopy stays nil unless RenderingGen/Chronon explicitly
+	// certifies it. PipelineGen must never infer this property from backend
+	// identity; require_zero_copy therefore fails closed when certification is
+	// absent.
+	return &cliprender.RenderOutcome{OutputPath: a.URL, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.RenderBackend(a.Backend), AudioCopyEligible: boolPtr(a.CopyEligible), Metrics: cliprender.NewRenderMetricsV2()}, nil
+}
+
+// prefetchClipAssets publishes the already-resolved local assets to the
+// content-addressed RenderingGen object store. The queue carries hashes, not
+// VPS paths; without this boundary a remote/native worker cannot materialize
+// the source and subtitle files. This is deliberately before enqueue so a
+// job is never claimed with an incomplete asset set.
+func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, refs []assetRef) error {
+	store := strings.TrimRight(os.Getenv("RENDERINGGEN_STORE_URL"), "/")
+	if store == "" {
+		store = "http://127.0.0.1:9000"
+	}
+	paths := map[string]string{plan.Source.SHA256: plan.Source.Path}
+	if font, err := watermarkFontAsset(); err == nil {
+		paths[font.Hash] = font.LocalPath
+	}
+	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
+		paths[plan.Background.SHA256] = plan.Background.Path
+	}
+	if plan.Subtitles != nil {
+		paths[plan.Subtitles.SHA256] = plan.Subtitles.Path
+	}
+	if plan.Watermark != nil && plan.Watermark.SHA256 != "" {
+		paths[plan.Watermark.SHA256] = plan.Watermark.Path
+	}
+	for _, ref := range refs {
+		path := paths[ref.Hash]
+		if path == "" {
+			return fmt.Errorf("asset %s has no resolved local path", ref.Hash)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		got := digest.SHA256Bytes(data)
+		if !strings.EqualFold(got, ref.Hash) {
+			return fmt.Errorf("asset hash mismatch for %s: got %s", path, got)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/"+ref.Hash, bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		req.ContentLength = int64(len(data))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("upload %s: %w", ref.Hash, err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("upload %s: HTTP %d", ref.Hash, resp.StatusCode)
+		}
+	}
+	return nil
 }
 
 func boolPtr(b bool) *bool { return &b }

@@ -276,7 +276,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
 		// Localized render fan-out: bridge the runner's per-(scene, language)
-		// trigger to the canonical LocalizationService (Rust render_clip) so a
+		// trigger to the canonical LocalizationService (RenderingGen/Chronon) so a
 		// clip starts rendering the moment its translation + TTS are ready.
 		// Best-effort: the fan-out stays a legitimate no-op when the
 		// localization stack (asset registry + Drive + text-track store) is

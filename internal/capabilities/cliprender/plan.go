@@ -1,10 +1,10 @@
 package cliprender
 
 // plan.go owns ClipRenderPlanV1 — the fully-resolved, sealed contract handed
-// to the Rust render boundary (feature spec §2). Every business selection
+// to the RenderingGen/Chronon render boundary (feature spec §2). Every business selection
 // (which watermark, which background, which subtitles, which codec, where the
 // output lands) is made HERE by PipelineGen before Rust is invoked; the Rust
-// operation (render_clip, follow-up step) only executes the plan verbatim.
+// operation only executes the plan verbatim.
 //
 // The plan is deterministic: the same resolved inputs always produce the same
 // sealed PlanSHA256. Validation is fail-closed — a drifted hash, a missing
@@ -107,11 +107,12 @@ type PlanAudio struct {
 }
 
 // ClipRenderPlanV1 is the canonical sealed render contract. It is the exact
-// JSON handed to the Rust boundary (render_clip). Rust makes NO business
+// JSON handed to the RenderingGen/Chronon boundary. Chronon makes NO business
 // selections: every field is final.
 type ClipRenderPlanV1 struct {
 	Version    string          `json:"version"`
 	RunID      string          `json:"run_id"`
+	DurationMS int64           `json:"duration_ms,omitempty"`
 	Source     PlanSource      `json:"source"`
 	Background *PlanBackground `json:"background,omitempty"`
 	Watermark  *PlanWatermark  `json:"watermark,omitempty"`
@@ -128,6 +129,7 @@ type ClipRenderPlanV1 struct {
 type CompileInput struct {
 	RunID          string
 	Source         *MaterializedAsset
+	DurationMS     int64
 	Watermark      *MaterializedAsset // nil when disabled
 	WatermarkSpec  *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
 	WatermarkText  string             // optional text watermark; no materialized asset is required
@@ -167,8 +169,9 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 	}
 
 	plan := ClipRenderPlanV1{
-		Version: PlanVersion,
-		RunID:   in.RunID,
+		Version:    PlanVersion,
+		RunID:      in.RunID,
+		DurationMS: in.DurationMS,
 		Source: PlanSource{
 			AssetID: in.Source.AssetID,
 			Path:    in.Source.LocalPath,

@@ -51,10 +51,9 @@ type ContractResolver interface {
 }
 
 // RenderOutcome is the typed result of executing a sealed ClipRenderPlanV1
-// through the Rust render_clip boundary (feature spec §6/§9). Every media
-// fact (duration, geometry, copy policy, CPU subtitle stage, native encode
-// wall time) comes from the Rust response metadata; the concrete adapter
-// never re-derives them.
+// through the RenderingGen/Chronon boundary. Every media fact (duration,
+// geometry, copy policy, subtitle stage and encode timing) comes from the
+// certified Chronon artifact; the concrete adapter never re-derives them.
 type RenderOutcome struct {
 	OutputPath  string
 	SizeBytes   int64
@@ -99,8 +98,8 @@ type RenderOutcome struct {
 	Metrics *RenderMetricsV2
 }
 
-// RenderExecutor executes the sealed ClipRenderPlanV1 in a single render
-// pass on the Rust boundary. The plan is fully resolved before this port is
+// RenderExecutor executes the sealed ClipRenderPlanV1 in a single Chronon
+// render pass through RenderingGen. The plan is fully resolved before this port is
 // invoked — the executor makes zero business selections. Fail-closed: the
 // output must exist and be non-empty on success; a missing or drifted
 // artifact is a typed error, never a silent no-op.

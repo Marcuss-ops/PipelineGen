@@ -2,7 +2,10 @@ package renderinggen
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -27,10 +30,17 @@ func (f *fakeClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJ
 
 func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 	t.Helper()
+	sourcePath := t.TempDir() + "/source.mp4"
+	sourceBytes := []byte("test source")
+	if err := os.WriteFile(sourcePath, sourceBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourceHash := fmt.Sprintf("%x", sha256.Sum256(sourceBytes))
 	plan := cliprender.ClipRenderPlanV1{
 		Version:    cliprender.PlanVersion,
 		RunID:      "clip-1",
-		Source:     cliprender.PlanSource{AssetID: "source-asset-001", Path: "/vps/local/source.mp4", SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		DurationMS: 1000,
+		Source:     cliprender.PlanSource{AssetID: "source-asset-001", Path: sourcePath, SHA256: sourceHash},
 		Background: &cliprender.PlanBackground{Mode: cliprender.BackgroundModeNone},
 		Output:     cliprender.PlanOutput{ContractID: "VELOX_ASSEMBLY_READY_V1", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1},
 		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
@@ -125,7 +135,10 @@ func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
 	if err := plan.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	refs := overlayPlanAssets(plan)
+	refs, err := overlayPlanAssets(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(refs) == 0 {
 		t.Fatal("no asset refs returned")
 	}
@@ -133,11 +146,11 @@ func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
 		if strings.HasPrefix(ref.LogicalPath, "/") {
 			t.Errorf("asset ref LogicalPath %q is a local path — must be hash-addressed (sha256/...)", ref.LogicalPath)
 		}
-		if !strings.HasPrefix(ref.LogicalPath, "sha256/") {
-			t.Errorf("asset ref LogicalPath %q does not start with sha256/", ref.LogicalPath)
+		if !strings.HasPrefix(ref.LogicalPath, "assets/semantic/") {
+			t.Errorf("asset ref LogicalPath %q is not a Chronon-mounted semantic path", ref.LogicalPath)
 		}
-		if !strings.Contains(ref.LogicalPath, ref.Hash) {
-			t.Errorf("asset ref LogicalPath %q does not contain hash %q", ref.LogicalPath, ref.Hash)
+		if !strings.Contains(ref.LogicalPath, "src/source.mp4") {
+			t.Errorf("asset ref LogicalPath %q does not contain the source identity", ref.LogicalPath)
 		}
 	}
 }
@@ -147,5 +160,19 @@ func TestClipRenderExecutorRejectsMissingCertifiedArtifact(t *testing.T) {
 	executor, _ := NewClipRenderExecutor(q)
 	if _, err := executor.Render(context.Background(), validClipPlan(t)); err == nil {
 		t.Fatal("expected missing artifact to fail closed")
+	}
+}
+
+func TestClipRenderExecutorRejectsNonChrononArtifact(t *testing.T) {
+	q := &fakeClipQueue{result: queueclient.Job{State: queueclient.StateCompleted, Artifact: &queueclient.Artifact{
+		ArtifactHash: "artifact-sha", ArtifactURL: "https://store/out.mp4", SizeBytes: 10,
+		Backend: "ffmpeg_fallback",
+	}}}
+	executor, err := NewClipRenderExecutor(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executor.Render(context.Background(), validClipPlan(t)); err == nil {
+		t.Fatal("expected non-Chronon artifact to fail closed")
 	}
 }

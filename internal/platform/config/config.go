@@ -174,6 +174,9 @@ func (c *Config) Validate() error {
 	if c == nil {
 		return nil
 	}
+	if err := c.MediaPostgreSQL.Validate(); err != nil {
+		return err
+	}
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}

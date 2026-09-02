@@ -29,6 +29,10 @@ const controlPlaneSQLWritesRule = "percheck_control_plane_sql_writes"
 // exemptions, so adding a new service cannot silently acquire write authority.
 var controlPlaneSQLCanonicalPrefixes = []string{
 	"internal/platform/sqlite/",
+	// PostgreSQL canonical media repository family (media-domain cutover,
+	// September 2026): the staged successor of the SQLite media surfaces,
+	// implementing the identical persistence.AssetCommitter port.
+	"internal/platform/postgres/media/",
 	"internal/platform/qdrant/indexing/clipindexer/indexing_api_persistence.go",
 	"internal/platform/qdrant/indexing/clipindexer/indexing_state.go",
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",

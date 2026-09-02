@@ -413,10 +413,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// closed in the worker; this wiring makes burn+sidecar always available.
 	worker.WithSubtitleCompiler(clipadapters.NewClipRenderSubtitleCompiler())
 
-	// Rust render boundary: shared executor + resolved media execution
+	// RenderingGen/Chronon render boundary: the shared executor owns queue
+	// submission; the remote worker owns Chronon execution.
 	// config (encoder policy + profile owned by the composition root, never
 	// by Rust). Fail-closed when the media config is missing, mirroring
-	// WireStockPipeline. The ClipRenderer is attached to the worker via the
+	// WireStockPipeline. The Chronon clip executor is attached to the worker via the
 	// RenderExecutor port; the render phase consumes it in the follow-up
 	// step (until then Handle fails closed with ErrRenderPhaseNotImplemented).
 	mediaConfig := root.MediaExec
@@ -482,9 +483,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
 	}
 
-	// Canonical worker binding: parallel preparation is real and runs on
-	// claimed jobs; the render phase still fails closed with the typed
-	// sentinel until the follow-up step lands render_clip.
+	// Canonical worker binding: parallel preparation and the Chronon-backed
+	// RenderingGen execution are real; missing execution wiring fails closed.
 	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(worker.Handle)); err != nil {
 		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
 	}

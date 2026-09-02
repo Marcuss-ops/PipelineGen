@@ -1,10 +1,44 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/storage"
 )
+
+// PostgreSQLMediaConfig configures the PostgreSQL + pgvector database that
+// owns the media domain. It is intentionally explicit: an empty DSN is not
+// interpreted as SQLite compatibility or a Qdrant fallback.
+type PostgreSQLMediaConfig struct {
+	Enabled                bool   `yaml:"enabled" env:"PIPELINEGEN_MEDIA_POSTGRES_ENABLED" default:"false"`
+	DSN                    string `yaml:"dsn" env:"PIPELINEGEN_MEDIA_POSTGRES_DSN" default:""`
+	MaxOpenConnections     int    `yaml:"max_open_connections" env:"PIPELINEGEN_MEDIA_POSTGRES_MAX_OPEN_CONNECTIONS" default:"10"`
+	MaxIdleConnections     int    `yaml:"max_idle_connections" env:"PIPELINEGEN_MEDIA_POSTGRES_MAX_IDLE_CONNECTIONS" default:"5"`
+	ConnMaxLifetimeSeconds int    `yaml:"conn_max_lifetime_seconds" env:"PIPELINEGEN_MEDIA_POSTGRES_CONN_MAX_LIFETIME_SECONDS" default:"300"`
+}
+
+// Validate enforces fail-closed PostgreSQL selection. The DSN is required
+// whenever media PostgreSQL is enabled; invalid pool settings are rejected.
+func (c PostgreSQLMediaConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(c.DSN) == "" {
+		return fmt.Errorf("media PostgreSQL is enabled but PIPELINEGEN_MEDIA_POSTGRES_DSN is empty")
+	}
+	if c.MaxOpenConnections <= 0 {
+		return fmt.Errorf("media PostgreSQL max_open_connections must be greater than zero")
+	}
+	if c.MaxIdleConnections < 0 || c.MaxIdleConnections > c.MaxOpenConnections {
+		return fmt.Errorf("media PostgreSQL max_idle_connections must be between 0 and max_open_connections")
+	}
+	if c.ConnMaxLifetimeSeconds < 0 {
+		return fmt.Errorf("media PostgreSQL conn_max_lifetime_seconds must not be negative")
+	}
+	return nil
+}
 
 type StorageConfig struct {
 	// DataDir is the root for ALL persisted data (DBs + blobs).
