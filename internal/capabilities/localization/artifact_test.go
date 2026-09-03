@@ -50,6 +50,7 @@ func TestLocalizedClipArtifact_JSONRoundTrip(t *testing.T) {
 		DurationMS:      8432,
 		VideoCodec:      "h264",
 		AudioCodec:      "aac",
+		Backend:         "chronon_vulkan",
 		DriveFileID:     "drive-file-1",
 		DriveLink:       "https://drive/...",
 		Status:          LocalizedClipUploaded,
@@ -68,7 +69,7 @@ func TestLocalizedClipArtifact_JSONRoundTrip(t *testing.T) {
 		"version", "job_id", "scene_id", "clip_id",
 		"language", "plan_fingerprint", "asset_id",
 		"local_path", "sha256", "size_bytes", "duration_ms",
-		"video_codec", "audio_codec",
+		"video_codec", "audio_codec", "backend",
 		"drive_file_id", "drive_link", "status",
 	}
 	for _, k := range wantKeys {

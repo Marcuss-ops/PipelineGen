@@ -347,6 +347,7 @@ type LocalizedRenderResult struct {
 	DurationMS  int64    `json:"duration_ms,omitempty"`
 	LocalPath   string   `json:"local_path,omitempty"`
 	Status      string   `json:"status"`
+	Backend     string   `json:"backend,omitempty"`
 	// Boundary timestamps let the parent distinguish summed child work from
 	// actual fan-out wall time when localized renders overlap.
 	StartedAt  time.Time `json:"started_at,omitempty"`

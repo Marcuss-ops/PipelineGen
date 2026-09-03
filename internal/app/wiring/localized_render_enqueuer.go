@@ -268,6 +268,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				DurationMS:  artifact.DurationMS,
 				LocalPath:   artifact.LocalPath,
 				Status:      string(artifact.Status),
+				Backend:     artifact.Backend,
 				StartedAt:   renderStartedAt,
 				FinishedAt:  renderFinishedAt,
 				WallMS:      renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
@@ -324,7 +325,7 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 			SceneID: published.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(published.Language),
 			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
 			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DurationMS: published.DurationMS,
-			LocalPath: published.LocalPath, Status: string(published.Status), StartedAt: staged.StartedAt,
+			LocalPath: published.LocalPath, Status: string(published.Status), Backend: published.Backend, StartedAt: staged.StartedAt,
 			FinishedAt: time.Now().UTC(),
 		})
 	}

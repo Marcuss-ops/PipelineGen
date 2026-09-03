@@ -140,7 +140,11 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	if err != nil {
 		return nil, err
 	}
-	locCols, locTypes, err := intersectColumns(ctx, sqliteDB, pg, "asset_locations", locationColumnAliases)
+	// asset_locations.id is a PostgreSQL-owned surrogate key.  The stable
+	// cross-engine reference is (asset_id, location_kind); copying SQLite's
+	// integer id would make an otherwise idempotent upsert collide with the
+	// PostgreSQL primary key when rows arrive in a different order.
+	locCols, locTypes, err := intersectColumns(ctx, sqliteDB, pg, "asset_locations", locationColumnAliases, "id")
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +226,7 @@ func postgresColumns(ctx context.Context, db *sql.DB, table string) ([]string, m
 // column that has a SQLite source (after applying the alias map), in
 // PostgreSQL order. Returns the projection and the PostgreSQL types of the
 // projected columns.
-func intersectColumns(ctx context.Context, sqliteDB, pg *sql.DB, table string, aliases map[string]string) ([]string, map[string]string, error) {
+func intersectColumns(ctx context.Context, sqliteDB, pg *sql.DB, table string, aliases map[string]string, excluded ...string) ([]string, map[string]string, error) {
 	sc, err := sqliteColumns(ctx, sqliteDB, table)
 	if err != nil {
 		return nil, nil, err
@@ -235,9 +239,16 @@ func intersectColumns(ctx context.Context, sqliteDB, pg *sql.DB, table string, a
 	for _, c := range sc {
 		sqliteSet[c] = true
 	}
+	excludedSet := make(map[string]bool, len(excluded))
+	for _, c := range excluded {
+		excludedSet[c] = true
+	}
 	var out []string
 	types := map[string]string{}
 	for _, pc1 := range pc {
+		if excludedSet[pc1] {
+			continue
+		}
 		matched := false
 		for sc1, pName := range aliases {
 			if pName == pc1 && sqliteSet[sc1] {

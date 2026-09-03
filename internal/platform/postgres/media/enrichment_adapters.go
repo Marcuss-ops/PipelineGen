@@ -111,7 +111,19 @@ func (a *FFMPEGKeyframeSamplerAdapter) ExtractPercentageFrames(ctx context.Conte
 	durationSec := summary.Duration.Seconds()
 	out := make([]KeyframeSample, 0, len(percentages))
 	for i, p := range percentages {
+		// Clamp the seek strictly inside the stream. A seek at (or past)
+		// the probed duration lands on EOF: ffmpeg exits 0 but decodes no
+		// frame, so the output file is never written and the caller would
+		// either fail downstream (features/visual backfill) or embed a
+		// stale file. uniformPercentages includes 1.0, so this clamp is
+		// the common case, not the exception.
 		ts := p * durationSec
+		if maxTS := durationSec - 0.05; ts > maxTS {
+			ts = maxTS
+		}
+		if ts < 0 {
+			ts = 0
+		}
 		framePath := filepath.Join(outDir, fmt.Sprintf("frame_%03d_%.0f.png", i, p*100))
 		cmd := exec.CommandContext(ctx, a.ffmpegBin,
 			"-hide_banner", "-loglevel", "error",
@@ -122,6 +134,11 @@ func (a *FFMPEGKeyframeSamplerAdapter) ExtractPercentageFrames(ctx context.Conte
 		)
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("ffmpeg keyframe sampler: frame %d (t=%.3fs) of %q: %w", i, ts, localPath, err)
+		}
+		// Fail closed on the silent no-output case (EOF seek, zero-frame
+		// stream): a missing file must never be reported as a sample.
+		if _, err := os.Stat(framePath); err != nil {
+			return nil, fmt.Errorf("ffmpeg keyframe sampler: frame %d (t=%.3fs) of %q produced no output file: %w", i, ts, localPath, err)
 		}
 		out = append(out, KeyframeSample{Path: framePath, Timestamp: ts, Percentage: p})
 	}

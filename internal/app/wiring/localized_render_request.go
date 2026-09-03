@@ -156,7 +156,10 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		DocTitle:               fmt.Sprintf("Localized — %s (%s)", built.identity.clipID, built.identity.targetLang),
 		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
 		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
-		WatermarkText: watermarkText(in), Background: built.background, BackgroundMode: built.backgroundMode,
+		// Use the resolved spec as the single source for text watermarks. This
+		// keeps the text overlay alive even when the compatibility block was
+		// promoted from output.watermark into output.render.watermark.
+		WatermarkText: watermarkTextFromSpec(built.watermarkSpec), Background: built.background, BackgroundMode: built.backgroundMode,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SubtitlesStyle:         subtitleStyle(in),
 		OnRendered: func(artifact localization.LocalizedClipArtifact) error {
@@ -170,6 +173,13 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 			})
 		},
 	}
+}
+
+func watermarkTextFromSpec(spec *cliprender.WatermarkSpec) string {
+	if spec == nil {
+		return ""
+	}
+	return spec.Text
 }
 
 func watermarkText(in scriptgeneration.LocalizedRenderInput) string {

@@ -30,6 +30,11 @@ func (f *fakeClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJ
 	return scriptgen.RenderQueueJob{State: string(f.result.State), Artifact: toScriptArtifact(f.result.Artifact)}, nil
 }
 
+func (f *fakeClipQueue) Retry(_ context.Context, _ string) error {
+	f.result.State = queueclient.StatePending
+	return nil
+}
+
 func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 	t.Helper()
 	sourcePath := t.TempDir() + "/source.mp4"
