@@ -161,8 +161,6 @@ google-accounting/profiles/
 # Local state and data
 storage/
 !internal/storage/
-!internal/application/assets/storage/
-!internal/api/assets/storage/
 .qdrant-initialized
 cookies.txt
 debug_output.txt
@@ -288,13 +286,6 @@ ci_full_output.txt
 /tmp/build.out
 /tmp/vet.out
 /tmp/test.out
-
-# ci/archcheck-hard-fail: E2E sentinel marker for scripts/ci-archcheck-e2e.sh.
-# The file is created + deleted by the E2E harness; if a run aborts
-# mid-step (SIGINT, OOM, runner network drop) the sentinel is left
-# orphaned on disk. gitignore it so subsequent CI + local pre-commit
-# runs do not see it as an unintended violation.
-internal/api/_dummy_archcheck_regression.go
 
 # Wave staging artefacts: temp splice blocks + python runners used by an
 # operator-only pipeline (e.g. `.wave23_piper.py`) to register a wave
