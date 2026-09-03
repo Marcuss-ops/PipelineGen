@@ -198,20 +198,16 @@ func TestHNSW_MediaSearcherPinsProductionFamily(t *testing.T) {
 		t.Fatalf("register semantic family: %v", err)
 	}
 
-	// No family registered for the visual channel → fail closed.
 	searcher := pgmedia.NewMediaSearcher(db)
-	if _, err := searcher.Search(ctx, pgmedia.SystemSearchRequest(make([]float32, hnswDim))); err == nil {
-		// text family IS registered — the fail-closed probe must use an
-		// unregistered channel instead.
-		t.Fatal("expected no error here (text family registered); probe logic error")
-	}
+
+	// No family registered for the visual channel → fail closed.
 	visualReq := pgmedia.SystemSearchRequest(make([]float32, hnswDim))
 	visualReq.VectorName = "visual"
 	if _, err := searcher.Search(ctx, visualReq); err == nil {
 		t.Fatal("expected fail-closed error when the channel has no registered family")
 	}
 
-	// Dimension mismatch → fail closed.
+	// Dimension mismatch on the registered text family → fail closed.
 	if _, err := searcher.Search(ctx, pgmedia.SystemSearchRequest(make([]float32, 4))); err == nil {
 		t.Fatal("expected fail-closed error for query vector dim != family dim")
 	}
