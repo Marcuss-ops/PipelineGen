@@ -10,7 +10,9 @@ User=pierone
 WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/Chronon3d
 RuntimeDirectory=chronon3d
 RuntimeDirectoryMode=0755
-ExecStart=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli daemon -s /run/chronon3d/chronon.sock -a /home/pierone/src/go-master/projects/Pyt/VeloxEditing/RenderingGen/testdata/golden --backend vulkan --gpu-device 0
+# The release tree is not installed on this host. Use the validated local
+# Chronon build; software is explicit because this host has no Vulkan backend.
+ExecStart=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/Chronon3d/build/chronon/linux-video-cutover-check/apps/chronon3d_cli/chronon3d_cli daemon -s /run/chronon3d/chronon.sock -a /home/pierone/src/go-master/projects/Pyt/VeloxEditing/RenderingGen/testdata/golden --backend software
 Restart=always
 RestartSec=2
 KillSignal=SIGTERM
