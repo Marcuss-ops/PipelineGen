@@ -9,7 +9,6 @@ vendor, node_modules, etc.) but in Python for CI freshness gate.
 Usage:
   python3 scripts/regen_hotspots.py          # regenerate in place
   python3 scripts/regen_hotspots.py --check  # fail if stale
-  python3 tools/regen_hotspots.py            # shim forwards here
 """
 from __future__ import annotations
 
