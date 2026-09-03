@@ -6,7 +6,7 @@
 //
 //   - payload_mapper.go            — slim orchestrator: struct +
 //     constructor + delegated methods +
-//     AssetToPoint + BuildPayload
+//     AssetToPoint
 //   - payload_mapper_validation.go — vector validation: getVectorForChannel,
 //     channelPolicy, classifyChannel,
 //     validateDenseVector, isNaNOrInf
@@ -146,45 +146,4 @@ func (m *PayloadMapper) AssetToPoint(ctx context.Context, asset *AssetData, sche
 		return nil, err
 	}
 	return m.IndexDocumentToPoint(doc, schema)
-}
-
-// BuildPayload constructs the Qdrant payload from an AssetData and schema.
-//
-// DEPRECATED (July 2026): zero production consumers — all callers route
-// through AssetToPoint → AssetToIndexDocument → IndexDocumentToPoint
-// (the canonical path with vector validation + SearchTextBuilder).
-// Retained for test backwards-compatibility only. Remove after 2026-08-15
-// if no new consumers emerge.
-//
-// PR 6 (refactor/qdrant-index-document): BuildPayload now delegates to
-// BuildPayloadFromDocument via the IndexDocument airlock so production
-// writes satisfy verdict §11 (OBSERVED provenance). The wire shape is
-// unchanged for legacy callers (assetToIndexDocumentNoValidate populates
-// EmbeddingArtifacts whose ModelVersion defaults to the schema value;
-// AssetData carries no separate observed source today).
-//
-// SearchTextBuilder integration: this is the package-level (no
-// mapper receiver) entry point — it does NOT call into the
-// SearchTextBuilder because it has no mapper receiver. This matches
-// the pre-mapper era intent: callers that go through BuildPayload
-// accept the asset.SearchText passthrough. Production callers go
-// through AssetToIndexDocument which IS mapper-receiver-bound and
-// DOES use the SearchTextBuilder.
-//
-// QDRANT-004 PR2 (June 2026): the canonical lifecycle key is
-// `lifecycle_state` (SSOT — matches media_assets.lifecycle_state in SQLite,
-// qdrant.schema.DefaultV3Schema().PayloadIndexes, and the search adapter
-// filter). The previous `status` key was a legacy alias from pre-QDRANT-004
-// ingest pipelines; it has been retired from the writer
-// (BuildPayloadFromDocument below), the reader (search_adapter,
-// clip_search_adapter), and the manifest (schema.DefaultV3Schema.PayloadIndexes).
-// One-shot migration of historical points is the QDRANT-005B
-// reconciler's repair path (target wave); until then legacy points carry
-// both keys and the reader falls through silently.
-//
-// QDRANT-001 (June 2026) closure: drive_link is NEVER in the payload;
-// the airlock strips it from AssetData.DriveLink → IndexDocument (no
-// field there) → wire.
-func BuildPayload(asset *AssetData, schema *schema.IndexSchema) map[string]any {
-	return BuildPayloadFromDocument(assetToIndexDocumentNoValidate(asset, schema), schema)
 }
