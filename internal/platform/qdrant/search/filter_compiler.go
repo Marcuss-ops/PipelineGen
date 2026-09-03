@@ -18,12 +18,6 @@
 //     that reads SearchScope.AssetFilter. Defence-in-depth:
 //     scope.IsSystem=true is the ONLY escape hatch from the
 //     workspace must-clause; everything else fails closed.
-//
-// Backward compatibility: the previous buildLifecycleAwareFilter
-// lives as a Deprecated thin shim that delegates here. New code
-// must call CompileQdrantFilter directly. The shim will be removed
-// in a follow-up PR once all call sites migrate (track under
-// "filter-compiler-migration" in the runbook).
 package search
 
 import (
