@@ -10,7 +10,6 @@ package media
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -20,9 +19,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ── Event-key + index-revision fingerprints (port of clip_metadata_writer_hashes.go) ──
@@ -54,8 +54,7 @@ func ComputeIndexRevision(contentHash string, textTracks []detail.TextTrack) str
 		}
 	}
 
-	h := sha256.Sum256([]byte(b.String()))
-	return fmt.Sprintf("%x", h)
+	return digest.SHA256String(b.String())
 }
 
 // BuildMetadataEventKey returns the canonical event_key for the metadata

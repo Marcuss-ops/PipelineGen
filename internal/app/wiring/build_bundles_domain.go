@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -24,14 +25,32 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
-	if outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil {
+	switch {
+	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil:
 		var err error
 		mutationsDisp, err = newMutationsDispatcherAdapter(outbox.Dispatcher)
 		if err != nil {
 			return nil, fmt.Errorf("compose domains: %w", err)
 		}
 		canonicalCommitter = outbox.CanonicalWriter
-	} else {
+	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter == nil:
+		// MEDIA DEMOLITION graceful degrade (September 2026): the canonical
+		// media writer is nil when the media PostgreSQL plane is NOT
+		// DEPLOYED (no DSN configured). The media + assets domains are
+		// media-SSOT writers by construction, so they cannot register;
+		// only the media-independent artifact store is wired.
+		// godlike/07: degraded is honest — the writer family no longer
+		// exists outside PostgreSQL, and a fake writer would not be.
+		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — media-dependent domain services (youtube clips, voiceover, images, ingest, autotag) NOT registered (graceful degrade, godlike/07)")
+		degraded := &DomainBundle{}
+		artifactBlobStore, artErr := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
+		if artErr != nil {
+			return nil, fmt.Errorf("compose domains: artifact blob store: %w", artErr)
+		}
+		artifactRepo := artifacts.NewSQLiteRepository(dbs.DualPool.Writer)
+		degraded.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
+		return degraded, nil
+	default:
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 

@@ -225,9 +225,9 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		}
 		if plan.Watermark.SHA256 != "" {
 			wm.AssetRefs = []overlayAssetRef{{
-					AssetID:   plan.Watermark.AssetID,
-					SHA256:    plan.Watermark.SHA256,
-					URL:       hashAddressedPath(plan.Watermark.SHA256, "watermark.png"),
+				AssetID:   plan.Watermark.AssetID,
+				SHA256:    plan.Watermark.SHA256,
+				URL:       hashAddressedPath(plan.Watermark.SHA256, "watermark.png"),
 				MediaType: "image/png",
 			}}
 		}

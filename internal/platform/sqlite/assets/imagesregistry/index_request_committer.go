@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -70,6 +71,56 @@ type IndexRequestCommitResult struct {
 	ExistingStatus string
 }
 
+// BuildIndexRequestEvent derives the canonical index-request event identity:
+// a fresh event_id (UUID), the provider-scoped idempotency event_key, and the
+// pgvector-envelope payload. It is the SINGLE source of truth for the event
+// shape: both the transactional emitter (CommitIndexRequestTx) and the
+// canonical-UoW command builder (asset_committer.go::buildAssetMutationCommand)
+// derive their outbox rows from it, so the two engines cannot drift.
+func BuildIndexRequestEvent(req IndexRequest) (eventID, eventKey string, payload []byte, err error) {
+	if req.AssetID == "" {
+		return "", "", nil, fmt.Errorf("asset committer: index request asset_id is required")
+	}
+	if req.SourceVersion == "" {
+		return "", "", nil, fmt.Errorf("asset committer: index request source_version is required")
+	}
+	if req.RequestedAt.IsZero() {
+		req.RequestedAt = time.Now()
+	}
+
+	eventID = uuid.NewString()
+	eventKey, err = idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested,
+		req.Source,
+		req.AssetID,
+		req.SourceVersion,
+	)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("asset committer: build outbox event_key: %w", err)
+	}
+	payloadMap := map[string]any{
+		"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
+		"event_id":             eventID,
+		"asset_id":             req.AssetID,
+		"operation":            indexRequestOperationUpsert,
+		"source_version":       req.SourceVersion,
+		"index_revision":       req.SourceVersion,
+		"target_index_version": pgmediaTargetIndexVersion,
+		"requested_vectors":    []string{"text", "transcript"},
+		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
+		"idempotency_key":      eventKey,
+		"source":               req.Source,
+		"media_type":           req.MediaType,
+		"embedding_model":      pgmediaEmbeddingModel,
+		"embedding_version":    pgmediaEmbeddingModelVersion,
+	}
+	payload, err = json.Marshal(payloadMap)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("asset committer: build outbox payload: %w", err)
+	}
+	return eventID, eventKey, payload, nil
+}
+
 // CommitIndexRequestTx is the sole production emitter for the canonical
 // index-request event. Callers must first persist or update media_assets in tx;
 // this function then builds the canonical envelope and inserts the outbox row
@@ -96,44 +147,10 @@ func CommitIndexRequestTx(
 		req.RequestedAt = time.Now()
 	}
 
-	var (
-		eventID  string
-		eventKey string
-		payload  []byte
-		err      error
-	)
-
-	eventID = uuid.NewString()
-	eventKey, err = idempotency.OutboxKey(
-		outboxevents.EventAssetIndexRequested,
-		req.Source,
-		req.AssetID,
-		req.SourceVersion,
-	)
+	eventID, eventKey, payload, err := BuildIndexRequestEvent(req)
 	if err != nil {
-		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
+		return IndexRequestCommitResult{}, err
 	}
-	payloadMap := map[string]any{
-		"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
-		"event_id":             eventID,
-		"asset_id":             req.AssetID,
-		"operation":            indexRequestOperationUpsert,
-		"source_version":       req.SourceVersion,
-		"index_revision":       req.SourceVersion,
-		"target_index_version": pgmediaTargetIndexVersion,
-		"requested_vectors":    []string{"text", "transcript"},
-		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
-		"idempotency_key":      eventKey,
-		"source":               req.Source,
-		"media_type":           req.MediaType,
-		"embedding_model":      pgmediaEmbeddingModel,
-		"embedding_version":    pgmediaEmbeddingModelVersion,
-	}
-	payload, err = json.Marshal(payloadMap)
-	if err != nil {
-		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
-	}
-
 	if suffix := strings.TrimSpace(req.EventKeySuffix); suffix != "" {
 		eventKey += suffix
 		var payloadMap map[string]any
@@ -204,6 +221,6 @@ func CommitIndexRequestTx(
 // instead of the retired Qdrant clipindexer constants.
 const (
 	pgmediaTargetIndexVersion    = "pgvector-media-v1"
-	pgmediaEmbeddingModel        = "intfloat/multilingual-e5-base"
-	pgmediaEmbeddingModelVersion = "intfloat/multilingual-e5-base"
+	pgmediaEmbeddingModel        = embedding.ModelIDMultilingualE5
+	pgmediaEmbeddingModelVersion = embedding.ModelIDMultilingualE5
 )

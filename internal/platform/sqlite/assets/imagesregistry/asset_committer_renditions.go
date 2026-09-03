@@ -80,4 +80,3 @@ func (c *SQLiteAssetCommitter) CommitRenditionTx(
 	}
 	return nil
 }
-
