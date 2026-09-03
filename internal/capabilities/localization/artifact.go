@@ -100,6 +100,9 @@ type LocalizedClipArtifact struct {
 	AudioCodec string `json:"audio_codec"`
 	// Backend is the certified renderer identity.
 	Backend string `json:"backend"`
+	// MetricsJSON is the numeric projection of Chronon's timing sidecar. It is
+	// JSON text so this artifact value remains comparable for state checks.
+	MetricsJSON string `json:"metrics,omitempty"`
 
 	// ── Drive location ───────────────────────────────────────────
 	// DriveFileID is the uploaded Drive file id. Omitted until upload.

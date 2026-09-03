@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -228,5 +229,33 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		VideoCodec: contract.VideoCodec,
 		AudioCodec: contract.AudioCodec,
 		Backend:    string(outcome.Backend),
+		Metrics:    metricsMap(outcome.Metrics),
 	}, nil
+}
+
+// metricsMap is a compatibility projection of the canonical V2 report for
+// the localized artifact wire contract. NOT_INSTRUMENTED fields are omitted;
+// measured numeric fields are preserved without inventing zeroes.
+func metricsMap(m *cliprender.RenderMetricsV2) map[string]float64 {
+	if m == nil {
+		return nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]any
+	if json.Unmarshal(b, &raw) != nil {
+		return nil
+	}
+	out := make(map[string]float64)
+	for key, value := range raw {
+		if number, ok := value.(float64); ok {
+			out[key] = number
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

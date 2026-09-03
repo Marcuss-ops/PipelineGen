@@ -336,18 +336,19 @@ type LocalizedRenderInput struct {
 // from the localization service's certified artifact — the run records the
 // produced MP4 instead of discarding it.
 type LocalizedRenderResult struct {
-	SceneID     string   `json:"scene_id"`
-	SceneIndex  int      `json:"scene_index,omitempty"`
-	Language    Language `json:"language"`
-	ClipID      string   `json:"clip_id"`
-	AssetID     string   `json:"asset_id"`
-	SHA256      string   `json:"sha256"`
-	DriveFileID string   `json:"drive_file_id,omitempty"`
-	DriveLink   string   `json:"drive_link,omitempty"`
-	DurationMS  int64    `json:"duration_ms,omitempty"`
-	LocalPath   string   `json:"local_path,omitempty"`
-	Status      string   `json:"status"`
-	Backend     string   `json:"backend,omitempty"`
+	SceneID     string             `json:"scene_id"`
+	SceneIndex  int                `json:"scene_index,omitempty"`
+	Language    Language           `json:"language"`
+	ClipID      string             `json:"clip_id"`
+	AssetID     string             `json:"asset_id"`
+	SHA256      string             `json:"sha256"`
+	DriveFileID string             `json:"drive_file_id,omitempty"`
+	DriveLink   string             `json:"drive_link,omitempty"`
+	DurationMS  int64              `json:"duration_ms,omitempty"`
+	LocalPath   string             `json:"local_path,omitempty"`
+	Status      string             `json:"status"`
+	Backend     string             `json:"backend,omitempty"`
+	Metrics     map[string]float64 `json:"metrics,omitempty"`
 	// Boundary timestamps let the parent distinguish summed child work from
 	// actual fan-out wall time when localized renders overlap.
 	StartedAt  time.Time `json:"started_at,omitempty"`

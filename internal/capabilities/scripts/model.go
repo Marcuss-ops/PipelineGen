@@ -228,6 +228,9 @@ type RenderArtifact struct {
 	// when the artifact was not published to Drive.
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	DriveLink   string `json:"drive_link,omitempty"`
+	// Metrics is the numeric projection of Chronon's timing sidecar returned
+	// by RenderingGen and correlated with this artifact.
+	Metrics map[string]float64 `json:"metrics,omitempty"`
 }
 
 type FinalAudioReference struct {

@@ -23,6 +23,7 @@ package localization
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -43,6 +44,7 @@ type RenderFacts struct {
 	VideoCodec string
 	AudioCodec string
 	Backend    string
+	Metrics    map[string]float64
 }
 
 // RenderPlanExecutor executes a sealed render.RenderPlan together with the
@@ -188,6 +190,18 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		VideoCodec:      facts.VideoCodec,
 		AudioCodec:      facts.AudioCodec,
 		Backend:         facts.Backend,
+		MetricsJSON:     metricsJSON(facts.Metrics),
 		Status:          LocalizedClipRendered,
 	}, nil
+}
+
+func metricsJSON(metrics map[string]float64) string {
+	if len(metrics) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(metrics)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
