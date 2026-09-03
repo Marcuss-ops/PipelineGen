@@ -36,7 +36,8 @@ cmd/admin/internal/audit/broken_references.go  # split pending, owner=admin, dea
 cmd/admin/internal/audit/sqlite_audit.go  # split pending, owner=admin, deadline=2026-09-30
 cmd/admin/internal/audit/storage_snapshot.go  # split pending, owner=admin, deadline=2026-09-30
 internal/capabilities/voiceover/service/process_segment.go  # split pending, owner=voiceover, deadline=2026-09-30
-internal/platform/sqlite/assets/imagesregistry/asset_committer.go  # split pending, owner=assets, deadline=2026-09-30
+# internal/platform/sqlite/assets/imagesregistry/asset_committer.go  # DEMOLISHED 2026-09-03 (PostgreSQL media cutover — SQLite media writer family removed)
+internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_testdouble.go  # split pending, owner=assets, deadline=2026-09-30 (TEST-ONLY hermetic committer double; successor of the demolished asset_committer.go family)
 internal/platform/qdrant/collections/projection_manager.go  # split pending, owner=qdrant, deadline=2026-09-30
 #
 # POLICY: any NEW file exceeding 600 LOC must be split before merge

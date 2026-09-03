@@ -30,7 +30,8 @@ import (
 const (
 	hnswSemanticModel = "intfloat/multilingual-e5-base"
 	hnswVisualModel   = "google/siglip-so400m-patch14-384"
-	hnswDim           = 768
+	hnswSemanticDim   = 768
+	hnswVisualDim     = 1152
 )
 
 // TestHNSW_IndexesExist proves both production HNSW indexes physically
@@ -75,14 +76,14 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 	ctx := context.Background()
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
-	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswDim); err != nil {
+	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswSemanticDim); err != nil {
 		t.Fatalf("register semantic family: %v", err)
 	}
-	if err := vectors.RegisterEmbeddingFamily(ctx, "visual", hnswVisualModel, hnswDim); err != nil {
+	if err := vectors.RegisterEmbeddingFamily(ctx, "visual", hnswVisualModel, hnswVisualDim); err != nil {
 		t.Fatalf("register visual family: %v", err)
 	}
 
-	// Seed one committed asset per family with a real 768d embedding so
+	// Seed one committed asset per family with real embeddings so
 	// the planner has rows to consider (an empty table can still plan a
 	// seq scan; the fixture makes the plan realistic). The committer is
 	// built over the SAME db handle — a second newMediaTestDB would
@@ -98,16 +99,21 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 	// Seq Scan on a near-empty table even when a usable HNSW index
 	// exists (cost model). Seed enough rows per family that the ANN
 	// index is the only rational plan for a LIMIT 20 cosine ordering.
-	queryVec := make([]float32, hnswDim)
-	for i := range queryVec {
-		queryVec[i] = 0.01 * float32(i%13)
+	// Each family gets a vector at ITS OWN pinned dimension.
+	semanticVec := make([]float32, hnswSemanticDim)
+	visualVec := make([]float32, hnswVisualDim)
+	for i := range semanticVec {
+		semanticVec[i] = 0.01 * float32(i%13)
+	}
+	for i := range visualVec {
+		visualVec[i] = 0.01 * float32(i%13)
 	}
 	for i := 0; i < 64; i++ {
 		sid := fmt.Sprintf("yt_hnsw_semantic_%03d", i)
 		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(sid)); err != nil {
 			t.Fatalf("commit semantic fixture asset %s: %v", sid, err)
 		}
-		if err := vectors.UpsertEmbedding(ctx, sid, "text", hnswSemanticModel, queryVec); err != nil {
+		if err := vectors.UpsertEmbedding(ctx, sid, "text", hnswSemanticModel, semanticVec); err != nil {
 			t.Fatalf("seed semantic embedding %s: %v", sid, err)
 		}
 	}
@@ -116,12 +122,16 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(vid)); err != nil {
 			t.Fatalf("commit visual fixture asset %s: %v", vid, err)
 		}
-		if err := vectors.UpsertEmbedding(ctx, vid, "visual", hnswVisualModel, queryVec); err != nil {
+		if err := vectors.UpsertEmbedding(ctx, vid, "visual", hnswVisualModel, visualVec); err != nil {
 			t.Fatalf("seed visual embedding %s: %v", vid, err)
 		}
 	}
 
-	vecLiteral, err := pgvectorLiteralFor(queryVec)
+	visualLiteral, err := pgvectorLiteralFor(visualVec)
+	if err != nil {
+		t.Fatalf("vector literal: %v", err)
+	}
+	semanticLiteral, err := pgvectorLiteralFor(semanticVec)
 	if err != nil {
 		t.Fatalf("vector literal: %v", err)
 	}
@@ -134,6 +144,11 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		{"SEMANTIC_HNSW_INDEX", "text", hnswSemanticModel},
 		{"VISUAL_HNSW_INDEX", "visual", hnswVisualModel},
 	} {
+		// EXPLAIN with the cast at the family's own pinned dimension.
+		explainDim := hnswVisualDim
+		if tc.embedding == "text" {
+			explainDim = hnswSemanticDim
+		}
 		explain := fmt.Sprintf(`
 			EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
 			SELECT e.asset_id, 1 - (e.embedding::vector(%d) <=> $1::vector) AS similarity
@@ -145,8 +160,13 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 			  AND a.lifecycle_state IN ('ACTIVE')
 			ORDER BY e.embedding::vector(%d) <=> $1::vector
 			LIMIT 20
-		`, hnswDim, tc.embedding, tc.modelID, hnswDim)
-		rows, err := db.QueryContext(ctx, explain, vecLiteral)
+		`, explainDim, tc.embedding, tc.modelID, explainDim)
+		// The query vector must be at the family's own pinned dimension too.
+		queryLiteral := visualLiteral
+		if tc.embedding == "text" {
+			queryLiteral = semanticLiteral
+		}
+		rows, err := db.QueryContext(ctx, explain, queryLiteral)
 		if err != nil {
 			t.Fatalf("%s: explain query: %v", tc.label, err)
 		}
@@ -194,14 +214,14 @@ func TestHNSW_MediaSearcherPinsProductionFamily(t *testing.T) {
 	ctx := context.Background()
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
-	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswDim); err != nil {
+	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswSemanticDim); err != nil {
 		t.Fatalf("register semantic family: %v", err)
 	}
 
 	searcher := pgmedia.NewMediaSearcher(db)
 
 	// No family registered for the visual channel → fail closed.
-	visualReq := pgmedia.SystemSearchRequest(make([]float32, hnswDim))
+	visualReq := pgmedia.SystemSearchRequest(make([]float32, hnswVisualDim))
 	visualReq.VectorName = "visual"
 	if _, err := searcher.Search(ctx, visualReq); err == nil {
 		t.Fatal("expected fail-closed error when the channel has no registered family")
@@ -238,7 +258,7 @@ func TestHNSW_MediaSearcherPinsProductionFamily(t *testing.T) {
 // queryVector768 builds the deterministic 768d fixture vector shared by
 // the HNSW tests.
 func queryVector768() []float32 {
-	vec := make([]float32, hnswDim)
+	vec := make([]float32, hnswSemanticDim)
 	for i := range vec {
 		vec[i] = 0.01 * float32(i%13)
 	}
@@ -252,7 +272,7 @@ func TestHNSW_FamilyGateStillFailsClosed(t *testing.T) {
 	db := newMediaTestDB(t)
 	ctx := context.Background()
 
-	vec := make([]float32, hnswDim)
+	vec := make([]float32, hnswSemanticDim)
 	for i := range vec {
 		vec[i] = 0.1
 	}
@@ -275,7 +295,7 @@ func TestHNSW_FamilyGateStillFailsClosed(t *testing.T) {
 
 	// Registered family, wrong dim → rejected.
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
-	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswDim); err != nil {
+	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswSemanticDim); err != nil {
 		t.Fatalf("register family: %v", err)
 	}
 	wrongDim, litErr := pgvectorLiteralFor(vec[:64])

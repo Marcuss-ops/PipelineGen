@@ -252,7 +252,7 @@ func ResolveAssetPathFromDB(db *sql.DB) ResolveAssetPath {
 			LIMIT 1
 		`, assetID).Scan(&uri)
 		if err == nil && strings.TrimSpace(uri) != "" {
-			return normalizeMediaURI(uri), nil
+			return normalizeMediaURI(uri)
 		}
 		// Fallback: drive locations are not locally readable; legacy
 		// metadata local_path is the second chance.
@@ -260,7 +260,7 @@ func ResolveAssetPathFromDB(db *sql.DB) ResolveAssetPath {
 		err2 := db.QueryRowContext(ctx,
 			`SELECT local_path FROM media_assets WHERE id = $1`, assetID).Scan(&localPath)
 		if err2 == nil && strings.TrimSpace(localPath) != "" {
-			return normalizeMediaURI(localPath), nil
+			return normalizeMediaURI(localPath)
 		}
 		if err != nil && err2 != nil {
 			return "", fmt.Errorf("no resolvable local location for asset %q (local: %v, local_path: %v)", assetID, err, err2)
@@ -270,12 +270,15 @@ func ResolveAssetPathFromDB(db *sql.DB) ResolveAssetPath {
 }
 
 // normalizeMediaURI strips a file:// scheme and validates existence.
-func normalizeMediaURI(uri string) string {
+// A non-existent path is a typed failure (never a silent empty string) so
+// the enrichment engine records the asset as uncovered with a truthful
+// reason instead of a bare "<nil>".
+func normalizeMediaURI(uri string) (string, error) {
 	uri = strings.TrimPrefix(uri, "file://")
 	if _, err := os.Stat(uri); err != nil {
-		return "" // unresolvable → engine records the asset as uncovered
+		return "", fmt.Errorf("media file missing on disk: %s", uri)
 	}
-	return uri
+	return uri, nil
 }
 
 // ── small helpers ───────────────────────────────────────────────────────

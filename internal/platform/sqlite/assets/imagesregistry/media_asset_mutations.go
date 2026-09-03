@@ -435,34 +435,6 @@ func UpdateMediaAssetIndexState(ctx context.Context, exec mediaAssetSQLExecutor,
 	return execAssetUpdate(ctx, exec, assetID, "index state update", query, args...)
 }
 
-func SetMediaAssetIndexed(ctx context.Context, exec mediaAssetSQLExecutor, assetID, contentHash, sourceVersion, updatedAt, embeddingModel, embeddingVersion, contractHash string) (bool, error) {
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	result, err := exec.ExecContext(ctx, `
-		UPDATE media_assets
-		SET index_state = 'INDEXED', index_state_updated_at = ?, updated_at = ?,
-			metadata_json = json_set(
-				json_set(
-					json_set(
-						json_set(
-							json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?),
-							'$.indexed_content_hash', ?),
-						'$.embedding_model', ?),
-					'$.embedding_model_version', ?),
-				'$.embedding_contract_hash', ?)
-		WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
-		updatedAt, updatedAt, updatedAt, contentHash, embeddingModel, embeddingVersion, contractHash, assetID, sourceVersion)
-	if err != nil {
-		return false, fmt.Errorf("asset committer: indexed state update: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("asset committer: indexed state rows affected: %w", err)
-	}
-	return affected == 1, nil
-}
-
 func UpdateMediaAssetFolderPath(ctx context.Context, exec mediaAssetSQLExecutor, assetID, folderID, folderPath, updatedAt string) error {
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)

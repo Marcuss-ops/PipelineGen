@@ -33,10 +33,10 @@ import (
 )
 
 // Canonical visual model identity (kernel/models registry SSOT:
-// SigLIP so400m patch14-384, 768 dims, cosine, normalized).
+// SigLIP so400m patch14-384, 1152 dims, cosine, normalized).
 const (
 	DefaultVisualModelID = "google/siglip-so400m-patch14-384"
-	DefaultVisualDim     = 768
+	DefaultVisualDim     = 1152
 )
 
 // VisualEmbedder produces one embedding vector per input frame path.
@@ -77,7 +77,7 @@ func NewVisualEmbeddingModelRegistry(entries ...VisualModelSpec) (*VisualEmbeddi
 }
 
 // DefaultVisualEmbeddingModelRegistry returns the canonical registry:
-// SigLIP so400m patch14-384 @ 768d (the kernel/models SSOT identity).
+// SigLIP so400m patch14-384 @ 1152d (the kernel/models SSOT identity).
 func DefaultVisualEmbeddingModelRegistry() *VisualEmbeddingModelRegistry {
 	r, err := NewVisualEmbeddingModelRegistry(VisualModelSpec{ModelID: DefaultVisualModelID, Dim: DefaultVisualDim})
 	if err != nil {

@@ -8,8 +8,8 @@
 //
 //   - 2 TestAssetToPoint_SparseVector_* sparse-vector wire-shape tests
 //     (PR2 server-side BM25 + empty-SearchText graceful-degradation)
-//   - 1 TestAssetToPoint_VisualVector_1152ResamplesToSchema legacy
-//     compatibility shim (1152-d → 768-d)
+//   - 1 TestAssetToPoint_VisualVector_CanonicalDimensions canonical
+//     1152-d SigLIP visual embedding (schema matches native output)
 //   - 2 TestAssetToPoint_TranscriptChannel_* PR2 dropped-vs-preserved
 //     contract pins
 //   - 1 TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough
@@ -112,14 +112,13 @@ func TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel(t *testing.T) {
 	}
 }
 
-// TestAssetToPoint_VisualVector_1152ResamplesToSchema pins the legacy
-// compatibility shim for older visual embeddings. Some historical YouTube
-// assets still carry 1152-d vectors; the mapper must normalize them to the
-// current 768-d schema instead of rejecting the point outright.
-func TestAssetToPoint_VisualVector_1152ResamplesToSchema(t *testing.T) {
+// TestAssetToPoint_VisualVector_CanonicalDimensions pins the canonical
+// 1152-d SigLIP visual embedding. Historical assets now carry the native
+// 1152-d vectors and the schema matches — no resampling required.
+func TestAssetToPoint_VisualVector_CanonicalDimensions(t *testing.T) {
 	asset := &AssetData{
-		ID:             "asset-visual-legacy",
-		SearchText:     "legacy visual clip",
+		ID:             "asset-visual-canonical",
+		SearchText:     "canonical visual clip",
 		Source:         "youtube",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
@@ -135,14 +134,14 @@ func TestAssetToPoint_VisualVector_1152ResamplesToSchema(t *testing.T) {
 	}
 	visual, ok := point.Vectors["visual"]
 	if !ok {
-		t.Fatalf("expected visual channel to be present after resampling")
+		t.Fatalf("expected visual channel to be present")
 	}
 	vec, ok := visual.([]float32)
 	if !ok {
 		t.Fatalf("visual channel has unexpected type %T", visual)
 	}
-	if got := len(vec); got != 768 {
-		t.Fatalf("visual vector length = %d, want 768", got)
+	if got := len(vec); got != 1152 {
+		t.Fatalf("visual vector length = %d, want 1152", got)
 	}
 }
 

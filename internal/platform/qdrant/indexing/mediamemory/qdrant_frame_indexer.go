@@ -36,7 +36,7 @@ import (
 // declared once in qdrant/schema/schema.go); re-declared here
 // for a fail-closed boundary at the mediamemory seam so a future
 // schema bump cannot silently corrupt the frame collection.
-const FrameVectorDim = 768
+const FrameVectorDim = 1152
 
 // FrameQdrantIndexer is the canonical mediamemory.KeyframeVisualIndexer
 // backed by Qdrant.

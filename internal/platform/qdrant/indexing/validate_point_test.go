@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 
 	"github.com/stretchr/testify/assert"
@@ -16,8 +16,8 @@ import (
 func TestValidatePoint_ValidPoint(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": makeFloat32Slice(768),
@@ -31,7 +31,7 @@ func TestValidatePoint_ValidPoint(t *testing.T) {
 func TestValidatePoint_NilPoint(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	err := ValidatePoint(nil, idxSchema)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
@@ -40,8 +40,8 @@ func TestValidatePoint_NilPoint(t *testing.T) {
 func TestValidatePoint_EmptyID(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "",
 		Vectors: map[string]interface{}{
 			"text": makeFloat32Slice(768),
@@ -56,8 +56,8 @@ func TestValidatePoint_EmptyID(t *testing.T) {
 func TestValidatePoint_NoVectors(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID:      "asset-1",
 		Vectors: map[string]interface{}{},
 	}
@@ -70,8 +70,8 @@ func TestValidatePoint_NoVectors(t *testing.T) {
 func TestValidatePoint_WrongType(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": "not-a-vector",
@@ -89,8 +89,8 @@ func TestValidatePoint_WrongType(t *testing.T) {
 func TestValidatePoint_EmptyVector(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": []float32{},
@@ -108,8 +108,8 @@ func TestValidatePoint_EmptyVector(t *testing.T) {
 func TestValidatePoint_DimensionMismatch(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": makeFloat32Slice(512), // Expected 768.
@@ -128,12 +128,12 @@ func TestValidatePoint_DimensionMismatch(t *testing.T) {
 func TestValidatePoint_VisualDimensionMismatch(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text":   makeFloat32Slice(768),
-			"visual": makeFloat32Slice(256), // Expected 768.
+			"visual": makeFloat32Slice(256), // Expected 1152.
 		},
 	}
 
@@ -142,20 +142,20 @@ func TestValidatePoint_VisualDimensionMismatch(t *testing.T) {
 	var dimErr *transport.ErrVectorDimensionMismatch
 	require.ErrorAs(t, err, &dimErr)
 	assert.Equal(t, "visual", dimErr.Channel)
-	assert.Equal(t, 768, dimErr.Expected)
+	assert.Equal(t, 1152, dimErr.Expected)
 	assert.Equal(t, 256, dimErr.Actual)
 }
 
 func TestValidatePoint_AudioDimensionMismatch(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	idxSchema.DenseVectors = append(idxSchema.DenseVectors, schema.EmbeddingSpec{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	idxSchema.DenseVectors = append(idxSchema.DenseVectors, qdrantSchema.EmbeddingSpec{
 		Channel:    "audio",
 		Dimensions: 512,
 		Distance:   "Cosine",
 	})
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text":  makeFloat32Slice(768),
@@ -176,8 +176,8 @@ func TestValidatePoint_OptionalChannel(t *testing.T) {
 	t.Parallel()
 
 	// audio is part of the schema but optional — not present should be fine.
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": makeFloat32Slice(768),
@@ -191,13 +191,13 @@ func TestValidatePoint_OptionalChannel(t *testing.T) {
 func TestValidatePoint_MultipleValidChannels(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
-	point := &schema.Point{
+	idxSchema := qdrantSchema.DefaultV3Schema()
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text":       makeFloat32Slice(768),
 			"transcript": makeFloat32Slice(768),
-			"visual":     makeFloat32Slice(768),
+			"visual":     makeFloat32Slice(qdrantSchema.VisualEmbeddingDim),
 			"audio":      makeFloat32Slice(512),
 		},
 	}
@@ -211,11 +211,11 @@ func TestValidatePoint_MultipleValidChannels(t *testing.T) {
 func TestValidatePoint_NaNDetected(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	vec := makeFloat32Slice(768)
 	vec[100] = float32(math.NaN())
 
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": vec,
@@ -233,11 +233,11 @@ func TestValidatePoint_NaNDetected(t *testing.T) {
 func TestValidatePoint_PositiveInfDetected(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	vec := makeFloat32Slice(768)
 	vec[0] = float32(math.Inf(1))
 
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": vec,
@@ -253,11 +253,11 @@ func TestValidatePoint_PositiveInfDetected(t *testing.T) {
 func TestValidatePoint_NegativeInfDetected(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	vec := makeFloat32Slice(768)
 	vec[0] = float32(math.Inf(-1))
 
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": vec,
@@ -273,7 +273,7 @@ func TestValidatePoint_NegativeInfDetected(t *testing.T) {
 func TestValidatePoint_NoNaNorInf(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	vec := makeFloat32Slice(768)
 	vec[0] = 0.0
 	vec[1] = 1.0
@@ -281,7 +281,7 @@ func TestValidatePoint_NoNaNorInf(t *testing.T) {
 	vec[3] = 3.4028235e+38  // max float32
 	vec[4] = -3.4028235e+38 // min float32
 
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text": vec,
@@ -295,12 +295,12 @@ func TestValidatePoint_NoNaNorInf(t *testing.T) {
 func TestValidatePoint_NaNInVisualChannel(t *testing.T) {
 	t.Parallel()
 
-	idxSchema := schema.DefaultV3Schema()
+	idxSchema := qdrantSchema.DefaultV3Schema()
 	textVec := makeFloat32Slice(768)
-	visualVec := makeFloat32Slice(768)
+	visualVec := makeFloat32Slice(qdrantSchema.VisualEmbeddingDim)
 	visualVec[50] = float32(math.NaN())
 
-	point := &schema.Point{
+	point := &qdrantSchema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
 			"text":   textVec,
