@@ -16,6 +16,8 @@ import (
 
 	"go.uber.org/zap"
 
+	_ "github.com/mattn/go-sqlite3" // register driver for in-memory fixtures
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

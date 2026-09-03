@@ -1,4 +1,4 @@
-package imagesregistry
+package testsupport
 
 import (
 	"context"

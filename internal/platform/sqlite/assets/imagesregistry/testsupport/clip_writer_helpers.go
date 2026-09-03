@@ -10,7 +10,7 @@
 // CommitClipTextAndIndexEvent onto SQLiteMediaCommitter. The helpers
 // survived because they are consumed by multiple non-adapter callers
 // (asset_committer.go, clip_metadata_writer.go).
-package imagesregistry
+package testsupport
 
 import (
 	"context"

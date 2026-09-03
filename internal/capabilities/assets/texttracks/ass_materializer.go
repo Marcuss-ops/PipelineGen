@@ -292,8 +292,12 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 
 	sb.WriteString("[V4+ Styles]\n")
 	sb.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-	sb.WriteString(fmt.Sprintf("Style: %s,%s,%d,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%.1f,%d,2,10,10,%d,1\n\n",
-		styleID, preset.FontName, preset.FontSize, preset.Bold, preset.Outline, preset.Shadow, preset.MarginV))
+	alignment := 2 // bottom-center: the existing default for short-form clips.
+	if strings.Contains(strings.ToLower(strings.TrimSpace(styleID)), "center") {
+		alignment = 5 // true screen center, requested by the centered-subtitles preset.
+	}
+	sb.WriteString(fmt.Sprintf("Style: %s,%s,%d,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%.1f,%d,%d,10,10,%d,1\n\n",
+		styleID, preset.FontName, preset.FontSize, preset.Bold, preset.Outline, preset.Shadow, alignment, preset.MarginV))
 
 	sb.WriteString("[Events]\n")
 	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")

@@ -3,12 +3,12 @@
 // Extracted from build_bundles_process.go::BuildOutboxBundle (July 2026
 // sub-section split). Owns: buildOutboxDeps (outbox.Deps construction
 // incl. httpClient/HMAC secrets/source querier/metadata-export handler),
-// registerOutboxCoreHandlers (Qdrant on/off core registration),
-// registerOutboxWorkers (optional + script.generate.queued + publisher +
-// drive-uploader workers) and noopIndexClipper (qdrant-off IndexClip
-// no-op). All error strings keep the canonical "BuildOutboxBundle:"
-// prefix so the fail-closed contract observed by
-// composition_failclosed_test.go is unchanged.
+// registerOutboxCoreHandlers (media-demolished: no media/Qdrant handler
+// in any mode) and registerOutboxWorkers (optional +
+// script.generate.queued + publisher + drive-uploader workers). All
+// error strings keep the canonical "BuildOutboxBundle:" prefix so the
+// fail-closed contract observed by composition_failclosed_test.go is
+// unchanged.
 package wiring
 
 import (
@@ -163,14 +163,16 @@ func buildOutboxDeps(
 }
 
 // registerOutboxCoreHandlers registers the fail-closed core outbox
-// handlers. Extracted verbatim from BuildOutboxBundle (July 2026);
-// the Qdrant-on path fails closed via RegisterCoreHandlers, the
-// qdrant-off path registers a no-op IndexingHandler so
-// image-generation jobs do not dead-letter their indexing event.
+// handlers. Extracted verbatim from BuildOutboxBundle (July 2026).
 //
-// Media cutover update (September 2026): in PostgreSQL media-SSOT mode
-// the function returns early — the media index plane is the pgvector
-// PostgresIndexWorker and no SQLite/Qdrant media handler is registered.
+// MEDIA DEMOLITION (September 2026, POSTGRES-MEDIA-CUTOVER): the staged
+// Qdrant compatibility branch is GONE. The SQLite outbox NEVER registers a
+// media index handler in any mode: the media index plane is the pgvector
+// PostgresIndexWorker over the PostgreSQL SSOT, and the canonical media
+// committer emits asset.index.requested into the PG outbox. A stray media
+// event in the SQLite outbox dead-letters loudly instead of silently
+// projecting into Qdrant (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0,
+// unconditionally).
 func registerOutboxCoreHandlers(
 	eventsRegistry *outboxevents.HandlerRegistry,
 	cfg *config.Config,
@@ -179,44 +181,11 @@ func registerOutboxCoreHandlers(
 	outboxDeps *jobsoutbox.Deps,
 	log *zap.Logger,
 ) error {
-	// POSTGRES-MEDIA-CUTOVER: when the PostgreSQL media SSOT is enabled,
-	// the media index plane is the pgvector PostgresIndexWorker. The
-	// SQLite outbox never sees media index events (the canonical committer
-	// emits them into the PG outbox), so NO asset.index.requested handler
-	// is registered here — a stray media event in SQLite dead-letters
-	// loudly instead of silently writing to Qdrant. Qdrant media reads
-	// and writes are structurally bypassed in this mode.
-	if cfg.MediaPostgreSQL.Enabled {
-		log.Info("POSTGRES-MEDIA-CUTOVER: media index plane = pgvector PostgresIndexWorker; Qdrant media projection handlers NOT registered (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0)")
-		return nil
-	}
-	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
-	// fail-closed when Qdrant is enabled. The previous
-	// `log.Warn("failed to register outbox events handlers", err)`
-	// silently downgraded a wiring bug to a runtime dead-letter on
-	// the first asset.index.requested event. Now: cfg.Qdrant.Enabled
-	// AND any core dep missing → return err which BuildOutboxBundle
-	// propagates up to NewComposition so an operator
-	// misconfiguration aborts boot rather than running with a broken
-	// outbox.
-	if cfg.Qdrant.Enabled {
-		if err := jobsoutbox.RegisterCoreHandlers(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
-			return fmt.Errorf("BuildOutboxBundle: register core outbox handlers (fail-closed): %w", err)
-		}
-	} else {
-		// Dev / qdrant-off mode: still register a no-op asset.index.requested
-		// consumer so image-generation jobs do not dead-letter their indexing
-		// event. The handler preserves the envelope validation + supersede
-		// checks but routes the final IndexClip call to a no-op concrete.
-		sourceQuerier := jobsoutbox.SourceVersionQuerier(nil)
-		if repos != nil && repos.ClipsRepo != nil {
-			sourceQuerier = repos.ClipsRepo
-		}
-		if err := eventsRegistry.Register(jobsoutbox.NewIndexingHandler(noopIndexClipper{}, sourceQuerier, log)); err != nil {
-			return fmt.Errorf("BuildOutboxBundle: register qdrant-off indexing handler: %w", err)
-		}
-		log.Info("outbox indexing handler registered in no-op mode because qdrant is disabled")
-	}
+	_ = cfg
+	_ = repos
+	_ = qd
+	_ = outboxDeps
+	log.Info("POSTGRES-MEDIA-CUTOVER: media index plane = pgvector PostgresIndexWorker; SQLite outbox registers NO media/Qdrant projection handlers in any mode (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0, QDRANT_MEDIA_COMPATIBILITY=0)")
 	return nil
 }
 
@@ -404,8 +373,3 @@ func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxev
 	return nil
 }
 
-// noopIndexClipper is the qdrant-off IndexClip no-op concrete used by
-// the dev-mode IndexingHandler registration (registerOutboxCoreHandlers).
-type noopIndexClipper struct{}
-
-func (noopIndexClipper) IndexClip(context.Context, string) error { return nil }

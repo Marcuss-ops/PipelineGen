@@ -53,6 +53,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"sync"
 	"testing"
 	"time"
@@ -425,7 +426,7 @@ func payloadFor(t *testing.T, db *sql.DB, assetID string) string {
 //   - "IndexClip fired 2× for same asset_id" → replay dedup regressed.
 func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	// 3 stock-derived chunks with deterministic sha256 per chunk.
 	chunks := []finalization.PublishedArtifact{
@@ -542,7 +543,7 @@ func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T)
 //   - "IndexClip fired 2× for same aggregate_id" → dedup regressed.
 func TestStockFinalize_IdempotentReplay_SameChunkTripleStaysSingle(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	art := stockChunkFixture("stock:fp:idem_001", "sha256:stock_idem_v1")
 
@@ -635,7 +636,7 @@ func TestStockFinalize_IdempotentReplay_SameChunkTripleStaysSingle(t *testing.T)
 //     Tier 1 regressed to Tier 2 fallback.
 func TestStockFinalize_SupersedeOnChunk_NewSourceVersionMarksPriorAsSuperseded(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	chunkID := "stock:fp:supersede_001"
 	hashV1 := "sha256:stock_supersede_v1"

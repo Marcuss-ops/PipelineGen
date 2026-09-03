@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"testing"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
@@ -46,7 +47,7 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	}
 	if deps.ServiceDependencies.Infra.MainDB != nil {
 		box := outboxevents.NewRepository(deps.ServiceDependencies.Infra.MainDB)
-		assetCommitter := sqassets.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, box, deps.ServiceDependencies.Infra.Log)
+		assetCommitter := testsupport.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, box, deps.ServiceDependencies.Infra.Log)
 		deps.ServiceDependencies.Finalizer.AssetFinalizerTx = assetfinalizer.NewAssetTxFinalizer(
 			deps.ServiceDependencies.Infra.Log,
 			assetCommitter,

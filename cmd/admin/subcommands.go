@@ -46,6 +46,7 @@ var commandRegistry = map[string]commandHandler{
 	"backfill-media-asset-sources":   backfill.RunBackfillMediaAssetSources,
 	"backfill-media-durations":       backfill.RunBackfillMediaDurations,
 	"backfill-media-postgres":        backfill.RunMediaBackfillPostgres,
+	"backfill-media-enrichment":      backfill.RunMediaEnrichmentBackfill,
 	"backfill-missing":               backfill.RunBackfillMissing,
 	"backfill-payload-hash":          backfill.RunBackfillPayloadHash,
 	"backfill-provider-timestamps":   backfill.RunBackfillProviderTimestamps,

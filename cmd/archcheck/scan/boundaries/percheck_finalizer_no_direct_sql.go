@@ -65,7 +65,10 @@ import (
 // SQL that writes media_assets + asset_locations + outbox_events.
 // The gate inspects the finalizer package but the inspection is
 // read-only — the SSOT lives here.
-const finalizerNoSQLCanonicalOwner = "internal/platform/sqlite/assets/asset_committer.go"
+// MEDIA DEMOLITION (September 2026): the canonical owner is the PostgreSQL
+// media family; the SQLite asset committer path referenced before the
+// demolition no longer exists.
+const finalizerNoSQLCanonicalOwner = "internal/platform/postgres/media/media_committer.go"
 
 // finalizerNoSQLScanRoot is the package scanned by the gate.
 // Every Go file under this root (except tests + the canonical
@@ -108,7 +111,7 @@ const finalizerNoSQLRule = "percheck_finalizer_no_direct_sql"
 // forbidden SQL writes. The message references the canonical
 // SOLE owner + the forward-prevention gate so the operator sees
 // the migration path inline.
-const finalizerNoSQLNote = "forbidden direct SQL write to media_assets / asset_locations / outbox_events from the finalizer package (PR-ASSET-COMMITTER-CENTRALIZE, July 2026): the canonical owner of these writes is persistence.AssetCommitter (implemented by SQLiteAssetCommitter at internal/platform/sqlite/assets/asset_committer.go). Route every asset commit through AssetTxFinalizer.WithCommitter(committer) or a higher-level AssetCommitter caller. The legacy finalizeLegacy path is retired; the canonical finalizeWithCommitter is the single point of write"
+const finalizerNoSQLNote = "forbidden direct SQL write to media_assets / asset_locations / outbox_events from the finalizer package (PR-ASSET-COMMITTER-CENTRALIZE, July 2026; SQLite media demolition, September 2026): the canonical owner of these writes is persistence.AssetCommitter (implemented by PostgresMediaCommitter at internal/platform/postgres/media/media_committer.go). Route every asset commit through AssetTxFinalizer.WithCommitter(committer) or a higher-level AssetCommitter caller. The legacy finalizeLegacy path is retired; the canonical finalizeWithCommitter is the single point of write"
 
 // finalizerNoSQLSkipDirs mirrors percheck_mediatransformer_no_infra_fields.go's
 // standard skip-dir set.

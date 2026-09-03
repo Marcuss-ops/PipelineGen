@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,7 +12,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -128,7 +129,7 @@ func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 	}
 
 	logger := zap.NewNop()
-	committer := assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), logger)
+	committer := testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), logger)
 	finalizer := assetfinalizer.NewAssetTxFinalizer(logger, committer)
 	publisher := &stubPublisherForArtlist{}
 

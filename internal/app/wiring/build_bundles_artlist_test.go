@@ -41,7 +41,6 @@ import (
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // artlistCompositionSchema: minimal DDL subset needed by WireArtlist to
@@ -403,7 +402,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		Committer:          imagesregistry.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		Committer:          &sqliteTestAssetCommitter{db: sqliteDB.DB, box: &outboxEventsTestRepo{db: sqliteDB.DB}},
 		MediaProcessor:     nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
 		TextTrackRepo:      &stubTextTrackRepoForArtlistComposition{},
 	}
