@@ -63,6 +63,9 @@ func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*
 }
 
 func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	ctx, cancel := context.WithCancel(parent)
 
 	hosts := append(cfg.Security.AllowedDownloadHosts, "youtube.com", "youtu.be", "www.youtube.com")
@@ -89,7 +92,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		return nil, nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
-	root, err := NewComposition(ctx, cfg, dbs, log)
+	root, err := NewComposition(parent, cfg, dbs, log)
 	if err != nil {
 		partialCleanup()
 		return nil, nil, nil, fmt.Errorf("failed to build composition root: %w", err)
@@ -210,8 +213,8 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 			zap.Bool("Outbox_nil", root.Outbox == nil))
 	}
 
-	jobs := startBackgroundJobs(ctx, cfg, dbs, root, log, mode)
-	cleanup := buildCleanup(dbs, root, jobs, func() {}, log)
+	jobs := startBackgroundJobs(parent, cfg, dbs, root, log, mode)
+	cleanup := buildCleanup(dbs, root, jobs, cancel, log)
 
 	return root, jobs, cleanup, nil
 }
