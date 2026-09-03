@@ -372,4 +372,3 @@ func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxev
 	a.log.Debug("job.completed performance projected", zap.String("job_id", jobID))
 	return nil
 }
-

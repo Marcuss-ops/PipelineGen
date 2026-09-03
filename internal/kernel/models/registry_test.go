@@ -91,12 +91,14 @@ func TestLicenses_Pinned(t *testing.T) {
 	}
 }
 
-// TestDenseDimensions pins the vector lengths: E5 768, SigLIP 768, CLAP
-// 512; cross-encoder and ASR models carry no vector space (0).
+// TestDenseDimensions pins the vector lengths: E5 768, SigLIP 1152 (the
+// LIVE sentence-transformers so400m pooled output probed from the running
+// production sidecar), CLAP 512; cross-encoder and ASR models carry no
+// vector space (0).
 func TestDenseDimensions(t *testing.T) {
 	want := map[string]int{
 		"intfloat/multilingual-e5-base":    768,
-		"google/siglip-so400m-patch14-384": 768,
+		"google/siglip-so400m-patch14-384": 1152,
 		"BAAI/bge-reranker-v2-m3":          0,
 		"laion/clap-htsat-fused":           512,
 		"openai/whisper-large-v3-turbo":    0,

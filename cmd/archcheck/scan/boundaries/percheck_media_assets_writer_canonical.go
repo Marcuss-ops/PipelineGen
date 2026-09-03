@@ -92,9 +92,9 @@ var mediaAssetsWriterCanonicalOwners = map[string]bool{
 	// + visual embedding pipeline + backfill engine write the DERIVED
 	// surfaces (media_asset_features, media_embeddings) and the enrichment
 	// state columns of media_assets.
-	"internal/platform/postgres/media/feature_analyzer.go":      true,
-	"internal/platform/postgres/media/visual_embedding.go":      true,
-	"internal/platform/postgres/media/enrichment_backfill.go":   true,
+	"internal/platform/postgres/media/feature_analyzer.go":    true,
+	"internal/platform/postgres/media/visual_embedding.go":    true,
+	"internal/platform/postgres/media/enrichment_backfill.go": true,
 }
 
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.

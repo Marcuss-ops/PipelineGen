@@ -19,7 +19,7 @@ MODEL_REGISTRY = {
     "google/siglip-so400m-patch14-384": {
         "revision": "2026-06-16-v1",
         "checksum": "",
-        "dimensions": 768,
+        "dimensions": 1152,
         "license": "Apache-2.0",
         "role": "visual_embedding",
         "languages": 0,
@@ -69,7 +69,7 @@ TEXT_MODEL_DIMENSIONS = 768
 
 VISUAL_MODEL_NAME = "google/siglip-so400m-patch14-384"
 VISUAL_MODEL_VERSION = "2026-06-16-v1"
-VISUAL_MODEL_DIMENSIONS = 768
+VISUAL_MODEL_DIMENSIONS = 1152
 
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 RERANKER_MODEL_VERSION = ""

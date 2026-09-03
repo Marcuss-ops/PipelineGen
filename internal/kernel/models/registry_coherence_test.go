@@ -40,7 +40,7 @@ func TestRegistryEntriesHaveCanonicalMetadata(t *testing.T) {
 	}
 	wantDimensions := map[string]int{
 		models.E5.ID:                   768,
-		models.SigLIP.ID:               768,
+		models.SigLIP.ID:               1152, // live sentence-transformers so400m pooled output (sidecar-probed ground truth)
 		models.Reranker.ID:             0,
 		models.SegmentUnderstanding.ID: 0,
 		models.CLAP.ID:                 512,
