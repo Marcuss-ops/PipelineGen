@@ -66,8 +66,12 @@ func TestConfig_CanonicalPort_Is8000AcrossRuntimeSurfaces(t *testing.T) {
 		{"config.example.yaml", "port: 8000", "port: 8080"},
 		{"Makefile", "VELOX_PORT:-8000", "VELOX_PORT:-8080"},
 		{"Dockerfile", "EXPOSE 8000", "EXPOSE 8080"},
-		{"docker-compose.yml", `"8081:8000"`, `"8081:8080"`},
-		{"docker-compose.yml", `VELOX_MASTER_URL: "http://pipelinegen-server:8000"`, `VELOX_MASTER_URL: "http://pipelinegen-server:8080"`},
+		// Native runtime (September 2026): the application server runs under
+		// systemd, not in docker-compose (compose retains only external
+		// infrastructure — qdrant, artlist-scraper, searxng). The canonical
+		// port anchors moved to the unit files.
+		{"scripts/systemd/pipelinegen.service", "Environment=VELOX_PORT=8000", "Environment=VELOX_PORT=8080"},
+		{"scripts/systemd/pipelinegen-worker.service", "VELOX_MASTER_URL=http://127.0.0.1:8000", "VELOX_MASTER_URL=http://127.0.0.1:8080"},
 	}
 
 	for _, s := range surfaces {
