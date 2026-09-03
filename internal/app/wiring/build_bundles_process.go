@@ -44,7 +44,9 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,6 +56,8 @@ import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -108,7 +112,7 @@ import (
 // production it is a dead-letter regression, so the wiring logs a
 // loud Warn when it is missing. Production wiring always supplies
 // the canonical drive.FileLifecycle adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*OutboxBundle, IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter, mediaPostgres *sql.DB) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
@@ -173,6 +177,32 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		jobsRegistry = outboxevents.NewHandlerRegistry()
 	}
 
+	// POSTGRES-MEDIA-CUTOVER: in media-SSOT mode, build the canonical
+	// pgvector index worker and its runtime drain loop. The embedder is
+	// routed through cfg.ClipIndexer.ServerURL (the E5 sidecar contract —
+	// the SAME sidecar the Qdrant plane used, so document vectors stay in
+	// one space) and the model identity comes from
+	// cfg.MediaPostgreSQL.EmbeddingModel. Fail-closed: an empty sidecar
+	// URL in PG mode aborts composition (no embedder → no vectors → no
+	// fake availability).
+	var pgIndexWorker *pgmedia.PostgresIndexWorker
+	if cfg.MediaPostgreSQL.Enabled {
+		if mediaPostgres == nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but mediaPostgres handle is nil (composition must call RequireMediaPostgres first)")
+		}
+		sidecarURL := strings.TrimSpace(cfg.ClipIndexer.ServerURL)
+		if sidecarURL == "" {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but ClipIndexer.ServerURL is empty (the pgvector index worker requires the canonical E5 embedding sidecar)")
+		}
+		pgOutboxRepo := pgmedia.NewOutboxRepository(mediaPostgres)
+		pgVectors := pgmedia.NewVectorSurfaceWriter(mediaPostgres)
+		embedder := pgmedia.NewEmbedAssetTextAdapter(mediaPostgres, embeddings.NewHTTPTextEmbedder(sidecarURL))
+		if err := pgVectors.EnsureEmbeddingFamily(ctx, "text", cfg.MediaPostgreSQL.EmbeddingModel, 768); err != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: pgvector embedding family bootstrap: %w", err)
+		}
+		pgIndexWorker = pgmedia.NewPostgresIndexWorker(pgOutboxRepo, pgVectors, embedder, cfg.MediaPostgreSQL.EmbeddingModel)
+	}
+
 	// Deps + handler registration sub-blocks (extracted July 2026 to
 	// build_outbox_handlers.go). Same order as the pre-split flat
 	// body: deps construction → core handlers → optional/worker
@@ -189,7 +219,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// is preserved: the core handlers registered above abort boot on a
 	// nil mandatory dep before this block ever runs.
 	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
-	canonicalCommitter := newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log)
+	canonicalCommitter, canonicalCommitterErr := newCanonicalAssetCommitter(mediaPostgres, log)
+	if canonicalCommitterErr != nil {
+		return nil, nil, fmt.Errorf("compose process: canonical media writer: %w", canonicalCommitterErr)
+	}
+	if canonicalCommitter == nil {
+		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — canonical media writer degraded; media outbox events will dead-letter (graceful degrade, godlike/07)")
+	}
 	// The production dispatcher receives the single canonical writer directly.
 	// Legacy ClipsUpserter/ClipsStateWriter arguments remain accepted by
 	// NewDispatcher only for compatibility with older tests and adapters.
@@ -279,20 +315,53 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		if err := startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log); err != nil {
 			return err
 		}
-		return startOutboxEventsPool(ctx, jobsEventsPool, outboxEventsCfg, log)
+		if err := startOutboxEventsPool(ctx, jobsEventsPool, outboxEventsCfg, log); err != nil {
+			return err
+		}
+		// POSTGRES-MEDIA-CUTOVER: launch the pgvector index worker's drain
+		// loop (panic-recovered goroutine, exits on ctx.Done). In this mode
+		// the loop replaces the Qdrant indexing handler as the canonical
+		// asset.index.requested consumer.
+		if pgIndexWorker != nil {
+			concurrent.SafeGo("pg-media-index-worker", func() {
+				pgIndexWorker.Run(ctx, pgmedia.DefaultPollInterval, pgmedia.DefaultLeaseTTL, zapLoggerAsMediaLogger(log))
+			})
+			log.Info("POSTGRES-MEDIA-CUTOVER: pgvector index worker drain loop started (asset.index.requested -> embed -> media_embeddings -> INDEXED -> completed)")
+		}
+		return nil
 	}
 
 	return &OutboxBundle{
-		CanonicalWriter: canonicalCommitter,
-		Dispatcher:      dispatcher,
-		EventsRepo:      outboxEventsRepo,
-		EventsRegistry:  eventsRegistry,
-		EventsPool:      eventsPool,
-		JobsEventsPool:  jobsEventsPool,
-		Publisher:       publisherHandler,
-		DriveUploader:   driveUploadHandler,
+		CanonicalWriter:  canonicalCommitter,
+		Dispatcher:       dispatcher,
+		EventsRepo:       outboxEventsRepo,
+		EventsRegistry:   eventsRegistry,
+		EventsPool:       eventsPool,
+		JobsEventsPool:   jobsEventsPool,
+		MediaIndexWorker: pgIndexWorker,
+		Publisher:        publisherHandler,
+		DriveUploader:    driveUploadHandler,
 	}, startClosure, nil
 }
+
+// zapLoggerAsMediaLogger adapts the composition zap logger to the
+// pgmedia.Logger port (Info/Error). Field shape is untyped so the media
+// package stays infrastructure-agnostic.
+type zapMediaLogger struct{ l *zap.Logger }
+
+func (z zapMediaLogger) Info(msg string, fields ...any) {
+	if z.l != nil {
+		z.l.Info(msg, zap.Any("fields", fields))
+	}
+}
+
+func (z zapMediaLogger) Error(msg string, fields ...any) {
+	if z.l != nil {
+		z.l.Error(msg, zap.Any("fields", fields))
+	}
+}
+
+func zapLoggerAsMediaLogger(l *zap.Logger) pgmedia.Logger { return zapMediaLogger{l: l} }
 
 // startOutboxEventsPool performs the side-effecting outbox events pool
 // initialisation.

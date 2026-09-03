@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -52,9 +51,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// `outbox.ClipsStateWriter(repo)` works unchanged in test fixtures
 	// (closure of PR7 producer migration ticket item D).
 	stateWriter := outbox.ClipsStateWriter(repo)
-	ledger, err := mediaregistry.NewLedger(db)
-	require.NoError(t, err)
-	canonicalCommitter := assets.NewSQLiteMediaCommitter(db, outboxEventsRepo, ledger, zap.NewNop())
+	canonicalCommitter := assets.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	// PR-D: construct the service via Deps{} (no SetDispatcher setter
@@ -128,9 +125,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	// ClipsStateWriter + ClipsUpserter split is a Go-type partition,
 	// the same concrete *assets.ClipsRepository implements both.
 	stateWriter := outbox.ClipsStateWriter(repo)
-	ledger, err := mediaregistry.NewLedger(db)
-	require.NoError(t, err)
-	canonicalCommitter := assets.NewSQLiteMediaCommitter(db, outboxEventsRepo, ledger, zap.NewNop())
+	canonicalCommitter := assets.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	svc, err := NewService(Deps{

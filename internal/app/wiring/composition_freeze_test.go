@@ -103,7 +103,10 @@ const (
 	frozenGoroutineInBuildDriveBundle = 0
 	// PR9-B (June 2026): concurrent.SafeGo x2 (pool start + shutdown)
 	// moved from BuildOutboxBundle body into startOutboxEventsPool.
-	frozenGoroutineInBuildOutboxBundle = 0
+	// MEDIA-CUTOVER (September 2026): +1 concurrent.SafeGo — the pgvector
+	// PostgresIndexWorker drain loop (PG mode only, launched inside the
+	// bundle start closure via SafeGo per the documented pattern).
+	frozenGoroutineInBuildOutboxBundle = 1
 )
 
 // frozenZeroSpawnBuilders lists the Build*Bundle family members that
@@ -117,7 +120,10 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildAIBundle",
 	"BuildDomainBundle",
 	"BuildJobsBundle",
-	"BuildOutboxBundle",
+	// BuildOutboxBundle moved OUT of the zero-spawn list (MEDIA-CUTOVER,
+	// September 2026): it spawns exactly 1 goroutine via SafeGo — the
+	// pgvector PostgresIndexWorker drain loop (PG mode only), counted by
+	// frozenGoroutineInBuildOutboxBundle above.
 	"BuildArtifactFinalizeBundle",
 	"BuildStagingBundle",
 	"BuildTextTrackBundle",
@@ -159,7 +165,7 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
 		"BuildDriveBundle spawn count drifted (expected 0 after Wave A Item 15, June 2026 — the drive-style-folders SafeGo goroutine was REMOVED, not just moved).")
 	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
-		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to go is documented in go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
+		"BuildOutboxBundle spawn count drifted. MEDIA-CUTOVER (September 2026) pins 1 SafeGo spawn: the pgvector PostgresIndexWorker drain loop; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
 
 	for _, name := range frozenZeroSpawnBuilders {
 		require.Equal(t, 0, counts[name],

@@ -99,15 +99,19 @@ Every fact in the system has one canonical owner. No two packages may independen
 ## Canonical media_assets writer family
 
 `media_assets` writes have exactly one owner: the `persistence.AssetCommitter`
-port (implemented by `PostgresAssetCommitter`; `SQLiteAssetCommitter` is migration-only) and its sibling
+port (implemented by `PostgresMediaCommitter` in media-SSOT mode;
+`SQLiteAssetCommitter` is migration-only) and its sibling
 `persistence.CanonicalAssetWriter` surface (`SQLiteMediaCommitter`). Every
 asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST
-route through `AssetCommitter.CommitAndIndex` / `CommitTx`; the runtime Qdrant
-collection is `media_assets` (alias `media_assets_current`) and an empty
-projection means `INDEX_UNAVAILABLE/REBUILD_REQUIRED`, never a fallback to a
-recovery collection. Direct SQL writes to `media_assets` outside this family
+route through `AssetCommitter.CommitAndIndex` / `CommitTx`. The canonical
+media search store is pgvector inside the same PostgreSQL SSOT
+(`internal/platform/postgres/media.MediaSearcher` implements the canonical
+`search.VectorStorePort`); in media-SSOT mode the composition root resolves
+the pgvector plane fail-closed and no Qdrant media collection is consulted.
+Direct SQL writes to `media_assets` outside this family
 are banned and enforced by the `percheck_media_assets_writer_canonical` CI
-gate (see godlike/08).
+gate (see godlike/08). Cutover certification:
+`make certify-media-cutover` (POSTGRES_MEDIA_SSOT gate).
 
 The canonical SQL-owning files (the SSOT family, 5 files as of the
 asset-persistence unification cutover, August 2026):
@@ -132,6 +136,37 @@ SQL must delegate to this family or be migrated before it can be committed.
 ## Qdrant projection
 
 Qdrant is not part of the PostgreSQL media SSOT path. Media Qdrant reads and writes must remain disabled during and after cutover; PostgreSQL + pgvector is the canonical media search store. Any remaining Qdrant usage must be explicitly outside the media domain.
+
+### Media projection demolition status (September 2026)
+
+REMOVED (cutover demolition):
+
+- `SelectMediaAssetCommitter` (composition root + media subpackage): the
+  caller-supplied adapter-pair decision was never invoked by production
+  wiring and conflicted with the canonical single decision point. The
+  media engine selection lives exclusively in
+  `canonical_media_committer.go` (`newCanonicalAssetCommitterCfg` /
+  `canonicalCommitterForRoot`), fail-closed on
+  `cfg.MediaPostgreSQL.Enabled` + the open `root.MediaPostgres` handle.
+
+REPLACED (structural, gated by `make certify-media-cutover`):
+
+- The SQLite → outbox → Qdrant media projection chain is replaced by
+  `pgmedia.PostgresIndexWorker`: claims `asset.index.requested` from the
+  PG outbox, embeds the asset search_text, upserts the pgvector, flips
+  `index_state=INDEXED` in the same transaction, and completes the event
+  with lease fencing + retry/dead-letter semantics. In PG mode the
+  composition root registers NO Qdrant media indexing handler
+  (`QDRANT_MEDIA_WRITES=0`, `QDRANT_MEDIA_READS=0` — structural gates).
+
+RETAINED (legitimate non-media Qdrant usage — demolition debt owner:
+non-media Qdrant retirement, NOT the media cutover):
+
+- `internal/platform/qdrant/indexing/mediamemory` (frame-concept
+  projections), `internal/capabilities/maintenance` DR adapter,
+  `cmd/admin/internal/audit` + `cmd/admin/reconcile` tooling, and the
+  SQLite media committer family (staged-migration adapter until
+  non-media SQLite retirement).
 
 ## Drive and filesystem
 

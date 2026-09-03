@@ -75,11 +75,17 @@ var indexedStateWriterSSOTSkipPathPrefixes = []string{
 	"cmd/archcheck/scan",
 }
 
-// indexedStateWriterSSOTCanonicalPath is the canonical INDEXED writer
-// package. setIndexedAt (the only function that writes the INDEXED
-// state to media_assets) lives here. Files under this prefix are
-// exempt.
-const indexedStateWriterSSOTCanonicalPath = "internal/platform/qdrant/indexing/clipindexer/"
+// indexedStateWriterSSOTCanonicalPaths lists the canonical INDEXED
+// writer packages. setIndexedAt (the SQLite/Qdrant-mode writer of the
+// INDEXED state to media_assets) lives in the clipindexer package;
+// PostgresIndexWorker (the media-SSOT-mode writer, media cutover
+// September 2026) lives in the postgres media package. Both are the
+// canonical outbox consumers — the ONLY files permitted to transition
+// index_state to INDEXED. Files under either prefix are exempt.
+var indexedStateWriterSSOTCanonicalPaths = []string{
+	"internal/platform/qdrant/indexing/clipindexer/",
+	"internal/platform/postgres/media/",
+}
 
 // indexedStateWriterSSOTScanScope is the prefix the gate applies to.
 // Production .go files under this prefix are scanned. _test.go files
@@ -161,9 +167,11 @@ func ScanIndexedStateWriterSSOT(root string, pol *policy.Policy, r *report.Repor
 		if !strings.HasPrefix(relSlash, indexedStateWriterSSOTScanScope) {
 			return nil
 		}
-		// Canonical writer path: exempt.
-		if strings.HasPrefix(relSlash, indexedStateWriterSSOTCanonicalPath) {
-			return nil
+		// Canonical writer paths: exempt.
+		for _, canonical := range indexedStateWriterSSOTCanonicalPaths {
+			if strings.HasPrefix(relSlash, canonical) {
+				return nil
+			}
 		}
 		scanIndexedStateWriterSSOTFile(path, relSlash, r)
 		return nil

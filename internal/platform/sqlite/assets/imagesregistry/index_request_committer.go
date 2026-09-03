@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -121,14 +120,14 @@ func CommitIndexRequestTx(
 		"operation":            indexRequestOperationUpsert,
 		"source_version":       req.SourceVersion,
 		"index_revision":       req.SourceVersion,
-		"target_index_version": clipindexer.CollectionVersion(),
+		"target_index_version": pgmediaTargetIndexVersion,
 		"requested_vectors":    []string{"text", "transcript"},
 		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
 		"idempotency_key":      eventKey,
 		"source":               req.Source,
 		"media_type":           req.MediaType,
-		"embedding_model":      clipindexer.EmbeddingModel(),
-		"embedding_version":    clipindexer.EmbeddingModelVersion(),
+		"embedding_model":      pgmediaEmbeddingModel,
+		"embedding_version":    pgmediaEmbeddingModelVersion,
 	}
 	payload, err = json.Marshal(payloadMap)
 	if err != nil {
@@ -196,3 +195,15 @@ func CommitIndexRequestTx(
 		ExistingStatus: enqueueResult.ExistingStatus,
 	}, nil
 }
+
+// ── pgvector event-plane identity (media demolition, September 2026) ────
+// The SQLite outbox still enqueues asset.index.requested events for the
+// clip-domain committers, but their consumer is the PostgreSQL
+// PostgresIndexWorker (the Qdrant media projection was demolished). The
+// envelope identity therefore mirrors the pgvector media SSOT contract
+// instead of the retired Qdrant clipindexer constants.
+const (
+	pgmediaTargetIndexVersion    = "pgvector-media-v1"
+	pgmediaEmbeddingModel        = "intfloat/multilingual-e5-base"
+	pgmediaEmbeddingModelVersion = "intfloat/multilingual-e5-base"
+)

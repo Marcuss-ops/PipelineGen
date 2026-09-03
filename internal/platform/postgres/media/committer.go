@@ -42,63 +42,6 @@ type PostgresAssetCommitter struct {
 	log *zap.Logger
 }
 
-// UpsertBackfillAssets is the canonical adapter entry point for the legacy
-// SQLite projection. Keeping this compatibility write here ensures backfill
-// uses the same owner as normal media asset commits.
-func (c *PostgresAssetCommitter) UpsertBackfillAssets(ctx context.Context, cols []string, rows []backfillAssetRow) (int, error) {
-	if len(rows) == 0 {
-		return 0, nil
-	}
-	target := make([]string, 0, len(cols))
-	for _, column := range cols {
-		if column != "status" {
-			target = append(target, column)
-		}
-	}
-	target = append(target, "lifecycle_state")
-
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO media_assets (")
-	sb.WriteString(strings.Join(target, ", "))
-	sb.WriteString(") VALUES ")
-	params := make([]any, 0, len(rows)*len(target))
-	for i, row := range rows {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString("(")
-		for j, column := range target {
-			if j > 0 {
-				sb.WriteString(", ")
-			}
-			fmt.Fprintf(&sb, "$%d", len(params)+1)
-			if column == "lifecycle_state" {
-				state := strings.TrimSpace(row.status)
-				if state == "" {
-					state = "ACTIVE"
-				}
-				params = append(params, state)
-				continue
-			}
-			params = append(params, row.vals[indexOf(cols, column)])
-		}
-		sb.WriteString(")")
-	}
-	sb.WriteString(" ON CONFLICT (id) DO UPDATE SET ")
-	for i, column := range target {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		fmt.Fprintf(&sb, "%s = EXCLUDED.%s", column, column)
-	}
-	res, err := c.db.ExecContext(ctx, sb.String(), params...)
-	if err != nil {
-		return 0, fmt.Errorf("media backfill: upsert postgres media_assets: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
-}
-
 // NewPostgresAssetCommitter constructs the adapter. Both db and box are
 // required; a nil value panics at construction time so wiring gaps surface
 // at boot rather than at first commit.

@@ -327,3 +327,26 @@ CREATE INDEX IF NOT EXISTS idx_asset_renditions_location
     ON asset_renditions (location_id);
 CREATE INDEX IF NOT EXISTS idx_asset_renditions_kind
     ON asset_renditions (kind);
+
+-- ── asset_text_track_segments ────────────────────────────────────────────
+-- Timed cue segments (migration 170 parity): the body rows of a text
+-- track. Added with the media demolition (September 2026) when the
+-- YouTube localized clip writer moved onto the PostgreSQL media SSOT —
+-- the canonical CommitClipTextAndIndexEvent writes tracks + segments in
+-- the same transaction as media_assets.
+CREATE TABLE IF NOT EXISTS asset_text_track_segments (
+    id          BIGSERIAL PRIMARY KEY,
+    track_id    BIGINT NOT NULL
+                REFERENCES asset_text_tracks(id)
+                ON DELETE CASCADE,
+    sequence_no INTEGER NOT NULL,
+    start_ms    BIGINT NOT NULL,
+    end_ms      BIGINT NOT NULL,
+    text        TEXT NOT NULL,
+    text_hash   TEXT NOT NULL DEFAULT '',
+    UNIQUE (track_id, sequence_no)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_text_track_segments_track
+    ON asset_text_track_segments (track_id, sequence_no);
+CREATE INDEX IF NOT EXISTS idx_asset_text_track_segments_hash
+    ON asset_text_track_segments (text_hash);

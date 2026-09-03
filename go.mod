@@ -3,7 +3,7 @@ module github.com/Marcuss-ops/PipelineGen
 go 1.25.0
 
 require (
-	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-00010101000000-000000000000
+	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-20260902155112-fb4938103f42
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
@@ -35,7 +35,6 @@ require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-20260902155112-fb4938103f42
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect

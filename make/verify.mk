@@ -235,6 +235,21 @@ certify-data-layer:
 certify-data-layer-json:
 	@bash scripts/ci/certify-data-layer.sh --json
 
+# certify-media-cutover — POSTGRES_MEDIA_CUTOVER gate (binary PASS/FAIL).
+# The PostgreSQL + pgvector media SSOT certificate: pgvector adapter is the
+# canonical VectorStorePort, one transaction commits asset+location+
+# features+embedding, rollback leaves zero partial state, filtered vector
+# search is correct, commits are idempotent, embedding model versions are
+# preserved, and the Qdrant media plane is bypassed in Postgres mode.
+# Prints POSTGRES_MEDIA_SSOT=TRUE only when every gate is green.
+# Requires docker for the ephemeral PostgreSQL 18 + pgvector container
+# (pgvector/pgvector:pg18) unless TEST_POSTGRES_DSN is already reachable.
+certify-media-cutover:
+	@bash scripts/ci/certify-media-cutover.sh
+
+certify-media-cutover-json:
+	@bash scripts/ci/certify-media-cutover.sh --json
+
 # ─── Sidecar Node scraper (PR-LIVE-VERIFY-1, P0) ───────────────────────────
 #
 # scraper-up — launches the Node.js artlist scraper sidecar as a background

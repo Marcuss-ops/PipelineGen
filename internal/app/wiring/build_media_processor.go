@@ -8,6 +8,9 @@
 package wiring
 
 import (
+	"database/sql"
+	"fmt"
+
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -33,13 +36,21 @@ func wireMediaProcessor(
 	cfg *config.Config,
 	publisher delivery.Publisher,
 	log *zap.Logger,
+	mediaPG *sql.DB,
 	mediaConfig mediaexec.ExecutionConfig,
 ) (detail.Processor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
 		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
 		return nil, nil
 	}
-	committer := newCanonicalAssetCommitter(dbs.Main.DB, outbox.EventsRepo, log)
+	committer, err := newCanonicalAssetCommitter(mediaPG, log)
+	if err != nil {
+		return nil, fmt.Errorf("wire media processor: canonical media writer: %w", err)
+	}
+	if committer == nil {
+		log.Warn("wireMediaProcessor: media PostgreSQL unavailable — MediaProcessor left nil (graceful degrade, godlike/07)")
+		return nil, nil
+	}
 	mp := InitMediaProcessor(
 		cfg,
 		dbs.Main,

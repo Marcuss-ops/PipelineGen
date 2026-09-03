@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	sqmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
 
@@ -86,7 +85,11 @@ func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer pe
 			Taxonomy: taxonomy, Content: optionalImageContent(contentHash),
 			IndexPolicy: mediacommit.IndexPolicy{Indexable: true}, Actor: "image-repository",
 		}
-		if canonical, ok := committer.(*sqmedia.SQLiteMediaCommitter); ok {
+		// MEDIA DEMOLITION (September 2026): the SQLite fast-path type
+		// assertion is removed — the canonical media committer (PostgreSQL
+		// since the demolition) exposes CommitMediaAsset(ctx,
+		// mediacommit.CommitMediaAssetRequest) directly.
+		if canonical, ok := committer.(mediacommit.MediaCommitter); ok {
 			_, err := canonical.CommitMediaAsset(ctx, request)
 			return 0, err
 		}

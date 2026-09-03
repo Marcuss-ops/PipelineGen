@@ -53,6 +53,16 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		vectorStoreForSearch = root.Process.VectorSvc
 	}
 
+	// POSTGRES-MEDIA-CUTOVER: when the PostgreSQL media SSOT is enabled,
+	// the vector search plane is the pgvector MediaSearcher over the same
+	// database that owns media_assets — the Qdrant adapter is never
+	// consulted for media reads (fail-closed on an unavailable Postgres).
+	if _, pgDB, pgSelected, pgErr := selectMediaVectorStore(ctx, cfg, log); pgErr != nil {
+		return registryCrossStepState{}, pgErr
+	} else if pgSelected {
+		vectorStoreForSearch = pgVectorStoreFrom(pgDB)
+	}
+
 	var embeddingReg search.EmbeddingChannelRegistry
 	if cfg != nil && cfg.ClipIndexer.ServerURL != "" {
 		// Catalog query vectors must come from the same E5 sidecar contract
@@ -188,6 +198,14 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		return registryCrossStepState{}, err
 	}
 
+	mediaIngestCommitter, mediaIngestErr2 := newCanonicalAssetCommitter(root.MediaPostgres, log)
+	if mediaIngestErr2 != nil {
+		return registryCrossStepState{}, fmt.Errorf("wire registry: media ingest committer: %w", mediaIngestErr2)
+	}
+	if mediaIngestCommitter == nil {
+		log.Warn("wire registry: media PostgreSQL unavailable — MediaIngest module skipped (graceful degrade, godlike/07)")
+	}
+
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
 		DB:                root.DB,
 		CacheDB:           root.CacheDB,
@@ -201,7 +219,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		AssetIndexService: root.Search.AssetIndexService,
 		PrebuiltService:   root.Domains.IngestService,
 		Dispatcher:        root.Outbox.Dispatcher,
-		Committer:         newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
+		Committer:         mediaIngestCommitter,
 	}, idemHandler)
 	regWiring.MediaIngest = mediaIngestW
 	if mediaIngestErr != nil {
@@ -246,7 +264,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		cfg,
 		&ArtlistBundle{
 			MediaExec:          root.MediaExec,
-			Committer:          newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
+			Committer:          canonicalCommitterOrSkipped(root, log),
 			DB:                 root.DB,
 			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,
@@ -432,7 +450,17 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
-	var committer assetspersistence.AssetCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+	var committer assetspersistence.AssetCommitter
+	{
+		w, werr := newCanonicalAssetCommitter(root.MediaPostgres, log)
+		if werr != nil {
+			return fmt.Errorf("registerClipRender: canonical media writer: %w", werr)
+		}
+		if w == nil {
+			return fmt.Errorf("registerClipRender: canonical media writer unavailable (media PostgreSQL degraded)")
+		}
+		committer = w
+	}
 	publisher, publisherErr := clipadapters.NewClipRenderPublisher(root.Drive.Publisher, committer, log)
 	if publisherErr != nil {
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)

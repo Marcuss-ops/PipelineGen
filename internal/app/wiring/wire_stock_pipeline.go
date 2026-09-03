@@ -190,16 +190,18 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 
 	// Finalizer: single-TX spine for SUCCEEDED state + artifact writes.
 	var stockFinalizer finalization.JobFinalizer
-	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		assetCommitter := newCanonicalAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
-		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
-		if root.TextTracks != nil {
-			assetTx.WithFanOut(root.TextTracks.FanOut)
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		if assetCommitter, cerr := newCanonicalAssetCommitter(root.MediaPostgres, log); cerr != nil {
+			return nil, fmt.Errorf("WireStockPipeline: canonical media writer: %w", cerr)
+		} else if assetCommitter != nil {
+			assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
+			if root.TextTracks != nil {
+				assetTx.WithFanOut(root.TextTracks.FanOut)
+			}
+			stockFinalizer = jobsfinalizer.New(stockDB, root.Outbox.EventsRepo, assetTx, log)
 		}
-		stockFinalizer = jobsfinalizer.New(stockDB, root.Outbox.EventsRepo, assetTx, log)
 	} else {
-		log.Warn("WireStockPipeline: Finalizer not constructed (godlike/07: one or more required deps nil — stockDB, root.Outbox, or root.Outbox.EventsRepo). If Publisher is also non-nil, the symmetric gate will fire ErrStockProductionJobFinalizerMissing.",
-			zap.Bool("stockDB_nil", stockDB == nil),
+		log.Warn("WireStockPipeline: Finalizer not constructed (godlike/07: one or more required deps nil — root.Outbox or root.Outbox.EventsRepo). If Publisher is also non-nil, the symmetric gate will fire ErrStockProductionJobFinalizerMissing.",
 			zap.Bool("root_Outbox_nil", root.Outbox == nil),
 			zap.Bool("EventsRepo_nil", root.Outbox == nil || root.Outbox.EventsRepo == nil),
 		)
@@ -247,8 +249,19 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	}
 
 	var stockMetadataUpdater stockenrich.AssetMetadataUpdater
-	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		stockMetadataUpdater = newCanonicalAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		// The canonical committer implements UpdateAssetMetadata; the typed
+		// assertion keeps the narrow-port discipline (godlike/06).
+		type metadataUpdater interface {
+			UpdateAssetMetadata(ctx context.Context, assetID, metadataJSON string) error
+		}
+		if w, werr := newCanonicalAssetCommitter(root.MediaPostgres, log); werr != nil {
+			return nil, fmt.Errorf("WireStockPipeline: canonical media writer: %w", werr)
+		} else if w != nil {
+			if mu, ok := w.(metadataUpdater); ok {
+				stockMetadataUpdater = mu
+			}
+		}
 	}
 
 	// PublisherPort: construct the canonical drive.NewArtifactPublisherAdapter

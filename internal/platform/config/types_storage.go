@@ -17,6 +17,13 @@ type PostgreSQLMediaConfig struct {
 	MaxOpenConnections     int    `yaml:"max_open_connections" env:"PIPELINEGEN_MEDIA_POSTGRES_MAX_OPEN_CONNECTIONS" default:"10"`
 	MaxIdleConnections     int    `yaml:"max_idle_connections" env:"PIPELINEGEN_MEDIA_POSTGRES_MAX_IDLE_CONNECTIONS" default:"5"`
 	ConnMaxLifetimeSeconds int    `yaml:"conn_max_lifetime_seconds" env:"PIPELINEGEN_MEDIA_POSTGRES_CONN_MAX_LIFETIME_SECONDS" default:"300"`
+	// EmbeddingModel is the canonical pgvector text-channel model id. It
+	// MUST match the model served by the E5 sidecar (cfg.ClipIndexer
+	// .ServerURL) so query and document spaces cannot drift. Default is
+	// the same intfloat/multilingual-e5-base identity the Qdrant IndexSchema
+	// pins (semanticDenseVectorName "text"). The media_embedding_families
+	// registry gates every vector write against this identity.
+	EmbeddingModel string `yaml:"embedding_model" env:"PIPELINEGEN_MEDIA_POSTGRES_EMBEDDING_MODEL" default:"intfloat/multilingual-e5-base"`
 }
 
 // Validate enforces fail-closed PostgreSQL selection. The DSN is required
@@ -27,6 +34,9 @@ func (c PostgreSQLMediaConfig) Validate() error {
 	}
 	if strings.TrimSpace(c.DSN) == "" {
 		return fmt.Errorf("media PostgreSQL is enabled but PIPELINEGEN_MEDIA_POSTGRES_DSN is empty")
+	}
+	if strings.TrimSpace(c.EmbeddingModel) == "" {
+		return fmt.Errorf("media PostgreSQL is enabled but PIPELINEGEN_MEDIA_POSTGRES_EMBEDDING_MODEL is empty (pin the canonical text-channel model id)")
 	}
 	if c.MaxOpenConnections <= 0 {
 		return fmt.Errorf("media PostgreSQL max_open_connections must be greater than zero")

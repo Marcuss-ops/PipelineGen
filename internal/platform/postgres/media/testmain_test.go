@@ -67,11 +67,12 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 	// Clean slate per test: truncate the transactional core in FK-safe
 	// order. Derived surfaces (features/embeddings) cascade from assets.
 	for _, stmt := range []string{
-		`TRUNCATE asset_text_tracks`,
+		`TRUNCATE asset_text_track_segments, asset_text_tracks`,
 		`TRUNCATE registry_events`,
 		`TRUNCATE media_asset_sources`,
 		`TRUNCATE outbox_events`,
 		`TRUNCATE asset_renditions`,
+		`TRUNCATE media_embedding_families`,
 		`TRUNCATE asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
@@ -86,6 +87,7 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 			`TRUNCATE media_asset_sources`,
 			`TRUNCATE outbox_events`,
 			`TRUNCATE asset_renditions`,
+			`TRUNCATE media_embedding_families`,
 			`TRUNCATE asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
 		} {
 			_, _ = db.ExecContext(ctx, stmt)
