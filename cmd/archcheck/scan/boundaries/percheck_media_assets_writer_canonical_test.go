@@ -5,9 +5,12 @@
 //	(a) "violation trip" — a non-canonical, non-test Go file outside
 //	    the canonical owner that contains `INSERT INTO media_assets`
 //	    (or UPDATE / DELETE FROM) emits a violation.
-//	(b) "canonical owner exempt" — the canonical
-//	    internal/platform/sqlite/assets/imagesregistry/asset_committer.go
-//	    is exempt (it IS the SSOT).
+//	(b) "canonical owner exempt" — the canonical PostgreSQL media family
+//	    (internal/platform/postgres/media/…) and the surviving SQLite
+//	    non-media mutation primitives are exempt (they ARE the SSOT or
+//	    narrow lifecycle surfaces); the DEMOLISHED SQLite media writer
+//	    files (asset_committer*.go, media_committer.go) are NOT exempt —
+//	    their reappearance is a violation.
 //	(c) "comment-only is residue-accounted" — a comment-only line
 //	    that mentions the forbidden SQL does NOT emit a violation;
 //	    it is WARNed per godlike/07.
@@ -66,17 +69,57 @@ func writeSomething(ctx context.Context) {
 }
 
 // TestScanMediaAssetsWriterCanonical_CanonicalOwnerExempt verifies
-// that the canonical AssetCommitter file does NOT emit a violation.
+// that the canonical AssetCommitter family does NOT emit a violation.
 func TestScanMediaAssetsWriterCanonical_CanonicalOwnerExempt(t *testing.T) {
 	tmp := t.TempDir()
-	ownerDir := filepath.Join(tmp, "internal/platform/sqlite/assets/imagesregistry")
+	content := `package imagesregistry
+
+func write() {
+	// INSERT INTO media_assets — this is a canonical owner
+	_ = "INSERT INTO media_assets (id) VALUES (?)"
+}
+`
+	ownerFiles := []string{
+		// PostgreSQL + pgvector canonical family (the ONLY media writer).
+		"internal/platform/postgres/media/committer.go",
+		"internal/platform/postgres/media/media_committer.go",
+		"internal/platform/postgres/media/mutations.go",
+		// Surviving SQLite non-media mutation primitives (narrow surfaces).
+		"internal/platform/sqlite/assets/imagesregistry/media_asset_mutations.go",
+	}
+	for _, rel := range ownerFiles {
+		ownerFile := filepath.Join(tmp, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(ownerFile), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(ownerFile, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r := &report.Report{}
+	ScanMediaAssetsWriterCanonical(tmp, &policy.Policy{}, r)
+
+	for _, v := range r.Violations {
+		if v.Rule == mediaAssetsWriterRule {
+			t.Errorf("canonical owner file should be exempt, got violation: %+v", v)
+		}
+	}
+}
+
+// TestScanMediaAssetsWriterCanonical_DemolishedSQLiteWritersRejected pins
+// the September 2026 demolition: the removed SQLite media writer files are
+// no longer canonical owners — if anyone recreates them with direct
+// media_assets SQL, the gate must flag them.
+func TestScanMediaAssetsWriterCanonical_DemolishedSQLiteWritersRejected(t *testing.T) {
+	tmp := t.TempDir()
+	ownerDir := filepath.Join(tmp, "internal", "platform", "sqlite", "assets", "imagesregistry")
 	if err := os.MkdirAll(ownerDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	content := `package imagesregistry
 
 func write() {
-	// INSERT INTO media_assets — this is a canonical owner
 	_ = "INSERT INTO media_assets (id) VALUES (?)"
 }
 `
@@ -96,9 +139,21 @@ func write() {
 	r := &report.Report{}
 	ScanMediaAssetsWriterCanonical(tmp, &policy.Policy{}, r)
 
+	flagged := map[string]bool{}
 	for _, v := range r.Violations {
 		if v.Rule == mediaAssetsWriterRule {
-			t.Errorf("canonical owner file should be exempt, got violation: %+v", v)
+			flagged[filepath.Base(v.File)] = true
+		}
+	}
+	for _, filename := range []string{
+		"asset_committer.go",
+		"asset_committer_mutations.go",
+		"asset_committer_projection_mutations.go",
+		"canonical_clip_mutations.go",
+		"media_committer.go",
+	} {
+		if !flagged[filename] {
+			t.Errorf("demolished SQLite media writer %s must be flagged, got violations: %v", filename, flagged)
 		}
 	}
 }
