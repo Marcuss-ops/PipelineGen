@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/emergency"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/audit"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/backfill"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cleanup"
@@ -98,7 +97,6 @@ var commandRegistry = map[string]commandHandler{
 	"reachability-graph":             audit.RunReachabilityGraph,
 	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
-	"recover-registry-from-qdrant":   emergency.RunRecoverRegistryFromQdrant,
 	"reindex-qdrant":                 reconcile.RunReindexQdrant,
 	"remove-drive-folder-recursive":  drive.RunRemoveDriveFolderRecursive,
 	"repair-drive-links":             audit.RunRepairDriveLinks,
