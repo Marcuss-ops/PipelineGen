@@ -169,7 +169,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 			return in.OnRenderReady(scriptgeneration.LocalizedRenderResult{
 				SceneID: artifact.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(artifact.Language),
 				ClipID: artifact.ClipID, AssetID: artifact.AssetID, SHA256: artifact.SHA256, DurationMS: artifact.DurationMS,
-				LocalPath: artifact.LocalPath, Status: string(artifact.Status), StartedAt: time.Now().UTC(),
+				LocalPath: artifact.LocalPath, Status: string(artifact.Status), Metrics: metricsMapFromJSON(artifact.MetricsJSON), StartedAt: time.Now().UTC(),
 			})
 		},
 	}

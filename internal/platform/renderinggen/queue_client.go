@@ -166,6 +166,7 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		ChrononVersion:     in.ChrononVersion,
 		DriveFileID:        in.DriveFileID,
 		DriveLink:          in.DriveLink,
+		Metrics:            in.Metrics,
 	}
 }
 
