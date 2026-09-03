@@ -74,7 +74,7 @@
             "opacity": 1,
             "margin_px": 40,
             "style": {
-              "font": "Roboto",
+      "font": "Montserrat",
               "size": 42,
               "color": "#FFFFFF",
               "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4},
@@ -86,7 +86,7 @@
             "mode": "burn",
             "style_id": "shorts-v1-40-shadow",
             "style": {
-              "font": "Roboto",
+      "font": "Montserrat",
               "font_size_px": 52,
               "width_px": 1600,
               "position": "bottom_center",
