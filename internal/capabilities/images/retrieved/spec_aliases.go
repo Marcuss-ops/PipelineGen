@@ -61,14 +61,5 @@ type Registry interface {
 	Resolve(ids []string) ([]Provider, error)
 }
 
-// RetrievalRegistryImpl aliases RetrievalProviderRegistry.
-type RetrievalRegistryImpl = RetrievalProviderRegistry
-
-// RetrievalSearchRequest aliases RetrievalSearchOptions.
-type RetrievalSearchRequest = RetrievalSearchOptions
-
-// RetrievedCandidate aliases RetrievalSearchResult.
-type RetrievedCandidate = RetrievalSearchResult
-
 // ErrProviderNotFound is the user-spec sentinel returned by the Registry.Resolve method.
 var ErrProviderNotFound = errors.New("retrieved: provider id not found in registry")
