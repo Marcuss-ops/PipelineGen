@@ -20,6 +20,7 @@
 package clips
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -127,19 +128,13 @@ func matchAny(name string, patterns []string) bool {
 // readManifest reads a clip_manifest.json and unmarshals into a
 // generic map. Missing or malformed file returns nil — manifest
 // is best-effort context, NOT a hard requirement.
-//
-// Uses the package's `jsonUnmarshal` helper (a thin wrapper over
-// encoding/json in json_helpers.go) instead of stdlib json.Unmarshal
-// directly to keep the alias system intact — it owns the canonical
-// "decode a clip manifest" surface for the package; future callers
-// should use the alias too.
 func readManifest(path string) map[string]any {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
 	var m map[string]any
-	if err := jsonUnmarshal(b, &m); err != nil {
+	if err := json.Unmarshal(b, &m); err != nil {
 		return nil
 	}
 	return m
