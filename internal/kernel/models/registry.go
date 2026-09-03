@@ -86,9 +86,18 @@ const (
 	CanonicalTextModelRevision   = "2026-06-26-v1"
 	CanonicalTextModelDimensions = 768
 
-	CanonicalVisualModelID         = "google/siglip-so400m-patch14-384"
-	CanonicalVisualModelRevision   = "2026-06-16-v1"
-	CanonicalVisualModelDimensions = 768
+	CanonicalVisualModelID       = "google/siglip-so400m-patch14-384"
+	CanonicalVisualModelRevision = "2026-06-16-v1"
+	// 1152 = the LIVE sentence-transformers SigLIP so400m-patch14-384
+	// image-encoder output (pooled). Ground truth probed from the running
+	// production sidecar (POST /embed_visual_from_images → dimensions:
+	// 1152, model: google/siglip-so400m-patch14-384, version
+	// 2026-06-16-v1). The previous 768 pin was the config-layer doc value
+	// and NEVER matched what the sidecar actually emits — query and
+	// document visual spaces would have drifted. This constant is the
+	// single literal owner; every consumer (schema, embedders, tests,
+	// model-registry-gen mirror) derives from it.
+	CanonicalVisualModelDimensions = 1152
 )
 
 // Canonical model set — one per responsibility, stable order.
