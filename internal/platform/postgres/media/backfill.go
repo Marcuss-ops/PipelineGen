@@ -124,8 +124,9 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	}
 
 	// Self-bootstrapping schema: idempotent IF NOT EXISTS DDL is a no-op on
-	// an already-populated media database.
-	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL} {
+	// an already-populated media database. 003 registers the canonical
+	// embedding families and creates the production HNSW ANN indexes.
+	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL} {
 		if _, err := pg.ExecContext(ctx, ddl); err != nil {
 			return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 		}
