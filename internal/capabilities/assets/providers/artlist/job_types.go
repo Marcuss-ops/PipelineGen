@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"go.uber.org/zap"
@@ -265,18 +264,4 @@ func (a *JobAdapter) jobToResponse(j *job.Job) *RunTagResponse {
 // JobToRunTagResponse converts a job.Job to RunTagResponse using the codec.
 func JobToRunTagResponse(j *job.Job) *RunTagResponse {
 	return (&JobCodec{}).ResponseFromJob(j)
-}
-
-// toDomain is now a passthrough — the legacy models.MediaAsset has been deleted.
-// Callers already pass *asset.Asset; this function exists for compatibility
-// with existing call sites and will be removed in a follow-up cleanup.
-func toDomain(m *asset.Asset) *asset.Asset {
-	return m
-}
-
-// toDomainPtrSlice converts a slice of *asset.Asset to *asset.Asset (passthrough).
-func toDomainPtrSlice(items []*asset.Asset) []*asset.Asset {
-	out := make([]*asset.Asset, len(items))
-	copy(out, items)
-	return out
 }
