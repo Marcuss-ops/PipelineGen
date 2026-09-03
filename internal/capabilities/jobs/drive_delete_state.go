@@ -2,13 +2,17 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // preflightDriveDelete validates that the asset is at a state owned by this
@@ -100,4 +104,24 @@ func (h *DriveDeleteHandler) advanceDriveDelete(
 		return fmt.Errorf("drive_delete AdvanceAndEmit(%s): %w", req.AssetID, err)
 	}
 	return nil
+}
+
+// indexDeletePayloadV1 mirrors the next-hop consumer envelope without importing
+// infrastructure-layer producer types into the application package.
+type indexDeletePayloadV1 struct {
+	SchemaVersion  string `json:"schema_version"`
+	EventID        string `json:"event_id"`
+	AssetID        string `json:"asset_id"`
+	RequestedAt    string `json:"requested_at,omitempty"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+func buildIndexDeletePayloadForDrive(assetID string) ([]byte, error) {
+	return json.Marshal(indexDeletePayloadV1{
+		SchemaVersion:  DeleteRequestSchemaVersion,
+		EventID:        uuid.NewString(),
+		AssetID:        assetID,
+		RequestedAt:    timeutil.FormatRFC3339(time.Now()),
+		IdempotencyKey: "delete:" + assetID,
+	})
 }
