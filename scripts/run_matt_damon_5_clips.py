@@ -16,7 +16,10 @@ from velox_client import VeloxClient
 
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOAD = ROOT / "ops/jobs/matt_damon_5_clips_docs_true.generate.json"
-DEFAULT_FOLDER = "1UPya0b647sLs-7NPLYjIBnZwqDSsFZNK"
+# Operator-selected Drive parent for this reconstruction test. Keep this in
+# sync with the checked-in payload so a plain test run cannot silently publish
+# into a different Drive tree.
+DEFAULT_FOLDER = "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
 
 
 def env_file(path: Path) -> None:
@@ -32,6 +35,8 @@ def env_file(path: Path) -> None:
 
 def result_object(response: dict) -> dict:
     result = response.get("result") or {}
+    if isinstance(result, dict) and isinstance(result.get("result"), dict):
+        return result["result"]
     data = result.get("data") if isinstance(result, dict) else None
     if isinstance(data, dict):
         result = data.get("result") or data
@@ -50,6 +55,7 @@ def verify(response: dict) -> dict:
         and len(item.get("source", {}).get("clip_ids", [])) == 5
         and render.get("enabled") is True
         and render.get("require_gpu") is True
+        and render.get("drive_folder_id") == item.get("docs", {}).get("folder_id")
         and render.get("render_concurrency", 0) >= 8
         and render.get("watermark", {}).get("enabled") is True
         and render.get("subtitles", {}).get("enabled") is True
@@ -61,7 +67,7 @@ def verify(response: dict) -> dict:
         and all(clip.get("backend") == "chronon_vulkan" for clip in clips)
         and (document.get("link") or document.get("url"))
     ):
-        raise RuntimeError("endpoint job completed without the required render/docs contract")
+        raise RuntimeError("endpoint job completed without the required render/docs/folder contract")
     return {"document": document.get("link") or document.get("url"), "metrics": metrics, "clips": clips}
 
 
