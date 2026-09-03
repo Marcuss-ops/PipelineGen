@@ -225,21 +225,22 @@ local.env
 /archcheck
 
 # Qdrant reindex binary (built locally from cmd/admin/reindex_qdrant*.go).
-# Anchored with leading '/' so the pattern matches only the root-level build artifact.
-# Without the anchor, gitignore would match any PATH COMPONENT named that way,
-# which could recursively exclude future source trees with the same path component.
-# 58.8MB ELF executable (dynamically linked, includes debug info); not a test fixture
-# (zero Go/MD/sh/py/yaml references repo-wide — same forward-prevention pattern as /archcheck).
+# Anchored with leading '/' so the pattern matches only the root-level
+# build artifact. Without the anchor, gitignore would match any PATH
+# COMPONENT named that way, which could recursively exclude future source
+# trees with the same path component. 58.8MB ELF executable (dynamically
+# linked, includes debug info); not a test fixture (zero Go/MD/sh/py/yaml
+# references repo-wide — same forward-prevention pattern as /archcheck).
 /_reindex_qdrant
 
 # Seed test asset binary (built locally from cmd/admin/seed_test_asset/*.go).
-# Anchored with leading '/' so the pattern matches only the root-level build artifact.
-# 8.8MB ELF executable (dynamically linked, includes debug info). The 2 source-file
-# 'seed_test_asset' mentions in tracked code (tests/e2e/qdrant_dod_4_assertions_test.go +
-# cmd/admin/qdrant_preflight_stubs.go) are doc comments referring to the Go SOURCE path
-# cmd/admin/seed_test_asset/seed.go, not invocations of this root binary — same
-# forward-prevention pattern as /_reindex_qdrant. Rebuild on demand:
-#   go build -o seed_test_asset ./cmd/admin/seed_test_asset/.
+# Anchored with leading '/' so the pattern matches only the root-level
+# build artifact. 8.8MB ELF executable (dynamically linked, includes debug
+# info). The 2 source-file 'seed_test_asset' mentions in tracked code
+# (tests/e2e/qdrant_dod_4_assertions_test.go + cmd/admin/qdrant_preflight_stubs.go)
+# are doc comments referring to the Go SOURCE path cmd/admin/seed_test_asset/seed.go,
+# not invocations of this root binary — same forward-prevention pattern as
+# /_reindex_qdrant. Rebuild on demand: `go build -o seed_test_asset ./cmd/admin/seed_test_asset/`.
 /seed_test_asset
 
 # Worker integration reference binary (built locally from tests/operational/worker-integration/main.go).
