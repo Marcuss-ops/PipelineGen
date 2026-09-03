@@ -254,8 +254,8 @@ func TestFrameIndexSchema_CanonicalShape(t *testing.T) {
 		t.Fatalf("expected 1 dense vector, got %d", len(sch.DenseVectors))
 	}
 	v := sch.DenseVectors[0]
-	if v.Dimensions != 768 {
-		t.Fatalf("expected 768d visual, got %d", v.Dimensions)
+	if v.Dimensions != qdrantschema.VisualEmbeddingDim {
+		t.Fatalf("expected %dd visual, got %d", qdrantschema.VisualEmbeddingDim, v.Dimensions)
 	}
 	if v.Distance != "Cosine" || !v.Normalized {
 		t.Fatalf("expected Cosine+normalized, got distance=%q normalized=%v", v.Distance, v.Normalized)

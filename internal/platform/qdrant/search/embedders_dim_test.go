@@ -1,5 +1,5 @@
 // Package search — embedders_dim_test.go covers the canonical
-// 768d SigLIP dimension guard on imageEmbedderAdapter. Pure
+// SigLIP dimension guard on imageEmbedderAdapter. Pure
 // unit test on the validateVisualEmbeddingDim helper; no HTTP
 // mocking required. Per godlike/06 SSOT, the guard is the single
 // canonical validator for visual embedding dimensionality.
@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
@@ -19,7 +20,7 @@ func TestValidateVisualEmbeddingDim(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "happy path 768d",
+			name:    "happy path canonical dim",
 			vec:     make([]float32, schema.VisualEmbeddingDim),
 			wantErr: false,
 		},
@@ -99,9 +100,12 @@ func TestSchemaVisualEmbeddingConstants_Stable(t *testing.T) {
 	// media_assets.metadata_json.embedding_version_visual field
 	// pins against this string). Operators + downstream tooling
 	// rely on these being stable (godlike/06 SSOT).
-	if schema.VisualEmbeddingDim != 768 {
-		t.Fatalf("VisualEmbeddingDim drifted from 768 to %d — needs a Qdrant schema migration",
-			schema.VisualEmbeddingDim)
+	// Lock the canonical SigLIP so400m-patch14-384 native output (1152d,
+	// probed from the production sidecar) + "2026-06-16-v1" pair. Changing
+	// either requires a Qdrant schema migration (godlike/06 SSOT).
+	if schema.VisualEmbeddingDim != models.CanonicalVisualModelDimensions {
+		t.Fatalf("VisualEmbeddingDim drifted from %d to %d — needs a Qdrant schema migration",
+			models.CanonicalVisualModelDimensions, schema.VisualEmbeddingDim)
 	}
 	if schema.VisualEmbeddingModelVersion != "2026-06-16-v1" {
 		t.Fatalf("VisualEmbeddingModelVersion drifted from 2026-06-16-v1 to %q — needs a Qdrant schema migration",
