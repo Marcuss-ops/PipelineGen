@@ -84,28 +84,41 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 
 	// Seed one committed asset per family with a real 768d embedding so
 	// the planner has rows to consider (an empty table can still plan a
-	// seq scan; the fixture makes the plan realistic).
-	committers, dbh := newPostgresCommitter(t)
-	_ = dbh
-	semAsset := "yt_hnsw_semantic_001"
-	if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(semAsset)); err != nil {
-		t.Fatalf("commit semantic fixture asset: %v", err)
+	// seq scan; the fixture makes the plan realistic). The committer is
+	// built over the SAME db handle — a second newMediaTestDB would
+	// truncate the family rows registered above.
+	box := pgmedia.NewOutboxRepository(db)
+	ledger, ledgerErr := pgmedia.NewRegistry(db)
+	if ledgerErr != nil {
+		t.Fatalf("registry: %v", ledgerErr)
 	}
-	visAsset := "yt_hnsw_visual_001"
-	req := txCommitRequestFor(visAsset)
-	if _, err := committers.CommitAndIndex(ctx, req); err != nil {
-		t.Fatalf("commit visual fixture asset: %v", err)
-	}
+	committers := pgmedia.NewPostgresMediaCommitter(db, box, ledger, nil)
 
+	// Realistic fixture volume: pgvector's planner legitimately plans a
+	// Seq Scan on a near-empty table even when a usable HNSW index
+	// exists (cost model). Seed enough rows per family that the ANN
+	// index is the only rational plan for a LIMIT 20 cosine ordering.
 	queryVec := make([]float32, hnswDim)
 	for i := range queryVec {
 		queryVec[i] = 0.01 * float32(i%13)
 	}
-	if err := vectors.UpsertEmbedding(ctx, semAsset, "text", hnswSemanticModel, queryVec); err != nil {
-		t.Fatalf("seed semantic embedding: %v", err)
+	for i := 0; i < 64; i++ {
+		sid := fmt.Sprintf("yt_hnsw_semantic_%03d", i)
+		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(sid)); err != nil {
+			t.Fatalf("commit semantic fixture asset %s: %v", sid, err)
+		}
+		if err := vectors.UpsertEmbedding(ctx, sid, "text", hnswSemanticModel, queryVec); err != nil {
+			t.Fatalf("seed semantic embedding %s: %v", sid, err)
+		}
 	}
-	if err := vectors.UpsertEmbedding(ctx, visAsset, "visual", hnswVisualModel, queryVec); err != nil {
-		t.Fatalf("seed visual embedding: %v", err)
+	for i := 0; i < 24; i++ {
+		vid := fmt.Sprintf("yt_hnsw_visual_%03d", i)
+		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(vid)); err != nil {
+			t.Fatalf("commit visual fixture asset %s: %v", vid, err)
+		}
+		if err := vectors.UpsertEmbedding(ctx, vid, "visual", hnswVisualModel, queryVec); err != nil {
+			t.Fatalf("seed visual embedding %s: %v", vid, err)
+		}
 	}
 
 	vecLiteral, err := pgvectorLiteralFor(queryVec)
@@ -123,16 +136,16 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 	} {
 		explain := fmt.Sprintf(`
 			EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-			SELECT e.asset_id, 1 - (e.embedding <=> $1::vector) AS similarity
+			SELECT e.asset_id, 1 - (e.embedding::vector(%d) <=> $1::vector) AS similarity
 			FROM media_embeddings e
 			JOIN media_assets a ON a.id = e.asset_id
 			WHERE e.embedding_type = '%s'
 			  AND e.model_id = '%s'
 			  AND a.deleted_at = ''
 			  AND a.lifecycle_state IN ('ACTIVE')
-			ORDER BY e.embedding <=> $1::vector
+			ORDER BY e.embedding::vector(%d) <=> $1::vector
 			LIMIT 20
-		`, tc.embedding, tc.modelID)
+		`, hnswDim, tc.embedding, tc.modelID, hnswDim)
 		rows, err := db.QueryContext(ctx, explain, vecLiteral)
 		if err != nil {
 			t.Fatalf("%s: explain query: %v", tc.label, err)
@@ -155,15 +168,85 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		if strings.Contains(planText, "Seq Scan") {
 			t.Fatalf("%s: planner chose a Seq Scan — HNSW index not used. Plan:\n%s", tc.label, planText)
 		}
-		if !strings.Contains(planText, "Index Scan") {
+		// Accept any index-scan form: HNSW surfaces as "Index Scan using",
+		// but the planner may legitimately emit a Bitmap Index Scan on
+		// partial-index predicates at low row counts. What is forbidden is
+		// a plain Seq Scan / Bitmap Heap Scan without any index node.
+		if !strings.Contains(planText, "Index Scan") && !strings.Contains(planText, "Index Only Scan") {
 			t.Fatalf("%s: plan contains no Index Scan node — ANN index unused. Plan:\n%s", tc.label, planText)
 		}
-		for _, want := range []string{tc.embedding, tc.modelID} {
-			if !strings.Contains(planText, want) {
-				t.Fatalf("%s: plan does not reference family predicate %q — partial index not matched. Plan:\n%s", tc.label, want, planText)
-			}
+		// Referencing the per-family partial index IS the family-predicate
+		// proof: the index exists only for (embedding_type, model_id) rows
+		// of this family, so a plan that scans it has matched the predicate
+		// (the planner elides implied filters from the plan text).
+		if !strings.Contains(planText, "idx_media_embeddings_"+tc.embedding+"_hnsw") {
+			t.Fatalf("%s: plan does not reference the family HNSW index — partial index not matched. Plan:\n%s", tc.label, planText)
 		}
 	}
+}
+
+// TestHNSW_MediaSearcherPinsProductionFamily exercises the production
+// searcher end-to-end against the registered production families: the
+// family-pinned search resolves the active family, applies the typed
+// vector(dim) cast, and returns hydrated SSOT results.
+func TestHNSW_MediaSearcherPinsProductionFamily(t *testing.T) {
+	db := newMediaTestDB(t)
+	ctx := context.Background()
+
+	vectors := pgmedia.NewVectorSurfaceWriter(db)
+	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswDim); err != nil {
+		t.Fatalf("register semantic family: %v", err)
+	}
+
+	// No family registered for the visual channel → fail closed.
+	searcher := pgmedia.NewMediaSearcher(db)
+	if _, err := searcher.Search(ctx, pgmedia.SystemSearchRequest(make([]float32, hnswDim))); err == nil {
+		// text family IS registered — the fail-closed probe must use an
+		// unregistered channel instead.
+		t.Fatal("expected no error here (text family registered); probe logic error")
+	}
+	visualReq := pgmedia.SystemSearchRequest(make([]float32, hnswDim))
+	visualReq.VectorName = "visual"
+	if _, err := searcher.Search(ctx, visualReq); err == nil {
+		t.Fatal("expected fail-closed error when the channel has no registered family")
+	}
+
+	// Dimension mismatch → fail closed.
+	if _, err := searcher.Search(ctx, pgmedia.SystemSearchRequest(make([]float32, 4))); err == nil {
+		t.Fatal("expected fail-closed error for query vector dim != family dim")
+	}
+
+	// Happy path: seed one asset + 768d embedding, search by the same
+	// vector, expect the asset back with hydrated SSOT metadata.
+	box := pgmedia.NewOutboxRepository(db)
+	ledger, ledgerErr := pgmedia.NewRegistry(db)
+	if ledgerErr != nil {
+		t.Fatalf("registry: %v", ledgerErr)
+	}
+	committers := pgmedia.NewPostgresMediaCommitter(db, box, ledger, nil)
+	if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor("yt_hnsw_search_001")); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if err := vectors.UpsertEmbedding(ctx, "yt_hnsw_search_001", "text", hnswSemanticModel, queryVector768()); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	results, err := searcher.Search(ctx, pgmedia.SystemSearchRequest(queryVector768()))
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].AssetID != "yt_hnsw_search_001" {
+		t.Fatalf("results = %v, want [yt_hnsw_search_001]", results)
+	}
+}
+
+// queryVector768 builds the deterministic 768d fixture vector shared by
+// the HNSW tests.
+func queryVector768() []float32 {
+	vec := make([]float32, hnswDim)
+	for i := range vec {
+		vec[i] = 0.01 * float32(i%13)
+	}
+	return vec
 }
 
 // TestHNSW_FamilyGateStillFailsClosed proves the HNSW availability never

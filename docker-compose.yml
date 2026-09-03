@@ -1,163 +1,15 @@
-# docker-compose.yml — PipelineGen production stack with separated runtime roles.
-#
-# Services:
-#
-#   - pipelinegen-server : HTTP server on port 8000, mode=server (HTTP only,
-#                          no background jobs). Depends on qdrant and
-#                          artlist-scraper.
-#
-#   - pipelinegen-worker : standalone background job executor that registers
-#                          against the server broker via /internal/v1/*. Contains
-#                          ffmpeg, yt-dlp, and python3 for media processing jobs.
-#
-#   - qdrant             : vector store for semantic search (ports 6333/6334).
-#
-#   - artlist-scraper    : persistent Node.js Artlist scraper (port 9123).
-#
-# Volumes:
-#   - pipelinegen-data   : SQLite DB + asset_metadata + cache + downloads.
-#                          Shared by server and worker (SQLite WAL mode
-#                          supports concurrent readers + one writer).
-#   - qdrant-storage     : Qdrant persistence.
-#
-# Networking:
-#   - All services share the `backend` network.
-#
-# Security contract (PR-B):
-#   VELOX_WORKER_TOKEN MUST be set in `secrets/pipelinegen.env` and reach
-#   BOTH containers via the `env_file:` block. Server reads it for
-#   WorkerAuth verification on /internal/v1/*. Worker sends it as
-#   `Authorization: Bearer $VELOX_WORKER_TOKEN` via jobbrokerclient.
-
+# PipelineGen infrastructure only. Application processes run natively via
+# systemd; Docker is retained for external infrastructure lifecycles.
 services:
-  pipelinegen-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: server-runtime
-      args:
-        VERSION: dev
-        COMMIT:  unknown
-    # Barriera 2 — Image pinning (same contract as worker).
-    # Pinned digest: IMAGE_DIGEST=   ← run `make docker-digest` to capture
-    image: pipelinegen-server:latest
-    container_name: pipelinegen-server
-    restart: unless-stopped
-    depends_on:
-      - qdrant
-      - artlist-scraper
-      - searxng
-    ports:
-      - "8081:8000"
-    volumes:
-      - pipelinegen-data:/data
-      - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - /etc/pipelinegen/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
-    environment:
-      VELOX_HOST: "0.0.0.0"
-      VELOX_PORT: "8000"
-      VELOX_LOG_LEVEL: "info"
-      VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
-      VELOX_VECTOR_SEARCH_COLLECTION: "media_assets"
-      VELOX_QDRANT_BASE_URL: "http://qdrant:6333"
-      VELOX_QDRANT_URL: "http://qdrant:6333"
-      VELOX_CLIP_INDEXER_SERVER_URL: "http://host.docker.internal:8001"
-      VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
-      VELOX_DELIVERY_HMAC_SECRET: "${VELOX_DELIVERY_HMAC_SECRET}"
-    env_file:
-      - /etc/pipelinegen/pipelinegen.env
-    command: ["--mode", "server", "--config", "/etc/pipelinegen/config.yaml"]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks:
-      - backend
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  pipelinegen-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker-runtime
-      args:
-        VERSION: dev
-        COMMIT:  unknown
-    # Barriera 2 — Image pinning via SHA256 digest (June 2026).
-    # After signing with `make docker-sign`, replace `latest` with the
-    # canonical digest: `image: pipelinegen-worker@sha256:<64-char-hex>`.
-    # The pinned digest is captured end-to-end by scripts/cosign-sign.sh
-    # and verified at deploy time via scripts/verify-image-digest.sh.
-    #
-    # Pinned digest (update after each certified build):
-    # IMAGE_DIGEST=   ← run `make docker-digest` to capture
-    image: pipelinegen-worker:latest
-    container_name: pipelinegen-worker
-    # Worker now registers against the server via /internal/v1/workers/register
-    # (wired in the composition root via bootstrap.go::WireServices).
-    # PR-B (June 2026): full topology split — server --mode server, worker
-    # standalone. WorkerAuth on /internal/v1 enforces worker-token-only
-    # access (admin token is rejected).
-    restart: unless-stopped
-    # Expose the host NVIDIA GPU only to the Whisper worker. The image keeps
-    # VELOX_WHISPER_DEVICE=auto so CPU-only hosts retain the existing fallback.
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    depends_on:
-      pipelinegen-server:
-        condition: service_healthy
-      searxng:
-        condition: service_started
-    volumes:
-      - pipelinegen-data:/data
-      - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - /etc/pipelinegen/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
-    environment:
-      VELOX_MASTER_URL: "http://pipelinegen-server:8000"
-      VELOX_LOG_LEVEL: "info"
-      VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
-      VELOX_QDRANT_BASE_URL: "http://qdrant:6333"
-      VELOX_CLIP_INDEXER_SERVER_URL: "http://host.docker.internal:8001"
-      VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
-      VELOX_DELIVERY_HMAC_SECRET: "${VELOX_DELIVERY_HMAC_SECRET}"
-      # `auto` uses CUDA when the optional GPU override exposes it and
-      # otherwise falls back to CPU/int8.
-      VELOX_WHISPER_DEVICE: "auto"
-      VELOX_WHISPER_MODEL: "base"
-      VELOX_WHISPER_CUDA_LIB_DIR: "/opt/whisper-venv/cublas-lib"
-    env_file:
-      - /etc/pipelinegen/pipelinegen.env
-    command: ["--config", "/etc/pipelinegen/config.yaml"]
-    networks:
-      - backend
-
   qdrant:
     image: qdrant/qdrant:latest
     container_name: pipelinegen-qdrant
     restart: unless-stopped
     ports:
-      # Production: 6333 (gRPC), 6334 (HTTP)
-      - "6333:6333"
-      - "6334:6334"
-      # Preflight CI smoke: 16333 (per preflight-ci.yml contract)
-      # Per godlike/07 minimum-blast-radius: the additional port
-      # is exposed on localhost only when the host runs preflight.
-      # Production users that do not run preflight ignore this
-      # port; the qdrant container is not materially affected.
-      - "16333:6333"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant-storage:/qdrant/storage
-    networks:
-      - backend
-
   artlist-scraper:
     build:
       context: ./node-scraper
@@ -165,82 +17,30 @@ services:
     container_name: pipelinegen-artlist
     restart: unless-stopped
     ports:
-      - "9123:9123"
+      - "127.0.0.1:9123:9123"
     environment:
       PORT: "9123"
       PERSISTENT: "1"
       CHROME_EXECUTABLE: "/usr/bin/chromium"
       CHROME_PROFILE_DIR: "/chrome-profile"
       ARTLIST_COOKIE_FILE: "/chrome-profile/artlist_cookies.txt"
-      # Per fix(scraper) PR — split connect/total timeout. Mirrors
-      # docs/operations/stock-e2e-runbook.md §11.0 env contract:
-      # SCROLL_TIMEOUT = scraper total budget; SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget.
       SCROLL_TIMEOUT: "120"
       SCRAPER_CONNECT_TIMEOUT_SECONDS: "5"
     volumes:
       - artlist-chrome-profile:/chrome-profile
-    networks:
-      - backend
-
-  # SearXNG — privacy-respecting metasearch engine used by the images and
-  # script modules. Optional for local dev, required for E2E image tests.
   searxng:
     image: searxng/searxng:latest
     container_name: pipelinegen-searxng
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       SEARXNG_BASE_URL: "http://127.0.0.1:8080/"
       SEARXNG_INSTANCE_NAME: "pipelinegen-searxng"
-      SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"  # override via secrets/pipelinegen.env
+      SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"
       SEARXNG_FORMATS: "html,json"
       SEARXNG_METHOD: "GET"
       SEARXNG_LIMITER: "false"
-    networks:
-      - backend
-
-  # vLLM server — continuous batching LLM inference engine.
-  # Uncomment and configure when USE_VLLM=true is set.
-  # Requires NVIDIA GPU and nvidia-container-toolkit.
-  # Model download on first start (~8GB for gemma-2-4b).
-  #
-  # vllm:
-  #   image: vllm/vllm-openai:latest
-  #   container_name: pipelinegen-vllm
-  #   restart: unless-stopped
-  #   # runtime: nvidia    # uncomment for GPU access
-  #   # deploy:
-  #   #   resources:
-  #   #     reservations:
-  #   #       devices:
-  #   #         - driver: nvidia
-  #   #           count: all
-  #   #           capabilities: [gpu]
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - vllm-models:/root/.cache/huggingface
-  #   environment:
-  #     HUGGING_FACE_HUB_TOKEN: ""  # set for gated models (e.g. Gemma, Llama)
-  #   command: >
-  #     --model google/gemma-2-4b-it
-  #     --max-model-len 32768
-  #     --dtype auto
-  #     --gpu-memory-utilization 0.90
-  #   networks:
-  #     - backend
-
 volumes:
-  pipelinegen-data:
-    driver: local
   qdrant-storage:
-    driver: local
-  vllm-models:
-    driver: local
   artlist-chrome-profile:
-    driver: local
-
-networks:
-  backend:
-    driver: bridge

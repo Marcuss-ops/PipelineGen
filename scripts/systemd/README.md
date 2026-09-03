@@ -3,6 +3,10 @@
 Idempotent migration from unstable nohup/tmux-managed processes to
 **systemd-managed services** with auto-restart on crash.
 
+PipelineGen server and worker are host-native services. Docker Compose is used
+only for supporting infrastructure (Qdrant, Artlist scraper and SearXNG), so
+application changes no longer require `docker compose build`.
+
 ## TL;DR
 
 The systemd unit files at `/etc/systemd/system/{pipelinegen,artlist-scraper}.service`
@@ -19,7 +23,7 @@ bash scripts/systemd/migrate_to_systemd.sh
 
 # 2. Operator runs (with password):
 sudo systemctl daemon-reload
-sudo systemctl enable --now pipelinegen.service
+sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
 sudo systemctl enable --now artlist-scraper.service
 
 # 3. Verify
