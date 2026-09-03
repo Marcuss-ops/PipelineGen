@@ -236,7 +236,7 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 			if err != nil {
 				return nil, fmt.Errorf("clip plan mapper: watermark font: %w", err)
 			}
-			wm.FontRef = &overlayAssetRef{AssetID: "font-dejavu-sans", SHA256: font.Hash, URL: font.LogicalPath, MediaType: "font/ttf"}
+			wm.FontRef = &overlayAssetRef{AssetID: "font-montserrat-bold", SHA256: font.Hash, URL: font.LogicalPath, MediaType: "font/ttf"}
 		}
 		op.Watermark = wm
 	}
@@ -304,10 +304,10 @@ type assetRef struct {
 }
 
 func watermarkFontAsset() (assetRef, error) {
-	const path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+	const path = "assets/fonts/Montserrat-Bold.ttf"
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
 	}
-	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-dejavu-sans", "DejaVuSans.ttf"), LocalPath: path}, nil
+	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-montserrat-bold", "Montserrat-Bold.ttf"), LocalPath: path}, nil
 }

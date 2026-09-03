@@ -187,7 +187,16 @@ func (c *LocalizedClipCompiler) outputPath(localized LocalizedClipPlan) string {
 // localizedRevision derives a deterministic, human-readable render revision
 // from the plan identity. It is stable across re-runs of the same plan.
 func localizedRevision(localized LocalizedClipPlan) string {
-	return localized.ClipID + "/" + localized.TargetLanguage
+	// The queue job identity must change when visual inputs change. Keeping
+	// only clip/language here silently reuses an older completed artifact and
+	// makes watermark/font/subtitle fixes invisible on reruns.
+	fingerprint := strings.TrimSpace(localized.Fingerprint)
+	if len(fingerprint) > 16 {
+		fingerprint = fingerprint[:16]
+	}
+	// Include the concrete overlay compiler revision so renderer fixes cannot
+	// silently reuse an artifact produced by an older worker binary.
+	return localized.ClipID + "/" + localized.TargetLanguage + "/overlay-v3/" + fingerprint
 }
 
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical
