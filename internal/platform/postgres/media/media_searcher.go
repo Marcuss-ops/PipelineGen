@@ -18,6 +18,18 @@
 // MinScore semantics: pgvector cosine distance d ∈ [0,2] maps to
 // similarity 1 - d (identical to the documented pgvector recipe and
 // monotonic with Qdrant cosine scores). Rows below MinScore are dropped.
+//
+// Family pinning (POSTGRES-MEDIA-CUTOVER ANN contract): every search is
+// restricted to ONE registered (embedding_type, model_id) family resolved
+// through the fail-closed ActiveEmbeddingFamily registry. The family
+// predicate (a) keeps incompatible vector spaces out of one ranking, and
+// (b) lets the planner match the per-family HNSW partial index created by
+// 003_media_hnsw_indexes.sql — the ORDER BY operand is cast to the
+// family's exact vector(dim), which is the expression the partial index
+// is built on. Zero registered families fail closed (typed error, never
+// an unscoped scan mixing every model's vectors); more than one family
+// per channel fails closed too (ActiveEmbeddingFamily "ambiguous") — an
+// operator must pin the production model before search.
 package media
 
 import (
@@ -60,9 +72,50 @@ func SystemSearchRequest(queryVector []float32) appsearch.VectorSearchRequest {
 	}
 }
 
-// Search runs a cosine ANN query over the text-channel embeddings of the
-// media SSOT with hard scalar filters compiled in-query.
+// embeddingFamily is one pinned (embedding_type, model_id, dim) triple.
+type embeddingFamily struct {
+	embeddingType string
+	modelID       string
+	dim           int
+}
+
+// resolveFamily resolves THE production family for a channel through the
+// fail-closed ActiveEmbeddingFamily registry contract.
+func (s *MediaSearcher) resolveFamily(ctx context.Context, channel string) (embeddingFamily, error) {
+	modelID, dim, err := NewVectorSurfaceWriter(s.db).ActiveEmbeddingFamily(ctx, channel)
+	if err != nil {
+		return embeddingFamily{}, fmt.Errorf("pgvector search: %w", err)
+	}
+	return embeddingFamily{embeddingType: channel, modelID: modelID, dim: dim}, nil
+}
+
+// appendFamilyScope binds the family predicate placeholders and extends
+// the WHERE fragment with them. The family placeholders occupy the NEXT
+// two positions after the base scope args (len(args)+1 / len(args)+2);
+// every later placeholder must be computed AFTER this call.
+func appendFamilyScope(where string, args []any, f embeddingFamily) (string, []any) {
+	args = append(args, f.embeddingType)
+	args = append(args, f.modelID)
+	where = fmt.Sprintf("%s\n\t\t  AND e.embedding_type = $%d\n\t\t  AND e.model_id = $%d",
+		where, len(args)-1, len(args))
+	return where, args
+}
+
+// Search runs a cosine ANN query over the pinned production family of the
+// requested channel with hard scalar filters compiled in-query. The
+// ORDER BY operand carries the typed vector(dim) cast — the exact
+// expression of the per-family HNSW partial index (003) — so the planner
+// can prove the partial predicate matches and plan an Index Scan instead
+// of a Seq Scan.
 func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
+	channel := strings.TrimSpace(req.VectorName)
+	if channel == "" {
+		channel = appsearch.ChannelText
+	}
+	family, err := s.resolveFamily(ctx, channel)
+	if err != nil {
+		return nil, err
+	}
 	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, req.Source, req.Category, req.MediaType, req.Language, req.LifecycleState)
 	if err != nil {
 		return nil, err
@@ -78,25 +131,27 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 	if err != nil {
 		return nil, fmt.Errorf("pgvector search: %w", err)
 	}
-
-	// VectorName selects the embedding channel; the canonical ANN channel
-	// is "text" (matches semanticDenseVectorName in the composition root).
-	channel := strings.TrimSpace(req.VectorName)
-	if channel == "" {
-		channel = appsearch.ChannelText
+	if len(req.QueryVector) != family.dim {
+		return nil, fmt.Errorf("pgvector search: query vector dim %d does not match registered %s family dim %d (model %s)",
+			len(req.QueryVector), channel, family.dim, family.modelID)
 	}
+
+	// Family scope FIRST: its two placeholders precede the vector/limit
+	// bindings, and the WHERE fragment gains the family predicate.
+	where, args = appendFamilyScope(where, args, family)
 	// The vector literal is bound ONCE and referenced by both the
 	// similarity projection and the ORDER BY (same placeholder index).
 	vecPlaceholder := len(args) + 1
+	limitPlaceholder := vecPlaceholder + 1
 	query := fmt.Sprintf(`
 		SELECT e.asset_id,
-		       1 - (e.embedding <=> $%d::vector) AS similarity
+		       1 - (e.embedding::vector(%d) <=> $%d::vector) AS similarity
 		FROM media_embeddings e
 		JOIN media_assets a ON a.id = e.asset_id
 		%s
-		ORDER BY e.embedding <=> $%d::vector
+		ORDER BY e.embedding::vector(%d) <=> $%d::vector
 		LIMIT $%d
-	`, vecPlaceholder, where, vecPlaceholder, len(args)+2)
+	`, family.dim, vecPlaceholder, where, family.dim, vecPlaceholder, limitPlaceholder)
 	args = append(args, vec, limit)
 
 	return s.queryResults(ctx, req.MinScore, query, args...)
@@ -107,7 +162,18 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 // pgvector-native analogue of Qdrant server-side BM25 fusion. The dense
 // channel carries the semantic signal; the lexical channel carries exact
 // term matching; the fusion is computed in-database over the same SSOT.
+// The dense leg is pinned to the production family of the channel (same
+// contract as Search, including the typed vector(dim) cast that exposes
+// the HNSW partial index to the planner).
 func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
+	channel := strings.TrimSpace(req.DenseVectorName)
+	if channel == "" {
+		channel = appsearch.ChannelText
+	}
+	family, err := s.resolveFamily(ctx, channel)
+	if err != nil {
+		return nil, err
+	}
 	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, req.Source, req.Category, req.MediaType, req.Language, req.LifecycleState)
 	if err != nil {
 		return nil, err
@@ -123,9 +189,9 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 	if err != nil {
 		return nil, fmt.Errorf("pgvector hybrid search: %w", err)
 	}
-	channel := strings.TrimSpace(req.DenseVectorName)
-	if channel == "" {
-		channel = appsearch.ChannelText
+	if len(req.DenseVector) != family.dim {
+		return nil, fmt.Errorf("pgvector hybrid search: dense vector dim %d does not match registered %s family dim %d (model %s)",
+			len(req.DenseVector), channel, family.dim, family.modelID)
 	}
 
 	// The sparse-text path (SparseText) is the canonical live-retrieval
@@ -135,27 +201,35 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		return nil, fmt.Errorf("pgvector hybrid search: SparseText is required (pre-computed sparse vectors are not supported)")
 	}
 
+	// Placeholder map (computed in binding order): base scope args, then
+	// family type/model, then dense vector, limit, sparse text.
+	where, args = appendFamilyScope(where, args, family)
+	vecPh := len(args) + 1
+	limitPh := vecPh + 1
+	sparsePh := vecPh + 2
+
 	// Weighted reciprocal-rank fusion, computed inside the same query:
 	// rank positions from the ANN leg and the ts_rank leg are fused per
 	// asset, then ordered by fused score. k=1 mirrors Qdrant's RRF
-	// constant so score scales stay comparable across engines.
+	// constant so score scales stay comparable across engines. Only the
+	// dense leg is family-scoped (lexical ranking reads media_assets).
 	query := fmt.Sprintf(`
 		WITH dense AS (
 		    SELECT e.asset_id,
-		           row_number() OVER (ORDER BY e.embedding <=> $%[1]d::vector) AS rank
+		           row_number() OVER (ORDER BY e.embedding::vector(%[6]d) <=> $%[1]d::vector) AS rank
 		    FROM media_embeddings e
 		    JOIN media_assets a ON a.id = e.asset_id
 		    %[2]s
-		    ORDER BY e.embedding <=> $%[1]d::vector
+		    ORDER BY e.embedding::vector(%[6]d) <=> $%[1]d::vector
 		    LIMIT $%[3]d
 		),
 		lexical AS (
 		    SELECT a.id AS asset_id,
 		           row_number() OVER (ORDER BY ts_rank(to_tsvector('english', a.search_text),
-		               to_tsquery('english', websearch_to_tsquery('english', $%[4]d)::text)) DESC) AS rank
+		               to_tsquery('english', websearch_to_tsquery('english', $%[5]d)::text)) DESC) AS rank
 		    FROM media_assets a
 		    %[2]s
-		      AND to_tsvector('english', a.search_text) @@ websearch_to_tsquery('english', $%[4]d)
+		      AND to_tsvector('english', a.search_text) @@ websearch_to_tsquery('english', $%[5]d)
 		    LIMIT $%[3]d
 		),
 		fused AS (
@@ -168,7 +242,7 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		GROUP BY f.asset_id
 		ORDER BY similarity DESC
 		LIMIT $%[3]d
-	`, len(args)+1, where, len(args)+2, len(args)+3)
+	`, vecPh, where, limitPh, sparsePh, sparsePh, family.dim)
 	args = append(args, vec, limit, req.SparseText)
 
 	return s.queryResults(ctx, req.MinScore, query, args...)
@@ -317,7 +391,7 @@ func compileMediaSearchWhere(workspaceID string, isSystem bool, source, category
 	}
 
 	clauses := []string{"a.deleted_at = ''"}
-	args := make([]any, 0, 6)
+	args := make([]any, 0, 8)
 
 	if !isSystem {
 		args = append(args, workspaceID)

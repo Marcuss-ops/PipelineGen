@@ -55,6 +55,21 @@ go build -o admin ./cmd/admin
 ./pipelinegen --mode all
 ```
 
+For the host deployment, use the native systemd units in
+[`scripts/systemd/`](scripts/systemd/). PipelineGen server and worker are not
+part of `docker-compose.yml`; that file starts only external infrastructure
+(Qdrant, Artlist scraper and SearXNG). This avoids rebuilding application
+images during normal development while preserving Docker for reproducible CI
+and release packaging.
+
+```bash
+go build -o bin/pipelinegen ./cmd/server
+go build -o bin/pipelinegen-worker ./cmd/worker
+sudo install -D -m 0644 scripts/systemd/pipelinegen.service scripts/systemd/pipelinegen-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
+```
+
 The default HTTP port is `8000` and can be changed with `VELOX_PORT`.
 
 ## Local configuration and secrets

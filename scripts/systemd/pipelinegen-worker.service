@@ -1,0 +1,25 @@
+[Unit]
+Description=PipelineGen native background worker
+After=network-online.target docker.service pipelinegen.service
+Wants=network-online.target
+Requires=docker.service pipelinegen.service
+
+[Service]
+Type=simple
+User=pierone
+WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored
+EnvironmentFile=-/etc/pipelinegen/pipelinegen.env
+Environment=VELOX_MASTER_URL=http://127.0.0.1:8000
+Environment=VELOX_VECTOR_SEARCH_URL=http://127.0.0.1:6333
+Environment=VELOX_QDRANT_BASE_URL=http://127.0.0.1:6333
+Environment=VELOX_QDRANT_URL=http://127.0.0.1:6333
+Environment=VELOX_ARTLIST_SCRAPER_SERVER_URL=http://127.0.0.1:9123
+Environment=VELOX_SEARXNG_URL=http://127.0.0.1:8080
+Environment=VELOX_WHISPER_DEVICE=auto
+ExecStart=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen-worker --config /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/config.yaml
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
