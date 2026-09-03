@@ -25,8 +25,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	sqlitecontrol "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/controlplane"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -102,8 +100,15 @@ func (c *SQLiteAssetCommitter) CommitAsset(ctx context.Context, req persistence.
 
 // CommitAndIndex opens a new transaction, writes the asset, and commits.
 // This is the standalone-producer entry point.
+//
+// Canonical-UoW routing: when the database carries the canonical_mutations
+// protocol AND the request emits an index event, the commit runs through the
+// UoW so the asset write and the outbox event share one idempotency claim.
+// Requests without an index event (folder upserts, legacy store saves) take
+// the raw path: the UoW protocol exists to make the asset+event pair atomic
+// and replay-safe, and the media_assets UPSERT is idempotent on its own.
 func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
-	if c.uow != nil {
+	if c.uow != nil && req.EmitIndexEvent {
 		return c.commitWithUnitOfWork(ctx, req)
 	}
 	tx, err := c.db.BeginTx(ctx, nil)
@@ -147,10 +152,13 @@ func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persisten
 }
 
 // CommitTx writes the asset, locations, metadata and optional indexing
-// request inside the caller-owned transaction. On migrated databases it also
-// applies the canonical UoW protocol without taking ownership of the tx.
+// request inside the caller-owned transaction. On migrated databases it
+// applies the canonical UoW protocol without taking ownership of the tx,
+// but only when the request emits an index event (see CommitAndIndex:
+// event-less commits have no event idempotency to uphold, so the raw
+// writer runs directly).
 func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
-	if c.uow != nil {
+	if c.uow != nil && req.EmitIndexEvent {
 		return c.commitTxWithUnitOfWork(ctx, tx, req)
 	}
 	return c.CommitTxRaw(ctx, tx, req)
@@ -179,7 +187,10 @@ func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx pe
 		if !ok || uowSQLTx == nil {
 			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
 		}
-		committed, mutationErr := c.CommitTxRaw(ctx, uowSQLTx, req)
+		// The UoW command owns the durable index-request emission for this
+		// claim (buildAssetMutationCommand). Emit again inside the mutation
+		// and the same commit inserts TWO asset.index.requested rows.
+		committed, mutationErr := c.commitTxRawNoEvent(ctx, uowSQLTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
@@ -218,7 +229,8 @@ func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req per
 		if !ok || sqlTx == nil {
 			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
 		}
-		committed, mutationErr := c.CommitTxRaw(ctx, sqlTx, req)
+		// Same as commitTxWithUnitOfWork: the UoW claim owns the event.
+		committed, mutationErr := c.commitTxRawNoEvent(ctx, sqlTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
@@ -236,6 +248,16 @@ func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req per
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: decode UoW result: %w", err)
 	}
 	return committed, nil
+}
+
+// commitTxRawNoEvent runs CommitTxRaw with the durable index-request
+// emission suppressed. The canonical UoW owns the outbox write for the claim
+// (see buildAssetMutationCommand); emitting again inside the mutation would
+// insert a second asset.index.requested row for the same commit.
+func (c *SQLiteAssetCommitter) commitTxRawNoEvent(ctx context.Context, sqlTx *sql.Tx, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	noEvent := req
+	noEvent.EmitIndexEvent = false
+	return c.CommitTxRaw(ctx, sqlTx, noEvent)
 }
 
 func buildAssetMutationCommand(req persistence.CommitRequest) (capcontrol.Command, error) {
@@ -279,18 +301,20 @@ func buildAssetMutationOutboxEvent(req persistence.CommitRequest) (capcontrol.Ou
 	if requestedAt.IsZero() {
 		requestedAt = time.Now()
 	}
-	if req.Source == "artlist" {
-		eventKey, err := idempotency.OutboxKey(outboxevents.EventAssetIndexRequested, req.Source, req.AssetID, sourceVersion)
-		if err != nil {
-			return capcontrol.OutboxEvent{}, fmt.Errorf("asset committer: build outbox event key: %w", err)
-		}
-		return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: "{}", EventKey: eventKey}, nil
-	}
-	eventKey, payload, err := outboxevents.BuildReindexEnvelopeV1(req.AssetID, clipindexer.CollectionVersion(), sourceVersion, requestedAt)
+	// Derive the event from the SAME builder CommitIndexRequestTx uses, so
+	// the UoW claim and the raw tx path produce byte-identical envelopes and
+	// identical provider-scoped idempotency keys (SSOT: no second shape).
+	_, eventKey, payload, err := BuildIndexRequestEvent(IndexRequest{
+		AssetID:       req.AssetID,
+		Source:        req.Source,
+		MediaType:     req.MediaType,
+		SourceVersion: sourceVersion,
+		RequestedAt:   requestedAt,
+	})
 	if err != nil {
-		return capcontrol.OutboxEvent{}, fmt.Errorf("asset committer: build outbox envelope: %w", err)
+		return capcontrol.OutboxEvent{}, err
 	}
-	return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: payload, EventKey: eventKey}, nil
+	return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: string(payload), EventKey: eventKey}, nil
 }
 
 func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {

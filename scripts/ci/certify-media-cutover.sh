@@ -140,13 +140,15 @@ else
   gate "QDRANT_MEDIA_READS=0 (structural)" "FAIL" "Qdrant import found in pgvector media plane"
 fi
 
-# Engine-aware committer: every production write site resolves through
-# the single config-aware factory (no SQLite-only hardwiring).
-if grep -q 'newCanonicalAssetCommitterCfg' internal/app/wiring/canonical_media_committer.go 2>/dev/null \
-   && grep -q 'MediaPostgreSQL.Enabled' internal/app/wiring/canonical_media_committer.go 2>/dev/null; then
-  gate "Canonical committer engine-aware" "PASS" "single decision point honors MediaPostgreSQL.Enabled"
+# Engine-aware committer: the single decision point is the PG-only factory
+# (the SQLite fallback branch was removed with the media demolition — the
+# ONLY canonical media writer is PostgresMediaCommitter).
+if grep -q 'newCanonicalAssetCommitter' internal/app/wiring/canonical_media_committer.go 2>/dev/null \
+   && grep -q 'NewPostgresMediaCommitterFromDB' internal/app/wiring/canonical_media_committer.go 2>/dev/null \
+   && ! grep -q 'platform/sqlite' internal/app/wiring/canonical_media_committer.go 2>/dev/null; then
+  gate "Canonical committer engine-aware" "PASS" "PG-only single decision point (SQLite fallback demolished)"
 else
-  gate "Canonical committer engine-aware" "FAIL" "factory not engine-aware"
+  gate "Canonical committer engine-aware" "FAIL" "factory not PG-only"
 fi
 
 # Canonical index worker present and ported (the replacement of the

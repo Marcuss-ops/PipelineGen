@@ -1,13 +1,14 @@
 package wiring
 
 import (
-	"database/sql"
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
+	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
 	texttracksport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
@@ -16,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
-	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"

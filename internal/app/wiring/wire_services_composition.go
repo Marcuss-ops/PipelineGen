@@ -156,34 +156,34 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		}
 		if assetCommitter != nil {
 			assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
-		if root.TextTracks != nil {
-			assetTx.WithFanOut(root.TextTracks.FanOut)
-		}
-		jobDB := root.DB.DB
-		if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil {
-			jobDB = root.Jobs.DB.DB
-		}
-		jobOutbox := outboxevents.NewRepository(jobDB)
-		finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
-		if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != root.DB.DB {
-			broker.WithFinalizer(&splitPlaneFinalizer{
-				mediaDB: root.DB.DB, mediaOutbox: root.Outbox.EventsRepo,
-				assetTx: assetTx, jobsFinalizer: finalizer,
-			})
-		} else {
-			finalizer = jobsfinalizer.New(jobDB, jobOutbox, assetTx, log)
-			broker.WithFinalizer(finalizer)
-		}
-		if root.Drive != nil && root.Drive.Publisher != nil {
-			preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
-			broker.WithArtifactPreparation(preparation)
-			log.Info("wired canonical ArtifactPreparation into local broker; staged artifacts publish through Drive before finalization")
-		} else {
-			log.Warn("canonical ArtifactPreparation NOT wired: Drive publisher unavailable; staged artifact jobs will fail closed")
-		}
-		// RenderingGen overlays resolve their parent video's Drive folder
-		// below the already-resolved video folder (/video/.../overlay/).
-		broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
+			if root.TextTracks != nil {
+				assetTx.WithFanOut(root.TextTracks.FanOut)
+			}
+			jobDB := root.DB.DB
+			if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil {
+				jobDB = root.Jobs.DB.DB
+			}
+			jobOutbox := outboxevents.NewRepository(jobDB)
+			finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
+			if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != root.DB.DB {
+				broker.WithFinalizer(&splitPlaneFinalizer{
+					mediaDB: root.DB.DB, mediaOutbox: root.Outbox.EventsRepo,
+					assetTx: assetTx, jobsFinalizer: finalizer,
+				})
+			} else {
+				finalizer = jobsfinalizer.New(jobDB, jobOutbox, assetTx, log)
+				broker.WithFinalizer(finalizer)
+			}
+			if root.Drive != nil && root.Drive.Publisher != nil {
+				preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
+				broker.WithArtifactPreparation(preparation)
+				log.Info("wired canonical ArtifactPreparation into local broker; staged artifacts publish through Drive before finalization")
+			} else {
+				log.Warn("canonical ArtifactPreparation NOT wired: Drive publisher unavailable; staged artifact jobs will fail closed")
+			}
+			// RenderingGen overlays resolve their parent video's Drive folder
+			// below the already-resolved video folder (/video/.../overlay/).
+			broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
 			log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 		}
 	} else {
@@ -211,7 +211,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	}
 
 	jobs := startBackgroundJobs(ctx, cfg, dbs, root, log, mode)
-	cleanup := buildCleanup(dbs, root, jobs, cancel, log)
+	cleanup := buildCleanup(dbs, root, jobs, func() {}, log)
 
 	return root, jobs, cleanup, nil
 }

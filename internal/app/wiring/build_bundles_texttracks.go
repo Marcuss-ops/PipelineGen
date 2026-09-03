@@ -214,27 +214,37 @@ func BuildTextTrackBundle(
 			acquireService.WithDrive(acquirePorts.Drive)
 		}
 	}
-	backfill, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
-		Data: texttracks.BackfillDataDeps{
-			Clips:      repos.ClipsRepo,
-			Repo:       repos.TextTrackRepo,
-			Cues:       acquirePorts.CueWriter,
-			SubArtRepo: repos.SubtitleArtifactRepo,
-		},
-		Pipeline: texttracks.BackfillPipelineDeps{
-			Materializer: materializer,
-			Acquirer:     acquireService,
-		},
-		Delivery: texttracks.BackfillDeliveryDeps{
-			Publisher:     publisher,
-			DriveFolderID: cfg.Drive.ClipsFolder(),
-		},
-		Log: log,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("compose texttracks: automatic backfill: %w", err)
+	// MEDIA DEMOLITION graceful degrade (September 2026): the automatic
+	// backfill writes cue segments through the canonical media writer
+	// (TimedCueWriter over the PostgreSQL media SSOT). When the media
+	// plane is NOT DEPLOYED the CueWriter port is nil — skip the backfill
+	// registration instead of failing the whole composition (godlike/07:
+	// degraded is honest; the backfill CLI remains available explicitly).
+	if acquirePorts == nil || acquirePorts.CueWriter == nil {
+		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — automatic text-track backfill NOT registered (cues writer is the canonical media writer; graceful degrade, godlike/07)")
+	} else {
+		backfill, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
+			Data: texttracks.BackfillDataDeps{
+				Clips:      repos.ClipsRepo,
+				Repo:       repos.TextTrackRepo,
+				Cues:       acquirePorts.CueWriter,
+				SubArtRepo: repos.SubtitleArtifactRepo,
+			},
+			Pipeline: texttracks.BackfillPipelineDeps{
+				Materializer: materializer,
+				Acquirer:     acquireService,
+			},
+			Delivery: texttracks.BackfillDeliveryDeps{
+				Publisher:     publisher,
+				DriveFolderID: cfg.Drive.ClipsFolder(),
+			},
+			Log: log,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("compose texttracks: automatic backfill: %w", err)
+		}
+		handler.WithBackfill(backfill)
 	}
-	handler.WithBackfill(backfill)
 
 	return &TextTrackBundle{
 		Materializer:   materializer,
