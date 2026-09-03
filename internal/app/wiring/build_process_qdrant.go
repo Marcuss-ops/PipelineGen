@@ -29,6 +29,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 
@@ -105,6 +106,7 @@ func BuildProcessBundle(
 	publisher delivery.Publisher,
 	outbox *OutboxBundle,
 	qd *QdrantDeps,
+	mediaPG *sql.DB,
 	mediaConfig mediaexec.ExecutionConfig,
 ) (*ProcessBundle, error) {
 	_ = ctx
@@ -113,7 +115,7 @@ func BuildProcessBundle(
 		return nil, fmt.Errorf("BuildProcessBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
 
-	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log, mediaConfig)
+	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log, mediaPG, mediaConfig)
 	if err != nil {
 		return nil, err
 	}

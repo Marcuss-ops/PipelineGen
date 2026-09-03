@@ -9,7 +9,9 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
@@ -105,6 +107,13 @@ type ComposeRoot struct {
 	DB              *storage.SQLiteDB
 	ObservabilityDB *storage.SQLiteDB
 	CacheDB         *storage.SQLiteDB
+
+	// MediaPostgres is the open PostgreSQL + pgvector media SSOT handle.
+	// Non-nil ONLY when cfg.MediaPostgreSQL.Enabled — every media-domain
+	// wiring decision (canonical committer, vector search plane, index
+	// worker) branches on this field, never on cfg directly, so the
+	// engine selection has exactly one composition-time owner.
+	MediaPostgres *sql.DB
 
 	Drive      *DriveBundle
 	Repos      *RepoBundle
@@ -331,6 +340,14 @@ type OutboxBundle struct {
 	// JobsEventsPool is present only in split mode and drains the execution
 	// plane's local outbox independently from the media outbox.
 	JobsEventsPool *outboxevents.Pool
+
+	// MediaIndexWorker is the canonical pgvector index worker
+	// (POSTGRES-MEDIA-CUTOVER). Non-nil ONLY in media-SSOT mode; its Run
+	// loop is launched by the bundle's start closure via SafeGo and drains
+	// asset.index.requested events from the PostgreSQL outbox. In SQLite
+	// staged-migration mode this field is nil and the Qdrant indexing
+	// handler serves the role instead.
+	MediaIndexWorker *pgmedia.PostgresIndexWorker
 	// Publisher is the canonical outboxevents.Handler that drains
 	// `artifact.publish_requested.v1` events into staging.Store.Stage
 	// (FASE 3 / Push 3.1c, July 2026). The concrete is registered

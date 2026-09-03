@@ -267,8 +267,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	genJobHandler.SetRunRepository(runRepo)
 	if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
 		var finalAudioCommitter assetspersistence.AssetCommitter
-		if root.DB != nil && root.DB.DB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-			finalAudioCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+		if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+			if w, werr := newCanonicalAssetCommitter(root.MediaPostgres, log); werr != nil {
+				return fmt.Errorf("wireScriptFlow: canonical media writer: %w", werr)
+			} else if w != nil {
+				finalAudioCommitter = w
+			}
 		}
 		durableRunner, runtimeErr := BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {

@@ -40,10 +40,18 @@ func buildVidRushCache(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCa
 // vidRushProviderWiring is composition-root-only. It creates one closed
 // registry and one common finalizer; providers never write canonical tables.
 func buildVidRushMaterialization(cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
-	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
+	if root == nil || root.Drive == nil || root.Drive.Publisher == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, nil
 	}
-	committer := newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+	committer, err := newCanonicalAssetCommitter(root.MediaPostgres, log)
+	if err != nil {
+		log.Warn("buildVidRushMaterialization: canonical media writer error", zap.Error(err))
+		return nil, nil
+	}
+	if committer == nil {
+		log.Warn("buildVidRushMaterialization: media PostgreSQL unavailable — vidrush materialization degraded (graceful degrade, godlike/07)")
+		return nil, nil
+	}
 	assetTx := assetfinalizer.NewAssetTxFinalizer(log, committer)
 	preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 	finalizer := &vidRushArtifactFinalizer{db: root.DB.DB, preparation: preparation, assetTx: assetTx}

@@ -6,7 +6,6 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
@@ -47,11 +46,7 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	}
 	if deps.ServiceDependencies.Infra.MainDB != nil {
 		box := outboxevents.NewRepository(deps.ServiceDependencies.Infra.MainDB)
-		ledger, err := mediaregistry.NewLedger(deps.ServiceDependencies.Infra.MainDB)
-		if err != nil {
-			t.Fatalf("NewLedger: %v", err)
-		}
-		assetCommitter := sqassets.NewSQLiteMediaCommitter(deps.ServiceDependencies.Infra.MainDB, box, ledger, deps.ServiceDependencies.Infra.Log)
+		assetCommitter := sqassets.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, box, deps.ServiceDependencies.Infra.Log)
 		deps.ServiceDependencies.Finalizer.AssetFinalizerTx = assetfinalizer.NewAssetTxFinalizer(
 			deps.ServiceDependencies.Infra.Log,
 			assetCommitter,

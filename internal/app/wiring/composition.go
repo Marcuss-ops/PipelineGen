@@ -32,6 +32,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose: canonical database writer is required")
 	}
 
+	// POSTGRES-MEDIA-CUTOVER: open the media SSOT handle FIRST so every
+	// downstream wiring decision (canonical committer, vector search
+	// plane, index worker) sees a consistent engine selection. Fail-closed:
+	// an enabled-but-unreachable media PostgreSQL aborts composition.
+	mediaPG, err := RequireMediaPostgres(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("compose media postgres: %w", err)
+	}
+
 	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose repos: %w", err)
@@ -90,12 +99,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 
 	// OutboxBundle consumes StagingBundle.Store and Repository, plus the
 	// canonical delivery.Publisher, to drain artifact lifecycle events.
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle)
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps, mediaConfig)
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps, mediaPG, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
@@ -167,6 +176,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		DB:                   dbs.Main,
 		ObservabilityDB:      dbs.Logs,
 		CacheDB:              dbs.Cache,
+		MediaPostgres:        mediaPG,
 		Drive:                driveBundle,
 		Repos:                repos,
 		Search:               search,

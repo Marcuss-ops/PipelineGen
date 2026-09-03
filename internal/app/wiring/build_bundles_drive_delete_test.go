@@ -58,7 +58,7 @@ func TestBuildOutboxBundle_WiresDriveDeleteHandler(t *testing.T) {
 	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
-	outbox, _, err := BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, dummyDriveDeleter{})
+	outbox, _, err := BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, dummyDriveDeleter{}, nil)
 	require.NoError(t, err, "BuildOutboxBundle with all DriveDelete ports wired")
 
 	h, ok := outbox.EventsRegistry.Get(outboxevents.EventAssetDriveDeleteRequested)

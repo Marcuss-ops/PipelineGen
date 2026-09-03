@@ -71,6 +71,14 @@ var mediaAssetsWriterCanonicalOwners = map[string]bool{
 	"internal/platform/postgres/media/renditions.go":      true,
 	"internal/platform/postgres/media/index_event.go":     true,
 	"internal/platform/postgres/media/registry.go":        true,
+	// Media cutover (September 2026): the PG outbox consumption family —
+	// claim/complete/fail lifecycle + canonical index worker (the ONLY
+	// consumer of asset.index.requested in media-SSOT mode) + the pgvector
+	// derived-surface writer. All owned by the same canonical family.
+	"internal/platform/postgres/media/outbox_worker.go":      true,
+	"internal/platform/postgres/media/vector_surfaces.go":    true,
+	"internal/platform/postgres/media/backfill.go":           true,
+	"internal/platform/postgres/media/backfill_committer.go": true,
 }
 
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.

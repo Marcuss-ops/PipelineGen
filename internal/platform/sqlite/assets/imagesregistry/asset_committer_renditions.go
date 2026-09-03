@@ -81,19 +81,3 @@ func (c *SQLiteAssetCommitter) CommitRenditionTx(
 	return nil
 }
 
-// CommitRenditionTx delegates the rendition write to the embedded canonical
-// asset committer while preserving the caller-owned transaction.
-func (c *SQLiteMediaCommitter) CommitRenditionTx(
-	ctx context.Context,
-	tx *sql.Tx,
-	assetID string,
-	r persistence.RenditionCommit,
-	nowStr string,
-) error {
-	if c == nil || c.assets == nil {
-		return fmt.Errorf("media committer: canonical asset committer is unavailable")
-	}
-	return c.assets.CommitRenditionTx(ctx, tx, assetID, r, nowStr)
-}
-
-var _ persistence.AssetRenditionCommitter = (*SQLiteMediaCommitter)(nil)

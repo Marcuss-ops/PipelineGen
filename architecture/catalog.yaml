@@ -105,4 +105,24 @@ current:
       note: "DONE 2026-08-31: jobs/finalize owns the 6-file Finalizer unit + completionbus.go (JobCompletionBus/Event/Subscription/ErrWaitTimedOut) + workflow_step_{completed,failed}.go; root finalize_facade.go re-exports. Cycles broken by layering."
     - id: JOBS-POLICY-ORDER
       note: "Deadline gate: align cmd/archcheck + ownership generated view to the materialised subdomains and land the four legacy-governance cleanups (ownership split, legacy-path comments, drive-token wrapper) that keep the SSOT single-owner."
+- id: MEDIA-CUTOVER-DEMO-LITION-DEBT
+  status: in_progress
+  owner: media-postgres-cutover
+  deadline: '2026-12-31T00:00:00Z'
+  rationale: >-
+    Demolition debt from the PostgreSQL + pgvector media cutover (September
+    2026). The replacement is certified (make certify-media-cutover, 16
+    gates, POSTGRES_MEDIA_SSOT=TRUE): PostgresMediaCommitter is the canonical
+    writer, MediaSearcher is the canonical VectorStorePort, and
+    PostgresIndexWorker (with its composition-root drain loop, E5 sidecar
+    embedder via ClipIndexer.ServerURL, and family bootstrap via
+    EnsureEmbeddingFamily) is the canonical asset.index.requested consumer.
+    This ticket tracks the REMOVAL of the superseded SQLite media writer
+    family — removal is mandatory work once the exit condition is met, not
+    an option.
+  follow_up_tickets:
+    - id: DEMO-SQLITE-MEDIA-COMMITTER
+      note: "Demolition-debt card. OWNER: media-postgres-cutover (composition root wiring + platform/sqlite/assets/imagesregistry). REASON: SQLiteMediaCommitter/SQLiteAssetCommitter (internal/platform/sqlite/assets/imagesregistry/{asset_committer,asset_committer_mutations,asset_committer_projection_mutations,canonical_clip_mutations,media_committer}.go) remain as the staged-migration adapter of persistence.AssetCommitter while any media domain still commits through the SQLite outbox; the pg family (internal/platform/postgres/media) is certified as the sole production writer in media-SSOT mode. EXIT CONDITION: two consecutive production cycles with PIPELINEGEN_MEDIA_POSTGRES_ENABLED=true on ALL deployments AND zero SQLite-engine media commits (media_assets write rate on the SQLite primary == 0 for the media namespace, verified by certify-storage ghost/parity gates + ops query) AND no incident requiring SQLite-media rollback. EQUIVALENCE GATE: make certify-media-cutover (16 gates incl. one-tx asset+location+features+embedding, rollback-zero-partial, filtered vector search, workspace isolation, idempotency, model-version preservation, QDRANT_MEDIA_WRITES/READS=0 structural checks) plus the live parity suite TEST_POSTGRES_DSN go test ./internal/platform/postgres/media/ -count=1. REMOVAL SCOPE: (1) the 5 SQLite media writer files above and their outbox dispatcher SQLite media branches (dispatcher_index/dispatcher_advance/dispatcher_delete media projections); (2) canonical_media_committer.go SQLite fallback branch + newCanonicalAssetCommitter SQLite path -> SelectMediaAssetCommitter-style selection collapses to PG-only (cfg.MediaPostgreSQL.Enabled becomes the only legal value); (3) archcheck allowlist mediaAssetsWriterCanonicalOwners shrinks to the postgres/media family; percheck_indexed_state_writer_ssot drops the clipindexer canonical path; (4) old sync tests (fakeSQLiteAssetCommitter fixtures, SQLite outbox -> Qdrant projection e2e) replaced by the TestCutover_/TestWorker_ suites; (5) mattn/go-sqlite3 retained ONLY for non-media domains still on SQLite (do NOT remove module-wide in this ticket). STATUS: ACTIVE (pg replacement certified; SQLite family still serves staged-migration deployments)."
+    - id: DEMO-QDRANT-MEDIA-PROJECTION
+      note: "Demolition-debt card (smaller sibling, same exit condition). OWNER: media-postgres-cutover. REASON: Qdrant media indexing/search adapters (internal/platform/qdrant/search + indexing + collections used by the MEDIA plane) are bypassed in PG mode but still compile and stay wired for staged-migration mode. EXIT CONDITION: same as DEMO-SQLITE-MEDIA-COMMITTER. REMOVAL SCOPE: media-plane Qdrant wiring in build_process_qdrant.go/build_bundles_qdrant_gates.go/adapters_qdrant_transport_health.go, the recover-registry-from-qdrant emergency tool once certified no longer needed, and the media collections schema. NOT in scope (legitimate non-media users, do NOT delete): qdrant/indexing/mediamemory (frame concepts), capabilities/maintenance DR adapter, cmd/admin audit/reconcile tooling. STATUS: ACTIVE."
 issues: []

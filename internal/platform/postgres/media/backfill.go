@@ -1,24 +1,29 @@
 // Package media — backfill.go: FASE-3 SQLite → PostgreSQL media backfill.
 //
-// Copies the canonical media surfaces from the legacy SQLite media database
-// into the PostgreSQL media SSOT and then FAILS CLOSED on any parity
-// violation (godlike/07): row counts and per-row field values must match
-// exactly, or RunMediaBackfill returns an error listing the mismatches.
+// Copies the canonical media surfaces (media_assets, asset_locations) from
+// the legacy SQLite media database into the PostgreSQL media SSOT and then
+// FAILS CLOSED on any parity violation (godlike/07): row counts and every
+// compared field of every row must match exactly, or RunMediaBackfill
+// returns an error listing the mismatches.
 //
-// Scope is exactly the FASE-3 contract from the migration plan:
-//
-//	media_assets      (wide legacy schema → canonical columns; unmapped
-//	                   PostgreSQL columns keep their schema defaults)
-//	asset_locations   (file_hash maps to legacy_file_md5; location kinds,
-//	                   URIs, sizes and primary flags copy verbatim)
+// The column mapping is SCHEMA-DRIVEN, never hand-maintained: at run time
+// the engine enumerates the live columns of both engines (SQLite
+// PRAGMA table_info / PostgreSQL information_schema) and copies their
+// INTERSECTION, in PostgreSQL column order. Columns that exist only on one
+// side (legacy leftovers such as SQLite `error`, PG-only canonical columns)
+// are excluded automatically, so migration drift on either engine can never
+// silently corrupt the copy. The single explicit alias is
+// asset_locations.file_hash → legacy_file_md5 (the legacy md5-tier hash
+// keeps its priority position on both engines).
 //
 // Embeddings and derived features are deliberately NOT generated here —
 // they belong to the FASE-4 enrichment pipeline so a slow row never blocks
 // the backfill.
 //
-// Idempotence: every write is an upsert keyed on the natural key, so
-// re-running the backfill after new SQLite writes converges both sides to
-// the same observable state (the parity verifier proves it per run).
+// Idempotence: every write is a full-column upsert keyed on the natural
+// key, so re-running the backfill after new SQLite writes converges both
+// sides to the same observable state (the parity verifier proves it per
+// run, and a --verify-only mode re-checks without copying).
 //
 // The engine never writes to SQLite and never touches Qdrant.
 package media
@@ -65,29 +70,29 @@ type BackfillReport struct {
 	PostgresAssetCount    int64    `json:"postgres_asset_count"`
 	SQLiteLocationCount   int64    `json:"sqlite_location_count"`
 	PostgresLocationCount int64    `json:"postgres_location_count"`
+	AssetColumnsMapped    int      `json:"asset_columns_mapped"`
+	LocationColumnsMapped int      `json:"location_columns_mapped"`
 	MismatchCount         int      `json:"mismatch_count"`
 	Mismatches            []string `json:"mismatches,omitempty"`
 	VerifyOnly            bool     `json:"verify_only"`
 }
 
-const backfillMaxReportedMismatches = 100
+const (
+	backfillMaxReportedMismatches = 100
+	backfillDefaultBatchSize      = 500
+)
 
-// assetBackfillColumns is the SQLite media_assets projection copied
-// verbatim into PostgreSQL columns of the same name.
-const assetBackfillColumns = `id, source, name, tags, tags_norm, duration_ms,
-	url, media_type, status, local_path, relative_path, drive_file_id,
-	drive_folder_id, drive_link, download_link, file_hash, embedding_json,
-	metadata_json, visual_embedding, transcript_embedding, created_at,
-	updated_at`
-
-// locationBackfillColumns is the SQLite asset_locations projection copied
-// verbatim (file_hash is renamed to legacy_file_md5 in PostgreSQL).
-const locationBackfillColumns = `asset_id, location_kind, uri, mime_type,
-	file_size_bytes, file_hash, is_primary, created_at, updated_at`
+// locationColumnAliases maps SQLite asset_locations columns onto their
+// PostgreSQL names. This is the ONLY hand-written mapping in the engine;
+// everything else is derived from the live schemas.
+var locationColumnAliases = map[string]string{
+	"file_hash": "legacy_file_md5",
+}
 
 // RunMediaBackfill executes the FASE-3 backfill and the fail-closed parity
 // verification. It applies the canonical PostgreSQL media migrations first
-// (idempotent IF NOT EXISTS DDL) so a fresh media database is self-bootstrapping.
+// (idempotent IF NOT EXISTS DDL) so a fresh media database is
+// self-bootstrapping.
 func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport, error) {
 	if strings.TrimSpace(cfg.SQLiteDSN) == "" {
 		return nil, fmt.Errorf("media backfill: SQLiteDSN is required")
@@ -97,7 +102,7 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	}
 	batch := cfg.BatchSize
 	if batch <= 0 {
-		batch = 500
+		batch = backfillDefaultBatchSize
 	}
 
 	sqliteDB, err := sql.Open("sqlite3", cfg.SQLiteDSN)
@@ -125,20 +130,39 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 			return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 		}
 	}
-	box := NewOutboxRepository(pg)
-	committer := NewPostgresAssetCommitter(pg, box, nil)
 
-	report := &BackfillReport{VerifyOnly: cfg.VerifyOnly}
+	// Schema-driven mapping: intersect the live column inventories and
+	// capture the PostgreSQL types so legacy NULLs can be coerced to the
+	// canonical zero values (SQLite is weakly typed and carries NULLs in
+	// columns the canonical schema declares NOT NULL DEFAULT ...).
+	assetCols, assetTypes, err := intersectColumns(ctx, sqliteDB, pg, "media_assets", nil)
+	if err != nil {
+		return nil, err
+	}
+	locCols, locTypes, err := intersectColumns(ctx, sqliteDB, pg, "asset_locations", locationColumnAliases)
+	if err != nil {
+		return nil, err
+	}
+	if len(assetCols) == 0 || len(locCols) == 0 {
+		return nil, fmt.Errorf("media backfill: schema intersection produced no mappable columns")
+	}
+
+	report := &BackfillReport{
+		VerifyOnly:            cfg.VerifyOnly,
+		AssetColumnsMapped:    len(assetCols),
+		LocationColumnsMapped: len(locCols),
+	}
+	committer := NewPostgresAssetCommitter(pg, NewOutboxRepository(pg), nil)
 	if !cfg.VerifyOnly {
-		if report.AssetsCopied, report.AssetsScanned, err = backfillAssets(ctx, sqliteDB, committer, batch, cfg.Limit); err != nil {
+		if report.AssetsCopied, report.AssetsScanned, err = backfillAssets(ctx, sqliteDB, committer, "media_assets", assetCols, assetTypes, batch, cfg.Limit); err != nil {
 			return nil, err
 		}
-		if report.LocationsCopied, report.LocationsScanned, report.LocationsSkipped, err = backfillLocations(ctx, sqliteDB, pg, batch); err != nil {
+		if report.LocationsCopied, report.LocationsScanned, report.LocationsSkipped, err = backfillLocations(ctx, sqliteDB, pg, "asset_locations", locCols, locTypes); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := verifyMediaParity(ctx, sqliteDB, pg, report); err != nil {
+	if err := verifyMediaParity(ctx, sqliteDB, pg, assetCols, assetTypes, locCols, locTypes, report); err != nil {
 		return report, err
 	}
 	if report.MismatchCount > 0 {
@@ -147,18 +171,124 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	return report, nil
 }
 
+// sqliteColumns enumerates the live columns of a SQLite table.
+func sqliteColumns(ctx context.Context, db *sql.DB, table string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return nil, fmt.Errorf("media backfill: pragma table_info(%s): %w", table, err)
+	}
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt any
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return nil, fmt.Errorf("media backfill: scan pragma table_info(%s): %w", table, err)
+		}
+		cols = append(cols, name)
+	}
+	return cols, rows.Err()
+}
+
+// postgresColumns enumerates the live columns of a PostgreSQL table in
+// ordinal order together with their data types (information_schema
+// data_type, e.g. text / bigint / real). The types drive the legacy-NULL
+// zero coercion shared by the copy and the parity verifier.
+func postgresColumns(ctx context.Context, db *sql.DB, table string) ([]string, map[string]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT column_name, data_type FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`, table)
+	if err != nil {
+		return nil, nil, fmt.Errorf("media backfill: information_schema(%s): %w", table, err)
+	}
+	defer rows.Close()
+	var cols []string
+	types := map[string]string{}
+	for rows.Next() {
+		var name, dtype string
+		if err := rows.Scan(&name, &dtype); err != nil {
+			return nil, nil, fmt.Errorf("media backfill: scan information_schema(%s): %w", table, err)
+		}
+		cols = append(cols, name)
+		types[name] = dtype
+	}
+	return cols, types, rows.Err()
+}
+
+// intersectColumns computes the mappable projection: every PostgreSQL
+// column that has a SQLite source (after applying the alias map), in
+// PostgreSQL order. Returns the projection and the PostgreSQL types of the
+// projected columns.
+func intersectColumns(ctx context.Context, sqliteDB, pg *sql.DB, table string, aliases map[string]string) ([]string, map[string]string, error) {
+	sc, err := sqliteColumns(ctx, sqliteDB, table)
+	if err != nil {
+		return nil, nil, err
+	}
+	pc, ptypes, err := postgresColumns(ctx, pg, table)
+	if err != nil {
+		return nil, nil, err
+	}
+	sqliteSet := make(map[string]bool, len(sc))
+	for _, c := range sc {
+		sqliteSet[c] = true
+	}
+	var out []string
+	types := map[string]string{}
+	for _, pc1 := range pc {
+		matched := false
+		for sc1, pName := range aliases {
+			if pName == pc1 && sqliteSet[sc1] {
+				out = append(out, pc1)
+				types[pc1] = ptypes[pc1]
+				matched = true
+				break
+			}
+		}
+		if !matched && sqliteSet[pc1] {
+			out = append(out, pc1)
+			types[pc1] = ptypes[pc1]
+		}
+	}
+	return out, types, nil
+}
+
+// coerceLegacyZero maps a legacy SQLite NULL onto the canonical zero value
+// of the PostgreSQL column type, so NOT NULL DEFAULT ... columns accept the
+// row and the parity verifier compares like-for-like. Non-NULL values pass
+// through untouched.
+func coerceLegacyZero(v any, pgType string) any {
+	if v != nil {
+		return v
+	}
+	switch pgType {
+	case "bigint", "integer", "smallint":
+		return int64(0)
+	case "real", "double precision", "numeric", "decimal":
+		return float64(0)
+	case "boolean":
+		return false
+	default:
+		// text, character varying, json(b), and any unmapped type.
+		return ""
+	}
+}
+
 // backfillAssetRow is one streamed SQLite media_assets row.
 type backfillAssetRow struct {
-	id     string
-	vals   []any
-	status string
+	id   string
+	vals []any
 }
 
 // backfillAssets streams SQLite media_assets in id keyset order and upserts
 // the mapped projection into PostgreSQL. Returns (copied, scanned).
-func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAssetCommitter, batch, limit int) (int, int, error) {
-	query := "SELECT " + assetBackfillColumns + " FROM media_assets WHERE id > ? ORDER BY id LIMIT ?"
-	cols := strings.Fields(assetBackfillColumns)
+func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAssetCommitter, table string, cols []string, types map[string]string, batch, limit int) (int, int, error) {
+	quoted := make([]string, len(cols))
+	for i, c := range cols {
+		quoted[i] = `"` + c + `"`
+	}
+	query := "SELECT id, " + strings.Join(quoted, ", ") + " FROM " + table + " WHERE id > ? ORDER BY id LIMIT ?"
 	copied, scanned := 0, 0
 	lastID := ""
 	for {
@@ -171,7 +301,7 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 		}
 		rows, err := sqliteDB.QueryContext(ctx, query, lastID, pageSize)
 		if err != nil {
-			return copied, scanned, fmt.Errorf("media backfill: select sqlite media_assets: %w", err)
+			return copied, scanned, fmt.Errorf("media backfill: select sqlite %s: %w", table, err)
 		}
 		var batchRows []backfillAssetRow
 		for rows.Next() {
@@ -181,27 +311,21 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 				ptrs[i] = &vals[i]
 			}
 			var id string
-			if err := rows.Scan(append([]any{&id}, ptrs[1:]...)...); err != nil {
+			if err := rows.Scan(append([]any{&id}, ptrs...)...); err != nil {
 				rows.Close()
-				return copied, scanned, fmt.Errorf("media backfill: scan sqlite media_assets: %w", err)
+				return copied, scanned, fmt.Errorf("media backfill: scan sqlite %s: %w", table, err)
 			}
-			// status → lifecycle_state parity: an empty legacy status is
-			// stored as the canonical ACTIVE default, everything else copies
-			// verbatim so index/lifecycle state machines survive the move.
-			status := ""
-			for i, c := range cols {
-				if c == "status" {
-					if s, ok := vals[i].(string); ok {
-						status = s
-					}
-				}
+			// Legacy NULLs become the canonical zero values of the
+			// PostgreSQL column types (cols[i] is a PG column name).
+			for i := range vals {
+				vals[i] = coerceLegacyZero(vals[i], types[cols[i]])
 			}
-			batchRows = append(batchRows, backfillAssetRow{id: id, vals: vals, status: status})
+			batchRows = append(batchRows, backfillAssetRow{id: id, vals: vals})
 			scanned++
 		}
 		if err := rows.Err(); err != nil {
 			rows.Close()
-			return copied, scanned, fmt.Errorf("media backfill: iterate sqlite media_assets: %w", err)
+			return copied, scanned, fmt.Errorf("media backfill: iterate sqlite %s: %w", table, err)
 		}
 		rows.Close()
 		if len(batchRows) == 0 {
@@ -209,7 +333,9 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 		}
 		lastID = batchRows[len(batchRows)-1].id
 
-		inserted, err := committer.UpsertBackfillAssets(ctx, cols, batchRows)
+		inserted, err := committer.UpsertBackfillRows(ctx, table, cols, len(batchRows), func(rowIdx, colIdx int) any {
+			return batchRows[rowIdx].vals[colIdx]
+		})
 		if err != nil {
 			return copied, scanned, err
 		}
@@ -222,18 +348,31 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 }
 
 // backfillLocations streams SQLite asset_locations and upserts the mapped
-// projection (file_hash → legacy_file_md5). Orphan rows whose asset did not
-// surface in media_assets are counted, never fatal. Returns
-// (copied, scanned, skippedOrphanFK).
-func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, batch int) (int, int, int, error) {
-	query := "SELECT " + locationBackfillColumns + " FROM asset_locations ORDER BY asset_id, location_kind"
+// projection. Orphan rows whose asset did not surface in media_assets are
+// counted, never fatal. Returns (copied, scanned, skippedOrphanFK).
+func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, table string, cols []string, types map[string]string) (int, int, int, error) {
+	// cols are PG names; map back to SQLite source names for the SELECT.
+	srcNames := make([]string, len(cols))
+	for i, c := range cols {
+		src := c
+		for s, p := range locationColumnAliases {
+			if p == c {
+				src = s
+			}
+		}
+		srcNames[i] = src
+	}
+	quoted := make([]string, len(srcNames))
+	for i, c := range srcNames {
+		quoted[i] = `"` + c + `"`
+	}
+	query := "SELECT " + strings.Join(quoted, ", ") + " FROM " + table + " ORDER BY asset_id, location_kind"
 	rows, err := sqliteDB.QueryContext(ctx, query)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("media backfill: select sqlite asset_locations: %w", err)
+		return 0, 0, 0, fmt.Errorf("media backfill: select sqlite %s: %w", table, err)
 	}
 	defer rows.Close()
 
-	cols := strings.Fields(locationBackfillColumns)
 	copied, scanned, skipped := 0, 0, 0
 	for rows.Next() {
 		vals := make([]any, len(cols))
@@ -242,32 +381,13 @@ func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, batch int) (in
 			ptrs[i] = &vals[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return copied, scanned, skipped, fmt.Errorf("media backfill: scan sqlite asset_locations: %w", err)
+			return copied, scanned, skipped, fmt.Errorf("media backfill: scan sqlite %s: %w", table, err)
 		}
 		scanned++
-		// file_hash → legacy_file_md5 (PG asset_locations carries the legacy
-		// md5-tier hash under the same priority position).
-		hashIdx := indexOf(cols, "file_hash")
-		hash := ""
-		if h, ok := vals[hashIdx].(string); ok {
-			hash = h
-		}
-		_, err := pg.ExecContext(ctx, `
-			INSERT INTO asset_locations
-				(asset_id, location_kind, uri, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-			ON CONFLICT (asset_id, location_kind) DO UPDATE SET
-				uri             = EXCLUDED.uri,
-				mime_type       = EXCLUDED.mime_type,
-				file_size_bytes = EXCLUDED.file_size_bytes,
-				legacy_file_md5 = EXCLUDED.legacy_file_md5,
-				is_primary      = EXCLUDED.is_primary,
-				created_at      = EXCLUDED.created_at,
-				updated_at      = EXCLUDED.updated_at`,
-			vals[indexOf(cols, "asset_id")], vals[indexOf(cols, "location_kind")], vals[indexOf(cols, "uri")],
-			vals[indexOf(cols, "mime_type")], vals[indexOf(cols, "file_size_bytes")], hash,
-			vals[indexOf(cols, "is_primary")], vals[indexOf(cols, "created_at")], vals[indexOf(cols, "updated_at")],
-		)
+		committer := NewPostgresAssetCommitter(pg, NewOutboxRepository(pg), nil)
+		inserted, err := committer.UpsertBackfillRows(ctx, table, cols, 1, func(_, colIdx int) any {
+			return vals[colIdx]
+		})
 		if err != nil {
 			if strings.Contains(err.Error(), "violates foreign key constraint") {
 				// Orphan location (asset row absent): report, never crash —
@@ -275,19 +395,19 @@ func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, batch int) (in
 				skipped++
 				continue
 			}
-			return copied, scanned, skipped, fmt.Errorf("media backfill: upsert postgres asset_locations: %w", err)
+			return copied, scanned, skipped, err
 		}
-		copied++
+		copied += inserted
 	}
 	if err := rows.Err(); err != nil {
-		return copied, scanned, skipped, fmt.Errorf("media backfill: iterate sqlite asset_locations: %w", err)
+		return copied, scanned, skipped, fmt.Errorf("media backfill: iterate sqlite %s: %w", table, err)
 	}
 	return copied, scanned, skipped, nil
 }
 
 // verifyMediaParity is the fail-closed acceptance check: total counts must
-// match and every compared field of every row must be byte-identical.
-func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, report *BackfillReport) error {
+// match and every mapped field of every row must be byte-identical.
+func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, assetCols []string, assetTypes map[string]string, locCols []string, locTypes map[string]string, report *BackfillReport) error {
 	var err error
 	if report.SQLiteAssetCount, report.PostgresAssetCount, err = compareCounts(ctx, sqliteDB, pg, "media_assets"); err != nil {
 		return err
@@ -295,7 +415,6 @@ func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, report *Backfi
 	if report.SQLiteLocationCount, report.PostgresLocationCount, err = compareCounts(ctx, sqliteDB, pg, "asset_locations"); err != nil {
 		return err
 	}
-
 	if report.SQLiteAssetCount != report.PostgresAssetCount {
 		report.addMismatch(fmt.Sprintf("media_assets count: sqlite=%d postgres=%d", report.SQLiteAssetCount, report.PostgresAssetCount))
 	}
@@ -303,135 +422,105 @@ func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, report *Backfi
 		report.addMismatch(fmt.Sprintf("asset_locations count: sqlite=%d postgres=%d", report.SQLiteLocationCount, report.PostgresLocationCount))
 	}
 
-	// Per-asset field comparison on the identity core. location_kind rows
-	// are compared on their natural key below.
-	const assetCompareSQL = `
-		SELECT id, source, name, tags, tags_norm, duration_ms, media_type,
-			local_path, relative_path, drive_file_id, drive_link, download_link,
-			embedding_json, metadata_json, visual_embedding, transcript_embedding,
-			created_at, updated_at, lifecycle_state
-		FROM media_assets ORDER BY id`
-	sqliteRows, err := sqliteDB.QueryContext(ctx, assetCompareSQL)
-	if err != nil {
-		return fmt.Errorf("media backfill: compare select sqlite: %w", err)
+	if err := compareRowsByKey(ctx, sqliteDB, pg, "media_assets", "id", assetCols, assetTypes, nil, report); err != nil {
+		return err
 	}
-	defer sqliteRows.Close()
-	type row map[string]any
-	sqliteByID := map[string]row{}
-	colNames, _ := sqliteRows.Columns()
-	for sqliteRows.Next() {
-		vals := make([]any, len(colNames))
-		ptrs := make([]any, len(colNames))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := sqliteRows.Scan(ptrs...); err != nil {
-			return fmt.Errorf("media backfill: compare scan sqlite: %w", err)
-		}
-		r := row{}
-		for i, c := range colNames {
-			r[c] = vals[i]
-		}
-		sqliteByID[vals[0].(string)] = r
-	}
-	if err := sqliteRows.Err(); err != nil {
-		return fmt.Errorf("media backfill: compare iterate sqlite: %w", err)
-	}
+	return compareRowsByKey(ctx, sqliteDB, pg, "asset_locations", "asset_id, location_kind", locCols, locTypes, locationColumnAliases, report)
+}
 
-	pgRows, err := pg.QueryContext(ctx, assetCompareSQL)
-	if err != nil {
-		return fmt.Errorf("media backfill: compare select postgres: %w", err)
-	}
-	defer pgRows.Close()
-	pgByID := map[string]row{}
-	pgColNames, _ := pgRows.Columns()
-	for pgRows.Next() {
-		vals := make([]any, len(pgColNames))
-		ptrs := make([]any, len(pgColNames))
-		for i := range vals {
-			ptrs[i] = &vals[i]
+// compareRowsByKey pulls the mapped projection from both engines and diffs
+// every row on the natural key. srcAliases reverses the PG→SQLite column
+// alias map when the SELECT runs against SQLite. The SQLite side applies
+// the same legacy-NULL coercion as the copy phase so the diff is
+// like-for-like (a NULL in a weakly-typed legacy column equals the
+// canonical zero on the PostgreSQL side).
+func compareRowsByKey(ctx context.Context, sqliteDB, pg *sql.DB, table, keyCols string, cols []string, types map[string]string, srcAliases map[string]string, report *BackfillReport) error {
+	selectList := func(names []string) string {
+		q := make([]string, len(names))
+		for i, c := range names {
+			q[i] = `"` + c + `"`
 		}
-		if err := pgRows.Scan(ptrs...); err != nil {
-			return fmt.Errorf("media backfill: compare scan postgres: %w", err)
-		}
-		r := row{}
-		for i, c := range pgColNames {
-			r[c] = vals[i]
-		}
-		pgByID[vals[0].(string)] = r
+		return strings.Join(q, ", ")
 	}
-	if err := pgRows.Err(); err != nil {
-		return fmt.Errorf("media backfill: compare iterate postgres: %w", err)
-	}
-
-	ids := make([]string, 0, len(sqliteByID))
-	for id := range sqliteByID {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		s, ok := pgByID[id]
-		if !ok {
-			report.addMismatch(fmt.Sprintf("media_assets[%s]: missing in postgres", id))
-			continue
-		}
-		for _, c := range colNames {
-			sv, pv := fmt.Sprint(sqliteByID[id][c]), fmt.Sprint(s[c])
-			if sv != pv {
-				report.addMismatch(fmt.Sprintf("media_assets[%s].%s: sqlite=%q postgres=%q", id, c, sv, pv))
+	srcCols := make([]string, len(cols))
+	for i, c := range cols {
+		src := c
+		for s, p := range srcAliases {
+			if p == c {
+				src = s
 			}
 		}
+		srcCols[i] = src
 	}
+	keyOrder := strings.Split(strings.ReplaceAll(keyCols, " ", ""), ",")
 
-	// Locations compared on (asset_id, location_kind, uri).
-	const locCompareSQL = `SELECT asset_id, location_kind, uri, mime_type, file_size_bytes, is_primary FROM asset_locations ORDER BY asset_id, location_kind`
-	locNames := []string{"asset_id", "location_kind", "uri", "mime_type", "file_size_bytes", "is_primary"}
-	locKey := func(vals []any) string {
-		return fmt.Sprintf("%s|%s|%s", vals[0], vals[1], vals[2])
-	}
-	locMap := func(db *sql.DB) (map[string][]any, error) {
-		rs, err := db.QueryContext(ctx, locCompareSQL)
+	fetch := func(db *sql.DB, names []string) (map[string]map[string]any, error) {
+		rows, err := db.QueryContext(ctx, "SELECT "+selectList(names)+" FROM "+table+" ORDER BY "+keyCols)
 		if err != nil {
 			return nil, err
 		}
-		defer rs.Close()
-		m := map[string][]any{}
-		for rs.Next() {
-			vals := make([]any, len(locNames))
-			ptrs := make([]any, len(locNames))
+		defer rows.Close()
+		out := map[string]map[string]any{}
+		for rows.Next() {
+			vals := make([]any, len(names))
+			ptrs := make([]any, len(names))
 			for i := range vals {
 				ptrs[i] = &vals[i]
 			}
-			if err := rs.Scan(ptrs...); err != nil {
+			if err := rows.Scan(ptrs...); err != nil {
 				return nil, err
 			}
-			m[locKey(vals)] = vals
+			for i := range vals {
+				vals[i] = coerceLegacyZero(vals[i], types[names[i]])
+			}
+			keyParts := make([]string, len(keyOrder))
+			for i, k := range keyOrder {
+				for j, n := range names {
+					if n == k {
+						keyParts[i] = fmt.Sprint(vals[j])
+					}
+				}
+			}
+			m := map[string]any{}
+			for j, n := range names {
+				// Normalize to the PG-side column name for comparison.
+				pn := n
+				for s, p := range srcAliases {
+					if s == n {
+						pn = p
+					}
+				}
+				m[pn] = vals[j]
+			}
+			out[strings.Join(keyParts, "|")] = m
 		}
-		return m, rs.Err()
+		return out, rows.Err()
 	}
-	sqliteLoc, err := locMap(sqliteDB)
+
+	sqliteRows, err := fetch(sqliteDB, srcCols)
 	if err != nil {
-		return fmt.Errorf("media backfill: compare sqlite asset_locations: %w", err)
+		return fmt.Errorf("media backfill: compare sqlite %s: %w", table, err)
 	}
-	pgLoc, err := locMap(pg)
+	pgRows, err := fetch(pg, cols)
 	if err != nil {
-		return fmt.Errorf("media backfill: compare postgres asset_locations: %w", err)
+		return fmt.Errorf("media backfill: compare postgres %s: %w", table, err)
 	}
-	locIDs := make([]string, 0, len(sqliteLoc))
-	for k := range sqliteLoc {
-		locIDs = append(locIDs, k)
+
+	keys := make([]string, 0, len(sqliteRows))
+	for k := range sqliteRows {
+		keys = append(keys, k)
 	}
-	sort.Strings(locIDs)
-	for _, k := range locIDs {
-		p, ok := pgLoc[k]
+	sort.Strings(keys)
+	for _, k := range keys {
+		p, ok := pgRows[k]
 		if !ok {
-			report.addMismatch(fmt.Sprintf("asset_locations[%s]: missing in postgres", k))
+			report.addMismatch(fmt.Sprintf("%s[%s]: missing in postgres", table, k))
 			continue
 		}
-		for i, c := range locNames[3:] {
-			sv, pv := fmt.Sprint(sqliteLoc[k][3+i]), fmt.Sprint(p[3+i])
+		for _, c := range cols {
+			sv, pv := fmt.Sprint(sqliteRows[k][c]), fmt.Sprint(p[c])
 			if sv != pv {
-				report.addMismatch(fmt.Sprintf("asset_locations[%s].%s: sqlite=%q postgres=%q", k, c, sv, pv))
+				report.addMismatch(fmt.Sprintf("%s[%s].%s: sqlite=%q postgres=%q", table, k, c, sv, pv))
 			}
 		}
 	}
@@ -454,15 +543,6 @@ func (r *BackfillReport) addMismatch(msg string) {
 	if len(r.Mismatches) < backfillMaxReportedMismatches {
 		r.Mismatches = append(r.Mismatches, msg)
 	}
-}
-
-func indexOf(haystack []string, needle string) int {
-	for i, h := range haystack {
-		if h == needle {
-			return i
-		}
-	}
-	return -1
 }
 
 // PrintJSON renders the report as machine-readable JSON on stdout.

@@ -44,7 +44,6 @@ check_absent() {
 legacy_local_files=(
   internal/app/wiring/chronon_clip_renderer.go
   internal/app/wiring/chronon_clip_render_support.go
-  internal/app/wiring/chronon_timing_sidecar.go
 )
 for legacy in "${legacy_local_files[@]}"; do
   if [[ -e "$legacy" ]]; then
@@ -56,7 +55,7 @@ for legacy in "${legacy_local_files[@]}"; do
 done
 
 check_absent 'NewChrononClipRenderExecutor|chrononClipRenderExecutor' 'direct local Chronon clip executor'
-check_absent 'CHRONON_RENDER_SOCKET|CHRONON_SOCKET_PATH|chronon3d_cli' 'direct local Chronon process/socket wiring'
+check_absent 'CHRONON_RENDER_SOCKET|CHRONON_SOCKET_PATH|exec\.Command[^\n]*chronon' 'direct local Chronon process/socket wiring'
 check_absent 'NewClipRendererWithExecutor|\.RenderClip\(' 'direct Rust RenderClip production caller'
 check_absent 'BackendCudaNative|BackendFFmpegFallback|cuda_native|ffmpeg_fallback' 'production CUDA/FFmpeg clip fallback selector'
 

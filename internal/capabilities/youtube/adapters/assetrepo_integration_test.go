@@ -27,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -42,11 +41,7 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepos
 	clipsRepo = sqassets.NewClipsRepository(db, log)
 	assetStore := sqassets.NewAssetStoreSQLite(db, log)
 	box := outboxevents.NewRepository(db)
-	ledger, err := mediaregistry.NewLedger(db)
-	if err != nil {
-		t.Fatalf("NewLedger: %v", err)
-	}
-	committer := sqassets.NewSQLiteMediaCommitter(db, box, ledger, log)
+	committer := sqassets.NewSQLiteAssetCommitter(db, box, log)
 	mediacommitadapters.WireCanonicalAssetStore(assetStore, committer)
 	assetRepo = assetStore.AssetRepository()
 	return

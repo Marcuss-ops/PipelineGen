@@ -9,7 +9,7 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 | Canonical business state | PostgreSQL + pgvector (media domain); SQLite remains canonical for non-media domains during staged migration |
 | Long-running execution | SQLite-backed jobs and workers |
 | Durable post-commit work | Transactional outbox |
-| Semantic and lexical retrieval | Qdrant projection |
+| Semantic and lexical retrieval | pgvector inside the media PostgreSQL SSOT (media domain); Qdrant remains only for non-media usage where explicitly justified |
 | Remote files | Google Drive |
 | Dependency construction and lifecycle | `internal/app` |
 | Shared semantic contracts | `internal/kernel` |

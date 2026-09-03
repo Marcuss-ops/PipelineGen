@@ -149,9 +149,13 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// books.process, lessons.process) can complete via the single-TX
 	// finalization spine. root.Outbox.EventsRepo is available because
 	// NewComposition already ran BuildProcessBundle which populated it.
-	if root.Outbox != nil && root.Outbox.EventsRepo != nil && root.DB != nil && root.DB.DB != nil {
-		assetCommitter := newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
-		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		assetCommitter, err := newCanonicalAssetCommitter(root.MediaPostgres, log)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("wire services composition: canonical media writer: %w", err)
+		}
+		if assetCommitter != nil {
+			assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
 		}
@@ -180,7 +184,8 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		// RenderingGen overlays resolve their parent video's Drive folder
 		// below the already-resolved video folder (/video/.../overlay/).
 		broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
-		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
+			log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
+		}
 	} else {
 		// PR-COMPLETE-WORKER-FAIL-BOOT (Aug 2026): if the canonical
 		// registry declares ANY artifact-producing job type with

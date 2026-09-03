@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -30,19 +29,10 @@ func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsReposit
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = assets.NewClipsRepository(db, log)
-	committer := assets.NewSQLiteMediaCommitter(db, outboxevents.NewRepository(db), mustNewArtlistLedger(t, db), log)
+	committer := assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), log)
 	mediacommitadapters.WireCanonicalAssetStore(clipsRepo.AssetStoreSQLite, committer)
 	assetRepo = clipsRepo.AssetRepository()
 	return
-}
-
-func mustNewArtlistLedger(t *testing.T, db *sql.DB) *mediaregistry.Ledger {
-	t.Helper()
-	ledger, err := mediaregistry.NewLedger(db)
-	if err != nil {
-		t.Fatalf("NewLedger: %v", err)
-	}
-	return ledger
 }
 
 // zeroTime is the canonical zero-time used by DeletedAt fixtures so that

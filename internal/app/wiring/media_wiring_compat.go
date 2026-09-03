@@ -9,13 +9,16 @@ import (
 	"database/sql"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-func SelectMediaAssetCommitter(cfg *config.Config, sqliteCommitter persistence.AssetCommitter, postgresCommitter persistence.AssetCommitter) (persistence.AssetCommitter, error) {
-	return mediasub.SelectMediaAssetCommitter(cfg, sqliteCommitter, postgresCommitter)
-}
+// SelectMediaAssetCommitter was REMOVED (media cutover demolition,
+// September 2026): it was never invoked by production wiring and encoded
+// a caller-supplied adapter-pair decision that conflicted with the
+// canonical single decision point in canonical_media_committer.go
+// (newCanonicalAssetCommitterCfg / canonicalCommitterForRoot). The media
+// storage policy lives there — cfg.MediaPostgreSQL.Enabled + the open
+// root.MediaPostgres handle, fail-closed.
 
 func RequireMediaPostgres(ctx context.Context, cfg *config.Config) (*sql.DB, error) {
 	return mediasub.RequireMediaPostgres(ctx, cfg)

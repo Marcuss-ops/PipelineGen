@@ -211,7 +211,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	// test reaches the RegisterCoreHandlers gate (triggering
 	// "core outbox handlers") — not the earlier "stagingSvc is required"
 	// gate introduced in Push 3.1c.
-	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, nil)
+	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, nil, nil)
 	require.Error(t, err,
 		"PR 3: cfg.Qdrant.Enabled=true + nil ClipsRepo must abort BuildOutboxBundle (fail-closed at boot, never warn-as-warning)")
 	require.Contains(t, err.Error(), "core outbox handlers",

@@ -167,6 +167,10 @@ func buildOutboxDeps(
 // the Qdrant-on path fails closed via RegisterCoreHandlers, the
 // qdrant-off path registers a no-op IndexingHandler so
 // image-generation jobs do not dead-letter their indexing event.
+//
+// Media cutover update (September 2026): in PostgreSQL media-SSOT mode
+// the function returns early — the media index plane is the pgvector
+// PostgresIndexWorker and no SQLite/Qdrant media handler is registered.
 func registerOutboxCoreHandlers(
 	eventsRegistry *outboxevents.HandlerRegistry,
 	cfg *config.Config,
@@ -175,6 +179,17 @@ func registerOutboxCoreHandlers(
 	outboxDeps *jobsoutbox.Deps,
 	log *zap.Logger,
 ) error {
+	// POSTGRES-MEDIA-CUTOVER: when the PostgreSQL media SSOT is enabled,
+	// the media index plane is the pgvector PostgresIndexWorker. The
+	// SQLite outbox never sees media index events (the canonical committer
+	// emits them into the PG outbox), so NO asset.index.requested handler
+	// is registered here — a stray media event in SQLite dead-letters
+	// loudly instead of silently writing to Qdrant. Qdrant media reads
+	// and writes are structurally bypassed in this mode.
+	if cfg.MediaPostgreSQL.Enabled {
+		log.Info("POSTGRES-MEDIA-CUTOVER: media index plane = pgvector PostgresIndexWorker; Qdrant media projection handlers NOT registered (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0)")
+		return nil
+	}
 	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
 	// fail-closed when Qdrant is enabled. The previous
 	// `log.Warn("failed to register outbox events handlers", err)`
