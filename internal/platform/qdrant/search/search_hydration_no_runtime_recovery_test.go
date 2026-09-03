@@ -1,10 +1,8 @@
 // search_hydration_no_runtime_recovery_test.go certifies that the
 // runtime search hydration path is strictly Qdrant hit → SQLite read
-// (never SQLite miss → Qdrant hit → INSERT SQLite). It also verifies
-// that the only Qdrant→SQLite recovery path is the admin emergency
-// command (cmd/admin/emergency/recover_registry_from_qdrant.go), which
-// requires an explicit --purpose flag and validates with
-// ValidateEmergencyCollection.
+// (never SQLite miss → Qdrant hit → INSERT SQLite). After the PostgreSQL
+// media cutover there is no Qdrant→SQLite recovery command or runtime
+// compatibility path left in the repository.
 //
 // The test exercises hydrateSearchResults with a fake AssetStore that
 // records whether FetchAsset was called (SQLite validation) and proves:
@@ -97,29 +95,15 @@ func TestHydrateSearchResults_EmptyResultsNoOp(t *testing.T) {
 	require.Empty(t, out)
 }
 
-// TestRecoveryCommandRequiresExplicitPurpose certifies that the only
-// Qdrant→SQLite recovery path (admin emergency) cannot be invoked without
-// an explicit --purpose flag. This is a documentation-level assertion:
-// the runtime search path has NO recovery capability; recovery is
-// exclusively an admin command that requires disaster-recovery,
-// migration-recovery, or forensics purpose.
-func TestRecoveryCommandRequiresExplicitPurpose(t *testing.T) {
-	// This test documents the invariant: the runtime search adapter
-	// (SearchAdapter) has no method capable of inserting SQLite rows
-	// from Qdrant data. The only Qdrant→SQLite path is
-	// cmd/admin/emergency/recover_registry_from_qdrant.go, which:
-	//   1. Requires --purpose={disaster-recovery|migration-recovery|forensics}
-	//   2. Validates collection with ValidateEmergencyCollection
-	//   3. Is --apply is intentionally blocked (dry-run only today)
-	//
-	// The SearchAdapter surface exposes only Search/HybridSearch (reads).
-	// There is no method on SearchAdapter or Searcher that writes to
-	// SQLite. This test asserts the method set is read-only.
+// TestRuntimeRecoverySurfaceIsReadOnly pins the post-cutover invariant:
+// Qdrant search adapters expose retrieval only. The retired admin recovery
+// command is gone, so there is no supported Qdrant→SQLite mutation surface.
+func TestRuntimeRecoverySurfaceIsReadOnly(t *testing.T) {
 	var _ appsearch.VectorStorePort = (*SearchAdapter)(nil)
-	// VectorStorePort exposes only Search + HybridSearch (both return
-	// VectorSearchResult slices — read-only). No insert/upsert/delete.
+
+	// VectorStorePort exposes only Search + HybridSearch. Keeping this
+	// compile-time assertion here makes any future attempt to reintroduce a
+	// media recovery mutation through the search surface visible in review.
 	adapter := &SearchAdapter{}
-	// The adapter has no exported method that accepts a write intent.
-	// This compile-time check ensures the invariant holds.
 	_ = adapter
 }
