@@ -43,7 +43,6 @@ import (
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // happyPathWireArtlistArgs bundles the 8 fully-populated inputs to
@@ -127,7 +126,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		Committer:          imagesregistry.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		Committer:          &sqliteTestAssetCommitter{db: sqliteDB.DB, box: &outboxEventsTestRepo{db: sqliteDB.DB}},
 		// MediaProcessor / AssetIndexService / DestinationService /
 		// AssetLocRepo / AssetVerRepo are intentionally nil: the
 		// production WireArtlist treats them as runtime-nil-tolerant

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -232,7 +233,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if _, _, err := finalizer.NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil)).FinalizeAsset(ctx, finalizer.WrapTx(tx), published); err != nil {
+	if _, _, err := finalizer.NewAssetTxFinalizer(nil, testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil)).FinalizeAsset(ctx, finalizer.WrapTx(tx), published); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}
 

@@ -11,7 +11,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -39,7 +40,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
-	repo := assets.NewClipsRepository(db, zap.NewNop())
+	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Direct single-repo dispatcher for the test — production wiring uses
@@ -51,7 +52,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// `outbox.ClipsStateWriter(repo)` works unchanged in test fixtures
 	// (closure of PR7 producer migration ticket item D).
 	stateWriter := outbox.ClipsStateWriter(repo)
-	canonicalCommitter := assets.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
+	canonicalCommitter := testsupport.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	// PR-D: construct the service via Deps{} (no SetDispatcher setter
@@ -118,14 +119,14 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
-	repo := assets.NewClipsRepository(db, zap.NewNop())
+	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Same dual-role adapter pattern as the dispatcher_path test:
 	// ClipsStateWriter + ClipsUpserter split is a Go-type partition,
 	// the same concrete *assets.ClipsRepository implements both.
 	stateWriter := outbox.ClipsStateWriter(repo)
-	canonicalCommitter := assets.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
+	canonicalCommitter := testsupport.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	svc, err := NewService(Deps{
@@ -173,7 +174,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
-	repo := assets.NewClipsRepository(db, zap.NewNop())
+	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 
 	// Construct a Service via the unexported struct literal to bypass the
 	// ctor's nil-dispatcher guard — we want to exercise the runtime

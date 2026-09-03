@@ -4,11 +4,21 @@
 // (data-layer unification, August 2026).
 //
 // godlike/06 SSOT: the canonical owner of media_assets writes is
-// persistence.AssetCommitter (implemented by SQLiteAssetCommitter at
-// internal/platform/sqlite/assets/imagesregistry/asset_committer.go).
-// Every code path that durably creates, updates, or deletes a
-// media_assets row MUST route through this port — YouTube, Artlist,
-// local clips, voiceover, images, recovery.
+// persistence.AssetCommitter (implemented by PostgresMediaCommitter at
+// internal/platform/postgres/media/media_committer.go). Every code path
+// that durably creates, updates, or deletes a media_assets row MUST route
+// through this port — YouTube, Artlist, local clips, voiceover, images,
+// recovery.
+//
+// MEDIA DEMOLITION (September 2026, POSTGRES-MEDIA-CUTOVER): the SQLite
+// media writer family (SQLiteAssetCommitter / SQLiteMediaCommitter) has
+// been REMOVED — PostgreSQL + pgvector is the ONLY production writer of
+// media_assets. The SQLite engine retains only the non-media mutation
+// primitives (lifecycle/enrich/index-state machines, admin console,
+// maintenance) which are still exempted below as canonical owners of the
+// narrow UPDATE surfaces they own. The mutation-primitive files are
+// exempted so the gate keeps flagging any NEW SQLite writer that would
+// resurrect the demolished media commit path.
 //
 // This gate is the codebase-wide fence (a generalisation of
 // percheck_finalizer_no_direct_sql which scopes only the finalizer
@@ -18,11 +28,10 @@
 //
 // Exemptions:
 //   - exactly the canonical writer files in mediaAssetsWriterCanonicalOwners
-//     below: the SQLiteAssetCommitter / SQLiteMediaCommitter family (current
-//     canonical owner during the staged migration) and the PostgresMediaCommitter
-//     family (the staged PostgreSQL + pgvector successor implementing the same
-//     persistence.AssetCommitter port). Together they are the only production
-//     owners of media_assets SQL.
+//     below: the PostgreSQL + pgvector PostgresMediaCommitter family (the
+//     ONLY production media writer after the September 2026 demolition) and
+//     the surviving SQLite non-media mutation primitives (narrow UPDATE
+//     surfaces, no commit, no outbox emission).
 //   - *_test.go files (regression-guard surface).
 //   - migrations/sqlite/*.sql and migrations/postgres/*.sql (canonical schema
 //     migration files).
@@ -51,19 +60,19 @@ import (
 // canonical SOLE owners of SQL that writes media_assets. The gate does
 // NOT inspect these files — they ARE the SSOT.
 //
-// Two engine adapters of ONE canonical family (media-domain cutover,
-// September 2026): the SQLite family remains the active canonical owner
-// until FASE 7 cutover; the PostgreSQL family implements the identical
-// persistence.AssetCommitter port and is proven behavior-identical by the
-// parity suite (internal/platform/postgres/media/parity_test.go).
+// MEDIA DEMOLITION (September 2026): ONE engine adapter family remains —
+// PostgreSQL + pgvector (PostgresMediaCommitter, proven by the parity
+// suite internal/platform/postgres/media/parity_test.go and the cutover
+// TestCutover_ suite). The SQLite entries below are the surviving
+// non-media mutation primitives ONLY (no commit, no outbox emission);
+// the demolished SQLite media writer files are deliberately NOT listed,
+// so their reappearance is a violation, not an exemption.
 var mediaAssetsWriterCanonicalOwners = map[string]bool{
-	// SQLite canonical family (current owner during staged migration).
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer.go":                      true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go":            true,
-	"internal/platform/sqlite/assets/imagesregistry/asset_committer_projection_mutations.go": true,
-	"internal/platform/sqlite/assets/imagesregistry/canonical_clip_mutations.go":             true,
-	"internal/platform/sqlite/assets/imagesregistry/media_committer.go":                      true,
-	// PostgreSQL + pgvector canonical family (staged successor, same port).
+	// SQLite non-media mutation primitives (narrow UPDATE surfaces —
+	// lifecycle/enrich/index-state machines, admin console, maintenance).
+	// These do NOT commit assets and do NOT emit outbox events.
+	"internal/platform/sqlite/assets/imagesregistry/media_asset_mutations.go": true,
+	// PostgreSQL + pgvector canonical family (the ONLY media writer).
 	"internal/platform/postgres/media/committer.go":       true,
 	"internal/platform/postgres/media/media_committer.go": true,
 	"internal/platform/postgres/media/mutations.go":       true,
@@ -74,11 +83,18 @@ var mediaAssetsWriterCanonicalOwners = map[string]bool{
 	// Media cutover (September 2026): the PG outbox consumption family —
 	// claim/complete/fail lifecycle + canonical index worker (the ONLY
 	// consumer of asset.index.requested in media-SSOT mode) + the pgvector
-	// derived-surface writer. All owned by the same canonical family.
+	// derived-surface writer.
 	"internal/platform/postgres/media/outbox_worker.go":      true,
 	"internal/platform/postgres/media/vector_surfaces.go":    true,
 	"internal/platform/postgres/media/backfill.go":           true,
 	"internal/platform/postgres/media/backfill_committer.go": true,
+	// Enrichment pipeline (FASE-4, September 2026): hard-feature analyzer
+	// + visual embedding pipeline + backfill engine write the DERIVED
+	// surfaces (media_asset_features, media_embeddings) and the enrichment
+	// state columns of media_assets.
+	"internal/platform/postgres/media/feature_analyzer.go":      true,
+	"internal/platform/postgres/media/visual_embedding.go":      true,
+	"internal/platform/postgres/media/enrichment_backfill.go":   true,
 }
 
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.
@@ -127,7 +143,7 @@ var mediaAssetsWriterSkipPathPrefixes = []string{
 const mediaAssetsWriterRule = "percheck_media_assets_writer_canonical"
 
 // mediaAssetsWriterNote is the violation Note string.
-const mediaAssetsWriterNote = "forbidden direct SQL write to media_assets outside the canonical AssetCommitter (data-layer unification, August 2026; media-domain cutover, September 2026): the canonical owner is persistence.AssetCommitter — SQLiteAssetCommitter at internal/platform/sqlite/assets/imagesregistry/asset_committer.go, with PostgresMediaCommitter at internal/platform/postgres/media/committer.go as the staged successor implementing the same port. Every asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST route through AssetCommitter.CommitAndIndex or CommitTx. The Dispatcher.EnqueueAndIndex fail-closed gate blocks the legacy UpsertClipTx fallback in production."
+const mediaAssetsWriterNote = "forbidden direct SQL write to media_assets outside the canonical AssetCommitter (data-layer unification, August 2026; media cutover + SQLite media demolition, September 2026): the canonical owner is persistence.AssetCommitter — PostgresMediaCommitter at internal/platform/postgres/media/media_committer.go is the ONLY production writer of media_assets (the SQLite media writer family is REMOVED). Every asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST route through AssetCommitter.CommitAndIndex or CommitTx."
 
 // mediaAssetsWriterWarn is the WARN-bucket emitter for residue accounting.
 func mediaAssetsWriterWarn(r *report.Report, label, msg string) {
@@ -230,7 +246,7 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 			Note: mediaAssetsWriterNote +
 				" | file: " + relPath +
 				" | matched verb: " + verb +
-				" | route through persistence.AssetCommitter (canonical SSOT: internal/platform/sqlite/assets/imagesregistry/asset_committer.go)",
+				" | route through persistence.AssetCommitter (canonical SSOT: internal/platform/postgres/media/media_committer.go — the SQLite media writer family is demolished)",
 		})
 	}
 

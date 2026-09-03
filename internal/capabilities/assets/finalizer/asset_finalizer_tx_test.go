@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"strings"
 	"testing"
 
@@ -174,7 +175,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 func newTestFinalizer(t *testing.T, db *sql.DB) *AssetTxFinalizer {
 	t.Helper()
-	return NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	return NewAssetTxFinalizer(nil, testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 }
 
 func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArtifact {

@@ -70,6 +70,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"sync"
 	"testing"
 	"time"
@@ -636,7 +637,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 	db := openInMemDB_Integration(t)
 	repo := outboxevents.NewRepository(db)
 
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 	ctx := context.Background()
 	assetID := "yt_integration_001"
 

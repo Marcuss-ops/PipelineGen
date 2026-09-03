@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsReposit
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = assets.NewClipsRepository(db, log)
-	committer := assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), log)
+	committer := testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), log)
 	mediacommitadapters.WireCanonicalAssetStore(clipsRepo.AssetStoreSQLite, committer)
 	assetRepo = clipsRepo.AssetRepository()
 	return

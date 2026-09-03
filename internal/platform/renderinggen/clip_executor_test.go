@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -44,7 +46,7 @@ func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 		Background: &cliprender.PlanBackground{Mode: cliprender.BackgroundModeNone},
 		Output:     cliprender.PlanOutput{ContractID: "VELOX_ASSEMBLY_READY_V1", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1},
 		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
-		OutputPath: "/tmp/out.mp4",
+		OutputPath: t.TempDir() + "/out.mp4",
 	}
 	if err := plan.Seal(); err != nil {
 		t.Fatal(err)
@@ -57,8 +59,14 @@ func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 // NOT a raw ClipRenderPlanV1 (which would be silently pass-through'd by the
 // RenderingGen worker and corrupt the render pipeline).
 func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
+	artifactBytes := []byte("0123456789")
+	artifactHash := fmt.Sprintf("%x", sha256.Sum256(artifactBytes))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(artifactBytes)
+	}))
+	defer server.Close()
 	q := &fakeClipQueue{result: queueclient.Job{State: queueclient.StateCompleted, Artifact: &queueclient.Artifact{
-		ArtifactHash: "artifact-sha", ArtifactURL: "https://store/out.mp4", SizeBytes: 10,
+		ArtifactHash: artifactHash, ArtifactURL: server.URL + "/out.mp4", SizeBytes: int64(len(artifactBytes)),
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
 		Backend: "chronon_vulkan", CopyEligible: true,
 	}}}

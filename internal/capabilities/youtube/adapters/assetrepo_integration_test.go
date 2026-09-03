@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepos
 	clipsRepo = sqassets.NewClipsRepository(db, log)
 	assetStore := sqassets.NewAssetStoreSQLite(db, log)
 	box := outboxevents.NewRepository(db)
-	committer := sqassets.NewSQLiteAssetCommitter(db, box, log)
+	committer := testsupport.NewSQLiteAssetCommitter(db, box, log)
 	mediacommitadapters.WireCanonicalAssetStore(assetStore, committer)
 	assetRepo = assetStore.AssetRepository()
 	return

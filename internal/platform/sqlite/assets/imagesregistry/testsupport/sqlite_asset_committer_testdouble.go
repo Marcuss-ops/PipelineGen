@@ -1,14 +1,13 @@
-// Package assets — SQLite AssetCommitter adapter (PR-ASSET-COMMITTER).
+// Package testsupport — TEST-ONLY SQLite AssetCommitter.
 //
-// INDEXED_WRITER_SCOPE: clipindexer
-// The terminal INDEXED CAS is exposed here solely as the persistence adapter
-// invoked by the canonical outbox consumer; no workflow writes this state.
-//
-// This file is the sole canonical implementation of
-// persistence.AssetCommitter. It owns the SQL that writes media_assets,
-// asset_locations, and the durable index-request event inside one SQLite
-// transaction.
-package imagesregistry
+// POSTGRES-MEDIA-CUTOVER demolition note: the production SQLite media
+// writer family was REMOVED (the canonical media writer is
+// PostgresMediaCommitter over PostgreSQL + pgvector). Legacy engine-level
+// test suites (finalizer, catalogsync, artlist integration, jobs, youtube
+// adapters) still exercise the AssetCommitter CONTRACT against a hermetic
+// SQLite engine. This package provides that test double, clearly marked
+// test-only: it is NEVER imported by production code.
+package testsupport
 
 import (
 	"context"

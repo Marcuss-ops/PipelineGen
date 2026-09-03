@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -262,11 +263,66 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	if a.Backend != string(cliprender.BackendChrononVulkan) {
 		return nil, fmt.Errorf("renderinggen clip executor: job %s rendered with backend %q; clip.render requires Chronon (%s)", plan.RunID, a.Backend, cliprender.BackendChrononVulkan)
 	}
+	if err := materializeArtifact(ctx, a.URL, plan.OutputPath, a.SizeBytes, a.SHA256); err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: materialize certified artifact: %w", err)
+	}
 	// VideoZeroCopy stays nil unless RenderingGen/Chronon explicitly
 	// certifies it. PipelineGen must never infer this property from backend
 	// identity; require_zero_copy therefore fails closed when certification is
 	// absent.
-	return &cliprender.RenderOutcome{OutputPath: a.URL, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.RenderBackend(a.Backend), AudioCopyEligible: boolPtr(a.CopyEligible), Metrics: cliprender.NewRenderMetricsV2()}, nil
+	return &cliprender.RenderOutcome{OutputPath: plan.OutputPath, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.RenderBackend(a.Backend), AudioCopyEligible: boolPtr(a.CopyEligible), Metrics: cliprender.NewRenderMetricsV2()}, nil
+}
+
+// materializeArtifact turns the queue's certified object-store URL into the
+// local run artifact expected by the clip.render pipeline. OutputPath is a
+// filesystem path throughout that pipeline; leaking the queue URL past this
+// adapter makes probing and final publication try to open an HTTP URL as a
+// local file.
+func materializeArtifact(ctx context.Context, rawURL, outputPath string, expectedSize int64, expectedSHA string) error {
+	if rawURL == "" || outputPath == "" {
+		return fmt.Errorf("artifact URL and output path are required")
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("artifact download HTTP %d", resp.StatusCode)
+	}
+	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	written, copyErr := io.Copy(file, resp.Body)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if expectedSize > 0 && written != expectedSize {
+		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
+	}
+	gotSHA, gotSize, err := digest.SHA256File(outputPath)
+	if err != nil {
+		return fmt.Errorf("hash downloaded artifact: %w", err)
+	}
+	if expectedSize > 0 && gotSize != expectedSize {
+		return fmt.Errorf("hashed size %d, want %d", gotSize, expectedSize)
+	}
+	if expectedSHA != "" && !strings.EqualFold(gotSHA, expectedSHA) {
+		return fmt.Errorf("artifact hash %s, want %s", gotSHA, expectedSHA)
+	}
+	return nil
 }
 
 // prefetchClipAssets publishes the already-resolved local assets to the

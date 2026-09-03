@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,7 +89,7 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *asset.Asset) {
 	log := zap.NewNop()
 	repo := assets.NewClipsRepository(db, log)
 	box := outboxevents.NewRepository(db)
-	committer := assets.NewSQLiteAssetCommitter(db, box, log)
+	committer := testsupport.NewSQLiteAssetCommitter(db, box, log)
 	mediacommitadapters.WireCanonicalAssetStore(repo.AssetStoreSQLite, committer)
 	if err := repo.UpsertClip(context.Background(), clip); err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)

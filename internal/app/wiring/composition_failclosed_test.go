@@ -162,58 +162,5 @@ func TestComposition_ClipIndexerEnabledNoQdrant_UsesDisabledProjectionMode(t *te
 // first asset.index.requested event. The composed error message must
 // name the missing dep so operators can grep the boot log.
 func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
-	chdirToProjectRoot(t)
-
-	dataDir := t.TempDir()
-	cfg := minimalConfig(dataDir)
-	cfg.Qdrant.Enabled = true
-	cfg.ClipIndexer.Enabled = true
-	log := zaptest.NewLogger(t)
-
-	dbs, err := InitDatabases(context.Background(), cfg, log)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if dbs != nil && dbs.Main != nil {
-			_ = dbs.Main.Close()
-		}
-	})
-
-	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
-	require.NoError(t, err)
-
-	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
-	require.NoError(t, err)
-	require.NotNil(t, qd.QdrantDeleter)
-
-	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
-	require.NoError(t, err)
-
-	// Force a nil AssetDeleter dep at the BuildOutboxBundle call site
-	// by zeroing ClipsRepo. The fact that the *assets.ClipsRepository
-	// also implements SourceVersionQuerier means BOTH gates fire here,
-	// which is fine: the first required-dep error is still surfaced,
-	// and the fail-closed semantic (BuildOutboxBundle returning err)
-	// is the contract under test, regardless of WHICH dep was first
-	// to trigger.
-	repos.ClipsRepo = nil
-
-	// Note: the buildQdrantDeps call above already passes the `repos`
-	// variable; the local repos mutation (ClipsRepo = nil) below does
-	// NOT affect buildQdrantDeps' QdrantDeps (which was constructed
-	// from the pre-mutation repos). The fail-closed contract under
-	// test is BuildOutboxBundle's, not buildQdrantDeps'.
-
-	// Push 3.1f (July 2026): BuildOutboxBundle signature is now
-	// (ctx, cfg, dbs, log, repos, qd, jobs, voiceoverDriver, stagingSvc,
-	// repo, drivePublisher). Pass non-nil interface-embedded stubs
-	// (`dummyStagingStore{}`, `dummyArtifactRepo{}`, `dummyPublisher{}`)
-	// for the 3 NEW args so the underlying "ClipsRepo=nil" fail-closed
-	// test reaches the RegisterCoreHandlers gate (triggering
-	// "core outbox handlers") — not the earlier "stagingSvc is required"
-	// gate introduced in Push 3.1c.
-	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, nil, nil)
-	require.Error(t, err,
-		"PR 3: cfg.Qdrant.Enabled=true + nil ClipsRepo must abort BuildOutboxBundle (fail-closed at boot, never warn-as-warning)")
-	require.Contains(t, err.Error(), "core outbox handlers",
-		"error must originate from RegisterCoreHandlers so operators grep distinctively:\n\tgot: %v", err)
+	t.Skip("POSTGRES-MEDIA-CUTOVER demolition: the SQLite outbox no longer registers Qdrant media core handlers in ANY mode — the media index plane is the pgvector PostgresIndexWorker, so the 'Qdrant enabled + nil ClipsRepo must abort core handler registration' contract is retired with the Qdrant media projection. The surviving fail-closed contract is the pgvector worker's nil-dep panics (outbox_worker.go).")
 }
