@@ -31,7 +31,6 @@ package youtubediscoveries
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -54,14 +53,6 @@ type OutboxEntry struct {
 	NextRetryAt    string `json:"next_retry_at,omitempty"`
 }
 
-// ensureOutboxTable is now a no-op — the table is created by the
-// canonical migration 120_monitor_enqueue_outbox_lease.sql (Step 7/12).
-// Kept as a compatibility shim so callers still compile; removed in a
-// follow-up cleanup wave.
-func ensureOutboxTable(ctx context.Context, db *sql.DB) error {
-	return nil
-}
-
 // CommitEnqueueOutbox atomically marks the discovery as enqueued AND inserts
 // a pending outbox entry. Both operations run in a single SQLite transaction.
 //
@@ -79,10 +70,6 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 	}
 	if enqueuedAt == "" {
 		enqueuedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-
-	if err := ensureOutboxTable(ctx, r.db); err != nil {
-		return fmt.Errorf("monitor_outbox.CommitEnqueueOutbox: ensure table: %w", err)
 	}
 
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -172,9 +159,6 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, limit int, leaseID, leaseUntil string) ([]OutboxEntry, error) {
 	if limit <= 0 {
 		limit = 10
-	}
-	if err := ensureOutboxTable(ctx, r.db); err != nil {
-		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: ensure table: %w", err)
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)

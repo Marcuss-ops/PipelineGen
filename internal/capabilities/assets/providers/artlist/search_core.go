@@ -61,8 +61,8 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 
 	resp.Clips = make([]asset.Asset, 0, len(clipsList))
 	for _, clip := range clipsList {
-		if converted := toDomain(clip); converted != nil {
-			resp.Clips = append(resp.Clips, *converted)
+		if clip != nil {
+			resp.Clips = append(resp.Clips, *clip)
 		}
 	}
 	resp.Source = "database"
@@ -118,9 +118,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 				zap.Error(upsertErr))
 			return nil, fmt.Errorf("save discovered asset %s: %w", clip.ID, upsertErr)
 		}
-		if converted := toDomain(clip); converted != nil {
-			resp.Clips = append(resp.Clips, *converted)
-		}
+		resp.Clips = append(resp.Clips, *clip)
 		if s.assetStore != nil {
 			searchText := clip.Name + " " + originalTerm
 			if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
@@ -312,7 +310,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
 		return nil
 	}
-	return toDomainPtrSlice(clips)
+	return append([]*asset.Asset(nil), clips...)
 }
 
 func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote, forceRefresh bool, mode SearchMode) ([]Candidate, error) {
