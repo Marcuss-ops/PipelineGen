@@ -7,11 +7,11 @@
 // list and entity-blocklist in the codebase must originate from this
 // package. No hardcoded maps elsewhere, no second representation.
 //
-// Phase 8 split (5 lexical domains: phonetics / morphology /
-// stop-words / aliasing / scoring). This file holds ONLY the
-// canonical LexiconRegistry struct, the file-loading constructor
-// NewLexiconRegistry, the panic-on-error variant MustNewLexiconRegistry,
-// and the Resolve + HasProfile orchestration methods.
+// Phase 8 split (implemented lexical domains: morphology / stop-words /
+// aliasing / scoring). This file holds ONLY the canonical LexiconRegistry
+// struct, the file-loading constructor NewLexiconRegistry, the panic-on-error
+// variant MustNewLexiconRegistry, and the Resolve + HasProfile orchestration
+// methods.
 //
 // Subordinate types + methods live in domain-specific files:
 //   - LexiconProfile struct → lexicon_profile.go
@@ -25,7 +25,6 @@
 //   - cloneProfile + cloneStringSet → lexicon_clone.go
 //   - defaultLexiconMu + SetDefaultLexicon + DefaultLexicon →
 //     lexicon_default.go
-//   - Phonetics domain placeholder → lexicon_phonetics.go
 package linguistics
 
 import (
