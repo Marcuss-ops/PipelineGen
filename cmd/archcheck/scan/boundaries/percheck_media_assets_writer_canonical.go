@@ -131,12 +131,17 @@ var mediaAssetsWriterSkipDirs = map[string]bool{
 	"test":         true,
 }
 
-// mediaAssetsWriterSkipPathPrefixes are exemptions for scanner files +
-// SQL migration files (both engines).
+// mediaAssetsWriterSkipPathPrefixes are exemptions for scanner files,
+// SQL migration files (both engines), and the TEST-ONLY testsupport
+// package (the hermetic SQLite AssetCommitter test double — clearly
+// marked test-only, never imported by production code; the certify
+// script's SQLITE_MEDIA_WRITERS=0 gate likewise excludes it).
 var mediaAssetsWriterSkipPathPrefixes = []string{
 	"cmd/archcheck/scan",
 	"migrations/sqlite",
 	"migrations/postgres",
+	"internal/platform/sqlite/assets/imagesregistry/testsupport",
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/",
 }
 
 // mediaAssetsWriterRule is the rule-family id the scanner emits.

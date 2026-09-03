@@ -18,7 +18,7 @@
 --
 -- Canonical production families (godlike/06 SSOT, kernel/models registry):
 --   semantic: intfloat/multilingual-e5-base — 768 dims, cosine, normalized
---   visual:   google/siglip-so400m-patch14-384 — 768 dims, cosine, normalized
+--   visual:   google/siglip-so400m-patch14-384 — 1152 dims, cosine, normalized
 --
 -- Both families are also registered in media_embedding_families below so
 -- the 002 validation trigger accepts the vectors BEFORE the indexes exist
@@ -41,11 +41,16 @@
 -- Seq Scan. Enforced by TestHNSW_VectorSearchPlansIndexScan (live DSN).
 
 -- ── Production family registration (fail-closed gate unlock) ────────────
+-- Family registration is self-healing: an existing row pinned at a WRONG
+-- dimension (e.g. a pre-SSOT 768 pin for the 1152d SigLIP model) is
+-- corrected, so re-running this migration repairs drifted environments.
 INSERT INTO media_embedding_families (embedding_type, model_id, dim, created_at)
 VALUES
     ('text',   'intfloat/multilingual-e5-base',    768, ''),
-    ('visual', 'google/siglip-so400m-patch14-384', 768, '')
-ON CONFLICT (embedding_type, model_id) DO NOTHING;
+    ('visual', 'google/siglip-so400m-patch14-384', 1152, '')
+ON CONFLICT (embedding_type, model_id) DO UPDATE
+    SET dim = EXCLUDED.dim
+    WHERE media_embedding_families.dim <> EXCLUDED.dim;
 
 -- ── SEMANTIC channel HNSW (text embeddings, E5 768d cosine) ─────────────
 CREATE INDEX IF NOT EXISTS idx_media_embeddings_text_hnsw
@@ -54,10 +59,25 @@ CREATE INDEX IF NOT EXISTS idx_media_embeddings_text_hnsw
     WHERE embedding_type = 'text'
       AND model_id = 'intfloat/multilingual-e5-base';
 
--- ── VISUAL channel HNSW (SigLIP so400m patch14-384, 768d cosine) ────────
+-- ── VISUAL channel HNSW (SigLIP so400m patch14-384, 1152d cosine) ───────
+-- Stale-index repair: drop a pre-SSOT index built at the wrong width
+-- (e.g. vector(768) for the 1152d visual family) before recreating it.
+-- Conditional on the WRONG definition, so a correct index is never
+-- rebuilt and the migration stays cheap to re-run.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'idx_media_embeddings_visual_hnsw'
+      AND indexdef NOT LIKE '%vector(1152)%'
+  ) THEN
+    EXECUTE 'DROP INDEX idx_media_embeddings_visual_hnsw';
+  END IF;
+END
+$$;
 CREATE INDEX IF NOT EXISTS idx_media_embeddings_visual_hnsw
     ON media_embeddings
-    USING hnsw ((embedding::vector(768)) vector_cosine_ops)
+    USING hnsw ((embedding::vector(1152)) vector_cosine_ops)
     WHERE embedding_type = 'visual'
       AND model_id = 'google/siglip-so400m-patch14-384';
 
@@ -72,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_media_embeddings_visual_hnsw
 --
 -- CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_media_embeddings_visual_hnsw
 --     ON media_embeddings
---     USING hnsw ((embedding::vector(768)) vector_cosine_ops)
+--     USING hnsw ((embedding::vector(1152)) vector_cosine_ops)
 --     WHERE embedding_type = 'visual'
 --       AND model_id = 'google/siglip-so400m-patch14-384';
 --

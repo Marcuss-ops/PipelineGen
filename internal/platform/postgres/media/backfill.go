@@ -408,6 +408,16 @@ func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, table string, 
 
 // verifyMediaParity is the fail-closed acceptance check: total counts must
 // match and every mapped field of every row must be byte-identical.
+// verifyMediaParity proves the PostgreSQL SSOT contains the complete
+// legacy catalog. Post-cutover the direction of truth is one-way:
+//
+//   - Every SQLite row MUST exist in PostgreSQL with identical content
+//     (enforced by compareRowsByKey per natural key).
+//   - PostgreSQL MAY legitimately contain MORE rows than the frozen
+//     legacy snapshot: SQLite media writers are demolished, so assets
+//     ingested after the snapshot only exist on the SSOT side. A count
+//     surplus is expected growth, not a parity violation.
+//   - A count SHORTFALL (postgres < sqlite) is always a violation.
 func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, assetCols []string, assetTypes map[string]string, locCols []string, locTypes map[string]string, report *BackfillReport) error {
 	var err error
 	if report.SQLiteAssetCount, report.PostgresAssetCount, err = compareCounts(ctx, sqliteDB, pg, "media_assets"); err != nil {
@@ -416,11 +426,11 @@ func verifyMediaParity(ctx context.Context, sqliteDB, pg *sql.DB, assetCols []st
 	if report.SQLiteLocationCount, report.PostgresLocationCount, err = compareCounts(ctx, sqliteDB, pg, "asset_locations"); err != nil {
 		return err
 	}
-	if report.SQLiteAssetCount != report.PostgresAssetCount {
-		report.addMismatch(fmt.Sprintf("media_assets count: sqlite=%d postgres=%d", report.SQLiteAssetCount, report.PostgresAssetCount))
+	if report.PostgresAssetCount < report.SQLiteAssetCount {
+		report.addMismatch(fmt.Sprintf("media_assets count shortfall: sqlite=%d postgres=%d (SSOT missing legacy rows)", report.SQLiteAssetCount, report.PostgresAssetCount))
 	}
-	if report.SQLiteLocationCount != report.PostgresLocationCount {
-		report.addMismatch(fmt.Sprintf("asset_locations count: sqlite=%d postgres=%d", report.SQLiteLocationCount, report.PostgresLocationCount))
+	if report.PostgresLocationCount < report.SQLiteLocationCount {
+		report.addMismatch(fmt.Sprintf("asset_locations count shortfall: sqlite=%d postgres=%d (SSOT missing legacy rows)", report.SQLiteLocationCount, report.PostgresLocationCount))
 	}
 
 	if err := compareRowsByKey(ctx, sqliteDB, pg, "media_assets", "id", assetCols, assetTypes, nil, report); err != nil {

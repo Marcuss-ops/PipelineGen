@@ -73,6 +73,8 @@ var indexedStateWriterSSOTSkipDirs = map[string]bool{
 // greppability, mirrors the family precedent.
 var indexedStateWriterSSOTSkipPathPrefixes = []string{
 	"cmd/archcheck/scan",
+	"internal/platform/sqlite/assets/imagesregistry/testsupport",
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/",
 }
 
 // indexedStateWriterSSOTCanonicalPaths lists the canonical INDEXED
