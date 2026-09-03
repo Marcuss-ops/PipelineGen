@@ -125,6 +125,8 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.String("source_path", src.Path),
 		zap.Bool("has_subtitle", sub != nil),
 		zap.Bool("has_watermark", opts.Watermark != nil),
+		zap.Bool("has_watermark_spec", opts.WatermarkSpec != nil),
+		zap.String("watermark_text", opts.WatermarkText),
 		zap.String("background_mode", opts.BackgroundMode),
 		zap.Bool("has_subtitle_style", opts.SubtitlesStyle != nil),
 		zap.Int("width", contract.Width),
@@ -225,5 +227,6 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		DurationMS: int64(outcome.DurationSec * 1000),
 		VideoCodec: contract.VideoCodec,
 		AudioCodec: contract.AudioCodec,
+		Backend:    string(outcome.Backend),
 	}, nil
 }

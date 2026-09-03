@@ -170,10 +170,14 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		if r.voiceoverPublishDrainer != nil {
 			publishDrainStarted := time.Now()
 			r.voiceoverPublishDrainer.Wait()
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(result.AudioMetrics.VoiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
+			voiceoverGenerated := 0
+			if result.AudioMetrics != nil {
+				voiceoverGenerated = result.AudioMetrics.VoiceoverGenerated
+			}
+			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(voiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
 			r.log.Info("voiceover publish pool drained",
 				zap.String("run_id", runID),
-				zap.Int("generated", result.AudioMetrics.VoiceoverGenerated))
+				zap.Int("generated", voiceoverGenerated))
 		}
 		if r.documentRenderer == nil {
 			cause := fmt.Errorf("canonical document renderer is not configured")

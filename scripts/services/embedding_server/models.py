@@ -82,3 +82,21 @@ class AudioFileEmbedRequest(BaseModel):
 
 class VisualAnalyzeRequest(BaseModel):
     image_path: str
+
+
+# ── Face detection (POSTGRES-MEDIA-CUTOVER features leg) ─────────────────
+# Canonical batch face endpoint contract consumed by Go's
+# SidecarFaceDetector (internal/platform/postgres/media/enrichment_adapters.go):
+# one {face_count, largest_face_ratio} observation per input path,
+# order-preserved, fail-closed (no partial results).
+class BatchFaceDetectRequest(BaseModel):
+    image_paths: list[str]
+
+    @field_validator("image_paths")
+    @classmethod
+    def _validate_size(cls, v):
+        if not v:
+            raise ValueError("image_paths cannot be empty")
+        if isinstance(v, list) and len(v) > 512:
+            raise ValueError("image_paths batch cannot exceed 512 items")
+        return v

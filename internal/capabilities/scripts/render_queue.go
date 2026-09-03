@@ -176,7 +176,15 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	}
 
 	if err := e.client.Submit(ctx, job); err != nil {
-		if !errors.Is(err, ErrJobExists) {
+		if errors.Is(err, ErrJobExists) {
+			if existing, getErr := e.client.Get(ctx, plan.PlanID); getErr == nil && existing.State == "failed" {
+				if retrier, ok := e.client.(interface {
+					Retry(context.Context, string) error
+				}); ok {
+					_ = retrier.Retry(ctx, plan.PlanID)
+				}
+			}
+		} else {
 			return RenderReference{}, fmt.Errorf("chronon queue render submit failed: %w", err)
 		}
 	}

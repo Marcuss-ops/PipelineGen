@@ -72,6 +72,35 @@ sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
 
 The default HTTP port is `8000` and can be changed with `VELOX_PORT`.
 
+## Ricreazione clip via Chronon
+
+Per ricreare una clip già registrata nell’asset registry usando esclusivamente
+PipelineGen → RenderingGen → Chronon3d:
+
+```bash
+RENDERINGGEN_QUEUE_URL=http://127.0.0.1:8081 \
+  scripts/recreate_clip_chronon.sh SOURCE_ASSET_ID
+```
+
+Lo script invoca `POST /api/clips/render`, attende il job Master e verifica che
+il risultato dichiari `backend=chronon_vulkan`. Un fallback Rust, FFmpeg o CUDA
+non viene accettato per questo percorso. Il feature flag deve essere attivo e
+il worker PipelineGen deve essere configurato con `RENDERINGGEN_QUEUE_URL`.
+
+La migrazione una tantum dei riferimenti già presenti si esegue, senza
+modificare SQLite, con:
+
+```bash
+./bin/admin backfill-media-postgres \
+  --sqlite-dsn 'data/media/media.db.sqlite?_journal_mode=WAL' \
+  --postgres-dsn 'postgres://USER:PASSWORD@HOST:PORT/pipelinegen_media?sslmode=disable'
+go run ./scripts/operations/migrate-media-text-tracks-once.go \
+  --postgres-dsn 'postgres://USER:PASSWORD@HOST:PORT/pipelinegen_media?sslmode=disable'
+```
+
+Il secondo comando trasferisce transcript e cue; entrambi sono idempotenti e
+il primo include la verifica di parità.
+
 ## Local configuration and secrets
 
 Keep repository configuration and host credentials separate:

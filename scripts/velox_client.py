@@ -316,3 +316,10 @@ class VeloxClient:
             "error": data.get("error", ""),
             "result": data.get("result") or {},
         }
+
+    def get_job_full(self, job_id: str) -> Dict[str, Any]:
+        """Return the complete server response from ``/api/jobs/{id}/full``."""
+        if not job_id or not job_id.strip():
+            raise ValueError("job_id is required")
+        raw = self._do_once("GET", f"api/jobs/{job_id}/full", None, "")
+        return json.loads(raw)

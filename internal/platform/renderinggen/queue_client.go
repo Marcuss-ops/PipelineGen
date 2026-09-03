@@ -100,6 +100,14 @@ func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, 
 	}, nil
 }
 
+// Retry resets a failed job back to pending state.
+func (c *Client) Retry(ctx context.Context, id string) error {
+	if c == nil || c.q == nil {
+		return fmt.Errorf("renderinggen retry: client is not configured")
+	}
+	return c.q.Retry(ctx, id)
+}
+
 func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
 	if in == nil {
 		return nil
@@ -191,6 +199,7 @@ func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
 type ClipRenderQueue interface {
 	Submit(context.Context, scriptgen.RenderQueueJob) error
 	Get(context.Context, string) (scriptgen.RenderQueueJob, error)
+	Retry(context.Context, string) error
 }
 
 // ClipRenderExecutor submits one complete clip segment to RenderingGen. The
@@ -246,8 +255,14 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	for i, r := range refs {
 		assets[i] = queueclient.AssetRef{Hash: r.Hash, LogicalPath: r.LogicalPath}
 	}
-	if err := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)}); err != nil && !errors.Is(err, scriptgen.ErrJobExists) {
-		return nil, fmt.Errorf("renderinggen clip executor: submit: %w", err)
+	submitErr := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)})
+	if submitErr != nil && !errors.Is(submitErr, scriptgen.ErrJobExists) {
+		return nil, fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
+	}
+	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrJobExists) {
+		if existing, getErr := e.queue.Get(ctx, plan.RunID); getErr == nil && existing.State == string(queueclient.StateFailed) {
+			_ = e.queue.Retry(ctx, plan.RunID)
+		}
 	}
 	completed, err := waitClipQueue(ctx, e.queue, plan.RunID, e.interval)
 	if err != nil {

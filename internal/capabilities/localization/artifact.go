@@ -98,6 +98,8 @@ type LocalizedClipArtifact struct {
 	VideoCodec string `json:"video_codec"`
 	// AudioCodec is the audio codec of the rendered stream (e.g. "aac").
 	AudioCodec string `json:"audio_codec"`
+	// Backend is the certified renderer identity.
+	Backend string `json:"backend"`
 
 	// ── Drive location ───────────────────────────────────────────
 	// DriveFileID is the uploaded Drive file id. Omitted until upload.

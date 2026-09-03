@@ -319,11 +319,56 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 		// Clean dialogue text from line breaks/returns to keep ASS format valid
 		text := strings.ReplaceAll(c.Text, "\n", " ")
 		text = strings.ReplaceAll(text, "\r", "")
+		// Keep every rendered subtitle line within the short-form readability
+		// contract. ASS uses \\N for an explicit line break; the fixed style
+		// alignment/margin below keeps all lines anchored consistently.
+		text = wrapASSText(text, 40)
 		sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startStr, endStr, styleID, text))
 		lastEndMs = endMs
 	}
 
 	return sb.String(), nil
+}
+
+func wrapASSText(text string, maxRunes int) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(text) <= maxRunes {
+		return text
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return text
+	}
+	var lines []string
+	line := ""
+	for _, word := range words {
+		if utf8.RuneCountInString(word) > maxRunes {
+			if line != "" {
+				lines = append(lines, line)
+				line = ""
+			}
+			runes := []rune(word)
+			for len(runes) > maxRunes {
+				lines = append(lines, string(runes[:maxRunes]))
+				runes = runes[maxRunes:]
+			}
+			line = string(runes)
+			continue
+		}
+		candidate := word
+		if line != "" {
+			candidate = line + " " + word
+		}
+		if utf8.RuneCountInString(candidate) > maxRunes {
+			lines = append(lines, line)
+			line = word
+		} else {
+			line = candidate
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, `\N`)
 }
 
 // generateASSContent is the materializer's private convenience wrapper over

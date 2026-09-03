@@ -42,6 +42,7 @@ type RenderFacts struct {
 	DurationMS int64
 	VideoCodec string
 	AudioCodec string
+	Backend    string
 }
 
 // RenderPlanExecutor executes a sealed render.RenderPlan together with the
@@ -135,7 +136,7 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		return LocalizedClipArtifact{Status: LocalizedClipFailed}, fmt.Errorf("localization: render: subtitle wire: %w", err)
 	}
 
-	// 3. Rust render boundary.
+	// 3. Chronon render boundary.
 	var facts RenderFacts
 	opts := RenderOptions{
 		Watermark:              plan.Watermark,
@@ -186,6 +187,7 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		DurationMS:      facts.DurationMS,
 		VideoCodec:      facts.VideoCodec,
 		AudioCodec:      facts.AudioCodec,
+		Backend:         facts.Backend,
 		Status:          LocalizedClipRendered,
 	}, nil
 }
