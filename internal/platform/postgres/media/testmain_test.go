@@ -101,6 +101,7 @@ func applyMediaMigrations(db *sql.DB) error {
 	stmts := []string{
 		pgmigration.MediaSchemaDDL,
 		pgmigration.MediaVectorSurfacesDDL,
+		pgmigration.MediaHNSWIndexesDDL,
 	}
 	for i, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

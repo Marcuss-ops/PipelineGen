@@ -41,3 +41,14 @@ var MediaSchemaDDL string
 //
 //go:embed 002_media_vector_surfaces.sql
 var MediaVectorSurfacesDDL string
+
+// MediaHNSWIndexesDDL is the verbatim DDL of
+// migrations/postgres/003_media_hnsw_indexes.sql — the production ANN
+// surface: real per-family HNSW indexes over media_embeddings (semantic
+// E5 768d + visual SigLIP 768d) plus the canonical family registrations
+// in media_embedding_families. POSTGRES-MEDIA-CUTOVER gates
+// SEMANTIC_HNSW_INDEX=TRUE / VISUAL_HNSW_INDEX=TRUE are proven against
+// these statements.
+//
+//go:embed 003_media_hnsw_indexes.sql
+var MediaHNSWIndexesDDL string
