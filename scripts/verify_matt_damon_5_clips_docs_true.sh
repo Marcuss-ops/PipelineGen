@@ -8,7 +8,7 @@ load_dotenv_missing "$ROOT/.env"
 LOCAL_BASE_URL="${PIPELINEGEN_URL:-http://127.0.0.1:8000}"
 LOCAL_TOKEN="${VELOX_PIPELINEGEN_TOKEN:-${VELOX_ADMIN_TOKEN:-}}"
 PAYLOAD="$ROOT/ops/jobs/matt_damon_5_clips_docs_true.generate.json"
-DRIVE_FOLDER_ID="${MATT_DAMON_DRIVE_FOLDER_ID:-1UPya0b647sLs-7NPLYjIBnZwqDSsFZNK}"
+DRIVE_FOLDER_ID="${MATT_DAMON_DRIVE_FOLDER_ID:-1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K}"
 DRIVE_SUBFOLDER_NAME="${MATT_DAMON_DRIVE_SUBFOLDER_NAME:-matt-damon-5-clips-$(date -u +%Y%m%d-%H%M%S)-$$}"
 POLL_SECONDS="${MATT_DAMON_POLL_SECONDS:-5}"
 TIMEOUT_SECONDS="${MATT_DAMON_TIMEOUT_SECONDS:-1800}"
@@ -79,7 +79,8 @@ jq -e '
   | ($item.docs.enabled == true)
   and (($item.source.clip_ids // []) | length == 5)
   and ($item.output.render.enabled == true)
-  and (($item.output.render.drive_folder_id // "") | length > 0)
+   and (($item.output.render.drive_folder_id // "") | length > 0)
+   and ($item.output.render.drive_folder_id == $item.docs.folder_id)
   and ($item.output.render.require_gpu == true)
   and (($item.output.render.render_concurrency // 0) >= 8)
   and ($item.output.render.watermark.enabled == true)
