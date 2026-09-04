@@ -3,7 +3,6 @@ package artlist
 import (
 	"database/sql"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -45,12 +45,11 @@ var ErrTextTrackRepoUnavailable = fmt.Errorf("artlist: textTrackRepo is mandator
 // Service struct definition, the fail-closed constructor NewService,
 // and the lifecycle no-op Close. The constructor input shape
 // (ServiceDeps + ServicePorts + ServiceDependencies + sub-bundle
-// types) lives in service_deps.go. The lookup delegations live in
-// service_delegates.go. The job-handler binding lives in
-// service_jobs.go. The single-URL import flow lives in
-// service_import.go. The import-response + URL/asset helpers live in
-// service_normalizer.go. The cached-search + retry/fallback
-// capability declarations live in cached_search.go + retry_fallback.go.
+// types) lives in service_deps.go. Lookup delegations live in
+// service_delegates.go, job binding in service_jobs.go, single-URL
+// import in service_import.go, and normalization in service_normalizer.go.
+// Cached search is implemented by search_cache.go and retry/fallback
+// orchestration by SearchService.
 type Service struct {
 	cfg *config.Config
 	log *zap.Logger
