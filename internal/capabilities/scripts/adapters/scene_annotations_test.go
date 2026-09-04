@@ -40,6 +40,101 @@ func TestSceneAnnotationsDropsMissingPhrase(t *testing.T) {
 	}
 }
 
+func TestSceneAnnotations_ProductAndLogoSurviveTaxonomy(t *testing.T) {
+	// PRODUCT / LOGO must never collapse to CONCEPT: the batch merger keeps
+	// them typed, places them in the primary imageable set (the registry's
+	// primary/media kinds), and stamps the resolver's canonical id.
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1",
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Vision Pro", Type: "PRODUCT", Confidence: 0.95},
+				{Value: "Apple", Type: "LOGO", Confidence: 0.97},
+			},
+			ImageEntityCanonicalIDs: map[string]string{
+				"vision pro": "product:apple-vision-pro",
+				"apple":      "logo:apple",
+			},
+		},
+	}
+	ann := sceneAnnotations("Apple unveiled the Vision Pro at the event.", "en", seg)
+	if ann == nil {
+		t.Fatal("annotations must not be nil")
+	}
+	// The rebase may also discover capitalized names from the text as
+	// PERSONs (pre-existing discovery heuristic); what matters is that the
+	// segment's PRODUCT and LOGO survive typed and stamped.
+	byType := map[string]scriptpkg.AnnotatedEntity{}
+	for _, e := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
+		if _, exists := byType[e.Type]; !exists {
+			byType[e.Type] = e
+		}
+	}
+	product, ok := byType["PRODUCT"]
+	if !ok {
+		t.Fatalf("PRODUCT entity missing: %+v", ann.PrimaryEntities)
+	}
+	if product.CanonicalEntityID != "product:apple-vision-pro" {
+		t.Fatalf("PRODUCT canonical id = %q", product.CanonicalEntityID)
+	}
+	logo, ok := byType["LOGO"]
+	if !ok {
+		t.Fatalf("LOGO entity missing: %+v", ann.PrimaryEntities)
+	}
+	if logo.CanonicalEntityID != "logo:apple" {
+		t.Fatalf("LOGO canonical id = %q", logo.CanonicalEntityID)
+	}
+	foundProduct := false
+	for _, e := range ann.PrimaryEntities {
+		if e.Type == "PRODUCT" {
+			foundProduct = true
+		}
+	}
+	if !foundProduct {
+		t.Fatal("PRODUCT must land in the primary imageable set, never secondary")
+	}
+}
+
+func TestSceneAnnotations_StampsResolverCanonicalID(t *testing.T) {
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1",
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{{Value: "Muhammad Ali", Type: "PERSON", Confidence: 0.98}},
+			ImageEntityCanonicalIDs: map[string]string{
+				"muhammad ali": "person:muhammad-ali",
+			},
+		},
+	}
+	ann := sceneAnnotations("L’ascesa di Muhammad Ali cambiò il pugilato.", "it", seg)
+	if ann == nil || len(ann.PrimaryEntities) != 1 {
+		t.Fatalf("annotations = %+v", ann)
+	}
+	if got := ann.PrimaryEntities[0].CanonicalEntityID; got != "person:muhammad-ali" {
+		t.Fatalf("canonical_entity_id = %q, want person:muhammad-ali", got)
+	}
+}
+
+func TestSceneAnnotations_SkipsKeywordAndVisualSubject(t *testing.T) {
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1",
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Apple", Type: "KEYWORD"},
+				{Value: "Apple", Type: "VISUAL_SUBJECT"},
+			},
+		},
+	}
+	ann := sceneAnnotations("Apple changed everything.", "en", seg)
+	// The rebase may still synthesize a fallback important phrase from the
+	// text; the contract under test is that KEYWORD / VISUAL_SUBJECT never
+	// become annotation entities.
+	if ann != nil {
+		if len(ann.PrimaryEntities)+len(ann.SecondaryEntities) != 0 {
+			t.Fatalf("KEYWORD/VISUAL_SUBJECT became entities: %+v", ann)
+		}
+	}
+}
+
 func TestRebaseSceneAnnotationsGroundsAndDeduplicates(t *testing.T) {
 	ann := &scriptpkg.SceneAnnotations{
 		ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Potenza esplosiva"}},

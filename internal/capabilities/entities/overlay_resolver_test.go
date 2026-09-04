@@ -72,7 +72,7 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 		byID[item.ID] = item
 	}
 
-	// scene-0 Tom Hanks → overlay-scene-0-tom-hanks, 0–200ms.
+	// scene-0 Tom Hanks starts at 0 and uses the minimum five-second duration.
 	first := byID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, "scene-0", first.SceneID)
 	require.Equal(t, StableEntityID("PERSON", "Tom Hanks"), first.EntityID)
@@ -80,22 +80,23 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 	require.Equal(t, "person_default", first.TemplateID)
 	require.Equal(t, "Tom Hanks", first.Text)
 	require.Equal(t, int64(0), first.StartMs)
-	require.Equal(t, int64(200), first.EndMs)
+	require.Equal(t, int64(5_000), first.EndMs)
 
-	// scene-3 Tom Hanks → global 48.240–48.360s → 48240–48360ms.
+	// scene-3 Tom Hanks starts at the certified global position and uses the
+	// minimum five-second duration.
 	second := byID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "person_default", second.TemplateID)
 	require.Equal(t, int64(48_240), second.StartMs)
-	require.Equal(t, int64(48_360), second.EndMs)
+	require.Equal(t, int64(53_240), second.EndMs)
 
 	// scene-3 Los Angeles → location kind / GPE template; global
-	// 48.460–48.660s (local 3.460–3.660s inside the VO) → 48460–48660ms.
+	// 48.460s and uses the minimum five-second duration.
 	third := byID["overlay-scene-3-los-angeles"]
 	require.Equal(t, "gpe_default", third.TemplateID)
 	require.Equal(t, string(capabilityoverlay.KindLocation), third.Kind)
 	require.Equal(t, "Los Angeles", third.Text)
 	require.Equal(t, int64(48_460), third.StartMs)
-	require.Equal(t, int64(48_660), third.EndMs)
+	require.Equal(t, int64(53_460), third.EndMs)
 }
 
 // TestResolveEntityOverlayPlan_CompilesToChronon certifies the full chain the
@@ -120,19 +121,18 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 		layerByID[layer.ID] = layer
 	}
 
-	// scene-3 Tom Hanks: frame(48240ms * 30 / 1000) = round(1447.2) = 1447;
-	// duration = frame(48360) - frame(48240) = round(1450.8) - 1447 = 1451-1447 = 4.
+	// scene-3 Tom Hanks starts at frame 1447 and lasts five seconds = 150 frames.
 	tom := layerByID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "text", tom.Type)
 	require.Equal(t, findItem(t, plan, tom.ID).PresetID, tom.Preset)
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.Equal(t, int64(1447), tom.StartFrame)
-	require.Equal(t, int64(4), tom.DurationFrames)
+	require.Equal(t, int64(150), tom.DurationFrames)
 
 	// scene-0 Tom Hanks at frame 0.
 	first := layerByID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, int64(0), first.StartFrame)
-	require.Equal(t, int64(6), first.DurationFrames)
+	require.Equal(t, int64(150), first.DurationFrames)
 }
 
 // TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic repeats the

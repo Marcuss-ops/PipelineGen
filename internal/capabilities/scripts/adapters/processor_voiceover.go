@@ -139,14 +139,6 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	// PR 9: scenes sourced from canonical typed MSOV1.
 	scenes := specScenesFromInput(input)
-	// An explicit intro clip set identifies the leading scene as the short
-	// spoken introduction. Enforce the editorial contract at the last
-	// speakable-text boundary so the TTS input, persisted SpecScene, and
-	// Google Doc cannot drift from one another.
-	introChanged := capIntroNarration(&input, plan)
-	if introChanged {
-		scenes = specScenesFromInput(input)
-	}
 	// Translation is an explicit downstream contract. Prefer the retained
 	// translated scene surface over the mutable working envelope because
 	// binding processors may rebuild scenes from the original segment source
@@ -362,35 +354,16 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	return &PostProcessResult{
 		Voiceovers: voiceovers,
 		Warnings:   warnings,
-		UpdatedSpecScene: func() scriptpkg.SpecSceneOutput {
-			if introChanged {
-				return input.SpecScene
-			}
-			return scriptpkg.SpecSceneOutput{}
-		}(),
+		UpdatedSpecScene: scriptpkg.SpecSceneOutput{},
 	}, nil
 }
 
-// capIntroNarration applies the product-level maximum to the first scene of
-// an explicit intro-clip request. It operates after model/translation
-// processing and before TTS, keeping the persisted scene and spoken text in
-// sync without inventing narration.
-func capIntroNarration(input *ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {
-	if input == nil || plan == nil || len(input.SpecScene.Scenes) == 0 {
-		return false
-	}
-	if input.SpecScene.Scenes[0].Kind != scriptpkg.SceneIntro && len(plan.IntroClipIDs) == 0 {
-		return false
-	}
-	text := strings.TrimSpace(input.SpecScene.Scenes[0].Text)
-	words := strings.Fields(text)
-	const maxIntroWords = 20
-	if len(words) <= maxIntroWords {
-		return false
-	}
-	input.SpecScene.Scenes[0].Text = strings.Join(words[:maxIntroWords], " ")
-	return true
-}
+// capIntroNarration was removed (July 2026) together with
+// source.intro_clip_ids. It implemented the legacy "narrated spoken intro"
+// (truncate the first generated scene to 20 words when intro clips were
+// declared). The only intro contract now is the protected fixed-media
+// item.intro section, which is never narrated, never sent to TTS, and never
+// rewritten — so there is no speakable intro text left to cap.
 
 // voiceoverTimingToDomain converts the per-item timing result into the
 // domain binding shape (nil-safe: disabled timing produces a nil entry).

@@ -41,6 +41,14 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			}
 		}
 
+		// Deprecated-field fence: source.intro_clip_ids is removed from the
+		// contract, so any payload still carrying it fails closed here —
+		// before media-mode/source-type dispatch — regardless of the item's
+		// source type.
+		if err := rejectDeprecatedIntroClipIDs(item, ref); err != nil {
+			return err
+		}
+
 		// Universal numeric invariants — every payload must satisfy these
 		// regardless of config, caller, or installation.
 		if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {
@@ -164,12 +172,12 @@ func validateFixedSections(item GenerationItemV2, ref string) []string {
 		if sec == nil {
 			continue
 		}
-		// DisplayText is visual/document metadata, not narration. Only the
-		// legacy Text alias retains the old speakable-text validation.
-		if strings.TrimSpace(sec.DisplayText) == "" && strings.TrimSpace(sec.Text) != "" {
-			if err := ValidateSpeakableText(sec.Text); err != nil {
-				d = append(d, ref+": "+pair.name+".text "+err.Error())
-			}
+		// display_text is visual/document metadata, never narration: it is not
+		// translated or synthesized, so speakable-text validation is deliberately
+		// not applied. The legacy `text` narration alias was removed — a payload
+		// that still sends intro.text/outro.text fails closed here.
+		if strings.TrimSpace(sec.Text) != "" {
+			d = append(d, ref+": "+pair.name+".text is deprecated; use "+pair.name+".display_text (fixed sections carry no speakable text)")
 		}
 		if !sec.NormalizedPlayback().Valid() {
 			d = append(d, ref+": "+pair.name+".playback must use audio_mode=original_clip with a valid source window")
@@ -195,7 +203,6 @@ func validateFixedSections(item GenerationItemV2, ref string) []string {
 		}
 		// intro/outro clip_ids must not duplicate source clips when explicit segment ownership is absent
 		all := append([]string(nil), item.Source.ClipIDs...)
-		all = append(all, item.Source.IntroClipIDs...)
 		for _, seg := range item.ScriptParams.Segments {
 			all = append(all, seg.ClipIDs...)
 		}

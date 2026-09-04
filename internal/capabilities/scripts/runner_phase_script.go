@@ -320,8 +320,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			AudioMetrics:       streamAudioMetrics,
 		}
 		if req.Source.Type == SourceClips && req.Render.Enabled {
-			result.ExpectedRenderCount = len(scenes)
-			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: req.Render.RenderConcurrency}
+			// Expected renders are the canonical render-unit count, not the
+			// scene count: a fixed intro/outro bound to two clips contributes
+			// two units (one final render per clip).
+			expectedUnits := RenderUnitCount(scenes)
+			result.ExpectedRenderCount = expectedUnits
+			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a
@@ -340,59 +344,63 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			var renderErrMu sync.Mutex
 			for _, scene := range scenes {
 				scene := scene
-				renders.Add(1)
-				go func() {
-					defer renders.Done()
-					sem <- struct{}{}
-					defer func() { <-sem }()
-					renderStarted := time.Now()
-					clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
-					text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-					if text == "" {
-						text = strings.TrimSpace(req.Source.SourceText)
-					}
-					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-						RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-						Language: req.SourceLanguage, Text: text,
-						SourceLanguage: req.SourceLanguage, SourceText: text,
-						ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-						ClipDurationMS: clipDurationMS, Render: req.Render,
-						ResumeFrom: r.stagedLocalizedRender(result, scene.ID, req.SourceLanguage, clipID),
-						OnRenderReady: func(rendered LocalizedRenderResult) error {
-							return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
-						},
-						OnRendered: func(rendered LocalizedRenderResult) error {
-							r.localizedRenderMu.Lock()
-							applyLocalizedRenderLinkLocked(result, rendered)
-							result.LocalizedRenders = append(result.LocalizedRenders, rendered)
-							result.RenderMetrics.Successful = len(result.LocalizedRenders)
-							accumulateLocalizedRenderMetrics(result, rendered)
-							r.localizedRenderMu.Unlock()
-							if rendered.WallMS == 0 {
+				// Caption text is a per-scene fact shared by all of the scene's
+				// render units. Fixed-media scenes resolve it without the BODY
+				// source_text fallback (display text only), so an empty
+				// intro/outro never leaks narration text into its render.
+				text := localizedRenderCaptionText(req, scene)
+				for _, unit := range RenderUnitsForScene(scene) {
+					unit := unit
+					clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
+					renders.Add(1)
+					go func() {
+						defer renders.Done()
+						sem <- struct{}{}
+						defer func() { <-sem }()
+						renderStarted := time.Now()
+						if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+							RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+							Language: req.SourceLanguage, Text: text,
+							SourceLanguage: req.SourceLanguage, SourceText: text,
+							ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+							ClipDurationMS: clipDurationMS, Render: req.Render,
+							ResumeFrom: r.stagedLocalizedRender(result, scene.ID, req.SourceLanguage, clipID),
+							OnRenderReady: func(rendered LocalizedRenderResult) error {
+								return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+							},
+							OnRendered: func(rendered LocalizedRenderResult) error {
 								r.localizedRenderMu.Lock()
-								result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+								applyLocalizedRenderLinkLocked(result, rendered)
+								result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+								result.RenderMetrics.Successful = len(result.LocalizedRenders)
+								accumulateLocalizedRenderMetrics(result, rendered)
 								r.localizedRenderMu.Unlock()
+								if rendered.WallMS == 0 {
+									r.localizedRenderMu.Lock()
+									result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+									r.localizedRenderMu.Unlock()
+								}
+								return nil
+							},
+							OnFailed: func(failure LocalizedRenderFailure) error {
+								result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+								result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
+								result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+								upper := strings.ToUpper(failure.Error)
+								if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+									result.RenderMetrics.GPUOOMs++
+								}
+								return nil
+							},
+						}); err != nil {
+							renderErrMu.Lock()
+							if renderErr == nil {
+								renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
 							}
-							return nil
-						},
-						OnFailed: func(failure LocalizedRenderFailure) error {
-							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-							result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
-							result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
-							upper := strings.ToUpper(failure.Error)
-							if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
-								result.RenderMetrics.GPUOOMs++
-							}
-							return nil
-						},
-					}); err != nil {
-						renderErrMu.Lock()
-						if renderErr == nil {
-							renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
+							renderErrMu.Unlock()
 						}
-						renderErrMu.Unlock()
-					}
-				}()
+					}()
+				}
 			}
 			renders.Wait()
 			if renderErr != nil {
@@ -591,6 +599,7 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 		intro := Scene{
 			ID:            "scene-intro",
 			Index:         0,
+			Role:          scriptpkg.SceneRoleOpening,
 			Text:          textMap,
 			DurationUS:    durationUS,
 			DurationMS:    durationUS / 1000,
@@ -613,6 +622,7 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 		outro := Scene{
 			ID:            "scene-outro",
 			Index:         0, // reindexed below
+			Role:          scriptpkg.SceneRoleClosing,
 			Text:          textMap,
 			DurationUS:    durationUS,
 			DurationMS:    durationUS / 1000,

@@ -151,6 +151,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		docPublisher,
 		scriptGenerationDocumentRenderer{},
 	)
+	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
+		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
+	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
 	if root.Repos != nil && root.Repos.Assets != nil {

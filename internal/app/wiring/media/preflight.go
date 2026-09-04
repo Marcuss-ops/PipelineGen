@@ -90,7 +90,6 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 
 	return scriptgen.RunMediaPreflight(ctx, scriptgen.MediaPreflightInput{
 		ClipIDs:            clipIDs,
-		IntroClipIDs:       req.Source.IntroClipIDs,
 		FixedClips:         fixedClips,
 		FixedSections:      fixedSections,
 		ClipProber:         a.clipProber,

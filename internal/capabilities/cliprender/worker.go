@@ -20,6 +20,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -41,12 +42,13 @@ var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 type Worker struct {
 	preparer          *Preparer
 	workspaceDir      string
-	subtitles         SubtitleCompiler       // optional until the ASS-compiler step wires it
-	renderer          RenderExecutor         // optional until the render-phase step consumes it
-	publisher         RenderPublisher        // optional in unit tests; required by production wiring
-	overlayResolver   OverlaySegmentResolver // optional until overlay compositing is wired
-	overlayCompositor OverlayCompositor      // optional until overlay compositing is wired
-	outputProber      OutputProber           // probes actual bytes for exact contract validation
+	subtitles         SubtitleCompiler          // optional until the ASS-compiler step wires it
+	renderer          RenderExecutor            // optional until the render-phase step consumes it
+	publisher         RenderPublisher           // optional in unit tests; required by production wiring
+	folderResolver    DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
+	overlayResolver   OverlaySegmentResolver    // optional until overlay compositing is wired
+	overlayCompositor OverlayCompositor         // optional until overlay compositing is wired
+	outputProber      OutputProber              // probes actual bytes for exact contract validation
 	log               *zap.Logger
 }
 
@@ -90,6 +92,19 @@ func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 func (w *Worker) WithRenderPublisher(p RenderPublisher) *Worker {
 	if w != nil {
 		w.publisher = p
+	}
+	return w
+}
+
+// WithDestinationFolderResolver attaches the canonical Drive leaf-folder
+// resolver. Optional: requests that publish directly into a pre-resolved
+// destination.drive_folder_id never need it. A request that carries
+// destination.subfolder_name without a wired resolver fails closed at
+// Handle time (typed error) — the publisher never creates folders, so a
+// missing resolver must never degrade into a silent root upload.
+func (w *Worker) WithDestinationFolderResolver(r DestinationFolderResolver) *Worker {
+	if w != nil {
+		w.folderResolver = r
 	}
 	return w
 }
@@ -164,6 +179,42 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.Bool("require_gpu", req.Execution.RequireGPU),
 		zap.Bool("require_zero_copy", req.Execution.RequireZeroCopy),
 	)
+	// ── Destination folder resolution (ONCE per job, never in the publisher) ──
+	// When the request carries destination.subfolder_name (a script/batch
+	// identity all its clips share), the worker resolves the leaf folder
+	// create-or-reuse through the canonical DestinationFolderResolver and
+	// hands the publisher the fully-resolved leaf ID. The publisher is dumb
+	// by contract: it never creates folders. Clips of the same batch carry
+	// the same subfolder_name, so each job resolves the same folder and they
+	// converge on one shared Drive directory. Without a subfolder_name the
+	// request's destination.drive_folder_id is already the resolved leaf and
+	// is passed through verbatim.
+	publishFolderID := req.Destination.DriveFolderID
+	if strings.TrimSpace(req.Destination.SubfolderName) != "" {
+		if w.folderResolver == nil {
+			return nil, fmt.Errorf("clip.render: destination.subfolder_name=%q declared but no DestinationFolderResolver is wired (the publisher must never create folders)", req.Destination.SubfolderName)
+		}
+		resolveStart := time.Now()
+		resolvedID, resolveErr := w.folderResolver.ResolveDestinationFolder(ctx, DestinationFolderResolveInput{
+			RootFolderID:  req.Destination.DriveFolderID,
+			SubfolderName: req.Destination.SubfolderName,
+		})
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipDestinationResolve}, resolveStart, time.Now(), resolveErr)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("clip.render: resolve destination subfolder %q: %w", req.Destination.SubfolderName, resolveErr)
+		}
+		if strings.TrimSpace(resolvedID) == "" {
+			return nil, fmt.Errorf("clip.render: destination subfolder %q resolved to an empty folder ID", req.Destination.SubfolderName)
+		}
+		publishFolderID = resolvedID
+		w.log.Info("clip.render.job.destination_resolved",
+			zap.String("subsystem", "clip_render_worker"),
+			zap.String("job_id", j.ID),
+			zap.String("root_folder_id", req.Destination.DriveFolderID),
+			zap.String("subfolder_name", req.Destination.SubfolderName),
+			zap.String("resolved_folder_id", resolvedID),
+		)
+	}
 	progress(10, "request validated; running parallel preparation")
 
 	// ── Observability: the clip.render serial chain is recorded on the
@@ -513,12 +564,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:         j.ID,
 		SourceAssetID: req.SourceAssetID,
+		SourceTitle:   prepared.Source.Title,
 		OutputPath:    publishPath,
 		Outcome:       outcome,
 		Contract:      prepared.Contract,
 		Transcript:    prepared.Transcript,
 		Subtitles:     subtitleArtifact,
-		DriveFolderID: req.Destination.DriveFolderID,
+		DriveFolderID: publishFolderID,
 	})
 	publishEnd := time.Now()
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, publishEnd, err)

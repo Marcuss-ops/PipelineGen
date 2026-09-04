@@ -371,6 +371,10 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
+	// The deterministic Image Search Intent resolver rides the run: its
+	// canonical_entity_id decisions are stamped into every segment so the
+	// annotation/media projection joins on the identity it chose.
+	coordinator.SetImageSearchResolver(r.imageSearchResolver)
 	nlpGate := r.nlpGenerationGate
 	// Compatibility fallback for focused tests and older composition roots
 	// that only wired the historical shared gate. Production wiring always

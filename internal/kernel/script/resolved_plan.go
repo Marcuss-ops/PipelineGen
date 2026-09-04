@@ -73,7 +73,6 @@ type ResolvedGenerationPlan struct {
 	Duration          int             `json:"duration,omitempty"`
 	MinWords          int             `json:"min_words,omitempty"`
 	NumClips          int             `json:"num_clips,omitempty"`
-	IntroClipIDs      []string        `json:"intro_clip_ids,omitempty"`
 	SegmentWords      int             `json:"segment_words,omitempty"`
 	Segments          []ScriptSegment `json:"segments,omitempty"`
 	SentencesPerImage int             `json:"sentences_per_image,omitempty"`

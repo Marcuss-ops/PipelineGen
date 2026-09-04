@@ -269,6 +269,22 @@ func (r *VideoRenderSpec) Normalize() {
 		if r.Watermark.Opacity == 0 {
 			r.Watermark.Opacity = 1
 		}
+		if r.Watermark.MarginPX <= 0 {
+			r.Watermark.MarginPX = 40
+		}
+		if r.Watermark.Style == nil {
+			r.Watermark.Style = &VideoVisualStyleSpec{}
+		}
+		if r.Watermark.Style.Color == "" {
+			r.Watermark.Style.Color = "#FFFFFF"
+		}
+		if r.Watermark.Style.FontSizePX == 0 {
+			if r.Watermark.Style.Size > 0 {
+				r.Watermark.Style.FontSizePX = r.Watermark.Style.Size
+			} else {
+				r.Watermark.Style.FontSizePX = 42
+			}
+		}
 	}
 	if r.Subtitles != nil && r.Subtitles.Enabled {
 		r.Enabled = true
@@ -293,6 +309,9 @@ func (r *VideoRenderSpec) Normalize() {
 				style := preset
 				r.Subtitles.Style = &style
 			}
+		}
+		if r.Subtitles.Style.Color == "" {
+			r.Subtitles.Style.Color = "#FFFFFF"
 		}
 		if r.Subtitles.Style.Font == "" {
 			r.Subtitles.Style.Font = "Montserrat"

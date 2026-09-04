@@ -164,12 +164,17 @@ type OutputProber interface {
 type RenderPublishInput struct {
 	RunID         string
 	SourceAssetID string
+	SourceTitle   string
 	OutputPath    string
 	Outcome       *RenderOutcome
 	Contract      *ResolvedContract
 	Transcript    *TranscriptResult
-	Subtitles     *SubtitleArtifact // sidecar mode: uploaded alongside the clip
-	DriveFolderID string
+	// Subtitles is the compiled ASS artifact. Drive publication is gated on
+	// its Mode: burned subtitles are baked into the video frames and are
+	// NEVER uploaded; only an explicitly sidecar-mode artifact is uploaded
+	// as an .ass sidecar next to the clip.
+	Subtitles     *SubtitleArtifact
+	DriveFolderID string // fully-resolved leaf folder (the worker resolved subfolder_name; the publisher never creates folders)
 }
 
 // PublicationMetrics carries the publisher's OWN measured publication
@@ -212,6 +217,32 @@ type RenderPublishResult struct {
 // the derived asset durably committed.
 type RenderPublisher interface {
 	Publish(ctx context.Context, in RenderPublishInput) (*RenderPublishResult, error)
+}
+
+// DestinationFolderResolveInput is the fully-resolved input for the
+// DestinationFolderResolver: the Drive root the caller selected plus the
+// optional human subfolder name (typically the script/batch title). The
+// resolver never re-derives either — it maps root + name to the leaf folder.
+type DestinationFolderResolveInput struct {
+	RootFolderID  string
+	SubfolderName string
+}
+
+// DestinationFolderResolver resolves (create-or-reuse) the Drive leaf folder
+// a clip.render batch publishes into: RootFolderID/<SafeName(SubfolderName)>.
+// The canonical adapter routes through delivery.Publisher.ResolveFolder — the
+// same publisher that performs the final upload — so folder creation stays in
+// ONE canonical owner (never a second Drive reach-through inside cliprender).
+//
+// The worker calls this ONCE per job when the request carries
+// destination.subfolder_name. All clips of one script/batch carry the same
+// name, so sequential or concurrent jobs converge on a single shared leaf
+// folder (EnsureFolder is idempotent + singleflight-deduped in-process). The
+// publisher stays dumb: it receives the fully-resolved leaf folder ID and
+// never creates folders itself. Fail-closed: a resolver returning an empty
+// folder ID is a typed error, never a silent root fallback.
+type DestinationFolderResolver interface {
+	ResolveDestinationFolder(ctx context.Context, in DestinationFolderResolveInput) (string, error)
 }
 
 // OverlaySegment is the materialized overlay artifact the final video

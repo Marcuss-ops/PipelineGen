@@ -122,7 +122,18 @@ func (b SemanticRenderBundleV1) Validate() error {
 			return fmt.Errorf("semantic render bundle: invalid timeline event for %q", ev.EntityID)
 		}
 	}
-	_ = assets // asset-less text overlays are valid; image selection is explicit.
+	// An asset that names an entity the bundle does not carry is an
+	// unjoinable provenance record: BuildOverlayPlan would look it up and
+	// silently downgrade the entity card to text-only. Fail closed — a
+	// verified, content-addressed asset must always join to a real bundle
+	// entity. Asset-less text overlays remain valid (image selection is
+	// explicit), but an asset with a dangling entity id is a contract break.
+	for _, a := range b.Assets {
+		if _, exists := entities[a.EntityID]; !exists {
+			return fmt.Errorf("semantic render bundle: asset %q joins entity %q which is not in the bundle", a.AssetID, a.EntityID)
+		}
+	}
+	_ = assets
 	return nil
 }
 

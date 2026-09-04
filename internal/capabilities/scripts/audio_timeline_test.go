@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func eventsForRole(plan audio.CompiledAudioPlan, role audio.AudioTrackRole) []audio.AudioEvent {
@@ -481,6 +482,36 @@ func TestValidateChunkedVoiceoversRequiresOneToOneMapping(t *testing.T) {
 	delete(base.Scenes[1].Voiceover, "en")
 	if err := ValidateChunkedVoiceovers(base); err == nil {
 		t.Fatal("missing voiceover mapping must fail")
+	}
+}
+
+// TestValidateChunkedVoiceoversExemptsFixedMediaAndForbidsVoiceover certifies
+// the fixed-media firewall: a protected fixed scene whose display text lives
+// in the Text map must NOT require a voiceover (its text is never
+// synthesized), while a generated voiceover bound onto a fixed scene is a
+// contract violation that fails closed.
+func TestValidateChunkedVoiceoversExemptsFixedMediaAndForbidsVoiceover(t *testing.T) {
+	fixed := Scene{
+		ID:            "scene-fixed-01",
+		Index:         0,
+		ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text:          map[Language]string{"en": "Welcome to the show"},
+	}
+	if err := ValidateChunkedVoiceovers(GenerateResult{Scenes: []Scene{fixed}}); err != nil {
+		t.Fatalf("fixed_media display text must not require a voiceover: %v", err)
+	}
+	fixedWithVO := fixed
+	fixedWithVO.Voiceover = map[Language]AudioReference{"en": {ID: "vo-intro", FilePath: "/vo-intro.mp3"}}
+	if err := ValidateChunkedVoiceovers(GenerateResult{Scenes: []Scene{fixedWithVO}}); err == nil {
+		t.Fatal("fixed_media carrying a generated voiceover must fail closed")
+	}
+	// Control: a generated scene with text still requires its voiceover.
+	generated := Scene{
+		ID: "scene-0", Index: 0, ExecutionMode: scriptpkg.SceneExecutionGenerated,
+		Text: map[Language]string{"en": "hello"},
+	}
+	if err := ValidateChunkedVoiceovers(GenerateResult{Scenes: []Scene{fixed, generated}}); err == nil {
+		t.Fatal("generated scene without a voiceover must still fail")
 	}
 }
 

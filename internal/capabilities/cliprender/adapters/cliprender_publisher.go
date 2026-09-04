@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -95,13 +97,28 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	}
 	metrics.HashMS = time.Since(hashStart).Milliseconds()
 	assetID := "cliprender_" + contentHash[:24]
-	filename := assetID + filepath.Ext(in.OutputPath)
-	hasSubtitleSidecar := in.Subtitles != nil
+
+	ext := filepath.Ext(in.OutputPath)
+	if ext == "" {
+		ext = ".mp4"
+	}
+	driveFilename := assetID + ext
+	if strings.TrimSpace(in.SourceTitle) != "" {
+		safeTitle := textutil.SanitizeFilename(in.SourceTitle)
+		if safeTitle != "" && safeTitle != "unnamed" {
+			driveFilename = safeTitle + ext
+		}
+	}
+
+	// Subtitle sidecars are uploaded ONLY when explicitly in sidecar mode.
+	// Burned subtitles are already baked into video frames and must never be uploaded as .ass files to Drive.
+	hasSubtitleSidecar := in.Subtitles != nil && in.Subtitles.Mode == cliprender.SubtitlesModeSidecar
 	p.publishPhase("hash_done", runID,
 		zap.String("content_hash", contentHash),
 		zap.Int64("size_bytes", size),
 		zap.String("asset_id", assetID),
-		zap.String("filename", filename),
+		zap.String("drive_filename", driveFilename),
+		zap.Bool("has_subtitle_sidecar", hasSubtitleSidecar),
 		zap.Int64("duration_ms", metrics.HashMS),
 	)
 
@@ -117,14 +134,14 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	g.Go(func() error {
 		uploadStart := time.Now()
 		p.publishPhase("video_upload_start", runID,
-			zap.String("filename", filename),
+			zap.String("filename", driveFilename),
 			zap.String("asset_id", assetID),
 		)
 		result, publishErr := p.drive.Publish(gctx, delivery.PublishRequest{
 			Destination:         delivery.DestinationClipMetadata,
 			DestinationFolderID: in.DriveFolderID,
 			LocalPath:           in.OutputPath,
-			Filename:            filename,
+			Filename:            driveFilename,
 			AssetID:             assetID,
 			SourceVersion:       1,
 			ContentHash:         contentHash,
@@ -160,15 +177,22 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	if hasSubtitleSidecar {
 		g.Go(func() error {
 			uploadStart := time.Now()
+			sidecarFilename := assetID + ".ass"
+			if strings.TrimSpace(in.SourceTitle) != "" {
+				safeTitle := textutil.SanitizeFilename(in.SourceTitle)
+				if safeTitle != "" && safeTitle != "unnamed" {
+					sidecarFilename = safeTitle + ".ass"
+				}
+			}
 			p.publishPhase("sidecar_upload_start", runID,
-				zap.String("filename", assetID+".ass"),
+				zap.String("filename", sidecarFilename),
 				zap.String("local_path", in.Subtitles.LocalPath),
 			)
 			result, publishErr := p.drive.Publish(gctx, delivery.PublishRequest{
 				Destination:         delivery.DestinationClipMetadata,
 				DestinationFolderID: in.DriveFolderID,
 				LocalPath:           in.Subtitles.LocalPath,
-				Filename:            assetID + ".ass",
+				Filename:            sidecarFilename,
 				AssetID:             assetID,
 				SourceVersion:       1,
 				ContentHash:         in.Subtitles.SHA256,
@@ -219,8 +243,12 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 
 	// ── Phase 4: SQLite asset commit (single durable completion) ──────
 	durationMS := int64(in.Outcome.DurationSec * 1000)
+	title := driveFilename
+	if strings.TrimSpace(in.SourceTitle) != "" {
+		title = in.SourceTitle
+	}
 	commitRequest := persistence.AssetCommitRequest{
-		AssetID: assetID, Source: "clip.render", Name: filename, Filename: filename,
+		AssetID: assetID, Source: "clip.render", Name: driveFilename, Filename: driveFilename,
 		MediaType: "video", Category: "clip-render", DurationMs: durationMS,
 		// DISCOVERED is the canonical initial index state. PENDING was retired
 		// from the media_assets enum and makes publication fail at the SQLite
@@ -228,8 +256,8 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		ContentHash: contentHash, LifecycleState: "ACTIVE", IndexState: "DISCOVERED",
 		LocalPath: in.OutputPath, FolderID: pub.FolderID, FolderPath: pub.FolderPath,
 		SourceURL: in.SourceAssetID, AssetVersion: contentHash, Rendition: "rendered",
-		Title: filename, SourceProvider: "pipelinegen", Taxonomy: taxonomy,
-		Metadata: persistence.TypedMetadata{Title: filename, Origin: "clip.render", SourceVersion: contentHash,
+		Title: title, SourceProvider: "pipelinegen", Taxonomy: taxonomy,
+		Metadata: persistence.TypedMetadata{Title: title, Origin: "clip.render", SourceVersion: contentHash,
 			PublishAction: "clip.render", SizeBytes: size, Extra: map[string]any{
 				"source_asset_id": in.SourceAssetID, "plan_run_id": in.RunID,
 				"drive_file_id": pub.FileID, "subtitle_file_id": sidecarFileID,

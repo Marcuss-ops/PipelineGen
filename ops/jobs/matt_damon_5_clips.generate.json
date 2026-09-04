@@ -1,0 +1,134 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "matt-damon-5-clips-verification",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "matt-damon-5-clips-item",
+      "project": "matt-damon-verification",
+      "title": "Matt Damon 5 Clips Verification",
+      "language": "it",
+      "tone": "engaging, dramatic, and fast-paced",
+      "style": "Use the provided Italian text for each scene in exact order. Do not invent facts.",
+      "source": {
+        "type": "clips",
+        "topic": "Matt Damon 5 Clips Verification",
+        "source_text": "Cinque momenti e interviste con Matt Damon.",
+        "clip_ids": [
+          "yt_0ElQTzSx3ec_72_91_v1",
+          "yt_ERzbkt5r5Gg_32_66_v1",
+          "yt_Gcgdk1gEo8U_285_302_v1",
+          "yt_S6ADB98CR7g_358_425_v1",
+          "yt_T6x-kDiQsWM_203_252_v1"
+        ],
+        "num_clips": 5,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 200,
+        "min_words": 100,
+        "segment_words": 40,
+        "skip_quality_gate": true,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "clip",
+            "topic": "Immersione nel cinema",
+            "source_text": "Quando ci immergiamo nel cinema, spesso ci ritroviamo completamente assorbiti, persi tra mondi narrativi vastissimi. Pensate a titoli come Interstellar o The Martian; queste esperienze cinematografiche ci catturano profondamente, lasciandoci un senso di meraviglia per quanto lontani possano portarci. È un viaggio che si vive appieno, indipendentemente da quanto ci faccia perdere nel flusso della storia raccontata sullo schermo.",
+            "clip_ids": ["yt_0ElQTzSx3ec_72_91_v1"],
+            "target_words": 40
+          },
+          {
+            "id": "scene-1",
+            "kind": "clip",
+            "topic": "Paura dell'altezza",
+            "source_text": "Nonostante un curriculum pieno di acrobazie e imprese pericolose, è emersa una verità sorprendente sulla paura dell'altezza. Il ricordo specifico riportato risale al 2004, durante un evento a Dubai. Lì, salire su un piazzale elicottero in cima a un grattacielo con sua moglie ha provocato un blocco totale; l'altitudine estrema lo ha paralizzato completamente e perso ogni capacità fisica.",
+            "clip_ids": ["yt_ERzbkt5r5Gg_32_66_v1"],
+            "target_words": 40
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "Universo narrativo e horror",
+            "source_text": "Questo progetto è un vero e proprio universo narrativo, mescolando elementi horror che ti faranno venire i brividi. Si parla anche di simulare sentimenti profondissimi; recitare l'amore fingendo può essere davvero difficile per chi deve interpretarlo.",
+            "clip_ids": ["yt_Gcgdk1gEo8U_285_302_v1"],
+            "target_words": 40
+          },
+          {
+            "id": "scene-3",
+            "kind": "clip",
+            "topic": "Scambio comico e colore dell'intimo",
+            "source_text": "In un divertente scambio comico, gli speaker si dedicano a osservazioni fisiche sorprendenti, sfidando chiunque di indovinare il colore dell'intimo semplicemente guardando una persona. La conversazione tocca scenari esilaranti, come trovarsi nudi in una vasca da bagno, concludendosi con un ringraziamento speciale rivolto a Matt Damon per aver partecipato al segmento.",
+            "clip_ids": ["yt_S6ADB98CR7g_358_425_v1"],
+            "target_words": 40
+          },
+          {
+            "id": "scene-4",
+            "kind": "clip",
+            "topic": "Allarme sicurezza e patate di servizio",
+            "source_text": "In una scena carica di tensione, si svela l'allarme che un sistema è stato compromesso da un accesso non autorizzato, attivando immediatamente protocolli di sicurezza complessi e rigorosi. I personaggi scambiano istruzioni bizzarre, comme recarsi dietro le quinte per consumare delle \"patate di servizio\", mentre la situazione generale mantiene un'aria drammatica. Tutto si conclude con un personaggio che porge scuse a Chris prima di salutarsi definitivamente.",
+            "clip_ids": ["yt_T6x-kDiQsWM_203_252_v1"],
+            "target_words": 40
+          }
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["it"],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "extract_entities": "disabled",
+        "voiceover_enabled": true,
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "matt-damon-5-clips-verification",
+          "render_concurrency": 5,
+          "foreground_scale_percent": 80,
+          "background": {
+            "mode": "asset",
+            "asset_id": "classic1"
+          },
+          "watermark": {
+            "enabled": true,
+            "text": "VELOX EDITING",
+            "position": "center",
+            "opacity": 0.85,
+            "style": {
+              "font": "Impact",
+              "scale_percent": 100,
+              "shadow": {"color": "#000000", "opacity": 0.6, "blur_px": 12, "offset_x": 0, "offset_y": 4}
+            }
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "impact",
+            "style": {
+              "color": "#FFFFFF",
+              "position": "bottom_center",
+              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

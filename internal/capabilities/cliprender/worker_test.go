@@ -503,6 +503,129 @@ func (f *fakeRenderPublisher) Publish(_ context.Context, in RenderPublishInput) 
 	return &out, nil
 }
 
+// fakeDestinationFolderResolver records the resolve input and returns a
+// canned leaf folder ID (or the injected error), so the worker's
+// one-time-per-job destination resolution can be exercised without Drive.
+type fakeDestinationFolderResolver struct {
+	calls int
+	input DestinationFolderResolveInput
+	out   string
+	err   error
+}
+
+func (f *fakeDestinationFolderResolver) ResolveDestinationFolder(_ context.Context, in DestinationFolderResolveInput) (string, error) {
+	f.calls++
+	f.input = in
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.out == "" {
+		return "leaf-folder-001", nil
+	}
+	return f.out, nil
+}
+
+func fullRenderOutcome() *RenderOutcome {
+	return &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
+		FFmpegMS:    1234,
+	}
+}
+
+// TestWorker_DestinationSubfolder_ResolvedOncePerJob verifies the canonical
+// script/batch destination rule: a request carrying
+// destination.subfolder_name makes the worker resolve the leaf folder ONCE
+// per job through the DestinationFolderResolver, and the publisher receives
+// the fully-resolved leaf folder ID (the publisher never creates folders
+// and never sees the raw subfolder name).
+func TestWorker_DestinationSubfolder_ResolvedOncePerJob(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
+	publisher := &fakeRenderPublisher{}
+	w.WithRenderPublisher(publisher)
+	resolver := &fakeDestinationFolderResolver{out: "leaf-script-folder-123"}
+	w.WithDestinationFolderResolver(resolver)
+
+	req := baseRenderRequest()
+	req.Destination = &DestinationSpec{
+		DriveFolderID: "root-folder-abc",
+		SubfolderName: "Matt Damon 5 Clips Verification",
+	}
+	result, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-resolve", Payload: renderJobPayload(t, req)}, nil)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if result["phase"] != "rendered" {
+		t.Fatalf("phase = %v, want rendered", result["phase"])
+	}
+	// Exactly one resolution per job, with the caller's root + raw name
+	// (sanitisation is the adapter's job, not the worker's).
+	if resolver.calls != 1 {
+		t.Fatalf("destination resolver calls = %d, want 1 (once per job)", resolver.calls)
+	}
+	if resolver.input.RootFolderID != "root-folder-abc" || resolver.input.SubfolderName != "Matt Damon 5 Clips Verification" {
+		t.Fatalf("resolver input = %+v, want root root-folder-abc + subfolder name", resolver.input)
+	}
+	// The publisher must receive the RESOLVED leaf, never the root and never
+	// the raw subfolder name — it stays dumb by contract.
+	if publisher.input.DriveFolderID != "leaf-script-folder-123" {
+		t.Fatalf("publisher destination = %q, want the resolved leaf folder", publisher.input.DriveFolderID)
+	}
+}
+
+// TestWorker_DestinationSubfolder_FailClosedWithoutResolver verifies that a
+// subfolder_name declared without a wired DestinationFolderResolver is a
+// typed failure before any preparation runs — the publisher must never
+// silently fall back to a root upload when a script folder was requested.
+func TestWorker_DestinationSubfolder_FailClosedWithoutResolver(t *testing.T) {
+	w, mat, _ := newTestWorker(t) // no WithDestinationFolderResolver
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
+
+	req := baseRenderRequest()
+	req.Destination = &DestinationSpec{DriveFolderID: "root-folder-abc", SubfolderName: "Some Script"}
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-nores", Payload: renderJobPayload(t, req)}, nil)
+	if err == nil {
+		t.Fatal("subfolder_name without a wired resolver must fail closed")
+	}
+	if !strings.Contains(err.Error(), "DestinationFolderResolver") {
+		t.Fatalf("expected the resolver-missing typed error, got %v", err)
+	}
+	if len(mat.calls) != 0 {
+		t.Errorf("preparation must not run when destination resolution fails, got %v", mat.calls)
+	}
+}
+
+// TestWorker_DestinationLeafFolder_PassesThrough verifies the legacy
+// behaviour: without destination.subfolder_name the request's
+// destination.drive_folder_id IS the resolved leaf and is handed to the
+// publisher verbatim (no resolution, no folder creation).
+func TestWorker_DestinationLeafFolder_PassesThrough(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
+	publisher := &fakeRenderPublisher{}
+	w.WithRenderPublisher(publisher)
+	resolver := &fakeDestinationFolderResolver{}
+	w.WithDestinationFolderResolver(resolver)
+
+	req := baseRenderRequest() // default destination = DefaultDriveRootFolderID
+	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-passthrough", Payload: renderJobPayload(t, req)}, nil); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("destination resolver calls = %d, want 0 (no subfolder_name)", resolver.calls)
+	}
+	if publisher.input.DriveFolderID != DefaultDriveRootFolderID {
+		t.Fatalf("publisher destination = %q, want the request leaf %q verbatim", publisher.input.DriveFolderID, DefaultDriveRootFolderID)
+	}
+}
+
 // TestWorker_OverlayLineageProjectedIntoResult certifies Gate 7's final
 // binding: a clip.render request that declares an overlay must surface the
 // complete overlay lineage (render job id + plan fingerprint + render key +

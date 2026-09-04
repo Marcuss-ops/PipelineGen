@@ -297,7 +297,8 @@ func certifyJob(t *testing.T, job certJob) {
 		require.Equal(t, wantTemplate, item.TemplateID)
 		require.Equal(t, occurrence.Name, item.Text)
 		require.Equal(t, occurrence.AudioStartUS/1000, item.StartMs, "scene %s: card starts exactly when the entity is spoken", scene.id)
-		require.Equal(t, (occurrence.AudioEndUS+999)/1000, item.EndMs, "scene %s: card ends exactly when the entity is spoken", scene.id)
+		require.GreaterOrEqual(t, item.EndMs, (occurrence.AudioEndUS+999)/1000, "scene %s: card covers the spoken entity window", scene.id)
+		require.GreaterOrEqual(t, item.DurationUS, MinEntityOverlayDurationUS, "scene %s: card has the minimum preset duration", scene.id)
 	}
 
 	// The plan compiles to chronon with one text layer per entity card.

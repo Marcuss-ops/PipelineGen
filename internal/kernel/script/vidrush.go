@@ -123,6 +123,78 @@ type ExtractedEntity struct {
 	Confidence float64 `json:"confidence"`
 }
 
+// NormalizeAnnotationType is the SINGLE canonical owner of the NLP entity
+// type → annotation-kind translation. Every annotation projection (the batch
+// sceneAnnotations merger in capabilities/scripts/adapters and the runner
+// projectEntityAnnotations in capabilities/scripts) maps an extracted entity
+// type through this one function instead of scattering switch statements.
+// The overlay-kind translation (EntityTypeToKind in capabilities/overlays)
+// is a DIFFERENT mapping (annotation kind → overlay kind) and remains owned
+// there; this registry is only the extractor vocabulary bridge.
+//
+//	PERSON            → PERSON            (primary, imageable entity card)
+//	ORG/COMPANY/...   → ORG               (primary, imageable)
+//	GPE/PLACE/...     → GPE               (primary, imageable)
+//	PRODUCT           → PRODUCT           (primary/media, imageable)
+//	LOGO              → LOGO              (primary/media, imageable)
+//	DATE/TIME/CARDINAL/NUMBER/ORDINAL/MONEY/PERCENT → value kinds (secondary)
+//	QUOTE             → QUOTE
+//	EVENT/WORK_OF_ART → editorial kinds
+//	KEYWORD/VISUAL_SUBJECT → search/index surfaces, never spoken entities
+//	anything else     → CONCEPT
+func NormalizeAnnotationType(raw string) string {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "PERSON":
+		return "PERSON"
+	case "ORG", "ORGANIZATION", "COMPANY", "CORP", "CORPORATION", "BUSINESS":
+		return "ORG"
+	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
+		return "GPE"
+	case "DATE":
+		return "DATE"
+	case "TIME":
+		return "TIME"
+	case "CARDINAL":
+		return "CARDINAL"
+	case "NUMBER", "NUM":
+		return "NUMBER"
+	case "ORDINAL":
+		return "ORDINAL"
+	case "MONEY":
+		return "MONEY"
+	case "PERCENT":
+		return "PERCENT"
+	case "QUOTE":
+		return "QUOTE"
+	case "PRODUCT":
+		return "PRODUCT"
+	case "LOGO":
+		return "LOGO"
+	case "EVENT":
+		return "EVENT"
+	case "WORK_OF_ART", "WORK":
+		return "WORK_OF_ART"
+	case "KEYWORD":
+		return "KEYWORD"
+	case "VISUAL_SUBJECT":
+		return "VISUAL_SUBJECT"
+	default:
+		return "CONCEPT"
+	}
+}
+
+// IsAnnotationEntityKind reports whether a normalized annotation kind is a
+// primary entity-card / media kind (the kinds the entity image projection
+// binds images for by default and the entity timeline treats as spoken
+// entities): PERSON / ORG / GPE / PRODUCT / LOGO.
+func IsAnnotationEntityKind(kind string) bool {
+	switch kind {
+	case "PERSON", "ORG", "GPE", "PRODUCT", "LOGO":
+		return true
+	}
+	return false
+}
+
 // EntityMediaLink joins an NLP surface entity to a canonical media identity.
 // It is enrichment metadata and never mutates ExtractedEntity.
 type EntityMediaLink struct {
@@ -367,6 +439,26 @@ func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile 
 		Images:  append([]string(nil), s.Insights.ImageQueries...),
 	}
 	return profile
+}
+
+// ResolverCanonicalID returns the canonical_entity_id the Image Search
+// Intent resolver chose for an entity of this segment, joined by the
+// lowercased canonical name first and then the raw extracted value (the
+// resolver may key a different spelling, e.g. the verbatim Italian span for
+// a canonicalized English identity). It is the SINGLE owner of that lookup:
+// both annotation projections (the batch sceneAnnotations merger and the
+// runner projectEntityAnnotations) join through it. Empty when the resolver
+// was not wired or the entity was not part of its decision — the overlay
+// compile then derives the id deterministically from (type, canonical name).
+func (s VidRushSegmentResult) ResolverCanonicalID(canonical, value string) string {
+	ids := s.Insights.ImageEntityCanonicalIDs
+	if len(ids) == 0 {
+		return ""
+	}
+	if id := ids[strings.ToLower(strings.TrimSpace(canonical))]; id != "" {
+		return id
+	}
+	return ids[strings.ToLower(strings.TrimSpace(value))]
 }
 
 func weightedKeywordsFromStrings(values []string) []WeightedKeyword {

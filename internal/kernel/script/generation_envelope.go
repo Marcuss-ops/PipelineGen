@@ -231,7 +231,7 @@ func (p FixedPlaybackPolicy) Valid() bool {
 // LLM and all generated-scene processors. ClipIDs are authoritative media
 // bindings; DisplayText is optional visual/document text and is never sent to
 // translation or TTS. Playback explicitly selects original clip audio and a
-// source window. Text remains only as a legacy compatibility alias.
+// source window.
 type FixedSection struct {
 	// ClipIDs is the authoritative clip binding for this section. One or two
 	// clips are allowed (e.g. a section spanning two back-to-back clips).
@@ -243,13 +243,17 @@ type FixedSection struct {
 	DisplayText string `json:"display_text,omitempty"`
 	// Playback is the authoritative original-audio and source-window policy.
 	Playback FixedPlaybackPolicy `json:"playback"`
-	// Text is the deprecated legacy narration field. Existing callers may
-	// still populate it; new protected-media payloads should use DisplayText.
+	// Text is a poison-pill field: the legacy `text` narration alias was
+	// removed in July 2026 because it reintroduced "speakable text" into a
+	// section that must never reach the LLM or TTS. The field exists ONLY so
+	// validation can reject legacy payloads with a precise error; it is never
+	// read as content. Use display_text instead.
 	Text string `json:"text,omitempty"`
 }
 
 // EffectiveDisplayText returns the visual text without inviting generated
-// narration. Text is used only for legacy payload compatibility.
+// narration. There is no legacy fallback: display_text is the only text
+// surface a fixed section carries.
 func (f *FixedSection) EffectiveDisplayText() string {
 	if f == nil {
 		return ""
@@ -257,7 +261,7 @@ func (f *FixedSection) EffectiveDisplayText() string {
 	if text := strings.TrimSpace(f.DisplayText); text != "" {
 		return text
 	}
-	return strings.TrimSpace(f.Text)
+	return ""
 }
 
 // NormalizedPlayback returns the canonical playback policy for this section.

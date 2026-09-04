@@ -60,16 +60,15 @@ func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	}
 }
 
-func TestClipsResolver_LegacyRootAndIntroFallback(t *testing.T) {
+func TestClipsResolver_LegacyRootFallback(t *testing.T) {
 	recorder := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"intro", "a", "b", "c"})},
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"a", "b", "c"})},
 	}
 	resolver := &ClipsSourceResolver{clipBuilder: recorder, log: zap.NewNop()}
 
 	source := scriptpkg.SourceSpec{
-		Type:         scriptpkg.SourceClips,
-		ClipIDs:      []string{"a", "b", "c"},
-		IntroClipIDs: []string{"intro"},
+		Type:    scriptpkg.SourceClips,
+		ClipIDs: []string{"a", "b", "c"},
 	}
 	resolution := makeTestResCtx()
 	resolution.Segments = []scriptpkg.ScriptSegment{
@@ -80,10 +79,10 @@ func TestClipsResolver_LegacyRootAndIntroFallback(t *testing.T) {
 	if _, err := resolver.Resolve(context.Background(), source, resolution); err != nil {
 		t.Fatalf("legacy clips payload rejected: %v", err)
 	}
-	if got, want := recorder.lastIDs, []string{"intro", "a", "b", "c"}; !equalClipIDs(got, want) {
+	if got, want := recorder.lastIDs, []string{"a", "b", "c"}; !equalClipIDs(got, want) {
 		t.Fatalf("legacy resolver fetched %v, want %v", got, want)
 	}
-	if got := recorder.lastOpts.Segments[0].ClipIDs; !equalClipIDs(got, []string{"intro", "a"}) {
+	if got := recorder.lastOpts.Segments[0].ClipIDs; !equalClipIDs(got, []string{"a"}) {
 		t.Fatalf("legacy first segment ownership = %v", got)
 	}
 	if got := recorder.lastOpts.Segments[1].ClipIDs; !equalClipIDs(got, []string{"b", "c"}) {
@@ -306,7 +305,6 @@ func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	source := scriptpkg.SourceSpec{
 		Type:         scriptpkg.SourceClips,
 		ClipIDs:      []string{"legacy-root-must-be-ignored"},
-		IntroClipIDs: []string{"intro-clip"},
 	}
 	resolution := makeTestResCtx()
 	resolution.Segments = []scriptpkg.ScriptSegment{
@@ -320,7 +318,7 @@ func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("explicit hydration failed: %v", err)
 	}
-	wantRequested := []string{"intro-clip", "clip-b", "clip-a"}
+	wantRequested := []string{"clip-b", "clip-a"}
 	if !equalClipIDs(recorder.lastIDs, wantRequested) {
 		t.Fatalf("hydration requested %v, want only declared ordered IDs %v", recorder.lastIDs, wantRequested)
 	}

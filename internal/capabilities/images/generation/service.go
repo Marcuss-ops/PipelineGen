@@ -24,6 +24,16 @@ func NewGenerationService(registry *Registry, styles imagestyles.StyleResolver, 
 	return &GenerationService{registry: registry, styles: styles, log: log, storage: storage}
 }
 
+// UsecaseDeps returns the immutable dependencies owned by the generation
+// service. The facade uses this to invoke the canonical use case without
+// reaching into this package's private fields.
+func (g *GenerationService) UsecaseDeps() UsecaseDeps {
+	if g == nil {
+		return UsecaseDeps{}
+	}
+	return UsecaseDeps{Registry: g.registry, Styles: g.styles, Log: g.log}
+}
+
 func (g *GenerationService) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
 	return GenerateSync(ctx, g, SyncCommand{
 		Subject: subject, Topic: topic, Style: style, Prompts: prompts, Tags: tags,

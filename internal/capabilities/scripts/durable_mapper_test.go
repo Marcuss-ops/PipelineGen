@@ -22,6 +22,57 @@ func TestDurableResultToDomainPreservesOutputTextAndWordCount(t *testing.T) {
 	assert.Equal(t, 4, out.Output.WordCount)
 }
 
+// TestDurableResultToDomainMapsFixedSectionsFromRoleNotID certifies that
+// fixed intro/outro sections reach the durable domain surface with their
+// document kinds derived from the explicit SceneRole — never from the scene
+// ID. A custom-ID fixed scene (e.g. "branded-intro") must still map to the
+// intro document section, and its DisplayText must never leak into the
+// generated Text surface.
+func TestDurableResultToDomainMapsFixedSectionsFromRoleNotID(t *testing.T) {
+	in := &GenerateResult{Scenes: []Scene{
+		{
+			ID: "branded-intro", Index: 0,
+			Role:          scriptpkg.SceneRoleOpening,
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+			Text:          map[Language]string{"en": "Welcome"},
+			Clips:         []*ClipReference{{ID: "intro-clip-a"}},
+		},
+		{
+			ID: "body-1", Index: 1,
+			Text: map[Language]string{"en": "Body copy"},
+			Clip: &ClipReference{ID: "body-clip"},
+		},
+		{
+			ID: "branded-outro", Index: 2,
+			Role:          scriptpkg.SceneRoleClosing,
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+			Text:          map[Language]string{"en": "Thanks"},
+			Clips:         []*ClipReference{{ID: "outro-clip-a"}},
+		},
+	}}
+	out := DurableResultToDomain(in)
+	require.NotNil(t, out)
+	scenes := out.Output.SpecScene.Scenes
+	require.Len(t, scenes, 3)
+	intro := scenes[0]
+	if intro.Kind != scriptpkg.SceneIntro || intro.ID != "branded-intro" {
+		t.Fatalf("fixed intro = kind %q id %q, want SceneIntro on custom id", intro.Kind, intro.ID)
+	}
+	if intro.Text != "" || intro.DisplayText != "Welcome" {
+		t.Fatalf("fixed intro text=%q display=%q, want empty narration + display text", intro.Text, intro.DisplayText)
+	}
+	if !intro.ExecutionMode.IsFixedMedia() {
+		t.Fatalf("fixed intro execution mode = %q", intro.ExecutionMode)
+	}
+	if scenes[1].Kind != scriptpkg.SceneClip {
+		t.Fatalf("body kind = %q, want SceneClip", scenes[1].Kind)
+	}
+	outro := scenes[2]
+	if outro.Kind != scriptpkg.SceneOutro || outro.ID != "branded-outro" {
+		t.Fatalf("fixed outro = kind %q id %q, want SceneOutro on custom id", outro.Kind, outro.ID)
+	}
+}
+
 // TestDurableResultToDomainMapsEntitiesIntoArtifacts certifies the durable
 // entity surfacing fix end-to-end: the entity aggregate carried on the durable
 // GenerateResult must reach the domain Artifacts.Entities block so the

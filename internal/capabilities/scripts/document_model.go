@@ -65,14 +65,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 			Annotations:      scene.Annotations,
 		}
 		if scene.ExecutionMode.IsFixedMedia() {
-			switch scene.ID {
-			case "scene-intro":
-				converted.Kind = scriptpkg.SceneIntro
-			case "scene-outro":
-				converted.Kind = scriptpkg.SceneOutro
-			default:
-				converted.Kind = scriptpkg.SceneClip
-			}
+			converted.Kind = fixedSceneKind(scene)
 		} else if scene.Clip != nil || len(scene.Clips) > 0 {
 			converted.Kind = scriptpkg.SceneClip
 		}
@@ -173,6 +166,22 @@ func documentSkeletonInputForScenes(title string, scenes []Scene, langs []Langua
 		inputs[lang] = in
 	}
 	return inputs
+}
+
+// fixedSceneKind maps a protected fixed-media scene onto the document/domain
+// SceneKind from its explicit Role. The scene ID is identity only — it never
+// selects the section kind. Opening/closing roles produce the intro/outro
+// document sections; a legacy fixed scene without a role degrades to the
+// generic fixed clip treatment.
+func fixedSceneKind(scene Scene) scriptpkg.SceneKind {
+	switch scene.Role.Normalize() {
+	case scriptpkg.SceneRoleOpening:
+		return scriptpkg.SceneIntro
+	case scriptpkg.SceneRoleClosing:
+		return scriptpkg.SceneOutro
+	default:
+		return scriptpkg.SceneClip
+	}
 }
 
 func cloneFixedPlayback(in *scriptpkg.FixedPlaybackPolicy) *scriptpkg.FixedPlaybackPolicy {

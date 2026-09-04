@@ -7,6 +7,12 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
+// MinEntityOverlayDurationUS is the minimum renderable duration for an
+// entity preset. The spoken occurrence still anchors the start exactly; the
+// visual card remains on screen after the name finishes so a preset render is
+// a real clip rather than a sub-second flash.
+const MinEntityOverlayDurationUS int64 = 5_000_000
+
 // ResolveEntityOverlayPlan is the OverlayResolver: it turns the canonical
 // EntityTimeline into the semantic OverlayPlan the rendering layer consumes.
 // Every entity occurrence becomes one entity_card item whose start/end are
@@ -56,6 +62,11 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		ranked := RankScene(scene.Entities, ctx, cfg)
 		for _, rankedOccurrence := range ranked {
 			occurrence := rankedOccurrence.Occurrence
+			durationUS := occurrence.AudioEndUS - occurrence.AudioStartUS
+			if durationUS < MinEntityOverlayDurationUS {
+				durationUS = MinEntityOverlayDurationUS
+			}
+			endUS := occurrence.AudioStartUS + durationUS
 			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)
 			entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(string(kind))
 			if err != nil {
@@ -67,9 +78,9 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				EntityID:   occurrence.EntityID,
 				Kind:       string(kind),
 				StartMs:    occurrence.AudioStartUS / 1000,
-				EndMs:      (occurrence.AudioEndUS + 999) / 1000,
+				EndMs:      (endUS + 999) / 1000,
 				StartUS:    occurrence.AudioStartUS,
-				DurationUS: occurrence.AudioEndUS - occurrence.AudioStartUS,
+				DurationUS: durationUS,
 				TemplateID: entry.Template,
 				PresetID:   capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, overlayItemID(occurrence), occurrence.Type),
 				Text:       occurrence.Name,

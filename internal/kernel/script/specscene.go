@@ -286,97 +286,12 @@ type EntityImageBinding struct {
 	License string `json:"license,omitempty"`
 }
 
-// InjectFixedSections injects literal intro/outro SpecScenes verbatim.
-// It is the SpecScene-level counterpart of the Runner's Scene injection:
-// intro/outro text is never sent to the LLM, never rewritten from
-// source_text, and the supplied clip_id is bound with Kind=intro/outro.
-// The function reindexes scenes sequentially and de-duplicates IDs.
-func InjectFixedSections(plan *ResolvedGenerationPlan, spec *SpecSceneOutput) {
-	if plan == nil || spec == nil {
-		return
-	}
-	if plan.Intro == nil && plan.Outro == nil {
-		return
-	}
-	out := make([]SpecScene, 0, len(spec.Scenes)+4)
-	if plan.Intro != nil {
-		ids := plan.Intro.NormalizedClipIDs()
-		if len(ids) >= 1 && len(ids) <= 2 {
-			cleanText := plan.Intro.EffectiveDisplayText()
-			title := plan.Intro.Title
-			playback := plan.Intro.NormalizedPlayback()
-			clips := fixedPlaybackClipBindings(ids, playback)
-			bindings := SceneBindings{Clips: clips}
-			if len(clips) > 0 {
-				bindings.Clip = &clips[0]
-			}
-			out = append(out, SpecScene{
-				ID:               "scene-intro",
-				Index:            0,
-				Text:             "",
-				DisplayText:      cleanText,
-				Title:            title,
-				Kind:             SceneIntro,
-				ExecutionMode:    SceneExecutionFixedMedia,
-				FixedPlayback:    &playback,
-				AudioMode:        "CLIP_AUDIO",
-				AudioAssetID:     ids[0],
-				AudioSourceInMS:  playback.SourceInMS,
-				AudioSourceOutMS: playback.SourceOutMS,
-				Bindings:         bindings,
-			})
-		}
-	}
-	out = append(out, spec.Scenes...)
-	if plan.Outro != nil {
-		ids := plan.Outro.NormalizedClipIDs()
-		if len(ids) >= 1 && len(ids) <= 2 {
-			cleanText := plan.Outro.EffectiveDisplayText()
-			title := plan.Outro.Title
-			playback := plan.Outro.NormalizedPlayback()
-			clips := fixedPlaybackClipBindings(ids, playback)
-			bindings := SceneBindings{Clips: clips}
-			if len(clips) > 0 {
-				bindings.Clip = &clips[0]
-			}
-			out = append(out, SpecScene{
-				ID:               "scene-outro",
-				Index:            0,
-				Text:             "",
-				DisplayText:      cleanText,
-				Title:            title,
-				Kind:             SceneOutro,
-				ExecutionMode:    SceneExecutionFixedMedia,
-				FixedPlayback:    &playback,
-				AudioMode:        "CLIP_AUDIO",
-				AudioAssetID:     ids[0],
-				AudioSourceInMS:  playback.SourceInMS,
-				AudioSourceOutMS: playback.SourceOutMS,
-				Bindings:         bindings,
-			})
-		}
-	}
-	seen := make(map[string]struct{}, len(out))
-	for i := range out {
-		if strings.TrimSpace(out[i].ID) == "" {
-			out[i].ID = fmt.Sprintf("scene-%d", i)
-		}
-		base := out[i].ID
-		for {
-			if _, exists := seen[base]; !exists {
-				break
-			}
-			base = fmt.Sprintf("%s-%d", out[i].ID, i)
-		}
-		seen[base] = struct{}{}
-		out[i].ID = base
-		out[i].Index = i
-	}
-	spec.Scenes = out
-	if spec.Version == 0 {
-		spec.Version = 1
-	}
-}
+// InjectFixedSections was removed (July 2026). Fixed intro/outro sections
+// are injected exactly once by the Runner's applyFixedSections into the
+// canonical Scene list; every projection (SpecScene, docs, timeline, render
+// units) is derived from that single canonical surface. A second,
+// SpecScene-level injector duplicated the contract and risked divergent
+// intro/outro semantics between projections.
 
 func fixedPlaybackPointer(section *FixedSection) *FixedPlaybackPolicy {
 	if section == nil {

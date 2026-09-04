@@ -7,9 +7,8 @@ import (
 
 func TestCanonicalizeSegmentClipIDs_ExplicitSegmentsWin(t *testing.T) {
 	source := SourceSpec{
-		Type:         SourceClips,
-		ClipIDs:      []string{"legacy-a", "legacy-b"},
-		IntroClipIDs: []string{"intro"},
+		Type:    SourceClips,
+		ClipIDs: []string{"legacy-a", "legacy-b"},
 	}
 	segments := []ScriptSegment{
 		{ID: "scene", Topic: "Scene", ClipIDs: []string{"clip-a", "clip-b"}},
@@ -17,7 +16,7 @@ func TestCanonicalizeSegmentClipIDs_ExplicitSegmentsWin(t *testing.T) {
 	}
 
 	got := CanonicalizeSegmentClipIDs(source, segments)
-	want := [][]string{{"intro", "clip-a", "clip-b"}, {}}
+	want := [][]string{{"clip-a", "clip-b"}, {}}
 	assertSegmentClipIDs(t, got, want)
 }
 
@@ -49,24 +48,24 @@ func TestCanonicalizeSegmentClipIDs_ExplicitNilDoesNotReactivateLegacyDistributi
 	}
 }
 
-func TestCanonicalizeSegmentClipIDs_IntroTargetsMarkedIntroSegment(t *testing.T) {
-	source := SourceSpec{Type: SourceClips, IntroClipIDs: []string{"intro-clip"}, ClipIDs: []string{"ignored-root"}}
+func TestCanonicalizeSegmentClipIDs_ExplicitSegmentsKeepOwnership(t *testing.T) {
+	source := SourceSpec{Type: SourceClips, ClipIDs: []string{"ignored-root"}}
 	segments := []ScriptSegment{
 		{ID: "scene-1", Kind: "scene", Topic: "Main", ClipIDs: []string{"scene-clip"}},
 		{ID: "opening", Kind: "intro", Topic: "Opening", ClipIDs: []string{"opening-clip"}},
 	}
 
 	got := CanonicalizeSegmentClipIDs(source, segments)
-	assertSegmentClipIDs(t, got, [][]string{{"scene-clip"}, {"intro-clip", "opening-clip"}})
+	assertSegmentClipIDs(t, got, [][]string{{"scene-clip"}, {"opening-clip"}})
 }
 
 func TestCanonicalizeSegmentClipIDs_LegacyRootCompatibility(t *testing.T) {
-	source := SourceSpec{Type: SourceClips, ClipIDs: []string{"a", "b", "c"}, IntroClipIDs: []string{"intro"}}
+	source := SourceSpec{Type: SourceClips, ClipIDs: []string{"a", "b", "c"}}
 	segments := []ScriptSegment{{ID: "one", Topic: "One"}, {ID: "two", Topic: "Two"}}
 
 	got := CanonicalizeSegmentClipIDs(source, segments)
-	assertSegmentClipIDs(t, got, [][]string{{"intro", "a"}, {"b", "c"}})
-	if source.ClipIDs[0] != "a" || len(source.IntroClipIDs) != 1 {
+	assertSegmentClipIDs(t, got, [][]string{{"a"}, {"b", "c"}})
+	if source.ClipIDs[0] != "a" {
 		t.Fatal("canonicalization mutated the caller source")
 	}
 }
@@ -286,10 +285,10 @@ func TestGenerationEnvelopePayloadContract_PreservesEditorialSegments(t *testing
 }
 
 func TestGenerationEnvelopePayloadContract_ResolvesOnlyDeclaredClips(t *testing.T) {
-	source := SourceSpec{Type: SourceClips, IntroClipIDs: []string{"intro-a"}}
+	source := SourceSpec{Type: SourceClips}
 	segments := []ScriptSegment{{ClipIDs: []string{"clip-a", "clip-b"}}, {ClipIDs: []string{"clip-c"}}}
 	got := CollectRequestedClipIDs(source, segments)
-	want := []string{"intro-a", "clip-a", "clip-b", "clip-c"}
+	want := []string{"clip-a", "clip-b", "clip-c"}
 	if len(got) != len(want) {
 		t.Fatalf("requested IDs = %v, want %v", got, want)
 	}
