@@ -42,6 +42,14 @@ func DefaultConfig() *Config {
 	}
 }
 
+// CanonicalIndexRequester is the narrow cutover seam for callers that still
+// invoke the legacy imperative IndexClip/IndexAsset surface. In PostgreSQL
+// media mode the implementation enqueues asset.index.requested into the
+// PostgreSQL outbox; it never performs an inline Qdrant write.
+type CanonicalIndexRequester interface {
+	RequestIndex(ctx context.Context, assetID string) error
+}
+
 // Service provides clip indexing functionality
 //
 // PG-016 typed-handle migration (June 2026): the embedded *sql.DB handle
@@ -57,10 +65,15 @@ type Service struct {
 	scriptPath  string
 	vectorStore VectorStoreIndexer
 
+	// canonicalIndexRequester is non-nil after POSTGRES-MEDIA-CUTOVER. It
+	// short-circuits the retired SQLite -> Qdrant indexing implementation and
+	// delegates every imperative reindex request to the canonical PG outbox.
+	canonicalIndexRequester CanonicalIndexRequester
+
 	// projectionAdvancer is the optional checkpoint advancer called after a
-	// successful Qdrant upsert. It advances the ACTIVE projection's
-	// source_registry_seq so the startup sequence gate no longer sees a stale
-	// projection after incremental indexing. nil is safe (tests / Qdrant-off).
+	// successful Qdrant upsert. It is retained only for isolated legacy tests
+	// and non-canonical compatibility code; PostgreSQL media mode never reaches
+	// this path because canonicalIndexRequester short-circuits first.
 	projectionAdvancer capregistry.ProjectionSequenceAdvancer
 	assetMutator       persistence.AssetMutationCommitter
 }
@@ -80,6 +93,15 @@ func NewService(cfg *Config, db *storage.SQLiteDB, dbPath string, log *zap.Logge
 		cfg:        cfg,
 		log:        log,
 		scriptPath: cfg.ScriptPath,
+	}
+}
+
+// SetCanonicalIndexRequester switches the public imperative indexing surface
+// onto the canonical media event plane. Composition wires this only when the
+// PostgreSQL media SSOT is enabled; nil preserves isolated legacy unit tests.
+func (s *Service) SetCanonicalIndexRequester(requester CanonicalIndexRequester) {
+	if s != nil {
+		s.canonicalIndexRequester = requester
 	}
 }
 
@@ -108,7 +130,8 @@ func (s *Service) IsEnabled() bool {
 	return s.cfg.Enabled
 }
 
-// VectorStore returns the configured vector store indexer, if any.
+// VectorStore returns the configured legacy vector-store indexer, if any.
+// Canonical PostgreSQL media mode never reaches it.
 func (s *Service) VectorStore() VectorStoreIndexer {
 	return s.vectorStore
 }
@@ -164,7 +187,6 @@ func (s *Service) StartWatchdog(ctx context.Context) {
 					if err := s.StartServer(ctx); err != nil {
 						s.log.Error("watchdog failed to restart server", zap.Error(err))
 					}
-				}
 			}
 		}
 	})
