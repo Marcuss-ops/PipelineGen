@@ -233,11 +233,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	// ── Seal the fully-resolved plan ───────────────────────────────────
+	// WatermarkSpec is the single owner of watermark text/position/opacity/
+	// margin/style; there is no separate WatermarkText spelling.
 	var watermarkSpec *WatermarkSpec
-	var watermarkText string
 	if req.Watermark != nil && req.Watermark.Enabled {
 		watermarkSpec = req.Watermark
-		watermarkText = req.Watermark.Text
 	}
 	plan, err := Compile(CompileInput{
 		RunID:          j.ID,
@@ -245,7 +245,6 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		DurationMS:     prepared.Source.DurationMS,
 		Watermark:      prepared.Watermark,
 		WatermarkSpec:  watermarkSpec,
-		WatermarkText:  watermarkText,
 		Background:     prepared.Background,
 		BackgroundMode: req.Background.Mode,
 		Subtitles:      subtitleArtifact,

@@ -113,7 +113,6 @@ type LocalizedClipPlan struct {
 
 	Watermark     *cliprender.MaterializedAsset `json:"watermark,omitempty"`
 	WatermarkSpec *cliprender.WatermarkSpec     `json:"watermark_spec,omitempty"`
-	WatermarkText string                        `json:"watermark_text,omitempty"`
 
 	// ── Background (visual layer behind the source) ───────────────
 	// BackgroundMode is the request-level background selection
@@ -209,9 +208,6 @@ func (p LocalizedClipPlan) Validate() error {
 		if p.WatermarkSpec == nil || strings.TrimSpace(p.WatermarkSpec.AssetID) == "" {
 			return fmt.Errorf("%w: watermark specification is incomplete", ErrInvalidLocalizedClipPlan)
 		}
-	}
-	if strings.TrimSpace(p.WatermarkText) != "" && p.WatermarkSpec == nil {
-		return fmt.Errorf("watermark text requires watermark spec")
 	}
 	if p.Background != nil {
 		if p.BackgroundMode != cliprender.BackgroundModeAsset {

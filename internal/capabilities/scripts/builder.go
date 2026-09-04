@@ -73,13 +73,10 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		item.Output.Render.DriveSubfolderName = scriptFolderName
 	}
 	item.Output.Render.Normalize()
-	if item.Output.Render.Watermark == nil {
-		item.Output.Render.Watermark = item.Output.Watermark
-	}
-	if item.Output.Render.Subtitles == nil {
-		item.Output.Render.Subtitles = item.Output.Subtitles
-	}
-	item.Output.Render.Normalize()
+	// SSOT: output.render.watermark / output.render.subtitles are the only
+	// spellings. The legacy top-level output.watermark/output.subtitles
+	// compatibility blocks were removed; requests carrying them fail at the
+	// schema boundary instead of silently merging two sources of truth.
 
 	// Map SourceSpec → scriptgeneration.Source (pure field copy).
 	// Source policy fields must survive this durable-runtime boundary:

@@ -15,10 +15,10 @@ type OutputSpec struct {
 	// selected subtitle/watermark layers. It is opt-in and is carried through
 	// script.generate into the localized render fan-out.
 	Render VideoRenderSpec `json:"render,omitempty"`
-	// Direct blocks are accepted as a concise compatibility form:
-	// output.watermark / output.subtitles.
-	Watermark *VideoWatermarkSpec `json:"watermark,omitempty"`
-	Subtitles *VideoSubtitlesSpec `json:"subtitles,omitempty"`
+	// SSOT: watermark/subtitles configuration lives ONLY in output.render.
+	// The former top-level compatibility spellings (output.watermark /
+	// output.subtitles) were removed — two spellings for one fact caused the
+	// watermark drift fixed in the visual-contract cleanup.
 	// Audio is the explicit audio execution mode. Empty preserves the
 	// legacy voiceover behavior and is resolved once at the capability edge.
 	Audio AudioOutputConfig `json:"audio,omitempty"`
@@ -224,6 +224,22 @@ type VideoSubtitlesSpec struct {
 	Style   *VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
+// normalizeSubtitlePreset resolves a named preset through the preset table.
+// The table is the single preset registry consulted by Normalize; adding a
+// preset means adding one entry here (or in SubtitlePresets), never another
+// hardcoded branch.
+var canonicalSubtitlePresets = map[string]VideoVisualStyleSpec{
+	"impact":          {Font: "Impact", FontSizePX: 58},
+	"anton":           {Font: "Anton", FontSizePX: 56},
+	"bebas":           {Font: "Bebas Neue", FontSizePX: 60},
+	"bebas_neue":      {Font: "Bebas Neue", FontSizePX: 60},
+	"bebas neue":      {Font: "Bebas Neue", FontSizePX: 60},
+	"roboto":          {Font: "Roboto", FontSizePX: 52},
+	"roboto_bold":     {Font: "Roboto", FontSizePX: 52},
+	"montserrat":      {Font: "Montserrat", FontSizePX: 54},
+	"montserrat_bold": {Font: "Montserrat", FontSizePX: 54},
+}
+
 // Normalize preserves the caller's explicit choices and enables the video
 // path whenever the background is a real layer or either requested overlay
 // is enabled. Empty values receive the same safe defaults as clip.render.
@@ -267,37 +283,15 @@ func (r *VideoRenderSpec) Normalize() {
 			r.Subtitles.Style = &VideoVisualStyleSpec{}
 		}
 		if r.Subtitles.Style.Font == "" && presetID != "" {
-			switch presetID {
-			case "impact":
-				r.Subtitles.Style.Font = "Impact"
-				if r.Subtitles.Style.FontSizePX == 0 {
-					r.Subtitles.Style.FontSizePX = 58
-				}
-			case "anton":
-				r.Subtitles.Style.Font = "Anton"
-				if r.Subtitles.Style.FontSizePX == 0 {
-					r.Subtitles.Style.FontSizePX = 56
-				}
-			case "bebas", "bebas_neue", "bebas neue":
-				r.Subtitles.Style.Font = "Bebas Neue"
-				if r.Subtitles.Style.FontSizePX == 0 {
-					r.Subtitles.Style.FontSizePX = 60
-				}
-			case "roboto", "roboto_bold":
-				r.Subtitles.Style.Font = "Roboto"
-				if r.Subtitles.Style.FontSizePX == 0 {
-					r.Subtitles.Style.FontSizePX = 52
-				}
-			case "montserrat", "montserrat_bold":
-				r.Subtitles.Style.Font = "Montserrat"
-				if r.Subtitles.Style.FontSizePX == 0 {
-					r.Subtitles.Style.FontSizePX = 54
-				}
-			default:
-				if preset, ok := r.SubtitlePresets[presetID]; ok {
-					style := preset
-					r.Subtitles.Style = &style
-				}
+			// Named presets resolve through the single preset registry —
+			// canonical table first, then request-local presets. No
+			// hardcoded font/size branches live in Normalize.
+			if preset, ok := canonicalSubtitlePresets[presetID]; ok {
+				style := preset
+				r.Subtitles.Style = &style
+			} else if preset, ok := r.SubtitlePresets[presetID]; ok {
+				style := preset
+				r.Subtitles.Style = &style
 			}
 		}
 		if r.Subtitles.Style.Font == "" {

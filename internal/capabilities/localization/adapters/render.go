@@ -127,7 +127,12 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.Bool("has_subtitle", sub != nil),
 		zap.Bool("has_watermark", opts.Watermark != nil),
 		zap.Bool("has_watermark_spec", opts.WatermarkSpec != nil),
-		zap.String("watermark_text", opts.WatermarkText),
+		zap.String("watermark_text", func() string {
+			if opts.WatermarkSpec == nil {
+				return ""
+			}
+			return opts.WatermarkSpec.Text
+		}()),
 		zap.String("background_mode", opts.BackgroundMode),
 		zap.Bool("has_subtitle_style", opts.SubtitlesStyle != nil),
 		zap.Int("width", contract.Width),
@@ -144,12 +149,6 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		Source:        &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
 		Watermark:     opts.Watermark,
 		WatermarkSpec: opts.WatermarkSpec,
-		WatermarkText: func() string {
-			if opts.WatermarkSpec == nil {
-				return ""
-			}
-			return opts.WatermarkSpec.Text
-		}(),
 		Background:             opts.Background,
 		BackgroundMode:         opts.BackgroundMode,
 		ForegroundScalePercent: opts.ForegroundScalePercent,

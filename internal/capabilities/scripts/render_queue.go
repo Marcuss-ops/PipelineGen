@@ -106,20 +106,10 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
 	semanticPlan := plan
-	// Older callers represented an image background as an item with template
-	// BACKGROUND. RenderingGen's semantic contract has a first-class
-	// background block, so normalize that legacy spelling at this boundary.
-	items := make([]capoverlay.OverlayItem, 0, len(plan.Items))
-	for _, item := range plan.Items {
-		if item.TemplateID == "BACKGROUND" && len(item.AssetRefs) > 0 && semanticPlan.Background == nil {
-			semanticPlan.Background = &capoverlay.OverlayBackground{
-				Kind: "image", Fit: "cover", AssetRefs: item.AssetRefs,
-			}
-			continue
-		}
-		items = append(items, item)
-	}
-	semanticPlan.Items = items
+	// SSOT: backgrounds are declared only through the plan's first-class
+	// Background block. The legacy "item with template BACKGROUND" spelling
+	// was removed — producers must set Background explicitly; the enqueue
+	// boundary no longer rewrites the plan's items.
 	spec, err := json.Marshal(semanticPlan)
 	if err != nil {
 		return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)

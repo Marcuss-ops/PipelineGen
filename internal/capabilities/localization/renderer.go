@@ -62,7 +62,6 @@ type RenderPlanExecutor interface {
 type RenderOptions struct {
 	Watermark              *cliprender.MaterializedAsset
 	WatermarkSpec          *cliprender.WatermarkSpec
-	WatermarkText          string
 	Background             *cliprender.MaterializedAsset
 	BackgroundMode         string
 	ForegroundScalePercent int
@@ -143,7 +142,6 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 	opts := RenderOptions{
 		Watermark:              plan.Watermark,
 		WatermarkSpec:          plan.WatermarkSpec,
-		WatermarkText:          plan.WatermarkText,
 		Background:             plan.Background,
 		BackgroundMode:         plan.BackgroundMode,
 		ForegroundScalePercent: plan.ForegroundScalePercent,
