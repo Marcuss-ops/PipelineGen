@@ -90,6 +90,9 @@ type OverlayItem struct {
 	// preset table as today. Because it is omitempty, plans authored without
 	// a preset keep their exact fingerprint/render key.
 	PresetID string `json:"preset_id,omitempty"`
+	// ImagePresetID is the independent image treatment for entity cards. The
+	// name preset belongs to the text layer; PipelineGen selects both values.
+	ImagePresetID string `json:"image_preset_id,omitempty"`
 	// EntityRef carries the content-addressed entity identity this item
 	// renders (entity_id + type + canonical name + surface text). It is the
 	// plan's entity_ref: the resolver always emits it for entity-driven
@@ -300,7 +303,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -341,9 +344,10 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		StartMs, EndMs                   int64
 		StartUS, DurationUS              int64
 		PresetID                         string `json:"preset_id,omitempty"`
+		ImagePresetID                    string `json:"image_preset_id,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID,
+		item.PresetID, item.ImagePresetID,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)

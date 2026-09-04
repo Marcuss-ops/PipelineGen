@@ -56,3 +56,10 @@ func selectWordPreset(jobID, sceneID, itemID string) string {
 func selectImagePreset(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "entity_image", imagePresetCandidates)
 }
+
+// SelectEntityImagePreset chooses the image motion independently from the
+// entity name treatment. Both choices are made by the shared sampler so the
+// renderer never has to infer or invent a preset.
+func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
+	return selectImagePreset(jobID, sceneID, itemID)
+}
