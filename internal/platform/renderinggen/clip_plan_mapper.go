@@ -278,12 +278,29 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 
 	// Subtitles
 	if plan.Subtitles != nil {
+		subStyle := marshalStyle(plan.Subtitles.Style)
+		if subStyle == nil {
+			subStyle = &styleBlock{}
+		}
+		if subStyle.Color == "" {
+			subStyle.Color = "#FFFFFF"
+		}
+		if subStyle.FontSizePX <= 0 {
+			if subStyle.Size > 0 {
+				subStyle.FontSizePX = subStyle.Size
+			} else {
+				subStyle.FontSizePX = 54
+			}
+		}
+		if subStyle.Position == "" {
+			subStyle.Position = "bottom_center"
+		}
 		op.Subtitles = &overlaySubtitles{
 			Mode:    plan.Subtitles.Mode,
 			StyleID: plan.Subtitles.StyleID,
 			// The typed style block MUST be carried verbatim: the worker-side
 			// compiler has no other owner for subtitle geometry/color/shadow.
-			Style: marshalStyle(plan.Subtitles.Style),
+			Style: subStyle,
 			AssetRefs: []overlayAssetRef{{
 				AssetID:   plan.Subtitles.SHA256, // use hash as stable ID
 				SHA256:    plan.Subtitles.SHA256,
@@ -295,15 +312,30 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 
 	// Watermark
 	if plan.Watermark != nil {
+		wmStyle := marshalStyle(plan.Watermark.Style)
+		if wmStyle == nil {
+			wmStyle = &styleBlock{}
+		}
+		if wmStyle.Color == "" {
+			wmStyle.Color = "#FFFFFF"
+		}
+		if wmStyle.FontSizePX <= 0 {
+			if wmStyle.Size > 0 {
+				wmStyle.FontSizePX = wmStyle.Size
+			} else {
+				wmStyle.FontSizePX = 42
+			}
+		}
 		wm := &overlayWatermark{
 			Text:     plan.Watermark.Text,
 			Position: plan.Watermark.Position,
-			Style:    marshalStyle(plan.Watermark.Style),
+			Style:    wmStyle,
 		}
-		if plan.Watermark.MarginPX > 0 {
-			margin := plan.Watermark.MarginPX
-			wm.MarginPX = &margin
+		margin := plan.Watermark.MarginPX
+		if margin <= 0 {
+			margin = 40
 		}
+		wm.MarginPX = &margin
 		if plan.Watermark.Opacity > 0 {
 			op := plan.Watermark.Opacity
 			wm.Opacity = &op

@@ -153,14 +153,7 @@ func inLanguage(in *GenerateResult) Language {
 
 func sceneKind(scene Scene) domain.SceneKind {
 	if scene.ExecutionMode.IsFixedMedia() {
-		switch scene.ID {
-		case "scene-intro":
-			return domain.SceneIntro
-		case "scene-outro":
-			return domain.SceneOutro
-		default:
-			return domain.SceneClip
-		}
+		return fixedSceneKind(scene)
 	}
 	if scene.Clip != nil {
 		return domain.SceneClip

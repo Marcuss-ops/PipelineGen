@@ -419,6 +419,7 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 	if err != nil {
 		return nil, err
 	}
+	segments = filterEntityRenderSurface(segments)
 	result := mediacert.MediaResult{
 		JobStatus: "SUCCEEDED",
 		Segments:  toMediaResultSegments(segments),
@@ -441,6 +442,64 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 		return nil, fmt.Errorf("vidrush semantic certification failed: CERTIFIED=false (%s)", strings.Join(violations, ", "))
 	}
 	return segments, nil
+}
+
+// filterEntityRenderSurface is the explicit product policy for the entity
+// render path: only imageable named entities and important phrases cross the
+// VidRush→render boundary. Value entities, concepts, keywords and important
+// words remain useful to other editorial paths, but must not become entity
+// overlays or affect the entity certification counts.
+func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	out := make([]scriptpkg.VidRushSegmentResult, len(segments))
+	for i, seg := range segments {
+		out[i] = seg
+		entities := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
+		allowedValues := make(map[string]struct{}, len(seg.Insights.Entities))
+		for _, entity := range seg.Insights.Entities {
+			kind := scriptpkg.NormalizeAnnotationType(entity.Type)
+			if !scriptpkg.IsAnnotationEntityKind(kind) {
+				continue
+			}
+			entity.Type = kind
+			entity.Value = strings.TrimSpace(entity.Value)
+			if entity.Value == "" {
+				continue
+			}
+			entities = append(entities, entity)
+			allowedValues[strings.ToLower(entity.Value)] = struct{}{}
+		}
+		out[i].Insights.Entities = entities
+		out[i].Insights.ImportantWords = nil
+		// This render surface is intentionally narrower than the full media
+		// retrieval surface: no stock-video or YouTube query may leak into an
+		// entity-only run. The caller can run those providers in a separate
+		// clip path, but they are not extracted here.
+		out[i].Insights.ArtlistQueries = nil
+		out[i].Insights.YouTubeQueries = nil
+		// The entity value is the only allowed image query at this boundary.
+		// Do not trust provider-generated/enriched queries: they can introduce
+		// a second subject or a generic scene image and break entity↔asset
+		// provenance. One deterministic query is emitted per imageable entity.
+		queries := make([]string, 0, len(entities))
+		seenQueries := make(map[string]struct{}, len(entities))
+		for _, entity := range entities {
+			q := strings.TrimSpace(entity.Value)
+			key := strings.ToLower(q)
+			if q == "" || key == "" {
+				continue
+			}
+			if _, ok := allowedValues[key]; !ok {
+				continue
+			}
+			if _, ok := seenQueries[key]; ok {
+				continue
+			}
+			seenQueries[key] = struct{}{}
+			queries = append(queries, q)
+		}
+		out[i].Insights.ImageQueries = queries
+	}
+	return out
 }
 
 // toMediaResultSegments projects the VidRushSegmentResult slice into the

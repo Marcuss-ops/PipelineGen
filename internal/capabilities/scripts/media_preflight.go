@@ -1,15 +1,14 @@
 // Package scriptgeneration — media_preflight.go implements the fail-fast
-// Media Requirement Preflight that runs after normalize/source resolve in
-// parallel with Gemma (scene text generation).
+// Media Requirement Preflight. The runner executes it SYNCHRONOUSLY after
+// normalization and BEFORE the first LLM call: fixed intro/outro assets,
+// original clip audio streams, BGM/SFX assets, Drive folders, and watermark
+// assets are all verified before Gemma, translation, or TTS spend work. It
+// is deliberately NOT parallel with Gemma — a preflight failure aborts the
+// run before generation starts, so no LLM/TTS work is wasted on a run that
+// would fail at audio compile anyway (e.g. missing clip audio for
+// VOICEOVER_DUCKED_CLIP).
 //
-// P0.5: after normalize, the preflight verifies all media assets the
-// pipeline will need — clip files, original audio streams, BGM/SFX
-// assets, Drive folders, watermark assets — BEFORE Gemma and TTS spend
-// minutes of work. A preflight failure fails the run immediately at the
-// join point, so no LLM/TTS work is wasted on a run that would fail at
-// audio compile anyway (e.g. missing clip audio for VOICEOVER_DUCKED_CLIP).
-//
-// The preflight runs EVERY check in parallel and collects ALL failures,
+// The preflight runs EVERY check concurrently and collects ALL failures,
 // so the operator sees the complete picture in one run instead of
 // failing → fixing → failing → fixing across N retries.
 //
@@ -126,7 +125,6 @@ type FixedSectionPreflight struct {
 
 type MediaPreflightInput struct {
 	ClipIDs           []string
-	IntroClipIDs      []string
 	FixedClips        []FixedClipPreflight
 	FixedSections     []FixedSectionPreflight
 	ClipProber        ClipPreflighter
@@ -181,9 +179,8 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 
 	// Flatten: one goroutine per check item. Add to wg BEFORE spawning.
 	// ── Clip existence ──────────────────────────────────────────
-	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.IntroClipIDs)+len(in.FixedClips))
+	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.FixedClips))
 	allClipIDs = append(allClipIDs, in.ClipIDs...)
-	allClipIDs = append(allClipIDs, in.IntroClipIDs...)
 	for _, fixed := range in.FixedClips {
 		allClipIDs = append(allClipIDs, fixed.ClipID)
 	}

@@ -29,7 +29,7 @@ func stockReferences(item GenerationItemV2) bool {
 }
 
 func clipReferences(item GenerationItemV2) bool {
-	return item.Source.Type == SourceClips || len(item.Source.ClipIDs) > 0 || len(item.Source.IntroClipIDs) > 0
+	return item.Source.Type == SourceClips || len(item.Source.ClipIDs) > 0
 }
 
 // validateMediaMode enforces the explicit stock/clip separation before the

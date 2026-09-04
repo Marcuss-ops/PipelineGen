@@ -97,23 +97,30 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			if url == "" {
 				url = entity.Image.DriveLink
 			}
-			entityID := firstNonEmpty(entity.CanonicalEntityID, entity.ID)
-			if entityID == "" {
-				for _, resolved := range bundle.Entities {
-					if strings.EqualFold(strings.TrimSpace(resolved.CanonicalText), strings.TrimSpace(entity.CanonicalName)) {
-						entityID = resolved.EntityID
-						break
-					}
+			// The asset's join key is the entity's StableEntityID as projected
+			// into bundle.Entities (the EntityTimeline occurrence id). The
+			// stamped CanonicalEntityID ("person:slug") is provenance, NOT the
+			// bundle join key: bundle.Entities live in the StableEntityID space
+			// ("ent_<hex>"), so joining by the canonical id would silently
+			// break the asset↔entity link (Validate fails closed on it).
+			entityID := ""
+			for _, resolved := range bundle.Entities {
+				if strings.EqualFold(strings.TrimSpace(resolved.CanonicalText), strings.TrimSpace(entity.CanonicalName)) {
+					entityID = resolved.EntityID
+					break
 				}
 			}
 			if entityID == "" {
+				// The entity has no certified timeline occurrence (not
+				// grounded or not spoken verbatim), so no bundle entity can
+				// claim this asset — it cannot be part of the render contract.
 				continue
 			}
 			bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
 				EntityID: entityID,
 				AssetID:  entity.Image.AssetID, ContentHash: entity.Image.SHA256,
-				DriveFileID: entity.Image.DriveFileID, SourceURL: entity.Image.PreviewURL,
-				Verified: entity.Image.PreviewURL != "" || entity.Image.DriveFileID != "",
+				DriveFileID: entity.Image.DriveFileID, SourceURL: url,
+				Verified: url != "" || entity.Image.DriveFileID != "",
 			})
 		}
 	}

@@ -17,6 +17,7 @@ package cliprender
 // raw caller-supplied path (asset_id is the only identity the API accepts).
 type AssetRef struct {
 	AssetID       string
+	Title         string
 	MediaType     string
 	LocalPath     string // registered local copy (may be absent)
 	DriveFileID   string // canonical Drive source (may be absent)
@@ -29,6 +30,7 @@ type AssetRef struct {
 // verified digest of the bytes at that path.
 type MaterializedAsset struct {
 	AssetID    string
+	Title      string
 	LocalPath  string
 	SHA256     string
 	SizeBytes  int64

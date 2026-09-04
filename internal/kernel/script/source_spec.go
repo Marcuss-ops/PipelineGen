@@ -103,7 +103,11 @@ type SourceSpec struct {
 	Guidelines      string   `json:"guidelines,omitempty"`
 	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
 
-	ClipIDs      []string `json:"clip_ids,omitempty"`
+	ClipIDs []string `json:"clip_ids,omitempty"`
+	// IntroClipIDs is a poison-pill field: the source.intro_clip_ids contract
+	// was removed in July 2026. The field exists ONLY so validation can reject
+	// legacy payloads with a precise error; it is never read, copied, or
+	// resolved. Use the item.intro fixed section (intro.clip_ids) instead.
 	IntroClipIDs []string `json:"intro_clip_ids,omitempty"`
 	NumClips     int      `json:"num_clips,omitempty"`
 

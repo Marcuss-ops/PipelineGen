@@ -36,7 +36,6 @@ type Source struct {
 	SourceText         string                      `json:"source_text,omitempty"`
 	ArtlistKeywords    []string                    `json:"artlist_keywords,omitempty"`
 	ClipIDs            []string                    `json:"clip_ids,omitempty"`
-	IntroClipIDs       []string                    `json:"intro_clip_ids,omitempty"`
 	NumClips           int                         `json:"num_clips,omitempty"`
 	Query              string                      `json:"query,omitempty"`
 	MaxClips           int                         `json:"max_clips,omitempty"`
@@ -504,8 +503,9 @@ type GenerateRequest struct {
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
 
 	// Intro is a literal intro section prepended verbatim. Never sent to
-	// the LLM — the runner injects it as the first scene (kind=intro)
-	// with the supplied clip binding. Text is spoken verbatim.
+	// the LLM — the runner injects it as the first protected fixed_media scene
+	// (role=opening) with the supplied clip bindings and original clip audio.
+	// It carries no speakable text: only optional display_text.
 	Intro *scriptpkg.FixedSection `json:"intro,omitempty"`
 
 	// Outro is a literal outro section appended verbatim. Same literal
@@ -532,6 +532,11 @@ type Scene struct {
 	// ExecutionMode is the canonical authorization boundary shared with
 	// SpecScene. Empty is generated for backward compatibility.
 	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
+	// Role is the explicit editorial timeline position (opening/body/closing).
+	// It is descriptive metadata only — authorization always flows through
+	// ExecutionMode. It replaces the old "intro/outro inferred from scene ID"
+	// convention: an ID like scene-intro is identity, never behavior.
+	Role scriptpkg.SceneRole `json:"role,omitempty"`
 	// FixedPlayback is present only for protected fixed-media scenes and
 	// carries the authoritative original-clip source window.
 	FixedPlayback *scriptpkg.FixedPlaybackPolicy `json:"fixed_playback,omitempty"`

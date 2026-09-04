@@ -100,10 +100,15 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
 			Mentions: mentions,
 		}
-		if kind == "PERSON" {
+		// Stamp the canonical_entity_id the Image Search Intent resolver
+		// chose for this entity (the join key of the overlay media index), so
+		// the overlay compile resolves the card asset under the SAME identity
+		// — never a re-derivation from a possibly-different surface.
+		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
+		if scriptpkg.IsAnnotationEntityKind(kind) {
 			item.Image = entityImageBindingFor(canonical, seg)
 		}
-		if kind == "PERSON" || kind == "ORG" || kind == "GPE" {
+		if scriptpkg.IsAnnotationEntityKind(kind) {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
@@ -163,10 +168,21 @@ func firstNonEmpty(values ...string) string {
 }
 
 func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
+	// RenderingGen materializes through the declared URL when the content hash
+	// is not already in its object store. Once PipelineGen has published the
+	// verified bytes, Drive is the durable source of truth: the provider URL
+	// may be volatile and can return different bytes for the same URL, which
+	// would make the worker's SHA-256 check fail closed.
 	if id := driveFileID(candidate.DriveLink); id != "" {
 		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
 	}
-	return firstNonEmpty(candidate.SourceURL, candidate.PreviewURL)
+	if source := strings.TrimSpace(candidate.SourceURL); source != "" {
+		return source
+	}
+	if preview := strings.TrimSpace(candidate.PreviewURL); preview != "" {
+		return preview
+	}
+	return ""
 }
 
 func driveFileID(link string) string {
@@ -179,7 +195,10 @@ func driveFileID(link string) string {
 	}
 	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
 	for i := range parts {
-		if (parts[i] == "d" || parts[i] == "file") && i+1 < len(parts) {
+		if parts[i] == "file" && i+2 < len(parts) && parts[i+1] == "d" {
+			return parts[i+2]
+		}
+		if parts[i] == "d" && i+1 < len(parts) {
 			return parts[i+1]
 		}
 	}
@@ -196,46 +215,11 @@ func maxInt(a, b int) int {
 }
 
 // normalizeEntityAnnotationType maps an extracted entity type onto the
-// canonical annotation kind, mirroring the batch adapter classification.
+// canonical annotation kind through the single kernel registry
+// (script.NormalizeAnnotationType), mirroring the batch adapter
+// classification with one shared taxonomy owner.
 func normalizeEntityAnnotationType(raw string) string {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "PERSON":
-		return "PERSON"
-	case "ORG", "ORGANIZATION", "COMPANY", "CORP", "CORPORATION", "BUSINESS":
-		return "ORG"
-	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
-		return "GPE"
-	case "DATE":
-		return "DATE"
-	case "TIME":
-		return "TIME"
-	case "CARDINAL":
-		return "CARDINAL"
-	case "NUMBER", "NUM":
-		return "NUMBER"
-	case "ORDINAL":
-		return "ORDINAL"
-	case "MONEY":
-		return "MONEY"
-	case "PERCENT":
-		return "PERCENT"
-	case "QUOTE":
-		return "QUOTE"
-	case "PRODUCT":
-		return "PRODUCT"
-	case "LOGO":
-		return "LOGO"
-	case "EVENT":
-		return "EVENT"
-	case "WORK_OF_ART", "WORK":
-		return "WORK_OF_ART"
-	case "KEYWORD":
-		return "KEYWORD"
-	case "VISUAL_SUBJECT":
-		return "VISUAL_SUBJECT"
-	default:
-		return "CONCEPT"
-	}
+	return scriptpkg.NormalizeAnnotationType(raw)
 }
 
 // findEntitySpan locates the first case-sensitive (then case-insensitive)

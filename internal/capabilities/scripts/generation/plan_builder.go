@@ -34,7 +34,6 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		Guidelines: editorialGuidelines(item), TargetWords: item.ScriptParams.TargetWords,
 		SingleScene: item.ScriptParams.SingleScene, Duration: item.ScriptParams.Duration,
 		MinWords: item.ScriptParams.MinWords, NumClips: item.Source.NumClips,
-		IntroClipIDs:      append([]string(nil), item.Source.IntroClipIDs...),
 		SegmentWords:      item.ScriptParams.SegmentWords,
 		Segments:          append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
 		SentencesPerImage: item.ScriptParams.SentencesPerImage,

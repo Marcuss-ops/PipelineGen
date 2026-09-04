@@ -466,6 +466,15 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
 	worker.WithRenderPublisher(publisher)
+	// Script/batch leaf-folder resolution (create-or-reuse under the caller's
+	// root): routed through the SAME delivery.Publisher, so folder creation
+	// has one canonical owner and the ClipRenderPublisher stays dumb (it
+	// receives the fully-resolved leaf folder ID and never creates folders).
+	destinationResolver, destinationResolverErr := clipadapters.NewClipRenderDestinationFolderResolver(root.Drive.Publisher, log)
+	if destinationResolverErr != nil {
+		return fmt.Errorf("registerClipRender: build clip render destination resolver: %w", destinationResolverErr)
+	}
+	worker.WithDestinationFolderResolver(destinationResolver)
 
 	// Overlay compositing hop (entity overlays): the segment resolver reads
 	// the SAME content cache the overlay.render handler writes (the

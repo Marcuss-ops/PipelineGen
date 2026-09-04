@@ -42,7 +42,7 @@ func TestAssetToPoint_SparseVector_HasServerSideShape(t *testing.T) {
 		t.Errorf("vectors.bm25_text.text = %v, want %q", m["text"], asset.SearchText)
 	}
 	if m["model"] != qdrantSchema.DefaultSparseModel {
-		t.Errorf("vectors.bm25_text.model = %v, want %q (qdrantSchema.DefaultSparseModel)", m["model"])
+		t.Errorf("vectors.bm25_text.model = %v, want %q (qdrantSchema.DefaultSparseModel)", m["model"], qdrantSchema.DefaultSparseModel)
 	}
 }
 

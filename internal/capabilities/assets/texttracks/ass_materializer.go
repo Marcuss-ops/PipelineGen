@@ -243,11 +243,11 @@ type FontPreset struct {
 }
 
 var defaultFontPresets = map[string]FontPreset{
-	"montserrat": {FontName: "Montserrat", FontSize: 54, Bold: 1, Outline: 3.5, Shadow: 2, MarginV: 32},
-	"impact":     {FontName: "Impact", FontSize: 58, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
-	"anton":      {FontName: "Anton", FontSize: 56, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
-	"bebas":      {FontName: "Bebas Neue", FontSize: 60, Bold: 0, Outline: 3.5, Shadow: 2, MarginV: 32},
-	"roboto":     {FontName: "Roboto", FontSize: 52, Bold: 1, Outline: 3.0, Shadow: 2, MarginV: 32},
+	"montserrat": {FontName: "Montserrat", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"impact":     {FontName: "Impact", FontSize: 62, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"anton":      {FontName: "Anton", FontSize: 60, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"bebas":      {FontName: "Bebas Neue", FontSize: 64, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"roboto":     {FontName: "Roboto", FontSize: 56, Bold: 1, Outline: 3.5, Shadow: 3, MarginV: 36},
 }
 
 // ResolveFontPreset maps a style ID or preset name to standard typography parameters.

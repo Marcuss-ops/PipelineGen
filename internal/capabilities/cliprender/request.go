@@ -159,6 +159,15 @@ type AudioSpec struct {
 // DestinationSpec routes the validated artifacts on Drive.
 type DestinationSpec struct {
 	DriveFolderID string `json:"drive_folder_id,omitempty"` // default DefaultDriveRootFolderID
+	// SubfolderName is the optional human-readable leaf folder the clip is
+	// published into, created/reused under DriveFolderID by the worker via
+	// the canonical DestinationFolderResolver (never by the publisher). All
+	// clips of one script/batch carry the SAME subfolder_name (e.g. the
+	// script title), so each job resolves create-or-reuse and they converge
+	// on a single shared Drive folder: ROOT/<SafeName(SubfolderName)>/
+	// <clip>.mp4. Empty = publish directly into DriveFolderID (legacy
+	// pre-resolved leaf behaviour).
+	SubfolderName string `json:"subfolder_name,omitempty"`
 }
 
 // ExecutionSpec selects the render execution policy. It is the ONLY

@@ -35,19 +35,37 @@ func validateGenerationSourceText(item GenerationItemV2, ref string) error {
 	return nil
 }
 
+// rejectDeprecatedIntroClipIDs fail-closes any V2 payload still carrying the
+// removed source.intro_clip_ids field. The legacy field conflated "narrated
+// intro clips" with the protected fixed-media intro section; the only intro
+// contract now is the explicit item.intro FixedSection block. The field is
+// never auto-converted, because the legacy semantics (generated narration
+// over the clip) differ from fixed media.
+func rejectDeprecatedIntroClipIDs(item GenerationItemV2, ref string) error {
+	if len(item.Source.IntroClipIDs) > 0 {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": source.intro_clip_ids is deprecated; use the item.intro fixed section (intro.clip_ids)",
+			},
+		}
+	}
+	return nil
+}
+
 // validateGenerationSourceClips validates root and segment-owned clip payloads.
 // Explicit segment ownership is authoritative. Legacy root clip_ids remains
 // accepted for compatibility, but is ignored whenever any segment declares
-// clip_ids; intro_clip_ids remains available for the intro segment.
+// clip_ids.
 func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
+	if err := rejectDeprecatedIntroClipIDs(item, ref); err != nil {
+		return err
+	}
 	segmentsExplicit := HasExplicitSegmentClipIDs(item.ScriptParams.Segments)
 	// Explicit segment ownership wins over the legacy root field. Keep
 	// accepting source.clip_ids for compatibility, but never redistribute
 	// it when any segment declares clip_ids (including an explicit []).
 	// Validate empty IDs before the aggregate so legacy error messages remain stable.
-	if firstEmpty(item.Source.IntroClipIDs) != -1 {
-		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": intro_clip_ids cannot be empty or whitespace-only"}}
-	}
 	if segmentsExplicit {
 		for i, segment := range item.ScriptParams.Segments {
 			if firstEmpty(segment.ClipIDs) != -1 {
@@ -61,21 +79,8 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 		return &PlanInvalidError{
 			ItemID: item.ID,
 			Details: []string{
-				ref + ": clips source requires at least one clip_id in source.clip_ids, source.intro_clip_ids, or script_params.segments[].clip_ids",
+				ref + ": clips source requires at least one clip_id in source.clip_ids or script_params.segments[].clip_ids",
 			},
-		}
-	}
-
-	if empty := firstEmpty(item.Source.IntroClipIDs); empty != -1 {
-		return &PlanInvalidError{
-			ItemID:  item.ID,
-			Details: []string{ref + ": intro_clip_ids cannot be empty or whitespace-only"},
-		}
-	}
-	if dup := firstDuplicate(item.Source.IntroClipIDs); dup != "" {
-		return &PlanInvalidError{
-			ItemID:  item.ID,
-			Details: []string{ref + ": duplicate intro_clip_id " + dup},
 		}
 	}
 
@@ -90,14 +95,6 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 			return &PlanInvalidError{
 				ItemID:  item.ID,
 				Details: []string{ref + ": duplicate clip_id " + dup},
-			}
-		}
-		all := append([]string(nil), item.Source.IntroClipIDs...)
-		all = append(all, item.Source.ClipIDs...)
-		if dup := firstDuplicate(all); dup != "" {
-			return &PlanInvalidError{
-				ItemID:  item.ID,
-				Details: []string{ref + ": duplicate clip_id " + dup + " across legacy ownership fields"},
 			}
 		}
 		return nil
@@ -122,6 +119,9 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 
 // validateGenerationSourceCatalogOrSearch validates a catalog or search item.
 func validateGenerationSourceCatalogOrSearch(item GenerationItemV2, ref string) error {
+	if err := rejectDeprecatedIntroClipIDs(item, ref); err != nil {
+		return err
+	}
 	if item.Source.Query == "" {
 		return &PlanInvalidError{
 			ItemID:  item.ID,
@@ -199,8 +199,8 @@ func HasExplicitSegmentClipIDs(segments []ScriptSegment) bool {
 
 // CanonicalizeSegmentClipIDs normalizes legacy root clip fields into the
 // segment model without changing the caller's slices. Explicit segment-owned
-// clip_ids always win. In the legacy shape, intro clips stay on the first
-// segment and root clips are distributed in order.
+// clip_ids always win. In the legacy shape, root clips are distributed in
+// order across segments.
 func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []ScriptSegment {
 	out := CloneScriptSegments(segments)
 	if len(out) == 0 {
@@ -208,43 +208,15 @@ func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []S
 	}
 
 	if HasExplicitSegmentClipIDs(out) {
-		if len(source.IntroClipIDs) > 0 {
-			// When the caller already assigned every intro clip to an explicit
-			// segment, preserve that one-clip/one-prompt ownership.  Merging the
-			// same IDs into the first intro scene makes the model narrate several
-			// clips together and leaves later Drive bindings looking like source
-			// links.  Legacy payloads that declare intro IDs only at the root keep
-			// the historical prepend behavior below.
-			assigned := make(map[string]struct{})
-			for _, segment := range out {
-				for _, clipID := range segment.ClipIDs {
-					assigned[clipID] = struct{}{}
-				}
-			}
-			allAssigned := true
-			for _, clipID := range source.IntroClipIDs {
-				if _, ok := assigned[clipID]; !ok {
-					allAssigned = false
-					break
-				}
-			}
-			if allAssigned {
-				return out
-			}
-			introIndex := 0
-			for i, segment := range out {
-				if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") || strings.EqualFold(strings.TrimSpace(segment.ID), "intro") {
-					introIndex = i
-					break
-				}
-			}
-			out[introIndex].ClipIDs = prependUnique(source.IntroClipIDs, out[introIndex].ClipIDs)
-		}
 		return out
 	}
 
-	out[0].ClipIDs = appendUnique(out[0].ClipIDs, source.IntroClipIDs...)
-	rootIDs := appendUnique(nil, source.ClipIDs...)
+	rootIDs := make([]string, 0, len(source.ClipIDs))
+	for _, id := range source.ClipIDs {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			rootIDs = append(rootIDs, trimmed)
+		}
+	}
 	cursor := 0
 	for i := range out {
 		remaining := len(rootIDs) - cursor
@@ -264,18 +236,14 @@ func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []S
 // CollectRequestedClipIDs returns the unique, ordered IDs the clips resolver
 // is allowed to fetch. It never searches for replacements.
 func CollectRequestedClipIDs(source SourceSpec, segments []ScriptSegment) []string {
-	ids := appendUnique(nil, source.IntroClipIDs...)
 	if HasExplicitSegmentClipIDs(segments) {
+		ids := []string{}
 		for _, segment := range segments {
 			ids = appendUnique(ids, segment.ClipIDs...)
 		}
 		return ids
 	}
-	return appendUnique(ids, source.ClipIDs...)
-}
-
-func prependUnique(prefix, values []string) []string {
-	return appendUnique(appendUnique(nil, prefix...), values...)
+	return appendUnique(nil, source.ClipIDs...)
 }
 
 func appendUnique(dst []string, values ...string) []string {
@@ -291,7 +259,7 @@ func appendUnique(dst []string, values ...string) []string {
 		if value == "" {
 			continue
 		}
-		if _, exists := seen[value]; exists {
+		if _, ok := seen[value]; ok {
 			continue
 		}
 		seen[value] = struct{}{}

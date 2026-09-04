@@ -288,7 +288,6 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		ImagesPerScene:      req.ScriptParams.ImagesPerScene,
 		Style:               firstNonEmpty(req.Style, req.ScriptParams.Style),
 		Guidelines:          req.ScriptParams.Guidelines,
-		IntroClipIDs:        append([]string(nil), req.Source.IntroClipIDs...),
 		NumClips:            req.Source.NumClips,
 		MediaPlan:           req.MediaPlan.Clone(),
 		GroundingPolicy:     req.Source.GroundingPolicy,

@@ -198,6 +198,16 @@ func ValidateChunkedVoiceovers(result GenerateResult) error {
 			return fmt.Errorf("duplicate scene id %q", scene.ID)
 		}
 		seenScenes[scene.ID] = struct{}{}
+		// Protected fixed-media scenes are exempt from the one-to-one mapping
+		// AND act as a reverse firewall: their display text is never
+		// synthesized, so a generated voiceover binding on them is a contract
+		// violation, not a lenient skip.
+		if scene.ExecutionMode.IsFixedMedia() {
+			if len(scene.Voiceover) != 0 {
+				return fmt.Errorf("scene %s is fixed_media and must not carry generated voiceover", scene.ID)
+			}
+			continue
+		}
 		for lang, text := range scene.Text {
 			if strings.TrimSpace(text) == "" {
 				continue

@@ -64,10 +64,12 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 	seen := map[string]bool{}
 	for _, entity := range seg.Insights.Entities {
 		value := strings.TrimSpace(entity.Value)
-		if strings.EqualFold(strings.TrimSpace(entity.Type), "KEYWORD") {
+		kind := normalizeAnnotationType(entity.Type)
+		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
+			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
+			// spoken entities (mirror of the runner projection).
 			continue
 		}
-		kind := normalizeAnnotationType(entity.Type)
 		if value == "" {
 			continue
 		}
@@ -115,8 +117,8 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		// chose for this entity (the join key of the overlay media index), so
 		// the overlay compile resolves the card asset under the SAME identity
 		// — never a re-derivation from a possibly-different surface.
-		item.CanonicalEntityID = resolverCanonicalID(seg, canonical, value)
-		if kind == "PERSON" || kind == "ORG" || kind == "GPE" {
+		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
+		if scriptpkg.IsAnnotationEntityKind(kind) {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
@@ -262,7 +264,7 @@ func rebaseSceneAnnotations(in *scriptpkg.SceneAnnotations, text string) *script
 		if duplicate {
 			continue
 		}
-		if entity.Type == "PERSON" || entity.Type == "ORG" || entity.Type == "GPE" {
+		if scriptpkg.IsAnnotationEntityKind(entity.Type) {
 			out.PrimaryEntities = append(out.PrimaryEntities, entity)
 		} else {
 			out.SecondaryEntities = append(out.SecondaryEntities, entity)
@@ -493,49 +495,12 @@ func findAnnotationSpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 	return scriptpkg.AnnotationSpan{}, false
 }
 
-// resolverCanonicalID looks up the canonical_entity_id the Image Search
-// Intent resolver chose for an entity, joined by the lowercased canonical
-// name first and then the raw extracted value (the resolver may key a
-// different spelling). Empty when the resolver was not wired or the entity
-// was not part of its decision — the overlay compile then derives the id
-// deterministically from (type, canonical name).
-func resolverCanonicalID(seg scriptpkg.VidRushSegmentResult, canonical, value string) string {
-	if len(seg.Insights.ImageEntityCanonicalIDs) == 0 {
-		return ""
-	}
-	if id := seg.Insights.ImageEntityCanonicalIDs[strings.ToLower(strings.TrimSpace(canonical))]; id != "" {
-		return id
-	}
-	return seg.Insights.ImageEntityCanonicalIDs[strings.ToLower(strings.TrimSpace(value))]
-}
-
+// normalizeAnnotationType maps an extracted entity type onto the canonical
+// annotation kind through the single kernel registry
+// (script.NormalizeAnnotationType). It is a thin alias so the batch merger
+// and the runner projection share one taxonomy owner.
 func normalizeAnnotationType(raw string) string {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "PERSON":
-		return "PERSON"
-	case "ORG", "ORGANIZATION":
-		return "ORG"
-	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
-		return "GPE"
-	case "DATE":
-		return "DATE"
-	case "TIME":
-		return "TIME"
-	case "CARDINAL":
-		return "CARDINAL"
-	case "ORDINAL":
-		return "ORDINAL"
-	case "MONEY":
-		return "MONEY"
-	case "PERCENT":
-		return "PERCENT"
-	case "EVENT":
-		return "EVENT"
-	case "WORK_OF_ART", "WORK":
-		return "WORK_OF_ART"
-	default:
-		return "CONCEPT"
-	}
+	return scriptpkg.NormalizeAnnotationType(raw)
 }
 
 func safeAnnotationID(value string) string {

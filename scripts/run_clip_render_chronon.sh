@@ -19,6 +19,11 @@ PAYLOAD_FILE="${2:-${CLIP_RENDER_PAYLOAD:-}}"
 BASE_URL="${PIPELINEGEN_URL:-http://127.0.0.1:8000}"
 TOKEN="${VELOX_ADMIN_TOKEN:-${VELOX_PIPELINEGEN_TOKEN:-}}"
 DRIVE_FOLDER_ID="${CLIP_RENDER_DRIVE_FOLDER_ID:-1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K}"
+# Optional script/batch subfolder under DRIVE_FOLDER_ID (e.g. the script
+# title). When set, the worker resolves ROOT/<name>/ create-or-reuse ONCE per
+# job; all clips of the same batch carry the same value and land together in
+# one Drive folder. Empty = publish directly into DRIVE_FOLDER_ID (legacy).
+SUBFOLDER_NAME="${CLIP_RENDER_DRIVE_SUBFOLDER:-}"
 POLL_SECONDS="${CLIP_RENDER_POLL_SECONDS:-2}"
 TIMEOUT_SECONDS="${CLIP_RENDER_TIMEOUT_SECONDS:-900}"
 
@@ -58,11 +63,11 @@ else
       },
       background: {mode: "none"},
       audio: {mode: "copy_if_compatible"},
-      destination: {drive_folder_id: $folder},
+      destination: ({drive_folder_id: $folder} + (if ($subfolder // "") == "" then {} else {subfolder_name: $subfolder} end)),
       output: {contract: "VELOX_ASSEMBLY_READY_V1"},
       execution: {require_gpu: true}
     }
-  ' --arg folder "$DRIVE_FOLDER_ID" > "$PAYLOAD"
+  ' --arg folder "$DRIVE_FOLDER_ID" --arg subfolder "$SUBFOLDER_NAME" > "$PAYLOAD"
 fi
 
 RUN_ID="clip-chronon-$(date -u +%Y%m%d-%H%M%S)-$$"

@@ -70,7 +70,6 @@ func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 		ArtlistKeywords:    copyStrings(src.ArtlistKeywords),
 		Guidelines:         src.Guidelines,
 		ClipIDs:            copyStrings(src.ClipIDs),
-		IntroClipIDs:       copyStrings(src.IntroClipIDs),
 		NumClips:           src.NumClips,
 		Query:              src.Query,
 		MaxClips:           src.MaxClips,

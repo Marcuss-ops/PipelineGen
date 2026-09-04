@@ -3,6 +3,7 @@ package script
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -61,11 +62,18 @@ func TestMediaModeStockOnlyRejectsClipIDs(t *testing.T) {
 	}
 }
 
-func TestMediaModeStockOnlyRejectsIntroClipIDs(t *testing.T) {
+func TestMediaModeStockOnlyRejectsDeprecatedIntroClipIDs(t *testing.T) {
+	// source.intro_clip_ids was removed from the contract (July 2026): any
+	// payload still carrying it fails closed at the envelope fence, before
+	// media-mode dispatch, regardless of source type.
 	i := stockOnlyItem()
 	i.Source.IntroClipIDs = []string{"clip-1"}
-	if got := validateMediaItem(t, i).Code; got != "MEDIA_MODE_CONFLICT" {
-		t.Fatalf("code=%s", got)
+	err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{i}}).Validate()
+	if err == nil {
+		t.Fatal("expected deprecation rejection for source.intro_clip_ids")
+	}
+	if !strings.Contains(err.Error(), "source.intro_clip_ids is deprecated") {
+		t.Fatalf("error = %v, want deprecation rejection", err)
 	}
 }
 

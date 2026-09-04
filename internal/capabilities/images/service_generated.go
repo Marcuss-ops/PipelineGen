@@ -44,7 +44,7 @@ func (s *Service) GenerateArtifact(ctx context.Context, jobID, prompt, style str
 	if s == nil || s.Gen == nil {
 		return nil, ErrImageGenNotImplemented
 	}
-	return RunUsage(ctx, UsecaseDeps{Registry: s.Gen.registry, Styles: s.Gen.styles, Log: s.Gen.log}, UsecaseCommand{
+	return RunUsage(ctx, s.Gen.UsecaseDeps(), UsecaseCommand{
 		JobID: jobID, Prompt: prompt, Style: style, Width: width, Height: height,
 		Tags: tags, OutputPath: "",
 	})

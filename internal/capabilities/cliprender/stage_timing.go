@@ -19,6 +19,12 @@ package cliprender
 import kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 const (
+	// StageClipDestinationResolve is the one-time Drive leaf-folder
+	// resolution (root + destination.subfolder_name → resolved leaf) that
+	// runs before preparation when the request names a script/batch
+	// subfolder. Recorded only when destination.subfolder_name is set — a
+	// request publishing into a pre-resolved folder has no resolution stage.
+	StageClipDestinationResolve kernobs.StageName = "clip.destination_resolve"
 	// StageClipPrepare is the parallel preparation phase (asset resolution +
 	// materialization + transcript lookup/reuse). Hosts the transcript
 	// generation (ASR) work when a fresh transcript is required.

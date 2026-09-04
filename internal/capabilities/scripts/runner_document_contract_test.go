@@ -15,6 +15,55 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// TestModelScriptOutputForDocumentDerivesFixedKindFromRole certifies that the
+// document SpecScene projection maps fixed intro/outro sections from their
+// explicit SceneRole: a custom-ID fixed scene ("branded-intro") is still the
+// intro document section, and its DisplayText never becomes speakable Text.
+func TestModelScriptOutputForDocumentDerivesFixedKindFromRole(t *testing.T) {
+	result := &GenerateResult{
+		Title: "Fixed Media",
+		Scenes: []Scene{
+			{
+				ID: "branded-intro", Index: 0,
+				Role:          scriptpkg.SceneRoleOpening,
+				ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+				Text:          map[Language]string{"en": "Welcome"},
+				Clips:         []*ClipReference{{ID: "intro-a"}, {ID: "intro-b"}},
+			},
+			{
+				ID: "body-0", Index: 1,
+				Text: map[Language]string{"en": "Body narration"},
+				Clip: &ClipReference{ID: "body-a"},
+			},
+			{
+				ID: "branded-outro", Index: 2,
+				Role:          scriptpkg.SceneRoleClosing,
+				ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+				Text:          map[Language]string{"en": "Thanks"},
+				Clips:         []*ClipReference{{ID: "outro-a"}},
+			},
+		},
+	}
+	model := modelScriptOutputForDocument(result, "en")
+	require.NotNil(t, model)
+	require.Len(t, model.SpecScene.Scenes, 3)
+	intro := model.SpecScene.Scenes[0]
+	if intro.ID != "branded-intro" || intro.Kind != scriptpkg.SceneIntro {
+		t.Fatalf("doc intro = %q kind %q, want custom id + SceneIntro from role", intro.ID, intro.Kind)
+	}
+	if intro.Text != "" || intro.DisplayText != "Welcome" {
+		t.Fatalf("doc intro text=%q display=%q, want display text only", intro.Text, intro.DisplayText)
+	}
+	require.Len(t, intro.Bindings.Clips, 2, "two-clip fixed intro must carry both clip bindings")
+	if model.SpecScene.Scenes[1].Kind != scriptpkg.SceneClip {
+		t.Fatalf("doc body kind = %q, want SceneClip", model.SpecScene.Scenes[1].Kind)
+	}
+	outro := model.SpecScene.Scenes[2]
+	if outro.ID != "branded-outro" || outro.Kind != scriptpkg.SceneOutro {
+		t.Fatalf("doc outro = %q kind %q, want custom id + SceneOutro from role", outro.ID, outro.Kind)
+	}
+}
+
 func TestRunnerDocumentPhase_UsesCanonicalRendererContract(t *testing.T) {
 	result := &GenerateResult{
 		Title: "Actors Comedy Clips",

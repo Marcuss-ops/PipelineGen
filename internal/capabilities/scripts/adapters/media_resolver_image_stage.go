@@ -453,7 +453,10 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 		return spec
 	}
 	out := cloneSpecSceneOutput(spec)
-	allowed := map[string]bool{"PERSON": true, "ORG": true, "GPE": true}
+	// The default imageable set mirrors the kernel taxonomy registry
+	// (script.IsAnnotationEntityKind): PERSON/ORG/GPE entity cards plus the
+	// PRODUCT/LOGO media kinds. An explicit policy replaces the set.
+	allowed := map[string]bool{"PERSON": true, "ORG": true, "GPE": true, "PRODUCT": true, "LOGO": true}
 	if len(policy.EntityTypes) > 0 {
 		allowed = make(map[string]bool, len(policy.EntityTypes))
 		for _, raw := range policy.EntityTypes {

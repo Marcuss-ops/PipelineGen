@@ -155,6 +155,35 @@ func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
 	require.Equal(t, "scene-1", result.SceneID)
 }
 
+func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testing.T) {
+	segments := []scriptpkg.VidRushSegmentResult{{
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Michael Jordan", Type: "PERSON"},
+				{Value: "career", Type: "CONCEPT"},
+				{Value: "2025", Type: "DATE"},
+			},
+			ImportantPhrases: []string{"Michael Jordan spoke"},
+			ImportantWords:   []string{"career"},
+			ImageQueries:     []string{"Michael Jordan", "career", "2025"},
+		},
+	}}
+
+	got := filterEntityRenderSurface(segments)
+	if len(got) != 1 {
+		t.Fatalf("segments = %d, want 1", len(got))
+	}
+	if len(got[0].Insights.Entities) != 1 || got[0].Insights.Entities[0].Value != "Michael Jordan" {
+		t.Fatalf("entities = %+v, want only Michael Jordan", got[0].Insights.Entities)
+	}
+	if len(got[0].Insights.ImportantPhrases) != 1 || len(got[0].Insights.ImportantWords) != 0 {
+		t.Fatalf("phrase/word surface = %+v/%+v, want phrase only", got[0].Insights.ImportantPhrases, got[0].Insights.ImportantWords)
+	}
+	if len(got[0].Insights.ImageQueries) != 1 || got[0].Insights.ImageQueries[0] != "Michael Jordan" {
+		t.Fatalf("image queries = %+v, want only entity query", got[0].Insights.ImageQueries)
+	}
+}
+
 // TestSemanticProviderResolverBindsWinnerFromLocalFirst pins the Fase 4 +
 // Fase 5 resolver: it resolves candidates LOCAL FIRST (0 provider requests),
 // ranks them via the MediaSampler, and binds the winner as the primary asset.

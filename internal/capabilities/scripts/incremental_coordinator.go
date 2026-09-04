@@ -10,9 +10,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -37,6 +39,13 @@ type VidRushIncrementalCoordinator struct {
 	plan         *scriptpkg.ResolvedGenerationPlan
 	backpressure VidRushBackpressure
 	gate         *GenerationGate
+
+	// imageSearchResolver is the deterministic Image Search Intent resolver
+	// (capabilities/imagesearch) whose canonical_entity_id decisions are
+	// stamped into every segment's insights, so the annotation projection
+	// joins entity cards and media on the SAME identity the resolver chose.
+	// Nil keeps the legacy deterministic derivation (from (type, name)).
+	imageSearchResolver *capabilityimagesearch.Resolver
 
 	metrics VidRushMetrics
 
@@ -141,6 +150,63 @@ func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) 
 	if c != nil {
 		c.gate = gate
 	}
+}
+
+// SetImageSearchResolver wires the deterministic Image Search Intent
+// resolver into the enrichment chain. When wired, every segment result is
+// stamped with the canonical_entity_id the resolver chose for its entities
+// (Insights.ImageEntityCanonicalIDs + Insights.ImagePrimaryCanonicalID) so
+// the annotation projection never re-derives an identity the resolver
+// already disambiguated. Nil keeps the legacy deterministic derivation.
+func (c *VidRushIncrementalCoordinator) SetImageSearchResolver(resolver *capabilityimagesearch.Resolver) {
+	if c != nil {
+		c.imageSearchResolver = resolver
+	}
+}
+
+// stampImageSearchDecision runs the Image Search Intent resolver on the
+// scene's narration text and stamps the canonical ids it chose into the
+// segment insights. Keys are the lowercased resolved surface AND the
+// verbatim matched span, so the annotation projection joins by the exact
+// name it grounds (Italian canonicalizes to the English identity while the
+// verbatim Italian span stays a lookup key). Visual value entities (MONEY /
+// DATE / EVENT) are stamped too: their canonical id is the same deterministic
+// derivation, so stamping is harmless and keeps one identity owner.
+func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Context, result scriptpkg.VidRushSegmentResult, text, language string) (scriptpkg.VidRushSegmentResult, error) {
+	if c == nil || c.imageSearchResolver == nil {
+		return result, nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return result, nil
+	}
+	decision := c.imageSearchResolver.Resolve(ctx, capabilityimagesearch.Request{
+		Text:     text,
+		Language: language,
+	})
+	if decision.Primary != nil && strings.TrimSpace(decision.Primary.CanonicalID) != "" {
+		result.Insights.ImagePrimaryCanonicalID = decision.Primary.CanonicalID
+	}
+	ids := make(map[string]string, len(decision.Entities)+len(decision.Visual))
+	stamp := func(entities []capabilityimagesearch.ResolvedEntity) {
+		for _, e := range entities {
+			if strings.TrimSpace(e.CanonicalID) == "" {
+				continue
+			}
+			if key := strings.ToLower(strings.TrimSpace(e.Text)); key != "" {
+				ids[key] = e.CanonicalID
+			}
+			if verbatim := strings.ToLower(strings.TrimSpace(e.Verbatim)); verbatim != "" {
+				ids[verbatim] = e.CanonicalID
+			}
+		}
+	}
+	stamp(decision.Entities)
+	stamp(decision.Visual)
+	if len(ids) > 0 {
+		result.Insights.ImageEntityCanonicalIDs = ids
+	}
+	return result, nil
 }
 
 // SetMetrics wires the bounded per-scene VidRush metrics recorder. A nil
@@ -297,6 +363,12 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		// and low-priority against the generation gate so scene generation is
 		// never starved when both share the same model.
 		result, err := c.enrichSegment(enrichCtx, scene)
+		if err == nil {
+			// Stage 1b — canonical identity stamping: the Image Search Intent
+			// resolver's canonical_entity_id choices travel with the segment
+			// (never re-derived downstream by the annotation projection).
+			result, err = c.stampImageSearchDecision(enrichCtx, result, scene.Text, event.Language)
+		}
 		if err == nil {
 			result, err = c.researchSegment(enrichCtx, result)
 		}

@@ -73,8 +73,16 @@ func (r *ClipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 		return nil, fmt.Errorf("asset %q not found", assetID)
 	}
 	a := details.Asset
+	title := ""
+	if a != nil {
+		title = a.Title()
+		if title == "" {
+			title = a.Name
+		}
+	}
 	ref := &cliprender.AssetRef{
 		AssetID:       a.ID,
+		Title:         title,
 		MediaType:     string(a.MediaType),
 		LocalPath:     a.LocalPath(),
 		DriveFileID:   a.DriveFileID(),
@@ -84,6 +92,7 @@ func (r *ClipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 	r.log.Info("clip.render.asset_resolve.done",
 		zap.String("subsystem", "cliprender_asset_resolver"),
 		zap.String("asset_id", assetID),
+		zap.String("title", ref.Title),
 		zap.String("media_type", ref.MediaType),
 		zap.String("local_path", ref.LocalPath),
 		zap.String("drive_file_id", ref.DriveFileID),
@@ -128,6 +137,7 @@ func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 	m.log.Info("clip.render.materialize.start",
 		zap.String("subsystem", "cliprender_materializer"),
 		zap.String("asset_id", ref.AssetID),
+		zap.String("title", ref.Title),
 		zap.String("local_path", ref.LocalPath),
 		zap.String("drive_file_id", ref.DriveFileID),
 	)
@@ -163,6 +173,7 @@ func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 	m.log.Info("clip.render.materialize.done",
 		zap.String("subsystem", "cliprender_materializer"),
 		zap.String("asset_id", ref.AssetID),
+		zap.String("title", ref.Title),
 		zap.String("branch", result.OriginTag()),
 		zap.Bool("cache_hit", result.FromCache),
 		zap.Bool("from_cache", result.FromCache),
@@ -174,6 +185,7 @@ func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 
 	return &cliprender.MaterializedAsset{
 		AssetID:    ref.AssetID,
+		Title:      ref.Title,
 		LocalPath:  result.LocalPath,
 		SHA256:     result.SHA256,
 		SizeBytes:  result.SizeBytes,

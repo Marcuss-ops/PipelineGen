@@ -5,6 +5,13 @@
 // in the same synthesis stream as the audio) and mapped onto the final
 // combined timeline via the scene's canonical offset.
 //
+// Entity repeat policy (explicit): ONCE_PER_SCENE. Each entity is projected
+// as exactly ONE EntitySource per scene, anchored to its first verbatim
+// mention; rendering the same person three times in thirty seconds is
+// deliberately avoided. "Every mention" rendering is NOT part of this
+// contract — the projection surface is the entity's first renderable
+// occurrence, and consumers must not assume per-mention events.
+//
 // The projection is fail-closed, exactly like the phrase timing projection:
 // a scene that carries both annotations and word timing must ground and
 // speak every entity verbatim, or the run fails instead of producing a
@@ -76,10 +83,18 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 	return nil
 }
 
+// entityRepeatPolicy is the explicit product policy for entity visual
+// repetition: each entity is rendered at most once per scene (first
+// renderable occurrence). See the package doc for the full contract.
+const entityRepeatPolicy = "once_per_scene"
+
 // entitySourcesFromAnnotations projects a scene's annotations onto the
-// neutral EntitySource inputs consumed by the capability builder. The rune
-// span of the entity's first mention is forwarded so the builder verifies
-// the exact text anchor instead of re-deriving it.
+// neutral EntitySource inputs consumed by the capability builder. It emits
+// exactly ONE source per entity (entityRepeatPolicy = once_per_scene): the
+// rune span of the entity's first mention is forwarded so the builder
+// verifies the exact text anchor instead of re-deriving it. Later mentions
+// of the same entity in the scene are intentionally NOT projected as
+// separate sources.
 func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations) []capabilityentities.EntitySource {
 	if ann == nil {
 		return nil
