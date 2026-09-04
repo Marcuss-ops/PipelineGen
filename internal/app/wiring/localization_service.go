@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -46,39 +47,19 @@ import (
 // LocalizedClipPlan fingerprints. These are resolved ONCE at the composition
 // root and shared by every localized render — never re-derived per plan.
 type LocalizationConfig struct {
-	// SourceLanguage is the canonical BCP-47 language of the source clip
-	// (the transcript track the source-language plan burns).
 	SourceLanguage string
-	// OutputProfileHash identifies the canonical render output profile
-	// (codec/geometry). Folded into every plan fingerprint.
 	OutputProfileHash string
-	// RendererVersion pins the renderer binary/behavior version.
 	RendererVersion string
-	// SubtitleStyleHash is the canonical ASS style + generator hash baked
-	// into every burned .ass.
 	SubtitleStyleHash string
-	// EncoderPolicyHash is the canonical 64-hex SHA-256 of the encoder
-	// policy (preset / CRF / pixel format) applied to every render.
 	EncoderPolicyHash string
-	// WorkDir is the scratch root where rendered outputs + subtitle ASS land.
 	WorkDir                 string
 	GlobalRenderConcurrency int
 	UploadConcurrency       int
 }
 
-// LocalizationRendererVersion is the canonical renderer version for the
-// localized clip render boundary. It is a fingerprint input: bumping it
-// invalidates every cached localized artifact.
 const LocalizationRendererVersion = "chronon-render/localization-v1"
-
-// LocalizationSubtitleStyleHash is the canonical ASS style identifier for
-// localized subtitle burn. It is a fingerprint input (changing the style
-// bumps every variant fingerprint) and a valid ASS style name.
 const LocalizationSubtitleStyleHash = "vidrush-default"
 
-// LocalizationService is the composition-root facade for the localization
-// fan-out. It is immutable after construction and safe for concurrent
-// Localize calls.
 type LocalizationService struct {
 	sources localization.SourceResolver
 	plans   localization.PlanBuilder
@@ -86,9 +67,6 @@ type LocalizationService struct {
 	cfg     LocalizationConfig
 }
 
-// LocalizationDeps are the capability ports the composition root wires. Each
-// port is satisfied by a concrete adapter already built from the canonical
-// infrastructure (see BuildLocalizationService).
 type LocalizationDeps struct {
 	Sources          localization.SourceResolver
 	TrackResolver    localization.TrackResolver
@@ -99,10 +77,6 @@ type LocalizationDeps struct {
 	DocPublisher     localization.DocPublisher
 }
 
-// NewLocalizationService wires the capability objects from the resolved
-// ports. Fail-closed: every port is mandatory — a service that cannot
-// resolve, build plans, render, upload, or assemble can never complete a
-// fan-out.
 func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*LocalizationService, error) {
 	compiler, err := localization.NewLocalizedClipCompiler(deps.Sources, localization.CompilerConfig{
 		WorkDir:           cfg.WorkDir,
@@ -146,60 +120,31 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	return &LocalizationService{sources: deps.Sources, plans: plans, service: svc, cfg: cfg}, nil
 }
 
-// LocalizeInput is the fully-resolved input for one localization fan-out.
 type LocalizeInput struct {
-	// AssetID is the canonical source clip asset id.
 	AssetID string
-	// JobID correlates the fan-out to its enclosing Master job (may be empty).
 	JobID string
-	// SceneID is the editorial scene (optional for standalone clips).
 	SceneID string
-	// ClipID overrides the plan ClipID; empty means "use AssetID".
 	ClipID string
-	// SourceLanguage overrides LocalizationConfig.SourceLanguage for this call
-	// (clips may differ in language); empty falls back to the config value.
 	SourceLanguage string
 	Watermark      *cliprender.MaterializedAsset
 	WatermarkSpec  *cliprender.WatermarkSpec
 	WatermarkText  string
-
-	// Background is the resolved background layer: the materialized asset
-	// (non-nil ONLY for mode=asset) plus the request-level mode
-	// (none | blur_source | asset).
 	Background     *cliprender.MaterializedAsset
 	BackgroundMode string
-
-	// SubtitlesStyle carries the caller's explicit subtitle visual overrides
-	// (color, size, shadow, transition) into the sealed render plan.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
-
 	ForegroundScalePercent int
-
-	// Request is the ordered language fan-out + render concurrency.
 	Request localization.LocalizationRequest
-
-	// FolderID is the Drive folder the rendered clips upload into.
 	FolderID string
-	// SubtitleFolderID is the resolved per-clip Drive folder for the ASS.
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
 	OnRendered             func(localization.LocalizedClipArtifact) error
-	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
-	// localization manifest Google Doc.
 	DocTitle          string
 	DocFolderID       string
 	DocIdempotencyKey string
 	DocForce          bool
-	// SkipDocument keeps clip localization limited to MP4 render/upload. The
-	// script-generation runner publishes the single final Google Doc.
 	SkipDocument bool
 }
 
-// Localize runs the full fan-out: resolve the source facts, build the
-// fingerprinted plans, then render + upload + assemble. Fail-closed: an
-// invalid request, an unresolvable source, or a plan-build failure aborts
-// before any render starts; per-language render/upload failures are recorded
-// on the result without aborting the other languages.
 func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
 	if s == nil || s.sources == nil || s.plans == nil || s.service == nil {
 		return nil, fmt.Errorf("localization service is not initialized")
@@ -268,8 +213,6 @@ func (s *LocalizationService) resolveSubtitleStyleHash(style *scriptpkg.VideoVis
 	return fmt.Sprintf("%s-%s", LocalizationSubtitleStyleHash, font)
 }
 
-// UploadRendered republishes a locally certified artifact without invoking
-// the renderer. It is used only by crash/retry recovery of localized clips.
 func (s *LocalizationService) UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error) {
 	if s == nil || s.service == nil {
 		return artifact, fmt.Errorf("localization service: upload-only service is not wired")
@@ -277,11 +220,6 @@ func (s *LocalizationService) UploadRendered(ctx context.Context, artifact local
 	return s.service.UploadRendered(ctx, artifact, folderID)
 }
 
-// BuildLocalizationService is the composition-root factory: it wires the
-// concrete adapters from the *ComposeRoot into the localization
-// capability. Fail-closed: a missing dependency (asset registry, text-track
-// store, Drive publisher, Doc client, RenderingGen/Chronon render boundary, or media config)
-// is a typed error, never a silently degraded fan-out.
 func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*LocalizationService, error) {
 	if root == nil {
 		return nil, fmt.Errorf("localization service: composition root is nil")
@@ -307,8 +245,6 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		return nil, fmt.Errorf("localization service: text-track repository %T does not expose FindByID (subtitle PK lookup)", root.Repos.TextTrackRepo)
 	}
 
-	// Source resolution: reuse the SAME asset registry + materializer + probe
-	// adapters the clip.render preparation phase uses (no second path).
 	scratchDir := filepath.Join(cfg.Storage.TempPath(), "localization")
 	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 	if resolverErr != nil {
@@ -325,14 +261,9 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	sources := localizationadapters.NewSourceResolver(resolver, materializer, prober)
 
-	// Subtitle ports: resolve the translated track by PK + compile the ASS via
-	// the canonical texttracks.CompileASSContent generator.
 	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
 	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
-	// RenderingGen/Chronon render boundary: reuse the composition-root runtime shared
-	// with /api/clips/render. This is deliberately not rebuilt here: the
-	// resolver, capability probe and native certifier are single owners.
 	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)
 	if runtimeErr != nil {
 		return nil, fmt.Errorf("localization service: build shared render runtime: %w", runtimeErr)
@@ -355,19 +286,13 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	}, svcCfg)
 }
 
-// LocalizationConfigFromConfig resolves the deployment-scoped localization
-// facts from the platform config. SourceLanguage defaults to the multilingual
-// config (or "en"); OutputProfileHash and EncoderPolicyHash are deterministic
-// SHA-256 folds of the resolved profile/policy so a config change bumps every
-// plan fingerprint; SubtitleStyleHash and RendererVersion are the canonical
-// constants; WorkDir is the canonical scratch root.
 func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
 	sourceLanguage := "en"
 	if cfg != nil && cfg.Media.Multilingual.SourceLanguage != "" {
 		sourceLanguage = cfg.Media.Multilingual.SourceLanguage
 	}
 
-	mediaConfig := MediaexecConfig(cfg)
+	mediaConfig := mediawiring.MediaexecConfig(cfg)
 	profile := mediaConfig.Profile.WithDefaults()
 	policy := mediaConfig.Policy
 
@@ -388,10 +313,6 @@ func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
 	}
 }
 
-// canonicalFactHash folds a deterministic fact struct into a 64-hex SHA-256.
-// JSON field order is stable (struct field order), so the same value always
-// folds to the same digest — the shape render.RenderExecutionPolicy and the
-// plan fingerprint require.
 func canonicalFactHash(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -400,10 +321,6 @@ func canonicalFactHash(v any) string {
 	return digest.SHA256Bytes(b)
 }
 
-// localizationTrackStore is the narrow combined seam the composition root
-// needs from the text-track repository: the canonical READY lookup (for plan
-// building) plus the raw PK fetch (for subtitle resolution). The concrete
-// *texttracks.TextTrackRepositorySQLite satisfies both.
 type localizationTrackStore interface {
 	detail.TextTrackRepository
 	FindByID(ctx context.Context, trackID int64) (*detail.TextTrack, []detail.TimedCue, error)
