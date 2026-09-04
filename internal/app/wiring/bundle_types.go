@@ -17,7 +17,7 @@
 // Each type below carries its PR-history doc comment verbatim from
 // module_sources.go so the audit trail is unbroken:
 //
-//   - ArtlistBundle        (PR4d-chunk2, June 2026) — 10 typed fields
+//   - ArtlistBundle        (PR4d-chunk2, June 2026) — typed fields
 //   - ArtlistWiring        (PR4d-chunk2, June 2026; Blocco C1-Step 3 removed
 //     the Resolver + Handler fields)
 //   - StockBundle          (PR4d-chunk2, June 2026) — 9 typed fields
@@ -53,14 +53,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 // ArtlistBundle is the capability bundle for the Artlist module.
 // Moved from artlist_bundle.go (Phase 5 consolidation, June 2026).
 //
-// PR4d-chunk2 (June 2026): wraps the 25 cross-bundle reads of WireArtlist
-// into 10 typed fields.
+// PR4d-chunk2 (June 2026): wraps the cross-bundle reads of WireArtlist
+// into typed fields.
 type ArtlistBundle struct {
 	Committer assetspersistence.AssetCommitter
 	// MediaExec is the resolved media contract supplied by the composition root.
@@ -68,7 +67,6 @@ type ArtlistBundle struct {
 	DB            *storage.SQLiteDB
 	Assets        *detail.Service
 	ClipsRepo     *assets.ClipsRepository
-	DriveClient   *gdrive.Service
 	DriveUploader *driveup.Uploader
 	Publisher     delivery.Publisher
 	// ClipResolver is the Recommend-shaped adapter (PR-ARTLIST-RECOMMEND-ADAPTER,
