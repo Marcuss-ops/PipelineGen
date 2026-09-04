@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
@@ -59,7 +60,7 @@ func RunTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
-	mediaConfig := wiring.MediaexecConfig(cfg)
+	mediaConfig := mediawiring.MediaexecConfig(cfg)
 	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
