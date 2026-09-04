@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -22,7 +22,7 @@ func RunListStyles(args []string) error {
 	}
 	defer cleanup()
 
-	styleRegistry, regErr := generation.NewStyleRegistry("config/generation_styles.yaml")
+	styleRegistry, regErr := images.NewStyleRegistry("config/generation_styles.yaml")
 	if regErr != nil || styleRegistry == nil {
 		return fmt.Errorf("style registry not available: %w", regErr)
 	}
