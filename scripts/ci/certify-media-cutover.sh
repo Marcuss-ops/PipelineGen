@@ -19,7 +19,7 @@
 #   ENRICHMENT_PRODUCTION_WIRING       (feature analyzer + visual pipeline
 #                                       registered in the composition root)
 #   SQLITE_MEDIA_WRITERS               0   (code-level demolition gate)
-#   SQLITE_MEDIA_READERS               0   (code-level demolition gate)
+#   SQLITE_MEDIA_READERS               0   (media search wiring gate)
 #   QDRANT_MEDIA_WRITERS               0   (code-level demolition gate)
 #   QDRANT_MEDIA_READERS               0   (code-level demolition gate)
 #   QDRANT_MEDIA_COMPATIBILITY         0   (PG-mode compatibility branch gone)
@@ -92,10 +92,17 @@ else
   gate "MediaSearcher implements VectorStorePort" "FAIL" "port assertion missing"
 fi
 
-if grep -q 'selectMediaVectorStore' internal/app/wiring/registry_internal_modules.go 2>/dev/null; then
-  gate "Composition root selects pgvector plane" "PASS" "MediaPostgreSQL.Enabled -> MediaSearcher"
+if grep -q 'appsearch.MediaReadRepository = (\*MediaSearcher)(nil)' internal/platform/postgres/media/media_read_repository.go 2>/dev/null; then
+  gate "MediaSearcher implements MediaReadRepository" "PASS" "same adapter owns pgvector + hydration"
 else
-  gate "Composition root selects pgvector plane" "FAIL" "registry_internal_modules.go wiring missing"
+  gate "MediaSearcher implements MediaReadRepository" "FAIL" "canonical hydration assertion missing"
+fi
+
+if grep -q 'selectMediaSearchStore(cfg, root.MediaPostgres' internal/app/wiring/registry_internal_modules.go 2>/dev/null \
+   && grep -q 'store := pgmedia.NewMediaSearcher(pg)' internal/app/wiring/adapters_pgvector_media_search.go 2>/dev/null; then
+  gate "Composition root selects pgvector plane" "PASS" "one MediaSearcher from canonical MediaPostgres handle"
+else
+  gate "Composition root selects pgvector plane" "FAIL" "canonical selectMediaSearchStore wiring missing"
 fi
 
 # ── Gate A2: production ANN indexes (SEMANTIC_HNSW_INDEX / VISUAL_HNSW_INDEX) ──
@@ -183,10 +190,12 @@ rm -f "$HNSW_LOG"
 
 # ── Gate C: Qdrant exclusion from the media plane ─────────────────────
 section "Gate C — Qdrant exclusion (media plane)"
-if grep -q 'pgVectorStoreFrom(pgDB)' internal/app/wiring/registry_internal_modules.go 2>/dev/null; then
-  gate "Qdrant media reads bypassed in Postgres mode" "PASS" "semantic plane = pgvector MediaSearcher"
+if grep -q 'selectMediaSearchStore(cfg, root.MediaPostgres' internal/app/wiring/registry_internal_modules.go 2>/dev/null \
+   && ! grep -q 'root.Process.VectorSvc' internal/app/wiring/registry_internal_modules.go 2>/dev/null \
+   && ! grep -q 'newSearchReadAdapter' internal/app/wiring/registry_internal_modules.go 2>/dev/null; then
+  gate "Qdrant/SQLite media reads bypassed" "PASS" "semantic plane = one PostgreSQL MediaSearcher"
 else
-  gate "Qdrant media reads bypassed in Postgres mode" "FAIL" "selection override missing"
+  gate "Qdrant/SQLite media reads bypassed" "FAIL" "legacy media reader selection remains"
 fi
 
 # QDRANT_MEDIA_WRITES=0: the media outbox handler registration must
@@ -274,16 +283,20 @@ else
   gate "SQLITE_MEDIA_WRITERS=0 (code)" "FAIL" "$SQLITE_MEDIA_WRITERS SQLite media committer file(s) remain"
 fi
 
-# SQLITE_MEDIA_READERS=0: no SQLite media repository surface (clips
-# repository was the canonical media reader pre-cutover).
+# SQLITE_MEDIA_READERS=0: legacy SQLite repositories may still serve non-media
+# capability surfaces, but none may implement or be selected as the canonical
+# MediaReadRepository for semantic media search.
 SQLITE_MEDIA_READERS=0
-if ls internal/platform/sqlite/assets/*clips*.go internal/platform/sqlite/assets/imagesregistry/*media*.go >/dev/null 2>&1; then
-  SQLITE_MEDIA_READERS=$(ls internal/platform/sqlite/assets/*clips*.go internal/platform/sqlite/assets/imagesregistry/*media*.go 2>/dev/null | wc -l)
+if [[ -e internal/app/wiring/adapters_media_search.go ]]; then
+  SQLITE_MEDIA_READERS=$((SQLITE_MEDIA_READERS+1))
+fi
+if grep -Rqn 'newSearchReadAdapter\|SQLite hydration' internal/app/wiring --include='*.go' 2>/dev/null; then
+  SQLITE_MEDIA_READERS=$((SQLITE_MEDIA_READERS+1))
 fi
 if [[ "$SQLITE_MEDIA_READERS" -eq 0 ]]; then
-  gate "SQLITE_MEDIA_READERS=0 (code)" "PASS" "SQLite media reader surfaces demolished"
+  gate "SQLITE_MEDIA_READERS=0 (media wiring)" "PASS" "semantic hydration is PostgreSQL-only"
 else
-  gate "SQLITE_MEDIA_READERS=0 (code)" "FAIL" "$SQLITE_MEDIA_READERS SQLite media reader file(s) remain"
+  gate "SQLITE_MEDIA_READERS=0 (media wiring)" "FAIL" "$SQLITE_MEDIA_READERS legacy media search reader surface(s) remain"
 fi
 
 # Engine-aware committer: the single decision point is the PG-only factory.
@@ -329,7 +342,7 @@ else
           --sqlite-dsn "${SQLITE_MEDIA_DB}?_journal_mode=WAL&mode=ro" \
           --postgres-dsn "$PG_MEDIA_DSN" \
           --verify-only >"$BACKFILL_LOG" 2>&1; then
-    _parity="$(grep -o '"mismatch_count": [0-9]*' "$BACKFILL_LOG" | head -1 | tr -dc '0-9')"
+    _parity="$(grep -o '"'"'"mismatch_count"'"'": [0-9]*' "$BACKFILL_LOG" | head -1 | tr -dc '0-9')"
     gate "real-data backfill parity" "PASS" "verify-only: ${_parity} mismatches, row-for-row vs SQLite"
   else
     gate "real-data backfill parity" "FAIL" "$(tail -1 "$BACKFILL_LOG")"
@@ -356,10 +369,10 @@ else
   [[ -n "$SIDECAR_URL" ]] && ENRICH_ARGS+=(--sidecar-url "$SIDECAR_URL")
   if go build -o "$PGADMIN_BIN" ./cmd/admin 2>"$ENRICH_LOG" \
      && "$PGADMIN_BIN" "${ENRICH_ARGS[@]}" >>"$ENRICH_LOG" 2>&1; then
-    _fcov="$(grep -o '"feature_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _scov="$(grep -o '"semantic_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _vcov="$(grep -o '"visual_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _total="$(grep -o '"total_assets": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _fcov="$(grep -o '"'"'"feature_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _scov="$(grep -o '"'"'"semantic_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _vcov="$(grep -o '"'"'"visual_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _total="$(grep -o '"'"'"total_assets"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
     _fc="${_fcov:-0}"; _sc="${_scov:-0}"; _vc="${_vcov:-0}"; _tt="${_total:-0}"
     if [[ "$_tt" -eq 0 ]]; then
       gate "enrichment coverage = 100%" "PASS" "empty catalog (total=0) — coverage trivially complete"
