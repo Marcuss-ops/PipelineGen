@@ -1,18 +1,21 @@
 # PipelineGen production configuration template (PR-CONFIG-SPLIT, July 2026).
 #
 # This file is the canonical deployment template. For local development
-# use config.example.yaml instead (minimal — Qdrant OFF, clip_indexer OFF,
-# artlist auto_download OFF). Operators in production environments should:
+# use config.example.yaml instead. Operators in production environments should:
 #   1. cp config.production.example.yaml config.yaml
-#   2. Tweak the credentials, Drive folder IDs, and Velox URLs
-#   3. Provide VELOX_ADMIN_TOKEN (64-hex) via /etc/pipelinegen/pipelinegen.env
-#   4. Boot
+#   2. Provide PIPELINEGEN_MEDIA_POSTGRES_DSN via the service environment
+#   3. Tweak credentials, Drive folder IDs, and Velox URLs
+#   4. Provide VELOX_ADMIN_TOKEN (64-hex) via /etc/pipelinegen/pipelinegen.env
+#   5. Boot
 #
-# KEY DIVERGENCES from config.example.yaml (the minimal file):
-#   - qdrant.enabled: true (external vector store connected)
-#   - clip_indexer.enabled: true (semantic indexer active)
-#   - artlist.auto_download.enabled: true (10/day cap on non-Enterprise quota)
-#   - video.codec: h264_nvenc (GPU-required video encoding; no implicit CPU fallback)
+# MEDIA CUTOVER (September 2026):
+#   - PostgreSQL + pgvector is the media-domain SSOT.
+#   - media_postgresql.enabled=true is fail-closed: an empty/unreachable DSN
+#     aborts startup. There is no SQLite or Qdrant media fallback.
+#   - clip_indexer remains enabled because its E5 sidecar supplies the canonical
+#     text embeddings written/read by PostgreSQL.
+#   - qdrant is OFF here. It may be enabled only for an explicitly owned
+#     non-media use case; it is never a media catalog/search projection.
 #
 # GPU deployment contract:
 #   - This template targets a host with a working NVIDIA driver and NVENC
@@ -23,11 +26,8 @@
 #     retry or silently degrade to libx264/CPU.
 #   - CPU remains intentional for ffprobe, audio-only AAC/MP3/WAV work,
 #     metadata, hashing, database/I/O, and stream-copy operations (`-c copy`).
-#     Those operations do not imply a video-encoder fallback.
 
 server:
-  # 0.0.0.0 binds all interfaces. Production deployments should sit behind
-  # a reverse-proxy with HTTPS and bind on 127.0.0.1 instead.
   host: "0.0.0.0"
   port: 8000
   gin_mode: "release"
@@ -40,9 +40,21 @@ storage:
   data_dir: "/var/lib/pipelinegen/data"
   temp_dir: "/var/lib/pipelinegen/tmp"
 
+# Canonical media-domain database. Keep the DSN out of the repository and
+# supply it through PIPELINEGEN_MEDIA_POSTGRES_DSN. Because enabled=true is
+# fail-closed, leaving the environment variable unset intentionally prevents
+# a half-cut-over production deployment from booting.
+media_postgresql:
+  enabled: true
+  dsn: ""
+  max_open_connections: 10
+  max_idle_connections: 5
+  conn_max_lifetime_seconds: 300
+  embedding_model: "intfloat/multilingual-e5-base"
+
 security:
   enable_auth: true
-  admin_token: "***REDACTED***"      # Use scripts/rotate_token.sh to generate 64-hex
+  admin_token: "***REDACTED***"
   worker_token: "***REDACTED***"
   delivery_hmac_secret: "***REDACTED***"
   cors_origins: []
@@ -74,8 +86,6 @@ external:
   pexels_base_url: "https://api.pexels.com/v1"
   artlist_live_search_cache_ttl_hours: 24
   artlist_scraper_server_url: "http://127.0.0.1:9123"
-  # Artlist provider configuration (PR-CONFIG-SPLIT, July 2026).
-  # Production: authorized_api + auto_download ON.
   artlist:
     acquisition_mode: "authorized_api"
     auto_download:
@@ -127,11 +137,6 @@ video:
   height: 1080
   fps_num: 24
   fps_den: 1
-  # GPU-oriented production video policy. `h264_nvenc` is explicit and
-  # GPU-required; runtime failure is terminal (no libx264/CPU retry).
-  # `p1` is the native NVENC performance preset and `crf` maps to NVENC CQ.
-  # Keep this policy explicit: an empty codec or an implicit default is not
-  # an acceptable production fallback.
   codec: "h264_nvenc"
   preset: "p1"
   crf: 23
@@ -181,8 +186,6 @@ jobs:
   maintenance_interval: "24h"
   backup_interval: "6h"
   indexing_interval: "15m"
-  # YouTube clip extraction policy: max per-clip duration in seconds.
-  # Canonical default is 60; raise it (e.g. 120) for longer clips.
   youtube_max_segment_duration_seconds: 60
 
 scripts:
@@ -193,10 +196,6 @@ scripts:
     require_database: true
   batch_web_search_concurrency: 4
   batch_chapter_concurrency: 3
-  # Canonical default Google Drive folder for script documents.
-  # Canonical config: env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID. Leave empty
-  # unless a docs.enabled=true request must fail closed when docs.folder_id
-  # is omitted.
   script_docs_folder_id: ""
 
 concurrency:
@@ -225,20 +224,18 @@ google_accounting:
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
 
-# QDRANT-005A canonical configuration. PRODUCTION: both ON.
+# Qdrant is not part of the media plane after POSTGRES-MEDIA-CUTOVER.
+# Enable only when a separately owned non-media capability explicitly needs it.
 qdrant:
-  enabled: true
+  enabled: false
   base_url: "http://127.0.0.1:6333"
   api_key: ""
 
+# E5 sidecar used by PostgreSQL media enrichment/search. This remains ON even
+# though Qdrant is OFF because pgvector stores the resulting embeddings.
 clip_indexer:
   enabled: true
 
-# Outbox events worker pool (asset.index.requested / drive / delivery).
-# workers=4 is the July 2026 CPU-only tuning (was 2); watch CPU/RAM/
-# SQLite busy_timeout before raising further. Env override:
-# VELOX_OUTBOX_WORKERS. Priority column (migration 186) lets
-# script-required index requests jump the bulk-folder-sync queue.
 outbox:
   workers: 4
   poll_interval_ms: 500
