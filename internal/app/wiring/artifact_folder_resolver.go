@@ -1,51 +1,13 @@
-// Package app — artifact_folder_resolver.go: the Sender-side resolver that
-// pins a RenderingGen overlay below its parent video's already-resolved Drive
-// folder (/video/.../overlay/).
-//
-// The overlay manifest carries the parent video_id (media_assets.id); the
-// broker resolves that video's folder_id and threads it into the overlay's
-// VerifiedArtifact as ResolvedFolderID + RootFolderResolved, so the canonical
-// ArtifactPublisherAdapter publishes the overlay below the video folder (via
-// the drive_subpath=["overlay"] child) instead of a synthetic run folder.
 package wiring
 
 import (
-	"context"
 	"database/sql"
-	"errors"
-	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 )
 
-// sqliteArtifactFolderResolver reads the canonical folder_id for a parent
-// video, falling back to the legacy drive_folder_id projection while older
-// catalog rows are being migrated.
-type sqliteArtifactFolderResolver struct {
-	db *sql.DB
-}
-
-var _ finalization.ArtifactFolderResolver = (*sqliteArtifactFolderResolver)(nil)
+type sqliteArtifactFolderResolver = assetswiring.ArtifactFolderResolver
 
 func newSQLiteArtifactFolderResolver(db *sql.DB) *sqliteArtifactFolderResolver {
-	return &sqliteArtifactFolderResolver{db: db}
-}
-
-// ResolveArtifactFolder returns the parent video's already-resolved Drive
-// folder ID. An empty return means "not resolved" (the caller keeps the
-// legacy destination path builder); a missing row is not an error.
-func (r *sqliteArtifactFolderResolver) ResolveArtifactFolder(ctx context.Context, parentVideoID string) (string, error) {
-	if r == nil || r.db == nil {
-		return "", nil
-	}
-	var folderID string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(NULLIF(folder_id, ''), drive_folder_id, '') FROM media_assets WHERE id = ?`, parentVideoID).Scan(&folderID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("resolve artifact folder %q: %w", parentVideoID, err)
-	}
-	return folderID, nil
+	return assetswiring.NewArtifactFolderResolver(db)
 }
