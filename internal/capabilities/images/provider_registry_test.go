@@ -3,19 +3,19 @@ package images
 import (
 	"context"
 	"errors"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
 type fakeBackend struct {
-	captures []PortGenerateRequest
-	result   *PortGeneratedImage
+	captures []GenerateImageRequest
+	result   *GeneratedImage
 	err      error
 }
 
-func (f *fakeBackend) Generate(_ context.Context, req PortGenerateRequest) (*PortGeneratedImage, error) {
+func (f *fakeBackend) Generate(_ context.Context, req GenerateImageRequest) (*GeneratedImage, error) {
 	f.captures = append(f.captures, req)
 	if f.err != nil {
 		return nil, f.err
@@ -23,12 +23,10 @@ func (f *fakeBackend) Generate(_ context.Context, req PortGenerateRequest) (*Por
 	return f.result, nil
 }
 
-func (f *fakeBackend) TriggerPrewarm(_ context.Context, _ string, _ int) {
-	// no-op stub for ImageGeneratorPort contract
-}
+func (f *fakeBackend) TriggerPrewarm(_ context.Context, _ string, _ int) {}
 
 func TestGenerationRegistry_DefaultsToGoogleSlidesNanoBananaPro(t *testing.T) {
-	backend := &fakeBackend{result: &PortGeneratedImage{Data: []byte("png-bytes"), Format: "png"}}
+	backend := &fakeBackend{result: &GeneratedImage{Data: []byte("png-bytes"), Format: "png"}}
 	registry := NewDefaultProviderRegistry(zap.NewNop(), backend)
 
 	result, err := registry.Generate(context.Background(), GenerateRequest{Prompt: "x"}, GenerateOptions{})
