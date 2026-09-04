@@ -3,13 +3,9 @@
 // PR-GODOBJ-6 (July 2026): mechanically extracted from service.go
 // per the god-object decomposition plan.
 //
-// 2026-07-06 (Phase 1 decomposition): further split per Pattern 5:
-//
-//	enqueue_validate.go — validateEnqueueRequest + MaxPayloadSize (input validation)
-//	enqueue_retry.go    — resolveMaxRetries (typed lookup contract)
-//	enqueue_id.go       — generateJobID (identity)
-//
-// Zero behavior changes. Same-package visibility preserves all caller paths.
+// Queue-owned request validation, payload bounds, and ID generation are
+// consumed directly from jobs/queue. Retry resolution remains local to the
+// root orchestration service because it depends on the service registry.
 //
 // PR-jobs-retry-contract (July 2026): the typed sqlite3.Error UNIQUE-constraint
 // rescue probe replaces the pre-PR strings.Contains("UNIQUE constraint")
@@ -68,7 +64,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		}()
 	}
 
-	if err := validateEnqueueRequest(req); err != nil {
+	if err := jobqueue.ValidateEnqueueRequest(req); err != nil {
 		return nil, err
 	}
 
@@ -141,14 +137,14 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal payload: %w", err)
 		}
-		if len(payloadBytes) > MaxPayloadSize {
-			return nil, fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payloadBytes), MaxPayloadSize)
+		if len(payloadBytes) > jobqueue.MaxPayloadSize {
+			return nil, fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payloadBytes), jobqueue.MaxPayloadSize)
 		}
 		payload = payloadBytes
 	}
 
 	j := &job.Job{
-		ID:             generateJobID(),
+		ID:             jobqueue.GenerateJobID(),
 		Type:           req.Type,
 		Status:         job.StatusQueued,
 		Priority:       req.Priority,
