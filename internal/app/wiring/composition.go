@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
 
@@ -26,7 +27,7 @@ import (
 // NewComposition assembles all bundles in dependency order and returns
 // the fully-wired ComposeRoot. Cleanup is owned by shutdown.go.
 func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*ComposeRoot, error) {
-	mediaConfig := MediaexecConfig(cfg)
+	mediaConfig := mediasub.MediaexecConfig(cfg)
 
 	if dbs == nil || dbs.DualPool == nil || dbs.DualPool.Writer == nil {
 		return nil, fmt.Errorf("compose: canonical database writer is required")
@@ -36,7 +37,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// downstream wiring decision (canonical committer, vector search
 	// plane, index worker) sees a consistent engine selection. Fail-closed:
 	// an enabled-but-unreachable media PostgreSQL aborts composition.
-	mediaPG, err := RequireMediaPostgres(ctx, cfg)
+	mediaPG, err := mediasub.RequireMediaPostgres(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("compose media postgres: %w", err)
 	}
