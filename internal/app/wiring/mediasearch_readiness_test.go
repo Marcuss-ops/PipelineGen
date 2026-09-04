@@ -7,13 +7,16 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
-type fakeAggregator struct{}
+type fakeAggregator struct{ semantic bool }
 
 func (f *fakeAggregator) Search(ctx context.Context, q search.Query) (*search.Result, error) {
 	return nil, nil
+}
+
+func (f *fakeAggregator) HasBackend(name string) bool {
+	return f != nil && f.semantic && name == "semantic"
 }
 
 type fakeDBPinger struct{ err error }
@@ -22,9 +25,10 @@ func (f *fakeDBPinger) PingContext(ctx context.Context) error { return f.err }
 
 func TestSemanticReadinessChecker_AllGreen(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired: true,
-		aggregator:    &fakeAggregator{},
-		mediaPostgres: &fakeDBPinger{},
+		embedderWired:         true,
+		semanticBackendWired: true,
+		aggregator:            &fakeAggregator{semantic: true},
+		mediaPostgres:         &fakeDBPinger{},
 	}
 	if err := c.Ready(context.Background()); err != nil {
 		t.Fatalf("expected all-green readiness, got: %v", err)
@@ -33,9 +37,10 @@ func TestSemanticReadinessChecker_AllGreen(t *testing.T) {
 
 func TestSemanticReadinessChecker_PostgresDown(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired: true,
-		aggregator:    &fakeAggregator{},
-		mediaPostgres: &fakeDBPinger{err: errors.New("postgres connection refused")},
+		embedderWired:         true,
+		semanticBackendWired: true,
+		aggregator:            &fakeAggregator{semantic: true},
+		mediaPostgres:         &fakeDBPinger{err: errors.New("postgres connection refused")},
 	}
 	err := c.Ready(context.Background())
 	if err == nil {
@@ -63,8 +68,9 @@ func TestSemanticReadinessChecker_MissingWiring(t *testing.T) {
 
 func TestSemanticReadinessChecker_ErrorSanitized(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired: true,
-		aggregator:    &fakeAggregator{},
+		embedderWired:         true,
+		semanticBackendWired: true,
+		aggregator:            &fakeAggregator{semantic: true},
 		mediaPostgres: &fakeDBPinger{err: errors.New(
 			"boom\nwith\nnewlines and a very long message that should be collapsed " +
 				"to a single line to avoid leaking anything sensitive across the HTTP boundary")},
@@ -79,15 +85,18 @@ func TestSemanticReadinessChecker_ErrorSanitized(t *testing.T) {
 }
 
 func TestSemanticReadinessChecker_RootAdapterNilPostgres(t *testing.T) {
-	root := &ComposeRoot{AI: &AIBundle{}}
-	c := newSemanticReadinessChecker(root, &fakeAggregator{})
+	root := &ComposeRoot{}
+	c := newSemanticReadinessChecker(root, &fakeAggregator{semantic: true})
 	err := c.Ready(context.Background())
 	if err == nil {
 		t.Fatal("expected error for partially-wired root")
 	}
 	subs := err.(interface{ Subsystems() map[string]string }).Subsystems()
-	if subs["embedder"] == "" || subs["media_postgres"] == "" {
-		t.Fatalf("expected embedder+media_postgres failures, got subs=%v", subs)
+	if subs["embedder"] != "" || subs["semantic_backend"] != "" {
+		t.Fatalf("semantic backend should prove E5/backend wiring, got subs=%v", subs)
+	}
+	if subs["media_postgres"] == "" {
+		t.Fatalf("expected media_postgres failure, got subs=%v", subs)
 	}
 }
 
@@ -112,23 +121,31 @@ func TestSemanticReadinessChecker_SubsystemsContract(t *testing.T) {
 }
 
 func TestWireMediasearchReadiness_Assembly(t *testing.T) {
-	root := &ComposeRoot{
-		AI: &AIBundle{OllamaEmbedClient: new(ollamaclient.Client)},
-	}
-	checker := WireMediasearchReadiness(root, &fakeAggregator{})
+	root := &ComposeRoot{}
+	checker := WireMediasearchReadiness(root, &fakeAggregator{semantic: true})
 	if checker == nil {
-		t.Fatal("expected non-nil checker from wired root")
+		t.Fatal("expected non-nil checker from wired semantic aggregator")
 	}
 	err := checker.Ready(context.Background())
 	if err == nil {
 		t.Fatal("expected error (media PostgreSQL unwired)")
 	}
 	subs := err.(interface{ Subsystems() map[string]string }).Subsystems()
-	if subs["embedder"] != "" {
-		t.Fatalf("expected embedder green (AI wired), got %q", subs["embedder"])
+	if subs["embedder"] != "" || subs["semantic_backend"] != "" {
+		t.Fatalf("expected semantic registration to prove E5/backend wiring, got %v", subs)
 	}
 	if subs["media_postgres"] == "" {
 		t.Fatalf("expected media_postgres failure, got %v", subs)
+	}
+
+	checker = WireMediasearchReadiness(root, &fakeAggregator{semantic: false})
+	err = checker.Ready(context.Background())
+	if err == nil {
+		t.Fatal("expected fail-closed error when semantic backend is absent")
+	}
+	subs = err.(interface{ Subsystems() map[string]string }).Subsystems()
+	if subs["embedder"] == "" || subs["semantic_backend"] == "" {
+		t.Fatalf("expected embedder+semantic_backend failures, got %v", subs)
 	}
 
 	if checker = WireMediasearchReadiness(nil, nil); checker == nil {
