@@ -5,20 +5,21 @@ import (
 	"sync"
 	"testing"
 
+	finalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
 func TestWorkflowStepCompletedHandler_EventType(t *testing.T) {
-	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := finalize.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	if got := h.EventType(); got != outboxevents.EventWorkflowStepCompleted {
 		t.Errorf("expected %q got %q", outboxevents.EventWorkflowStepCompleted, got)
 	}
 }
 
 func TestWorkflowStepCompletedHandler_ValidPayload_NoError(t *testing.T) {
-	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := finalize.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 
 	evt := outboxevents.Event{
 		ID:           42,
@@ -34,7 +35,7 @@ func TestWorkflowStepCompletedHandler_ValidPayload_NoError(t *testing.T) {
 }
 
 func TestWorkflowStepCompletedHandler_MinimalPayload_NoError(t *testing.T) {
-	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := finalize.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepCompleted,
 		AggregateID: "workflow-min",
@@ -46,7 +47,7 @@ func TestWorkflowStepCompletedHandler_MinimalPayload_NoError(t *testing.T) {
 }
 
 func TestWorkflowStepCompletedHandler_MalformedPayload_ReturnsError(t *testing.T) {
-	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := finalize.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepCompleted,
 		AggregateID: "workflow-bad",
@@ -58,7 +59,7 @@ func TestWorkflowStepCompletedHandler_MalformedPayload_ReturnsError(t *testing.T
 }
 
 func TestWorkflowStepFailedHandler_EventType(t *testing.T) {
-	h := NewWorkflowStepFailedHandler(zaptest.NewLogger(t), nil)
+	h := finalize.NewWorkflowStepFailedHandler(zaptest.NewLogger(t), nil)
 	if got := h.EventType(); got != outboxevents.EventWorkflowStepFailed {
 		t.Errorf("expected %q got %q", outboxevents.EventWorkflowStepFailed, got)
 	}
@@ -70,7 +71,7 @@ func TestWorkflowStepFailedHandler_ValidPayload_HookFnCalled(t *testing.T) {
 	lastWF := ""
 	lastStep := ""
 	lastErr := ""
-	h := NewWorkflowStepFailedHandler(zaptest.NewLogger(t), func(wf, step, errMsg string) {
+	h := finalize.NewWorkflowStepFailedHandler(zaptest.NewLogger(t), func(wf, step, errMsg string) {
 		mu.Lock()
 		defer mu.Unlock()
 		hits++
@@ -97,7 +98,7 @@ func TestWorkflowStepFailedHandler_ValidPayload_HookFnCalled(t *testing.T) {
 }
 
 func TestWorkflowStepFailedHandler_NoHook_StillSucceeds(t *testing.T) {
-	h := NewWorkflowStepFailedHandler(zap.NewNop(), nil)
+	h := finalize.NewWorkflowStepFailedHandler(zap.NewNop(), nil)
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepFailed,
 		AggregateID: "workflow-2",
@@ -131,7 +132,7 @@ func TestStubHandlers_EventType(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.h.EventType(); got != tc.want {
-				t.Errorf("EventType: want %q got %q", tc.want, got)
+				t.Errorf("EventType: want %q got %q", tc.want, tc.want)
 			}
 		})
 	}
