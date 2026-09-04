@@ -273,15 +273,13 @@ features:
   stock_pipeline_enabled: true
   clip_render_enabled: false
   voiceover_enabled: false
-  catalog_script_vector_search: false
 
 # NOTE (June 2026 drft-fix): the previous config.example.yaml featured
 # `google_accounting_enabled` and `workflow_enabled` under `features:`.
 # These are NOT part of internal/platform/config/types.go
 # FeaturesConfig: google_accounting has its own top-level GoogleAccountingConfig
 # section below, and `workflow_enabled` is no longer a feature flag (the
-# workflow module was retired). The replacement flags
-# (voiceover_enabled, catalog_script_vector_search) match the in-tree
+# workflow module was retired). The current flags above match the in-tree
 # FeaturesConfig exactly so the yaml loader cannot silently drop fields.
 
 google_accounting:
