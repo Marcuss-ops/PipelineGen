@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -117,8 +116,3 @@ func (s *MediaSearcher) GetMany(ctx context.Context, actor appsearch.Actor, asse
 	}
 	return out, nil
 }
-
-// Keep database/sql in the compile surface deliberately: this assertion pins
-// MediaSearcher's canonical handle type and catches accidental replacement by
-// a second storage engine during future refactors.
-var _ *sql.DB = (*MediaSearcher)(nil).db
