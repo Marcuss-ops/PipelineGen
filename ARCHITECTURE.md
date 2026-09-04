@@ -6,10 +6,12 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 
 | Concern | Owner |
 |---|---|
-| Canonical business state | PostgreSQL + pgvector (media domain); SQLite remains canonical for non-media domains during staged migration |
+| Media canonical business state | PostgreSQL + pgvector |
+| Non-media canonical business state | SQLite where that domain has not migrated |
 | Long-running execution | SQLite-backed jobs and workers |
-| Durable post-commit work | Transactional outbox |
-| Semantic and lexical retrieval | pgvector inside the media PostgreSQL SSOT (media domain); Qdrant remains only for non-media usage where explicitly justified |
+| Durable post-commit work | Transactional outbox owned by each canonical store |
+| Media semantic and lexical retrieval | pgvector inside the media PostgreSQL SSOT |
+| Non-media vector use | Qdrant only where an explicit non-media owner requires it |
 | Remote files | Google Drive |
 | Dependency construction and lifecycle | `internal/app` |
 | Shared semantic contracts | `internal/kernel` |
@@ -26,22 +28,41 @@ migration work, correctness/security fixes required to keep the system
 running, or removal of legacy code, and must have a registered migration owner
 and deadline in `architecture/package_hotspots.json`.
 
-PostgreSQL + pgvector is authoritative for the media domain. SQLite remains authoritative for non-media domains during staged migration. Qdrant is no longer a media authority and may not be used as a fallback search or write path. Drive and local storage remain external locations and must not become hidden sources of business truth.
+PostgreSQL + pgvector is authoritative for the media domain. SQLite remains
+authoritative only for non-media domains that have not migrated. Qdrant is not
+a media authority and may not be used as a media fallback search, hydration,
+indexing, or write path. Drive and local storage remain external locations and
+must not become hidden sources of business truth.
 
-### Data-layer unification (August 2026)
+### Media data-layer unification (September 2026)
 
-The sync direction is **always and only** `SQLite → Outbox → Qdrant`:
+The canonical media flow is **PostgreSQL only**:
+
+```text
+producer
+  -> PostgresMediaCommitter
+  -> media_assets + asset_locations + PostgreSQL outbox
+  -> PostgresIndexWorker
+  -> media_embeddings (pgvector)
+
+search request
+  -> MediaSearcher pgvector retrieval
+  -> MediaSearcher media_assets hydration
+  -> Candidate
+  -> authorized delivery URL
+```
 
 | Invariant | Rule |
 |---|---|
-| **SSOT** | SQLite `media_assets` is the single source of truth |
-| **Write gate** | `persistence.AssetCommitter` is the sole canonical writer — no direct SQL to `media_assets` outside it (enforced by `percheck_media_assets_writer_canonical` CI gate) |
-| **Projection** | Qdrant `media_assets` is a derived projection, fully rebuildable from SQLite (`reindex-qdrant --apply --in-place`) |
-| **Runtime collection** | Only `media_assets` (alias `media_assets_current`); recovery/test/synthetic collections are forbidden at runtime (`schema.IsRuntimeCollection` gate) |
-| **Empty projection** | `INDEX_UNAVAILABLE / REBUILD_REQUIRED` — never a fallback to a recovery collection |
-| **Search** | Qdrant returns candidate asset IDs + score; SQLite returns canonical content (name, drive_link, lifecycle, metadata) |
-| **Reconciler** | `ReconcileProjection` is the sole SQLite→Qdrant repair gate (missing→index, stale→reindex, orphan→delete, hash_mismatch→reindex) |
-| **Emergency recovery** | `recover-registry-from-qdrant` is EMERGENCY ONLY (disaster recovery / forensics), lives in `cmd/admin/emergency/` — never a normal sync path |
+| **Media SSOT** | PostgreSQL `media_assets`, `asset_locations`, features, text tracks, outbox, and `media_embeddings` |
+| **Write gate** | `PostgresMediaCommitter` is the canonical production media writer |
+| **Index projection** | `PostgresIndexWorker` writes embeddings into PostgreSQL `media_embeddings`; Qdrant is not a media projection |
+| **Search** | `MediaSearcher` owns both `VectorStorePort` and `MediaReadRepository`, so retrieval and hydration cannot split across databases |
+| **Workspace/lifecycle scope** | Hard predicates are enforced in PostgreSQL retrieval; hydration repeats applicable guards and never broadens the selected ID set |
+| **Configuration** | `media_postgresql.enabled=true` requires a valid DSN and fails closed on invalid/unreachable PostgreSQL |
+| **Qdrant** | Forbidden for media reads/writes; permitted only for explicitly owned non-media capabilities |
+| **SQLite** | No media runtime fallback; legacy SQLite data is migration/backfill input only |
+| **Emergency tools** | Historical migration/recovery tools are administrative only and never part of normal runtime routing |
 
 ## Process entry points
 
@@ -87,12 +108,14 @@ HTTP request
   -> result, retry, or dead letter
 ```
 
-Job policy, handler registration, retries, concurrency, leases, cancellation, progress, and deduplication are centralized in the job system.
+Job policy, handler registration, retries, concurrency, leases, cancellation,
+progress, and deduplication are centralized in the job system.
 
 ## Job capability layers
 
-The root `internal/capabilities/jobs` package remains the compatibility facade and
-orchestration boundary. Reusable policy slices are owned by focused subpackages:
+The root `internal/capabilities/jobs` package remains the compatibility facade
+and orchestration boundary. Reusable policy slices are owned by focused
+subpackages:
 
 - `internal/capabilities/jobs/queue` owns enqueue validation and identity, claim
   capability/wait policy, and retry-budget/due decisions.
@@ -109,9 +132,13 @@ must not duplicate SQLite state transitions or import the root `jobs` package.
 
 ## Transactional outbox
 
+Every domain emits durable post-commit work from its own canonical store. For
+the media domain that store is PostgreSQL; non-media domains may still use
+SQLite.
+
 ```text
 BEGIN
-  write canonical SQLite row
+  write canonical row
   write versioned outbox event
 COMMIT
 
@@ -121,34 +148,45 @@ outbox worker
   -> complete, retry, supersede, or dead-letter
 ```
 
-Indexing, deletion, cleanup, and other non-atomic external effects use this pattern.
-
 ## Media indexing and search
 
-Each media asset has one canonical SQLite record. Qdrant stores a deterministic point with named channels such as text, transcript, visual, and sparse lexical search when available.
+A media asset is authoritative in PostgreSQL. Named embedding families such as
+text, transcript, visual, and audio are stored in `media_embeddings` using
+pgvector with explicit model/type identity. Lexical retrieval uses the same
+PostgreSQL media rows.
 
-The preferred retrieval flow is:
+The canonical retrieval flow is:
 
 ```text
 query normalization
-  -> hard metadata filters
-  -> dense and sparse retrieval
+  -> hard PostgreSQL metadata filters
+  -> pgvector dense / PostgreSQL lexical retrieval
   -> fusion
+  -> PostgreSQL media_assets hydration through the same MediaSearcher
   -> optional lightweight reranking
   -> deduplication and diversification
-  -> hydrate canonical SQLite records
   -> authorized delivery URLs
 ```
 
-Search profiles and source-specific behavior belong in shared registries or resolvers, not duplicated handlers.
+Search profiles and source-specific behavior belong in shared registries or
+resolvers, not duplicated handlers. The semantic backend composition gate
+requires one adapter to implement both vector retrieval and media hydration;
+a Qdrant-only adapter therefore cannot become a media search backend.
 
 ## Drive and files
 
-Local files are staging/cache data. Google Drive is a delivery location. Application workflows publish through the canonical delivery publisher; raw Drive SDK clients stay in infrastructure or admin-only tooling.
+Local files are staging/cache data. Google Drive is a delivery location.
+Application workflows publish through the canonical delivery publisher; raw
+Drive SDK clients stay in platform or admin-only tooling.
 
-For stock timestamp extraction, one parent timestamp maps to one Drive folder containing all child clips and one aggregated metadata file.
+For stock timestamp extraction, one parent timestamp maps to one Drive folder
+containing all child clips and one aggregated metadata file.
 
-Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifact.ErrTerminalStateRejection`) instead of silently overwriting `published_location` and `published_at`: `(*artifactstages.Repository).MarkPublished` gates on `state NOT IN ('PUBLISHED','SUCCEEDED','FAILED_PERMANENT')`, so a duplicate Drive upload is structurally impossible. Dashboards that counted publish-ops by overwrite volume (or by `MarkPublished` UPDATE RowsAffected) under-count — the per-row outcome is now `affected = 0`.
+Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op
+(`artifact.ErrTerminalStateRejection`) instead of silently overwriting
+`published_location` and `published_at`: `(*artifactstages.Repository).MarkPublished`
+gates on `state NOT IN ('PUBLISHED','SUCCEEDED','FAILED_PERMANENT')`, so a
+duplicate Drive upload is structurally impossible.
 
 ## Configuration and ownership
 
@@ -162,6 +200,7 @@ Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifa
 - `architecture/issues.yaml` contains unresolved cross-package issues.
 - `architecture/deprecations/` contains live compatibility removals only.
 - `docs/api/ACTIVE_API_GENERATED.md` is the generated route surface.
-- `docs/architecture/godlike/INDEX.md` is the central navigation map for the 5 godlike governance docs (ownership, zero-legacy, CI gates, agent playbook, feature removal).
+- `docs/architecture/godlike/INDEX.md` is the central navigation map for the governance docs.
 
-Completed work, historical decisions, plans, evidence, and snapshots are not part of the working tree.
+Completed work, historical decisions, plans, evidence, and snapshots are not
+part of the working tree. Git history is the archive.
