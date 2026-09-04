@@ -1,42 +1,21 @@
 package wiring
 
 import (
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// MediaexecConfig resolves platform video settings once at the composition
-// boundary. Downstream builders receive the application-owned contract rather
-// than re-reading platform/config.
+// Deprecated compatibility surface. Canonical ownership lives in
+// internal/app/wiring/media; callers should consume that package directly.
 func MediaexecConfig(cfg *config.Config) mediaexec.ExecutionConfig {
-	if cfg == nil {
-		return mediaexec.ExecutionConfig{}
-	}
-	profile := cfg.Video.CanonicalVideoProfile()
-	policy := cfg.Video.EncoderPolicy()
-	return mediaexec.ExecutionConfig{
-		Profile: mediaexec.VideoProfile{
-			Width:            profile.Width,
-			Height:           profile.Height,
-			FPSNum:           profile.FPSNum,
-			FPSDen:           profile.FPSDen,
-			KeyframeInterval: profile.KeyframeInterval,
-			AudioCodec:       profile.AudioCodec,
-			AudioBitrate:     profile.AudioBitrate,
-			SampleRate:       profile.SampleRate,
-			Channels:         profile.Channels,
-		},
-		Policy: mediaexec.EncoderPolicy{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF},
-	}
+	return mediasub.MediaexecConfig(cfg)
 }
 
-// MediaexecVideoProfile and MediaexecEncoderPolicy are compatibility helpers
-// for narrow composition/test callers. Production composition should use
-// MediaexecConfig so profile and policy are resolved together.
 func MediaexecVideoProfile(cfg *config.Config) mediaexec.VideoProfile {
-	return MediaexecConfig(cfg).Profile
+	return mediasub.MediaexecVideoProfile(cfg)
 }
 
 func MediaexecEncoderPolicy(cfg *config.Config) mediaexec.EncoderPolicy {
-	return MediaexecConfig(cfg).Policy
+	return mediasub.MediaexecEncoderPolicy(cfg)
 }
