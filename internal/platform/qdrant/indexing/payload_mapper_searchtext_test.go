@@ -1,36 +1,4 @@
-// Package indexing — payload_mapper_searchtext_test.go
-// (PR-PAYLOAD-MAPPER-SPLIT-mirror, July 2026).
-//
-// SEARCHTEXT test surface (mirror of payload_mapper_searchtext.go
-// production split). Per godlike/06 SSOT (one canonical owner per
-// fact), this file is the SOLE canonical owner of the 12 Test funcs
-// that exercise the search-text wiring + ctx-propagation contracts:
-//
-//   - 2 TestAssetToPoint_SparseVector_* sparse-vector wire-shape tests
-//     (PR2 server-side BM25 + empty-SearchText graceful-degradation)
-//   - 1 TestAssetToPoint_VisualVector_CanonicalDimensions canonical
-//     1152-d SigLIP visual embedding (schema matches native output)
-//   - 2 TestAssetToPoint_TranscriptChannel_* PR2 dropped-vs-preserved
-//     contract pins
-//   - 1 TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough
-//     byte-for-byte pass-through contract (no `SetSearchTextBuilder`)
-//   - 2 TestAssetToPoint_SearchTextBuilder_* wiring tests
-//     (YouTube strategy + empty-builder fallback)
-//   - 3 TestResolveSearchText_* precedence + ctx-propagation tests
-//     (nil → AssetSearchText, cancelled ctx graceful-degradation,
-//     caller-ctx forwarded verbatim, Background forwarded verbatim)
-//   - 1 TestAssetToIndexDocument_CancelledContext_DegradesGracefully
-//     AZIONE 1 ctx-propagation pino (cancelled ctx → log Warn +
-//     fall through to asset.SearchText)
-//
-// All test funcs target the SEARCHTEXT production code only
-// (payload_mapper_searchtext.go::parseMetadataJSON +
-// ::buildSearchTextInput + ::resolveSearchText + the AssetToIndexDocument /
-// AssetToPoint call sites that drive them). They share makeFloat32Slice,
-// requirePointID, mapKeys, mapKeysVec, fakeAssetStore, and
-// ctxRecordingBuilder from payload_mapper_testhelpers_test.go via
-// same-package visibility. godlike/07 minimum-blast-radius: pure
-// code-motion, no logic change.
+// Package indexing — SEARCHTEXT payload-mapper tests.
 package indexing
 
 import (
@@ -42,13 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 )
 
-// ── PR2 (fix/qdrant-bm25-indexing): sparse vector wire-shape ─────────────
-
-// TestAssetToPoint_SparseVector_HasServerSideShape pins the wire
-// shape for the bm25_text sparse channel: `vectors.bm25_text` MUST be
-// `{text: <asset.SearchText>, model: <channelModel>}`. Search payload
-// alone is NOT enough to drive server-side BM25 — the inference model
-// receives the text directly through the vector field per Qdrant 1.10+.
 func TestAssetToPoint_SparseVector_HasServerSideShape(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-bm25",
@@ -71,7 +32,7 @@ func TestAssetToPoint_SparseVector_HasServerSideShape(t *testing.T) {
 
 	bm25, ok := point.Vectors["bm25_text"]
 	if !ok {
-		t.Fatalf("PR2: vectors.bm25_text MUST be present (server-side BM25 inference requires the vector field, not the payload); got channels %v", mapKeysVec(point.Vectors))
+		t.Fatalf("PR2: vectors.bm25_text MUST be present (server-side BM25 inference requires the vector field, not the payload); got channels %v", mapKeys(point.Vectors))
 	}
 	m, ok := bm25.(map[string]interface{})
 	if !ok {
@@ -81,15 +42,10 @@ func TestAssetToPoint_SparseVector_HasServerSideShape(t *testing.T) {
 		t.Errorf("vectors.bm25_text.text = %v, want %q", m["text"], asset.SearchText)
 	}
 	if m["model"] != qdrantSchema.DefaultSparseModel {
-		t.Errorf("vectors.bm25_text.model = %v, want %q (qdrantSchema.DefaultSparseModel)", m["model"], qdrantSchema.DefaultSparseModel)
+		t.Errorf("vectors.bm25_text.model = %v, want %q (qdrantSchema.DefaultSparseModel)", m["model"])
 	}
 }
 
-// TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel pins
-// that AssetToPoint MUST NOT write an empty sparse vector when
-// SearchText is empty. Today the mapper skips the channel and
-// logs Debug; this test freezes that behaviour so a future change
-// that emits `{text: ""}` would not index an empty BM25 vector.
 func TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-no-bm25",
@@ -112,9 +68,6 @@ func TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel(t *testing.T) {
 	}
 }
 
-// TestAssetToPoint_VisualVector_CanonicalDimensions pins the canonical
-// 1152-d SigLIP visual embedding. Historical assets now carry the native
-// 1152-d vectors and the schema matches — no resampling required.
 func TestAssetToPoint_VisualVector_CanonicalDimensions(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-visual-canonical",
@@ -145,11 +98,6 @@ func TestAssetToPoint_VisualVector_CanonicalDimensions(t *testing.T) {
 	}
 }
 
-// TestAssetToPoint_TranscriptChannel_DroppedWhenAbsent pins the
-// PR2 contract on the transcript channel: there is no fallback to
-// the text vector. When TranscriptVector is nil the transcript
-// channel MUST be absent from the point vectors (no synthetic /
-// fake vectors).
 func TestAssetToPoint_TranscriptChannel_DroppedWhenAbsent(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-tx",
@@ -157,9 +105,7 @@ func TestAssetToPoint_TranscriptChannel_DroppedWhenAbsent(t *testing.T) {
 		Source:         "youtube",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
-		// TextVector present (required), TranscriptVector absent.
-		TextVector: makeFloat32Slice(768),
-		// TranscriptVector NOT supplied.
+		TextVector:     makeFloat32Slice(768),
 	}
 	schema := qdrantSchema.DefaultV3Schema()
 
@@ -173,14 +119,9 @@ func TestAssetToPoint_TranscriptChannel_DroppedWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestAssetToPoint_TranscriptChannel_PreservedWhenPresent pins
-// the symmetric case: when the asset carries a real transcript
-// vector, the transcript channel is present and equals the
-// dedicated embedding (NOT a copy of the text vector).
 func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 	textVec := makeFloat32Slice(768)
 	transcriptVec := makeFloat32Slice(768)
-	// Distinguish: make the transcript vec not equal to the text vec.
 	for i := range transcriptVec {
 		transcriptVec[i] = float32(i+1) * 0.001
 	}
@@ -217,6 +158,7 @@ func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 		}
 	}
 }
+
 func TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough(t *testing.T) {
 	const wantSearchText = "pre-existing search text from DB"
 	asset := &AssetData{
@@ -230,7 +172,6 @@ func TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	// Explicit: no SetSearchTextBuilder call.
 	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint: %v", err)
@@ -244,11 +185,6 @@ func TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough(t *testing.T) {
 	}
 }
 
-// TestAssetToPoint_SearchTextBuilder_YoutubeStrategy pins the wiring
-// for the YouTube source. The asset's Title + Channel + Description
-// are routed through the YouTube strategy. The FallBack behavior
-// (empty builder output → asset.SearchText) is verified separately
-// in TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText.
 func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-yt-builder",
@@ -275,9 +211,6 @@ func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
 		t.Fatalf("bm25_text channel missing/malformed")
 	}
 	text, _ := bm25["text"].(string)
-	// YouTube strategy joins title + transcript + channel + description.
-	// Let canonical per-source formula speak for the contract rather
-	// than pinning exact ordering — each substring MUST appear.
 	mustContainAll := func(haystack string, needles ...string) {
 		t.Helper()
 		for _, n := range needles {
@@ -287,19 +220,13 @@ func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
 		}
 	}
 	mustContainAll(text,
-		"Cinematic Drone Footage",                           // title
-		"Welcome to my drone channel",                       // transcript (from metadata_json)
-		"ChannelAlpha",                                      // channel
-		"Beautiful drone footage over mountains at sunrise", // description
+		"Cinematic Drone Footage",
+		"Welcome to my drone channel",
+		"ChannelAlpha",
+		"Beautiful drone footage over mountains at sunrise",
 	)
 }
 
-// TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText pins
-// the graceful-degradation contract: when the builder returns empty
-// (legitimate empty strategy result, e.g. unrecognised source
-// with no Title and no Tags), the mapper falls back to
-// asset.SearchText. This matches the resolver's precedence
-// order (builder -> asset.SearchText).
 func TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText(t *testing.T) {
 	const wantSearchText = "fallback search text from DB"
 	asset := &AssetData{
@@ -308,7 +235,7 @@ func TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText(t *testing.T) 
 		Source:         "unknown_future_source",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
-		Tags:           nil, // no tags → default-fallback returns "" too
+		Tags:           nil,
 		SearchText:     wantSearchText,
 		TextVector:     makeFloat32Slice(768),
 	}
@@ -329,8 +256,6 @@ func TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText(t *testing.T) 
 	}
 }
 
-// TestResolveSearchText_NilBuilder_ReturnsAssetSearchText pins the
-// precedence-order stage (the resolver helper used by AssetToIndexDocument).
 func TestResolveSearchText_NilBuilder_ReturnsAssetSearchText(t *testing.T) {
 	const want = "asset fallback"
 	m := NewPayloadMapper(&fakeAssetStore{}, nil)
@@ -339,16 +264,6 @@ func TestResolveSearchText_NilBuilder_ReturnsAssetSearchText(t *testing.T) {
 	}
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// AZIONE 7 (July 2026) — context propagation TDD tests.
-// ══════════════════════════════════════════════════════════════════════════
-
-// TestAssetToIndexDocument_CancelledContext_DegradesGracefully verifies
-// that AssetToIndexDocument passes the caller's ctx to the SearchTextBuilder
-// (AZIONE 1 fix: ctx, NOT context.Background()). A cancelled context causes
-// the builder to return context.Canceled; resolveSearchText logs Warn and
-// falls through to asset.SearchText — the key contract is that the real ctx
-// IS propagated, not silently replaced.
 func TestAssetToIndexDocument_CancelledContext_DegradesGracefully(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	asset := &AssetData{
@@ -359,8 +274,6 @@ func TestAssetToIndexDocument_CancelledContext_DegradesGracefully(t *testing.T) 
 		TextVector:     makeFloat32Slice(768),
 		SearchText:     "fallback search text",
 	}
-
-	// Create a context that is ALREADY cancelled.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -369,9 +282,6 @@ func TestAssetToIndexDocument_CancelledContext_DegradesGracefully(t *testing.T) 
 	mapper.SetSearchTextBuilder(recorder)
 
 	doc, err := mapper.AssetToIndexDocument(ctx, asset, schema)
-	// Contract: AssetToIndexDocument MUST NOT panic on a cancelled context.
-	// resolveSearchText logs Warn + falls through to asset.SearchText.
-	// The doc.SearchText field is populated from the fallback.
 	if err != nil {
 		t.Fatalf("AssetToIndexDocument with cancelled ctx must not error (graceful degradation); got %v", err)
 	}
@@ -381,45 +291,28 @@ func TestAssetToIndexDocument_CancelledContext_DegradesGracefully(t *testing.T) 
 	if doc.SearchText != recorder.capturedText {
 		t.Errorf("SearchText: got %q, want %q (builder output when ctx not cancelled)", doc.SearchText, recorder.capturedText)
 	}
-	// The real contract: the ctx passed to Build MUST be the cancelled ctx,
-	// NOT context.Background(). The recording builder captures the ctx identity.
 	if recorder.capturedCtx == nil {
 		t.Error("SearchTextBuilder.Build was NEVER called — ctx was not propagated (possible context.Background() bypass)")
 		return
 	}
-	// Verify the captured ctx is CANCELLED (proves the real ctx was passed,
-	// not a fresh context.Background()).
 	select {
 	case <-recorder.capturedCtx.Done():
-		// PASS: the real cancelled ctx was propagated.
 	default:
 		t.Error("SearchTextBuilder.Build received a ctx that is NOT cancelled — possible context.Background() bypass")
 	}
 }
 
-// TestResolveSearchText_PassesCallerContext_NotBackground verifies that
-// resolveSearchText passes the caller's ctx to SearchTextBuilder.Build,
-// NOT a fresh context.Background() (the AZIONE 1 fix). A mock builder
-// records the received ctx and the test asserts it is the SAME ctx value
-// passed by the caller.
 func TestResolveSearchText_PassesCallerContext_NotBackground(t *testing.T) {
 	type ctxKey struct{}
 	ctxKeySentinel := ctxKey{}
 	ctx := context.WithValue(context.Background(), ctxKeySentinel, "marker-value")
-
-	asset := &AssetData{
-		ID:         "asset-ctx-prop",
-		SearchText: "fallback",
-	}
+	asset := &AssetData{ID: "asset-ctx-prop", SearchText: "fallback"}
 
 	recorder := &ctxRecordingBuilder{}
 	mapper := NewPayloadMapper(&fakeAssetStore{}, nil)
 	mapper.SetSearchTextBuilder(recorder)
-
 	got := mapper.resolveSearchText(ctx, asset)
 
-	// The resolved text is the recorder's return value (or fallback).
-	// The key invariant: the ctx passed to Build MUST be the caller's ctx.
 	if recorder.capturedCtx == nil {
 		t.Error("SearchTextBuilder.Build was NEVER called — ctx was not propagated")
 		return
@@ -427,36 +320,25 @@ func TestResolveSearchText_PassesCallerContext_NotBackground(t *testing.T) {
 	if recorder.capturedCtx != ctx {
 		t.Errorf("SearchTextBuilder.Build received a DIFFERENT ctx than the caller's — possible context.Background() or context.WithoutCancel bypass")
 	}
-	// Sanity: Build DID get the caller's ctx with the marker value.
 	if v := recorder.capturedCtx.Value(ctxKeySentinel); v != "marker-value" {
 		t.Errorf("captured ctx lost the marker value — possible context.Background() replacement: got %v", v)
 	}
-	_ = got // explicit marker for grep forensics
+	_ = got
 }
 
-// TestResolveSearchText_BackgroundContext_NotReplaced verifies that even
-// when the caller passes context.Background() itself (legitimate, e.g.
-// composition roots, admin CLI), resolveSearchText forwards it verbatim
-// — it does NOT create a fresh copy.
 func TestResolveSearchText_BackgroundContext_NotReplaced(t *testing.T) {
 	ctx := context.Background()
-	asset := &AssetData{
-		ID:         "asset-bg-ctx",
-		SearchText: "fallback",
-	}
+	asset := &AssetData{ID: "asset-bg-ctx", SearchText: "fallback"}
 
 	recorder := &ctxRecordingBuilder{}
 	mapper := NewPayloadMapper(&fakeAssetStore{}, nil)
 	mapper.SetSearchTextBuilder(recorder)
-
 	got := mapper.resolveSearchText(ctx, asset)
 
 	if recorder.capturedCtx == nil {
 		t.Error("SearchTextBuilder.Build was NEVER called")
 		return
 	}
-	// context.Background() is intentionally forwarded — the caller owns
-	// the ctx decision; the mapper must NOT second-guess.
 	if recorder.capturedCtx != ctx {
 		t.Error("SearchTextBuilder.Build received a different ctx — even context.Background() must be forwarded verbatim")
 	}
