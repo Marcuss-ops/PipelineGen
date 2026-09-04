@@ -47,11 +47,11 @@ import (
 // LocalizedClipPlan fingerprints. These are resolved ONCE at the composition
 // root and shared by every localized render — never re-derived per plan.
 type LocalizationConfig struct {
-	SourceLanguage string
-	OutputProfileHash string
-	RendererVersion string
-	SubtitleStyleHash string
-	EncoderPolicyHash string
+	SourceLanguage          string
+	OutputProfileHash       string
+	RendererVersion         string
+	SubtitleStyleHash       string
+	EncoderPolicyHash       string
 	WorkDir                 string
 	GlobalRenderConcurrency int
 	UploadConcurrency       int
@@ -121,28 +121,27 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 }
 
 type LocalizeInput struct {
-	AssetID string
-	JobID string
-	SceneID string
-	ClipID string
-	SourceLanguage string
-	Watermark      *cliprender.MaterializedAsset
-	WatermarkSpec  *cliprender.WatermarkSpec
-	WatermarkText  string
-	Background     *cliprender.MaterializedAsset
-	BackgroundMode string
-	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+	AssetID                string
+	JobID                  string
+	SceneID                string
+	ClipID                 string
+	SourceLanguage         string
+	Watermark              *cliprender.MaterializedAsset
+	WatermarkSpec          *cliprender.WatermarkSpec
+	Background             *cliprender.MaterializedAsset
+	BackgroundMode         string
+	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	ForegroundScalePercent int
-	Request localization.LocalizationRequest
-	FolderID string
+	Request                localization.LocalizationRequest
+	FolderID               string
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
 	OnRendered             func(localization.LocalizedClipArtifact) error
-	DocTitle          string
-	DocFolderID       string
-	DocIdempotencyKey string
-	DocForce          bool
-	SkipDocument bool
+	DocTitle               string
+	DocFolderID            string
+	DocIdempotencyKey      string
+	DocForce               bool
+	SkipDocument           bool
 }
 
 func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
@@ -176,7 +175,6 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		SubtitleStyleHash:      s.resolveSubtitleStyleHash(in.SubtitlesStyle),
 		Watermark:              in.Watermark,
 		WatermarkSpec:          in.WatermarkSpec,
-		WatermarkText:          in.WatermarkText,
 		Background:             in.Background,
 		BackgroundMode:         in.BackgroundMode,
 		ForegroundScalePercent: in.ForegroundScalePercent,

@@ -49,9 +49,8 @@ type SourceInput struct {
 	OutputProfileHash string
 	RendererVersion   string
 	SubtitleStyleHash string
-	Watermark         *cliprender.MaterializedAsset
-	WatermarkSpec     *cliprender.WatermarkSpec
-	WatermarkText     string
+	Watermark     *cliprender.MaterializedAsset
+	WatermarkSpec *cliprender.WatermarkSpec
 
 	// Background / BackgroundMode are the resolved background selection
 	// (materialized asset only for mode=asset).
@@ -173,7 +172,6 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			Priority:               lr.Priority,
 			Watermark:              source.Watermark,
 			WatermarkSpec:          source.WatermarkSpec,
-			WatermarkText:          source.WatermarkText,
 			Background:             source.Background,
 			BackgroundMode:         source.BackgroundMode,
 			ForegroundScalePercent: source.ForegroundScalePercent,
