@@ -3,7 +3,7 @@ package images
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
+	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
 )
 
 type ImageSearcher interface {
