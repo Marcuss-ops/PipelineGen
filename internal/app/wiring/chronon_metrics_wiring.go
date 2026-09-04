@@ -3,18 +3,11 @@ package wiring
 import (
 	"database/sql"
 
+	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 	"go.uber.org/zap"
 )
 
 func wireChrononMetricsAdapter(db *sql.DB, log *zap.Logger) *cliprender.ChrononMetricsAdapter {
-	if db == nil {
-		return nil
-	}
-	store, err := perfstore.NewOperationStore(db)
-	if err != nil {
-		return nil
-	}
-	return cliprender.NewChrononMetricsAdapter(store, log)
+	return renderingwiring.NewChrononMetricsAdapter(db, log)
 }
