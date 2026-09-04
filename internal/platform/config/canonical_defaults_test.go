@@ -123,7 +123,6 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 		"voiceover_enabled:",
 		"images_enabled:",
 		"stock_pipeline_enabled:",
-		"catalog_script_vector_search:",
 	}
 	for _, r := range required {
 		if !strings.Contains(yamlContent, r) {
@@ -139,6 +138,7 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 	forbidden := []string{
 		"workflow_enabled:",          // retired flag
 		"google_accounting_enabled:", // belongs to GoogleAccountingConfig, not FeaturesConfig
+		"catalog_script_vector_search:", // retired flag
 	}
 	// Only check within the features: block to avoid false positives on
 	// legitimate top-level google_accounting: usage.
