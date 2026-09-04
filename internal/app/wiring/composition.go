@@ -95,13 +95,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
-	// COMPLETE MEDIA CUTOVER: Process.VectorSvc is a legacy-named generic
-	// vector port that old composition sites still inspect. It MUST resolve to
-	// PostgreSQL for the media domain regardless of whether Qdrant is enabled
-	// for another owner. This assignment removes the last media-facing Qdrant
-	// fallback while preserving Qdrant's separately named non-media surfaces.
-	if mediaPG != nil {
-		process.VectorSvc = pgmedia.NewMediaSearcher(mediaPG)
+	// COMPLETE MEDIA CUTOVER: the legacy-named ClipIndexerService still has
+	// call sites such as reindex jobs and provider workflows. In PostgreSQL
+	// media mode those imperative calls MUST enqueue the canonical PG outbox
+	// event rather than execute the retired SQLite -> Qdrant implementation.
+	// Qdrant can remain independently wired inside ProcessBundle for an
+	// explicitly owned non-media capability; it is not rebound as the media
+	// vector authority here.
+	if mediaPG != nil && process.ClipIndexerService != nil {
+		process.ClipIndexerService.SetCanonicalIndexRequester(pgmedia.NewReindexRequester(mediaPG))
 	}
 
 	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig)
