@@ -1,12 +1,5 @@
 package wiring
 
-import (
-	ytService "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-)
+import youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 
-// YouTubeClipWiring is the published YouTube clip module surface.
-type YouTubeClipWiring struct {
-	Module  api.Module
-	Service *ytService.Service
-}
+type YouTubeClipWiring = youtubewiring.YouTubeClipWiring
