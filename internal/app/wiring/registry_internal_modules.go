@@ -15,7 +15,6 @@ import (
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -48,19 +47,16 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		providerReg = root.Search.ProviderRegistry
 	}
 
-	var vectorStoreForSearch assetsearch.VectorStorePort
-	if root.Process != nil {
-		vectorStoreForSearch = root.Process.VectorSvc
+	// POSTGRES-MEDIA-CUTOVER: resolve BOTH semantic retrieval and hydration
+	// from the same canonical PostgreSQL MediaSearcher. There is deliberately
+	// no seed from root.Process.VectorSvc and no SQLite hydration adapter, so
+	// Qdrant/SQLite cannot re-enter the media read path as fallbacks.
+	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := selectMediaSearchStore(cfg, root.MediaPostgres, log)
+	if mediaSearchErr != nil {
+		return registryCrossStepState{}, mediaSearchErr
 	}
-
-	// POSTGRES-MEDIA-CUTOVER: when the PostgreSQL media SSOT is enabled,
-	// the vector search plane is the pgvector MediaSearcher over the same
-	// database that owns media_assets — the Qdrant adapter is never
-	// consulted for media reads (fail-closed on an unavailable Postgres).
-	if _, pgDB, pgSelected, pgErr := selectMediaVectorStore(ctx, cfg, log); pgErr != nil {
-		return registryCrossStepState{}, pgErr
-	} else if pgSelected {
-		vectorStoreForSearch = pgVectorStoreFrom(pgDB)
+	if !mediaSearchSelected {
+		log.Info("registerInternalModules: media PostgreSQL disabled; semantic media backend not deployed")
 	}
 
 	var embeddingReg search.EmbeddingChannelRegistry
@@ -70,11 +66,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		// must not silently create a second vector space.
 		textEmb := embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL)
 		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(textEmb), nil)
-	}
-
-	var mediaRepo search.MediaReadRepository
-	if root.Repos != nil {
-		mediaRepo = newSearchReadAdapter(root.Repos.ClipsRepo)
 	}
 
 	var deliveryPort search.AssetDeliveryService
@@ -203,7 +194,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		return registryCrossStepState{}, fmt.Errorf("wire registry: media ingest committer: %w", mediaIngestErr2)
 	}
 	if mediaIngestCommitter == nil {
-		log.Warn("wire registry: media PostgreSQL unavailable — MediaIngest module skipped (graceful degrade, godlike/07)")
+		log.Warn("wire registry: media PostgreSQL unavailable — MediaIngest module skipped (media plane not deployed)")
 	}
 
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
@@ -457,7 +448,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 			return fmt.Errorf("registerClipRender: canonical media writer: %w", werr)
 		}
 		if w == nil {
-			return fmt.Errorf("registerClipRender: canonical media writer unavailable (media PostgreSQL degraded)")
+			return fmt.Errorf("registerClipRender: canonical media writer unavailable (media PostgreSQL not deployed)")
 		}
 		committer = w
 	}
@@ -569,11 +560,11 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, r
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
 		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
 	}
-	if root.Process != nil && root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
-		var searchAgg mediasearchapi.AggregatorSearcher
-		if crossStep.SearchAggregator != nil {
-			searchAgg = crossStep.SearchAggregator
-		}
+	// Media-search transport follows the canonical media plane, not the legacy
+	// Qdrant process bundle. When PostgreSQL is deployed, readiness reports any
+	// missing semantic dependency through the handler instead of hiding the route.
+	if root != nil && root.MediaPostgres != nil && crossStep.SearchAggregator != nil {
+		searchAgg := mediasearchapi.AggregatorSearcher(crossStep.SearchAggregator)
 		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
 			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
 		})
