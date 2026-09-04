@@ -22,20 +22,15 @@ type recordingStager struct {
 	stageCalls    int
 	lastRef       assets.SourceRef
 	stagedAsset   *assets.StagedAsset
-	stageErr      error
 	cleanupCalls  int
 	cleanedStaged *assets.StagedAsset
-	cleanupErr    error
 }
 
 var _ acquisition.SourceStager = (*recordingStager)(nil)
 
-func (r *recordingStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+func (r *recordingStager) Prepare(_ context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
 	r.stageCalls++
 	r.lastRef = assets.SourceRef{URL: req.Source.URL, DownloadSection: req.Source.DownloadSection, ForceKeyframes: req.Source.ForceKeyframes, MergeFormat: req.Source.MergeFormat}
-	if r.stageErr != nil {
-		return nil, r.stageErr
-	}
 	if r.stagedAsset == nil {
 		return nil, nil
 	}
@@ -50,7 +45,7 @@ func (r *recordingStager) Prepare(ctx context.Context, req acquisition.PrepareRe
 func (r *recordingStager) Release(_ context.Context, cleanupToken string) error {
 	r.cleanupCalls++
 	r.cleanedStaged = &assets.StagedAsset{LocalPath: cleanupToken}
-	return r.cleanupErr
+	return nil
 }
 
 func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
