@@ -73,17 +73,18 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 			}
 			items = append(items, capabilityoverlay.OverlayItem{
-				ID:         overlayItemID(occurrence),
-				SceneID:    occurrence.SceneID,
-				EntityID:   occurrence.EntityID,
-				Kind:       string(kind),
-				StartMs:    occurrence.AudioStartUS / 1000,
-				EndMs:      (endUS + 999) / 1000,
-				StartUS:    occurrence.AudioStartUS,
-				DurationUS: durationUS,
-				TemplateID: entry.Template,
-				PresetID:   capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, overlayItemID(occurrence), occurrence.Type),
-				Text:       occurrence.Name,
+				ID:            overlayItemID(occurrence),
+				SceneID:       occurrence.SceneID,
+				EntityID:      occurrence.EntityID,
+				Kind:          string(kind),
+				StartMs:       occurrence.AudioStartUS / 1000,
+				EndMs:         (endUS + 999) / 1000,
+				StartUS:       occurrence.AudioStartUS,
+				DurationUS:    durationUS,
+				TemplateID:    entry.Template,
+				PresetID:      capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, overlayItemID(occurrence), occurrence.Type),
+				ImagePresetID: capabilityoverlay.SelectEntityImagePreset(planID, occurrence.SceneID, overlayItemID(occurrence)),
+				Text:          occurrence.Name,
 				// The plan's entity_ref: RenderingGen receives WHO the overlay is
 				// about (stable content-addressed id + type + canonical name +
 				// surface text), never a bare name.
