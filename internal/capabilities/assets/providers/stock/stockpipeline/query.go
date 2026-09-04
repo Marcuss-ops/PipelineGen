@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -22,21 +21,9 @@ func (s *Service) resolveQuery(ctx context.Context, query string, limit int) ([]
 
 	if strings.HasPrefix(query, "http") && (strings.Contains(query, "youtube.com") || strings.Contains(query, "youtu.be")) {
 		videoID, _ := urlutil.ExtractVideoID(query)
-		title := videoID
-		if info, err := s.getDirectVideoInfo(ctx, query); err == nil && info != nil {
-			if info.Title != "" {
-				title = info.Title
-			}
-			return []VideoSource{{
-				URL:         query,
-				Title:       title,
-				Source:      query,
-				DurationSec: info.Duration,
-			}}, nil
-		}
 		return []VideoSource{{
 			URL:    query,
-			Title:  title,
+			Title:  videoID,
 			Source: query,
 		}}, nil
 	}
@@ -139,11 +126,4 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]VideoS
 		})
 	}
 	return sources, nil
-}
-
-// getDirectVideoInfo fetches metadata for a direct YouTube URL.
-// P8 (July 2026): youtubeSvc field REMOVED from Service — dead code
-// (never wired at composition root). Always returns nil, nil.
-func (s *Service) getDirectVideoInfo(_ context.Context, _ string) (*youtubeports.DownloaderMetadata, error) {
-	return nil, nil
 }
