@@ -201,9 +201,8 @@ type RunnerConfig struct {
 	// PollConsecutiveEmptyBeforeBackoff}.
 	Backoff BackoffConfig
 
-	// Notifier is the wake-on-Enqueue port. Required by the Worker
-	// signature (compile-time seam marker at internal/capabilities/jobs/queue/
-	// Composition root wires the in-process SQLite adapter today; a future
-	// Postgres LISTEN/NOTIFY adapter can satisfy the same kernel contract.
-	Notifier QueueNotifier
+	// Notifier is the wake-on-Enqueue port. The canonical provider-neutral
+	// contract is owned by kernel/job; composition currently wires SQLite and
+	// a future Postgres LISTEN/NOTIFY adapter can satisfy the same interface.
+	Notifier jobs.QueueNotifier
 }
