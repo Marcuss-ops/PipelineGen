@@ -1,38 +1,17 @@
 // Package app — search_backends.go is the Wave 21 canonical
 // composition-only bridge between the canonical Search capability
-// (internal/capabilities/assets/search/) and the two concrete backend
-// domains:
+// (internal/capabilities/assets/search/) and the concrete backend domains.
 //
-//   - providers.SearchProvider — exposed by every source integration
-//     (artlist, youtube, stock); keyed by providers.Registry.
-//   - assets.ClipsRepository    — the canonical SQLite-backed local
-//     catalog. Exposes SearchClipsAdvanced (AdvancedSearchRepo) and
-//     FindClipsByHash (the hash-match dedup path).
-//
-// Today (July 2026, post Fase 6): providerSearchBackend + localSearchBackend
-// + semanticSearchBackend. The historical QDRANT-004 single-tenant
-// semanticSearchBackend (which wrapped *mediasearch.Service) was git-rm'd
-// in PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL and replaced by the
-// canonical Fase 6 two-port architecture (QueryEmbedder + VectorStorePort)
-// in search_backend_semantic.go.
-//
-// LONG-FILES-DECOMPOSITION-2026-07-06 Band B #2: providerSearchBackend →
-// search_backend_provider.go, localSearchBackend → search_backend_local.go.
-// This file retains the composition bridge + helpers only.
+// Media cutover invariant (September 2026): the semantic catalog backend is
+// registered only when ONE adapter implements both VectorStorePort and
+// MediaReadRepository. The canonical production implementation is
+// platform/postgres/media.MediaSearcher. This prevents accidental
+// recomposition of pgvector or Qdrant retrieval with SQLite hydration.
 //
 // Wave 19 cross-capability rule: this file IS the ONLY place in
-// internal/app/ where multiple internal/capabilities/* domains are
-// imported at once. The composition root's canonical pattern
-// (per AGENTS.md Pattern 0 + Wave 19 PR-2) is "composition-only
-// bridge in internal/app/"; this file fills that role for the Search
-// capability. The bare search package remains stdlib-only
-// (Wave 19 invariant).
-//
-// PR-2 (June 2026): BuildSearchBackends also constructs the canonical
-// search.SearchFanOut — the telemetry decorator that wraps the
-// aggregator and exposes the user-spec Option{Hits, Latencies}
-// Stats surface. All callers consume SearchFanOut via the
-// AssetsWiring struct.
+// internal/app/ where multiple internal/capabilities/* domains are imported
+// at once. The composition root's canonical pattern is "composition-only
+// bridge in internal/app/"; capability code remains behind typed ports.
 package wiring
 
 import (
@@ -57,65 +36,47 @@ type rerankerClient interface {
 	Rerank(ctx context.Context, query string, candidates []reranker.Candidate) ([]reranker.Result, error)
 }
 
+// canonicalMediaSearchStore is the cutover gate for semantic catalog reads.
+// Retrieval and hydration MUST be owned by the same adapter. PostgreSQL's
+// MediaSearcher satisfies both ports; the legacy Qdrant vector adapter does
+// not, so it cannot become a media semantic backend even if it remains wired
+// for legitimate non-media owners.
+type canonicalMediaSearchStore interface {
+	assetsearch.VectorStorePort
+	search.MediaReadRepository
+}
+
 // ── Composition bridge ─────────────────────────────────────────────────
 //
-// SearchBackendBuildOpts groups the inputs BuildSearchBackends
-// needs. Every backend can be disabled by leaving the corresponding
-// fields nil/empty. The ProviderRegistry and ClipsRepository are
-// guaranteed by WireAssets's AssetsBundle plumbing (providerRegistry
-// is a direct arg, bundle.ClipsRepo is bundle-resident).
+// SearchBackendBuildOpts groups the inputs BuildSearchBackends needs.
+// ProviderRegistry and ClipsRepository feed discovery/local backends.
+// Embeddings + VectorStore + Delivery feed semantic catalog search.
 //
-// Fase 6 (July 2026): Embedder + VectorStore + MediaRepo + Delivery
-// are the four ports consumed by the semanticSearchBackend
-// (search_backend_semantic.go). When all four are non-nil, the
-// semantic backend is registered alongside providers + local.
-// When any is nil (e.g. Qdrant disabled, or embedder not yet wired),
-// the semantic backend is silently skipped — the Aggregator falls
-// back to provider + local backends (graceful degradation).
+// MediaRepo remains in the shape temporarily for source compatibility with
+// older composition callers, but it is deliberately NOT consulted by the
+// semantic backend. The media cutover requires the VectorStore itself to
+// implement MediaReadRepository, guaranteeing one PostgreSQL read authority.
 type SearchBackendBuildOpts struct {
 	Logger      *zap.Logger
 	ProviderReg *providers.Registry
 	ClipsRepo   *sqassets.ClipsRepository
 
-	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): Embeddings
-	// replaces the historical Embedder search.QueryEmbedder field.
-	// The semanticSearchBackend delegates the multi-channel
-	// embedding surface to this registry; new channel encoders
-	// plug in via registry composition without backend changes.
-	// Required (non-nil) to register the semantic backend
-	// alongside VectorStore + MediaRepo + Delivery; nil-safe
-	// when zero (the semantic backend gracefully skips
-	// registration per Wave 19 invariant — Aggregator falls back
-	// to provider + local backends).
 	Embeddings  search.EmbeddingChannelRegistry
 	VectorStore assetsearch.VectorStorePort
-	MediaRepo   search.MediaReadRepository
+	MediaRepo   search.MediaReadRepository // compatibility input; not a semantic hydration fallback
 	Delivery    search.AssetDeliveryService
 	Reranker    rerankerClient
 
 	// CanonicalResolver is the source→asset identity resolver consumed
-	// by providerSearchBackend. PR-SEARCH-UNIVERSE (August 2026): the
-	// provider adapter no longer fabricates a canonical AssetID from
-	// the provider ID — it delegates to this resolver. nil is fail-safe
-	// (the backend degrades to the noop resolver: identity unknown).
+	// by providerSearchBackend. nil is fail-safe (identity unknown).
 	CanonicalResolver search.CanonicalIdentityResolver
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
-// Freeze()s it, and returns it ready to plug into a search.Aggregator.
-// Order of registration mirrors the BACKFILL dual-path rationale:
-// providers first (deterministic by Name() ordering), then local,
-// then semantic (the only one with prerequisites).
-//
-// PR-1 fail-closed: every Register error — ErrAlreadyRegistered,
-// ErrEmptyName, ErrNilBackend — aborts the build and returns the
-// error wrapped with the failing backend's identity.
-//
-// PR-2 (June 2026): this helper still returns the bare registry;
-// the canonical SearchFanOut (aggregator + telemetry decorator)
-// is built by BuildCanonicalSearchFanOut. WireRegistry calls both
-// once. WireAssets and WireYouTubeClip share the SAME SearchFanOut
-// instance so stats counters aggregate across all search traffic.
+// freezes it, and returns it ready to plug into a search.Aggregator.
+// Providers and the local catalog remain independently available. Semantic
+// media search is stricter: a split vector/hydration authority is rejected by
+// construction instead of silently degrading to Qdrant + SQLite.
 func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, error) {
 	log := opts.Logger
 	if log == nil {
@@ -149,16 +110,19 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 		}
 	}
 
-	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic backend —
-	// requires all four ports to be non-nil. Graceful degradation:
-	// when Qdrant / EmbeddingChannelRegistry / hydration / delivery
-	// are not yet wired, the backend is silently skipped and the
-	// Aggregator operates with providers + local only.
-	if opts.Embeddings != nil && opts.VectorStore != nil && opts.MediaRepo != nil && opts.Delivery != nil {
+	// POSTGRES-MEDIA-CUTOVER: semantic search requires one concrete adapter
+	// to own BOTH retrieval and hydration. A Qdrant-only VectorStorePort can
+	// remain alive for non-media domains, but it cannot satisfy this gate and
+	// therefore cannot be selected for the media catalog.
+	mediaStore, mediaStoreOK := opts.VectorStore.(canonicalMediaSearchStore)
+	if opts.VectorStore != nil && !mediaStoreOK {
+		log.Info("BuildSearchBackends: vector store ignored for media semantic search because it does not own canonical hydration")
+	}
+	if opts.Embeddings != nil && mediaStoreOK && opts.Delivery != nil {
 		semantic := &semanticSearchBackend{
 			embeddings:  opts.Embeddings,
-			vectorStore: opts.VectorStore,
-			mediaReader: opts.MediaRepo,
+			vectorStore: mediaStore,
+			mediaReader: mediaStore,
 			delivery:    opts.Delivery,
 			log:         log,
 			reranker:    opts.Reranker,
@@ -167,7 +131,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			log.Error("BuildSearchBackends: semantic backend register failed (fail-closed)", zap.Error(err))
 			return nil, fmt.Errorf("BuildSearchBackends: semantic backend: %w", err)
 		}
-		log.Info("BuildSearchBackends: Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY semantic backend registered (two-port Qdrant + 5-channel registry)")
+		log.Info("BuildSearchBackends: PostgreSQL media semantic backend registered (pgvector + PostgreSQL hydration)")
 	}
 
 	reg.Freeze()
@@ -175,23 +139,11 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 	return reg, nil
 }
 
-// BuildCanonicalSearchFanOut is the PR-2 composition entry-point.
-// It builds the BackendRegistry via BuildSearchBackends, wraps it
-// in the canonical search.Aggregator, and exposes the result
-// through the SearchFanOut decorator (the user-spec Option{Hits,
-// Latencies} Stats surface). Handlers and the composition root
-// share the SAME fan-out instance so per-backend counters
-// aggregate across every search entry-point (YouTube
-// /api/media/clips/search + Assets /api/clips/search/advanced +
-// Mediasearch + FindDuplicates).
-//
-// Wave 4 (July 2026): also returns the bare *search.Aggregator so
-// consumers that need direct query access (e.g. YouTube SearchCatalog)
-// can use it without type-asserting the decorator.
-//
-// Fail-closed: BuildSearchBackends error propagates verbatim so
-// WireRegistry aborts on a misconfigured backend set instead of
-// silently degrading to partial coverage.
+// BuildCanonicalSearchFanOut is the composition entry-point. It builds the
+// BackendRegistry, wraps it in the canonical search.Aggregator, and exposes
+// the SearchFanOut telemetry decorator. Handlers and composition consumers
+// share the SAME fan-out instance so backend counters aggregate across all
+// search entry points.
 func BuildCanonicalSearchFanOut(opts SearchBackendBuildOpts) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
 	log := opts.Logger
 	if log == nil {
@@ -212,7 +164,7 @@ func BuildCanonicalSearchFanOut(opts SearchBackendBuildOpts) (search.SearchFanOu
 // translateCaps maps the providers.Capability enum into the
 // search.Capability enum. Caps that don't map (CapabilityScript,
 // CapabilityFetch) are dropped — they're not yet represented in
-// the search capability and PR 10 will revisit if necessary.
+// the search capability.
 func translateCaps(in []providers.Capability) []search.Capability {
 	out := make([]search.Capability, 0, len(in))
 	for _, c := range in {
@@ -224,7 +176,7 @@ func translateCaps(in []providers.Capability) []search.Capability {
 		case providers.CapabilityMusic:
 			out = append(out, search.CapMusic)
 		case providers.CapabilityVoice:
-			out = append(out, search.CapAudio) // voice ≈ audio for cap bridging
+			out = append(out, search.CapAudio)
 		}
 	}
 	if len(out) == 0 {
@@ -247,33 +199,18 @@ func mediaTypesFromStrings(in []string) []assetpkg.MediaType {
 	return out
 }
 
-// mediaTypesSingleFromString is the PR-AGGREGATE-FILTER-UNIFORM
-// canonical helper: map q.Filters.MediaType (a SINGLE canonical
-// string per architecture/current.yaml#id-30 PR-1) to the
-// providers.SearchFilters.MediaTypes ([]asset.MediaType) shape.
-// Empty input returns nil (the "no media-type filter active"
-// semantic that the Aggregator already preserves). Delegates to
-// the existing mediaTypesFromStrings (skip-blanks + same canonical
-// trim semantics) so PR-2's helper stays the single source of
-// truth for the slice conversion.
+// mediaTypesSingleFromString maps q.Filters.MediaType to the providers
+// SearchFilters.MediaTypes slice shape. Empty input means no media-type
+// filter. Delegating to mediaTypesFromStrings keeps one conversion rule.
 func mediaTypesSingleFromString(in string) []assetpkg.MediaType {
 	return mediaTypesFromStrings([]string{strings.TrimSpace(in)})
 }
 
-// sourceOrAll normalises the legacy clipssearch "source" filter
-// semantic. Empty string == "all" (skip server-side filtering).
+// sourceOrAll normalises the legacy clipssearch source filter semantic.
+// Empty string means all sources.
 func sourceOrAll(s string) string {
 	if s == "" {
 		return "all"
 	}
 	return s
 }
-
-// (PR-PROVIDERS-SEARCHAGGREGATOR-REMOVE, July 2026) — the legacy
-// provider→aggregator composition-only bridge is RETIRED. The
-// 6 canonical backends (semantic + local + youtube-live,
-// artlist-live, stock, images) are now registered via
-// BuildSearchBackends above; every search consumer routes
-// through *search.Aggregator. The archcheck forward-prevention
-// gate `percheck_providers_searchaggregator_ban` pins the
-// godlike/06 SSOT — see git log for the migration history.
