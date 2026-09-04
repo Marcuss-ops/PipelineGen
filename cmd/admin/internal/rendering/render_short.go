@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -43,7 +44,7 @@ func RunRenderShort(args []string) error {
 	defer cleanup()
 
 	var uploader adminmedia.AdminUploader
-	mediaConfig := wiring.MediaexecConfig(cfg)
+	mediaConfig := mediawiring.MediaexecConfig(cfg)
 	if manifest.Upload != nil {
 		root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 		if err != nil {
