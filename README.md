@@ -9,8 +9,8 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
   - Stock clips are normalized to a canonical 1920×1080 / 24 fps / H.264 / AAC / `yuv420p` profile.
   - The `VERIFIED` state requires every clip to pass ffprobe checks on resolution, fps, codec, pixel format, audio codec, sample rate, and channels.
 - Script, image, and voiceover workflows.
-- SQLite-backed jobs and transactional outbox processing.
-- Qdrant semantic and hybrid search.
+- PostgreSQL + pgvector media catalog, embeddings, semantic/hybrid search, and media outbox.
+- SQLite-backed non-media jobs and transactional outbox processing.
 - Google Drive publishing and delivery.
 
 ## Requirements
@@ -19,22 +19,30 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
 - Python 3.10+
 - FFmpeg and ffprobe
 - yt-dlp
-- SQLite
-- Optional: Qdrant, Ollama, Google Drive credentials
+- PostgreSQL with pgvector for the media domain
+- SQLite for non-media domains that have not migrated
+- Optional: Qdrant for explicitly owned non-media use cases, Ollama, Google Drive credentials
 
 ## Run
 
-For local development / bootstrap (minimal — Qdrant OFF, clip_indexer OFF, artlist auto_download OFF):
+For local development / bootstrap:
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-For production deployments (full surface — Qdrant ON, clip_indexer ON, artlist auto_download ON):
+For production deployments, use the canonical production template and provide
+the media PostgreSQL DSN through the environment:
 
 ```bash
 cp config.production.example.yaml config.yaml
+export PIPELINEGEN_MEDIA_POSTGRES_DSN='postgres://USER:PASSWORD@HOST:PORT/pipelinegen_media?sslmode=disable'
 ```
+
+`media_postgresql.enabled: true` is fail-closed: an empty or unreachable DSN
+aborts startup. There is no SQLite or Qdrant fallback for media reads or
+writes. Qdrant is disabled by default in the production template and may be
+enabled only for an explicitly owned non-media capability.
 
 The production template is GPU-oriented: `video.codec: h264_nvenc`,
 `video.preset: p1`, and `video.crf` are the shared video encoder policy.
@@ -57,10 +65,9 @@ go build -o admin ./cmd/admin
 
 For the host deployment, use the native systemd units in
 [`scripts/systemd/`](scripts/systemd/). PipelineGen server and worker are not
-part of `docker-compose.yml`; that file starts only external infrastructure
-(Qdrant, Artlist scraper and SearXNG). This avoids rebuilding application
-images during normal development while preserving Docker for reproducible CI
-and release packaging.
+part of `docker-compose.yml`; that file starts only optional external
+infrastructure such as Qdrant, the Artlist scraper, and SearXNG. The canonical
+media PostgreSQL service is defined separately for the media-domain runtime.
 
 ```bash
 go build -o bin/pipelinegen ./cmd/server
@@ -99,7 +106,8 @@ go run ./scripts/operations/migrate-media-text-tracks-once.go \
 ```
 
 Il secondo comando trasferisce transcript e cue; entrambi sono idempotenti e
-il primo include la verifica di parità.
+il primo include la verifica di parità. Questi comandi sono strumenti di
+migrazione una tantum: il runtime media canonico resta PostgreSQL + pgvector.
 
 ## Local configuration and secrets
 
@@ -198,15 +206,18 @@ internal/capabilities/   business capabilities and typed ports
 internal/platform/       adapters, transport, and external systems
 internal/{api,application,domain,infrastructure}/ migration-only zones
 pkg/                     leaf utilities
-migrations/sqlite/       database migrations
+migrations/postgres/     canonical media-domain migrations
+migrations/sqlite/       non-media / legacy migration surfaces
 scripts/                 operational and CI utilities
 tests/                   automated and operational tests
 ```
 
 ## Architecture rules
 
-- SQLite is the source of truth.
-- Qdrant is a rebuildable search projection.
+- PostgreSQL + pgvector is the single source of truth for the media domain.
+- Media retrieval and media hydration must come from the same PostgreSQL adapter; no split database read path is permitted.
+- Qdrant media reads and writes are forbidden; Qdrant may exist only for explicitly owned non-media use cases.
+- SQLite remains authoritative only for non-media domains that have not migrated.
 - Long-running work uses the job system.
 - Post-commit side effects use the transactional outbox.
 - Capability code depends on ports; concrete adapters live in `internal/platform`.
@@ -218,9 +229,14 @@ tests/                   automated and operational tests
 
 ```bash
 make verify-main
+make certify-media-cutover
 ```
 
-`make verify-main` is the canonical fail-closed pre-push gate. It is composed of smaller targets so you can run only the checks relevant to the area you are working on and get faster, isolated failure signals. See [`docs/operations/verify-main-workflow.md`](docs/operations/verify-main-workflow.md) for the full workflow.
+`make verify-main` is the canonical fail-closed pre-push gate.
+`make certify-media-cutover` additionally pins the PostgreSQL media SSOT,
+pgvector search, canonical Postgres indexing worker, and demolition rules.
+See [`docs/operations/verify-main-workflow.md`](docs/operations/verify-main-workflow.md)
+for the full workflow.
 
 ## Operational testing
 
