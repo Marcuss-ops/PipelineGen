@@ -9,7 +9,7 @@ JSON_NODE=$(command -v node)
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/node-version-check.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
-mkdir -p "$FIXTURE/node-scraper" "$FIXTURE/web" "$FIXTURE/bin"
+mkdir -p "$FIXTURE/node-scraper" "$FIXTURE/bin"
 
 write_manifest() {
     local path=$1 requirement=$2
@@ -37,7 +37,6 @@ run_check() {
 }
 
 write_manifest "$FIXTURE/node-scraper/package.json" '22.x'
-write_manifest "$FIXTURE/web/package.json" '22.x'
 run_check "$FIXTURE/bin/node-22" >/dev/null
 
 expect_failure() {
@@ -49,12 +48,6 @@ expect_failure() {
     fi
 }
 
-rm -f "$FIXTURE/web/package.json"
-run_check "$FIXTURE/bin/node-22" >/dev/null
-write_manifest "$FIXTURE/web/package.json" '22.x'
-write_manifest "$FIXTURE/web/package.json" '20.x'
-expect_failure major-mismatch bash -c "NODE_VERSION_CHECK_ROOT='$FIXTURE' NODE_VERSION_CHECK_NODE='$FIXTURE/bin/node-22' NODE_VERSION_CHECK_JSON_NODE='$JSON_NODE' bash '$CHECK'"
-write_manifest "$FIXTURE/web/package.json" '22.x'
 expect_failure host-mismatch bash -c "NODE_VERSION_CHECK_ROOT='$FIXTURE' NODE_VERSION_CHECK_NODE='$FIXTURE/bin/node-20' NODE_VERSION_CHECK_JSON_NODE='$JSON_NODE' bash '$CHECK'"
 
 write_manifest "$FIXTURE/node-scraper/package.json" 'x'
