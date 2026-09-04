@@ -8,20 +8,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
-// ── Search query embedder adapter (Fase 6 Spina Dorsale) ───────────────────
-//
-// searchEmbedAdapter bridges the infrastructure-layer search.TextEmbedder
-// to the application-layer search.QueryEmbedder port.
-//
-// PR-ADAPTERS-SPLIT (July 2026): extracted from adapters_infra.go per
-// AGENTS.md Pattern 5.
-
+// searchEmbedAdapter bridges the infrastructure-layer search.TextEmbedder to
+// the application-layer search.QueryEmbedder port.
 type searchEmbedAdapter struct {
 	embedder search.TextEmbedder
 }
 
-// Compile-time assertion (see adapters_infra.go).
-// var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
+var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
 
 func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
 	if a == nil || a.embedder == nil {
@@ -30,17 +23,13 @@ func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32,
 	return a.embedder.Embed(ctx, text)
 }
 
-// ── Embedding channel registry adapter (PR-EMBEDDING-CHANNEL-REGISTRY, July 2026) ───
-//
-// Composition-only-seam concrete for search.EmbeddingChannelRegistry
-// (Pattern 0).
-
+// embeddingRegistryAdapter is the composition-only implementation of the
+// canonical embedding-channel registry.
 type embeddingRegistryAdapter struct {
 	adapters map[string]searchpkg.ChannelEncoder
 }
 
-// Compile-time assertion (see adapters_infra.go).
-// var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
+var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 
 func newEmbeddingRegistryAdapter(textEmbedder search.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
 	adapters := make(map[string]searchpkg.ChannelEncoder, len(searchpkg.CanonicalChannelNames()))
