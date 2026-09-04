@@ -115,7 +115,7 @@ type Worker struct {
 	pollEvery  time.Duration
 	backoff    BackoffConfig
 	types      []string
-	notifier   QueueNotifier
+	notifier   job.QueueNotifier
 	reg        *Registry
 	timeouts   TimeoutMap
 
@@ -160,7 +160,7 @@ type WorkerDeps struct {
 	ID         string
 	Repo       job.Store
 	Dispatcher *Dispatcher
-	Notifier   QueueNotifier
+	Notifier   job.QueueNotifier
 	Log        *zap.Logger
 	LeaseTTL   time.Duration
 	PollEvery  time.Duration

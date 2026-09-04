@@ -33,7 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
