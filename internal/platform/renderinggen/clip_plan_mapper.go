@@ -12,6 +12,9 @@
 //   - All semantic decisions (scale, background mode, subtitle mode, audio
 //     mode) are already final in the ClipRenderPlanV1; the mapper translates
 //     them verbatim into the overlay-plan vocabulary.
+//   - The typed visual style blocks (subtitles + watermark) travel with the
+//     plan VERBATIM. Dropping them here would let the worker fall back to its
+//     own defaults and silently diverge from the requested style.
 //   - Asset refs use the content-addressable hash as the logical path so
 //     RenderingGen workers can materialise them from the object store
 //     regardless of the originating machine's filesystem layout.
@@ -29,6 +32,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // SemanticSchema is the overlay-plan contract version owned by RenderingGen.
@@ -76,6 +80,11 @@ type overlaySubtitles struct {
 	AssetRefs []overlayAssetRef `json:"asset_refs,omitempty"`
 	StyleID   string            `json:"style_id,omitempty"`
 	Mode      string            `json:"mode,omitempty"`
+	// Style is the caller's typed visual override (font, size, color, shadow,
+	// position, width…). It MUST travel with the plan: dropping it here
+	// historically caused the RenderingGen compiler to fall back to its own
+	// hardcoded defaults, silently diverging from the requested style.
+	Style *styleBlock `json:"style,omitempty"`
 }
 
 type overlayWatermark struct {
@@ -84,6 +93,74 @@ type overlayWatermark struct {
 	FontRef   *overlayAssetRef  `json:"font_ref,omitempty"`
 	Position  string            `json:"position,omitempty"`
 	Opacity   *float64          `json:"opacity,omitempty"`
+	// MarginPX is the requested distance from the canvas edge. It is a *int so
+	// an explicit 0 stays distinguishable from an unset value.
+	MarginPX *int       `json:"margin_px,omitempty"`
+	Style    *styleBlock `json:"style,omitempty"`
+}
+
+// styleBlock is the wire projection of the canonical kernel/script
+// VideoVisualStyleSpec. It mirrors that struct field-for-field so the typed
+// owner in kernel/script remains the single source of truth; the mapper only
+// serialises it.
+type styleBlock struct {
+	Font         string           `json:"font,omitempty"`
+	Position     string           `json:"position,omitempty"`
+	Size         float64          `json:"size,omitempty"`
+	Color        string           `json:"color,omitempty"`
+	FontSizePX   float64          `json:"font_size_px,omitempty"`
+	WidthPX      int              `json:"width_px,omitempty"`
+	HeightPX     int              `json:"height_px,omitempty"`
+	ScalePercent float64          `json:"scale_percent,omitempty"`
+	Shadow       *shadowBlock     `json:"shadow,omitempty"`
+	TransitionIn *transitionBlock `json:"transition_in,omitempty"`
+}
+
+type shadowBlock struct {
+	Color   string  `json:"color,omitempty"`
+	Opacity float64 `json:"opacity,omitempty"`
+	BlurPX  float64 `json:"blur_px,omitempty"`
+	OffsetX float64 `json:"offset_x,omitempty"`
+	OffsetY float64 `json:"offset_y,omitempty"`
+}
+
+type transitionBlock struct {
+	Preset     string `json:"preset,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
+}
+
+// marshalStyle projects the canonical kernel/script visual style into the
+// wire block. A nil style stays nil on the wire (no empty object emitted).
+func marshalStyle(in *scriptpkg.VideoVisualStyleSpec) *styleBlock {
+	if in == nil {
+		return nil
+	}
+	out := &styleBlock{
+		Font:         in.Font,
+		Position:     in.Position,
+		Size:         in.Size,
+		Color:        in.Color,
+		FontSizePX:   in.FontSizePX,
+		WidthPX:      in.WidthPX,
+		HeightPX:     in.HeightPX,
+		ScalePercent: in.ScalePercent,
+	}
+	if in.Shadow != nil {
+		out.Shadow = &shadowBlock{
+			Color:   in.Shadow.Color,
+			Opacity: in.Shadow.Opacity,
+			BlurPX:  in.Shadow.BlurPX,
+			OffsetX: in.Shadow.OffsetX,
+			OffsetY: in.Shadow.OffsetY,
+		}
+	}
+	if in.TransitionIn != nil {
+		out.TransitionIn = &transitionBlock{
+			Preset:     in.TransitionIn.Preset,
+			DurationMS: in.TransitionIn.DurationMS,
+		}
+	}
+	return out
 }
 
 type overlayAudio struct {
@@ -204,6 +281,9 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		op.Subtitles = &overlaySubtitles{
 			Mode:    plan.Subtitles.Mode,
 			StyleID: plan.Subtitles.StyleID,
+			// The typed style block MUST be carried verbatim: the worker-side
+			// compiler has no other owner for subtitle geometry/color/shadow.
+			Style: marshalStyle(plan.Subtitles.Style),
 			AssetRefs: []overlayAssetRef{{
 				AssetID:   plan.Subtitles.SHA256, // use hash as stable ID
 				SHA256:    plan.Subtitles.SHA256,
@@ -218,6 +298,11 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		wm := &overlayWatermark{
 			Text:     plan.Watermark.Text,
 			Position: plan.Watermark.Position,
+			Style:    marshalStyle(plan.Watermark.Style),
+		}
+		if plan.Watermark.MarginPX > 0 {
+			margin := plan.Watermark.MarginPX
+			wm.MarginPX = &margin
 		}
 		if plan.Watermark.Opacity > 0 {
 			op := plan.Watermark.Opacity
