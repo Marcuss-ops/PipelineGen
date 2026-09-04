@@ -1,11 +1,4 @@
-// Package app — composition root.
-//
-// Bundle types live in composition_types.go.
-// Bundle constructors live in per-bundle files under
-// `internal/app/build_<bundle>.go`.
-// composition.go retains NewComposition.
-// Lifecycle (go) and Shutdown (shutdown.go) operate on the
-// assembled ComposeRoot.
+// Package wiring — composition root.
 package wiring
 
 import (
@@ -13,19 +6,18 @@ import (
 	"fmt"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
 
 	"go.uber.org/zap"
-
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// NewComposition assembles all bundles in dependency order and returns
-// the fully-wired ComposeRoot. Cleanup is owned by shutdown.go.
+// NewComposition assembles all bundles in dependency order and returns the
+// fully-wired ComposeRoot. Cleanup is owned by shutdown.go.
 func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*ComposeRoot, error) {
 	mediaConfig := mediasub.MediaexecConfig(cfg)
 
@@ -34,9 +26,8 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	}
 
 	// POSTGRES-MEDIA-CUTOVER: open the media SSOT handle FIRST so every
-	// downstream wiring decision (canonical committer, vector search
-	// plane, index worker) sees a consistent engine selection. Fail-closed:
-	// an enabled-but-unreachable media PostgreSQL aborts composition.
+	// downstream media decision sees one engine selection. enabled=true is
+	// fail-closed for invalid config or an unreachable database.
 	mediaPG, err := mediasub.RequireMediaPostgres(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("compose media postgres: %w", err)
@@ -61,8 +52,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	if dbs.Jobs != nil {
 		jobsDB = dbs.Jobs
 	}
-	// Cross-domain dependencies are threaded into JobsBundle here so that
-	// downstream constructors can keep strict, narrow signatures.
 	jobs, err := BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
@@ -91,15 +80,11 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		voiceoverDriver = driveAdmin
 	}
 
-	// StagingBundle must be built before OutboxBundle so the Publisher
-	// handler can register against staging.Store at wire-time.
 	staging, err := BuildStagingBundle(dbs, cfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
-	// OutboxBundle consumes StagingBundle.Store and Repository, plus the
-	// canonical delivery.Publisher, to drain artifact lifecycle events.
 	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
@@ -108,6 +93,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps, mediaPG, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
+	}
+
+	// COMPLETE MEDIA CUTOVER: Process.VectorSvc is a legacy-named generic
+	// vector port that old composition sites still inspect. It MUST resolve to
+	// PostgreSQL for the media domain regardless of whether Qdrant is enabled
+	// for another owner. This assignment removes the last media-facing Qdrant
+	// fallback while preserving Qdrant's separately named non-media surfaces.
+	if mediaPG != nil {
+		process.VectorSvc = pgmedia.NewMediaSearcher(mediaPG)
 	}
 
 	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig)
@@ -202,8 +196,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	return root, nil
 }
 
-// wireScriptReadinessProbe registers the script.generate readiness probe
-// when any script feature is enabled.
 func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AIBundle, driveBundle *DriveBundle, jobs *JobsBundle) {
 	if utility.ReadyChecker == nil || utility.HealthService == nil || !anyScriptFeatureEnabled(cfg) {
 		return
@@ -222,8 +214,6 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 	utility.ReadyChecker.WithScriptGenerateCheck(scriptChecker)
 }
 
-// wireLateBindings connects circular/lazy job handler registrations after
-// all bundles have been constructed.
 func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, process *ProcessBundle, textTracks *TextTrackBundle, log *zap.Logger) error {
 	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
 		return fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)
@@ -247,8 +237,6 @@ func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundl
 	return nil
 }
 
-// validateCriticalHandlers assembles and runs the critical handler
-// validation suite after all bundles and late bindings are wired.
 func validateCriticalHandlers(jobs *JobsBundle, sync *SyncBundle, domains *DomainBundle, process *ProcessBundle, log *zap.Logger) error {
 	var criticalHandlerValidators []CriticalHandler
 	appendYoutubeCatalogCriticalValidators(sync, domains, jobs, &criticalHandlerValidators)
