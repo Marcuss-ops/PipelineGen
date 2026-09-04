@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -88,10 +89,6 @@ func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScr
 	return scriptgen.RenderDocument(model, opts)
 }
 
-// RenderDocumentSkeleton / InjectDocumentLateBound implement the
-// early/late split so the runner can render the scene-text-only skeleton at
-// SceneTextReady (overlapping TTS/NLP) and fill the late-bound markers after
-// the audio join.
 func (scriptGenerationDocumentRenderer) RenderDocumentSkeleton(in scriptgen.DocumentSkeletonInput) string {
 	return scriptgen.RenderDocumentSkeleton(in)
 }
@@ -115,9 +112,6 @@ func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, 
 	return scriptgen.DocumentReference{ID: doc.ID, Link: doc.URL}, nil
 }
 
-// buildScriptGenerationRuntime creates the worker-owned durable runtime. The
-// HTTP starter only creates/correlates the run; this runtime is invoked by the
-// script.generate worker after the submission transaction has committed.
 func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {
 	if cfg == nil || root == nil || runRepo == nil {
 		return nil, fmt.Errorf("script generation runtime requires config, composition root, and run repository")
@@ -159,13 +153,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
-	// This runtime materializes localized clips and related artifacts only.
-	// Complete-video assembly is outside the script-generation capability.
-	// Wire the BGM/SFX asset resolver: asset_id → verified local path via
-	// the canonical asset registry (+ Drive materialization into scratch).
-	// The audio layer resolver consumes it when the run carries an audio
-	// intent block; absent intents never touch it. Fail-closed: a run with
-	// intents and no wired resolver fails in the audio-compile phase.
 	if root.Repos != nil && root.Repos.Assets != nil {
 		var driveReader drive.Reader
 		if root.Drive != nil {
@@ -181,31 +168,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			canonical: canonical,
 		}
 		runner.SetAudioAssetSource(audioAdapter)
-
-		// P0.5: wire the MediaPreflight. Runs fail-fast asset verification
-		// (clip existence, original audio, BGM/SFX/watermark) in parallel
-		// with Gemma scene text generation.
-		runner.SetMediaPreflight(&mediaPreflightAdapter{
-			clipProber:           &assetServiceClipProber{assets: root.Repos.Assets},
-			audioAssetSource:     audioAdapter,
-			clipAudioAssetSource: audioAdapter,
-		})
-
+		runner.SetMediaPreflight(mediasub.NewPreflight(root.Repos.Assets, audioAdapter, audioAdapter))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
-	// Wire the canonical entity type→template registry so the
-	// EntityOverlayPlanner runs in production: OverlayIntents (with their
-	// resolved template_id) are created immediately after entity extraction
-	// and persisted to the durable run payload before any render job is
-	// enqueued.
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
-	// Wire the overlay.prepare job enqueuer: the pre-timing OverlayIntents
-	// are persisted and then overlay.prepare starts in parallel with TTS.
-	// When the RenderingGen queue URL is not configured, prepare is not
-	// registered (a legitimate no-op); when configured, an enqueue error
-	// fails the run fail-closed.
 	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
 		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(renderinggen.New(queueURL))
 		if err != nil {
@@ -216,12 +184,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if err != nil {
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
 		}
-		// Attach the SQLite render-attempt analytics recorder so the coarse
-		// per-attempt row (render_ms/encode_ms) is persisted in parallel with
-		// the granular chronon.* phases the Chronon Metrics Adapter projects
-		// into performance_operations. Both are projections of the same render
-		// into their own existing tables — never new ones. Best-effort: a
-		// missing DB skips analytics, never fails the run.
 		var analyticsDB *sql.DB
 		if root.DB != nil {
 			analyticsDB = root.DB.DB
@@ -247,22 +209,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
 
-	// ── Incremental VidRush ────────────────────────────────────────────
-	// Wire the run-scoped incremental coordinator so scene generation and
-	// VidRush enrichment (entities → queries → provider fan-out) overlap in the
-	// real flow instead of running as two sequential blocks. The Runner builds
-	// a fresh coordinator per run from these immutable dependencies.
-	// VidRush entity decisions are deterministic and source-grounded. LLM
-	// extraction is intentionally not wired here: Ollama may enrich script
-	// copy, but it must not own the visual entities that drive media search.
 	var vidRushEntityExtractor entityports.EntityExtractor = visualNER
-
-	// ── Image Search Intent resolver (capabilities/imagesearch) ────────
-	// The deterministic editorial/visual decision layer the golden battery
-	// certifies (typed entities → canonical ids → ordered queries → no-image
-	// gate → negation → coreference). It is built over the SAME entity
-	// extractor that feeds the VidRush pipeline, so production consumes the
-	// exact path the battery certifies — never a second, ad-hoc extractor.
 	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
 	runner.SetImageSearchResolver(imageSearchResolver)
 	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
@@ -282,9 +229,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			vidRushMetrics,
 		).WithLogger(log)
 	}
-	// The materialization stage (acquire → verify → finalize) is wired through
-	// the same processor the batch flow registers, so the incremental
-	// coordinator reuses it under its own bounded materialization limit.
 	var vidRushMaterializer scriptgen.SegmentMaterializer
 	if vidRushProviders != nil && vidRushFinalizer != nil {
 		var entityImageCatalogRepo entitycatalog.Repository
@@ -294,8 +238,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithLogger(log)
 	}
 	pipeline := &scriptgen.VidRushPipeline{
-		// SceneIRSegmentEnricher is constructed by Runner.beginVidRush from
-		// NERPort. SceneIR is the only semantic enrichment path wired here.
 		Enricher:         nil,
 		ProviderResolver: vidRushFanout,
 		Materializer:     vidRushMaterializer,
@@ -312,9 +254,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}),
 		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
 	}
-	// Local Stock Intelligence is the canonical resolver path. Qdrant is
-	// search projection, SQLite media_assets is truth, and the provider
-	// registry is consulted only by the resolver's explicit fallback policy.
 	if root.Process != nil && root.Process.QdrantSearcher != nil && root.Repos != nil && root.Repos.AssetsStore != nil && vidRushProviders != nil {
 		var embedder qdrantsearch.TextEmbedder
 		if cfg.ClipIndexer.ServerURL != "" {
@@ -339,18 +278,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 	}
 	runner.SetVidRushPipeline(pipeline)
-	// Shared worker pools: NLP/entity extraction and script text generation
-	// have independent gates and tunables. The TTS voiceover pool defaults to
-	// 4. Docs publishing and the Rust final-audio render remain single-threaded.
 	nlpConcurrency := cfg.Scripts.NLPConcurrency
 	if nlpConcurrency <= 0 {
 		nlpConcurrency = scriptgen.DefaultNLPConcurrency
 	}
 	scriptGenerationConcurrency := cfg.Scripts.ScriptGenerationConcurrency
 	if scriptGenerationConcurrency <= 0 {
-		// Certified default: match the measured OLLAMA_NUM_PARALLEL baseline on
-		// A4000/e4b (3). Client slots beyond the server parallelism only deepen
-		// the server queue — they never add throughput.
 		scriptGenerationConcurrency = scriptgen.DefaultGenerationConcurrency
 	}
 	ollamaScriptGate := scriptgen.NewGenerationGateWithCapacity(scriptGenerationConcurrency)
@@ -370,14 +303,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		ttsConcurrency = scriptgen.DefaultTTSConcurrency
 	}
 	runner.SetTTSConcurrency(ttsConcurrency)
-	// P0.4: wire the async voiceover publish pool drainer so the runner
-	// waits for Drive uploads + timing publishes + DB commits before
-	// audio compile and docs stages. Nil pool (synchronous path) is safe.
 	if root.Domains != nil && root.Domains.VoiceoverPublishPool != nil {
 		runner.SetVoiceoverPublishDrainer(root.Domains.VoiceoverPublishPool)
 	}
-	// Serial mode is the controlled-benchmark "before" toggle: entities →
-	// voiceover (no overlap) with single-slot NLP/TTS pools.
 	runner.SetSerialMode(cfg.Scripts.SerialMode)
 	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)",
 		zap.Int("nlp_concurrency", nlpConcurrency),
@@ -388,14 +316,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	return runner, nil
 }
 
-// buildRuntimeMediaCertSpec projects only the resolved plan contract into
-// MediaCert. Semantic rules remain exclusively in mediacert; this function
-// supplies run identity and policy, never a second rule engine.
 func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
-	// Artlist relevance is a contract only for clip-backed plans. A generic
-	// text scene may legitimately have no video winner: its visual output is
-	// resolved as entity images/presets. Hard-coding Artlist here made every
-	// text-only run fail certification with a misleading "no winner asset".
 	spec := mediacert.Spec{}
 	if plan == nil {
 		return spec
@@ -419,11 +340,6 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
 		})
 	}
-	// Text generation plans may intentionally omit authored ScriptSegment IDs:
-	// the canonical scene synthesizer assigns scene-N at the stable scene
-	// boundary. Materialize that same deterministic identity in the contract
-	// so MediaCert validates the generated result instead of comparing it to an
-	// empty expected-ID list.
 	if len(spec.SegmentsExpected) == 0 && spec.Segments > 0 {
 		for i := 0; i < spec.Segments; i++ {
 			spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{ID: fmt.Sprintf("scene-%d", i)})
@@ -432,11 +348,6 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	return spec
 }
 
-// wireRenderAttemptRecorder builds the SQLite render-attempt analytics
-// recorder over the primary DB (render_attempt_analytics lives in the primary
-// database). Best-effort wiring mirroring wireChrononMetricsAdapter: a nil DB
-// or a construction error logs a Warn and returns nil — the render enqueuer
-// then skips analytics instead of aborting boot.
 func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAttemptRecorder {
 	if db == nil {
 		return nil
