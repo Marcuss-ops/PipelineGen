@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/google/uuid"
 )
 
@@ -49,21 +50,33 @@ func (r *ReindexRequester) RequestIndex(ctx context.Context, assetID string) err
 	defer tx.Rollback()
 
 	var (
-		source, mediaType, sourceVersion string
-		contentSHA, binarySHA           string
-		assetVersion                    string
+		source, mediaType, assetKind, sourceVersion string
+		contentSHA, binarySHA                      string
+		assetVersion                               string
 	)
 	if err := tx.QueryRowContext(ctx, `
-		SELECT source, media_type, source_version,
+		SELECT source, media_type, COALESCE(asset_kind, ''), source_version,
 		       content_sha256, binary_sha256, asset_version
 		FROM media_assets
 		WHERE id = $1 AND deleted_at = ''
 		FOR UPDATE
-	`, assetID).Scan(&source, &mediaType, &sourceVersion, &contentSHA, &binarySHA, &assetVersion); err != nil {
+	`, assetID).Scan(&source, &mediaType, &assetKind, &sourceVersion, &contentSHA, &binarySHA, &assetVersion); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("postgres media reindex requester: asset %q not found", assetID)
 		}
 		return fmt.Errorf("postgres media reindex requester: load asset %q: %w", assetID, err)
+	}
+
+	// Preserve the canonical registered-vs-searchable policy before emitting
+	// work. This mirrors mediaregistry.ResolveIndexEligibility but uses native
+	// PostgreSQL placeholders inside the already-open transaction.
+	eligibility := capregistry.AssetTaxonomy{
+		AssetID:   assetID,
+		AssetKind: capregistry.AssetKind(assetKind),
+		MediaType: capregistry.MediaType(mediaType),
+	}.IndexEligibility()
+	if eligibility == capregistry.IndexEligibilityRegistered {
+		return tx.Commit()
 	}
 
 	// Old rows may predate source_version. Preserve fail-closed identity while
