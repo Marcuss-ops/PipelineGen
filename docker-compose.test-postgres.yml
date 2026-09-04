@@ -1,5 +1,5 @@
 # docker-compose.test-postgres.yml — standalone PostgreSQL 18 + pgvector
-# for local media-domain parity/integration tests.
+# for the local PipelineGen media domain and parity/integration tests.
 #
 # Usage:
 #   docker compose -f docker-compose.test-postgres.yml up -d --wait
@@ -7,12 +7,10 @@
 #     go test ./internal/platform/postgres/media/...
 #   docker compose -f docker-compose.test-postgres.yml down --volumes
 #
-# Port 16432 avoids colliding with any production PostgreSQL (5432).
-# This mirrors the docker-compose.test-qdrant.yml precedent: ephemeral
-# lifecycle (no host volume binding), test-only, not part of the main
-# PipelineGen stack. Persistence uses a named volume so --wait health
-# checks survive restarts within one test session; `down --volumes`
-# clears it.
+# Port 16432 avoids colliding with the PostgreSQL service on 5432. The named
+# volume and unless-stopped policy make this the durable local media database
+# used by the native PipelineGen service. `down --volumes` remains an explicit
+# destructive reset for tests/maintenance.
 #
 # Image: pgvector/pgvector:pg18 — PostgreSQL 18 + pgvector 0.8.x in one
 # image (the current stable major per the PostgreSQL versioning policy;
@@ -24,19 +22,20 @@ services:
   postgres-test:
     image: pgvector/pgvector:pg18
     container_name: pipelinegen-postgres-test
-    restart: "no"
+    restart: unless-stopped
     environment:
       POSTGRES_USER: pipelinegen
       POSTGRES_PASSWORD: pipelinegen
-      POSTGRES_DB: pipelinegen_media_test
+      POSTGRES_DB: pipelinegen_media
     ports:
       - "16432:5432"
     volumes:
       # PostgreSQL 18+ image convention: mount /var/lib/postgresql (not
       # .../data) so pg_upgrade --link works across major upgrades.
       - postgres-test-data:/var/lib/postgresql
+      - ./docker/postgres/init-media.sql:/docker-entrypoint-initdb.d/20-init-media.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pipelinegen -d pipelinegen_media_test"]
+      test: ["CMD-SHELL", "pg_isready -U pipelinegen -d pipelinegen_media"]
       interval: 2s
       timeout: 3s
       retries: 30
