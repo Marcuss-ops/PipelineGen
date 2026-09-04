@@ -2,6 +2,11 @@ package job
 
 import "errors"
 
+// ErrDuplicate is the storage-neutral classification for an enqueue write that
+// collided with an existing canonical idempotency/uniqueness key. Persistence
+// adapters map driver-specific constraint errors to this sentinel.
+var ErrDuplicate = errors.New("job: duplicate")
+
 // ErrLeaseLost is returned when a worker-originated operation fails because
 // the supplied lease_id no longer matches the job's current lease (the job
 // has been reassigned to another worker) or the lease has expired.

@@ -1,10 +1,15 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// ErrNoConsumer is the canonical queue-admission sentinel for a job type that
+// has no bound handler. Root jobs re-exports it for compatibility.
+var ErrNoConsumer = errors.New("queue: no consumer registered for job type")
 
 // ConsumerCatalog exposes the registered job types that must have a consumer.
 type ConsumerCatalog interface {
@@ -19,7 +24,7 @@ type ConsumerBindings interface {
 // RequireConsumer checks that one job type has a bound consumer.
 func RequireConsumer(jobType string, bindings ConsumerBindings) error {
 	if bindings == nil || jobType == "" || !bindings.HasHandler(jobType) {
-		return fmt.Errorf("queue consumer validation: job type %q has no consumer", jobType)
+		return fmt.Errorf("%w: %q", ErrNoConsumer, jobType)
 	}
 	return nil
 }
@@ -40,5 +45,5 @@ func ValidateConsumers(catalog ConsumerCatalog, bindings ConsumerBindings) error
 		return nil
 	}
 	sort.Strings(missing)
-	return fmt.Errorf("queue consumer validation: registered job type(s) have no consumer: %s", strings.Join(missing, ", "))
+	return fmt.Errorf("%w: %s", ErrNoConsumer, strings.Join(missing, ", "))
 }
