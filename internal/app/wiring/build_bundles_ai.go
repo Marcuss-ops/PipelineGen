@@ -20,6 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -139,7 +140,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// composition root so that no application-layer package imports
 	// database/sql (PR-REFACTOR-P0-IO-BINDER).
 	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
-	memGate := newScriptMemoryGate(scriptMemRepo)
+	memGate := scriptwiring.NewMemoryGate(scriptMemRepo)
 	memSvc := adapters.NewService(memGate, log)
 	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), usecase.NewMemoryGateChecker(memSvc), log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
