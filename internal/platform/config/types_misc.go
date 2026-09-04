@@ -114,16 +114,6 @@ type FeaturesConfig struct {
 	VoiceoverEnabled     bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
 	ImagesEnabled        bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
 	StockPipelineEnabled bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"true"`
-	// CatalogScriptVectorSearch is Deprecated (PR-LEGACY-CLEANUP-2026-07-10 Item 3, 2026-07-10;
-	// see architecture/action-plans/2026-07-10-legacy-cleanup-5-item-orchestration.md §3).
-	// The corresponding top-level `vector_search:` yaml block is removed; the canonical
-	// Qdrant config block (`qdrant:` with `base_url:`) supersedes it. The field is
-	// RETAINED for backward compat at the wire layer; the read site at
-	// `internal/app/search_backend_semantic.go` (as of 2026-07-10) is a no-op gate
-	// pending `PR-CATALOG-SCRIPT-VECTOR-SEARCH-RETIRE` (deadline 2026-08-15) which
-	// migrates call sites to the canonical Qdrant path.
-	// Safe operational choice: leave the env var at its default `false`.
-	CatalogScriptVectorSearch bool `yaml:"catalog_script_vector_search" env:"VELOX_FEATURE_CATALOG_SCRIPT_VECTOR_SEARCH" default:"false"`
 
 	// MediaDriveRequired, when true, causes asset registration to fail
 	// when Drive upload is not successful (PUBLISH_FAILED or LOCAL_ONLY).
