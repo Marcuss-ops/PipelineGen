@@ -1,23 +1,11 @@
-# Deprecation registry index — machine-consumed aggregate manifest of the
-# records/ shards. total_records and each count are re-derived from the
-# shard files; this file is informational and is not read by the validator
-# (scripts/archcheck loads records/*.yaml + audit.yaml directly).
+# Deprecation registry index — informational aggregate manifest of non-empty
+# records/ shards. The validator reads records/*.yaml + audit.yaml directly;
+# empty bucket files are intentionally not tracked.
 #
-# ── CAPABILITY MIGRATION (Aug 2026) ────────────────────────────────────────
-# voiceover and youtube owner_capability paths migrated from the
-# application layer to the capabilities layer:
-#   internal/application/voiceover  →  internal/capabilities/voiceover
-#   internal/application/youtube    →  internal/capabilities/youtube
-#   internal/application/scripts    →  internal/capabilities/scripts
-# The canonical prefix→bucket map is subsystemPrefixes in
-# scripts/archcheck/categorize_deprecations.go:
-#   - internal/capabilities/voiceover → bucket "voiceover" (shard below)
-#   - internal/capabilities/youtube   → bucket "media" (no records yet,
-#     hence no records/media.yaml shard in this index)
-#   - internal/capabilities/scripts   → bucket "scripts"
-# The legacy internal/application/* prefixes remain mapped for back-compat
-# with not-yet-migrated records, so a record under the old path still lands
-# in the correct shard instead of silently overflowing to "misc".
+# Capability migration note (Aug 2026): owner_capability paths moved from
+# internal/application/* to internal/capabilities/*. The categorizer still
+# maps legacy prefixes for not-yet-migrated records, while buckets with zero
+# records simply have no shard.
 schema_version: 1
 source_directory: architecture/deprecations
 total_records: 7
@@ -31,13 +19,4 @@ records:
     - bucket: qdrant
       file: records/qdrant.yaml
       count: 1
-    - bucket: scripts
-      file: records/scripts.yaml
-      count: 0
-    - bucket: translation
-      file: records/translation.yaml
-      count: 0
-    - bucket: voiceover
-      file: records/voiceover.yaml
-      count: 0
 audit_file: audit.yaml
