@@ -37,8 +37,6 @@ scripts/
 │   ├── transcribe_detect_lang.py  #  Transcription + language detection
 │   ├── whisper_preflight.py       #  Whisper preflight check
 │   └── whisper_runtime.py         #  Whisper runtime execution
-├── tests/                        # Manual test data
-│   └── seed_search_data.sql       #  Search test seed data
 ├── admin/                        # Administrative Go tooling
 │   ├── architecture_p1_finalize.py
 │   ├── generate_routes_yaml.go    #  Route manifest generator
