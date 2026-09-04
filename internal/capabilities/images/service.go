@@ -5,7 +5,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
+	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
 )
 
 const userAgent = "PipelineGen/1.0 (VidRush asset retrieval; contact admin)"
