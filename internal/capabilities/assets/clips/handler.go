@@ -5,7 +5,6 @@ package clips
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/nonops"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"go.uber.org/zap"
 )
 
 // Deps mirrors the real HTTP capability boundaries. Each grouped field is the
@@ -17,12 +16,6 @@ type Deps struct {
 	NonOps     nonops.Deps
 	Bulk       BulkTransportDeps
 	Actions    ActionDeps
-
-	// ClipOpsService and Log are a narrow compatibility seam for historical
-	// same-package fixtures. Production composition never sets them; remove
-	// after those fixtures construct Operations explicitly.
-	ClipOpsService *appclips.ClipOpsService
-	Log            *zap.Logger
 }
 
 // Handler is a transport-only aggregate retained for thin delegators used by
@@ -38,12 +31,6 @@ type Handler struct {
 }
 
 func NewHandler(d Deps) *Handler {
-	if d.Operations.ClipOpsService == nil && d.ClipOpsService != nil {
-		d.Operations.ClipOpsService = d.ClipOpsService
-	}
-	if d.Operations.Log == nil && d.Log != nil {
-		d.Operations.Log = d.Log
-	}
 	return &Handler{
 		search:        NewSearchHandler(d.Search),
 		ingest:        NewIngestHandler(d.Ingest),
