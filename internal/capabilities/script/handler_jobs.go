@@ -1,6 +1,6 @@
 // Package script — handler_jobs.go owns the canonical script-side
-// job-observation surface (RegisterJobRoutes + GetJobStatus +
-// GetFullJobRun) per architecture/current.yaml#SCRIPT-FLOW-SPLIT
+// job-observation surface (RegisterJobRoutes + GetJobStatus) per
+// architecture/current.yaml#SCRIPT-FLOW-SPLIT
 // .linked_issues[PR-SCRIPT-JOBS-EXTRACT].
 //
 // FASE 2 (July 2026): the pre-FASE-2 EnqueueEnvelope entrypoint that
@@ -13,21 +13,15 @@
 // architecture/ownership/modules.yaml:WAVE-22-C2-E — so the
 // removal is dead-code, no active call sites remain.
 //
-// P1 verdetto (July 2026): the enriched /jobs/:id/full endpoint was
-// initially added to RegisterJobRoutes; per WAVE-22-C2-E SSOT
-// alignment (commit 6ec3e95b6 + the strengthened route test in
-// handler_test.go), the /jobs/:id/full mount was RETIRED from this
-// ScriptFlow surface because it duplicates the canonical
-// /api/jobs/:id/full endpoint owned by the Jobs module
-// (godlike/06 SSOT: one canonical owner per fact). GetFullJobRun
-// + the runRepo field are RETAINED as reference implementations —
-// see handler_run_full.go doc on GetFullJobRun for the unmount
-// audit narrative and re-mount conditions.
+// The enriched /api/script/jobs/:id/full endpoint was retired from
+// ScriptFlow because it duplicated the canonical /api/jobs/:id/full
+// endpoint owned by the Jobs module. The former reference-only
+// GetFullJobRun implementation and its RunRepository dependency were
+// removed once the duplicate route had no runtime consumer.
 //
 // Pattern 5 (AGENTS.md): one capability per file, one struct per
-// capability. JobsHandler replaces the 2 methods that previously
-// lived co-located with the orchestrator (handler_flow.go::registerJobRoutes,
-// handler_flow.go::GetJobStatus).
+// capability. JobsHandler replaces the methods that previously lived
+// co-located with the orchestrator.
 package script
 
 import (
@@ -40,66 +34,45 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
-// JobsHandler owns the canonical ScriptFlow-side job-observation
-// surface:
+// JobsHandler owns the canonical ScriptFlow-side job-observation surface:
 //
 //   - RegisterJobRoutes: mounts GET /api/script/jobs/:id under
-//     RequireAdminToken(auth). The enriched /api/script/jobs/:id/full
-//     endpoint is NOT mounted here per WAVE-22-C2-E SSOT — its
-//     canonical owner is the Jobs module under /api/jobs/:id/full
-//     (godlike/06: one canonical owner per fact; the duplicate
-//     mount was retired by the strengthened route test in
-//     handler_test.go).
+//     RequireAdminToken(auth).
 //   - GetJobStatus: canonical handler for GET /api/script/jobs/:id.
 //
-// It is a separate type from ScriptFlowHandler per AGENTS.md Pattern 5:
-// one capability per file, one struct per capability. GetFullJobRun
-// (defined in handler_run_full.go) remains as a REFERENCE-only
-// implementation retained for future re-mount if the SSOT policy
-// changes — see its in-file doc for the unmount audit narrative.
+// The enriched /api/script/jobs/:id/full endpoint is intentionally absent;
+// its canonical owner is the Jobs module under /api/jobs/:id/full.
 type JobsHandler struct {
 	jobsSvc job.Service
-	runRepo scriptgen.RunRepository // optional, used by GetFullJobRun
 	log     *zap.Logger
 }
 
 // NewJobsHandler constructs the canonical JobsHandler.
-// runRepo is optional — when nil, GetFullJobRun returns basic
-// job info without enriched generation-run data.
-func NewJobsHandler(jobsSvc job.Service, runRepo scriptgen.RunRepository, log *zap.Logger) *JobsHandler {
+func NewJobsHandler(jobsSvc job.Service, log *zap.Logger) *JobsHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &JobsHandler{
 		jobsSvc: jobsSvc,
-		runRepo: runRepo,
 		log:     log,
 	}
 }
 
-// RegisterJobRoutes mounts the canonical ScriptFlow-side job-status
-// route:
+// RegisterJobRoutes mounts the canonical ScriptFlow-side job-status route:
 //
 //   - GET /api/script/jobs/:id — basic job status (canonical mount
 //     under the ScriptFlow module per architecture/ownership/
 //     modules.yaml:WAVE-22-C2-E route list).
 //
-// The enriched /api/script/jobs/:id/full endpoint is INTENTIONALLY
-// NOT mounted here: its canonical owner is the Jobs module under
+// The enriched /api/script/jobs/:id/full endpoint is intentionally not
+// mounted here: its canonical owner is the Jobs module under
 // /api/jobs/:id/full (see internal/capabilities/jobs/impl.go::GetFull).
-// Mounting both copies would violate godlike/06 SSOT (one canonical
-// owner per fact) — the strengthened route test in handler_test.go
-// guards against accidental re-introduction.
+// Mounting both copies would violate godlike/06 SSOT.
 //
-// `auth` is the AdminTokenProvider (godlike/07 minimum-blast-radius
-// — interface stays in package script per middleware_auth.go header).
-// ScriptFlowHandler passes itself (`h`) since it carries the wired
-// adminToken; the route lives here so the auth contract is preserved
-// without coupling JobsHandler to an adminToken field.
+// `auth` is the AdminTokenProvider. ScriptFlowHandler passes itself (`h`)
+// since it carries the wired adminToken.
 func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProvider) {
 	jobs := r.Group("")
 	jobs.Use(RequireAdminToken(auth))
