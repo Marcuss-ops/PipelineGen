@@ -1,67 +1,5 @@
 // Package app — wire_script.go canonicalises the ScriptFlow module wiring
 // outside of the monolithic registry.go.
-//
-// Agente 4 — H (June 2026): extracted from registry.go. ClipServices is
-// pre-built here (access to concrete infrastructure) and passed to the
-// handler. Job registration happens at composition time.
-//
-// Registries-and-SSOT (June 2026): function now returns error so the
-// module registration at the bottom propagates duplicate-name /
-// frozen-registry failures up to WireRegistry. Every early-return
-// returns nil; only the final Register call returns tryRegisterModule's
-// possible error.
-//
-// PR7 (June 2026): removed legacy job registrations (BatchJobHandler,
-// CatalogJobServiceImpl, PipelineUseCase.RegisterJobs), GenerationService,
-// GenerateBatchUseCase, FeatureGates, PipelineUseCase construction.
-//
-// PR8 (June 2026): wired unified generation pipeline — SourceRegistry
-// (4 resolvers), Pipeline (post-generation), GenerateOneUseCase,
-// GenerateManyUseCase, GenerateJobHandler registered for
-// script.generate. Replaces the deleted PipelineUseCase block.
-//
-// PR 13 (June 2026): unified pipeline construction moved before handler —
-// MediaCurator now depends on GenerateOneUseCase, which requires normCfg /
-// sourceReg / ppReg to already exist. The handler receives a fully-populated
-// mediaCurator instead of nil.
-//
-// FASE 2.A PR2 (June 2026): source-resolver adapters + curation-layer
-// adapter extracted to wire_script_sources.go +
-// wire_script_curation.go. Wire_script.go stays purely orchestration.
-//
-// FASE 2.A PR3 (June 2026): post-processor registration block extracted
-// to wire_script_postprocess.go; composition validators
-// (validateScriptGenerateWiring,
-// validateRequiredProcessors, requiredProcessorNames) extracted to
-// wire_script_adapters.go. wireScriptFlow is now a pure-routing
-// orchestrator (wiring → use cases → job handler → handler →
-// module registration) with no inline post-processor loop.
-//
-// AZIONE 2 (July 2026): source-resolver factory extracted to
-// wire_script_resolvers.go; use-case factory + P04 audit wiring +
-// fanout broker adapter extracted to wire_script_usecases.go.
-// wireScriptFlow is now a pure orchestrator (~100 LOC) that calls
-// the two factories and owns ppReg freeze + job registration +
-// handler construction + module registration.
-//
-// Commit 1 P0 #4 audit (July 2026): extracted wireScriptFanout
-// and scriptItemFanoutBrokerAdapter to package level (Go does not allow
-// nested functions). Moved root.Jobs nil check before dereference. Fixed
-// EnqueueScriptItem: ret.JobID→ret.ID, typed ScriptGenerateItemPayload
-// instead of double-marshalling, constant reference fix.
-//
-// PR-script-deps-slim (July 2026, P1): slim form of Dependencies
-// (2 small dep bags + ClipsSearcher + AdminToken + 3 build-time
-// fields, was 22+3 fields with 12 ignored). The 12 ignored
-// ScriptFlowDeps fields (Engine, Section, Image,
-// Realtime, Association, Voiceover, AssetTree, ClipSourceBuilder,
-// MediaCurator, Harvest, ScriptsRepo, DriveScriptsGenFolder,
-// ClipServices) are RETIRED. The corresponding local-variable
-// construction in wireScriptFlow (engine, harvestSvc, clipServices,
-// ollamaTranslator, driveFolderClient, documentCreator) is
-// dropped in lockstep. Retired handler adapters are no longer part of
-// composition.
-
 package wiring
 
 import (
@@ -69,17 +7,15 @@ import (
 	"fmt"
 	"strings"
 
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
-
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
@@ -89,28 +25,6 @@ import (
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-// Returns an error if module registration fails on duplicate-name or
-// frozen-registry (Registries-and-SSOT §"Uniqueness" — composition
-// fails closed on duplicate module names, propagated up to WireRegistry).
-//
-// FASE 2.A PR3 (June 2026): after construction of ppReg the
-// orchestrator delegates all canonical postprocessor registrations
-// (persistence / document / images / voiceover / entities / metadata /
-// clip_bindings / visual_planning) to
-// registerScriptPostProcessors in wire_script_postprocess.go. The
-// orchestrator owns ppReg construction + ppReg.Freeze() +
-// post-freeze required-processors validation; the registration
-// cluster lives in the dedicated helper.
-//
-// PR-script-deps-slim (July 2026, P1): post-slim, the function
-// no longer constructs the 12 ignored deps (Engine + Section +
-// Image + Realtime + Association + Voiceover +
-// AssetTree + ClipSourceBuilder + MediaCurator + Harvest +
-// ScriptsRepo + DriveScriptsGenFolder + ClipServices). The
-// slim Dependencies is 6 fields (Generate + Jobs +
-// ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
-// depended on sectionRegen + cacheEviction (RegenerateSection +
-// EvictCache) are RETIRED in lockstep.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, artlistWiring *ArtlistWiring) error {
 	_ = ctx
 	if cfg == nil {
@@ -128,14 +42,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return nil
 	}
 
-	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
-	// Constructs the VoiceoverGenerator adapter from the canonical per-item
-	// voiceover pipeline (VoiceoverProcessItem → ProcessVoiceoverItemUseCase →
-	// ProcessSegmentUseCase) when available. Routing through the canonical
-	// pipeline is what lets the adapter return the SpeechTimingArtifact (Edge
-	// word boundaries → hash-bound canonical artifact), which the runner uses
-	// to derive phrase timings. Used by the script generation runner's Stage 4
-	// (GENERATING_VOICEOVERS).
+	// Wire ScriptVoiceoverGenerator when the canonical per-item voiceover
+	// pipeline is available.
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voPath := cfg.Storage.VoiceoversPath()
 		voiceGenerator := NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
@@ -149,17 +57,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 		voiceGenerator.ConfigureVoices(voiceMap)
 		root.AI.ScriptVoiceoverGenerator = voiceGenerator
-		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired",
-			zap.String("output_dir", voPath))
+		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired", zap.String("output_dir", voPath))
 	} else {
 		log.Warn("wireScriptFlow: ScriptVoiceoverGenerator NOT wired (no voiceover pipeline) — voiceover stage will be skipped")
 	}
 
-	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
+	// Source resolvers.
 	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
-
-	// Wire the source registry into the SceneTextGenerator so the
-	// durable pipeline can resolve clip/catalog/search/curate sources.
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
 		if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
@@ -171,18 +75,15 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
 	}
 
-	// ── Step 2: Post-processor registration + freeze ────────────────────
+	// Post-processors.
 	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
 	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
-	// VidRush provider registry + cache are built once and shared by the
-	// batch postprocessors and the durable incremental runtime.
 	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(cfg, root, artlistWiring, log)
 	vidRushCache := buildVidRushCache(root, log)
 	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
@@ -194,18 +95,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
-	// ── Step 3: Use cases (factory in wire_script_usecases.go) ──────────
-	// PR-script-deps-slim: sectionRegen + cacheEvictionUC are
-	// RETIRED from buildScriptUseCases return tuple (the
-	// corresponding RegenerateSection + EvictCache routes were
-	// always 503 because the handler fields were never assigned).
-	// scriptsRepoAdapter is no longer threaded into the factory
-	// (only sectionRegen consumed it; retired in lockstep).
+	// Use cases and job registration.
 	oneUC, manyUC, genJobHandler, _ := buildScriptUseCases(
 		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
 	)
-
-	// ── Step 4: Job registration ───────────────────────────────────────
 	if root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}
@@ -216,40 +109,32 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: register script.generate job handler: %w", err)
 	}
 	log.Info("registered script.generate job handler (unified pipeline, PR8)")
-
 	if err := validateScriptGenerateWiring(root, log); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
-	// ── Set metadata model ─────────────────────────────────────────────
 	if root.AI != nil && root.AI.ScriptGen != nil {
 		root.AI.ScriptGen.SetMetadataModel(metaModel)
 	}
 
-	// ── Clip searcher ──────────────────────────────────────────────────
 	var clipsSearcher scriptapi.ClipSearcher
 	if root.Repos.ClipsRepo != nil {
 		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
 	}
 
-	// ── Admin token ────────────────────────────────────────────────────
 	adminToken := ""
 	if cfg != nil {
 		adminToken = cfg.Security.AdminToken
 	}
 
-	// ── Step 5: Handler construction (slim form, PR-script-deps-slim) ──
-	//
-	// Preflight module removed; OutputSpec contains only the
-	// surviving active flags. Callers sending removed flags receive
-	// HTTP 400 UNKNOWN_FIELD at the wire boundary.
-
 	submissionSvc, err := buildScriptSubmissionService(root, log)
 	if err != nil {
 		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
 	}
-	// Build the script-generation run repository when a DB is available.
-	// This repository backs GET /jobs/:id/full and the durable runner.
+
+	// The run repository belongs to generation submission + durable runtime.
+	// It is intentionally not threaded into the ScriptFlow HTTP jobs handler;
+	// /api/jobs/:id/full is owned by the Jobs module.
 	var runRepo scriptgen.RunRepository
 	if root.ObservabilityDB != nil {
 		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.ObservabilityDB.DB, log)
@@ -265,6 +150,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
 	}
 	genJobHandler.SetRunRepository(runRepo)
+
 	if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
 		var finalAudioCommitter assetspersistence.AssetCommitter
 		if root.Outbox != nil && root.Outbox.EventsRepo != nil {
@@ -279,12 +165,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
-		// Localized render fan-out: bridge the runner's per-(scene, language)
-		// trigger to the canonical LocalizationService (RenderingGen/Chronon) so a
-		// clip starts rendering the moment its translation + TTS are ready.
-		// Best-effort: the fan-out stays a legitimate no-op when the
-		// localization stack (asset registry + Drive + text-track store) is
-		// not available in this composition.
 		wireLocalizedRenderEnqueuer(cfg, root, log, durableRunner)
 		log.Info("wireScriptFlow: durable single-item runtime wired through canonical RenderPlan executor")
 	} else {
@@ -303,21 +183,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 					return nil
 				}
 				preflight := usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.CacheDB.DB))
-				// Same provider-policy token as the worker resolver
-				// (wire_script_resolvers.go) so preflight and worker derive
-				// identical research cache keys.
 				preflight.SetResearchPolicyVersion(researchPolicyVersion(cfg))
 				return preflight
 			}(),
 		},
-		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
-		// canonical MaxRetries lookup moved into
-		// GenerationSubmissionService at composition time; JobsHandler
-		// now owns only the GetJobStatus surface.
 		Jobs: scriptapi.JobsDeps{
-			Jobs:    root.Jobs.Facade,
-			Log:     log,
-			RunRepo: runRepo,
+			Jobs: root.Jobs.Facade,
+			Log:  log,
 		},
 		ClipsSearcher: clipsSearcher,
 		AdminToken:    adminToken,
@@ -335,16 +207,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if !ok || sd == nil {
 		return fmt.Errorf("wireScriptFlow: script.Build returned unexpected descriptor type %T (want *scriptapi.ScriptDescriptor)", scriptDescriptor)
 	}
-
-	// ── Step 6: Register HTTP module ───────────────────────────────────
-	// PR-script-deps-slim: ScriptDescriptor.Handler field RETIRED;
-	// Module is the canonical owner post-PR. tryRegisterModule
-	// consumes Module only.
 	return tryRegisterModule(registry, log, sd)
 }
 
 // anyScriptFeatureEnabled returns true when at least one script feature flag
-// is on. Moved from script_feature_flags.go (Phase 5 consolidation, June 2026).
+// is on.
 func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	if cfg == nil {
 		return false
@@ -352,18 +219,12 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	return cfg.Features.ScriptClipsEnabled || cfg.Features.ImagesEnabled
 }
 
-// scriptGenerationEnabled is the dedicated gate for the canonical
-// POST /api/script/generate capability. Script generation must not depend on
-// optional clips, docs, or image feature flags; those flags control their own
-// sub-
+// scriptGenerationEnabled is the dedicated gate for POST /api/script/generate.
 func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
 // registerScripts orchestrates the /api/script/* routing surface.
-// Moved from registry_script.go (Phase 5 consolidation, June 2026).
-// Calls wireScriptFlow for the canonical use-case delegation and
-// registerScriptHistory for the script-history route module.
 func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring) error {
 	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring); err != nil {
 		return err
