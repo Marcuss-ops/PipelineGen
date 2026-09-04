@@ -132,7 +132,7 @@ func TestStubHandlers_EventType(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.h.EventType(); got != tc.want {
-				t.Errorf("EventType: want %q got %q", tc.want, tc.want)
+				t.Errorf("EventType: want %q got %q", tc.want, got)
 			}
 		})
 	}
