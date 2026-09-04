@@ -217,7 +217,6 @@ features:
   stock_pipeline_enabled: true
   clip_render_enabled: false
   voiceover_enabled: false
-  catalog_script_vector_search: false
 
 google_accounting:
   enabled: false
