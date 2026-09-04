@@ -8,30 +8,37 @@ import (
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 )
 
+type semanticBackendInspector interface {
+	HasBackend(name string) bool
+}
+
 // semanticReadinessChecker probes only canonical media-search dependencies.
-// POSTGRES-MEDIA-CUTOVER removed Qdrant reachability and SQLite hydration from
-// this contract: the media PostgreSQL handle now owns both pgvector retrieval
-// and media_assets hydration.
+// POSTGRES-MEDIA-CUTOVER removed Qdrant reachability, SQLite hydration and
+// Ollama presence from this contract. Embedder/backend readiness is derived
+// from the semantic backend that actually passed the composition gate; that
+// gate requires the E5 embedding registry plus the canonical PostgreSQL
+// retrieval+hydration store and delivery dependency.
 type semanticReadinessChecker struct {
-	embedderWired bool
-	aggregator    mediasearchapi.AggregatorSearcher
-	mediaPostgres interface{ PingContext(context.Context) error }
+	embedderWired         bool
+	semanticBackendWired bool
+	aggregator            mediasearchapi.AggregatorSearcher
+	mediaPostgres         interface{ PingContext(context.Context) error }
 }
 
 var _ mediasearchapi.SemanticReadyChecker = (*semanticReadinessChecker)(nil)
 
 // newSemanticReadinessChecker adapts composition-root singletons without
-// importing concrete database or transport implementations into the handler.
+// importing concrete database or embedding transports into the handler.
 func newSemanticReadinessChecker(root *ComposeRoot, aggregator mediasearchapi.AggregatorSearcher) *semanticReadinessChecker {
 	c := &semanticReadinessChecker{aggregator: aggregator}
-	if root != nil {
-		// Keep the existing query-embedder presence signal. The semantic backend
-		// itself is registered only when the canonical embedding registry is wired,
-		// so aggregator readiness remains the authoritative composition gate.
-		c.embedderWired = root.AI != nil && root.AI.OllamaEmbedClient != nil
-		if root.MediaPostgres != nil {
-			c.mediaPostgres = root.MediaPostgres
-		}
+	if inspector, ok := aggregator.(semanticBackendInspector); ok {
+		c.semanticBackendWired = inspector.HasBackend("semantic")
+		// The semantic backend is registered only after Embeddings is non-nil,
+		// so this is the real E5 composition signal. Ollama is unrelated.
+		c.embedderWired = c.semanticBackendWired
+	}
+	if root != nil && root.MediaPostgres != nil {
+		c.mediaPostgres = root.MediaPostgres
 	}
 	return c
 }
@@ -42,10 +49,10 @@ func (c *semanticReadinessChecker) Ready(ctx context.Context) error {
 	subs := make(map[string]string, 3)
 
 	if !c.embedderWired {
-		subs["embedder"] = "query embedding client not wired"
+		subs["embedder"] = "E5 semantic embedding dependency not wired"
 	}
-	if c.aggregator == nil {
-		subs["semantic_backend"] = "search aggregator not wired"
+	if c.aggregator == nil || !c.semanticBackendWired {
+		subs["semantic_backend"] = "semantic search backend not registered"
 	}
 	if c.mediaPostgres == nil {
 		subs["media_postgres"] = "media PostgreSQL not wired"
