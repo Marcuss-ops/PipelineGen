@@ -76,14 +76,19 @@ func TestBuildGenerateRequest_PropagatesArtlistKeywords(t *testing.T) {
 
 func TestBuildGenerateRequest_PropagatesVideoRenderContract(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
+	// The canonical spelling is output.render.watermark / output.render
+	// .subtitles. The legacy top-level output.watermark/output.subtitles
+	// compatibility blocks were removed (SSOT: one owner per fact).
 	err := json.Unmarshal([]byte(`{
 		"version":2,
 		"items":[{
 			"language":"it",
 			"source":{"type":"clips","clip_ids":["clip-a"]},
 			"output":{
-				"watermark":{"enabled":true,"asset_id":"wm-main","opacity":0.85},
-				"subtitles":{"enabled":true}
+				"render":{
+					"watermark":{"enabled":true,"asset_id":"wm-main","opacity":0.85},
+					"subtitles":{"enabled":true}
+				}
 			}
 		}]
 	}`), &env)
