@@ -42,6 +42,24 @@
           {"id":"scene-4","kind":"clip","topic":"sistema hackerato","source_text":"Una scena tesa rivela che un sistema è stato hackerato e richiama protocolli di sicurezza.","clip_ids":["yt_T6x-kDiQsWM_203_252_v1"],"target_words":36}
         ]
       },
+      "overlay_background": {
+        "kind": "video",
+        "asset_id": "classic1",
+        "url": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/backgrounds/classic1.mp4",
+        "media_type": "video",
+        "fit": "cover",
+        "opacity": 1,
+        "loop": true
+      },
+      "overlay_style": {
+        "shadow": {
+          "enabled": true,
+          "color": "#000000",
+          "opacity": 0.22,
+          "blur": 4,
+          "offset": [0, 2]
+        }
+      },
       "docs": {
         "enabled": true,
         "languages": ["it"],
@@ -63,6 +81,11 @@
         "voiceover_enabled": true,
         "render": {
           "enabled": true,
+          "foreground_scale_percent": 85,
+          "background": {
+            "mode": "asset",
+            "asset_id": "classic1"
+          },
           "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
           "drive_subfolder_name": "matt-damon-5-clips-docs-true",
           "render_concurrency": 4,
@@ -77,7 +100,7 @@
       "font": "Montserrat",
               "size": 42,
               "color": "#FFFFFF",
-              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4}
+              "shadow": {"color": "#000000", "opacity": 0.22, "blur_px": 4, "offset_x": 0, "offset_y": 2}
             }
           },
           "subtitles": {
@@ -89,7 +112,7 @@
               "font_size_px": 52,
               "width_px": 1600,
               "position": "bottom_center",
-              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4}
+                "shadow": {"color": "#000000", "opacity": 0.22, "blur_px": 4, "offset_x": 0, "offset_y": 2}
             }
           }
         }

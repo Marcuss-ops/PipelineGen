@@ -23,15 +23,18 @@ const (
 )
 
 type OverlayPlan struct {
-	SchemaVersion   string `json:"schema_version"`
-	PlanID          string `json:"plan_id"`
-	VideoID         string `json:"video_id"`
-	ProjectID       string `json:"project_id,omitempty"`
-	Width           int    `json:"width"`
-	Height          int    `json:"height"`
-	FPSNum          int    `json:"fps_num"`
-	FPSDen          int    `json:"fps_den"`
-	RendererVersion string `json:"renderer_version,omitempty"`
+	SchemaVersion string `json:"schema_version"`
+	PlanID        string `json:"plan_id"`
+	VideoID       string `json:"video_id"`
+	ProjectID     string `json:"project_id,omitempty"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	FPSNum        int    `json:"fps_num"`
+	FPSDen        int    `json:"fps_den"`
+	// ForegroundScalePercent scales the source video on the full canvas.
+	// Zero/100 preserve the legacy full-canvas behaviour.
+	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
+	RendererVersion        string `json:"renderer_version,omitempty"`
 	// MediaContract is the ID of the OverlayMediaContract the renderer must
 	// honor (container/codec/pixel format, audio_streams==0, alpha policy).
 	// Empty means "renderer default". When set, it MUST resolve through

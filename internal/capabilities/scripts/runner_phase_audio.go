@@ -380,6 +380,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// on replay. Fail-closed like the phrase/entity projections: a scene
 		// that carried timing surfaces must project, or the run fails.
 		canvas := r.overlayCanvas
+		canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 		canvas.Background = overlayBackgroundFromPayload(req.OverlayBackground)
 		canvas.Style = req.OverlayStyle
 		if canvas.Style == nil && req.OverlayBackground != nil {

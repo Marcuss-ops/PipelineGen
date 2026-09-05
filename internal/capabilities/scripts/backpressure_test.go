@@ -31,6 +31,8 @@ func TestVidRushBackpressure_Defaults(t *testing.T) {
 
 func TestDefaultConcurrency_IsFour(t *testing.T) {
 	assert.Equal(t, 4, DefaultNLPConcurrency, "certified NLP concurrency must be 4")
+	// 4 is the measured TTS optimum: an 8-slot pool on the live 5-scene
+	// certification job raised provider contention (wall 51.2s → 58.2s).
 	assert.Equal(t, 4, DefaultTTSConcurrency, "certified TTS concurrency must be 4")
 }
 

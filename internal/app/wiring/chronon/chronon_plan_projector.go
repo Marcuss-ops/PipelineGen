@@ -182,7 +182,7 @@ func (ChrononPlanProjector) Project(plan cliprender.ClipRenderPlanV1, durationMS
 		s := float64(scalePercent) / 100.0
 		video.Scale = []float64{s, s}
 		video.Size = []int{int(float64(plan.Output.Width) * s), int(float64(plan.Output.Height) * s)}
-		video.Position = []int{0, 0}
+		video.Position = []int{(plan.Output.Width - video.Size[0]) / 2, (plan.Output.Height - video.Size[1]) / 2}
 	}
 	rp.Layers = append(rp.Layers, video)
 
