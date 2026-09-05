@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	imageingest "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -17,16 +17,16 @@ type imagesDriveReaderAdapter struct {
 	reader imagesDriveReader
 }
 
-var _ imgservice.DriveReader = (*imagesDriveReaderAdapter)(nil)
+var _ imageingest.DriveReader = (*imagesDriveReaderAdapter)(nil)
 
-func newImagesDriveReaderAdapter(reader imagesDriveReader) imgservice.DriveReader {
+func newImagesDriveReaderAdapter(reader imagesDriveReader) imageingest.DriveReader {
 	if reader == nil {
 		return nil
 	}
 	return &imagesDriveReaderAdapter{reader: reader}
 }
 
-func (a *imagesDriveReaderAdapter) ListFiles(ctx context.Context, parentID string) ([]imgservice.DriveFile, error) {
+func (a *imagesDriveReaderAdapter) ListFiles(ctx context.Context, parentID string) ([]imageingest.DriveFile, error) {
 	if a == nil || a.reader == nil {
 		return nil, fmt.Errorf("images DriveReader is not configured")
 	}
@@ -34,9 +34,9 @@ func (a *imagesDriveReaderAdapter) ListFiles(ctx context.Context, parentID strin
 	if err != nil {
 		return nil, err
 	}
-	out := make([]imgservice.DriveFile, len(files))
+	out := make([]imageingest.DriveFile, len(files))
 	for i, file := range files {
-		out[i] = imgservice.DriveFile{
+		out[i] = imageingest.DriveFile{
 			ID:          file.ID,
 			Name:        file.Name,
 			MimeType:    file.MimeType,

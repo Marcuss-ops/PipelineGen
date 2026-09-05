@@ -18,7 +18,7 @@
 // ErrStyleProviderUnsupported / ErrStyleModelUnsupported sentinels stay
 // validated as non-nil by TestStyleResolver_AllSentinelErrorsNonNil —
 // that's the godlike/06 audit-pinning contract that callers rely on.
-package images
+package styles
 
 import (
 	"errors"

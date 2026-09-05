@@ -43,6 +43,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -718,7 +719,7 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 		Language: "en",
 		Tone:     "neutral",
 	}
-	editorial := BuildPlan(item).RenderedPrompt
+	editorial := generationpkg.BuildPlan(item).RenderedPrompt
 	// P0 #1 (June 2026): BuildClipFingerprint replaces the Phase 1b
 	// stub BuildItemIdentity. The editorial prompt must never contain
 	// the source fingerprint — that was the pre-PR 2 anti-pattern

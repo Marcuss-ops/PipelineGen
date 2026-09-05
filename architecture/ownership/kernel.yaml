@@ -7,10 +7,10 @@
 # Edit the source files; the generated view is regenerated deterministically.
 
 domain_job:
-  owner: internal/domain/job
+  owner: internal/kernel/job
   rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
   migrated_from:
-    - internal/domain/worker
+    - internal/domain/worker (historical)
     - internal/contracts/scriptjobs
     - internal/jobs/domain_types.go
     - internal/jobs/domain_commands.go
@@ -18,7 +18,7 @@ domain_script:
   owner: internal/kernel/script
   rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
 domain_asset:
-  owner: internal/domain/asset
+  owner: internal/kernel/asset
   rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
   absorbs_from_core_wave_4C:
     - Repository (from internal/core/assetop)
@@ -27,7 +27,7 @@ domain_asset:
     - EmbeddingPort (from internal/core/embedding)
     - AudioPort (from internal/core/audio)
   migrated_from:
-    - internal/domain/media
+    - internal/domain/media (historical)
     - internal/assets
     - internal/artifacts
     - internal/core/assetop

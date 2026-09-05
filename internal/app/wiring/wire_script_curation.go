@@ -48,7 +48,7 @@
 //   - internal/capabilities/scripts/adapters/processor_images.go:
 //     the consumer (adapters.ImageGenService + imagePrewarmer
 //     typed-port shapes).
-//   - internal/capabilities/images/workflow: *imgservice.Service (the
+//   - internal/capabilities/images: *imgservice.Service (the
 //     concrete implementation the adapter wraps).
 //   - internal/kernel/asset: ImageAsset (the concrete result
 //     shape the adapter unwraps to SourceURL).

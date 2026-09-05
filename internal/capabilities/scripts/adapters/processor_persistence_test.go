@@ -16,7 +16,7 @@
 //   - the textual-script-only key criterion: same text + same item
 //     but different language → different rows
 //
-// All tests use a counting in-memory fake ScriptRepository so the
+// All tests use a counting in-memory fake ports.ScriptRepository (canonical repo port) so the
 // success / replay / insert paths are observable independently of
 // the production sqlite repository.
 //
@@ -50,7 +50,7 @@ import (
 
 // ── Fakes ──────────────────────────────────────────────────────────────
 
-// idemFakeRepo is a ScriptRepository used by persistence tests. It:
+// idemFakeRepo is a ports.ScriptRepository (canonical repo port) fake used by persistence tests. It:
 //   - records SaveScript calls (count + last record)
 //   - returns a pre-populated existing row from
 //     FindScriptByIdempotencyKey when the supplied hash matches
@@ -58,7 +58,7 @@ import (
 //   - otherwise returns found=false (fresh-insert path)
 type idemFakeRepo struct {
 	saveCalls atomic.Int32
-	lastRec   *ScriptRecord
+	lastRec   *ports.ScriptRecord
 
 	// PR 1 (SCRIPT-DOWNSTREAM-CUTOVER wave): SaveManifestV2 audit
 	// fields so the 4 manifest emit TDD tests can assert the
@@ -70,13 +70,13 @@ type idemFakeRepo struct {
 	// seedHash: when non-empty AND non-nil, return the seed
 	// record with found=true from FindScriptByIdempotencyKey.
 	seedHash string
-	seedRec  *ScriptRecord
+	seedRec  *ports.ScriptRecord
 
 	// returnErr: if set, SaveScript returns this error.
 	returnErr error
 }
 
-func (f *idemFakeRepo) SaveScript(_ context.Context, rec *ScriptRecord, _ []ScriptSectionRecord, _ []ScriptStockMatchRecord) (int64, error) {
+func (f *idemFakeRepo) SaveScript(_ context.Context, rec *ports.ScriptRecord, _ []ports.ScriptSectionRecord, _ []ports.ScriptStockMatchRecord) (int64, error) {
 	f.saveCalls.Add(1)
 	f.lastRec = rec
 	if f.returnErr != nil {
@@ -88,27 +88,29 @@ func (f *idemFakeRepo) SaveScript(_ context.Context, rec *ScriptRecord, _ []Scri
 func (f *idemFakeRepo) UpdateScriptFinalContent(context.Context, int64, string, int, string, string, string, string, int) error {
 	return nil
 }
-func (f *idemFakeRepo) SaveGenerationLog(_ context.Context, _ ScriptGenerationLog) error { return nil }
-func (f *idemFakeRepo) SaveOutlineSections(_ context.Context, _ int64, _ []ScriptOutlineSectionRecord) error {
+func (f *idemFakeRepo) SaveGenerationLog(_ context.Context, _ ports.ScriptGenerationLog) error {
 	return nil
 }
-func (f *idemFakeRepo) SaveResearchSources(_ context.Context, _ int64, _ []ScriptResearchSource) error {
+func (f *idemFakeRepo) SaveOutlineSections(_ context.Context, _ int64, _ []ports.ScriptOutlineSectionRecord) error {
+	return nil
+}
+func (f *idemFakeRepo) SaveResearchSources(_ context.Context, _ int64, _ []ports.ScriptResearchSource) error {
 	return nil
 }
 func (f *idemFakeRepo) NextVersionForTopic(_ context.Context, _, _, _ string) (int, error) {
 	return 1, nil
 }
-func (f *idemFakeRepo) GetSectionByID(_ context.Context, _ int64) (*ScriptSectionRecord, error) {
+func (f *idemFakeRepo) GetSectionByID(_ context.Context, _ int64) (*ports.ScriptSectionRecord, error) {
 	return nil, nil
 }
-func (f *idemFakeRepo) GetScriptByID(_ int64) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
+func (f *idemFakeRepo) GetScriptByID(_ int64) (*ports.ScriptRecord, []ports.ScriptSectionRecord, []ports.ScriptStockMatchRecord, error) {
 	return nil, nil, nil, nil
 }
-func (f *idemFakeRepo) GetAdjacentSections(_ context.Context, _ int64, _ int) (*ScriptSectionRecord, *ScriptSectionRecord, error) {
+func (f *idemFakeRepo) GetAdjacentSections(_ context.Context, _ int64, _ int) (*ports.ScriptSectionRecord, *ports.ScriptSectionRecord, error) {
 	return nil, nil, nil
 }
 func (f *idemFakeRepo) UpdateSectionContent(_ context.Context, _ int64, _ string) error { return nil }
-func (f *idemFakeRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*ScriptRecord, error) {
+func (f *idemFakeRepo) ListScripts(_ context.Context, _ ports.ScriptListFilter) ([]*ports.ScriptRecord, error) {
 	return nil, nil
 }
 
@@ -123,7 +125,7 @@ func (f *idemFakeRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*Sc
 // FindByIdempotencyKey matches against the dedicated idempotency_key
 // column. The fake accepts the tuple but only matches against the
 // pre-computed seedHash set during fixture construction.
-func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*ScriptRecord, bool, error) {
+func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*ports.ScriptRecord, bool, error) {
 	if f.seedHash == "" || f.seedRec == nil {
 		return nil, false, nil
 	}
@@ -286,7 +288,7 @@ func TestPersistence_FreshInsert(t *testing.T) {
 
 	require.NotNil(t, repo.lastRec)
 	// PR 6: the idempotency key lives on the dedicated
-	// IdempotencyKey field of ScriptRecord (no longer stuffed into
+	// IdempotencyKey field of ports.ScriptRecord (no longer stuffed into
 	// the multi-purpose Template slot — Template is reserved for
 	// semantic values like "book" / "lesson").
 	assert.Len(t, repo.lastRec.IdempotencyKey, 16, "IdempotencyKey field must carry the idem-key (16 hex chars)")
@@ -309,7 +311,7 @@ func TestPersistence_ReplayNoInsert(t *testing.T) {
 	seedHash := computeIdempotencyKey(plan)
 	repo := &idemFakeRepo{
 		seedHash: seedHash,
-		seedRec:  &ScriptRecord{ID: 99, Title: plan.Title, IdempotencyKey: seedHash},
+		seedRec:  &ports.ScriptRecord{ID: 99, Title: plan.Title, IdempotencyKey: seedHash},
 	}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
@@ -356,7 +358,7 @@ func TestPersistence_NilRepoRejected(t *testing.T) {
 // TestPersistence_PersistsSpecSceneJSON asserts that the canonical
 // SpecScene flows to the dedicated SpecScene field on the record.
 // PR 6: the processor writes SpecScene JSON directly into the
-// `specscene` ScriptRecord field; the pre-PR-6 accommodation of
+// `specscene` ports.ScriptRecord field; the pre-PR-6 accommodation of
 // storing SpecScene in the TimelineJSON slot is fully retired.
 func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 	t.Parallel()

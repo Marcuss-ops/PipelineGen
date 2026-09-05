@@ -5,7 +5,7 @@
 // file, separate from concrete implementations and the registry.
 //
 // FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
-// RetrievalSearchResult) moved to internal/capabilities/images/workflow/routing
+// RetrievalSearchResult) moved to internal/capabilities/images/routing
 // to break the routing↔retrieved import cycle.
 package retrieved
 

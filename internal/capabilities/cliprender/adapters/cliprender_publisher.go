@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -33,7 +34,15 @@ type ClipRenderPublisher struct {
 	log       *zap.Logger
 	// SQLite has one canonical writer. Render jobs may encode and upload in
 	// parallel, but their final asset commits must not overlap.
-	commitMu sync.Mutex
+	commitMu          sync.Mutex
+	subtitleArtifacts detail.SubtitleArtifactRepository
+}
+
+// SetSubtitleArtifactRepository attaches the canonical ASS artifact registry.
+func (p *ClipRenderPublisher) SetSubtitleArtifactRepository(repo detail.SubtitleArtifactRepository) {
+	if p != nil {
+		p.subtitleArtifacts = repo
+	}
 }
 
 // NewClipRenderPublisher builds the publisher; log is required so each
@@ -130,6 +139,14 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	// serialization without weakening fail-closed publication semantics.
 	var pub *delivery.PublishResult
 	var sidecarFileID, sidecarLink string
+	if hasSubtitleSidecar && in.Subtitles.DriveFileID != "" {
+		// The canonical ASS already exists in Drive. It is content-addressed by
+		// the artifact repository; do not publish a duplicate for this render.
+		sidecarFileID, sidecarLink = in.Subtitles.DriveFileID, in.Subtitles.DriveLink
+		metrics.SidecarUploaded = true
+		p.publishPhase("sidecar_upload_reused", runID, zap.String("file_id", sidecarFileID))
+		hasSubtitleSidecar = false
+	}
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		uploadStart := time.Now()
@@ -145,8 +162,15 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 			AssetID:             assetID,
 			SourceVersion:       1,
 			ContentHash:         contentHash,
-			IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, assetID, contentHash, 1),
-			ConflictPolicy:      delivery.ConflictSkip,
+			// Logical clip identity is stable across re-encoding. Do not include
+			// the output hash here: a valid rerender must update the same Drive
+			// filename rather than create a new file/folder for new bytes.
+			IdempotencyKey: delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, in.SourceAssetID+":"+driveFilename, "clip-render-v1", 1),
+			// clip.render is a regenerable projection: the canonical filename
+			// identifies the logical clip, while the encoded byte hash may change
+			// between valid rerenders. Replace that file instead of creating a
+			// second root entry for every rerender.
+			ConflictPolicy: delivery.ConflictOverwrite,
 		})
 		metrics.VideoUploadMS = time.Since(uploadStart).Milliseconds()
 		if publishErr != nil {
@@ -224,6 +248,27 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	}
 	if err := g.Wait(); err != nil {
 		return nil, err
+	}
+	if in.Subtitles != nil && p.subtitleArtifacts != nil && sidecarFileID != "" {
+		language := "und"
+		textHash := ""
+		if in.Transcript != nil {
+			language = in.Transcript.Language
+			if language == "" {
+				language = "und"
+			}
+			textHash = in.Transcript.TextSHA256
+		}
+		if err := p.subtitleArtifacts.Upsert(ctx, &detail.SubtitleArtifact{
+			AssetID: in.SourceAssetID, LanguageCode: language,
+			Format: detail.SubtitleFormatASS, LocalPath: in.Subtitles.LocalPath,
+			DriveFileID: sidecarFileID, DriveURL: sidecarLink,
+			LegacyFileMD5: in.Subtitles.SHA256, TextHash: textHash,
+			StyleVersion: in.Subtitles.StyleID, Status: detail.SubtitleStatusReady,
+			IsCurrent: true,
+		}); err != nil {
+			return nil, fmt.Errorf("persist published subtitle artifact: %w", err)
+		}
 	}
 
 	// ── Phase 3: resolve canonical taxonomy ───────────────────────────

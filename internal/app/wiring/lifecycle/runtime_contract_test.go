@@ -1,8 +1,8 @@
 // Package app — lifecycle tests (lifecycle-runtime-ownership, June 2026).
 //
-// These tests exercise the serverLifecycle.Start/Stop contract. They are
+// These tests exercise the lifecycle.Runtime.Start/Stop contract. They are
 // deterministic (no network, no goroutine racing) by using fn probes and
-// StartupStep entries the test controls directly, and they verify:
+// lifecycle.StartupStep entries the test controls directly, and they verify:
 //
 //  1. Pre-cancelled ctx → Start returns an error WITHOUT firing any
 //     startup step (no goroutine leak on shutdown).
@@ -14,7 +14,7 @@
 //     Start, and twice in succession are all safe (no panic, no double-
 //     cleanup of partially-initialised state).
 //  5. Job runner is always the last step.
-package wiring
+package lifecycle_test
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	lifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -68,42 +69,38 @@ func (r *recorder) stepCallsOnly() []string {
 	return out
 }
 
-// newLifecycleForTest wires a serverLifecycle whose probes + startup steps
+// newLifecycleForTest wires a lifecycle.Runtime whose probes + startup steps
 // record invocations into rec. The plan is built from stepNames in order;
 // steps fire their Start closures synchronously (no goroutines).
 //
 // QDRANT-005 (June 2026) closure (lifecycle-runtime-ownership):
-// serverLifecycle no longer exposes fixed dbProbe/vectorProbe/driveProbe
+// lifecycle.Runtime no longer exposes fixed dbProbe/vectorProbe/driveProbe
 // fields — the readiness barrier is unified into a `probes []*probeEntry`
 // slice and probes are registered through `AddProbe(name, fn)`. The test
 // helper therefore routes each entry through AddProbe instead of direct
 // field assignment. The probe NAMES recorded by the test (dbProbe /
 // vectorProbe / driveProbe) are unchanged — they're just strings logged
 // into rec.calls, not field accesses.
-func newLifecycleForTest(plan []StartupStep, probes map[string]func(context.Context) error, cleanup func()) *serverLifecycle {
-	sl := &serverLifecycle{
-		startupPlan: plan,
-		cleanup:     cleanup,
-		log:         zap.NewNop(),
-	}
+func newLifecycleForTest(plan []lifecycle.StartupStep, probes map[string]func(context.Context) error, cleanup func()) *lifecycle.Runtime {
+	rt := lifecycle.NewRuntime(plan, cleanup, zap.NewNop())
 	if probes != nil {
 		if p := probes["db"]; p != nil {
-			sl.AddProbe("db", p)
+			rt.AddProbe("db", p)
 		}
 		if p := probes["vector"]; p != nil {
-			sl.AddProbe("vector", p)
+			rt.AddProbe("vector", p)
 		}
 		if p := probes["drive"]; p != nil {
-			sl.AddProbe("drive", p)
+			rt.AddProbe("drive", p)
 		}
 	}
-	return sl
+	return rt
 }
 
-// makeRecordingStep returns a StartupStep that records its Name when Start
+// makeRecordingStep returns a lifecycle.StartupStep that records its Name when Start
 // is called and returns the given error.
-func makeRecordingStep(name string, required bool, rec *recorder, err error) StartupStep {
-	return StartupStep{
+func makeRecordingStep(name string, required bool, rec *recorder, err error) lifecycle.StartupStep {
+	return lifecycle.StartupStep{
 		Name: name, Required: required,
 		Start: func(_ context.Context) error {
 			rec.record(name)
@@ -126,7 +123,7 @@ func TestLifecycle_Start_PropagatesContextError(t *testing.T) {
 	cancel() // pre-cancelled
 
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("step1", true, rec, nil),
 	}
 	sl := newLifecycleForTest(plan, nil, nil)
@@ -159,7 +156,7 @@ func TestLifecycle_BarrierFails_ReturnsError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			rec := &recorder{}
-			plan := []StartupStep{
+			plan := []lifecycle.StartupStep{
 				makeRecordingStep("step1", true, rec, nil),
 				makeRecordingStep("step2", true, rec, nil),
 			}
@@ -193,7 +190,7 @@ func TestLifecycle_BarrierFails_ReturnsError(t *testing.T) {
 func TestLifecycle_BarrierPasses_RunsStepsInOrder(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, nil),
 		makeRecordingStep("qdrant-collection", true, rec, nil),
 		makeRecordingStep("outbox-pool", true, rec, nil),
@@ -269,7 +266,7 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 		cleanups := 0
 		cleanup := func() { cleanups++ }
 		rec := &recorder{}
-		plan := []StartupStep{
+		plan := []lifecycle.StartupStep{
 			makeRecordingStep("step1", true, rec, nil),
 		}
 		probes := map[string]func(context.Context) error{
@@ -299,7 +296,7 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 		cleanups := 0
 		cleanup := func() { cleanups++ }
 		rec := &recorder{}
-		plan := []StartupStep{
+		plan := []lifecycle.StartupStep{
 			makeRecordingStep("step1", true, rec, nil),
 		}
 		sl := newLifecycleForTest(plan, nil, cleanup)
@@ -325,7 +322,7 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 func TestLifecycle_RequiredFailure_AbortsSequence(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, errors.New("drive folder missing")),
 		makeRecordingStep("qdrant-collection", true, rec, nil),
 		makeRecordingStep("outbox-pool", true, rec, nil),
@@ -348,7 +345,7 @@ func TestLifecycle_RequiredFailure_AbortsSequence(t *testing.T) {
 func TestLifecycle_OptionalFailure_Continues(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("job-scanner", false, rec, errors.New("scanner failed")),
 		makeRecordingStep("channel-monitor", false, rec, nil),
 		makeRecordingStep("job-runner", true, rec, nil),
@@ -376,7 +373,7 @@ func TestLifecycle_OptionalFailure_Continues(t *testing.T) {
 func TestLifecycle_Stop_ReverseOrder(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("step-a", true, rec, nil),
 		makeRecordingStep("step-b", true, rec, nil),
 		makeRecordingStep("step-c", true, rec, nil),
@@ -407,7 +404,7 @@ func TestLifecycle_Stop_ReverseOrder(t *testing.T) {
 func TestLifecycle_JobRunnerLast(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, nil),
 		makeRecordingStep("job-scanner", false, rec, nil),
 		makeRecordingStep("job-runner", true, rec, nil),
@@ -431,7 +428,7 @@ func TestLifecycle_ContextCancelledDuringStartup(t *testing.T) {
 	rec := &recorder{}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "step1", Required: true,
 			Start: func(_ context.Context) error {
@@ -479,7 +476,7 @@ func TestLifecycle_NoGoroutinesLeaked(t *testing.T) {
 	goroutinesStarted := make(chan struct{}, 2)
 	goroutinesDone := make(chan struct{}, 2)
 
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "leaky-service-1", Required: false,
 			Start: func(startCtx context.Context) error {
@@ -547,31 +544,31 @@ func TestSafeCall(t *testing.T) {
 
 	t.Run("nil-fn", func(t *testing.T) {
 		t.Parallel()
-		if err := SafeCall("nil", nil); err != nil {
-			t.Fatalf("SafeCall(nil) must return nil, got %v", err)
+		if err := lifecycle.SafeCall("nil", nil); err != nil {
+			t.Fatalf("lifecycle.SafeCall(nil) must return nil, got %v", err)
 		}
 	})
 
 	t.Run("normal-return", func(t *testing.T) {
 		t.Parallel()
 		called := 0
-		err := SafeCall("ok", func() { called++ })
+		err := lifecycle.SafeCall("ok", func() { called++ })
 		if err != nil {
-			t.Fatalf("SafeCall ok-path must return nil, got %v", err)
+			t.Fatalf("lifecycle.SafeCall ok-path must return nil, got %v", err)
 		}
 		if called != 1 {
-			t.Fatalf("SafeCall ok-path must invoke fn once, got %d", called)
+			t.Fatalf("lifecycle.SafeCall ok-path must invoke fn once, got %d", called)
 		}
 	})
 
 	t.Run("panic-return", func(t *testing.T) {
 		t.Parallel()
-		err := SafeCall("explode", func() { panic("boom") })
+		err := lifecycle.SafeCall("explode", func() { panic("boom") })
 		if err == nil {
-			t.Fatalf("SafeCall panic must return non-nil error")
+			t.Fatalf("lifecycle.SafeCall panic must return non-nil error")
 		}
 		if err.Error() != `lifecycle closure "explode" panicked: boom` {
-			t.Fatalf("SafeCall panic error format mismatch: %v", err)
+			t.Fatalf("lifecycle.SafeCall panic error format mismatch: %v", err)
 		}
 	})
 }

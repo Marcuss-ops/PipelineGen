@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	generation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -481,7 +482,7 @@ func TestBuildPlanTextFieldMapping(t *testing.T) {
 	item := textItem()
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	if plan.ID != "item-1" {
 		t.Errorf("plan.ID: %q", plan.ID)
@@ -511,7 +512,7 @@ func TestBuildPlanClipsFieldMapping(t *testing.T) {
 	item := clipsItem()
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	if plan.Mode != "clip_to_script" {
 		t.Errorf("plan.Mode for clips: %q", plan.Mode)
@@ -527,8 +528,8 @@ func TestBuildPlanDeterministic(t *testing.T) {
 	item := textItem()
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
-	plan1 := scripts.BuildPlan(item)
-	plan2 := scripts.BuildPlan(item)
+	plan1 := generation.BuildPlan(item)
+	plan2 := generation.BuildPlan(item)
 
 	// Plans must be deeply equal for the same input.
 	if plan1.ID != plan2.ID {
@@ -553,7 +554,7 @@ func TestBuildPlanNoEndpointNames(t *testing.T) {
 	item := textItem()
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	// The plan must not contain any legacy endpoint name string.
 	if plan.Mode == "generate_with_images" ||
@@ -564,11 +565,11 @@ func TestBuildPlanNoEndpointNames(t *testing.T) {
 }
 
 func TestBuildPlansEmpty(t *testing.T) {
-	plans := scripts.BuildPlans(nil)
+	plans := generation.BuildPlans(nil)
 	if plans != nil {
 		t.Errorf("BuildPlans(nil) should return nil, got %v", plans)
 	}
-	plans = scripts.BuildPlans([]scriptpkg.GenerationItemV2{})
+	plans = generation.BuildPlans([]scriptpkg.GenerationItemV2{})
 	if plans != nil {
 		t.Errorf("BuildPlans(empty) should return nil, got %d items", len(plans))
 	}
@@ -583,7 +584,7 @@ func TestBuildPlansMultiple(t *testing.T) {
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
 	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
 
-	plans := scripts.BuildPlans([]scriptpkg.GenerationItemV2{item1, item2})
+	plans := generation.BuildPlans([]scriptpkg.GenerationItemV2{item1, item2})
 
 	if len(plans) != 2 {
 		t.Fatalf("expected 2 plans, got %d", len(plans))
@@ -677,7 +678,7 @@ func TestBuildPlanTopicFromSource(t *testing.T) {
 	}
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	if plan.Title != "My Script Title" {
 		t.Errorf("plan.Title should remain the item title: %q", plan.Title)
@@ -700,7 +701,7 @@ func TestBuildPlanTopicFallbackToTitle(t *testing.T) {
 	}
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	if plan.Topic != "Fallback Title" {
 		t.Errorf("plan.Topic should fall back to title: got %q, want %q",
@@ -724,7 +725,7 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 		t.Fatalf("expected normalizer to set Title to 'Untitled Script', got %q", item.Title)
 	}
 
-	plan := scripts.BuildPlan(item)
+	plan := generation.BuildPlan(item)
 
 	if plan.Topic != "Untitled Script" {
 		t.Errorf("plan.Topic should be normalized title: got %q", plan.Topic)

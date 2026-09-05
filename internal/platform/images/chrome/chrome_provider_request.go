@@ -22,7 +22,7 @@ package chrome
 
 import (
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"os"
 	"path/filepath"
 )
@@ -39,7 +39,7 @@ import (
 //
 // requestID is plumbed through so the tempDir fallback names the
 // file deterministically without colliding with concurrent calls.
-func resolveOutputPath(req appimages.GenerateImageRequest, requestID string) string {
+func resolveOutputPath(req imggeneration.GenerateImageRequest, requestID string) string {
 	if req.OutputPath != "" {
 		return req.OutputPath
 	}
@@ -59,12 +59,12 @@ func resolveOutputPath(req appimages.GenerateImageRequest, requestID string) str
 //   - Prompt composition: prompt=<ComposedPrompt.Composed>,
 //     prompt_original=<raw req.Prompt>. The worker fills the DOM
 //     textarea with Composed and emits prompt_original in the JSONL
-//     audit. See internal/capabilities/images/workflow/prompt_composer.go
-//     for the appimages.ComposePrompt rulebook (P1.2 retire-the-150-char-truncation).
+//     audit. See internal/capabilities/images/generation/prompt.go
+//     for the imggeneration.ComposePrompt rulebook (P1.2 retire-the-150-char-truncation).
 //   - Style directives: style_id, optional prompt_suffix (forward-pointer
 //     for callers that want a custom worker-side composition
 //     format). prompt_suffix is plumb-through only — the
-//     appimages.ComposePrompt tool handles the canonical [style: X] [negative:
+//     imggeneration.ComposePrompt tool handles the canonical [style: X] [negative:
 //     do not include ...] format; prompt_suffix is for escape-hatch
 //     cases.
 //   - Dimensions: width / height (P1.1 wire-up). The worker uses
@@ -72,7 +72,7 @@ func resolveOutputPath(req appimages.GenerateImageRequest, requestID string) str
 //   - Ratio override: optional ratio (P1.1). Empty defaults the
 //     worker to 16:9.
 //   - Output: output=<outputPath>, consumed by readGeneratedOutput.
-func buildWorkerGenerateRequest(requestID, generationID string, req appimages.GenerateImageRequest, composedPrompt string, outputPath string) map[string]any {
+func buildWorkerGenerateRequest(requestID, generationID string, req imggeneration.GenerateImageRequest, composedPrompt string, outputPath string) map[string]any {
 	workerReq := map[string]any{
 		"action":          "generate",
 		"id":              requestID, // request_id correlation token (Go ↔ worker stdin/stdout)

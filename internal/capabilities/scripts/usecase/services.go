@@ -6,17 +6,9 @@
 // Translator) + the dead MetadataModel field (wired at composition
 // time but with 0 readers in any use-case site). The canonical
 // Fase 9 step-2 surface TranslationPort remains the SOLE owner of
-// the translation contract; the new canonical Modern-side surfaces
+// the translation contract; the canonical Modern-side surfaces
 // (AssocSvc + DriveSvc + JobsSvc + HarvestSvc) remain the SOLE
 // owner of the post-Phase-2 contracts.
-//
-// The legacy `TextTranslationService` + `TranslatorService` type
-// aliases in internal/capabilities/translation/legacy.go remain
-// in place for the godlike/07 EXPAND-window grace period (one
-// sole concrete *OllamaTranslator satisfies BOTH the canonical
-// TranslationPort AND the legacy aliases); the godlike/07
-// CUTOVER-phase removal is forward-pointer
-// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
 package usecase
 
 import (
@@ -111,7 +103,7 @@ type AssocSearchService interface {
 // PR-DEADC-IMAGES-IMAGE-GEN-SERVICE-INTERFACE-CONTRACT on 2026-07-10
 // to disambiguate the script-layer usecase port from the canonical
 // *images.Service.GenerateSmartImage production surface at
-// internal/capabilities/images/workflow/service_generated.go). That cast NEVER
+// internal/capabilities/images/service_generated.go). That cast NEVER
 // fired (no caller passed non-nil extra at composition time), so the
 // entire any channel was untraffic — dropping it preserves
 // byte-equivalent behaviour and satisfies godlike/06 SSOT (no

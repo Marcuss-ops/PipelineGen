@@ -25,7 +25,7 @@ func bootstrapProviderRegistry(provReg *providers.Registry, entries []TrackedPro
 }
 
 func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
-	return registrywiring.RegisterCapabilities(reg, provReg, deps, c3ValidateRuntimeGraph)
+	return registrywiring.RegisterCapabilities(reg, provReg, deps, registrywiring.ValidateRuntimeGraph)
 }
 
 func registerHTTPModules(reg *module.Registry, mods []TrackedHTTPModule) error {

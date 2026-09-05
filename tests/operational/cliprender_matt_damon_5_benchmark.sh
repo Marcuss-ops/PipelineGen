@@ -35,7 +35,8 @@ else
 fi
 
 [[ -n "$TOKEN" ]] || { echo "VELOX_MASTER_ADMIN_TOKEN or VELOX_ADMIN_TOKEN is required" >&2; exit 2; }
-(( ${#SOURCE_IDS[@]} == 5 )) || { echo "exactly five source asset IDs are required" >&2; exit 2; }
+EXPECTED_COUNT="${CLIPRENDER_EXPECTED_COUNT:-5}"
+(( ${#SOURCE_IDS[@]} == EXPECTED_COUNT )) || { echo "expected $EXPECTED_COUNT source asset IDs" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 2; }
 mkdir -p "$RUN_DIR"
@@ -64,16 +65,14 @@ build_payload() {
       watermark: ({
         enabled:true, position:"top_right", opacity:0.85, margin_px:24,
         style:{font:"DejaVu Sans",size:42,color:"#FFFFFF",
-          shadow:{color:"#000000",opacity:0.75,blur_px:8,offset_x:2,offset_y:2},
-          transition_in:{preset:"fade_in",duration_ms:250}}
+          shadow:{color:"#000000",opacity:0.75,blur_px:8,offset_x:2,offset_y:2}}
       } | if $wm_asset != "" then . + {asset_id:$wm_asset} | del(.text)
         else . + {text:$wm_text} end),
       transcript:{mode:"reuse_or_generate",language:"en",persist:true},
       subtitles:{
         enabled:true, mode:$subtitles_mode, style_id:"matt-damon-benchmark-v1",
         style:{font:"DejaVu Sans",size:54,color:"#FFFFFF",position:"bottom_center",
-          shadow:{color:"#000000",opacity:0.80,blur_px:10,offset_x:0,offset_y:5},
-          transition_in:{preset:"fade_in",duration_ms:200}}
+          shadow:{color:"#000000",opacity:0.80,blur_px:10,offset_x:0,offset_y:5}}
       },
       output:{contract:"VELOX_ASSEMBLY_READY_V1",width:1920,height:1080,fps_num:24,fps_den:1},
       audio:{mode:"copy_if_compatible"},
@@ -122,11 +121,10 @@ submit_and_poll() {
 
 batch_start_ms=$(date +%s%3N)
 failed=0
+# One job at a time: Chronon/Vulkan memory is intentionally bounded and the
+# benchmark must never create five simultaneous render surfaces.
 for i in "${!SOURCE_IDS[@]}"; do
-  submit_and_poll "$((i + 1))" "${SOURCE_IDS[$i]}" &
-done
-for pid in $(jobs -pr); do
-  wait "$pid" || failed=1
+  submit_and_poll "$((i + 1))" "${SOURCE_IDS[$i]}" || failed=1
 done
 batch_end_ms=$(date +%s%3N)
 
@@ -136,7 +134,7 @@ jq -n --arg run_id "$RUN_ID" --arg endpoint "$BASE_URL/api/clips/render" \
   --argjson failed_jobs "$failed" --argjson source_asset_ids "$(printf '%s\n' "${SOURCE_IDS[@]}" | jq -R . | jq -s .)" \
   '{run_id:$run_id,endpoint:$endpoint,batch_wall_ms:$batch_wall_ms,failed_jobs:$failed_jobs,
     source_asset_ids:$source_asset_ids,jobs:[]}' > "$REPORT"
-for i in 1 2 3 4 5; do
+for ((i=1; i<=EXPECTED_COUNT; i++)); do
   latest="$RUN_DIR/clip-$i/latest.json"
   if [[ -f "$latest" ]]; then
     jq --argjson index "$i" '. + {batch_index:$index}' "$latest" > "$latest.tmp"

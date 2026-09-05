@@ -1,4 +1,4 @@
-package generation
+package styles
 
 import (
 	"errors"

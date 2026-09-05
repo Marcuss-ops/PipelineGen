@@ -1,6 +1,7 @@
 package images
 
 import (
+	imageingest "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/ingest"
 	"sync"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 type ImageStorageService struct {
 	repo          ImageRepository
 	publisher     delivery.Publisher
-	driveReader   DriveReader
+	driveReader   imageingest.DriveReader
 	cfg           *config.Config
 	imagesDir     string
 	tempDir       string

@@ -44,6 +44,11 @@ type SubtitleArtifact struct {
 	SHA256    string
 	Mode      string
 	StyleID   string
+	// DriveFileID/DriveLink identify an already-published canonical ASS.
+	// When present, the publisher must reuse it instead of uploading a second
+	// copy for every rerender.
+	DriveFileID string
+	DriveLink   string
 }
 
 // SubtitleCompiler compiles a deterministic .ass artifact from the canonical

@@ -51,7 +51,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
@@ -61,19 +60,19 @@ import (
 // every other interface method. Pattern matches fakeJobsService in
 // handler_test.go for convention consistency.
 type fakeScriptHistoryRepo struct {
-	scripts []*adapters.ScriptRecord
+	scripts []*ports.ScriptRecord
 }
 
 // ── Functional methods (used by ScriptHistoryHandler) ────────────
 
 // ListScripts returns the in-memory fake state regardless of filter.
-func (f *fakeScriptHistoryRepo) ListScripts(_ context.Context, _ adapters.ScriptListFilter) ([]*adapters.ScriptRecord, error) {
+func (f *fakeScriptHistoryRepo) ListScripts(_ context.Context, _ ports.ScriptListFilter) ([]*ports.ScriptRecord, error) {
 	return f.scripts, nil
 }
 
 // GetScriptByID returns (record, nil, nil, nil) for known ids, or
 // "script not found" for unknown ids.
-func (f *fakeScriptHistoryRepo) GetScriptByID(id int64) (*adapters.ScriptRecord, []adapters.ScriptSectionRecord, []adapters.ScriptStockMatchRecord, error) {
+func (f *fakeScriptHistoryRepo) GetScriptByID(id int64) (*ports.ScriptRecord, []ports.ScriptSectionRecord, []ports.ScriptStockMatchRecord, error) {
 	for _, s := range f.scripts {
 		if s.ID == id {
 			return s, nil, nil, nil
@@ -90,7 +89,7 @@ func (f *fakeScriptHistoryRepo) GetScriptByID(id int64) (*adapters.ScriptRecord,
 // matches fakeJobsService which uses errors.New for the same purpose.
 
 // SaveScript is unimplemented.
-func (f *fakeScriptHistoryRepo) SaveScript(_ context.Context, _ *adapters.ScriptRecord, _ []adapters.ScriptSectionRecord, _ []adapters.ScriptStockMatchRecord) (int64, error) {
+func (f *fakeScriptHistoryRepo) SaveScript(_ context.Context, _ *ports.ScriptRecord, _ []ports.ScriptSectionRecord, _ []ports.ScriptStockMatchRecord) (int64, error) {
 	return 0, errors.New("fakeScriptHistoryRepo.SaveScript: not implemented (parent-id regression test only exercises ListScripts + GetScriptByID)")
 }
 
@@ -103,15 +102,15 @@ func (f *fakeScriptHistoryRepo) UpdateScriptFinalContent(_ context.Context, _ in
 	return errors.New("fakeScriptHistoryRepo.UpdateScriptFinalContent: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) SaveGenerationLog(_ context.Context, _ adapters.ScriptGenerationLog) error {
+func (f *fakeScriptHistoryRepo) SaveGenerationLog(_ context.Context, _ ports.ScriptGenerationLog) error {
 	return errors.New("fakeScriptHistoryRepo.SaveGenerationLog: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) SaveOutlineSections(_ context.Context, _ int64, _ []adapters.ScriptOutlineSectionRecord) error {
+func (f *fakeScriptHistoryRepo) SaveOutlineSections(_ context.Context, _ int64, _ []ports.ScriptOutlineSectionRecord) error {
 	return errors.New("fakeScriptHistoryRepo.SaveOutlineSections: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) SaveResearchSources(_ context.Context, _ int64, _ []adapters.ScriptResearchSource) error {
+func (f *fakeScriptHistoryRepo) SaveResearchSources(_ context.Context, _ int64, _ []ports.ScriptResearchSource) error {
 	return errors.New("fakeScriptHistoryRepo.SaveResearchSources: not implemented")
 }
 
@@ -123,11 +122,11 @@ func (f *fakeScriptHistoryRepo) NextVersionForTopic(_ context.Context, _, _, _ s
 	return 0, errors.New("fakeScriptHistoryRepo.NextVersionForTopic: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) GetSectionByID(_ context.Context, _ int64) (*adapters.ScriptSectionRecord, error) {
+func (f *fakeScriptHistoryRepo) GetSectionByID(_ context.Context, _ int64) (*ports.ScriptSectionRecord, error) {
 	return nil, errors.New("fakeScriptHistoryRepo.GetSectionByID: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) GetAdjacentSections(_ context.Context, _ int64, _ int) (*adapters.ScriptSectionRecord, *adapters.ScriptSectionRecord, error) {
+func (f *fakeScriptHistoryRepo) GetAdjacentSections(_ context.Context, _ int64, _ int) (*ports.ScriptSectionRecord, *ports.ScriptSectionRecord, error) {
 	return nil, nil, errors.New("fakeScriptHistoryRepo.GetAdjacentSections: not implemented")
 }
 
@@ -135,14 +134,14 @@ func (f *fakeScriptHistoryRepo) UpdateSectionContent(_ context.Context, _ int64,
 	return errors.New("fakeScriptHistoryRepo.UpdateSectionContent: not implemented")
 }
 
-func (f *fakeScriptHistoryRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*adapters.ScriptRecord, bool, error) {
+func (f *fakeScriptHistoryRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*ports.ScriptRecord, bool, error) {
 	return nil, false, errors.New("fakeScriptHistoryRepo.FindScriptByIdempotencyKey: not implemented")
 }
 
 // Compile-time assertion: fakeScriptHistoryRepo satisfies the
 // canonical script-repository contract consumed by ScriptHistoryHandler
 // (Contract: internal/application/scripts/adapters.ScriptRepository).
-var _ adapters.ScriptRepository = (*fakeScriptHistoryRepo)(nil)
+var _ ports.ScriptRepository = (*fakeScriptHistoryRepo)(nil)
 
 // newParentChildScriptHistoryRouter wires a /scripts router with two
 // scripts in the fake repo: a root (id=1, no parent of its own) and
@@ -150,19 +149,19 @@ var _ adapters.ScriptRepository = (*fakeScriptHistoryRepo)(nil)
 // underlying fake for inspection by individual tests.
 func newParentChildScriptHistoryRouter(t *testing.T) (*gin.Engine, *fakeScriptHistoryRepo) {
 	t.Helper()
-	parent := &adapters.ScriptRecord{
+	parent := &ports.ScriptRecord{
 		ID:    1,
 		Title: "Root script",
 		Topic: "history",
 		// ParentScriptID intentionally 0 — this is a root script.
 	}
-	child := &adapters.ScriptRecord{
+	child := &ports.ScriptRecord{
 		ID:             2,
 		Title:          "Child script",
 		Topic:          "history-v2",
 		ParentScriptID: 1, // points at parent.ID
 	}
-	repo := &fakeScriptHistoryRepo{scripts: []*adapters.ScriptRecord{parent, child}}
+	repo := &fakeScriptHistoryRepo{scripts: []*ports.ScriptRecord{parent, child}}
 	handler := NewScriptHistoryHandler(repo, zap.NewNop())
 	router := gin.New()
 	grp := router.Group("/scripts")

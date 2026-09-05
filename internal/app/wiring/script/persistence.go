@@ -8,6 +8,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
@@ -19,7 +20,7 @@ type GenerationPersistence struct {
 }
 
 // NewGenerationPersistence constructs the canonical script persistence adapter.
-func NewGenerationPersistence(repo documentadapters.ScriptRepository, log *zap.Logger) *GenerationPersistence {
+func NewGenerationPersistence(repo scriptports.ScriptRepository, log *zap.Logger) *GenerationPersistence {
 	if repo == nil {
 		return nil
 	}

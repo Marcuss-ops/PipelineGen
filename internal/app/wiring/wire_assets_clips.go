@@ -4,6 +4,7 @@ package wiring
 
 import (
 	"fmt"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
@@ -65,7 +66,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	if params.Dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: params.Dispatcher}
 	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(params.Dispatcher)
+	mutationsDisp, err := registrywiring.NewMutationsDispatcherAdapter(params.Dispatcher)
 	if err != nil {
 		return nil, nil, fmt.Errorf("clips: mutations dispatcher: %w", err)
 	}

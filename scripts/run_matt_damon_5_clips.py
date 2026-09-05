@@ -56,7 +56,7 @@ def verify(response: dict) -> dict:
         and render.get("enabled") is True
         and render.get("require_gpu") is True
         and render.get("drive_folder_id") == item.get("docs", {}).get("folder_id")
-        and render.get("render_concurrency", 0) >= 8
+        and render.get("render_concurrency", 0) == 4
         and render.get("watermark", {}).get("enabled") is True
         and render.get("subtitles", {}).get("enabled") is True
         and render.get("subtitles", {}).get("mode") == "burn"

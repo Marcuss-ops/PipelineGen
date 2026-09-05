@@ -14,13 +14,25 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ClipRenderSubtitleCompiler implements the capability's SubtitleCompiler
 // port with the canonical ASS generator. The artifact is written into the
 // run's scratch dir and validated before the plan is sealed.
-type ClipRenderSubtitleCompiler struct{}
+type ClipRenderSubtitleCompiler struct {
+	artifacts detail.SubtitleArtifactRepository
+}
+
+// SetArtifactRepository attaches the canonical subtitle-artifact registry.
+// A current READY artifact is reused only when its local bytes, hash, style,
+// duration and Drive publication are all still valid.
+func (c *ClipRenderSubtitleCompiler) SetArtifactRepository(repo detail.SubtitleArtifactRepository) {
+	if c != nil {
+		c.artifacts = repo
+	}
+}
 
 // assContentCache reuses deterministic ASS generation across repeated renders
 // of the same transcript/style. It is a content cache, not a render cache.
@@ -34,6 +46,32 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	}
 	if len(in.Cues) == 0 {
 		return nil, fmt.Errorf("%w: zero cues for asset %q — speech recognition is never regenerated for subtitles", cliprender.ErrSubtitleCompileUnavailable, in.AssetID)
+	}
+	if c != nil && c.artifacts != nil {
+		current, err := c.artifacts.FindCurrent(ctx, in.AssetID, in.Language, detail.SubtitleFormatASS)
+		if err != nil {
+			return nil, fmt.Errorf("%w: lookup current ASS artifact: %v", cliprender.ErrSubtitleCompileUnavailable, err)
+		}
+		if current != nil {
+			if current.Status != detail.SubtitleStatusReady || current.StyleVersion != in.StyleID ||
+				current.LocalPath == "" || current.DriveFileID == "" {
+				return nil, fmt.Errorf("%w: current ASS artifact for %q is not reusable (status=%s style=%q local=%t drive=%t)",
+					cliprender.ErrSubtitleCompileUnavailable, in.AssetID, current.Status, current.StyleVersion,
+					current.LocalPath != "", current.DriveFileID != "")
+			}
+			if _, err := os.Stat(current.LocalPath); err != nil {
+				return nil, fmt.Errorf("%w: current ASS artifact for %q is missing locally: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
+			}
+			if err := texttracks.ValidateASSFile(current.LocalPath, in.ClipDurationMS); err != nil {
+				return nil, fmt.Errorf("%w: current ASS artifact for %q failed validation: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
+			}
+			sha, _, err := digest.SHA256File(current.LocalPath)
+			if err != nil || sha != current.LegacyFileMD5 {
+				return nil, fmt.Errorf("%w: current ASS artifact for %q failed hash verification", cliprender.ErrSubtitleCompileUnavailable, in.AssetID)
+			}
+			cliprender.RecordSubtitleCacheFacts(current.LocalPath, cliprender.SubtitleCacheFacts{ContentCacheHit: true, ArtifactCacheHit: true, Measured: true})
+			return &cliprender.SubtitleArtifact{LocalPath: current.LocalPath, SHA256: sha, Mode: in.Mode, StyleID: current.StyleVersion, DriveFileID: current.DriveFileID, DriveLink: current.DriveURL}, nil
+		}
 	}
 	cues := trimClipRenderCues(in.Cues, in.ClipDurationMS)
 	if len(cues) == 0 {

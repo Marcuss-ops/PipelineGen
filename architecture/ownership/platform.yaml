@@ -55,7 +55,7 @@ infrastructure_observability:
   target_subdirs: [observability/resource]
   migrated_from: internal/infrastructure/observability
 infrastructure_shared:
-  owner: DELETE
+  owner: internal/platform  # retired bucket — 'DELETE' is policy, not a path; no shared/common/utils/helpers dirs may exist
   rationale: No shared/common/utils/helpers dumping grounds. Each utility must move to its technical owner or become a leaf-local helper.
   forbidden_paths: [internal/platform/shared, '**/shared', '**/common', '**/utils', '**/helpers']
 

@@ -8,7 +8,7 @@
 //     goroutine, validates /health, and stores baseURL.
 //   - Stop() — graceful quit via POST /quit with 2s timeout + 5s SIGKILL.
 //
-// Mirrors the precedent in internal/capabilities/images/workflow/slide_worker_
+// Mirrors the precedent in internal/capabilities/images/generation/slide_worker_
 // process.go (PR-CHROME-PROVIDER-SPLIT, 2026-07-04).
 package audioasset
 

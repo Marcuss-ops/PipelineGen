@@ -65,20 +65,19 @@
           "enabled": true,
           "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
           "drive_subfolder_name": "matt-damon-5-clips-docs-true",
-          "render_concurrency": 8,
+          "render_concurrency": 4,
           "require_gpu": true,
           "watermark": {
             "enabled": true,
             "text": "VELOX • CHRONON",
             "position": "top_right",
             "opacity": 1,
-            "margin_px": 40,
+            "margin_px": 100,
             "style": {
       "font": "Montserrat",
               "size": 42,
               "color": "#FFFFFF",
-              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4},
-              "transition_in": {"preset": "fade_in", "duration_ms": 250}
+              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4}
             }
           },
           "subtitles": {
@@ -90,8 +89,7 @@
               "font_size_px": 52,
               "width_px": 1600,
               "position": "bottom_center",
-              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4},
-              "transition_in": {"preset": "fade_in", "duration_ms": 120}
+              "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 8, "offset_x": 0, "offset_y": 4}
             }
           }
         }

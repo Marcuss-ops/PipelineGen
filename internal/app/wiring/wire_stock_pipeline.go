@@ -27,6 +27,7 @@ import (
 
 	"go.uber.org/zap"
 
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
@@ -60,7 +61,7 @@ import (
 //
 // Returns (nil, nil) when StockPipelineEnabled is false — the caller
 // treats nil wiring as "route not mounted" (no error, no registration).
-func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*StockPipelineWiring, error) {
+func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*stockwiring.StockPipelineWiring, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("wire stock pipeline: cfg is nil")
 	}

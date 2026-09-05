@@ -38,6 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -113,7 +114,7 @@ func TestResolveVoiceoverFolderForItem_Roundtrip_HappyPath(t *testing.T) {
 	assert.Equal(t, testVOGroupFolderJC, resolvedItem.Output.VoiceoverFolderID,
 		"VoiceoverFolderID must be populated from the resolver")
 
-	plan := BuildPlan(resolvedItem)
+	plan := generationpkg.BuildPlan(resolvedItem)
 	assert.Equal(t, testVOGroupFolderJC, plan.VoiceoverFolderID,
 		"BuildPlan must copy the resolved folder id onto the plan")
 	assert.Equal(t, testVOGroupNameJC, plan.VoiceoverGroup,

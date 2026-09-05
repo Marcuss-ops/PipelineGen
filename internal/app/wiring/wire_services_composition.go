@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"time"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
@@ -186,7 +187,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 			}
 			// RenderingGen overlays resolve their parent video's Drive folder
 			// below the already-resolved video folder (/video/.../overlay/).
-			broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
+			broker.WithArtifactFolderResolver(assetswiring.NewArtifactFolderResolver(root.DB.DB))
 			log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 		}
 	} else {

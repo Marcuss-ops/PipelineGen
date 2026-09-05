@@ -20,7 +20,7 @@
 //  3. Negative keywords "text, watermark, blurry" forwarded intact.
 //     Confirms P1.1 wire-up of negative_prompt to the worker.
 //  4. Blank-negative intent (worker reports ErrNoImageCandidate).
-//     Confirms P0.1 fail-closed: nil appimages.GeneratedImage, file removed,
+//     Confirms P0.1 fail-closed: nil imggeneration.GeneratedImage, file removed,
 //     typed sentinel propagated.
 //  5. Slide-export-style blank from worker: status=ok with output_path
 //     pointing to a programmatically-generated blank PNG. Confirms

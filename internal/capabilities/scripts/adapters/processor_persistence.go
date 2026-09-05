@@ -54,7 +54,7 @@ import (
 // PersistenceProcessor writes the canonical script row. Single
 // owner of SQLite scripts-table writes (PR 5, June 2026).
 type PersistenceProcessor struct {
-	repo ScriptRepository
+	repo ports.ScriptRepository
 	log  *zap.Logger
 }
 
@@ -68,7 +68,7 @@ const stagePersistenceSQLite kernobs.StageName = "persistence.sqlite"
 
 // NewPersistenceProcessor creates a PersistenceProcessor.
 // repo must be non-nil (enforced at registration time).
-func NewPersistenceProcessor(repo ScriptRepository, log *zap.Logger) *PersistenceProcessor {
+func NewPersistenceProcessor(repo ports.ScriptRepository, log *zap.Logger) *PersistenceProcessor {
 	return &PersistenceProcessor{repo: repo, log: log}
 }
 
@@ -166,7 +166,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		return nil, fmt.Errorf("%w: persistence processor: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, specJSONErr)
 	}
 
-	rec := &ScriptRecord{
+	rec := &ports.ScriptRecord{
 		Title:          persistPlan.Title,
 		Topic:          persistPlan.Topic,
 		Language:       persistPlan.Language,
@@ -318,7 +318,7 @@ func (p *PersistenceProcessor) persistSourceLanguageRow(ctx context.Context, pla
 		return 0, fmt.Errorf("%w: original persistence: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
 	key := computeIdempotencyKey(plan)
-	rec := &ScriptRecord{
+	rec := &ports.ScriptRecord{
 		Title: plan.Title, Topic: plan.Topic, Language: plan.Language,
 		Tone: plan.Tone, Model: plan.Model, ModelUsed: input.ModelUsed,
 		Mode: plan.Mode, Status: "completed", TargetWords: plan.TargetWords,

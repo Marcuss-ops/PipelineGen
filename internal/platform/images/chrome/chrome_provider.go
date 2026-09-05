@@ -8,7 +8,7 @@
 //     signature was retired per godlike/07 no-fake-availability — the
 //     legacy numProfiles parameter was silently ignored, single-profile
 //     is canonical).
-//   - Compile-time appimages.ImageGenerator assertion.
+//   - Compile-time imggeneration.ImageGenerator assertion.
 //   - Generate (THIN orchestrator: ctx cancel check → lock → delegate
 //     to chrome_provider_retry.go::retryGenerationOnce).
 //   - generateOnce (per-attempt body that delegates to the six
@@ -55,7 +55,7 @@
 //	  ├── ensureStarted()           [slide_worker_process.go]
 //	  ├── stdin  ← JSON requests
 //	  └── stdout → JSON responses
-//	        └── os.ReadFile(output) → appimages.GeneratedImage{Data, Format, ...}
+//	        └── os.ReadFile(output) → imggeneration.GeneratedImage{Data, Format, ...}
 //
 // ONE browser, ONE page, reused across ALL requests in the process lifetime.
 package chrome
@@ -64,7 +64,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"io"
 	"os/exec"
 	"sync"
@@ -73,10 +73,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// Compile-time assertion: ChromeImageProvider implements appimages.ImageGenerator.
-var _ appimages.ImageGenerator = (*ChromeImageProvider)(nil)
+// Compile-time assertion: ChromeImageProvider implements imggeneration.ImageGenerator.
+var _ imggeneration.ImageGenerator = (*ChromeImageProvider)(nil)
 
-// ChromeImageProvider implements appimages.ImageGenerator by delegating to the
+// ChromeImageProvider implements imggeneration.ImageGenerator by delegating to the
 // persistent Playwright-based Python worker that automates Google
 // Slides AI (Nano Banana Pro).
 //
@@ -125,7 +125,7 @@ func NewChromeImageProvider(scriptsDir string, profileID int, log *zap.Logger) *
 // godlike/06 SSOT: the public Generate surface is the SINGLE
 // entry point callers use. All retry / fail-closed / classification
 // logic lives one level deeper in retryGenerationOnce.
-func (p *ChromeImageProvider) Generate(ctx context.Context, req appimages.GenerateImageRequest) (*appimages.GeneratedImage, error) {
+func (p *ChromeImageProvider) Generate(ctx context.Context, req imggeneration.GenerateImageRequest) (*imggeneration.GeneratedImage, error) {
 	select {
 	case <-ctx.Done():
 		return nil, fmt.Errorf("chrome provider: context cancelled before generation: %w", ctx.Err())
@@ -157,7 +157,7 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req appimages.Genera
 //   - observability → computeGenerationLogContext + p.logGenerationDiagnostics
 //
 // Must be called while p.mu is held (caller locks).
-func (p *ChromeImageProvider) generateOnce(ctx context.Context, req appimages.GenerateImageRequest) (*appimages.GeneratedImage, error) {
+func (p *ChromeImageProvider) generateOnce(ctx context.Context, req imggeneration.GenerateImageRequest) (*imggeneration.GeneratedImage, error) {
 	if err := p.ensureStarted(ctx); err != nil {
 		return nil, fmt.Errorf("chrome provider: %w", err)
 	}
@@ -165,7 +165,7 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req appimages.Ge
 	requestID := fmt.Sprintf("gen-%d", time.Now().UnixNano()%1_000_000_000)
 	outputPath := resolveOutputPath(req, requestID)
 	generationID := generateUUIDv4()
-	composed := appimages.ComposePrompt(req.Prompt, req.Style, req.NegativePrompt)
+	composed := imggeneration.ComposePrompt(req.Prompt, req.Style, req.NegativePrompt)
 	workerReq := buildWorkerGenerateRequest(requestID, generationID, req, composed.Composed, outputPath)
 
 	// Send.
@@ -205,7 +205,7 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req appimages.Ge
 	}
 
 	// Decode real dimensions from the PNG header (cheap). Real
-	// dims become the appimages.GeneratedImage.Width/Height; the requested
+	// dims become the imggeneration.GeneratedImage.Width/Height; the requested
 	// w/h are preserved in the post-success observability log so
 	// operators can audit requested-vs-actual ratio drift without
 	// code changes.
@@ -237,6 +237,6 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req appimages.Ge
 	// 1280x720 reuses the same hash as a direct 1280x720 request — the
 	// downstream ingestion path is dim-correct.
 	format := "png"
-	sourceHash := appimages.ComputeSourceHash("google-slides", req.Prompt, req.Style, realW, realH, appimages.CanonicalGoogleSlidesModel)
+	sourceHash := imggeneration.ComputeSourceHash("google-slides", req.Prompt, req.Style, realW, realH, imggeneration.CanonicalGoogleSlidesModel)
 	return buildGeneratedImage(data, outputPath, req, realW, realH, sourceHash, format), nil
 }

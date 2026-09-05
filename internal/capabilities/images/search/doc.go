@@ -19,7 +19,7 @@
 // in storage_search.go with this registry.
 //
 // FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
-// RetrievalSearchResult) moved to internal/capabilities/images/workflow/routing
+// RetrievalSearchResult) moved to internal/capabilities/images/routing
 // to break the routing↔retrieved import cycle. The retrieved
 // subpackage keeps the concrete provider implementations and the
 // registry; provider Search methods now accept routing types directly.

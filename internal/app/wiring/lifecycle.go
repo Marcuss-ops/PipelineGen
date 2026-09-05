@@ -71,6 +71,7 @@ package wiring
 import (
 	"context"
 	"errors"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -84,21 +85,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// StartupStep defines a service that the server lifecycle manages.
-// Steps are executed in declaration order by serverLifecycle.Start.
-// Required steps that fail abort the sequence; optional failures are
-// logged and exposed but do not block the remaining steps.
-//
-// Stop is invoked in reverse order during serverLifecycle.Stop.
-// For goroutine-based services that listen on ctx.Done(), Stop is a
-// no-op (context cancellation signals them). For services with explicit
-// shutdown methods (channel monitor, outbox pool), Stop calls those.
-type StartupStep struct {
-	Name     string
-	Required bool
-	Start    func(ctx context.Context) error
-	Stop     func(ctx context.Context) error
-}
+// StartupStep is a root alias kept for the composition root files that
+// still declare steps in package-private shape. Canonical ownership lives
+// in wiring/lifecycle (lifecycle-runtime-ownership closure).
+type StartupStep = lifecyclewiring.StartupStep
 
 // ErrCapabilityDisabled is the typed sentinel surface for startup
 // steps that are intentionally NOT running per operator-facing policy

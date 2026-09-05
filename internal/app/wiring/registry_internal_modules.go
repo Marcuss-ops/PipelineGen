@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
@@ -347,7 +348,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	if !ok || yd == nil {
 		return fmt.Errorf("registerYouTubeClip: youtube.Build returned unexpected descriptor type %T (want *youtubeapi.YouTubeDescriptor)", descriptor)
 	}
-	regWiring.YouTubeClip = &YouTubeClipWiring{
+	regWiring.YouTubeClip = &youtubewiring.YouTubeClipWiring{
 		Module:  yd.Module,
 		Service: yd.Service,
 	}
@@ -421,7 +422,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Deterministic ASS compiler (canonical texttracks content generator —
 	// single owner). Subtitles.enabled=true without a wired compiler fails
 	// closed in the worker; this wiring makes burn+sidecar always available.
-	worker.WithSubtitleCompiler(clipadapters.NewClipRenderSubtitleCompiler())
+	subtitleCompiler := clipadapters.NewClipRenderSubtitleCompiler()
+	if root.Repos != nil {
+		subtitleCompiler.SetArtifactRepository(root.Repos.SubtitleArtifactRepo)
+	}
+	worker.WithSubtitleCompiler(subtitleCompiler)
 
 	// RenderingGen/Chronon render boundary: the shared executor owns queue
 	// submission; the remote worker owns Chronon execution.
@@ -457,6 +462,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if publisherErr != nil {
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
+	publisher.SetSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
 	worker.WithRenderPublisher(publisher)
 	// Script/batch leaf-folder resolution (create-or-reuse under the caller's
 	// root): routed through the SAME delivery.Publisher, so folder creation

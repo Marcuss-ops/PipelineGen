@@ -153,7 +153,7 @@ func liveCatalogPersonInput(segmentID, name string) adapters.ProcessInput {
 //
 // Run with:
 //
-//	PERSON_CATALOG_LIVE=1 go test ./internal/capabilities/images/workflow \
+//	PERSON_CATALOG_LIVE=1 go test ./internal/capabilities/images \
 //	  -run TestPersonImageCatalogLiveRounds_6_8 -v -count=1 -timeout 10m
 
 func TestPersonImageCatalogLiveRounds_6_8(t *testing.T) {

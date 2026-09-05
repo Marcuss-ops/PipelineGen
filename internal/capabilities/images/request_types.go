@@ -9,6 +9,7 @@ package images
 
 import (
 	"fmt"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"strings"
 )
 
@@ -29,7 +30,7 @@ type UploadRequest struct {
 //
 // godlike/06 SSOT: ImageGenerationRequest is the sole request DTO for
 // AI image generation on the /api/images prefix. The distinct
-// service-port type in internal/capabilities/images/workflow/ports.go is an
+// service-port type in internal/capabilities/images/ports.go is an
 // application-layer contract, not an alias to this transport DTO.
 type ImageGenerationRequest struct {
 	Prompt string   `json:"prompt" binding:"required"`
@@ -88,7 +89,7 @@ type GenerateBatchRequest struct {
 
 	// Sections is the list of text sections (required when mode is
 	// "sections"). Each section → one image.generate.google job.
-	Sections []Section `json:"sections"`
+	Sections []imggeneration.Section `json:"sections"`
 }
 
 // GenerateBatchItem describes a single image to generate in a batch.

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -286,7 +287,87 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	// certifies it. PipelineGen must never infer this property from backend
 	// identity; require_zero_copy therefore fails closed when certification is
 	// absent.
-	return &cliprender.RenderOutcome{OutputPath: plan.OutputPath, SizeBytes: a.SizeBytes, DurationSec: float64(a.DurationUS) / 1e6, Width: uint32(a.Width), Height: uint32(a.Height), FPSNum: uint32(a.FPSNum), FPSDen: uint32(a.FPSDen), Backend: cliprender.RenderBackend(a.Backend), AudioCopyEligible: boolPtr(a.CopyEligible), Metrics: cliprender.NewRenderMetricsV2()}, nil
+	return &cliprender.RenderOutcome{
+		OutputPath:        plan.OutputPath,
+		SizeBytes:         a.SizeBytes,
+		DurationSec:       float64(a.DurationUS) / 1e6,
+		Width:             uint32(a.Width),
+		Height:            uint32(a.Height),
+		FPSNum:            uint32(a.FPSNum),
+		FPSDen:            uint32(a.FPSDen),
+		Backend:           cliprender.RenderBackend(a.Backend),
+		AudioCopyEligible: boolPtr(a.CopyEligible),
+		Metrics:           metricsFromChrononMetrics(a.Metrics, a.FrameCount, a.DurationUS),
+	}, nil
+}
+
+// metricsFromChrononArtifact is the API bridge for the certified artifact.
+// The queue already carries Chronon's flattened numeric projection and the
+// full JSONB-backed telemetry document. Never replace it with a fresh empty
+// report: doing so silently turns real engine measurements into zeroes in the
+// localized_renders API payload.
+func metricsFromChrononMetrics(n map[string]float64, frameCount int, durationUS int64) *cliprender.RenderMetricsV2 {
+	m := cliprender.NewRenderMetricsV2()
+	metric := func(keys ...string) (float64, bool) {
+		for _, key := range keys {
+			if v, ok := n[key]; ok && !math.IsNaN(v) && !math.IsInf(v, 0) {
+				return v, true
+			}
+		}
+		return 0, false
+	}
+	set := func(dst *cliprender.Metric, keys ...string) {
+		if v, ok := metric(keys...); ok {
+			*dst = cliprender.Metric(math.Round(v))
+		}
+	}
+	setFloat := func(dst *float64, keys ...string) {
+		if v, ok := metric(keys...); ok {
+			*dst = v
+		}
+	}
+
+	// Queue/worker walls and the Chronon exclusive timeline.
+	set(&m.RendererStartupMS, "chronon_exclusive_wall_timeline_startup_ms")
+	set(&m.ProbeMS, "chronon_exclusive_wall_timeline_ffprobe_ms")
+	set(&m.DecodeMS, "chronon_job_gpu_video_decode_wall_ms", "chronon_job_gpu_decode_submit_ms")
+	set(&m.CompositeMS, "chronon_job_gpu_cuda_composite_wall_us")
+	if int64(m.CompositeMS) != cliprender.NotInstrumented {
+		m.CompositeMS = cliprender.Metric(math.Round(float64(m.CompositeMS) / 1000))
+	}
+	set(&m.EncodeMS, "chronon_job_encoder_finalize_ms", "chronon_exclusive_wall_timeline_encoder_drain_finalize_ms")
+	set(&m.RenderWallMS, "chronon_exclusive_wall_timeline_render_loop_ms")
+	set(&m.RenderWallMS, "chronon_job_render_loop_wall_ms")
+
+	// GPU counters and resource profile.
+	set(&m.GPUUploadBytes, "chronon_job_gpu_gpu_upload_bytes", "chronon_job_gpu_upload_bytes")
+	set(&m.GPUReadbackBytes, "chronon_job_gpu_gpu_readback_bytes", "chronon_job_gpu_gpu_readback_bytes")
+	set(&m.EncoderStagingCopyBytes, "chronon_job_gpu_encoder_staging_copy_bytes")
+	set(&m.VRAMUsedPeakMB, "chronon_job_hardware_vram_used_peak_mb")
+	set(&m.GPUUtilizationAvg, "chronon_job_hardware_gpu_utilization_avg")
+	set(&m.GPUUtilizationPeak, "chronon_job_hardware_gpu_utilization_peak")
+	set(&m.NVENCUtilizationAvg, "chronon_job_hardware_nvenc_utilization_avg")
+	set(&m.NVDECUtilizationAvg, "chronon_job_hardware_nvdec_utilization_avg")
+	set(&m.CUDACompositeFrames, "chronon_job_gpu_cuda_composite_frames")
+	set(&m.NV12ToRGBAFrames, "chronon_job_gpu_nv12_to_rgba_frames")
+	set(&m.RGBAToNV12Frames, "chronon_job_gpu_rgba_to_nv12_frames")
+
+	// Artifact facts are authoritative for the output frame count. Summary
+	// values are authoritative for engine throughput; they are not recomputed
+	// from the worker wall, which would mix queue/download/publish time in.
+	if frameCount > 0 {
+		m.Frames = frameCount
+	}
+	setFloat(&m.RenderFPS, "chronon_summary_render_loop_fps", "chronon_summary_render_only_fps")
+	setFloat(&m.TotalFPS, "chronon_summary_end_to_end_fps")
+	setFloat(&m.RealtimeFactor, "chronon_summary_realtime_factor")
+	if m.RealtimeFactor != 0 {
+		m.SpeedFactor = m.RealtimeFactor
+	}
+	if m.RenderWallMS != cliprender.Metric(cliprender.NotInstrumented) && durationUS > 0 {
+		m.ProcessingXRT = float64(m.RenderWallMS) / 1000 / (float64(durationUS) / 1e6)
+	}
+	return m
 }
 
 // materializeArtifact turns the queue's certified object-store URL into the

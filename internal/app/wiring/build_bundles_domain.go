@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -28,7 +29,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	switch {
 	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil:
 		var err error
-		mutationsDisp, err = newMutationsDispatcherAdapter(outbox.Dispatcher)
+		mutationsDisp, err = registrywiring.NewMutationsDispatcherAdapter(outbox.Dispatcher)
 		if err != nil {
 			return nil, fmt.Errorf("compose domains: %w", err)
 		}
