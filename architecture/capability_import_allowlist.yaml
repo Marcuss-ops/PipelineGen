@@ -18,6 +18,18 @@
 #   K3 - deliberate, documented SSOT pin / registry-tracked seam (see the
 #        tracking_issue for the deprecation record or godlike/06 pin).
 #
+# Phase-1 review (2026-09-05): the assets/{texttracks,persistence,finalizer}
+# and youtube/{dto,ports} leaves were audited as candidate K1 hoists. Result:
+# none is mechanically hoistable as a whole package. texttracks/finalizer
+# consumers call mechanics or concrete constructors (port inversion, K2);
+# persistence is a port whose surface references the macro-assets
+# mediaregistry taxonomy (kernel cannot import capabilities, so the taxonomy
+# contract must reach kernel first); youtube/{dto,ports} is youtube's
+# canonical public surface (dto imports ai/linguistics; Segment is pinned by
+# the MONITOR-YOUTUBE-DIRECT-IMPORT SSOT record) — cross-macro use of it is a
+# K3 public-API pin, not a mis-homing. Each entry carries a phase1 note with
+# the concrete remediation shape.
+#
 # Tracking tickets: architecture/current.yaml WAVE-24-CLEANUP-DAY
 # (P1-CAPABILITY-OWNERSHIP + cleanup backlog).
 allowlist:
@@ -36,9 +48,16 @@ allowlist:
 
   - source: ai
     target: youtube
-    kind: K1
+    kind: K3
     exemplar: internal/capabilities/semantic/ollama_analyzer.go -> internal/capabilities/transcripts
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Public-API pin, not mis-homing. semantic (ai) consumes youtube's
+      canonical Segment/transcript contracts (ollama_analyzer_segments.go
+      uses ytdomain.Segment only); youtube/dto Segment semantics are the
+      SSOT per deprecation record MONITOR-YOUTUBE-DIRECT-IMPORT, and
+      youtube/dto imports ai/linguistics (tagutil_semantic), so neither
+      direction can move to kernel. Keep as documented seam.
 
   - source: assets
     target: ai
@@ -57,6 +76,13 @@ allowlist:
     kind: K2
     exemplar: internal/capabilities/assets/texttracks/cue_translate.go -> internal/capabilities/translation
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Reverse direction of the texttracks pair below: assets/texttracks
+      (cue translation) consumes content/translation. texttracks is ASS/VTT
+      mechanics (30 files, parsers + materializers); a kernel contract split
+      is not feasible without dragging mechanics. Remediation: texttracks
+      should consume translation through the content macro's public port, or
+      the cue-translation call should move to the owning side.
 
   - source: assets
     target: jobs
@@ -81,6 +107,11 @@ allowlist:
     kind: K3
     exemplar: internal/capabilities/assets/localized/port.go -> internal/capabilities/youtube/dto
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Confirmed K3 pin: assets/localized composites youtube/dto canonical
+      ClipAsset with kernel detail types. youtube/dto is youtube's canonical
+      public DTO home (SSOT per deprecation records); cross-macro import of
+      the DTO is a documented public-API seam, not a mis-homing. Keep.
 
   - source: books
     target: jobs
@@ -99,6 +130,14 @@ allowlist:
     kind: K2
     exemplar: internal/capabilities/localization/adapters/subtitle.go -> internal/capabilities/assets/texttracks
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Port inversion required, not a hoist: localization (content) and
+      cliprender (scripts) both call texttracks MECHANICS
+      (CompileASSContent, ValidateASSFile, AcquireService, TimedCueWriter),
+      which cannot live in kernel. Remediation: declare a subtitle-compile
+      contract (kernel/media or consumer-side port), keep the concrete in
+      assets/texttracks, inject via wiring. Touches the ASS-subtitle compile
+      path; sequence after texttracks internal cue-translation decoupling.
 
   - source: content
     target: delivery
@@ -153,6 +192,13 @@ allowlist:
     kind: K2
     exemplar: internal/capabilities/jobs/completion/complete_job_ports.go -> internal/capabilities/finalization
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      jobs/finalize additionally calls assets/finalizer CONCRETE
+      constructors (finalizer.NewAssetTxFinalizer, finalizer.WrapTx) on the
+      asset finalize tx path. Remediation: inject an AssetTxFinalizer
+      interface through jobs wiring (kernel/job or kernel/asset home),
+      keep mechanics + constructor in assets/finalizer. Highest regression
+      risk of the audited set (durable asset-finalize transaction path).
 
   - source: jobs
     target: content
@@ -189,6 +235,11 @@ allowlist:
     kind: K2
     exemplar: internal/capabilities/cliprender/adapters/cliprender_plan.go -> internal/capabilities/assets/texttracks
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Same shape as content->assets: cliprender/adapters (scripts) call
+      texttracks.CompileASSContent / ValidateASSFile directly. Both
+      consumers share the same subtitle-compile contract; a single kernel
+      contract + wiring injection resolves this and content->assets together.
 
   - source: scripts
     target: channels
@@ -238,12 +289,6 @@ allowlist:
     exemplar: internal/capabilities/scripts/adapters/processor_voiceover.go -> internal/capabilities/voiceover/service
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
 
-  - source: scripts
-    target: youtube
-    kind: K2
-    exemplar: internal/capabilities/scripts/adapters/youtube_source_discovery.go -> internal/capabilities/youtube/ports
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
   - source: stockintelligence
     target: scripts
     kind: K2
@@ -279,6 +324,16 @@ allowlist:
     kind: K2
     exemplar: internal/capabilities/voiceover/service/finalizer.go -> internal/capabilities/assets/persistence
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+    phase1: >-
+      Most contained candidate: voiceover holds persistence.AssetCommitter
+      as a nil-safe DI slot (single production consumer outside assets). But
+      the port surface references mediaregistry.AssetTaxonomy (macro-assets),
+      so kernel cannot host it yet. Sequencing: (1) hoist AssetTaxonomy
+      contract to kernel/asset + alias/retarget mediaregistry users, then
+      (2) move the AssetCommitter port surface (committer.go + mutator.go
+      contracts) to kernel/asset and retarget voiceover + the percheck
+      media-assets-writer-canonical family. Do (1) before (2); both are
+      gated by policy percheck_asset_committer_event_ssot.
 
   - source: voiceover
     target: content
