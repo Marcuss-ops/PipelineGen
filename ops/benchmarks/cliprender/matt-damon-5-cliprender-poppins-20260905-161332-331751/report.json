@@ -1,0 +1,16 @@
+{
+  "run_id": "matt-damon-5-cliprender-poppins-20260905-161332-331751",
+  "endpoint": "http://127.0.0.1:8000/api/clips/render",
+  "batch_wall_ms": 96,
+  "failed_jobs": 1,
+  "source_asset_ids": [
+    "yt_0ElQTzSx3ec_72_91_v1"
+  ],
+  "jobs": [
+    {
+      "status": "submit_http_401",
+      "source_asset_id": "yt_0ElQTzSx3ec_72_91_v1",
+      "batch_index": 1
+    }
+  ]
+}

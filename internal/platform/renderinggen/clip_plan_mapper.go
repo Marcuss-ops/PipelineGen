@@ -396,6 +396,19 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 			Hash:        plan.Subtitles.SHA256,
 			LogicalPath: hashAddressedPath(plan.Subtitles.SHA256, "subtitles.ass"),
 		})
+		// A subtitle style that names Poppins must ship the Poppins-Bold
+		// glyphs with the job. The RenderingGen subtitle burn resolves the
+		// text-layer font from the first materialised .ttf in the job asset
+		// list, so the Poppins font is emitted BEFORE the watermark font to
+		// keep subtitle glyphs deterministic.
+		if plan.Subtitles.Style != nil &&
+			strings.Contains(strings.ToLower(strings.TrimSpace(plan.Subtitles.Style.Font)), "poppins") {
+			font, err := poppinsFontAsset()
+			if err != nil {
+				return nil, fmt.Errorf("clip plan mapper: poppins subtitle font: %w", err)
+			}
+			refs = append(refs, font)
+		}
 	}
 	if plan.Watermark != nil && plan.Watermark.SHA256 != "" {
 		refs = append(refs, assetRef{
@@ -427,4 +440,13 @@ func watermarkFontAsset() (assetRef, error) {
 		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-montserrat-bold", "Montserrat-Bold.ttf"), LocalPath: path}, nil
+}
+
+func poppinsFontAsset() (assetRef, error) {
+	const path = "assets/fonts/Poppins-Bold.ttf"
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-poppins-bold", "Poppins-Bold.ttf"), LocalPath: path}, nil
 }

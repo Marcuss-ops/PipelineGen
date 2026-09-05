@@ -1,0 +1,241 @@
+{
+  "correlation_id": "matt-damon-5-cliprender-poppins-20260905-153722-107791-clip-1",
+  "created_at": "2026-09-05T15:37:22Z",
+  "current_stage": "job_failed",
+  "current_step": "FAILED",
+  "error": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)",
+  "events": [
+    {
+      "id": "evt_1788622643001447420_034dd8",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "job_running",
+      "message": "job.Job started",
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643014723484_fee84c",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_82519_1",
+      "data": {
+        "lease_id": "lease_1788622642999665179_1f074184",
+        "revision": 2,
+        "worker_id": "YOutube_82519_1"
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643015695440_51d227",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "progress": 0
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643017077582_0e061a",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "progress",
+      "message": "request validated; running parallel preparation",
+      "data": {
+        "progress": 10
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643201542642_704dac",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "job_failed",
+      "message": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)",
+      "data": {
+        "error": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)"
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    }
+  ],
+  "id": "job_1788622642996093001_392bee97",
+  "job": {
+    "id": "job_1788622642996093001_392bee97",
+    "type": "clip.render",
+    "status": "FAILED",
+    "priority": 0,
+    "payload": {
+      "source_asset_id": "yt_0ElQTzSx3ec_72_91_v1",
+      "background": {
+        "mode": "none"
+      },
+      "watermark": {
+        "enabled": true,
+        "text": "MATT DAMON",
+        "position": "top_right",
+        "opacity": 0.85,
+        "margin_px": 24,
+        "style": {
+          "font": "DejaVu Sans",
+          "size": 42,
+          "color": "#FFFFFF",
+          "shadow": {
+            "color": "#000000",
+            "opacity": 0.75,
+            "blur_px": 8,
+            "offset_x": 2,
+            "offset_y": 2
+          }
+        }
+      },
+      "transcript": {
+        "mode": "reuse_or_generate",
+        "language": "en",
+        "persist": true
+      },
+      "subtitles": {
+        "enabled": true,
+        "mode": "sidecar",
+        "style_id": "matt-damon-benchmark-v1-poppins",
+        "style": {
+          "font": "Poppins",
+          "position": "bottom_center",
+          "size": 58,
+          "color": "#FFFFFF",
+          "font_size_px": 58,
+          "shadow": {
+            "color": "#000000",
+            "opacity": 0.9,
+            "blur_px": 16,
+            "offset_y": 8
+          }
+        }
+      },
+      "output": {
+        "contract": "VELOX_ASSEMBLY_READY_V1",
+        "width": 1920,
+        "height": 1080,
+        "fps_num": 24,
+        "fps_den": 1
+      },
+      "audio": {
+        "mode": "copy_if_compatible"
+      },
+      "destination": {
+        "drive_folder_id": "19UYPb2dfK_Y_-rDBXrsY_1VOge4iiWmk"
+      },
+      "execution": {}
+    },
+    "result": {},
+    "error": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)",
+    "progress": 10,
+    "retry_count": 0,
+    "max_retries": 2,
+    "worker_id": "YOutube_82519_1",
+    "revision": 3,
+    "correlation_id": "matt-damon-5-cliprender-poppins-20260905-153722-107791-clip-1",
+    "created_at": "2026-09-05T15:37:22Z",
+    "updated_at": "2026-09-05T15:37:23.209839023Z",
+    "started_at": "2026-09-05T15:37:23.006008143Z",
+    "completed_at": "2026-09-05T15:37:23.209839023Z"
+  },
+  "progress": 10,
+  "result": {},
+  "retryable": true,
+  "started_at": "2026-09-05T15:37:23.006008143Z",
+  "status": "FAILED",
+  "timeline": [
+    {
+      "id": "evt_1788622643001447420_034dd8",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "job_running",
+      "message": "job.Job started",
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643014723484_fee84c",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_82519_1",
+      "data": {
+        "lease_id": "lease_1788622642999665179_1f074184",
+        "revision": 2,
+        "worker_id": "YOutube_82519_1"
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643015695440_51d227",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "progress": 0
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643017077582_0e061a",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "progress",
+      "message": "request validated; running parallel preparation",
+      "data": {
+        "progress": 10
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    },
+    {
+      "id": "evt_1788622643201542642_704dac",
+      "job_id": "job_1788622642996093001_392bee97",
+      "type": "job_failed",
+      "message": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)",
+      "data": {
+        "error": "clip.render: compile subtitles: clip.render: subtitle ASS compilation unavailable: current ASS artifact for \"yt_0ElQTzSx3ec_72_91_v1\" is not reusable (status=READY style=\"matt-damon-benchmark-v1\" local=true drive=true)"
+      },
+      "created_at": "2026-09-05T15:37:23Z"
+    }
+  ],
+  "timing": {
+    "wall_ms": 202,
+    "execution_wall_ms": 202,
+    "queue_wait_ms": 1000,
+    "attributed_ms": 183,
+    "unattributed_ms": 17,
+    "unattributed_percent": 8.415841584158416,
+    "overlapped_ms": 2,
+    "bottleneck_stage": "clip.prepare",
+    "bottleneck_percent": 87.62376237623762,
+    "critical_path": [
+      {
+        "name": "clip.prepare",
+        "duration_ms": 177,
+        "percent": 87.62376237623762
+      },
+      {
+        "name": "clip.subtitles",
+        "duration_ms": 0,
+        "percent": 0
+      },
+      {
+        "name": "post_writer_finalize",
+        "duration_ms": 6,
+        "percent": 2.9702970297029703
+      }
+    ],
+    "stages": [
+      {
+        "name": "clip.prepare",
+        "duration_ms": 177
+      },
+      {
+        "name": "clip.subtitles",
+        "duration_ms": 0
+      },
+      {
+        "name": "post_writer_finalize",
+        "duration_ms": 6
+      }
+    ]
+  },
+  "type": "clip.render",
+  "updated_at": "2026-09-05T15:37:23.209839023Z",
+  "warnings": [],
+  "batch_index": 1
+}
