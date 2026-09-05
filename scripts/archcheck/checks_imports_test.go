@@ -125,3 +125,70 @@ func writeArchcheckTestFile(t *testing.T, root, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+func writeYAML(t *testing.T, root, rel, content string) {
+	t.Helper()
+	writeArchcheckTestFile(t, root, rel, content)
+}
+
+// TestCrossCapabilityImportMacroAggregationAndAllowlist locks the Wave-24
+// P1-CAPABILITY-OWNERSHIP semantics:
+//   - edges between sibling packages of the same macro owner are NOT reported;
+//   - macro-cross edges not on the allowlist ARE reported;
+//   - allowlisted macro-cross edges are reported as allowlisted, not violations;
+//   - allowlist entries whose edge no longer exists are stale-ledger violations.
+func TestCrossCapabilityImportMacroAggregationAndAllowlist(t *testing.T) {
+	root := t.TempDir()
+	writeYAML(t, root, "architecture/capability_macro_map.yaml", `
+macro_capability_map:
+  scripts:
+    - scripts
+    - audio
+    - render
+  images:
+    - images
+`)
+	// scripts -> audio (intra-macro), images -> render (macro-cross).
+	writeArchcheckTestFile(t, root, "internal/capabilities/scripts/service.go", `package scripts
+import _ "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+`)
+	writeArchcheckTestFile(t, root, "internal/capabilities/images/service.go", `package images
+import _ "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+`)
+	writeArchcheckTestFile(t, root, "internal/capabilities/audio/service.go", `package audio
+`)
+	writeArchcheckTestFile(t, root, "internal/capabilities/render/service.go", `package render
+`)
+
+	stats, violations := checkCrossCapabilityImportAt(root)
+	if stats["actual"] != 2 {
+		t.Fatalf("raw dir pairs = %d, want 2", stats["actual"])
+	}
+	if stats["macro"] != 1 {
+		t.Fatalf("macro pairs = %d, want 1 (images->scripts)", stats["macro"])
+	}
+	if len(violations) != 1 || !strings.Contains(violations[0], "images->scripts") {
+		t.Fatalf("violations = %#v, want images->scripts macro-cross", violations)
+	}
+
+	// Allowlist the macro-cross edge; violations must drop to zero.
+	writeYAML(t, root, "architecture/capability_import_allowlist.yaml", `
+allowlist:
+  - source: images
+    target: scripts
+    kind: K1
+    tracking: test-ledger
+`)
+	stats, violations = checkCrossCapabilityImportAt(root)
+	if stats["allowlisted"] != 1 || stats["violations"] != 0 || len(violations) != 0 {
+		t.Fatalf("after allowlist: stats = %#v, violations = %#v; want allowlisted=1 violations=0", stats, violations)
+	}
+
+	// A stale ledger entry (edge removed) must be flagged.
+	writeArchcheckTestFile(t, root, "internal/capabilities/images/service.go", `package images
+`)
+	_, violations = checkCrossCapabilityImportAt(root)
+	if len(violations) != 1 || !strings.Contains(violations[0], "stale ledger") {
+		t.Fatalf("violations = %#v, want one stale-ledger violation", violations)
+	}
+}

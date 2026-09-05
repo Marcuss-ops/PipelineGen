@@ -1,0 +1,120 @@
+# PipelineGen — package-to-macro-capability ownership map.
+#
+# Wave 24 P1-CAPABILITY-OWNERSHIP (architecture/current.yaml WAVE-24-CLEANUP-DAY):
+# every capability support package under internal/capabilities/ gets exactly
+# one macro owner. This file is the SSOT consumed by
+# scripts/archcheck/checks_imports.go::checkCrossCapabilityImportAt to
+# aggregate cross-capability import edges to macro level before reporting.
+#
+# Rules:
+#   - Every first-level dir under internal/capabilities/ appears EXACTLY ONCE.
+#   - A package absent from this map keeps its own name as its macro owner
+#     (identity fallback) — a missing entry can never silently bless an edge.
+#   - Macro-cross edges remaining after aggregation must be tracked in
+#     architecture/capability_import_allowlist.yaml (the decoupling ledger);
+#     a new, unallowlisted macro-cross edge fails the archcheck ratchet.
+#
+# Ownership notes (semantic clusters, 2026-09-05 audit):
+#   - assets    : canonical asset types/search/providers + asset lifecycle
+#                 support (acquisition, staging, commit, publish, artifact
+#                 cache, reconciliation, clips domain, media registries).
+#   - scripts   : script-generation orchestration + its rendering/media
+#                 siblings (audio, cliprender, render, overlays, entities,
+#                 research, mediaexec, mediamemory, mediacert, subjects,
+#                 visual, lessons, remote handoff, workflow/promo, script
+#                 memory).
+#   - jobs      : job orchestration + durable-execution support packages
+#                 (jobregistry, checkpoint, replay) per policy.yaml.
+#   - system    : system HTTP + control-plane + ops tooling (admin*,
+#                 maintenance, audit, middleware, operations, workerdoctor).
+#   - ai        : semantic/intent support (semantic, linguistics, brain,
+#                 indexing, mediasearch).
+#   - content   : localization + multilingual + translation + document
+#                 generation.
+#   - youtube/channels/images/voiceover/delivery/books/stockintelligence:
+#                 single-concept capabilities that own exactly one package
+#                 each (channels also owns clipfolder).
+macro_capability_map:
+  assets:
+    - assets
+    - acquisition
+    - artifactcache
+    - artifact_finalize
+    - clips
+    - enrichment
+    - execution
+    - finalization
+    - mediacommit
+    - mediaregistry
+    - outbox
+    - publish_drive
+    - publish_outbox
+    - reconciliation
+    - scriptassets
+    - sourcing
+    - staging
+  scripts:
+    - script
+    - scripts
+    - audio
+    - cliprender
+    - entities
+    - lessons
+    - mediacert
+    - mediaexec
+    - mediamemory
+    - overlays
+    - remote
+    - render
+    - research
+    - subjects
+    - visual
+    - workflow
+  images:
+    - images
+    - imagesearch
+  youtube:
+    - youtube
+    - transcripts
+  channels:
+    - channels
+    - clipfolder
+  voiceover:
+    - voiceover
+  content:
+    - document
+    - documents
+    - localization
+    - multilingual
+    - translation
+  jobs:
+    - jobs
+    - jobregistry
+    - checkpoint
+    - replay
+  system:
+    - system
+    - controlplane
+    - performance
+    - projectionretention
+    - admin
+    - adminconsole
+    - adminmedia
+    - maintenance
+    - audit
+    - middleware
+    - operations
+    - workerdoctor
+  ai:
+    - ai
+    - semantic
+    - linguistics
+    - brain
+    - indexing
+    - mediasearch
+  delivery:
+    - delivery
+  books:
+    - books
+  stockintelligence:
+    - stockintelligence
