@@ -54,7 +54,8 @@
   "clips": {
     "paths": [
       "internal/capabilities/clips/",
-      "internal/capabilities/assets/clips/"
+      "internal/capabilities/assets/clips/",
+      "assets/fonts/"
     ],
     "go_packages": [
       "./internal/capabilities/clips/...",
