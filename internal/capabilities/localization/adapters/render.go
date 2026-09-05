@@ -144,11 +144,11 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	)
 	compileStart := time.Now()
 	clipPlan, err := cliprender.Compile(cliprender.CompileInput{
-		RunID:         plan.Revision,
-		DurationMS:    plan.Timeline.DurationUS / 1000,
-		Source:        &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
-		Watermark:     opts.Watermark,
-		WatermarkSpec: opts.WatermarkSpec,
+		RunID:                  plan.Revision,
+		DurationMS:             plan.Timeline.DurationUS / 1000,
+		Source:                 &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
+		Watermark:              opts.Watermark,
+		WatermarkSpec:          opts.WatermarkSpec,
 		Background:             opts.Background,
 		BackgroundMode:         opts.BackgroundMode,
 		ForegroundScalePercent: opts.ForegroundScalePercent,

@@ -7,18 +7,20 @@ import (
 
 type Section struct {
 	Title string `json:"title" binding:"required" example:"Castello Medievale"`
-	Text string `json:"text" example:"Descrizione della scena..."`
+	Text  string `json:"text" example:"Descrizione della scena..."`
 	Style string `json:"style" example:"medievale"`
 }
 
 const (
-	SectionImageWidth = 1344
+	SectionImageWidth  = 1344
 	SectionImageHeight = 768
 )
 
 func BuildPrimaryPrompt(sec Section, topic string) string {
 	for _, p := range BuildSectionPrompts(sec, topic) {
-		if strings.TrimSpace(p) != "" { return p }
+		if strings.TrimSpace(p) != "" {
+			return p
+		}
 	}
 	return ""
 }
@@ -34,9 +36,13 @@ func BuildSectionPrompts(sec Section, topic string) []string {
 		prompts = append(prompts, fmt.Sprintf("cinematic documentary image of %s, %s theme", sec.Title, topic), fmt.Sprintf("high quality photography of %s related to %s", sec.Title, topic))
 	}
 	if text := strings.TrimSpace(sec.Text); text != "" {
-		if len(text) > 100 { text = text[:100] }
+		if len(text) > 100 {
+			text = text[:100]
+		}
 		prompts = append(prompts, text)
 	}
-	if topic != "" { prompts = append(prompts, fmt.Sprintf("documentary image about %s", topic)) }
+	if topic != "" {
+		prompts = append(prompts, fmt.Sprintf("documentary image about %s", topic))
+	}
 	return prompts
 }

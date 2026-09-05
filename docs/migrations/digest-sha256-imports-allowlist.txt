@@ -18,6 +18,4 @@ internal/platform/sqlite/backup.go
 internal/platform/stager/http_source_stager.go
 internal/platform/youtube/cached_whisper.go
 internal/kernel/job/workspace/manager.go
-internal/app/wiring/chunked_voiceover_tts.go
-internal/app/wiring/vidrush_materialization_wiring.go
 cmd/admin/internal/cli/helpers.go

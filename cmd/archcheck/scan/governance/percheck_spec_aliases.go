@@ -81,6 +81,10 @@ var specAliasesApprovedDirs = []string{
 	"internal/capabilities/images/workflow/retrieved",
 	"internal/capabilities/images",
 	"internal/capabilities/images/retrieved",
+	// PR-SEARCH-CUTOVER (2026-09-04, commit 9e155a497): the retrieval
+	// provider package was renamed retrieved → search; the spec surface
+	// moved with its canonical implementation package.
+	"internal/capabilities/images/search",
 }
 
 // specAliasesSkipDirs is the standard skip-list for whole-repo
@@ -101,7 +105,7 @@ var specAliasesSkipDirs = map[string]bool{
 // godlike/06 SSOT rationale + the PR-AUDIT-8 forward-prevention
 // anchor so future agents reading the CI failure have the full
 // context inline.
-const specAliasesScanNote = "forbidden `spec_aliases.go` outside approved territories (internal/capabilities/images/workflow/generated/ + internal/capabilities/images/workflow/retrieved/); godlike/06 SSOT requires spec_aliases.go to live ONLY in these two canonical directories (PR-AUDIT-8 forward-prevention gate, July 2026)"
+const specAliasesScanNote = "forbidden `spec_aliases.go` outside approved territories (internal/capabilities/images/search/ — the canonical retrieval spec surface); godlike/06 SSOT requires spec_aliases.go to live ONLY in approved canonical directories (PR-AUDIT-8 forward-prevention gate, July 2026)"
 
 // ScanSpecAliasesTerritory walks every file under <root>/ and emits
 // an error-severity violation for any file named `spec_aliases.go`

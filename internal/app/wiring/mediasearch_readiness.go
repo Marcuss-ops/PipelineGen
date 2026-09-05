@@ -19,10 +19,10 @@ type semanticBackendInspector interface {
 // gate requires the E5 embedding registry plus the canonical PostgreSQL
 // retrieval+hydration store and delivery dependency.
 type semanticReadinessChecker struct {
-	embedderWired         bool
+	embedderWired        bool
 	semanticBackendWired bool
-	aggregator            mediasearchapi.AggregatorSearcher
-	mediaPostgres         interface{ PingContext(context.Context) error }
+	aggregator           mediasearchapi.AggregatorSearcher
+	mediaPostgres        interface{ PingContext(context.Context) error }
 }
 
 var _ mediasearchapi.SemanticReadyChecker = (*semanticReadinessChecker)(nil)

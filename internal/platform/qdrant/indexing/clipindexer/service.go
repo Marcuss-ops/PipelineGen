@@ -187,6 +187,7 @@ func (s *Service) StartWatchdog(ctx context.Context) {
 					if err := s.StartServer(ctx); err != nil {
 						s.log.Error("watchdog failed to restart server", zap.Error(err))
 					}
+				}
 			}
 		}
 	})

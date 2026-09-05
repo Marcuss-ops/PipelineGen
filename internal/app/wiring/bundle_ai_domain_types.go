@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
@@ -37,7 +38,7 @@ type AIBundle struct {
 	ScriptEngine             *scriptcore.Engine
 	WhisperTranscriber       youtubeports.WhisperTranscriberPort
 	SceneTextGenerator       *SceneTextGenerator
-	ScriptVoiceoverGenerator *ScriptVoiceoverGenerator
+	ScriptVoiceoverGenerator *vowiring.ScriptVoiceoverGenerator
 }
 
 // DomainBundle is the remaining application-level domain dependency bag. New

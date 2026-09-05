@@ -2,6 +2,10 @@
 # systemd; Docker is retained for external infrastructure lifecycles.
 services:
   qdrant:
+    # Legacy/admin/DR only. PostgreSQL + pgvector owns the media domain.
+    # Start explicitly with: docker compose --profile legacy-qdrant up -d qdrant
+    profiles:
+      - legacy-qdrant
     image: qdrant/qdrant:latest
     container_name: pipelinegen-qdrant
     restart: unless-stopped

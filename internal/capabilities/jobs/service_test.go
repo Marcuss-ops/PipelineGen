@@ -107,10 +107,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 //
 // The third return value is the cleanup closure (kept for future
 // `drive.NewTestDBWithSchema` migrations that need explicit teardown).
-func setupTestService(t *testing.T) (*Service, *sqljobs.SQLiteStore, func()) {
+func setupTestService(t *testing.T) (*Service, *sqljobs.Broker, func()) {
 	t.Helper()
 	db := setupTestDB(t)
-	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	store := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
 	reg := Compose()
 	// Register ad-hoc test job types so the fail-closed Enqueue gate
 	// (handler check + typed MaxRetries lookup) does not reject the
@@ -546,8 +546,8 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 
 	// Two Service instances over the same *sql.DB deliberately share state
 	// but NOT the in-process enqueueMu.
-	storeA := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	storeB := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	storeA := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
+	storeB := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
 	reg := Compose()
 	if err := reg.Register(RegistryEntry{Completion: CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
 		t.Fatalf("register rescue_test: %v", err)

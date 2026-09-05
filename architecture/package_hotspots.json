@@ -182,26 +182,27 @@
         "internal/kernel/asset/detail"
       ]
     },
-    {   "path": "internal/app/wiring",
-   "owner": "composition-root adapter wiring (clip.render/chronon/voiceover/vidrush adapters)",
-   "deadline": "2026-09-30",
-   "baseline_files": 172,
-   "baseline": {
-    "files": 172,
-    "max_loc": 0
-   },
-   "current": {
-    "files": 172,
-    "max_loc": 0
-   },
-   "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Baseline ratcheted to measured count (165 files, includes the 2026-08-29 chronon_timing_sidecar.go split); target split into domain subpackages (chronon/voiceover/vidrush/artlist adapters) per package_hotspot governance. Deadline aligns with the internal/app hotspot (2026-09-30). RATCHETED 2026-08-31 165->168: +2 pre-existing adapter files landed with the media/preparation waves (clip_render_runtime.go, lifecycle_preparation.go, both 2026-08-30) and +1 from the chronon_clip_renderer.go 600-line split (chronon_clip_render_support.go). RATCHETED 2026-09-01 168->170: +2 adapter files landed with the text-to-Chronon pipeline (semantic_asset_wiring.go, split_plane_finalizer.go, 2026-09-01). RATCHETED 2026-09-02 170->172: +2 adapter files landed with the PostgreSQL media-SSOT cutover (adapters_pgvector_media_search.go: pgvector search plane selection; media/pg_committer_factory.go: engine-aware Postgres committer factory; net +2 after committer_selection.go deletion). Debt stays under the same owner/deadline; subpackage split (chronon/voiceover/vidrush/assets) is the 2026-09-30 resolution.",
-   "target_packages": [
-    "internal/app/wiring/chronon",
-    "internal/app/wiring/voiceover",
-    "internal/app/wiring/vidrush",
-    "internal/app/wiring/assets"
-   ]
-  },
+    {
+      "path": "internal/app/wiring",
+      "owner": "composition-root adapter wiring (clip.render/chronon/voiceover/vidrush adapters)",
+      "deadline": "2026-09-30",
+      "baseline_files": 150,
+      "baseline": {
+        "files": 150,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 150,
+        "max_loc": 0
+      },
+      "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Deadline aligns with the internal/app hotspot (2026-09-30). SPLIT STARTED 2026-09-04 (181->158 measured, ratcheted down): chronon domain extracted to internal/app/wiring/chronon (11 files incl. semantic_asset_wiring.go + its tests, per the 2026-09-01/02 ratchet notes), voiceover TTS/adapter layer to internal/app/wiring/voiceover (19 files incl. rate limits + chunked TTS + their tests, constructors exported New*), vidrush materialization to internal/app/wiring/vidrush (dependency inversion via VidRushMaterializationDeps; the root keeps nil-safe call-site helpers vidrushCachePort/vidrushInternetImageSearcher). Sub-packages never import the root package; cross-domain types (ScriptVoiceoverGenerator, ChrononMeasuredPhases, VidRushMaterializationDeps) are exported from the leaf and referenced as vowiring./vidrushwiring. Artlist/stock orchestration (build_bundles_artlist_*, build_bundles_stock*, wire_stock_pipeline, artlist/stock types + bundle errors) remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. RATCHETED 2026-09-05 158->150: search backends extracted to internal/app/wiring/search (composition bridge Build/BuildSearchBackends, provider/local/semantic backends, media-read + pgvector + qdrant-transport adapters, search.Build freeze gate + their tests; the root keeps the ComposeRoot-shaped WireMediasearchReadiness readiness probe) and the delivery signer adapter extracted to adapters_delivery_signer.go (strict 600-LOC cap on registry_internal_modules.go). Sub-packages never import the root package; leaf surfaces are exported (search.Build, search.RerankerClient, search.NewSearchReadAdapter, search.SelectMediaVectorStore/PGVectorStoreFrom, search.NewQdrantEndpointAdapter). Artlist/stock orchestration remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph.",
+      "target_packages": [
+        "internal/app/wiring/chronon",
+        "internal/app/wiring/voiceover",
+        "internal/app/wiring/vidrush",
+        "internal/app/wiring/assets"
+      ]
+    },
     {
       "path": "internal/capabilities/images",
       "owner": "images capability (generation/search/validation pipeline)",

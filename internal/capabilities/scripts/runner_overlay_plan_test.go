@@ -192,7 +192,9 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.Equal(t, "person_default", person.TemplateID)
 	require.Equal(t, "Tim Cook", person.Text)
 	require.Equal(t, int64(0), person.StartMs)
-	require.Equal(t, int64(200), person.EndMs)
+	// MinEntityOverlayDurationUS: the spoken anchor stays at 0ms, the card
+	// holds the minimum five-second preset duration.
+	require.Equal(t, int64(5_000), person.EndMs)
 	require.Len(t, person.AssetRefs, 1)
 	require.Equal(t, "tim-cook-photo", person.AssetRefs[0].AssetID)
 	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", person.AssetRefs[0].URL)
@@ -202,7 +204,7 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	location := byID["overlay-scene-0-cupertino"]
 	require.Equal(t, "gpe_default", location.TemplateID)
 	require.Equal(t, int64(800), location.StartMs)
-	require.Equal(t, int64(900), location.EndMs)
+	require.Equal(t, int64(5_800), location.EndMs)
 
 	number := byID["scene-0-number-ten-million"]
 	require.Equal(t, "NUMBER", number.TemplateID)

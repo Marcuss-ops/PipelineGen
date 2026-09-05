@@ -93,25 +93,48 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 	return retrieved.RetrievalSearchResult{}
 }
 
-type commonsRESTSearchPayload struct { Pages []commonsRESTSearchPage `json:"pages"` }
-type commonsRESTSearchPage struct { Key string `json:"key"`; Title string `json:"title"` }
-type commonsRESTPagePayload struct { License struct { Title string `json:"title"`; URL string `json:"url"` } `json:"license"` }
+type commonsRESTSearchPayload struct {
+	Pages []commonsRESTSearchPage `json:"pages"`
+}
+type commonsRESTSearchPage struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+}
+type commonsRESTPagePayload struct {
+	License struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	} `json:"license"`
+}
 type commonsRESTFilePayload struct {
-	Latest struct { User struct { Name string `json:"name"` } `json:"user"` } `json:"latest"`
+	Latest struct {
+		User struct {
+			Name string `json:"name"`
+		} `json:"user"`
+	} `json:"latest"`
 	Preferred commonsRESTImage `json:"preferred"`
-	Original commonsRESTImage `json:"original"`
+	Original  commonsRESTImage `json:"original"`
 	Thumbnail commonsRESTImage `json:"thumbnail"`
 }
-type commonsRESTImage struct { MIMEType string `json:"mediatype"`; Width int `json:"width"`; Height int `json:"height"`; URL string `json:"url"` }
+type commonsRESTImage struct {
+	MIMEType string `json:"mediatype"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	URL      string `json:"url"`
+}
 
 const commonsMinimumRequestInterval = 2 * time.Second
 
 func (s *ImageStorageService) waitForCommonsRequest(ctx context.Context) error {
-	if s == nil { return nil }
+	if s == nil {
+		return nil
+	}
 	s.commonsSearchMu.Lock()
 	defer s.commonsSearchMu.Unlock()
 	if wait := commonsMinimumRequestInterval - time.Since(s.commonsLastSearch); wait > 0 {
-		if err := retry.Sleep(ctx, wait, retry.Options{}); err != nil { return err }
+		if err := retry.Sleep(ctx, wait, retry.Options{}); err != nil {
+			return err
+		}
 	}
 	s.commonsLastSearch = time.Now()
 	return nil
@@ -119,9 +142,13 @@ func (s *ImageStorageService) waitForCommonsRequest(ctx context.Context) error {
 
 func commonsLicenseIsExplicit(license string) bool {
 	license = strings.ToLower(strings.TrimSpace(license))
-	if license == "" || license == "unknown" || license == "n/a" || license == "copyrighted" { return false }
+	if license == "" || license == "unknown" || license == "n/a" || license == "copyrighted" {
+		return false
+	}
 	for _, marker := range []string{"cc0", "cc by", "cc-by", "creative commons attribution", "public domain", "pd-", "free art license", "gfdl"} {
-		if strings.Contains(license, marker) { return true }
+		if strings.Contains(license, marker) {
+			return true
+		}
 	}
 	return false
 }

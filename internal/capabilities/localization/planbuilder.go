@@ -49,8 +49,8 @@ type SourceInput struct {
 	OutputProfileHash string
 	RendererVersion   string
 	SubtitleStyleHash string
-	Watermark     *cliprender.MaterializedAsset
-	WatermarkSpec *cliprender.WatermarkSpec
+	Watermark         *cliprender.MaterializedAsset
+	WatermarkSpec     *cliprender.WatermarkSpec
 
 	// Background / BackgroundMode are the resolved background selection
 	// (materialized asset only for mode=asset).

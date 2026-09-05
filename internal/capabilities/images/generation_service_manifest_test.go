@@ -394,13 +394,27 @@ func TestImageManifest_SenderSideToRemotePreservesFields(t *testing.T) {
 // contributor cannot rename the local variable back to output_path or
 // re-introduce a workspace_path tag in a zap.String call.
 func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {
-	path := "./generation_service.go"
-	// ZAP import removed from test (no fixture constructions left).
-	source, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile %q: %v", path, err)
+	// The orchestration moved out of generation_service.go into the leaf
+	// generation package; the C11 audit follows the split.
+	paths := []string{
+		"./generation_service.go",
+		"./generation/service.go",
+		"./generation/usecase.go",
+		"./generation/job.go",
+		"./generation/manifest.go",
 	}
-	src := string(source)
+	var srcBuilder strings.Builder
+	for _, path := range paths {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // legacy file fully removed
+			}
+			t.Fatalf("ReadFile %q: %v", path, err)
+		}
+		srcBuilder.Write(source)
+	}
+	src := srcBuilder.String()
 
 	// Forbid these literal quoted substrings anywhere in the file.
 	// The migration is preventive — a future contributor adding one
@@ -414,7 +428,7 @@ func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {
 	}
 	for _, k := range forbidden {
 		if strings.Contains(src, k) {
-			t.Errorf("C11 migration violated: %q must NOT appear in %s (use the manifest sidecar + ManifestKey instead)", k, path)
+			t.Errorf("C11 migration violated: %q must NOT appear in the generation sources (use the manifest sidecar + ManifestKey instead)", k)
 		}
 	}
 }

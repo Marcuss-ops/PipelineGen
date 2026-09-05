@@ -155,7 +155,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		UploadSubtitleArtifact: built.generatedSubtitles,
 		DocTitle:               fmt.Sprintf("Localized — %s (%s)", built.identity.clipID, built.identity.targetLang),
 		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
-		SkipDocument: true,		Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
+		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
 		Background: built.background, BackgroundMode: built.backgroundMode,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SubtitlesStyle:         subtitleStyle(in),

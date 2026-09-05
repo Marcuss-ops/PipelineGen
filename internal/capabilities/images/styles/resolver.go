@@ -35,8 +35,10 @@ func New(source SourceBackend) StyleResolver {
 
 type failingResolver struct{ err error }
 
-func (r *failingResolver) Resolve(_, _, _ string) (ResolvedStyle, error) { return ResolvedStyle{}, r.err }
-func (r *failingResolver) Validate(_, _, _ string) error                 { return r.err }
+func (r *failingResolver) Resolve(_, _, _ string) (ResolvedStyle, error) {
+	return ResolvedStyle{}, r.err
+}
+func (r *failingResolver) Validate(_, _, _ string) error { return r.err }
 
 type resolver struct{ source SourceBackend }
 

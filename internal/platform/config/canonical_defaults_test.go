@@ -136,8 +136,8 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 	// config block; workflow was retired). Flag those as drift so a future
 	// copy-paste doesn't reintroduce the gap.
 	forbidden := []string{
-		"workflow_enabled:",          // retired flag
-		"google_accounting_enabled:", // belongs to GoogleAccountingConfig, not FeaturesConfig
+		"workflow_enabled:",             // retired flag
+		"google_accounting_enabled:",    // belongs to GoogleAccountingConfig, not FeaturesConfig
 		"catalog_script_vector_search:", // retired flag
 	}
 	// Only check within the features: block to avoid false positives on

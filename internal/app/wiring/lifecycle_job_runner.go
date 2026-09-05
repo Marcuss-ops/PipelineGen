@@ -8,8 +8,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/procmetrics"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"

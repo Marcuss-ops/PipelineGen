@@ -95,7 +95,7 @@ type overlayWatermark struct {
 	Opacity   *float64          `json:"opacity,omitempty"`
 	// MarginPX is the requested distance from the canvas edge. It is a *int so
 	// an explicit 0 stays distinguishable from an unset value.
-	MarginPX *int       `json:"margin_px,omitempty"`
+	MarginPX *int        `json:"margin_px,omitempty"`
 	Style    *styleBlock `json:"style,omitempty"`
 }
 

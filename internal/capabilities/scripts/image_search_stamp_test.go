@@ -167,7 +167,7 @@ func TestImageCandidateCarriesSHA256(t *testing.T) {
 // product overlay item whose AssetRef carries the SHA256 (the manifest gate).
 func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *testing.T) {
 	scene := Scene{
-		ID: "scene-0",
+		ID:   "scene-0",
 		Text: map[Language]string{"en": "Apple unveiled the Vision Pro."},
 		Annotations: &scriptpkg.SceneAnnotations{
 			Version: 1, Language: "en", Status: "completed",
@@ -196,7 +196,7 @@ func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *test
 	}
 	occ := capabilityentities.EntityOccurrence{
 		EntityID: capabilityentities.StableEntityID("PRODUCT", "Vision Pro"),
-		Name: "Vision Pro", Type: "PRODUCT", SceneID: "scene-0",
+		Name:     "Vision Pro", Type: "PRODUCT", SceneID: "scene-0",
 		TextStart: 20, TextEnd: 29, WordStart: 3, WordEnd: 4,
 		LocalStartUS: 250_000, LocalEndUS: 300_000,
 		TimelineStartUS: 0, AudioStartUS: 250_000, AudioEndUS: 300_000,

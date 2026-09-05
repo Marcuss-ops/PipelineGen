@@ -32,17 +32,17 @@ type DriveBundle struct {
 
 // RepoBundle owns the repository instances shared by the composition root.
 type RepoBundle struct {
-	ScriptsRepo        *sqlitescripts.ScriptRepository
-	ImageRepo          *imagesrepo.ImagesRepository
-	AssetsStore        *imagesregistry.AssetStoreSQLite
-	ClipsRepo          *assets.ClipsRepository
-	Assets             *detail.Service
-	MonitorsRepo       *monitors.MonitorsRepository
-	VoiceoverRepo      *assets.VoiceoversRepository
-	CatalogRepo        *catalog.Repository
-	EntityImageCatalog entitycatalog.Repository
-	SQRepo             *imagesregistry.SearchQueriesRepository
-	IdempotencyStore   mwidem.IdempotencyStore
+	ScriptsRepo          *sqlitescripts.ScriptRepository
+	ImageRepo            *imagesrepo.ImagesRepository
+	AssetsStore          *imagesregistry.AssetStoreSQLite
+	ClipsRepo            *assets.ClipsRepository
+	Assets               *detail.Service
+	MonitorsRepo         *monitors.MonitorsRepository
+	VoiceoverRepo        *assets.VoiceoversRepository
+	CatalogRepo          *catalog.Repository
+	EntityImageCatalog   entitycatalog.Repository
+	SQRepo               *imagesregistry.SearchQueriesRepository
+	IdempotencyStore     mwidem.IdempotencyStore
 	TextTrackRepo        detail.TextTrackRepository
 	SubtitleArtifactRepo detail.SubtitleArtifactRepository
 }

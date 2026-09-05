@@ -58,19 +58,21 @@ func (*promptComposerImpl) Compose(ctx context.Context, cmd GenerateCommand, sty
 	}
 	return ResolvedGenerationRequest{
 		PromptOriginal: cmd.Prompt,
-		PromptFinal: trimRegex.ReplaceAllString(promptFinal, ""),
+		PromptFinal:    trimRegex.ReplaceAllString(promptFinal, ""),
 		NegativePrompt: style.NegativePrompt,
-		StyleID: style.ID,
-		StyleVersion: style.Version,
-		Provider: cmd.Provider,
-		Width: cmd.Width,
-		Height: cmd.Height,
-		Tags: append([]string(nil), cmd.Tags...),
+		StyleID:        style.ID,
+		StyleVersion:   style.Version,
+		Provider:       cmd.Provider,
+		Width:          cmd.Width,
+		Height:         cmd.Height,
+		Tags:           append([]string(nil), cmd.Tags...),
 	}, nil
 }
 
 func endsWithSuffixCI(s, suffix string) bool {
-	if s == "" || suffix == "" { return false }
+	if s == "" || suffix == "" {
+		return false
+	}
 	ls, lsuf := toLowerASCII(s), toLowerASCII(suffix)
 	return len(ls) >= len(lsuf) && ls[len(ls)-len(lsuf):] == lsuf
 }
@@ -78,7 +80,9 @@ func endsWithSuffixCI(s, suffix string) bool {
 func toLowerASCII(s string) string {
 	b := []byte(s)
 	for i, c := range b {
-		if c >= 'A' && c <= 'Z' { b[i] = c + ('a' - 'A') }
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
 	}
 	return string(b)
 }
@@ -86,11 +90,11 @@ func toLowerASCII(s string) string {
 // ComposeResult is the deterministic single-wire prompt envelope sent to the
 // Chrome worker. Generation never silently truncates or compresses it.
 type ComposeResult struct {
-	Composed string
+	Composed      string
 	WasCompressed bool
-	OriginalLen int
-	ComposedLen int
-	StyleAffix string
+	OriginalLen   int
+	ComposedLen   int
+	StyleAffix    string
 	NegativeAffix string
 }
 
@@ -105,7 +109,9 @@ func ComposePrompt(prompt, style, negativePrompt string) ComposeResult {
 	}
 	if negativePrompt != "" {
 		parts := strings.FieldsFunc(negativePrompt, func(r rune) bool { return r == ',' || r == ';' })
-		for i := range parts { parts[i] = strings.TrimSpace(parts[i]) }
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
 		normalized := strings.Join(parts, ";")
 		r.NegativeAffix = " [negative: do not include " + normalized + "]"
 		b.WriteString(r.NegativeAffix)

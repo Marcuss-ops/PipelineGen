@@ -14,6 +14,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	chrononwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/chronon"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -78,7 +79,7 @@ func TestParallelAnalyticsPersistenceNoNewTables(t *testing.T) {
 	if recorder == nil {
 		t.Fatal("wireRenderAttemptRecorder over a real DB returned nil")
 	}
-	adapter := wireChrononMetricsAdapter(db, zap.NewNop())
+	adapter := chrononwiring.WireChrononMetricsAdapter(db, zap.NewNop())
 	if adapter == nil {
 		t.Fatal("wireChrononMetricsAdapter over a real DB returned nil")
 	}

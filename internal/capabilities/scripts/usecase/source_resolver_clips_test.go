@@ -15,13 +15,12 @@ import (
 
 func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	recorder := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"intro", "segment-a", "segment-b"})},
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"segment-a", "segment-b"})},
 	}
 	resolver := &ClipsSourceResolver{clipBuilder: recorder, log: zap.NewNop()}
 
 	source := scriptpkg.SourceSpec{
 		Type:             scriptpkg.SourceClips,
-		IntroClipIDs:     []string{"intro"},
 		OrderingStrategy: "chronological",
 	}
 	resolution := makeTestResCtx()
@@ -34,7 +33,7 @@ func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("advanced clips payload rejected: %v", err)
 	}
-	if got, want := recorder.lastIDs, []string{"intro", "segment-a", "segment-b"}; !equalClipIDs(got, want) {
+	if got, want := recorder.lastIDs, []string{"segment-a", "segment-b"}; !equalClipIDs(got, want) {
 		t.Fatalf("resolver fetched %v, want %v", got, want)
 	}
 	if recorder.lastOpts == nil || len(recorder.lastOpts.Segments) != 2 {
@@ -43,8 +42,8 @@ func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	if recorder.lastOpts.OrderingStrategy != "" {
 		t.Fatalf("explicit clips resolver allowed ordering strategy %q to override payload order", recorder.lastOpts.OrderingStrategy)
 	}
-	if got := recorder.lastOpts.Segments[0].ClipIDs; !equalClipIDs(got, []string{"intro", "segment-a", "segment-b"}) {
-		t.Fatalf("first segment ownership = %v, want intro + declared IDs", got)
+	if got := recorder.lastOpts.Segments[0].ClipIDs; !equalClipIDs(got, []string{"segment-a", "segment-b"}) {
+		t.Fatalf("first segment ownership = %v, want declared segment IDs only", got)
 	}
 	if got := recorder.lastOpts.Segments[1].ClipIDs; len(got) != 0 {
 		t.Fatalf("explicit empty segment received clips: %v", got)
@@ -52,10 +51,10 @@ func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	if resolved.ClipEvidence == nil || len(resolved.ClipEvidence.SegmentEvidence) != 2 {
 		t.Fatalf("per-segment evidence was not attached: %+v", resolved.ClipEvidence)
 	}
-	if len(resolved.Segments) != 2 || !equalClipIDs(resolved.Segments[0].ClipIDs, []string{"intro", "segment-a", "segment-b"}) || resolved.Segments[1].ClipIDs == nil || len(resolved.Segments[1].ClipIDs) != 0 {
+	if len(resolved.Segments) != 2 || !equalClipIDs(resolved.Segments[0].ClipIDs, []string{"segment-a", "segment-b"}) || resolved.Segments[1].ClipIDs == nil || len(resolved.Segments[1].ClipIDs) != 0 {
 		t.Fatalf("resolved source did not expose the same canonical segment ownership: %+v", resolved.Segments)
 	}
-	if got := resolved.ClipEvidence.SegmentEvidence[0].ClipIDs; !equalClipIDs(got, []string{"intro", "segment-a", "segment-b"}) {
+	if got := resolved.ClipEvidence.SegmentEvidence[0].ClipIDs; !equalClipIDs(got, []string{"segment-a", "segment-b"}) {
 		t.Fatalf("segment evidence ownership = %v", got)
 	}
 }
@@ -283,12 +282,8 @@ func TestClipsResolver_RejectsSilentEmptyClipEvidence(t *testing.T) {
 
 func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	evidence := &scriptpkg.ClipEvidence{
-		AcceptedClipIDs: []string{"intro-clip", "clip-b", "clip-a"},
+		AcceptedClipIDs: []string{"clip-b", "clip-a"},
 		ClipDetails: map[string]scriptpkg.ClipDetail{
-			"intro-clip": {
-				Name: "Intro", StartMs: 10, EndMs: 610,
-				DriveLink: "https://drive/intro", SubtitleLink: "https://drive/sub-intro", SubtitleFileID: "sub-intro",
-			},
 			"clip-a": {
 				Name: "A", StartMs: 200, EndMs: 1200,
 				DriveLink: "https://drive/a", SubtitleLink: "https://drive/sub-a", SubtitleFileID: "sub-a",
@@ -303,8 +298,8 @@ func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	resolver := &ClipsSourceResolver{clipBuilder: recorder, log: zap.NewNop()}
 
 	source := scriptpkg.SourceSpec{
-		Type:         scriptpkg.SourceClips,
-		ClipIDs:      []string{"legacy-root-must-be-ignored"},
+		Type:    scriptpkg.SourceClips,
+		ClipIDs: []string{"legacy-root-must-be-ignored"},
 	}
 	resolution := makeTestResCtx()
 	resolution.Segments = []scriptpkg.ScriptSegment{
@@ -333,8 +328,8 @@ func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	if !equalClipIDs(segments[0].ClipIDs, []string{"clip-b", "clip-a"}) {
 		t.Fatalf("scene-1 membership/order = %v", segments[0].ClipIDs)
 	}
-	if len(segments[1].ClipIDs) != 1 || segments[1].ClipIDs[0] != "intro-clip" {
-		t.Fatalf("intro membership/order = %v", segments[1].ClipIDs)
+	if len(segments[1].ClipIDs) != 0 {
+		t.Fatalf("intro fixed section received unexpected clips: %v", segments[1].ClipIDs)
 	}
 	if segments[2].ClipIDs == nil || len(segments[2].ClipIDs) != 0 {
 		t.Fatalf("explicit zero-clip segment was not preserved: %v", segments[2].ClipIDs)
@@ -354,7 +349,6 @@ func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	}{
 		{0, "clip-b", 20, 520, "https://drive/b", "https://drive/sub-b", "sub-b"},
 		{0, "clip-a", 200, 1200, "https://drive/a", "https://drive/sub-a", "sub-a"},
-		{1, "intro-clip", 10, 610, "https://drive/intro", "https://drive/sub-intro", "sub-intro"},
 	} {
 		detail, ok := segments[check.segment].Clips[check.clipID]
 		if !ok {
