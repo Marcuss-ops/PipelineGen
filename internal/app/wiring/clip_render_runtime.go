@@ -3,6 +3,7 @@ package wiring
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -40,6 +41,13 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	executor, err := renderinggen.NewClipRenderExecutor(renderinggen.New(queueURL))
 	if err != nil {
 		return nil, fmt.Errorf("clip render runtime: build RenderingGen executor: %w", err)
+	}
+	// Tighten the queue poll cadence when configured. Each poll tick is
+	// pure dead time on a finished job, so the configured value (default 0
+	// → the executor's built-in 2 s) is applied before the runtime is
+	// cached in the composition root.
+	if cfg.External.RenderingGenPollIntervalMS > 0 {
+		executor.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 	}
 	runtime := &ClipRenderRuntime{RenderingGenExecutor: executor}
 	root.ClipRenderRuntime = runtime

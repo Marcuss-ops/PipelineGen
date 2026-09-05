@@ -91,6 +91,10 @@ external:
     auto_download:
       enabled: true
       daily_limit: 10
+  # Clip-render queue poll cadence in ms (0 = executor built-in 2s). Each
+  # poll tick is dead time on a finished job, so production sets
+  # RENDERINGGEN_POLL_INTERVAL_MS=250. See types_external.go::RenderingGenPollIntervalMS.
+  # renderinggen_poll_interval_ms: 250
 
 paths:
   python_scripts_dir: "scripts"

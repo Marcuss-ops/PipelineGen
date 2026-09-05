@@ -84,6 +84,10 @@ external:
       enabled: false                      # OFF by default for safe local bootstrap
       daily_limit: 10                     # 10/day cap aligns with non-Enterprise quota
   # artlist_skip_transcription: false         # operator opt-in escape hatch for environments without `whisper` binary; default false (mandatory transcription preserved); see internal/platform/config/types_external.go::ArtlistSkipTranscription
+  # Clip-render queue poll cadence in ms (0 = executor built-in 2s). Each
+  # poll tick is dead time on a finished job, so production sets
+  # RENDERINGGEN_POLL_INTERVAL_MS=250. See types_external.go::RenderingGenPollIntervalMS.
+  # renderinggen_poll_interval_ms: 250
 
 paths:
   python_scripts_dir: "scripts"
