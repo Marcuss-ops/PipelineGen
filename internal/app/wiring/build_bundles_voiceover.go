@@ -25,6 +25,8 @@ package wiring
 
 import (
 	"context"
+
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
@@ -92,19 +94,19 @@ func buildVoiceoverPipeline(
 	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
 	// through a canonical port instead of holding a *sql.DB field
 	// (the previous field was removed in P1-2 commit 1).
-	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer)
+	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer)
 
 	// Cross-run voiceover cache (August 2026): wraps the existing
 	// FindByFingerprint on the SQLite repository to short-circuit
 	// TTS + upload + finalize when a previous run already produced
 	// the same voiceover for the same content fingerprint.
-	voCacheAdapter := newVoiceoverCacheAdapter(voRepoAdapter, log)
+	voCacheAdapter := vowiring.NewVoiceoverCacheAdapter(voRepoAdapter, log)
 
 	// P0.4 async publish pool: Drive uploads + timing publishes +
 	// SQLite commits run in a bounded background pool so TTS slots
 	// are freed after synthesis. The runner drains this pool after
 	// the voiceover phase (before audio compile).
-	publishPool := NewVoiceoverPublishPool(cfg.Voiceover.MaxConcurrentTTS, log)
+	publishPool := vowiring.NewVoiceoverPublishPool(cfg.Voiceover.MaxConcurrentTTS, log)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
 	// Registry so NewLifecycleFromDeps accepts it.
@@ -145,7 +147,7 @@ func buildVoiceoverPipeline(
 		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
 	}
 
-	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
+	projectionAdapter := vowiring.NewVoiceoverProjectionAdapter(voLifecycle)
 	// NewVoiceoverFinalizer sig is (repo, outbox, lifecycle, committer, logger)
 	// per finalizer_invariants_test.go:390. The canonical AssetCommitter
 	// (VOICEOVER-ASSETCOMMITTER-CUTOVER) makes Step 4+5 a single CommitTx;
@@ -162,7 +164,7 @@ func buildVoiceoverPipeline(
 	// TTS chain — raw processor → use-case adapter → retryable → rate-limited.
 	// Extracted to build_voiceover_tts.go (shared by the legacy batch
 	// service and the canonical per-item use case).
-	audioProcessor, ttsProvider := buildVoiceoverTTSProvider(cfg, log, mediaConfig)
+	audioProcessor, ttsProvider := vowiring.BuildVoiceoverTTSProvider(cfg, log, mediaConfig)
 
 	// Azione #1 (July 2026): construct the shared per-item pipeline
 	// runner. The legacy batch path (process.go::processLanguage) now
@@ -170,7 +172,7 @@ func buildVoiceoverPipeline(
 	// synthesizeStage/destinationStage/finalizeStage inline.
 	//
 	// FASE 8: Publisher wrapped with rate-limiting + retry.
-	voPublisher := newRateLimitedPublisher(newUseCasePublisherAdapter(publisher, log), cfg.Voiceover, log)
+	voPublisher := vowiring.NewRateLimitedPublisher(vowiring.NewUseCasePublisherAdapter(publisher, log), cfg.Voiceover, log)
 	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
 	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
 	// top of the same adapter surface the legacy service consumes.
@@ -212,7 +214,7 @@ func buildVoiceoverPipeline(
 	// Destination resolver adapters — extracted to
 	// build_voiceover_destinations.go (includes the nil-tolerant
 	// nopDestinationResolver fallback for stub-bootstrap helpers).
-	destResolverAdapter, defaultFolderResolver := buildVoiceoverDestResolvers(destResolver, cfg, voDir, log)
+	destResolverAdapter, defaultFolderResolver := vowiring.BuildVoiceoverDestResolvers(destResolver, cfg, voDir, log)
 
 	// Adapter (E1 cutover): VoiceoverPublisher port — wraps
 	// driveUploader.Admin() directly. The legacy AssetLifecycle
@@ -227,7 +229,7 @@ func buildVoiceoverPipeline(
 	// Adapter: AudioPostProcessor port — silence-removal bridge
 	// built on the canonical media execution adapter. Nil-safe
 	// at the use case boundary (only invoked when RemoveSilence == true).
-	audioAdapter := newUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log))
+	audioAdapter := vowiring.NewUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log))
 
 	// The use case satisfies voiceover.VoiceoverItemExecutor
 	// structurally — compile-time assertion in process_voiceover_item.go

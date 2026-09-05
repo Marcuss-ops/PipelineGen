@@ -25,11 +25,11 @@ func (f *fakeDestAdmin) GetOrCreateFolder(_ context.Context, name, parentID stri
 	return f.cannedID, f.getOrCreateErr
 }
 
-func (f *fakeDestAdmin) GetFolderName(context.Context, string) (string, error) { return "", nil }
-func (f *fakeDestAdmin) TrashFolder(context.Context, string) error             { return nil }
-func (f *fakeDestAdmin) DeleteFolder(context.Context, string) error            { return nil }
-func (f *fakeDestAdmin) TrashFile(context.Context, string) error               { return nil }
-func (f *fakeDestAdmin) DeleteFile(context.Context, string) error              { return nil }
+func (f *fakeDestAdmin) GetFolderName(context.Context, string) (string, error)  { return "", nil }
+func (f *fakeDestAdmin) TrashFolder(context.Context, string) error              { return nil }
+func (f *fakeDestAdmin) DeleteFolder(context.Context, string) error             { return nil }
+func (f *fakeDestAdmin) TrashFile(context.Context, string) error                { return nil }
+func (f *fakeDestAdmin) DeleteFile(context.Context, string) error               { return nil }
 func (f *fakeDestAdmin) MoveFile(context.Context, string, string, string) error { return nil }
 func (f *fakeDestAdmin) RenameFile(context.Context, string, string) error       { return nil }
 func (f *fakeDestAdmin) Ping(context.Context) error                             { return nil }

@@ -21,7 +21,7 @@ type IndexVersionSource interface {
 type staticIndexVersion struct{ v string }
 
 func (s staticIndexVersion) IndexVersion(_ context.Context) string { return s.v }
-func StaticIndexVersion(v string) IndexVersionSource              { return staticIndexVersion{v: v} }
+func StaticIndexVersion(v string) IndexVersionSource               { return staticIndexVersion{v: v} }
 
 // buildReadinessReport maps the typed subsystem failures onto the public DTO.
 // A non-typed error fails every sub-check closed rather than reporting a fake

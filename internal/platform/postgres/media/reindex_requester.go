@@ -51,8 +51,8 @@ func (r *ReindexRequester) RequestIndex(ctx context.Context, assetID string) err
 
 	var (
 		source, mediaType, assetKind, sourceVersion string
-		contentSHA, binarySHA                      string
-		assetVersion                               string
+		contentSHA, binarySHA                       string
+		assetVersion                                string
 	)
 	if err := tx.QueryRowContext(ctx, `
 		SELECT source, media_type, COALESCE(asset_kind, ''), source_version,

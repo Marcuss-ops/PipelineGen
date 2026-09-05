@@ -46,6 +46,7 @@ import (
 	"strings"
 	"time"
 
+	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
@@ -307,7 +308,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			// vector space.
 			embedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
 		}
-		qdrantEndpointPort := newQdrantEndpointAdapter(
+		qdrantEndpointPort := searchwiring.NewQdrantEndpointAdapter(
 			root.Process.QdrantHealthProbe,
 			root.Process.CollectionManager,
 			root.Process.QdrantSearcher,

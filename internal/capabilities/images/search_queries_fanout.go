@@ -29,10 +29,14 @@ type firstHitCollector struct {
 }
 
 func (c *firstHitCollector) record(imgURL, source, pageURL string) bool {
-	if imgURL == "" { return false }
+	if imgURL == "" {
+		return false
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.won { return false }
+	if c.won {
+		return false
+	}
 	c.won = true
 	c.imgURL, c.source, c.pageURL = imgURL, source, pageURL
 	return true
@@ -45,15 +49,21 @@ func (c *firstHitCollector) result() (string, string, string) {
 }
 
 func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalBackend) (string, string, string) {
-	if len(backends) == 0 { return "", "", "" }
+	if len(backends) == 0 {
+		return "", "", ""
+	}
 	group, gctx := concurrent.WithContext(ctx)
 	col := &firstHitCollector{}
 	for _, b := range backends {
 		b := b
 		group.Go(b.name, func() error {
-			if gctx.Err() != nil { return gctx.Err() }
+			if gctx.Err() != nil {
+				return gctx.Err()
+			}
 			u, p := b.fn(gctx)
-			if col.record(u, b.name, p) { return errFirstHit }
+			if col.record(u, b.name, p) {
+				return errFirstHit
+			}
 			return nil
 		})
 	}
@@ -70,15 +80,25 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Context, query, lang string, provider detail.ImageProvider) (imgURL, source, pageURL string) {
 	if provider != "" {
 		s.log.Info("explicit retrieved provider selected", zap.String("provider", string(provider)), zap.String("query", query))
-		if s.retrievalRegistry == nil { return "", "", "" }
+		if s.retrievalRegistry == nil {
+			return "", "", ""
+		}
 		p := s.retrievalRegistry.SearchByName(provider)
-		if p == nil { return "", "", "" }
+		if p == nil {
+			return "", "", ""
+		}
 		results, err := p.Search(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
-		if err != nil || len(results) == 0 { return "", "", "" }
+		if err != nil || len(results) == 0 {
+			return "", "", ""
+		}
 		hit := results[0]
-		if hit.PreviewURL == "" { return "", "", "" }
+		if hit.PreviewURL == "" {
+			return "", "", ""
+		}
 		pageURL = hit.PageURL
-		if pageURL == "" { pageURL = hit.PreviewURL }
+		if pageURL == "" {
+			pageURL = hit.PreviewURL
+		}
 		return hit.PreviewURL, string(p.Name()), pageURL
 	}
 
@@ -87,19 +107,27 @@ func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Contex
 		backends = []retrievalBackend{
 			{name: "wikipedia", fn: func(c context.Context) (string, string) {
 				img, title := s.searchWikipedia(c, query, lang)
-				if img == "" { return "", "" }
+				if img == "" {
+					return "", ""
+				}
 				pURL := ""
-				if title != "" { pURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(title, " ", "_")) }
+				if title != "" {
+					pURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(title, " ", "_"))
+				}
 				return img, pURL
 			}},
 			{name: "searxng", fn: func(c context.Context) (string, string) {
 				img := s.searchSearXNGImages(c, query)
-				if img == "" { return "", "" }
+				if img == "" {
+					return "", ""
+				}
 				return img, img
 			}},
 			{name: "duckduckgo", fn: func(c context.Context) (string, string) {
 				img := s.searchDDGWide(c, query)
-				if img == "" { return "", "" }
+				if img == "" {
+					return "", ""
+				}
 				return img, img
 			}},
 		}
@@ -109,12 +137,18 @@ func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Contex
 			backends = append(backends, retrievalBackend{
 				name: string(p.Name()),
 				fn: func(c context.Context) (string, string) {
-					if c.Err() != nil { return "", "" }
+					if c.Err() != nil {
+						return "", ""
+					}
 					res, _ := p.Search(c, query, retrieved.RetrievalSearchOptions{Lang: lang})
-					if len(res) == 0 { return "", "" }
+					if len(res) == 0 {
+						return "", ""
+					}
 					hit := res[0]
 					pURL := hit.PageURL
-					if pURL == "" { pURL = hit.PreviewURL }
+					if pURL == "" {
+						pURL = hit.PreviewURL
+					}
 					return hit.PreviewURL, pURL
 				},
 			})

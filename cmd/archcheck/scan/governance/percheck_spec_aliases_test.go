@@ -157,11 +157,11 @@ type VoiceSpec struct{}
 	if v.MatchedRule != "spec_aliases_territory_gate" {
 		t.Errorf("violation matched_rule = %q, want spec_aliases_territory_gate", v.MatchedRule)
 	}
-	if !strings.Contains(v.Note, "internal/capabilities/images/workflow/generated/") {
-		t.Errorf("violation Note must reference the canonical generated/ directory; got: %s", v.Note)
+	if !strings.Contains(v.Note, "approved territories") {
+		t.Errorf("violation Note must reference the approved territories concept; got: %s", v.Note)
 	}
-	if !strings.Contains(v.Note, "internal/capabilities/images/workflow/retrieved/") {
-		t.Errorf("violation Note must reference the canonical retrieved/ directory; got: %s", v.Note)
+	if !strings.Contains(v.Note, "internal/capabilities/images/search/") {
+		t.Errorf("violation Note must reference the canonical retrieval spec surface directory; got: %s", v.Note)
 	}
 	if !strings.Contains(v.Note, "PR-AUDIT-8") {
 		t.Errorf("violation Note must reference PR-AUDIT-8 for historical context; got: %s", v.Note)

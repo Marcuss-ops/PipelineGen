@@ -1,9 +1,9 @@
 package search
 
 import (
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 )
 

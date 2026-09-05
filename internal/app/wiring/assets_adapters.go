@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,9 +10,28 @@ import (
 
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
 )
+
+type deliverySignerAdapter struct {
+	signer *delivery.Signer
+}
+
+func (a *deliverySignerAdapter) BuildAuthorizedURL(ctx context.Context, workspace appsearch.Actor, assetID string) (string, error) {
+	if a == nil || a.signer == nil {
+		return "", errors.New("delivery signer is nil")
+	}
+	return a.signer.BuildAuthorizedURL(ctx, delivery.WorkspaceContext{
+		WorkspaceID: workspace.WorkspaceID,
+		UserID:      workspace.UserID,
+		IsAdmin:     workspace.IsAdmin,
+		IsSystem:    workspace.IsSystem,
+	}, assetID)
+}
+
+var _ appsearch.AssetDeliveryService = (*deliverySignerAdapter)(nil)
 
 // ── Diagnostics adapters ───────────────────────────────────────────────
 
@@ -151,22 +171,4 @@ func (a *zapDiagLogAdapter) Warn(msg string, keysAndValues ...any) {
 }
 func (a *zapDiagLogAdapter) Error(msg string, keysAndValues ...any) {
 	a.log.Sugar().Errorw(msg, keysAndValues...)
-}
-
-// zapSearchLogAdapter adapts *zap.Logger to search.Logger.
-type zapSearchLogAdapter struct {
-	log *zap.Logger
-}
-
-func (a *zapSearchLogAdapter) Info(msg string, keysAndValues ...any) {
-	a.log.Sugar().Infow(msg, keysAndValues...)
-}
-func (a *zapSearchLogAdapter) Warn(msg string, keysAndValues ...any) {
-	a.log.Sugar().Warnw(msg, keysAndValues...)
-}
-func (a *zapSearchLogAdapter) Error(msg string, keysAndValues ...any) {
-	a.log.Sugar().Errorw(msg, keysAndValues...)
-}
-func (a *zapSearchLogAdapter) Debug(msg string, keysAndValues ...any) {
-	a.log.Sugar().Debugw(msg, keysAndValues...)
 }

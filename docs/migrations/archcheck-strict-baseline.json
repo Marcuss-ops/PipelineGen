@@ -52,7 +52,7 @@
       "rule": "percheck_spec_aliases",
       "failing_entries": [
         {
-          "file": "internal/capabilities/images/retrieved/spec_aliases.go",
+          "file": "internal/capabilities/images/search/spec_aliases.go",
           "line": 1
         }
       ],

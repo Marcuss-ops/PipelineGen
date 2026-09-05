@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"strings"
 
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -46,7 +49,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// pipeline is available.
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		voiceGenerator := NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
+		voiceGenerator := vowiring.NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
 		voiceMap := make(map[string]string)
 		if registry, registryErr := BuildLanguageRegistry(ActiveMultilingualConfig(cfg)); registryErr == nil {
 			for _, spec := range registry.EnabledLanguages() {
@@ -84,8 +87,23 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
 	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
-	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(cfg, root, artlistWiring, log)
-	vidRushCache := buildVidRushCache(root, log)
+	vidRushProviders, vidRushFinalizer := (*adapters.VidRushAssetProviderRegistry)(nil), scriptports.VidRushArtifactFinalizer(nil)
+	if root.Drive != nil && root.Drive.Publisher != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidrushwiring.VidRushMaterializationDeps{
+			MediaPG:     root.MediaPostgres,
+			MediaSQLite: root.DB.DB,
+			Delivery: vidrushwiring.VidRushDeliveryPorts{
+				Publisher:      root.Drive.Publisher,
+				EventsRepo:     root.Outbox.EventsRepo,
+				ProviderAssets: artlistWiring.ProviderAssets,
+				Downloader:     artlistWiring.ArtlistDownloader,
+			},
+			ImageSearcher:  vidrushInternetImageSearcher(root, log),
+			ImageGenerator: root.Domains.ImageService,
+			MediaExec:      root.MediaExec,
+		}, log)
+	}
+	vidRushCache := vidrushCachePort(root, log)
 	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
@@ -230,4 +248,23 @@ func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Lo
 		return err
 	}
 	return registerScriptHistory(registry, log, cfg, root)
+}
+
+// vidrushCachePort resolves the nil-tolerant VidRush cache port from the
+// composition root. A missing cache plane disables the cache (nil = off).
+func vidrushCachePort(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCachePort {
+	if root == nil || root.CacheDB == nil || root.CacheDB.DB == nil {
+		return nil
+	}
+	return vidrushwiring.BuildVidRushCache(root.CacheDB.DB, log)
+}
+
+// vidrushInternetImageSearcher adapts the root image-search resolver into
+// the InternetImageSearcher port consumed by the VidRush materialization
+// wiring. Nil-safe: returns nil when the resolver is not wired.
+func vidrushInternetImageSearcher(root *ComposeRoot, log *zap.Logger) adapters.InternetImageSearcher {
+	if root == nil || root.Domains == nil || root.Domains.ImageSearchResolver == nil {
+		return nil
+	}
+	return newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
 }

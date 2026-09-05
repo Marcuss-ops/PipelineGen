@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
@@ -51,7 +52,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// from the same canonical PostgreSQL MediaSearcher. There is deliberately
 	// no seed from root.Process.VectorSvc and no SQLite hydration adapter, so
 	// Qdrant/SQLite cannot re-enter the media read path as fallbacks.
-	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := selectMediaSearchStore(cfg, root.MediaPostgres, log)
+	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := searchwiring.SelectMediaSearchStore(cfg, root.MediaPostgres, log)
 	if mediaSearchErr != nil {
 		return registryCrossStepState{}, mediaSearchErr
 	}
@@ -88,7 +89,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		}
 	}
 
-	var rerankerPort rerankerClient
+	var rerankerPort searchwiring.RerankerClient
 	if root.AI != nil && root.AI.Reranker != nil {
 		rerankerPort = root.AI.Reranker
 	}
@@ -155,7 +156,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		canonicalResolver = newCanonicalIdentityResolver(db)
 	}
 
-	searchFanOut, searchBackends, searchAgg, searchErr := registerSearchBackend(
+	searchFanOut, searchBackends, searchAgg, searchErr := searchwiring.Build(
 		log,
 		providerReg,
 		root.Repos.ClipsRepo,
@@ -571,21 +572,3 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, r
 	}
 	return prepared, nil
 }
-
-type deliverySignerAdapter struct {
-	signer *delivery.Signer
-}
-
-func (a *deliverySignerAdapter) BuildAuthorizedURL(ctx context.Context, workspace search.Actor, assetID string) (string, error) {
-	if a == nil || a.signer == nil {
-		return "", errors.New("delivery signer is nil")
-	}
-	return a.signer.BuildAuthorizedURL(ctx, delivery.WorkspaceContext{
-		WorkspaceID: workspace.WorkspaceID,
-		UserID:      workspace.UserID,
-		IsAdmin:     workspace.IsAdmin,
-		IsSystem:    workspace.IsSystem,
-	}, assetID)
-}
-
-var _ search.AssetDeliveryService = (*deliverySignerAdapter)(nil)

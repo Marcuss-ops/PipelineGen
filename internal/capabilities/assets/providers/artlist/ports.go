@@ -20,7 +20,7 @@ var (
 	ErrTransportFallback = errors.New("artlist: transport failure, fall back to next searcher")
 
 	ErrAssetMutationDispatcherUnavailable = errors.New("artlist: asset mutation dispatcher unavailable (production must wire outbox dispatcher at composition)")
-	ErrPublisherUnavailable                = errors.New("artlist: delivery.Publisher port unavailable at composition — production must wire delivery.Publisher (F2.11: brutal override retired the legacy DriveFolderManager fallback; silent folderID = rootFolderID fallback is gone)")
+	ErrPublisherUnavailable               = errors.New("artlist: delivery.Publisher port unavailable at composition — production must wire delivery.Publisher (F2.11: brutal override retired the legacy DriveFolderManager fallback; silent folderID = rootFolderID fallback is gone)")
 )
 
 // Candidate is the canonical provider-agnostic search hit.

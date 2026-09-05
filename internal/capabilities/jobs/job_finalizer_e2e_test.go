@@ -115,12 +115,12 @@ var _ finalization.AssetFinalizerTx = noopAssetTx{}
 
 func (noopAssetTx) FinalizeAsset(_ context.Context, _ finalization.Transaction, artifact finalization.PublishedArtifact) (finalization.ArtifactRef, []finalization.OutboxEvent, error) {
 	return finalization.ArtifactRef{
-		ArtifactID: artifact.ArtifactID,
-		AssetID: artifact.ArtifactID,
-		Kind: artifact.Kind,
+		ArtifactID:    artifact.ArtifactID,
+		AssetID:       artifact.ArtifactID,
+		Kind:          artifact.Kind,
 		SourceVersion: artifact.SourceVersion,
-		ContentHash: artifact.SHA256,
-		Location: artifact.Location,
+		ContentHash:   artifact.SHA256,
+		Location:      artifact.Location,
 	}, nil, nil
 }
 
@@ -145,8 +145,8 @@ func TestE2E_FingerprintPersistedInResultJSON(t *testing.T) {
 		t.Fatalf("read result_json: %v", err)
 	}
 	var wrapped struct {
-		Data json.RawMessage `json:"data"`
-		CompletionFingerprint string `json:"completion_fingerprint"`
+		Data                  json.RawMessage `json:"data"`
+		CompletionFingerprint string          `json:"completion_fingerprint"`
 	}
 	if err := json.Unmarshal([]byte(resultJSON), &wrapped); err != nil {
 		t.Fatalf("unmarshal result_json: %v", err)

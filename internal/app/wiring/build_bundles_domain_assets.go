@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
@@ -69,7 +70,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	// different asset family (for example images) and would turn a valid
 	// voiceover group into an empty destination.
 	if params.search != nil && params.cfg.Drive.VoiceoverFolder() != "" {
-		resolved, resolveErr := newAssetTreeVoiceoverResolver(params.search.AssetTreeService, params.cfg.Drive.VoiceoverFolder(), params.log)
+		resolved, resolveErr := vowiring.NewAssetTreeVoiceoverResolver(params.search.AssetTreeService, params.cfg.Drive.VoiceoverFolder(), params.log)
 		if resolveErr != nil {
 			return fmt.Errorf("compose domains: voiceover destination resolver: %w", resolveErr)
 		}

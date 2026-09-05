@@ -107,11 +107,6 @@ func deterministicCommitEventID(assetID, sourceType, sourceURI, sourceVersion, c
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(assetID+"|"+sourceType+"|"+sourceURI+"|"+sourceVersion+"|"+contentSHA256)).String()
 }
 
-// isTerminalOutboxStatus mirrors imagesregistry.isTerminalOutboxStatus.
-func isTerminalOutboxStatus(status string) bool {
-	return status == "dead_letter" || status == SupersedeStatus
-}
-
 // firstNonEmpty mirrors imagesregistry.firstNonEmpty.
 func firstNonEmpty(a, b string) string {
 	if a != "" {

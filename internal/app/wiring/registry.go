@@ -24,7 +24,7 @@
 //   - registerArtlist + registerYouTubeClip + registerMediaIngest
 //   - registerScraper + registerStockPipeline
 //     (bundle-driven modules).
-//   - registry_search.go          registerSearchBackend helper
+//   - search leaf (internal/app/wiring/search)  search.Build helper
 //     (BuildCanonicalSearchFanOut + explicit search capability value).
 //   - registry_assets.go          registerAssets module
 //     (maintenanceSvc + voiceoverSvc + assetsBundle + WireAssets

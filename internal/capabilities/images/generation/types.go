@@ -28,7 +28,7 @@ type GenerateImageRequest struct {
 	NegativePrompt string   `json:"negative_prompt,omitempty"`
 	PromptSuffix   string   `json:"prompt_suffix,omitempty"`
 	Ratio          string   `json:"ratio,omitempty"`
-	OutputPath     string   `json:"output_path,omitempty"`
+	OutputPath     string   `json:"artifact_output,omitempty"`
 }
 
 // GenerateRequest is the provider-facing spelling of the same canonical DTO.

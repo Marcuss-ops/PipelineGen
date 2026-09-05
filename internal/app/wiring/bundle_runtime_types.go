@@ -17,15 +17,15 @@ import (
 
 // OutboxBundle aggregates the canonical outbox dispatcher and event workers.
 type OutboxBundle struct {
-	CanonicalWriter assetspersistence.CanonicalAssetWriter
-	Dispatcher      *outbox.Dispatcher
-	EventsRepo      *outboxevents.Repository
-	EventsRegistry  *outboxevents.HandlerRegistry
-	EventsPool      *outboxevents.Pool
-	JobsEventsPool  *outboxevents.Pool
+	CanonicalWriter  assetspersistence.CanonicalAssetWriter
+	Dispatcher       *outbox.Dispatcher
+	EventsRepo       *outboxevents.Repository
+	EventsRegistry   *outboxevents.HandlerRegistry
+	EventsPool       *outboxevents.Pool
+	JobsEventsPool   *outboxevents.Pool
 	MediaIndexWorker *pgmedia.PostgresIndexWorker
-	Publisher       outboxevents.Handler
-	DriveUploader   outboxevents.Handler
+	Publisher        outboxevents.Handler
+	DriveUploader    outboxevents.Handler
 }
 
 // SyncBundle owns only catalog-to-Drive synchronization.

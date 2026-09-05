@@ -352,8 +352,8 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	// them. The zap log above stays — it serves operator tail/grep,
 	// while the envelope is the client-facing canonical surface.
 	return &PostProcessResult{
-		Voiceovers: voiceovers,
-		Warnings:   warnings,
+		Voiceovers:       voiceovers,
+		Warnings:         warnings,
 		UpdatedSpecScene: scriptpkg.SpecSceneOutput{},
 	}, nil
 }

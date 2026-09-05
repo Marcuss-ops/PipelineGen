@@ -25,10 +25,10 @@ func (f *fakeDBPinger) PingContext(ctx context.Context) error { return f.err }
 
 func TestSemanticReadinessChecker_AllGreen(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired:         true,
+		embedderWired:        true,
 		semanticBackendWired: true,
-		aggregator:            &fakeAggregator{semantic: true},
-		mediaPostgres:         &fakeDBPinger{},
+		aggregator:           &fakeAggregator{semantic: true},
+		mediaPostgres:        &fakeDBPinger{},
 	}
 	if err := c.Ready(context.Background()); err != nil {
 		t.Fatalf("expected all-green readiness, got: %v", err)
@@ -37,10 +37,10 @@ func TestSemanticReadinessChecker_AllGreen(t *testing.T) {
 
 func TestSemanticReadinessChecker_PostgresDown(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired:         true,
+		embedderWired:        true,
 		semanticBackendWired: true,
-		aggregator:            &fakeAggregator{semantic: true},
-		mediaPostgres:         &fakeDBPinger{err: errors.New("postgres connection refused")},
+		aggregator:           &fakeAggregator{semantic: true},
+		mediaPostgres:        &fakeDBPinger{err: errors.New("postgres connection refused")},
 	}
 	err := c.Ready(context.Background())
 	if err == nil {
@@ -68,9 +68,9 @@ func TestSemanticReadinessChecker_MissingWiring(t *testing.T) {
 
 func TestSemanticReadinessChecker_ErrorSanitized(t *testing.T) {
 	c := &semanticReadinessChecker{
-		embedderWired:         true,
+		embedderWired:        true,
 		semanticBackendWired: true,
-		aggregator:            &fakeAggregator{semantic: true},
+		aggregator:           &fakeAggregator{semantic: true},
 		mediaPostgres: &fakeDBPinger{err: errors.New(
 			"boom\nwith\nnewlines and a very long message that should be collapsed " +
 				"to a single line to avoid leaking anything sensitive across the HTTP boundary")},

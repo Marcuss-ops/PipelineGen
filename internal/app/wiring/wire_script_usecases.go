@@ -114,7 +114,7 @@ func buildScriptUseCases(
 		oneUC.SetAudioProcessor(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log))
 		log.Info("wireScriptFlow: canonical Rust audio renderer wired to GenerateOneUseCase")
 	}
-	oneUC.SetVidRushCache(buildVidRushCache(root, log))
+	oneUC.SetVidRushCache(vidrushCachePort(root, log))
 	if root.AI.MemorySvc != nil {
 		oneUC.SetMemoryService(root.AI.MemorySvc)
 		log.Info("wireScriptFlow: gemmamemory service wired to GenerateOneUseCase")
