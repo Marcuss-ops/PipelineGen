@@ -58,6 +58,32 @@ func TestCompileASSContent_EmptyCuesFailsClosed(t *testing.T) {
 	}
 }
 
+func TestCompileASSContent_PoppinsPresetStrongerShadow(t *testing.T) {
+	content, err := CompileASSContent(testCues(), "matt-damon-benchmark-v1-poppins")
+	if err != nil {
+		t.Fatalf("CompileASSContent: %v", err)
+	}
+	// Style row must carry the Poppins font name and the stronger ASS shadow.
+	// Format: Name, Fontname, Fontsize, ..., BorderStyle, Outline, Shadow, ...
+	if !strings.Contains(content, "Style: matt-damon-benchmark-v1-poppins,Poppins,58,") {
+		t.Fatalf("expected Poppins style row, got:\n%s", content)
+	}
+	if !strings.Contains(content, ",1,0,0,0,100,100,0,0,1,4.0,6,") {
+		t.Fatalf("expected Poppins outline 4.0 + shadow 6 in the style row, got:\n%s", content)
+	}
+}
+
+func TestResolveFontPreset_PoppinsHasStrongerShadowThanMontserrat(t *testing.T) {
+	poppins := ResolveFontPreset("matt-damon-benchmark-v1-poppins")
+	if poppins.FontName != "Poppins" || poppins.Shadow <= 3 {
+		t.Fatalf("poppins preset = %+v; want FontName Poppins with shadow > 3", poppins)
+	}
+	montserrat := ResolveFontPreset("shorts-v1")
+	if montserrat.FontName != "Montserrat" || montserrat.Shadow >= poppins.Shadow {
+		t.Fatalf("montserrat fallback = %+v; want default shadow strictly smaller than poppins", montserrat)
+	}
+}
+
 func TestCompileASSContent_ValidatesThroughValidateASSFile(t *testing.T) {
 	content, err := CompileASSContent(testCues(), "")
 	if err != nil {

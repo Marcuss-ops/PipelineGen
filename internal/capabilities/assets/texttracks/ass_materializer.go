@@ -244,6 +244,7 @@ type FontPreset struct {
 
 var defaultFontPresets = map[string]FontPreset{
 	"montserrat": {FontName: "Montserrat", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"poppins":    {FontName: "Poppins", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 6, MarginV: 36},
 	"impact":     {FontName: "Impact", FontSize: 62, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"anton":      {FontName: "Anton", FontSize: 60, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"bebas":      {FontName: "Bebas Neue", FontSize: 64, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
@@ -264,6 +265,12 @@ func ResolveFontPreset(styleID string) FontPreset {
 	}
 	if strings.Contains(norm, "roboto") {
 		return defaultFontPresets["roboto"]
+	}
+	// Poppins carries a stronger shadow (Shadow: 6) than the montserrat
+	// default (Shadow: 3): subtitle style IDs that ask for Poppins get the
+	// bolder drop, and clip benchmarks select it explicitly.
+	if strings.Contains(norm, "poppins") {
+		return defaultFontPresets["poppins"]
 	}
 	return defaultFontPresets["montserrat"]
 }
