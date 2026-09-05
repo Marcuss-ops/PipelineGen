@@ -97,6 +97,9 @@ type VoiceoverConcurrencyConfig struct {
 	// to the persistent Edge TTS worker. The measured throughput plateau
 	// starts at 4; lower it for I/O-constrained hosts or raise it only after
 	// validating provider throttling and queue p95. Default: 4.
+	// Certification (September 2026): an 8-slot pool on the live 5-scene
+	// docs job regressed wall time 51.2s → 58.2s (provider contention),
+	// confirming 4 as the certified optimum.
 	MaxConcurrentTTS int `yaml:"max_concurrent_tts" env:"VELOX_VOICEOVER_MAX_CONCURRENT_TTS" default:"4"`
 
 	// Drive retry budget.

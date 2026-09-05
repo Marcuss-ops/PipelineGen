@@ -33,6 +33,9 @@ const DefaultNLPConcurrency = 4
 
 // DefaultTTSConcurrency bounds the certified default for the TTS voiceover
 // branch: up to this many scene×language synthesis calls run concurrently.
+// 4 is the measured optimum: widening the pool to 8 on the live 5-scene
+// certification job raised provider-side contention (TTS work 32.3s → 41.0s,
+// job wall 51.2s → 58.2s), so the certified default stays at 4.
 const DefaultTTSConcurrency = 4
 
 // DefaultTranslationConcurrency bounds concurrent scene×language translation

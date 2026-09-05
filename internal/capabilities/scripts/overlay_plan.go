@@ -35,12 +35,13 @@ import (
 // (1920×1080 @ 24/1), matching the AssemblyReadyVideoContract.
 // Golden/certification tests use GoldenOverlayCanvas (1280×720 @ 30/1) explicitly.
 type OverlayCanvasSpec struct {
-	Width      int
-	Height     int
-	FPSNum     int
-	FPSDen     int
-	Background *capabilityoverlay.OverlayBackground
-	Style      *scriptpkg.OverlayStyleSpec
+	Width                  int
+	Height                 int
+	FPSNum                 int
+	FPSDen                 int
+	ForegroundScalePercent int
+	Background             *capabilityoverlay.OverlayBackground
+	Style                  *scriptpkg.OverlayStyleSpec
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -291,15 +292,16 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	}
 
 	plan := capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan,
-		PlanID:        planID,
-		VideoID:       videoID,
-		ProjectID:     strings.TrimSpace(projectID),
-		Width:         canvas.Width,
-		Height:        canvas.Height,
-		FPSNum:        canvas.FPSNum,
-		FPSDen:        canvas.FPSDen,
-		Background:    canvas.Background,
+		SchemaVersion:          capabilityoverlay.SchemaVersionPlan,
+		PlanID:                 planID,
+		VideoID:                videoID,
+		ProjectID:              strings.TrimSpace(projectID),
+		Width:                  canvas.Width,
+		Height:                 canvas.Height,
+		FPSNum:                 canvas.FPSNum,
+		FPSDen:                 canvas.FPSDen,
+		ForegroundScalePercent: canvas.ForegroundScalePercent,
+		Background:             canvas.Background,
 		// Overlays are composited over the master video, so they require an
 		// alpha channel. The contract travels with the plan (never re-derived
 		// downstream); the compiled chronon output derives container/codec/
