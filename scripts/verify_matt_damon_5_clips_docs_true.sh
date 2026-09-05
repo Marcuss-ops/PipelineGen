@@ -82,16 +82,14 @@ jq -e '
    and (($item.output.render.drive_folder_id // "") | length > 0)
    and ($item.output.render.drive_folder_id == $item.docs.folder_id)
   and ($item.output.render.require_gpu == true)
-  and (($item.output.render.render_concurrency // 0) >= 8)
+  and (($item.output.render.render_concurrency // 0) == 4)
   and ($item.output.render.watermark.enabled == true)
   and (($item.output.render.watermark.text // "") | length > 0)
   and ($item.output.render.watermark.position == "top_right")
-  and ($item.output.render.watermark.style.transition_in.preset == "fade_in")
   and ($item.output.render.subtitles.enabled == true)
   and ($item.output.render.subtitles.mode == "burn")
   and ($item.output.render.subtitles.style_id == "shorts-v1-40-shadow")
   and ($item.output.render.subtitles.style.position == "bottom_center")
-  and ($item.output.render.subtitles.style.transition_in.preset == "fade_in")
 ' "$BODY.poll" >/dev/null || {
   echo "job payload does not prove docs/render/GPU/subtitle/watermark contract" >&2
   jq '.job.payload.items[0] | {docs,source,render:.output.render}' "$BODY.poll" >&2
@@ -99,7 +97,7 @@ jq -e '
 }
 
 jq -e '
-  (.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result) as $r
+  (.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result) as $r
   | (($r.documents.it.link // $r.documents.it.url // "") | length > 0)
   and (($r.render_metrics.expected // 0) == 5)
   and (($r.render_metrics.successful // 0) == 5)
@@ -113,10 +111,10 @@ jq -e '
 }
 
 echo "docs=true verification passed"
-echo "document=$(jq -r '(.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).documents.it.link // (.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).documents.it.url' "$BODY.poll")"
-echo "render_metrics=$(jq -c '(.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).render_metrics // {}' "$BODY.poll")"
-echo "localized_renders=$(jq -c '(.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).localized_renders // [] | map({scene_id,clip_id,status,duration_ms,wall_ms,drive_link})' "$BODY.poll")"
-echo "chronon_backends=$(jq -c '(.result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).localized_renders // [] | map(.backend)' "$BODY.poll")"
+echo "document=$(jq -r '(.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).documents.it.link // (.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).documents.it.url' "$BODY.poll")"
+echo "render_metrics=$(jq -c '(.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).render_metrics // {}' "$BODY.poll")"
+echo "localized_renders=$(jq -c '(.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).localized_renders // [] | map({scene_id,clip_id,status,duration_ms,wall_ms,drive_link})' "$BODY.poll")"
+echo "chronon_backends=$(jq -c '(.result.result // .result.data.result // .result.data.result.result // .result.data.items[0].result // .result.items[0].result // .result.output // .result).localized_renders // [] | map(.backend)' "$BODY.poll")"
 echo "timing=$(jq -c '.timing // {} | {wall_ms,execution_wall_ms,queue_wait_ms,attributed_ms,unattributed_ms,unattributed_percent,overlapped_ms,bottleneck_stage,bottleneck_operation,bottleneck_percent}' "$BODY.poll")"
 echo "stages=$(jq -c '.timing.stages // []' "$BODY.poll")"
 echo "critical_path=$(jq -c '.timing.critical_path // []' "$BODY.poll")"

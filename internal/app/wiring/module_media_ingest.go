@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
@@ -111,7 +112,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	if bundle.ImageRepo == nil || bundle.VoiceoverRepo == nil || bundle.ClipsRepo == nil || bundle.AssetIndexService == nil {
 		return nil, nil
 	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(bundle.Dispatcher)
+	mutationsDisp, err := registrywiring.NewMutationsDispatcherAdapter(bundle.Dispatcher)
 	if err != nil {
 		return nil, fmt.Errorf("WireMediaIngest: %w", err)
 	}

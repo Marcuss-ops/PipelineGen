@@ -25,7 +25,7 @@ import (
 // territory read seam. The handler at
 // internal/capabilities/images/generated_search_handler.go::GeneratedSearch
 // routes through here; the port interface GeneratedSearchServicePort
-// at internal/capabilities/images/workflow/generated/generated_search.go is the
+// at internal/capabilities/images/generated/generated_search.go is the
 // structural contract (parent *ImageStorageService satisfies it
 // transitively via s.Repo().ListImagesByOrigin). Future cross-cutting
 // concerns (caching, metrics, additional filtering) can be added in

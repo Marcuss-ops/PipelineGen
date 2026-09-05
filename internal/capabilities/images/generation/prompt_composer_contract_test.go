@@ -1,22 +1,25 @@
 // Package generated — prompt_composer_test.go is the canonical TDD
-// coverage for the PromptComposer (FASE 3, July 2026, image-territories
+// coverage for the imggeneration.PromptComposer (FASE 3, July 2026, image-territories
 // action plan). Locks the contract surface so future refactors do not
 // regress the idempotency guarantee or the regex-safe TrimSpace rule.
-package images
+package generation_test
 
 import (
 	"context"
 	"testing"
+
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 )
 
-// fakeStyle builds a ResolvedStyle via struct literal (the generation
+// fakeStyle builds a imggeneration.ResolvedStyle via struct literal (the generation
 // package does not expose a constructor; the StyleResolver is canonical).
-func fakeStyle(id string, suffix string) ResolvedStyle {
-	return ResolvedStyle{ID: id, PromptSuffix: suffix}
+func fakeStyle(id string, suffix string) imagestyles.ResolvedStyle {
+	return imagestyles.ResolvedStyle{ID: id, PromptSuffix: suffix}
 }
 
-func fakeComposer() PromptComposer {
-	return NewPromptComposer()
+func fakeComposer() imggeneration.PromptComposer {
+	return imggeneration.NewPromptComposer()
 }
 
 // TestPromptComposer_BasicComposition locks the user-spec example:
@@ -25,7 +28,7 @@ func fakeComposer() PromptComposer {
 func TestPromptComposer_BasicComposition(t *testing.T) {
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle"},
+		imggeneration.GenerateCommand{Prompt: "castle"},
 		fakeStyle("cinematic", "cinematic lighting"),
 	)
 	if err != nil {
@@ -46,12 +49,12 @@ func TestPromptComposer_Idempotent(t *testing.T) {
 	c := fakeComposer()
 	style := fakeStyle("cinematic", "cinematic lighting")
 
-	first, err := c.Compose(context.Background(), GenerateCommand{Prompt: "castle"}, style)
+	first, err := c.Compose(context.Background(), imggeneration.GenerateCommand{Prompt: "castle"}, style)
 	if err != nil {
 		t.Fatalf("first Compose err: %v", err)
 	}
 
-	second, err := c.Compose(context.Background(), GenerateCommand{
+	second, err := c.Compose(context.Background(), imggeneration.GenerateCommand{
 		Prompt: first.PromptFinal,
 	}, style)
 	if err != nil {
@@ -70,7 +73,7 @@ func TestPromptComposer_IdempotentCaseInsensitive(t *testing.T) {
 	c := fakeComposer()
 	style := fakeStyle("cinematic", "Cinematic Lighting")
 
-	first, err := c.Compose(context.Background(), GenerateCommand{
+	first, err := c.Compose(context.Background(), imggeneration.GenerateCommand{
 		Prompt: "castle, CINEMATIC LIGHTING ",
 	}, style)
 	if err != nil {
@@ -85,7 +88,7 @@ func TestPromptComposer_IdempotentCaseInsensitive(t *testing.T) {
 func TestPromptComposer_EmptySuffixPassThrough(t *testing.T) {
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle"},
+		imggeneration.GenerateCommand{Prompt: "castle"},
 		fakeStyle("cinematic", ""),
 	)
 	if err != nil {
@@ -101,7 +104,7 @@ func TestPromptComposer_EmptySuffixPassThrough(t *testing.T) {
 func TestPromptComposer_EmptyPromptFallback(t *testing.T) {
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: ""},
+		imggeneration.GenerateCommand{Prompt: ""},
 		fakeStyle("cinematic", "cinematic lighting"),
 	)
 	if err != nil {
@@ -115,10 +118,10 @@ func TestPromptComposer_EmptyPromptFallback(t *testing.T) {
 // TestPromptComposer_NegativePromptPopulated: NegativePrompt is copied
 // verbatim from the resolved style.
 func TestPromptComposer_NegativePromptPopulated(t *testing.T) {
-	style := ResolvedStyle{ID: "cinematic", PromptSuffix: "cinematic lighting", NegativePrompt: "blurry, deformed hands"}
+	style := imagestyles.ResolvedStyle{ID: "cinematic", PromptSuffix: "cinematic lighting", NegativePrompt: "blurry, deformed hands"}
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle"},
+		imggeneration.GenerateCommand{Prompt: "castle"},
 		style,
 	)
 	if err != nil {
@@ -133,7 +136,7 @@ func TestPromptComposer_NegativePromptPopulated(t *testing.T) {
 func TestPromptComposer_RegexSafeTrimSpace(t *testing.T) {
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "\t\n castle \r\n"},
+		imggeneration.GenerateCommand{Prompt: "\t\n castle \r\n"},
 		fakeStyle("cinematic", "  cinematic lighting  "),
 	)
 	if err != nil {
@@ -146,7 +149,7 @@ func TestPromptComposer_RegexSafeTrimSpace(t *testing.T) {
 }
 
 // TestPromptComposer_DimensionPassThrough: dimensions are copied from
-// the caller-supplied GenerateCommand. Step-1 typed migration (A1,
+// the caller-supplied imggeneration.GenerateCommand. Step-1 typed migration (A1,
 // July 2026) retired the legacy "style-dims fallback" — the canonical
 // StyleDefinition no longer carries DefaultWidth/DefaultHeight, so
 // the composer is a pure pass-through for dimensions.
@@ -158,11 +161,11 @@ func TestPromptComposer_RegexSafeTrimSpace(t *testing.T) {
 // resolution_usecase's canonical 1920x1080 default in the dispatcher
 // pre-flight, see generation_usecase.go).
 func TestPromptComposer_DimensionPassThrough(t *testing.T) {
-	style := ResolvedStyle{ID: "test-style", PromptSuffix: "test suffix"}
+	style := imagestyles.ResolvedStyle{ID: "test-style", PromptSuffix: "test suffix"}
 
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
+		imggeneration.GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
 		style,
 	)
 	if err != nil {
@@ -180,7 +183,7 @@ func TestPromptComposer_ContextCancelled(t *testing.T) {
 	cancel()
 	_, err := fakeComposer().Compose(
 		ctx,
-		GenerateCommand{Prompt: "castle"},
+		imggeneration.GenerateCommand{Prompt: "castle"},
 		fakeStyle("cinematic", "cinematic lighting"),
 	)
 	if err == nil {
@@ -192,12 +195,12 @@ func TestPromptComposer_ContextCancelled(t *testing.T) {
 func TestPromptComposer_StyleProvenance(t *testing.T) {
 	// Step-1 typed migration (A1, July 2026): no Width/Height in the
 	// slim 8-field StyleDefinition. The fixture passes dimensions
-	// through the GenerateCommand, not the resolved style.
-	style := ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Version: 2}
+	// through the imggeneration.GenerateCommand, not the resolved style.
+	style := imagestyles.ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Version: 2}
 
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
+		imggeneration.GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
 		style,
 	)
 	if err != nil {

@@ -15,6 +15,7 @@ package images
 import (
 	"context"
 	"fmt"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -40,11 +41,11 @@ func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style 
 // without ingesting the result. Callers that own a larger workflow (such as
 // VidRush) receive the ArtifactManifest and must pass the staged artifact to
 // the shared finalizer; this method deliberately does not write media_assets.
-func (s *Service) GenerateArtifact(ctx context.Context, jobID, prompt, style string, width, height int, tags []string) (*UsecaseOutput, error) {
+func (s *Service) GenerateArtifact(ctx context.Context, jobID, prompt, style string, width, height int, tags []string) (*imggeneration.UsecaseOutput, error) {
 	if s == nil || s.Gen == nil {
 		return nil, ErrImageGenNotImplemented
 	}
-	return RunUsage(ctx, s.Gen.UsecaseDeps(), UsecaseCommand{
+	return imggeneration.RunUsage(ctx, s.Gen.UsecaseDeps(), imggeneration.UsecaseCommand{
 		JobID: jobID, Prompt: prompt, Style: style, Width: width, Height: height,
 		Tags: tags, OutputPath: "",
 	})

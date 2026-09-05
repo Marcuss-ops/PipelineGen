@@ -6,6 +6,8 @@ import (
 	"image/jpeg"
 	"image/png"
 	"testing"
+
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 )
 
 // Helper to decode dimensions using the same function used in production
@@ -103,7 +105,7 @@ func TestUniqueAppend_NoNewItems(t *testing.T) {
 
 func TestExtractStyleFromPath_Downloaded(t *testing.T) {
 	path := "images/downloaded/wikipedia/realistic/abc123/def.jpg"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "realistic" {
 		t.Fatalf("expected 'realistic', got %q", style)
 	}
@@ -111,7 +113,7 @@ func TestExtractStyleFromPath_Downloaded(t *testing.T) {
 
 func TestExtractStyleFromPath_Generated(t *testing.T) {
 	path := "images/generated/oil-painting/xyz/789.jpg"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "oil-painting" {
 		t.Fatalf("expected 'oil-painting', got %q", style)
 	}
@@ -119,7 +121,7 @@ func TestExtractStyleFromPath_Generated(t *testing.T) {
 
 func TestExtractStyleFromPath_ShortPath(t *testing.T) {
 	path := "images/generated"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "" {
 		t.Fatalf("expected empty string for short path, got %q", style)
 	}
@@ -127,14 +129,14 @@ func TestExtractStyleFromPath_ShortPath(t *testing.T) {
 
 func TestExtractStyleFromPath_DownloadedShort(t *testing.T) {
 	path := "images/downloaded/wikipedia"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "" {
 		t.Fatalf("expected empty string for short downloaded path, got %q", style)
 	}
 }
 
 func TestExtractStyleFromPath_Empty(t *testing.T) {
-	style := extractStyleFromPath("")
+	style := imagestyles.ExtractFromPath("")
 	if style != "" {
 		t.Fatalf("expected empty string for empty path, got %q", style)
 	}
@@ -142,7 +144,7 @@ func TestExtractStyleFromPath_Empty(t *testing.T) {
 
 func TestExtractStyleFromPath_GeneratedNoSlash(t *testing.T) {
 	path := "images/generated"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "" {
 		t.Fatalf("expected empty for 'images/generated', got %q", style)
 	}
@@ -150,7 +152,7 @@ func TestExtractStyleFromPath_GeneratedNoSlash(t *testing.T) {
 
 func TestExtractStyleFromPath_UnknownBase(t *testing.T) {
 	path := "images/custom/photo/123.jpg"
-	style := extractStyleFromPath(path)
+	style := imagestyles.ExtractFromPath(path)
 	if style != "" {
 		t.Fatalf("expected empty for unknown base, got %q", style)
 	}

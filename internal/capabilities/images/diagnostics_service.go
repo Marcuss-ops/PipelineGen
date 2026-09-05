@@ -2,6 +2,8 @@ package images
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
+	imageingest "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/ingest"
 	"go.uber.org/zap"
 )
 
@@ -10,8 +12,8 @@ import (
 // Chrome/Playwright capability.
 type DiagnosticsService struct {
 	repo        ImageRepository
-	driveReader DriveReader
-	imageGen    ImageGenerator
+	driveReader imageingest.DriveReader
+	imageGen    imggeneration.ImageGenerator
 	ingestSvc   *ingest.Service
 	log         *zap.Logger
 }

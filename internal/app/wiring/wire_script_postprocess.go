@@ -99,7 +99,7 @@ func registerScriptPostProcessors(
 	artlistWiring *ArtlistWiring,
 	cfg *config.Config,
 	log *zap.Logger,
-	scriptsRepoAdapter adapters.ScriptRepository,
+	scriptsRepoAdapter ports.ScriptRepository,
 	metaModel string,
 	vidRushProviders *adapters.VidRushAssetProviderRegistry,
 	vidRushFinalizer ports.VidRushArtifactFinalizer,

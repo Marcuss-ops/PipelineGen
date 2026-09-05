@@ -17,7 +17,7 @@ target_root: internal/
 module_route_map:
   - module: ScriptFlow
     prefix: /api/script
-    owner: internal/app/wire_script.go
+    owner: internal/app/wiring/wire_script.go
     # Routes mounted by ScriptFlowHandler.RegisterRoutes (internal/api/script/handler_flow.go)
     # via gen.GenerateRoute + r.GET("/clips/search",
     # h.SearchClipsByName) + jobsRegisterRoutes. The AUDITED canonical set
@@ -38,7 +38,7 @@ module_route_map:
       - GET  /jobs/:id
   - module: Assets
     prefix: /api/media + /api/assets
-    owner: internal/app/assets_core.go
+    owner: internal/app/wiring/build_bundles_domain_assets.go
     routes:
       - POST /media/search
       - POST /media/upload
@@ -59,7 +59,7 @@ module_route_map:
       - POST /ingest/bulk
   - module: Artlist
     prefix: /api/artlist
-    owner: internal/app/build_bundles_artlist_artlist.go
+    owner: internal/app/wiring/build_bundles_artlist_artlist.go
     routes:
       - POST /run
       - GET  /runs/:run_id
@@ -71,7 +71,7 @@ module_route_map:
       - POST /sync-catalogs
   - module: Images
     prefix: /api/images
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes:
       - GET  /search
       - GET  /diagnostics
@@ -83,7 +83,7 @@ module_route_map:
       - POST /video/generate
   - module: Jobs
     prefix: /api/jobs + /api/internal
-    owner: internal/app/composition.go::BuildJobsBundle
+    owner: internal/app/wiring/module_jobs.go
     routes:
       - POST /
       - GET  /
@@ -95,7 +95,7 @@ module_route_map:
       - GET  /:id/events
   - module: YouTube
     prefix: /api/clips
-    owner: internal/app/composition.go::BuildDomainBundle
+    owner: internal/app/wiring/build_bundles_domain_media.go
     routes:
       - POST /search
       - POST /ingest
@@ -103,14 +103,14 @@ module_route_map:
       - POST /batch
   - module: Channels
     prefix: /api/channels
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes:
       - GET  /
       - POST /
       - POST /:id/toggle
   - module: Stock
     prefix: stock pipeline routes
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes: []  # registered via separate handler
   - module: Content
     prefix: /api/books + /api/lessons
@@ -198,107 +198,107 @@ job_handler_map:
 canonical_services:
   - service: Engine
     constructor: NewScriptEngine
-    location: internal/app/composition.go::BuildAIBundle
+    location: internal/app/wiring/build_bundles_ai.go
   - service: Pipeline
     constructor: NewPipeline
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: MemoryService (gemmamemory)
     constructor: NewService
-    location: internal/app/composition.go::BuildAIBundle
+    location: internal/app/wiring/build_bundles_ai.go
   - service: ScriptRepository
     constructor: NewRepositoryAdapter
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: ClipSourceBuilder
     constructor: wireClipSourceBuilder
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: MediaCurator
     constructor: wireMediaCurator
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: SemaphoreUseCase
     constructor: NewSemaphoreUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: PrewarmUseCase
     constructor: NewPrewarmUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: DocumentsUseCase
     constructor: NewDocumentsUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: SceneBuilderUseCase
     constructor: NewSceneBuilderUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: PostGenUseCase
     constructor: NewPostGenUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: PipelineUseCase
     constructor: NewPipelineUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: GenerateBatchUseCase
     constructor: NewGenerateBatchUseCase
-    location: internal/app/wire_script.go
+    location: internal/app/wiring/wire_script.go
   - service: ImageService
     constructor: buildImagesService
-    location: internal/app/build_bundles_images.go
+    location: internal/app/wiring/build_bundles_core.go
   - service: VoiceoverService
     constructor: buildVoiceoverService
-    location: internal/app/build_bundles_voiceover.go
+    location: internal/app/wiring/build_bundles_voiceover.go
   - service: BooksService
     constructor: buildBooksService
-    location: internal/app/build_bundles_core.go
+    location: internal/app/wiring/build_bundles_core.go
   - service: ArtlistService
     constructor: NewService
-    location: internal/app/build_bundles_artlist_artlist.go
+    location: internal/app/wiring/build_bundles_artlist_artlist.go
   - service: YouTubeClipService
     constructor: NewYouTubeService
-    location: internal/app/composition.go::BuildDomainBundle
+    location: internal/app/wiring/build_bundles_domain_media.go
   - service: RealtimeService
     constructor: NewService
-    location: internal/app/composition.go::BuildDomainBundle
+    location: internal/app/wiring/build_bundles_domain_media.go
   - service: CatalogSyncService
     constructor: NewService
-    location: internal/app/composition.go::BuildSyncBundle
+    location: internal/app/wiring/build_bundles_sync.go
   - service: AssetTreeService
     constructor: NewService
-    location: internal/app/registry.go::initAssetServices
+    location: internal/app/wiring/build_bundles_core.go
   - service: AssetIndexService
     constructor: NewService
-    location: internal/app/registry.go::initAssetServices
+    location: internal/app/wiring/build_bundles_core.go
   - service: ClipIndexerService
     constructor: NewClipIndexerService
-    location: internal/app/composition.go::BuildProcessBundle
+    location: internal/app/wiring/build_bundles_process.go
   - service: MediaProcessor
     constructor: initMediaProcessor
-    location: internal/app/registry.go
+    location: internal/app/wiring/registry.go
   - service: MaintenanceService
     constructor: NewService
-    location: internal/app/registry.go
+    location: internal/app/wiring/registry.go
   - service: ProviderRegistry
     constructor: NewRegistry
-    location: internal/app/composition.go::BuildSearchBundle
+    location: internal/app/wiring/build_bundles_core.go
   - service: OutboxDispatcher
     constructor: NewDispatcher
-    location: internal/app/composition.go::BuildOutboxBundle
+    location: internal/app/wiring/build_bundles_process.go
   - service: JobService (jobs.Service)
     constructor: NewService
-    location: internal/app/composition.go::BuildJobsBundle
+    location: internal/app/wiring/module_jobs.go
   - service: AppJobRunner (jobs.Runner)
     constructor: buildJobRunner
-    location: internal/app/lifecycle_job_runner.go
+    location: internal/app/wiring/lifecycle_job_runner.go
     step_constructor: buildJobRunnerStep  # typed-lifecycle helper, PR4.8
     step_name: job-runner
     step_required: true
     step_appended_last: true  # TestLifecycle_JobRunnerLast invariant
   - service: JobFacade (jobs.Facade)
     constructor: NewFacade
-    location: internal/app/composition.go::BuildJobsBundle
+    location: internal/app/wiring/module_jobs.go
   - service: DeletionService
     constructor: NewDeletionService
-    location: internal/app/composition.go::BuildMaintBundle
+    location: internal/app/wiring/build_bundles_maint.go
   - service: HealthService
     constructor: NewService
-    location: internal/app/composition.go::BuildUtilityBundle
+    location: internal/app/wiring/build_bundles_core.go
   - service: ReadyChecker
     constructor: NewReadyChecker
-    location: internal/app/bootstrap.go
+    location: internal/app/wiring/bootstrap.go
 
 # Only target roots are valid homes for new architecture. The former
 # application/api/domain/infrastructure roots are migration-only and are
@@ -391,7 +391,8 @@ archcheck_cli:
     eliminated; that requires PR4's runner.go + main.go trim to
     ≤100 LOC. PR2-PR4 will continue the cut.
 http_transport:
-  owner: internal/api
+  owner: internal/platform/httpserver
+  # internal/api root retired — HTTP transport now owned by internal/platform/httpserver + internal/capabilities/*/handler packages
   rule: api imports ONLY application + domain. Never platform/sqlite/sql, never os/exec, never google.golang.org/api/drive/v3.
   target_subdirs:
     - api/assets
@@ -407,7 +408,7 @@ http_transport:
 composition_root:
   owner: internal/app
   rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
-  target_files: [app.go, bootstrap.go, lifecycle.go, shutdown.go, modules/*.go]
+  target_files: [wiring/bootstrap.go, wiring/composition.go, wiring/lifecycle.go, wiring/lifecycle/*.go]
 
 # ── Domain (canonical contracts + types) ─────────────────────────────────────
 
@@ -420,10 +421,10 @@ composition_root:
 # Edit the source files; the generated view is regenerated deterministically.
 
 domain_job:
-  owner: internal/domain/job
+  owner: internal/kernel/job
   rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
   migrated_from:
-    - internal/domain/worker
+    - internal/domain/worker (historical)
     - internal/contracts/scriptjobs
     - internal/jobs/domain_types.go
     - internal/jobs/domain_commands.go
@@ -431,7 +432,7 @@ domain_script:
   owner: internal/kernel/script
   rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
 domain_asset:
-  owner: internal/domain/asset
+  owner: internal/kernel/asset
   rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
   absorbs_from_core_wave_4C:
     - Repository (from internal/core/assetop)
@@ -440,7 +441,7 @@ domain_asset:
     - EmbeddingPort (from internal/core/embedding)
     - AudioPort (from internal/core/audio)
   migrated_from:
-    - internal/domain/media
+    - internal/domain/media (historical)
     - internal/assets
     - internal/artifacts
     - internal/core/assetop
@@ -624,7 +625,7 @@ infrastructure_observability:
   target_subdirs: [observability/resource]
   migrated_from: internal/infrastructure/observability
 infrastructure_shared:
-  owner: DELETE
+  owner: internal/platform  # retired bucket — 'DELETE' is policy, not a path; no shared/common/utils/helpers dirs may exist
   rationale: No shared/common/utils/helpers dumping grounds. Each utility must move to its technical owner or become a leaf-local helper.
   forbidden_paths: [internal/platform/shared, '**/shared', '**/common', '**/utils', '**/helpers']
 

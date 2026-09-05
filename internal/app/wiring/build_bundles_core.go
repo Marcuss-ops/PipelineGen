@@ -12,13 +12,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
@@ -290,7 +290,7 @@ type buildImagesParams struct {
 	Cfg           *config.Config
 	Log           *zap.Logger
 	DriveUploader *drive.Uploader
-	StyleRegistry *generation.StyleRegistry
+	StyleRegistry *imagestyles.StyleRegistry
 	Publisher     delivery.Publisher
 	ImageRepo     *imagesrepo.ImagesRepository
 	VOMetaWriter  semantic.MetadataWriterPort

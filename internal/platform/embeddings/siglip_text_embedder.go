@@ -1,7 +1,7 @@
 // Package embeddings — SigLIPTextEmbedder crosses the modality gap
 // between text queries and visual-frame embeddings. SigLIP is trained
 // as a joint image+text embedding model: text encoder outputs land in
-// the SAME 768-dim vector space as the image-encoder outputs indexed
+// the SAME canonical vector space as the image-encoder outputs indexed
 // in the visual channel of Qdrant. This is the load-bearing
 // abstraction that enables end-to-end "search the concept in the
 // pixels" via PR-CROSS-MODAL-TEXT-TO-VISUAL (deadline 2026-08-01).
@@ -22,8 +22,8 @@
 // ErrSigLIPEmptyResponse) wrapping inner HTTP / decode errors via %w
 // so callers `errors.Is` the canonical sentinel without
 // unwrapping. Construction is fail-closed: a non-canonical
-// dimension (anything other than 768) trips
-// ErrSigLIPDimensionMismatch so the registry routes the channel to
+// dimension (anything other than models.CanonicalVisualModelDimensions)
+// trips ErrSigLIPDimensionMismatch so the registry routes the channel to
 // the godlike/07 deferred-stub fallback path instead of silently
 // feeding a non-matching vector to Qdrant (the most damaging
 // failure mode the cross-modal premise can hide).
@@ -67,7 +67,8 @@ import (
 // Canonical SigLIP text-encoder dimension. Mirrors the Qdrant v3
 // IndexSchema visual channel (DefaultV3Schema in
 // internal/platform/qdrant/schema/schema.go: SigLIP
-// so400m patch14-384, 768 dims, Cosine, normalized). The HTTP
+// so400m patch14-384, Cosine, normalized — dimension comes from
+// models.CanonicalVisualModelDimensions, the model-registry SSOT). The HTTP
 // sidecar MUST return vectors of exactly this length; any deviation
 // trips the fail-closed dimension-mismatch guard per godlike/07.
 const SigLIPTextDimension = models.CanonicalVisualModelDimensions
@@ -89,13 +90,13 @@ const DefaultSigLIPTextSidecarURL = "http://127.0.0.1:8001"
 // `errors.Is` the canonical probe. The dimension + identity-mismatch
 // sentinels surface the cross-modal-premise failure modes that
 // would otherwise silently corrupt the registry's downstream
-// dispatch (a 512d vector written to a 768d Qdrant collection
+// dispatch (a 512d vector written to a canonical-dimension Qdrant collection
 // returns a Qdrant-side dimension-mismatch error AFTER the registry
 // has cached the bad result — by then the cross-modal premise is
 // broken invisibly).
 var (
 	ErrSigLIPSidecarUnavailable    = errors.New("siglip text sidecar unavailable")
-	ErrSigLIPDimensionMismatch     = errors.New("siglip text encoder returned non-768d vector")
+	ErrSigLIPDimensionMismatch     = errors.New("siglip text encoder returned non-canonical-dimension vector")
 	ErrSigLIPModelIdentityMismatch = errors.New("siglip text encoder model identity mismatch")
 	ErrSigLIPEmptyResponse         = errors.New("siglip text encoder returned empty vector")
 )
@@ -108,7 +109,7 @@ var _ searchpkg.ChannelEncoder = (*SigLIPTextEmbedder)(nil)
 
 // SigLIPTextEmbedder calls the Python sidecar's `/embed_visual_from_text`
 // endpoint to generate cross-modal text→visual embeddings. Returns
-// 768d vectors that land in the SAME space as image-encoded
+// canonical-dimension vectors that land in the SAME space as image-encoded
 // SigLIP vectors per the joint-embedding training objective.
 //
 // Construction:
@@ -226,9 +227,10 @@ func (s *SigLIPTextEmbedder) EmbedTextQuery(ctx context.Context, text string) ([
 	}
 
 	// godlike/07 fail-closed: dimensions MUST match the canonical
-	// 768d SigLIP space. A non-matching dimension at this seam is
-	// the cross-modal-premise failure mode — calling Qdrant with a
-	// non-768d vector would corrupt the index silently, so we
+	// SigLIP space (models.CanonicalVisualModelDimensions). A non-matching
+	// dimension at this seam is the cross-modal-premise failure mode —
+	// calling Qdrant with a non-canonical vector would corrupt the index
+	// silently, so we
 	// fail-closed here with the canonical sentinel. The ErrSigLIPDimensionMismatch
 	// sentinel is intentionally typed (no model/dimension payload);
 	// the wrapped %w carries the dimension drift detail in

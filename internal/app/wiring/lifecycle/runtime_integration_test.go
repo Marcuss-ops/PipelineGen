@@ -7,7 +7,7 @@
 //
 // The tests are sequential (t.Parallel disabled where goroutine counting
 // or shared channels are used) to avoid cross-test interference.
-package wiring
+package lifecycle_test
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	lifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -78,7 +79,7 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 
 	// Build the startup plan: prerequisite required services first,
 	// then optional background services, then job-runner last.
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		// Prerequisite required services.
 		{
 			Name: "drive-init", Required: true,
@@ -254,7 +255,7 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 // probe fails, no startup steps execute and Stop remains safe.
 func TestLifecycleIntegration_DriveProbeFailure(t *testing.T) {
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, nil),
 		makeRecordingStep("job-runner", true, rec, nil),
 	}
@@ -298,7 +299,7 @@ func TestLifecycleIntegration_DriveProbeFailure(t *testing.T) {
 // sequence aborts and no subsequent steps execute.
 func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "drive-init", Required: true,
 			Start: func(_ context.Context) error { rec.record("drive-init"); return nil },
@@ -365,7 +366,7 @@ func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
 // service failures are logged but do not prevent subsequent steps.
 func TestLifecycleIntegration_OptionalStepFailure(t *testing.T) {
 	rec := &recorder{}
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "job-scanner", Required: false,
 			Start: func(_ context.Context) error {
@@ -418,7 +419,7 @@ func TestLifecycleIntegration_ContextCancelledDuringStartup(t *testing.T) {
 	rec := &recorder{}
 	startedSvc := newMockService("started-service")
 
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "drive-init", Required: true,
 			Start: func(_ context.Context) error {
@@ -499,8 +500,8 @@ func TestLifecycleIntegration_ConcurrentSafeGoServices(t *testing.T) {
 	servicesDone := make(chan struct{}, 4)
 
 	// Create a step that launches N goroutines (simulating a pool worker).
-	makePoolStep := func(name string, workers int) StartupStep {
-		return StartupStep{
+	makePoolStep := func(name string, workers int) lifecycle.StartupStep {
+		return lifecycle.StartupStep{
 			Name: name, Required: false,
 			Start: func(startCtx context.Context) error {
 				for i := 0; i < workers; i++ {
@@ -519,7 +520,7 @@ func TestLifecycleIntegration_ConcurrentSafeGoServices(t *testing.T) {
 		}
 	}
 
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		makePoolStep("worker-pool-a", 2),
 		makePoolStep("worker-pool-b", 2),
 		{
@@ -585,7 +586,7 @@ func TestLifecycleIntegration_IdempotentStopAfterPartialStart(t *testing.T) {
 	s1 := newMockService("svc-1")
 	s2 := newMockService("svc-2")
 
-	plan := []StartupStep{
+	plan := []lifecycle.StartupStep{
 		{
 			Name: "svc-1", Required: true,
 			Start: func(startCtx context.Context) error {

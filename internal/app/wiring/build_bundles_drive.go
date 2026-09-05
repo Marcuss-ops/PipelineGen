@@ -22,12 +22,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	"os"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -87,7 +87,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 		return nil, nil, err
 	}
 
-	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
+	styleRegistry, _ := imagestyles.NewStyleRegistry("config/generation_styles.yaml")
 
 	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())
 	if err != nil {

@@ -34,9 +34,8 @@ func SafeFolderName(name string) string {
 	return result
 }
 
-// ExtractStyleFromPath extracts the style segment from a relative image path.
-// Paths follow the pattern: images/downloaded/{source}/{style}/{subStyle}/{genID}/{hash}.ext
-// or: images/generated/{style}/{subStyle}/{genID}/{hash}.ext
+// BuildTimestampedSlug builds a deterministic, timestamp-prefixed slug for
+// new media files (name + extension).
 func BuildTimestampedSlug(name, ext string) string {
 	base := SafeFolderName(name)
 	if ext != "" && !strings.HasPrefix(ext, ".") {
@@ -93,23 +92,4 @@ func EnsureWithinDir(root, path string) error {
 		return fmt.Errorf("path %q escapes root %q", path, root)
 	}
 	return nil
-}
-
-func ExtractStyleFromPath(pathRel string) string {
-	normalized := strings.ReplaceAll(pathRel, "\\", "/")
-	parts := strings.Split(normalized, "/")
-	if len(parts) < 3 {
-		return ""
-	}
-	switch parts[1] {
-	case "downloaded":
-		if len(parts) >= 4 {
-			return parts[3]
-		}
-	case "generated":
-		if len(parts) >= 3 {
-			return parts[2]
-		}
-	}
-	return ""
 }

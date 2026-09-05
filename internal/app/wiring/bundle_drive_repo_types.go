@@ -1,8 +1,8 @@
 package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -24,7 +24,7 @@ type DriveBundle struct {
 	DocPublisher  delivery.DocPublisher
 	DriveDests    *DriveDestinations
 	DestResolver  asset.Resolver
-	StyleRegistry *generation.StyleRegistry
+	StyleRegistry *imagestyles.StyleRegistry
 	Publisher     delivery.Publisher
 	Lifecycle     drive.FileLifecycle
 	DriveUploader *drive.Uploader

@@ -23,6 +23,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -210,7 +211,7 @@ func (p *GenerationPreparer) Prepare(
 			return p.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr, tracker)
 		}
 		item = resolvedItem
-		plan = BuildPlan(item)
+		plan = generationpkg.BuildPlan(item)
 
 		// Merge resolved source into plan.
 		if resolved != nil {

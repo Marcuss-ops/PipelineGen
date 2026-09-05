@@ -23,7 +23,7 @@ import (
 // it calls the public DuckDuckGo image endpoint and downloads remote assets.
 // Run it with:
 //
-// IMAGE_CATALOG_LIVE_DDG=1 go test ./internal/capabilities/images/workflow -run TestLiveDuckDuckGoEntityImageCatalogBattery -v -count=1
+// IMAGE_CATALOG_LIVE_DDG=1 go test ./internal/capabilities/images -run TestLiveDuckDuckGoEntityImageCatalogBattery -v -count=1
 func TestLiveDuckDuckGoEntityImageCatalogBattery(t *testing.T) {
 	if os.Getenv("IMAGE_CATALOG_LIVE_DDG") != "1" {
 		t.Skip("set IMAGE_CATALOG_LIVE_DDG=1 to run the live DuckDuckGo battery")

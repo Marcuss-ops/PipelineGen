@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -61,7 +62,7 @@ func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 		}
 		items := make([]GenerateBatchItem, 0, len(req.Sections))
 		for i, sec := range req.Sections {
-			prompt := BuildPrimaryPrompt(sec, req.Topic)
+			prompt := imggeneration.BuildPrimaryPrompt(sec, req.Topic)
 			if prompt == "" {
 				return nil, fmt.Errorf("section[%d] has no title, text, or topic — cannot build a prompt", i)
 			}
@@ -73,8 +74,8 @@ func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 			items = append(items, GenerateBatchItem{
 				Prompt: prompt,
 				Style:  style,
-				Width:  SectionImageWidth,
-				Height: SectionImageHeight,
+				Width:  imggeneration.SectionImageWidth,
+				Height: imggeneration.SectionImageHeight,
 				Tags:   []string{subject, "style:" + style},
 			})
 		}

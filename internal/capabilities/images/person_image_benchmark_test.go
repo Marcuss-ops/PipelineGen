@@ -298,7 +298,7 @@ func runPersonImageBenchConcurrent(ctx context.Context, client *http.Client, per
 //
 // Run with:
 //
-//	PERSON_IMAGE_BENCHMARK=1 go test ./internal/capabilities/images/workflow \
+//	PERSON_IMAGE_BENCHMARK=1 go test ./internal/capabilities/images \
 //	  -run TestPersonImageBenchmarkROUNDS_1_5 -v -count=1 -timeout 30m
 
 func TestPersonImageBenchmarkROUNDS_1_5(t *testing.T) {

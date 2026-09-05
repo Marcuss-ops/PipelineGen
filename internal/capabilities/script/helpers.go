@@ -18,8 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // ── Post-gen metadata helpers ───────────────────────────────────────────────
@@ -31,12 +30,12 @@ import (
 
 // ScriptHistoryHandler handles script history endpoints.
 type ScriptHistoryHandler struct {
-	repo adapters.ScriptRepository
+	repo ports.ScriptRepository
 	log  *zap.Logger
 }
 
 // NewScriptHistoryHandler creates a new script history handler.
-func NewScriptHistoryHandler(repo adapters.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
+func NewScriptHistoryHandler(repo ports.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
 	return &ScriptHistoryHandler{
 		repo: repo,
 		log:  log,
@@ -73,7 +72,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	}
 	offset = apiutil.ClampLimit(offset, 0, 0)
 
-	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), usecase.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
+	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), ports.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
 		apiutil.InternalError(c, err)

@@ -46,6 +46,7 @@ import (
 	"strings"
 	"time"
 
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -267,11 +268,15 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		embeddingContractProbe = newEmbeddingContractProbe(cfg, root.Process.CollectionManager)
 	}
 
-	lifecycle := NewServerLifecycleWithProbes(
-		startupPlan, cleanup,
-		dbProbe, nil, driveProbe,
-		log,
-	)
+	// lifecycle-runtime-ownership closure: construct the canonical
+	// wiring/lifecycle.Runtime directly (root serverLifecycle facade retired).
+	lifecycle := lifecyclewiring.NewRuntime(startupPlan, cleanup, log)
+	if dbProbe != nil {
+		lifecycle.AddProbe("db", dbProbe)
+	}
+	if driveProbe != nil {
+		lifecycle.AddProbe("drive", driveProbe)
+	}
 
 	// (chrome-pool-prewarm now lives in startupPlan; the prior
 	//  AddProbe("chrome-pool", ...) is gone, so HTTP traffic

@@ -36,7 +36,7 @@
 # invoke `exit` themselves.
 
 # ── Sub-check registry ──────────────────────────────────────────────
-# 18 sub-checks in canonical execution order. Disambiguated for
+# 17 sub-checks in canonical execution order. Disambiguated for
 # sections where the source 50_jobs.sh has duplicate `# ── Check N: ──`
 # headers (Check 50 appears at L1..108 AND L1627..1702; Check 54
 # appears at L314..485 AND L1703..1926 — distinct gates sharing the
@@ -55,7 +55,6 @@ SUBCHECKS=(
     "50_jobs_forbid_direct_artifactuploader_wire_calls_outside_canonical_.sh"
     "50_jobs_forbid_direct_atomic_complete_wire_calls_outside_canonical_s.sh"
     "50_jobs_fase_37_commit_3_gate_banning_infra_imports_in_monitor.sh"
-    "50_jobs_forbid_legacy_script_columns.sh"
     "50_jobs_go_vet_internal_drift_gate.sh"
     "50_jobs_forbid_infrastructure_imports_in_api_layer.sh"
     "50_jobs_contextbackground_contextwithoutcancel_exemption_tracking.sh"

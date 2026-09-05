@@ -33,7 +33,7 @@ import (
 //
 // Run with:
 //   PERSON_MATERIALIZE_LIVE=1 VELOX_ADMIN_TOKEN=... \
-//     go test ./internal/capabilities/images/workflow -run TestPersonImageMaterializeLive_9_10 -v -count=1 -timeout 10m
+//     go test ./internal/capabilities/images -run TestPersonImageMaterializeLive_9_10 -v -count=1 -timeout 10m
 
 type liveMatResult struct {
 	Person      string

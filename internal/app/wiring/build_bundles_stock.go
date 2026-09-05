@@ -47,6 +47,8 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stock"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
 )
 
 // BuildStockBundle assembles the stock video pipeline composition root:
@@ -99,7 +101,7 @@ import (
 //     required dep (NewProductionStockPipeline rejects Cfg/Log/SourceStager/ClipsRepo/
 //     AssetIndex/Dispatcher/Cutter/Renderer/Jobs).
 //   - (nil, stockapi.Build error) on missing UseCase / EnabledFunc.
-func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
+func BuildStockBundle(deps StockBundleDeps) (*stockwiring.StockPipelineWiring, error) {
 	// ── Gate 1: godlike/07 symmetric production pairing ────────
 	if err := validateStockSymmetricGate(deps.Delivery.Publisher, deps.Delivery.Finalizer); err != nil {
 		return nil, err
@@ -198,7 +200,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		return nil, err
 	}
 
-	return &StockPipelineWiring{
+	return &stockwiring.StockPipelineWiring{
 		Module:      typed.Module,
 		BatchModule: batchModule,
 		Service:     svc,

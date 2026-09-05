@@ -26,7 +26,7 @@ import (
 // via tests/operational/test2_images.sh against a live server.
 //
 // Run:
-//   IMAGE_MATERIALIZE_BENCH=1 go test ./internal/capabilities/images/workflow \
+//   IMAGE_MATERIALIZE_BENCH=1 go test ./internal/capabilities/images \
 //     -run TestPersonImageMaterializeBenchmarkRounds_9_10 -v -count=1 -timeout 10m
 
 type materializeStageResult struct {

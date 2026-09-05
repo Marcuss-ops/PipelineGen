@@ -15,7 +15,7 @@
 //     single composition point for typed-punctuated
 //     Registry.Register mutations — Blocco C1-Step 2).
 //     (PR-AUDIT-7: registerJobs removed — handler binding
-//     is via c3ValidateRuntimeGraph, not this surface.)
+//     is via the C3 runtime-graph validator, not this surface.)
 //   - registry_public_modules.go  registerSystem + registerJobs +
 //     registerImages + registerScriptHistory + registerUtility +
 //     registerRealtime + registerAdminModule
@@ -36,7 +36,7 @@
 //   - registry_mediamemory.go    registerMediaMemory (Step 5c helper —
 //     wires the canonical MediaMemory resolve + bindings + feedback
 //     surface).
-//   - registry_runtime_graph.go  c3ValidateRuntimeGraph (Step 8 helper —
+//   - registry/runtime_graph.go  ValidateRuntimeGraph (Step 8 helper —
 //     C3 startup validation of the canonical job runtime graph).
 //
 // The pre-Step-2 registry_registration.go was deleted in
@@ -45,8 +45,8 @@
 //
 // Co-located files (NOT touched by PR4): registry_helpers.go
 // (composition helpers like initAssetServices used by composition.go
-// — NOT by WireRegistry directly), registry_adapters.go
-// (mutation-dispatcher adapter for the API ↔ application port),
+// — NOT by WireRegistry directly), registry/adapters.go
+// (canonical mutation-dispatcher adapter for the API ↔ application port),
 // composition*.go (BuildSystemBundle / BuildRepositoryBundle etc.),
 // wire_script.go (wireScriptFlow definition lives here, called
 // from registerScripts), script_feature_flags.go (anyScriptFeatureEnabled),
@@ -101,6 +101,9 @@ import (
 	"context"
 	"fmt"
 
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -137,10 +140,10 @@ var (
 type RegistryWiring struct {
 	Registry      *module.Registry
 	ArtlistSvc    *ArtlistWiring
-	YouTubeClip   *YouTubeClipWiring
+	YouTubeClip   *youtubewiring.YouTubeClipWiring
 	MediaIngest   *MediaIngestWiring
 	Assets        *AssetsWiring
-	StockPipeline *StockPipelineWiring
+	StockPipeline *stockwiring.StockPipelineWiring
 
 	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
 	// These handlers are constructed by WireRegistry but NOT registered
@@ -298,7 +301,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// placeholders with real dispatch routing. Validation locks the
 	// SHAPE (HasHandler=true) so C4 can focus on the dispatch path
 	// without re-checking the registry.
-	if err := c3ValidateRuntimeGraph(); err != nil {
+	if err := registrywiring.ValidateRuntimeGraph(); err != nil {
 		return nil, fmt.Errorf("wire registry: c3 startup validation failed: %w", err)
 	}
 

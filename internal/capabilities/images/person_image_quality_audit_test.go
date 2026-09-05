@@ -34,7 +34,7 @@ import (
 // reviewer can annotate. It also inspects the catalog tables directly.
 //
 // Run:
-//   PERSON_QUALITY_AUDIT=1 go test ./internal/capabilities/images/workflow \
+//   PERSON_QUALITY_AUDIT=1 go test ./internal/capabilities/images \
 //     -run TestPersonImageQualityAudit -v -count=1 -timeout 15m
 
 type auditCandidate struct {

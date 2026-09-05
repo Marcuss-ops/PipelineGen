@@ -5,9 +5,9 @@
 //   - Text queries encoded through SigLIP-text land in the SAME 768d
 //     vector space as image-encoded video frames indexed under the
 //     `visual` channel of Qdrant v3 (DefaultV3Schema).
-//   - Dimension assertions are fail-closed: non-768d responses surface
-//     ErrSigLIPDimensionMismatch so a misconfigured sidecar cannot
-//     silently corrupt the index with non-matching vectors.
+//   - Dimension assertions are fail-closed: non-canonical responses
+//     surface ErrSigLIPDimensionMismatch so a misconfigured sidecar
+//     cannot silently corrupt the index with non-matching vectors.
 //   - Model identity cross-validates against the canonical
 //     "siglip-so400m-patch14-384" from IndexSchema per QDRANT-001
 //     (vendor-prefix variants handled via siglipModelNameMatches).
@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,13 +39,15 @@ func makeSiglipFakeVec() []float64 {
 	return out
 }
 
-// TestSigLIPTextDimensionConstant pins the canonical 768d dim against
-// the Qdrant v3 IndexSchema visual channel (DefaultV3Schema). Changing
-// this constant without coordinating the IndexSchema is a
-// cross-modal-breaking event — the test pins the canonical value.
+// TestSigLIPTextDimensionConstant pins the canonical SigLIP dimension
+// (models.CanonicalVisualModelDimensions) against the Qdrant v3
+// IndexSchema visual channel (DefaultV3Schema derives it from
+// models.SigLIP.Dimensions). Changing the registry constant without
+// coordinating the IndexSchema is a cross-modal-breaking event — the
+// test pins the SSOT value.
 func TestSigLIPTextDimensionConstant(t *testing.T) {
-	if SigLIPTextDimension != 768 {
-		t.Errorf("SigLIPTextDimension: want 768d (canonical Qdrant visual channel), got %d", SigLIPTextDimension)
+	if SigLIPTextDimension != models.CanonicalVisualModelDimensions {
+		t.Errorf("SigLIPTextDimension = %d, want models.CanonicalVisualModelDimensions (%d)", SigLIPTextDimension, models.CanonicalVisualModelDimensions)
 	}
 }
 
@@ -82,7 +85,7 @@ func TestSentinelMessageKeywords(t *testing.T) {
 		keyword  string
 	}{
 		{ErrSigLIPSidecarUnavailable, "siglip text sidecar unavailable"},
-		{ErrSigLIPDimensionMismatch, "non-768d vector"},
+		{ErrSigLIPDimensionMismatch, "non-canonical-dimension vector"},
 		{ErrSigLIPModelIdentityMismatch, "model identity mismatch"},
 		{ErrSigLIPEmptyResponse, "empty vector"},
 	}

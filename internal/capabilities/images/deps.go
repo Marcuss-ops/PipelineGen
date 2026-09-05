@@ -13,7 +13,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
+	imageingest "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/ingest"
 	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
@@ -29,7 +32,7 @@ type ImagesDeps struct {
 	GenAI     ImagesGenAIDeps
 	External  ImagesExternalDeps
 	Retrieval *retrieved.RetrievalProviderRegistry
-	Generated *GenerationProviderRegistry
+	Generated *imggeneration.Registry
 }
 
 // ImagesCoreDeps holds platform-level dependencies (config + logger).
@@ -44,7 +47,7 @@ type ImagesCoreDeps struct {
 // surface.
 type ImagesStorageDeps struct {
 	ImageRepo    ImageRepository
-	DriveReader  DriveReader
+	DriveReader  imageingest.DriveReader
 	Publisher    delivery.Publisher
 	DestResolver DestinationResolver
 }
@@ -52,8 +55,8 @@ type ImagesStorageDeps struct {
 // ImagesGenAIDeps holds AI-generation dependencies (LLM, metadata, styles, image gen).
 type ImagesGenAIDeps struct {
 	MetaWriter    SemanticPort
-	StyleRegistry *StyleRegistry
-	ImageGen      ImageGenerator
+	StyleRegistry *imagestyles.StyleRegistry
+	ImageGen      imggeneration.ImageGenerator
 }
 
 // ImagesExternalDeps holds external-service dependencies (ingest, committer, Velox, GA).

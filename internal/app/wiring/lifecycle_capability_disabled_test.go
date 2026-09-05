@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"strings"
 	"testing"
 
@@ -164,16 +165,9 @@ func TestServerLifecycleStart_CapabilityDisabledStepSurfacesInLog(t *testing.T) 
 	// failure path uses l.log.Warn(...)).
 	core, recorded := observer.New(zap.WarnLevel)
 	log := zap.New(core)
-	lm := NewServerLifecycleWithProbes(
-		steps, /* startupPlan */
-		nil,   /* cleanup */
-		nil,   /* dbProbe */
-		nil,   /* vectorProbe */
-		nil,   /* driveProbe */
-		log,
-	)
+	lm := lifecyclewiring.NewRuntime(steps, nil, log)
 	if lm == nil {
-		t.Fatal("NewServerLifecycleWithProbes returned nil for non-empty plan")
+		t.Fatal("lifecyclewiring.NewRuntime returned nil for non-empty plan")
 	}
 
 	err := lm.Start(context.Background())

@@ -5,7 +5,9 @@
 package images
 
 import (
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 )
 
 const userAgent = "PipelineGen/1.0 (VidRush asset retrieval; contact admin)"
@@ -14,15 +16,15 @@ type SemanticMetadataPayload = SemanticPayload
 
 // Service is the top-level facade for the images subsystem.
 type Service struct {
-	Gen        *GenerationService
-	JobHandler *JobHandler
+	Gen        *imggeneration.GenerationService
+	JobHandler *imggeneration.JobHandler
 	Store      *ImageStorageService
 	Meta       *MetadataService
 	Diag       *DiagnosticsService
-	Styles     *StyleRegistry
+	Styles     *imagestyles.StyleRegistry
 }
 
-func (s *Service) StylesRegistry() *StyleRegistry {
+func (s *Service) StylesRegistry() *imagestyles.StyleRegistry {
 	if s == nil {
 		return nil
 	}
@@ -85,11 +87,11 @@ func NewService(deps ImagesDeps) *Service {
 
 	generatedRegistry := deps.Generated
 	if generatedRegistry == nil {
-		generatedRegistry = NewDefaultProviderRegistry(log, deps.GenAI.ImageGen)
+		generatedRegistry = imggeneration.NewDefaultRegistry(log, deps.GenAI.ImageGen)
 	}
 
-	gen := NewGenerationService(generatedRegistry, deps.GenAI.StyleRegistry, log, store)
-	jobHandler := NewJobHandler(generatedRegistry, deps.GenAI.StyleRegistry, log)
+	gen := imggeneration.NewGenerationService(generatedRegistry, deps.GenAI.StyleRegistry, log, store)
+	jobHandler := imggeneration.NewJobHandler(generatedRegistry, deps.GenAI.StyleRegistry, log)
 
 	return &Service{Gen: gen, JobHandler: jobHandler, Store: store, Meta: meta, Diag: diag, Styles: deps.GenAI.StyleRegistry}
 }

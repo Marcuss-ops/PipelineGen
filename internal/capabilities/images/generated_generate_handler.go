@@ -10,6 +10,7 @@ package images
 
 import (
 	"errors"
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"net/http"
 
@@ -96,7 +97,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		req.Tags,
 		req.Width,
 		req.Height,
-		CanonicalGoogleSlidesModel,
+		imggeneration.CanonicalGoogleSlidesModel,
 		skipDrive,
 	)
 	if err != nil {

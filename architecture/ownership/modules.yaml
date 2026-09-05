@@ -17,7 +17,7 @@ target_root: internal/
 module_route_map:
   - module: ScriptFlow
     prefix: /api/script
-    owner: internal/app/wire_script.go
+    owner: internal/app/wiring/wire_script.go
     # Routes mounted by ScriptFlowHandler.RegisterRoutes (internal/api/script/handler_flow.go)
     # via gen.GenerateRoute + r.GET("/clips/search",
     # h.SearchClipsByName) + jobsRegisterRoutes. The AUDITED canonical set
@@ -38,7 +38,7 @@ module_route_map:
       - GET  /jobs/:id
   - module: Assets
     prefix: /api/media + /api/assets
-    owner: internal/app/assets_core.go
+    owner: internal/app/wiring/build_bundles_domain_assets.go
     routes:
       - POST /media/search
       - POST /media/upload
@@ -59,7 +59,7 @@ module_route_map:
       - POST /ingest/bulk
   - module: Artlist
     prefix: /api/artlist
-    owner: internal/app/build_bundles_artlist_artlist.go
+    owner: internal/app/wiring/build_bundles_artlist_artlist.go
     routes:
       - POST /run
       - GET  /runs/:run_id
@@ -71,7 +71,7 @@ module_route_map:
       - POST /sync-catalogs
   - module: Images
     prefix: /api/images
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes:
       - GET  /search
       - GET  /diagnostics
@@ -83,7 +83,7 @@ module_route_map:
       - POST /video/generate
   - module: Jobs
     prefix: /api/jobs + /api/internal
-    owner: internal/app/composition.go::BuildJobsBundle
+    owner: internal/app/wiring/module_jobs.go
     routes:
       - POST /
       - GET  /
@@ -95,7 +95,7 @@ module_route_map:
       - GET  /:id/events
   - module: YouTube
     prefix: /api/clips
-    owner: internal/app/composition.go::BuildDomainBundle
+    owner: internal/app/wiring/build_bundles_domain_media.go
     routes:
       - POST /search
       - POST /ingest
@@ -103,14 +103,14 @@ module_route_map:
       - POST /batch
   - module: Channels
     prefix: /api/channels
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes:
       - GET  /
       - POST /
       - POST /:id/toggle
   - module: Stock
     prefix: stock pipeline routes
-    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    owner: internal/app/wiring (consolidated; Build*Bundle)
     routes: []  # registered via separate handler
   - module: Content
     prefix: /api/books + /api/lessons
