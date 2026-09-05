@@ -1,0 +1,323 @@
+# PipelineGen — macro-cross capability import ledger (decoupling allowlist).
+#
+# Wave 24 P1-CAPABILITY-OWNERSHIP companion: every macro-cross import edge
+# remaining after aggregation (see architecture/capability_macro_map.yaml) is
+# tracked here. The archcheck ratchet treats this file as an ALLOWLIST:
+#   - a macro-cross edge NOT listed here is a hard violation (new coupling);
+#   - an entry whose edge no longer exists is a stale-ledger violation
+#     (prune the entry only when the decoupling actually lands);
+#   - edges are intended to SHRINK over time as each K1/K2 item ships.
+#
+# Fix-strategy taxonomy recorded per entry (kind field):
+#   K1 - shared leaf/contract mis-homed under one macro but consumed by
+#        another; hoist the contract to kernel (or the canonical shared
+#        owner) and keep mechanics in the owning macro.
+#   K2 - business coupling that should be inverted via a kernel/consumer-
+#        side port (or retargeted to the kernel type home, e.g. job types
+#        belong in kernel/job) with the composition root wiring concretes.
+#   K3 - deliberate, documented SSOT pin / registry-tracked seam (see the
+#        tracking_issue for the deprecation record or godlike/06 pin).
+#
+# Tracking tickets: architecture/current.yaml WAVE-24-CLEANUP-DAY
+# (P1-CAPABILITY-OWNERSHIP + cleanup backlog).
+allowlist:
+
+  - source: ai
+    target: assets
+    kind: K1
+    exemplar: internal/capabilities/ai/autotag/autotag.go -> internal/capabilities/assets/enrichment
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: ai
+    target: scripts
+    kind: K1
+    exemplar: internal/capabilities/ai/autotag/autotag.go -> internal/capabilities/mediamemory
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: ai
+    target: youtube
+    kind: K1
+    exemplar: internal/capabilities/semantic/ollama_analyzer.go -> internal/capabilities/transcripts
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: ai
+    kind: K1
+    exemplar: internal/capabilities/assets/providers/artlist/semantic_enricher.go -> internal/capabilities/ai/semantic
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: channels
+    kind: K2
+    exemplar: internal/capabilities/assets/monitor/analyzer.go -> internal/capabilities/channels
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: content
+    kind: K2
+    exemplar: internal/capabilities/assets/texttracks/cue_translate.go -> internal/capabilities/translation
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/assets/catalogsync/sync_jobs.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/assets/finalizer/artifact_preparation.go -> internal/capabilities/remote
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: voiceover
+    kind: K2
+    exemplar: internal/capabilities/assets/voiceover/types.go -> internal/capabilities/voiceover
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: assets
+    target: youtube
+    kind: K3
+    exemplar: internal/capabilities/assets/localized/port.go -> internal/capabilities/youtube/dto
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: books
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/books/job_handler.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: books
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/books/process_drive_usecase.go -> internal/capabilities/scripts/apiutil
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: content
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/localization/adapters/subtitle.go -> internal/capabilities/assets/texttracks
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: content
+    target: delivery
+    kind: K2
+    exemplar: internal/capabilities/multilingual/renderer.go -> internal/capabilities/delivery
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: content
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/localization/adapters/render.go -> internal/capabilities/cliprender
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: content
+    target: system
+    kind: K2
+    exemplar: internal/capabilities/multilingual/recorder.go -> internal/capabilities/performance
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: images
+    target: ai
+    kind: K1
+    exemplar: internal/capabilities/images/search_scoring.go -> internal/capabilities/linguistics
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: images
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/images/deps.go -> internal/capabilities/acquisition
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: images
+    target: delivery
+    kind: K2
+    exemplar: internal/capabilities/images/delivery_outbox.go -> internal/capabilities/delivery
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: images
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/images/batch_generate_handler.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: images
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/images/entitycatalog/port.go -> internal/capabilities/entities
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: jobs
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/jobs/completion/complete_job_ports.go -> internal/capabilities/finalization
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: jobs
+    target: content
+    kind: K2
+    exemplar: internal/capabilities/jobs/registry_types.go -> internal/capabilities/document
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: jobs
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/jobs/binding_indexing.go -> internal/capabilities/mediamemory
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: jobs
+    target: system
+    kind: K2
+    exemplar: internal/capabilities/jobs/impl.go -> internal/capabilities/middleware
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: jobs
+    target: youtube
+    kind: K2
+    exemplar: internal/capabilities/jobs/registry_extraction.go -> internal/capabilities/youtube
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: ai
+    kind: K1
+    exemplar: internal/capabilities/mediamemory/media_memory_resolver.go -> internal/capabilities/brain
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/cliprender/adapters/cliprender_plan.go -> internal/capabilities/assets/texttracks
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: channels
+    kind: K2
+    exemplar: internal/capabilities/scripts/ports/slot_search_port.go -> internal/capabilities/clipfolder
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: content
+    kind: K2
+    exemplar: internal/capabilities/scripts/usecase/flow_helpers_artlist.go -> internal/capabilities/translation
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: delivery
+    kind: K2
+    exemplar: internal/capabilities/cliprender/adapters/cliprender_destination_resolver.go -> internal/capabilities/delivery
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: images
+    kind: K2
+    exemplar: internal/capabilities/lessons/service.go -> internal/capabilities/images
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/lessons/job_handler.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: stockintelligence
+    kind: K2
+    exemplar: internal/capabilities/scripts/vidrush_semantic_chain.go -> internal/capabilities/stockintelligence
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: system
+    kind: K2
+    exemplar: internal/capabilities/script/handler_deps.go -> internal/capabilities/operations
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: voiceover
+    kind: K2
+    exemplar: internal/capabilities/scripts/adapters/processor_voiceover.go -> internal/capabilities/voiceover/service
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: scripts
+    target: youtube
+    kind: K2
+    exemplar: internal/capabilities/scripts/adapters/youtube_source_discovery.go -> internal/capabilities/youtube/ports
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: stockintelligence
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/stockintelligence/adapters.go -> internal/capabilities/scripts/ports
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: system
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/projectionretention/policy.go -> internal/capabilities/mediaregistry
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: system
+    target: channels
+    kind: K2
+    exemplar: internal/capabilities/admin/handler_drive_canary.go -> internal/capabilities/clipfolder
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: system
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/admin/handler_workers_cert.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: system
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/performance/projector.go -> internal/capabilities/scripts/performance
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: voiceover
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/voiceover/service/finalizer.go -> internal/capabilities/assets/persistence
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: voiceover
+    target: content
+    kind: K2
+    exemplar: internal/capabilities/voiceover/service/service.go -> internal/capabilities/translation
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: voiceover
+    target: jobs
+    kind: K2
+    exemplar: internal/capabilities/voiceover/service/job_handler.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: voiceover
+    target: scripts
+    kind: K2
+    exemplar: internal/capabilities/voiceover/service/command.go -> internal/capabilities/audio
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: youtube
+    target: ai
+    kind: K1
+    exemplar: internal/capabilities/youtube/adapters/clips_adapters_drive.go -> internal/capabilities/ai/semantic
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: youtube
+    target: assets
+    kind: K2
+    exemplar: internal/capabilities/youtube/adapters/clips_adapters_drive.go -> internal/capabilities/clips
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: youtube
+    target: channels
+    kind: K3
+    exemplar: internal/capabilities/youtube/adapters/monitoradapter/extraction_intent_adapter.go -> internal/capabilities/channels
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
+
+  - source: youtube
+    target: jobs
+    kind: K3
+    exemplar: internal/capabilities/youtube/adapters/monitoradapter/extraction_intent_adapter.go -> internal/capabilities/jobs
+    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP

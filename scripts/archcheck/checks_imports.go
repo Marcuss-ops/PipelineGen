@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const moduleImportPrefix = "github.com/Marcuss-ops/PipelineGen/"
@@ -206,12 +208,21 @@ func uniqueStrings(values []string) []string {
 // checkCrossCapabilityImport counts and reports distinct imports from one
 // current capability to another. Imports into kernel, platform, or app are
 // not cross-capability edges; those are governed by the root boundary rules.
+//
+// Classification granularity: when architecture/capability_macro_map.yaml
+// exists (the package-to-macro-capability ownership SSOT published by Wave 24
+// P1-CAPABILITY-OWNERSHIP), edges are aggregated to the macro owner first, so
+// imports between sibling packages of the same macro capability are not
+// reported. Residual macro-cross edges are checked against
+// architecture/capability_import_allowlist.yaml (the tracked-decoupling
+// ledger); a macro-cross edge that is not allowlisted is a violation, and an
+// allowlist entry whose edge no longer exists is a stale-ledger violation.
 func checkCrossCapabilityImport() (map[string]int, []string) {
 	return checkCrossCapabilityImportAt(".")
 }
 
 func checkCrossCapabilityImportAt(root string) (map[string]int, []string) {
-	stats := map[string]int{"actual": 0, "violations": 0}
+	stats := map[string]int{"actual": 0, "macro": 0, "allowlisted": 0, "violations": 0}
 	imports, err := scanProductionImports(root)
 	if err != nil {
 		stats["violations"] = -1
@@ -219,30 +230,138 @@ func checkCrossCapabilityImportAt(root string) (map[string]int, []string) {
 	}
 
 	capabilities := capabilityNamesAt(root)
-	pairs := make(map[string][]string)
+	// dirPair -> [exemplar edges] at the raw on-disk granularity.
+	dirPairs := make(map[string][]string)
+	// macroPair -> [exemplar edges] after package->macro aggregation.
+	macroPairs := make(map[string][]string)
 	for _, edge := range imports {
 		sourceCapability := capabilityOfFile(edge.file, capabilities)
 		importCapability := capabilityOfImport(edge.importPath, capabilities)
 		if sourceCapability == "" || importCapability == "" || sourceCapability == importCapability {
 			continue
 		}
-		pair := sourceCapability + "->" + importCapability
-		pairs[pair] = append(pairs[pair], edge.file+" -> "+edge.importPath)
+		dirPair := sourceCapability + "->" + importCapability
+		dirPairs[dirPair] = append(dirPairs[dirPair], edge.file+" -> "+edge.importPath)
+
+		sourceMacro := sourceCapability
+		importMacro := importCapability
+		if dirToMacro, ok := loadMacroOwners(root); ok {
+			sourceMacro = macroOwnerOf(dirToMacro, sourceCapability)
+			importMacro = macroOwnerOf(dirToMacro, importCapability)
+		}
+		if sourceMacro == importMacro {
+			continue
+		}
+		macroPair := sourceMacro + "->" + importMacro
+		macroPairs[macroPair] = append(macroPairs[macroPair], edge.file+" -> "+edge.importPath)
 	}
 
-	pairNames := make([]string, 0, len(pairs))
-	for pair := range pairs {
-		pairNames = append(pairNames, pair)
+	dirPairNames := make([]string, 0, len(dirPairs))
+	for pair := range dirPairs {
+		dirPairNames = append(dirPairNames, pair)
 	}
-	sort.Strings(pairNames)
-	violations := make([]string, 0, len(pairNames))
-	for _, pair := range pairNames {
-		edges := uniqueStrings(pairs[pair])
+	sort.Strings(dirPairNames)
+
+	// Stale-ledger detection requires both the macro map and the allowlist.
+	_, macroMapPresent := loadMacroOwners(root)
+	allow, allowPresent := loadCrossCapabilityAllowlist(root)
+
+	macroPairNames := make([]string, 0, len(macroPairs))
+	for pair := range macroPairs {
+		macroPairNames = append(macroPairNames, pair)
+	}
+	sort.Strings(macroPairNames)
+
+	violations := make([]string, 0, len(macroPairNames))
+	allowlisted := 0
+	for _, pair := range macroPairNames {
+		edges := uniqueStrings(macroPairs[pair])
+		if allowPresent && allow[pair] {
+			allowlisted++
+			continue
+		}
 		violations = append(violations, fmt.Sprintf("cross-capability import %s: %s", pair, edges[0]))
 	}
-	stats["actual"] = len(pairNames)
+	if macroMapPresent && allowPresent {
+		present := make(map[string]bool, len(macroPairs))
+		for pair := range macroPairs {
+			present[pair] = true
+		}
+		for pair := range allow {
+			if !present[pair] {
+				violations = append(violations, fmt.Sprintf("cross-capability allowlist entry no longer present (stale ledger): %s", pair))
+			}
+		}
+	}
+	sort.Strings(violations)
+
+	stats["actual"] = len(dirPairNames)
+	stats["macro"] = len(macroPairNames)
+	stats["allowlisted"] = allowlisted
 	stats["violations"] = len(violations)
 	return stats, violations
+}
+
+// macroOwnerOf resolves a capability package dir to its macro owner. Packages
+// without a declared macro owner keep their own name (identity fallback) so a
+// missing map entry can never silently bless a cross edge.
+func macroOwnerOf(dirToMacro map[string]string, dir string) string {
+	if owner, ok := dirToMacro[dir]; ok && owner != "" {
+		return owner
+	}
+	return dir
+}
+
+const macroOwnersPath = "architecture/capability_macro_map.yaml"
+
+// loadMacroOwners reads the package-to-macro-capability ownership map. The
+// second return value reports whether the file exists (absent file => identity
+// fallback, e.g. synthetic check roots in unit tests).
+func loadMacroOwners(root string) (map[string]string, bool) {
+	doc := struct {
+		Map map[string][]string `yaml:"macro_capability_map"`
+	}{}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(macroOwnersPath)))
+	if err != nil {
+		return nil, false
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, false
+	}
+	dirToMacro := make(map[string]string)
+	for macro, dirs := range doc.Map {
+		for _, dir := range dirs {
+			dirToMacro[dir] = macro
+		}
+	}
+	return dirToMacro, true
+}
+
+const crossCapabilityAllowlistPath = "architecture/capability_import_allowlist.yaml"
+
+// loadCrossCapabilityAllowlist reads the macro-cross decoupling ledger. The
+// second return value reports whether the file exists.
+func loadCrossCapabilityAllowlist(root string) (map[string]bool, bool) {
+	doc := struct {
+		Allow []struct {
+			Source string `yaml:"source"`
+			Target string `yaml:"target"`
+		} `yaml:"allowlist"`
+	}{}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(crossCapabilityAllowlistPath)))
+	if err != nil {
+		return nil, false
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, false
+	}
+	allow := make(map[string]bool)
+	for _, entry := range doc.Allow {
+		if entry.Source != "" && entry.Target != "" {
+			allow[entry.Source+"->"+entry.Target] = true
+		}
+	}
+	return allow, true
 }
 
 func capabilityNamesAt(root string) map[string]bool {

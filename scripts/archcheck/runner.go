@@ -57,6 +57,8 @@ func runFocusedChecks() Report {
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]
+	checks["cross_capability_macro_pairs"] = cciStats["macro"]
+	checks["cross_capability_allowlisted"] = cciStats["allowlisted"]
 	violations = append(violations, cciViolations...)
 
 	qualityStats, qualityViolations := runComplexityQualityGate()
@@ -111,6 +113,8 @@ func runRatchetChecks() Report {
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]
+	checks["cross_capability_macro_pairs"] = cciStats["macro"]
+	checks["cross_capability_allowlisted"] = cciStats["allowlisted"]
 	violations = append(violations, cciViolations...)
 
 	qualityStats, qualityViolations := runComplexityQualityGate()
