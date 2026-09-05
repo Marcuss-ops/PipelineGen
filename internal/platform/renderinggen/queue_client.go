@@ -6,7 +6,6 @@
 package renderinggen
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +22,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
 )
+
+// objectStoreHTTPClient bounds every object-store HTTP call made by this
+// adapter (asset prefetch uploads and certified-artifact downloads). Without a
+// timeout a hanging object store would pin the caller — and the lease it holds
+// — forever; the worker-side clients use the same horizon.
+var objectStoreHTTPClient = &http.Client{Timeout: 5 * time.Minute}
 
 // Client adapts the queue's public client to scriptgen.RenderQueueClient.
 type Client struct {
@@ -263,7 +268,13 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	}
 	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrJobExists) {
 		if existing, getErr := e.queue.Get(ctx, plan.RunID); getErr == nil && existing.State == string(queueclient.StateFailed) {
-			_ = e.queue.Retry(ctx, plan.RunID)
+			// A failed re-run of the same clip must not leave the job stuck in
+			// FAILED while the caller believes a render is underway: surface a
+			// retry failure instead of degrading into the generic
+			// "completed without certified artifact" wait timeout.
+			if retryErr := e.queue.Retry(ctx, plan.RunID); retryErr != nil {
+				return nil, fmt.Errorf("renderinggen clip executor: retry failed for %s: %w", plan.RunID, retryErr)
+			}
 		}
 	}
 	completed, err := waitClipQueue(ctx, e.queue, plan.RunID, e.interval)
@@ -386,7 +397,7 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -427,6 +438,16 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 // VPS paths; without this boundary a remote/native worker cannot materialize
 // the source and subtitle files. This is deliberately before enqueue so a
 // job is never claimed with an incomplete asset set.
+//
+// Each asset is staged with a HEAD-before-PUT probe: an object that already
+// exists under its content address is shared with every worker, so re-reading
+// and re-uploading it would burn bandwidth, a full RAM buffer and a disk pass
+// for zero benefit. Only absent objects are uploaded, streamed straight from
+// the source file (constant memory — the historical os.ReadFile path buffered
+// every asset in RAM). The declared SHA-256s are certified upstream by the
+// plan resolver, so no full-file hash pass is repeated at this boundary; the
+// RenderingGen worker independently re-verifies the content address when it
+// materializes the asset, so wrong bytes can never reach Chronon.
 func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, refs []assetRef) error {
 	store := strings.TrimRight(os.Getenv("RENDERINGGEN_STORE_URL"), "/")
 	if store == "" {
@@ -450,28 +471,72 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 		if path == "" {
 			return fmt.Errorf("asset %s has no resolved local path", ref.Hash)
 		}
-		data, err := os.ReadFile(path)
+		present, err := objectStored(ctx, store, ref.Hash)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", path, err)
+			return fmt.Errorf("asset %s probe: %w", ref.Hash, err)
 		}
-		got := digest.SHA256Bytes(data)
-		if !strings.EqualFold(got, ref.Hash) {
-			return fmt.Errorf("asset hash mismatch for %s: got %s", path, got)
+		if present {
+			continue
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/"+ref.Hash, bytes.NewReader(data))
-		if err != nil {
-			return err
-		}
-		req.ContentLength = int64(len(data))
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
+		if err := streamPutFile(ctx, store, ref.Hash, path); err != nil {
 			return fmt.Errorf("upload %s: %w", ref.Hash, err)
 		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return fmt.Errorf("upload %s: HTTP %d", ref.Hash, resp.StatusCode)
-		}
+	}
+	return nil
+}
+
+// objectStored reports whether the object store already holds an object under
+// key, using HEAD so no bytes cross the wire for present objects. A 404 (and
+// a 405 from a store without HEAD) means absent; any transport error or other
+// status fails closed so a job is never enqueued against an unverifiable
+// store.
+func objectStored(ctx context.Context, store, key string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, store+"/objects/"+key, nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := objectStoreHTTPClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("head %s: %w", key, err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return false, nil
+	default:
+		return false, fmt.Errorf("head %s: HTTP %d", key, resp.StatusCode)
+	}
+}
+
+// streamPutFile uploads a local file to the object store without loading it
+// into RAM: the file handle is the request body and its size is declared up
+// front, so the transport streams it straight from disk.
+func streamPutFile(ctx context.Context, store, key, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/"+key, file)
+	if err != nil {
+		return err
+	}
+	req.ContentLength = info.Size()
+	resp, err := objectStoreHTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil
 }
