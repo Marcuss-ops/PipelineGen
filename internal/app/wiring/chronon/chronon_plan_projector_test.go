@@ -247,8 +247,8 @@ func TestChrononPlanProjector_ForegroundScalePercent(t *testing.T) {
 	if len(video.Size) != 2 || video.Size[0] != 1024 || video.Size[1] != 576 {
 		t.Fatalf("video.Size = %v, want [1024 576]", video.Size)
 	}
-	if len(video.Position) != 2 || video.Position[0] != 128 || video.Position[1] != 72 {
-		t.Fatalf("video.Position = %v, want [128 72]", video.Position)
+	if len(video.Position) != 2 || video.Position[0] != 0 || video.Position[1] != 0 {
+		t.Fatalf("video.Position = %v, want centered offset [0 0]", video.Position)
 	}
 }
 
