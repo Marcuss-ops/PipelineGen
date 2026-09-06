@@ -76,6 +76,18 @@ type RenderMetricsV2 struct {
 	EncodeMS           Metric `json:"encode_ms"`
 	AudioMuxMS         Metric `json:"audio_mux_ms"`
 
+	// Receipt verification phases (Chronon's post-render media receipt,
+	// `<output>.receipt.json` timing_ms): engine-side diagnostics nested
+	// inside the worker-owned render wall, so the report can answer "what
+	// did the post-render receipt cost" instead of burying it in the render
+	// wall. decode_ms is measured only under the normal/certify verification
+	// policy — the production fast policy never re-decodes the freshly muxed
+	// output, so receipt_decode_ms stays NOT_INSTRUMENTED.
+	ReceiptSHA256MS Metric `json:"receipt_sha256_ms"`
+	ReceiptProbeMS  Metric `json:"receipt_probe_ms"`
+	ReceiptDecodeMS Metric `json:"receipt_decode_ms"`
+	ReceiptTotalMS  Metric `json:"receipt_total_ms"`
+
 	// Publication is split by ownership. RendererOutputFinalizeMS is the
 	// renderer-side output finalize. PublicationTotalMS is the publisher wall;
 	// ArtifactPublishMS and DriveUploadMS are diagnostics nested inside it.
@@ -139,6 +151,7 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.RendererStartupMS, &m.ProbeMS, &m.ChrononQueueWaitMS, &m.ChrononServiceMS,
 		&m.DecodeMS, &m.CompositeMS, &m.SubtitleRasterMS, &m.WatermarkRasterMS,
 		&m.FrameConversionMS, &m.EncodeMS, &m.AudioMuxMS,
+		&m.ReceiptSHA256MS, &m.ReceiptProbeMS, &m.ReceiptDecodeMS, &m.ReceiptTotalMS,
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
 		&m.PublicationTotalMS, &m.PublishMS, &m.RenderWallMS,
 		&m.GPUCopyBytes, &m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
@@ -178,6 +191,10 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.FrameConversionMS, &executor.FrameConversionMS)
 	merge(&m.EncodeMS, &executor.EncodeMS)
 	merge(&m.AudioMuxMS, &executor.AudioMuxMS)
+	merge(&m.ReceiptSHA256MS, &executor.ReceiptSHA256MS)
+	merge(&m.ReceiptProbeMS, &executor.ReceiptProbeMS)
+	merge(&m.ReceiptDecodeMS, &executor.ReceiptDecodeMS)
+	merge(&m.ReceiptTotalMS, &executor.ReceiptTotalMS)
 	merge(&m.RendererOutputFinalizeMS, &executor.RendererOutputFinalizeMS)
 	merge(&m.ArtifactPublishMS, &executor.ArtifactPublishMS)
 	merge(&m.DriveUploadMS, &executor.DriveUploadMS)
