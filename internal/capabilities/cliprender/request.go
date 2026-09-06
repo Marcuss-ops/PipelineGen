@@ -148,6 +148,9 @@ type OutputSpec struct {
 	Height   int    `json:"height,omitempty"`   // default 1080 (YouTube horizontal)
 	FPSNum   int    `json:"fps_num,omitempty"`  // default 24
 	FPSDen   int    `json:"fps_den,omitempty"`  // default 1
+	// ForegroundScalePercent scales the source over the canvas while keeping
+	// the resolved background visible. Zero means the contract default (100).
+	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
 }
 
 // AudioSpec selects the audio copy policy. copy_if_compatible never
@@ -379,6 +382,9 @@ func (r *RenderRequest) Validate() error {
 	fps := float64(r.Output.FPSNum) / float64(r.Output.FPSDen)
 	if fps < MinFPS || fps > MaxFPS {
 		return fmt.Errorf("%w: output.fps must be within [%d,%d] (got %d/%d = %.3f)", ErrInvalidRequest, MinFPS, MaxFPS, r.Output.FPSNum, r.Output.FPSDen, fps)
+	}
+	if r.Output.ForegroundScalePercent < 0 || r.Output.ForegroundScalePercent > 100 {
+		return fmt.Errorf("%w: output.foreground_scale_percent must be within [1,100] when set (got %d)", ErrInvalidRequest, r.Output.ForegroundScalePercent)
 	}
 
 	switch r.Audio.Mode {

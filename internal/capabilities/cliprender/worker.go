@@ -212,18 +212,19 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		watermarkSpec = req.Watermark
 	}
 	plan, err := Compile(CompileInput{
-		RunID:          j.ID,
-		Source:         prepared.Source,
-		DurationMS:     prepared.Source.DurationMS,
-		Watermark:      prepared.Watermark,
-		WatermarkSpec:  watermarkSpec,
-		Background:     prepared.Background,
-		BackgroundMode: req.Background.Mode,
-		Subtitles:      subtitleArtifact,
-		Cues:           prepared.Transcript.Cues,
-		Contract:       prepared.Contract,
-		AudioMode:      req.Audio.Mode,
-		OutputPath:     filepath.Join(runDir, "rendered-clip.mp4"),
+		RunID:                  j.ID,
+		Source:                 prepared.Source,
+		DurationMS:             prepared.Source.DurationMS,
+		Watermark:              prepared.Watermark,
+		WatermarkSpec:          watermarkSpec,
+		Background:             prepared.Background,
+		BackgroundMode:         req.Background.Mode,
+		Subtitles:              subtitleArtifact,
+		Cues:                   prepared.Transcript.Cues,
+		Contract:               prepared.Contract,
+		AudioMode:              req.Audio.Mode,
+		OutputPath:             filepath.Join(runDir, "rendered-clip.mp4"),
+		ForegroundScalePercent: req.Output.ForegroundScalePercent,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: compile plan: %w", err)
