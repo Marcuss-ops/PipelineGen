@@ -1,0 +1,821 @@
+{
+  "run_id": "matt-damon-5-cliprender-poppins-20260906-091352-468491",
+  "endpoint": "http://127.0.0.1:8000/api/clips/render",
+  "batch_wall_ms": 164551,
+  "failed_jobs": 0,
+  "source_asset_ids": [
+    "yt_S6ADB98CR7g_358_425_v1"
+  ],
+  "jobs": [
+    {
+      "correlation_id": "matt-damon-5-cliprender-poppins-20260906-091352-468491-clip-1",
+      "created_at": "2026-09-06T09:13:52Z",
+      "current_stage": "job_completed",
+      "current_step": "SUCCEEDED",
+      "error": "",
+      "events": [
+        {
+          "id": "evt_1788686032717717754_8da378",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "job_running",
+          "message": "job.Job started",
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032734004350_58997c",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "leased",
+          "message": "job claimed by worker YOutube_467818_4",
+          "data": {
+            "lease_id": "lease_1788686032716291750_e181fb02",
+            "revision": 2,
+            "worker_id": "YOutube_467818_4"
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032734877864_ed78b8",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "clip.render started",
+          "data": {
+            "progress": 0
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032736484274_3790d4",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "request validated; running parallel preparation",
+          "data": {
+            "progress": 10
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686033440387332_d815ce",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.subtitles.compiled",
+          "message": "ASS artifact compiled",
+          "data": {
+            "cue_count": 12,
+            "mode": "sidecar",
+            "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788622688946503567_070818b6/subtitles.ass",
+            "sha256": "2fdd35e780b02d0603f5e7dcdf5baaa0d383ae796ed8a064ce5d5f5bb74fbb3c"
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686033443730560_7a260e",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.plan.sealed",
+          "message": "ClipRenderPlanV1 sealed — fully resolved before Chronon",
+          "data": {
+            "background": "none",
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "plan_sha256": "426cd3a6b0c3c327356e9844b4eafbe6743fbffcd569ea59d09a66d619930767",
+            "plan_version": "clip-render-plan.v1",
+            "source": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+            "subtitles": true,
+            "watermark": true
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686033445477520_452213",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "plan sealed; rendering with Chronon",
+          "data": {
+            "progress": 90
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686197050057274_4a5cb9",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.completed",
+          "message": "Chronon render completed",
+          "data": {
+            "backend": "chronon_vulkan",
+            "duration_sec": 67,
+            "ffmpeg_ms": 0,
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "size_bytes": 18725450
+          },
+          "created_at": "2026-09-06T09:16:37Z"
+        },
+        {
+          "id": "evt_1788686197050616082_74a1d4",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "clip.render completed",
+          "data": {
+            "progress": 100
+          },
+          "created_at": "2026-09-06T09:16:37Z"
+        },
+        {
+          "id": "evt_1788686197051481405_902588",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "job_completed",
+          "message": "job.Job completed successfully",
+          "created_at": "2026-09-06T09:16:37Z"
+        }
+      ],
+      "id": "job_1788686032712407595_e4d98bf5",
+      "job": {
+        "id": "job_1788686032712407595_e4d98bf5",
+        "type": "clip.render",
+        "status": "SUCCEEDED",
+        "priority": 0,
+        "payload": {
+          "source_asset_id": "yt_S6ADB98CR7g_358_425_v1",
+          "background": {
+            "mode": "none"
+          },
+          "watermark": {
+            "enabled": true,
+            "text": "MATT DAMON",
+            "position": "top_right",
+            "opacity": 0.85,
+            "margin_px": 24,
+            "style": {
+              "font": "DejaVu Sans",
+              "size": 42,
+              "color": "#FFFFFF",
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.75,
+                "blur_px": 8,
+                "offset_x": 2,
+                "offset_y": 2
+              }
+            }
+          },
+          "transcript": {
+            "mode": "reuse_or_generate",
+            "language": "en",
+            "persist": true
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "sidecar",
+            "style_id": "matt-damon-benchmark-v1-poppins",
+            "style": {
+              "font": "Poppins",
+              "position": "bottom_center",
+              "size": 58,
+              "color": "#FFFFFF",
+              "font_size_px": 58,
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.9,
+                "blur_px": 16,
+                "offset_y": 8
+              }
+            }
+          },
+          "output": {
+            "contract": "VELOX_ASSEMBLY_READY_V1",
+            "width": 1920,
+            "height": 1080,
+            "fps_num": 24,
+            "fps_den": 1
+          },
+          "audio": {
+            "mode": "copy_if_compatible"
+          },
+          "destination": {
+            "drive_folder_id": "19UYPb2dfK_Y_-rDBXrsY_1VOge4iiWmk"
+          },
+          "execution": {}
+        },
+        "result": {
+          "asset": {
+            "asset_id": "cliprender_55772bfad6f717b6a66e6644",
+            "drive_file_id": "1giM6aV8yZStBaRMJMT5qxYl_vwSOob36",
+            "drive_link": "https://drive.google.com/file/d/1giM6aV8yZStBaRMJMT5qxYl_vwSOob36/view?usp=drivesdk",
+            "sidecar_link": "https://drive.google.com/file/d/1aYY9VaWu-nGTim_CiyqGcvQcwl-uVY1x/view?usp=drivesdk",
+            "size_bytes": 18725450
+          },
+          "contract": {
+            "audio_codec": "aac",
+            "fps_den": 1,
+            "fps_num": 24,
+            "height": 1080,
+            "pixel_format": "yuv420p",
+            "video_codec": "h264",
+            "width": 1920
+          },
+          "contract_id": "VELOX_ASSEMBLY_READY_V1",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "materialization": {
+            "background": null,
+            "source": {
+              "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+              "cache_hit": true,
+              "download_bytes": 0,
+              "from_cache": true,
+              "materialized": true,
+              "path": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+              "sha256": "d607df78b5fef19d776c0ef3157d56abcdc7e38a0da73fc5561a2299bf48d353",
+              "size_bytes": 53020063
+            },
+            "watermark": null
+          },
+          "phase": "rendered",
+          "plan": {
+            "audio_mode": "copy_if_compatible",
+            "background": "none",
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "plan_sha256": "426cd3a6b0c3c327356e9844b4eafbe6743fbffcd569ea59d09a66d619930767",
+            "version": "clip-render-plan.v1"
+          },
+          "render": {
+            "audio_copy_eligible": false,
+            "audio_encode_passes": null,
+            "backend": "chronon_vulkan",
+            "duration_sec": 67,
+            "ffmpeg_ms": 0,
+            "fps_den": 1,
+            "fps_num": 24,
+            "gpu_copy_bytes": null,
+            "height": 1080,
+            "metrics_v2": {
+              "backend_probe_ms": "NOT_INSTRUMENTED",
+              "backend_resolve_ms": "NOT_INSTRUMENTED",
+              "backend_selected": "",
+              "backend_attempts": 0,
+              "fallback_count": 0,
+              "failed_backend_ms": "NOT_INSTRUMENTED",
+              "asset_materialize_ms": 691,
+              "subtitle_compile_ms": 2,
+              "renderer_startup_ms": 1214,
+              "probe_ms": 63,
+              "chronon_queue_wait_ms": "NOT_INSTRUMENTED",
+              "chronon_service_ms": "NOT_INSTRUMENTED",
+              "decode_ms": 178,
+              "composite_ms": 59,
+              "subtitle_raster_ms": "NOT_INSTRUMENTED",
+              "watermark_raster_ms": "NOT_INSTRUMENTED",
+              "frame_conversion_ms": "NOT_INSTRUMENTED",
+              "encode_ms": 354,
+              "audio_mux_ms": "NOT_INSTRUMENTED",
+              "renderer_finalize_ms": "NOT_INSTRUMENTED",
+              "artifact_publish_ms": 219,
+              "drive_upload_ms": 151413,
+              "publication_total_ms": 151634,
+              "publish_ms": "NOT_INSTRUMENTED",
+              "render_wall_ms": 11960,
+              "frames": 1608,
+              "render_fps": 27254.237288135595,
+              "total_fps": 9.786141168737904,
+              "realtime_factor": 0.40775588203074603,
+              "speed_factor": 5.60200668896321,
+              "processing_xrt": 0.17850746268656717,
+              "gpu_copy_bytes": "NOT_INSTRUMENTED",
+              "gpu_upload_bytes": "NOT_INSTRUMENTED",
+              "gpu_readback_bytes": 0,
+              "peak_rss_bytes": "NOT_INSTRUMENTED",
+              "disk_read_bytes": "NOT_INSTRUMENTED",
+              "disk_write_bytes": "NOT_INSTRUMENTED",
+              "network_rx_bytes": "NOT_INSTRUMENTED",
+              "network_tx_bytes": "NOT_INSTRUMENTED",
+              "encoder_staging_copy_bytes": 0,
+              "nv12_to_rgba_frames": 0,
+              "rgba_to_nv12_frames": 0,
+              "cuda_composite_frames": 1608,
+              "gpu_utilization_avg": 6,
+              "gpu_utilization_peak": 8,
+              "nvenc_utilization_avg": 73,
+              "nvdec_utilization_avg": 71,
+              "vram_used_peak_mb": 10990,
+              "subtitle_raster_cpu": false,
+              "total_ms": 164314,
+              "unaccounted_ms": 27,
+              "unattributed_ms": 27
+            },
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "render_wall_ms": 11960,
+            "size_bytes": 18725450,
+            "subtitle_raster_cpu": null,
+            "video_zero_copy": null,
+            "width": 1920
+          },
+          "source": {
+            "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+            "cache_hit": true,
+            "download_bytes": 0,
+            "from_cache": true,
+            "materialized": true,
+            "path": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+            "sha256": "d607df78b5fef19d776c0ef3157d56abcdc7e38a0da73fc5561a2299bf48d353",
+            "size_bytes": 53020063
+          },
+          "source_asset_id": "yt_S6ADB98CR7g_358_425_v1",
+          "subtitles": {
+            "artifact_cache_hit": true,
+            "content_cache_hit": true,
+            "mode": "sidecar",
+            "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788622688946503567_070818b6/subtitles.ass",
+            "sha256": "2fdd35e780b02d0603f5e7dcdf5baaa0d383ae796ed8a064ce5d5f5bb74fbb3c"
+          },
+          "timings": {
+            "parallel": true,
+            "phases": [
+              {
+                "phase": "resolve_contract",
+                "wall_ms": 0,
+                "work_ms": 0,
+                "notes": {
+                  "audio_codec": "aac",
+                  "contract_id": "VELOX_ASSEMBLY_READY_V1",
+                  "fps_den": 1,
+                  "fps_num": 24,
+                  "height": 1080,
+                  "video_codec": "h264",
+                  "width": 1920
+                }
+              },
+              {
+                "phase": "resolve_source",
+                "wall_ms": 5,
+                "work_ms": 5,
+                "notes": {
+                  "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+                  "duration_ms": 67000,
+                  "has_drive": true,
+                  "has_local": true,
+                  "media_type": "video"
+                }
+              },
+              {
+                "phase": "transcript_resolve",
+                "wall_ms": 6,
+                "work_ms": 6,
+                "notes": {
+                  "found": true,
+                  "language": "en"
+                }
+              },
+              {
+                "phase": "materialize_source",
+                "wall_ms": 691,
+                "work_ms": 691,
+                "notes": {
+                  "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+                  "from_cache": true,
+                  "size_bytes": 53020063
+                }
+              }
+            ],
+            "total_wall_ms": 698,
+            "total_work_ms": 702
+          },
+          "transcript": {
+            "cues": 12,
+            "language": "en",
+            "reused": true,
+            "source_audio_sha256": "",
+            "text_sha256": "4f00c1d813716ed52d7f3193b761781c046e67ea17c19050bfbb8988eaad5aa2"
+          },
+          "transcript_mode": "reuse_or_generate"
+        },
+        "progress": 100,
+        "retry_count": 0,
+        "max_retries": 2,
+        "worker_id": "YOutube_467818_4",
+        "revision": 3,
+        "correlation_id": "matt-damon-5-cliprender-poppins-20260906-091352-468491-clip-1",
+        "created_at": "2026-09-06T09:13:52Z",
+        "updated_at": "2026-09-06T09:16:37.080686293Z",
+        "started_at": "2026-09-06T09:13:52.721967955Z",
+        "completed_at": "2026-09-06T09:16:37.080686293Z"
+      },
+      "progress": 100,
+      "result": {
+        "asset": {
+          "asset_id": "cliprender_55772bfad6f717b6a66e6644",
+          "drive_file_id": "1giM6aV8yZStBaRMJMT5qxYl_vwSOob36",
+          "drive_link": "https://drive.google.com/file/d/1giM6aV8yZStBaRMJMT5qxYl_vwSOob36/view?usp=drivesdk",
+          "sidecar_link": "https://drive.google.com/file/d/1aYY9VaWu-nGTim_CiyqGcvQcwl-uVY1x/view?usp=drivesdk",
+          "size_bytes": 18725450
+        },
+        "contract": {
+          "audio_codec": "aac",
+          "fps_den": 1,
+          "fps_num": 24,
+          "height": 1080,
+          "pixel_format": "yuv420p",
+          "video_codec": "h264",
+          "width": 1920
+        },
+        "contract_id": "VELOX_ASSEMBLY_READY_V1",
+        "job_id": "job_1788686032712407595_e4d98bf5",
+        "materialization": {
+          "background": null,
+          "source": {
+            "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+            "cache_hit": true,
+            "download_bytes": 0,
+            "from_cache": true,
+            "materialized": true,
+            "path": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+            "sha256": "d607df78b5fef19d776c0ef3157d56abcdc7e38a0da73fc5561a2299bf48d353",
+            "size_bytes": 53020063
+          },
+          "watermark": null
+        },
+        "phase": "rendered",
+        "plan": {
+          "audio_mode": "copy_if_compatible",
+          "background": "none",
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+          "plan_sha256": "426cd3a6b0c3c327356e9844b4eafbe6743fbffcd569ea59d09a66d619930767",
+          "version": "clip-render-plan.v1"
+        },
+        "render": {
+          "audio_copy_eligible": false,
+          "audio_encode_passes": null,
+          "backend": "chronon_vulkan",
+          "duration_sec": 67,
+          "ffmpeg_ms": 0,
+          "fps_den": 1,
+          "fps_num": 24,
+          "gpu_copy_bytes": null,
+          "height": 1080,
+          "metrics_v2": {
+            "backend_probe_ms": "NOT_INSTRUMENTED",
+            "backend_resolve_ms": "NOT_INSTRUMENTED",
+            "backend_selected": "",
+            "backend_attempts": 0,
+            "fallback_count": 0,
+            "failed_backend_ms": "NOT_INSTRUMENTED",
+            "asset_materialize_ms": 691,
+            "subtitle_compile_ms": 2,
+            "renderer_startup_ms": 1214,
+            "probe_ms": 63,
+            "chronon_queue_wait_ms": "NOT_INSTRUMENTED",
+            "chronon_service_ms": "NOT_INSTRUMENTED",
+            "decode_ms": 178,
+            "composite_ms": 59,
+            "subtitle_raster_ms": "NOT_INSTRUMENTED",
+            "watermark_raster_ms": "NOT_INSTRUMENTED",
+            "frame_conversion_ms": "NOT_INSTRUMENTED",
+            "encode_ms": 354,
+            "audio_mux_ms": "NOT_INSTRUMENTED",
+            "renderer_finalize_ms": "NOT_INSTRUMENTED",
+            "artifact_publish_ms": 219,
+            "drive_upload_ms": 151413,
+            "publication_total_ms": 151634,
+            "publish_ms": "NOT_INSTRUMENTED",
+            "render_wall_ms": 11960,
+            "frames": 1608,
+            "render_fps": 27254.237288135595,
+            "total_fps": 9.786141168737904,
+            "realtime_factor": 0.40775588203074603,
+            "speed_factor": 5.60200668896321,
+            "processing_xrt": 0.17850746268656717,
+            "gpu_copy_bytes": "NOT_INSTRUMENTED",
+            "gpu_upload_bytes": "NOT_INSTRUMENTED",
+            "gpu_readback_bytes": 0,
+            "peak_rss_bytes": "NOT_INSTRUMENTED",
+            "disk_read_bytes": "NOT_INSTRUMENTED",
+            "disk_write_bytes": "NOT_INSTRUMENTED",
+            "network_rx_bytes": "NOT_INSTRUMENTED",
+            "network_tx_bytes": "NOT_INSTRUMENTED",
+            "encoder_staging_copy_bytes": 0,
+            "nv12_to_rgba_frames": 0,
+            "rgba_to_nv12_frames": 0,
+            "cuda_composite_frames": 1608,
+            "gpu_utilization_avg": 6,
+            "gpu_utilization_peak": 8,
+            "nvenc_utilization_avg": 73,
+            "nvdec_utilization_avg": 71,
+            "vram_used_peak_mb": 10990,
+            "subtitle_raster_cpu": false,
+            "total_ms": 164314,
+            "unaccounted_ms": 27,
+            "unattributed_ms": 27
+          },
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+          "render_wall_ms": 11960,
+          "size_bytes": 18725450,
+          "subtitle_raster_cpu": null,
+          "video_zero_copy": null,
+          "width": 1920
+        },
+        "source": {
+          "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+          "cache_hit": true,
+          "download_bytes": 0,
+          "from_cache": true,
+          "materialized": true,
+          "path": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+          "sha256": "d607df78b5fef19d776c0ef3157d56abcdc7e38a0da73fc5561a2299bf48d353",
+          "size_bytes": 53020063
+        },
+        "source_asset_id": "yt_S6ADB98CR7g_358_425_v1",
+        "subtitles": {
+          "artifact_cache_hit": true,
+          "content_cache_hit": true,
+          "mode": "sidecar",
+          "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788622688946503567_070818b6/subtitles.ass",
+          "sha256": "2fdd35e780b02d0603f5e7dcdf5baaa0d383ae796ed8a064ce5d5f5bb74fbb3c"
+        },
+        "timings": {
+          "parallel": true,
+          "phases": [
+            {
+              "phase": "resolve_contract",
+              "wall_ms": 0,
+              "work_ms": 0,
+              "notes": {
+                "audio_codec": "aac",
+                "contract_id": "VELOX_ASSEMBLY_READY_V1",
+                "fps_den": 1,
+                "fps_num": 24,
+                "height": 1080,
+                "video_codec": "h264",
+                "width": 1920
+              }
+            },
+            {
+              "phase": "resolve_source",
+              "wall_ms": 5,
+              "work_ms": 5,
+              "notes": {
+                "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+                "duration_ms": 67000,
+                "has_drive": true,
+                "has_local": true,
+                "media_type": "video"
+              }
+            },
+            {
+              "phase": "transcript_resolve",
+              "wall_ms": 6,
+              "work_ms": 6,
+              "notes": {
+                "found": true,
+                "language": "en"
+              }
+            },
+            {
+              "phase": "materialize_source",
+              "wall_ms": 691,
+              "work_ms": 691,
+              "notes": {
+                "asset_id": "yt_S6ADB98CR7g_358_425_v1",
+                "from_cache": true,
+                "size_bytes": 53020063
+              }
+            }
+          ],
+          "total_wall_ms": 698,
+          "total_work_ms": 702
+        },
+        "transcript": {
+          "cues": 12,
+          "language": "en",
+          "reused": true,
+          "source_audio_sha256": "",
+          "text_sha256": "4f00c1d813716ed52d7f3193b761781c046e67ea17c19050bfbb8988eaad5aa2"
+        },
+        "transcript_mode": "reuse_or_generate"
+      },
+      "retryable": false,
+      "started_at": "2026-09-06T09:13:52.721967955Z",
+      "status": "SUCCEEDED",
+      "timeline": [
+        {
+          "id": "evt_1788686032717717754_8da378",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "job_running",
+          "message": "job.Job started",
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032734004350_58997c",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "leased",
+          "message": "job claimed by worker YOutube_467818_4",
+          "data": {
+            "lease_id": "lease_1788686032716291750_e181fb02",
+            "revision": 2,
+            "worker_id": "YOutube_467818_4"
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032734877864_ed78b8",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "clip.render started",
+          "data": {
+            "progress": 0
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686032736484274_3790d4",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "request validated; running parallel preparation",
+          "data": {
+            "progress": 10
+          },
+          "created_at": "2026-09-06T09:13:52Z"
+        },
+        {
+          "id": "evt_1788686033440387332_d815ce",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.subtitles.compiled",
+          "message": "ASS artifact compiled",
+          "data": {
+            "cue_count": 12,
+            "mode": "sidecar",
+            "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788622688946503567_070818b6/subtitles.ass",
+            "sha256": "2fdd35e780b02d0603f5e7dcdf5baaa0d383ae796ed8a064ce5d5f5bb74fbb3c"
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686033443730560_7a260e",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.plan.sealed",
+          "message": "ClipRenderPlanV1 sealed — fully resolved before Chronon",
+          "data": {
+            "background": "none",
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "plan_sha256": "426cd3a6b0c3c327356e9844b4eafbe6743fbffcd569ea59d09a66d619930767",
+            "plan_version": "clip-render-plan.v1",
+            "source": "data/media/clips/general/yt_S6ADB98CR7g/yt_S6ADB98CR7g_358_425_v1_matt-damon-00-05-58-00-07-05.mp4",
+            "subtitles": true,
+            "watermark": true
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686033445477520_452213",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "plan sealed; rendering with Chronon",
+          "data": {
+            "progress": 90
+          },
+          "created_at": "2026-09-06T09:13:53Z"
+        },
+        {
+          "id": "evt_1788686197050057274_4a5cb9",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "clip.render.completed",
+          "message": "Chronon render completed",
+          "data": {
+            "backend": "chronon_vulkan",
+            "duration_sec": 67,
+            "ffmpeg_ms": 0,
+            "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1788686032712407595_e4d98bf5/rendered-clip.mp4",
+            "size_bytes": 18725450
+          },
+          "created_at": "2026-09-06T09:16:37Z"
+        },
+        {
+          "id": "evt_1788686197050616082_74a1d4",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "progress",
+          "message": "clip.render completed",
+          "data": {
+            "progress": 100
+          },
+          "created_at": "2026-09-06T09:16:37Z"
+        },
+        {
+          "id": "evt_1788686197051481405_902588",
+          "job_id": "job_1788686032712407595_e4d98bf5",
+          "type": "job_completed",
+          "message": "job.Job completed successfully",
+          "created_at": "2026-09-06T09:16:37Z"
+        }
+      ],
+      "timing": {
+        "wall_ms": 164354,
+        "execution_wall_ms": 164354,
+        "attributed_ms": 164316,
+        "unattributed_ms": 35,
+        "unattributed_percent": 0.0212954963067525,
+        "overlapped_ms": 3,
+        "bottleneck_stage": "clip.publish",
+        "bottleneck_percent": 92.26060819937452,
+        "critical_path": [
+          {
+            "name": "clip.prepare",
+            "duration_ms": 698,
+            "percent": 0.42469304063180696
+          },
+          {
+            "name": "clip.subtitles",
+            "duration_ms": 1,
+            "percent": 0.0006084427516214999
+          },
+          {
+            "name": "clip.render",
+            "duration_ms": 11960,
+            "percent": 7.27697530939314
+          },
+          {
+            "name": "clip.publish",
+            "duration_ms": 151634,
+            "percent": 92.26060819937452
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 23,
+            "percent": 0.0139941832872945
+          }
+        ],
+        "stages": [
+          {
+            "name": "clip.prepare",
+            "duration_ms": 698
+          },
+          {
+            "name": "clip.publish",
+            "duration_ms": 151634
+          },
+          {
+            "name": "clip.render",
+            "duration_ms": 11960
+          },
+          {
+            "name": "clip.subtitles",
+            "duration_ms": 1
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 23
+          }
+        ],
+        "operations": [
+          {
+            "component": "chronon",
+            "operation": "composite",
+            "calls": 1,
+            "work_ms": 59
+          },
+          {
+            "component": "chronon",
+            "operation": "decode",
+            "calls": 1,
+            "work_ms": 178
+          },
+          {
+            "component": "chronon",
+            "operation": "encode",
+            "calls": 1,
+            "work_ms": 354
+          },
+          {
+            "component": "chronon",
+            "operation": "gpu_readback",
+            "calls": 1,
+            "work_ms": 0
+          },
+          {
+            "component": "chronon",
+            "operation": "probe",
+            "calls": 1,
+            "work_ms": 63
+          },
+          {
+            "component": "chronon",
+            "operation": "render_clip",
+            "calls": 1,
+            "work_ms": 11954
+          },
+          {
+            "component": "chronon",
+            "operation": "renderer_startup",
+            "calls": 1,
+            "work_ms": 1214
+          }
+        ],
+        "fanout": [
+          {
+            "stage": "clip.render",
+            "wall_ms": 11960,
+            "calls": 7,
+            "work_ms": 13822,
+            "max_ms": 11954
+          }
+        ]
+      },
+      "type": "clip.render",
+      "updated_at": "2026-09-06T09:16:37.080686293Z",
+      "warnings": [],
+      "batch_index": 1
+    }
+  ]
+}
