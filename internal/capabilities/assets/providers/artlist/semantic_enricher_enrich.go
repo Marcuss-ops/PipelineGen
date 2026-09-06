@@ -14,8 +14,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Enrich arricchisce un clip Artlist con metadati semantici.

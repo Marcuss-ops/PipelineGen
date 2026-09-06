@@ -191,8 +191,8 @@ type Service struct {
 	// residual contention measurable in production (the analysis's five
 	// metrics, coalesced into the two observable wait surfaces).
 	// Atomic single ints: sampled at DEBUG cost, no locks, no allocations.
-	submitLockWaitNanos   atomic.Int64 // cumulative time goroutines spent acquiring submitMu
-	submitHoldCount       atomic.Int64 // number of Submit calls that entered the mutex section
+	submitLockWaitNanos atomic.Int64 // cumulative time goroutines spent acquiring submitMu
+	submitHoldCount     atomic.Int64 // number of Submit calls that entered the mutex section
 }
 
 // NewService constructs the canonical submission service.
