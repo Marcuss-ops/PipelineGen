@@ -204,23 +204,23 @@ type RunTagResponse struct {
 // PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): during the outcome-accounting
 // refactor stagePersistResults started incrementing resp.Failed for three
 // distinct persistence failure modes (drive_upload_failed, hash_missing,
-// persist_failed) that previously surfaced as silent drops. Two policies
-// now gate the run verdict:
+// persist_failed) that previously surfaced as silent drops.
+//
+// OUTCOME-FULL-ACCOUNTING (September 2026): the accounting invariant was
+// strengthened to close the documented KNOWN LIMITATION of the original
+// Policy B. Two policies gate the run verdict:
 //
 //  1. Policy A (pre-existing): when all items failed (Failed > 0 with
 //     Processed == 0 and Skipped == 0) the run is unambiguously failed.
-//  2. Policy B (added in this PR; literal user spec): even with
-//     Processed > 0, if Found - (Processed + Skipped) > 0 AND Failed == 0,
-//     the run is undercounted: items showed up in the runner's view of the
-//     world (resp.Items) but were never tallied into any bucket, which is
-//     the exact silent-loss signature the spec asks us to catch.
-//
-// KNOWN LIMITATION: with the Failed == 0 guard, runs that mix explicit
-// failures AND silent drops (e.g. Found=10, Processed=5, Failed=1,
-// Skipped=0, 4 silent drops) will still pass. Operators wanting
-// stricter accounting can extend Policy B to
-// `gap := resp.Found - (resp.Processed + resp.Skipped + resp.Failed)`
-// in a follow-up PR; this PR is bound to the literal user spec.
+//  2. Policy B (full-accounting): every discovered item must be tallied
+//     into exactly one of Processed / Skipped / Failed. When
+//     Found - (Processed + Skipped + Failed) > 0, items were silently
+//     lost (present in the runner's view of the world but never tallied
+//     into any bucket) regardless of whether explicit failures were also
+//     recorded. The former Failed == 0 guard meant runs mixing explicit
+//     failures AND silent drops (e.g. Found=10, Processed=5, Failed=1,
+//     Skipped=0 → 4 silent drops) passed; the guard is gone, so any
+//     unaccounted gap fails the run.
 func EvaluateRunOutcome(resp *RunTagResponse) (bool, string) {
 	if resp == nil {
 		return true, "nil response"
@@ -236,16 +236,17 @@ func EvaluateRunOutcome(resp *RunTagResponse) (bool, string) {
 	if resp.Failed > 0 && resp.Processed == 0 && resp.Skipped == 0 {
 		return true, "all artlist items failed"
 	}
-	// Policy B (PR-ARTLIST-OUTCOME-ACCOUNTING, July 2026): if no explicit
-	// failures were recorded but Found - (Processed + Skipped) > 0, items
-	// were silently lost (present in the runner but not tallied). Mark the
-	// run as failed with a precise diagnostic so the operator can audit.
-	if resp.Failed == 0 {
-		gap := resp.Found - (resp.Processed + resp.Skipped)
-		if gap > 0 {
-			return true, fmt.Sprintf("run undercounted: %d items silently lost (found=%d, processed=%d, skipped=%d, failed=0)",
-				gap, resp.Found, resp.Processed, resp.Skipped)
-		}
+	// Policy B (OUTCOME-FULL-ACCOUNTING, September 2026): full-accounting
+	// invariant — Found == Processed + Skipped + Failed. Any positive gap
+	// means items were silently lost (present in the runner but not
+	// tallied). Unlike the original July 2026 Policy B, this check is NOT
+	// gated on Failed == 0, so runs mixing explicit failures AND silent
+	// drops are caught too. Mark the run as failed with a precise
+	// diagnostic so the operator can audit.
+	gap := resp.Found - (resp.Processed + resp.Skipped + resp.Failed)
+	if gap > 0 {
+		return true, fmt.Sprintf("run undercounted: %d items silently lost (found=%d, processed=%d, skipped=%d, failed=%d)",
+			gap, resp.Found, resp.Processed, resp.Skipped, resp.Failed)
 	}
 	return false, ""
 }

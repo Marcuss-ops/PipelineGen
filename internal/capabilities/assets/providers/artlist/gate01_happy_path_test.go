@@ -11,8 +11,9 @@
 //
 // godlike/06 SSOT: the canonical Pipeline shape is
 // DiscoverClips → ResolveDestination → BuildProcessInputs →
-// ProcessBatch → PersistResults → IndexAsync. This test exercises
-// all 6 stages in sequence.
+// ProcessBatch → PersistResults. Indexing is outbox-driven (the
+// finalizer emits asset.index.requested per persisted clip). This
+// test exercises all 5 stages in sequence.
 package artlist
 
 import (
@@ -62,11 +63,11 @@ func (f *successMediaProcessor) Process(_ context.Context, input *detail.Process
 	}, nil
 }
 
-// TestGate01_ArtlistFullRun_HappyPath exercises the full 6-stage pipeline
+// TestGate01_ArtlistFullRun_HappyPath exercises the full 5-stage pipeline
 // (DiscoverClips → ResolveDestination → BuildProcessInputs →
-// ProcessBatch → PersistResults → IndexAsync) against a hermetic stack:
-// fake scraper + success media processor + stub Publisher + in-memory
-// SQLite + recording Dispatcher.
+// ProcessBatch → PersistResults; indexing is outbox-driven) against a
+// hermetic stack: fake scraper + success media processor + stub
+// Publisher + in-memory SQLite + recording Dispatcher.
 //
 // Assertions (mapped to action-plan gates):
 //

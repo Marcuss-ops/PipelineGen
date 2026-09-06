@@ -47,6 +47,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -182,6 +183,16 @@ type Service struct {
 	log       *zap.Logger
 	submitMu  sync.Mutex
 	nowFunc   func() time.Time // injectable for tests; defaults to time.Now
+
+	// SUBMIT-LOCK-INSTRUMENTATION (September 2026): post-remediation
+	// observability for the submission mutex. The P1 remediation moved
+	// the advisory JobGetter read OUTSIDE the mutex and kept the mutex
+	// only around lookup + decision + write; these counters make the
+	// residual contention measurable in production (the analysis's five
+	// metrics, coalesced into the two observable wait surfaces).
+	// Atomic single ints: sampled at DEBUG cost, no locks, no allocations.
+	submitLockWaitNanos   atomic.Int64 // cumulative time goroutines spent acquiring submitMu
+	submitHoldCount       atomic.Int64 // number of Submit calls that entered the mutex section
 }
 
 // NewService constructs the canonical submission service.
@@ -233,14 +244,13 @@ func NewService(
 
 // Submit is the canonical FASE 2 entry point.
 //
-// The method is intentionally small (~17 lines): it orchestrates
-// three sibling helpers — validateSubmitRequest (decision.go),
-// lookupPriorOperation + decideReplayOrFresh (decision.go),
-// and persistSubmit (transaction.go) — without itself containing
-// any input validation, decision branching, or transaction
-// boundaries. The submission flow's atomicity guarantees come
-// from the SOLE-LONE position of persistSubmit in the package
-// (godlike/06 single-transaction-owner).
+// The method orchestrates three sibling helpers — validateSubmitRequest
+// (decision.go), lookupPriorOperation + decideReplayOrFresh
+// (decision.go), and persistSubmit (transaction.go) — without itself
+// containing any input validation, decision branching, or transaction
+// boundaries. The submission flow's atomicity guarantees come from the
+// SOLE-LONE position of persistSubmit in the package (godlike/06
+// single-transaction-owner).
 //
 // Atomic-TX shape (godlike/06 SSOT — the SOLE canonical flow):
 //  1. validateSubmitRequest (decision.go): fail-closed at input.
@@ -248,16 +258,21 @@ func NewService(
 //  3. lookupPriorOperation (decision.go): READ prior via
 //     OperationsRepository.GetLatestForKey; treat
 //     StateSuperseded as "no prior" (Push 2.2a HIGH fix).
-//  4. decideReplayOrFresh (decision.go): idempotency hit
-//     (returns SubmitResult, no DB write) / idempotency
-//     conflict (returns typed WrapIdempotencyConflict error,
-//     no DB write) / fresh or force_refresh supersede
-//     (mustPersist=true, calls persistSubmit) /
+//  4. decideReplayOrFresh (decision.go): pure classification →
+//     idempotency hit (returns prior, no DB write) / idempotency
+//     conflict (typed WrapIdempotencyConflict error, no DB write) /
+//     fresh or force_refresh supersede (mustPersist=true) /
 //     ErrSelfSupersedeReference (pre-tx guard, no DB write).
-//  5. persistSubmit (transaction.go): the SOLE owner of
+//  5. Idempotency hit: the mutex is RELEASED before the advisory
+//     canonical-live-Job read (JobGetter.Get) so a slow replay lookup
+//     never serialises unrelated submissions. A JobGetter failure is
+//     advisory (typed warn; SubmitResult.Job is nil).
+//  6. persistSubmit (transaction.go): the SOLE owner of
 //     txMgr.BeginTx + tx.Commit + tx.Rollback + the four
 //     typed-port calls (ops.Insert, ops.UpdateState,
-//     jobs.CreateInTx, outbox.Enqueue).
+//     jobs.CreateInTx, outbox.Enqueue). The mutex stays held for the
+//     write so SQLite single-writer semantics + the same-(scope, key)
+//     supersede flip cannot interleave with a concurrent Submit.
 //
 // Any error in steps 5-10 of persistSubmit triggers Rollback
 // (deferred inside persistSubmit). The prior-op UpdateState
@@ -267,21 +282,80 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 	if err := validateSubmitRequest(req); err != nil {
 		return nil, err
 	}
+	// SUBMIT-LOCK-INSTRUMENTATION: measure the mutex wait separately from
+	// the work under the lock. submit_lock_wait_ms is the production number
+	// that answers "does a slow replay lookup still serialise unrelated
+	// submissions?" — it must stay flat as concurrency rises now that the
+	// advisory read is outside the mutex.
+	submitStart := time.Now()
 	s.submitMu.Lock()
-	defer s.submitMu.Unlock()
+	lockWait := time.Since(submitStart)
+	if lockWait > 0 {
+		s.submitLockWaitNanos.Add(int64(lockWait))
+	}
+	s.submitHoldCount.Add(1)
 
 	prior, err := s.lookupPriorOperation(ctx, req.Scope, req.IdempotencyKey)
 	if err != nil {
+		s.submitMu.Unlock()
 		return nil, fmt.Errorf("operations.Submit: lookup prior: %w", err)
 	}
 
-	result, mustPersist, err := s.decideReplayOrFresh(ctx, prior, req)
+	hitPrior, mustPersist, err := s.decideReplayOrFresh(prior, req)
 	if err != nil {
+		s.submitMu.Unlock()
 		return nil, err
 	}
+	if hitPrior != nil {
+		// Idempotency hit — no DB write. Release the write-serialisation
+		// mutex BEFORE the advisory canonical-Job read: the read is
+		// read-only and outside the SQLite write transaction, so holding
+		// the mutex here would only serialise unrelated submissions.
+		s.submitMu.Unlock()
+		s.log.Info("operations.Submit: idempotency hit",
+			zap.String("operation_id", hitPrior.OperationID),
+			zap.String("scope", string(req.Scope)),
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.Duration("lock_wait", lockWait),
+		)
+		canonicalJob, jobErr := s.jobGetter.Get(ctx, hitPrior.JobID)
+		if jobErr != nil {
+			s.log.Warn("operations.Submit: canonical job lookup failed on replay",
+				zap.String("operation_id", hitPrior.OperationID),
+				zap.String("job_id", hitPrior.JobID),
+				zap.Error(jobErr),
+			)
+		}
+		return &SubmitResult{
+			Operation:        hitPrior,
+			Job:              canonicalJob,
+			IsIdempotencyHit: true,
+		}, nil
+	}
 	if !mustPersist {
-		return result, nil
+		// Defensive: a non-hit, non-persist classification only happens
+		// via the unreachable branch in decideReplayOrFresh (error).
+		s.submitMu.Unlock()
+		return nil, fmt.Errorf("operations.Submit: unreachable classification (prior=%+v, force_refresh=%v)", prior, req.ForceRefresh)
 	}
 
-	return s.persistSubmit(ctx, req, prior, s.nowFunc())
+	result, persistErr := s.persistSubmit(ctx, req, prior, s.nowFunc())
+	s.submitMu.Unlock()
+	if persistErr != nil {
+		s.log.Warn("operations.Submit: persist failed",
+			zap.String("scope", string(req.Scope)),
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.Duration("lock_wait", lockWait),
+			zap.Error(persistErr),
+		)
+	} else {
+		s.log.Info("operations.Submit: submitted",
+			zap.String("operation_id", result.Operation.OperationID),
+			zap.String("scope", string(req.Scope)),
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.Bool("is_supersede", result.IsSupersede),
+			zap.Duration("lock_wait", lockWait),
+		)
+	}
+	return result, persistErr
 }
