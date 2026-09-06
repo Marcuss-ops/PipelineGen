@@ -351,13 +351,18 @@ func metricsFromChrononMetrics(n map[string]float64, frameCount int, durationUS 
 	set(&m.RenderWallMS, "chronon_job_render_loop_wall_ms")
 
 	// Receipt verification phases from Chronon's `<output>.receipt.json`
-	// timing_ms. decode runs only under the normal/certify policy; under the
-	// default fast policy receipt_decode_ms stays NOT_INSTRUMENTED while
-	// probe/sha256/total carry the metadata-only receipt cost.
+	// timing_ms. decode/count_frames run only under the normal/certify
+	// policy; under the default fast policy they stay NOT_INSTRUMENTED while
+	// probe/sha256/total carry the metadata-only receipt cost. The resolved
+	// policy + aggregate status label the run (fast=1/normal=2/certify=3)
+	// instead of inferring the policy from the presence of decode timings.
 	set(&m.ReceiptSHA256MS, "chronon_receipt_sha256_ms")
 	set(&m.ReceiptProbeMS, "chronon_receipt_probe_ms")
+	set(&m.ReceiptCountFramesMS, "chronon_receipt_count_frames_ms")
 	set(&m.ReceiptDecodeMS, "chronon_receipt_decode_ms")
 	set(&m.ReceiptTotalMS, "chronon_receipt_total_ms")
+	set(&m.VerificationPolicy, "chronon_receipt_verification_policy")
+	set(&m.VerificationPassed, "chronon_receipt_verification_status")
 
 	// GPU counters and resource profile.
 	set(&m.GPUUploadBytes, "chronon_job_gpu_gpu_upload_bytes", "chronon_job_gpu_upload_bytes")
