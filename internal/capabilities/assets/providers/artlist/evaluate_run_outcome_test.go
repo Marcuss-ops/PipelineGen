@@ -21,14 +21,24 @@ import (
 //     recorded (Failed == 0) but Found - (Processed + Skipped) > 0, the run
 //     is undercounted and must be flagged as failed.
 //
-// The 4 tests cover the matrix below:
+// OUTCOME-FULL-ACCOUNTING (September 2026): Policy B's Failed == 0 guard
+// was removed — the invariant is now full accounting
+// (Found == Processed + Skipped + Failed). Runs mixing explicit failures
+// AND silent drops are caught as well. The mix test below now pins that
+// the full-accounting boundary stays green when every discovered item IS
+// tallied (Found == accounted), and a new test pins the mixed silent-drop
+// case that the guarded Policy B used to miss.
+//
+// The tests cover the matrix below:
 //
 //   case                            OK  Found  Proc  Skip  Fail  verdict
 //   ------------------------------  --- -----  ----  ----  ----  -----------------
 //   all persisted OK                T   10     10    0     0     false (legit pass)
 //   all items failed                T   10     0     0     10    true  (policy A)
-//   mix: real failures + persistence T   10     7     0     3     false (partial success, no silent loss)
+//   mix: real failures + persistence T   10     7     0     3     false (partial success, fully accounted)
 //   silent loss with persistence    T   10     7     2     0     true  (policy B — undercount)
+//   mix: failures AND silent drop   T   10     5     0     1     true  (policy B — undercount)
+//   full accounting boundary        T   10     7     2     1     false (every item tallied)
 // --------------------------------------------------------------------------------
 
 func TestEvaluateRunOutcome_AllPersistedOk(t *testing.T) {
@@ -91,9 +101,8 @@ func TestEvaluateRunOutcome_MixFailureAndPersistence_NoSilentLoss(t *testing.T) 
 
 func TestEvaluateRunOutcome_SilentLossWithPartialProcessing(t *testing.T) {
 	// Found=10, Processed=7, Skipped=2, Failed=0 → exactly 1 item silently
-	// lost (Found-(Processed+Skipped) = 1 > 0). Policy B (added by
-	// PR-ARTLIST-OUTCOME-ACCOUNTING) MUST flag this as failed even though
-	// Processed > 0.
+	// lost (Found-(Processed+Skipped+Failed) = 1 > 0). Policy B (full
+	// accounting) MUST flag this as failed even though Processed > 0.
 	resp := &RunTagResponse{
 		OK:        true,
 		Found:     10,
@@ -114,5 +123,52 @@ func TestEvaluateRunOutcome_SilentLossWithPartialProcessing(t *testing.T) {
 	}
 	if !strings.Contains(errMsg, "found=10") || !strings.Contains(errMsg, "processed=7") || !strings.Contains(errMsg, "skipped=2") {
 		t.Fatalf("expected diagnostic to quote all 4 counters, got %q", errMsg)
+	}
+}
+
+func TestEvaluateRunOutcome_MixFailuresAndSilentDrops_FullAccounting(t *testing.T) {
+	// Found=10, Processed=5, Failed=1, Skipped=0 → accounted = 6, so 4
+	// items were silently lost. The original July 2026 Policy B (guarded
+	// on Failed == 0) let this pass — this is exactly the documented KNOWN
+	// LIMITATION. Full accounting MUST flag it.
+	resp := &RunTagResponse{
+		OK:        true,
+		Found:     10,
+		Processed: 5,
+		Skipped:   0,
+		Failed:    1,
+	}
+	failed, errMsg := EvaluateRunOutcome(resp)
+	if !failed {
+		t.Fatalf("expected run mixing explicit failures and silent drops to be flagged (full accounting), got failed=%v errMsg=%q", failed, errMsg)
+	}
+	if !strings.Contains(errMsg, "4 items silently lost") {
+		t.Fatalf("expected gap size '4' in diagnostic, got %q", errMsg)
+	}
+	if !strings.Contains(errMsg, "failed=1") {
+		t.Fatalf("expected failed=1 quoted in diagnostic (full accounting quotes every bucket), got %q", errMsg)
+	}
+}
+
+func TestEvaluateRunOutcome_FullAccountingBoundary_Passes(t *testing.T) {
+	// Found=10, Processed=7, Skipped=2, Failed=1 → accounted = 10: every
+	// discovered item is tallied into exactly one bucket. Full accounting
+	// MUST NOT flag a legitimately fully-accounted partial success.
+	resp := &RunTagResponse{
+		OK:        true,
+		Found:     10,
+		Processed: 7,
+		Skipped:   2,
+		Failed:    1,
+	}
+	failed, errMsg := EvaluateRunOutcome(resp)
+	if failed {
+		t.Fatalf("expected fully-accounted partial-success run to pass, got failed=%v errMsg=%q", failed, errMsg)
+	}
+	if errMsg != "" {
+		t.Fatalf("expected empty error message on fully-accounted run, got %q", errMsg)
+	}
+	if got, want := resp.Found-(resp.Processed+resp.Skipped+resp.Failed), 0; got != want {
+		t.Fatalf("test arithmetic mismatch: Found-Processed-Skipped-Failed = %d, want %d", got, want)
 	}
 }

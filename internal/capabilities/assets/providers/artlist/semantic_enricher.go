@@ -3,7 +3,7 @@
 //
 // File layout (per godlike/06 one-canonical-owner-per-fact):
 //
-//   - semantic_enricher.go          (this file) — slim orchestrator: SemanticEnricher struct + NewSemanticEnricher + dispatchOrIndexAndUpsert + newDispatchBridge + enrichMetaMu (package-level lock used by Enrich in semantic_enricher_enrich.go)
+//   - semantic_enricher.go          (this file) — slim orchestrator: SemanticEnricher struct + NewSemanticEnricher + dispatchOrIndexAndUpsert + newDispatchBridge + acquireEnrichFolderLock (per-folder keyed lock registry used by Enrich in semantic_enricher_enrich.go)
 //   - semantic_enricher_enrich.go   (sibling)   — Enrich entry-point + buildArtlistPrompt + deduplicateStrings pure helpers
 //   - semantic_enricher_metadata.go (sibling)   — updateCumulativeMetadataJSON (the RMW path for cumulative Drive metadata.json sync)
 //
@@ -14,7 +14,6 @@ package artlist
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -23,30 +22,36 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// enrichMetaMu serialises access to the cumulative metadata.json file
-// across concurrent Enrich invocations on the same folder.
+// enrichFolderLocks serialises the cumulative metadata.json RMW
+// (read-modify-write) cycle PER Drive folder across concurrent Enrich
+// invocations. The former package-level enrichMetaMu serialised ALL
+// folders under one global mutex: a slow Drive round-trip for one folder
+// blocked semantic enrichment for every other folder. The per-folder
+// critical section keeps the same-folder semantics (one folder is never
+// read-modify-written concurrently) while unrelated folders proceed in
+// parallel.
 //
-// Lives in the slim orchestrator because the lock is acquired in
-// semantic_enricher_enrich.go's Enrich method (the only caller in
-// the package); the var is package-scope so the sibling file can
-// reach it without re-declaring. The lock is intentionally
-// package-scope (not embed-on-struct) because it is a
-// per-Folder resource guarded across goroutines that may outlive
-// a single SemanticEnricher (test fixtures can spawn many
-// enrichers pointing at the same folder).
-//
-// PR-CODE-HEALTH-C3 audit-pin (2026-07-09): this is one of only 2
-// package-level mutexes in production code. It CANNOT be replaced
-// with sync.Once because it guards repeated RMW (read-modify-write)
-// cycles to metadata.json across concurrent Enrich invocations, not
-// a one-time initialisation. It CANNOT be moved into a struct field
-// because the lock spans across goroutines that outlive a single
-// SemanticEnricher instance — multiple enrichers may point at the
-// same Drive folder. The per-folder serialisation is the correct
-// semantics; the package-level var is the least-bad home.
-var enrichMetaMu sync.Mutex
+// LOCK-CONSOLIDATION (September 2026, P3 cleanup): the reference-counted
+// per-key registry implementation now lives in the canonical
+// pkg/concurrent.KeyedLocker primitive (godlike/06 one-owner-per-fact —
+// no private per-key registry copies). The package-scope registry here is
+// intentional and MUST stay package-scope: the guarded RMW spans
+// goroutines that may outlive a single SemanticEnricher instance —
+// multiple enrichers may point at the same Drive folder.
+var enrichFolderLocks = concurrent.NewKeyedLocker()
+
+// acquireEnrichFolderLock returns a release func for an exclusive
+// per-key lock. The caller MUST invoke the release func exactly once when
+// the guarded RMW cycle completes. Delegates to the canonical
+// KeyedLocker (same same-key-serialises / cross-key-parallel contract,
+// pinned by both TestAcquireEnrichFolderLock_* and
+// TestKeyedLocker_*).
+func acquireEnrichFolderLock(key string) func() {
+	return enrichFolderLocks.Lock(key)
+}
 
 // SemanticEnricher arricchisce un clip Artlist con metadati semantici.
 // Usa il semantic_tagger.py per generare search_text, concept_tags, subjects, mood,

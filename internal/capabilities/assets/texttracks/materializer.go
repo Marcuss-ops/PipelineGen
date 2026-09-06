@@ -234,8 +234,17 @@ func (m *Materializer) Materialize(
 			})
 		}
 		// Per-language errors are recorded on the report and never
-		// propagated; the loop always drains every candidate.
-		_ = g.Wait()
+		// propagated; each closure returns nil after recording on the
+		// report, so the loop always drains every candidate.
+		//
+		// Hardening (September 2026): a group-level error is currently
+		// unreachable (every closure returns nil), but surfacing it here
+		// instead of discarding it means a FUTURE closure that returns an
+		// error outside materializeOne can never be silently lost.
+		if gerr := g.Wait(); gerr != nil {
+			report.Duration = time.Since(start)
+			return report, fmt.Errorf("texttracks.materialize: unexpected group error: %w", gerr)
+		}
 	} else {
 		for _, targetLang := range candidates {
 			if err := m.materializeOne(ctx, resolver, source, targetLang, report); err != nil {

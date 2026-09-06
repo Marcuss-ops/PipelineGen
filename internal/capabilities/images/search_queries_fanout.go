@@ -81,14 +81,21 @@ func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Contex
 	if provider != "" {
 		s.log.Info("explicit retrieved provider selected", zap.String("provider", string(provider)), zap.String("query", query))
 		if s.retrievalRegistry == nil {
+			s.log.Warn("explicit retrieved provider skipped: retrieval registry is not wired", zap.String("provider", string(provider)), zap.String("query", query))
 			return "", "", ""
 		}
 		p := s.retrievalRegistry.SearchByName(provider)
 		if p == nil {
+			s.log.Warn("explicit retrieved provider not found in registry", zap.String("provider", string(provider)), zap.String("query", query))
 			return "", "", ""
 		}
 		results, err := p.Search(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
-		if err != nil || len(results) == 0 {
+		if err != nil {
+			s.log.Warn("explicit retrieved provider search failed", zap.String("provider", string(provider)), zap.String("query", query), zap.Error(err))
+			return "", "", ""
+		}
+		if len(results) == 0 {
+			s.log.Debug("explicit retrieved provider returned no results", zap.String("provider", string(provider)), zap.String("query", query))
 			return "", "", ""
 		}
 		hit := results[0]
@@ -140,7 +147,11 @@ func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Contex
 					if c.Err() != nil {
 						return "", ""
 					}
-					res, _ := p.Search(c, query, retrieved.RetrievalSearchOptions{Lang: lang})
+					res, err := p.Search(c, query, retrieved.RetrievalSearchOptions{Lang: lang})
+					if err != nil {
+						s.log.Warn("retrieved provider search failed", zap.String("provider", string(p.Name())), zap.String("query", query), zap.Error(err))
+						return "", ""
+					}
 					if len(res) == 0 {
 						return "", ""
 					}

@@ -9,24 +9,24 @@
 //     fix).
 //   - decideReplayOrFresh — classifies the post-lookup state
 //     into hit / conflict / fresh / force-refresh-supersede;
-//     returns (*SubmitResult, mustPersist bool, error).
+//     returns (hitPrior *Operation, mustPersist bool, error)
+//     where a non-nil hitPrior is an idempotency hit that
+//     needs no DB write.
 //
 // godlike/06 SSOT (single-owner): this file owns NO
-// transaction boundaries. txMgr.BeginTx / tx.Commit /
-// tx.Rollback appear ONLY in generation_submission_transaction.go.
-// Decision logic here is intentionally side-effect-free
-// before the TX: it emits the typed "idempotency hit" log + reads
-// the canonical live Job via JobGetter (also a READ, no
-// mutation). The TX body lives in persistSubmit.
+// transaction boundaries and NO I/O beyond the caller-owned
+// prior lookup. txMgr.BeginTx / tx.Commit / tx.Rollback appear
+// ONLY in generation_submission_transaction.go. The canonical
+// live-Job read on an idempotency hit is advisory and is
+// performed by Submit AFTER releasing the submission mutex
+// (generation_submission_types.go), so the decision layer stays
+// pure and the lock hold is minimised. The TX body lives in
+// persistSubmit.
 package operations
 
 import (
 	"context"
 	"fmt"
-
-	"go.uber.org/zap"
-
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // validateSubmitRequest is the canonical FASE 2 input guard.
@@ -117,7 +117,26 @@ func (s *Service) lookupPriorOperation(ctx context.Context, scope Scope, idempot
 // The typed "idempotency hit" log is emitted here (godlike/10
 // decision locality: the info-level log is co-located with the
 // classification that triggers it).
-func (s *Service) decideReplayOrFresh(ctx context.Context, prior *Operation, req SubmitRequest) (*SubmitResult, bool, error) {
+// decideReplayOrFresh classifies the post-lookup state into one of the
+// canonical Submit outcomes WITHOUT opening a transaction and WITHOUT any
+// I/O. Returns:
+//
+//   - hit (idempotency): (prior, false, nil). No DB write. Submit reads
+//     the canonical live Job state AFTER releasing the mutex.
+//
+//   - conflict (idempotency): (nil, false, WrapIdempotencyConflict err).
+//     No DB write — caller surfaces the typed sentinel.
+//
+//   - fresh or force_refresh supersede: (nil, true, nil) — the caller
+//     MUST call persistSubmit (transaction.go) which owns the *sql.Tx
+//     boundary.
+//
+//   - self-supersede reference (Push 2.2a MEDIUM code-review fix):
+//     caller pre-supplies req.OperationID matching prior would surface as
+//     ErrSelfSupersedeReference from the repository's validateForWrite
+//     AFTER BeginTx. Detected and surfaced here so the typed error
+//     arrives at the input boundary before any TX is opened.
+func (s *Service) decideReplayOrFresh(prior *Operation, req SubmitRequest) (*Operation, bool, error) {
 	// Push 2.2a MEDIUM code-review fix (pre-tx guard): a caller
 	// pre-supplying req.OperationID == prior.OperationID AND
 	// force_refresh=true would surface as ErrSelfSupersedeReference
@@ -139,34 +158,7 @@ func (s *Service) decideReplayOrFresh(ctx context.Context, prior *Operation, req
 		// the original payload requested force_refresh. force_refresh
 		// controls creation of a fresh operation only when the request
 		// identity differs; it must never defeat the idempotency key.
-		//
-		// FASE 2 close-out: read canonical live Job state via
-		// JobGetter so the HTTP layer surfaces the canonical
-		// post-terminal Job.Status on replay (no longer a stale
-		// QUEUED snapshot from the prior operation row). A
-		// JobGetter failure is treated as advisory (typed warn
-		// logged; SubmitResult.Job is nil; caller proceeds with
-		// the Operation only — the canonical job snapshot is
-		// still available via GET /api/jobs/{id}/full).
-		s.log.Info("operations.Submit: idempotency hit",
-			zap.String("operation_id", prior.OperationID),
-			zap.String("scope", string(req.Scope)),
-			zap.String("idempotency_key", req.IdempotencyKey),
-		)
-		var canonicalJob *job.Job
-		canonicalJob, jobErr := s.jobGetter.Get(ctx, prior.JobID)
-		if jobErr != nil {
-			s.log.Warn("operations.Submit: canonical job lookup failed on replay",
-				zap.String("operation_id", prior.OperationID),
-				zap.String("job_id", prior.JobID),
-				zap.Error(jobErr),
-			)
-		}
-		return &SubmitResult{
-			Operation:        prior,
-			Job:              canonicalJob,
-			IsIdempotencyHit: true,
-		}, false, nil
+		return prior, false, nil
 	case !req.ForceRefresh && prior.RequestHash != req.RequestHash:
 		// 409 IDEMPOTENCY_CONFLICT — same key, different hash.
 		// No DB write. Caller (HTTP layer) maps to 409.

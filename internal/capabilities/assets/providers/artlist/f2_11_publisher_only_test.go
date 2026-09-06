@@ -254,14 +254,17 @@ func TestUpdateCumulativeMetadataJSON_NilReaderSkips_F2_11(t *testing.T) {
 	}
 
 	// Drive with non-empty parent folderID + clipID + newEntry. The
-	// function MUST return early without calling publisher.Publish,
-	// without searching, without trashing.
-	enricher.updateCumulativeMetadataJSON(
+	// function MUST return early (nil error — intentional opt-out, not a
+	// failure) without calling publisher.Publish, without searching,
+	// without trashing.
+	if err := enricher.updateCumulativeMetadataJSON(
 		context.Background(),
 		"parent-folder-id",
 		"test-clip-id",
 		map[string]any{"clip_id": "test-clip-id", "name": "Test"},
-	)
+	); err != nil {
+		t.Fatalf("nil-reader opt-out must return nil error, got %v", err)
+	}
 
 	// Pin: publisher.Publish must NOT have been called. The early-
 	// return path is silent (debug log) and produces no side-effects.

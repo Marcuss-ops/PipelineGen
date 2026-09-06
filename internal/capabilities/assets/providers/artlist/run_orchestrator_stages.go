@@ -52,6 +52,17 @@ func (o *RunOrchestratorService) stageDiscoverClips(ctx context.Context, req *Ru
 			resp.Found = len(dbResp.Clips)
 			return dbResp, nil
 		}
+		// Fail closed on a real local-DB error: an unavailable canonical store
+		// must not be masked as a cache miss that triggers remote scraping
+		// and asset writes (godlike/07 no-fake-availability). Only an
+		// empty-but-valid result is a cache miss.
+		if err != nil {
+			return nil, fmt.Errorf("artlist discovery: local DB search failed: %w", err)
+		}
+		if o.svc.log != nil {
+			o.svc.log.Debug("artlist discovery: local DB cache miss, falling back to live search",
+				zap.String("term", resp.Term))
+		}
 	}
 
 	discoveryResp, err := o.svc.searchService.SearchLiveAndSave(ctx, resp.Term, req.Limit)
@@ -370,8 +381,6 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 	return nil
 }
 
-func (o *RunOrchestratorService) stageIndexAsync(_ context.Context, _ *RunTagResponse) {}
-
 func (o *RunOrchestratorService) ImportSingleClip(ctx context.Context, req *ImportClipRequest, clip *asset.Asset) (*RunTagItem, error) {
 	if clip == nil {
 		return nil, fmt.Errorf("asset is required")
@@ -417,8 +426,9 @@ func (o *RunOrchestratorService) ImportSingleClip(ctx context.Context, req *Impo
 	if err := o.stageProcessBatch(ctx, ps); err != nil {
 		return nil, err
 	}
-	o.stagePersistResults(ctx, resp)
-	o.stageIndexAsync(ctx, resp)
+	if err := o.stagePersistResults(ctx, resp); err != nil {
+		return nil, err
+	}
 	if len(resp.Items) == 0 {
 		return nil, fmt.Errorf("no item produced by single-clip import")
 	}

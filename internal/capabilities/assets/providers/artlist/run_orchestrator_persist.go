@@ -3,6 +3,7 @@ package artlist
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
@@ -21,15 +22,31 @@ import (
 // persistRenditions custom writer are retired. Artlist now uses the
 // same AssetFinalizerTx as every other capability, ensuring the ledger
 // tables are written by one canonical implementation.
-func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
+//
+// It returns an error only for systemic (non-wired) persistence
+// failures. Per-item failures are recorded on the response
+// (item.Error + resp.Failed) and never abort the remaining items.
+func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) error {
 	if o.svc.assetFinalizer == nil || o.svc.mainDB == nil {
-		o.svc.log.Warn("stagePersistResults: asset finalizer or main DB not wired (cannot persist)")
-		return
+		// Fail closed: returning success without persisting would surface
+		// a run that claims completion for assets that were never
+		// committed (godlike/07 no-fake-availability).
+		return fmt.Errorf("stagePersistResults: asset finalizer or main DB not wired (cannot persist)")
 	}
 
 	for i := range resp.Items {
 		item := &resp.Items[i]
-		if item.Status == "media_process_failed" || item.Status == "dry_run" || item.Status == "skipped_existing" {
+		// OUTCOME-SINGLE-TALLY (September 2026): every item that an earlier
+		// stage already adjudicated AND tallied (resp.Failed++ / resp.Skipped++)
+		// must not be re-adjudicated here. Re-running the Drive-field gate on
+		// an item that failed during processing (transcription_failed,
+		// transcript_persist_failed, blocked_*) would re-stamp its Status to
+		// drive_upload_failed and DOUBLE-COUNT it into resp.Failed, breaking
+		// the Found == Processed + Skipped + Failed invariant that
+		// EvaluateRunOutcome / EvaluateRunState own. Items that failed during
+		// processing never entered the persist path; the Drive-field gate
+		// below only applies to items the processor reported as processed.
+		if itemStatusAlreadyTallied(item.Status) {
 			continue
 		}
 
@@ -66,6 +83,9 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if err != nil {
 			o.svc.log.Warn("stagePersistResults: begin tx failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))
+			item.Status = "persist_failed"
+			item.Error = fmt.Sprintf("persist failed: %v", err)
+			resp.Failed++
 			continue
 		}
 
@@ -95,6 +115,39 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		// graph in media memory. The linker is optional: when the
 		// mediamemory repos are not wired, this is a no-op.
 		o.linkMayaMediaMemory(ctx, item)
+	}
+	return nil
+}
+
+// itemStatusAlreadyTallied is the canonical single-owner mapping of the
+// per-item Status values that an EARLIER stage already counted into
+// resp.Failed / resp.Skipped (godlike/06 SSOT: one canonical owner of the
+// tally-skip decision). Adding a new early-failure Status in
+// stageProcessBatch (or the gate-block classifier) MUST add it here in the
+// same commit so stagePersistResults never re-adjudicates it.
+//
+// Excluded statuses:
+//   - media_process_failed  (stageProcessBatch: mediaProcessor.Process error)
+//   - transcription_failed  (stageProcessBatch: transcriber.Transcribe error)
+//   - transcript_persist_failed (stageProcessBatch: textTrackRepo.UpsertBatch error)
+//   - blocked_mode / blocked_daily_limit / blocked_unauthorized /
+//     blocked_session_expired (stageProcessBatch: gateBlockShortCircuit —
+//     bumped via newGateBlockCounterFor(resp).bumpGateBlock)
+//   - dry_run / skipped_existing (stageBuildProcessInputs: resp.Skipped++)
+func itemStatusAlreadyTallied(status string) bool {
+	switch status {
+	case "media_process_failed",
+		"transcription_failed",
+		"transcript_persist_failed",
+		"blocked_mode",
+		"blocked_daily_limit",
+		"blocked_unauthorized",
+		"blocked_session_expired",
+		"dry_run",
+		"skipped_existing":
+		return true
+	default:
+		return false
 	}
 }
 

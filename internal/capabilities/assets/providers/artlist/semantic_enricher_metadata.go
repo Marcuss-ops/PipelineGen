@@ -14,7 +14,19 @@ import (
 )
 
 // updateCumulativeMetadataJSON maintains a single metadata.json per
-// folder on Google Drive.
+// folder on Google Drive. It returns an error for every failure so the
+// caller can surface a structured projection failure (METADATA-
+// PROJECTION-GUARD, September 2026): the Drive metadata.json is a DERIVED
+// projection — the DB asset enrichment (already committed when this runs)
+// is the SSOT, so a Drive projection failure must never be reported as
+// silent success, but it also must not roll back the canonical
+// enrichment.
+//
+// Data-loss guard: when an existing metadata.json is found but cannot be
+// downloaded or parsed, the file is NOT trashed and NOT re-published.
+// Trash + publish with only the new entry would drop every previously
+// recorded entry in the cumulative projection. The malformed state is
+// returned as an error so an operator can repair the projection manually.
 //
 // F2.11 (June 2026, override brutal): the legacy
 // DriveFolderManagerAdapter surface (ListByQuery + Download + Upload)
@@ -42,16 +54,17 @@ import (
 // `e.publisher != nil && folderID != ""`; the inner check below
 // remains for the reader-only nil path which has no equivalent
 // composition guard).
-func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
+func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) error {
 	const metaFilename = "metadata.json"
 
 	// F2.11: reader is the only optional dep (publisher is fail-fast
 	// in NewService). Skip the RMW path entirely if the composition
 	// root wired nil reader (test fixtures opting out of cumulative
 	// sync; production wires bundle.DriveUploader as drive.Reader).
+	// This is an intentional opt-out, not a failure.
 	if e.reader == nil {
 		e.log.Debug("semantic_enricher: reader is nil, skipping cumulative metadata.json sync (F2.11 test-fixture opt-out)")
-		return
+		return nil
 	}
 
 	var existing []map[string]any
@@ -59,18 +72,35 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	files, err := e.reader.SearchFiles(ctx, query)
 	if err != nil {
 		e.log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(files) > 0 {
+		return fmt.Errorf("semantic_enricher: list existing metadata.json: %w", err)
+	}
+	if len(files) > 0 {
 		existingFileID := files[0].ID
 		body, _, dlErr := e.reader.DownloadFile(ctx, existingFileID)
-		if dlErr == nil && body != nil {
-			defer body.Close()
-			var raw []map[string]any
-			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-				existing = raw
-			}
+		if dlErr != nil {
+			e.log.Warn("failed to download metadata.json", zap.Error(dlErr))
+			return fmt.Errorf("semantic_enricher: download existing metadata.json: %w", dlErr)
 		}
+		if body == nil {
+			return fmt.Errorf("semantic_enricher: download existing metadata.json returned nil body")
+		}
+		defer body.Close()
+		var raw []map[string]any
+		if decErr := json.NewDecoder(body).Decode(&raw); decErr != nil {
+			// Data-loss guard: never trash + re-publish a malformed
+			// cumulative file (that would drop every previously recorded
+			// entry). Surface the malformed projection for repair.
+			e.log.Error("semantic enricher: existing drive metadata.json is malformed; refusing to trash+rewrite (projection data-loss guard)",
+				zap.String("folder_id", folderID),
+				zap.String("file_id", existingFileID),
+				zap.Error(decErr),
+			)
+			return fmt.Errorf("semantic_enricher: existing drive metadata.json is malformed (projection data-loss guard): %w", decErr)
+		}
+		existing = raw
 		if trashErr := e.lifecycle.Trash(ctx, existingFileID); trashErr != nil {
 			e.log.Warn("failed to trash old metadata.json", zap.Error(trashErr))
+			return fmt.Errorf("semantic_enricher: trash old metadata.json: %w", trashErr)
 		}
 	}
 
@@ -89,12 +119,12 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	jsonBytes, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
 		e.log.Warn("failed to marshal cumulative metadata json", zap.Error(err))
-		return
+		return fmt.Errorf("semantic_enricher: marshal cumulative metadata json: %w", err)
 	}
 	metaTempPath := filepath.Join(os.TempDir(), fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
 	if err := os.WriteFile(metaTempPath, jsonBytes, 0644); err != nil {
 		e.log.Warn("failed to write metadata json temp file", zap.Error(err))
-		return
+		return fmt.Errorf("semantic_enricher: write metadata json temp file: %w", err)
 	}
 	defer os.Remove(metaTempPath)
 
@@ -133,7 +163,8 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 		ConflictPolicy: delivery.ConflictOverwrite,
 	}); err != nil {
 		e.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-	} else {
-		e.log.Info("uploaded cumulative metadata.json to Drive (enriched)", zap.Int("entries", len(existing)))
+		return fmt.Errorf("semantic_enricher: publish metadata.json to Drive: %w", err)
 	}
+	e.log.Info("uploaded cumulative metadata.json to Drive (enriched)", zap.Int("entries", len(existing)))
+	return nil
 }

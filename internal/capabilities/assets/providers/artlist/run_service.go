@@ -43,7 +43,11 @@ func (o *RunOrchestratorService) GetRunTag(ctx context.Context, runID string) (*
 // RunTag esegue la pipeline Artlist per un termine di ricerca.
 // La pipeline è suddivisa in stage chiaramente separati per testabilità:
 //
-//	DiscoverClips → ResolveDestination → BuildProcessInputs → ProcessBatch → PersistResults → IndexAsync
+//	DiscoverClips → ResolveDestination → BuildProcessInputs → ProcessBatch → PersistResults
+//
+// Indexing is outbox-driven: stagePersistResults commits every processed
+// clip via the canonical AssetFinalizerTx, which emits
+// `asset.index.requested` per persisted clip inside the same transaction.
 //
 // P0.6 (June 2026): the previous EnrichAsync stage was deleted from the
 // sequence. Background fire-and-forget enrichment violated the
@@ -65,6 +69,20 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 		resp.OK = false
 		resp.Error = "term is required"
 		return resp, fmt.Errorf("term is required")
+	}
+
+	// Fail closed on per-run output geometry: the media processor renders
+	// every Artlist asset at the canonical configured profile, so Width /
+	// Height / FPS request fields cannot be honored. Accepting them and
+	// producing canonical-profile output would silently ignore the caller's
+	// requested contract. Only ClipDuration is honored as a per-run output
+	// parameter (forwarded to the transform as input.Duration).
+	if req.Width != 0 || req.Height != 0 || req.FPSNum != 0 || req.FPSDen != 0 {
+		errMsg := "artlist run: per-run output geometry (width/height/fps) is not supported; " +
+			"output is rendered at the canonical configured profile (only duration is per-run)"
+		resp.OK = false
+		resp.Error = errMsg
+		return resp, fmt.Errorf("%s", errMsg)
 	}
 
 	// Stage 1: Discover clips via live search
@@ -116,13 +134,19 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 	}
 	logFailedItemBreakdown(o.svc.log, resp, labelStageProcessBatchComplete)
 
-	// Stage 5: Post-processing (persist). Stage 6 is a documented no-op
-	// kept for sequence continuity — the canonical dispatcher took over
-	// indexing inside stagePersistResults (see stageIndexAsync for the
-	// no-op contract).
-	o.stagePersistResults(ctx, resp)
+	// Stage 5: Post-processing (persist). Indexing is outbox-driven: the
+	// canonical AssetFinalizerTx inside stagePersistResults emits
+	// asset.index.requested per persisted clip, so no separate index stage
+	// exists anymore (the former stageIndexAsync placeholder was removed).
+	// Persistence is fail-closed: a systemic (non-wired) persist failure
+	// fails the run instead of reporting success for un-persisted assets.
+	if err := o.stagePersistResults(ctx, resp); err != nil {
+		resp.OK = false
+		resp.Error = err.Error()
+		logFailedItemBreakdown(o.svc.log, resp, labelStagePersistComplete)
+		return resp, err
+	}
 	logFailedItemBreakdown(o.svc.log, resp, labelStagePersistComplete)
-	o.stageIndexAsync(ctx, resp)
 
 	processedCount := resp.Processed
 	o.svc.log.Info("artlist run completed",

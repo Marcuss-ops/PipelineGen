@@ -40,11 +40,29 @@ func NewJobAdapter(s *Service) *JobAdapter {
 
 // RunTag delegates to the canonical Artlist run orchestrator. Keeping this
 // method on Service preserves the facade consumed by worker and API code.
+//
+// OUTCOME-INGRESS-NORMALIZATION (September 2026): RunTag is the SINGLE
+// entry boundary for every public call path (JobAdapter.HandleJob,
+// Service.JobHandler and any direct caller), so the request is normalized
+// HERE with the canonical NormalizeRunTagRequest + cfg defaults before the
+// orchestrator runs. Previously only the queued (HandleJob) path
+// normalized, so a direct call could execute with a raw/un-normalized
+// request (term not collapsed, limit/concurrency unclamped, root folder
+// not defaulted). Normalization is idempotent, so callers that already
+// normalized (HTTP handler before enqueue, HandleJob before its
+// root-folder skip gate) are unaffected.
 func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
 	if s == nil || s.runOrchestrator == nil {
 		return nil, fmt.Errorf("artlist.Service.RunTag: run orchestrator is not configured")
 	}
-	return s.runOrchestrator.RunTag(ctx, req)
+	if req == nil {
+		return nil, fmt.Errorf("artlist.Service.RunTag: req is nil")
+	}
+	normalized := NormalizeRunTagRequest(*req, RunDefaults{
+		DefaultRootFolderID: ResolveRootFolderID(s.cfg),
+		MaxLimit:            500,
+	})
+	return s.runOrchestrator.RunTag(ctx, &normalized)
 }
 
 // HandleJob is the canonical worker-side Artlist path. Besides running the
