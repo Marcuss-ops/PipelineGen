@@ -29,6 +29,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -107,20 +108,40 @@ func RunSQLiteAudit(args []string) error {
 	}
 	report.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 
-	payload, _ := json.MarshalIndent(report, "", "  ")
-	if *reportPath != "" {
+	payload, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal audit report: %w", err)
+	}
+	switch {
+	case *reportPath != "":
 		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("write report: %w", err)
 		}
 		fmt.Printf("sqlite-audit: report written to %s\n", *reportPath)
-		return nil
-	}
-	if *jsonOut {
+	case *jsonOut:
 		fmt.Println(string(payload))
-		return nil
+	default:
+		printAuditReport(report)
 	}
-	printAuditReport(report)
+	// A table whose classification failed is not "zero rows": fail loudly so
+	// scripts never mistake a partial audit for an authoritative clean bill.
+	if failures := reportTableFailures(report); len(failures) > 0 {
+		return fmt.Errorf("sqlite-audit: %d table(s) errored during audit (partial report emitted): %s",
+			len(failures), strings.Join(failures, "; "))
+	}
 	return nil
+}
+
+// reportTableFailures lists every table whose classification recorded an
+// error, in deterministic (table) order.
+func reportTableFailures(report *auditRecord) []string {
+	var failed []string
+	for _, t := range report.Tables {
+		if t.Error != "" {
+			failed = append(failed, t.Table+": "+t.Error)
+		}
+	}
+	return failed
 }
 
 // ── Audit engine ─────────────────────────────────────────────────────────
@@ -216,9 +237,19 @@ func classifyCanonicalRoot(ctx context.Context, db *sql.DB, t string, row *audit
 		// Generic root: all LIVE, check duplicates + broken refs.
 		row.Live = row.TotalRows
 		if checkBroken {
-			row.BrokenReference = countBrokenRefs(ctx, db, t)
+			broken, err := countBrokenRefs(ctx, db, t)
+			if err != nil {
+				row.Error = err.Error()
+				return
+			}
+			row.BrokenReference = broken
 		}
-		row.Duplicate = countRootDups(ctx, db, t)
+		dups, err := countRootDups(ctx, db, t)
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.Duplicate = dups
 	}
 }
 
@@ -254,26 +285,43 @@ func classifyMediaAssets(ctx context.Context, db *sql.DB, row *auditTableRow, ch
 	if err := db.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(cnt-1),0) FROM (SELECT COUNT(*) cnt FROM media_assets WHERE drive_file_id IS NOT NULL AND drive_file_id!='' GROUP BY drive_file_id HAVING cnt>1)`,
 	).Scan(&row.Duplicate); err != nil {
-		// Ignore — not critical.
+		row.Error = err.Error()
+		return
 	}
 
 	// Broken references: drive_file_id that might be stale.
 	if checkBroken {
-		row.BrokenReference = countBrokenRefs(ctx, db, "media_assets")
+		broken, err := countBrokenRefs(ctx, db, "media_assets")
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.BrokenReference = broken
 	}
 }
 
 func classifyJobs(ctx context.Context, db *sql.DB, row *auditTableRow, checkBroken bool) {
-	_ = db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM jobs WHERE status IN ('PENDING','LEASED','RUNNING','RETRY_WAIT')`,
-	).Scan(&row.Live)
+	).Scan(&row.Live); err != nil {
+		row.Error = err.Error()
+		return
+	}
 
-	_ = db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM jobs WHERE status IN ('SUCCEEDED','FAILED','CANCELLED')`,
-	).Scan(&row.TerminalHistory)
+	).Scan(&row.TerminalHistory); err != nil {
+		row.Error = err.Error()
+		return
+	}
 
 	if checkBroken {
-		row.BrokenReference = countBrokenRefs(ctx, db, "jobs")
+		broken, err := countBrokenRefs(ctx, db, "jobs")
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.BrokenReference = broken
 	}
 }
 
@@ -310,32 +358,42 @@ func classifyChild(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 
 	// null-owner (optional provenance, not really an orphan).
 	var nullOwner int
-	_ = db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		fmt.Sprintf(`SELECT COUNT(*) FROM %s c WHERE c.%s IS NULL OR c.%s=''`, qt(t), qt(col), qt(col)),
-	).Scan(&nullOwner)
+	).Scan(&nullOwner); err != nil {
+		row.Error = err.Error()
+		return
+	}
 
 	// Live: reachable, with owner being LIVE.
 	ownerLiveExpr := ownerLiveCondition(owner)
-	var live int
 	q := fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND (%s))`,
 		qt(t), qt(col), qt(col), qt(owner), qt(ownerCol), qt(col), ownerLiveExpr,
 	)
-	_ = db.QueryRowContext(ctx, q).Scan(&live)
-	row.Live = live
+	if err := db.QueryRowContext(ctx, q).Scan(&row.Live); err != nil {
+		row.Error = err.Error()
+		return
+	}
 
 	// Stale-but-referenced: reachable but owner is STALE/DELETED.
 	ownerStaleExpr := ownerStaleCondition(owner)
-	var staleRef int
 	q2 := fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND (%s))`,
 		qt(t), qt(col), qt(col), qt(owner), qt(ownerCol), qt(col), ownerStaleExpr,
 	)
-	_ = db.QueryRowContext(ctx, q2).Scan(&staleRef)
-	row.StaleButReferenced = staleRef
+	if err := db.QueryRowContext(ctx, q2).Scan(&row.StaleButReferenced); err != nil {
+		row.Error = err.Error()
+		return
+	}
 
 	// Terminal history: child records that are terminal (e.g. FAILED steps, completed events).
-	row.TerminalHistory = countChildTerminal(ctx, db, t, col, owner, ownerCol)
+	terminal, err := countChildTerminal(ctx, db, t, col, owner, ownerCol)
+	if err != nil {
+		row.Error = err.Error()
+		return
+	}
+	row.TerminalHistory = terminal
 
 	// Remaining rows: null-owner (the non-orphan, non-stale remainder).
 	remaining := row.TotalRows - row.Live - row.StaleButReferenced - row.Orphan - row.TerminalHistory - nullOwner
@@ -344,9 +402,19 @@ func classifyChild(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 	}
 
 	if checkBroken {
-		row.BrokenReference = countBrokenRefs(ctx, db, t)
+		broken, err := countBrokenRefs(ctx, db, t)
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.BrokenReference = broken
 	}
-	row.Duplicate = countChildDups(ctx, db, t, col)
+	dups, err := countChildDups(ctx, db, t, col)
+	if err != nil {
+		row.Error = err.Error()
+		return
+	}
+	row.Duplicate = dups
 }
 
 // ── Cache classifiers ────────────────────────────────────────────────────
@@ -354,67 +422,99 @@ func classifyChild(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 func classifyCache(ctx context.Context, db *sql.DB, t string, row *auditTableRow, checkBroken bool) {
 	// Each cache table has a different expiry column. Use table-specific checks.
 	row.TerminalHistory = 0
+	// scan records a per-table error and reports whether classification may
+	// continue; a failed count must never masquerade as a zero count.
+	scan := func(query string, dest *int) bool {
+		if err := db.QueryRowContext(ctx, query).Scan(dest); err != nil {
+			row.Error = err.Error()
+			return false
+		}
+		return true
+	}
 	switch t {
 	case "stock_source_cache":
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stock_source_cache WHERE state='active'`).Scan(&row.Live)
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stock_source_cache WHERE state IN ('invalidated','expired')`).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM stock_source_cache WHERE state='active'`, &row.Live) {
+			return
+		}
+		if !scan(`SELECT COUNT(*) FROM stock_source_cache WHERE state IN ('invalidated','expired')`, &row.CacheExpired) {
+			return
+		}
 	case "translation_cache":
 		// TTL: last_used older than 7 days.
 		row.Live = row.TotalRows
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM translation_cache WHERE last_used < datetime('now','-7 days')`,
-		).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM translation_cache WHERE last_used < datetime('now','-7 days')`, &row.CacheExpired) {
+			return
+		}
 		row.Live -= row.CacheExpired
 	case "research_cache":
 		row.Live = row.TotalRows
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM research_cache WHERE last_used < datetime('now','-7 days')`,
-		).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM research_cache WHERE last_used < datetime('now','-7 days')`, &row.CacheExpired) {
+			return
+		}
 		row.Live -= row.CacheExpired
 	case "media_query_cache":
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM media_query_cache WHERE expires_at IS NULL OR expires_at > datetime('now')`,
-		).Scan(&row.Live)
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM media_query_cache WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`,
-		).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM media_query_cache WHERE expires_at IS NULL OR expires_at > datetime('now')`, &row.Live) {
+			return
+		}
+		if !scan(`SELECT COUNT(*) FROM media_query_cache WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`, &row.CacheExpired) {
+			return
+		}
 	case "vidrush_provider_cache":
 		row.Live = row.TotalRows
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM vidrush_provider_cache WHERE updated_at < datetime('now','-2 days')`,
-		).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM vidrush_provider_cache WHERE updated_at < datetime('now','-2 days')`, &row.CacheExpired) {
+			return
+		}
 		row.Live -= row.CacheExpired
 	case "artifact_cache_entries":
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM artifact_cache_entries WHERE status='READY'`).Scan(&row.Live)
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM artifact_cache_entries WHERE status IN ('FAILED','BUILDING')`).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM artifact_cache_entries WHERE status='READY'`, &row.Live) {
+			return
+		}
+		if !scan(`SELECT COUNT(*) FROM artifact_cache_entries WHERE status IN ('FAILED','BUILDING')`, &row.CacheExpired) {
+			return
+		}
 	case "artlist_search_cache":
 		// TTL: 24h per config.
 		row.Live = row.TotalRows
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM artlist_search_cache WHERE cached_at < datetime('now','-24 hours')`,
-		).Scan(&row.CacheExpired)
+		if !scan(`SELECT COUNT(*) FROM artlist_search_cache WHERE cached_at < datetime('now','-24 hours')`, &row.CacheExpired) {
+			return
+		}
 		row.Live -= row.CacheExpired
 	default:
 		// Generic cache: all live, check TTL if column exists.
 		row.Live = row.TotalRows
-		if hasColumn(ctx, db, t, "expires_at") {
-			_ = db.QueryRowContext(ctx,
-				fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`, qt(t)),
-			).Scan(&row.CacheExpired)
+		ok, err := hasColumn(ctx, db, t, "expires_at")
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		if ok {
+			if !scan(fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`, qt(t)), &row.CacheExpired) {
+				return
+			}
 			row.Live -= row.CacheExpired
 		}
-		if hasColumn(ctx, db, t, "state") {
-			_ = db.QueryRowContext(ctx,
-				fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE state IN ('invalidated','expired')`, qt(t)),
-			).Scan(&row.CacheExpired)
-			_ = db.QueryRowContext(ctx,
-				fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE state NOT IN ('invalidated','expired')`, qt(t)),
-			).Scan(&row.Live)
+		ok, err = hasColumn(ctx, db, t, "state")
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		if ok {
+			if !scan(fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE state IN ('invalidated','expired')`, qt(t)), &row.CacheExpired) {
+				return
+			}
+			if !scan(fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE state NOT IN ('invalidated','expired')`, qt(t)), &row.Live) {
+				return
+			}
 		}
 	}
 
 	if checkBroken {
-		row.BrokenReference = countBrokenRefs(ctx, db, t)
+		broken, err := countBrokenRefs(ctx, db, t)
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.BrokenReference = broken
 	}
 }
 
@@ -423,74 +523,111 @@ func classifyCache(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 func classifyQueue(ctx context.Context, db *sql.DB, t string, row *auditTableRow, checkBroken bool) {
 	switch t {
 	case "outbox_events":
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_events WHERE status='pending'`).Scan(&row.Live)
-		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_events WHERE status IN ('completed','superseded','dead_letter')`).Scan(&row.TerminalHistory)
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_events WHERE status='pending'`).Scan(&row.Live); err != nil {
+			row.Error = err.Error()
+			return
+		}
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_events WHERE status IN ('completed','superseded','dead_letter')`).Scan(&row.TerminalHistory); err != nil {
+			row.Error = err.Error()
+			return
+		}
 	default:
 		row.Live = row.TotalRows
 	}
 	if checkBroken {
-		row.BrokenReference = countBrokenRefs(ctx, db, t)
+		broken, err := countBrokenRefs(ctx, db, t)
+		if err != nil {
+			row.Error = err.Error()
+			return
+		}
+		row.BrokenReference = broken
 	}
 }
 
 // ── Broken reference detection ───────────────────────────────────────────
 
-func countBrokenRefs(ctx context.Context, db *sql.DB, t string) int {
+func countBrokenRefs(ctx context.Context, db *sql.DB, t string) (int, error) {
 	var total int
 	// Check drive_file_id columns.
-	if hasColumn(ctx, db, t, "drive_file_id") {
+	ok, err := hasColumn(ctx, db, t, "drive_file_id")
+	if err != nil {
+		return 0, err
+	}
+	if ok {
 		// Non-null drive_file_ids: all count as "could be broken" until we
 		// cross-check with Drive inventory (Fase 10). For Fase 3, report
 		// the count of rows with drive_file_id as potential candidates.
 		var n int
-		_ = db.QueryRowContext(ctx,
+		if err := db.QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE drive_file_id IS NOT NULL AND drive_file_id!=''`, qt(t)),
-		).Scan(&n)
+		).Scan(&n); err != nil {
+			return 0, err
+		}
 		total += n
 	}
-	if hasColumn(ctx, db, t, "local_path") {
+	ok, err = hasColumn(ctx, db, t, "local_path")
+	if err != nil {
+		return 0, err
+	}
+	if ok {
 		// Check if the local_path file exists on disk (very cheap: only
 		// count if path is non-empty, existence check deferred to Fase 4).
 		var n int
-		_ = db.QueryRowContext(ctx,
+		if err := db.QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE local_path IS NOT NULL AND local_path!=''`, qt(t)),
-		).Scan(&n)
+		).Scan(&n); err != nil {
+			return 0, err
+		}
 		total += n
 	}
-	return total
+	return total, nil
 }
 
 // ── Duplicate detection ──────────────────────────────────────────────────
 
-func countRootDups(ctx context.Context, db *sql.DB, t string) int {
+func countRootDups(ctx context.Context, db *sql.DB, t string) (int, error) {
 	// For canonical roots, duplicates are rare (PRIMARY KEY should prevent).
 	// Check if there's an identity column that should be unique.
-	if hasColumn(ctx, db, t, "drive_file_id") {
+	ok, err := hasColumn(ctx, db, t, "drive_file_id")
+	if err != nil {
+		return 0, err
+	}
+	if ok {
 		var n int
-		_ = db.QueryRowContext(ctx,
+		if err := db.QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT COALESCE(SUM(cnt-1),0) FROM (SELECT COUNT(*) cnt FROM %s WHERE drive_file_id IS NOT NULL AND drive_file_id!='' GROUP BY drive_file_id HAVING cnt>1)`, qt(t)),
-		).Scan(&n)
-		return n
+		).Scan(&n); err != nil {
+			return 0, err
+		}
+		return n, nil
 	}
-	if hasColumn(ctx, db, t, "sha256") {
+	ok, err = hasColumn(ctx, db, t, "sha256")
+	if err != nil {
+		return 0, err
+	}
+	if ok {
 		var n int
-		_ = db.QueryRowContext(ctx,
+		if err := db.QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT COALESCE(SUM(cnt-1),0) FROM (SELECT COUNT(*) cnt FROM %s WHERE sha256 IS NOT NULL AND sha256!='' GROUP BY sha256 HAVING cnt>1)`, qt(t)),
-		).Scan(&n)
-		return n
+		).Scan(&n); err != nil {
+			return 0, err
+		}
+		return n, nil
 	}
-	return 0
+	return 0, nil
 }
 
-func countChildDups(ctx context.Context, db *sql.DB, t string, fkCol string) int {
+func countChildDups(ctx context.Context, db *sql.DB, t string, fkCol string) (int, error) {
 	// For child tables, duplicates = same (FK_col, <some key>) appearing >1 time.
 	// General case: check duplicates on the FK column itself.
 	var n int
-	_ = db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		fmt.Sprintf(`SELECT COALESCE(SUM(cnt-1),0) FROM (SELECT COUNT(*) cnt FROM %s WHERE %s IS NOT NULL AND %s!='' GROUP BY %s HAVING cnt>1)`,
 			qt(t), qt(fkCol), qt(fkCol), qt(fkCol)),
-	).Scan(&n)
-	return n
+	).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // ── Owner live/stale conditions ──────────────────────────────────────────
@@ -517,32 +654,44 @@ func ownerStaleCondition(ownerTable string) string {
 	}
 }
 
-func countChildTerminal(ctx context.Context, db *sql.DB, t, fkCol, ownerTable, ownerCol string) int {
+func countChildTerminal(ctx context.Context, db *sql.DB, t, fkCol, ownerTable, ownerCol string) (int, error) {
 	// For child of jobs: if the owner job is terminal AND the child has
 	// status/state columns indicating completion, those are terminal history.
 	if ownerTable != "jobs" {
-		return 0
+		return 0, nil
 	}
 	// For job children: check if they have a status column indicating completion.
-	if hasColumn(ctx, db, t, "status") {
-		var n int
-		_ = db.QueryRowContext(ctx,
-			fmt.Sprintf(`SELECT COUNT(*) FROM %s c WHERE EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND o.status IN ('SUCCEEDED','FAILED','CANCELLED'))`,
-				qt(t), qt(ownerTable), qt(ownerCol), qt(fkCol)),
-		).Scan(&n)
-		return n
+	ok, err := hasColumn(ctx, db, t, "status")
+	if err != nil {
+		return 0, err
 	}
-	return 0
+	if !ok {
+		return 0, nil
+	}
+	var n int
+	if err := db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT COUNT(*) FROM %s c WHERE EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND o.status IN ('SUCCEEDED','FAILED','CANCELLED'))`,
+			qt(t), qt(ownerTable), qt(ownerCol), qt(fkCol)),
+	).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // ── Shared helpers ───────────────────────────────────────────────────────
 
-func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
+func hasColumn(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
 	var x int
 	err := db.QueryRowContext(ctx,
 		fmt.Sprintf("SELECT 1 FROM pragma_table_info(%q) WHERE name=%q", table, column),
 	).Scan(&x)
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return false, err
 }
 
 func qt(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }

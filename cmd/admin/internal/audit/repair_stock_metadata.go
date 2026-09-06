@@ -358,7 +358,14 @@ func backfillSearchTextCanonical(ctx context.Context, db *sql.DB, mutator persis
 			title = candidate.name
 		}
 		var tags []string
-		_ = json.Unmarshal([]byte(candidate.tagsJSON), &tags)
+		if strings.TrimSpace(candidate.tagsJSON) != "" {
+			if err := json.Unmarshal([]byte(candidate.tagsJSON), &tags); err != nil {
+				// A malformed tags column must never be silently repaired with
+				// empty tags: that would drop searchable metadata forever.
+				return matched, updated, fmt.Errorf("parse tags JSON for asset %q (source=%q): %w",
+					candidate.id, candidate.source, err)
+			}
+		}
 		text, err := registry.Compose(detail.SearchTextInput{
 			AssetID: candidate.id, Source: candidate.source, Title: title,
 			Description: candidate.description, Summary: candidate.summary,
