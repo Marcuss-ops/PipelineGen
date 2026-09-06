@@ -41,7 +41,8 @@ func TestNewRenderMetricsV2_AllPhasesNotInstrumented(t *testing.T) {
 		m.AssetMaterializeMS, m.SubtitleCompileMS, m.RendererStartupMS, m.ProbeMS,
 		m.DecodeMS, m.CompositeMS, m.SubtitleRasterMS, m.WatermarkRasterMS,
 		m.FrameConversionMS, m.EncodeMS, m.AudioMuxMS,
-		m.ReceiptSHA256MS, m.ReceiptProbeMS, m.ReceiptDecodeMS, m.ReceiptTotalMS,
+		m.ReceiptSHA256MS, m.ReceiptProbeMS, m.ReceiptCountFramesMS, m.ReceiptDecodeMS, m.ReceiptTotalMS,
+		m.VerificationPolicy, m.VerificationPassed,
 		m.RendererOutputFinalizeMS, m.ArtifactPublishMS, m.DriveUploadMS,
 		m.PublicationTotalMS, m.PublishMS, m.RenderWallMS,
 
@@ -209,7 +210,8 @@ func TestRenderMetricsV2_JSONPreservesSentinelAndMeasuredZeroForEveryMetric(t *t
 		"composite_ms": &fresh.CompositeMS, "subtitle_raster_ms": &fresh.SubtitleRasterMS, "watermark_raster_ms": &fresh.WatermarkRasterMS,
 		"frame_conversion_ms": &fresh.FrameConversionMS, "encode_ms": &fresh.EncodeMS, "audio_mux_ms": &fresh.AudioMuxMS,
 		"receipt_sha256_ms": &fresh.ReceiptSHA256MS, "receipt_probe_ms": &fresh.ReceiptProbeMS,
-		"receipt_decode_ms": &fresh.ReceiptDecodeMS, "receipt_total_ms": &fresh.ReceiptTotalMS,
+		"receipt_count_frames_ms": &fresh.ReceiptCountFramesMS, "receipt_decode_ms": &fresh.ReceiptDecodeMS, "receipt_total_ms": &fresh.ReceiptTotalMS,
+		"verification_policy": &fresh.VerificationPolicy, "verification_passed": &fresh.VerificationPassed,
 		"renderer_finalize_ms": &fresh.RendererOutputFinalizeMS, "artifact_publish_ms": &fresh.ArtifactPublishMS,
 		"drive_upload_ms": &fresh.DriveUploadMS, "publication_total_ms": &fresh.PublicationTotalMS, "publish_ms": &fresh.PublishMS,
 		"render_wall_ms": &fresh.RenderWallMS, "gpu_copy_bytes": &fresh.GPUCopyBytes, "gpu_readback_bytes": &fresh.GPUReadbackBytes,
@@ -322,7 +324,8 @@ func TestRenderMetricsV2_WireShape(t *testing.T) {
 	}
 	// Unmeasured phases stay the sentinel string.
 	for _, key := range []string{"decode_ms", "encode_ms", "audio_mux_ms",
-		"receipt_sha256_ms", "receipt_probe_ms", "receipt_decode_ms", "receipt_total_ms",
+		"receipt_sha256_ms", "receipt_probe_ms", "receipt_count_frames_ms", "receipt_decode_ms", "receipt_total_ms",
+		"verification_policy", "verification_passed",
 		"peak_rss_bytes", "disk_read_bytes", "disk_write_bytes", "network_rx_bytes", "network_tx_bytes",
 
 		"renderer_finalize_ms", "artifact_publish_ms", "drive_upload_ms",

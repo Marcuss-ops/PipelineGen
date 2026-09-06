@@ -80,13 +80,25 @@ type RenderMetricsV2 struct {
 	// `<output>.receipt.json` timing_ms): engine-side diagnostics nested
 	// inside the worker-owned render wall, so the report can answer "what
 	// did the post-render receipt cost" instead of burying it in the render
-	// wall. decode_ms is measured only under the normal/certify verification
-	// policy — the production fast policy never re-decodes the freshly muxed
-	// output, so receipt_decode_ms stays NOT_INSTRUMENTED.
-	ReceiptSHA256MS Metric `json:"receipt_sha256_ms"`
-	ReceiptProbeMS  Metric `json:"receipt_probe_ms"`
-	ReceiptDecodeMS Metric `json:"receipt_decode_ms"`
-	ReceiptTotalMS  Metric `json:"receipt_total_ms"`
+	// wall. decode_ms and count_frames_ms are measured only under the
+	// normal/certify verification policy — the production fast policy never
+	// re-decodes the freshly muxed output, so they stay NOT_INSTRUMENTED.
+	ReceiptSHA256MS      Metric `json:"receipt_sha256_ms"`
+	ReceiptProbeMS       Metric `json:"receipt_probe_ms"`
+	ReceiptCountFramesMS Metric `json:"receipt_count_frames_ms"`
+	ReceiptDecodeMS      Metric `json:"receipt_decode_ms"`
+	ReceiptTotalMS       Metric `json:"receipt_total_ms"`
+	// VerificationPolicy is the numeric label of the verification level the
+	// receipt records as actually executed (resolved_policy): fast=1,
+	// normal=2, certify=3. Reports use it to label every run instead of
+	// inferring the policy from whether receipt_decode_ms exists; the
+	// readable label lives in the receipt JSON itself. NOT_INSTRUMENTED when
+	// the worker observed no verification block.
+	VerificationPolicy Metric `json:"verification_policy"`
+	// VerificationPassed is the aggregate receipt verification outcome: 1 =
+	// pass, 0 = fail. NOT_INSTRUMENTED when the worker observed no
+	// verification block.
+	VerificationPassed Metric `json:"verification_passed"`
 
 	// Publication is split by ownership. RendererOutputFinalizeMS is the
 	// renderer-side output finalize. PublicationTotalMS is the publisher wall;
@@ -151,7 +163,8 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.RendererStartupMS, &m.ProbeMS, &m.ChrononQueueWaitMS, &m.ChrononServiceMS,
 		&m.DecodeMS, &m.CompositeMS, &m.SubtitleRasterMS, &m.WatermarkRasterMS,
 		&m.FrameConversionMS, &m.EncodeMS, &m.AudioMuxMS,
-		&m.ReceiptSHA256MS, &m.ReceiptProbeMS, &m.ReceiptDecodeMS, &m.ReceiptTotalMS,
+		&m.ReceiptSHA256MS, &m.ReceiptProbeMS, &m.ReceiptCountFramesMS, &m.ReceiptDecodeMS, &m.ReceiptTotalMS,
+		&m.VerificationPolicy, &m.VerificationPassed,
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
 		&m.PublicationTotalMS, &m.PublishMS, &m.RenderWallMS,
 		&m.GPUCopyBytes, &m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
@@ -193,8 +206,11 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.AudioMuxMS, &executor.AudioMuxMS)
 	merge(&m.ReceiptSHA256MS, &executor.ReceiptSHA256MS)
 	merge(&m.ReceiptProbeMS, &executor.ReceiptProbeMS)
+	merge(&m.ReceiptCountFramesMS, &executor.ReceiptCountFramesMS)
 	merge(&m.ReceiptDecodeMS, &executor.ReceiptDecodeMS)
 	merge(&m.ReceiptTotalMS, &executor.ReceiptTotalMS)
+	merge(&m.VerificationPolicy, &executor.VerificationPolicy)
+	merge(&m.VerificationPassed, &executor.VerificationPassed)
 	merge(&m.RendererOutputFinalizeMS, &executor.RendererOutputFinalizeMS)
 	merge(&m.ArtifactPublishMS, &executor.ArtifactPublishMS)
 	merge(&m.DriveUploadMS, &executor.DriveUploadMS)
