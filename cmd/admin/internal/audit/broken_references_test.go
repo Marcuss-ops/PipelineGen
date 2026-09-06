@@ -46,9 +46,9 @@ func TestDetectFKOrphans_NoOrphans(t *testing.T) {
 		"test_children": {ChildTable: "test_children", ChildColumn: "owner_id", OwnerTable: "test_owners", OwnerColumn: "id", Kind: "FK", RootType: "child"},
 	}
 
-	orphans, err := detectFKOrphans(context.Background(), db, false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	orphans, errs := detectFKOrphans(context.Background(), db, false)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 	if len(orphans) != 0 {
 		t.Fatalf("expected 0 orphan tables, got %d: %+v", len(orphans), orphans)
@@ -84,9 +84,9 @@ func TestDetectFKOrphans_HasOrphans(t *testing.T) {
 		"test_children": {ChildTable: "test_children", ChildColumn: "owner_id", OwnerTable: "test_owners", OwnerColumn: "id", Kind: "FK", RootType: "child"},
 	}
 
-	orphans, err := detectFKOrphans(context.Background(), db, false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	orphans, errs := detectFKOrphans(context.Background(), db, false)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 	if len(orphans) != 1 {
 		t.Fatalf("expected 1 orphan table, got %d", len(orphans))
@@ -124,9 +124,9 @@ func TestDetectFKOrphans_NoDetailSkipsSamples(t *testing.T) {
 		"test_children": {ChildTable: "test_children", ChildColumn: "owner_id", OwnerTable: "test_owners", OwnerColumn: "id", Kind: "FK", RootType: "child"},
 	}
 
-	orphans, err := detectFKOrphans(context.Background(), db, true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	orphans, errs := detectFKOrphans(context.Background(), db, true)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 	if len(orphans) != 1 {
 		t.Fatalf("expected 1 orphan table, got %d", len(orphans))

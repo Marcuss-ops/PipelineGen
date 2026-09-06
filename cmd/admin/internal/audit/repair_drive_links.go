@@ -352,7 +352,11 @@ func RunRepairDriveLinks(args []string) error {
 		committed := false
 		defer func() {
 			if !committed {
-				_ = tx.Rollback()
+				// A failed rollback would leave the durable repair transaction
+				// dangling; surface it instead of silently moving on.
+				if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+					log.Warn("repair drive links: rollback after failed durable update", zap.Error(rbErr))
+				}
 			}
 		}()
 		patches := make([]persistence.DriveLocationPatch, 0, len(changes))

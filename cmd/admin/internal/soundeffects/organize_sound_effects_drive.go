@@ -135,7 +135,11 @@ func loadSoundEffectDriveClassification(ctx context.Context, db *sql.DB) (map[st
 			return nil, fmt.Errorf("scan SFX Drive classification: %w", err)
 		}
 		var metadata map[string]any
-		_ = json.Unmarshal([]byte(metadataJSON), &metadata)
+		if strings.TrimSpace(metadataJSON) != "" {
+			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+				return nil, fmt.Errorf("parse metadata_json for SFX asset %q: %w", driveID, err)
+			}
+		}
 		family, _ := metadata["sfx_family"].(string)
 		if family == "" {
 			family = detail.ClassifySoundEffect(name, "", nil).Family

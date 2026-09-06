@@ -453,7 +453,10 @@ func computeReachabilityGraph(ctx context.Context, db *sql.DB, limitIDs int) (*r
 				quoteIdent(t), quoteIdent(rel.ChildColumn), quoteIdent(rel.ChildColumn),
 			)
 			var nullOwner int
-			_ = db.QueryRowContext(ctx, q2).Scan(&nullOwner)
+			if err := db.QueryRowContext(ctx, q2).Scan(&nullOwner); err != nil {
+				st.Error = fmt.Sprintf("null-owner query: %v", err)
+				break
+			}
 			st.NullOwner = nullOwner
 
 			// Orphan candidates: non-null owner ref that does NOT resolve.

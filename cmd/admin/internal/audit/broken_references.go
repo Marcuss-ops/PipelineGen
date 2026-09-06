@@ -141,19 +141,26 @@ func RunBrokenReferences(args []string) error {
 	}
 	report.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 
-	payload, _ := json.MarshalIndent(report, "", "  ")
-	if *reportPath != "" {
+	payload, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal broken-references report: %w", err)
+	}
+	switch {
+	case *reportPath != "":
 		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("write report: %w", err)
 		}
 		fmt.Printf("broken-references: report written to %s\n", *reportPath)
-		return nil
-	}
-	if *jsonOut {
+	case *jsonOut:
 		fmt.Println(string(payload))
-		return nil
+	default:
+		printBrokenRefsReport(report)
 	}
-	printBrokenRefsReport(report)
+	// A check that failed is not a clean bill of health: exit non-zero so
+	// scripts never mistake a partial audit for a complete one.
+	if len(report.Errors) > 0 {
+		return fmt.Errorf("broken-references: %d check(s) failed during the audit (partial report emitted)", len(report.Errors))
+	}
 	return nil
 }
 
@@ -174,17 +181,16 @@ func executeBrokenReferences(
 		NoDeletions:   true,
 	}
 
-	// 1. FK orphans — reuse reachability model from Fase 2.
-	fkOrphans, err := detectFKOrphans(ctx, db, noOrphanDetail)
-	if err != nil {
-		r.Errors = append(r.Errors, fmt.Sprintf("fk orphans: %v", err))
-	} else {
-		r.FKOrphans = fkOrphans
-		for _, o := range fkOrphans {
-			r.Summary.FKOrphanRows += o.OrphanRows
-		}
-		r.Summary.FKOrphanTables = len(fkOrphans)
+	// 1. FK orphans — reuse reachability model from Fase 2. Per-relation
+	// failures are recorded in the report instead of being silently skipped;
+	// the remaining relations are still examined.
+	fkOrphans, fkErrs := detectFKOrphans(ctx, db, noOrphanDetail)
+	r.Errors = append(r.Errors, fkErrs...)
+	r.FKOrphans = fkOrphans
+	for _, o := range fkOrphans {
+		r.Summary.FKOrphanRows += o.OrphanRows
 	}
+	r.Summary.FKOrphanTables = len(fkOrphans)
 
 	// 2. Drive references.
 	if !skipDrive {
@@ -260,16 +266,27 @@ func executeBrokenReferences(
 
 // ── FK orphan detection ──────────────────────────────────────────────
 
-func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphanTable, error) {
+func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphanTable, []string) {
 	var results []fkOrphanTable
+	var errs []string
 	for _, rel := range canonicalOwnershipModel {
 		if rel.Kind != "FK" && rel.Kind != "LOGICAL" {
 			continue
 		}
-		if !hasColumn(ctx, db, rel.ChildTable, rel.ChildColumn) {
+		ok, err := hasColumn(ctx, db, rel.ChildTable, rel.ChildColumn)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("fk orphans %s.%s: %v", rel.ChildTable, rel.ChildColumn, err))
 			continue
 		}
-		if !hasColumn(ctx, db, rel.OwnerTable, rel.OwnerColumn) {
+		if !ok {
+			continue
+		}
+		ok, err = hasColumn(ctx, db, rel.OwnerTable, rel.OwnerColumn)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("fk orphans %s.%s: %v", rel.OwnerTable, rel.OwnerColumn, err))
+			continue
+		}
+		if !ok {
 			continue
 		}
 
@@ -281,6 +298,7 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 			qt(rel.OwnerTable), qt(rel.OwnerColumn), qt(rel.ChildColumn),
 		)
 		if err := db.QueryRowContext(ctx, q).Scan(&orphanCount); err != nil {
+			errs = append(errs, fmt.Sprintf("fk orphans count %s: %v", rel.ChildTable, err))
 			continue
 		}
 		if orphanCount == 0 {
@@ -292,21 +310,28 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 			OwnerTable: rel.OwnerTable,
 			OrphanRows: orphanCount,
 		}
-		if !noDetail && orphanCount > 0 {
-			// Fetch up to 20 sample IDs.
+		if !noDetail {
+			// Fetch up to 20 sample IDs; failures here only degrade the
+			// sample list, never the count, but must still be recorded.
 			sq := fmt.Sprintf(
 				`SELECT DISTINCT c.%s FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND NOT EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s) LIMIT 20`,
 				qt(rel.ChildColumn), qt(rel.ChildTable), qt(rel.ChildColumn), qt(rel.ChildColumn),
 				qt(rel.OwnerTable), qt(rel.OwnerColumn), qt(rel.ChildColumn),
 			)
 			sRows, sErr := db.QueryContext(ctx, sq)
-			if sErr == nil {
+			if sErr != nil {
+				errs = append(errs, fmt.Sprintf("fk orphans samples %s: %v", rel.ChildTable, sErr))
+			} else {
 				for sRows.Next() {
 					var val string
 					if err := sRows.Scan(&val); err != nil {
+						errs = append(errs, fmt.Sprintf("fk orphans sample scan %s: %v", rel.ChildTable, err))
 						break
 					}
 					entry.SampleIDs = append(entry.SampleIDs, val)
+				}
+				if err := sRows.Err(); err != nil {
+					errs = append(errs, fmt.Sprintf("fk orphans sample rows %s: %v", rel.ChildTable, err))
 				}
 				sRows.Close()
 			}
@@ -314,7 +339,7 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 		results = append(results, entry)
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Table < results[j].Table })
-	return results, nil
+	return results, errs
 }
 
 // ── Drive file cross-check ───────────────────────────────────────────
@@ -389,9 +414,15 @@ func detectBrokenDriveRefs(
 	for i := range broken {
 		if broken[i].Table == "media_assets" {
 			var assetID string
-			_ = db.QueryRowContext(ctx,
+			if err := db.QueryRowContext(ctx,
 				`SELECT id FROM media_assets WHERE drive_file_id=?`, broken[i].RefValue,
-			).Scan(&assetID)
+			).Scan(&assetID); err != nil {
+				// Enrichment is diagnostic-only, but a persistent failure means
+				// every asset_id is missing: record it once instead of silently
+				// degrading the report.
+				errs = append(errs, fmt.Sprintf("enrich media_assets drive_file_id %q: %v", broken[i].RefValue, err))
+				break
+			}
 			broken[i].AssetID = assetID
 		}
 	}
