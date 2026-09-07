@@ -37,20 +37,23 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
 	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
-	// Keep source-anchored queries first, then add the canonical profile
-	// ladder as a bounded discovery fallback. The materializer still selects
-	// exactly the requested number of durable images, while rate-limited or
-	// over-specific engines retain enough real candidates to complete fanout.
-	for _, query := range scriptpkg.QueriesForImages(profile, 7) {
-		duplicate := false
-		for _, existing := range imageQueries {
-			if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(query)) {
-				duplicate = true
-				break
+	// Entity-image mode is an explicit narrow surface: preserve only the
+	// entity queries emitted by VisualNER. The broad semantic profile ladder
+	// is useful for generic scene imagery, but must not leak into an
+	// entity-only run because it bypasses entity cache identity and creates
+	// dozens of unrelated provider downloads.
+	if !plan.MediaPlan.Extraction.EntityImages.Enabled {
+		for _, query := range scriptpkg.QueriesForImages(profile, 7) {
+			duplicate := false
+			for _, existing := range imageQueries {
+				if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(query)) {
+					duplicate = true
+					break
+				}
 			}
-		}
-		if !duplicate {
-			imageQueries = append(imageQueries, query)
+			if !duplicate {
+				imageQueries = append(imageQueries, query)
+			}
 		}
 	}
 	// A complete source sentence is a final provider fallback for scenes whose

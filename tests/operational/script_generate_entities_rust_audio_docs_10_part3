@@ -1,0 +1,278 @@
+
+# ── Google Doc CONTENT verification (real export) ──────────────────
+# extract_doc_block FILE START_REGEX END_REGEX → the lines between the START
+# marker and the first END marker (used to pull the SpecScene / Audio
+# Timeline / Final Audio JSON blocks out of the exported plain text).
+extract_doc_block() {
+    local file="$1" start="$2" end="$3"
+    awk -v s="$start" -v e="$end" '
+        $0 ~ s { capture = 1; next }
+        capture && e != "" && $0 ~ e { capture = 0 }
+        capture { print }
+    ' "$file"
+}
+
+# go_compact_sha256 → replicates Go's encoding/json Marshal semantics (compact
+# separators + HTML escaping of <, >, & inside strings) and prints the sha256.
+# The recorded document_specscene_sha256 was computed over json.Marshal of
+# the SpecScene, so this helper lets us prove the doc embeds the SAME
+# SpecScene that was rendered.
+go_compact_sha256() {
+    # -j: no trailing newline. jq -c appends \n while Go's json.Marshal (used
+    # for the recorded document_specscene_sha256) does not — hashing the newline
+    # would never match the recorded value.
+    jq -cj . | sed -e 's/&/\\u0026/g' -e 's/</\\u003c/g' -e 's/>/\\u003e/g' | sha256sum | awk '{print $1}'
+}
+
+# assert_document_content FULL_FILE → exports the real Google Doc via the
+# Drive API (files/{id}/export?mimeType=text/plain) and verifies against the
+# GenerationResult surface: title, Full Audio (Lang English / M4A Drive URL /
+# Duration), per-scene text + Voiceover links, SpecScene JSON (sha256 matches
+# the recorded document_specscene_sha256), Audio Timeline JSON, Final Audio
+# JSON (audio_asset_id + hashes aligned with final_audio).
+assert_document_content() {
+    local full_file="$1" rc=0
+    local item_result surface
+    item_result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.data.result // .result // empty' "$full_file")
+    if [[ -z "$item_result" || "$item_result" == "null" ]]; then
+        printf '%sFAIL: doc content — no result in envelope%s\n' "$RED" "$RESET" >&2
+        return 1
+    fi
+    if jq -e '.scenes | type == "array"' <<<"$item_result" >/dev/null 2>&1; then
+        surface="durable"
+    else
+        surface="legacy"
+    fi
+
+    # Resolve the published doc id + expected title from the surface.
+    local doc_id expected_title
+    if [[ "$surface" == "durable" ]]; then
+        doc_id=$(jq -r --arg lang "$CERT_LANGUAGE" '.documents[$lang].id // empty' <<<"$item_result")
+        expected_title=$(jq -r '.title // empty' <<<"$item_result")
+    else
+        doc_id=$(jq -r '.artifacts.document.doc_id // empty' <<<"$item_result")
+        expected_title=$(jq -r '.title // empty' <<<"$item_result")
+    fi
+    if [[ -z "$doc_id" || "$doc_id" == "null" ]]; then
+        printf '%sFAIL: doc content — no doc_id on the result surface%s\n' "$RED" "$RESET" >&2
+        return 1
+    fi
+
+    local export_file="$CERT_RESULTS_DIR/doc-${doc_id}.txt"
+    local code
+    code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" -o "$export_file" -w '%{http_code}' \
+        -H "Authorization: Bearer $CERT_DRIVE_TOKEN" \
+        "$CERT_DRIVE_API_BASE/drive/v3/files/${doc_id}/export?mimeType=text/plain")
+    if [[ "$code" != "200" ]]; then
+        printf '%sFAIL: doc export returned HTTP %s (doc_id=%s)%s\n' "$RED" "$code" "$doc_id" "$RESET" >&2
+        return 1
+    fi
+    [[ -s "$export_file" ]] || { printf '%sFAIL: doc export body empty (doc_id=%s)%s\n' "$RED" "$doc_id" "$RESET" >&2; return 1; }
+    # Google Docs text/plain export arrives as UTF-8 BOM + CRLF. Normalize
+    # both so the block markers (`^SpecScene JSON$` …) match and the JSON
+    # blocks parse cleanly.
+    sed -i '1s/^\xEF\xBB\xBF//' "$export_file"
+    sed -i 's/\r$//' "$export_file"
+    local flat
+    flat=$(tr -s '[:space:]' ' ' < "$export_file")
+
+    # TITLE + FULL AUDIO section.
+    if [[ -n "$expected_title" ]] && ! grep -Fq "$expected_title" <<<"$flat"; then
+        printf '%sFAIL: doc content — title "%s" missing from exported doc%s\n' "$RED" "$expected_title" "$RESET" >&2; rc=1
+    fi
+    if ! grep -Fq "Full Audio" <<<"$flat"; then
+        printf '%sFAIL: doc content — "Full Audio" section missing%s\n' "$RED" "$RESET" >&2; rc=1
+    fi
+    if ! grep -Fq "Lang: English" <<<"$flat"; then
+        printf '%sFAIL: doc content — "Lang: English" missing%s\n' "$RED" "$RESET" >&2; rc=1
+    fi
+
+    # FULL AUDIO Drive URL + Duration (from final_audio, both surfaces).
+    local fa_drive_link fa_duration_ms fa_asset fa_sha fa_plan fa_dur_us
+    fa_drive_link=$(jq -r '.final_audio.drive_link // empty' <<<"$item_result")
+    fa_duration_ms=$(jq -r '.final_audio.duration_ms // 0' <<<"$item_result")
+    fa_asset=$(jq -r '.final_audio.audio_asset_id // empty' <<<"$item_result")
+    fa_sha=$(jq -r '.final_audio.final_audio_sha256 // empty' <<<"$item_result")
+    fa_plan=$(jq -r '.final_audio.audio_plan_sha256 // empty' <<<"$item_result")
+    fa_dur_us=$(jq -r '.final_audio.duration_us // 0' <<<"$item_result")
+    if [[ -n "$fa_drive_link" ]] && ! grep -Fq "$fa_drive_link" <<<"$flat"; then
+        printf '%sFAIL: doc content — final M4A Drive URL missing from Full Audio%s\n' "$RED" "$RESET" >&2; rc=1
+    fi
+    if [[ "$fa_duration_ms" -gt 0 ]]; then
+        local expect_dur
+        expect_dur=$(printf '%02d:%02d' $(( fa_duration_ms / 1000 / 60 )) $(( fa_duration_ms / 1000 % 60 )))
+        if ! grep -Fq "Duration: $expect_dur" <<<"$flat"; then
+            printf '%sFAIL: doc content — Duration %s missing from Full Audio%s\n' "$RED" "$expect_dur" "$RESET" >&2; rc=1
+        fi
+    fi
+
+    # PER-SCENE sections: text + Voiceover Drive link per scene.
+    local scenes
+    if [[ "$surface" == "durable" ]]; then
+        scenes=$(jq -r '[.scenes[]?] | length' <<<"$item_result")
+    else
+        scenes=$(jq -r '[.output.specscene.scenes[]?] | length' <<<"$item_result")
+    fi
+    local i scene_text vo_link
+    for ((i = 0; i < scenes; i++)); do
+        if [[ "$surface" == "durable" ]]; then
+            scene_text=$(jq -r --argjson i "$i" --arg lang "$CERT_LANGUAGE" '.scenes[$i].text[$lang] // ""' <<<"$item_result")
+            vo_link=$(jq -r --argjson i "$i" --arg lang "$CERT_LANGUAGE" '.scenes[$i].voiceover[$lang].url // ""' <<<"$item_result")
+        else
+            scene_text=$(jq -r --argjson i "$i" '.output.specscene.scenes[$i].text // ""' <<<"$item_result")
+            vo_link=$(jq -r --argjson i "$i" --arg lang "$CERT_LANGUAGE" '.output.specscene.scenes[$i].bindings.voiceover.links[$lang] // .output.specscene.scenes[$i].bindings.voiceover.link // ""' <<<"$item_result")
+        fi
+        if [[ -n "$scene_text" ]] && ! grep -Fq "$(printf '%s' "$scene_text" | cut -c1-40)" <<<"$flat"; then
+            printf '%sFAIL: doc content — scene %d text missing from exported doc%s\n' "$RED" "$((i + 1))" "$RESET" >&2; rc=1
+        fi
+        if [[ -n "$vo_link" ]] && ! grep -Fq "$vo_link" <<<"$flat"; then
+            printf '%sFAIL: doc content — scene %d Voiceover Drive link missing%s\n' "$RED" "$((i + 1))" "$RESET" >&2; rc=1
+        elif [[ -z "$vo_link" && "$surface" == "durable" ]]; then
+            # The durable surface exposes per-scene voiceovers as id +
+            # (url | file_path); only a published Drive URL is expected to
+            # appear in the document, so a bare asset id / local path is N/A.
+            printf '%sNOTE: doc content — scene %d voiceover not surfaced as a Drive URL (N/A, id/file_path only)%s\n' "$YELLOW" "$((i + 1))" "$RESET"
+        fi
+    done
+
+    # SPECSCENE JSON block — hash must match the recorded specscene_sha256.
+    local recorded_sha spec_block spec_sha
+    if [[ "$surface" == "durable" ]]; then
+        recorded_sha=$(jq -r --arg lang "$CERT_LANGUAGE" '.document_specscene_sha256[$lang] // empty' <<<"$item_result")
+    else
+        recorded_sha=$(jq -r '.artifacts.document.specscene_sha256 // empty' <<<"$item_result")
+    fi
+    spec_block=$(extract_doc_block "$export_file" '^SpecScene JSON$' '^(Audio Timeline JSON|Final Audio JSON|Rendered Overlay JSON)$')
+    if [[ -z "$spec_block" ]]; then
+        printf '%sFAIL: doc content — SpecScene JSON block missing%s\n' "$RED" "$RESET" >&2; rc=1
+    else
+        if ! jq -e --argjson n "$scenes" '(.version == 1) and ([.scenes[]?] | length) == $n' <<<"$spec_block" >/dev/null 2>&1; then
+            printf '%sFAIL: doc content — SpecScene JSON invalid or scene count != %s%s\n' "$RED" "$scenes" "$RESET" >&2; rc=1
+        fi
+        if [[ -n "$recorded_sha" ]]; then
+            spec_sha=$(go_compact_sha256 <<<"$spec_block")
+            if [[ "$spec_sha" != "$recorded_sha" ]]; then
+                printf '%sFAIL: doc content — SpecScene sha256 %s != recorded %s%s\n' "$RED" "$spec_sha" "$recorded_sha" "$RESET" >&2; rc=1
+            else
+                DOC_SPECSCENE_MATCH=$(( DOC_SPECSCENE_MATCH + 1 ))
+            fi
+        else
+            printf '%sNOTE: doc content — recorded specscene_sha256 absent on surface; hash not cross-checked%s\n' "$YELLOW" "$RESET"
+        fi
+    fi
+
+    # AUDIO TIMELINE JSON block — segments == scene count, duration_us > 0.
+    local tl_block
+    tl_block=$(extract_doc_block "$export_file" '^Audio Timeline JSON$' '^(Final Audio JSON|Rendered Overlay JSON)$')
+    if [[ -z "$tl_block" ]]; then
+        printf '%sFAIL: doc content — Audio Timeline JSON block missing%s\n' "$RED" "$RESET" >&2; rc=1
+    elif ! jq -e --argjson n "$scenes" '(.duration_us // 0) > 0 and ([.segments[]?] | length) == $n' <<<"$tl_block" >/dev/null 2>&1; then
+        printf '%sFAIL: doc content — Audio Timeline JSON invalid (segments != %s or duration_us <= 0)%s\n' "$RED" "$scenes" "$RESET" >&2; rc=1
+    fi
+
+    # FINAL AUDIO JSON block — asset id + hashes aligned with final_audio.
+    local fa_block
+    fa_block=$(extract_doc_block "$export_file" '^Final Audio JSON$' '^(Rendered Overlay JSON)$')
+    if [[ -z "$fa_block" ]]; then
+        printf '%sFAIL: doc content — Final Audio JSON block missing%s\n' "$RED" "$RESET" >&2; rc=1
+    else
+        if ! jq -e --arg asset "$fa_asset" --arg link "$fa_drive_link" --arg sha "$fa_sha" --arg plan "$fa_plan" \
+                --argjson dur "$fa_dur_us" '
+            (.audio_asset_id // "") == $asset
+            and (.drive_link // "") == $link
+            and (.final_audio_sha256 // "") == $sha
+            and (.audio_plan_sha256 // "") == $plan
+            and ($dur <= 0 or (.duration_us // 0) == $dur)
+        ' <<<"$fa_block" >/dev/null 2>&1; then
+            printf '%sFAIL: doc content — Final Audio JSON does not match final_audio (asset/link/sha256/plan/duration)%s\n' "$RED" "$RESET" >&2; rc=1
+        else
+            DOC_FINALAUDIO_MATCH=$(( DOC_FINALAUDIO_MATCH + 1 ))
+        fi
+    fi
+
+    if (( rc == 0 )); then
+        GOOGLE_DOCS_CONTENT=$(( GOOGLE_DOCS_CONTENT + 1 ))
+        printf '  %sOK: doc %s content verified (title/Full Audio/scenes/SpecScene/Timeline/FinalAudio)%s\n' "$GREEN" "$doc_id" "$RESET"
+    else
+        printf '%sFAIL: doc %s content verification failed%s\n' "$RED" "$doc_id" "$RESET" >&2
+    fi
+    return $rc
+}
+
+# run_one_job IDX → dispatch, poll, persist /full, assert. Returns 0 on PASS.
+run_one_job() {
+    local idx="$1"
+    local id="${ITEM_ID[$idx]}" person="${ITEM_PERSON[$idx]}"
+    local place="${ITEM_PLACE[$idx]}" concept="${ITEM_CONCEPT[$idx]}"
+    local key="cert-${id}-${RUN_KEY}"
+
+    smoke_log_section "Job ${id} — ${person} | ${place} | ${concept}"
+    local payload
+    payload=$(build_item_payload "$idx")
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf 'DRY — POST /api/script/generate (Idempotency-Key: %s)\n' "$key"
+        jq . <<<"$payload"
+        return 0
+    fi
+
+    local dispatch_body job_id
+    export SMOKE_IDEMPOTENCY_KEY="$key"
+    smoke_curl POST "/api/script/generate" --data "$payload" >/dev/null
+    unset SMOKE_IDEMPOTENCY_KEY
+    if [[ "$SMOKE_LAST_HTTP" != "202" && "$SMOKE_LAST_HTTP" != "200" ]]; then
+        printf '%sFAIL[%s]: dispatch returned HTTP %s (expected 202)%s\n' "$RED" "$id" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        smoke_echo_safe "$(head -c 1200 "$SMOKE_LAST_BODY" 2>/dev/null || true)" >&2
+        JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+        ROW_JOBS+=("$id|FAIL-DISPATCH")
+        return 1
+    fi
+    dispatch_body="$SMOKE_LAST_BODY"
+    job_id=$(jq -r '.job_id // .id // empty' "$dispatch_body")
+    if [[ -z "$job_id" || "$job_id" == "null" ]]; then
+        printf '%sFAIL[%s]: dispatch returned no job_id%s\n' "$RED" "$id" "$RESET" >&2
+        JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+        ROW_JOBS+=("$id|FAIL-DISPATCH")
+        return 1
+    fi
+    printf '  %sdispatch OK%s job_id=%s\n' "$GREEN" "$RESET" "$job_id"
+
+    if ! smoke_poll_terminal "$job_id"; then
+        printf '%sFAIL[%s]: poll did not reach terminal (status=%s)%s\n' "$RED" "$id" "${SMOKE_LAST_STATUS:-?}" "$RESET" >&2
+        JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+        ROW_JOBS+=("$id|FAIL-POLL")
+        return 1
+    fi
+    case "$SMOKE_LAST_STATUS" in
+        SUCCEEDED|completed) ;;
+        *)
+            printf '%sFAIL[%s]: job ended with status %s%s\n' "$RED" "$id" "$SMOKE_LAST_STATUS" "$RESET" >&2
+            smoke_echo_safe "$(head -c 1200 "$SMOKE_LAST_BODY" 2>/dev/null || true)" >&2
+            JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+            ROW_JOBS+=("$id|FAIL-JOB")
+            return 1 ;;
+    esac
+
+    local full_file="$CERT_RESULTS_DIR/job-${idx}-full.json"
+    smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
+    if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
+        printf '%sFAIL[%s]: GET /api/jobs/%s/full returned HTTP %s%s\n' "$RED" "$id" "$job_id" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+        ROW_JOBS+=("$id|FAIL-FULL")
+        return 1
+    fi
+    cp "$SMOKE_LAST_BODY" "$full_file"
+    chmod 600 "$full_file"
+
+    if assert_item_result "$full_file" "$person" "$place" "$concept" "$id"; then
+        JOBS_SUCCEEDED=$(( JOBS_SUCCEEDED + 1 ))
+        ROW_JOBS+=("$id|PASS")
+        printf '  %sOK: %s PASS%s\n' "$GREEN" "$id" "$RESET"
+        return 0
+    fi
+    JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+    ROW_JOBS+=("$id|FAIL-ARTIFACTS")
+    return 1
+}
+
+source "$DIR/script_generate_entities_rust_audio_docs_10_part4"

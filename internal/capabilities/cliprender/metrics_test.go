@@ -41,6 +41,8 @@ func TestNewRenderMetricsV2_AllPhasesNotInstrumented(t *testing.T) {
 		m.AssetMaterializeMS, m.SubtitleCompileMS, m.RendererStartupMS, m.ProbeMS,
 		m.DecodeMS, m.CompositeMS, m.SubtitleRasterMS, m.WatermarkRasterMS,
 		m.FrameConversionMS, m.EncodeMS, m.AudioMuxMS,
+		m.PrepareMS, m.RenderLoopMS, m.MuxFinalizeMS, m.ValidationMS,
+		m.FrameSlotWaitMS, m.CUDAVulkanWaitMS, m.DecoderWaitMS, m.EncoderBackpressureMS,
 		m.ReceiptSHA256MS, m.ReceiptProbeMS, m.ReceiptCountFramesMS, m.ReceiptDecodeMS, m.ReceiptTotalMS,
 		m.VerificationPolicy, m.VerificationPassed,
 		m.RendererOutputFinalizeMS, m.ArtifactPublishMS, m.DriveUploadMS,
@@ -74,12 +76,18 @@ func TestRenderMetricsV2_MergeOnlyOverlaysMeasuredPhases(t *testing.T) {
 	executor := NewRenderMetricsV2()
 	executor.EncodeMS = 550
 	executor.ProbeMS = 42
+	executor.PrepareMS = 22
+	executor.RenderLoopMS = 3000
+	executor.FrameSlotWaitMS = 150
 	executor.GPUReadbackBytes = 0 // measured: genuinely zero readbacks
 
 	m.Merge(executor)
 
 	if m.EncodeMS != 550 {
 		t.Fatalf("EncodeMS = %d, want 550 (measured phase overlays)", int64(m.EncodeMS))
+	}
+	if m.PrepareMS != 22 || m.RenderLoopMS != 3000 || m.FrameSlotWaitMS != 150 {
+		t.Fatalf("nested engine diagnostics not merged: prepare=%v loop=%v frame_slot=%v", m.PrepareMS, m.RenderLoopMS, m.FrameSlotWaitMS)
 	}
 	if m.ProbeMS != 42 {
 		t.Fatalf("ProbeMS = %d, want 42 (measured probe overlays)", int64(m.ProbeMS))
@@ -121,7 +129,7 @@ func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 		t.Fatalf("unaccounted_ms = %d, want 4850 (10120 − 5270, the 4.85s gap)", int64(m.UnaccountedMS))
 	}
 	if m.RenderFPS < 45.4 || m.RenderFPS > 45.6 {
-		t.Fatalf("render_fps = %.2f, want ~45.54 (240 frames / 5.27s composite)", m.RenderFPS)
+		t.Fatalf("render_fps = %.2f, want ~45.54 (legacy composite-work proxy: 240 frames / 5.27s composite)", m.RenderFPS)
 	}
 	if m.TotalFPS < 23.6 || m.TotalFPS > 23.8 {
 		t.Fatalf("total_fps = %.2f, want ~23.7 (240 frames / 10.12s)", m.TotalFPS)
@@ -131,6 +139,12 @@ func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 	}
 	m.RenderWallMS = 5600
 	m.Compute(8.0)
+	// A measured render wall REPLACES the composite-work proxy: render_fps
+	// must come from the wall (240 / 5.6 s = 42.86), not from the 5.27 s
+	// composite accumulator that would overstate it (45.5).
+	if m.RenderFPS < 42.8 || m.RenderFPS > 42.9 {
+		t.Fatalf("render_fps = %.2f, want ~42.86 (240 frames / 5.6s render wall)", m.RenderFPS)
+	}
 	if m.ProcessingXRT < 0.699 || m.ProcessingXRT > 0.701 {
 		t.Fatalf("processing_xrt = %.3f, want 0.700 (5.6s / 8s)", m.ProcessingXRT)
 	}
@@ -139,6 +153,64 @@ func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 	}
 	if m.RealtimeFactor < 0.79 || m.RealtimeFactor > 0.80 {
 		t.Fatalf("realtime_factor changed after render wall calculation: %.2f", m.RealtimeFactor)
+	}
+}
+
+// TestRenderMetricsV2_ComputePreservesEngineMeasuredRenderFPS verifies an
+// engine-supplied render_loop_fps (Chronon summary) is authoritative: Compute
+// must never overwrite it with a derivation from the render wall, and never
+// fall into the Frames/CompositeMS inflation that reported "38 000 fps" for
+// 456 frames against a 12 ms CUDA-kernel accumulator.
+func TestRenderMetricsV2_ComputePreservesEngineMeasuredRenderFPS(t *testing.T) {
+	m := NewRenderMetricsV2()
+	m.TotalMS = 10120
+	m.RenderWallMS = 8137 // worker-owned render port wall (queue + download + render)
+	m.CompositeMS = 12    // engine CUDA-kernel accumulator (single-digit ms for hundreds of frames)
+	m.Frames = 456
+	m.SetEngineRenderFPS(55.5) // engine summary render_loop_fps: frames actually pushed through the loop
+
+	m.Compute(19.0)
+
+	if m.RenderFPS != 55.5 {
+		t.Fatalf("render_fps = %.2f, want the engine-measured 55.5 to survive Compute (wall would derive %.2f, composite would derive 38000)",
+			m.RenderFPS, float64(m.Frames)/(float64(int64(m.RenderWallMS))/1000.0))
+	}
+}
+
+// TestRenderMetricsV2_ComputeDerivesRenderFPSOnlyWhenUnmeasured verifies
+// Compute derives render_fps from the render wall (never the composite
+// accumulator) when the engine did not supply a measured fps, and keeps the
+// composite-work proxy exclusively for executors whose composite phase IS the
+// render (FFmpeg fallback — no render wall exists there).
+func TestRenderMetricsV2_ComputeDerivesRenderFPSOnlyWhenUnmeasured(t *testing.T) {
+	// Wall present → fps derives from the wall, not the composite accumulator.
+	m := NewRenderMetricsV2()
+	m.TotalMS = 10120
+	m.RenderWallMS = 8137
+	m.CompositeMS = 12
+	m.Frames = 456
+	m.Compute(19.0)
+	if m.RenderFPS < 56.0 || m.RenderFPS > 56.1 {
+		t.Fatalf("render_fps = %.2f, want ~56.04 (456 frames / 8.137s render wall), never 38000", m.RenderFPS)
+	}
+
+	// No render wall → legacy composite-work proxy (FFmpeg composite IS render).
+	m2 := NewRenderMetricsV2()
+	m2.TotalMS = 10120
+	m2.CompositeMS = 5270
+	m2.Frames = 240
+	m2.Compute(8.0)
+	if m2.RenderFPS < 45.4 || m2.RenderFPS > 45.6 {
+		t.Fatalf("render_fps = %.2f, want ~45.54 (240 frames / 5.27s composite, legacy proxy)", m2.RenderFPS)
+	}
+
+	// Neither wall nor composite measured → fps stays 0, never fabricated.
+	m3 := NewRenderMetricsV2()
+	m3.TotalMS = 10120
+	m3.Frames = 240
+	m3.Compute(8.0)
+	if m3.RenderFPS != 0 {
+		t.Fatalf("render_fps = %.2f, want 0 when no render measurement exists", m3.RenderFPS)
 	}
 }
 
@@ -209,6 +281,10 @@ func TestRenderMetricsV2_JSONPreservesSentinelAndMeasuredZeroForEveryMetric(t *t
 		"renderer_startup_ms": &fresh.RendererStartupMS, "probe_ms": &fresh.ProbeMS, "decode_ms": &fresh.DecodeMS,
 		"composite_ms": &fresh.CompositeMS, "subtitle_raster_ms": &fresh.SubtitleRasterMS, "watermark_raster_ms": &fresh.WatermarkRasterMS,
 		"frame_conversion_ms": &fresh.FrameConversionMS, "encode_ms": &fresh.EncodeMS, "audio_mux_ms": &fresh.AudioMuxMS,
+		"prepare_ms": &fresh.PrepareMS, "render_loop_ms": &fresh.RenderLoopMS,
+		"mux_finalize_ms": &fresh.MuxFinalizeMS, "validation_ms": &fresh.ValidationMS,
+		"frame_slot_wait_ms": &fresh.FrameSlotWaitMS, "cuda_vulkan_wait_ms": &fresh.CUDAVulkanWaitMS,
+		"decoder_wait_ms": &fresh.DecoderWaitMS, "encoder_backpressure_ms": &fresh.EncoderBackpressureMS,
 		"receipt_sha256_ms": &fresh.ReceiptSHA256MS, "receipt_probe_ms": &fresh.ReceiptProbeMS,
 		"receipt_count_frames_ms": &fresh.ReceiptCountFramesMS, "receipt_decode_ms": &fresh.ReceiptDecodeMS, "receipt_total_ms": &fresh.ReceiptTotalMS,
 		"verification_policy": &fresh.VerificationPolicy, "verification_passed": &fresh.VerificationPassed,
@@ -324,6 +400,8 @@ func TestRenderMetricsV2_WireShape(t *testing.T) {
 	}
 	// Unmeasured phases stay the sentinel string.
 	for _, key := range []string{"decode_ms", "encode_ms", "audio_mux_ms",
+		"prepare_ms", "render_loop_ms", "mux_finalize_ms", "validation_ms",
+		"frame_slot_wait_ms", "cuda_vulkan_wait_ms", "decoder_wait_ms", "encoder_backpressure_ms",
 		"receipt_sha256_ms", "receipt_probe_ms", "receipt_count_frames_ms", "receipt_decode_ms", "receipt_total_ms",
 		"verification_policy", "verification_passed",
 		"peak_rss_bytes", "disk_read_bytes", "disk_write_bytes", "network_rx_bytes", "network_tx_bytes",

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -40,4 +41,19 @@ func TestBuildPlan_CopiesMetadataAndCanonicalizesProcessorNames(t *testing.T) {
 
 func TestBuildPlans_EmptyInputRemainsNil(t *testing.T) {
 	require.Nil(t, BuildPlans(nil))
+}
+
+func TestBuildPlanPreservesStyleAndExtractionSelection(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Style:  "documentary cinematic",
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "Ada"},
+		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+			Enabled:               true,
+			Include:               []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeImportantPhrases},
+			MaxEntitiesPerSegment: 3,
+		}},
+	})
+	require.Equal(t, "documentary cinematic", plan.Style)
+	require.True(t, plan.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeEntities))
+	require.True(t, plan.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases))
 }

@@ -96,6 +96,17 @@ type RenderOutcome struct {
 	// selection facts and derived aggregates. Phases without real
 	// instrumentation stay NOT_INSTRUMENTED — never a fake zero.
 	Metrics *RenderMetricsV2
+
+	// ChrononTiming* carry the reference to the raw deep-profile timing
+	// sidecar (the verbatim `<output>.timing.json`, including the unbounded
+	// per-frame array) that RenderingGen preserved in its object store. Only
+	// the content-addressed reference travels with the outcome — the array
+	// itself is never inlined. Empty when the sidecar was not preserved.
+	ChrononTimingStorageKey  string
+	ChrononTimingURL         string
+	ChrononTimingSHA256      string
+	ChrononTimingSizeBytes   int64
+	ChrononTimingContentType string
 }
 
 // RenderExecutor executes the sealed ClipRenderPlanV1 in a single Chronon

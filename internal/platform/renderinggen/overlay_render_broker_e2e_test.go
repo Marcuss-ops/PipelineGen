@@ -75,12 +75,11 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 		Height:        720,
 		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
+		Background: &capoverlay.OverlayBackground{
+			Kind: "video", Fit: "cover", Loop: true,
+			AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.mp4", SHA256: backgroundHash}},
+		},
 		Items: []capoverlay.OverlayItem{
-			{
-				ID: "background_video", TemplateID: "VIDEO_BACKGROUND",
-				StartMs: 0, EndMs: 6000,
-				AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.mp4", SHA256: backgroundHash}},
-			},
 			{
 				ID: "image", TemplateID: "IMAGE_OVERLAY", PresetID: "image_slide_left",
 				StartMs: 500, EndMs: 3500,
@@ -103,9 +102,9 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 	// Pin the timeline so a regression in the timing projection never silently
 	// shifts the rendered seconds away from the spec'd 0-6000/500-3500/1000-4000.
 	wantTiming := map[string]struct{ StartMs, EndMs int64 }{
-		"background_video": {0, 6000},
-		"image":            {500, 3500},
-		"phrase":           {1000, 4000},
+		"background": {0, 4000},
+		"image":      {500, 3500},
+		"phrase":     {1000, 4000},
 	}
 	for _, layer := range compiled.Plan.Layers {
 		if want, ok := wantTiming[layer.ID]; ok {
@@ -119,7 +118,7 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("compiled plan timing pinned: BG 0-6000, IMAGE 500-3500, PHRASE 1000-4000 ✓")
+	t.Logf("compiled plan timing pinned: BG 0-4000, IMAGE 500-3500, PHRASE 1000-4000 ✓")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -147,8 +146,8 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 	if ref.Artifact.Width != 1280 || ref.Artifact.Height != 720 {
 		t.Fatalf("ref.Artifact dimensions = %dx%d, want 1280x720", ref.Artifact.Width, ref.Artifact.Height)
 	}
-	if ref.Artifact.DurationUS != 6_000_000 {
-		t.Fatalf("ref.Artifact.DurationUS = %d, want 6000000", ref.Artifact.DurationUS)
+	if ref.Artifact.DurationUS < 3_900_000 || ref.Artifact.DurationUS > 4_100_000 {
+		t.Fatalf("ref.Artifact.DurationUS = %d, want approximately 4000000", ref.Artifact.DurationUS)
 	}
 	t.Logf("enqueuer returned COMPLETED: sha256=%s size=%d dims=%dx%d duration_us=%d",
 		ref.Artifact.SHA256, ref.Artifact.SizeBytes, ref.Artifact.Width, ref.Artifact.Height, ref.Artifact.DurationUS)

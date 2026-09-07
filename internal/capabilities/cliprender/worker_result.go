@@ -136,6 +136,20 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			renderBlock["render_wall_ms"] = outcome.Metrics.RenderWallMS
 			renderBlock["metrics_v2"] = outcome.Metrics
 		}
+		// The raw deep-profile timing sidecar reference preserved by
+		// RenderingGen: a small content-addressed reference on the job result
+		// so post-mortems can fetch the full per-frame profile (the array
+		// itself is never inlined). Present only when the sidecar was
+		// preserved.
+		if outcome.ChrononTimingStorageKey != "" || outcome.ChrononTimingURL != "" {
+			renderBlock["chronon_timing"] = map[string]any{
+				"storage_key":  outcome.ChrononTimingStorageKey,
+				"url":          outcome.ChrononTimingURL,
+				"sha256":       outcome.ChrononTimingSHA256,
+				"size_bytes":   outcome.ChrononTimingSizeBytes,
+				"content_type": outcome.ChrononTimingContentType,
+			}
+		}
 		result["render"] = renderBlock
 	}
 	if req.Overlay != nil {

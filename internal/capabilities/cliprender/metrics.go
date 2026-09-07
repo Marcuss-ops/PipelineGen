@@ -76,6 +76,28 @@ type RenderMetricsV2 struct {
 	EncodeMS           Metric `json:"encode_ms"`
 	AudioMuxMS         Metric `json:"audio_mux_ms"`
 
+	// Engine exclusive-wall decomposition (chronon exclusive_wall_timeline).
+	// These are the renderer's own phase walls INSIDE the worker-owned render
+	// wall: startup/probe (above) → prepare → render_loop (which owns the
+	// decode/composite/encode diagnostics) → encoder drain → mux/output
+	// finalize. They let a post-mortem answer "where did the render wall go"
+	// without hiding inside RenderWallMS or the UnattributedMS gap. They are
+	// nested diagnostics: exclusiveAccountedMS never adds them on top of a
+	// measured RenderWallMS (and never sums them as a fallback wall, because
+	// render_loop already contains decode/composite/encode).
+	PrepareMS     Metric `json:"prepare_ms"`
+	RenderLoopMS  Metric `json:"render_loop_ms"`
+	MuxFinalizeMS Metric `json:"mux_finalize_ms"`
+	ValidationMS  Metric `json:"validation_ms"`
+	// Render-loop wait diagnostics (chronon job.gpu aggregate waits). Each is
+	// the engine's own accumulated wait across the whole loop — the numbers
+	// that distinguish interop/frame-slot/decoder/encoder bottlenecks from
+	// real GPU work. Bounded aggregates (never the per-frame array).
+	FrameSlotWaitMS       Metric `json:"frame_slot_wait_ms"`
+	CUDAVulkanWaitMS      Metric `json:"cuda_vulkan_wait_ms"`
+	DecoderWaitMS         Metric `json:"decoder_wait_ms"`
+	EncoderBackpressureMS Metric `json:"encoder_backpressure_ms"`
+
 	// Receipt verification phases (Chronon's post-render media receipt,
 	// `<output>.receipt.json` timing_ms): engine-side diagnostics nested
 	// inside the worker-owned render wall, so the report can answer "what
@@ -117,6 +139,11 @@ type RenderMetricsV2 struct {
 	Frames    int     `json:"frames"`
 	RenderFPS float64 `json:"render_fps"`
 	TotalFPS  float64 `json:"total_fps"`
+	// renderFPSMeasured records that RenderFPS was measured by the render
+	// engine itself (e.g. Chronon's summary render_loop_fps), not derived by
+	// Compute from a different boundary. Unexported: it is wire-invisible and
+	// only meaningful while the report is being assembled (before Compute).
+	renderFPSMeasured bool
 	// RealtimeFactor is retained as the compatibility field for the speed
 	// factor. It is the inverse of ProcessingXRT: media duration / total wall.
 	RealtimeFactor float64 `json:"realtime_factor"`
@@ -163,6 +190,8 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.RendererStartupMS, &m.ProbeMS, &m.ChrononQueueWaitMS, &m.ChrononServiceMS,
 		&m.DecodeMS, &m.CompositeMS, &m.SubtitleRasterMS, &m.WatermarkRasterMS,
 		&m.FrameConversionMS, &m.EncodeMS, &m.AudioMuxMS,
+		&m.PrepareMS, &m.RenderLoopMS, &m.MuxFinalizeMS, &m.ValidationMS,
+		&m.FrameSlotWaitMS, &m.CUDAVulkanWaitMS, &m.DecoderWaitMS, &m.EncoderBackpressureMS,
 		&m.ReceiptSHA256MS, &m.ReceiptProbeMS, &m.ReceiptCountFramesMS, &m.ReceiptDecodeMS, &m.ReceiptTotalMS,
 		&m.VerificationPolicy, &m.VerificationPassed,
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
@@ -178,6 +207,26 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		*p = Metric(NotInstrumented)
 	}
 	return m
+}
+
+// SetEngineRenderFPS records a render throughput measured by the render
+// engine itself (for example Chronon's summary render_loop_fps). Compute
+// treats that value as authoritative and never overwrites it with a
+// derivation from the worker wall or the composite accumulator. Values <= 0
+// are ignored (a render with frames > 0 always has a positive throughput, so
+// a non-positive input is not a measurement).
+func (m *RenderMetricsV2) SetEngineRenderFPS(fps float64) {
+	if m == nil || fps <= 0 {
+		return
+	}
+	m.RenderFPS = fps
+	m.renderFPSMeasured = true
+}
+
+// EngineMeasuredRenderFPS reports whether RenderFPS was recorded as an
+// engine measurement (SetEngineRenderFPS) rather than derived by Compute.
+func (m *RenderMetricsV2) EngineMeasuredRenderFPS() bool {
+	return m != nil && m.renderFPSMeasured
 }
 
 // Merge overlays an executor-provided partial report onto this report. Only
@@ -204,6 +253,14 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.FrameConversionMS, &executor.FrameConversionMS)
 	merge(&m.EncodeMS, &executor.EncodeMS)
 	merge(&m.AudioMuxMS, &executor.AudioMuxMS)
+	merge(&m.PrepareMS, &executor.PrepareMS)
+	merge(&m.RenderLoopMS, &executor.RenderLoopMS)
+	merge(&m.MuxFinalizeMS, &executor.MuxFinalizeMS)
+	merge(&m.ValidationMS, &executor.ValidationMS)
+	merge(&m.FrameSlotWaitMS, &executor.FrameSlotWaitMS)
+	merge(&m.CUDAVulkanWaitMS, &executor.CUDAVulkanWaitMS)
+	merge(&m.DecoderWaitMS, &executor.DecoderWaitMS)
+	merge(&m.EncoderBackpressureMS, &executor.EncoderBackpressureMS)
 	merge(&m.ReceiptSHA256MS, &executor.ReceiptSHA256MS)
 	merge(&m.ReceiptProbeMS, &executor.ReceiptProbeMS)
 	merge(&m.ReceiptCountFramesMS, &executor.ReceiptCountFramesMS)
@@ -336,7 +393,24 @@ func (m *RenderMetricsV2) Compute(durationSec float64) {
 			m.SpeedFactor = durationSec / renderSec
 		}
 	}
-	if int64(m.CompositeMS) != NotInstrumented && int64(m.CompositeMS) > 0 && m.Frames > 0 {
-		m.RenderFPS = float64(m.Frames) / (float64(int64(m.CompositeMS)) / 1000.0)
+	// RenderFPS authority: an engine-measured value (Chronon's summary
+	// render_loop_fps, recorded via SetEngineRenderFPS) is the engine's own
+	// throughput — frames actually pushed through the loop — and is NEVER
+	// overwritten by a derivation from a different boundary. Otherwise derive
+	// from the best measurement present at this call, as frames per second of
+	// the RENDER wall, never of a GPU sub-phase: CompositeMS is a CUDA-kernel
+	// accumulator (single-digit ms for hundreds of frames), so dividing by it
+	// inflated render_fps by orders of magnitude (456 frames / 12 ms composite
+	// reported "38 000 fps"). Prefer the worker/engine render wall whenever it
+	// is measured; keep the composite-work proxy only as the legacy fallback
+	// for executors that never report a wall (e.g. the FFmpeg path where
+	// composite IS the render). A proxy derived in an earlier Compute pass is
+	// replaced as soon as a wall is available.
+	if !m.renderFPSMeasured {
+		if int64(m.RenderWallMS) != NotInstrumented && int64(m.RenderWallMS) > 0 && m.Frames > 0 {
+			m.RenderFPS = float64(m.Frames) / (float64(int64(m.RenderWallMS)) / 1000.0)
+		} else if int64(m.CompositeMS) != NotInstrumented && int64(m.CompositeMS) > 0 && m.Frames > 0 {
+			m.RenderFPS = float64(m.Frames) / (float64(int64(m.CompositeMS)) / 1000.0)
+		}
 	}
 }

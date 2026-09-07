@@ -79,12 +79,20 @@ type chrononLayer struct {
 }
 
 // chrononLayerStyle is the LayerStylePlan projection: font, font_size, fill (#RRGGBB),
-// and a single shadow.
+// a solid outline, and an optional soft shadow.  The outline is intentional:
+// subtitle readability requires a real black contour, not a wide translucent
+// blur mistaken for an outline.
 type chrononLayerStyle struct {
 	Fill     string             `json:"fill,omitempty"`
 	Font     string             `json:"font,omitempty"`
 	FontSize float64            `json:"font_size,omitempty"`
+	Stroke   *chrononStrokeSpec `json:"stroke,omitempty"`
 	Shadow   *chrononShadowSpec `json:"shadow,omitempty"`
+}
+
+type chrononStrokeSpec struct {
+	Color string  `json:"color,omitempty"`
+	Width float64 `json:"width,omitempty"`
 }
 
 type chrononShadowSpec struct {
@@ -313,6 +321,12 @@ func projectSubtitles(subs *cliprender.PlanSubtitles, canvasW, canvasH, frames, 
 				style.Fill = userStyle.Fill
 			}
 			style.Shadow = userStyle.Shadow
+			style.Stroke = userStyle.Stroke
+			if style.Stroke == nil {
+				// No explicit stroke: derive a contour from the shadow color so
+				// subtitle text stays readable even without a declared outline.
+				style.Stroke = subtitleOutlineForShadow(userStyle.Shadow)
+			}
 		}
 		layer := chrononLayer{
 			ID:             fmt.Sprintf("subtitle_%d", i),
@@ -331,6 +345,21 @@ func projectSubtitles(subs *cliprender.PlanSubtitles, canvasW, canvasH, frames, 
 	return layers
 }
 
+// subtitleOutlineForShadow turns the editorial "black around the glyphs"
+// requirement into the native Chronon text stroke.  A shadow alone is a
+// displaced/blurred silhouette and cannot produce a closed black contour.
+func subtitleOutlineForShadow(shadow *chrononShadowSpec) *chrononStrokeSpec {
+	if shadow == nil || strings.TrimSpace(shadow.Color) == "" {
+		return nil
+	}
+	// Chronon stroke width is expressed in render pixels.  Thin keylines
+	// (1-2 px) disappear after H.264 compression at 1080p; the derived
+	// fallback uses a broadcast-safe contour (5 px) so the edge stays
+	// visible. Callers that want a thinner/thicker line declare stroke
+	// explicitly.
+	return &chrononStrokeSpec{Color: shadow.Color, Width: 5.0}
+}
+
 // ── Style + transition lowering (shared by watermark and subtitles) ───────
 
 // projectLayerStyle lowers the canonical visual style block onto the Chronon
@@ -347,6 +376,10 @@ func projectLayerStyle(style *scriptpkg.VideoVisualStyleSpec) *chrononLayerStyle
 	if style.FontSizePX > 0 {
 		out.FontSize = style.FontSizePX
 	}
+	if style.Stroke != nil && strings.TrimSpace(style.Stroke.Color) != "" {
+		// An explicit caller stroke wins verbatim (width in render pixels).
+		out.Stroke = &chrononStrokeSpec{Color: style.Stroke.Color, Width: style.Stroke.Width}
+	}
 	if style.Shadow != nil {
 		shadow := &chrononShadowSpec{}
 		if strings.TrimSpace(style.Shadow.Color) != "" {
@@ -362,8 +395,11 @@ func projectLayerStyle(style *scriptpkg.VideoVisualStyleSpec) *chrononLayerStyle
 			shadow.Offset = []float64{style.Shadow.OffsetX, style.Shadow.OffsetY}
 		}
 		out.Shadow = shadow
+		if out.Stroke == nil {
+			out.Stroke = subtitleOutlineForShadow(shadow)
+		}
 	}
-	if out.Fill == "" && out.FontSize == 0 && out.Shadow == nil {
+	if out.Fill == "" && out.FontSize == 0 && out.Shadow == nil && out.Stroke == nil {
 		return nil
 	}
 	return out

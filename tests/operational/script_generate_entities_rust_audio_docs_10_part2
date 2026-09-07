@@ -1,0 +1,367 @@
+# ── Payload builder ──────────────────────────────────────────────
+# build_item IDX → single-item payload JSON (canonical v2 envelope).
+build_item_payload() {
+    local idx="$1"
+    local id="${ITEM_ID[$idx]}" person="${ITEM_PERSON[$idx]}"
+    local place="${ITEM_PLACE[$idx]}" concept="${ITEM_CONCEPT[$idx]}"
+    local title="${person} and ${concept}"
+    local source_text
+    source_text="${person} is the central person in this short narration. The setting discussed is ${place}. The main concept is ${concept}. Explain these three supplied elements in a concise and natural way without introducing additional named people, places, organizations, dates or events."
+    # render_video is deliberately ABSENT: absence means false. The
+    # audio-only contract certifies generate_timeline=true +
+    # voiceover_enabled=true + COMBINED_TIMELINE with NO video render work.
+    jq -nc --arg id "$id" --arg title "$title" --arg topic "$title" \
+        --arg text "$source_text" --arg lang "$CERT_LANGUAGE" \
+        --arg tone "$CERT_TONE" --arg style "$CERT_STYLE" \
+        --arg folder "$DOCS_FOLDER_ID" --arg project "$CERT_PROJECT" '{
+        version: 2,
+        preset: "custom",
+        force_refresh: true,
+        items: [{
+            id: $id,
+            title: $title,
+            project: $project,
+            language: $lang,
+            tone: $tone,
+            style: $style,
+            source: {
+                type: "text",
+                topic: $topic,
+                source_text: $text
+            },
+            script_params: {
+                target_words: 100,
+                min_words: 60,
+                segment_words: 60,
+                use_memory: false
+            },
+            output: {
+                save_to_db: true,
+                extract_entities: true,
+                generate_metadata: false,
+                generate_scene_images: false,
+                generate_timeline: true,
+                voiceover_enabled: true
+            },
+            audio: {
+                mode: "COMBINED_TIMELINE",
+                timing: {
+                    mode: "required",
+                    boundary: "word",
+                    formats: ["json", "srt", "vtt"]
+                }
+            },
+            docs: { enabled: true, languages: [$lang], folder_id: $folder }
+        }]
+    }'
+}
+
+# ── Per-job state ────────────────────────────────────────────────
+declare -a ROW_JOBS=()
+# JOB_CHECKS[job_id] = "entities|scenes|vo|m4a|encode|doc|doc_audio" per
+# column of the certification table (PASS/FAIL/N-A or a count).
+declare -A JOB_CHECKS=()
+JOBS_SUCCEEDED=0
+JOBS_FAILED=0
+FINAL_M4A=0
+GOOGLE_DOCS=0
+RENDER_PLAN_NULL=0
+AUDIO_ENCODE_1=0
+VOICEOVER_OK=0
+TIMELINE_OK=0
+ENTITIES_OK=0
+ENTITIES_NA=0
+GOOGLE_DOCS_CONTENT=0
+DOC_SPECSCENE_MATCH=0
+DOC_FINALAUDIO_MATCH=0
+
+fail_row() { printf '%sFAIL%s' "$RED" "$RESET"; }
+pass_row() { printf '%sPASS%s' "$GREEN" "$RESET"; }
+
+# assert_item_result FULL_FILE PERSON PLACE CONCEPT → runs the FULL strict
+# certification on one job's /full JSON: script, entities (exact typed
+# match), voiceover, timeline, final audio master, encode passes, no-render
+# and Google Doc. Returns 0 when EVERY check passes (a SUCCEEDED job with
+# any missing artifact is a FAIL).
+#
+# SURFACE DETECTION: the durable capability result (.result.data.result)
+# carries scenes[].voiceover.<lang>.url, canonical_timeline, audio_metrics
+# and documents[lang]; the legacy domain envelope (.result.data.items[0]
+# .result) carries output/artifacts (entities, voiceovers.drive_links,
+# document) and flat timings.audio_encode_passes. Each check resolves from
+# whichever surface the deployment exposes.
+assert_item_result() {
+    local full_file="$1" person="$2" place="$3" concept="$4" job_id="$5" rc=0
+    # Per-column status for the certification table. Values: PASS/FAIL/N-A
+    # or a literal count (SCENES, RUST ENCODE).
+    local col_entities="N-A" col_scenes="FAIL" col_vo="FAIL" col_m4a="FAIL" col_encode="N-A" col_doc="FAIL" col_doc_audio="SKIP"
+    local item_result surface
+    item_result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.data.result // .result // empty' "$full_file")
+    if [[ -z "$item_result" || "$item_result" == "null" ]]; then
+        printf '%sFAIL: no canonical generation result in envelope%s\n' "$RED" "$RESET" >&2
+        JOB_CHECKS[$job_id]="$col_entities|$col_scenes|$col_vo|$col_m4a|$col_encode|$col_doc|$col_doc_audio"
+        return 1
+    fi
+    if jq -e '.scenes | type == "array"' <<<"$item_result" >/dev/null 2>&1; then
+        surface="durable"
+    else
+        surface="legacy"
+    fi
+
+    # Terminal status: the legacy envelope carries GenerationResult.status;
+    # the durable capability result does not (job-level terminal status was
+    # already certified by the poll before this function runs).
+    if [[ "$surface" == "legacy" ]]; then
+        local item_status
+        item_status=$(jq -r '.status // empty' <<<"$item_result")
+        if [[ -n "$item_status" && "$item_status" != "SUCCEEDED" ]]; then
+            printf '%sFAIL: GenerationResult.status=%s (expected SUCCEEDED)%s\n' "$RED" "$item_status" "$RESET" >&2
+            rc=1
+        fi
+    fi
+
+    # SCRIPT + canonical scene count (SpecScene count is the reference for
+    # the voiceover and timeline segment-count checks below).
+    local scenes=0
+    if [[ "$surface" == "durable" ]]; then
+        # The durable surface does not populate result.word_count; the
+        # script non-emptiness intent is preserved by computing the word
+        # count from the certified-language scene text.
+        jq -e --arg lang "$CERT_LANGUAGE" '([.scenes[] | (.text[$lang] // "")] | add | split(" ") | map(select(length > 0)) | length) > 0' <<<"$item_result" >/dev/null || { printf '%sFAIL: no words in scene text for language=%s%s\n' "$RED" "$CERT_LANGUAGE" "$RESET" >&2; rc=1; }
+        jq -e --arg lang "$CERT_LANGUAGE" '[.scenes[] | select((( .text[$lang] // "") | length) > 0)] | length > 0' <<<"$item_result" >/dev/null || { printf '%sFAIL: no per-scene text for language=%s%s\n' "$RED" "$CERT_LANGUAGE" "$RESET" >&2; rc=1; }
+        scenes=$(jq -r '[.scenes[]?] | length' <<<"$item_result")
+    else
+        jq -e '.output.text | type == "string" and length > 0' <<<"$item_result" >/dev/null || { printf '%sFAIL: output.text is empty%s\n' "$RED" "$RESET" >&2; rc=1; }
+        jq -e '.output.word_count | type == "number" and . > 0' <<<"$item_result" >/dev/null || { printf '%sFAIL: output.word_count <= 0%s\n' "$RED" "$RESET" >&2; rc=1; }
+        scenes=$(jq -r '[.output.specscene.scenes[]?] | length' <<<"$item_result")
+    fi
+    if [[ ! "$scenes" =~ ^[0-9]+$ || "$scenes" -le 0 ]]; then
+        printf '%sFAIL: canonical scene count is empty%s\n' "$RED" "$RESET" >&2
+        rc=1
+    else
+        col_scenes="$scenes"
+    fi
+
+    # ENTITIES EXACT MATCH — the typed entity aggregate is the PRIMARY
+    # source for the person/place/concept expectations (never raw JSON). The
+    # controlled source_text names exactly one person, one place and one
+    # concept and forbids extras, so the strict contract is: each category
+    # must contain EXACTLY the expected value (case-insensitive, trimmed)
+    # and NOTHING else. Durable exposes the aggregate as result.entities
+    # (projected from the VidRush barrier); legacy exposes
+    # artifacts.entities. A SUCCEEDED job with a missing or mismatched
+    # aggregate is a FAIL on both surfaces.
+    if [[ "$surface" == "durable" ]]; then
+        local entities_path='.entities'
+        local entities_label='entities'
+    else
+        local entities_path='.artifacts.entities'
+        local entities_label='artifacts.entities'
+    fi
+    if jq -e --arg p "$person" --arg pl "$place" --arg c "$concept" --arg path "$entities_path" '
+            ((getpath(($path | ltrimstr(".") | split("."))) // null)) as $e
+            | $e != null
+            and ([$e.persons // [] | .[] | (.value // "") | ascii_downcase] == [($p | ascii_downcase)])
+            and ([$e.places // [] | .[] | (.value // "") | ascii_downcase] == [($pl | ascii_downcase)])
+            and ([$e.concepts // [] | .[] | (.value // "") | ascii_downcase] == [($c | ascii_downcase)])
+        ' <<<"$item_result" >/dev/null 2>&1; then
+        ENTITIES_OK=$(( ENTITIES_OK + 1 ))
+        col_entities="PASS"
+    else
+        printf '%sFAIL: %s must match EXACTLY person="%s" place="%s" concept="%s" with no extra entities%s\n' "$RED" "$entities_label" "$person" "$place" "$concept" "$RESET" >&2
+        rc=1
+        col_entities="FAIL"
+    fi
+
+    # VOICEOVER STRICT — exactly one non-empty Drive audio link per scene
+    # for the requested language; zero empty links. Durable: scene
+    # .voiceover[lang].url; legacy: artifacts.voiceovers[lang].drive_links.
+    if [[ "$surface" == "durable" ]]; then
+        # The durable surface exposes per-scene voiceovers as id +
+        # (url | file_path) — the audio reference is non-empty either way.
+        if jq -e --arg lang "$CERT_LANGUAGE" --argjson n "$scenes" '
+            ([.scenes[] | select((( .voiceover[$lang].id // "") | length) > 0
+                and (((.voiceover[$lang].url // "") | length) > 0
+                     or ((.voiceover[$lang].file_path // "") | length) > 0))] | length) == $n
+        ' <<<"$item_result" >/dev/null 2>&1; then
+            VOICEOVER_OK=$(( VOICEOVER_OK + 1 ))
+            col_vo="PASS"
+        else
+            printf '%sFAIL: voiceover[%s]: expected one non-empty Drive link per scene (%s), found gaps%s\n' "$RED" "$CERT_LANGUAGE" "$scenes" "$RESET" >&2
+            rc=1
+            col_vo="FAIL"
+        fi
+    else
+        if jq -e --arg lang "$CERT_LANGUAGE" --argjson n "$scenes" '
+            ([.artifacts.voiceovers[] | select(.language == $lang) | .drive_links[]?] | length) == $n
+            and ([.artifacts.voiceovers[] | select(.language == $lang) | .drive_links[]? | select((. // "") == "")] | length) == 0
+        ' <<<"$item_result" >/dev/null 2>&1; then
+            VOICEOVER_OK=$(( VOICEOVER_OK + 1 ))
+            col_vo="PASS"
+        else
+            printf '%sFAIL: voiceovers[%s]: drive_links must equal scene count (%s) with no empty link%s\n' "$RED" "$CERT_LANGUAGE" "$scenes" "$RESET" >&2
+            rc=1
+            col_vo="FAIL"
+        fi
+    fi
+
+    # TIMELINE STRICT — canonical_timeline present, duration_us > 0, segment
+    # count == SpecScene count, segments contiguous and non-overlapping:
+    # index == position, timeline_start_us == cumulative previous end, final
+    # segment end == duration_us.
+    if [[ "$surface" == "durable" ]]; then
+        if jq -e --argjson n "$scenes" '
+            .canonical_timeline != null
+            and (.canonical_timeline.duration_us > 0)
+            and ([.canonical_timeline.segments[]] | length) == $n
+            and ([.canonical_timeline.segments[] | .index] == [range(0; $n)])
+            and (([.canonical_timeline.segments[] | .duration_us] | min) > 0)
+            and ([.canonical_timeline.segments[] | .timeline_start_us] ==
+                 ([.canonical_timeline.segments[] | .duration_us] | reduce .[] as $d ([0]; . + [(.[-1] // 0) + $d]) | .[0:$n]))
+            and ([.canonical_timeline.segments[] | .timeline_start_us + .duration_us] | .[-1]) == .canonical_timeline.duration_us
+        ' <<<"$item_result" >/dev/null 2>&1; then
+            TIMELINE_OK=$(( TIMELINE_OK + 1 ))
+        else
+            printf '%sFAIL: canonical_timeline violates strict contract (segments vs scenes=%s, duration_us, contiguity/non-overlap)%s\n' "$RED" "$scenes" "$RESET" >&2
+            rc=1
+        fi
+    else
+        # Legacy envelope: the timeline may not be surfaced; when it is,
+        # enforce the same strict segment-count contract.
+        local tl_path="" p
+        for p in '.canonical_timeline' '.timeline' '.audio_timeline' '.output.timeline'; do
+            if jq -e "$p | type == \"object\" and (.segments | type == \"array\")" <<<"$item_result" >/dev/null 2>&1; then
+                tl_path="$p"; break
+            fi
+        done
+        if [[ -n "$tl_path" ]]; then
+            if jq -e --argjson n "$scenes" "$tl_path.duration_us > 0 and ([$tl_path.segments[]] | length) == \$n" <<<"$item_result" >/dev/null 2>&1; then
+                TIMELINE_OK=$(( TIMELINE_OK + 1 ))
+            else
+                printf '%sFAIL: timeline %s: segment count must equal scenes (%s) and duration_us > 0%s\n' "$RED" "$tl_path" "$scenes" "$RESET" >&2
+                rc=1
+            fi
+        else
+            printf '%sNOTE: timeline artifact not surfaced on legacy envelope (N/A)%s\n' "$CYAN" "$RESET"
+        fi
+    fi
+
+    # FULL AUDIO MASTER STRICT — the certified final_audio.m4a contract:
+    # container m4a, codec aac + profile LC, sample_rate 48000, channels 2,
+    # duration_ms > 0, both integrity hashes 64-hex, final_mix + copy_eligible
+    # true, audio_asset_id + drive_link non-empty.
+    if jq -e '.final_audio != null and ((.final_audio.audio_asset_id // "") | length > 0)' <<<"$item_result" >/dev/null 2>&1; then
+        if jq -e '
+            .final_audio.container == "m4a"
+            and .final_audio.codec == "aac"
+            and ((.final_audio.profile // "") | ascii_downcase) == "lc"
+            and .final_audio.sample_rate == 48000
+            and .final_audio.channels == 2
+            and (.final_audio.duration_ms > 0)
+            and ((.final_audio.audio_plan_sha256 // "") | test("^[0-9a-fA-F]{64}$"))
+            and ((.final_audio.final_audio_sha256 // "") | test("^[0-9a-fA-F]{64}$"))
+            and .final_audio.final_mix == true
+            and .final_audio.copy_eligible == true
+            and ((.final_audio.drive_link // "") | length > 0)
+        ' <<<"$item_result" >/dev/null 2>&1; then
+            FINAL_M4A=$(( FINAL_M4A + 1 ))
+            col_m4a="PASS"
+        else
+            printf '%sFAIL: final_audio violates the certified master contract (m4a/aac/LC/48000/2ch/duration/hashes/final_mix/copy_eligible/drive_link)%s\n' "$RED" "$RESET" >&2
+            rc=1
+            col_m4a="FAIL"
+        fi
+    else
+        printf '%sFAIL: final_audio missing or audio_asset_id empty%s\n' "$RED" "$RESET" >&2
+        rc=1
+        col_m4a="FAIL"
+    fi
+
+    # AUDIO ENCODE — the master is encoded EXACTLY once. Canonical:
+    # audio_metrics.audio_encode_passes == 1. Legacy: flat timings.
+    # audio_encode_passes cross-checked when present; a dual-contract
+    # divergence is a FAIL. The mux/copy path must add ZERO encodes.
+    local encode_ok=1
+    if [[ "$surface" == "durable" ]]; then
+        jq -e '(.audio_metrics.audio_encode_passes // -1) == 1' <<<"$item_result" >/dev/null 2>&1 || { printf '%sFAIL: audio_metrics.audio_encode_passes != 1%s\n' "$RED" "$RESET" >&2; rc=1; encode_ok=0; col_encode="FAIL"; }
+        [[ "$encode_ok" == "1" ]] && col_encode="1"
+    else
+        if jq -e '.timings.audio_encode_passes != null' <<<"$item_result" >/dev/null 2>&1; then
+            jq -e '.timings.audio_encode_passes == 1' <<<"$item_result" >/dev/null 2>&1 || { printf '%sFAIL: timings.audio_encode_passes != 1%s\n' "$RED" "$RESET" >&2; rc=1; encode_ok=0; col_encode="FAIL"; }
+            [[ "$encode_ok" == "1" ]] && col_encode="1"
+        else
+            printf '%sNOTE: audio_encode_passes not surfaced on legacy envelope (N/A)%s\n' "$CYAN" "$RESET"
+            encode_ok=0
+            col_encode="N-A"
+        fi
+    fi
+    [[ "$encode_ok" == "1" ]] && AUDIO_ENCODE_1=$(( AUDIO_ENCODE_1 + 1 ))
+
+    # NO VIDEO RENDER + COPY — the audio-only run must never build a
+    # RenderPlan / render job, and the certified strategy must be
+    # FINAL_AUDIO_COPY (the mux copies the certified master, never
+    # re-encodes it).
+    if [[ "$surface" == "durable" ]]; then
+        if jq -e '(.render_plan // null) == null' <<<"$item_result" >/dev/null 2>&1; then
+            RENDER_PLAN_NULL=$(( RENDER_PLAN_NULL + 1 ))
+        else
+            printf '%sFAIL: render_plan must be null (audio-only run)%s\n' "$RED" "$RESET" >&2; rc=1
+        fi
+        if ! jq -e '(.render_job // null) == null' <<<"$item_result" >/dev/null 2>&1; then
+            printf '%sFAIL: render_job must be absent (audio-only run)%s\n' "$RED" "$RESET" >&2; rc=1
+        fi
+        if ! jq -e '(.audio_strategy // "") == "FINAL_AUDIO_COPY"' <<<"$item_result" >/dev/null 2>&1; then
+            printf '%sFAIL: audio_strategy must be FINAL_AUDIO_COPY (mux copies, never re-encodes)%s\n' "$RED" "$RESET" >&2; rc=1
+        fi
+    else
+        # Legacy envelope: scan the whole result for any render work leak.
+        # The audio-only run must never build a RenderPlan or enqueue a
+        # render job, whatever the envelope surface.
+        if jq -e '[.. | objects | select(has("render_plan") or has("render_job_id") or has("render_jobs"))] | length == 0' <<<"$item_result" >/dev/null 2>&1; then
+            RENDER_PLAN_NULL=$(( RENDER_PLAN_NULL + 1 ))
+        else
+            printf '%sFAIL: audio-only run leaked render work (render_plan/render_job present)%s\n' "$RED" "$RESET" >&2; rc=1
+        fi
+        if ! jq -e '(.audio_strategy // "") == "FINAL_AUDIO_COPY"' <<<"$item_result" >/dev/null 2>&1; then
+            printf '%sFAIL: audio_strategy must be FINAL_AUDIO_COPY (mux copies, never re-encodes)%s\n' "$RED" "$RESET" >&2; rc=1
+        fi
+    fi
+
+    # GOOGLE DOC — published document surfaced with id + link (durable:
+    # documents[lang]; legacy: artifacts.document).
+    if [[ "$surface" == "durable" ]]; then
+        if jq -e --arg lang "$CERT_LANGUAGE" '(.documents[$lang] != null) and ((.documents[$lang].id // "") | length > 0) and ((.documents[$lang].link // "") | length > 0)' <<<"$item_result" >/dev/null 2>&1; then
+            GOOGLE_DOCS=$(( GOOGLE_DOCS + 1 ))
+            col_doc="PASS"
+        else
+            printf '%sFAIL: documents[%s] missing id/link%s\n' "$RED" "$CERT_LANGUAGE" "$RESET" >&2; rc=1
+            col_doc="FAIL"
+        fi
+    elif jq -e '.artifacts.document != null and ((.artifacts.document.doc_id // "") | length > 0) and ((.artifacts.document.doc_link // "") | length > 0)' <<<"$item_result" >/dev/null 2>&1; then
+        GOOGLE_DOCS=$(( GOOGLE_DOCS + 1 ))
+        col_doc="PASS"
+    else
+        printf '%sFAIL: artifacts.document missing doc_id/doc_link%s\n' "$RED" "$RESET" >&2
+        rc=1
+        col_doc="FAIL"
+    fi
+
+    # GOOGLE DOC CONTENT — export the real document and verify its content
+    # against the GenerationResult surface (only when the Drive OAuth token
+    # is available; otherwise the tier is SKIPPED, never a fake PASS).
+    if [[ "$DOC_CONTENT_ACTIVE" == "1" ]]; then
+        if assert_document_content "$full_file"; then
+            col_doc_audio="PASS"
+        else
+            col_doc_audio="FAIL"
+            rc=1
+        fi
+    else
+        col_doc_audio="SKIP"
+    fi
+
+    JOB_CHECKS[$job_id]="$col_entities|$col_scenes|$col_vo|$col_m4a|$col_encode|$col_doc|$col_doc_audio"
+    return $rc
+}
+
+source "$DIR/script_generate_entities_rust_audio_docs_10_part3"

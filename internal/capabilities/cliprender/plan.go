@@ -305,6 +305,10 @@ func cloneVisualStyle(in *scriptpkg.VideoVisualStyleSpec) *scriptpkg.VideoVisual
 		return nil
 	}
 	out := *in
+	if in.Stroke != nil {
+		stroke := *in.Stroke
+		out.Stroke = &stroke
+	}
 	if in.Shadow != nil {
 		shadow := *in.Shadow
 		out.Shadow = &shadow
