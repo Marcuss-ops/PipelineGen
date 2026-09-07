@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "full-pipeline-overlay-contract",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "full-pipeline-overlay-contract-item",
+      "project": "full-pipeline-overlay-contract",
+      "title": "Michael Jordan, LeBron James, and Johann Sebastian Bach",
+      "language": "en",
+      "tone": "clear, concise documentary narration",
+      "style": "Use only the supplied facts. Keep Michael Jordan, LeBron James, and Johann Sebastian Bach as the only named entities. Do not introduce additional people, places, organizations, dates, or events.",
+      "source": {
+        "type": "text",
+        "topic": "Michael Jordan, LeBron James, and Johann Sebastian Bach",
+        "source_text": "Michael Jordan and LeBron James changed basketball. Johann Sebastian Bach influenced music. Explain the contribution of these named figures in a short factual narration."
+      },
+      "script_params": {
+        "target_words": 50,
+        "min_words": 10,
+        "segment_words": 50,
+        "single_scene": false,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "narration",
+            "topic": "Michael Jordan and LeBron James",
+            "source_text": "Michael Jordan and LeBron James.",
+            "target_words": 24,
+            "min_words": 18,
+            "max_words": 32
+          },
+          {
+            "id": "scene-1",
+            "kind": "narration",
+            "topic": "LeBron James and Johann Sebastian Bach",
+            "source_text": "LeBron James and Johann Sebastian Bach.",
+            "target_words": 24,
+            "min_words": 18,
+            "max_words": 32
+          }
+        ]
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": ["entities", "important_phrases"],
+          "max_entities_per_segment": 2,
+          "max_image_queries_per_segment": 0,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": ["PERSON", "GPE", "ORG", "CONCEPT"],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "planner": {
+          "candidate_limit": 5
+        },
+        "include_trace": true
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_scene_images": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "docs": {
+        "enabled": false
+      }
+    }
+  ]
+}

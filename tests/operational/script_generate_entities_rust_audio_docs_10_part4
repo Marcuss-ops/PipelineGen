@@ -1,0 +1,206 @@
+
+# ── Orchestration ────────────────────────────────────────────────
+declare -a IDX_LIST=()
+for j in $CERT_JOBS; do
+    case "$j" in
+        [0-9]|[0-9][0-9]) IDX_LIST+=("$(( 10#$j - 1 ))") ;;
+        *) printf '%ssetup error: CERT_JOBS entries must be 01..10 (got %s)%s\n' "$RED" "$j" "$RESET" >&2; exit 2 ;;
+    esac
+done
+for idx in "${IDX_LIST[@]}"; do
+    (( idx >= 0 && idx < 10 )) || { printf '%ssetup error: CERT_JOBS index out of range (01..10)%s\n' "$RED" "$RESET" >&2; exit 2; }
+done
+
+if [[ "$DRY_RUN" == "1" ]]; then
+    printf '\nDRY RUN — jobs: %s\n' "$CERT_JOBS"
+    printf 'docs folder : %s\n' "$DOCS_FOLDER_ID"
+    printf 'language    : %s\n' "$CERT_LANGUAGE"
+    printf 'render_video: ABSENT (= false, audio-only contract)\n'
+    for idx in "${IDX_LIST[@]}"; do
+        printf '\n----- %s -----\n' "${ITEM_ID[$idx]}"
+        build_item_payload "$idx" | jq .
+    done
+    printf '\nDRY RUN — would POST /api/script/generate per job and poll /api/jobs/<id>/full\n'
+    exit 0
+fi
+
+smoke_log_section "Certification: script.generate + entities + Rust audio + Google Docs (10 items)"
+printf '  target      : %s\n  docs folder : %s\n  language    : %s\n  render_video: ABSENT (= false, audio-only contract)\n  doc content : %s\n  results dir : %s\n' \
+    "$SMOKE_API_BASE" "$DOCS_FOLDER_ID" "$CERT_LANGUAGE" \
+    "$([ "$DOC_CONTENT_ACTIVE" == "1" ] && printf 'ACTIVE (%s)' "$CERT_DRIVE_TOKEN_FILE" || printf 'SKIPPED')" \
+    "$CERT_RESULTS_DIR"
+
+if [[ -z "$CERT_WAVES" ]]; then
+    # Sequential: one job at a time — the most conservative default.
+    for idx in "${IDX_LIST[@]}"; do
+        run_one_job "$idx" || true
+    done
+else
+    # Wave ramp: e.g. CERT_WAVES="2 4 4" — dispatch the wave group first,
+    # then wait for all its jobs to reach terminal before the next wave.
+    # The last wave may be truncated by the CERT_JOBS scope: the effective
+    # wave size is clamped to the number of remaining jobs so a shortened
+    # final wave is never indexed out of bounds under `set -u`.
+    WAVE_SIZES=()
+    declare -A JOB_ID_BY_IDX=()
+    local_wave_start=0
+    for wave_size in $CERT_WAVES; do
+        [[ "$wave_size" =~ ^[0-9]+$ && "$wave_size" -gt 0 ]] || { printf '%ssetup error: CERT_WAVES entries must be positive integers%s\n' "$RED" "$RESET" >&2; exit 2; }
+        remaining=$(( ${#IDX_LIST[@]} - local_wave_start ))
+        (( remaining > 0 )) || break
+        effective="$wave_size"
+        (( effective > remaining )) && effective="$remaining"
+        WAVE_SIZES+=("$effective")
+        local_wave_start=$(( local_wave_start + effective ))
+    done
+
+    # Gated ramp: dispatch a wave → wait for terminal → persist /full → assert
+    # the strict artifact contract. A wave that does not fully pass ABORTS the
+    # ramp (no further waves are dispatched); the remaining jobs are marked
+    # SKIPPED and the certification gate stays fail-closed.
+    local_wave_start=0
+    wave_num=0
+    wave_pass=1
+    for wave_size in "${WAVE_SIZES[@]}"; do
+        # Ramp gate: only dispatch further waves while every previous wave
+        # fully passed. On a failed wave the remaining jobs are SKIPPED.
+        if (( wave_pass != 1 )); then
+            for ((k = local_wave_start; k < ${#IDX_LIST[@]}; k++)); do
+                skip_idx="${IDX_LIST[$k]}"
+                ROW_JOBS+=("${ITEM_ID[$skip_idx]}|SKIPPED")
+            done
+            break
+        fi
+        wave_num=$(( wave_num + 1 ))
+        wave_first="${IDX_LIST[$local_wave_start]}"
+        wave_last="${IDX_LIST[$(( local_wave_start + wave_size - 1 ))]}"
+        smoke_log_section "Wave $wave_num of $wave_size (jobs ${ITEM_ID[$wave_first]}..${ITEM_ID[$wave_last]})"
+        WAVE_JOB_IDS=()
+        for ((w = 0; w < wave_size; w++)); do
+            wave_idx="${IDX_LIST[$(( local_wave_start + w ))]}"
+            build_item_payload "$wave_idx" > "$CERT_RESULTS_DIR/payload-${ITEM_ID[$wave_idx]}.json"
+            export SMOKE_IDEMPOTENCY_KEY="cert-${ITEM_ID[$wave_idx]}-${RUN_KEY}"
+            smoke_curl POST "/api/script/generate" --data-binary "@$CERT_RESULTS_DIR/payload-${ITEM_ID[$wave_idx]}.json" >/dev/null
+            unset SMOKE_IDEMPOTENCY_KEY
+            if [[ "$SMOKE_LAST_HTTP" != "202" && "$SMOKE_LAST_HTTP" != "200" ]]; then
+                printf '%sFAIL[%s]: dispatch HTTP %s (expected 202)%s\n' "$RED" "${ITEM_ID[$wave_idx]}" "$SMOKE_LAST_HTTP" "$RESET" >&2
+                JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+                ROW_JOBS+=("${ITEM_ID[$wave_idx]}|FAIL-DISPATCH")
+                continue
+            fi
+            job_id=""
+            job_id=$(jq -r '.job_id // .id // empty' "$SMOKE_LAST_BODY")
+            if [[ -z "$job_id" || "$job_id" == "null" ]]; then
+                printf '%sFAIL[%s]: dispatch returned no job_id%s\n' "$RED" "${ITEM_ID[$wave_idx]}" "$RESET" >&2
+                JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+                ROW_JOBS+=("${ITEM_ID[$wave_idx]}|FAIL-DISPATCH")
+                continue
+            fi
+            printf '  %sdispatch OK%s %s job_id=%s\n' "$GREEN" "$RESET" "${ITEM_ID[$wave_idx]}" "$job_id"
+            WAVE_JOB_IDS+=("$job_id")
+            JOB_ID_BY_IDX[$wave_idx]="$job_id"
+        done
+        # Wait for every dispatched job of this wave to terminal, persist /full.
+        for jid in "${WAVE_JOB_IDS[@]}"; do
+            if ! smoke_poll_terminal "$jid"; then
+                printf '%sFAIL: wave poll did not reach terminal for job %s (status=%s)%s\n' "$RED" "$jid" "${SMOKE_LAST_STATUS:-?}" "$RESET" >&2
+                continue
+            fi
+            full_file="$CERT_RESULTS_DIR/job-${jid}-full.json"
+            smoke_curl GET "/api/jobs/${jid}/full" >/dev/null
+            cp "$SMOKE_LAST_BODY" "$full_file" 2>/dev/null || true
+        done
+        # Assert every job of this wave; a single FAIL fails the wave.
+        wave_pass=1
+        for ((w = 0; w < wave_size; w++)); do
+            wave_idx="${IDX_LIST[$(( local_wave_start + w ))]}"
+            full_file=""
+            if [[ -n "${JOB_ID_BY_IDX[$wave_idx]:-}" ]]; then
+                f="$CERT_RESULTS_DIR/job-${JOB_ID_BY_IDX[$wave_idx]}-full.json"
+                [[ -f "$f" ]] && full_file="$f"
+            fi
+            if [[ -z "$full_file" ]]; then
+                printf '%sFAIL[%s]: no persisted /full JSON found%s\n' "$RED" "${ITEM_ID[$wave_idx]}" "$RESET" >&2
+                JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+                ROW_JOBS+=("${ITEM_ID[$wave_idx]}|FAIL-FULL")
+                wave_pass=0
+                continue
+            fi
+            if assert_item_result "$full_file" "${ITEM_PERSON[$wave_idx]}" "${ITEM_PLACE[$wave_idx]}" "${ITEM_CONCEPT[$wave_idx]}" "${ITEM_ID[$wave_idx]}"; then
+                JOBS_SUCCEEDED=$(( JOBS_SUCCEEDED + 1 ))
+                ROW_JOBS+=("${ITEM_ID[$wave_idx]}|PASS")
+            else
+                JOBS_FAILED=$(( JOBS_FAILED + 1 ))
+                ROW_JOBS+=("${ITEM_ID[$wave_idx]}|FAIL-ARTIFACTS")
+                wave_pass=0
+            fi
+        done
+        if [[ "$wave_pass" == "1" ]]; then
+            printf '  %sOK: wave of %s PASS%s\n' "$GREEN" "$wave_size" "$RESET"
+        else
+            printf '%sFAIL: wave of %s did not fully pass (see rows above) — ramp ABORTED%s\n' "$RED" "$wave_size" "$RESET"
+        fi
+        local_wave_start=$(( local_wave_start + wave_size ))
+    done
+fi
+
+# ── Certification table (per-column, per job) ────────────────────
+# Column cells are plain PASS/FAIL/N-A/SKIP or a count; only the STATUS
+# column is colored so the fixed-width alignment stays intact.
+printf '\n%s===== CERTIFICATION TABLE =====%s\n' "$CYAN" "$RESET"
+printf '%-27s | %-18s | %-14s | %-14s | %-8s | %-6s | %-4s | %-4s | %-11s | %-4s | %-14s | %s\n' \
+    "JOB" "PERSON" "PLACE" "CONCEPT" "ENTITIES" "SCENES" "VO" "M4A" "RUST ENCODE" "DOC" "DOC AUDIO MATCH" "STATUS"
+printf '%s\n' "------------------------------------------------------------------------------------------------------------------------------------"
+for row in "${ROW_JOBS[@]}"; do
+    job_id="${row%%|*}"
+    status="${row##*|}"
+    idx=""
+    for i in "${!ITEM_ID[@]}"; do
+        [[ "${ITEM_ID[$i]}" == "$job_id" ]] && idx=$i
+    done
+    # checks = "entities|scenes|vo|m4a|encode|doc|doc_audio"
+    checks="${JOB_CHECKS[$job_id]:-FAIL|FAIL|FAIL|FAIL|N-A|FAIL|SKIP}"
+    IFS='|' read -r c_entities c_scenes c_vo c_m4a c_encode c_doc c_docaudio <<<"$checks"
+    s=""
+    case "$status" in
+        PASS) s=$(pass_row) ;;
+        SKIPPED) s=$(printf '%sSKIPPED%s' "$YELLOW" "$RESET") ;;
+        *) s=$(fail_row) ;;
+    esac
+    printf '%-27s | %-18s | %-14s | %-14s | %-8s | %-6s | %-4s | %-4s | %-11s | %-4s | %-14s | %s\n' \
+        "$job_id" "${ITEM_PERSON[$idx]}" "${ITEM_PLACE[$idx]}" "${ITEM_CONCEPT[$idx]}" \
+        "$c_entities" "$c_scenes" "$c_vo" "$c_m4a" "$c_encode" "$c_doc" "$c_docaudio" "$s"
+done
+
+printf '\n%s===== CERTIFICATION SUMMARY =====%s\n' "$CYAN" "$RESET"
+printf 'jobs_requested              = %d\n' "${#IDX_LIST[@]}"
+printf 'jobs_succeeded              = %d\n' "$JOBS_SUCCEEDED"
+printf 'scripts_nonempty            = %d\n' "$JOBS_SUCCEEDED"
+printf 'entities_expected_match     = %d\n' "$ENTITIES_OK"
+if (( ENTITIES_NA == ${#IDX_LIST[@]} )); then
+    printf 'entity_failures             = N/A (entities not exposed on the durable surface)\n'
+else
+    printf 'entity_failures             = %d\n' "$(( ${#IDX_LIST[@]} - ENTITIES_OK - ENTITIES_NA ))"
+fi
+printf 'voiceover_jobs_complete     = %d\n' "$VOICEOVER_OK"
+printf 'final_m4a                   = %d\n' "$FINAL_M4A"
+printf 'audio_master_encode_passes  = %d\n' "$AUDIO_ENCODE_1"
+printf 'render_plan_null            = %d\n' "$RENDER_PLAN_NULL"
+printf 'google_docs                 = %d\n' "$GOOGLE_DOCS"
+if [[ "$DOC_CONTENT_ACTIVE" == "1" ]]; then
+    printf 'google_docs_valid_content   = %d\n' "$GOOGLE_DOCS_CONTENT"
+    printf 'doc_specscene_hash_match    = %d\n' "$DOC_SPECSCENE_MATCH"
+    printf 'doc_final_audio_asset_match = %d\n' "$DOC_FINALAUDIO_MATCH"
+else
+    printf 'google_docs_valid_content   = SKIPPED (no Drive OAuth token)\n'
+fi
+printf 'FAILED                      = %d\n' "$JOBS_FAILED"
+printf 'results dir                 = %s\n' "$CERT_RESULTS_DIR"
+
+if (( JOBS_FAILED == 0 && JOBS_SUCCEEDED == ${#IDX_LIST[@]} && VOICEOVER_OK == JOBS_SUCCEEDED && TIMELINE_OK == JOBS_SUCCEEDED && FINAL_M4A == JOBS_SUCCEEDED && AUDIO_ENCODE_1 == JOBS_SUCCEEDED && RENDER_PLAN_NULL == JOBS_SUCCEEDED && GOOGLE_DOCS == JOBS_SUCCEEDED )) && { [[ "$DOC_CONTENT_ACTIVE" != "1" ]] || (( GOOGLE_DOCS_CONTENT == JOBS_SUCCEEDED && DOC_SPECSCENE_MATCH == JOBS_SUCCEEDED && DOC_FINALAUDIO_MATCH == JOBS_SUCCEEDED )); }; then
+    printf '\n%sCERTIFIED = YES%s\n' "$GREEN" "$RESET"
+    exit 0
+fi
+printf '\n%sCERTIFIED = NO%s\n' "$RED" "$RESET"
+exit 1
+

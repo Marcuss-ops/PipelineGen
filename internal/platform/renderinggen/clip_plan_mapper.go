@@ -112,6 +112,7 @@ type styleBlock struct {
 	WidthPX      int              `json:"width_px,omitempty"`
 	HeightPX     int              `json:"height_px,omitempty"`
 	ScalePercent float64          `json:"scale_percent,omitempty"`
+	Stroke       *strokeBlock     `json:"stroke,omitempty"`
 	Shadow       *shadowBlock     `json:"shadow,omitempty"`
 	TransitionIn *transitionBlock `json:"transition_in,omitempty"`
 }
@@ -122,6 +123,11 @@ type shadowBlock struct {
 	BlurPX  float64 `json:"blur_px,omitempty"`
 	OffsetX float64 `json:"offset_x,omitempty"`
 	OffsetY float64 `json:"offset_y,omitempty"`
+}
+
+type strokeBlock struct {
+	Color string  `json:"color,omitempty"`
+	Width float64 `json:"width,omitempty"`
 }
 
 type transitionBlock struct {
@@ -144,6 +150,18 @@ func marshalStyle(in *scriptpkg.VideoVisualStyleSpec) *styleBlock {
 		WidthPX:      in.WidthPX,
 		HeightPX:     in.HeightPX,
 		ScalePercent: in.ScalePercent,
+	}
+	// An explicit caller stroke wins verbatim (width in render pixels).  The
+	// public clip style historically exposed a drop-shadow only; when no
+	// stroke is declared, derive one from the shadow color so subtitle text
+	// always carries a readable black contour across the semantic-plan
+	// worker boundary.
+	if in.Stroke != nil && strings.TrimSpace(in.Stroke.Color) != "" {
+		out.Stroke = &strokeBlock{Color: in.Stroke.Color, Width: in.Stroke.Width}
+	} else if in.Shadow != nil && strings.TrimSpace(in.Shadow.Color) != "" {
+		// The subtitle style is rendered at 1080p. 2 px is barely visible
+		// after video scaling; use a real broadcast-safe black keyline.
+		out.Stroke = &strokeBlock{Color: in.Shadow.Color, Width: 5.0}
 	}
 	if in.Shadow != nil {
 		out.Shadow = &shadowBlock{

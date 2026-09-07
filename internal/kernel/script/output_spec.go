@@ -184,8 +184,19 @@ type VideoVisualStyleSpec struct {
 	WidthPX      int                  `json:"width_px,omitempty"`
 	HeightPX     int                  `json:"height_px,omitempty"`
 	ScalePercent float64              `json:"scale_percent,omitempty"`
+	Stroke       *VideoStrokeSpec     `json:"stroke,omitempty"`
 	Shadow       *VideoShadowSpec     `json:"shadow,omitempty"`
 	TransitionIn *VideoTransitionSpec `json:"transition_in,omitempty"`
+}
+
+// VideoStrokeSpec is the canonical solid outline block shared by every video
+// text layer. Color is a CSS-style hex string ("#RRGGBB"); Width is in
+// render pixels. When a layer declares only a shadow, the plan boundary
+// derives a stroke from the shadow color so subtitle text always carries a
+// readable black contour; an explicit stroke always wins over that fallback.
+type VideoStrokeSpec struct {
+	Color string  `json:"color,omitempty"`
+	Width float64 `json:"width,omitempty"`
 }
 
 // VideoShadowSpec is the canonical drop-shadow block shared by every video

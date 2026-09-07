@@ -2,6 +2,11 @@ module github.com/Marcuss-ops/PipelineGen
 
 go 1.25.0
 
+// Keep the local PipelineGen/RenderingGen pair on the same queue contract.
+// The checked-in pseudo-version predates Client.Retry, while the workspace
+// queue module already contains the method used by this adapter.
+replace github.com/Marcuss-ops/RenderginGen/queue => ../RenderingGen/queue
+
 require (
 	github.com/Marcuss-ops/RenderginGen/queue v0.0.0-20260902155112-fb4938103f42
 	github.com/gin-contrib/cors v1.7.7

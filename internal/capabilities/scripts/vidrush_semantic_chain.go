@@ -128,10 +128,27 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich: %w", err)
 	}
 
-	entityCount := 3
-	entities, err := e.nerPort.Extract(ctx, ir.SourceText, entityCount)
-	if err != nil {
-		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
+	// The payload can explicitly narrow semantic extraction to the surfaces
+	// needed by the current production pass. Keep the historical default of
+	// three entities when no limit is supplied.
+	extraction := mediadomain.MediaExtractionPolicy{}
+	if plan != nil {
+		extraction = plan.MediaPlan.Extraction
+	}
+	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities)
+	entityCount := extraction.MaxEntitiesPerSegment
+	if entityCount <= 0 {
+		entityCount = 3
+	}
+	var entities []VisualEntity
+	if includeEntities {
+		entities, err = e.nerPort.Extract(ctx, ir.SourceText, entityCount)
+		if err != nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
+		}
+	}
+	if !includeEntities {
+		entities = nil
 	}
 	if err := validateVisualEntities(ir, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
@@ -174,13 +191,12 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	visual := scriptpkg.BuildSegmentVisualProfile(ir.Profile)
 	visualProfile := &visual
 	artlistQueries := scriptpkg.BuildArtlistQueries(ir.Profile, 5)
-	imageQueries = scriptpkg.BuildImageQueries(ir.Profile, entityCount)
-	if imageAnchor != "" {
-		for i, query := range imageQueries {
-			if query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
-				imageQueries[i] = imageAnchor + " " + query
-			}
-		}
+	// Entity-only extraction is a deliberate product surface. Do not replace
+	// the one-query-per-entity fan-out with the broader visual-profile query
+	// builder: that leaks generic scene searches into entity image lookup and
+	// defeats canonical entity caching/materialization.
+	if !includeEntities {
+		imageQueries = nil
 	}
 	result := scriptpkg.VidRushSegmentResult{
 		SegmentID:       ir.SegmentID,
@@ -191,12 +207,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		ExecutionMode:   scene.ExecutionMode,
 		SemanticProfile: &ir.Profile,
 		Insights: scriptpkg.SegmentInsights{
-			SegmentID:      ir.SegmentID,
-			TextHash:       ir.SourceTextHash,
-			VisualProfile:  visualProfile,
-			Entities:       extractedEntities,
-			ArtlistQueries: artlistQueries,
-			ImageQueries:   imageQueries,
+			SegmentID:        ir.SegmentID,
+			TextHash:         ir.SourceTextHash,
+			VisualProfile:    visualProfile,
+			Entities:         extractedEntities,
+			ImportantPhrases: append([]string(nil), ir.Profile.ImportantPhrases...),
+			ArtlistQueries:   artlistQueries,
+			ImageQueries:     imageQueries,
 		},
 	}
 	return result, nil

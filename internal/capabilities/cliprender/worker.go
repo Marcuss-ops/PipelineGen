@@ -220,6 +220,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		Background:             prepared.Background,
 		BackgroundMode:         req.Background.Mode,
 		Subtitles:              subtitleArtifact,
+		SubtitlesStyle:         req.Subtitles.Style, // caller's typed visual block travels into the sealed plan verbatim
 		Cues:                   prepared.Transcript.Cues,
 		Contract:               prepared.Contract,
 		AudioMode:              req.Audio.Mode,

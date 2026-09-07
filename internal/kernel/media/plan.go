@@ -155,6 +155,11 @@ type MediaMaterializationPolicy struct {
 // MediaExtractionPolicy controls per-segment semantic extraction.
 type MediaExtractionPolicy struct {
 	Enabled bool `json:"enabled,omitempty"`
+	// Include selects the semantic surfaces produced for each segment.
+	// Supported values are "entities" and "important_phrases". An omitted
+	// list preserves the legacy behaviour and leaves all extractor surfaces
+	// available to downstream consumers.
+	Include []string `json:"include,omitempty"`
 	// Device selects local semantic extraction hardware: auto, cpu, or gpu.
 	// Auto falls back to CPU only when the optional GPU backend is unavailable.
 	Device                        string            `json:"device,omitempty"`
@@ -165,6 +170,26 @@ type MediaExtractionPolicy struct {
 	MaxImageQueriesPerSegment     int               `json:"max_image_queries_per_segment,omitempty"`
 	Strategy                      string            `json:"strategy,omitempty"`
 	EntityImages                  EntityImagePolicy `json:"entity_images,omitempty"`
+}
+
+const (
+	ExtractionIncludeEntities         = "entities"
+	ExtractionIncludeImportantPhrases = "important_phrases"
+)
+
+// Includes reports whether a semantic surface was explicitly requested. An
+// empty Include is intentionally treated as unrestricted for compatibility
+// with payloads written before the selector existed.
+func (p MediaExtractionPolicy) Includes(surface string) bool {
+	if len(p.Include) == 0 {
+		return true
+	}
+	for _, candidate := range p.Include {
+		if strings.EqualFold(strings.TrimSpace(candidate), surface) {
+			return true
+		}
+	}
+	return false
 }
 
 type EntityImagePolicy struct {
@@ -242,6 +267,8 @@ func (m MediaPlanSpec) Clone() MediaPlanSpec {
 	m.Sources = append([]SegmentMediaSource(nil), m.Sources...)
 	m.Searches = append([]SegmentMediaSearch(nil), m.Searches...)
 	m.PostSegments = append([]PostSegmentVisualPlan(nil), m.PostSegments...)
+	m.Extraction.Include = append([]string(nil), m.Extraction.Include...)
+	m.Extraction.EntityImages.EntityTypes = append([]string(nil), m.Extraction.EntityImages.EntityTypes...)
 	if m.Intro != nil {
 		intro := m.Intro.Clone()
 		m.Intro = &intro

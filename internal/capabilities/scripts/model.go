@@ -230,6 +230,17 @@ type RenderArtifact struct {
 	// Metrics is the numeric projection of Chronon's timing sidecar returned
 	// by RenderingGen and correlated with this artifact.
 	Metrics map[string]float64 `json:"metrics,omitempty"`
+	// ChrononTiming* reference the RAW deep-profile timing sidecar
+	// (`<output>.timing.json`, including the unbounded per-frame
+	// frame_times_ms array) preserved verbatim in the RenderingGen object
+	// store under its content address. Only the small reference rides the
+	// artifact — the per-frame array is never inlined. Empty when the worker
+	// could not preserve the sidecar (fail-open).
+	ChrononTimingStorageKey  string `json:"chronon_timing_storage_key,omitempty"`
+	ChrononTimingURL         string `json:"chronon_timing_url,omitempty"`
+	ChrononTimingSHA256      string `json:"chronon_timing_sha256,omitempty"`
+	ChrononTimingSizeBytes   int64  `json:"chronon_timing_size_bytes,omitempty"`
+	ChrononTimingContentType string `json:"chronon_timing_content_type,omitempty"`
 }
 
 type FinalAudioReference struct {
