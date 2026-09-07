@@ -326,18 +326,20 @@ func requiredConceptsFor(seg ResultSegment) []string {
 	return nil
 }
 
-// ruleEntityGrounding verifies every segment has the spec-required number
-// of entities AND every entity has source evidence.
+// ruleEntityGrounding verifies that no segment exceeds the requested entity
+// limit and every entity actually returned has source evidence. The extraction
+// limit is a maximum, not an exact count: deterministic NLP may legitimately
+// find fewer grounded entities in a scene.
 func ruleEntityGrounding(spec Spec, result MediaResult) CheckResult {
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
 	for _, seg := range result.Segments {
 		ents := seg.Insights.Entities
-		if spec.EntitiesPerSegment > 0 && len(ents) != spec.EntitiesPerSegment {
+		if spec.EntitiesPerSegment > 0 && len(ents) > spec.EntitiesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckEntityGrounding),
-				Detail:    fmt.Sprintf("entity count = %d, expected %d", len(ents), spec.EntitiesPerSegment),
+				Detail:    fmt.Sprintf("entity count = %d, maximum %d", len(ents), spec.EntitiesPerSegment),
 			})
 			continue
 		}
@@ -374,19 +376,20 @@ func entityHasEvidence(ent script.ExtractedEntity, seg ResultSegment) bool {
 	return strings.Contains(hay, needle)
 }
 
-// ruleImageFanout verifies one image query per entity and the spec-required
-// number of images per segment.
+// ruleImageFanout verifies one image query per entity and the configured
+// maximum image count per segment. It never requires fabricated queries for
+// entities that the extractor did not find.
 func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
 	for _, seg := range result.Segments {
 		nQueries := len(seg.Insights.ImageQueries)
 		nEnts := len(seg.Insights.Entities)
-		if spec.EntitiesPerSegment > 0 && nQueries != spec.EntitiesPerSegment {
+		if spec.EntitiesPerSegment > 0 && nQueries > spec.EntitiesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("image queries = %d, expected one per entity (%d)", nQueries, spec.EntitiesPerSegment),
+				Detail:    fmt.Sprintf("image queries = %d, maximum one per entity (%d)", nQueries, spec.EntitiesPerSegment),
 			})
 		}
 		if nEnts > 0 && nQueries != nEnts {

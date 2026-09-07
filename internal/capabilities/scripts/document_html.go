@@ -131,6 +131,7 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		var before strings.Builder
 		writeDocumentFullAudio(&before, opts)
 		writeDocumentOverlay(&before, opts)
+		writeDocumentSemanticSummary(&before, model)
 		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
 	}
 
@@ -162,6 +163,127 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
 
 	return skeleton
+}
+
+// writeDocumentSemanticSummary renders the operator-facing aggregate view of
+// the NLP output. Scene annotations remain the source of truth; this section
+// only groups the already-resolved entities and phrases so a reviewer can
+// inspect the result without opening the embedded JSON.
+func writeDocumentSemanticSummary(b *strings.Builder, model *scriptpkg.ModelScriptOutputV1) {
+	if model == nil {
+		return
+	}
+
+	type entityGroup struct {
+		label    string
+		entities []scriptpkg.AnnotatedEntity
+	}
+	groups := []entityGroup{
+		{label: "PERSON"},
+		{label: "ORG"},
+		{label: "GPE"},
+		{label: "CONCEPT"},
+	}
+	groupIndex := map[string]int{"PERSON": 0, "ORG": 1, "ORGANIZATION": 1, "GPE": 2, "LOCATION": 2, "PLACE": 2, "COUNTRY": 2, "CITY": 2, "CONCEPT": 3}
+	seenEntities := make(map[string]struct{})
+	var phrases []string
+	seenPhrases := make(map[string]struct{})
+
+	for _, scene := range model.SpecScene.Scenes {
+		if scene.Annotations == nil {
+			continue
+		}
+		for _, phrase := range scene.Annotations.ImportantPhrases {
+			value := strings.TrimSpace(phrase.Text)
+			key := strings.ToLower(value)
+			if value != "" && key != "" {
+				if _, ok := seenPhrases[key]; !ok {
+					seenPhrases[key] = struct{}{}
+					phrases = append(phrases, value)
+				}
+			}
+		}
+		entities := append(append([]scriptpkg.AnnotatedEntity{}, scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
+		for _, entity := range entities {
+			name := strings.TrimSpace(entity.CanonicalName)
+			if name == "" {
+				name = strings.TrimSpace(entity.Text)
+			}
+			kind := strings.ToUpper(strings.TrimSpace(entity.Type))
+			idx, ok := groupIndex[kind]
+			if !ok {
+				idx = 3
+			}
+			key := kind + "\x00" + strings.ToLower(name)
+			if name == "" || key == "\x00" {
+				continue
+			}
+			if _, exists := seenEntities[key]; exists {
+				continue
+			}
+			seenEntities[key] = struct{}{}
+			groups[idx].entities = append(groups[idx].entities, entity)
+		}
+	}
+
+	if len(phrases) == 0 && len(seenEntities) == 0 {
+		return
+	}
+	b.WriteString("<section><h2>Entities &amp; Important Phrases</h2>")
+	if len(phrases) > 0 {
+		b.WriteString("<h3>Important phrases</h3><ul>")
+		for _, phrase := range phrases {
+			b.WriteString("<li>")
+			b.WriteString(html.EscapeString(phrase))
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul>")
+	}
+	for _, group := range groups {
+		if len(group.entities) == 0 {
+			continue
+		}
+		b.WriteString("<h3>")
+		b.WriteString(html.EscapeString(group.label))
+		b.WriteString("</h3><ul>")
+		for _, entity := range group.entities {
+			name := strings.TrimSpace(entity.CanonicalName)
+			if name == "" {
+				name = strings.TrimSpace(entity.Text)
+			}
+			b.WriteString("<li><strong>")
+			b.WriteString(html.EscapeString(name))
+			b.WriteString("</strong>")
+			if entity.Confidence > 0 {
+				fmt.Fprintf(b, " <em>(confidence %.2f)</em>", entity.Confidence)
+			}
+			if image := entity.Image; image != nil {
+				if image.DriveLink != "" {
+					b.WriteString(" — ")
+					b.WriteString(renderDocumentLink("Drive image", image.DriveLink, image.DriveLink))
+				}
+				metadata := make([]string, 0, 4)
+				if image.AssetID != "" {
+					metadata = append(metadata, "asset="+image.AssetID)
+				}
+				if image.Status != "" {
+					metadata = append(metadata, "cache="+image.Status)
+				}
+				if image.Source != "" {
+					metadata = append(metadata, "source="+image.Source)
+				}
+				if image.License != "" {
+					metadata = append(metadata, "license="+image.License)
+				}
+				if len(metadata) > 0 {
+					b.WriteString(" <small>[" + html.EscapeString(strings.Join(metadata, "; ")) + "]</small>")
+				}
+			}
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul>")
+	}
+	b.WriteString("</section>")
 }
 
 // RenderDocument is the one-shot renderer (skeleton + injection). It is the
