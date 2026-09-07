@@ -351,6 +351,17 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 
 	// Process item layers.
 	for index, item := range plan.Items {
+		unmaterialized := false
+		for _, ref := range item.AssetRefs {
+			url := strings.TrimSpace(ref.URL)
+			if strings.HasPrefix(url, "semantic/") || strings.HasPrefix(url, "assets/semantic/") {
+				unmaterialized = true
+				break
+			}
+		}
+		if unmaterialized {
+			continue
+		}
 		layer, itemAssets, itemNeedsFont, layoutCandidate, err := compileItemLayer(
 			item, index, plan, maxEndUS, frameAtUS, seenAssets,
 		)

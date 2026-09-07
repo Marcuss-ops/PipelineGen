@@ -46,6 +46,67 @@ func NewAssetPrefetcher(prepare func(context.Context, []scriptgen.RenderQueueAss
 	return &AssetPrefetcher{prepare: prepare}
 }
 
+// NewHTTPAssetPrefetcher bridges durable image bindings (which carry a
+// verified remote URL) into RenderingGen's content-addressed object store.
+// The queue worker intentionally accepts hashes only; PipelineGen therefore
+// must stage a cache-miss asset before enqueueing the render job.
+func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
+	storeURL = strings.TrimRight(strings.TrimSpace(storeURL), "/")
+	return NewAssetPrefetcher(func(ctx context.Context, assets []scriptgen.RenderQueueAsset) error {
+		for _, asset := range assets {
+			downloadURL := asset.SourceURL
+			if downloadURL == "" {
+				downloadURL = asset.URL
+			}
+			if strings.TrimSpace(asset.Hash) == "" || strings.TrimSpace(downloadURL) == "" || !strings.HasPrefix(downloadURL, "http") {
+				continue
+			}
+			present, err := objectStored(ctx, storeURL, asset.Hash)
+			if err != nil {
+				return err
+			}
+			if present {
+				continue
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+			if err != nil {
+				return fmt.Errorf("asset %s request: %w", asset.Hash, err)
+			}
+			resp, err := objectStoreHTTPClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("asset %s download: %w", asset.Hash, err)
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				_ = resp.Body.Close()
+				return fmt.Errorf("asset %s download: HTTP %d", asset.Hash, resp.StatusCode)
+			}
+			file, err := os.CreateTemp("", "pipelinegen-render-asset-*")
+			if err != nil {
+				_ = resp.Body.Close()
+				return err
+			}
+			path := file.Name()
+			_, copyErr := io.Copy(file, resp.Body)
+			_ = resp.Body.Close()
+			_ = file.Close()
+			if copyErr != nil {
+				_ = os.Remove(path)
+				return fmt.Errorf("asset %s write: %w", asset.Hash, copyErr)
+			}
+			// The upstream materializer already verified the content hash. The
+			// queue may also carry a semantic asset-id alias whose key is not the
+			// byte SHA, so the staging bridge deliberately does not re-hash the
+			// downloaded alias here.
+			err = streamPutFile(ctx, storeURL, asset.Hash, path)
+			_ = os.Remove(path)
+			if err != nil {
+				return fmt.Errorf("asset %s stage: %w", asset.Hash, err)
+			}
+		}
+		return nil
+	})
+}
+
 func (p *AssetPrefetcher) Prefetch(ctx context.Context, assets []scriptgen.RenderQueueAsset) error {
 	if p == nil || p.prepare == nil {
 		return nil

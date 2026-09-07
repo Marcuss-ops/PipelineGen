@@ -241,6 +241,25 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
 	items := plannerPlan.Items
+	// A semantic catalog reference is only a database identity until its bytes
+	// have been staged into the RenderingGen object store. Never enqueue that
+	// placeholder as a render asset: Chronon would resolve it to a nonexistent
+	// local path. The entity remains available as a text card and can be
+	// promoted on the next run once materialization supplies a fetchable URL.
+	filteredItems := items[:0]
+	for _, item := range items {
+		unmaterialized := false
+		for _, ref := range item.AssetRefs {
+			if strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
+				unmaterialized = true
+				break
+			}
+		}
+		if !unmaterialized {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+	items = filteredItems
 	if styleParams := overlayStyleParams(canvas.Style); len(styleParams) > 0 {
 		for i := range items {
 			merged := map[string]any{}
@@ -284,7 +303,14 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 			if owned[item.EntityID] {
 				continue
 			}
-			items = append(items, attachEntityCardAsset(item, media, canonicalByStable))
+			item = attachEntityCardAsset(item, media, canonicalByStable)
+			for _, ref := range item.AssetRefs {
+				if strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") {
+					item.AssetRefs = nil
+					break
+				}
+			}
+			items = append(items, item)
 		}
 	}
 	if len(items) == 0 {
@@ -606,8 +632,15 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	if err != nil {
 		return item
 	}
+	// A catalog row without a fetchable URL is not renderable by Chronon.
+	// Keep the entity card text-only until the asset binding is complete;
+	// emitting a hash-only ref would make RenderingGen fail later while
+	// materializing an impossible logical path.
+	if strings.TrimSpace(ref.URL) == "" || strings.TrimSpace(ref.SHA256) == "" || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
+		return item
+	}
 	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
-		AssetID: ref.AssetID, URL: ref.URL, SHA256: ref.SHA256, MediaType: ref.MediaType,
+		AssetID: ref.SHA256, URL: ref.URL, SHA256: ref.SHA256, MediaType: ref.MediaType,
 	}}
 	if item.EntityRef != nil {
 		item.EntityRef.CanonicalEntityID = canonical
@@ -624,7 +657,7 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 // drop the asset from the render manifest).
 func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentities.EntityOccurrence, score float64) capabilityoverlay.ImageCandidate {
 	return capabilityoverlay.ImageCandidate{
-		AssetID:    binding.AssetID,
+		AssetID:    binding.SHA256,
 		URL:        entityImageURL(binding),
 		SHA256:     binding.SHA256,
 		MediaType:  "image",

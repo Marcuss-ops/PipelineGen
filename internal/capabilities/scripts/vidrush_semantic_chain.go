@@ -171,7 +171,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			Confidence: float64(ve.Score),
 		})
 		query := strings.TrimSpace(ve.Text)
-		if imageAnchor != "" && query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
+		if !extraction.EntityImages.Enabled && imageAnchor != "" && query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
 			query = imageAnchor + " " + query
 		}
 		imageQueries = append(imageQueries, query)

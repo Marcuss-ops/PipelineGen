@@ -85,6 +85,14 @@ func compileItemLayer(
 			return ChrononLayer{}, nil, false, nil, fmt.Errorf("overlay plan: item %q (%s) requires a resolvable asset (url or content hash)", item.ID, spec.Primitive)
 		}
 	}
+	// Semantic catalog refs are identity placeholders, not materialized bytes.
+	// A text entity card remains renderable without its optional portrait; do
+	// not project the placeholder path into Chronon's asset manifest.
+	if spec.Primitive == PrimitiveText {
+		// Entity-card portraits are optional for the text primitive. The
+		// renderer must not treat their catalog ref as a standalone image layer.
+		item.AssetRefs = nil
+	}
 
 	startFrame, endFrame := itemFrameRange(item, frameAtUS)
 	preset := strings.TrimSpace(item.PresetID)
@@ -195,7 +203,7 @@ func compileItemLayer(
 	}
 
 	var assets []ChrononAsset
-	if len(item.AssetRefs) > 0 {
+	if len(item.AssetRefs) > 0 && (spec.Primitive == PrimitiveImage || spec.Primitive == PrimitiveVideo) {
 		ref := item.AssetRefs[0]
 		logical := logicalAssetPath(ref.URL)
 		if spec.Primitive == PrimitiveVideo {

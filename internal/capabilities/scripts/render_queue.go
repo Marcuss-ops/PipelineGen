@@ -24,8 +24,9 @@ const defaultQueuePollInterval = 2 * time.Second
 // RenderQueueAsset points at an input asset the central queue worker must
 // fetch. Hash is the object-store lookup key (the SHA-256 of the file).
 type RenderQueueAsset struct {
-	Hash string `json:"hash"`
-	URL  string `json:"url,omitempty"`
+	Hash      string `json:"hash"`
+	URL       string `json:"url,omitempty"`
+	SourceURL string `json:"source_url,omitempty"`
 }
 
 // RenderQueueJob is the queue-side view of a submitted render job. It is the
@@ -130,6 +131,10 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 			url = "assets/" + ref.AssetID
 		}
 		assets = append(assets, RenderQueueAsset{Hash: hash, URL: url})
+		if strings.HasPrefix(url, "http") && strings.HasPrefix(strings.ToLower(ref.MediaType), "image") {
+			assets[len(assets)-1].SourceURL = url
+			assets[len(assets)-1].URL = "assets/semantic/" + hash + ".png"
+		}
 	}
 	if semanticPlan.Background != nil {
 		for _, ref := range semanticPlan.Background.AssetRefs {
