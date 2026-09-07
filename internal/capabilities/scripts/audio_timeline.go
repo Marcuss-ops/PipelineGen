@@ -353,6 +353,26 @@ func buildCanonicalTimelineAndPrimaryAssets(result GenerateResult, language Lang
 	prepareStarted := time.Now()
 	for i, scene := range result.Scenes {
 		intents := timeline.Segments[i].EffectiveAudioIntents()
+		// A pure-text scene can receive its voiceover after the initial scene
+		// projection has been built. In that case ResolveScenes correctly
+		// defaults the segment to SILENCE, but the generated TTS reference is
+		// still the authoritative audio for the scene. Promote it here so the
+		// compiler carries the asset into the audio plan instead of producing an
+		// empty audio_assets list.
+		if scene.Clip == nil && !scene.ExecutionMode.IsFixedMedia() {
+			hasVoiceoverIntent := false
+			for _, intent := range intents {
+				if intent.Mode == audio.AudioVoiceover {
+					hasVoiceoverIntent = true
+					break
+				}
+			}
+			if !hasVoiceoverIntent {
+				if ref, ok := scene.Voiceover[language]; ok && strings.TrimSpace(ref.ID) != "" {
+					intents = []audio.AudioIntent{{Mode: audio.AudioVoiceover, VoiceoverAssetID: ref.ID}}
+				}
+			}
+		}
 		// COMBINED_TIMELINE scenes carry both original clip audio and the
 		// generated voiceover. Merge them only after the voiceover asset has
 		// been resolved; the canonical segment remains the single timing SSOT.

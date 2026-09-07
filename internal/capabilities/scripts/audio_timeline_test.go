@@ -42,6 +42,23 @@ func TestCompileCanonicalAudioPlanUsesOneTimelineForPrimaryEvents(t *testing.T) 
 	}
 }
 
+func TestCompileCanonicalAudioPlanInfersVoiceoverForTextSceneAfterTTS(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-text", Index: 0, DurationUS: 3_000_000,
+		Text:      map[Language]string{"en": "A generated text scene."},
+		Voiceover: map[Language]AudioReference{"en": {ID: "vo-text", FilePath: "/audio/vo-text.m4a", Duration: 2.4}},
+		// This is the state produced when TTS completes after the initial
+		// resolved-scene projection: Voiceover is present, but Audio still
+		// contains the default zero value.
+	}}}
+	timeline, plan, assets, _, err := CompileCanonicalAudioPlanAudioOnly(result, "en", audio.DefaultAudioProfile())
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+	require.Equal(t, "vo-text", assets[0].AssetID)
+	require.Len(t, eventsForRole(plan, audio.TrackVoiceover), 1)
+	require.Equal(t, int64(3_000_000), timeline.DurationUS)
+}
+
 // TestVoiceoverSourceDurationEqualsCleanedProbeNotClipDuration certifies the
 // invariant from the audio/document verdetto: the voiceover source duration
 // recorded on the canonical timeline must be the probed duration of the
