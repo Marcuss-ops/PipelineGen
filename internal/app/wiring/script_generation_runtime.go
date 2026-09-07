@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -178,12 +179,18 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
-		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(renderinggen.New(queueURL))
+		queueClient := renderinggen.New(queueURL)
+		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
+		if storeURL == "" {
+			storeURL = "http://127.0.0.1:9000"
+		}
+		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
+		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
 		if err != nil {
 			return nil, fmt.Errorf("build queue prepare enqueuer: %w", err)
 		}
 		runner.SetOverlayPrepareEnqueuer(prepareEnqueuer)
-		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(renderinggen.New(queueURL))
+		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(queueClient)
 		if err != nil {
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
 		}
@@ -333,6 +340,11 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	}
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
 	spec.ImagesPerSegment = plan.ImagesPerScene
+	// Entity image assets are canonical by entity identity and are expected to
+	// be reused when the same person/place is mentioned in multiple scenes.
+	// The generic stock-video certification forbids cross-scene reuse, but that
+	// rule must not reject the entity cache contract.
+	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImages.Enabled
 	for _, segment := range plan.Segments {
 		id := strings.TrimSpace(segment.ID)
 		if id == "" {
