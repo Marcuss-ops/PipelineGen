@@ -334,10 +334,10 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan.MediaMode == scriptpkg.MediaModeClipOnly || plan.MediaMode == scriptpkg.MediaModeMixed {
 		spec.VideoProvider = scriptpkg.VidRushProviderArtlist
 	}
+	// Only authored plan segments define an external scene-identity contract.
+	// Free-form text generation may legitimately produce multiple structured
+	// scenes, so do not invent a synthetic scene-0 expectation here.
 	spec.Segments = len(plan.Segments)
-	if spec.Segments == 0 && plan.Mode == "text" {
-		spec.Segments = 1
-	}
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
 	spec.ImagesPerSegment = plan.ImagesPerScene
 	// Entity image assets are canonical by entity identity and are expected to
@@ -345,20 +345,15 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	// The generic stock-video certification forbids cross-scene reuse, but that
 	// rule must not reject the entity cache contract.
 	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImages.Enabled
-	for _, segment := range plan.Segments {
+	for i, segment := range plan.Segments {
 		id := strings.TrimSpace(segment.ID)
 		if id == "" {
-			continue
+			id = fmt.Sprintf("scene-%d", i)
 		}
 		subject := strings.TrimSpace(segment.Topic)
 		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
 		})
-	}
-	if len(spec.SegmentsExpected) == 0 && spec.Segments > 0 {
-		for i := 0; i < spec.Segments; i++ {
-			spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{ID: fmt.Sprintf("scene-%d", i)})
-		}
 	}
 	return spec
 }

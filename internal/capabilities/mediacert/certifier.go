@@ -20,6 +20,13 @@ func Certify(spec Spec, result MediaResult) Report {
 	allPassed := true
 	for _, rule := range rules {
 		cr := rule(spec, result)
+		// Scene identity has two valid ownership modes. Authored segment plans
+		// carry SegmentsExpected and remain strict. Free-form text generation
+		// has no authored ID contract, so certify the generated identities for
+		// internal uniqueness/order instead of inventing an expected scene-0.
+		if cr.Name == CheckSceneIdentity && len(spec.SegmentsExpected) == 0 {
+			cr = ruleImplicitSceneIdentity(result)
+		}
 		if !cr.Passed {
 			allPassed = false
 		}
