@@ -221,6 +221,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					item.scene.Voiceover = make(map[Language]AudioReference)
 				}
 				item.scene.Voiceover[item.lang] = audioRef
+				if item.lang == req.SourceLanguage && item.scene.Clip == nil && !item.scene.ExecutionMode.IsFixedMedia() {
+					item.scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
+					item.scene.AudioIntents = []capabilityaudio.AudioIntent{item.scene.Audio}
+				}
 				if (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
 					item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
 					item.scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)

@@ -159,6 +159,10 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	for i, lang := range langs {
 		out.Voiceover[lang] = tts[i]
 		audioRef := tts[i]
+		if lang == c.req.SourceLanguage && out.Clip == nil && !out.ExecutionMode.IsFixedMedia() {
+			out.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
+			out.AudioIntents = []capabilityaudio.AudioIntent{out.Audio}
+		}
 		// Per-(scene, language) TTS correlation: record the produced
 		// voiceover asset so the translation → TTS → render → Drive lineage
 		// is joinable on (scene_id, language, asset_id).
