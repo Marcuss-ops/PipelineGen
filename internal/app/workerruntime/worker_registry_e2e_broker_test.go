@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
