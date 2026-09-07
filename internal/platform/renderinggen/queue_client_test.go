@@ -168,3 +168,21 @@ func TestClientGetDecodesArtifact(t *testing.T) {
 		t.Fatalf("unexpected job: %+v", job)
 	}
 }
+
+func TestQueueAssetMappingPreservesSourceURL(t *testing.T) {
+	input := []scriptgen.RenderQueueAsset{{
+		Hash:      "abc",
+		URL:       "assets/semantic/person_matt.jpg",
+		SourceURL: "https://cdn.example/matt.jpg",
+	}}
+
+	wire := toQueueAssets(input)
+	if len(wire) != 1 || wire[0].LogicalPath != input[0].URL || wire[0].SourceURL != input[0].SourceURL {
+		t.Fatalf("wire asset = %+v, source URL was not preserved", wire)
+	}
+
+	roundTrip := fromQueueAssets(wire)
+	if len(roundTrip) != 1 || roundTrip[0].SourceURL != input[0].SourceURL {
+		t.Fatalf("round-trip asset = %+v, source URL was not preserved", roundTrip)
+	}
+}

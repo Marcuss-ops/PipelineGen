@@ -181,7 +181,7 @@ func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
 	}
 	out := make([]queueclient.AssetRef, len(in))
 	for i, a := range in {
-		out[i] = queueclient.AssetRef{Hash: a.Hash, LogicalPath: a.URL}
+		out[i] = queueclient.AssetRef{Hash: a.Hash, LogicalPath: a.URL, SourceURL: a.SourceURL}
 	}
 	return out
 }
@@ -192,7 +192,7 @@ func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	}
 	out := make([]scriptgen.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath}
+		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath, SourceURL: a.SourceURL}
 	}
 	return out
 }
@@ -669,7 +669,7 @@ func boolPtr(b bool) *bool { return &b }
 func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	out := make([]scriptgen.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath}
+		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath, SourceURL: a.SourceURL}
 	}
 	return out
 }

@@ -130,11 +130,14 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		if url == "" {
 			url = "assets/" + ref.AssetID
 		}
-		assets = append(assets, RenderQueueAsset{Hash: hash, URL: url})
-		if strings.HasPrefix(url, "http") && strings.HasPrefix(strings.ToLower(ref.MediaType), "image") {
-			assets[len(assets)-1].SourceURL = url
-			assets[len(assets)-1].URL = "assets/semantic/" + hash + ".png"
+		// Keep the producer URL as the durable source location. RenderingGen
+		// owns the canonical workspace logical path after compiling the
+		// semantic asset registry; PipelineGen must not invent one here.
+		asset := RenderQueueAsset{Hash: hash, URL: url}
+		if strings.HasPrefix(url, "http") {
+			asset.SourceURL = url
 		}
+		assets = append(assets, asset)
 	}
 	if semanticPlan.Background != nil {
 		for _, ref := range semanticPlan.Background.AssetRefs {
@@ -299,7 +302,11 @@ func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
 				continue
 			}
 			seen[hash] = true
-			assets = append(assets, RenderQueueAsset{Hash: hash, URL: ref.URL})
+			asset := RenderQueueAsset{Hash: hash, URL: ref.URL}
+			if strings.HasPrefix(ref.URL, "http") {
+				asset.SourceURL = ref.URL
+			}
+			assets = append(assets, asset)
 		}
 	}
 	return assets
