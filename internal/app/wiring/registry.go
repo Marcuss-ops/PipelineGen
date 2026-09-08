@@ -115,8 +115,7 @@ import (
 // Package-level adapter vars originally lived in module_adapters.go;
 // consolidated here to keep the composition-root surface in one place.
 var (
-	// processRunnerAdapter is a package-level adapter for the infrastructure ProcessRunner port.
-	// Used by ScraperHandler and other handlers in registry.go that need subprocess execution.
+	// processRunnerAdapter is a package-level adapter for infrastructure process execution.
 	processRunnerAdapter = infraassets.NewProcessRunnerAdapter()
 
 	// toolCheckerAdapter is a package-level adapter for the infrastructure ToolChecker port.

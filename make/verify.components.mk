@@ -91,9 +91,6 @@ verify-youtube:
 verify-artlist:
 	@$(VERIFY_COMPONENT_RUNNER) artlist $(VERIFY_COMPONENT_FLAGS)
 
-verify-node-scraper:
-	@$(VERIFY_COMPONENT_RUNNER) node-scraper $(VERIFY_COMPONENT_FLAGS)
-
 verify-kernel:
 	@$(VERIFY_COMPONENT_RUNNER) kernel $(VERIFY_COMPONENT_FLAGS)
 
@@ -155,9 +152,6 @@ verify-race-youtube:
 
 verify-race-artlist:
 	@$(VERIFY_COMPONENT_RUNNER) artlist --race $(VERIFY_COMPONENT_FLAGS)
-
-verify-race-node-scraper:
-	@$(VERIFY_COMPONENT_RUNNER) node-scraper --race $(VERIFY_COMPONENT_FLAGS)
 
 verify-race-kernel:
 	@$(VERIFY_COMPONENT_RUNNER) kernel --race $(VERIFY_COMPONENT_FLAGS)

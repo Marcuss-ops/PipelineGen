@@ -24,14 +24,14 @@
 # mapping is visible at-a-glance.
 .PHONY: \
 	help all \
-	go-version-guard go-version-check node-version-check node-version-check-test build build-muscles build-server clean rebuild run dev \
+	go-version-guard go-version-check build build-muscles build-server clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
-	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
-	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main test-main-stock verify-main-clip verify-release certify-storage certify-storage-json certify-data-layer certify-data-layer-json certify-media-cutover certify-media-cutover-json \
-	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-node-scraper verify-race-kernel \
+	verify-integration verify-architecture \
+	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release certify-storage certify-storage-json certify-data-layer certify-data-layer-json certify-media-cutover certify-media-cutover-json \
+	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
 	whisper-preflight \
 	test-pipeline-stock-only verify-pipeline-clip-only verify-pipeline-research verify-pipeline-document verify-pipeline-voiceover verify-pipeline-script test-pipeline-youtube-stock verify-pipeline-vidrush verify-component-coverage verify-reconciliation-contracts reconcile-pipeline verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
 	regen-routes-yaml archcheck-strict \
@@ -59,7 +59,7 @@
 	docker-verify-digest docker-verify-ffmpeg docker-verify-whisper docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
-	doctor artlist auth-check regenerate-token scraper-up \
+	doctor artlist auth-check regenerate-token \
 	smoke-pipeline smoke-run-all smoke-dry smoke-voiceover \
 	deps tidy-check vuln bench benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
@@ -86,7 +86,7 @@ help:
 	@echo ""
 	@echo "TEST (unit, headless)"
 	@echo "  make test             Go unit tests with race detector (fast)"
-	@echo "  make test-all         Go unit tests + node-scraper Node test suite"
+	@echo "  make test-all         Go unit tests"
 	@echo "  make lint             golangci-lint run --timeout=5m"
 	@echo "  make fmt              go fmt ./..."
 	@echo "  make vet              go vet ./..."
@@ -105,9 +105,6 @@ help:
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
 	@echo "  make verify-live      Post-deploy operational battery (needs live external stack)"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
-	@echo "  make verify-node      Node toolchain gate (native probe + Node tests)"
-	@echo "  make verify-node-native  Fast better-sqlite3 native-binding probe"
-	@echo "  make verify-node-tests   Full node-scraper test suite"
 	@echo "  make verify-components   All registered components (fast)"
 	@echo "  make verify-race-components  All registered components (race)"
 	@echo "  make verify-script       Script component"
@@ -123,7 +120,6 @@ help:
 	@echo "  make verify-jobs         Jobs component"
 	@echo "  make verify-component-coverage  Fail-closed registry coverage gate"
 	@echo "  make reconcile-pipeline  Run canonical Drive/Qdrant reconciliation (dry-run)"
-	@echo "  make verify-node-scraper Node scraper component"
 	@echo "  make verify-race-<component>  Race suite for one component"
 	@echo "  make test-pipeline-stock-only  Stock-only pipeline diagnostic"
 	@echo "  make verify-pipeline-clip-only   Clip-only pipeline"
@@ -147,7 +143,6 @@ help:
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
 	@echo "  make doctor           GET /api/system/doctor with admin token"
 	@echo "  make artlist          POST /api/artlist/run (TERM= LIMIT= STRATEGY=)"
-	@echo "  make scraper-up       Bring up the Node artlist scraper sidecar (dev-loop)"
 	@echo ""
 	@echo "NEVER push when verify-main is RED. See scripts/hooks/pre-push for the gate."
 
