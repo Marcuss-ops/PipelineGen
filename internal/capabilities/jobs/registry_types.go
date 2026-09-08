@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -199,8 +198,6 @@ const (
 	TypeArtlistCacheRefresh = media.TypeArtlistCacheRefresh
 	TypeSystemCleanup       = job.TypeSystemCleanup
 	TypeMediaGenerate       = media.TypeGenerate
-	TypeBooksProcess        = job.TypeBooksProcess
-	TypeLessonsProcess      = job.TypeLessonsProcess
 	TypeMediaReindex        = media.TypeReindex
 	TypeMediaEnrich         = media.TypeEnrich
 	TypeYouTubeRebuildST    = youtube.TypeRebuildSearchText
@@ -279,7 +276,6 @@ const (
 	TypeYouTubeClipExtract     = youtube.TypeClipExtract
 	TypeScriptGenerate         = script.TypeGenerate
 	TypeImagesGenerate         = "images.generate"
-	TypeDocumentGenerate       = document.TypeGenerate
 	TypeBulkUploadYouTubeClips = media.TypeBulkUploadYouTubeClips
 	TypeAssetTextMaterialize   = asset.TypeTextMaterialize
 

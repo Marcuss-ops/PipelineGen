@@ -82,7 +82,6 @@ var CanonicalDestinationKeys = map[string]bool{
 	"stock":        true,
 	"image":        true,
 	"voiceover":    true,
-	"book":         true,
 	"script":       true,
 	"sound_effect": true,
 	"document":     true,

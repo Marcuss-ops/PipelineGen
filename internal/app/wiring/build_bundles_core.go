@@ -15,14 +15,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/platform/health"
@@ -258,27 +256,6 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	return systemhealth.NewService(systemhealth.ServiceDeps{
 		DB: infrahealth.NewSQLiteChecker(db), Drive: driveChecker, Qdrant: qdrantChecker, Jobs: jobsChecker,
 	})
-}
-
-// buildBooksService wires the books apply-layer Service.
-func buildBooksService(cfg *config.Config, dbs *Databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
-	var transformer *pythontransformer.SubprocessTransformer
-	if cfg.Books.Enabled {
-		var err error
-		transformer, err = pythontransformer.NewSubprocessTransformer(&pythontransformer.Config{
-			ScriptPath: cfg.Books.ScriptPath, PythonBin: cfg.Books.PythonBin, Enabled: true,
-		}, log)
-		if err != nil {
-			return nil, fmt.Errorf("books service compose failed (transformer): %w", err)
-		}
-	}
-	booksSvc := books.NewService(
-		&books.Config{DriveFolderID: cfg.Drive.BooksFolder()},
-		dbs.DualPool.Writer, cfg.Drive.BooksFolder(), log, publisher, reader, transformer,
-	)
-	booksSvc.SetEnabled(cfg.Books.Enabled)
-	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
-	return booksSvc, nil
 }
 
 // buildImagesParams groups the dependencies required to wire the images service.

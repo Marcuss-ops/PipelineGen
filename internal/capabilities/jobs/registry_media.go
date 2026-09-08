@@ -25,10 +25,6 @@ func registerMediaEntries(r *Registry) {
 	// FinalizationStrategyLegacyComplete.
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeClipRender, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Clip render (background/watermark/subtitles baked in one render pass -> VeloxEditing-compatible derived media asset + provenance)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 
-	// ── Content processing ──
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeBooksProcess, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Book processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeLessonsProcess, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Lesson processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-
 	// ── System ──
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeSystemCleanup, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 

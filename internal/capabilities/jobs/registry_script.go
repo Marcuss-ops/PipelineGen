@@ -49,9 +49,4 @@ func registerScriptEntries(r *Registry) {
 	// on repeated lookups that would yield the same result set.
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeAssetsResolve, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Semantic asset resolution via Qdrant (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 
-	// TypeDocumentGenerate: Google Doc creation via Drive API.
-	// DefaultMaxRetries=2 mirrors TypeScriptGenerate — transient Drive
-	// API failures (rate-limit 429, 5xx, token-expiry) are retried once
-	// before the broker routes the job to the dead-letter path.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeDocumentGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Google Doc creation for script output (Drive API — Spina Dorsale Fase 2 downstream cutover)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2})
 }

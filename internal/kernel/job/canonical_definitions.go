@@ -11,7 +11,6 @@
 //
 //	CanonicalAssetsResolve     assets.resolve  / creator_allowed / pure-data (zero Artifacts)
 //	CanonicalClipRegister      media.clip      / creator_allowed / pure-data (zero Artifacts)
-//	CanonicalDocumentGenerate  document.generate / creator_allowed / single-DOCX artifact
 //	CanonicalImagesGenerate    images.generate / creator_allowed / multi-image artifacts
 //	CanonicalScriptGenerate    script.generate / creator_allowed / heavy artifacts
 //
@@ -53,11 +52,10 @@ import (
 // preserves the kernel's stdlib-only import discipline while still
 // giving the composition root a stable set of canonical JobDefinitions.
 const (
-	canonicalTypeScriptGenerate   = "script.generate"
-	canonicalTypeImagesGenerate   = "images.generate"
-	canonicalTypeDocumentGenerate = "document.generate"
-	canonicalTypeAssetsResolve    = "assets.resolve"
-	canonicalTypeClipRegister     = "media.clip"
+	canonicalTypeScriptGenerate = "script.generate"
+	canonicalTypeImagesGenerate = "images.generate"
+	canonicalTypeAssetsResolve  = "assets.resolve"
+	canonicalTypeClipRegister   = "media.clip"
 
 	TypeVoiceoverGenerate     = "voiceover.generate"
 	TypeVoiceoverBatch        = "voiceover.batch"
@@ -72,8 +70,6 @@ const (
 	TypeScriptGenerate       = "script.generate"
 	TypeScriptGenerateItem   = "script.generate.item"
 	TypeAssetTextMaterialize = "asset.text.materialize"
-	TypeBooksProcess         = "books.process"
-	TypeLessonsProcess       = "lessons.process"
 	TypeSubtitleGenerate     = "subtitle.generate"
 	TypeCatalogSync          = "catalog.sync"
 	TypeSystemCleanup        = "system.cleanup"
@@ -134,29 +130,6 @@ var CanonicalImagesGenerate = JobDefinition{
 	},
 }
 
-// CanonicalDocumentGenerate is the canonical JobDefinition for
-// document.generate — default queue, single-DOCX artifact.
-var CanonicalDocumentGenerate = JobDefinition{
-	Type:           canonicalTypeDocumentGenerate,
-	ExecutionClass: ExecutionCreatorAllowed,
-	Queue:          "default",
-	Timeout:        15 * time.Minute,
-	RetryPolicyKey: "max_retries_2",
-	ConcurrencyKey: "single_global",
-	RequiredCapabilities: []Capability{
-		"doc.create",
-		"drive.write",
-	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.document.generate.v1", canonicalTypeDocumentGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.document.generate.v1", canonicalTypeDocumentGenerate),
-	ArtifactPolicy: ArtifactPolicy{
-		ProducesArtifacts: true,
-		RequireManifest:   true,
-		MaxArtifacts:      8,
-		MaxTotalBytes:     64 * 1024 * 1024,
-	},
-}
-
 // CanonicalAssetsResolve is the canonical JobDefinition for
 // assets.resolve — pure-data job. Zero ArtifactPolicy:
 // ProducesArtifacts=false + RequireManifest=false (pure-data default).
@@ -208,9 +181,8 @@ var CanonicalClipRegister = JobDefinition{
 // because CreatorCapabilities() derives from this slice via
 // sorted-union across RequiredCapabilities.
 var CanonicalJobDefinitions = []JobDefinition{
-	CanonicalAssetsResolve,    // a
-	CanonicalClipRegister,     // c (media.clip — async batch-register)
-	CanonicalDocumentGenerate, // d
-	CanonicalImagesGenerate,   // i
-	CanonicalScriptGenerate,   // s
+	CanonicalAssetsResolve,  // a
+	CanonicalClipRegister,   // c (media.clip — async batch-register)
+	CanonicalImagesGenerate, // i
+	CanonicalScriptGenerate, // s
 }

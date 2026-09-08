@@ -385,8 +385,6 @@ func sourceToDestination(source, provider string) string {
 		return "image"
 	case "voiceover":
 		return "voiceover"
-	case "book":
-		return "book"
 	case "script":
 		return "script"
 	case "sound_effect":

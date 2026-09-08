@@ -112,16 +112,6 @@ module_route_map:
     prefix: stock pipeline routes
     owner: internal/app/wiring (consolidated; Build*Bundle)
     routes: []  # registered via separate handler
-  - module: Content
-    prefix: /api/books + /api/lessons
-    owner: internal/app/registry.go (inline)
-    routes:
-      - POST /books/process
-      - POST /books/generate
-      - POST /books/process-from-drive
-      - GET  /books/jobs
-      - POST /lessons/generate
-      - GET  /lessons/jobs
   - module: System
     prefix: /api/system + /api/drive + /api/scripts
     owner: internal/app/registry.go (inline)

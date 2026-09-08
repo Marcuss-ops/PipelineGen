@@ -31,7 +31,6 @@ const (
 	DestinationStock              = capdelivery.DestinationStock
 	DestinationImage              = capdelivery.DestinationImage
 	DestinationVoiceover          = capdelivery.DestinationVoiceover
-	DestinationBook               = capdelivery.DestinationBook
 	DestinationScript             = capdelivery.DestinationScript
 	DestinationSoundEffect        = capdelivery.DestinationSoundEffect
 	DestinationSoundEffectSidecar = capdelivery.DestinationSoundEffectSidecar

@@ -10,8 +10,6 @@ scripts/
 │   ├── argos_bridge/              #  Argos Translate bridge (core, server)
 │   ├── argos_server.py            #  Argos translation server entrypoint
 │   ├── argos_translator.py        #  Argos translation CLI
-│   ├── book_processor/            #  Book rewriting pipeline (PDF/EPUB)
-│   ├── book_summarizer.py         #  Book processor entry point
 │   ├── edge_tts_bridge/           #  Edge TTS bridge (boundaries, server, request, voice_resolver)
 │   ├── generate_embedding.py      #  One-shot E5 embedding
 │   ├── local_nlp_gpu.py           #  Local NLP GPU utilities

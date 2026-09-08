@@ -153,7 +153,7 @@ func TestImageCandidateCarriesSHA256(t *testing.T) {
 		AudioStartUS: 1_300_000, AudioEndUS: 1_500_000,
 	}
 	candidate := imageCandidate(binding, occ, 0.95)
-	assert.Equal(t, binding.AssetID, candidate.AssetID)
+	assert.Equal(t, binding.SHA256, candidate.AssetID, "render candidates are content-addressed")
 	assert.Equal(t, binding.PreviewURL, candidate.URL)
 	assert.Equal(t, binding.SHA256, candidate.SHA256, "the verified content address must cross the bridge")
 	assert.Equal(t, "image", candidate.MediaType)
@@ -206,7 +206,7 @@ func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *test
 	require.NoError(t, err)
 	require.NotNil(t, input)
 	require.Len(t, input.Products, 1, "the spoken PRODUCT entity must produce a product candidate")
-	require.Equal(t, "vision-pro-img", input.Products[0].AssetID)
+	require.Equal(t, "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd", input.Products[0].AssetID)
 	require.Equal(t, "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd", input.Products[0].SHA256)
 }
 

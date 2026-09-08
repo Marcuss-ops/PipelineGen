@@ -83,7 +83,6 @@ func TestRegistry_AllKeysPresent(t *testing.T) {
 		DestinationStock,
 		DestinationImage,
 		DestinationVoiceover,
-		DestinationBook,
 		DestinationScript,
 		DestinationSoundEffect,
 		DestinationSoundEffectSidecar,

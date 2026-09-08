@@ -144,22 +144,6 @@ func TestBuildPublishRequest_DestinationVoiceover_ProjectAndLanguage(t *testing.
 	}
 }
 
-func TestBuildPublishRequest_DestinationBook_ProjectOnly(t *testing.T) {
-	in := imgInput(DestinationBook, func(a *AssetPublishInput) {
-		a.Location.Project = "borges-essays"
-	})
-	req, err := BuildPublishRequest(in)
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if req.ProjectID != "borges-essays" {
-		t.Errorf("ProjectID = %q, want %q", req.ProjectID, "borges-essays")
-	}
-	if req.Language != "" {
-		t.Errorf("Language = %q, want empty (book destination has no language segment)", req.Language)
-	}
-}
-
 func TestBuildPublishRequest_DestinationScript_ProjectAndLanguage(t *testing.T) {
 	in := imgInput(DestinationScript, func(a *AssetPublishInput) {
 		a.Location.Project = "promo-script"

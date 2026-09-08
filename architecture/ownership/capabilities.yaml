@@ -100,11 +100,3 @@ application_voiceover:
   owner: internal/capabilities/voiceover
   rationale: Voiceover-specific generation and synchronization; generic audio execution is owned by capabilities/audio.
   target_subdirs: [voiceover/service, voiceover/sync]
-application_books:
-  owner: internal/capabilities/books
-  rationale: Books + lessons; produces Markdown/PDF deliverables.
-  target_subdirs: [books]
-application_lessons:
-  owner: internal/capabilities/lessons
-  rationale: Lesson generation; produces Markdown/PDF deliverables.
-  target_subdirs: [lessons]

@@ -113,18 +113,6 @@ allowlist:
       public DTO home (SSOT per deprecation records); cross-macro import of
       the DTO is a documented public-API seam, not a mis-homing. Keep.
 
-  - source: books
-    target: jobs
-    kind: K2
-    exemplar: internal/capabilities/books/job_handler.go -> internal/capabilities/jobs
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: books
-    target: scripts
-    kind: K2
-    exemplar: internal/capabilities/books/process_drive_usecase.go -> internal/capabilities/scripts/apiutil
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
   - source: content
     target: assets
     kind: K2
@@ -201,12 +189,6 @@ allowlist:
       risk of the audited set (durable asset-finalize transaction path).
 
   - source: jobs
-    target: content
-    kind: K2
-    exemplar: internal/capabilities/jobs/registry_types.go -> internal/capabilities/document
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: jobs
     target: scripts
     kind: K2
     exemplar: internal/capabilities/jobs/binding_indexing.go -> internal/capabilities/mediamemory
@@ -257,18 +239,6 @@ allowlist:
     target: delivery
     kind: K2
     exemplar: internal/capabilities/cliprender/adapters/cliprender_destination_resolver.go -> internal/capabilities/delivery
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: scripts
-    target: images
-    kind: K2
-    exemplar: internal/capabilities/lessons/service.go -> internal/capabilities/images
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: scripts
-    target: jobs
-    kind: K2
-    exemplar: internal/capabilities/lessons/job_handler.go -> internal/capabilities/jobs
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
 
   - source: scripts

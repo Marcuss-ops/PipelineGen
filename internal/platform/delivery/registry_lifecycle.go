@@ -62,15 +62,6 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			RequireSubpath: false,
 			ConflictPolicy: ConflictSkip, // curated artlist asset
 		},
-		// DestinationBook: regenerable book-processing outputs.
-		// Latest version wins (per P1.1 semantics mapping).
-		DestinationBook: {
-			RootFolderID:   cfg.Drive.BooksFolder(),
-			Namespace:      "books",
-			PathBuilder:    maybeWrapNamespace(cfg, "books", cfg.Drive.BooksRootFolder, BookPath),
-			RequireSubpath: true,
-			ConflictPolicy: ConflictOverwrite, // regenerable summary
-		},
 		// DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026):
 		// canonical policy for the per-folder metadata.json sidecar
 		// that backs UpdateCumulativeMetadataJSON. The sidecar lives

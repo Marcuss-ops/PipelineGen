@@ -43,7 +43,6 @@ import (
 var canonicalWiredJobTypes = []string{
 	TypeScriptGenerate,
 	TypeImagesGenerate,
-	TypeDocumentGenerate,
 	TypeAssetsResolve,
 }
 
@@ -67,13 +66,6 @@ func imagesGenerateCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	return adapter, adapter
 }
 
-func documentGenerateCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
-	t.Helper()
-	inner := NewTypedCodec[DocumentGeneratePayload, DocumentGenerateResult](TypeDocumentGenerate)
-	adapter := NewTypedCodecAdapter(inner, "pipelinegen.document.generate.v1")
-	return adapter, adapter
-}
-
 func assetsResolveCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	t.Helper()
 	inner := NewTypedCodec[AssetsResolvePayload, AssetsResolveResult](TypeAssetsResolve)
@@ -90,8 +82,6 @@ func codecFor(t *testing.T, jobType string) (job.PayloadCodec, job.ResultCodec) 
 		return scriptGenerateCodec(t)
 	case TypeImagesGenerate:
 		return imagesGenerateCodec(t)
-	case TypeDocumentGenerate:
-		return documentGenerateCodec(t)
 	case TypeAssetsResolve:
 		return assetsResolveCodec(t)
 	default:
@@ -262,39 +252,6 @@ func TestCodecCompleteness_RoundTrip_ImagesGenerate(t *testing.T) {
 	}
 }
 
-// TestCodecCompleteness_RoundTrip_DocumentGenerate exercises the
-// typed adapter for document.generate (single-DOCX result).
-func TestCodecCompleteness_RoundTrip_DocumentGenerate(t *testing.T) {
-	payloadCodec, _ := documentGenerateCodec(t)
-
-	in := DocumentGeneratePayload{
-		ScriptID: "script-456",
-		FolderID: "folder-abc",
-		Locale:   "en",
-	}
-	raw, err := payloadCodec.EncodePayload(in)
-	if err != nil {
-		t.Fatalf("EncodePayload: %v", err)
-	}
-	decoded, err := payloadCodec.DecodePayload(raw)
-	if err != nil {
-		t.Fatalf("DecodePayload: %v", err)
-	}
-	out, ok := decoded.(DocumentGeneratePayload)
-	if !ok {
-		t.Fatalf("decoded type = %T, want DocumentGeneratePayload", decoded)
-	}
-	if out.ScriptID != "script-456" {
-		t.Errorf("ScriptID = %q, want script-456", out.ScriptID)
-	}
-	if out.FolderID != "folder-abc" {
-		t.Errorf("FolderID = %q, want folder-abc", out.FolderID)
-	}
-	if out.Locale != "en" {
-		t.Errorf("Locale = %q, want en", out.Locale)
-	}
-}
-
 // TestCodecCompleteness_RoundTrip_AssetsResolve exercises the typed
 // adapter for assets.resolve (slice-of-strings payload / slice-of-
 // strings result; pure-data job per P0 §8.1 category 1).
@@ -345,8 +302,6 @@ func TestCodecCompleteness_ConcreteAdapterTypesAvailable(t *testing.T) {
 	_ = ScriptGenerateResult{}
 	_ = ImagesGeneratePayload{}
 	_ = ImagesGenerateResult{}
-	_ = DocumentGeneratePayload{}
-	_ = DocumentGenerateResult{}
 	_ = AssetsResolvePayload{}
 	_ = AssetsResolveResult{}
 }

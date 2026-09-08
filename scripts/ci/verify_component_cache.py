@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from verify_component_core import CACHE_DIR, CACHE_SCHEMA_VERSION, FINGERPRINT_SCHEMA_VERSION
-from verify_runtime import write_json_report
+from verify_runtime import now_utc as _now_utc, write_json_report
 
 def cache_root(root: Path) -> Path:
     """Return the Git-ignored directory holding verification cache records."""
@@ -157,5 +157,4 @@ def format_cache_summary(summary: Mapping[str, Any]) -> str:
         else:
             lines.append(f"{gate['gate']:<18} MISS  {duration_s:.1f}s")
     return "\n".join(lines)
-
 

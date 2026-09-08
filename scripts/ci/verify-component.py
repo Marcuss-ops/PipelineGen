@@ -36,8 +36,8 @@ from verify_component_core import (
     EXIT_TIMEOUT,
     RegistryError,
 )
-from verify_component_registry import load_registry
-from verify_component_runner import _git_sha, _now_utc, run_components, write_report
+from verify_component_registry import load_registry, resolve_components
+from verify_component_runner import _git_sha, _now_utc, _run_subprocess, run_components, write_report
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

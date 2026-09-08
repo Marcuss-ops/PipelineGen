@@ -73,8 +73,6 @@ func (a *Adapter) rootForDestination(dest delivery.DestinationKey) (string, erro
 		folder = a.cfg.ArtlistFolder()
 	case delivery.DestinationVoiceover:
 		folder = a.cfg.VoiceoverFolder()
-	case delivery.DestinationBook:
-		folder = a.cfg.BooksFolder()
 	case delivery.DestinationScript:
 		folder = a.cfg.ScriptsFolder()
 	case delivery.DestinationSoundEffect:
@@ -110,8 +108,6 @@ func rootConfigKey(dest delivery.DestinationKey) string {
 		return "artlist"
 	case delivery.DestinationVoiceover:
 		return "voiceover"
-	case delivery.DestinationBook:
-		return "books"
 	case delivery.DestinationScript:
 		return "scripts"
 	case delivery.DestinationSoundEffect:
@@ -152,7 +148,6 @@ func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 		delivery.DestinationDocument:
 		return []string{"project", "language"}
 	case delivery.DestinationVoiceover,
-		delivery.DestinationBook,
 		delivery.DestinationScript:
 		// style/provider/subject/name are TRULY off-channel for project-
 		// language destinations — not consumed by BuildPublishRequest AND
@@ -180,7 +175,6 @@ func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 func softIgnoredFieldProbe(dest delivery.DestinationKey) []string {
 	switch dest {
 	case delivery.DestinationVoiceover,
-		delivery.DestinationBook,
 		delivery.DestinationScript:
 		return []string{"category"}
 	default:
@@ -206,8 +200,8 @@ func segmentsForDestination(dest delivery.DestinationKey, loc domaindelivery.Ass
 	case delivery.DestinationSoundEffect:
 		// Mirror: req.Group = loc.Category
 		return []string{loc.Category}
-	case delivery.DestinationVoiceover, delivery.DestinationBook, delivery.DestinationScript:
-		// Mirror: req.ProjectID = loc.Project; req.Language = loc.Language (voiceover + script only)
+	case delivery.DestinationVoiceover, delivery.DestinationScript:
+		// Mirror: req.ProjectID = loc.Project; req.Language = loc.Language.
 		segs := []string{loc.Project}
 		if dest == delivery.DestinationVoiceover || dest == delivery.DestinationScript {
 			segs = append(segs, loc.Language)
@@ -248,8 +242,6 @@ func mandatoryFieldGate(dest delivery.DestinationKey, segments []string) string 
 		if len(segments) >= 2 && segments[1] == "" {
 			return "language"
 		}
-		fallthrough
-	case delivery.DestinationBook:
 		if len(segments) >= 1 && segments[0] == "" {
 			return "project"
 		}

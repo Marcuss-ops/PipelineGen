@@ -119,10 +119,6 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 		{"TypeArtlistRun", TypeArtlistRun},
 		{"TypeDriveFolderSync", TypeDriveFolderSync},
 
-		// ── Content processing ──
-		{"TypeBooksProcess", TypeBooksProcess},
-		{"TypeLessonsProcess", TypeLessonsProcess},
-
 		// ── System ──
 		{"TypeSystemCleanup", TypeSystemCleanup},
 

@@ -116,7 +116,10 @@ func TestRenderMetricsV2_MergeOnlyOverlaysMeasuredPhases(t *testing.T) {
 // TestRenderMetricsV2_ComputeUnaccounted verifies the headline number: with a
 // coarse render mapped onto CompositeMS, unaccounted_ms = total_ms −
 // composite_ms reproduces the review benchmark's "4.85s that are not
-// explained by render + encode" exactly.
+// explained by render + encode" exactly. It also pins the RenderFPS
+// invariant: a report without a render wall (CompositeMS alone) has NO
+// render-throughput measurement, and once a wall appears the fps is derived
+// from that wall only.
 func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 	m := NewRenderMetricsV2()
 	m.TotalMS = 10120 // 10.12s wall
@@ -128,8 +131,10 @@ func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 	if m.UnaccountedMS != 4850 {
 		t.Fatalf("unaccounted_ms = %d, want 4850 (10120 − 5270, the 4.85s gap)", int64(m.UnaccountedMS))
 	}
-	if m.RenderFPS < 45.4 || m.RenderFPS > 45.6 {
-		t.Fatalf("render_fps = %.2f, want ~45.54 (legacy composite-work proxy: 240 frames / 5.27s composite)", m.RenderFPS)
+	// CompositeMS is a GPU sub-phase accumulator, not a render boundary:
+	// without a render wall no fps is fabricated from it.
+	if m.RenderFPS != 0 {
+		t.Fatalf("render_fps = %.2f, want 0 (CompositeMS alone must never derive render_fps: 240 frames / 5.27s composite would be a fake 45.54)", m.RenderFPS)
 	}
 	if m.TotalFPS < 23.6 || m.TotalFPS > 23.8 {
 		t.Fatalf("total_fps = %.2f, want ~23.7 (240 frames / 10.12s)", m.TotalFPS)
@@ -139,9 +144,9 @@ func TestRenderMetricsV2_ComputeUnaccounted(t *testing.T) {
 	}
 	m.RenderWallMS = 5600
 	m.Compute(8.0)
-	// A measured render wall REPLACES the composite-work proxy: render_fps
-	// must come from the wall (240 / 5.6 s = 42.86), not from the 5.27 s
-	// composite accumulator that would overstate it (45.5).
+	// A measured render wall is the single derivation source for render_fps
+	// (240 / 5.6 s = 42.86); the 5.27 s composite accumulator that would
+	// overstate it (45.5) is ignored even though it is present.
 	if m.RenderFPS < 42.8 || m.RenderFPS > 42.9 {
 		t.Fatalf("render_fps = %.2f, want ~42.86 (240 frames / 5.6s render wall)", m.RenderFPS)
 	}
@@ -177,13 +182,15 @@ func TestRenderMetricsV2_ComputePreservesEngineMeasuredRenderFPS(t *testing.T) {
 	}
 }
 
-// TestRenderMetricsV2_ComputeDerivesRenderFPSOnlyWhenUnmeasured verifies
-// Compute derives render_fps from the render wall (never the composite
-// accumulator) when the engine did not supply a measured fps, and keeps the
-// composite-work proxy exclusively for executors whose composite phase IS the
-// render (FFmpeg fallback — no render wall exists there).
-func TestRenderMetricsV2_ComputeDerivesRenderFPSOnlyWhenUnmeasured(t *testing.T) {
-	// Wall present → fps derives from the wall, not the composite accumulator.
+// TestRenderMetricsV2_ComputeNeverDerivesRenderFPSFromComposite verifies the
+// RenderFPS invariant as a hard rule: an engine-measured fps is preserved;
+// otherwise render_fps is derived from the render wall ONLY — CompositeMS is
+// a GPU sub-phase accumulator and must never drive render_fps, even when it
+// is the only timing present (no wall means no render-throughput measurement,
+// and the report stays at 0 instead of fabricating one).
+func TestRenderMetricsV2_ComputeNeverDerivesRenderFPSFromComposite(t *testing.T) {
+	// Wall present → fps derives from the wall, never the composite
+	// accumulator (456 frames / 12 ms composite would report "38 000 fps").
 	m := NewRenderMetricsV2()
 	m.TotalMS = 10120
 	m.RenderWallMS = 8137
@@ -194,14 +201,15 @@ func TestRenderMetricsV2_ComputeDerivesRenderFPSOnlyWhenUnmeasured(t *testing.T)
 		t.Fatalf("render_fps = %.2f, want ~56.04 (456 frames / 8.137s render wall), never 38000", m.RenderFPS)
 	}
 
-	// No render wall → legacy composite-work proxy (FFmpeg composite IS render).
+	// CompositeMS present but NO render wall → fps stays 0: a CUDA-kernel
+	// accumulator is not a render boundary, so no throughput is derived.
 	m2 := NewRenderMetricsV2()
 	m2.TotalMS = 10120
 	m2.CompositeMS = 5270
 	m2.Frames = 240
 	m2.Compute(8.0)
-	if m2.RenderFPS < 45.4 || m2.RenderFPS > 45.6 {
-		t.Fatalf("render_fps = %.2f, want ~45.54 (240 frames / 5.27s composite, legacy proxy)", m2.RenderFPS)
+	if m2.RenderFPS != 0 {
+		t.Fatalf("render_fps = %.2f, want 0 when only CompositeMS is present (a fake 45.54 proxy is forbidden)", m2.RenderFPS)
 	}
 
 	// Neither wall nor composite measured → fps stays 0, never fabricated.

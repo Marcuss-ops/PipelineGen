@@ -21,7 +21,7 @@
 #   - scripts   : script-generation orchestration + its rendering/media
 #                 siblings (audio, cliprender, render, overlays, entities,
 #                 research, mediaexec, mediamemory, mediacert, subjects,
-#                 visual, lessons, remote handoff, workflow/promo, script
+#                 visual, remote handoff, workflow/promo, script
 #                 memory).
 #   - jobs      : job orchestration + durable-execution support packages
 #                 (jobregistry, checkpoint, replay) per policy.yaml.
@@ -31,7 +31,7 @@
 #                 indexing, mediasearch).
 #   - content   : localization + multilingual + translation + document
 #                 generation.
-#   - youtube/channels/images/voiceover/delivery/books/stockintelligence:
+#   - youtube/channels/images/voiceover/delivery/stockintelligence:
 #                 single-concept capabilities that own exactly one package
 #                 each (channels also owns clipfolder).
 macro_capability_map:
@@ -59,7 +59,6 @@ macro_capability_map:
     - audio
     - cliprender
     - entities
-    - lessons
     - mediacert
     - mediaexec
     - mediamemory
@@ -114,7 +113,5 @@ macro_capability_map:
     - mediasearch
   delivery:
     - delivery
-  books:
-    - books
   stockintelligence:
     - stockintelligence

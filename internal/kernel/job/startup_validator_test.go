@@ -26,10 +26,9 @@ var dummyHandler JobHandlerFunc = func(_ context.Context, _ *Job, _ any) (any, e
 
 // canonical workflow references used by tests.
 const (
-	testTypeScriptGenerate   = "script.generate"
-	testTypeImagesGenerate   = "images.generate"
-	testTypeDocumentGenerate = "document.generate"
-	testTypeAssetsResolve    = "assets.resolve"
+	testTypeScriptGenerate = "script.generate"
+	testTypeImagesGenerate = "images.generate"
+	testTypeAssetsResolve  = "assets.resolve"
 )
 
 func validFullyWiredDef(t *testing.T, jobType string) JobDefinition {
@@ -93,7 +92,6 @@ func TestStartupValidator_AllPass(t *testing.T) {
 	wf := []string{
 		testTypeScriptGenerate,
 		testTypeImagesGenerate,
-		testTypeDocumentGenerate,
 		testTypeAssetsResolve,
 	}
 	err := v.ValidateRuntimeGraph(StartupValidationInput{

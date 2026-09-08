@@ -5,7 +5,7 @@
 // is covered by integration tests against a live server. This test
 // surface pins the pure-function seams and typed errors:
 //
-//  1. canonicalDriveNamespaces — 10 entries, correct mapping, no dups
+//  1. canonicalDriveNamespaces — 9 entries, correct mapping, no dups
 //  2. formatBootstrapDryRunOutput — byte-stable output format
 //  3. runDriveBootstrap error paths — missing/empty --root
 //  4. executeBootstrap guard — ErrAdminNoDB when DB path unresolved
@@ -29,8 +29,8 @@ import (
 // ── canonicalDriveNamespaces tests ────────────────────────────────────
 
 func TestCanonicalDriveNamespaces_Completeness(t *testing.T) {
-	if len(canonicalDriveNamespaces) != 10 {
-		t.Errorf("canonicalDriveNamespaces: expected 10 entries, got %d", len(canonicalDriveNamespaces))
+	if len(canonicalDriveNamespaces) != 9 {
+		t.Errorf("canonicalDriveNamespaces: expected 9 entries, got %d", len(canonicalDriveNamespaces))
 	}
 	seenNS := make(map[string]bool)
 	seenDest := make(map[string]bool)
@@ -72,7 +72,6 @@ func TestCanonicalDriveNamespaces_KnownMappings(t *testing.T) {
 		"artlist":       "artlist",
 		"images":        "image",
 		"voiceovers":    "voiceover",
-		"books":         "book",
 		"scripts":       "script",
 		"sound_effects": "sound_effect",
 		"documents":     "document",
@@ -160,7 +159,7 @@ func TestFormatBootstrapDryRunOutput_ByteStableFormat(t *testing.T) {
 	wantSubstrings := []string{
 		"Drive Bootstrap — DRY RUN",
 		"Root: test-root-123",
-		"Would create/verify the following 10 canonical subdirectories:",
+		"Would create/verify the following 9 canonical subdirectories:",
 		"Pass --apply to execute the bootstrap.",
 	}
 	for _, want := range wantSubstrings {
