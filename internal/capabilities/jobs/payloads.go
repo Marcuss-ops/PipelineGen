@@ -51,18 +51,6 @@ type VoiceoverBatchPayload struct {
 	VoiceIDs    []string `json:"voice_ids,omitempty"`
 }
 
-// BooksProcessPayload is sent with JobTypeBooksProcess.
-type BooksProcessPayload struct {
-	BookIDs []string `json:"book_ids"`
-	Project string   `json:"project,omitempty"`
-}
-
-// LessonsProcessPayload is sent with JobTypeLessonsProcess.
-type LessonsProcessPayload struct {
-	LessonIDs []string `json:"lesson_ids"`
-	Project   string   `json:"project,omitempty"`
-}
-
 // MediaReindexPayload is sent with JobTypeMediaReindex.
 type MediaReindexPayload struct {
 	AssetID string `json:"asset_id,omitempty"` // empty = reindex all
@@ -119,7 +107,6 @@ type TypedPayload interface {
 	MediaStockPayload | YouTubeClipExtractPayload |
 		CatalogSyncPayload |
 		SystemCleanupPayload | VoiceoverBatchPayload |
-		BooksProcessPayload | LessonsProcessPayload |
 		MediaReindexPayload | ArtlistRunPayload | ArtlistCacheRefreshPayload | BulkUploadYouTubeClipsPayload |
 		DriveFolderSyncPayload
 }

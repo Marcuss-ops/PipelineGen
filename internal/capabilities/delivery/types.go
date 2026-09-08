@@ -55,7 +55,6 @@ const (
 	DestinationStock        DestinationKey = "stock"
 	DestinationImage        DestinationKey = "image"
 	DestinationVoiceover    DestinationKey = "voiceover"
-	DestinationBook         DestinationKey = "book"
 	DestinationScript       DestinationKey = "script"
 	DestinationSoundEffect  DestinationKey = "sound_effect"
 	// DestinationSoundEffectSidecar (PR-P12-SOUND-EFFECT-SIDECAR, July 2026):

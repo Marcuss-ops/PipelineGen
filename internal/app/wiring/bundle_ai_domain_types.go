@@ -8,9 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -52,8 +50,6 @@ type DomainBundle struct {
 	VoiceoverSync                *voicesync.Service
 	ImageService                 *images.Service
 	IngestService                *ingest.Service
-	BooksService                 *books.Service
-	LessonsService               *lessonsSvc.Service
 	MetaWriter                   semantic.MetadataWriterPort
 	RealtimeMatcher              assetsapi.RealtimeMatcher
 	RealtimeSearch               scriptcore.RealtimeSearchService

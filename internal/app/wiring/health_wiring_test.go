@@ -48,21 +48,6 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 			DataDir: t.TempDir(),
 		},
 		Security: config.SecurityConfig{},
-		// pythontransformer fail-closed posture (godlike/07
-		// no-fake-availability): NewSubprocessTransformer
-		// panics on empty cfg.Books.ScriptPath, empty
-		// cfg.Books.PythonBin, OR on cfg.Books.Enabled=false.
-		// The fixture wires all three fields so WireMinimal
-		// can complete composition without triggering the
-		// fail-closed gate. The books.Service.enabled flag
-		// remains the runtime per-request gate; the test
-		// never invokes the books service so the
-		// Enabled=true value is a no-op at test time.
-		Books: config.BooksConfig{
-			ScriptPath: "scripts/bridges/book_summarizer.py",
-			PythonBin:  "python3",
-			Enabled:    true,
-		},
 		// texttracks.NewMaterializer fail-closed posture (godlike/07
 		// no-fake-availability): rejects empty SourceLanguage AND
 		// empty Languages. The fixture sets both to their

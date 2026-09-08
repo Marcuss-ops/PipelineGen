@@ -204,7 +204,7 @@ type ScriptsConfig struct {
 
 // WithDefaults returns a copy of ScriptsConfig with zero-values replaced by
 // defaults. Negative values are clamped to 1. The pattern mirrors
-// VideoConfig.WithDefaults and LessonsConfig.
+// VideoConfig.WithDefaults.
 func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	if s.BatchWebSearchConcurrency <= 0 {
 		s.BatchWebSearchConcurrency = 4

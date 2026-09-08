@@ -179,7 +179,6 @@ func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 		delivery.DestinationStock,
 		delivery.DestinationImage,
 		delivery.DestinationVoiceover,
-		delivery.DestinationBook,
 		delivery.DestinationScript,
 		delivery.DestinationSoundEffect,
 	}

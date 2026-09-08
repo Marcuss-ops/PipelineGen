@@ -267,19 +267,6 @@ func VoiceoverPath(req PublishRequest) ([]string, error) {
 	}, nil
 }
 
-// BookPath builds the path for book processing outputs:
-//
-//	books/{project}
-func BookPath(req PublishRequest) ([]string, error) {
-	project := strings.TrimSpace(req.ProjectID)
-	if project == "" {
-		return nil, fmt.Errorf("delivery: BookPath: project_id is required")
-	}
-	return []string{
-		pathutil.SafeFolderName(project),
-	}, nil
-}
-
 // ScriptPath builds the path for generated scripts/documents:
 //
 //	scripts/{project}/{language}

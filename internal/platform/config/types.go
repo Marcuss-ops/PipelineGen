@@ -169,9 +169,7 @@ type Config struct {
 	GoogleAccounting GoogleAccountingConfig     `yaml:"google_accounting"`
 	ClipIndexer      ClipIndexerConfig          `yaml:"clip_indexer"`
 	Reranker         RerankerConfig             `yaml:"reranker"`
-	Books            BooksConfig                `yaml:"books"`
 	VLM              VLMConfig                  `yaml:"vlm"`
-	Lessons          LessonsConfig              `yaml:"lessons"`
 	Multilingual     MultilingualConfig         `yaml:"multilingual"`
 	// Media is the canonical namespace for media-pipeline configuration
 	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026). The nested

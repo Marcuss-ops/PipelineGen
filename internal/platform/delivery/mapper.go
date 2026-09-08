@@ -152,7 +152,6 @@ type AssetPublishInput struct {
 //   - DestinationYouTubeClip:  req.Group  = loc.Category;      req.Subject  = loc.SubjectOrName()
 //   - DestinationArtlist:      req.Group  = loc.Category;      req.Subject  = loc.SubjectOrName()
 //   - DestinationVoiceover:    req.ProjectID = loc.Project;    req.Language = loc.Language
-//   - DestinationBook:         req.ProjectID = loc.Project
 //   - DestinationScript:       req.ProjectID = loc.Project;    req.Language = loc.Language
 //   - DestinationSoundEffect:  req.Group     = loc.Category
 //   - DestinationDocument:     req.AssetID   = loc.SubjectOrName()
@@ -333,15 +332,6 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		}
 		req.ProjectID = loc.Project
 		req.Language = loc.Language
-
-	case DestinationBook:
-		if loc.Project == "" {
-			return PublishRequest{}, fmt.Errorf(
-				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
-				input.Destination, "project_id",
-			)
-		}
-		req.ProjectID = loc.Project
 
 	case DestinationScript:
 		if loc.Project == "" {

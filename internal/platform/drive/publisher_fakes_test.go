@@ -199,7 +199,6 @@ func testRegistry() *platformdelivery.DestinationRegistry {
 			StockRootFolder:        "stock-root",
 			ImagesRootFolder:       "images-root",
 			VoiceoverRootFolder:    "vo-root",
-			BooksRootFolder:        "books-root",
 			ScriptsRootFolder:      "scripts-root",
 			SoundEffectsRootFolder: "sfx-root",
 		},

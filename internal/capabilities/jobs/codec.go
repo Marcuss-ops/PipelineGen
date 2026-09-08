@@ -88,8 +88,8 @@ func (c *TypedCodec[T, R]) DecodeResult(raw json.RawMessage) (R, error) {
 
 // ── C2: job-type string constants ──────────────────────────────────
 //
-// The four canonical Type* job-type constants (TypeScriptGenerate,
-// TypeImagesGenerate, TypeDocumentGenerate, TypeAssetsResolve) are
+// The canonical Type* job-type constants (TypeScriptGenerate,
+// TypeImagesGenerate, TypeAssetsResolve) are
 // used by registry_codec_completeness_test.go as bare identifiers.
 // They are NOT declared here — the canonical re-export surface lives
 // in this package's registry.go (alongside the other 26 Type* alias
@@ -135,21 +135,6 @@ type ImagesGeneratePayload struct {
 // images.generate.
 type ImagesGenerateResult struct {
 	ImageRefs []string `json:"image_refs"`
-}
-
-// DocumentGeneratePayload is the canonical typed request payload for
-// document.generate.
-type DocumentGeneratePayload struct {
-	ScriptID string `json:"script_id"`
-	FolderID string `json:"folder_id,omitempty"`
-	Locale   string `json:"locale,omitempty"`
-}
-
-// DocumentGenerateResult is the canonical typed response result for
-// document.generate.
-type DocumentGenerateResult struct {
-	DocumentID string `json:"document_id"`
-	URL        string `json:"url"`
 }
 
 // AssetsResolvePayload is the canonical typed request payload for

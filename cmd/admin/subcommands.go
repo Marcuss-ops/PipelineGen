@@ -106,7 +106,6 @@ var commandRegistry = map[string]commandHandler{
 	"search-drive":                   drive.RunSearchDrive,
 	"stock-reset":                    maintenance.RunResetStockDrive,
 	"stock-subfolders-reset":         maintenance.RunResetStockSubfolders,
-	"summarize-book":                 rendering.RunSummarizeBook,
 	"sync-drive-folder":              drive.RunSyncDriveFolder,
 	"sync-outros":                    maintenance.RunSyncOutros,
 	"text-tracks-align-cues":         backfill.RunTextTracksAlignCues,

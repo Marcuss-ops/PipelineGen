@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
@@ -26,7 +24,6 @@ func ValidateRuntimeGraph() error {
 	additionalOwnerTypes := []string{
 		domainyoutube.TypeClipExtract,
 		script.TypeGenerate,
-		documents.JobGenerate,
 		domainvoiceover.TypeGenerate,
 		media.TypeBulkUploadYouTubeClips,
 	}
@@ -34,7 +31,6 @@ func ValidateRuntimeGraph() error {
 		images.MustRegister,
 		domainyoutube.MustRegister,
 		scriptgeneration.MustRegister,
-		documents.MustRegister,
 		voiceover.MustRegister,
 		clips.MustRegister,
 	} {
@@ -45,7 +41,6 @@ func ValidateRuntimeGraph() error {
 	ownerRegisteredTypes := map[string]bool{
 		domainyoutube.TypeClipExtract:    true,
 		script.TypeGenerate:              true,
-		documents.JobGenerate:            true,
 		domainvoiceover.TypeGenerate:     true,
 		media.TypeBulkUploadYouTubeClips: true,
 	}
@@ -81,7 +76,6 @@ func ValidateRuntimeGraph() error {
 	workflowRefs := []string{
 		script.TypeGenerate,
 		images.TypeImagesGenerate,
-		document.TypeGenerate,
 		asset.TypeResolve,
 		media.TypeClipRegister,
 	}

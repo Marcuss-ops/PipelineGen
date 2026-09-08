@@ -95,8 +95,6 @@ var canonicalJobTypes = []string{
 	TypeArtlistCacheRefresh,    // domain/media/job_types.go (durable stale-cache refresh)
 	TypeSystemCleanup,          // domain/job/job.go
 	TypeMediaGenerate,          // domain/job/job.go
-	TypeBooksProcess,           // domain/job/job.go
-	TypeLessonsProcess,         // domain/job/job.go
 	TypeMediaReindex,           // domain/job/job.go
 	TypeMediaEnrich,            // domain/job/job.go
 	TypeYouTubeRebuildST,       // domain/job/job.go
@@ -112,7 +110,6 @@ var canonicalJobTypes = []string{
 	// downstream job types registered in registry_script.go, registry_stock.go,
 	// registry_media.go, and registry_extraction.go.
 	TypeAssetsResolve,          // domain/job/job.go
-	TypeDocumentGenerate,       // domain/job/job.go
 	TypeImagesGenerate,         // domain/job/job.go
 	TypeClipRegister,           // domain/job/job.go
 	TypeMediaStockRLMEnrich,    // domain/job/job.go

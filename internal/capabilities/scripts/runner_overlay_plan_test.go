@@ -58,7 +58,7 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 			},
 			{
 				ID: "entity-apple", CanonicalName: "Apple", Type: "LOGO", Confidence: 0.97,
-				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "apple-logo", PreviewURL: "https://cdn.example.com/apple-logo.png"},
+				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "apple-logo", PreviewURL: "https://cdn.example.com/apple-logo.png", SHA256: "dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"},
 			},
 			{ID: "entity-cupertino", CanonicalName: "Cupertino", Type: "GPE", Confidence: 0.9},
 		},
@@ -67,7 +67,7 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 			{ID: "entity-ten-million", CanonicalName: "ten million", Type: "CARDINAL", Confidence: 0.9},
 			{
 				ID: "entity-vision-pro", CanonicalName: "Vision Pro", Type: "PRODUCT", Confidence: 0.95,
-				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "vision-pro", PreviewURL: "https://cdn.example.com/vision-pro.png"},
+				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "vision-pro", PreviewURL: "https://cdn.example.com/vision-pro.png", SHA256: "ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"},
 			},
 		},
 	}
@@ -196,7 +196,7 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	// holds the minimum five-second preset duration.
 	require.Equal(t, int64(5_000), person.EndMs)
 	require.Len(t, person.AssetRefs, 1)
-	require.Equal(t, "tim-cook-photo", person.AssetRefs[0].AssetID)
+	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", person.AssetRefs[0].AssetID)
 	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", person.AssetRefs[0].URL)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
 	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
@@ -218,19 +218,19 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.Equal(t, int64(500), quote.StartMs)
 	require.Equal(t, int64(700), quote.EndMs)
 
-	product := byID["scene-0-product-vision-pro"]
+	product := byID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"]
 	require.Equal(t, "PRODUCT", product.TemplateID)
 	require.Equal(t, int64(1300), product.StartMs)
 	require.Equal(t, int64(1500), product.EndMs)
 	require.Len(t, product.AssetRefs, 1)
-	require.Equal(t, "vision-pro", product.AssetRefs[0].AssetID)
+	require.Equal(t, "ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122", product.AssetRefs[0].AssetID)
 
-	logo := byID["scene-0-logo-apple-logo"]
+	logo := byID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"]
 	require.Equal(t, "LOGO", logo.TemplateID)
 	require.Equal(t, int64(400), logo.StartMs)
 	require.Equal(t, int64(500), logo.EndMs)
 	require.Len(t, logo.AssetRefs, 1)
-	require.Equal(t, "apple-logo", logo.AssetRefs[0].AssetID)
+	require.Equal(t, "dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00", logo.AssetRefs[0].AssetID)
 
 	// Multi-scene: scene-1 (offset 1.6s) contributes its own phrase/word.
 	scene1Phrase := byID["scene-1-phrase-growth-matters"]
@@ -264,14 +264,17 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.Contains(t, []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}, layerByID["scene-0-keyword-apple"].Preset)
 	require.Equal(t, "text", layerByID["overlay-scene-0-tim-cook"].Type)
 	require.Contains(t, []string{"name_glow_typewriter", "name_glow_slide", "name_glow_pop"}, layerByID["overlay-scene-0-tim-cook"].Preset)
-	require.NotEmpty(t, layerByID["overlay-scene-0-tim-cook"].Asset, "the chosen entity card must carry its resolved image asset")
+	// Entity-card portraits remain in the semantic plan's content-addressed
+	// asset refs for audit/materialization; Chronon text layers intentionally
+	// do not project the portrait as a standalone image layer.
+	require.Empty(t, layerByID["overlay-scene-0-tim-cook"].Asset, "entity-card portraits must not become standalone image layers")
 	require.Equal(t, "text", layerByID["overlay-scene-0-cupertino"].Type)
 	require.Equal(t, "text", layerByID["scene-0-number-ten-million"].Type)
 	require.Contains(t, []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}, layerByID["scene-0-number-ten-million"].Preset)
 	require.Equal(t, "text", layerByID["scene-0-quote-changed-everything"].Type)
 	require.Contains(t, []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}, layerByID["scene-0-quote-changed-everything"].Preset)
-	require.Equal(t, "image", layerByID["scene-0-product-vision-pro"].Type)
-	require.Equal(t, "image", layerByID["scene-0-logo-apple-logo"].Type)
+	require.Equal(t, "image", layerByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].Type)
+	require.Equal(t, "image", layerByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].Type)
 	// The font is Chronon-owned (VisualPresetRegistry font_asset); PipelineGen
 	// text layers carry no font/font_size.
 	require.Equal(t, "", layerByID["scene-0-phrase-changed-everything"].Font)
@@ -619,7 +622,7 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 	require.True(t, ok, "the chosen entity (Tim Cook) must become the entity card")
 	require.Equal(t, "person_default", card.TemplateID)
 	require.Len(t, card.AssetRefs, 1, "the chosen entity card must carry its resolved image asset")
-	require.Equal(t, "tim-cook-photo", card.AssetRefs[0].AssetID)
+	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", card.AssetRefs[0].AssetID)
 	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", card.AssetRefs[0].URL)
 	require.Equal(t, "person:tim-cook", card.EntityRef.CanonicalEntityID, "the card must join on the resolver's canonical id")
 	for id := range byID {

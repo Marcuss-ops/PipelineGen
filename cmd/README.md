@@ -49,7 +49,7 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `stock-subfolders-reset`, `sqlite-audit`, `db`, `verify-projection`,
   `storage-snapshot`
 - **Misc**: `gen-api-docs`, `render-short`, `multilingual-render`,
-  `summarize-book`, `reset-video-ai`, `reachability-graph`,
+  `reset-video-ai`, `reachability-graph`,
   `control-plane`, `migrate-legacy-cache`, `unify-catalogs`
 
 ## Architecture governance

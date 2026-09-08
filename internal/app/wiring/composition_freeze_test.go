@@ -83,7 +83,6 @@ func minimalConfig(dataDir string) *config.Config {
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
 		Reranker:    config.RerankerConfig{Enabled: false},
 		Drive:       config.DriveConfig{},
-		Books:       config.BooksConfig{ScriptPath: "scripts/bridges/book_summarizer.py"},
 		Jobs: config.JobsConfig{
 			EnableBackgroundJobs: false, // suppress lifecycle spawners
 		},

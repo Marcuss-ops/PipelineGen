@@ -65,7 +65,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	bundle.CueWriter = clipWriter
 	bundle.FolderPathWriter = folderPathWriter
 
-	// ── Assets domain: voiceover, books, ingest, images, lessons ──
+	// ── Assets domain: voiceover, ingest, images ──
 	if err := buildDomainAssetServices(buildDomainAssetServicesParams{
 		ctx:                ctx,
 		cfg:                cfg,

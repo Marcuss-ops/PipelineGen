@@ -20,7 +20,6 @@ func TestPublisher_AllDestinationsRegistered(t *testing.T) {
 		delivery.DestinationStock,
 		delivery.DestinationImage,
 		delivery.DestinationVoiceover,
-		delivery.DestinationBook,
 		delivery.DestinationScript,
 		delivery.DestinationSoundEffect,
 	}
@@ -72,27 +71,6 @@ func TestPublisher_PublishYouTubeClip(t *testing.T) {
 	require.Equal(t, "video-folder-id", files.uploadCalls[0].folderID)
 	require.Equal(t, "clip_abc123.mp4", files.uploadCalls[0].filename)
 	require.Equal(t, "Test clip", files.uploadCalls[0].description)
-}
-
-func TestPublisher_PublishBook(t *testing.T) {
-	reg := testRegistry()
-	folders := &fakeFolderManager{result: "book-folder-id"}
-	files := &fakeFileUploader{}
-	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
-	require.NoError(t, err)
-
-	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination: delivery.DestinationBook,
-		LocalPath:   "/tmp/book.pdf",
-		Filename:    "summary.pdf",
-		ProjectID:   "my-book-project",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "book-folder-id", result.FolderID)
-	require.Equal(t, []string{"my-book-project"}, result.PathSegments)
-
-	require.Len(t, folders.ensureCalls, 1)
-	require.Equal(t, "books-root", folders.ensureCalls[0].parent)
 }
 
 func TestPublisher_PublishSoundEffect(t *testing.T) {
@@ -169,27 +147,6 @@ func TestPublisher_Publish_ExplicitOverridesRegistry_P1_1(t *testing.T) {
 	require.Len(t, files.uploadCalls, 1)
 	require.Equal(t, delivery.ConflictOverwrite, files.uploadCalls[0].policy,
 		"explicit req.ConflictPolicy MUST win over the registry default (P1.1 — explicit override surface)")
-}
-
-func TestPublisher_Publish_RegenerableDestZeroIsOverwrite_P1_1(t *testing.T) {
-	reg := testRegistry()
-	folders := &fakeFolderManager{result: "book-folder-id"}
-	files := &fakeFileUploader{}
-	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
-	require.NoError(t, err)
-
-	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination: delivery.DestinationBook, // regenerable → ConflictOverwrite
-		LocalPath:   "/tmp/summary.pdf",
-		Filename:    "summary.pdf",
-		ProjectID:   "my-book-project",
-		// ConflictPolicy omitted — publisher MUST resolve from
-		// registry and forward ConflictOverwrite.
-	})
-	require.NoError(t, err)
-	require.Len(t, files.uploadCalls, 1)
-	require.Equal(t, delivery.ConflictOverwrite, files.uploadCalls[0].policy,
-		"Book zero-passthrough MUST resolve to ConflictOverwrite via registry (P1.1 cross-check)")
 }
 
 func TestPublisher_Publish_UnknownDestinationZeroStaysTypedError_P1_1(t *testing.T) {
@@ -298,7 +255,6 @@ func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 	})
 
 	overwriteDestinations := []delivery.DestinationKey{
-		delivery.DestinationBook,
 		delivery.DestinationScript,
 		delivery.DestinationDocument,
 	}

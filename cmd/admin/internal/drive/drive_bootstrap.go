@@ -1,6 +1,6 @@
 // cmd/admin/drive_bootstrap.go — F4: Drive bootstrap CLI command (July 2026)
 //
-// Creates or verifies the 10 canonical subdirectories under a Drive root
+// Creates or verifies the canonical subdirectories under a Drive root
 // folder and populates the drive_folder_catalog table so the publisher
 // can resolve folder IDs without calling Drive's folder listing API.
 //
@@ -13,9 +13,9 @@
 //	            would be created)
 //
 // //
-// Canonical 10 subdirectories:
+// Canonical subdirectories:
 //
-//	clips, stock, artlist, images, voiceovers, books, scripts,
+//	clips, stock, artlist, images, voiceovers, scripts,
 //	sound_effects, documents, admin
 //
 // Each maps to its corresponding DestinationKey namespace (F2).
@@ -56,7 +56,7 @@ var ErrAdminNoDB = errors.New("admin: canonical DB path not configured (set VELO
 // ErrDriveBootstrapNoRoot is surfaced when --root is empty or missing.
 var ErrDriveBootstrapNoRoot = errors.New("drive-bootstrap: --root is required (Drive folder ID of the unified media root)")
 
-// canonicalDriveNamespaces is the ordered list of 10 canonical Drive
+// canonicalDriveNamespaces is the ordered list of canonical Drive
 // subdirectories created under the unified media root. Shared by
 // drive-bootstrap and drive-doctor per godlike/06 SSOT.
 var canonicalDriveNamespaces = []struct {
@@ -68,7 +68,6 @@ var canonicalDriveNamespaces = []struct {
 	{"artlist", "artlist"},
 	{"images", "image"},
 	{"voiceovers", "voiceover"},
-	{"books", "book"},
 	{"scripts", "script"},
 	{"sound_effects", "sound_effect"},
 	{"documents", "document"},
@@ -206,7 +205,7 @@ func formatBootstrapDryRunOutput(rootID string) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, "Drive Bootstrap — DRY RUN")
 	fmt.Fprintf(&b, "Root: %s\n\n", rootID)
-	fmt.Fprintln(&b, "Would create/verify the following 10 canonical subdirectories:")
+	fmt.Fprintln(&b, "Would create/verify the following 9 canonical subdirectories:")
 	for _, ns := range canonicalDriveNamespaces {
 		fmt.Fprintf(&b, "  ✅ %-20s → %s/  (destination: %s)\n", ns.Namespace, ns.Namespace, ns.Destination)
 	}

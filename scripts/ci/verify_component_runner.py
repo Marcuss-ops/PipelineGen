@@ -254,10 +254,30 @@ def run_components(
                 if execution is None:
                     if ready is not None:
                         # Another component is executing the shared command;
-                        # wait for its result instead of running it twice.
-                        ready.wait()
-                        with state_lock:
-                            execution = executions[command.key]
+                        # prefer its result, but never let cross-component
+                        # command ordering form a wait cycle. Components can
+                        # legitimately share commands in opposite orders;
+                        # after a short hand-off window, run a duplicate
+                        # invocation rather than parking the whole scheduler
+                        # while no subprocess is active.
+                        handoff = min(0.100, max(0.001, remaining))
+                        if not ready.wait(timeout=handoff):
+                            try:
+                                execution = runner(command.argv, remaining, root)
+                            except Exception as exc:  # noqa: BLE001 - fail closed
+                                execution = Execution(CommandResult("FAIL", 127, 0), stderr=str(exc))
+                            reused = False
+                        else:
+                            with state_lock:
+                                execution = executions.get(command.key)
+                            if execution is None:
+                                execution = Execution(
+                                    CommandResult("FAIL", 127, 0),
+                                    stderr=(
+                                        "shared command owner signalled without "
+                                        f"a result: {command.display}"
+                                    ),
+                                )
                     else:
                         try:
                             execution = runner(command.argv, remaining, root)
@@ -394,5 +414,3 @@ def run_components(
 def _git_sha(root: Path) -> str | None:
     """Compatibility wrapper for the shared Git metadata helper."""
     return _runtime_git_sha(root)
-
-

@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
-	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
@@ -30,7 +29,7 @@ import (
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to
-// construct the voiceover, books, ingest, images, lessons, and
+// construct the voiceover, ingest, images, and
 // voiceover-sync services.
 //
 // PR-YAGNI-DOMAIN-ASSETS-WIRING (July 2026): replaces the 14 positional
@@ -53,8 +52,8 @@ type buildDomainAssetServicesParams struct {
 	mediaConfig        mediaexec.ExecutionConfig
 }
 
-// buildDomainAssetServices constructs the voiceover, books, ingest,
-// images, lessons, and voiceover-sync services and populates the
+// buildDomainAssetServices constructs the voiceover, ingest, images,
+// and voiceover-sync services and populates the
 // DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the SOLE canonical
@@ -102,11 +101,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	)
 	if err != nil {
 		return fmt.Errorf("compose domains: voiceover service: %w", err)
-	}
-
-	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, params.drive.Publisher, params.drive.DriveUploader)
-	if err != nil {
-		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}
 
 	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.DriveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp, canonicalCommitter)
@@ -173,21 +167,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		},
 	})
 
-	docPublisher := params.drive.DocPublisher
-	lessonsS := lessonsSvc.NewService(
-		&lessonsSvc.LessonsConfig{
-			Enabled:             params.cfg.Lessons.Enabled,
-			DefaultModel:        params.cfg.Lessons.DefaultModel,
-			DefaultTone:         params.cfg.Lessons.DefaultTone,
-			DefaultLanguage:     params.cfg.Lessons.DefaultLanguage,
-			DefaultImageModel:   params.cfg.Lessons.DefaultImageModel,
-			MaxParallelChapters: params.cfg.Lessons.MaxParallelChapters,
-			OllamaURL:           params.cfg.External.OllamaURL,
-		},
-		params.ai.ScriptGen, imageSvc, docPublisher, params.log,
-	)
-	params.log.Info("Lessons service initialized", zap.Bool("enabled", params.cfg.Lessons.Enabled))
-
 	var vosyncSvc *voicesync.Service
 	if voFolder := params.cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
 		vosyncSvc = voicesync.NewService(params.drive.DriveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
@@ -199,8 +178,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	params.bundle.VoiceoverPublishPool = publishPool
 	params.bundle.ImageService = imageSvc
 	params.bundle.IngestService = ingestSvc
-	params.bundle.BooksService = booksSvc
-	params.bundle.LessonsService = lessonsS
 	params.bundle.MetaWriter = metaWriter
 	params.bundle.AudioProcessor = audioProcessor
 

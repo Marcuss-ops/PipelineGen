@@ -397,20 +397,19 @@ func (m *RenderMetricsV2) Compute(durationSec float64) {
 	// render_loop_fps, recorded via SetEngineRenderFPS) is the engine's own
 	// throughput — frames actually pushed through the loop — and is NEVER
 	// overwritten by a derivation from a different boundary. Otherwise derive
-	// from the best measurement present at this call, as frames per second of
-	// the RENDER wall, never of a GPU sub-phase: CompositeMS is a CUDA-kernel
-	// accumulator (single-digit ms for hundreds of frames), so dividing by it
-	// inflated render_fps by orders of magnitude (456 frames / 12 ms composite
-	// reported "38 000 fps"). Prefer the worker/engine render wall whenever it
-	// is measured; keep the composite-work proxy only as the legacy fallback
-	// for executors that never report a wall (e.g. the FFmpeg path where
-	// composite IS the render). A proxy derived in an earlier Compute pass is
-	// replaced as soon as a wall is available.
+	// from the render wall only, as frames per second of the RENDER boundary.
+	// RenderFPS is NEVER derived from CompositeMS: that field is a GPU
+	// sub-phase accumulator (single-digit ms for hundreds of frames), so
+	// dividing by it inflated render_fps by orders of magnitude (456 frames /
+	// 12 ms composite reported "38 000 fps"), and it is a nested diagnostic of
+	// the render wall, not a render boundary of its own. Every production
+	// executor reports a wall (the clip.render worker always records
+	// RenderWallMS; the engine may additionally supply its own summary fps),
+	// so a missing wall means "no render throughput measurement" and the
+	// report stays at 0 rather than fabricating one from a sub-phase.
 	if !m.renderFPSMeasured {
 		if int64(m.RenderWallMS) != NotInstrumented && int64(m.RenderWallMS) > 0 && m.Frames > 0 {
 			m.RenderFPS = float64(m.Frames) / (float64(int64(m.RenderWallMS)) / 1000.0)
-		} else if int64(m.CompositeMS) != NotInstrumented && int64(m.CompositeMS) > 0 && m.Frames > 0 {
-			m.RenderFPS = float64(m.Frames) / (float64(int64(m.CompositeMS)) / 1000.0)
 		}
 	}
 }
