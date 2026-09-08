@@ -65,8 +65,9 @@ go build -o admin ./cmd/admin
 
 For the host deployment, use the native systemd units in
 [`scripts/systemd/`](scripts/systemd/). PipelineGen server and worker are not
-part of `docker-compose.yml`; that file starts only optional external
-infrastructure such as Qdrant, the Artlist scraper, and SearXNG. The canonical
+part of `docker-compose.yml`; that file starts only optional external infrastructure such as Qdrant and SearXNG. Artlist is
+configured as an external provider endpoint when enabled; the repository no
+longer ships or starts a Node scraper sidecar.
 media PostgreSQL service is defined separately for the media-domain runtime.
 
 ```bash

@@ -69,7 +69,7 @@
 #     This hook invokes ONLY the umbrella recipe `make verify-main`;
 #     the transitive composition above is what the Makefile SSOT
 #     actually executes on every push. The independent legs
-#     (verify-push, verify-node-native, verify-architecture) are run in
+#     (verify-push, verify-architecture) are run in
 #     parallel via make -j (default 4 jobs, overridable with
 #     VERIFY_MAIN_JOBS) to cut wall-clock time without removing any
 #     control: the prerequisite graph and every fail-closed sub-step

@@ -62,7 +62,6 @@ scripts/
 │   ├── verify-stock-receipt.sh
 │   ├── ci-*.sh                    #  CI helpers (clean checkout, no-secrets, submodule, etc.)
 │   ├── get-fingerprint.sh
-│   ├── node-version-check.sh
 │   ├── reconcile-pipeline.py
 │   └── whisper-deployment-contract_test.py
 ├── lib/                          # Shell libraries
@@ -72,7 +71,6 @@ scripts/
 │   ├── pipelinegenctl
 │   ├── pipelinegen.service.d/     #  whisper.conf, youtube-dlp.conf
 │   ├── ollama.service.d/          #  gpu.conf
-│   ├── artlist-scraper-headful.conf
 │   ├── sudoers/                   #  Operator access installers
 │   └── README.md
 ├── hooks/                        # Git hooks

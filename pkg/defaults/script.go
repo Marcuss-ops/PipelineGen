@@ -22,22 +22,17 @@ package defaults
 //     the V1 contract language for script generation is "en" while
 //     the Step-2 config-default is "it"; per-locale overrides of
 //     DefaultLanguage must not silently flip the safety floor).
-//   - Literal `140` in
-//     internal/application/lessons/service.go::estimateChapterDuration
-//     (the formula `(words * 60) / 140`); and the typed constant
-//     `internal/platform/ollama/types/constants.go::WordsPerMinute
-//     (=140). Both are DEFERRED — see Blocco 2.C follow-up TODOs
-//     registered against this commit; unifying them would cross
-//     domain boundaries (lessons + ollama-internal infra) with
-//     behavior-changing value flips.
+//   - Literal `140` in a former lesson-duration implementation and the
+//     typed Ollama-side constant. Both are DEFERRED because unifying them
+//     would cross domain boundaries with behavior-changing value flips.
 //
 // Every consumer MUST read from DefaultScriptConfig() rather than
 // re-implementing these literals inline. A future "switch the
 // default language from Italian to Spanish" or "tune WPM to 160
 // for Italian speakers" change is then a one-line edit; pre-fix it
 // required grep + reasoning about which call sites must agree
-// (and historically missed the lessons/service.go copy, which kept
-// the WPM=140 literal even after the ollama-side constant moved).
+// (and historically missed a legacy duration copy, which kept
+// the WPM=140 literal even after the Ollama-side constant moved).
 //
 // Shape is intentionally tiny (6 leaf fields) to keep pkg/defaults
 // leaf-only: zero imports from internal/, only consumed by callers

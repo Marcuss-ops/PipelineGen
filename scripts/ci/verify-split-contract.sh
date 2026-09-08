@@ -39,9 +39,9 @@ assert_graph() {
 
 assert_graph verify-fast "verify-foundation verify-static"
 assert_graph verify-push "verify-foundation verify-static verify-unit-fast verify-changed-components"
-assert_graph verify-main "verify-push verify-node-native verify-architecture"
+assert_graph verify-main "verify-push verify-architecture"
 assert_graph verify-race "verify-foundation verify-unit-race verify-race-components"
-assert_graph verify-full "verify-main verify-race verify-node-tests verify-clean-checkout-build"
+assert_graph verify-full "verify-main verify-race verify-clean-checkout-build"
 assert_graph verify-release "verify-full verify-integration"
 assert_graph verify-live "auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live verify-stock-live"
 assert_graph verify-stock-unit "test-stock-component test-youtube-stock-fast"
@@ -76,7 +76,6 @@ forbid() {
 
 # FAST: toolchain, hygiene, formatting, tidy, vet and build only.
 require "$fast" 'go-version-check|go version' "Go version check"
-require "$fast" 'node-version-check|node --version' "Node version check"
 require "$fast" 'ci-no-secrets' "secret audit"
 require "$fast" 'ci-submodule-integrity|verify-repository-integrity' "repository integrity"
 require "$fast" 'gofmt|format' "format check"
@@ -86,21 +85,17 @@ require "$fast" 'go build' "Go build"
 require "$fast" 'bash -n' "hook syntax check"
 forbid "$fast" 'go test|npm test|tests/operational|with-velox-auth|(^|[[:space:]])-race([[:space:]]|$)' "heavy, race or live command"
 
-# MAIN: push gate plus native binding probe and architecture, without race,
-# full Node, or post-deploy batteries.
+# MAIN: push gate plus architecture, without race or post-deploy batteries.
 require "$main" 'verify-changed-components\.py' "changed-component runner"
-require "$main" 'better-sqlite3' "native Node probe"
 require "$main" 'cmd/architecture-aggregate|cmd/archcheck' "architecture checks"
-forbid "$main" 'tests/operational|with-velox-auth|npm test|verify-live|scraper-up|(^|[[:space:]])-race([[:space:]]|$)' "race, full Node or live command"
+forbid "$main" 'tests/operational|with-velox-auth|npm test|verify-live|scraper-up|(^|[[:space:]])-race([[:space:]]|$)' "race or live command"
 
 # RACE: at least one explicit race command, but no live battery.
 require "$race" '(^|[[:space:]])-race([[:space:]]|$)' "race detector"
 forbid "$race" 'tests/operational|with-velox-auth|verify-live' "live command"
 
-# FULL: main + race + complete Node tests + clean-checkout reproducibility,
-# still headless.
+# FULL: main + race + clean-checkout reproducibility, still headless.
 require "$full" '(^|[[:space:]])-race([[:space:]]|$)' "race detector"
-require "$full" 'npm test|node --test' "complete Node tests"
 require "$full" 'ci-clean-checkout-build' "clean-checkout build"
 forbid "$full" 'tests/operational|with-velox-auth|verify-live' "live command"
 
@@ -186,7 +181,7 @@ fi
 # GNU Make must reuse shared prerequisites within one aggregate invocation.
 trace=$PLAN_DIR/verify-full.trace
 (cd "$ROOT" && make --trace -n --no-print-directory verify-full) >"$trace" 2>&1
-for target in verify-foundation verify-node-tests verify-architecture; do
+for target in verify-foundation verify-architecture; do
     count=$(grep -cF "target '$target'" "$trace" || true)
     if [[ "$count" -ne 1 ]]; then
         fail "$target is scheduled $count times in verify-full (expected 1)"

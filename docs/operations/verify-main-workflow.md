@@ -12,7 +12,7 @@ The four requested gates form one explicit escalation chain:
 |---|---|---|---|
 | `make verify-main` | `foundation + static + changed-components + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
 | `make verify-race` | `foundation + all registered components (race)` | Explicit race-detector gate | None; headless |
-| `make verify-full` | `verify-main + verify-race + verify-node-tests` | Complete headless gate | None; headless |
+| `make verify-full` | `verify-main + verify-race + clean-checkout-build` | Complete headless gate | None; headless |
 | `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive/Qdrant battery |
 
 `verify-main` is the only one of these gates wired into the normal
@@ -36,8 +36,7 @@ explicit heavier gates and are not implicit dependencies of `verify-main`.
   or depending on an unrelated in-progress adapter decomposition.
 - `make verify-race`: explicit race-tested Go packages plus all registered
   components through the shared component runner.
-- `make verify-full`: `verify-main` plus `verify-race` and the full Node test
-  suite. GNU Make deduplicates shared prerequisites such as foundation.
+- `make verify-full`: `verify-main` plus `verify-race` andthe full headless test suite. GNU Make deduplicates shared prerequisites such as foundation.
 - `make verify-release`: `verify-full` plus the integration suite.
 - `make verify-artlist-live`, `make verify-images-live`,
   `make verify-script-live`, and `make verify-vidrush-live`: authenticated
@@ -57,8 +56,7 @@ a second source of truth for component ownership.
 
 All gates fail closed. `verify-unit` covers Go unit packages and excludes
 `./tests/...`; operational and external-service tests belong to
-`verify-integration` or the live batteries. JavaScript uses Node's built-in
-test runner through `node-scraper/package.json` and `make test-js`.
+`verify-integration` or the live batteries. Go's test runner
 
 During development run the modified package tests, then `make verify-fast`.
 Run `make verify-main` once after all changes are complete. Do not bypass the

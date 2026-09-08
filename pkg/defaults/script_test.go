@@ -4,8 +4,7 @@ import "testing"
 
 // TestDefaultScriptConfig_RoundTrip anchors the canonical
 // DRIFT-DEFAULTS-SCRIPT SSOT. A regression here breaks every
-// script-generation entry point (single-script, batch, regenerate,
-// lessons.estimateChapterDuration).
+// script-generation entry point (single-script, batch, regenerate).
 func TestDefaultScriptConfig_RoundTrip(t *testing.T) {
 	cfg := DefaultScriptConfig()
 

@@ -1,6 +1,6 @@
 version: 1
 generated_at: "2026-06-29T18:25:55Z"
-updated_at: "2026-08-23"
+updated_at: "2026-09-08"
 source_scan_root: internal/
 excludes:
   - path: pkg/**
@@ -12,8 +12,8 @@ excludes:
   - path: cmd/**
     reason: composition-entry binaries, not capabilities
 
-# ── Capability Ownership Map (2026-08-23 Cleanup Day) ──────────────────────
-# Each of the 26 on-disk packages in internal/capabilities/ is assigned to
+# ── Capability Ownership Map (2026-09-08 Cleanup Day) ──────────────────────
+# Each of the 65 on-disk packages in internal/capabilities/ is assigned to
 # exactly ONE of the 10 macro capabilities declared in policy.yaml. This is
 # the canonical ownership table. Every package MUST resolve to one macro owner;
 # no package may be "shared" — the macro owner is the namespace owner for

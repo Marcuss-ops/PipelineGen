@@ -6,12 +6,10 @@
       "scripts/bridges/local_nlp_gpu.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
-      "scripts/operate_script_generate.sh",
       "scripts/lib/dotenv.sh",
       "start_server.sh",
       "tests/operational/worker-integration/",
-      "tests/fixtures/script-generation/",
-      "examples/"
+      "tests/fixtures/script-generation/"
     ],
     "go_packages": [
       "./internal/kernel/script/...",
@@ -31,8 +29,7 @@
     "paths": [
       "internal/capabilities/scripts/usecase/",
       "internal/platform/sqlite/scripts/",
-      "config/lexicons/",
-      "tools/researchlive/"
+      "config/lexicons/"
     ],
     "go_packages": [
       "./internal/capabilities/scripts/usecase/...",
@@ -165,12 +162,12 @@
     "cache_scope": "content"
   },
   "docs": {
+    "utility": true,
     "paths": [
       "docs/",
       "README.md",
       "AGENTS.md",
       "scripts/README.md",
-      "tools/",
       "ops/benchmarks/"
     ],
     "go_packages": [],
@@ -441,19 +438,6 @@
     "timeout_seconds": 900,
     "race_timeout_seconds": 1200,
     "race_enabled": true,
-    "live_tests": [],
-    "cacheable": true,
-    "cache_scope": "content"
-  },
-  "node-scraper": {
-    "paths": ["node-scraper/"],
-    "go_packages": [],
-    "node_tests": [],
-    "python_tests": [],
-    "dependencies": [],
-    "timeout_seconds": 60,
-    "race_timeout_seconds": 60,
-    "race_enabled": false,
     "live_tests": [],
     "cacheable": true,
     "cache_scope": "content"

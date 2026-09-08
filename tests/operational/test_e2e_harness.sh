@@ -7,7 +7,7 @@ HARNESS="$ROOT_DIR/scripts/dev/e2e-up.sh"
 [[ -x "$HARNESS" ]] || { echo "harness must be executable" >&2; exit 1; }
 bash -n "$HARNESS"
 grep -q 'checkout must be on branch main' "$HARNESS"
-grep -q 'compose up -d qdrant artlist-scraper searxng' "$HARNESS"
+grep -q 'compose up -d qdrant searxng' "$HARNESS"
 grep -q 'run_preflight' "$HARNESS"
 grep -q 'stop_process worker' "$HARNESS"
 grep -q 'compose down' "$HARNESS"
