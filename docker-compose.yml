@@ -14,24 +14,6 @@ services:
       - "127.0.0.1:6334:6334"
     volumes:
       - qdrant-storage:/qdrant/storage
-  artlist-scraper:
-    build:
-      context: ./node-scraper
-      dockerfile: Dockerfile.scraper
-    container_name: pipelinegen-artlist
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:9123:9123"
-    environment:
-      PORT: "9123"
-      PERSISTENT: "1"
-      CHROME_EXECUTABLE: "/usr/bin/chromium"
-      CHROME_PROFILE_DIR: "/chrome-profile"
-      ARTLIST_COOKIE_FILE: "/chrome-profile/artlist_cookies.txt"
-      SCROLL_TIMEOUT: "120"
-      SCRAPER_CONNECT_TIMEOUT_SECONDS: "5"
-    volumes:
-      - artlist-chrome-profile:/chrome-profile
   searxng:
     image: searxng/searxng:latest
     container_name: pipelinegen-searxng
@@ -47,4 +29,3 @@ services:
       SEARXNG_LIMITER: "false"
 volumes:
   qdrant-storage:
-  artlist-chrome-profile:

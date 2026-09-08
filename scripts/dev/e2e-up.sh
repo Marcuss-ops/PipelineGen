@@ -23,7 +23,6 @@ BASE_URL="${E2E_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
 QDRANT_URL="${E2E_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${E2E_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 SEARXNG_URL="${E2E_SEARXNG_URL:-http://127.0.0.1:8080}"
-SCRAPER_URL="${E2E_SCRAPER_URL:-http://127.0.0.1:9123}"
 
 # Readiness probe timeout (seconds) per service.
 READINESS_TIMEOUT="${E2E_READINESS_TIMEOUT:-60}"
@@ -169,7 +168,7 @@ up() {
         fail 'checkout must be on branch main'
 
     log 'starting Compose dependencies'
-    compose up -d qdrant artlist-scraper searxng
+    compose up -d qdrant searxng
 
     if [[ "${E2E_START_LOCAL_PROCESSES:-0}" == "1" ]]; then
         [[ -x "$ROOT_DIR/bin/pipelinegen" ]] || fail 'bin/pipelinegen missing; build it before E2E startup'
@@ -193,7 +192,7 @@ up() {
 # ── dev-up (deterministic staged startup with readiness gates) ─────────────
 #
 # Startup order:
-#   Stage 1: Infrastructure  (Qdrant, Artlist scraper, SearXNG)
+#   Stage 1: Infrastructure  (Qdrant, SearXNG)
 #   Stage 2: Server          (PipelineGen HTTP + migrations)
 #   Stage 3: Worker          (job executor, registers against server)
 #   Stage 4: Preflight       (full dependency matrix)
@@ -218,16 +217,12 @@ dev_up() {
 
     # ── Stage 1: Infrastructure ──────────────────────────────────────────
     log '── Stage 1/4: Infrastructure ──'
-    log 'starting Qdrant, Artlist scraper, SearXNG...'
-    compose up -d qdrant artlist-scraper searxng
+    log 'starting Qdrant, SearXNG...'
+    compose up -d qdrant searxng
 
     log 'waiting for Qdrant...'
     wait_for_http "Qdrant" "${QDRANT_URL%/}/healthz" 200 "$READINESS_TIMEOUT" ||
         fail 'Qdrant failed to become ready'
-
-    log 'waiting for Artlist scraper...'
-    wait_for_http "Artlist scraper" "${SCRAPER_URL%/}/health" 200 "$READINESS_TIMEOUT" 2>/dev/null ||
-        warn 'Artlist scraper not ready (non-critical)'
 
     log 'waiting for SearXNG...'
     wait_for_http "SearXNG" "${SEARXNG_URL%/}/" 200 "$READINESS_TIMEOUT" 2>/dev/null ||
@@ -314,7 +309,6 @@ dev_up() {
     echo "  Services:"
     printf "    %-20s %s\n" "Qdrant:"         "${QDRANT_URL}"
     printf "    %-20s %s\n" "Server:"         "${BASE_URL}"
-    printf "    %-20s %s\n" "Artlist scraper:" "${SCRAPER_URL}"
     printf "    %-20s %s\n" "SearXNG:"        "${SEARXNG_URL}"
     printf "    %-20s %s\n" "Ollama:"         "${OLLAMA_URL}"
     echo ""

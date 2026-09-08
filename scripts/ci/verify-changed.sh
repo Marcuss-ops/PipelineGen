@@ -25,7 +25,7 @@ else
             echo "❌ Go binary '$GO_BIN' was not found; set GO to the Makefile-configured toolchain." >&2
             exit 1
         fi
-        GO="$GO_BIN" make verify-node-native verify-architecture
+        GO="$GO_BIN" make verify-architecture
         exit 0
     fi
 fi
@@ -53,7 +53,6 @@ fi
 GO_BIN="${GO:-go}"
 
 RUN_ALL=false
-RUN_NODE=false
 RUN_ARCH=false
 RUN_GO_PACKAGE_TESTS=false
 RUN_SH_SYNTAX=false
@@ -73,11 +72,7 @@ for file in "${CHANGED_FILES[@]}"; do
         RUN_ALL=true
     fi
 
-    # node-scraper/** -> fast native-binding verification
-    if [[ "$file" =~ ^node-scraper/ ]]; then
-        RUN_NODE=true
-    fi
-
+    # Architecture/configuration changes are handled by the architecture branch below.
     # Shell scripts (scripts/, tests/, hooks/) -> cheap fail-fast syntax
     # check. No registry component owns these paths, so without this branch a
     # broken operational/CI script would verify ZERO checks in the agent loop.
@@ -107,25 +102,14 @@ if [ "$RUN_ALL" = true ]; then
         echo "❌ Go binary '$GO_BIN' was not found; set GO to the Makefile-configured toolchain." >&2
         exit 1
     fi
-    # Agent-loop scope for core/configuration changes: the native Node probe
-    # plus the architecture gates (both part of verify-main). The full
-    # node-scraper test suite (verify-node-tests) is deliberately excluded:
-    # verify-main itself only requires verify-node-native, and node-scraper
-    # source changes are already covered by the native probe branch.
-    echo "🔄 Core toolchain, configuration or hooks changed. Running native Node probe + architecture gates..."
-    GO="$GO_BIN" make verify-node-native verify-architecture
+    # Agent-loop scope for core/configuration changes: architecture gates
+    # (the retired Node scraper had no repository-local verification target).
+    echo "🔄 Core toolchain, configuration or hooks changed. Running architecture gates..."
+    GO="$GO_BIN" make verify-architecture
 fi
 
-# node-scraper/architecture branches are already covered by the RUN_ALL path;
-# only run them standalone when no core file changed. The targeted Go package
-# tests and shell/python syntax checks below ALWAYS run, so a .go/.sh/.py
-# change alongside a core change keeps its coverage instead of being swallowed
-# by the early core verification.
-if [ "$RUN_ALL" = false ] && [ "$RUN_NODE" = true ]; then
-    echo "📦 node-scraper changed. Running native Node verification..."
-    make verify-node-native
-fi
-
+# Architecture changes are handled above; there is no retired Node scraper
+# verification branch.
 if [ "$RUN_ALL" = false ] && [ "$RUN_ARCH" = true ]; then
     if ! command -v "$GO_BIN" >/dev/null 2>&1 && [ ! -x "$GO_BIN" ]; then
         echo "❌ Go binary '$GO_BIN' was not found; set GO to the Makefile-configured toolchain." >&2

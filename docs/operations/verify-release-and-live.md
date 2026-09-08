@@ -22,7 +22,7 @@ post-deploy validation.
 
 ```
 verify-release  =  verify-full  +  verify-integration
-                 =  (verify-main + verify-race + verify-node-tests)
+                 =  (verify-main + verify-race)
                  with shared foundation prerequisites deduplicated by Make
                  +  verify-integration   (= verify-go-tests = `go test -race ./tests/...`)
 ```
@@ -58,8 +58,8 @@ Per AGENTS.md fail-closed + "Never represent absence as success":
 - Identify the failing sub-gate. `verify-release` fails atomically — the
   sub-gate that printed the first non-zero exit is the culprit.
   Re-run each sub-gate individually:
-  - `make verify-main` → (foundation + static + unit-fast + changed-components + verify-node-native + verify-architecture)
-  - `make verify-full` → (verify-main + verify-race + verify-node-tests)
+  - `make verify-main` → (foundation + static + unit-fast + changed-components + verify-architecture)
+  - `make verify-full` → (verify-main + verify-race + clean-checkout-build)
   - `make verify-integration` → (verify-go-tests)
 - File a `fixup!: <subject>` commit + `git rebase --autosquash` once the
   underlying red gate is fixed.

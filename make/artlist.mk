@@ -26,10 +26,9 @@
 #   make verify-artlist-download # while iterating on /download + ffprobe
 #   make verify-artlist-live     # only after all 9 green
 #
-# No go-version-check prereq (the sub-scripts are bash + node-scraper,
-# Go-unaware). No node-version-check prereq either: each sub-script
-# does its own runtime assertion at the top (the lib helpers fail
-# closed when node-scraper is unreachable).
+# No Go toolchain prereq: the live sub-scripts perform their own runtime
+# assertions and fail closed when the configured Artlist endpoint is
+# unreachable.
 
 # verify-artlist-startup — Phase 1: server / scraper readiness + admin
 # auth probe. Catches cold-start failures (port in use, scraper not

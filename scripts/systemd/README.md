@@ -4,16 +4,13 @@ Idempotent migration from unstable nohup/tmux-managed processes to
 **systemd-managed services** with auto-restart on crash.
 
 PipelineGen server and worker are host-native services. Docker Compose is used
-only for supporting infrastructure (Qdrant, Artlist scraper and SearXNG), so
-application changes no longer require `docker compose build`.
+only for supporting infrastructure (Qdrant and SearXNG), so application
+changes no longer require `docker compose build`.
 
 ## TL;DR
 
-The systemd unit files at `/etc/systemd/system/{pipelinegen,artlist-scraper}.service`
-**already have the right `Restart=` directives** — the existing units are
-inactive because the services were started manually via `nohup ... &`
-(bypassing systemd entirely). The fix is just to **stop the manual
-processes and let systemd manage them**.
+The systemd unit files at `/etc/systemd/system/{pipelinegen,pipelinegen-worker}.service`
+are managed independently from the supporting Compose infrastructure.
 
 ```bash
 # 1. Kill the manual processes + delegate the sudo commands to the operator
@@ -24,10 +21,9 @@ bash scripts/systemd/migrate_to_systemd.sh
 # 2. Operator runs (with password):
 sudo systemctl daemon-reload
 sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
-sudo systemctl enable --now artlist-scraper.service
 
 # 3. Verify
-systemctl is-active pipelinegen.service artlist-scraper.service
+systemctl is-active pipelinegen.service pipelinegen-worker.service
 ```
 
 ## Daily commands — no interactive password
@@ -76,7 +72,7 @@ password and should not be automated by pasting credentials into a shell:
 | Validate policy without changing host | `scripts/systemd/sudoers/install_operator_access.sh --check` |
 | Migrate manually started services | `AUTO_YES=1 bash scripts/systemd/migrate_to_systemd.sh` |
 | Reload changed unit/drop-in files | `sudo systemctl daemon-reload` |
-| Enable/start services after migration | `sudo systemctl enable --now pipelinegen.service` and scraper unit as needed |
+| Enable/start services after migration | `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
 | Rotate credentials | `sudo scripts/rotate_token.sh` using the documented host process |
 | Repair secret-file ownership/mode | `sudo chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env` and `sudo chmod 0640 /etc/pipelinegen/pipelinegen.env` |
 
@@ -96,7 +92,7 @@ operator only these exact commands as root:
 ```
 
 It does **not** grant `status`, `enable`, `disable`, `daemon-reload`, wildcard
-service names, access to `artlist-scraper.service`, or a root shell. The
+service names, or a root shell. The
 policy is intentionally separate from the one-time systemd migration, which
 may require broader administrative commands.
 
@@ -169,18 +165,16 @@ scripts/systemd/pipelinegenctl_test.sh
 ## Why this exists
 
 **Symptom** (observed during E2E verification, 2026-07-07/08): the
-`pipelinegen` and `artlist-scraper` processes were launched via
+`pipelinegen` and `pipelinegen-worker` processes were launched via
 `nohup ./pipelinegen --mode all &` and detached. They run inside a
 parent shell that may exit (logout, SSH disconnect, terminal close),
 causing the children to either receive SIGHUP or be reparented to PID 1
 without auto-restart. During multi-minute E2E tests, the service
 disappeared and the test had to be retried.
 
-**Root cause**: the systemd unit files **were** configured with
-`Restart=always` (pipelinegen) and `Restart=on-failure`
-(artlist-scraper), but the unit state was `inactive` because nobody had
-run `systemctl enable --now`. The manual nohup process shadowed the
-service entry.
+**Root cause**: the host migration previously documented a retired scraper unit;
+that unit is no longer part of the repository. PipelineGen services are
+managed independently from external provider endpoints.
 
 **The fix has 2 layers**:
 1. **`migrate_to_systemd.sh`** (this directory) — stops the manual
@@ -195,7 +189,7 @@ service entry.
 | Service                  | Restart        | RestartSec | Status   |
 |--------------------------|----------------|------------|----------|
 | `pipelinegen.service`    | `always`       | 3s         | active   |
-| `artlist-scraper.service`| `on-failure`   | 10s        | active   |
+| `pipelinegen-worker.service` | `on-failure` | 10s | active |
 
 The existing drop-in files in `/etc/systemd/system/pipelinegen.service.d/`
 are **preserved** by the migration script:
@@ -257,7 +251,7 @@ script will execute the sudo commands itself.
 ```bash
 # After running the migration + operator sudo commands:
 systemctl is-active pipelinegen.service    # expect: active
-systemctl is-active artlist-scraper.service # expect: active
+systemctl is-active pipelinegen.service pipelinegen-worker.service # expect: active
 systemctl show pipelinegen.service | grep -E 'Restart=|RestartSec=|MainPID='
 # expect: Restart=always, RestartSec=3, MainPID=<nonzero>
 

@@ -149,9 +149,9 @@ failure halts the chain.
 | Tier / gate      | Make target          | Composition                                      | When to run                       | Browser / Drive / Qdrant live? | Headless? |
 |------------------|----------------------|--------------------------------------------------|-----------------------------------|--------------------------------|-----------|
 | dev loop         | `verify-fast`        | foundation + static                              | During active development         | No                             | Yes       |
-| **daily gate**   | `verify-main`        | `verify-push + verify-node-native + verify-architecture` | Before every `git push` to `main` | **No**                         | Yes       |
+| **daily gate**   | `verify-main`        | `verify-push + verify-architecture` | Before every `git push` to `main` | **No**                         | Yes       |
 | explicit race    | `verify-race`        | `verify-unit-race`                               | Release/concurrency-sensitive changes | No                         | Yes       |
-| complete headless| `verify-full`        | `verify-main + verify-race + verify-node-tests` | CI/release certification          | No                             | Yes       |
+| complete headless| `verify-full`        | `verify-main + verify-race + clean-checkout-build` | CI/release certification          | No                             | Yes       |
 | pre-deploy       | `verify-release`     | `verify-full + verify-integration`              | Before every release              | No                             | Yes       |
 | post-deploy      | `verify-live`        | live operational batteries                       | After deploy / operational hosts  | **Yes**                        | No        |
 

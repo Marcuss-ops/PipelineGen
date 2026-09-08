@@ -10,6 +10,9 @@
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
+verify-rust-muscles:
+	@cargo test --manifest-path rust/Cargo.toml -p pipelinegen-muscles
+
 # verify-repository-integrity — fail-closed repository metadata checks.
 # The canonical script validates every tracked mode-160000 gitlink against
 # .gitmodules without touching ignored local working-tree directories.
@@ -18,18 +21,15 @@ verify-repository-integrity:
 
 # verify-base — fail-closed base gate: toolchain version, secrets,
 # formatting, and module tidiness. Kept cheap so the most common failures
-# surface in seconds. GO-ONLY (no node-version-check); use verify-foundation
-# below for the Node-aware chain. NOTE: verify-base and verify-foundation
-# share 4 of 5 prereqs by design (the "non sostitutivi" constraint of the
+# surface in seconds. GO-ONLY; use verify-foundation below for the full
+# toolchain foundation. NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design (the "non sostitutivi" constraint of the
 # refactor). When adding/removing a prereq here, mirror it in
 verify-base: go-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Base verification passed"
 
-# verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
-# Node), secrets, formatting, module tidiness, AND hook syntax. Runs in
-# seconds. It is the Node-aware foundation used by verify-fast and the
-# pre-push chain; verify-base remains the Go-only foundation for callers
-# that deliberately do not require Node.
+# verify-foundation — cheapest pre-flight gate: Go toolchain, secrets,
+# repository integrity, formatting, module tidiness, AND hook syntax.
+# Runs in seconds. The retired Node sidecar is not part of this foundation.
 #
 # bash -n lint on the canonical hooks (scripts/hooks/pre-push +
 # scripts/hooks/pre-commit): catches a syntactic break in any hook
@@ -59,10 +59,10 @@ verify-static: go-version-check
 # cache it is the cheapest fail-closed chain that catches the most common
 # errors (toolchain mismatch, leaked secrets, formatting drift, embedded UI
 # build failure, vet/build break). Used during active development. verify-main adds
-# standard Go tests, the native Node probe, and architecture checks;
+# standard Go tests and architecture checks;
 # verify-full and verify-release add the heavier race, Node, and integration
 # gates.
-verify-fast: verify-foundation verify-static verify-architecture
+verify-fast: verify-foundation verify-static
 	@echo "✅ verify-fast passed"
 
 verify-dev: verify-foundation verify-static
@@ -218,12 +218,3 @@ certify-media-cutover:
 
 certify-media-cutover-json:
 	@bash scripts/ci/certify-media-cutover.sh --json
-
-# ─── Sidecar Node scraper (PR-LIVE-VERIFY-1, P0) ───────────────────────────
-#
-# scraper-up — launches the Node.js artlist scraper sidecar as a background
-# process for live-verify runs. Per architecture/issues.yaml::PR-LIVE-VERIFY-1
-# follow_up: brings up the sidecar via `node node-scraper/artlist_server.js`
-# with CHROME_EXECUTABLE=/usr/bin/google-chrome +
-# ARTLIST_SCRAPER_BIND=127.0.0.1 + ARTLIST_SCRAPER_PORT=9123, then
-# confirms /health responds healthy=true (the dry-run preflight contract).

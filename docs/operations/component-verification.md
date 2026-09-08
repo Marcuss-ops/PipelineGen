@@ -46,7 +46,7 @@ invocation.
 | `make verify-ollama` | `ollama` | Ollama client and structured-output adapters |
 | `make verify-youtube` | `youtube` | YouTube domain, sourcing, providers, API, and infrastructure |
 | `make verify-artlist` | `artlist` | Artlist provider, infrastructure, and API |
-| `make verify-node-scraper` | `node-scraper` | Node scraper tests and scraper integration package |
+
 
 The registry also exposes aggregate component targets:
 
@@ -95,7 +95,7 @@ The aggregate gates are intentionally separate:
 | `make verify-fast` | Foundation + static checks | Fast development loop |
 | `make verify-main` | Foundation + static + changed components + architecture | Normal fail-closed pre-push gate |
 | `make verify-race` | Foundation + all registered components in race mode | Explicit concurrency/race validation |
-| `make verify-full` | `verify-main` + `verify-race` + full Node tests | Complete headless verification |
+| `make verify-full` | `verify-main` + `verify-race` + clean-checkout build | Complete headless verification |
 | `make verify-release` | `verify-full` + integration tests | Pre-deploy certification |
 
 Foundation and shared prerequisites are Make dependencies, not recipes copied

@@ -137,18 +137,3 @@ updates:
     labels:
       - "dependencies"
       - "docker"
-
-  # ── node-scraper (Artlist mirror proxy) ───────────────────────
-  - package-ecosystem: "npm"
-    directory: "/node-scraper"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
-      timezone: "Europe/Rome"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "deps(scraper)"
-    labels:
-      - "dependencies"
-      - "node"
