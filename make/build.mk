@@ -63,16 +63,6 @@ go-version-check:
 	    echo "✅ Go version $$HOST meets requirement $$REQ"; \
 	fi
 
-# Node toolchain guard. The canonical implementation lives in the shared
-# script so Make, CI, Docker, and focused tests execute exactly one resolver.
-# It reads engines.node from both package manifests, requires equal majors,
-# and requires the host Node major to match them.
-node-version-check:
-	@NODE_VERSION_CHECK_ROOT="$$(pwd)" bash scripts/ci/node-version-check.sh
-
-node-version-check-test:
-	@bash scripts/ci/node-version-check_test.sh
-
 # Web Admin removed 2026-08-25 — no embedded frontend remains.
 
 # Build the entry-point binaries. Outputs land in ./bin/ to keep the project

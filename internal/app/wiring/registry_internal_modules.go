@@ -10,7 +10,6 @@ import (
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
@@ -221,19 +220,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		if err := tryRegisterModuleStrict(registry, log, mediaIngestW.Module, WithRegistrationPoint("register.MediaIngest")); err != nil {
 			return registryCrossStepState{}, fmt.Errorf("wire registry: media-ingest: %w", err)
 		}
-	}
-
-	scraperHandler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir, processRunnerAdapter)
-	scraperMod := module.NewRouteModule(
-		"scraper",
-		func() bool { return scraperHandler != nil },
-		"/scraper",
-		scraperHandler,
-		log,
-	)
-	log.Info("created Scraper module")
-	if err := tryRegisterModuleStrict(registry, log, scraperMod, WithRegistrationPoint("register.Scraper")); err != nil {
-		return registryCrossStepState{}, fmt.Errorf("wire registry: scraper: %w", err)
 	}
 
 	// Step 7 (FullImages) retired (IMAGES-LEGACY-CLEANUP, August 2026):

@@ -44,7 +44,7 @@ verify-base: go-version-check verify-no-secrets verify-format tidy-check
 # NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
 # (the "non sostitutivi" constraint of the refactor). When adding/removing
 # a prereq here, mirror it in verify-base above to prevent drift between
-verify-foundation: go-version-check node-version-check node-version-check-test verify-no-secrets verify-repository-integrity verify-format tidy-check
+verify-foundation: go-version-check verify-no-secrets verify-repository-integrity verify-format tidy-check
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
@@ -93,12 +93,8 @@ verify-push: verify-foundation verify-static verify-unit-fast verify-changed-com
 verify-unit-race: go-version-check
 	$(GO) test -race ./internal/... ./cmd/... ./pkg/...
 
-# verify-main — canonical daily fail-closed headless gate. It composes the
-# push gate, the native Node probe, and architecture checks. GNU Make
-# de-duplicates verify-foundation/verify-static inherited through verify-push.
-# Component tests run through verify-changed-components, whose content-addressed
-# cache skips only deterministic PASS results with an identical fingerprint.
-verify-main: verify-push verify-node-native verify-architecture
+# verify-main — canonical daily fail-closed headless gate.
+verify-main: verify-push verify-architecture
 	@echo "✅ verify-main passed"
 
 # verify-race — explicit race-detector gate. Foundation runs as a shared
@@ -116,40 +112,13 @@ verify-clean-checkout-build:
 	@GO="$(GO)" bash scripts/ci/ci-clean-checkout-build.sh
 
 # verify-full — complete headless gate: verify-main, the explicit race gate,
-# the full Node test suite, and clean-checkout reproducibility. Shared
-# prerequisites such as foundation are deduplicated by GNU Make within this
-# aggregate invocation.
-verify-full: verify-main verify-race verify-node-tests verify-clean-checkout-build
+# and clean-checkout reproducibility.
+verify-full: verify-main verify-race verify-clean-checkout-build
 	@echo "✅ verify-full passed"
 
 # verify-go-core — domain and application logic tests. Isolates failures
 # in the core business packages so a domain test failure is immediately
-verify-node-native:
-	@if [ ! -d node-scraper/node_modules/better-sqlite3 ]; then \
-	    echo "→ Installing node-scraper devDependencies (better-sqlite3 native build)..."; \
-	    cd node-scraper && npm install --silent; \
-	fi
-	@echo "→ Probing better-sqlite3 native binding (catches 'Module did not self-register')..."
-	@cd node-scraper && node -e 'const Database = require("better-sqlite3"); const db = new Database(":memory:"); db.exec("CREATE TABLE probe(id INTEGER)"); db.close(); console.log("✅ better-sqlite3 loaded");'
-	@echo "✅ verify-node-native passed"
-
-# verify-node-tests — Node test runner over node-scraper/test/*.test.js.
-# Thin alias of `make test-js`: same install guard, same node-version-check,
-# same npm test invocation. Kept separate from verify-node-native so the
-# native-binding probe can fail fast without paying the npm-install cost
-# and so verify-node-native can be run in isolation during Node upgrades.
-verify-node-tests: test-js
-	@echo "✅ verify-node-tests passed"
-
-# verify-node — complete Node toolchain gate. Composes the fast native
-# binding probe and the full Node test suite. Node verification is explicit;
-# verify-main delegates only to changed registry components.
-verify-node: verify-node-native verify-node-tests
-	@echo "✅ Node verification passed"
-
-# verify-integration — operational, integration, and E2E tests under
-# ./tests/... . Kept ISOLATED from verify-unit and verify-node because:
-#   (a) some suites require external services (Drive, Qdrant, scraper) and
+# verify-integration — operational, integration, and E2E tests under ./tests/.
 verify-integration: go-version-check
 	@$(MAKE) verify-go-tests
 	@echo "✅ Integration verification passed"

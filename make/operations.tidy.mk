@@ -98,7 +98,7 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 # the script aborts the make chain. Exit contract: 0=PASS, 1=FAIL
 # (hit list printed + saved to HIT_LOG), 2=setup error.
 # NOT gated on go-version-check because the script is pure-bash and
-preflight: go-version-check node-version-check
+preflight: go-version-check
 	@if command -v docker >/dev/null 2>&1; then \
 		docker compose config >/dev/null; \
 	else \
