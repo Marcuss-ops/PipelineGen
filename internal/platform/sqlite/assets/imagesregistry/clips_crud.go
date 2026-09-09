@@ -85,11 +85,7 @@ func (r *ClipsRepository) SourceVersionFor(ctx context.Context, id string) (stri
 //  1. The dispatcher itself, which wraps this call inside an
 //     outbox transaction via UpsertClipTx + emits an outbox event
 //     in the same tx (the canonical QDRANT-002 path).
-//  2. The admin tool's InternalAdminPurge adapter, when
-//     back-filling a row in a scenario where the worker pool is
-//     offline; the admin path uses `assets.ClipsRepository.Upsert`
-//     rather than this method (which is dispatcher-only).
-//  3. Tests via the dispatcher stub or a bare `&Service{}` fixture
+//  2. Tests via the dispatcher stub or a bare `&Service{}` fixture
 //     (test code paths are explicitly allowlisted by the CI lint).
 //
 // Removed from public API surfaces:
