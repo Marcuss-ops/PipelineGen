@@ -18,22 +18,6 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ── Pipeline stage logger
-func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
-	t := time.Now()
-	log.Info("pipeline_stage_started",
-		zap.String("job_id", jobID),
-		zap.String("stage", stage))
-	return func(extra ...zap.Field) {
-		fields := append([]zap.Field{
-			zap.String("job_id", jobID),
-			zap.String("stage", stage),
-			zap.Int64("duration_ms", time.Since(t).Milliseconds()),
-		}, extra...)
-		log.Info("pipeline_stage_completed", fields...)
-	}
-}
-
 // ── buildVoiceoverDestination ────────────────────────────────────────────────
 
 // BuildVoiceoverDestination builds a *voiceover.DestinationRequest from the

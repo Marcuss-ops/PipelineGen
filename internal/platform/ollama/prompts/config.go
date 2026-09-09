@@ -128,14 +128,6 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func MustLoad(path string) *Config {
-	cfg, err := Load(path)
-	if err != nil {
-		panic(err)
-	}
-	return cfg
-}
-
 // Init initializes the global registry once and applies filtering overrides.
 func Init(path string) error {
 	registryOnce.Do(func() {

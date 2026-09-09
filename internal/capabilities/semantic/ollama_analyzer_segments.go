@@ -105,7 +105,9 @@ Rules:
 - Use EXACT timestamps from the transcript (the [MM:SS] markers)
 - Timestamps MUST be in HH:MM:SS format (e.g. "00:05:30" not "5:30")
 - Do NOT choose intro/opening greetings, sponsor reads, ads, housekeeping, applause-only moments, or outros
-- STRICT RULE: NEVER select any segments that mention, discuss, or reference Donald Trump, politics, elections, political candidates, or any political commentary. If the transcript contains political content at any point, skip those segments entirely.
+- Political content is allowed. When the transcript is about a political figure or
+  political event, select substantive statements and exclude only low-value
+  material such as greetings, ads, applause-only moments, or outros.
 - %s
 - If the transcript begins with introduction material, skip it and choose a later substantive moment
 - Name each segment with a brief descriptive title

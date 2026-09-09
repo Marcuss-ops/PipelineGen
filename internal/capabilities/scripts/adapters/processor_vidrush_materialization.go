@@ -72,10 +72,6 @@ func NewVidRushMaterializationProcessor(providers *VidRushAssetProviderRegistry,
 	return NewVidRushMaterializationProcessorWithCatalog(providers, finalizer, nil, nil, metrics...)
 }
 
-func NewVidRushMaterializationProcessorWithCache(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
-	return NewVidRushMaterializationProcessorWithCatalog(providers, finalizer, cache, nil, metrics...)
-}
-
 func NewVidRushMaterializationProcessorWithCatalog(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
 	var m VidRushTimingMetrics
 	if len(metrics) > 0 {

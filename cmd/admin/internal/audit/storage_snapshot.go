@@ -52,13 +52,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -148,99 +146,6 @@ type driveInventoryEntry struct {
 }
 
 // ── CLI entry point ────────────────────────────────────────────────────
-
-// runStorageSnapshot is registered in subcommands.go as "storage-snapshot".
-func RunStorageSnapshot(args []string) error {
-	fs := flag.NewFlagSet("storage-snapshot", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	out := fs.String("out", "", "snapshot output dir (default <DataDir>/snapshots/<UTC-ts>)")
-	skipQdrant := fs.Bool("skip-qdrant", false, "skip the whole Qdrant section")
-	skipQdrantSnaps := fs.Bool("skip-qdrant-snapshots", false, "record Qdrant state but do NOT create server-side snapshots")
-	skipDrive := fs.Bool("skip-drive", false, "skip the Drive inventory section")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	cfg, log, cleanup, err := cli.AppLogger()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ctx := cli.CmdContext()
-
-	// Resolve output dir.
-	outDir := strings.TrimSpace(*out)
-	if outDir == "" {
-		outDir = filepath.Join(cfg.Storage.BackupsPath(), "snapshots",
-			time.Now().UTC().Format("20060102T150405Z"))
-	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return fmt.Errorf("storage-snapshot: create out dir %s: %w", outDir, err)
-	}
-
-	log.Info("storage-snapshot starting",
-		zap.String("out", outDir),
-		zap.Bool("skip_qdrant", *skipQdrant),
-		zap.Bool("skip_qdrant_snapshots", *skipQdrantSnaps),
-		zap.Bool("skip_drive", *skipDrive),
-	)
-
-	m := storageSnapshotManifest{
-		SchemaVersion: 1,
-		Mode:          "snapshot",
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
-		NoDeletions:   true,
-		OutDir:        outDir,
-	}
-
-	exitCode := 0
-
-	// 1+2. SQLite: backup + per-table counts.
-	m.SQLite, err = snapshotSQLiteSet(ctx, cfg, outDir, log)
-	if err != nil {
-		log.Error("storage-snapshot: sqlite section failed", zap.Error(err))
-		exitCode = 1
-	}
-
-	// 3. Qdrant: state + optional server-side snapshots.
-	if *skipQdrant {
-		m.Qdrant = qdrantSnapshotSection{Status: "skipped"}
-	} else {
-		m.Qdrant, err = snapshotQdrant(ctx, cfg, outDir, *skipQdrantSnaps, log)
-		if err != nil {
-			log.Error("storage-snapshot: qdrant section failed", zap.Error(err))
-			exitCode = 1
-		}
-	}
-
-	// 4. Drive inventory.
-	if *skipDrive {
-		m.Drive = driveSnapshotSection{Status: "skipped"}
-	} else {
-		m.Drive, err = snapshotDriveInventory(ctx, cfg, outDir, log)
-		if err != nil {
-			log.Error("storage-snapshot: drive section failed", zap.Error(err))
-			exitCode = 1
-		}
-	}
-
-	// Write the manifest.
-	payload, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("storage-snapshot: marshal manifest: %w", err)
-	}
-	manifestPath := filepath.Join(outDir, "manifest.json")
-	if err := os.WriteFile(manifestPath, append(payload, '\n'), 0o644); err != nil {
-		return fmt.Errorf("storage-snapshot: write manifest: %w", err)
-	}
-
-	printStorageSnapshotSummary(m, manifestPath)
-	if exitCode != 0 {
-		return fmt.Errorf("storage-snapshot: one or more sections failed — see %s", manifestPath)
-	}
-	return nil
-}
 
 // ── SQLite section ─────────────────────────────────────────────────────
 
@@ -574,75 +479,3 @@ func collectDriveRoots(dc config.DriveConfig) []string {
 }
 
 // ── Output ─────────────────────────────────────────────────────────────
-
-func printStorageSnapshotSummary(m storageSnapshotManifest, manifestPath string) {
-	fmt.Printf("=== storage-snapshot ===\n")
-	fmt.Printf("  out_dir:      %s\n", m.OutDir)
-	fmt.Printf("  generated:    %s\n", m.GeneratedAt)
-	fmt.Printf("  no deletions: %v (this run performs none)\n", m.NoDeletions)
-
-	fmt.Println("  --- sqlite ---")
-	switch m.SQLite.Status {
-	case "ok":
-		fmt.Printf("    primary:       %s (%d bytes, sha256 %s, %d tables)\n",
-			filepath.Base(m.SQLite.Primary.BackupPath), m.SQLite.Primary.SizeBytes,
-			shortHash(m.SQLite.Primary.SHA256), len(m.SQLite.Primary.TableCounts))
-		fmt.Printf("    observability: %s (%d bytes, sha256 %s, %d tables)\n",
-			filepath.Base(m.SQLite.Observability.BackupPath), m.SQLite.Observability.SizeBytes,
-			shortHash(m.SQLite.Observability.SHA256), len(m.SQLite.Observability.TableCounts))
-		if n, ok := m.SQLite.Primary.TableCounts["media_assets"]; ok {
-			fmt.Printf("    media_assets:  %d\n", n)
-		}
-	default:
-		fmt.Printf("    status: %s (%s)\n", m.SQLite.Status, m.SQLite.Error)
-	}
-
-	fmt.Println("  --- qdrant ---")
-	switch m.Qdrant.Status {
-	case "ok":
-		fmt.Printf("    base_url:    %s\n", m.Qdrant.BaseURL)
-		fmt.Printf("    alias:       %s -> %s\n", m.Qdrant.RuntimeAlias, m.Qdrant.AliasTarget)
-		fmt.Printf("    collections: %d\n", len(m.Qdrant.Collections))
-		total := 0
-		for _, c := range m.Qdrant.Collections {
-			total += c.Points
-		}
-		fmt.Printf("    points:      %d\n", total)
-		if len(m.Qdrant.SnapshotsTaken) > 0 {
-			fmt.Printf("    snapshots:   %d taken (%s)\n", len(m.Qdrant.SnapshotsTaken), m.Qdrant.SnapshotsTaken[0])
-		}
-	case "skipped":
-		fmt.Printf("    skipped\n")
-	default:
-		fmt.Printf("    status: %s (%s)\n", m.Qdrant.Status, m.Qdrant.Error)
-	}
-
-	fmt.Println("  --- drive ---")
-	switch m.Drive.Status {
-	case "ok":
-		fmt.Printf("    roots:    %d\n", len(m.Drive.Roots))
-		fmt.Printf("    folders:  %d\n", m.Drive.Summary.Folders)
-		fmt.Printf("    files:    %d\n", m.Drive.Summary.Files)
-		fmt.Printf("    listing:  %s\n", m.Drive.InventoryRel)
-	case "skipped":
-		fmt.Printf("    skipped%s\n", optionalSuffix(m.Drive.Error))
-	default:
-		fmt.Printf("    status: %s (%s)\n", m.Drive.Status, m.Drive.Error)
-	}
-
-	fmt.Printf("  manifest:     %s\n", manifestPath)
-}
-
-func shortHash(h string) string {
-	if len(h) > 12 {
-		return h[:12]
-	}
-	return h
-}
-
-func optionalSuffix(s string) string {
-	if s == "" {
-		return ""
-	}
-	return " (" + s + ")"
-}

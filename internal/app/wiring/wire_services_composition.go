@@ -49,6 +49,7 @@ import (
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
@@ -171,7 +172,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 			finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
 			if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != root.DB.DB {
 				broker.WithFinalizer(&splitPlaneFinalizer{
-					mediaDB: root.DB.DB, mediaOutbox: root.Outbox.EventsRepo,
+					mediaDB: root.MediaPostgres, mediaOutbox: pgmedia.NewOutboxRepository(root.MediaPostgres),
 					assetTx: assetTx, jobsFinalizer: finalizer,
 				})
 			} else {

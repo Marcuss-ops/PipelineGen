@@ -46,38 +46,3 @@ func CanonicalAssetID(id string) string {
 	}
 	return id
 }
-
-func IsBuiltInBGM(id string) bool {
-	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "bgm1", "bgm2", "bgm3", "bgm4", "bgm5", "bgm6":
-		return true
-	default:
-		return false
-	}
-}
-
-func IsBuiltInWhoop(id string) bool {
-	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "whop1", "whop2", "whop3", "whop4", "whop5", "whop6":
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "whoop1", "whoop2", "whoop3", "whoop4":
-		return true
-	default:
-		return false
-	}
-}
-
-func IsBuiltInWhoosh(id string) bool {
-	id = strings.ToLower(strings.TrimSpace(id))
-	if id == "random_whoosh" {
-		return true
-	}
-	switch id {
-	case "whoosh1", "whoosh2", "whoosh3", "whoosh4", "whoosh5", "whoosh6", "whoosh7", "whoosh8", "whoosh9":
-		return true
-	default:
-		return false
-	}
-}

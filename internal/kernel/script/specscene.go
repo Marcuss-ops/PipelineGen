@@ -293,14 +293,6 @@ type EntityImageBinding struct {
 // SpecScene-level injector duplicated the contract and risked divergent
 // intro/outro semantics between projections.
 
-func fixedPlaybackPointer(section *FixedSection) *FixedPlaybackPolicy {
-	if section == nil {
-		return nil
-	}
-	playback := section.NormalizedPlayback()
-	return &playback
-}
-
 // fixedPlaybackClipBindings projects a protected section's authoritative
 // playback policy onto every consecutive clip binding. The source window is
 // intentionally repeated for each clip; timeline order is represented by the

@@ -512,13 +512,6 @@ func candidateCacheKey(candidate scriptpkg.SegmentAssetCandidate, videoID string
 	}.CacheKey()
 }
 
-func statusOr(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
-}
-
 func acquisitionStatus(status string) string {
 	if strings.EqualFold(status, "SEGMENTS_PLANNED") || strings.TrimSpace(status) == "" {
 		return "planned"

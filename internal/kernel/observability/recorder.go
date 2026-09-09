@@ -42,8 +42,6 @@ type RecorderFailureLogger interface {
 
 var recorderFailures atomic.Uint64
 
-func RecorderFailureCount() uint64 { return recorderFailures.Load() }
-
 func noteRecorderFailure(ctx context.Context, runID, operation string, err error, logger RecorderFailureLogger) {
 	if err == nil {
 		return

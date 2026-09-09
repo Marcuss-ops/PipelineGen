@@ -264,27 +264,6 @@ func readProcSample(pid int) (procSample, bool) {
 	return s, s.cpuTicks > 0 || s.rssBytes > 0 || s.readBytes > 0 || s.writeBytes > 0
 }
 
-func hostCPUTicks() (int64, bool) {
-	if runtime.GOOS != "linux" {
-		return 0, false
-	}
-	data, err := os.ReadFile("/proc/stat")
-	if err != nil {
-		return 0, false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "cpu ") {
-			continue
-		}
-		var user, nice, system, idle, iowait, irq, softirq, steal int64
-		if _, err := fmt.Sscan(line, new(string), &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal); err != nil {
-			return 0, false
-		}
-		return user + nice + system + idle + iowait + irq + softirq + steal, true
-	}
-	return 0, false
-}
-
 func hostCPUStats() (busy, total int64, ok bool) {
 	if runtime.GOOS != "linux" {
 		return 0, 0, false

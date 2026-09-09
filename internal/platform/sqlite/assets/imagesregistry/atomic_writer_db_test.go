@@ -1,9 +1,6 @@
 package imagesregistry
 
 import (
-	"database/sql"
-	"testing"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -80,17 +77,3 @@ CREATE TABLE IF NOT EXISTS asset_locations (
     PRIMARY KEY (asset_id, location_kind)
 );
 `
-
-func newAtomicWriterDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, openErr := sql.Open("sqlite3", ":memory:")
-	if openErr != nil {
-		t.Fatalf("open :memory: sqlite: %v", openErr)
-	}
-	db.SetMaxOpenConns(1)
-	if _, execErr := db.Exec(clipAtomicWriterSchema); execErr != nil {
-		t.Fatalf("apply schema: %v", execErr)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}

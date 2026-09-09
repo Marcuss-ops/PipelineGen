@@ -302,7 +302,8 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			// envelope. The producer must never choose a different
 			// idempotency scheme based on its source; that belongs to this
 			// infrastructure boundary.
-			Priority: req.IndexPriority,
+			Priority:       req.IndexPriority,
+			EventKeySuffix: req.IndexEventKeySuffix,
 		})
 		if err != nil {
 			return persistence.CommitResult{}, err

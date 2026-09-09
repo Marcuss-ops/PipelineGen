@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -55,11 +54,4 @@ func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *Pipel
 		a.VidRush.ObserveProcessorDuration(name, float64(stage.DurationMs)/1000)
 	}
 	return nil
-}
-
-func LegacyStageDuration(start, end time.Time) int64 {
-	if end.Before(start) {
-		return 0
-	}
-	return end.Sub(start).Milliseconds()
 }

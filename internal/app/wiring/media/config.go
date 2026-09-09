@@ -29,11 +29,3 @@ func MediaexecConfig(cfg *config.Config) mediaexec.ExecutionConfig {
 		Policy: mediaexec.EncoderPolicy{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF},
 	}
 }
-
-func MediaexecVideoProfile(cfg *config.Config) mediaexec.VideoProfile {
-	return MediaexecConfig(cfg).Profile
-}
-
-func MediaexecEncoderPolicy(cfg *config.Config) mediaexec.EncoderPolicy {
-	return MediaexecConfig(cfg).Policy
-}

@@ -56,12 +56,3 @@ const (
 	RightsVerdictAllowConditional RightsVerdict = "allow_conditional"
 	RightsVerdictDeny             RightsVerdict = "deny"
 )
-
-func IsKnownRightsVerdict(v RightsVerdict) bool {
-	switch v {
-	case RightsVerdictAllow, RightsVerdictAllowConditional, RightsVerdictDeny:
-		return true
-	default:
-		return false
-	}
-}

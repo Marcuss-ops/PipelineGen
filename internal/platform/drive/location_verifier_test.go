@@ -106,17 +106,6 @@ func stubFileMeta(fileID, mimeType string, size int64, trashed bool) *FileMeta {
 	}
 }
 
-func stubFileMetaWithLink(fileID, webViewLink string) *FileMeta {
-	return &FileMeta{
-		ID:          fileID,
-		Name:        "test.mp4",
-		MimeType:    "video/mp4",
-		Size:        1024,
-		WebViewLink: webViewLink,
-		Trashed:     false,
-	}
-}
-
 // ── AssetLocationResolverAdapter tests ─────────────────────────────
 
 // 1. Valid file → VERIFIED (link matches canonical).

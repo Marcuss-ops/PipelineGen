@@ -46,12 +46,6 @@ func (r *recordingSplittableDocumentRenderer) InjectDocumentLateBound(skeleton s
 	return InjectDocumentLateBound(skeleton, model, opts)
 }
 
-func (r *recordingSplittableDocumentRenderer) skeletonCallCount() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.skeletonCalls
-}
-
 // TestDocumentSkeleton_RendersAtSceneTextReadyBeforeTTSCompletes pins the
 // fan-out contract: the document skeleton is rendered while TTS is still
 // blocked, so the early DocsPrepare pass overlaps TTS/NLP instead of waiting

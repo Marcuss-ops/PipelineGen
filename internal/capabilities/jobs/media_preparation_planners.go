@@ -46,15 +46,3 @@ func (p ManifestPreparationPlanner) Plan(_ context.Context, j *job.Job) (Prepara
 func NewClipPreparationPlanner() PreparationPlanner {
 	return ManifestPreparationPlanner{Kind: "clip.process", ProcessorVersion: "clip-v1", Manifest: job.ClipManifest("", 0, 0, 0, 0, 0, 1, "", "", "", "", "", "clip-v1")}
 }
-func NewVidRushPreparationPlanner() PreparationPlanner {
-	return ManifestPreparationPlanner{Kind: "vidrush.resolve", ProcessorVersion: "vidrush-v1", Manifest: job.VidRushManifest("", "", "", "", 0, 0, "", "vidrush-v1", "", "", "")}
-}
-func NewOverlayPreparationPlanner() PreparationPlanner {
-	return ManifestPreparationPlanner{Kind: "overlay.render", ProcessorVersion: "overlay-v1", Manifest: job.OverlayManifest("", "", "", "", "overlay-v1", "", "", "", nil, 0, 0, 0, 0, 0, 1)}
-}
-func NewAudioPreparationPlanner() PreparationPlanner {
-	return ManifestPreparationPlanner{Kind: "audio.compile", ProcessorVersion: "audio-v1", Manifest: job.AudioManifest("", "", "", "", "", "", 0, 0, 0, "audio-v1")}
-}
-func NewRenderPreparationPlanner() PreparationPlanner {
-	return ManifestPreparationPlanner{Kind: "render.scene", ProcessorVersion: "render-v1", Manifest: job.RenderManifest("", "chronon", "render-v1", "require_gpu_native", "nvdec", "nvenc", 0, 0, 0, 1)}
-}

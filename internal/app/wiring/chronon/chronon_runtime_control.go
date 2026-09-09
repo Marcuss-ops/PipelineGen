@@ -86,11 +86,6 @@ func acquireChrononGPU(ctx context.Context) (time.Duration, func(), error) {
 	}
 }
 
-func currentChrononGPUConcurrency() int {
-	initChrononRuntimeControl()
-	return chrononGPUConcurrency
-}
-
 // chrononProbeLookup/Store is a file-identity cache, not a path-only cache.
 // Size + mtime are part of the key so a replaced source cannot inherit stale
 // duration metadata. The cache is intentionally small and TTL bounded.
@@ -111,29 +106,6 @@ func chrononProbeLookup(path string) (int64, bool) {
 		return 0, false
 	}
 	return entry.DurationMS, true
-}
-
-func chrononProbeStore(path string, durationMS int64) {
-	if durationMS <= 0 {
-		return
-	}
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return
-	}
-	key := chrononProbeKey{Path: path, Size: info.Size(), ModUnix: info.ModTime().UnixNano()}
-	ttlSeconds := envPositiveInt("CHRONON_PROBE_CACHE_TTL_SECONDS", int(defaultChrononProbeTTL/time.Second))
-	chrononProbeMu.Lock()
-	defer chrononProbeMu.Unlock()
-	// This is a hot metadata cache, not a catalog. Bound growth aggressively;
-	// stale entries are cheap to regenerate with ffprobe.
-	if len(chrononProbeCache) >= 1024 {
-		chrononProbeCache = map[chrononProbeKey]chrononProbeEntry{}
-	}
-	chrononProbeCache[key] = chrononProbeEntry{
-		DurationMS: durationMS,
-		ExpiresAt:  time.Now().Add(time.Duration(ttlSeconds) * time.Second),
-	}
 }
 
 // runChrononCommandStreaming drains stdout and stderr concurrently while the
