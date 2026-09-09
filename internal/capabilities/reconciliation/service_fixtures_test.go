@@ -193,10 +193,6 @@ func withLog(l *zap.Logger) serviceExtraOpt {
 	return func(d *ServiceDeps) { d.Log = l }
 }
 
-func withReportWriter(r ReportWriter) serviceExtraOpt {
-	return func(d *ServiceDeps) { d.ReportWriter = r }
-}
-
 // ── Existing PR1 tests (refactored to NewServiceFromDeps) ───────────
 
 type stubBadQdrant struct{ err error }

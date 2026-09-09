@@ -141,6 +141,10 @@ type CommitRequest struct {
 	// backlog.
 	IndexPriority int
 
+	// IndexEventKeySuffix differentiates a deterministic reindex request when
+	// the asset bytes stay unchanged but the searchable projection changes.
+	IndexEventKeySuffix string
+
 	// RequestedAt is the timestamp used for the outbox event. When
 	// zero, the adapter uses time.Now().
 	RequestedAt time.Time

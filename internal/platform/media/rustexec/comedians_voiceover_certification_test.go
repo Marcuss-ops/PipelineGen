@@ -345,16 +345,6 @@ func parseVolumeStat(t *testing.T, output []byte, key string) float64 {
 	return 0
 }
 
-func parseMaxVolume(t *testing.T, output []byte) float64 {
-	t.Helper()
-	return parseVolumeStat(t, output, "max_volume")
-}
-
-func parseMeanVolume(t *testing.T, output []byte) float64 {
-	t.Helper()
-	return parseVolumeStat(t, output, "mean_volume")
-}
-
 func runVolumeStat(t *testing.T, ffmpeg, path, filter, key string) float64 {
 	t.Helper()
 	if filter == "" {

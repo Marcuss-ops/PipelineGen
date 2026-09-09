@@ -10,10 +10,8 @@ import (
 	"sync"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 func loadVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCachePort, namespace, key string, dst any) (bool, error) {
@@ -61,30 +59,6 @@ func artlistSegmentCacheKey(segmentID, textHash, intentHash, language, model, pr
 		textHash = ""
 	}
 	return versionedSegmentCacheKey("artlist-assets", scriptports.CacheVersion("artlist-v3"), segmentID, textHash, intentHash, language, model, promptVersion)
-}
-
-func materializeNarrativeScenes(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.SpecScene {
-	if plan == nil || plan.SingleScene || len(scenes) > 1 {
-		return scenes
-	}
-	narrative := strings.TrimSpace(text)
-	if narrative == "" && len(scenes) == 1 {
-		narrative = strings.TrimSpace(scenes[0].Text)
-	}
-	if narrative == "" {
-		narrative = strings.TrimSpace(plan.SourceText)
-	}
-	n := len(splitParagraphSegments(narrative))
-	if n < 2 && plan.SourceText != "" {
-		n = len(splitParagraphSegments(plan.SourceText))
-	}
-	if n < 2 && plan.SegmentWords > 0 {
-		n = (len(strings.Fields(narrative)) + plan.SegmentWords - 1) / plan.SegmentWords
-	}
-	if n < 2 {
-		return scenes
-	}
-	return sceneplanner.NewSceneSynthesizer().FromProse(narrative, n)
 }
 
 func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {
@@ -234,33 +208,6 @@ func segmentTextHash(text string) string {
 
 func normalizeSegmentText(text string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " ")
-}
-
-func uniqueLimitedEntities(values []scriptpkg.ExtractedEntity, limit int) []scriptpkg.ExtractedEntity {
-	if limit <= 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]scriptpkg.ExtractedEntity, 0, minInt(limit, len(values)))
-	for _, v := range values {
-		if strings.TrimSpace(v.Value) == "" {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(v.Value)) + "|" + strings.ToUpper(strings.TrimSpace(v.Type))
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, v)
-		if len(out) >= limit {
-			break
-		}
-	}
-	return out
-}
-
-func uniqueLimitedStrings(values []string, limit int) []string {
-	return sliceutil.UniqueLimitedStrings(values, limit)
 }
 
 // weightedKeywordValues projects a profile's weighted keyword stream onto the

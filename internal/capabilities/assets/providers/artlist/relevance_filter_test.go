@@ -10,7 +10,6 @@ package artlist
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // makeCandidate is the canonical test helper for building a
@@ -46,12 +45,6 @@ func withCategories(cats ...string) candidateOpt {
 }
 func withOrientation(o string) candidateOpt {
 	return func(c *Candidate) { c.Orientation = o }
-}
-func withDuration(d time.Duration) candidateOpt {
-	return func(c *Candidate) {
-		c.Duration = d
-		c.DurationMs = d.Milliseconds()
-	}
 }
 func withDurationMs(ms int64) candidateOpt {
 	return func(c *Candidate) { c.DurationMs = ms }

@@ -3,9 +3,6 @@ package chronon
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -13,20 +10,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
-
-func semanticBinaryPath(base, name string) string {
-	envName := "VELOX_" + strings.ToUpper(name) + "_PATH"
-	if configured := strings.TrimSpace(os.Getenv(envName)); configured != "" {
-		return configured
-	}
-	if base != "" {
-		candidate := filepath.Join(filepath.Dir(base), name)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return base
-}
 
 // semanticRegistryProvider adapts the already-composed VidRush registry to
 // stockintelligence's provider-second port. It performs discovery only; the
@@ -89,29 +72,6 @@ func (h semanticAssetHydrator) Hydrate(ctx context.Context, ids []string) (map[s
 		}
 	}
 	return labels, nil
-}
-
-func buildSemanticStockResolver(registry *adapters.VidRushAssetProviderRegistry, search stockintelligence.LocalSearchPort, store *imagesregistry.AssetStoreSQLite) (scriptgenLocalResolver, error) {
-	if registry == nil || search == nil || store == nil {
-		return nil, fmt.Errorf("semantic stock resolver: local search, store and registry are required")
-	}
-	resolver, err := stockintelligence.NewResolver(search, semanticAssetHydrator{store: store}, semanticRegistryProvider{registry: registry}, func(candidates []stockintelligence.Candidate, _ string, _ string, _ []string) (string, error) {
-		var winner string
-		var score float32
-		for _, c := range candidates {
-			if c.Label == "" {
-				continue
-			}
-			if winner == "" || c.GenericSimilarity > score {
-				winner, score = c.AssetID, c.GenericSimilarity
-			}
-		}
-		return winner, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return resolver, nil
 }
 
 // Narrow alias keeps this composition helper independent of the scripts

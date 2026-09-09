@@ -183,6 +183,15 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		NounChunks: entitiesToStrings(entities),
 		Concepts:   extractedToConcepts(extractedEntities),
 	}
+	// VisualNER returns source-grounded noun phrases, while the downstream
+	// overlay/document surfaces also need one explicit editorial phrase. Keep
+	// that phrase grounded in the same extracted evidence.
+	for _, entity := range entities {
+		if strings.Contains(strings.TrimSpace(entity.Text), " ") {
+			entityResult.ImportantPhrases = []string{entity.Text}
+			break
+		}
+	}
 	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich profile: %w", err)

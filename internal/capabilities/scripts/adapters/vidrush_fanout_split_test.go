@@ -36,6 +36,30 @@ func TestVidRushFanoutPlanPreservesProviderPolicyAndInputs(t *testing.T) {
 	}
 }
 
+func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title: "Trump scene",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Extraction: mediadomain.MediaExtractionPolicy{
+				EntityImages: mediadomain.EntityImagePolicy{Enabled: true},
+			},
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+		},
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1", TextHash: "hash-1", Text: "Donald Trump's public life",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:                []scriptpkg.ExtractedEntity{{Value: "Donald Trump's", Type: "PERSON"}, {Value: "Donald Trump’s", Type: "PERSON"}},
+			ImageQueries:            []string{"Donald Trump's", "important public life"},
+			ImageEntityCanonicalIDs: map[string]string{"donald trump's": "person:donald-trump"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Donald Trump's" || fanout.imageQueries[1] != "Donald Trump’s" {
+		t.Fatalf("entity image queries = %#v, want both PERSON surfaces", fanout.imageQueries)
+	}
+}
+
 func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	updated := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}

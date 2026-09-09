@@ -105,11 +105,3 @@ func CleanScript(script string) string {
 
 	return strings.Join(cleanLines, "\n\n")
 }
-
-// estimateDuration estimates duration in seconds based on word count
-func EstimateDuration(wordCount int) int {
-	if wordCount <= 0 {
-		return 0
-	}
-	return (wordCount * 60) / WordsPerMinute
-}

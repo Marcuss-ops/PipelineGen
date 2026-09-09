@@ -85,15 +85,6 @@ func (c *PreparationCoordinator) WithWorkEstimator(estimator *PreparationWorkEst
 	return c
 }
 
-// Start blocks until ctx cancellation. Initial inspection is performed once;
-// subsequent inspections happen only after QueueNotifier broadcasts.
-func (c *PreparationCoordinator) WithMetrics(metrics *PreparationMetrics) *PreparationCoordinator {
-	if c != nil {
-		c.metrics = metrics
-	}
-	return c
-}
-
 func (c *PreparationCoordinator) Start(ctx context.Context) error {
 	if err := c.inspect(ctx); err != nil {
 		return err

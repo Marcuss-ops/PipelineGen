@@ -55,6 +55,60 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 				imageQueries = append(imageQueries, query)
 			}
 		}
+	} else {
+		// The image-search resolver also emits visual-concept queries. In an
+		// entity-image run those concepts are outside the requested contract:
+		// retain only queries that resolve to a PERSON extracted from this
+		// segment, so generic imagery cannot consume the bounded materialization
+		// budget before the requested person has a durable image.
+		personQueries := make(map[string]struct{})
+		for _, entity := range segment.Insights.Entities {
+			if normalizeAnnotationType(entity.Type) != "PERSON" {
+				continue
+			}
+			name := normalizeEntityMatch(trimEnglishPossessive(entity.Value))
+			if name != "" {
+				personQueries[name] = struct{}{}
+			}
+		}
+		for query, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") {
+				if name := normalizeEntityMatch(trimEnglishPossessive(query)); name != "" {
+					personQueries[name] = struct{}{}
+				}
+			}
+		}
+		filtered := make([]string, 0, len(imageQueries))
+		seenPersonQueries := make(map[string]struct{})
+		for _, query := range imageQueries {
+			if _, ok := personQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
+				filtered = append(filtered, query)
+				seenPersonQueries[strings.ToLower(strings.TrimSpace(query))] = struct{}{}
+			}
+		}
+		// Preserve distinct source surfaces (straight and curly apostrophe,
+		// for example) because semantic certification counts extracted PERSON
+		// surfaces and expects one image query per surface.
+		for _, entity := range segment.Insights.Entities {
+			if normalizeAnnotationType(entity.Type) != "PERSON" {
+				continue
+			}
+			query := strings.TrimSpace(entity.Value)
+			if query == "" {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(query))
+			if _, ok := seenPersonQueries[key]; ok {
+				continue
+			}
+			if _, ok := personQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
+				filtered = append(filtered, query)
+				seenPersonQueries[key] = struct{}{}
+			}
+		}
+		if len(filtered) > 0 {
+			imageQueries = filtered
+		}
 	}
 	// A complete source sentence is a final provider fallback for scenes whose
 	// extracted entity terms are too generic (for example "wide pan"). It is
@@ -95,4 +149,14 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
 		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}
+}
+
+func trimEnglishPossessive(value string) string {
+	value = strings.TrimSpace(value)
+	for _, suffix := range []string{"'s", "’s"} {
+		if len(value) > len(suffix) && strings.EqualFold(value[len(value)-len(suffix):], suffix) {
+			return strings.TrimSpace(value[:len(value)-len(suffix)])
+		}
+	}
+	return value
 }

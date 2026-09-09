@@ -68,25 +68,3 @@ func fanoutCacheState(plan *scriptpkg.ResolvedGenerationPlan, cacheHit bool) str
 	}
 	return "MISS"
 }
-
-func mergeVidRushProviderOutcomes(updated *scriptpkg.VidRushSegmentResult, outcomes []vidRushProviderOutcome, plan *scriptpkg.ResolvedGenerationPlan, profile scriptpkg.SegmentSemanticProfile, segmentID string) error {
-	for _, outcome := range outcomes {
-		if err := mergeVidRushProviderOutcome(updated, outcome, plan, profile, segmentID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func providerNames(candidates []scriptpkg.SegmentAssetCandidate) string {
-	seen := map[string]bool{}
-	var names []string
-	for _, candidate := range candidates {
-		name := strings.TrimSpace(candidate.Provider)
-		if name != "" && !seen[name] {
-			seen[name] = true
-			names = append(names, name)
-		}
-	}
-	return strings.Join(names, ",")
-}

@@ -14,20 +14,6 @@ type CacheHealth struct {
 	Error     error
 }
 
-func CheckCacheHealth(ctx context.Context, db *SQLiteDB) CacheHealth {
-	if db == nil || db.DB == nil {
-		return CacheHealth{Error: fmt.Errorf("cache database unavailable")}
-	}
-	var status string
-	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&status); err != nil {
-		return CacheHealth{Error: err}
-	}
-	if status != "ok" {
-		return CacheHealth{Error: fmt.Errorf("cache quick_check returned %q", status)}
-	}
-	return CacheHealth{Available: true}
-}
-
 // SweepCache removes expired and stale rows. It only touches the cache DB;
 // failure is returned to the caller for logging and cannot alter business DB.
 func SweepCache(ctx context.Context, db *SQLiteDB, staleDays int) (int64, error) {

@@ -154,10 +154,6 @@ func parseDiscoveryVideo(rawURL, fallbackID string) (stockplan.YouTubeVideo, err
 	return stockplan.YouTubeVideo{ID: fallbackID, URL: rawURL}, nil
 }
 
-func parseYouTubeURLForDiscovery(raw string) (stockplan.YouTubeVideo, error) {
-	return stockplan.ParseYouTubeURL(raw)
-}
-
 func candidateBetter(a, b scriptports.VideoSourceCandidate) bool {
 	if a.MetadataScore != b.MetadataScore {
 		return a.MetadataScore > b.MetadataScore

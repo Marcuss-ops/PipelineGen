@@ -254,11 +254,3 @@ func ValidateVidRushArtlistIsolation(segments []scriptpkg.VidRushSegmentResult) 
 	}
 	return nil
 }
-
-func validateArtlistCandidateForSegment(candidate scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) error {
-	ctx, err := newArtlistIsolationContext([]scriptpkg.VidRushSegmentResult{segment})
-	if err != nil {
-		return err
-	}
-	return validateArtlistCandidateForContext(ctx, candidate, segment)
-}

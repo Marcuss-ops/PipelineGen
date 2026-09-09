@@ -110,10 +110,6 @@ func (m *mockAssetDeleter) SetIndexState(ctx context.Context, id string, state a
 	return nil
 }
 
-func (m *mockAssetDeleter) indexStateTransitions() []indexStateCall {
-	return m.indexStateCalls
-}
-
 // SetLifecycleState records the (id, state) pair so tests can assert
 // the canonical intermediate + terminal lifecycle_state hops.
 //
@@ -127,10 +123,6 @@ func (m *mockAssetDeleter) SetLifecycleState(ctx context.Context, id string, sta
 		return m.setLifecycleStateErr
 	}
 	return nil
-}
-
-func (m *mockAssetDeleter) lifecycleStateTransitions() []lifecycleStateCall {
-	return m.lifecycleStateCalls
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────

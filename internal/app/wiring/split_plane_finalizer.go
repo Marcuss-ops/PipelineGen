@@ -8,7 +8,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // splitPlaneFinalizer is the explicit two-plane commit boundary used when
@@ -17,8 +17,10 @@ import (
 // on jobs second. Both phases are idempotent, so a retry after phase two
 // failure converges without a second publication.
 type splitPlaneFinalizer struct {
-	mediaDB       *sql.DB
-	mediaOutbox   *outboxevents.Repository
+	mediaDB     *sql.DB
+	mediaOutbox interface {
+		Enqueue(context.Context, *sql.Tx, string, string, string, string, string) (*pgmedia.EnqueueResult, error)
+	}
 	assetTx       finalization.AssetFinalizerTx
 	jobsFinalizer *jobsfinalizer.Finalizer
 }

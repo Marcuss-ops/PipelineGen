@@ -148,15 +148,6 @@ func protectedAudioWindows(t CanonicalTimeline) []audioWindow {
 	return out
 }
 
-func overlapsProtectedWindow(start, end int64, protected []audioWindow) bool {
-	for _, window := range protected {
-		if start < window.end && window.start < end {
-			return true
-		}
-	}
-	return false
-}
-
 // filterAudioLayersOutsideProtectedWindows cuts layers around protected
 // fixed-media spans. The resulting events remain explicit and deterministic:
 // body audio is preserved, while no BGM/SFX source range can enter a fixed
@@ -311,16 +302,6 @@ func findTrack(tracks []AudioTrack, role AudioTrackRole) *AudioTrack {
 		}
 	}
 	return nil
-}
-
-func removeTrack(tracks *[]AudioTrack, role AudioTrackRole) {
-	out := (*tracks)[:0]
-	for _, tr := range *tracks {
-		if tr.Role != role {
-			out = append(out, tr)
-		}
-	}
-	*tracks = out
 }
 
 func removeUnprotectedClipEvents(tracks *[]AudioTrack) {

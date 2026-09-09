@@ -71,8 +71,6 @@ func makeTrack(assetID, language, text string) *detail.TextTrack {
 
 func ptrFloat64(v float64) *float64 { return &v }
 
-func ptrInt(v int) *int { return &v }
-
 func slicesEqual[T comparable](a, b []T) bool {
 	if len(a) != len(b) {
 		return false

@@ -1,12 +1,5 @@
 package config
 
-import (
-	"os"
-	"strings"
-
-	"gopkg.in/yaml.v3"
-)
-
 type MatchingConfig struct {
 	Matching struct {
 		MinDefaultTokenLen  int      `yaml:"min_default_token_len"`
@@ -42,47 +35,4 @@ type MatchingConfig struct {
 
 	shortTokensMap    map[string]bool
 	allowed4LetterMap map[string]bool
-}
-
-func LoadMatchingConfig(path string) (*MatchingConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &MatchingConfig{}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, err
-	}
-
-	cfg.shortTokensMap = make(map[string]bool)
-	for _, t := range cfg.Matching.AllowShortTokens {
-		cfg.shortTokensMap[strings.ToLower(t)] = true
-	}
-
-	cfg.allowed4LetterMap = make(map[string]bool)
-	for _, t := range cfg.Matching.Allow4LetterTokens {
-		cfg.allowed4LetterMap[strings.ToLower(t)] = true
-	}
-
-	return cfg, nil
-}
-
-func (c *MatchingConfig) IsMeaningfulToken(tok string) bool {
-	t := strings.ToLower(tok)
-	l := len(t)
-
-	if l >= c.Matching.MinDefaultTokenLen {
-		return true
-	}
-
-	if l <= 3 && c.shortTokensMap[t] {
-		return true
-	}
-
-	if l == 4 && c.allowed4LetterMap[t] {
-		return true
-	}
-
-	return false
 }

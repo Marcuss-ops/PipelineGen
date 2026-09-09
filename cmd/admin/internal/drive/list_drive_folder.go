@@ -121,36 +121,6 @@ func RunListDriveFolder(args []string) error {
 	return nil
 }
 
-// runListDriveFolderCleanupPolluted now takes the canonical drive.Admin
-// port (Wave B, June 2026) — DeleteFolder is an Admin method; reading
-// from root.Drive.Reader is unnecessary here. Caller (runListDriveFolder)
-// passes root.Drive.Admin from the DriveBundle composition.
-func RunListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, driveAdmin drive.Admin, log *zap.Logger) error {
-	fmt.Printf("=== Cleaning Up Polluted Style Folders Under Media Root ===\n")
-	for _, id := range strings.Split(pollutedStyleFolderIDs, ",") {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		fmt.Printf("Deleting polluted folder %s... ", id)
-		if driveAdmin == nil {
-			fmt.Println("SKIPPED (no drive admin port)")
-			continue
-		}
-		if err := driveAdmin.DeleteFolder(ctx, id); err != nil {
-			fmt.Printf("failed: %v\n", err)
-			continue
-		}
-		fmt.Printf("OK\n")
-		if db != nil {
-			if _, err := db.ExecContext(ctx, "DELETE FROM clip_folders WHERE folder_id = ?", id); err != nil {
-				log.Warn("failed to delete clip_folders row for polluted folder", zap.String("id", id), zap.Error(err))
-			}
-		}
-	}
-	return nil
-}
-
 // scanFolders recursively walks a Drive folder hierarchy, prints entries
 // and (when syncDB is true) upserts each discovered folder into the
 // canonical `clip_folders` SQLite table.

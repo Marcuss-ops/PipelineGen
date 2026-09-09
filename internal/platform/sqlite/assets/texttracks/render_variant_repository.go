@@ -17,16 +17,6 @@ type RenderVariantRepositorySQLite struct {
 	log *zap.Logger
 }
 
-func NewRenderVariantRepository(db *sql.DB, log *zap.Logger) (*RenderVariantRepositorySQLite, error) {
-	if db == nil {
-		return nil, errors.New("render_variant_repository: sql.DB is nil")
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &RenderVariantRepositorySQLite{db: db, log: log}, nil
-}
-
 var _ detail.RenderVariantRepository = (*RenderVariantRepositorySQLite)(nil)
 
 func (r *RenderVariantRepositorySQLite) Upsert(ctx context.Context, v *detail.RenderVariant) error {

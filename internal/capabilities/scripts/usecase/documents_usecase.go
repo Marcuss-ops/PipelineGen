@@ -79,10 +79,6 @@ type DocumentsUseCase struct {
 	driveFolderID string
 }
 
-func NewDocumentsUseCase(publisher ports.DocumentPublisher, log *zap.Logger, driveFolderID string) *DocumentsUseCase {
-	return &DocumentsUseCase{publisher: publisher, log: log, driveFolderID: driveFolderID}
-}
-
 func (u *DocumentsUseCase) DocumentsService() *DocumentsService {
 	if u == nil {
 		return nil

@@ -140,15 +140,6 @@ func (f *fakeSQLiteAssetCommitter) commitIndexEvent(ctx context.Context, tx *sql
 	}, nil
 }
 
-func newTestDispatcher(clips *fakeClips, events outboxEnqueuer, txmgr TxManager) *Dispatcher {
-	committer := &fakeSQLiteAssetCommitter{
-		outbox:    events,
-		txmgr:     txmgr,
-		discovery: clips,
-	}
-	return NewDispatcher(clips, clips, events, txmgr, zap.NewNop(), committer)
-}
-
 // txMgrNoop is a TxManager that prints a clear failure if anyone actually
 // calls InTransaction. Tests that should fail-fast before reaching the
 // transaction (nil-safety, empty-clip-id) wire this in. DB() returns nil

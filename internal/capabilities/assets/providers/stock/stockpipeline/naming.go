@@ -1,11 +1,13 @@
-// Package stockpipeline keeps legacy naming entry points for compatibility.
+// Package stockpipeline hosts the neutral-boundary bridges for the
+// legacy stockpipeline package.
 //
-// This file is the single "legacy compatibility seam" for the split
-// (PR-STOCKPIPELINE-PHASE-SPLIT): it holds the legacy naming helpers AND
-// the neutral-boundary bridges (cleanup / ingest / publish / reconcile /
-// finalize) that let the legacy stockpipeline package drive the new
-// ownership-neutral sub-packages without adding new production files to
-// the registered hotspot. Callers continue to use the public legacy APIs.
+// This file is the "legacy compatibility seam" for the split
+// (PR-STOCKPIPELINE-PHASE-SPLIT): it holds the neutral-boundary bridges
+// (cleanup / ingest / publish / finalize) that let the legacy
+// stockpipeline package drive the new ownership-neutral sub-packages
+// without adding new production files to the registered hotspot. The
+// unused legacy naming/reconcile helpers were removed in September 2026
+// (deadcode sweep); no caller ever referenced them.
 package stockpipeline
 
 import (
@@ -20,7 +22,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/ingest"
 	stockpublish "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/reconcile"
 	capfinalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
@@ -59,10 +60,8 @@ func RootFolderName(in *RunInput) string {
 	}
 	return stockpublish.RootFolderName(namingInput(in))
 }
-func ResolvedFolderID(in *RunInput) string   { return stockpublish.ResolvedFolderID(namingInput(in)) }
-func SanitizedRootName(s string) string      { return pathutil.SafeFolderName(strings.TrimSpace(s)) }
-func LegacyQuery(queries []string) string    { return domaindelivery.FirstSanitizedQuery(queries) }
-func LegacyURLBasename(urls []string) string { return domaindelivery.FirstSanitizedURLBasename(urls) }
+func ResolvedFolderID(in *RunInput) string { return stockpublish.ResolvedFolderID(namingInput(in)) }
+func SanitizedRootName(s string) string    { return pathutil.SafeFolderName(strings.TrimSpace(s)) }
 func SanitizedURLBasename(raw string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -140,44 +139,12 @@ func SlugifyTitle(title string) string { return stockpublish.SlugifyTitle(title)
 
 // ─── publish bridge ──────────────────────────────────────────────────────────
 
-func publishNamingInput(in *RunInput) stockpublish.NamingInput {
-	if in == nil {
-		return stockpublish.NamingInput{}
-	}
-	return stockpublish.NamingInput{
-		FolderName: in.FolderName, Subfolder: in.Subfolder,
-		SearchQueries: append([]string(nil), in.SearchQueries...),
-		DirectURLs:    append([]string(nil), in.DirectURLs...),
-		DriveFolderID: in.DriveFolderID, DriveFolderResolved: in.DriveFolderResolved,
-	}
-}
-
 func publishClipNamingInput(plan ClipPlan) stockpublish.ClipNamingInput {
 	return stockpublish.ClipNamingInput{
 		Round: plan.Round, Title: plan.Title, Slug: plan.Slug, ParentSlug: plan.ParentSlug,
 		StartSec: plan.StartSec, EndSec: plan.EndSec,
 	}
 }
-
-func publishRootFolderName(in *RunInput) string {
-	return stockpublish.RootFolderName(publishNamingInput(in))
-}
-func publishResolvedFolderID(in *RunInput) string {
-	return stockpublish.ResolvedFolderID(publishNamingInput(in))
-}
-func publishTimestampGroupName(in *RunInput) string {
-	return stockpublish.TimestampGroupName(publishNamingInput(in))
-}
-func publishTimestampParentGroupName(in *RunInput) string {
-	return stockpublish.TimestampParentGroupName(publishNamingInput(in))
-}
-func publishClipFolderName(in *RunInput, plan ClipPlan, fallback string) string {
-	return stockpublish.ClipFolderName(publishNamingInput(in), publishClipNamingInput(plan), fallback)
-}
-func publishPerClipLeafName(plan ClipPlan) string {
-	return stockpublish.PerClipLeafName(publishClipNamingInput(plan))
-}
-func publishSlugifyTitle(title string) string { return stockpublish.SlugifyTitle(title) }
 
 func toPublishChunk(chunk ChunkState, rootFolder, folderID, leaf string) stockpublish.Chunk {
 	return stockpublish.Chunk{Index: chunk.Index, ArtifactID: chunk.ArtifactID, Filename: chunk.Filename,
@@ -268,27 +235,6 @@ func (p *stockIngestPreparer) Prepare(ctx context.Context, source ingest.Source)
 }
 
 // ─── reconcile bridge ────────────────────────────────────────────────────────
-
-func reconcileBatchProjection(batch StockBatch) reconcile.Batch {
-	return reconcile.Batch{ID: batch.ID, Status: string(batch.Status), ExpectedGroups: batch.ExpectedGroups, ExpectedArtifacts: batch.ExpectedClips, VerifiedArtifacts: batch.VerifiedClips}
-}
-func reconcileGroupProjection(group StockBatchGroup) reconcile.Group {
-	return reconcile.Group{ID: group.ID, BatchID: group.BatchID, Status: string(group.Status), ExpectedArtifacts: group.ExpectedClips, VerifiedArtifacts: group.VerifiedClips}
-}
-func reconcileArtifactProjection(artifact StockArtifact) reconcile.Artifact {
-	return reconcile.Artifact{ID: artifact.ID, BatchID: artifact.BatchID, GroupID: artifact.GroupID, Ordinal: artifact.Ordinal, Status: string(artifact.Status), LastError: artifact.LastError}
-}
-
-func reconcileSnapshot(batch StockBatch, groups []StockBatchGroup, artifacts []StockArtifact) reconcile.Snapshot {
-	out := reconcile.Snapshot{Batch: reconcileBatchProjection(batch), Groups: make([]reconcile.Group, 0, len(groups)), Artifacts: make([]reconcile.Artifact, 0, len(artifacts))}
-	for _, group := range groups {
-		out.Groups = append(out.Groups, reconcileGroupProjection(group))
-	}
-	for _, artifact := range artifacts {
-		out.Artifacts = append(out.Artifacts, reconcileArtifactProjection(artifact))
-	}
-	return out
-}
 
 // ─── finalize bridge ─────────────────────────────────────────────────────────
 

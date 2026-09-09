@@ -19,16 +19,6 @@ type FallbackEntityExtractor struct {
 	Fallback entityports.EntityExtractor
 }
 
-func NewFallbackEntityExtractor(primary, fallback entityports.EntityExtractor) entityports.EntityExtractor {
-	if primary == nil {
-		return fallback
-	}
-	if fallback == nil {
-		return primary
-	}
-	return &FallbackEntityExtractor{Primary: primary, Fallback: fallback}
-}
-
 func (e *FallbackEntityExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
 	if e == nil {
 		return nil, ErrEntityExtractorUnavailable

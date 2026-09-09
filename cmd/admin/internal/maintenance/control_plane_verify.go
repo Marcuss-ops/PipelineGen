@@ -71,13 +71,6 @@ func RunControlPlaneVerify(args []string) error {
 	return nil
 }
 
-func RunControlPlane(args []string) error {
-	if len(args) == 0 || args[0] != "verify" {
-		return fmt.Errorf("usage: admin control-plane verify [--json] [--deep]")
-	}
-	return runControlPlaneVerify(args[1:])
-}
-
 func printControlPlaneReport(r capcontrol.Report) {
 	fmt.Println("PIPELINEGEN CONTROL PLANE VERIFICATION")
 	fmt.Println("========================================")
@@ -109,8 +102,4 @@ func printControlPlaneReport(r capcontrol.Report) {
 		fmt.Println()
 	}
 	fmt.Printf("\nFINAL STATUS       %s\n", r.Status)
-}
-
-func runControlPlaneVerify(args []string) error {
-	return nil
 }

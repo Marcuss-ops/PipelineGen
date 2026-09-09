@@ -246,19 +246,6 @@ func humanDocumentContract(output string) string {
 	return output
 }
 
-func extractSpecSceneContract(t *testing.T, output string) scriptpkg.SpecSceneOutput {
-	t.Helper()
-	const startMarker = "<h2>SpecScene JSON</h2><pre><code>"
-	start := strings.Index(output, startMarker)
-	require.NotEqual(t, -1, start)
-	start += len(startMarker)
-	end := strings.Index(output[start:], "</code></pre>")
-	require.NotEqual(t, -1, end)
-	var decoded scriptpkg.SpecSceneOutput
-	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(output[start:start+end])), &decoded))
-	return decoded
-}
-
 func TestGenerationRun_AudioCompilePrecedesDocumentAndDocumentWaitsForVoiceover(t *testing.T) {
 	runner, repo, _, _, voiceover, docPub, _ := newTestRunner()
 	voiceover.ref.URL = "https://drive.google.com/VOICE-EN"

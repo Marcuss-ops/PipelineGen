@@ -61,14 +61,6 @@ func (m *PreparationMetrics) RecordWorkEstimate(estimate job.WorkEstimate) {
 	PreparationEstimatedWorkMS.WithLabelValues(string(estimate.Kind), string(estimate.Source)).Set(float64(estimate.ExpectedWorkMS))
 }
 
-func (m *PreparationMetrics) RecordWorkObservation(obs job.WorkObservation) {
-	if obs.Kind == "" || obs.WallMS <= 0 || obs.Dimension == job.WorkloadNone || obs.Amount <= 0 {
-		return
-	}
-	PreparationWorkloadAmount.WithLabelValues(string(obs.Kind), string(obs.Dimension)).Observe(obs.Amount)
-	PreparationWorkloadRateMS.WithLabelValues(string(obs.Kind), string(obs.Dimension)).Set(float64(obs.WallMS) / obs.Amount)
-}
-
 func (m *PreparationMetrics) RecordAdoption(ctx context.Context, event PreparationAdoptionEvent) error {
 	kind := event.Kind
 	if kind == "" {
