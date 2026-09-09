@@ -128,21 +128,9 @@ allowlist:
       path; sequence after texttracks internal cue-translation decoupling.
 
   - source: content
-    target: delivery
-    kind: K2
-    exemplar: internal/capabilities/multilingual/renderer.go -> internal/capabilities/delivery
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: content
     target: scripts
     kind: K2
     exemplar: internal/capabilities/localization/adapters/render.go -> internal/capabilities/cliprender
-    tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
-
-  - source: content
-    target: system
-    kind: K2
-    exemplar: internal/capabilities/multilingual/recorder.go -> internal/capabilities/performance
     tracking: WAVE-24-CLEANUP-DAY P1-CAPABILITY-OWNERSHIP
 
   - source: images
