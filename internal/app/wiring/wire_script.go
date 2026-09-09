@@ -89,19 +89,26 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
 	vidRushProviders, vidRushFinalizer := (*adapters.VidRushAssetProviderRegistry)(nil), scriptports.VidRushArtifactFinalizer(nil)
 	if root.Drive != nil && root.Drive.Publisher != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidrushwiring.VidRushMaterializationDeps{
+		vidRushDeps := vidrushwiring.VidRushMaterializationDeps{
 			MediaPG:     root.MediaPostgres,
 			MediaSQLite: root.DB.DB,
 			Delivery: vidrushwiring.VidRushDeliveryPorts{
-				Publisher:      root.Drive.Publisher,
-				EventsRepo:     root.Outbox.EventsRepo,
-				ProviderAssets: artlistWiring.ProviderAssets,
-				Downloader:     artlistWiring.ArtlistDownloader,
+				Publisher:  root.Drive.Publisher,
+				EventsRepo: root.Outbox.EventsRepo,
 			},
 			ImageSearcher:  vidrushInternetImageSearcher(root, log),
 			ImageGenerator: root.Domains.ImageService,
 			MediaExec:      root.MediaExec,
-		}, log)
+		}
+		// Artlist is optional for script generation. When its feature is
+		// disabled, keep the shared VidRush materialization wiring alive with
+		// only Internet Images and Drive delivery; never dereference the absent
+		// Artlist wiring bundle.
+		if artlistWiring != nil {
+			vidRushDeps.Delivery.ProviderAssets = artlistWiring.ProviderAssets
+			vidRushDeps.Delivery.Downloader = artlistWiring.ArtlistDownloader
+		}
+		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidRushDeps, log)
 	}
 	vidRushCache := vidrushCachePort(root, log)
 	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
