@@ -51,7 +51,6 @@
 # planned; they are the canonical implementation).
 internal/platform/sqlite/assets/clips_repository.go
 internal/platform/sqlite/outbox/repository.go
-internal/platform/sqlite/admin/purge.go
 internal/application/assets/mutations/primitives.go
 internal/platform/sqlite/assetindex/service.go
 
@@ -69,10 +68,12 @@ internal/app/clips_adapters_repo.go
 
 # ── Bucket 2: Admin & operator tooling (admin migration/backfill) ───────
 # Off-process operator tools; they bypass the dispatcher by design to
-# run one-shot recovery / DR / cleanup flows. Per Wave 22 PR-1 they use
-# `admin.InternalAdminPurge` (sealed surface) which deliberately never
-# embraces the outbox path — the operator chose this explicitly when
-# invoking the tool. Allowlisted in perpetuity.
+# run one-shot recovery / DR / cleanup flows. They deliberately never
+# embrace the outbox path — the operator chose this explicitly when
+# invoking the tool. Allowlisted in perpetuity. (The former sealed
+# surface `admin.InternalAdminPurge` at internal/platform/sqlite/admin
+# was removed in September 2026 after its last consumer disappeared; the
+# remaining tooling owns its purge SQL directly.)
 cmd/admin/db_restore.go
 cmd/admin/reconcile/dr_qdrant.go
 cmd/admin/drive_bootstrap.go

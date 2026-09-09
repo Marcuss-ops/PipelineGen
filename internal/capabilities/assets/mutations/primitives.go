@@ -36,11 +36,10 @@
 //     Qdrant empty, the canonical re-index path is bypassed). HardDelete
 //     permanently removes the row without emitting an
 //     asset.index.delete_requested event, leaving the Qdrant point
-//     orphaned. The only legitimate caller is the admin tool, which
-//     goes through the InternalAdminPurge port. See
-//     internal/platform/sqlite/admin/purge.go::PurgeService
-//     which now uses txmutation.RestoreTx/HardDeleteTx directly
-//     (caller-owned tx).
+//     orphaned. The former InternalAdminPurge offline surface
+//     (internal/platform/sqlite/admin) was removed in September 2026
+//     after its last consumer disappeared; offline tooling now calls
+//     txmutation.RestoreTx/HardDeleteTx directly (caller-owned tx).
 //
 // Reading the file:
 //   - AssetMutationPrimitives   : 1-method narrowed surface for test
