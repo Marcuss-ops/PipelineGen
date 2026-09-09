@@ -52,6 +52,7 @@
     "paths": [
       "internal/capabilities/clips/",
       "internal/capabilities/assets/clips/",
+      "config.clip-render.profile.yaml",
       "assets/fonts/"
     ],
     "go_packages": [

@@ -211,9 +211,9 @@ type PublicationMetrics struct {
 // the publisher-owned measurement report projected into the canonical V2
 // execution report.
 type RenderPublishResult struct {
-	AssetID       string
-	DriveFileID   string
-	DriveLink     string
+	AssetID     string
+	DriveFileID string
+	DriveLink   string
 	// DrivePending means the artifact is committed and the Drive upload was
 	// durably handed to the outbox. It is intentionally distinct from an
 	// upload failure: the render job may complete while the external delivery
