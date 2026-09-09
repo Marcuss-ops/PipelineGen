@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,49 @@ func TestClipRenderPublisher_BurnMode_NeverUploadsAss(t *testing.T) {
 	}
 	if commits[0].FolderID != "leaf-123" {
 		t.Errorf("commit folder = %q, want leaf-123", commits[0].FolderID)
+	}
+}
+
+// TestClipRenderPublisher_AsyncDriveStagesBeforeCommit pins the durable
+// boundary: enabling async delivery must not call Drive and must move the
+// artifact out of the job workspace before the outbox payload is committed.
+func TestClipRenderPublisher_AsyncDriveStagesBeforeCommit(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPublisher() error = %v", err)
+	}
+	p.SetAsyncDrive(true)
+	p.SetAsyncDriveStagingRoot(filepath.Join(t.TempDir(), "cliprender-staging"))
+	video := writeFakeVideo(t)
+
+	res, err := p.Publish(context.Background(), publishInput(video, "Async Clip", cliprender.SubtitlesModeBurn, "leaf-async"))
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if !res.DrivePending {
+		t.Fatal("async publication must report DrivePending")
+	}
+	if got := len(drive.publishRequests()); got != 0 {
+		t.Fatalf("Drive uploads = %d, want 0 before outbox consumption", got)
+	}
+	commits := committer.commitRequests()
+	if len(commits) != 1 || len(commits[0].AdditionalOutboxEvents) != 1 {
+		t.Fatalf("commit additional outbox events = %d, want 1", len(commits[0].AdditionalOutboxEvents))
+	}
+	var payload cliprender.ClipRenderDriveDeliveryRequest
+	if err := json.Unmarshal([]byte(commits[0].AdditionalOutboxEvents[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode delivery payload: %v", err)
+	}
+	if payload.LocalPath == video {
+		t.Fatal("delivery payload still points into the job workspace")
+	}
+	if _, err := os.Stat(payload.LocalPath); err != nil {
+		t.Fatalf("staged artifact is unavailable: %v", err)
+	}
+	if _, err := os.Stat(video); !os.IsNotExist(err) {
+		t.Fatalf("workspace artifact still exists after staging, err=%v", err)
 	}
 }
 

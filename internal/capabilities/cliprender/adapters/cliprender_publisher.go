@@ -2,12 +2,14 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -26,15 +28,14 @@ import (
 // asset and its location are committed through the canonical AssetCommitter.
 //
 // Every boundary step (hash, upload video, upload sidecar, taxonomy resolve,
-// SQLite commit) is logged with structured zap entries and timed so the
+// PostgreSQL commit) is logged with structured zap entries and timed so the
 // pipelinegen call chain can be reconstructed from logs alone.
 type ClipRenderPublisher struct {
-	drive     delivery.Publisher
-	committer persistence.AssetCommitter
-	log       *zap.Logger
-	// SQLite has one canonical writer. Render jobs may encode and upload in
-	// parallel, but their final asset commits must not overlap.
-	commitMu          sync.Mutex
+	drive             delivery.Publisher
+	committer         persistence.AssetCommitter
+	log               *zap.Logger
+	asyncDrive        bool
+	asyncStagingRoot  string
 	subtitleArtifacts detail.SubtitleArtifactRepository
 }
 
@@ -42,6 +43,25 @@ type ClipRenderPublisher struct {
 func (p *ClipRenderPublisher) SetSubtitleArtifactRepository(repo detail.SubtitleArtifactRepository) {
 	if p != nil {
 		p.subtitleArtifacts = repo
+	}
+}
+
+// SetAsyncDrive enables the production clip path that commits the rendered
+// asset and a Drive-delivery intent without waiting for Google Drive. The
+// outbox consumer owns the later upload and location reconciliation. Tests
+// keep the legacy synchronous mode unless they opt in explicitly.
+func (p *ClipRenderPublisher) SetAsyncDrive(enabled bool) {
+	if p != nil {
+		p.asyncDrive = enabled
+	}
+}
+
+// SetAsyncDriveStagingRoot configures the durable root used to detach an
+// asynchronous clip artifact from the per-job workspace. The workspace is
+// cleaned as soon as the job finishes; this root must therefore be outside it.
+func (p *ClipRenderPublisher) SetAsyncDriveStagingRoot(root string) {
+	if p != nil {
+		p.asyncStagingRoot = strings.TrimSpace(root)
 	}
 }
 
@@ -130,6 +150,9 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.Bool("has_subtitle_sidecar", hasSubtitleSidecar),
 		zap.Int64("duration_ms", metrics.HashMS),
 	)
+	if p.asyncDrive && !hasSubtitleSidecar {
+		return p.publishAsyncDrive(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename)
+	}
 
 	// ── Phase 2: upload video + subtitle sidecar concurrently ────────
 	// The video and its deterministic ASS sidecar are independent remote
@@ -313,9 +336,7 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		EmitIndexEvent: true,
 	}
 	commitStart := time.Now()
-	p.commitMu.Lock()
 	_, err = p.committer.CommitAsset(ctx, commitRequest)
-	p.commitMu.Unlock()
 	metrics.AssetCommitMS = time.Since(commitStart).Milliseconds()
 	if err != nil {
 		p.publishPhase("commit_failed", runID,
@@ -363,4 +384,172 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 			TotalMS:           metrics.TotalMS,
 		},
 	}, nil
+}
+
+// publishAsyncDrive completes the local, durable half of publication and
+// emits a transactionally-persisted Drive intent. It deliberately supports
+// burned subtitles (the normal clip-render mode); sidecar mode stays on the
+// synchronous path until its subtitle-artifact mutation is included in the
+// same delivery contract.
+func (p *ClipRenderPublisher) publishAsyncDrive(
+	ctx context.Context,
+	in cliprender.RenderPublishInput,
+	started time.Time,
+	hashMS int64,
+	contentHash string,
+	size int64,
+	assetID, driveFilename string,
+) (*cliprender.RenderPublishResult, error) {
+	stagedPath, err := p.stageAsyncArtifact(in.OutputPath, assetID, size)
+	if err != nil {
+		return nil, fmt.Errorf("stage rendered artifact for asynchronous Drive delivery: %w", err)
+	}
+	taxonomyStart := time.Now()
+	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
+		AssetID: assetID, Provider: "pipelinegen", MediaType: mediaregistry.MediaVideo,
+		AssetKind: mediaregistry.AssetRenderedVideo,
+	})
+	taxonomyMS := time.Since(taxonomyStart).Milliseconds()
+	if err != nil {
+		return nil, fmt.Errorf("resolve rendered taxonomy: %w", err)
+	}
+
+	payload := cliprender.ClipRenderDriveDeliveryRequest{
+		SchemaVersion: "clip.render.drive_delivery.v1",
+		AssetID:       assetID, RunID: in.RunID, SourceAssetID: in.SourceAssetID,
+		LocalPath: stagedPath, Filename: driveFilename,
+		FolderID: in.DriveFolderID, ContentHash: contentHash, SizeBytes: size,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal Drive delivery intent: %w", err)
+	}
+	keyDigest := digest.SHA256Bytes([]byte(assetID + "|" + contentHash + "|" + in.DriveFolderID))
+	commitRequest := persistence.AssetCommitRequest{
+		AssetID: assetID, Source: "clip.render", Name: driveFilename,
+		Filename: driveFilename, MediaType: "video", Category: "clip-render",
+		DurationMs: int64(in.Outcome.DurationSec * 1000), ContentHash: contentHash,
+		LifecycleState: "ACTIVE", IndexState: "DISCOVERED", LocalPath: stagedPath,
+		FolderID: in.DriveFolderID, SourceURL: in.SourceAssetID,
+		AssetVersion: contentHash, Rendition: "rendered", Title: driveFilename,
+		SourceProvider: "pipelinegen", Taxonomy: taxonomy,
+		Metadata: persistence.TypedMetadata{Title: driveFilename, Origin: "clip.render", SourceVersion: contentHash,
+			PublishAction: "clip.render", SizeBytes: size, Extra: map[string]any{
+				"source_asset_id": in.SourceAssetID, "plan_run_id": in.RunID,
+				"delivery_status": "pending", "drive_folder_id": in.DriveFolderID,
+			}},
+		EmitIndexEvent: true,
+		AdditionalOutboxEvents: []persistence.OutboxEvent{{
+			EventType:   cliprender.EventClipRenderDriveDeliveryRequested,
+			AggregateID: assetID, AggregateType: "media_asset",
+			PayloadJSON: string(payloadJSON), EventKey: "clip-render-drive:" + keyDigest,
+		}},
+	}
+	commitStart := time.Now()
+	_, err = p.committer.CommitAsset(ctx, commitRequest)
+	commitMS := time.Since(commitStart).Milliseconds()
+	if err != nil {
+		return nil, fmt.Errorf("commit rendered asset with Drive intent: %w", err)
+	}
+
+	metrics := &cliprender.PublicationMetrics{
+		HashMS: hashMS, TaxonomyResolveMS: taxonomyMS, AssetCommitMS: commitMS,
+		TotalMS: time.Since(started).Milliseconds(),
+	}
+	p.publishPhase("drive_queued", in.RunID,
+		zap.String("asset_id", assetID), zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested),
+		zap.Int64("duration_ms", metrics.TotalMS), zap.Int64("drive_upload_ms", -1),
+	)
+	return &cliprender.RenderPublishResult{
+		AssetID: assetID, DrivePending: true, SizeBytes: size, Publish: metrics,
+	}, nil
+}
+
+// stageAsyncArtifact atomically detaches a rendered file from the ephemeral
+// job workspace. The outbox event may be processed after the job runner has
+// cleaned that workspace, so the payload must reference this durable staging
+// copy instead of the renderer's run directory.
+func (p *ClipRenderPublisher) stageAsyncArtifact(source, assetID string, size int64) (string, error) {
+	root := strings.TrimSpace(p.asyncStagingRoot)
+	if root == "" {
+		root = filepath.Join(os.TempDir(), "pipelinegen", "cliprender", "staging")
+	}
+	if !filepath.IsAbs(root) {
+		absolute, err := filepath.Abs(root)
+		if err != nil {
+			return "", fmt.Errorf("resolve staging root %q: %w", root, err)
+		}
+		root = absolute
+	}
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		return "", fmt.Errorf("create staging root %q: %w", root, err)
+	}
+	ext := filepath.Ext(source)
+	if ext == "" {
+		ext = ".mp4"
+	}
+	destination := filepath.Join(root, assetID+ext)
+	if source == destination {
+		return destination, nil
+	}
+
+	if _, err := os.Stat(destination); err == nil {
+		return p.reuseStagedArtifact(source, destination, assetID, size)
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("inspect staged artifact %q: %w", destination, err)
+	}
+	if err := os.Rename(source, destination); err == nil {
+		return destination, nil
+	}
+
+	// The workspace and configured staging root may be on different mounts;
+	// fall back to a verified copy when atomic rename is unavailable.
+	inFile, err := os.Open(source)
+	if err != nil {
+		return "", fmt.Errorf("open source artifact %q: %w", source, err)
+	}
+	outFile, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
+	if err != nil {
+		_ = inFile.Close()
+		if os.IsExist(err) {
+			return p.reuseStagedArtifact(source, destination, assetID, size)
+		}
+		return "", fmt.Errorf("create staged artifact %q: %w", destination, err)
+	}
+	_, copyErr := io.Copy(outFile, inFile)
+	if copyErr == nil {
+		copyErr = outFile.Sync()
+	}
+	closeOutErr := outFile.Close()
+	closeInErr := inFile.Close()
+	if copyErr != nil {
+		_ = os.Remove(destination)
+		return "", fmt.Errorf("copy artifact to staging: %w", copyErr)
+	}
+	if closeOutErr != nil {
+		_ = os.Remove(destination)
+		return "", fmt.Errorf("close staged artifact: %w", closeOutErr)
+	}
+	if closeInErr != nil {
+		return "", fmt.Errorf("close source artifact: %w", closeInErr)
+	}
+	if err := os.Remove(source); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("remove workspace artifact after staging: %w", err)
+	}
+	return destination, nil
+}
+
+func (p *ClipRenderPublisher) reuseStagedArtifact(source, destination, assetID string, size int64) (string, error) {
+	stagedHash, stagedSize, err := digest.SHA256File(destination)
+	if err != nil {
+		return "", fmt.Errorf("verify existing staged artifact: %w", err)
+	}
+	prefixLen := len(assetID) - len("cliprender_")
+	if prefixLen <= 0 || len(stagedHash) < prefixLen || stagedSize != size || !strings.HasPrefix(assetID, "cliprender_") || !strings.HasPrefix(assetID[len("cliprender_"):], stagedHash[:prefixLen]) {
+		return "", fmt.Errorf("existing staged artifact %q does not match asset %q", destination, assetID)
+	}
+	if err := os.Remove(source); err != nil && !os.IsNotExist(err) && source != destination {
+		return "", fmt.Errorf("remove duplicate workspace artifact: %w", err)
+	}
+	return destination, nil
 }

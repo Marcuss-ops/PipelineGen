@@ -275,6 +275,7 @@ features:
   images_enabled: true
   stock_pipeline_enabled: true
   clip_render_enabled: false
+  clip_async_drive_enabled: true
   voiceover_enabled: false
 
 # NOTE (June 2026 drft-fix): the previous config.example.yaml featured

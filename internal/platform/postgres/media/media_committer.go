@@ -175,10 +175,11 @@ func persistenceToMediaRequest(r persistence.CommitRequest) mediacommit.CommitMe
 		Source: mediacommit.AssetSourceDraft{
 			SourceType: r.Source, SourceURI: sourceRef, SourceVersion: sourceVersion, IsPrimary: true,
 		},
-		Content:     optionalContent(r.ContentHash),
-		Taxonomy:    r.Taxonomy,
-		IndexPolicy: mediacommit.IndexPolicy{Indexable: r.EmitIndexEvent, Priority: r.IndexPriority},
-		Actor:       "persistence-compat",
+		Content:                optionalContent(r.ContentHash),
+		Taxonomy:               r.Taxonomy,
+		IndexPolicy:            mediacommit.IndexPolicy{Indexable: r.EmitIndexEvent, Priority: r.IndexPriority},
+		AdditionalOutboxEvents: r.AdditionalOutboxEvents,
+		Actor:                  "persistence-compat",
 	}
 }
 
@@ -187,6 +188,7 @@ func mediaToPersistenceResult(r mediacommit.CommitMediaAssetResult) persistence.
 	return persistence.CommitResult{
 		AssetRowsAffected: 1, OutboxEventKey: r.OutboxEventKey,
 		OutboxInserted: r.OutboxInserted, OutboxExistingStatus: r.OutboxExistingStatus,
+		AdditionalOutbox: r.AdditionalOutbox,
 	}
 }
 
@@ -337,6 +339,23 @@ func (c *PostgresMediaCommitter) commitTx(ctx context.Context, tx *sql.Tx, req m
 		}
 	}
 
+	// Additional external side effects are represented as durable outbox
+	// intents and must survive the compatibility conversion above.
+	additionalOutbox := make([]persistence.AdditionalOutboxResult, 0, len(req.AdditionalOutboxEvents))
+	for i, event := range req.AdditionalOutboxEvents {
+		if event.EventType == "" || event.EventKey == "" {
+			return mediacommit.CommitMediaAssetResult{}, fmt.Errorf("media committer: additional outbox event[%d] requires event type and event key", i)
+		}
+		enqueueResult, err := c.box.Enqueue(ctx, tx, event.EventType, event.AggregateID, event.AggregateType, event.PayloadJSON, event.EventKey)
+		if err != nil {
+			return mediacommit.CommitMediaAssetResult{}, fmt.Errorf("media committer: enqueue additional event %q: %w", event.EventType, err)
+		}
+		additionalOutbox = append(additionalOutbox, persistence.AdditionalOutboxResult{
+			EventKey: event.EventKey, Inserted: enqueueResult.Inserted,
+			ExistingStatus: enqueueResult.ExistingStatus,
+		})
+	}
+
 	return mediacommit.CommitMediaAssetResult{
 		AssetID:              assetID,
 		Created:              created,
@@ -346,6 +365,7 @@ func (c *PostgresMediaCommitter) commitTx(ctx context.Context, tx *sql.Tx, req m
 		OutboxEventKey:       indexResult.EventKey,
 		OutboxInserted:       indexResult.Inserted,
 		OutboxExistingStatus: indexResult.ExistingStatus,
+		AdditionalOutbox:     additionalOutbox,
 	}, nil
 }
 

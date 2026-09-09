@@ -214,10 +214,36 @@ type RenderPublishResult struct {
 	AssetID       string
 	DriveFileID   string
 	DriveLink     string
+	// DrivePending means the artifact is committed and the Drive upload was
+	// durably handed to the outbox. It is intentionally distinct from an
+	// upload failure: the render job may complete while the external delivery
+	// continues in the background.
+	DrivePending  bool
 	SizeBytes     int64
 	SidecarFileID string
 	SidecarLink   string
 	Publish       *PublicationMetrics
+}
+
+// EventClipRenderDriveDeliveryRequested is emitted atomically with the
+// rendered media asset when clip.render uses asynchronous Drive delivery.
+// The outbox consumer uploads the durable local artifact and then reconciles
+// the Drive location on the canonical asset row.
+const EventClipRenderDriveDeliveryRequested = "clip.render.drive_delivery.requested.v1"
+
+// ClipRenderDriveDeliveryRequest is the durable outbox payload for a rendered
+// clip's external Drive projection. It contains no credentials and is
+// idempotent by AssetID + ContentHash + FolderID.
+type ClipRenderDriveDeliveryRequest struct {
+	SchemaVersion string `json:"schema_version"`
+	AssetID       string `json:"asset_id"`
+	RunID         string `json:"run_id"`
+	SourceAssetID string `json:"source_asset_id"`
+	LocalPath     string `json:"local_path"`
+	Filename      string `json:"filename"`
+	FolderID      string `json:"folder_id"`
+	ContentHash   string `json:"content_hash"`
+	SizeBytes     int64  `json:"size_bytes"`
 }
 
 // RenderPublisher publishes the validated output to Drive through the

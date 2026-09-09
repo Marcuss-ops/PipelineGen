@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -118,6 +119,10 @@ type CommitMediaAssetRequest struct {
 	TextTracks  []TextTrack
 	IndexPolicy IndexPolicy
 
+	// AdditionalOutboxEvents are durable post-commit intents emitted in the
+	// same PostgreSQL transaction as the canonical asset row.
+	AdditionalOutboxEvents []assetspersistence.OutboxEvent
+
 	// Actor and RunID stamp the registry event (step 7).
 	Actor string
 	RunID string
@@ -133,6 +138,7 @@ type CommitMediaAssetResult struct {
 	OutboxEventKey       string
 	OutboxInserted       bool
 	OutboxExistingStatus string
+	AdditionalOutbox     []assetspersistence.AdditionalOutboxResult
 }
 
 // MediaCommitter is the single transactional commit gate for media assets.

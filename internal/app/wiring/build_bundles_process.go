@@ -226,6 +226,11 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	if canonicalCommitter == nil {
 		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — canonical media writer degraded; media outbox events will dead-letter (graceful degrade, godlike/07)")
 	}
+	if pgIndexWorker != nil {
+		if err := registerPostgresMediaOutboxHandlers(pgIndexWorker, drivePublisher, canonicalCommitter, repos.ImageRepo, log); err != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL media outbox handlers: %w", err)
+		}
+	}
 	// The production dispatcher receives the single canonical writer directly.
 	// Legacy ClipsUpserter/ClipsStateWriter arguments remain accepted by
 	// NewDispatcher only for compatibility with older tests and adapters.

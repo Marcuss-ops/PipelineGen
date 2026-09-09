@@ -123,6 +123,7 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 		"voiceover_enabled:",
 		"images_enabled:",
 		"stock_pipeline_enabled:",
+		"clip_async_drive_enabled:",
 	}
 	for _, r := range required {
 		if !strings.Contains(yamlContent, r) {
