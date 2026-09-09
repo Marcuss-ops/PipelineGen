@@ -23,7 +23,6 @@ package mediamemory
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -377,8 +376,3 @@ func bindingsToDTOs(in []MediaBinding) []bindingDTO {
 	}
 	return out
 }
-
-// Compile-time assertion: keep the standard error helpers linked into
-// this transport package while the route handlers remain split by file.
-var _ = errors.Is
-var _ = fmt.Errorf

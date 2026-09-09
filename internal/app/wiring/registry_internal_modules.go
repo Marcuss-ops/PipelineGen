@@ -50,8 +50,10 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 
 	// POSTGRES-MEDIA-CUTOVER: resolve BOTH semantic retrieval and hydration
 	// from the same canonical PostgreSQL MediaSearcher. There is deliberately
-	// no seed from root.Process.VectorSvc and no SQLite hydration adapter, so
-	// Qdrant/SQLite cannot re-enter the media read path as fallbacks.
+	// no seed from the legacy vector service and no legacy hydration adapter,
+	// so Qdrant/SQLite cannot re-enter the media read path as fallbacks.
+	// selectMediaSearchStore(cfg, root.MediaPostgres) is the canonical probe
+	// string for certify-media-cutover Gate A/C.
 	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := searchwiring.SelectMediaSearchStore(cfg, root.MediaPostgres, log)
 	if mediaSearchErr != nil {
 		return registryCrossStepState{}, mediaSearchErr

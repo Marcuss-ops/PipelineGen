@@ -133,12 +133,14 @@ func (s *YouTubeStager) Release(_ context.Context, cleanupToken string) error {
 }
 
 func hashFile(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	// Stream through the kernel/digest SSOT instead of ReadFile + SHA256Bytes:
+	// staged clips can be hundreds of MB and must never be buffered whole.
+	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	sum := digest.SHA256Bytes(data)
-	return sum, nil
+	defer f.Close()
+	return digest.SHA256Reader(f)
 }
 
 func nowUTC() time.Time { return time.Now().UTC() }

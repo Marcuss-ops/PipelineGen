@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rustworker"
@@ -43,7 +42,6 @@ type Executor struct {
 	log         *zap.Logger
 	runner      RustProcessRunner
 	runnerPool  chan RustProcessRunner
-	limiter     *ResourceLimiter
 	outputLimit int64
 	timeout     time.Duration
 }
@@ -85,7 +83,6 @@ func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Log
 		ffmpegPath:  ffmpegPath,
 		log:         log,
 		runner:      primary,
-		limiter:     NewResourceLimiter(slots),
 		outputLimit: defaultRustOutputLimit,
 		timeout:     defaultRustTimeout,
 	}
@@ -106,18 +103,18 @@ func (e *Executor) Run(ctx context.Context, input []byte) ([]byte, []byte, error
 	if e == nil {
 		return nil, nil, fmt.Errorf("rust media executor is nil")
 	}
-	release, err := e.limiter.Acquire(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("acquire rust media execution slot: %w", err)
-	}
-	defer release()
-
 	runCtx := ctx
 	cancel := func() {}
 	if e.timeout > 0 {
 		runCtx, cancel = context.WithTimeout(ctx, e.timeout)
 	}
 	defer cancel()
+	// Single admission control: the runner pool IS the concurrency bound.
+	// The previous design stacked a ResourceLimiter of the same capacity in
+	// front of the pool, so each request queued twice for the same slot while
+	// holding a limiter slot during the pool wait — a second queue with no
+	// additional bound. The limiter type remains exported for adapters and
+	// tests that gate non-pool work.
 	runner := e.runner
 	if e.runnerPool != nil {
 		select {
@@ -174,75 +171,29 @@ func newPersistentRustProcessRunner() RustProcessRunner {
 	return &persistentRustProcessRunner{}
 }
 
-// boundedBuffer remains a small compatibility seam for package-local tests;
-// production process lifecycle and output handling live in rustworker.
-type boundedBuffer struct {
-	mu        sync.Mutex
-	buf       bytes.Buffer
-	limit     int64
-	truncated bool
-}
-
-func (b *boundedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	if int64(len(p)) >= b.limit {
-		b.buf.Reset()
-		_, _ = b.buf.Write(p[len(p)-int(b.limit):])
-		b.truncated = true
-		return len(p), nil
-	}
-	_, _ = b.buf.Write(p)
-	if int64(b.buf.Len()) > b.limit {
-		all := b.buf.Bytes()
-		tail := append([]byte(nil), all[len(all)-int(b.limit):]...)
-		b.buf.Reset()
-		_, _ = b.buf.Write(tail)
-		b.truncated = true
-	}
-	return len(p), nil
-}
-func (b *boundedBuffer) Bytes() []byte {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	result := append([]byte(nil), b.buf.Bytes()...)
-	if !b.truncated || b.limit <= 0 {
-		return result
-	}
-	const marker = "[output truncated]"
-	if int64(len(marker)) >= b.limit {
-		return []byte(marker[len(marker)-int(b.limit):])
-	}
-	keep := int(b.limit) - len(marker)
-	if len(result) > keep {
-		result = result[len(result)-keep:]
-	}
-	return append(result, marker...)
-}
-
-func cleanupPartFilesForRequest(req request) {
-	paths := make([]string, 0, len(req.Jobs)+1)
-	if req.OutputPath != "" {
-		paths = append(paths, req.OutputPath)
-	}
-	for _, job := range req.Jobs {
-		if job.OutputPath != "" {
-			paths = append(paths, job.OutputPath)
-		}
-	}
-	for _, path := range paths {
+// cleanupPartFilesRequest removes the deterministic .part outputs for a
+// request the transport still holds as a struct (validation failure, failed
+// Rust response).
+func cleanupPartFilesRequest(req *request) {
+	for _, path := range requestPartPaths(req) {
 		_ = os.Remove(partPathForCleanup(path))
 	}
 }
 
+// cleanupPartFiles removes the deterministic .part outputs for a marshaled
+// wire request (the executor only sees bytes). It is the single decode point
+// in front of cleanupPartFilesRequest.
 func cleanupPartFiles(input []byte) {
 	var req request
 	if json.Unmarshal(bytes.TrimSpace(input), &req) != nil {
 		return
 	}
+	cleanupPartFilesRequest(&req)
+}
+
+// requestPartPaths collects every output-bearing path on the request
+// (OutputPath + per-job outputs). The single source of the cleanup path set.
+func requestPartPaths(req *request) []string {
 	paths := make([]string, 0, len(req.Jobs)+1)
 	if req.OutputPath != "" {
 		paths = append(paths, req.OutputPath)
@@ -252,9 +203,7 @@ func cleanupPartFiles(input []byte) {
 			paths = append(paths, job.OutputPath)
 		}
 	}
-	for _, path := range paths {
-		_ = os.Remove(partPathForCleanup(path))
-	}
+	return paths
 }
 
 func partPathForCleanup(finalPath string) string {

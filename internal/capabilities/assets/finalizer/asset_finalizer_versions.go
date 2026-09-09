@@ -58,7 +58,7 @@ func (s *AssetTxFinalizer) insertAssetVersion(
 	// Compute next version_number inside the transaction.
 	var nextVer int
 	row := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(version_number), 0) + 1 FROM asset_versions WHERE asset_id = ?`,
+		`SELECT COALESCE(MAX(version_number), 0) + 1 FROM asset_versions WHERE asset_id = $1`,
 		a.ArtifactID,
 	)
 	if err := row.Scan(&nextVer); err != nil {
@@ -68,7 +68,7 @@ func (s *AssetTxFinalizer) insertAssetVersion(
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_versions
 			(asset_id, version_number, source_uri, legacy_file_md5, file_size_bytes, mime_type, metadata_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`,
 		a.ArtifactID,
 		nextVer,

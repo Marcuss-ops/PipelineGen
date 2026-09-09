@@ -85,8 +85,6 @@ var commandRegistry = map[string]commandHandler{
 	"index-provided-sound-effects":   soundeffects.RunIndexProvidedSoundEffects,
 	"keep-drive-folder-files":        drive.RunKeepDriveFolderFiles,
 	"list-drive-folder":              drive.RunListDriveFolder,
-	"multilingual-benchmark":         rendering.RunMultilingualBenchmark,
-	"multilingual-render":            rendering.RunMultilingualRender,
 	"normalize-sound-effects-drive":  soundeffects.RunNormalizeSoundEffectsDrive,
 	"organize-drive-folder":          cleanup.RunOrganizeDriveFolder,
 	"organize-foley-drive":           soundeffects.RunOrganizeFoleyDrive,

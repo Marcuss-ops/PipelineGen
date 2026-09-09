@@ -90,8 +90,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	vidRushProviders, vidRushFinalizer := (*adapters.VidRushAssetProviderRegistry)(nil), scriptports.VidRushArtifactFinalizer(nil)
 	if root.Drive != nil && root.Drive.Publisher != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
 		vidRushDeps := vidrushwiring.VidRushMaterializationDeps{
-			MediaPG:     root.MediaPostgres,
-			MediaSQLite: root.DB.DB,
+			MediaPG: root.MediaPostgres,
 			Delivery: vidrushwiring.VidRushDeliveryPorts{
 				Publisher:  root.Drive.Publisher,
 				EventsRepo: root.Outbox.EventsRepo,

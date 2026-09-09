@@ -102,19 +102,20 @@ func (r *Repository) enqueue(ctx context.Context, tx *sql.Tx, withPriority bool,
 
 	// RETURNING id distinguishes insert from arbiter suppression directly:
 	// DO NOTHING returns zero rows when the conflict fired.
+	// Dual-write expand (004): legacy TEXT + _ts TIMESTAMPTZ mirrored via NULLIF cast.
 	var insertedID int64
 	var err error
 	if withPriority {
 		err = queryRow(ctx, `
-			INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, priority, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, priority, created_at, updated_at, created_at_ts, updated_at_ts)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz)
 			ON CONFLICT (event_key) WHERE event_key <> '' DO NOTHING
 			RETURNING id`,
 			eventType, aggregateID, aggregateType, payloadJSON, eventKey, priority, now, now).Scan(&insertedID)
 	} else {
 		err = queryRow(ctx, `
-			INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, created_at, updated_at, created_at_ts, updated_at_ts)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($6, '')::timestamptz, NULLIF($7, '')::timestamptz)
 			ON CONFLICT (event_key) WHERE event_key <> '' DO NOTHING
 			RETURNING id`,
 			eventType, aggregateID, aggregateType, payloadJSON, eventKey, now, now).Scan(&insertedID)

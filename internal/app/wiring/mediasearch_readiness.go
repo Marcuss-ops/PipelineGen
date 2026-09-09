@@ -13,8 +13,9 @@ type semanticBackendInspector interface {
 }
 
 // semanticReadinessChecker probes only canonical media-search dependencies.
-// POSTGRES-MEDIA-CUTOVER removed Qdrant reachability, SQLite hydration and
-// Ollama presence from this contract. Embedder/backend readiness is derived
+// POSTGRES-MEDIA-CUTOVER removed Qdrant reachability, legacy media
+// hydration and Ollama presence from this contract. Embedder/backend
+// readiness is derived
 // from the semantic backend that actually passed the composition gate; that
 // gate requires the E5 embedding registry plus the canonical PostgreSQL
 // retrieval+hydration store and delivery dependency.

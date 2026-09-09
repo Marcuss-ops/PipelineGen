@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/rustworker"
 )
 
 type failingProcessRunner struct{}
@@ -86,7 +88,9 @@ func TestClientCleansPartFilesAfterFailedRustResponse(t *testing.T) {
 }
 
 func TestBoundedBufferLimitsStderrAndMarksTruncation(t *testing.T) {
-	buffer := &boundedBuffer{limit: 32}
+	// The canonical bounded stderr buffer lives in rustworker (single owner);
+	// this pins its truncation contract at the rustexec boundary too.
+	buffer := &rustworker.BoundedBuffer{Limit: 32}
 	if _, err := buffer.Write([]byte(strings.Repeat("x", 4096))); err != nil {
 		t.Fatal(err)
 	}

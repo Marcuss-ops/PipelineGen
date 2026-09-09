@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,12 +83,15 @@ var _ TTSProvider = (*goldenSinglePassTTS)(nil)
 // link in the timing result derives from a Publisher file ID (no
 // hand-built links).
 type goldenPublisher struct {
+	mu    sync.Mutex
 	files map[string][]byte
 	ids   map[string]string
 	seq   int
 }
 
 func (p *goldenPublisher) Publish(_ context.Context, cmd VoiceoverPublishCommand) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.files == nil {
 		p.files = map[string][]byte{}
 		p.ids = map[string]string{}

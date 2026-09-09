@@ -1,0 +1,49 @@
+-- 005_media_booleans.sql — SMALLINT → BOOLEAN opportunistic skeleton.
+--
+-- STATUS: COMMENTED-OUT / DO NOT APPLY YET — see BASELINE_PLAN.md §7.
+--
+-- Intent: the PostgreSQL media SSOT currently stores booleans as
+-- SMALLINT CHECK (col IN (0,1)) (godlike/06 parity with SQLite INTEGER 0/1).
+-- The correct PostgreSQL type is BOOLEAN. There is NO sprint that owns this
+-- change until the owning table is mutated for another reason. This file
+-- documents the canonical expand/backfill/cutover/contract for that future
+-- increment so the pattern is reviewable in advance and not hand-invented
+-- under time pressure.
+--
+-- OPportunistic contract:
+--   - Keep the SMALLINT columns in place until this file is promoted.
+--   - When a table needs a mutation for another reason (e.g. adding a column
+--     or index on the same table), uncomment the relevant block below, extend
+--     the application layer dual-write (SQLite integer 0/1 → PG BOOLEAN
+--     pgBoolInt → pgBoolean), flip readers to BOOLEAN, and contract the
+--     legacy SMALLINT.
+--
+-- EXAMPLE (expand phase — asset_locations only, draft):
+--
+--   -- Expand: add BOOLEAN mirror (IF NOT EXISTS so re-run is safe).
+--   -- ALTER TABLE asset_locations ADD COLUMN is_primary_b BOOLEAN DEFAULT FALSE;
+--   -- UPDATE asset_locations SET is_primary_b = (is_primary::int = 1)
+--   --   WHERE is_primary_b IS NULL;
+--   -- CREATE INDEX IF NOT EXISTS idx_asset_locations_is_primary_b
+--   --   ON asset_locations (is_primary_b);
+--
+--   -- Cutover: rewrite writer to bind BOOLEAN via
+--   --   CASE WHEN $N::int = 1 THEN TRUE ELSE FALSE END
+--   -- and reader to scan bool.
+--
+--   -- Contract (next increment after cutover):
+--   -- ALTER TABLE asset_locations DROP COLUMN is_primary;
+--   -- ALTER TABLE asset_locations RENAME COLUMN is_primary_b TO is_primary;
+--
+-- For now this file is intentionally EMPTY so that:
+--   * embed_ddl.go does NOT embed it (no 005 DDL constant).
+--   * testmain_test.go and backfill.go do NOT apply it.
+--   * make certify-media-cutover does NOT probe it.
+--
+-- An operator who explicitly runs `psql -f 005_media_booleans.sql` on a dev
+-- database would be a no-op (commented file). Promote to live DDL only when
+-- the table is already on the table-modifying path for another feature
+-- (BASELINE_PLAN.md §9), e.g. adding a new hot-path column to that same table.
+
+-- intentional no-op — see header
+SELECT 1 WHERE FALSE;

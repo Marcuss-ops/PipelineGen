@@ -59,6 +59,28 @@ func TestMigrations_LedgerHasCanonicalIdentityAnd194197(t *testing.T) {
 		}
 	}
 
+	// Baseline-aware: fresh DB may have been bootstrapped via the
+	// consolidated 000_baseline_267.sql sentinel (version 0) instead of
+	// individual 1..267 rows. In that case the historical window 1..267
+	// is satisfied by the baseline and individual ledger rows for 194/197
+	// are intentionally absent (see migrations_discovery.go
+	// isHistoricalWindowCovered). Accept either form.
+	var baselineCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=0 AND filename LIKE '000_baseline%'`).Scan(&baselineCount); err != nil {
+		t.Fatal(err)
+	}
+	if baselineCount == 1 {
+		var baselineFilename, baselineChecksum string
+		if err := db.QueryRow(`SELECT filename, checksum FROM schema_migrations WHERE version=0`).Scan(&baselineFilename, &baselineChecksum); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(baselineFilename, "000_baseline") || strings.TrimSpace(baselineChecksum) == "" {
+			t.Fatalf("baseline sentinel identity = filename=%q checksum=%q", baselineFilename, baselineChecksum)
+		}
+		// Baseline covers 194/197 — no individual rows expected.
+		return
+	}
+
 	for _, migration := range []struct {
 		version  int
 		filename string
@@ -522,6 +544,12 @@ func copyMigrationSubset(t *testing.T, sourceDir string, maxVersion int, include
 		}
 		version, err := parseMigrationVersion(entry.Name())
 		if err != nil || (version > maxVersion && !include[version]) {
+			continue
+		}
+		// Exclude consolidated baseline sentinel unless caller explicitly
+		// requests version 0 — the preserve-data test synthesises a
+		// pre-baseline DB (<=193) and must not bootstrap via 000 baseline.
+		if version == 0 && !include[version] {
 			continue
 		}
 		content, err := os.ReadFile(filepath.Join(sourceDir, entry.Name()))

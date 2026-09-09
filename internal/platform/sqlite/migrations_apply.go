@@ -130,6 +130,11 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 // parseMigrationVersion extracts the integer version prefix from a
 // migration filename. Expected format: NNN_<descriptive>.sql
 // e.g. "001_velox_core.sql" → 1.
+//
+// Baseline exception: the consolidated SQLite baseline uses version 000
+// (filename "000_baseline_<N>.sql") so it sorts before every real
+// migration. Version 0 is only accepted for that explicit baseline
+// shape; all other migrations still require version >= 1.
 func parseMigrationVersion(filename string) (int, error) {
 	name := filepath.Base(filename)
 	idx := strings.Index(name, "_")
@@ -137,11 +142,25 @@ func parseMigrationVersion(filename string) (int, error) {
 		return 0, fmt.Errorf("invalid migration filename: %s (expected NNN_*.sql)", name)
 	}
 	version, err := strconv.Atoi(name[:idx])
-	if err != nil || version <= 0 {
+	if err != nil {
+		return 0, fmt.Errorf("invalid migration version in %s: %w", name, err)
+	}
+	if version == 0 {
+		if strings.HasPrefix(name, "000_baseline") {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("invalid migration version in %s: version 0 reserved for baseline", name)
+	}
+	if version < 0 {
 		return 0, fmt.Errorf("invalid migration version in %s: %w", name, err)
 	}
 	return version, nil
 }
+
+// isBaselineMigration/isBaselineMigrationFile and baselineThreshold are
+// defined in migrations_discovery.go so discovery + validation + apply can
+// share one definition without a cross-file cycle; they are referenced
+// here only via their migrations_discovery.go spellings.
 
 // sha256Hex returns the hex-encoded SHA-256 hash of the input bytes.
 func sha256Hex(data []byte) string {

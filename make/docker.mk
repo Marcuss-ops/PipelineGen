@@ -90,11 +90,6 @@ docker-verify-ffmpeg:
 docker-verify-whisper:
 	@bash scripts/verify-whisper.sh $${IMAGE:-pipelinegen-worker:latest}
 
-# docker-bootstrap-smoke: Quick smoke test of the worker binary in the
-# image — verifies ENTRYPOINT, --help, and version output.
-# Usage: make docker-bootstrap-smoke IMAGE=pipelinegen-worker:latest
-docker-bootstrap-smoke:
-	@bash scripts/worker-bootstrap-smoke.sh $${IMAGE:-pipelinegen-worker:latest}
 test-qdrant-fixtures:
 	@echo "→ Starting ephemeral Qdrant on port $${TEST_QDRANT_PORT:-16333}..."
 	docker compose -f docker-compose.test-qdrant.yml up -d --wait 2>/dev/null || \

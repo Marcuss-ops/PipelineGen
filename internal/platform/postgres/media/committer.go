@@ -177,6 +177,11 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 	indexState := fields.indexState
 	name := fields.name
 
+	// Dual-write expand (BASELINE_PLAN.md §5.2): the same RFC3339 string
+	// is written to the legacy TEXT column and mirrored into the new
+	// TIMESTAMPTZ column via NULLIF(...,'')::timestamptz. After 004 has
+	// been applied the *_ts columns exist; the backfill is idempotent so
+	// this one-statement dual-write reconverges immediately.
 	res, err := sqlTx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
@@ -190,7 +195,8 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			source_provider, source_video_id, source_url,
 			start_ms, end_ms, title,
 			origin, provider,
-			namespace, asset_kind, source_type, semantic_role
+			namespace, asset_kind, source_type, semantic_role,
+			created_at_ts, updated_at_ts
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, $9,
@@ -203,7 +209,8 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			$29, $30, $31,
 			$32, $33, $34,
 			$35, $36,
-			$37, $38, $39, $40
+			$37, $38, $39, $40,
+			NULLIF($22, '')::timestamptz, NULLIF($23, '')::timestamptz
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			source = excluded.source,
@@ -226,6 +233,7 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			search_text = excluded.search_text,
 			source_version = excluded.source_version,
 			updated_at = excluded.updated_at,
+			updated_at_ts = excluded.updated_at_ts,
 			thumbnail_url = excluded.thumbnail_url,
 			url = excluded.url,
 			asset_version = excluded.asset_version,
@@ -266,11 +274,11 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 	// the compatibility probes the SQLite writer performs against legacy
 	// databases collapse into unconditional single-row updates here.
 	if req.GroupName != "" {
-		if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET group_name = $1 WHERE id = $2`, req.GroupName, req.AssetID); err != nil {
+		if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET group_name = $1, updated_at_ts = NULLIF(updated_at, '')::timestamptz WHERE id = $2`, req.GroupName, req.AssetID); err != nil {
 			return persistence.CommitResult{}, fmt.Errorf("asset committer: update group name: %w", err)
 		}
 	}
-	if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET thumb_url = $1 WHERE id = $2`, req.ThumbnailURL, req.AssetID); err != nil {
+	if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET thumb_url = $1, updated_at_ts = NULLIF(updated_at, '')::timestamptz WHERE id = $2`, req.ThumbnailURL, req.AssetID); err != nil {
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: update thumb_url: %w", err)
 	}
 
@@ -366,8 +374,8 @@ func (c *PostgresAssetCommitter) upsertLocations(ctx context.Context, tx *sql.Tx
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO asset_locations
 				(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-				 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+				 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULLIF($11, '')::timestamptz, NULLIF($12, '')::timestamptz)
 			ON CONFLICT (asset_id, location_kind) DO UPDATE SET
 				uri = excluded.uri,
 				external_id = excluded.external_id,
@@ -377,7 +385,8 @@ func (c *PostgresAssetCommitter) upsertLocations(ctx context.Context, tx *sql.Tx
 				file_size_bytes = excluded.file_size_bytes,
 				legacy_file_md5 = excluded.legacy_file_md5,
 				is_primary = excluded.is_primary,
-				updated_at = excluded.updated_at
+				updated_at = excluded.updated_at,
+				updated_at_ts = excluded.updated_at_ts
 		`, assetID, loc.Kind, loc.URI, loc.ExternalID, loc.WebViewLink, loc.DownloadURL,
 			loc.MimeType, loc.FileSizeBytes, loc.LegacyFileMD5, pgBoolInt(loc.IsPrimary), nowStr, nowStr); err != nil {
 			return fmt.Errorf("asset committer: upsert location %s: %w", loc.Kind, err)

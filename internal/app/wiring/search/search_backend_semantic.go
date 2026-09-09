@@ -8,7 +8,7 @@
 //	EmbeddingChannelRegistry (multi-channel embedding)
 //	VectorStorePort          (locator-free ANN/hybrid retrieval)
 //
-// Plus SQLite hydration (MediaReadRepository) and signed delivery
+// Plus PostgreSQL hydration (MediaReadRepository) and signed delivery
 // URLs (AssetDeliveryService). Per AGENTS.md Pattern 0, every
 // external dependency flows through a typed port so tests can swap
 // in stubs without touching Qdrant or SQLite.
@@ -83,7 +83,7 @@ const (
 //     (delegated to EmbeddingChannelRegistry so new channel encoders
 //     plug in at composition root without backend changes)
 //  2. vectorStore.Search or .HybridSearch      → Qdrant results
-//  3. mediaReader.GetMany                      → SQLite hydration (canonical metadata)
+//  3. mediaReader.GetMany                      → PostgreSQL hydration (canonical metadata)
 //  4. delivery.BuildAuthorizedURL              → signed delivery URL per hit
 //
 // Workspace isolation, lifecycle ACTIVE, and equality filters
@@ -283,7 +283,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, nil
 	}
 
-	// ── 8. SQLite hydration ────────────────────────────────────
+	// ── 8. PostgreSQL hydration (canonical media_assets SSOT) ──
 	ws := search.Actor{WorkspaceID: scope.WorkspaceID}
 	// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the canonical ACTIVE-only
 	// filter is hardcoded at the MediaReadRepository impl. Caller no

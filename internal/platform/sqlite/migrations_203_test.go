@@ -32,6 +32,17 @@ func TestMigrations_202_203_ControlPlaneSchemaAndChecksums(t *testing.T) {
 			t.Fatalf("table %s missing", table)
 		}
 	}
+	// Baseline-aware: a fresh DB bootstrapped from the consolidated
+	// 000_baseline_267.sql sentinel (version 0) has no individual
+	// 1..267 ledger rows — the historical window is satisfied by the
+	// baseline (same acceptance form as migrations_ledger_test.go).
+	var baselineCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=0 AND filename LIKE '000_baseline%'`).Scan(&baselineCount); err != nil {
+		t.Fatal(err)
+	}
+	if baselineCount == 1 {
+		return
+	}
 	assertMigrationChecksum203(t, db, 202, "202_canonical_mutation_uow.sql")
 	assertMigrationChecksum203(t, db, 203, "203_control_plane_ledger_replay_metadata.sql")
 }

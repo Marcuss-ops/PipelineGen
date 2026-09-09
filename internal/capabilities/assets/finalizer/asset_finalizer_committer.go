@@ -37,7 +37,7 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		var eventType, aggregateID, payload string
 		if err := sqlTx.QueryRowContext(ctx, `
 			SELECT event_type, aggregate_id, payload_json
-			FROM outbox_events WHERE event_key = ?`, res.OutboxEventKey).
+			FROM outbox_events WHERE event_key = $1`, res.OutboxEventKey).
 			Scan(&eventType, &aggregateID, &payload); err != nil {
 			return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: read committed outbox event: %w", err)
 		}

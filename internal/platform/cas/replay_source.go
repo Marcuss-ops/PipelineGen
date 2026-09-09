@@ -2,7 +2,6 @@ package cas
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	capreplay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/replay"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ReplayAssetSource adapts the CAS store to the replay materialization port:
@@ -60,7 +60,9 @@ func (s *ReplayAssetSource) Materialize(ctx context.Context, asset capreplay.Rep
 	}
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmp.Name()) }
 
-	h := sha256.New()
+	// Stream into the staging file and the digest SSOT hash in one pass —
+	// no extra read of the bytes (io.MultiWriter tee).
+	h := digest.NewSHA256()
 	n, err := io.Copy(io.MultiWriter(tmp, h), rc)
 	if err != nil {
 		cleanup()
@@ -75,10 +77,10 @@ func (s *ReplayAssetSource) Materialize(ctx context.Context, asset capreplay.Rep
 		return capreplay.MaterializedAsset{}, fmt.Errorf("cas: close replay staging file %s: %w", asset.AssetID, err)
 	}
 
-	digest := hex.EncodeToString(h.Sum(nil))
-	if digest != asset.SHA256 {
+	computed := hex.EncodeToString(h.Sum(nil))
+	if computed != asset.SHA256 {
 		_ = os.Remove(tmp.Name())
-		return capreplay.MaterializedAsset{}, fmt.Errorf("%w: asset %s hashed to %s, want %s", ErrCorruption, asset.AssetID, digest, asset.SHA256)
+		return capreplay.MaterializedAsset{}, fmt.Errorf("%w: asset %s hashed to %s, want %s", ErrCorruption, asset.AssetID, computed, asset.SHA256)
 	}
 	if asset.SizeBytes > 0 && n != asset.SizeBytes {
 		_ = os.Remove(tmp.Name())

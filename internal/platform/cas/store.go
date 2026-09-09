@@ -3,7 +3,6 @@ package cas
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Directory and file permissions for the CAS layout. 0700/0600 mirrors the
@@ -240,18 +240,9 @@ func newStagingID() (string, error) {
 }
 
 // hashFile computes the SHA-256 of the file at path and its size.
+// Delegates to the canonical kernel/digest SSOT (godlike/06).
 func hashFile(path string) (sha256hex string, size int64, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
-	}
-	defer f.Close()
-	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return "", 0, err
-	}
-	return hex.EncodeToString(h.Sum(nil)), n, nil
+	return digest.SHA256File(path)
 }
 
 // syncDirBestEffort fsyncs a directory so a newly linked/renamed entry is

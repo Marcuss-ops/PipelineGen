@@ -68,6 +68,7 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 	// order. Derived surfaces (features/embeddings) cascade from assets.
 	for _, stmt := range []string{
 		`TRUNCATE asset_text_track_segments, asset_text_tracks`,
+		`TRUNCATE asset_versions`,
 		`TRUNCATE registry_events`,
 		`TRUNCATE media_asset_sources`,
 		`TRUNCATE outbox_events`,
@@ -83,6 +84,7 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		for _, stmt := range []string{
 			`TRUNCATE asset_text_tracks`,
+			`TRUNCATE asset_versions`,
 			`TRUNCATE registry_events`,
 			`TRUNCATE media_asset_sources`,
 			`TRUNCATE outbox_events`,
@@ -102,6 +104,8 @@ func applyMediaMigrations(db *sql.DB) error {
 		pgmigration.MediaSchemaDDL,
 		pgmigration.MediaVectorSurfacesDDL,
 		pgmigration.MediaHNSWIndexesDDL,
+		pgmigration.MediaTimestampsTimestamptzDDL,
+		pgmigration.MediaAssetVersionsDDL,
 	}
 	for i, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

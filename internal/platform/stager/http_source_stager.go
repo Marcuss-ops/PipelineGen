@@ -26,6 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -217,17 +218,14 @@ func (s *HTTPSourceStager) cleanupStagedSource(_ context.Context, staged *assets
 
 // hashFile returns the hex SHA-256 of the file at path. Used by
 // StageSourceV2 when the deterministic local file already exists.
+// Delegates to the canonical kernel/digest SSOT (godlike/06).
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return digest.SHA256Reader(f)
 }
 
 // Prepare implements acquisition.SourceStager. It wraps StageSourceV2

@@ -160,7 +160,16 @@ func (r *PersistentRunner) ensure(binary string, outputLimit int64) error {
 		return fmt.Errorf("start persistent Rust: %w", err)
 	}
 	r.cmd, r.stdin, r.stdout, r.stderr = cmd, stdin, bufio.NewReader(stdout), &BoundedBuffer{Limit: outputLimit}
-	go func() { _, _ = io.Copy(r.stderr, stderr) }()
+	go func() {
+		if _, copyErr := io.Copy(r.stderr, stderr); copyErr != nil {
+			// The stderr pump must not be a silent black hole: a copy failure
+			// means worker diagnostics are being lost exactly when the worker
+			// is likely misbehaving. Surface it into the bounded stderr tail
+			// itself so the next Run error report carries the fact.
+			const marker = "[rustworker stderr copy failed]"
+			_, _ = r.stderr.Write([]byte(marker))
+		}
+	}()
 	return nil
 }
 
