@@ -10,8 +10,6 @@ internal/capabilities/ai/autotag/autotag.go
 internal/platform/acquisition/filesystem_stager_prepare.go
 internal/platform/artifactstaging/local_store_fs.go
 internal/platform/artifactstaging/local_store_stage.go
-internal/platform/cas/replay_source.go
-internal/platform/cas/store.go
 internal/platform/drive/artifact_publisher_adapter.go
 internal/platform/drive/verifier.go
 internal/platform/sqlite/backup.go

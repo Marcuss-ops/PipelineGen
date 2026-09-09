@@ -153,30 +153,95 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		return err
 	}
 
-	// Apply pending migrations
+	// Baseline bookkeeping: the consolidated baseline sentinel (version 0)
+	// satisfies the frozen window 1..N. Discover its threshold so the
+	// runner can skip the historical incrementals on fresh databases
+	// and skip the baseline itself on old databases that already carry
+	// the full 1..N ledger rows. The applied snapshot is captured once;
+	// a mutable flag tracks whether the baseline was already present or
+	// was just applied in this run so subsequent 1..N files are skipped
+	// on fresh bootstraps without needing to re-query the ledger.
+	baselineThreshold := baselineThresholdForMigrations(migrations)
+	baselineAppliedNow := baselineApplied(applied)
 	appliedCount := 0
 	for _, m := range migrations {
-		// Skip out-of-scope migrations BEFORE the
-		// checksum check. A primary-only migration must NEVER land on
-		// the observability ledger, regardless of whether its checksum
-		// matches. The skip is silent at INFO level (operators
-		// running with -v can grep the log for confirmation).
-		if !migrationAppliesToTargetDB(m.scope, targetDB) {
-			if log != nil {
-				log.Debug("skipping migration (out of DB scope)",
-					zap.Int("version", m.version),
-					zap.String("filename", m.filename),
-					zap.String("scope", m.scope),
-					zap.String("target_db", targetDB),
-				)
+		// Baseline sentinel handling.
+		if isBaselineMigrationFile(m) {
+			// Scope gate still applies to the baseline itself.
+			if !migrationAppliesToTargetDB(m.scope, targetDB) {
+				if log != nil {
+					log.Debug("skipping baseline (out of DB scope)",
+						zap.Int("version", m.version),
+						zap.String("filename", m.filename),
+						zap.String("scope", m.scope),
+						zap.String("target_db", targetDB),
+					)
+				}
+				continue
 			}
-			continue
-		}
-		if skipMigrationAfterExecutionCutover(db, applied, m, targetDB) {
-			if log != nil {
-				log.Warn("skipping historical migration after completed execution-plane cutover", zap.Int("version", m.version), zap.String("filename", m.filename))
+			if baselineAppliedNow {
+				if log != nil {
+					log.Debug("skipping baseline (already applied)", zap.String("filename", m.filename))
+				}
+				continue
 			}
-			continue
+			// Old or partially-migrated DB: any non-baseline history
+			// means the incremental path was already chosen — skip
+			// the consolidated baseline (BASELINE_PLAN.md §2.2).
+			if hasAnyHistory(applied) {
+				if log != nil {
+					log.Info("skipping baseline (incremental history already present)", zap.String("filename", m.filename))
+				}
+				// Mark as covered so subsequent historical incrementals
+				// are not treated as satisfied by a missing baseline —
+				// the incremental path owns 1..N.
+				baselineAppliedNow = true
+				continue
+			}
+			if isHistoricalWindowCovered(applied, migrations, targetDB, baselineThreshold) {
+				if log != nil {
+					log.Info("skipping baseline (historical window already covered by individual ledger rows)", zap.String("filename", m.filename))
+				}
+				// Mark as covered so subsequent historical incrementals are
+				// not re-evaluated against an empty baseline flag — the
+				// window is already satisfied by the 1..N rows.
+				baselineAppliedNow = true
+				continue
+			}
+			// Fresh database: fall through to apply the baseline as a
+			// normal migration (version 0). After it commits, 1..N will be
+			// skipped via baselineAppliedNow below.
+		} else {
+			// Skip out-of-scope migrations BEFORE the
+			// checksum check. A primary-only migration must NEVER land on
+			// the observability ledger, regardless of whether its checksum
+			// matches. The skip is silent at INFO level (operators
+			// running with -v can grep the log for confirmation).
+			if !migrationAppliesToTargetDB(m.scope, targetDB) {
+				if log != nil {
+					log.Debug("skipping migration (out of DB scope)",
+						zap.Int("version", m.version),
+						zap.String("filename", m.filename),
+						zap.String("scope", m.scope),
+						zap.String("target_db", targetDB),
+					)
+				}
+				continue
+			}
+			// Historical incrementals satisfied by baseline sentinel (either
+			// pre-existing from a prior run or just applied in this run).
+			if baselineThreshold > 0 && m.version > 0 && m.version <= baselineThreshold && baselineAppliedNow {
+				if log != nil {
+					log.Debug("skipping historical migration (covered by baseline)", zap.Int("version", m.version), zap.String("filename", m.filename))
+				}
+				continue
+			}
+			if skipMigrationAfterExecutionCutover(db, applied, m, targetDB) {
+				if log != nil {
+					log.Warn("skipping historical migration after completed execution-plane cutover", zap.Int("version", m.version), zap.String("filename", m.filename))
+				}
+				continue
+			}
 		}
 		content, err := os.ReadFile(m.path)
 		if err != nil {
@@ -382,6 +447,9 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 			return fmt.Errorf("storage: apply %s: %w", m.filename, err)
 		}
 		appliedCount++
+		if isBaselineMigrationFile(m) {
+			baselineAppliedNow = true
+		}
 	}
 
 	log.Info("migrations complete",

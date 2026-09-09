@@ -18,7 +18,7 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 		req.Version = ProtocolVersion
 	}
 	if err := req.Validate(); err != nil {
-		cleanupPartFilesForRequest(req)
+		cleanupPartFilesRequest(&req)
 		return response{}, err
 	}
 	if c.executor != nil {
@@ -48,7 +48,7 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 		observability.FFmpegExecCount.Inc()
 	}
 	if !result.OK {
-		cleanupPartFilesForRequest(req)
+		cleanupPartFilesRequest(&req)
 		return result, fmt.Errorf("rust media %s: %s", req.Operation, result.Error)
 	}
 	return result, nil

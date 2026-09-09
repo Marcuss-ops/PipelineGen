@@ -317,7 +317,6 @@
       "internal/platform/jobs/",
       "internal/platform/sqlite/jobs/",
       "scripts/bridges/slide_worker_runtime/",
-      "scripts/worker-bootstrap-smoke.sh",
       "scripts/velox_client.py"
     ],
     "go_packages": [

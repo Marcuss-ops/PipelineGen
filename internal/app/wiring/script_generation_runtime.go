@@ -26,7 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
@@ -264,26 +264,28 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}),
 		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
 	}
-	if root.Process != nil && root.Process.QdrantSearcher != nil && root.Repos != nil && root.Repos.AssetsStore != nil && vidRushProviders != nil {
-		var embedder qdrantsearch.TextEmbedder
-		if cfg.ClipIndexer.ServerURL != "" {
-			embedder = qdrantsearch.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
-		}
-		if embedder != nil {
-			local := stockintelligence.QdrantLocalSearchAdapter{Searcher: root.Process.QdrantSearcher, Embedder: embedder, VectorName: "text"}
-			hydrator := stockintelligence.SQLiteAssetHydrator{Store: root.Repos.AssetsStore}
-			provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
-			sampler := func(candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
-				converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-				for _, candidate := range candidates {
-					converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
-				}
-				return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
+	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" && vidRushProviders != nil {
+		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
+		embedder := stockintelligence.NewHTTPTextEmbedderAdapter(func(ctx context.Context, text string) ([]float32, error) {
+			res, err := embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL).Embed(ctx, text)
+			if err != nil {
+				return nil, err
 			}
-			if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
-				if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
-					pipeline.StockResolverPort = service
-				}
+			return res.Vector, nil
+		})
+		local := stockintelligence.PostgresLocalSearchAdapter{Searcher: searcher, Embedder: embedder}
+		hydrator := stockintelligence.PostgresAssetHydrator{Searcher: searcher}
+		provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
+		sampler := func(candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
+			converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
+			}
+			return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
+		}
+		if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
+			if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
+				pipeline.StockResolverPort = service
 			}
 		}
 	}

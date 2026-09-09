@@ -23,7 +23,6 @@ check_absent() {
     --glob '!internal/platform/renderinggen/queue_client.go' \
     --glob '!internal/app/wiring/clip_render_runtime.go' \
     --glob '!internal/capabilities/localization/renderer_media.go' \
-    --glob '!internal/capabilities/multilingual/renderer_media.go' \
     --glob '!internal/capabilities/localization/adapters/render.go' \
     --glob '!internal/capabilities/cliprender/adapters/cliprender_plan.go' \
     --glob '!internal/capabilities/cliprender/backend.go' \

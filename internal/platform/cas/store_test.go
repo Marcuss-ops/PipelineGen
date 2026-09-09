@@ -55,7 +55,7 @@ func assertWorkspaceClean(t *testing.T, workspace string) {
 	}
 }
 
-func digest(t *testing.T, data []byte) string {
+func testDigest(t *testing.T, data []byte) string {
 	t.Helper()
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
@@ -86,7 +86,7 @@ func TestPutRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	want := digest(t, payload)
+	want := testDigest(t, payload)
 	if obj.SHA256 != want || !obj.Exists || obj.Dedup {
 		t.Fatalf("Put object = %+v, want sha256=%s exists dedup=false", obj, want)
 	}
@@ -168,7 +168,7 @@ func TestPutCorruptionOnExistingAddress(t *testing.T) {
 	store, root, _ := newTestStore(t)
 	ctx := context.Background()
 	payload := []byte("AAAA")
-	want := digest(t, payload)
+	want := testDigest(t, payload)
 
 	// Plant DIFFERENT bytes at the canonical address (simulates a tampered
 	// or corrupted store).

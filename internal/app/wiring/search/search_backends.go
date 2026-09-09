@@ -6,7 +6,7 @@
 // registered only when ONE adapter implements both VectorStorePort and
 // MediaReadRepository. The canonical production implementation is
 // platform/postgres/media.MediaSearcher. This prevents accidental
-// recomposition of pgvector or Qdrant retrieval with SQLite hydration.
+// recomposition of pgvector or Qdrant retrieval with legacy media hydration.
 //
 // Wave 19 cross-capability rule: this file IS the ONLY place in
 
@@ -77,7 +77,7 @@ type SearchBackendBuildOpts struct {
 // freezes it, and returns it ready to plug into a search.Aggregator.
 // Providers and the local catalog remain independently available. Semantic
 // media search is stricter: a split vector/hydration authority is rejected by
-// construction instead of silently degrading to Qdrant + SQLite.
+// construction instead of silently degrading to Qdrant + legacy media storage.
 func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, error) {
 	log := opts.Logger
 	if log == nil {

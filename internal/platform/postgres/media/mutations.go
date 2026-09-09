@@ -63,19 +63,23 @@ func (c *PostgresAssetCommitter) PersistEmbeddingJSON(ctx context.Context, asset
 }
 
 func UpdateMediaAssetEmbeddingJSON(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "semantic embedding update", `UPDATE media_assets SET embedding_json = $1, updated_at = $2 WHERE id = $3`, value, time.Now().UTC().Format(time.RFC3339), assetID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	return execAssetUpdate(ctx, exec, assetID, "semantic embedding update", `UPDATE media_assets SET embedding_json = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, value, now, assetID)
 }
 
 func UpdateMediaAssetTranscriptEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "transcript embedding update", `UPDATE media_assets SET transcript_embedding = $1, updated_at = $2 WHERE id = $3`, value, time.Now().UTC().Format(time.RFC3339), assetID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	return execAssetUpdate(ctx, exec, assetID, "transcript embedding update", `UPDATE media_assets SET transcript_embedding = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, value, now, assetID)
 }
 
 func UpdateMediaAssetVisualEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "visual embedding update", `UPDATE media_assets SET visual_embedding = $1, updated_at = $2 WHERE id = $3`, value, time.Now().UTC().Format(time.RFC3339), assetID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	return execAssetUpdate(ctx, exec, assetID, "visual embedding update", `UPDATE media_assets SET visual_embedding = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, value, now, assetID)
 }
 
 func UpdateMediaAssetAudioEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "audio embedding update", `UPDATE media_assets SET audio_embedding = $1, updated_at = $2 WHERE id = $3`, value, time.Now().UTC().Format(time.RFC3339), assetID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	return execAssetUpdate(ctx, exec, assetID, "audio embedding update", `UPDATE media_assets SET audio_embedding = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, value, now, assetID)
 }
 
 // ── Index state ─────────────────────────────────────────────────────────
@@ -102,10 +106,10 @@ func UpdateMediaAssetIndexState(ctx context.Context, exec mediaAssetSQLExecutor,
 	var query string
 	var args []any
 	if strings.TrimSpace(lastError) == "" {
-		query = `UPDATE media_assets SET index_state = $1, index_state_updated_at = $2, metadata_json = (metadata_json::jsonb - 'last_index_error'::text)::text, updated_at = $3 WHERE id = $4`
+		query = `UPDATE media_assets SET index_state = $1, index_state_updated_at = $2, index_state_updated_at_ts = NULLIF($2, '')::timestamptz, metadata_json = (metadata_json::jsonb - 'last_index_error'::text)::text, updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz WHERE id = $4`
 		args = []any{state, updatedAt, updatedAt, assetID}
 	} else {
-		query = `UPDATE media_assets SET index_state = $1, index_state_updated_at = $2, metadata_json = jsonb_set(metadata_json::jsonb, '{last_index_error}', to_jsonb($3::text))::text, updated_at = $4 WHERE id = $5`
+		query = `UPDATE media_assets SET index_state = $1, index_state_updated_at = $2, index_state_updated_at_ts = NULLIF($2, '')::timestamptz, metadata_json = jsonb_set(metadata_json::jsonb, '{last_index_error}', to_jsonb($3::text))::text, updated_at = $4, updated_at_ts = NULLIF($4, '')::timestamptz WHERE id = $5`
 		args = []any{state, updatedAt, lastError, updatedAt, assetID}
 	}
 	return execAssetUpdate(ctx, exec, assetID, "index state update", query, args...)
@@ -155,7 +159,7 @@ func PatchMediaAssetMetadataJSON(ctx context.Context, exec mediaAssetSQLExecutor
 	}
 	return execAssetUpdate(ctx, exec, assetID, "metadata patch", `
 		UPDATE media_assets
-		SET metadata_json = (metadata_json::jsonb || $1::jsonb)::text, updated_at = $2
+		SET metadata_json = (metadata_json::jsonb || $1::jsonb)::text, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz
 		WHERE id = $3`, patchJSON, updatedAt, assetID)
 }
 
@@ -218,7 +222,7 @@ func UpdateMediaAssetFolderPath(ctx context.Context, exec mediaAssetSQLExecutor,
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	return execAssetUpdate(ctx, exec, assetID, "folder path update", `UPDATE media_assets SET folder_id = $1, folder_path = $2, updated_at = $3 WHERE id = $4`, folderID, folderPath, updatedAt, assetID)
+	return execAssetUpdate(ctx, exec, assetID, "folder path update", `UPDATE media_assets SET folder_id = $1, folder_path = $2, updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz WHERE id = $4`, folderID, folderPath, updatedAt, assetID)
 }
 
 func (c *PostgresAssetCommitter) UpdateLifecycle(ctx context.Context, assetID string, state, deletedAt, updatedAt string) error {
@@ -229,7 +233,7 @@ func UpdateMediaAssetLifecycle(ctx context.Context, exec mediaAssetSQLExecutor, 
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	return execAssetUpdate(ctx, exec, assetID, "lifecycle update", `UPDATE media_assets SET lifecycle_state = $1, deleted_at = $2, updated_at = $3 WHERE id = $4`, state, deletedAt, updatedAt, assetID)
+	return execAssetUpdate(ctx, exec, assetID, "lifecycle update", `UPDATE media_assets SET lifecycle_state = $1, deleted_at = $2, updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz WHERE id = $4`, state, deletedAt, updatedAt, assetID)
 }
 
 func (c *PostgresAssetCommitter) UpdateTaxonomy(ctx context.Context, taxonomy mediaregistry.AssetTaxonomy) error {
@@ -240,9 +244,10 @@ func UpdateMediaAssetTaxonomy(ctx context.Context, exec mediaAssetSQLExecutor, t
 	if err := taxonomy.Validate(); err != nil {
 		return fmt.Errorf("asset committer: taxonomy update: %w", err)
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	return execAssetUpdate(ctx, exec, taxonomy.AssetID, "taxonomy update",
-		`UPDATE media_assets SET namespace = $1, asset_kind = $2, source_type = $3, semantic_role = $4, updated_at = $5 WHERE id = $6`,
-		taxonomy.Namespace, taxonomy.AssetKind, taxonomy.SourceType, taxonomy.SemanticRole, time.Now().UTC().Format(time.RFC3339), taxonomy.AssetID)
+		`UPDATE media_assets SET namespace = $1, asset_kind = $2, source_type = $3, semantic_role = $4, updated_at = $5, updated_at_ts = NULLIF($5, '')::timestamptz WHERE id = $6`,
+		taxonomy.Namespace, taxonomy.AssetKind, taxonomy.SourceType, taxonomy.SemanticRole, now, taxonomy.AssetID)
 }
 
 func (c *PostgresAssetCommitter) LinkContent(ctx context.Context, assetID, contentSHA256 string) error {
@@ -250,7 +255,8 @@ func (c *PostgresAssetCommitter) LinkContent(ctx context.Context, assetID, conte
 }
 
 func LinkMediaAssetContent(ctx context.Context, exec mediaAssetSQLExecutor, assetID, contentSHA256 string) error {
-	return execAssetUpdate(ctx, exec, assetID, "content link", `UPDATE media_assets SET content_sha256 = $1, updated_at = $2 WHERE id = $3`, contentSHA256, time.Now().UTC().Format(time.RFC3339), assetID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	return execAssetUpdate(ctx, exec, assetID, "content link", `UPDATE media_assets SET content_sha256 = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, contentSHA256, now, assetID)
 }
 
 func (c *PostgresAssetCommitter) UpdateSearchText(ctx context.Context, assetID, searchText, updatedAt string) error {
@@ -261,7 +267,7 @@ func UpdateMediaAssetSearchText(ctx context.Context, exec mediaAssetSQLExecutor,
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	return execAssetUpdate(ctx, exec, assetID, "search text update", `UPDATE media_assets SET search_text = $1, updated_at = $2 WHERE id = $3`, searchText, updatedAt, assetID)
+	return execAssetUpdate(ctx, exec, assetID, "search text update", `UPDATE media_assets SET search_text = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, searchText, updatedAt, assetID)
 }
 
 func (c *PostgresAssetCommitter) RefreshUpdatedAt(ctx context.Context, assetID, updatedAt string) error {
@@ -272,7 +278,7 @@ func UpdateMediaAssetUpdatedAt(ctx context.Context, exec mediaAssetSQLExecutor, 
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	return execAssetUpdate(ctx, exec, assetID, "updated-at refresh", `UPDATE media_assets SET updated_at = $1 WHERE id = $2`, updatedAt, assetID)
+	return execAssetUpdate(ctx, exec, assetID, "updated-at refresh", `UPDATE media_assets SET updated_at = $1, updated_at_ts = NULLIF($1, '')::timestamptz WHERE id = $2`, updatedAt, assetID)
 }
 
 func (c *PostgresAssetCommitter) UpdateOrphanMetadata(ctx context.Context, assetID string, detectedAt time.Time, kind string) error {
@@ -291,7 +297,7 @@ func UpdateMediaAssetOrphanMetadata(ctx context.Context, exec mediaAssetSQLExecu
 				jsonb_set(metadata_json::jsonb, '{`+key+`}', '1'::jsonb),
 			'{orphan_reason}', to_jsonb($1::text)),
 			'{orphan_detected_at}', to_jsonb($2::text))::text
-		), updated_at = $3 WHERE id = $4`,
+		), updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz WHERE id = $4`,
 		kind, at, at, assetID)
 }
 
@@ -350,14 +356,14 @@ func UpdateMediaAssetImageFields(ctx context.Context, exec mediaAssetSQLExecutor
 	if image == nil {
 		return nil
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	return execAssetUpdate(ctx, exec, assetID, "image fields update", `
 		UPDATE media_assets
 		SET url = $1, tags = $2, tags_norm = $3, width = $4, height = $5,
-		    relative_path = $6, origin = $7, provider = $8, updated_at = $9
+		    relative_path = $6, origin = $7, provider = $8, updated_at = $9, updated_at_ts = NULLIF($9, '')::timestamptz
 		WHERE id = $10`,
 		image.URL, image.TagsJSON, image.TagsNorm, image.Width, image.Height,
-		image.RelativePath, image.Origin, image.Provider,
-		time.Now().UTC().Format(time.RFC3339), assetID)
+		image.RelativePath, image.Origin, image.Provider, now, assetID)
 }
 
 // UpdateMediaAssetUsage increments the reuse counter through the canonical
@@ -368,6 +374,6 @@ func UpdateMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, asse
 	}
 	return execAssetUpdate(ctx, exec, assetID, "usage update", `
 		UPDATE media_assets
-		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = $1, updated_at = $2
+		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz
 		WHERE id = $3`, usedAt, usedAt, assetID)
 }

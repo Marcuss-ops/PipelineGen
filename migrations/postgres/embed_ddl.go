@@ -52,3 +52,23 @@ var MediaVectorSurfacesDDL string
 //
 //go:embed 003_media_hnsw_indexes.sql
 var MediaHNSWIndexesDDL string
+
+// MediaTimestampsTimestamptzDDL is the verbatim DDL of
+// migrations/postgres/004_media_timestamps_timestamptz.sql — the
+// TIMESTAMPTZ expand phase for the media PostgreSQL SSOT (BASELINE_PLAN.md
+// §5). It adds *_ts TIMESTAMPTZ mirrors for every hot-path TEXT timestamp,
+// backfills from the legacy TEXT siblings, and creates btree/BRIN indexes
+// on the new typed columns. The production dual-write lives in the
+// committer (see internal/platform/postgres/media/committer.go).
+//
+//go:embed 004_media_timestamps_timestamptz.sql
+var MediaTimestampsTimestamptzDDL string
+
+// MediaAssetVersionsDDL is the verbatim DDL of
+// migrations/postgres/006_media_asset_versions.sql — the sequential
+// version history per media asset (asset_versions) written by the
+// canonical AssetTxFinalizer.insertAssetVersion. Mirrors SQLite
+// migration 105_asset_versions.sql for SSOT parity.
+//
+//go:embed 006_media_asset_versions.sql
+var MediaAssetVersionsDDL string

@@ -56,9 +56,11 @@ type VidRushDeliveryPorts struct {
 
 // VidRushMaterializationDeps carries the composed surfaces the VidRush
 // materialization wiring needs from the composition root.
+// The post-cutover media SSOT is PostgreSQL-only (MediaPG); MediaSQLite
+// as a second media truth is REMOVED — a single DB commit + poll on
+// media_assets.index_state (pgx $ placeholders, no SQLite `?`).
 type VidRushMaterializationDeps struct {
 	MediaPG        *sql.DB
-	MediaSQLite    *sql.DB
 	Delivery       VidRushDeliveryPorts
 	ImageSearcher  adapters.InternetImageSearcher
 	ImageGenerator *imagesapp.Service
@@ -83,7 +85,7 @@ func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterialization
 	}
 	assetTx := assetfinalizer.NewAssetTxFinalizer(log, committer)
 	preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(deps.Delivery.Publisher, log), log)
-	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaSQLite, preparation: preparation, assetTx: assetTx}
+	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx}
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
 	if deps.Delivery.Downloader != nil {
@@ -204,7 +206,7 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 
 func readVidRushIndexState(ctx context.Context, db *sql.DB, assetID string) (string, error) {
 	var state string
-	err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = ?`, assetID).Scan(&state)
+	err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = $1`, assetID).Scan(&state)
 	return strings.TrimSpace(state), err
 }
 
@@ -218,7 +220,7 @@ func waitForVidRushIndex(ctx context.Context, db *sql.DB, assetID string, maxWai
 	defer ticker.Stop()
 	for {
 		var state string
-		if err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = ?`, assetID).Scan(&state); err == nil && strings.EqualFold(strings.TrimSpace(state), "INDEXED") {
+		if err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = $1`, assetID).Scan(&state); err == nil && strings.EqualFold(strings.TrimSpace(state), "INDEXED") {
 			return true
 		}
 		select {
