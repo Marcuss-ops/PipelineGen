@@ -342,8 +342,8 @@ else
           --sqlite-dsn "${SQLITE_MEDIA_DB}?_journal_mode=WAL&mode=ro" \
           --postgres-dsn "$PG_MEDIA_DSN" \
           --verify-only >"$BACKFILL_LOG" 2>&1; then
-    _parity="$(grep -o '"'"'"mismatch_count"'"'": [0-9]*' "$BACKFILL_LOG" | head -1 | tr -dc '0-9')"
-    gate "real-data backfill parity" "PASS" "verify-only: ${_parity} mismatches, row-for-row vs SQLite"
+    _parity="$(grep -o '"mismatch_count": [0-9]*' "$BACKFILL_LOG" | head -1 | tr -dc '0-9')"
+    gate "real-data backfill parity" "PASS" "verify-only: ${_parity:-0} mismatches, row-for-row vs SQLite"
   else
     gate "real-data backfill parity" "FAIL" "$(tail -1 "$BACKFILL_LOG")"
   fi
@@ -369,10 +369,10 @@ else
   [[ -n "$SIDECAR_URL" ]] && ENRICH_ARGS+=(--sidecar-url "$SIDECAR_URL")
   if go build -o "$PGADMIN_BIN" ./cmd/admin 2>"$ENRICH_LOG" \
      && "$PGADMIN_BIN" "${ENRICH_ARGS[@]}" >>"$ENRICH_LOG" 2>&1; then
-    _fcov="$(grep -o '"'"'"feature_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _scov="$(grep -o '"'"'"semantic_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _vcov="$(grep -o '"'"'"visual_coverage"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
-    _total="$(grep -o '"'"'"total_assets"'"'": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _fcov="$(grep -o '"feature_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _scov="$(grep -o '"semantic_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _vcov="$(grep -o '"visual_coverage": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
+    _total="$(grep -o '"total_assets": [0-9]*' "$ENRICH_LOG" | head -1 | tr -dc '0-9')"
     _fc="${_fcov:-0}"; _sc="${_scov:-0}"; _vc="${_vcov:-0}"; _tt="${_total:-0}"
     if [[ "$_tt" -eq 0 ]]; then
       gate "enrichment coverage = 100%" "PASS" "empty catalog (total=0) — coverage trivially complete"
