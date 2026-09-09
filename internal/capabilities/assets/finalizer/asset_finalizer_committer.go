@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -200,6 +201,14 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	}
 	metadata.SourceVersion = sourceVersion
 	metadata.SourceProvider = sourceProvider
+	searchText := strings.TrimSpace(artifact.Description)
+	if searchText == "" {
+		searchText = strings.TrimSpace(artifact.Filename)
+	}
+	// A repaired/changed search surface needs a fresh index event even when
+	// the bytes and asset identity are unchanged. The suffix is deterministic
+	// for the search text, so retries remain idempotent.
+	searchRevision := digest.SHA256String(searchText)
 	// Script-required acquisition: the stock pipeline finalizer emits
 	// asset.index.requested events whose assets unblock script
 	// generation. Stamp the outbox event with the high priority so
@@ -210,30 +219,32 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		indexPriority = persistence.IndexPriorityHigh
 	}
 	return persistence.CommitRequest{
-		AssetID:        artifact.ArtifactID,
-		Source:         source,
-		Name:           artifact.Filename,
-		Filename:       artifact.Filename,
-		MediaType:      mediaType,
-		Category:       metadata.Category,
-		ContentHash:    artifact.SHA256,
-		Description:    artifact.Description,
-		DurationMs:     durationMs,
-		LifecycleState: lifecycleState,
-		IndexState:     string(initIndex),
-		LocalPath:      localPath,
-		FolderID:       artifact.Location.FolderID,
-		FolderPath:     artifact.Location.FolderPath,
-		SourceURL:      sourceURL,
-		SourceProvider: sourceProvider,
-		SourceVideoID:  metadata.SourceVideoID,
-		StartMs:        int64(metadata.StartSec * 1000),
-		EndMs:          int64(metadata.EndSec * 1000),
-		Metadata:       metadata,
-		Locations:      locations,
-		EmitIndexEvent: searchIndexable,
-		RequestedAt:    time.Now(),
-		IndexPriority:  indexPriority,
+		AssetID:             artifact.ArtifactID,
+		Source:              source,
+		Name:                artifact.Filename,
+		Filename:            artifact.Filename,
+		MediaType:           mediaType,
+		Category:            metadata.Category,
+		ContentHash:         artifact.SHA256,
+		Description:         artifact.Description,
+		SearchText:          searchText,
+		DurationMs:          durationMs,
+		LifecycleState:      lifecycleState,
+		IndexState:          string(initIndex),
+		LocalPath:           localPath,
+		FolderID:            artifact.Location.FolderID,
+		FolderPath:          artifact.Location.FolderPath,
+		SourceURL:           sourceURL,
+		SourceProvider:      sourceProvider,
+		SourceVideoID:       metadata.SourceVideoID,
+		StartMs:             int64(metadata.StartSec * 1000),
+		EndMs:               int64(metadata.EndSec * 1000),
+		Metadata:            metadata,
+		Locations:           locations,
+		EmitIndexEvent:      searchIndexable,
+		RequestedAt:         time.Now(),
+		IndexPriority:       indexPriority,
+		IndexEventKeySuffix: ":search:" + searchRevision[:16],
 	}
 }
 
