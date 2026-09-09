@@ -54,7 +54,6 @@ capability_ownership_map:
   - macro_owner: content
     packages:
       - localization    # subtitle localization, drive upload, doc publish
-      - multilingual    # multilingual content operations
   - macro_owner: channels
     packages: []
     note: "channels capability lives in internal/capabilities/channels/ (migrated 2026-08-25; legacy internal/application/channels deleted)"

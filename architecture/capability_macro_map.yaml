@@ -26,10 +26,10 @@
 #   - jobs      : job orchestration + durable-execution support packages
 #                 (jobregistry, checkpoint, replay) per policy.yaml.
 #   - system    : system HTTP + control-plane + ops tooling (admin*,
-#                 maintenance, audit, middleware, operations, workerdoctor).
+#                 maintenance, audit, middleware, operations).
 #   - ai        : semantic/intent support (semantic, linguistics, brain,
 #                 indexing, mediasearch).
-#   - content   : localization + multilingual + translation + document
+#   - content   : localization + translation + document
 #                 generation.
 #   - youtube/channels/images/voiceover/delivery/stockintelligence:
 #                 single-concept capabilities that own exactly one package
@@ -84,7 +84,6 @@ macro_capability_map:
     - document
     - documents
     - localization
-    - multilingual
     - translation
   jobs:
     - jobs
@@ -103,7 +102,6 @@ macro_capability_map:
     - audit
     - middleware
     - operations
-    - workerdoctor
   ai:
     - ai
     - semantic
