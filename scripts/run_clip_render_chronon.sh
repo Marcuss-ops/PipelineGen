@@ -53,13 +53,31 @@ else
     {
       source_asset_id: $source,
       transcript: {mode: "reuse_or_generate", language: "en", persist: true},
-      subtitles: {enabled: true, mode: "burn", style_id: "shorts-v1"},
+      subtitles: {
+        enabled: true,
+        mode: "burn",
+        style_id: "shorts-v1",
+        style: {
+          font: "Montserrat",
+          font_size_px: 48,
+          color: "#FFFFFF",
+          stroke: {color: "#000000", width: 5},
+          shadow: {color: "#000000", opacity: 0.95, blur_px: 5, offset_x: 2, offset_y: 3}
+        }
+      },
       watermark: {
         enabled: true,
         text: "VELOX • CHRONON",
         position: "top_right",
         opacity: 1,
-        margin_px: 40
+        margin_px: 100,
+        style: {
+          font: "Montserrat",
+          font_size_px: 34,
+          color: "#FFFFFF",
+          stroke: {color: "#000000", width: 3},
+          shadow: {color: "#000000", opacity: 0.95, blur_px: 5, offset_x: 2, offset_y: 3}
+        }
       },
       background: {mode: "none"},
       audio: {mode: "copy_if_compatible"},
