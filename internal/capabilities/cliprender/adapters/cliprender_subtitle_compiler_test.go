@@ -17,7 +17,24 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
+
+type subtitleArtifactRepoStub struct {
+	current *detail.SubtitleArtifact
+}
+
+func (s *subtitleArtifactRepoStub) Upsert(_ context.Context, _ *detail.SubtitleArtifact) error {
+	return nil
+}
+
+func (s *subtitleArtifactRepoStub) FindCurrent(_ context.Context, _ string, _ string, _ detail.SubtitleFormat) (*detail.SubtitleArtifact, error) {
+	return s.current, nil
+}
+
+func (s *subtitleArtifactRepoStub) ListByAsset(_ context.Context, _ string) ([]detail.SubtitleArtifact, error) {
+	return nil, nil
+}
 
 func subtitleTestInput(t *testing.T, mode string) cliprender.SubtitleCompileInput {
 	t.Helper()
@@ -137,5 +154,33 @@ func TestSubtitleCompiler_TrimsCuesToClipDuration(t *testing.T) {
 	}
 	if err := texttracks.ValidateASSFile(out.LocalPath, 4000); err != nil {
 		t.Fatalf("trimmed ASS is invalid: %v", err)
+	}
+}
+
+func TestSubtitleCompiler_RegeneratesWhenCurrentStyleDiffers(t *testing.T) {
+	compiler := &ClipRenderSubtitleCompiler{}
+	compiler.SetArtifactRepository(&subtitleArtifactRepoStub{current: &detail.SubtitleArtifact{
+		AssetID:      "asset-123",
+		LanguageCode: "en",
+		Format:       detail.SubtitleFormatASS,
+		Status:       detail.SubtitleStatusReady,
+		StyleVersion: "legacy-style",
+		LocalPath:    "/does/not/exist/subtitles.ass",
+		DriveFileID:  "drive-ass-legacy",
+	}})
+
+	out, err := compiler.Compile(context.Background(), subtitleTestInput(t, cliprender.SubtitlesModeBurn))
+	if err != nil {
+		t.Fatalf("style mismatch must be a cache miss, not a failure: %v", err)
+	}
+	if out.StyleID != "shorts-v1" {
+		t.Fatalf("regenerated artifact style = %q, want shorts-v1", out.StyleID)
+	}
+	content, err := os.ReadFile(out.LocalPath)
+	if err != nil {
+		t.Fatalf("read regenerated artifact: %v", err)
+	}
+	if !strings.Contains(string(content), "Style: shorts-v1,") {
+		t.Fatalf("regenerated ASS does not contain requested style:\n%s", content)
 	}
 }
