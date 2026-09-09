@@ -136,8 +136,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	var clipsSearcher scriptapi.ClipSearcher
-	if root.Repos.ClipsRepo != nil {
-		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
+	if root.MediaPostgres != nil {
+		clipsSearcher = newClipsNameSearchAdapter(root.MediaPostgres)
 	}
 
 	adminToken := ""
@@ -228,8 +228,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	return tryRegisterModule(registry, log, sd)
 }
 
-// anyScriptFeatureEnabled returns true when at least one script feature flag
-// is on.
 func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	if cfg == nil {
 		return false
@@ -237,12 +235,10 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	return cfg.Features.ScriptClipsEnabled || cfg.Features.ImagesEnabled
 }
 
-// scriptGenerationEnabled is the dedicated gate for POST /api/script/generate.
 func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
-// registerScripts orchestrates the /api/script/* routing surface.
 func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring) error {
 	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring); err != nil {
 		return err
@@ -250,8 +246,6 @@ func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Lo
 	return registerScriptHistory(registry, log, cfg, root)
 }
 
-// vidrushCachePort resolves the nil-tolerant VidRush cache port from the
-// composition root. A missing cache plane disables the cache (nil = off).
 func vidrushCachePort(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCachePort {
 	if root == nil || root.CacheDB == nil || root.CacheDB.DB == nil {
 		return nil
@@ -259,9 +253,6 @@ func vidrushCachePort(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCac
 	return vidrushwiring.BuildVidRushCache(root.CacheDB.DB, log)
 }
 
-// vidrushInternetImageSearcher adapts the root image-search resolver into
-// the InternetImageSearcher port consumed by the VidRush materialization
-// wiring. Nil-safe: returns nil when the resolver is not wired.
 func vidrushInternetImageSearcher(root *ComposeRoot, log *zap.Logger) adapters.InternetImageSearcher {
 	if root == nil || root.Domains == nil || root.Domains.ImageSearchResolver == nil {
 		return nil
