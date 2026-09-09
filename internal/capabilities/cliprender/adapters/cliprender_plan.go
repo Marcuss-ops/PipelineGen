@@ -52,25 +52,24 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 		if err != nil {
 			return nil, fmt.Errorf("%w: lookup current ASS artifact: %v", cliprender.ErrSubtitleCompileUnavailable, err)
 		}
-		if current != nil {
-			if current.Status != detail.SubtitleStatusReady || current.StyleVersion != in.StyleID ||
-				current.LocalPath == "" || current.DriveFileID == "" {
-				return nil, fmt.Errorf("%w: current ASS artifact for %q is not reusable (status=%s style=%q local=%t drive=%t)",
-					cliprender.ErrSubtitleCompileUnavailable, in.AssetID, current.Status, current.StyleVersion,
-					current.LocalPath != "", current.DriveFileID != "")
+		if current != nil && current.Status == detail.SubtitleStatusReady &&
+			current.StyleVersion == in.StyleID && current.LocalPath != "" &&
+			current.DriveFileID != "" {
+			// A current row is only a cache candidate. If its local bytes have
+			// disappeared, its ASS is stale/invalid, or its hash no longer
+			// matches, fall through to deterministic regeneration from the
+			// canonical cues below. A different style is also a normal cache
+			// miss: one asset has one current row, so a new requested style must
+			// never turn into a request failure.
+			if _, statErr := os.Stat(current.LocalPath); statErr == nil {
+				if validateErr := texttracks.ValidateASSFile(current.LocalPath, in.ClipDurationMS); validateErr == nil {
+					sha, _, hashErr := digest.SHA256File(current.LocalPath)
+					if hashErr == nil && sha == current.LegacyFileMD5 {
+						cliprender.RecordSubtitleCacheFacts(current.LocalPath, cliprender.SubtitleCacheFacts{ContentCacheHit: true, ArtifactCacheHit: true, Measured: true})
+						return &cliprender.SubtitleArtifact{LocalPath: current.LocalPath, SHA256: sha, Mode: in.Mode, StyleID: current.StyleVersion, DriveFileID: current.DriveFileID, DriveLink: current.DriveURL}, nil
+					}
+				}
 			}
-			if _, err := os.Stat(current.LocalPath); err != nil {
-				return nil, fmt.Errorf("%w: current ASS artifact for %q is missing locally: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
-			}
-			if err := texttracks.ValidateASSFile(current.LocalPath, in.ClipDurationMS); err != nil {
-				return nil, fmt.Errorf("%w: current ASS artifact for %q failed validation: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
-			}
-			sha, _, err := digest.SHA256File(current.LocalPath)
-			if err != nil || sha != current.LegacyFileMD5 {
-				return nil, fmt.Errorf("%w: current ASS artifact for %q failed hash verification", cliprender.ErrSubtitleCompileUnavailable, in.AssetID)
-			}
-			cliprender.RecordSubtitleCacheFacts(current.LocalPath, cliprender.SubtitleCacheFacts{ContentCacheHit: true, ArtifactCacheHit: true, Measured: true})
-			return &cliprender.SubtitleArtifact{LocalPath: current.LocalPath, SHA256: sha, Mode: in.Mode, StyleID: current.StyleVersion, DriveFileID: current.DriveFileID, DriveLink: current.DriveURL}, nil
 		}
 	}
 	cues := trimClipRenderCues(in.Cues, in.ClipDurationMS)

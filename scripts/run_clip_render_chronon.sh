@@ -46,7 +46,7 @@ RESPONSE="$WORK_DIR/response.json"
 FULL="$WORK_DIR/full.json"
 
 if [[ -n "$PAYLOAD_FILE" ]]; then
-  jq -e 'type == "object" and (.source_asset_id | type == "string" and length > 0)' \
+  jq -e 'if type == "object" and (.source_asset_id | type == "string" and length > 0) then . else error("payload must be an object with a non-empty source_asset_id") end' \
     "$PAYLOAD_FILE" > "$PAYLOAD"
 else
   jq -n --arg source "$SOURCE_ASSET_ID" '
