@@ -111,7 +111,7 @@ type WatermarkSpec struct {
 	AssetID  string  `json:"asset_id,omitempty"`  // required when enabled
 	Position string  `json:"position,omitempty"`  // default top_right
 	Opacity  float64 `json:"opacity,omitempty"`   // 0.0–1.0, default 1.0
-	MarginPX int     `json:"margin_px,omitempty"` // >= 0, default 0
+	MarginPX int     `json:"margin_px,omitempty"` // >= 0, default 100
 	// Style is the canonical visual override block (size, color, shadow,
 	// transition). It is the kernel/script SSOT definition — this boundary
 	// projects it verbatim, never re-defines it.
@@ -255,6 +255,17 @@ func (r *RenderRequest) Normalize() {
 	if r.Watermark.Opacity == 0 {
 		r.Watermark.Opacity = 1.0
 	}
+	if r.Watermark.Enabled && strings.TrimSpace(r.Watermark.Text) != "" {
+		// Keep text safely inside the frame and readable over arbitrary footage.
+		// A zero value means the caller omitted the margin; an explicit
+		// operator override remains respected when it is non-zero.
+		if r.Watermark.MarginPX == 0 {
+			r.Watermark.MarginPX = 100
+		}
+		if r.Watermark.Style == nil {
+			r.Watermark.Style = defaultOverlayTextStyle(34, 3, 5)
+		}
+	}
 	if r.Transcript == nil {
 		r.Transcript = &TranscriptSpec{}
 	}
@@ -272,6 +283,11 @@ func (r *RenderRequest) Normalize() {
 	}
 	if r.Subtitles.Style != nil && r.Subtitles.Style.FontSizePX == 0 && r.Subtitles.Style.Size > 0 {
 		r.Subtitles.Style.FontSizePX = r.Subtitles.Style.Size
+	}
+	if r.Subtitles.Enabled && r.Subtitles.Style == nil {
+		// Do not leave the default white subtitle glyphs unoutlined: on bright
+		// source frames they become unreadable and the intended shadow is lost.
+		r.Subtitles.Style = defaultOverlayTextStyle(48, 5, 5)
 	}
 	if r.Output == nil {
 		r.Output = &OutputSpec{}
@@ -305,6 +321,25 @@ func (r *RenderRequest) Normalize() {
 	}
 	if r.Execution == nil {
 		r.Execution = &ExecutionSpec{}
+	}
+}
+
+func defaultOverlayTextStyle(fontSize, strokeWidth, shadowBlur float64) *scriptpkg.VideoVisualStyleSpec {
+	return &scriptpkg.VideoVisualStyleSpec{
+		Font:       "Montserrat",
+		FontSizePX: fontSize,
+		Color:      "#FFFFFF",
+		Stroke: &scriptpkg.VideoStrokeSpec{
+			Color: "#000000",
+			Width: strokeWidth,
+		},
+		Shadow: &scriptpkg.VideoShadowSpec{
+			Color:   "#000000",
+			Opacity: 0.95,
+			BlurPX:  shadowBlur,
+			OffsetX: 2,
+			OffsetY: 3,
+		},
 	}
 }
 

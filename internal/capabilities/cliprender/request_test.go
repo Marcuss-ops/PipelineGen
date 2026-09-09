@@ -67,6 +67,28 @@ func TestNormalize_IsIdempotent(t *testing.T) {
 	}
 }
 
+func TestNormalize_DefaultOverlayReadability(t *testing.T) {
+	req := &RenderRequest{
+		SourceAssetID: "asset-1",
+		Watermark:     &WatermarkSpec{Enabled: true, Text: "VELOX"},
+		Subtitles:     &SubtitlesSpec{Enabled: true, Mode: SubtitlesModeBurn},
+	}
+	req.Normalize()
+
+	if req.Watermark.MarginPX != 100 {
+		t.Fatalf("watermark margin = %d, want 100", req.Watermark.MarginPX)
+	}
+	if req.Watermark.Style == nil || req.Watermark.Style.Stroke == nil || req.Watermark.Style.Shadow == nil {
+		t.Fatalf("watermark must receive readable default style: %+v", req.Watermark.Style)
+	}
+	if req.Subtitles.Style == nil || req.Subtitles.Style.Stroke == nil || req.Subtitles.Style.Shadow == nil {
+		t.Fatalf("subtitles must receive readable default style: %+v", req.Subtitles.Style)
+	}
+	if req.Subtitles.Style.Shadow.Opacity != 0.95 || req.Subtitles.Style.Shadow.OffsetY != 3 {
+		t.Fatalf("subtitle shadow defaults = %+v", req.Subtitles.Style.Shadow)
+	}
+}
+
 // TestValidate_RequiresSourceAsset verifies the mandatory source gate.
 func TestValidate_RequiresSourceAsset(t *testing.T) {
 	req := &RenderRequest{}
