@@ -174,6 +174,13 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"asset_id":      published.AssetID,
 			"drive_file_id": published.DriveFileID,
 			"drive_link":    published.DriveLink,
+			"drive_pending": published.DrivePending,
+			"publication_status": func() string {
+				if published.DrivePending {
+					return "PENDING"
+				}
+				return "PUBLISHED"
+			}(),
 			"size_bytes":    published.SizeBytes,
 			"sidecar_link":  published.SidecarLink,
 		}

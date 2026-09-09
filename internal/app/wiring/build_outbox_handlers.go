@@ -20,6 +20,8 @@ import (
 
 	"go.uber.org/zap"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
@@ -36,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
@@ -289,6 +292,40 @@ func registerOutboxWorkers(
 // this adapter owns the concrete outboxevents.Handler contract.
 type imageDriveDeliveryOutboxAdapter struct {
 	handler *imagesapp.ImageDriveDeliveryHandler
+}
+
+// registerPostgresMediaOutboxHandlers wires external delivery consumers into
+// the same PostgreSQL outbox that the canonical media committer writes. This
+// is deliberately separate from registerOutboxWorkers: the latter drains the
+// control-plane SQLite outbox, while media assets are owned by PostgreSQL.
+func registerPostgresMediaOutboxHandlers(
+	worker *pgmedia.PostgresIndexWorker,
+	drivePublisher delivery.Publisher,
+	mutator assetspersistence.AssetMutator,
+	imageRepo *imagesrepo.ImagesRepository,
+	log *zap.Logger,
+) error {
+	if worker == nil {
+		return nil
+	}
+	clipHandler, clipErr := newClipRenderDriveDeliveryHandler(drivePublisher, mutator, log)
+	if clipErr != nil {
+		return fmt.Errorf("clip.render PostgreSQL Drive delivery handler: %w", clipErr)
+	}
+	if err := worker.RegisterHandler(cliprender.EventClipRenderDriveDeliveryRequested, clipHandler); err != nil {
+		return fmt.Errorf("register clip.render PostgreSQL Drive delivery handler: %w", err)
+	}
+	if imageRepo != nil {
+		imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(imageRepo, drivePublisher, log)
+		if imageErr != nil {
+			return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)
+		}
+		if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageDriveDeliveryPGHandler{handler: imageHandler}); err != nil {
+			return fmt.Errorf("register image PostgreSQL Drive delivery handler: %w", err)
+		}
+	}
+	log.Info("PostgreSQL media outbox Drive delivery handlers registered")
+	return nil
 }
 
 func (a imageDriveDeliveryOutboxAdapter) EventType() string {

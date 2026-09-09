@@ -108,12 +108,16 @@ type FeaturesConfig struct {
 	// job binding (canonical VeloxEditing-compatible clip
 	// post-processing capability). Default false: operators opt in
 	// explicitly, mirroring the other feature flags.
-	ClipRenderEnabled    bool `yaml:"clip_render_enabled" env:"VELOX_FEATURE_CLIP_RENDER_ENABLED" default:"false"`
-	DriveEnabled         bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
-	ScriptClipsEnabled   bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
-	VoiceoverEnabled     bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
-	ImagesEnabled        bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
-	StockPipelineEnabled bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"true"`
+	ClipRenderEnabled bool `yaml:"clip_render_enabled" env:"VELOX_FEATURE_CLIP_RENDER_ENABLED" default:"false"`
+	// ClipAsyncDriveEnabled commits the rendered asset and a durable Drive
+	// delivery intent before the external upload. Default true: synchronous
+	// Drive publication is retained only when this flag is explicitly disabled.
+	ClipAsyncDriveEnabled bool `yaml:"clip_async_drive_enabled" env:"VELOX_CLIP_ASYNC_DRIVE_ENABLED" default:"true"`
+	DriveEnabled          bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
+	ScriptClipsEnabled    bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
+	VoiceoverEnabled      bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
+	ImagesEnabled         bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
+	StockPipelineEnabled  bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"true"`
 
 	// MediaDriveRequired, when true, causes asset registration to fail
 	// when Drive upload is not successful (PUBLISH_FAILED or LOCAL_ONLY).

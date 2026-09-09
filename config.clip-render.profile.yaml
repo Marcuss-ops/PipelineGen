@@ -1,0 +1,50 @@
+# clip-render.profile.yaml — render-only boot profile (September 2026).
+#
+# PURPOSE
+#   A minimal composition preset for running the clip.render pipeline in
+#   isolation (E2E tests, batch 10-language renders, GPU worker validation)
+#   without paying boot cost or tripping fail-closed gates of modules the
+#   render path never touches (Artlist scraper URL, YouTube API, stock
+#   pipeline, voiceover).
+#
+# USAGE
+#   Start from your production config and overlay this profile, e.g.:
+#
+#     VELOX_FEATURE_ARTLIST_ENABLED=false \
+#     VELOX_FEATURE_YOUTUBE_ENABLED=false \
+#     ./pipelinegen --config config.clip-render.profile.yaml --mode server
+#
+#   Environment variables always win over YAML (applyEnvVars runs last),
+#   so secrets (VELOX_DELIVERY_HMAC_SECRET, PIPELINEGEN_MEDIA_POSTGRES_DSN)
+#   stay in /etc/pipelinegen/pipelinegen.env and are NOT duplicated here.
+#
+# CONTRACTS PRESERVED
+#   - HMAC, Drive, media PostgreSQL, RenderingGen queue and Chronon socket
+#     settings are inherited from the base config / service environment.
+#   - clip_async_drive_enabled: true is the canonical production mode: the
+#     rendered asset + Drive intent commit durably, the upload drains through
+#     the PostgreSQL media outbox worker.
+#   - linguistics.lexicon_root resolves relative to THIS file's directory
+#     when the anchored path exists (config.GetFromPath), so this profile
+#     boots from any cwd.
+
+server:
+  host: "127.0.0.1"
+  port: 18080
+
+features:
+  # Render-only profile: every module the clip.render path does not
+  # consume is disabled so boot neither pays its composition cost nor
+  # aborts on its fail-closed dependency gates (e.g. Artlist's
+  # AssetTxFinalizer requirement).
+  artlist_enabled: false
+  youtube_enabled: false
+  script_clips_enabled: false
+  voiceover_enabled: false
+  images_enabled: false
+  stock_pipeline_enabled: false
+  # The one capability this profile exists for:
+  clip_render_enabled: true
+  # Durable outbox-backed Drive delivery (job completes without waiting
+  # for the upload; the PostgreSQL media outbox worker drains it).
+  clip_async_drive_enabled: true

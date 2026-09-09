@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -56,6 +57,14 @@ type OutboxClaim struct {
 	Event    OutboxEvent
 	WorkerID string
 	LeaseID  string
+}
+
+// OutboxHandler performs the work for one non-index event claimed from the
+// PostgreSQL media outbox. The worker owns the lease lifecycle: a successful
+// handler return is followed by MarkCompleted, while an error is retried or
+// dead-lettered through the canonical lease-fenced path.
+type OutboxHandler interface {
+	Handle(ctx context.Context, claim *OutboxClaim) error
 }
 
 // ClaimNext claims the oldest pending event atomically (CTE claim with
@@ -198,6 +207,9 @@ type PostgresIndexWorker struct {
 	ModelID string
 	// EmbeddingType is the canonical channel ("text").
 	EmbeddingType string
+
+	handlersMu sync.RWMutex
+	handlers   map[string]OutboxHandler
 }
 
 // NewPostgresIndexWorker constructs the worker. Every dependency is
@@ -220,7 +232,36 @@ func NewPostgresIndexWorker(repo *Repository, vectors *VectorSurfaceWriter, embe
 		embedder:      embedder,
 		ModelID:       modelID,
 		EmbeddingType: "text",
+		handlers:      make(map[string]OutboxHandler),
 	}
+}
+
+// RegisterHandler adds a durable consumer for a PostgreSQL media outbox
+// event type. Registration happens during composition, before Run starts, but
+// the mutex also makes the contract safe for tests and future hot wiring.
+func (w *PostgresIndexWorker) RegisterHandler(eventType string, handler OutboxHandler) error {
+	if w == nil {
+		return errors.New("media outbox worker: worker is required")
+	}
+	if eventType == "" {
+		return errors.New("media outbox worker: event type is required")
+	}
+	if handler == nil {
+		return fmt.Errorf("media outbox worker: handler for %q is required", eventType)
+	}
+	w.handlersMu.Lock()
+	defer w.handlersMu.Unlock()
+	if _, exists := w.handlers[eventType]; exists {
+		return fmt.Errorf("media outbox worker: handler already registered for %q", eventType)
+	}
+	w.handlers[eventType] = handler
+	return nil
+}
+
+func (w *PostgresIndexWorker) handlerFor(eventType string) OutboxHandler {
+	w.handlersMu.RLock()
+	defer w.handlersMu.RUnlock()
+	return w.handlers[eventType]
 }
 
 // Handle processes one claimed asset.index.requested event:
@@ -237,6 +278,19 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 		return nil
 	}
 	evt := claim.Event
+	if evt.EventType != EventAssetIndexRequested {
+		handler := w.handlerFor(evt.EventType)
+		if handler == nil {
+			return w.failOrFail(ctx, claim, fmt.Errorf("media outbox worker: no handler registered for event type %q", evt.EventType))
+		}
+		if err := handler.Handle(ctx, claim); err != nil {
+			return w.failOrFail(ctx, claim, err)
+		}
+		if err := w.repo.MarkCompleted(ctx, evt.ID, claim.LeaseID); err != nil {
+			return fmt.Errorf("media outbox worker: complete event %d: %w", evt.ID, err)
+		}
+		return nil
+	}
 
 	var payload IndexEventPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {

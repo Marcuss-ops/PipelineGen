@@ -528,7 +528,8 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			logPublishMS = pm.TotalMS
 		}
 	}
-	if publication == nil || publication.AssetID == "" || publication.DriveFileID == "" {
+	if publication == nil || publication.AssetID == "" ||
+		(!publication.DrivePending && publication.DriveFileID == "") {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
 	emit("clip.render.completed", "Chronon render completed", map[string]any{
@@ -547,6 +548,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("asset_id", publication.AssetID),
 		zap.String("drive_file_id", publication.DriveFileID),
 		zap.String("drive_link", publication.DriveLink),
+		zap.Bool("drive_pending", publication.DrivePending),
 		zap.String("backend", string(outcome.Backend)),
 		zap.Int64("total_ms", totalMS),
 		zap.Int64("render_ms", renderMS),

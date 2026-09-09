@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -106,7 +107,34 @@ func GetFromPath(path string) (*Config, error) {
 	// and makes the final Config ready for validation and freezing.
 	applyEnvVars(cfg)
 	applyCanonicalModelDefaults(cfg)
+	resolveConfigRelativePaths(cfg, path)
 	return cfg, nil
+}
+
+// resolveConfigRelativePaths anchors relative filesystem roots in the
+// configuration to the directory of the config file that declared them.
+// A relative lexicon_root previously resolved against the *process* cwd,
+// which made the server boot depend on where it was launched from
+// (systemd WorkingDirectory vs. an operator shell vs. an isolated test
+// harness). Anchoring to the config file directory keeps "works in
+// systemd ⇒ works anywhere" while an absolute path stays untouched and
+// the VELOX_LEXICON_ROOT env override keeps the highest practical
+// precedence because it overwrites the YAML value before this resolver
+// runs. Callers embedding an absolute path (production deployments,
+// tests with t.TempDir()) are unaffected.
+func resolveConfigRelativePaths(cfg *Config, configPath string) {
+	if cfg == nil {
+		return
+	}
+	root := strings.TrimSpace(cfg.Linguistics.LexiconRoot)
+	if root == "" || filepath.IsAbs(root) {
+		return
+	}
+	if dir := filepath.Dir(configPath); dir != "" && dir != "." {
+		if _, err := os.Stat(filepath.Join(dir, root)); err == nil {
+			cfg.Linguistics.LexiconRoot = filepath.Join(dir, root)
+		}
+	}
 }
 
 // hostPortConflict reports whether two URLs share the same host:port.
