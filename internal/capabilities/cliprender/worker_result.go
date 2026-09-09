@@ -181,8 +181,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 				}
 				return "PUBLISHED"
 			}(),
-			"size_bytes":    published.SizeBytes,
-			"sidecar_link":  published.SidecarLink,
+			"size_bytes":   published.SizeBytes,
+			"sidecar_link": published.SidecarLink,
 		}
 	}
 	return result
