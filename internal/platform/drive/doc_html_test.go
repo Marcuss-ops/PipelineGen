@@ -153,7 +153,7 @@ const entityImageDocHTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></h
 <h1>NLP Online Images Certification</h1>
 <section><h2>Scene 1</h2><p>Dwayne Johnson trained in Los Angeles.</p>
 <p><img src="https://images.example/dwayne.jpg" alt="Dwayne Johnson" style="max-width:320px;max-height:240px;" /></p>
-<p><strong>Entity image:</strong> <a href="https://drive.google.com/file/d/dwayne/view">https://drive.google.com/file/d/dwayne/view</a></p></section>
+<p><strong>Entity image for:</strong> Dwayne Johnson — <a href="https://drive.google.com/file/d/dwayne/view">https://drive.google.com/file/d/dwayne/view</a></p></section>
 </body></html>`
 
 // TestBuildInsertRequests_InsertsInlineEntityImage certifies that the real
@@ -199,9 +199,9 @@ func TestBuildInsertRequests_InsertsInlineEntityImage(t *testing.T) {
 		t.Fatalf("inline image index = %d, want %d", imgReq.Location.Index, wantIndex)
 	}
 
-	// The image must not displace the following "Entity image:" Drive link:
+	// The image must not displace the following entity-image Drive link:
 	// that link is still emitted as a styled run inside the inserted text.
-	if !strings.Contains(reqs[0].InsertText.Text, "Entity image: https://drive.google.com/file/d/dwayne/view") {
+	if !strings.Contains(reqs[0].InsertText.Text, "Entity image for: Dwayne Johnson — https://drive.google.com/file/d/dwayne/view") {
 		t.Fatalf("inserted text missing the entity-image Drive link:\n%s", reqs[0].InsertText.Text)
 	}
 }

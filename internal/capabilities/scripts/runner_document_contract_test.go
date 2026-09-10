@@ -279,7 +279,7 @@ func TestGenerationRun_AudioCompilePrecedesDocumentAndDocumentWaitsForVoiceover(
 	require.NotEmpty(t, final.Result.DocumentSpecSceneSHA256[Language("en")])
 	require.Equal(t, len(final.Result.Scenes), final.Result.DocumentSceneCounts[Language("en")])
 	require.NotEmpty(t, docPub.records)
-	require.Contains(t, docPub.records[0].Content, "<h2>Remote Job Payload JSON</h2>")
+	require.NotContains(t, docPub.records[0].Content, "<h2>Remote Job Payload JSON</h2>")
 	require.NotContains(t, docPub.records[0].Content, "<h2>SpecScene JSON</h2>")
 }
 

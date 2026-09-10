@@ -182,7 +182,7 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Len(t, docPub.records, 1, "exactly one document must be upserted (en)")
 	require.Equal(t, 2, res.DocumentSceneCounts["en"], "document must project both scenes")
 	content := docPub.records[0].Content
-	require.Contains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must embed the remote payload surface")
+	require.NotContains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must not expose the remote payload")
 	require.NotContains(t, content, "<h2>SpecScene JSON</h2>", "legacy SpecScene surface must stay hidden")
 
 	// The persisted SSOT feeds the overlay resolver: every occurrence gets
