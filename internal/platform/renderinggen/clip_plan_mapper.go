@@ -349,15 +349,13 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 			Position: plan.Watermark.Position,
 			Style:    wmStyle,
 		}
+		// Single owner: Normalize owns watermark defaults (40/100 margin,
+		// 1.0 opacity). Mapper emits verbatim without re-defaulting so
+		// 0 remains representable and drift is impossible.
 		margin := plan.Watermark.MarginPX
-		if margin <= 0 {
-			margin = 40
-		}
 		wm.MarginPX = &margin
-		if plan.Watermark.Opacity > 0 {
-			op := plan.Watermark.Opacity
-			wm.Opacity = &op
-		}
+		opacity := plan.Watermark.Opacity
+		wm.Opacity = &opacity
 		if plan.Watermark.SHA256 != "" {
 			wm.AssetRefs = []overlayAssetRef{{
 				AssetID:   plan.Watermark.AssetID,

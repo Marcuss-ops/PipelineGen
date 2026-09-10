@@ -255,6 +255,10 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 			zap.String("run_id", runID),
 		)
 		c, err := p.contract.Resolve(ctx, req)
+		if err != nil {
+			tracker.recordWith("resolve_contract", time.Since(t0), map[string]any{"error": err.Error()})
+			return fmt.Errorf("clip.render: resolve output contract: %w", err)
+		}
 		tracker.recordWith("resolve_contract", time.Since(t0), map[string]any{
 			"contract_id": c.ContractID,
 			"video_codec": c.VideoCodec,
@@ -264,9 +268,6 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 			"fps_num":     c.FPSNum,
 			"fps_den":     c.FPSDen,
 		})
-		if err != nil {
-			return fmt.Errorf("clip.render: resolve output contract: %w", err)
-		}
 		contract = c
 		p.log.Info("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),

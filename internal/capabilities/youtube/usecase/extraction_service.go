@@ -28,6 +28,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	assetdomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -82,6 +83,10 @@ type ExtractionService struct {
 	// means only the explicit mode is supported (selection.mode=
 	// "important" fails closed at resolve time, godlike/07).
 	resolver *SegmentSelectionResolver
+	// download-once state is scoped to the extraction service lifecycle and is
+	// released by extractFanOut after the bounded fan-out completes.
+	stagedToken  string
+	stagedStager acquisition.SourceStager
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.

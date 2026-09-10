@@ -120,6 +120,9 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 		return nil, fmt.Errorf("streaming transcribe: start ffmpeg: %w", err)
 	}
 	if err := bridge.Start(); err != nil {
+		if ffmpeg.Process != nil {
+			_ = ffmpeg.Process.Kill()
+		}
 		_ = ffmpeg.Wait()
 		return nil, fmt.Errorf("streaming transcribe: start bridge: %w", err)
 	}
@@ -212,8 +215,14 @@ func (r *ClipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 	}
 	if track == nil {
 		langs, listErr := r.repo.ListReadyLanguages(ctx, in.AssetID, detail.TextTrackTranscript)
-		if listErr == nil && len(langs) > 0 {
-			track, cues, _ = r.repo.FindReady(ctx, in.AssetID, langs[0], detail.TextTrackTranscript)
+		if listErr != nil {
+			return nil, false, fmt.Errorf("clip.render: list ready languages: %w", listErr)
+		}
+		if len(langs) > 0 {
+			track, cues, err = r.repo.FindReady(ctx, in.AssetID, langs[0], detail.TextTrackTranscript)
+			if err != nil {
+				return nil, false, fmt.Errorf("clip.render: fallback find ready: %w", err)
+			}
 		}
 	}
 	if track == nil {

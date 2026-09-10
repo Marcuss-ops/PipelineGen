@@ -317,22 +317,13 @@ func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.S
 	opsRepo := sqliteops.NewSQLiteRepository(root.Jobs.DB.DB)
 	txMgr := &sqliteTxManager{db: root.Jobs.DB.DB}
 	svc := opsapp.NewService(opsRepo, root.Jobs.Repo, root.Jobs.Repo, root.Outbox.EventsRepo, txMgr, log)
-	// Per-(scope,key) locker so unrelated submissions never serialise.
-	// Uses the shared pkg/concurrent.KeyedLocker.
 	svc.SetKeyedLocker(newOpsKeyedLockerAdapter())
 	return svc, nil
 }
 
 func newOpsKeyedLockerAdapter() opsapp.KeyedLocker {
-	return opsKeyedLockerAdapter{kl: newConcurrentKeyedLockerImpl()}
+	return opsapp.NewKeyedLocker()
 }
-
-// opsKeyedLockerAdapter bridges pkg/concurrent.KeyedLocker to the
-// operations port without the operations package importing pkg/concurrent
-// at the type level — the concrete is created via the factory below.
-type opsKeyedLockerAdapter struct{ kl interface{ Lock(string) func() } }
-
-func (a opsKeyedLockerAdapter) Lock(key string) func() { return a.kl.Lock(key) }
 
 // Compile-time assertion: *sqlitejobs.SQLiteStore implements
 // BOTH the submission service's JobEnqueuer port AND the
