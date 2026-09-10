@@ -113,7 +113,7 @@ func TestOverlayPlan_IsSingleSourceOfTruthForDocumentAndRender(t *testing.T) {
 	require.NotEmpty(t, docHTML)
 	// Production documents intentionally expose only the final remote
 	// assembly payload; SpecScene/phrase-timing JSON is an internal surface.
-	require.Contains(t, docHTML, "<h2>Remote Job Payload JSON</h2>")
+	require.NotContains(t, docHTML, "<h2>Remote Job Payload JSON</h2>")
 	require.NotContains(t, docHTML, "<h2>SpecScene JSON</h2>")
 
 	// ── Document completeness under the PayloadOnly contract: the human

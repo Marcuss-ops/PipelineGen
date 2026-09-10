@@ -9,8 +9,7 @@
 //     markers. It depends on NO voiceover, entity, timing, or audio artifact.
 //   - InjectDocumentLateBound fills those markers with the artifacts that only
 //     exist after TTS/NLP/audio complete (voiceover links, entity images,
-//     scene timing, phrase timing, full audio, overlay, and the machine JSON
-//     blocks).
+//     scene timing, phrase timing, full audio and overlay references).
 //
 // RenderDocument is the one-shot convenience (skeleton + injection) and the
 // byte-equivalent successor to the retired
@@ -116,7 +115,8 @@ func RenderDocumentSkeleton(in DocumentSkeletonInput) string {
 // InjectDocumentLateBound fills a skeleton produced by RenderDocumentSkeleton
 // with the late-bound artifacts: full audio + overlay (before scenes),
 // per-scene timing/media/links/phrase timings (inside each scene section),
-// and the summary + machine JSON blocks (after scenes). It is deterministic
+// and the human semantic summary plus certified artifact references (after
+// scenes). It is deterministic
 // and returns the complete document HTML.
 func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) string {
 	if model == nil {
@@ -155,7 +155,6 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		writeDocumentSpecSceneJSON(&after, model)
 		writeDocumentTimelineJSON(&after, opts)
 	}
-	writeDocumentJobPayloadJSON(&after, opts)
 	if !opts.PayloadOnly {
 		writeDocumentFinalAudioJSON(&after, opts)
 		writeDocumentOverlayJSON(&after, opts)
@@ -322,21 +321,6 @@ func writeDocumentSpecSceneJSON(b *strings.Builder, model *scriptpkg.ModelScript
 	b.WriteString("<h2>SpecScene JSON</h2><pre><code>")
 	b.WriteString(html.EscapeString(string(raw)))
 	b.WriteString("</code></pre>")
-}
-
-func writeDocumentJobPayloadJSON(b *strings.Builder, opts DocumentRenderOptions) {
-	if len(opts.JobPayload) == 0 {
-		return
-	}
-	var payload any
-	if err := json.Unmarshal(opts.JobPayload, &payload); err != nil {
-		return
-	}
-	if raw, err := json.MarshalIndent(payload, "", "  "); err == nil {
-		b.WriteString("<h2>Remote Job Payload JSON</h2><pre><code>")
-		b.WriteString(html.EscapeString(string(raw)))
-		b.WriteString("</code></pre>")
-	}
 }
 
 func writeDocumentTimelineJSON(b *strings.Builder, opts DocumentRenderOptions) {
@@ -837,7 +821,12 @@ func writeDocumentEntityImage(b *strings.Builder, entity scriptpkg.AnnotatedEnti
 		b.WriteString(`" style="max-width:320px;max-height:240px;" /></p>`)
 	}
 	if drive != "" {
-		b.WriteString("<p><strong>Entity image:</strong> ")
+		if name == "" {
+			name = "unidentified entity"
+		}
+		b.WriteString("<p><strong>Entity image for:</strong> ")
+		b.WriteString(html.EscapeString(name))
+		b.WriteString(" — ")
 		b.WriteString(renderDocumentLink(drive, drive, drive))
 		b.WriteString("</p>")
 	}

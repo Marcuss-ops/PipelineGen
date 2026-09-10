@@ -14,7 +14,8 @@ The contract is permanent:
   certified final-audio master and never receives one voiceover file per scene;
 - the manifest is the complete `script.generate` item payload;
 - a rerun changes only the idempotency key (and keeps the same structure);
-- the Google Doc must show this complete payload inline as `Remote Job Payload JSON`.
+- the complete payload remains an internal job/provenance surface and is not
+  rendered into the human-facing Google Doc.
 
 ## Sound effects
 

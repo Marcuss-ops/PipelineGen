@@ -158,7 +158,7 @@ func TestBuildSpecSceneDocumentHTML_RendersEntityDriveLinks(t *testing.T) {
 	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Famous people"})
 
 	human := humanDocumentHTML(t, out)
-	require.Contains(t, human, "<strong>Entity image:</strong>")
+	require.Contains(t, human, "<strong>Entity image for:</strong> Describe John Cena")
 	require.Contains(t, human, "https://drive.google.com/file/d/cena/view")
 	require.Contains(t, human, "John Cena enters the arena.")
 
@@ -193,8 +193,20 @@ func TestDocument_EntityImageRenderedInline(t *testing.T) {
 	require.Contains(t, human, `<img src="https://images.example/dwayne.jpg"`)
 	require.Contains(t, human, `alt="Dwayne Johnson"`)
 	// The canonical Drive link is still present.
-	require.Contains(t, human, `<strong>Entity image:</strong>`)
+	require.Contains(t, human, `<strong>Entity image for:</strong> Dwayne Johnson`)
 	require.Contains(t, human, "https://drive.google.com/file/d/dwayne/view")
+}
+
+func TestDocument_DoesNotExposeRemoteJobPayload(t *testing.T) {
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Text: "Donald Trump is discussed."}},
+	}}
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
+		JobPayload: []byte(`{"secret_internal":"job metadata"}`),
+	})
+	require.NotContains(t, out, "Remote Job Payload JSON")
+	require.NotContains(t, out, "secret_internal")
 }
 
 func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
