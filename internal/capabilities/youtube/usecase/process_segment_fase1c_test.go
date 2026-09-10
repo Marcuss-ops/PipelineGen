@@ -210,45 +210,7 @@ func (a *alwaysHitCache) GetExisting(_ context.Context, _ string) (*youtubetypes
 	return a.item, true, nil
 }
 
-// ── Test 1: Step 10 alone (no panic, accepts new signature) ──────────
-//
-// Directly exercise step10_MetadataEnrich. The test asserts:
-//
-//	(a) the method accepts the new (transcript, languageCode, cues)
-//	    parameter list and returns nil when MetadataService is nil
-//	(b) the call does NOT panic, even with a nil MetadataService
-//
-// godlike/06 SSOT: the test pins that step10_MetadataEnrich
-// reads ONLY from the parameter list (transcript, languageCode,
-// cues) — no port, no filesystem, no callback into the resolver.
-// The compile-time guarantee is that ProcessSegmentDeps no longer
-// has a `Transcriber` field, so Step 10 cannot reach one even
-// if a future maintainer tries to re-introduce a direct call.
-func TestStep10_DoesNotInvokeTranscriber(t *testing.T) {
-	uc := NewProcessYouTubeSegmentFromSubBundles(func() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
-		core, media, metadata, observability := validProcessSegmentDeps()
-		metadata.MetadataService = nil // no-op path
-		return core, media, metadata, observability
-	}())
-	cmd := youtubetypes.ProcessSegmentCommand{
-		VideoID: "yt_step10_unit",
-		OutDir:  t.TempDir(),
-		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Step10Unit"},
-		Index:   0,
-	}
-	err := uc.step10_MetadataEnrich(
-		context.Background(),
-		cmd,
-		"yt_yt_step10_unit_0_10_v1",
-		10,
-		"transcript from bundle", // transcript
-		"en",                     // languageCode
-		nil,                      // cues
-	)
-	require.NoError(t, err, "step10_MetadataEnrich with nil MetadataService must be a no-op")
-}
-
-// ── Test 2: end-to-end orchestrator (≤ 1 Transcriber call) ────────────
+// ── Test 1: end-to-end orchestrator (≤ 1 Transcriber call) ────────────
 //
 // LOAD-BEARING Fase 1.c assertion. Drive the orchestrator with:
 //   - cache miss (so Steps 3-9 run)
@@ -257,9 +219,10 @@ func TestStep10_DoesNotInvokeTranscriber(t *testing.T) {
 //   - noSubtitleFetcher so priority 3+4 (YouTube subs) miss
 //   - The transcriber is consulted EXACTLY ONCE at priority 5
 //
-// The pipeline SHOULD invoke the transcriber EXACTLY ONCE
-// (priority 5 at Step 7) and NEVER at Step 10. If Step 10
-// regresses to a direct Transcriber call, the counter hits 2.
+// The pipeline invokes the transcriber EXACTLY ONCE (priority 5 while
+// acquiring the segment text). The metadata enrichment step reads the
+// resolved bundle only and has NO Whisper path, so a regression that
+// re-acquires text for analysis would push the counter to 2.
 func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 	// Real audio file path for Step 5's os.Stat check.
 	realPath := filepath.Join(t.TempDir(), "clip.mp4")
@@ -304,23 +267,23 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 	require.Equal(t, "processed", out.Status)
 
 	// Load-bearing Fase 1.c assertion: total Transcriber
-	// invocations across the WHOLE pipeline is EXACTLY 1. Pre-Fase
-	// 1.c the count was 2 (Step 7 + Step 10). Post-Fase 1.c
-	// the count is exactly 1 (Step 7's priority-5 fallback
-	// always fires when no other priority hits). If Step 10
-	// regresses to a direct Transcriber call, the counter
-	// hits 2 and this assertion fails.
+	// invocations across the WHOLE pipeline is EXACTLY 1. The
+	// count is exactly 1 (priority-5 fallback always fires when
+	// no other priority hits). Analysis reads the resolved bundle
+	// and never re-invokes Whisper; a regression would push the
+	// counter to 2 and fail this assertion.
 	got := atomic.LoadInt32(&tport.calls)
 	require.Equal(t, int32(1), got,
-		"Fase 1.c contract: total Transcriber calls across the pipeline must be exactly 1 (Step 7's priority-5 fallback only). Got %d — Step 10 is re-invoking Whisper!", got)
+		"Fase 1.c contract: total Transcriber calls across the pipeline must be exactly 1 (priority-5 fallback only). Got %d — text is being re-acquired for analysis!", got)
 }
 
 // ── Test 3: cache hit skips acquisition but still finalizes ───────────
 //
 // PR-CACHE-HIT-FINALIZATION: a binary cache hit skips ONLY the
 // acquisition/cut + ffprobe steps (Steps 3-5 + 5a); the canonical
-// enrichment/finalization gate (Steps 6-10) STILL runs so missing/stale
-// metadata is repaired. The pipeline must NOT re-download the binary.
+// enrichment/finalization gate (text acquisition + commit) STILL runs so
+// missing/stale metadata is repaired. The pipeline must NOT re-download
+// the binary.
 //
 // In this fixture the cached item carries NO LocalPath, so the
 // Whisper fallback (priority 5, guarded by LocalPath != "") is not
@@ -360,8 +323,8 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	out, execErr := uc.Execute(context.Background(), cmd)
 	require.NoError(t, execErr, "Execute must succeed on cache hit")
 	// PR-CACHE-HIT-FINALIZATION: the legacy "skipped" short-circuit is
-	// RETIRED. The cache hit still passes through Steps 6-10, so the
-	// canonical outcome is "processed".
+	// RETIRED. The cache hit still passes through text acquisition and
+	// the canonical commit, so the outcome is "processed".
 	require.Equal(t, "processed", out.Status, "cache hit must finalize through the enrichment gate (status processed)")
 
 	// Load-bearing assertion: the cached binary is NOT re-acquired —

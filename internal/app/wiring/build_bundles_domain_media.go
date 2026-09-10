@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/portutil"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
@@ -210,8 +211,26 @@ func buildDomainMediaServices(
 		return nil, nil, nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
 	}
 
-	// Compile-time pin: Step10MetricsRecorder port ↔ Step10MetricsAdapter.
-	var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)
+	// Async metadata enrichment (Sept 2026): register the durable consumer
+	// for metadata.enrich.requested on the PostgreSQL media outbox. The
+	// per-segment pipeline emits that event atomically with the clip commit
+	// when the async gate is on, so the LLM analyzer runs OUTSIDE the
+	// extraction critical path. godlike/07 fail-closed: when the operator
+	// explicitly enables the gate but the consumer cannot be wired, boot
+	// aborts instead of silently dropping every enrichment intent.
+	if outbox != nil && outbox.MediaIndexWorker != nil {
+		enrichHandler, enrichErr := newClipMetadataEnrichHandler(clipMetadataService, log)
+		if enrichErr != nil {
+			return nil, nil, nil, fmt.Errorf("compose domains: metadata enrichment handler: %w", enrichErr)
+		}
+		if regErr := outbox.MediaIndexWorker.RegisterHandler(pgmedia.EventMetadataEnrichRequested, enrichHandler); regErr != nil {
+			return nil, nil, nil, fmt.Errorf("compose domains: register metadata enrichment handler: %w", regErr)
+		}
+		log.Info("youtube async metadata enrichment handler registered: metadata.enrich.requested -> AnalyzeClip + atomic metadata/index commit")
+	} else if youtube.AsyncEnrichmentEnabled() {
+		return nil, nil, nil, fmt.Errorf("compose domains: VELOX_YOUTUBE_ASYNC_ENRICHMENT is enabled but the PostgreSQL media outbox worker is unavailable; refusing to boot with a silent enrichment drop")
+	}
+
 	// TextTrackRepository + TextTrackResolver: priority-chain lookup
 	// for localized text tracks. Reduces redundant Whisper invocations
 	// by checking the API payload and the DB before falling through.
@@ -355,11 +374,19 @@ func buildDomainMediaServices(
 		}
 	}
 
+	// Compile-time pin: MetadataEnrichmentMetrics port ↔
+	// observability.MetadataEnrichmentRecorder (Sept 2026 replacement
+	// for the retired Step10MetricsAdapter pin). The same recorder family
+	// is used by the async metadata.enrich.requested consumer, so the
+	// synchronous and asynchronous enrichment surfaces share one
+	// collector family (godlike/06 SSOT).
+	var _ youtubeports.MetadataEnrichmentMetrics = (*observability.MetadataEnrichmentRecorder)(nil)
+
 	processSegObservability := youtube.ProcessSegmentObservabilityDeps{
-		Step10Metrics:                  observability.NewStep10MetricsAdapter(),
 		RequireTranscriptReady:         mlCfg.RequireTranscriptReady,
 		RequireAllLanguagesBeforeVideo: mlCfg.RequireAllLanguagesBeforeVideo,
 		PreferredLanguages:             preferredLangs,
+		EnrichmentMetrics:              observability.NewMetadataEnrichmentRecorder(),
 	}
 	processSeg := youtube.NewProcessYouTubeSegmentFromSubBundles(
 		processSegCore,

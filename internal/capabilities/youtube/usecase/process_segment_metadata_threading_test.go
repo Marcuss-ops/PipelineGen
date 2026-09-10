@@ -17,7 +17,26 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
+
+// noopMetadataWriter satisfies youtubeports.ClipMetadataWriter. It is the
+// passive writer the threading tests wire into NewMetadataService (the
+// Builder stub is what captures the data flow). Relocated here from the
+// retired step10 metrics test file (Sept 2026).
+type noopMetadataWriter struct{}
+
+func (noopMetadataWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata) error {
+	return nil
+}
+
+func (noopMetadataWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata, _ []detail.TextTrack) error {
+	return nil
+}
+
+// Compile-time assertion: noopMetadataWriter satisfies ClipMetadataWriter.
+var _ youtubeports.ClipMetadataWriter = noopMetadataWriter{}
 
 // llmStubBuilder is a ClipMetadataBuilder fake that returns a fully
 // populated LLM-derived envelope whose semantic fields DIFFER from the

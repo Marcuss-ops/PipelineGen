@@ -359,32 +359,36 @@ type FFProbePort interface {
 	ProbeFacts(ctx context.Context, localPath string) (*mediaexec.MediaFacts, error)
 }
 
-// Step10MetricsRecorder is the application-layer port for the YouTube
-// Step 10 partial-state metric (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY,
-// July 2026). The concrete adapter lives in
-// internal/platform/observability/metrics_step10.go and wraps
-// the Prometheus counter
-// `transcript_metadata_step10_fail_after_clip_total{failure_code}`.
+// MetadataEnrichmentMetrics is the application-layer observability port
+// for the metadata-enrichment pipeline (Sept 2026). It REPLACES the
+// retired Step10MetricsRecorder port: the old surface tracked a
+// post-commit partial-state failure of a step that no longer exists;
+// this surface tracks the enrichment runs themselves (synchronous
+// inline analysis in step6to9 AND the async metadata.enrich.requested
+// outbox consumer).
 //
 // godlike/06 SSOT: this port is the SOLE canonical application-layer
-// surface for Step 10 partial-state telemetry. The use case MUST NOT
-// import internal/platform/observability directly (clean
-// architecture — application layer is forbidden from depending on
-// infrastructure); the composition root wires the concrete adapter.
+// surface for enrichment telemetry. The use case MUST NOT import
+// internal/platform/observability directly (clean architecture — the
+// application layer is forbidden from depending on infrastructure);
+// the composition root wires the concrete adapter
+// (observability.MetadataEnrichmentRecorder) and pins the binding with
+// a compile-time assertion in build_bundles_domain_media.go.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the contract is "exactly-once per
-// Step 10 failure, with the failure_code label matching the typed
-// *ExtractionError envelope's Code field". Callers MUST pass the
-// stringified FailureCode constant (e.g. string(FailureCodeMetadataFailed))
-// so dashboard queries can join against the typed-error taxonomy.
-//
-// Nil-tolerance: implementations of this port MUST be safe to invoke
-// via a nil check at the use-case call site (the use case calls
-// `u.deps.Step10Metrics.IncStep10FailAfterClip(...)` only when
-// `u.deps.Step10Metrics != nil`). The composition root MAY wire
-// the concrete adapter or omit it (the optional pattern matches
-// the rest of the youtube package: Subtitles, Transcriber,
-// DriveFolderMgr all gracefully degrade when nil-wired).
-type Step10MetricsRecorder interface {
-	IncStep10FailAfterClip(failureCode string)
+// Nil-tolerance: implementations MUST be safe to invoke on a nil
+// receiver; the use case calls the methods only when the port is
+// non-nil (optional port pattern, matches the rest of the youtube
+// package). The async handler in the composition root records through
+// the same collector family, so a single dashboard surface covers both
+// enrichment modes.
+type MetadataEnrichmentMetrics interface {
+	// IncEnrichmentTotal counts one enrichment run (any outcome).
+	IncEnrichmentTotal()
+	// ObserveEnrichmentDuration records one run duration in seconds.
+	ObserveEnrichmentDuration(seconds float64)
+	// IncEnrichmentFailures counts one failed enrichment run.
+	IncEnrichmentFailures()
+	// ObserveEnrichmentQueueAge records the async intent age in seconds
+	// (now - metadata.enrich.requested created_at).
+	ObserveEnrichmentQueueAge(seconds float64)
 }

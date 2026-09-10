@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -93,6 +94,21 @@ func (c *PostgresMediaCommitter) CommitClipAndIndexEvent(
 	return nil
 }
 
+// BuildMetadataEnrichmentEventKey returns the canonical idempotency key for
+// a durable metadata-enrichment request:
+//
+//	metadata-enrich:<clipID>:<sourceVersion|contentHash>:v1
+//
+// A retry of the same clip+content collapses through the outbox conflict
+// arbiter; a re-extract with new content produces a fresh request so stale
+// enrichment is never reused.
+func BuildMetadataEnrichmentEventKey(clipID, sourceVersion string) string {
+	if sourceVersion == "" {
+		sourceVersion = "nosource"
+	}
+	return fmt.Sprintf("metadata-enrich:%s:%s:v1", clipID, sourceVersion)
+}
+
 // CommitClipTextAndIndexEvent is the canonical localized clip atomic
 // write: media_assets + asset_text_tracks (RETURNING id) +
 // asset_text_track_segments + outbox event, all in ONE PostgreSQL
@@ -132,6 +148,22 @@ func (c *PostgresMediaCommitter) CommitClipTextAndIndexEvent(
 	if err != nil {
 		return fmt.Errorf("PostgresMediaCommitter.CommitClipTextAndIndexEvent: build commit request: %w", err)
 	}
+
+	// Async metadata enrichment (Sept 2026): when requested, emit the
+	// enrichment intent in the SAME tx as the clip, so the LLM analyzer can
+	// never be lost once the clip is durable. The event key is
+	// content-scoped, so a retry of the same segment is idempotent and a
+	// re-extract with new content produces a fresh request.
+	if cmd.MetadataEnrichmentJSON != "" {
+		req.AdditionalOutboxEvents = append(req.AdditionalOutboxEvents, assetspersistence.OutboxEvent{
+			EventType:     EventMetadataEnrichRequested,
+			AggregateID:   cmd.Clip.ID,
+			AggregateType: "media_asset",
+			PayloadJSON:   cmd.MetadataEnrichmentJSON,
+			EventKey:      BuildMetadataEnrichmentEventKey(cmd.Clip.ID, firstNonEmpty(cmd.Clip.Metadata.SourceVersion, cmd.Clip.Metadata.ContentHash)),
+		})
+	}
+
 	res, err := c.CommitTx(ctx, tx, req)
 	if err != nil {
 		return fmt.Errorf("PostgresMediaCommitter.CommitClipTextAndIndexEvent: commit asset: %w", err)
