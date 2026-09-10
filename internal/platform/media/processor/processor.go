@@ -222,9 +222,10 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 		}
 	}
 
-	// Rendition layout (July 2026): preserve immutable master and generate
-	// mezzanine/proxy/thumbnail/storyboard renditions. The canonical
-	// processed file becomes the mezzanine.
+	// Rendition layout (July 2026): preserve the immutable master and
+	// generate preview/thumbnail/storyboard/manifest renditions. The master
+	// IS the canonical processed output (Sept 2026: the redundant mezzanine
+	// copy was retired).
 	if input.RenditionLayout {
 		renditions, err := p.processRenditions(ctx, input, actualRawPath)
 		if err != nil {
@@ -236,21 +237,21 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 		}
 		result.Renditions = renditions
 
-		// The mezzanine is the canonical processed output.
-		mezzanine := p.findRendition(renditions, detail.RenditionKindMezzanine)
-		if mezzanine == nil {
+		// The master is the canonical processed output.
+		master := p.findRendition(renditions, detail.RenditionKindMaster)
+		if master == nil {
 			if input.LocalPath == "" {
 				_ = os.Remove(actualRawPath)
 			}
-			result.Error = "mezzanine rendition missing after processing"
+			result.Error = "master rendition missing after processing"
 			return result, fmt.Errorf("%s", result.Error)
 		}
-		processedPath = mezzanine.LocalPath
-		result.LegacyFileMD5 = mezzanine.LegacyFileMD5
-		result.LocalPath = mezzanine.LocalPath
-		result.Filename = mezzanine.Filename
+		processedPath = master.LocalPath
+		result.LegacyFileMD5 = master.LegacyFileMD5
+		result.LocalPath = master.LocalPath
+		result.Filename = master.Filename
 
-		// Perceptual deduplication on the mezzanine.
+		// Perceptual deduplication on the master.
 		duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
 		if duplicateID != "" {
 			p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))

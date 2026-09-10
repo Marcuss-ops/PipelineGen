@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"golang.org/x/sync/errgroup"
 )
 
 // processStep normalizes/processes the video if needed.
@@ -284,12 +285,10 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 //     technical name is stable, the readable title is moved to the
 //     manifest sidecar (per the user spec "Nomi tecnici stabili, titoli
 //     leggibili solo nei metadata").
-//  3. The `mezzanine` sub-directory is no longer a separate output — the
-//     master IS the normalized mezzanine. Pre-step-9 the `mezzanine/`
-//     subdir is preserved as a no-op (created for backward-compat with
-//     the prior 5-rendition surface) so existing callers that probe
-//     the mezzanine path still find the master by-symlink. Future
-//     cleanup retires the symlink when callers migrate.
+//  3. The `mezzanine` rendition is RETIRED (Sept 2026): the master IS the
+//     normalized output, so the legacy full-file master→mezzanine copy is
+//     gone. The derived renditions (preview/thumbnail/storyboard/manifest)
+//     are each derived directly from the immutable master, concurrently.
 //
 // Per godlike/06 SSOT: this function is the SOLE canonical owner of the
 // canonical filename convention (`__master`, `__preview`, `__manifest`).
@@ -342,91 +341,97 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 		p.log.Warn("failed to make master read-only", zap.String("path", masterPath), zap.Error(err))
 	}
 
-	// 1b. Mezzanine: same file as the master (post-step-9 the master
-	// IS the normalized mezzanine). We expose the path under the
-	// `mezzanine/` subdir for backward-compat with callers that probe
-	// the prior 5-rendition surface. Future cleanup retires the
-	// mezzanine subdir entirely (the master is sufficient).
-	mezzanineDir := filepath.Join(baseDir, "mezzanine")
-	mezzaninePath := filepath.Join(mezzanineDir, assetID+".mp4")
-	if err := os.MkdirAll(mezzanineDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create mezzanine dir: %w", err)
-	}
-	if err := fileutil.CopyFile(masterPath, mezzaninePath); err != nil {
-		return nil, fmt.Errorf("copy master to mezzanine: %w", err)
-	}
+	// The master is the SOLE canonical rendition (Sept 2026): the legacy
+	// full-file mezzanine copy is removed. Every derived artifact is
+	// derived directly from the immutable master.
+	masterSHA := hashFileSHA256(masterPath)
 
-	// 2. Preview: 720p H.264/AAC proxy derived from the master.
+	// Derived renditions (preview/thumbnail/storyboard/manifest) have no
+	// dependency on each other, so they run concurrently instead of the
+	// prior serial chain (master → preview → thumbnail → storyboard →
+	// manifest). Each still reads the SAME immutable master.
 	previewDir := filepath.Join(baseDir, "preview")
 	previewPath := filepath.Join(previewDir, assetID+"__preview.mp4")
-	if err := os.MkdirAll(previewDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create preview dir: %w", err)
-	}
-	masterSHA := hashFileSHA256(masterPath)
-	proxyKey := capcache.Key{}
-	if masterSHA != "" {
-		proxyKey = capcacheKey(masterSHA, "proxy", map[string]any{"profile": p.videoCfg.Profile}, "media-proxy/v1")
-	}
-	proxyCached := false
-	proxyLeaseID := ""
-	if proxyKey.SourceSHA256 != "" {
-		proxyCached, proxyLeaseID = p.materializeCachedFile(ctx, proxyKey, previewPath)
-	}
-	if !proxyCached {
-		if err := p.ffmpeg.GenerateProxy(ctx, masterPath, previewPath); err != nil {
-			p.releaseCachedClaim(ctx, proxyKey, proxyLeaseID, err.Error())
-			return nil, fmt.Errorf("preview generation failed: %w", err)
+	thumbnailDir := filepath.Join(baseDir, "thumbnail")
+	thumbnailPath := filepath.Join(thumbnailDir, assetID+".jpg")
+	storyboardDir := filepath.Join(baseDir, "storyboard")
+	storyboardPath := filepath.Join(storyboardDir, assetID+".jpg")
+	manifestDir := filepath.Join(baseDir, "manifest")
+	manifestPath := filepath.Join(manifestDir, assetID+"__manifest.json")
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	// 2. Preview: 720p H.264/AAC proxy derived from the master.
+	g.Go(func() error {
+		if err := os.MkdirAll(previewDir, 0o755); err != nil {
+			return fmt.Errorf("create preview dir: %w", err)
 		}
+		proxyKey := capcache.Key{}
+		if masterSHA != "" {
+			proxyKey = capcacheKey(masterSHA, "proxy", map[string]any{"profile": p.videoCfg.Profile}, "media-proxy/v1")
+		}
+		proxyCached := false
+		proxyLeaseID := ""
 		if proxyKey.SourceSHA256 != "" {
-			p.storeCachedFile(ctx, proxyKey, proxyLeaseID, previewPath, "video/mp4")
+			proxyCached, proxyLeaseID = p.materializeCachedFile(gctx, proxyKey, previewPath)
 		}
-	}
+		if !proxyCached {
+			if err := p.ffmpeg.GenerateProxy(gctx, masterPath, previewPath); err != nil {
+				p.releaseCachedClaim(gctx, proxyKey, proxyLeaseID, err.Error())
+				return fmt.Errorf("preview generation failed: %w", err)
+			}
+			if proxyKey.SourceSHA256 != "" {
+				p.storeCachedFile(gctx, proxyKey, proxyLeaseID, previewPath, "video/mp4")
+			}
+		}
+		return nil
+	})
 
 	// 3. Thumbnail: center frame from the master. Kept under the
 	// legacy `thumbnail/` subdir; the canonical thumbnail file is
 	// `{asset_id}.jpg` (the prefix matches the asset_id, no
 	// `__thumbnail` separator — the thumbnail is a sibling of the
-	// preview and master inside the asset folder). The file
-	// rename to `__thumbnail.jpg` lands in a follow-up PR alongside
-	// the manifest writer so this PR stays focused.
-	thumbnailDir := filepath.Join(baseDir, "thumbnail")
-	thumbnailPath := filepath.Join(thumbnailDir, assetID+".jpg")
-	if err := os.MkdirAll(thumbnailDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create thumbnail dir: %w", err)
-	}
-	thumbnailTimestamp := 1.0
-	if info, err := p.ffmpeg.Probe(ctx, masterPath); err == nil && info.Duration > 0 {
-		thumbnailTimestamp = info.Duration.Seconds() / 2
-	}
-	thumbnailKey := capcache.Key{}
-	if masterSHA != "" {
-		thumbnailKey = capcacheKey(masterSHA, "thumbnail", map[string]any{"timestamp_seconds": thumbnailTimestamp, "format": "jpg"}, "media-thumbnail/v1")
-	}
-	thumbnailCached := false
-	thumbnailLeaseID := ""
-	if thumbnailKey.SourceSHA256 != "" {
-		thumbnailCached, thumbnailLeaseID = p.materializeCachedFile(ctx, thumbnailKey, thumbnailPath)
-	}
-	if !thumbnailCached {
-		if err := p.ffmpeg.ExtractFrame(ctx, masterPath, thumbnailPath, thumbnailTimestamp); err != nil {
-			p.releaseCachedClaim(ctx, thumbnailKey, thumbnailLeaseID, err.Error())
-			p.log.Warn("thumbnail generation failed", zap.String("id", input.ID), zap.Error(err))
-		} else if thumbnailKey.SourceSHA256 != "" {
-			p.storeCachedFile(ctx, thumbnailKey, thumbnailLeaseID, thumbnailPath, "image/jpeg")
+	// preview and master inside the asset folder).
+	g.Go(func() error {
+		if err := os.MkdirAll(thumbnailDir, 0o755); err != nil {
+			return fmt.Errorf("create thumbnail dir: %w", err)
 		}
-	}
+		thumbnailTimestamp := 1.0
+		if info, err := p.ffmpeg.Probe(gctx, masterPath); err == nil && info.Duration > 0 {
+			thumbnailTimestamp = info.Duration.Seconds() / 2
+		}
+		thumbnailKey := capcache.Key{}
+		if masterSHA != "" {
+			thumbnailKey = capcacheKey(masterSHA, "thumbnail", map[string]any{"timestamp_seconds": thumbnailTimestamp, "format": "jpg"}, "media-thumbnail/v1")
+		}
+		thumbnailCached := false
+		thumbnailLeaseID := ""
+		if thumbnailKey.SourceSHA256 != "" {
+			thumbnailCached, thumbnailLeaseID = p.materializeCachedFile(gctx, thumbnailKey, thumbnailPath)
+		}
+		if !thumbnailCached {
+			if err := p.ffmpeg.ExtractFrame(gctx, masterPath, thumbnailPath, thumbnailTimestamp); err != nil {
+				p.releaseCachedClaim(gctx, thumbnailKey, thumbnailLeaseID, err.Error())
+				p.log.Warn("thumbnail generation failed", zap.String("id", input.ID), zap.Error(err))
+			} else if thumbnailKey.SourceSHA256 != "" {
+				p.storeCachedFile(gctx, thumbnailKey, thumbnailLeaseID, thumbnailPath, "image/jpeg")
+			}
+		}
+		return nil
+	})
 
 	// 4. Storyboard: tiled key frames from the master. Kept under
 	// the legacy `storyboard/` subdir with `{asset_id}.jpg` name for
 	// the same reason as the thumbnail.
-	storyboardDir := filepath.Join(baseDir, "storyboard")
-	storyboardPath := filepath.Join(storyboardDir, assetID+".jpg")
-	if err := os.MkdirAll(storyboardDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create storyboard dir: %w", err)
-	}
-	if err := p.ffmpeg.GenerateStoryboard(ctx, masterPath, storyboardPath, 10, 5, 5); err != nil {
-		p.log.Warn("storyboard generation failed", zap.String("id", input.ID), zap.Error(err))
-	}
+	g.Go(func() error {
+		if err := os.MkdirAll(storyboardDir, 0o755); err != nil {
+			return fmt.Errorf("create storyboard dir: %w", err)
+		}
+		if err := p.ffmpeg.GenerateStoryboard(gctx, masterPath, storyboardPath, 10, 5, 5); err != nil {
+			p.log.Warn("storyboard generation failed", zap.String("id", input.ID), zap.Error(err))
+		}
+		return nil
+	})
 
 	// 5. Manifest: per-asset metadata ledger. The file is created as
 	// a placeholder (the canonical manifest writer lands in a
@@ -435,22 +440,27 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 	// the canonical Publisher has a file to verify-check (the
 	// size+checksum gate from PR-9 step 3 lands in this PR; the
 	// manifest sidecar exercises it).
-	manifestDir := filepath.Join(baseDir, "manifest")
-	manifestPath := filepath.Join(manifestDir, assetID+"__manifest.json")
-	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create manifest dir: %w", err)
-	}
-	// The placeholder must report the CANONICAL frame rate (config profile,
-	// 24/1), not a hardcoded 30 — the normalized master is encoded at the
-	// resolved profile frame rate, so a divergent literal makes the manifest
-	// lie about the asset's real frame rate.
-	manifestFPSNum, manifestFPSDen := p.videoCfg.Profile.FrameRate()
-	if manifestFPSNum <= 0 || manifestFPSDen <= 0 {
-		manifestFPSNum, manifestFPSDen = 24, 1
-	}
-	manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps_num":%d,"fps_den":%d,"placeholder":true}`+"\n", assetID, manifestFPSNum, manifestFPSDen)
-	if err := os.WriteFile(manifestPath, []byte(manifestBody), 0o644); err != nil {
-		return nil, fmt.Errorf("write manifest placeholder: %w", err)
+	g.Go(func() error {
+		if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+			return fmt.Errorf("create manifest dir: %w", err)
+		}
+		// The placeholder must report the CANONICAL frame rate (config profile,
+		// 24/1), not a hardcoded 30 — the normalized master is encoded at the
+		// resolved profile frame rate, so a divergent literal makes the manifest
+		// lie about the asset's real frame rate.
+		manifestFPSNum, manifestFPSDen := p.videoCfg.Profile.FrameRate()
+		if manifestFPSNum <= 0 || manifestFPSDen <= 0 {
+			manifestFPSNum, manifestFPSDen = 24, 1
+		}
+		manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps_num":%d,"fps_den":%d,"placeholder":true}`+"\n", assetID, manifestFPSNum, manifestFPSDen)
+		if err := os.WriteFile(manifestPath, []byte(manifestBody), 0o644); err != nil {
+			return fmt.Errorf("write manifest placeholder: %w", err)
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	// Build rendition outputs in the canonical order. Note the
@@ -459,7 +469,6 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 	// Publisher per-file.
 	renditions := []detail.RenditionOutput{
 		p.buildRenditionOutput(ctx, detail.RenditionKindMaster, masterPath),
-		p.buildRenditionOutput(ctx, detail.RenditionKindMezzanine, mezzaninePath),
 	}
 	if fileExists(previewPath) {
 		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindProxy, previewPath))
