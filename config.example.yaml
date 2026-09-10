@@ -254,10 +254,10 @@ scripts:
   script_docs_folder_id: ""
 
 concurrency:
-  max_concurrent_video_extracts: 2
+  max_concurrent_video_extracts: 5
   max_concurrent_script_generations: 2
   max_concurrent_nvidia_generations: 10
-  max_concurrent_ollama_calls: 1
+  max_concurrent_ollama_calls: 4
   max_concurrent_google_slides_generations: 2
   google_slides_profile_id: 0
   max_concurrent_channel_checks: 20

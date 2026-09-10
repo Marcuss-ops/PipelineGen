@@ -84,7 +84,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	// Without this, Python's print(f"PORT={port}") stays in the ~8KB pipe
 	// buffer and scanner.Scan() blocks indefinitely — the primary cause of
 	// the voiceover pipeline hang.
-	p.cmd.Env = append(os.Environ(), "PYTHONUNBUFFERED=1")
+	p.cmd.Env = append(pythonBridgeEnv(p.pythonScriptsDir), "PYTHONUNBUFFERED=1")
 
 	// Capture stdout to read the PORT=<n> line.
 	stdoutPipe, err := p.cmd.StdoutPipe()
@@ -190,6 +190,25 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 
 	p.log.Info("audio.Processor: TTS server warmup complete, ready for synthesis")
 	return nil
+}
+
+// pythonBridgeEnv makes sibling bridge packages (edge_tts_bridge and other
+// canonical helpers) importable regardless of the service's working dir.
+func pythonBridgeEnv(scriptsRoot string) []string {
+	env := append([]string(nil), os.Environ()...)
+	bridgeRoot := filepath.Join(scriptsRoot, "bridges")
+	for i, entry := range env {
+		if strings.HasPrefix(entry, "PYTHONPATH=") {
+			value := strings.TrimPrefix(entry, "PYTHONPATH=")
+			if value == "" {
+				env[i] = "PYTHONPATH=" + bridgeRoot
+			} else {
+				env[i] = "PYTHONPATH=" + bridgeRoot + string(os.PathListSeparator) + value
+			}
+			return env
+		}
+	}
+	return append(env, "PYTHONPATH="+bridgeRoot)
 }
 
 // Stop gracefully shuts down the persistent TTS server.

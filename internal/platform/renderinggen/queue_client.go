@@ -7,9 +7,12 @@ package renderinggen
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +21,6 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
 )
 
@@ -221,7 +223,7 @@ func NewClipRenderExecutor(queue ClipRenderQueue) (*ClipRenderExecutor, error) {
 	if queue == nil {
 		return nil, fmt.Errorf("renderinggen clip executor: queue client is required")
 	}
-	return &ClipRenderExecutor{queue: queue, interval: 2 * time.Second}, nil
+	return &ClipRenderExecutor{queue: queue, interval: 500 * time.Millisecond}, nil
 }
 
 func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRenderExecutor {
@@ -322,7 +324,8 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 // local run artifact expected by the clip.render pipeline. OutputPath is a
 // filesystem path throughout that pipeline; leaking the queue URL past this
 // adapter makes probing and final publication try to open an HTTP URL as a
-// local file.
+// local file. Single-pass: hashes while streaming (network → disk + SHA-256
+// in one pass, no re-read).
 func materializeArtifact(ctx context.Context, rawURL, outputPath string, expectedSize int64, expectedSHA string) error {
 	if rawURL == "" || outputPath == "" {
 		return fmt.Errorf("artifact URL and output path are required")
@@ -346,7 +349,8 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if err != nil {
 		return err
 	}
-	written, copyErr := io.Copy(file, resp.Body)
+	h := sha256.New()
+	written, copyErr := io.Copy(file, io.TeeReader(resp.Body, h))
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
@@ -357,13 +361,7 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if expectedSize > 0 && written != expectedSize {
 		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
-	gotSHA, gotSize, err := digest.SHA256File(outputPath)
-	if err != nil {
-		return fmt.Errorf("hash downloaded artifact: %w", err)
-	}
-	if expectedSize > 0 && gotSize != expectedSize {
-		return fmt.Errorf("hashed size %d, want %d", gotSize, expectedSize)
-	}
+	gotSHA := hex.EncodeToString(h.Sum(nil))
 	if expectedSHA != "" && !strings.EqualFold(gotSHA, expectedSHA) {
 		return fmt.Errorf("artifact hash %s, want %s", gotSHA, expectedSHA)
 	}
@@ -441,10 +439,11 @@ func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 
 func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval time.Duration) (scriptgen.RenderQueueJob, error) {
 	if interval <= 0 {
-		interval = time.Second
+		interval = 500 * time.Millisecond
 	}
-	t := time.NewTicker(interval)
-	defer t.Stop()
+	if interval > 500*time.Millisecond {
+		interval = 500 * time.Millisecond
+	}
 	for {
 		job, err := q.Get(ctx, id)
 		if err != nil {
@@ -453,10 +452,20 @@ func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval t
 		if job.State == string(queueclient.StateCompleted) || job.State == string(queueclient.StateFailed) {
 			return job, nil
 		}
+		// Adaptive poll with jitter: reduces pure dead time (old 2s ticker)
+		// without busy-looping. The upstream PipelineGen slot stays held
+		// while awaiting the downstream RenderingGen job (documented
+		// synchronous barrier) — callers should consider event-driven
+		// completion to free the slot on long renders.
+		jitter := time.Duration(rand.Int63n(int64(interval) / 5))
+		wait := interval + jitter - interval/10
+		if wait < 100*time.Millisecond {
+			wait = 100 * time.Millisecond
+		}
 		select {
 		case <-ctx.Done():
 			return scriptgen.RenderQueueJob{}, ctx.Err()
-		case <-t.C:
+		case <-time.After(wait):
 		}
 	}
 }

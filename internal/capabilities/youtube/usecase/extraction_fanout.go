@@ -41,7 +41,10 @@ func (s *ExtractionService) extractFanOut(
 	// Speed audit P0.1 (Sept 2026): "download once, cut N with ffmpeg -c copy".
 	// When the operator enables VELOX_YOUTUBE_DOWNLOAD_ONCE (and the stager is wired),
 	// stage the FULL source once here; each segment then cuts locally via PreDownloadedPath.
-	preDownloadedPath := s.stageFullSourceOnce(ctx, req, videoID)
+	preDownloadedPath := s.stageFullSourceOnce(ctx, req, videoID, segments)
+	if preDownloadedPath != "" {
+		defer s.releaseStagedSources(ctx)
+	}
 
 	resp := buildInitialResponse(req, segments, videoID, driveFolderID, driveFolderPath)
 	keepAudio := resolveKeepAudio(req)

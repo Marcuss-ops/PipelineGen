@@ -341,6 +341,7 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 	// worker path above; will be removed in CUTOVER phase.
 	// See: architecture/current.yaml#VO-DECOMPOSITION-2026-07-04.
 	cmd := exec.CommandContext(ctx, "python3", args...)
+	cmd.Env = pythonBridgeEnv(p.pythonScriptsDir)
 	if useStdin {
 		cmd.Stdin = bytes.NewReader([]byte(input.Text))
 	}

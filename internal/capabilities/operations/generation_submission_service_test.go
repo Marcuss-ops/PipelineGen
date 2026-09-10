@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -136,8 +137,14 @@ CREATE UNIQUE INDEX ux_outbox_events_event_key
 // can wire concrete adapters.
 func newFASE2DB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	// A plain :memory: database is private to each SQLite connection. The
+	// observability tests intentionally submit concurrently, so use a unique
+	// shared in-memory URI; otherwise a second connection sees no operations
+	// table and the test becomes timing-dependent.
+	dsn := fmt.Sprintf("file:fase2-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err, "open in-memory SQLite")
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(schemasFASE2)
 	require.NoError(t, err, "apply FASE 2 schemas")

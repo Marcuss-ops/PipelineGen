@@ -255,13 +255,16 @@ func (r *RenderRequest) Normalize() {
 	if r.Watermark.Opacity == 0 {
 		r.Watermark.Opacity = 1.0
 	}
-	if r.Watermark.Enabled && strings.TrimSpace(r.Watermark.Text) != "" {
-		// Keep text safely inside the frame and readable over arbitrary footage.
-		// A zero value means the caller omitted the margin; an explicit
-		// operator override remains respected when it is non-zero.
-		if r.Watermark.MarginPX == 0 {
+	// Watermark defaults are owned SOLELY by Normalize (single owner). The
+	// downstream mapper/plan serialise verbatim without re-defaulting.
+	if r.Watermark.Enabled && r.Watermark.MarginPX == 0 {
+		if strings.TrimSpace(r.Watermark.Text) != "" {
 			r.Watermark.MarginPX = 100
+		} else {
+			r.Watermark.MarginPX = 40
 		}
+	}
+	if r.Watermark.Enabled && strings.TrimSpace(r.Watermark.Text) != "" {
 		if r.Watermark.Style == nil {
 			r.Watermark.Style = defaultOverlayTextStyle(34, 3, 5)
 		}

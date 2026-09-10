@@ -167,18 +167,21 @@ type SubmitResult struct {
 	IsSupersede      bool
 }
 
-// keyedLockerAdapter is the minimal per-key locking surface Service
-// consumes. The production adapter wraps pkg/concurrent.KeyedLocker;
-// tests may inject a no-op fake. Kept as an interface so the
-// operations package does not import pkg/concurrent directly — the
-// composition root wires the concrete locker.
-// keyedLockerAdapter is the minimal per-key locking surface Service
-// consumes. The production adapter wraps pkg/concurrent.KeyedLocker;
-// tests may inject a no-op fake or leave it nil (fallback to no
-// cross-key serialisation — tests run single-threaded).
-type keyedLockerAdapter interface {
+// KeyedLocker is the minimal per-key locking surface Service consumes.
+// The production adapter wraps pkg/concurrent.KeyedLocker; tests may
+// inject a no-op fake or leave it nil (fallback — tests run single-threaded).
+type KeyedLocker interface {
 	Lock(key string) func()
 }
+
+// keyedLockerAdapter is the internal alias for backward compat.
+type keyedLockerAdapter = KeyedLocker
+
+// NewKeyedLocker constructs a production KeyedLocker backed by the
+// shared pkg/concurrent primitive without the operations package
+// importing pkg/concurrent directly — it delegates to the internal
+// factory in keyedlocker_factory.go.
+func NewKeyedLocker() KeyedLocker { return newKeyedLocker() }
 
 // submitLockerKey returns the per-key lock key for the (scope,key) bucket.
 func submitLockerKey(scope Scope, key string) string {
@@ -210,7 +213,7 @@ type Service struct {
 	opIDGen   func() string
 	log       *zap.Logger
 	locker    keyedLockerAdapter // nil in tests that inject fake TxManager
-	nowFunc   func() time.Time    // injectable for tests; defaults to time.Now
+	nowFunc   func() time.Time   // injectable for tests; defaults to time.Now
 
 	// SUBMIT-LOCK-INSTRUMENTATION (September 2026): post-remediation
 	// observability for the submission per-key lock. The KeyedLocker
