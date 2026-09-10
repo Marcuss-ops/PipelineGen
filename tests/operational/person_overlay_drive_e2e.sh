@@ -216,6 +216,19 @@ SCRIPT_ID=$(jq -r '.script_id // 0' <<<"$RESULT")
 FINAL_AUDIO_DRIVE_LINK=$(jq -r '.final_audio?.drive_link // empty' <<<"$RESULT")
 [[ "$FINAL_AUDIO_DRIVE_LINK" == http* ]] || fail "final audio senza drive_link"
 
+DOC_LINK=$(jq -r '.documents?.en?.link // empty' <<<"$RESULT")
+[[ "$DOC_LINK" == https://docs.google.com/document/* ]] || fail "Docs endpoint senza link documento"
+DOC_ID=$(sed -nE 's#^https://docs\.google\.com/document/d/([^/]+)/.*#\1#p' <<<"$DOC_LINK")
+[[ -n "$DOC_ID" ]] || fail "impossibile estrarre document_id dal link Docs"
+DOC_HTML="$RESULTS_DIR/document-${RUN_ID}.html"
+curl -L --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" -sS \
+    "https://docs.google.com/document/d/${DOC_ID}/export?format=html" \
+    -o "$DOC_HTML" || fail "export del Google Doc fallito"
+grep -Fq "Semantic Overlay" "$DOC_HTML" || fail "Docs HTML senza sezione Semantic Overlay"
+grep -Fq "Semantic Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON overlay associato"
+grep -Fq "person:ada-lovelace" "$DOC_HTML" || fail "Docs HTML senza identità canonica Ada Lovelace"
+grep -Fq "Rendered Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON dell'artefatto Chronon"
+
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  PERSON: %s\n' "$PERSON_NAMES"
 printf '  important_phrases: %s\n' "$PHRASE_COUNT"
@@ -225,4 +238,5 @@ printf '  overlay items/timed: %s/%s\n' "$OVERLAY_ITEMS" "$TIMED_ITEMS"
 printf '  Chronon: %s\n' "$CHRONON_VERSION"
 printf '  overlay Drive: %s\n' "$OVERLAY_DRIVE_LINK"
 printf '  final audio Drive: %s\n' "$FINAL_AUDIO_DRIVE_LINK"
+printf '  Docs: %s\n' "$DOC_LINK"
 printf '  full result: %s\n' "$FULL"
