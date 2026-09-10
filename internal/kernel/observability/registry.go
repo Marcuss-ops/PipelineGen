@@ -65,8 +65,9 @@ const (
 	// raster/encode/...) that PipelineGen projects onto the run as a typed
 	// projection of its canonical clip report.
 	ComponentChronon ComponentName = "chronon"
-	// ComponentCUDA is the PATH B CUDA hybrid backend (NVDEC/NVENC chain),
-	// which measures the same canonical phases when it owns the render.
+	// ComponentCUDA is retained as a catalog identity for historical runs:
+	// the PATH B CUDA hybrid backend was removed (GPU compositing belongs
+	// exclusively to Chronon), so no live writer emits this component.
 	ComponentCUDA ComponentName = "cuda"
 )
 

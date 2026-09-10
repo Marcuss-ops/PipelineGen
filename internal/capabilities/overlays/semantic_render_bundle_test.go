@@ -113,7 +113,11 @@ func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
 		t.Fatal(err)
 	}
 	item := plan.Items[0]
-	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != string(PresetModernImage) {
+	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != SelectEntityImagePreset(bundle.RunID, scene.SegmentID, entityID) {
 		t.Fatalf("image item = %+v", item)
+	}
+	animation, ok := item.Params["animation"].(map[string]any)
+	if !ok || animation["preset"] != SelectEntityImageAnimation(bundle.RunID, scene.SegmentID, entityID) {
+		t.Fatalf("image animation = %#v", item.Params["animation"])
 	}
 }

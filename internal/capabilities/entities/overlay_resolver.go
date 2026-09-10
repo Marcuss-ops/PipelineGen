@@ -7,11 +7,13 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// MinEntityOverlayDurationUS is the minimum renderable duration for an
-// entity preset. The spoken occurrence still anchors the start exactly; the
-// visual card remains on screen after the name finishes so a preset render is
-// a real clip rather than a sub-second flash.
-const MinEntityOverlayDurationUS int64 = 5_000_000
+// MaxEntityOverlayDurationUS is the hard duration ceiling for entity image
+// overlays. A long spoken mention cannot make the image layer run indefinitely.
+const MaxEntityOverlayDurationUS int64 = 5_000_000
+
+// MinEntityOverlayDurationUS is retained as the historical five-second
+// display floor for text entity cards.
+const MinEntityOverlayDurationUS int64 = MaxEntityOverlayDurationUS
 
 // ResolveEntityOverlayPlan is the OverlayResolver: it turns the canonical
 // EntityTimeline into the semantic OverlayPlan the rendering layer consumes.
@@ -65,6 +67,9 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 			durationUS := occurrence.AudioEndUS - occurrence.AudioStartUS
 			if durationUS < MinEntityOverlayDurationUS {
 				durationUS = MinEntityOverlayDurationUS
+			}
+			if durationUS > MaxEntityOverlayDurationUS {
+				durationUS = MaxEntityOverlayDurationUS
 			}
 			endUS := occurrence.AudioStartUS + durationUS
 			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)

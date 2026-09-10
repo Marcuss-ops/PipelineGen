@@ -112,11 +112,6 @@ type request struct {
 	// this transport (decode + drift) before Rust is invoked; Rust re-audits
 	// the same plan and verifies every referenced artifact fail-closed.
 	ClipPlan json.RawMessage `json:"clip_plan,omitempty"`
-	// RenderBackend is the backend resolved by the cliprender capability's
-	// RenderBackendResolver (chronon_vulkan | cuda_native | ffmpeg_fallback).
-	// Rust executes the selected backend verbatim; it never derives the
-	// backend from the codec.
-	RenderBackend string `json:"render_backend,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -363,11 +358,12 @@ type mediaMetadata struct {
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
 	// render_clip audio copy policy outcome (copy verbatim vs one certified
 	// conversion) and whether the burn stage rasterized libass (CPU).
-	AudioCopyEligible       *bool    `json:"audio_copy_eligible,omitempty"`
-	AudioEncodePasses       *int     `json:"audio_encode_passes,omitempty"`
-	SubtitleRasterCPU       *bool    `json:"subtitle_raster_cpu,omitempty"`
-	GPUCopyBytes            *uint64  `json:"gpu_copy_bytes,omitempty"`
-	VideoZeroCopy           *bool    `json:"video_zero_copy,omitempty"`
+	AudioCopyEligible *bool `json:"audio_copy_eligible,omitempty"`
+	AudioEncodePasses *int  `json:"audio_encode_passes,omitempty"`
+	SubtitleRasterCPU *bool `json:"subtitle_raster_cpu,omitempty"`
+	// GPU counters are Chronon-owned (the queue artifact metrics). The Rust
+	// zero-copy counters (gpu_copy_bytes / video_zero_copy) were removed with
+	// the PATH B CUDA hybrid.
 	GPUUploadBytes          *uint64  `json:"gpu_upload_bytes,omitempty"`
 	GPUReadbackBytes        *uint64  `json:"gpu_readback_bytes,omitempty"`
 	EncoderStagingCopyBytes *uint64  `json:"encoder_staging_copy_bytes,omitempty"`

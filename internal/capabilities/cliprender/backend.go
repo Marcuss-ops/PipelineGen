@@ -32,28 +32,27 @@ const (
 	// certified host renders through Chronon exclusively.
 	BackendChrononVulkan RenderBackend = "chronon_vulkan"
 
-	// BackendCudaNative is the PATH B hybrid (FFmpeg filter graph): NVDEC
-	// decode → CUDA base video (scale_cuda, device-local) → CPU-rasterized
-	// overlay layer (drawtext/subtitles/image on a transparent canvas) →
-	// hwupload_cuda → overlay_cuda → NVENC (pix_fmt cuda). The base video
-	// NEVER leaves VRAM (zero readback): only the small overlay layer crosses
-	// the PCIe bus. It is the GPU path for hosts where the Chronon
-	// certification gate refuses but the NVDEC/NVENC chain is present, and
-	// only for the plans it can render device-local: overlays on a scale-100
-	// base, no background plate, no style shadow/transition (those do not
-	// travel in the Rust plan).
-	BackendCudaNative RenderBackend = "cuda_native"
-
 	// BackendFFmpegFallback is the single-pass FFmpeg filter graph (CPU
 	// compositing) that Rust executes. It is the software baseline — always
 	// runnable when ffmpeg is present — and the last-resort backend for hosts
-	// without a certified Chronon and without a usable CUDA chain.
+	// without a certified Chronon. GPU compositing belongs exclusively to
+	// Chronon: the former PATH B hybrid backend was removed.
 	BackendFFmpegFallback RenderBackend = "ffmpeg_fallback"
 )
 
 // IsValid reports whether the backend is a known identifier.
 func (b RenderBackend) IsValid() bool {
-	return b == BackendChrononVulkan || b == BackendCudaNative || b == BackendFFmpegFallback
+	return b == BackendChrononVulkan || b == BackendFFmpegFallback
+}
+
+// IsGPUBackend reports whether the backend executes on GPU hardware. Today
+// the only GPU backend is Chronon Vulkan (the PATH B CUDA hybrid was
+// removed); the FFmpeg fallback is CPU-only. It is the single authority of
+// "GPU-ness" for the worker's ExecutionSpec.RequireGPU gate, so a future
+// registered GPU backend is honoured automatically without re-editing the
+// worker.
+func (b RenderBackend) IsGPUBackend() bool {
+	return b == BackendChrononVulkan
 }
 
 // ErrBackendUnavailable is returned when no registered backend can run on
@@ -61,9 +60,9 @@ func (b RenderBackend) IsValid() bool {
 // registry declares runnable.
 var ErrBackendUnavailable = errors.New("clip.render: no render backend available")
 
-// RendererCapabilities is the probed host capability set. Each flag names a
-// distinct stage of the GPU pipeline; the CUDA native (PATH B) backend
-// requires its chain, while the FFmpeg fallback requires none of it.
+// RendererCapabilities is the probed host capability set. With the PATH B
+// CUDA hybrid removed, the only backend capability facts that matter are
+// Chronon's: the FFmpeg fallback requires none of them.
 //
 // ChrononVulkan reports that the Chronon render binary is CONFIGURED (the
 // binary exists); ChrononNativeCertified reports that the binary was
@@ -73,13 +72,6 @@ var ErrBackendUnavailable = errors.New("clip.render: no render backend available
 // chronon_vulkan backend on ChrononNativeCertified, never on binary
 // presence: a broken handoff must not add latency to every render.
 type RendererCapabilities struct {
-	NVDEC                  bool `json:"nvdec"`
-	NVENCH264              bool `json:"nvenc_h264"`
-	NVENCHEVC              bool `json:"nvenc_hevc"`
-	GPUScale               bool `json:"gpu_scale"`
-	GPUBlur                bool `json:"gpu_blur"`
-	GPUAlpha               bool `json:"gpu_alpha"`
-	SubtitleTexture        bool `json:"subtitle_texture"`
 	ChrononVulkan          bool `json:"chronon_vulkan"`
 	ChrononNativeCertified bool `json:"chronon_native_certified"`
 }
@@ -87,27 +79,6 @@ type RendererCapabilities struct {
 // Satisfies reports whether the host capabilities satisfy every required
 // capability (a false requirement is trivially satisfied).
 func (c RendererCapabilities) Satisfies(required RendererCapabilities) bool {
-	if required.NVDEC && !c.NVDEC {
-		return false
-	}
-	if required.NVENCH264 && !c.NVENCH264 {
-		return false
-	}
-	if required.NVENCHEVC && !c.NVENCHEVC {
-		return false
-	}
-	if required.GPUScale && !c.GPUScale {
-		return false
-	}
-	if required.GPUBlur && !c.GPUBlur {
-		return false
-	}
-	if required.GPUAlpha && !c.GPUAlpha {
-		return false
-	}
-	if required.SubtitleTexture && !c.SubtitleTexture {
-		return false
-	}
 	if required.ChrononVulkan && !c.ChrononVulkan {
 		return false
 	}
@@ -239,9 +210,9 @@ type RenderBackendRegistry struct {
 // NewRenderBackendRegistry seeds the canonical backends in resolution
 // preference order: the Chronon Vulkan compositor first (the PRIMARY GPU
 // backend — selected whenever the certification gate passes, since it
-// supports every plan requirement), then the PATH B CUDA hybrid (GPU for
-// hosts where the Chronon gate refuses but the NVDEC/NVENC chain is
-// present), then the software FFmpeg fallback (always runnable).
+// supports every plan requirement), then the software FFmpeg fallback
+// (always runnable). The PATH B CUDA hybrid was removed: GPU compositing
+// belongs exclusively to the Chronon executor.
 func NewRenderBackendRegistry() *RenderBackendRegistry {
 	registry := &RenderBackendRegistry{
 		capabilities: make(map[RenderBackend]RendererCapabilities),
@@ -269,22 +240,6 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 		BurnSubtitles:  true,
 		GPUAlpha:       true,
 		Scale:          true,
-	})
-	// PATH B CUDA hybrid: requires the NVDEC/NVENC/GPU chain and supports
-	// only the plans it can render device-local (zero readback of the base
-	// video): image overlays on a scale-100
-	// base, no background plate, no style shadow/transition (they do not
-	// travel in the Rust plan). Everything else routes to Chronon or to the
-	// software baseline.
-	registry.Register(BackendCudaNative, RendererCapabilities{
-		NVDEC:     true,
-		NVENCH264: true,
-		GPUScale:  true,
-		GPUAlpha:  true,
-	})
-	registry.SetSupport(BackendCudaNative, BackendSupport{
-		ImageWatermark: true,
-		GPUAlpha:       true,
 	})
 	registry.Register(BackendFFmpegFallback, RendererCapabilities{})
 	registry.SetSupport(BackendFFmpegFallback, BackendSupport{

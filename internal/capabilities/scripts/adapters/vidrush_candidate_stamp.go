@@ -90,10 +90,40 @@ func provenanceSlug(value string) string {
 }
 
 func normalizeVidRushCandidateList(candidates []scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if normalized, ok := normalizeVidRushCandidate(candidate, segment); ok {
+	if len(candidates) == 0 {
+		return candidates
+	}
+	// Steady-state fast path: once a candidate is stamped, every clone pass
+	// re-normalizes it to a byte-identical copy. Returning the caller-owned
+	// slice instead of allocating a fresh one removes three heap allocations
+	// per segment per processor pass (Candidates/SecondaryImages/Generated
+	// Images). Every call site owns the slice exclusively or passes it as a
+	// read-only merge input, so aliasing is safe. The copy-on-write path is
+	// taken only when a candidate is rewritten or dropped, producing the same
+	// output the old always-copy loop did.
+	out := candidates
+	rewritten := false
+	for i, candidate := range candidates {
+		normalized, ok := normalizeVidRushCandidate(candidate, segment)
+		if !ok {
+			// Conflicting/stale candidate: dropped, so the output differs from
+			// the input and the copy path is required.
+			if !rewritten {
+				out = make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+				out = append(out, candidates[:i]...)
+				rewritten = true
+			}
+			continue
+		}
+		if rewritten {
 			out = append(out, normalized)
+			continue
+		}
+		if normalized != candidate {
+			out = make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+			out = append(out, candidates[:i]...)
+			out = append(out, normalized)
+			rewritten = true
 		}
 	}
 	return out

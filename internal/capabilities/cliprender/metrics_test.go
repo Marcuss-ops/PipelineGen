@@ -48,7 +48,7 @@ func TestNewRenderMetricsV2_AllPhasesNotInstrumented(t *testing.T) {
 		m.RendererOutputFinalizeMS, m.ArtifactPublishMS, m.DriveUploadMS,
 		m.PublicationTotalMS, m.PublishMS, m.RenderWallMS,
 
-		m.GPUCopyBytes, m.GPUReadbackBytes, m.PeakRSSBytes, m.DiskReadBytes,
+		m.GPUReadbackBytes, m.PeakRSSBytes, m.DiskReadBytes,
 		m.DiskWriteBytes, m.NetworkRXBytes, m.NetworkTXBytes, m.EncoderStagingCopyBytes,
 		m.NV12ToRGBAFrames, m.RGBAToNV12Frames, m.TotalMS, m.UnaccountedMS,
 	}
@@ -298,7 +298,7 @@ func TestRenderMetricsV2_JSONPreservesSentinelAndMeasuredZeroForEveryMetric(t *t
 		"verification_policy": &fresh.VerificationPolicy, "verification_passed": &fresh.VerificationPassed,
 		"renderer_finalize_ms": &fresh.RendererOutputFinalizeMS, "artifact_publish_ms": &fresh.ArtifactPublishMS,
 		"drive_upload_ms": &fresh.DriveUploadMS, "publication_total_ms": &fresh.PublicationTotalMS, "publish_ms": &fresh.PublishMS,
-		"render_wall_ms": &fresh.RenderWallMS, "gpu_copy_bytes": &fresh.GPUCopyBytes, "gpu_readback_bytes": &fresh.GPUReadbackBytes,
+		"render_wall_ms": &fresh.RenderWallMS, "gpu_readback_bytes": &fresh.GPUReadbackBytes,
 		"peak_rss_bytes": &fresh.PeakRSSBytes, "disk_read_bytes": &fresh.DiskReadBytes, "disk_write_bytes": &fresh.DiskWriteBytes,
 		"network_rx_bytes": &fresh.NetworkRXBytes, "network_tx_bytes": &fresh.NetworkTXBytes, "encoder_staging_copy_bytes": &fresh.EncoderStagingCopyBytes,
 		"nv12_to_rgba_frames": &fresh.NV12ToRGBAFrames, "rgba_to_nv12_frames": &fresh.RGBAToNV12Frames,

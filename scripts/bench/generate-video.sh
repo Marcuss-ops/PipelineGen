@@ -94,8 +94,8 @@ Pipeline stages timed:
 
 Report: per-phase wall_ms / work_ms / critical_path_ms (LLM, TTS, audio, Docs, render, Drive)
 plus the real worker facts already exposed in the job result (transcript,
-timings, render.backend, gpu_copy_bytes). No synthetic 60/40 splits: phases
-come from /api/jobs/{id}/full (result + RunReport timing).
+timings, render.backend). No synthetic 60/40 splits: phases come from
+/api/jobs/{id}/full (result + RunReport timing).
 
 Critical path semantics:
   - script.generate jobs: the RunReport critical path (ordered chain of

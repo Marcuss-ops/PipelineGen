@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -43,12 +44,55 @@ func storeVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCa
 }
 
 var (
-	vidrushExtractionCache   sync.Map
 	vidrushArtlistCache      sync.Map
 	vidrushImageCache        sync.Map
 	vidrushBindingCache      sync.Map
 	vidrushMaterializedCache sync.Map
 )
+
+// ── L1 cache janitor ───────────────────────────────────────────────────
+// The VidRush L1 maps are no-TTL by contract (a warm replay of the same
+// query must hit without re-calling the provider), but they must not grow
+// without bound over the process lifetime. A periodic janitor clears them;
+// the durable L2 cache (VidRushCachePort, TTL 48h) re-warms L1 on the next
+// replay with identical HIT_EXACT semantics, so the janitor only bounds
+// memory, never changes results.
+const vidrushL1CacheJanitorInterval = 10 * time.Minute
+
+var (
+	vidrushCacheJanitorOnce sync.Once
+	// vidrushL1Caches is the bounded L1 surface. entityImageCache is declared
+	// in media_resolver_image_stage.go (same package) and participates in the
+	// same janitor; entityImageLocks is excluded because the canonical
+	// KeyedLocker is reference-counted and self-cleaning.
+	vidrushL1Caches = []*sync.Map{
+		&vidrushArtlistCache,
+		&vidrushImageCache,
+		&vidrushBindingCache,
+		&vidrushMaterializedCache,
+		&entityImageCache,
+	}
+)
+
+// startVidrushCacheJanitor launches the periodic L1 clear exactly once per
+// process. It is started lazily on the first L1 access so unit tests that
+// never touch the caches stay free of background goroutines.
+func startVidrushCacheJanitor() {
+	vidrushCacheJanitorOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(vidrushL1CacheJanitorInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				for _, cache := range vidrushL1Caches {
+					cache.Range(func(key, _ any) bool {
+						cache.Delete(key)
+						return true
+					})
+				}
+			}
+		}()
+	})
+}
 
 // artlistSegmentCacheKey makes explicit Artlist intent the stable identity of
 // a tagged search. Generated prose can vary slightly across model retries;
@@ -241,6 +285,7 @@ func segmentCacheKey(parts ...string) string {
 }
 
 func cacheLoad(cache *sync.Map, key string) (any, bool) {
+	startVidrushCacheJanitor()
 	if cache == nil || key == "" {
 		return nil, false
 	}
@@ -248,6 +293,7 @@ func cacheLoad(cache *sync.Map, key string) (any, bool) {
 }
 
 func cacheStore(cache *sync.Map, key string, value any) {
+	startVidrushCacheJanitor()
 	if cache == nil || key == "" {
 		return
 	}

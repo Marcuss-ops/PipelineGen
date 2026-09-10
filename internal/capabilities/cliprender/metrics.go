@@ -1,9 +1,10 @@
 package cliprender
 
 // metrics.go owns the canonical V2 execution report for a sealed
-// ClipRenderPlanV1 render. One shape serves every backend (CUDA native, Chronon
-// Vulkan, FFmpeg fallback); each component fills only the phases it actually
-// measures, and everything else stays NOT_INSTRUMENTED.
+// ClipRenderPlanV1 render. One shape serves every backend (Chronon Vulkan,
+// FFmpeg fallback); each component fills only the phases it actually
+// measures, and everything else stays NOT_INSTRUMENTED. The PATH B CUDA
+// hybrid was removed — GPU compositing belongs exclusively to Chronon.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a phase/counter that has no real
 // instrumentation reports the string "NOT_INSTRUMENTED", NEVER 0. Zero means
@@ -11,13 +12,13 @@ package cliprender
 // yet". The two are deliberately distinguishable on the wire and in logs.
 //
 // SSOT RULE: this struct is the ONLY canonical metrics contract for clip
-// render. Every backend (CUDA native, Chronon Vulkan, FFmpeg fallback)
-// projects into it; the preparer and the publisher fold the chronometers
-// they own into it; the Rust boundary's legacy scalars (ffmpeg_ms,
-// subtitle_raster_cpu, gpu_copy_bytes) and the job result's render.* legacy
-// keys are read-only compatibility projections of the same measured values.
-// No component may compute a second, independent value for a field this
-// report owns, and no new instrumentation may land in a parallel contract.
+// render. Every backend (Chronon Vulkan, FFmpeg fallback) projects into it;
+// the preparer and the publisher fold the chronometers they own into it;
+// the Rust boundary's legacy scalars (ffmpeg_ms, subtitle_raster_cpu) and
+// the job result's render.* legacy keys are read-only compatibility
+// projections of the same measured values. No component may compute a
+// second, independent value for a field this report owns, and no new
+// instrumentation may land in a parallel contract.
 
 import "encoding/json"
 
@@ -150,7 +151,6 @@ type RenderMetricsV2 struct {
 	SpeedFactor    float64 `json:"speed_factor"`
 	ProcessingXRT  float64 `json:"processing_xrt"`
 
-	GPUCopyBytes            Metric `json:"gpu_copy_bytes"`
 	GPUUploadBytes          Metric `json:"gpu_upload_bytes"`
 	GPUReadbackBytes        Metric `json:"gpu_readback_bytes"`
 	PeakRSSBytes            Metric `json:"peak_rss_bytes"`
@@ -168,10 +168,6 @@ type RenderMetricsV2 struct {
 	NVDECUtilizationAvg     Metric `json:"nvdec_utilization_avg"`
 	VRAMUsedPeakMB          Metric `json:"vram_used_peak_mb"`
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
-	// VideoZeroCopy is nil when the executor did not certify the strict
-	// device-local path. It is a pointer intentionally: false is a measured
-	// software/readback path, nil is not instrumented.
-	VideoZeroCopy *bool `json:"video_zero_copy,omitempty"`
 
 	TotalMS Metric `json:"total_ms"`
 	// UnaccountedMS is retained for wire compatibility. UnattributedMS is the
@@ -196,9 +192,8 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.VerificationPolicy, &m.VerificationPassed,
 		&m.RendererOutputFinalizeMS, &m.ArtifactPublishMS, &m.DriveUploadMS,
 		&m.PublicationTotalMS, &m.PublishMS, &m.RenderWallMS,
-		&m.GPUCopyBytes, &m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
-		&m.GPUUploadBytes,
-		&m.DiskWriteBytes, &m.NetworkRXBytes, &m.NetworkTXBytes, &m.EncoderStagingCopyBytes,
+		&m.GPUReadbackBytes, &m.PeakRSSBytes, &m.DiskReadBytes,
+		&m.GPUUploadBytes, &m.DiskWriteBytes, &m.NetworkRXBytes, &m.NetworkTXBytes, &m.EncoderStagingCopyBytes,
 		&m.NV12ToRGBAFrames, &m.RGBAToNV12Frames, &m.CUDACompositeFrames,
 		&m.GPUUtilizationAvg, &m.GPUUtilizationPeak, &m.NVENCUtilizationAvg,
 		&m.NVDECUtilizationAvg, &m.VRAMUsedPeakMB,
@@ -274,7 +269,6 @@ func (m *RenderMetricsV2) Merge(executor *RenderMetricsV2) {
 	merge(&m.PublicationTotalMS, &executor.PublicationTotalMS)
 	merge(&m.PublishMS, &executor.PublishMS)
 	merge(&m.RenderWallMS, &executor.RenderWallMS)
-	merge(&m.GPUCopyBytes, &executor.GPUCopyBytes)
 	merge(&m.GPUUploadBytes, &executor.GPUUploadBytes)
 	merge(&m.GPUReadbackBytes, &executor.GPUReadbackBytes)
 	merge(&m.PeakRSSBytes, &executor.PeakRSSBytes)

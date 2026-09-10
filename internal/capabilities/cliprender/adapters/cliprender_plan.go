@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -38,7 +39,31 @@ func (c *ClipRenderSubtitleCompiler) SetArtifactRepository(repo detail.SubtitleA
 // of the same transcript/style. It is a content cache, not a render cache.
 var assContentCache sync.Map // map[string]string
 
+// assContentCacheJanitor bounds the no-TTL ASS content cache over the
+// process lifetime. Entries are keyed by transcript/style hash and are fully
+// deterministic, so a periodic clear only costs a cheap recompile on the
+// next render of the same cues — never a semantic change.
+const assContentCacheJanitorInterval = 10 * time.Minute
+
+var assContentCacheJanitorOnce sync.Once
+
+func startAssContentCacheJanitor() {
+	assContentCacheJanitorOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(assContentCacheJanitorInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				assContentCache.Range(func(key, _ any) bool {
+					assContentCache.Delete(key)
+					return true
+				})
+			}
+		}()
+	})
+}
+
 func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.SubtitleCompileInput) (*cliprender.SubtitleArtifact, error) {
+	startAssContentCacheJanitor()
 	switch in.Mode {
 	case cliprender.SubtitlesModeBurn, cliprender.SubtitlesModeSidecar:
 	default:

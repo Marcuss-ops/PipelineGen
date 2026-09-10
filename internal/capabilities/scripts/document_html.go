@@ -123,31 +123,27 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		return skeleton
 	}
 
-	if opts.PayloadOnly {
-		// Keep the readable scene sections, but expose only one machine-readable
-		// block: the finished remote assembly payload.
-		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, "", 1)
-	} else {
-		var before strings.Builder
+	var before strings.Builder
+	if !opts.PayloadOnly {
 		writeDocumentFullAudio(&before, opts)
 		writeDocumentOverlay(&before, opts)
 		writeDocumentSemanticSummary(&before, model)
 		writeDocumentSemanticOverlay(&before, opts)
-		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
 	}
 
+	perScene := make([]string, len(model.SpecScene.Scenes))
 	for i := range model.SpecScene.Scenes {
 		scene := &model.SpecScene.Scenes[i]
-		var perScene strings.Builder
+		var b strings.Builder
 		if !opts.PayloadOnly {
-			writeDocumentSceneTiming(&perScene, scene, opts)
-			writeDocumentSceneMediaDurations(&perScene, scene, opts)
-			writeDocumentPhraseTimings(&perScene, scene, opts)
+			writeDocumentSceneTiming(&b, scene, opts)
+			writeDocumentSceneMediaDurations(&b, scene, opts)
+			writeDocumentPhraseTimings(&b, scene, opts)
 		}
 		// Clip links remain visible even in payload-only documents. The payload
 		// mode hides technical timing/spec JSON, not the operator's clip inputs.
-		writeDocumentSceneLinks(&perScene, scene, opts)
-		skeleton = strings.Replace(skeleton, documentSkeletonSceneMarker(i), perScene.String(), 1)
+		writeDocumentSceneLinks(&b, scene, opts)
+		perScene[i] = b.String()
 	}
 
 	var after strings.Builder
@@ -155,14 +151,73 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		writeDocumentAudioCertificationSummary(&after, model, opts)
 		writeDocumentSpecSceneJSON(&after, model)
 		writeDocumentTimelineJSON(&after, opts)
-	}
-	if !opts.PayloadOnly {
 		writeDocumentFinalAudioJSON(&after, opts)
 		writeDocumentOverlayPlanJSON(&after, opts)
 		writeDocumentOverlayJSON(&after, opts)
 	}
-	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
 
+	// Single-pass splice. The legacy implementation ran one
+	// strings.Replace over the WHOLE (growing) document per scene, copying the
+	// full document O(N) times for N scenes; the splice below walks the
+	// skeleton once and produces byte-identical output:
+	//   head BEFORE_MARKER [section_i … SCENE_MARKER(i) …]* AFTER_MARKER tail
+	// The scene markers are unique, ordered and HTML-escaped on input, so a
+	// marker string can never appear inside injected content.
+	splice := func() string {
+		headEnd := strings.Index(skeleton, documentSkeletonBeforeMarker)
+		if headEnd < 0 {
+			return ""
+		}
+		afterIdx := strings.Index(skeleton[headEnd+len(documentSkeletonBeforeMarker):], documentSkeletonAfterMarker)
+		if afterIdx < 0 {
+			return ""
+		}
+		afterIdx += headEnd + len(documentSkeletonBeforeMarker)
+		middle := skeleton[headEnd+len(documentSkeletonBeforeMarker) : afterIdx]
+		var out strings.Builder
+		out.Grow(len(skeleton) + before.Len() + after.Len())
+		out.WriteString(skeleton[:headEnd])
+		if !opts.PayloadOnly {
+			out.WriteString(before.String())
+		}
+		cur := 0
+		for i := range perScene {
+			marker := documentSkeletonSceneMarker(i)
+			idx := strings.Index(middle[cur:], marker)
+			if idx < 0 {
+				return ""
+			}
+			out.WriteString(middle[cur : cur+idx])
+			out.WriteString(perScene[i])
+			cur += idx + len(marker)
+		}
+		out.WriteString(middle[cur:])
+		out.WriteString(after.String())
+		out.WriteString(skeleton[afterIdx+len(documentSkeletonAfterMarker):])
+		return out.String()
+	}
+	if out := splice(); out != "" {
+		return out
+	}
+	// Defensive fallback (marker contract violated): keep the legacy
+	// replace-based assembly so output stays deterministic on any unexpected
+	// skeleton shape. In practice the markers are always present because the
+	// skeleton is produced by RenderDocumentSkeleton.
+	return injectDocumentLateBoundLegacy(skeleton, opts, before.String(), perScene, after.String())
+}
+
+// injectDocumentLateBoundLegacy is the byte-equivalent replace-based assembly
+// kept as the defensive fallback of InjectDocumentLateBound (see above).
+func injectDocumentLateBoundLegacy(skeleton string, opts DocumentRenderOptions, before string, perScene []string, after string) string {
+	if opts.PayloadOnly {
+		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, "", 1)
+	} else {
+		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before, 1)
+	}
+	for i := range perScene {
+		skeleton = strings.Replace(skeleton, documentSkeletonSceneMarker(i), perScene[i], 1)
+	}
+	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after, 1)
 	return skeleton
 }
 
@@ -230,61 +285,67 @@ func writeDocumentSemanticSummary(b *strings.Builder, model *scriptpkg.ModelScri
 	if len(phrases) == 0 && len(seenEntities) == 0 {
 		return
 	}
-	b.WriteString("<section><h2>Entities &amp; Important Phrases</h2>")
+	if len(seenEntities) > 0 {
+		b.WriteString("<section><h2>Entities</h2>")
+		for _, group := range groups {
+			for _, entity := range group.entities {
+				writeDocumentEntityLine(b, entity)
+			}
+		}
+		b.WriteString("</section>")
+	}
 	if len(phrases) > 0 {
-		b.WriteString("<h3>Important phrases</h3><ul>")
+		b.WriteString("<section><h2>Important Phrases</h2>")
 		for _, phrase := range phrases {
-			b.WriteString("<li>")
+			b.WriteString("<p>")
 			b.WriteString(html.EscapeString(phrase))
-			b.WriteString("</li>")
+			b.WriteString("</p>")
 		}
-		b.WriteString("</ul>")
+		b.WriteString("</section>")
 	}
-	for _, group := range groups {
-		if len(group.entities) == 0 {
-			continue
-		}
-		b.WriteString("<h3>")
-		b.WriteString(html.EscapeString(group.label))
-		b.WriteString("</h3><ul>")
-		for _, entity := range group.entities {
-			name := strings.TrimSpace(entity.CanonicalName)
-			if name == "" {
-				name = strings.TrimSpace(entity.Text)
-			}
-			b.WriteString("<li><strong>")
-			b.WriteString(html.EscapeString(name))
-			b.WriteString("</strong>")
-			if entity.Confidence > 0 {
-				fmt.Fprintf(b, " <em>(confidence %.2f)</em>", entity.Confidence)
-			}
-			if image := entity.Image; image != nil {
-				if image.DriveLink != "" {
-					b.WriteString(" — ")
-					b.WriteString(renderDocumentLink("Drive image", image.DriveLink, image.DriveLink))
-				}
-				metadata := make([]string, 0, 4)
-				if image.AssetID != "" {
-					metadata = append(metadata, "asset="+image.AssetID)
-				}
-				if image.Status != "" {
-					metadata = append(metadata, "cache="+image.Status)
-				}
-				if image.Source != "" {
-					metadata = append(metadata, "source="+image.Source)
-				}
-				if image.License != "" {
-					metadata = append(metadata, "license="+image.License)
-				}
-				if len(metadata) > 0 {
-					b.WriteString(" <small>[" + html.EscapeString(strings.Join(metadata, "; ")) + "]</small>")
-				}
-			}
-			b.WriteString("</li>")
-		}
-		b.WriteString("</ul>")
+}
+
+// writeDocumentEntityLine is deliberately compact: the human-facing document
+// shows only the resolved type, name and canonical Drive link. Asset/cache,
+// source and license metadata remain available in the machine JSON blocks.
+func writeDocumentEntityLine(b *strings.Builder, entity scriptpkg.AnnotatedEntity) {
+	name := strings.TrimSpace(entity.CanonicalName)
+	if name == "" {
+		name = strings.TrimSpace(entity.Text)
 	}
-	b.WriteString("</section>")
+	if name == "" {
+		return
+	}
+
+	b.WriteString("<p><strong>")
+	b.WriteString(html.EscapeString(documentEntityTypeLabel(entity.Type)))
+	b.WriteString(":</strong> ")
+	b.WriteString(html.EscapeString(name))
+	if entity.Image != nil {
+		if drive := strings.TrimSpace(entity.Image.DriveLink); drive != "" {
+			b.WriteString(" — ")
+			b.WriteString(renderDocumentLink(drive, "Drive", drive))
+		}
+	}
+	b.WriteString("</p>")
+}
+
+func documentEntityTypeLabel(kind string) string {
+	switch strings.ToUpper(strings.TrimSpace(kind)) {
+	case "PERSON":
+		return "Person"
+	case "ORG", "ORGANIZATION":
+		return "Organization"
+	case "GPE", "LOCATION", "PLACE", "COUNTRY", "CITY":
+		return "Location"
+	case "CONCEPT":
+		return "Concept"
+	default:
+		if label := strings.TrimSpace(kind); label != "" {
+			return label
+		}
+		return "Entity"
+	}
 }
 
 // RenderDocument is the one-shot renderer (skeleton + injection). It is the
@@ -900,10 +961,11 @@ func writeDocumentSceneLinks(b *strings.Builder, scene *scriptpkg.SpecScene, opt
 	writeDocumentTimingLinks(b, scene.Bindings.Voiceover, opts, write)
 }
 
-// writeDocumentEntityImage renders one entity image read-only from the binding
-// surface. When a direct image URL is present it is inlined as an <img> (IDEAL
-// PASS); the canonical Drive link always follows. It never recomputes NLP or
-// bindings — the entity-image SSOT is the projection produced upstream.
+// writeDocumentEntityImage renders one entity read-only from the binding
+// surface. The human document intentionally does not inline or preview the
+// image; it shows the compact entity line and canonical Drive link. It never
+// recomputes NLP or bindings — the entity-image SSOT is the projection
+// produced upstream.
 func writeDocumentEntityImage(b *strings.Builder, entity scriptpkg.AnnotatedEntity) {
 	if entity.Image == nil {
 		return
@@ -912,28 +974,11 @@ func writeDocumentEntityImage(b *strings.Builder, entity scriptpkg.AnnotatedEnti
 	if name == "" {
 		name = strings.TrimSpace(entity.Text)
 	}
-	preview := strings.TrimSpace(entity.Image.PreviewURL)
 	drive := strings.TrimSpace(entity.Image.DriveLink)
-	if preview == "" && drive == "" {
+	if name == "" || drive == "" {
 		return // not_found or no usable link — never fabricate an image
 	}
-	if preview != "" {
-		b.WriteString(`<p><img src="`)
-		b.WriteString(html.EscapeString(preview))
-		b.WriteString(`" alt="`)
-		b.WriteString(html.EscapeString(name))
-		b.WriteString(`" style="max-width:320px;max-height:240px;" /></p>`)
-	}
-	if drive != "" {
-		if name == "" {
-			name = "unidentified entity"
-		}
-		b.WriteString("<p><strong>Entity image for:</strong> ")
-		b.WriteString(html.EscapeString(name))
-		b.WriteString(" — ")
-		b.WriteString(renderDocumentLink(drive, drive, drive))
-		b.WriteString("</p>")
-	}
+	writeDocumentEntityLine(b, entity)
 }
 
 func writeDocumentVoiceover(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts DocumentRenderOptions, write func(string, string)) {

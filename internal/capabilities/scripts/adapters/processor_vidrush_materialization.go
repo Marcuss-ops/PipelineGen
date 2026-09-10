@@ -278,6 +278,10 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 // It is shared by the batch Process path and the single-segment Materialize
 // port so the materialization stage is implemented exactly once.
 func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
+	// The L1 materialized cache is bounded by the shared VidRush janitor; the
+	// direct Load/Store sites below bypass the cacheLoad/cacheStore helpers,
+	// so start the janitor here (idempotent, once per process).
+	startVidrushCacheJanitor()
 	updated := cloneVidRushSegmentResult(segment)
 	if segment.ExecutionMode.IsFixedMedia() {
 		// Fixed media is already authoritative and must not be acquired,

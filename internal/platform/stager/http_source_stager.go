@@ -21,12 +21,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
@@ -50,10 +50,12 @@ type HTTPSourceStager struct {
 	log        *zap.Logger
 
 	// perPathMu guards concurrent StageSourceV2 calls for the same
-	// deterministic local path. A sync.Map keyed on the path keeps
-	// lock contention proportional to the number of distinct URLs
-	// being staged concurrently, not the total call count.
-	perPathMu sync.Map // map[string]*sync.Mutex
+	// deterministic local path. It is the canonical reference-counted
+	// KeyedLocker (pkg/concurrent): lock contention stays proportional to
+	// the number of distinct URLs being staged concurrently, and unlike a
+	// sync.Map of mutexes it never leaks an entry — the key is removed when
+	// the last holder releases.
+	perPathMu *concurrent.KeyedLocker
 }
 
 // NewHTTPSourceStager constructs the canonical HTTPSourceStager.
@@ -82,6 +84,7 @@ func NewHTTPSourceStager(stagingDir string, client *http.Client, log *zap.Logger
 		stagingDir: stagingDir,
 		client:     client,
 		log:        log,
+		perPathMu:  concurrent.NewKeyedLocker(),
 	}, nil
 }
 
@@ -106,12 +109,6 @@ func (s *HTTPSourceStager) deterministicLocalPath(ref assets.SourceRef) string {
 	return filepath.Join(s.stagingDir, digest+".bin")
 }
 
-// lockFor returns the per-path mutex, creating it lazily.
-func (s *HTTPSourceStager) lockFor(path string) *sync.Mutex {
-	v, _ := s.perPathMu.LoadOrStore(path, &sync.Mutex{})
-	return v.(*sync.Mutex)
-}
-
 // stageSourceV2 downloads ref.URL into a deterministic local file
 // under s.stagingDir and returns a *StagedSource with the
 // IntermediateHash. This is the internal implementation used by
@@ -124,10 +121,10 @@ func (s *HTTPSourceStager) stageSourceV2(ctx context.Context, ref assets.SourceR
 	localPath := s.deterministicLocalPath(ref)
 
 	// Per-path lock so two goroutines staging the same URL do not
-	// both download + write torn bytes.
-	mu := s.lockFor(localPath)
-	mu.Lock()
-	defer mu.Unlock()
+	// both download + write torn bytes. The release func removes the
+	// key from the locker registry when this holder is the last one.
+	release := s.perPathMu.Lock(localPath)
+	defer release()
 
 	// If the file is already on disk from a prior StageSourceV2 call
 	// for the same SourceRef, reuse it: stat it, compute the hash

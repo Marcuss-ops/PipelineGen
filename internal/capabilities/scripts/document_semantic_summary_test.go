@@ -8,7 +8,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func TestRenderDocumentSemanticSummaryGroupsEntitiesAndDriveMetadata(t *testing.T) {
+func TestRenderDocumentSemanticSummaryRendersCompactEntityDriveLinks(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{
 			Scenes: []scriptpkg.SpecScene{
@@ -32,19 +32,23 @@ func TestRenderDocumentSemanticSummaryGroupsEntitiesAndDriveMetadata(t *testing.
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Entities &amp; Important Phrases",
+		"<h2>Entities</h2>",
+		"<h2>Important Phrases</h2>",
 		"A defining moment",
-		"<h3>PERSON</h3>",
+		"<strong>Person:</strong> Donald Trump",
 		"Donald Trump",
-		"<h3>GPE</h3>",
+		"<strong>Location:</strong> United States",
 		"United States",
 		"https://drive.google.com/file/d/trump/view",
-		"asset=person:donald-trump",
-		"source=commons",
-		"license=CC BY-SA",
+		`<a href="https://drive.google.com/file/d/trump/view">Drive</a>`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("document missing %q: %s", want, html)
+		}
+	}
+	for _, unwanted := range []string{"asset=person:donald-trump", "source=commons", "license=CC BY-SA", "<img"} {
+		if strings.Contains(html, unwanted) {
+			t.Fatalf("compact entity surface must not contain %q: %s", unwanted, html)
 		}
 	}
 }

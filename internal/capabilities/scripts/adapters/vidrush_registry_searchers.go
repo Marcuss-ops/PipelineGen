@@ -375,10 +375,11 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				var releaseCatalog func()
 				catalogMetrics := entityImageCatalogMetricsFor(f.metrics)
 				if catalogEligible && f.catalog != nil {
-					actual, _ := entityImageLocks.LoadOrStore("entity-catalog:"+catalogIdentity.CanonicalEntityID, &sync.Mutex{})
-					catalogLock := actual.(*sync.Mutex)
-					catalogLock.Lock()
-					releaseCatalog = catalogLock.Unlock
+					// Canonical reference-counted per-key locker: the entry is
+					// removed when the last holder releases, so the registry
+					// never grows with the set of entity IDs seen over the
+					// process lifetime (retired sync.Map-of-mutexes pattern).
+					releaseCatalog = entityImageLocks.Lock("entity-catalog:" + catalogIdentity.CanonicalEntityID)
 					if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 						lookupStarted := time.Now()
 						pool, err := entityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, perQueryLimit)
