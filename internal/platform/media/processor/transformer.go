@@ -54,15 +54,17 @@ func (p *Processor) Transform(ctx context.Context, input *detail.TransformInput)
 		}
 		result.Renditions = renditions
 
-		mezzanine := p.findRendition(renditions, detail.RenditionKindMezzanine)
-		if mezzanine == nil {
-			result.Error = "mezzanine rendition missing after processing"
+		// The master is the canonical processed output (Sept 2026: the
+		// redundant mezzanine copy was retired).
+		master := p.findRendition(renditions, detail.RenditionKindMaster)
+		if master == nil {
+			result.Error = "master rendition missing after processing"
 			return result, fmt.Errorf("%s", result.Error)
 		}
-		processedPath = mezzanine.LocalPath
-		result.LegacyFileMD5 = mezzanine.LegacyFileMD5
-		result.LocalPath = mezzanine.LocalPath
-		result.Filename = mezzanine.Filename
+		processedPath = master.LocalPath
+		result.LegacyFileMD5 = master.LegacyFileMD5
+		result.LocalPath = master.LocalPath
+		result.Filename = master.Filename
 	} else {
 		processedPath, err := p.processStep(ctx, transformToProcessInput(input), input.LocalPath, processedPath)
 		if err != nil {
