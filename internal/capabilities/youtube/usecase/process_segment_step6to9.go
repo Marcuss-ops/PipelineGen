@@ -41,6 +41,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
+func isAsyncEnrichmentEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_ASYNC_ENRICHMENT"))
+	return strings.EqualFold(v, "true") || v == "1" || strings.EqualFold(v, "on") || strings.EqualFold(v, "yes")
+}
+
 // step6to9_SubtitlesDriveWriter is the canonical owner of Steps 6-9.
 //
 // Mutates `out` on success: Item.DriveFileID + Item.DriveLink +
@@ -143,26 +148,11 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				FailureCodeDriveUploadFailed, false,
 				"subtitle destination requested but Drive folder manager is not wired", nil))
 		}
+		// Subtitle folder is ALREADY the final upload target: the
+		// extraction orchestrator resolved the per-video subfolder ONCE
+		// before fan-out (resolveSubtitleDestination), so no per-segment
+		// GetOrCreateFolder happens here (Sept 2026 N→1 contract).
 		subtitleFolderID := cmd.SubtitleFolderID
-		if cmd.SubtitlePerClipSubfolders {
-			var err error
-			// Keep all subtitles for one source video together. Clip names
-			// are intentionally not used as folder names: a single source
-			// video can produce many segments.
-			videoFolderName := strings.TrimSpace(cmd.VideoID)
-			if videoFolderName == "" {
-				videoFolderName = "youtube-video"
-			}
-			subtitleFolderID, err = u.media.DriveFolderMgr.GetOrCreateFolder(ctx, videoFolderName, cmd.SubtitleFolderID)
-			if err != nil || subtitleFolderID == "" {
-				if err == nil {
-					err = errors.New("Drive returned an empty subtitle folder ID")
-				}
-				return nil, u.fail(out, NewExtractionError(
-					FailureCodeDriveUploadFailed, true,
-					fmt.Sprintf("create subtitle folder: %v", err), err))
-			}
-		}
 		subtitleName := filepath.Base(txtPath)
 		if _, _, uploadErr := u.media.DriveFolderMgr.UploadFileIfChanged(
 			ctx, txtPath, subtitleFolderID, subtitleName,
@@ -260,7 +250,14 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// (Step 10) is retired — there is no second media_assets write and
 	// no second asset.index.requested event. Analysis failure is
 	// fail-closed: a semantically-poor clip is never committed.
-	if u.metadata.MetadataService != nil {
+	//
+	// P1.7 async gate (Sept 2026): when VELOX_YOUTUBE_ASYNC_ENRICHMENT=true|1
+	// the enrichment is skipped on the hot path; the clip commits with
+	// quality_score=0 and raw segment metadata, and the outbox consumer
+	// enriches async (outbox-driven). This decouples the Ollama LLM
+	// (2-4s x N, semaphore 4) from the S9 super-TX writer lock, so fanout
+	// throughput is not LLM-bound. Disabled by default (fail-closed sync).
+	if u.metadata.MetadataService != nil && !isAsyncEnrichmentEnabled() {
 		enrichment, analyzeErr := u.analyzeClipForCommit(ctx, cmd, clipID, startSec, endSec, bundle)
 		if analyzeErr != nil {
 			typed := NewExtractionError(FailureCodeMetadataFailed, false,
@@ -272,6 +269,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			return nil, u.fail(out, typed)
 		}
 		clipAsset = foldEnrichmentIntoClipAsset(clipAsset, enrichment)
+	} else if isAsyncEnrichmentEnabled() && u.metadata.MetadataService != nil {
+		u.core.Log.Debug("async enrichment gate active: committing clip without Ollama analysis",
+			zap.String("clip_id", clipID))
 	}
 
 	if u.metadata.LocalizedWriter != nil {
@@ -363,32 +363,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			zap.String("clip_id", clipID),
 			zap.Int("text_tracks", len(tracks)),
 			zap.Int("timed_tracks", len(timedTracks)))
-	} else if u.core.Writer != nil {
-		// Downgrade path: when composition did NOT wire
-		// LocalizedWriter (legacy bundle only), fall back to the
-		// legacy CommitClipAndIndexEvent. This branch MUST NOT be
-		// hit in production — composition always wires both
-		// instance-to-instance — but it's retained for the
-		// dev/legacy composition root paths. clipAsset is the
-		// SAME enrichment-folded asset built above (single
-		// canonical snapshot).
-		event := youtubeports.IndexEventPayload{
-			AggregateID: clipID,
-			CreatedAt:   time.Now().UTC(),
-		}
-		if wErr := u.core.Writer.CommitClipAndIndexEvent(ctx, clipID, clipAsset, event); wErr != nil {
-			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
-				out.Item.Status = "processed_but_index_blocked"
-				out.Status = "processed_but_index_blocked"
-				u.core.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
-					zap.String("clip_id", clipID), zap.Error(wErr))
-				return bundle, nil
-			}
-			typed := NewExtractionError(FailureCodeWriterFailed, false,
-				fmt.Sprintf("writer failed: %v", wErr), wErr)
-			return nil, u.fail(out, typed)
-		}
-		out.IndexedRequestID = event.AggregateID
+		// NOTE (Sept 2026): there is NO legacy CommitClipAndIndexEvent
+		// downgrade branch anymore — LocalizedWriter is required at
+		// composition time (ValidateProcessSegmentSubBundles), so the
+		// per-segment pipeline has exactly ONE commit contract.
 	}
 
 	return bundle, nil

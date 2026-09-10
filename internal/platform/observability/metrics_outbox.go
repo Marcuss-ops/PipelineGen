@@ -129,4 +129,37 @@ var (
 		Name: "outbox_retries_total",
 		Help: "Cumulative count of events scheduled for retry via MarkFailed (after non-terminal handler error); transient retries only — terminal errors count on OutboxDLQTotal instead.",
 	}, []string{"event_type"})
+
+	// MediaOutboxStatusCount is the current PostgreSQL media-outbox row
+	// count, partitioned by event type and lifecycle status. The worker reads
+	// this from the PostgreSQL SSOT and explicitly sets both observed statuses,
+	// including zero, so a drained queue is visible rather than stale.
+	//
+	// The composition root currently registers the clip.render Drive delivery
+	// event. Keeping event_type as a bounded label allows image delivery and
+	// future media events to reuse the same canonical projection without a
+	// second metric family.
+	MediaOutboxStatusCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "media_outbox_status_count",
+		Help: "Current PostgreSQL media outbox row count by event type and lifecycle status.",
+	}, []string{"event_type", "status"})
 )
+
+// ObserveOutboxStatus is the composition adapter consumed by the media
+// worker. It deliberately exposes only the projection operation; SQL remains
+// owned by internal/platform/postgres/media.
+func (m *MediaOutboxStatusCountAdapter) ObserveOutboxStatus(eventType, status string, count int64) {
+	if m == nil || eventType == "" || status == "" {
+		return
+	}
+	MediaOutboxStatusCount.WithLabelValues(eventType, status).Set(float64(count))
+}
+
+// MediaOutboxStatusCountAdapter adapts the canonical media worker status
+// observer to Prometheus collectors.
+type MediaOutboxStatusCountAdapter struct{}
+
+// NewMediaOutboxStatusCountAdapter returns the default Prometheus adapter.
+func NewMediaOutboxStatusCountAdapter() *MediaOutboxStatusCountAdapter {
+	return &MediaOutboxStatusCountAdapter{}
+}

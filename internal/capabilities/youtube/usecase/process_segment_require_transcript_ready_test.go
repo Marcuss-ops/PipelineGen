@@ -89,7 +89,6 @@ func TestStep6to9_RequireTranscriptReady_FlowsToWriterCommand(t *testing.T) {
 				Cache:         testStubClipCache{},
 				VideoPipeline: fase5StubVideoPipeline{}, // required by Validate()
 				Hash:          testStubHash{},
-				Writer:        testStubClipAtomicWriter{},
 				SegmentsSvc:   NewSegmentsService(),
 				SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
 				Log:           zap.NewNop(),
@@ -163,7 +162,6 @@ func TestStep6to9_RequireTranscriptReady_FlowsToWriterCommand(t *testing.T) {
 				Cache:         testStubClipCache{},
 				VideoPipeline: fase5StubVideoPipeline{},
 				Hash:          testStubHash{},
-				Writer:        testStubClipAtomicWriter{},
 				SegmentsSvc:   NewSegmentsService(),
 				SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
 				Log:           zap.NewNop(),

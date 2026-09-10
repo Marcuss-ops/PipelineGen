@@ -198,6 +198,48 @@ groups:
           description: "GC pause: {{ $value }}s"
           action: "Considera tuning GOGC"
 
+  - name: velox_clip_render_delivery
+    interval: 30s
+    rules:
+      # WARNING: a pending clip-render Drive intent means the render has
+      # committed but the asynchronous external delivery is not drained.
+      - alert: ClipRenderDriveDeliveryPending
+        expr: |
+          media_outbox_status_count{
+            event_type="clip.render.drive_delivery.requested.v1",
+            status="pending"
+          } > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+          pipeline: clip-render
+        annotations:
+          summary: "⚠️ Clip-render Drive delivery backlog is pending"
+          description: "{{ $value }} clip-render Drive delivery intents remain pending for more than 10 minutes."
+          action: "Inspect the PostgreSQL media outbox worker and Drive reachability."
+
+      # CRITICAL: dead-lettered intents are terminal delivery failures. The
+      # rendered asset is durable, but its canonical Drive location was not
+      # reconciled and requires operator recovery.
+      - alert: ClipRenderDriveDeliveryDeadLetter
+        expr: |
+          media_outbox_status_count{
+            event_type="clip.render.drive_delivery.requested.v1",
+            status="dead_letter"
+          } > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: clip-render
+        annotations:
+          summary: "🚨 Clip-render Drive delivery intents are dead-lettered"
+          description: "{{ $value }} clip-render Drive delivery intents are in dead_letter and need replay or repair."
+          action: "Inspect last_error and replay the event after repairing the Drive or artifact dependency."
+
   - name: velox_deprecation
     interval: 5m
     rules:

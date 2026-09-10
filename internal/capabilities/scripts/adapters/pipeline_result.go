@@ -4,6 +4,7 @@
 package adapters
 
 import (
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -27,10 +28,14 @@ type PipelineResult struct {
 	VidRushSegments         []scriptpkg.VidRushSegmentResult
 	VideoMetadata           []scriptpkg.VideoMetadata
 	Voiceovers              []SceneVoiceover
-	Scenes                  []SceneImage
-	ScriptID                int64
-	AlreadyPersisted        bool
-	StageProgress           map[string]job.StageProgress `json:"stage_progress,omitempty"`
+	// TimingArtifacts retains the in-process word-level timing SSOT for the
+	// legacy/batch path until its Chronon overlay has been enqueued. It is
+	// never serialized into the job or Google Doc.
+	TimingArtifacts  map[string]*capabilityaudio.SpeechTimingArtifact `json:"-"`
+	Scenes           []SceneImage
+	ScriptID         int64
+	AlreadyPersisted bool
+	StageProgress    map[string]job.StageProgress `json:"stage_progress,omitempty"`
 	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
 	// after mergePostProcessResult — the canonical pipeline-level
 	// surface for processors that reconstructed scenes from prose.

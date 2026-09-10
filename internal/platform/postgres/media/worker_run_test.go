@@ -48,6 +48,61 @@ type noopLogger struct{}
 func (noopLogger) Info(string, ...any)  {}
 func (noopLogger) Error(string, ...any) {}
 
+type recordingOutboxStatusMetrics struct {
+	values map[string]int64
+}
+
+func (m *recordingOutboxStatusMetrics) ObserveOutboxStatus(eventType, status string, count int64) {
+	if m.values == nil {
+		m.values = make(map[string]int64)
+	}
+	m.values[eventType+"/"+status] = count
+}
+
+// TestWorker_RefreshesObservedOutboxStatuses pins the operational metrics
+// projection: the worker reads pending/dead_letter counts from the same
+// PostgreSQL outbox rows used for delivery and emits zero for an absent
+// status instead of leaving a stale gauge value behind.
+func TestWorker_RefreshesObservedOutboxStatuses(t *testing.T) {
+	worker, db, _ := newWorkerFixture(t)
+	const eventType = "clip.render.drive_delivery.requested.v1"
+	metrics := &recordingOutboxStatusMetrics{}
+	worker.WithOutboxStatusMetrics(metrics, eventType)
+
+	if _, err := db.Exec(`
+		INSERT INTO outbox_events
+		(event_type, aggregate_id, aggregate_type, payload_json, event_key,
+		 status, attempt_count, max_attempts, created_at, updated_at,
+		 created_at_ts, updated_at_ts)
+		VALUES ($1, 'clip-metrics-v1', 'asset', '{}', 'clip-metrics-v1',
+		 'pending', 0, 3, now(), now(), now(), now())
+	`, eventType); err != nil {
+		t.Fatalf("insert pending clip delivery intent: %v", err)
+	}
+	if err := worker.RefreshOutboxStatusMetrics(context.Background()); err != nil {
+		t.Fatalf("refresh pending metrics: %v", err)
+	}
+	if got := metrics.values[eventType+"/pending"]; got != 1 {
+		t.Fatalf("pending metric = %d, want 1", got)
+	}
+	if got := metrics.values[eventType+"/dead_letter"]; got != 0 {
+		t.Fatalf("dead_letter metric = %d, want 0", got)
+	}
+
+	if _, err := db.Exec(`UPDATE outbox_events SET status='dead_letter' WHERE event_key='clip-metrics-v1'`); err != nil {
+		t.Fatalf("dead-letter clip delivery intent: %v", err)
+	}
+	if err := worker.RefreshOutboxStatusMetrics(context.Background()); err != nil {
+		t.Fatalf("refresh dead-letter metrics: %v", err)
+	}
+	if got := metrics.values[eventType+"/pending"]; got != 0 {
+		t.Fatalf("pending metric after terminal transition = %d, want 0", got)
+	}
+	if got := metrics.values[eventType+"/dead_letter"]; got != 1 {
+		t.Fatalf("dead_letter metric after terminal transition = %d, want 1", got)
+	}
+}
+
 // TestWorker_Run_DrainsPendingEvents pins the production drain loop:
 // pending events committed while the loop runs get embedded, indexed,
 // and completed without any manual claim.

@@ -19,6 +19,7 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -77,7 +78,13 @@ type VideoCutRequest struct {
 	OutputName     string
 	ForceKeyframes bool
 	KeepAudio      bool
-	Normalize      bool
+	// CutMode is the SINGLE media-operation decision for this segment,
+	// resolved by the canonical CutModeResolver (mediaexec) BEFORE this
+	// port is invoked. CutModeCopy stream-copies the source interval;
+	// CutModeNormalize renders it exactly once. The executor MUST never
+	// chain both operations for one segment (Sept 2026 single-pass
+	// contract).
+	CutMode mediaexec.CutMode
 	// Normalization target for callers that need a profile different from
 	// the global video configuration. Zero values use the configured default.
 	Strategy          string
@@ -341,6 +348,15 @@ type FFProbeReport struct {
 // silently skipped (the pre-existing hash + stat checks remain).
 type FFProbePort interface {
 	ValidateClip(ctx context.Context, localPath string, expectedDurationSec int, keepAudio bool) (*FFProbeReport, error)
+
+	// ProbeFacts probes a media file and returns the immutable source
+	// facts needed by the canonical CutModeResolver (codec / pixel
+	// format / dimensions / fps / audio). The extraction fanout calls
+	// this ONCE on the staged full source (never once per segment); nil
+	// port or probe failure degrades the whole extraction to
+	// CutModeNormalize (fail-closed — no copy without conformance
+	// proof).
+	ProbeFacts(ctx context.Context, localPath string) (*mediaexec.MediaFacts, error)
 }
 
 // Step10MetricsRecorder is the application-layer port for the YouTube

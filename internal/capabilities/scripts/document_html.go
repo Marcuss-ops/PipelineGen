@@ -314,13 +314,44 @@ func writeDocumentSpecSceneJSON(b *strings.Builder, model *scriptpkg.ModelScript
 	if model == nil {
 		return
 	}
-	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
+	raw, err := marshalDocumentSpecScene(model.SpecScene)
 	if err != nil {
 		return
 	}
 	b.WriteString("<h2>SpecScene JSON</h2><pre><code>")
 	b.WriteString(html.EscapeString(string(raw)))
 	b.WriteString("</code></pre>")
+}
+
+// marshalDocumentSpecScene strips producer-local paths from the operator
+// document while preserving the complete semantic/timing JSON shape. Drive
+// links, entity names and timing references remain visible; local filesystem
+// paths never belong in a Google Doc.
+func marshalDocumentSpecScene(spec scriptpkg.SpecSceneOutput) ([]byte, error) {
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	stripDocumentLocalPaths(value)
+	return json.MarshalIndent(value, "", "  ")
+}
+
+func stripDocumentLocalPaths(value any) {
+	switch node := value.(type) {
+	case map[string]any:
+		delete(node, "local_path")
+		for _, child := range node {
+			stripDocumentLocalPaths(child)
+		}
+	case []any:
+		for _, child := range node {
+			stripDocumentLocalPaths(child)
+		}
+	}
 }
 
 func writeDocumentTimelineJSON(b *strings.Builder, opts DocumentRenderOptions) {

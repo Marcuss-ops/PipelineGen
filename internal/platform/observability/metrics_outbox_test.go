@@ -32,7 +32,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-// instantiateOutboxMetrics touches each of the 5 Push 6.2 outbox
+// instantiateOutboxMetrics touches each of the 6 outbox
 // metrics once with a placeholder label set so DefaultGatherer.Gather()
 // emits a corresponding MetricFamily for the test assertions.
 //
@@ -55,6 +55,7 @@ func instantiateOutboxMetrics() {
 		OutboxReclaimTotal.Add(0)
 		OutboxDLQTotal.WithLabelValues("test:boot").Add(0)
 		OutboxRetriesTotal.WithLabelValues("test:boot").Add(0)
+		MediaOutboxStatusCount.WithLabelValues("clip.render.drive_delivery.requested.v1", "pending").Set(0)
 	})
 }
 
@@ -85,6 +86,7 @@ func TestOutboxMetrics_AllRegistered(t *testing.T) {
 		"outbox_reclaim_total":             false,
 		"outbox_dlq_total":                 false,
 		"outbox_retries_total":             false,
+		"media_outbox_status_count":        false,
 	}
 
 	for _, mf := range mfs {
@@ -124,6 +126,9 @@ func TestOutboxMetrics_NonNilPointers(t *testing.T) {
 	if OutboxRetriesTotal == nil {
 		t.Fatal("OutboxRetriesTotal is nil")
 	}
+	if MediaOutboxStatusCount == nil {
+		t.Fatal("MediaOutboxStatusCount is nil")
+	}
 }
 
 // TestOutboxMetrics_TypeSemantics pins the metric type semantic for
@@ -156,6 +161,7 @@ func TestOutboxMetrics_TypeSemantics(t *testing.T) {
 		"outbox_reclaim_total":             dto.MetricType_COUNTER,
 		"outbox_dlq_total":                 dto.MetricType_COUNTER,
 		"outbox_retries_total":             dto.MetricType_COUNTER,
+		"media_outbox_status_count":        dto.MetricType_GAUGE,
 	}
 
 	familiesByName := make(map[string]*dto.MetricFamily, len(mfs))
@@ -200,6 +206,7 @@ func TestOutboxMetrics_LabelShapes(t *testing.T) {
 		"outbox_reclaim_total":             {},
 		"outbox_dlq_total":                 {"event_type"},
 		"outbox_retries_total":             {"event_type"},
+		"media_outbox_status_count":        {"event_type", "status"},
 	}
 
 	familiesByName := make(map[string]*dto.MetricFamily, len(mfs))

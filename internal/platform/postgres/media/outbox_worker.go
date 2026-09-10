@@ -67,6 +67,13 @@ type OutboxHandler interface {
 	Handle(ctx context.Context, claim *OutboxClaim) error
 }
 
+// OutboxStatusMetrics is the narrow observability port for the PostgreSQL
+// outbox. The worker owns the SQL truth; the metrics implementation only
+// projects the current status counts and never becomes a second store.
+type OutboxStatusMetrics interface {
+	ObserveOutboxStatus(eventType, status string, count int64)
+}
+
 // ClaimNext claims the oldest pending event atomically (CTE claim with
 // row-level fencing — PostgreSQL UPDATE ... WHERE status='pending' is
 // atomic under concurrent workers). Ordering: priority DESC,
@@ -208,8 +215,10 @@ type PostgresIndexWorker struct {
 	// EmbeddingType is the canonical channel ("text").
 	EmbeddingType string
 
-	handlersMu sync.RWMutex
-	handlers   map[string]OutboxHandler
+	handlersMu  sync.RWMutex
+	handlers    map[string]OutboxHandler
+	metrics     OutboxStatusMetrics
+	metricTypes map[string]struct{}
 }
 
 // NewPostgresIndexWorker constructs the worker. Every dependency is
@@ -233,7 +242,49 @@ func NewPostgresIndexWorker(repo *Repository, vectors *VectorSurfaceWriter, embe
 		ModelID:       modelID,
 		EmbeddingType: "text",
 		handlers:      make(map[string]OutboxHandler),
+		metricTypes:   make(map[string]struct{}),
 	}
+}
+
+// WithOutboxStatusMetrics enables status projection for the supplied event
+// types. A nil metrics port disables the projection without affecting the
+// delivery worker. Event types are bounded by composition-time registration.
+func (w *PostgresIndexWorker) WithOutboxStatusMetrics(metrics OutboxStatusMetrics, eventTypes ...string) *PostgresIndexWorker {
+	if w == nil {
+		return w
+	}
+	w.metrics = metrics
+	for _, eventType := range eventTypes {
+		if eventType != "" {
+			w.metricTypes[eventType] = struct{}{}
+		}
+	}
+	return w
+}
+
+// RefreshOutboxStatusMetrics reads the PostgreSQL outbox status counts for
+// the event types registered through WithOutboxStatusMetrics. It is exported
+// so the live PostgreSQL acceptance test can exercise the same projection the
+// production Run loop uses.
+func (w *PostgresIndexWorker) RefreshOutboxStatusMetrics(ctx context.Context) error {
+	if w == nil || w.metrics == nil || len(w.metricTypes) == 0 {
+		return nil
+	}
+	for eventType := range w.metricTypes {
+		var pending, deadLetter int64
+		if err := w.repo.db.QueryRowContext(ctx, `
+			SELECT
+				COUNT(*) FILTER (WHERE status = 'pending'),
+				COUNT(*) FILTER (WHERE status = 'dead_letter')
+			FROM outbox_events
+			WHERE event_type = $1
+		`, eventType).Scan(&pending, &deadLetter); err != nil {
+			return fmt.Errorf("media outbox status metrics %q: %w", eventType, err)
+		}
+		w.metrics.ObserveOutboxStatus(eventType, "pending", pending)
+		w.metrics.ObserveOutboxStatus(eventType, "dead_letter", deadLetter)
+	}
+	return nil
 }
 
 // RegisterHandler adds a durable consumer for a PostgreSQL media outbox
@@ -393,6 +444,9 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 			return
 		case <-ticker.C:
 		}
+		if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
+			w.logf(log, "media outbox: status metrics refresh failed", err)
+		}
 		claim, err := w.repo.ClaimNext(ctx, workerID, leaseTTL)
 		if err != nil {
 			w.logf(log, "media index worker: claim failed", err)
@@ -403,6 +457,9 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 		}
 		if err := w.Handle(ctx, claim); err != nil {
 			w.logf(log, "media index worker: event "+fmt.Sprint(claim.Event.ID)+" failed", err)
+		}
+		if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
+			w.logf(log, "media outbox: status metrics refresh failed", err)
 		}
 	}
 }

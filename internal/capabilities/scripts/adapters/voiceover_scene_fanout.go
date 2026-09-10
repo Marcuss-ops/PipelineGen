@@ -186,10 +186,11 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			Destination: item.Destination, // nil-safe at the use case boundary
 			Project:     project,
 			Strategy:    "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
-			// Every generated scene goes through the canonical post-TTS
-			// cleanup; the media executor removes silence runs longer than
-			// 800 ms before the scene duration is published.
-			RemoveSilence: true,
+			// Required word timing describes the exact synthesized bytes.
+			// Silence removal without an edit map would shift those
+			// boundaries, so the batch script path must keep the same
+			// no-trim contract as the durable runner.
+			RemoveSilence: false,
 			Moments:       item.Moments,
 			Timing:        item.Timing,
 		}

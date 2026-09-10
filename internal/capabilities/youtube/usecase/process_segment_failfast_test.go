@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
@@ -50,19 +51,22 @@ func (stubHashService) SHA256String(_ string) string {
 func (stubHashService) MD5String(_ string) string        { return "" }
 func (stubHashService) MD5File(_ string) (string, error) { return "", nil }
 
-// stubAtomicWriter satisfies ClipAtomicWriter (single method). Returns
+// stubAtomicWriter satisfies the canonical commit surface. Returns
 // nil unconditionally; tests only exercise ctor panic shape, not
-// the writer runtime.
-//
-// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #6): the port
-// signature now takes `youtubetypes.ClipAsset` (the canonical, typed
-// internal domain entity) instead of `youtubetypes.ExtractItem` (the
-// HTTP response shape). The stub signature mirrors that.
+// the writer runtime. Satisfies both youtubeports.ClipAtomicWriter
+// (legacy seam) and localized.LocalizedClipWriter (the SOLE required
+// commit contract since Sept 2026).
 type stubAtomicWriter struct{}
 
 func (stubAtomicWriter) CommitClipAndIndexEvent(_ context.Context, _ string, _ youtubetypes.ClipAsset, _ youtubeports.IndexEventPayload) error {
 	return nil
 }
+
+func (stubAtomicWriter) CommitClipTextAndIndexEvent(_ context.Context, _ localized.CommitLocalizedClipCommand) error {
+	return nil
+}
+
+var _ localized.LocalizedClipWriter = stubAtomicWriter{}
 
 // youtubetypes_clipAsset is a local alias for youtubetypes.ClipAsset
 // kept for legacy readers; the production alias `youtubetypes.ClipAsset`
@@ -99,11 +103,12 @@ func validProcessSegmentDeps() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps,
 			Cache:         stubClipCache{},
 			VideoPipeline: stubVideoPipeline{},
 			Hash:          stubHashService{},
-			Writer:        stubAtomicWriter{},
 			SegmentsSvc:   NewSegmentsService(),
 			Log:           zap.NewNop(),
 		}, ProcessSegmentMediaDeps{},
-		ProcessSegmentMetadataDeps{},
+		// Sole required commit contract (Sept 2026): the localized
+		// super-tx writer is the only commit surface.
+		ProcessSegmentMetadataDeps{LocalizedWriter: stubAtomicWriter{}},
 		ProcessSegmentObservabilityDeps{}
 }
 
@@ -145,17 +150,19 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilHash(t *testing.T) {
 		"Commit 1 fail-fast: nil Hash MUST panic at ctor")
 }
 
-// TestNewProcessYouTubeSegmentUseCase_PanicsOnNilWriter pins the
-// fail-fast posture for the Writer port — the verdict's P0 #3
-// explicit hard-wiring directive ("Writer assente: salta DB e
-// outbox e termina comunque con out.Item.Status = \"processed\"").
-func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilWriter(t *testing.T) {
+// TestNewProcessYouTubeSegmentUseCase_PanicsOnNilLocalizedWriter pins
+// the fail-fast posture for the LocalizedWriter port — the verdict's
+// P0 #3 explicit hard-wiring directive ("Writer assente: salta DB e
+// outbox e termina comunque con out.Item.Status = \"processed\""),
+// now enforced on the SOLE commit contract (Sept 2026 single-writer
+// cutover: the legacy ClipAtomicWriter dependency is removed).
+func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilLocalizedWriter(t *testing.T) {
 	core, media, metadata, observability := validProcessSegmentDeps()
-	core.Writer = nil
+	metadata.LocalizedWriter = nil
 	require.PanicsWithValue(t,
-		"usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire SQLiteMediaCommitter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')",
+		"usecase.NewProcessYouTubeSegmentUseCase: LocalizedWriter port is required — composition must wire the canonical localized clip writer (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b; pre-Commit-1 silently wrote nothing and returned 'processed')",
 		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
-		"Commit 1 fail-fast: nil Writer MUST panic at ctor (P0 #3 silent-success regression) ")
+		"Commit 1 fail-fast: nil LocalizedWriter MUST panic at ctor (P0 #3 silent-success regression) ")
 }
 
 // TestNewProcessYouTubeSegmentUseCase_PanicsOnNilSegmentsSvc pins

@@ -246,12 +246,9 @@ func NewServiceFromSubBundles(
 	svc.extraction = NewExtractionService(ExtractionDeps{
 		Cfg: core.Cfg,
 		Log: core.Log,
-		Legacy: LegacyCompositionDeps{
-			VideoPipeline: video.VideoPipeline,
-			Clips:         storage.Clips,
-			Cache:         storage.Cache,
-			Monitors:      storage.Monitors,
-		},
+		// Sept 2026: LegacyCompositionDeps (VideoPipeline/Clips/Cache/
+		// Monitors scaffolding) is REMOVED — the canonical extraction
+		// path never read those fields.
 		AssetDestResolver: asset.AssetDestResolver,
 		FolderMemory:      storage.FolderMemory,
 		SegmentsSvc:       svc.segSvc,

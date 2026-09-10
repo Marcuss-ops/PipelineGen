@@ -165,7 +165,7 @@ func TestStep8_UploadsIntoResolvedChildFolderNotRoot(t *testing.T) {
 
 	core, media, metadata, observability := validProcessSegmentDeps()
 	media.DriveFolderMgr = rec
-	core.Writer = writer
+	metadata.LocalizedWriter = writer
 
 	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 

@@ -75,11 +75,19 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		return nil
 	}
 	var startUS int64
-	for i, scene := range result.Output.SpecScene.Scenes {
+	for i := range result.Output.SpecScene.Scenes {
+		scene := &result.Output.SpecScene.Scenes[i]
+		// The batch engine emits editorial SpecScene objects without an audio
+		// field. For a voiceover-producing plan, generated narration has one
+		// unambiguous audio owner: VOICEOVER. Fixed-media scenes remain explicit
+		// CLIP_AUDIO and are never inferred here.
+		if scene.AudioMode == "" && !scene.ExecutionMode.IsFixedMedia() {
+			scene.AudioMode = string(capabilityaudio.AudioVoiceover)
+		}
 		if scene.Index != i || strings.TrimSpace(scene.ID) == "" {
 			return fmt.Errorf("canonical audio scene %d is invalid", i)
 		}
-		duration := sceneDurationMS(scene)
+		duration := sceneDurationMS(*scene)
 		if duration <= 0 {
 			return fmt.Errorf("scene %s has no canonical duration", scene.ID)
 		}
@@ -133,7 +141,15 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 			}
 			id := fmt.Sprintf("vo:%s:%s:%s", item.ID, item.Language, scene.ID)
 			intent.VoiceoverAssetID = id
-			if err := add(id, binding.LocalPath); err != nil {
+			// The public GenerationResult deliberately strips LocalPath before
+			// this phase. Resolve the path from the in-process postprocessor
+			// result, which is the only internal owner of the file produced by
+			// this exact TTS call.
+			localPath := binding.LocalPath
+			if strings.TrimSpace(localPath) == "" {
+				localPath = findVoiceoverAssetPath(post, i, item.Language)
+			}
+			if err := add(id, localPath); err != nil {
 				return err
 			}
 		case capabilityaudio.AudioClip:
@@ -204,6 +220,18 @@ func findSegmentAssetPath(post *adapters.PipelineResult, assetID string) string 
 	for _, segment := range post.VidRushSegments {
 		if segment.Assets.PrimaryVideo != nil && segment.Assets.PrimaryVideo.AssetID == assetID {
 			return segment.Assets.PrimaryVideo.LocalPath
+		}
+	}
+	return ""
+}
+
+func findVoiceoverAssetPath(post *adapters.PipelineResult, sceneIndex int, language string) string {
+	if post == nil {
+		return ""
+	}
+	for _, voiceover := range post.Voiceovers {
+		if voiceover.SceneIndex == sceneIndex && strings.EqualFold(strings.TrimSpace(voiceover.Language), strings.TrimSpace(language)) {
+			return voiceover.LocalPath
 		}
 	}
 	return ""
@@ -310,6 +338,51 @@ func (uc *GenerateOneUseCase) Execute(
 		result.AudioStrategy = "TIMELINE_MIX"
 		if result.FinalAudio != nil {
 			return nil, uc.logPhaseError(item, "audio_mode", scriptpkg.ErrGenerationFailed, fmt.Errorf("CHUNKED_VOICEOVER must not produce final_audio"), tracker)
+		}
+	}
+	if item.OverlayBackground != nil {
+		if uc.overlayRenderEnqueuer == nil {
+			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
+				fmt.Errorf("overlay render requested but Chronon enqueuer is not configured"), tracker)
+		}
+		planID := strings.TrimSpace(item.ID)
+		if planID == "" {
+			planID = plan.Title
+		}
+		planID += ":overlay"
+		var timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact
+		if processed != nil && processed.PostResult != nil {
+			timingArtifacts = processed.PostResult.TimingArtifacts
+		}
+		background, backgroundErr := scriptgen.ResolveOverlayBackground(ctx, uc.overlayBackgroundSource, item.OverlayBackground)
+		if backgroundErr != nil {
+			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
+				fmt.Errorf("resolve overlay background: %w", backgroundErr), tracker)
+		}
+		overlayPlan, overlayErr := scriptgen.CompileOverlayPlanFromGenerationResult(
+			result, scriptgen.Language(plan.Language), timingArtifacts,
+			background, planID, plan.Project,
+		)
+		if overlayErr != nil {
+			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed, overlayErr, tracker)
+		}
+		if overlayPlan != nil && len(overlayPlan.Items) > 0 {
+			ref, enqueueErr := uc.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *overlayPlan)
+			if enqueueErr != nil {
+				return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
+					fmt.Errorf("enqueue Chronon overlay: %w", enqueueErr), tracker)
+			}
+			if uc.log != nil {
+				uc.log.Info("generate-one: Chronon overlay completed",
+					zap.String("item_id", item.ID), zap.String("language", plan.Language),
+					zap.String("plan_id", overlayPlan.PlanID), zap.Int("overlay_items", len(overlayPlan.Items)),
+					zap.String("drive_link", func() string {
+						if ref.Artifact != nil {
+							return ref.Artifact.DriveLink
+						}
+						return ""
+					}()))
+			}
 		}
 	}
 

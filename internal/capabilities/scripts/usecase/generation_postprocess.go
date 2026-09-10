@@ -257,6 +257,8 @@ func seedVidRushPostprocessInput(
 		return fmt.Errorf("vidrush nlp: enrich scenes: %w", err)
 	}
 	input.VidRushSegments = enriched
+	scriptgen.ProjectSegmentAnnotations(&input.SpecScene, scriptgen.Language(plan.Language), enriched)
+	input.OriginalSpecScene = input.SpecScene
 	return nil
 }
 

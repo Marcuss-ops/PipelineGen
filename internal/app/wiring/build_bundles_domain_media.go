@@ -279,7 +279,6 @@ func buildDomainMediaServices(
 		Cache:         clipCache,
 		VideoPipeline: videoPipelineAdapter,
 		Hash:          hashAdapter,
-		Writer:        clipWriter, // legacy writer for non-localized callers
 		SegmentsSvc:   youtube.NewSegmentsService(),
 		SegmentPolicy: segmentPolicy,
 		Log:           log,
@@ -336,10 +335,15 @@ func buildDomainMediaServices(
 		TextTrackResolver: textTrackResolver,
 		FFProbe:           ytplatform.NewFFProbeAdapter(clipProcessor),
 		Stager:            youtubeSourceStager,
+		// Sept 2026 single-pass cut contract: the CutModeResolver compares
+		// probed source facts against this canonical profile to decide
+		// copy-vs-render exactly once per segment.
+		CutProfile: mediaConfig.Profile,
 	}
 	processSegMetadata := youtube.ProcessSegmentMetadataDeps{
-		// Phase 2.b atomic super-tx (clipWriter satisfies both ports —
-		// see clip_atomic_writer.go compile-time assertion).
+		// Phase 2.b atomic super-tx — LocalizedWriter is the SOLE commit
+		// contract of the per-segment pipeline (Sept 2026: the legacy
+		// ClipAtomicWriter dependency is removed).
 		LocalizedWriter:    clipWriter,
 		ClipMetadataWriter: clipMetadataWriter,
 		MetadataService:    clipMetadataService,
@@ -373,17 +377,12 @@ func buildDomainMediaServices(
 	// dropped, or renamed. ClipFiles + Whisper are intentionally left
 	// nil (matches the previous literal's behaviour; those ports are
 	// not exercised by the YouTube orchestrator at composition time).
+	// Single-owner concurrency contract (Sept 2026): the youtube concurrency
+	// values are resolved EXACTLY ONCE at config-resolution time
+	// (buildYouTubeRuntimeConfig); the composition root only passes them
+	// through. An explicit operator value (e.g. VELOX_CONCURRENT_VIDEO_EXTRACTS=2)
+	// must be honored verbatim — no silent re-normalization here.
 	ytRuntimeCfg := buildYouTubeRuntimeConfig(cfg)
-	// Speed audit (Sept 2026): raise YouTube fanout default when operator left
-	// config.yaml/concurrency at the old 2-slot default. 5 parallel segment
-	// goroutines + local-cut path (--download-once) gives -60% wall on 9-clip
-	// batches without saturating yt-dlp. Env override still wins if set.
-	if ytRuntimeCfg.MaxConcurrentVideoExtracts <= 2 {
-		ytRuntimeCfg.MaxConcurrentVideoExtracts = 5
-	}
-	if ytRuntimeCfg.MaxConcurrentOllamaCalls <= 1 {
-		ytRuntimeCfg.MaxConcurrentOllamaCalls = 4
-	}
 	youtubeCore := youtube.ServiceCoreDeps{
 		Cfg: ytRuntimeCfg,
 		Log: log,

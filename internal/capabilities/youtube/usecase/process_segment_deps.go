@@ -51,6 +51,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
@@ -62,18 +63,21 @@ import (
 // model, or segment policy change.
 const ProcessSegmentPolicyVersion = "v1"
 
-// ProcessSegmentCoreDeps bundles the core runtime config + the 5
-// REQUIRED ports that fail-closed panic on nil at ctor time. 7
+// ProcessSegmentCoreDeps bundles the core runtime config + the 4
+// REQUIRED ports that fail-closed panic on nil at ctor time. 6
 // fields.
 //
-// godlike/06 SSOT: this sub-bundle owns the 5-port panic-check
-// surface (Cache, VideoPipeline, Hash, Writer, SegmentsSvc) + the
-// runtime config (SegmentPolicy, Log). Steps 1, 2, 3-5, 5a, 6-9,
-// and 10 all touch at least one field in this sub-bundle.
+// godlike/06 SSOT: this sub-bundle owns the 4-port panic-check
+// surface (Cache, VideoPipeline, Hash, SegmentsSvc) + the
+// runtime config (SegmentPolicy, Log). The commit surface
+// (LocalizedWriter) moved to ProcessSegmentMetadataDeps where it
+// is the REQUIRED Fase 2.b canonical writer (Sept 2026: the
+// legacy ClipAtomicWriter dependency + downgrade branch are
+// REMOVED — there is exactly ONE commit contract).
 //
-// godlike/07 fail-closed at composition boot: the 5 panic checks
+// godlike/07 fail-closed at composition boot: the 4 panic checks
 // are enforced by ValidateProcessSegmentSubBundles. Composition
-// that does NOT wire any of these 5 ports hits the panic
+// that does NOT wire any of these ports hits the panic
 // immediately, NOT at first POST /api/assets/youtube/extract
 // invocation.
 type ProcessSegmentCoreDeps struct {
@@ -88,14 +92,9 @@ type ProcessSegmentCoreDeps struct {
 	// Hash is the SHA-256 port required by Step 5 (file hash
 	// fail-closed gate). nil MUST panic (Validate() #3).
 	Hash youtubeports.HashServicePort
-	// Writer is the legacy ClipAtomicWriter port (legacy Step 9
-	// commit). Retained for callers that DO NOT carry localized
-	// text. nil MUST panic (Validate() #4) — pre-Commit-1
-	// silently wrote nothing and returned "processed".
-	Writer youtubeports.ClipAtomicWriter
 	// SegmentsSvc is the per-domain *SegmentsService (Step 1
 	// timestamp parsing + Step 2 fingerprint extraction). nil
-	// MUST panic (Validate() #5).
+	// MUST panic (Validate() #4).
 	SegmentsSvc *SegmentsService
 	// SegmentPolicy is the duration gate (Min/Max in seconds).
 	// Zero values default to {Min: 4, Max: 60}. Commit 2/6 #3.
@@ -110,7 +109,7 @@ type ProcessSegmentCoreDeps struct {
 }
 
 // ProcessSegmentMediaDeps bundles the external I/O + stager ports.
-// 5 fields, all optional (nil-port safe at runtime — no
+// 6 fields, all optional (nil-port safe at runtime — no
 // fail-closed panic, no Validate() check).
 //
 // godlike/06 SSOT: this sub-bundle owns the optional external
@@ -129,32 +128,39 @@ type ProcessSegmentMediaDeps struct {
 	Stager acquisition.SourceStager
 	// FFProbe is the optional ffprobe validation port (audit
 	// 2026-07-03 BLOCKER #3). nil → Step 5a validation is
-	// silently skipped.
+	// silently skipped AND the full-source single probe
+	// (ProbeSourceFacts) degrades to CutModeNormalize.
 	FFProbe youtubeports.FFProbePort
 	// TextTrackResolver is the OPTIONAL priority-chain resolver
 	// for localized text tracks. nil → skip resolver and
 	// proceed directly to subtitles/Whisper.
 	TextTrackResolver *TextTrackResolver
+	// CutProfile is the canonical target profile the CutModeResolver
+	// compares source facts against (copy eligibility). It mirrors the
+	// media execution config wired by the composition root; zero values
+	// fall back to the frozen assembly-contract defaults inside the
+	// resolver. When zero AND the source facts are present, the
+	// resolver's WithDefaults() still yields a deterministic decision.
+	CutProfile mediaexec.VideoProfile
 }
 
 // ProcessSegmentMetadataDeps bundles the metadata-enrichment ports.
-// 3 fields, all optional (nil-port safe at runtime — no
-// fail-closed panic, no Validate() check).
+// 3 fields. LocalizedWriter is REQUIRED (fail-closed panic at
+// ctor, Sept 2026 single-writer contract); the other two are
+// optional (nil-port safe at runtime).
 //
 // godlike/06 SSOT: this sub-bundle owns the metadata-enrichment
 // surface. LocalizedWriter is the SOLE canonical super-tx
-// surface (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b); the other
-// two are legacy / secondary.
+// surface (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b) and the ONLY
+// commit contract of the per-segment pipeline (the legacy
+// ClipAtomicWriter fallback was removed in Sept 2026 — no
+// downgrade path exists).
 type ProcessSegmentMetadataDeps struct {
-	// LocalizedWriter is the SOLE canonical surface for the
+	// LocalizedWriter is the REQUIRED canonical surface for the
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b atomic super-tx
-	// (clip + text tracks + cues + outbox in ONE SQLite tx).
-	// The concrete instance is the SAME *ClipAtomicWriterAdapter
-	// as Core.Writer (the adapter satisfies both ports — see
-	// clip_atomic_writer.go compile-time assertion). nil port
-	// is a fail-closed wiring gap; the step6to9 path mirrors the
-	// BLOCKER #4 partial-state pattern when
-	// CommitClipTextAndIndexEvent returns a typed error.
+	// (clip + text tracks + cues + outbox in ONE transaction).
+	// nil at ctor MUST panic (Validate() #5) — a composition
+	// without it can produce no meaningful clip commit.
 	LocalizedWriter localized.LocalizedClipWriter
 	// ClipMetadataWriter is the optional metadata-enrichment
 	// writer (Commit 4/6, P1 #15). When non-nil, Step 10 of the
@@ -297,7 +303,7 @@ func NewProcessYouTubeSegmentFromSubBundles(
 func ValidateProcessSegmentSubBundles(
 	core ProcessSegmentCoreDeps,
 	_ ProcessSegmentMediaDeps,
-	_ ProcessSegmentMetadataDeps,
+	metadata ProcessSegmentMetadataDeps,
 	_ ProcessSegmentObservabilityDeps,
 ) {
 	if core.Cache == nil {
@@ -309,26 +315,13 @@ func ValidateProcessSegmentSubBundles(
 	if core.Hash == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: Hash port is required (composition must wire hashutil.NewHashAdapter)")
 	}
-	// godlike/07 fail-closed at composition boot: Writer is REQUIRED.
-	// LocalizedWriter is RECOMMENDED but NOT a panic-checked required
-	// field today — production composition (internal/app/
-	// build_bundles_domain_media.go) wires BOTH Writer and
-	// LocalizedWriter to the same concrete ClipAtomicWriterAdapter
-	// instance. Tests that exercise failure paths (process_segment_*
-	// failfast/correttezza/extraction_stubs tests) only wire Writer
-	// because the test doesn't exercise the LocalizedWriter path.
-	// step6to9.go's downgrade branch (else if u.core.Writer != nil)
-	// makes the test paths safe: a nil LocalizedWriter cleanly falls
-	// back to the legacy CommitClipAndIndexEvent path, which is
-	// identical to the pre-Fase 2.b behavior. Promoting the
-	// LocalizedWriter nil-check to a panic would force every Writer-
-	// stubbed test to add a LocalizedWriter stub; that breach in
-	// blast-radius is not justified by the production-side win.
-	// godlike/06 SSOT: the Fase 2.b canonical path is
-	// LocalizedWriter. Composition MUST wire it (paths that don't
-	// will silently take the legacy downgrade).
-	if core.Writer == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire SQLiteMediaCommitter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
+	// godlike/07 fail-closed at composition boot: LocalizedWriter is
+	// REQUIRED — it is the SOLE commit contract of the per-segment
+	// pipeline (Sept 2026). The legacy ClipAtomicWriter dependency and
+	// its downgrade branch are REMOVED, so a nil LocalizedWriter can
+	// no longer silently fall back to a second writer surface.
+	if metadata.LocalizedWriter == nil {
+		panic("usecase.NewProcessYouTubeSegmentUseCase: LocalizedWriter port is required — composition must wire the canonical localized clip writer (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b; pre-Commit-1 silently wrote nothing and returned 'processed')")
 	}
 	if core.SegmentsSvc == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: SegmentsSvc port is required (composition must construct *SegmentsService via youtube.NewSegmentsService())")

@@ -42,6 +42,16 @@ func TestBuildPlan_PropagatesExplicitVoiceoverFolderID(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_PropagatesProject(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Project: "donald-trump-canary",
+		Source:  scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+	})
+	if plan.Project != "donald-trump-canary" {
+		t.Fatalf("plan.Project = %q, want donald-trump-canary", plan.Project)
+	}
+}
+
 func TestBuildPlan_AutoUsesSmallModelForShortScripts(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Model:     "auto",

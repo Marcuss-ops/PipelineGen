@@ -334,6 +334,36 @@ func applySegmentEntityAnnotations(result *GenerateResult, language Language, se
 	}
 }
 
+// ProjectSegmentAnnotations applies the canonical NLP projection directly to
+// a SpecScene envelope. It is used by the batch postprocessor before document
+// publication so Docs, overlay planning and the final API all observe the
+// same entity/important-phrase surface.
+func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language Language, segments []scriptpkg.VidRushSegmentResult) {
+	if spec == nil {
+		return
+	}
+	bySceneID := make(map[string]int, len(spec.Scenes))
+	for i := range spec.Scenes {
+		bySceneID[spec.Scenes[i].ID] = i
+	}
+	for _, seg := range segments {
+		idx, ok := bySceneID[seg.SceneID]
+		if !ok && seg.SceneID == "" && seg.Position >= 0 && seg.Position < len(spec.Scenes) {
+			idx, ok = seg.Position, true
+		}
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(spec.Scenes[idx].Text)
+		if text == "" {
+			continue
+		}
+		if annotations := projectEntityAnnotations(text, string(language), seg); annotations != nil {
+			spec.Scenes[idx].Annotations = annotations
+		}
+	}
+}
+
 // applySegmentEntityResults projects each segment's typed entities onto the
 // matching scene's canonical per-scene EntityResult surface (the same
 // EntityResult model as the document aggregate — no second entity model). It

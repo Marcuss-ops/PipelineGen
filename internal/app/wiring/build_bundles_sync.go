@@ -75,17 +75,13 @@ func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
 	if cfg == nil {
 		return youtubetypes.RuntimeConfig{}
 	}
+	// Single-owner concurrency contract (Sept 2026): the yaml/env config
+	// (VELOX_CONCURRENT_VIDEO_EXTRACTS default 5, VELOX_CONCURRENT_OLLAMA_CALLS)
+	// is the SSOT. This flattening site must not re-normalize explicit operator
+	// values (an explicit 2 must stay 2). Only the <=0 "unset" case is
+	// guarded downstream by the constructors' defensive defaults.
 	maxVideo := cfg.Concurrency.MaxConcurrentVideoExtracts
-	// Speed audit (Sept 2026): lift the old 2-slot default to 5 for
-	// download-once fanout without requiring every operator to edit
-	// config.yaml. Explicit operator value wins; 0 is handled downstream.
-	if maxVideo <= 2 {
-		maxVideo = 5
-	}
 	maxOllama := cfg.Concurrency.MaxConcurrentOllamaCalls
-	if maxOllama <= 1 {
-		maxOllama = 4
-	}
 	return youtubetypes.RuntimeConfig{
 		MaxConcurrentVideoExtracts: maxVideo,
 		MaxConcurrentOllamaCalls:   maxOllama,

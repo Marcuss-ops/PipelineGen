@@ -9,6 +9,8 @@
 package usecase
 
 import (
+	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -50,4 +52,42 @@ func resolveDestination(req *youtubetypes.ExtractRequest) Destination {
 		FolderID:   strings.TrimSpace(req.Destination.FolderID),
 		FolderPath: strings.TrimSpace(req.Destination.FolderPath),
 	}
+}
+
+// resolveSubtitleDestination resolves the Drive folder that subtitle
+// sidecars are uploaded into — ONCE per extraction (Sept 2026 N→1
+// contract). Previously every segment called GetOrCreateFolder(videoID)
+// inside Step 6-9, issuing N Drive round-trips for the same folder.
+//
+// Policy:
+//   - no SubtitleDestination or empty FolderID → "" (Step 6-9 skips upload)
+//   - PerClipSubfolders=true → the per-video child folder is get-or-created
+//     ONCE here and every segment uploads straight into it
+//   - PerClipSubfolders=false → the configured root IS the upload target
+//
+// Fail-closed (godlike/07): a resolution failure aborts the whole
+// extraction with a typed error instead of silently uploading subtitles
+// into the wrong folder.
+func (s *ExtractionService) resolveSubtitleDestination(ctx context.Context, req *youtubetypes.ExtractRequest, videoID string) (string, error) {
+	if s == nil || req == nil || req.SubtitleDestination == nil {
+		return "", nil
+	}
+	root := strings.TrimSpace(req.SubtitleDestination.FolderID)
+	if root == "" {
+		return "", nil
+	}
+	if !req.SubtitleDestination.PerClipSubfolders {
+		return root, nil
+	}
+	if s.processSeg == nil {
+		return "", fmt.Errorf("youtube extraction: subtitle subfolder requested but segment pipeline not wired")
+	}
+	resolved, err := s.processSeg.ResolveSubtitleFolder(ctx, videoID, root)
+	if err != nil {
+		return "", fmt.Errorf("youtube extraction: resolve subtitle folder: %w", err)
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("youtube extraction: subtitle folder resolution returned an empty folder id")
+	}
+	return resolved, nil
 }

@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
@@ -38,8 +39,10 @@ func (testStubHash) SHA256String(_ string) string {
 func (testStubHash) MD5String(_ string) string        { return "" }
 func (testStubHash) MD5File(_ string) (string, error) { return "stubhash", nil }
 
-// testStubClipAtomicWriter satisfies youtubeports.ClipAtomicWriter
-// as a no-op (CommitClipAndIndexEvent returns nil always).
+// testStubClipAtomicWriter satisfies the canonical commit surface as a
+// no-op: youtubeports.ClipAtomicWriter (legacy seam) AND
+// localized.LocalizedClipWriter (the sole required commit contract since
+// Sept 2026). CommitClipTextAndIndexEvent returns nil always.
 type testStubClipAtomicWriter struct{}
 
 func (testStubClipAtomicWriter) CommitClipAndIndexEvent(
@@ -50,6 +53,15 @@ func (testStubClipAtomicWriter) CommitClipAndIndexEvent(
 ) error {
 	return nil
 }
+
+func (testStubClipAtomicWriter) CommitClipTextAndIndexEvent(
+	_ context.Context,
+	_ localized.CommitLocalizedClipCommand,
+) error {
+	return nil
+}
+
+var _ localized.LocalizedClipWriter = testStubClipAtomicWriter{}
 
 // newTestProcessSegmentUseCase returns a minimal valid
 // *ProcessYouTubeSegmentUseCase for tests that don't exercise the
@@ -74,12 +86,15 @@ func newTestProcessSegmentUseCase(log *zap.Logger, pipeline youtubeports.VideoPi
 			Cache:         testStubClipCache{},
 			VideoPipeline: pipeline,
 			Hash:          testStubHash{},
-			Writer:        testStubClipAtomicWriter{},
 			SegmentsSvc:   NewSegmentsService(),
 			Log:           log,
 		},
 		ProcessSegmentMediaDeps{},
-		ProcessSegmentMetadataDeps{},
+		ProcessSegmentMetadataDeps{
+			// Sole required commit contract (Sept 2026): the localized
+			// super-tx writer is the only commit surface.
+			LocalizedWriter: testStubClipAtomicWriter{},
+		},
 		ProcessSegmentObservabilityDeps{},
 	)
 }
