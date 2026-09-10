@@ -51,6 +51,29 @@ func TestBuildPlanNeverInventsTiming(t *testing.T) {
 	}
 }
 
+func TestBuildPlanClampsImageDurationAndSelectsAnimation(t *testing.T) {
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "image-duration", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "scene-1", Images: []ImageCandidate{{
+			AssetID: "img", URL: "assets/img.png", SHA256: "hash", StartMs: 1_000, EndMs: 20_000,
+		}}}},
+	}, PlannerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(plan.Items))
+	}
+	item := plan.Items[0]
+	if item.EndMs-item.StartMs > MaxImageOverlayDurationMS {
+		t.Fatalf("image duration = %dms, want <= %dms", item.EndMs-item.StartMs, MaxImageOverlayDurationMS)
+	}
+	animation, ok := item.Params["animation"].(map[string]any)
+	if !ok || animation["preset"] != SelectImageAnimation("image-duration", "scene-1", item.ID) {
+		t.Fatalf("image animation = %#v", item.Params["animation"])
+	}
+}
+
 // TestBuildPlanExtendedEntities pins the NUMBER / QUOTE / PRODUCT / LOGO
 // planner path: certified timing only, ranked by score, capped per scene, and
 // each item terminating in its canonical template id (the kind→template

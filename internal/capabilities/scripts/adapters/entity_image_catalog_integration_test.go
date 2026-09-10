@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 type integrationEntityImageCatalog struct {
@@ -152,7 +153,7 @@ func (s *catalogIntegrationSearcher) SearchImages(_ context.Context, req Interne
 
 func resetEntityImageCatalogCaches() {
 	entityImageCache = sync.Map{}
-	entityImageLocks = sync.Map{}
+	entityImageLocks = concurrent.NewKeyedLocker()
 	vidrushImageCache = sync.Map{}
 }
 

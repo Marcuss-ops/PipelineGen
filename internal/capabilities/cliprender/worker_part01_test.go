@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 	"testing"
@@ -99,9 +101,8 @@ func (f *fakeOutputProber) ProbeOutput(_ context.Context, _ string) (*OutputProb
 }
 
 func TestRenderedResult_LegacyFieldsAreReadOnlyProjections(t *testing.T) {
-	outcome := &RenderOutcome{OutputPath: "/work/out.mp4", SizeBytes: 1, DurationSec: 1, FFmpegMS: 1234, SubtitleRasterCPU: boolPtr(true), GPUCopyBytes: uint64Ptr(99), Metrics: NewRenderMetricsV2()}
+	outcome := &RenderOutcome{OutputPath: "/work/out.mp4", SizeBytes: 1, DurationSec: 1, FFmpegMS: 1234, SubtitleRasterCPU: boolPtr(true), Metrics: NewRenderMetricsV2()}
 	outcome.Metrics.CompositeMS = 1234
-	outcome.Metrics.GPUCopyBytes = 99
 	outcome.Metrics.SubtitleRasterCPU = true
 	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse_or_generate"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil, nil)
 	render, ok := result["render"].(map[string]any)
@@ -115,16 +116,12 @@ func TestRenderedResult_LegacyFieldsAreReadOnlyProjections(t *testing.T) {
 	if render["ffmpeg_ms"] != outcome.FFmpegMS || metrics.CompositeMS != outcome.Metrics.CompositeMS {
 		t.Fatalf("legacy/canonical projection mismatch: render=%v metrics=%+v", render, metrics)
 	}
-	if render["gpu_copy_bytes"] != outcome.GPUCopyBytes || metrics.GPUCopyBytes != outcome.Metrics.GPUCopyBytes {
-		t.Fatalf("gpu projection mismatch: render=%v metrics=%+v", render, metrics)
-	}
 	if render["subtitle_raster_cpu"] != outcome.SubtitleRasterCPU || metrics.SubtitleRasterCPU != *outcome.SubtitleRasterCPU {
 		t.Fatalf("subtitle projection mismatch: render=%v metrics=%+v", render, metrics)
 	}
 }
 
-func boolPtr(v bool) *bool       { return &v }
-func uint64Ptr(v uint64) *uint64 { return &v }
+func boolPtr(v bool) *bool { return &v }
 
 func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	w, _, _ := newTestWorker(t)
@@ -179,6 +176,42 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	// assets to disk" cost instead of leaving it in the unaccounted gap.
 	if int64(metrics.AssetMaterializeMS) == NotInstrumented {
 		t.Fatalf("asset_materialize_ms = %d, want the measured materialize phase wall", int64(metrics.AssetMaterializeMS))
+	}
+}
+
+// TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend pins the
+// fail-closed contract of execution.require_zero_copy after the PATH B CUDA
+// hybrid removal: NO backend certifies video_zero_copy anymore, so even a
+// certified-Chronon outcome must NOT satisfy the demand. The render phase
+// still executes (the outcome is valid), then the worker returns a typed
+// error — never a silent success and never a downgrade to a path that
+// merely skips the certification.
+func TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
+	}}
+	w.WithRenderExecutor(renderer)
+
+	req := baseRenderRequest()
+	req.Execution.RequireZeroCopy = true
+
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-zero-copy", Payload: renderJobPayload(t, req)}, nil)
+	if err == nil {
+		t.Fatal("require_zero_copy=true must fail closed even with a certified Chronon outcome")
+	}
+	if !strings.Contains(err.Error(), "require_zero_copy") {
+		t.Fatalf("error = %q, want the require_zero_copy failure reason", err)
+	}
+	if renderer.called != 1 {
+		t.Fatalf("renderer calls = %d, want 1 (the render executes before the fail-closed gate)", renderer.called)
 	}
 }
 

@@ -294,10 +294,9 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	if err := materializeArtifact(ctx, a.URL, plan.OutputPath, a.SizeBytes, a.SHA256); err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: materialize certified artifact: %w", err)
 	}
-	// VideoZeroCopy stays nil unless RenderingGen/Chronon explicitly
-	// certifies it. PipelineGen must never infer this property from backend
-	// identity; require_zero_copy therefore fails closed when certification is
-	// absent.
+	// The zero-copy certification surface was removed with the PATH B CUDA
+	// hybrid: RenderingGen/Chronon never certifies video_zero_copy over this
+	// transport, so a request that demands it fails closed in the worker.
 	return &cliprender.RenderOutcome{
 		OutputPath:        plan.OutputPath,
 		SizeBytes:         a.SizeBytes,

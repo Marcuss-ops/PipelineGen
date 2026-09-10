@@ -302,14 +302,26 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
 	// Fail-closed GPU gate: a request that demands GPU must never be silently
-	// served by the software fallback. The GPU backends are Chronon (only
-	// when certified) and the PATH B CUDA hybrid (only on hosts with the
-	// NVDEC/NVENC chain and for plans it can render device-local).
+	// served by the software fallback. The only GPU backend is Chronon (only
+	// when certified by the host gate); the PATH B CUDA hybrid was removed —
+	// GPU compositing belongs exclusively to the Chronon executor.
+	// ExecutionSpec.RequireGPU is enforced here as its documented contract
+	// (RenderBackend.IsGPUBackend is the single authority of "GPU-ness"),
+	// checked BEFORE the unconditional Chronon-only gate so a non-GPU outcome
+	// on a require_gpu request reports the specific violation.
+	if req.Execution.RequireGPU && !outcome.Backend.IsGPUBackend() {
+		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but resolved backend %q is not a GPU backend", outcome.Backend)
+	}
 	if outcome.Backend != BackendChrononVulkan {
 		return nil, fmt.Errorf("clip.render: backend resolved to %q; only Chronon (%s) is permitted", outcome.Backend, BackendChrononVulkan)
 	}
-	if req.Execution.RequireZeroCopy && (outcome.VideoZeroCopy == nil || !*outcome.VideoZeroCopy) {
-		return nil, fmt.Errorf("clip.render: execution.require_zero_copy=true but renderer did not certify video_zero_copy=true (backend=%q)", outcome.Backend)
+	// RequireZeroCopy is fail-closed by construction: no backend certifies
+	// video_zero_copy anymore (the hybrid that reported it was removed, and
+	// the RenderingGen/Chronon artifact never certifies it over this
+	// transport). A caller that demands it gets a typed error — never a
+	// silent downgrade.
+	if req.Execution.RequireZeroCopy {
+		return nil, fmt.Errorf("clip.render: execution.require_zero_copy=true is unsatisfiable: no backend certifies video_zero_copy (GPU compositing is Chronon-only via the RenderingGen queue)")
 	}
 	// Fold the worker-measured phases into the adapter's V2 report (real
 	// instrumentation only — a disabled phase stays NOT_INSTRUMENTED). The

@@ -293,3 +293,52 @@ func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
 		})
 	}
 }
+
+// TestWorker_RequireGPU_FailsClosedOnSoftwareBackend certifies the
+// ExecutionSpec.RequireGPU contract: a request demanding GPU must never be
+// served by the software FFmpeg fallback. The worker reports the specific
+// require_gpu violation (before the unconditional Chronon-only gate).
+func TestWorker_RequireGPU_FailsClosedOnSoftwareBackend(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+		Backend:     BackendFFmpegFallback,
+	}})
+
+	req := baseRenderRequest()
+	req.Execution = &ExecutionSpec{RequireGPU: true}
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-require-gpu", Payload: renderJobPayload(t, req)}, nil)
+	if err == nil {
+		t.Fatal("execution.require_gpu=true with a software backend must fail closed")
+	}
+	if !strings.Contains(err.Error(), "require_gpu") {
+		t.Fatalf("expected the require_gpu typed violation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), string(BackendFFmpegFallback)) {
+		t.Fatalf("require_gpu error must name the resolved backend, got %v", err)
+	}
+}
+
+// TestWorker_RequireGPU_SucceedsOnGPUBackend certifies the happy path: a
+// require_gpu request renders normally when the resolved backend is the GPU
+// Chronon backend.
+func TestWorker_RequireGPU_SucceedsOnGPUBackend(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()}) // BackendChrononVulkan
+
+	req := baseRenderRequest()
+	req.Execution = &ExecutionSpec{RequireGPU: true}
+	result, err := w.Handle(context.Background(), &job.Job{ID: "job-require-gpu-ok", Payload: renderJobPayload(t, req)}, nil)
+	if err != nil {
+		t.Fatalf("require_gpu=true on the GPU backend must succeed, got %v", err)
+	}
+	if result["phase"] != "rendered" {
+		t.Fatalf("phase = %v, want rendered", result["phase"])
+	}
+}

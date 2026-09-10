@@ -8,8 +8,8 @@
 #
 # The payload deliberately uses only media_plan.extraction.include for the
 # semantic switches. There is no ad-hoc protagonist/entity-images toggle.
-# The background is selected in this test as a deterministic color layer, so
-# a missing background asset cannot hide a failure in NLP, timing or Chronon.
+# The background is the canonical Pale Olive Classic color layer, so a missing
+# background asset cannot hide a failure in NLP, timing or Chronon.
 
 set -Eeuo pipefail
 
@@ -76,7 +76,7 @@ jq -n \
         },
         overlay_background: {
           kind: "color",
-          color: [0.04, 0.06, 0.12, 1],
+          color: [238/255, 241/255, 231/255, 1],
           fit: "cover",
           opacity: 1,
           loop: false
@@ -210,6 +210,17 @@ OVERLAY_DURATION_US=$(jq -r '.overlay_render?.artifact?.duration_us // 0' <<<"$R
 [[ -n "$OVERLAY_SHA" ]] || fail "artifact overlay senza sha256"
 (( OVERLAY_DURATION_US > 0 )) || fail "artifact overlay senza duration_us"
 
+GPU_VULKAN_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_vulkan_frames // 0' <<<"$RESULT")
+GPU_NVENC_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_nvenc_frames // 0' <<<"$RESULT")
+GPU_SOFTWARE_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_software_encode_frames // 0' <<<"$RESULT")
+GPU_READBACK_BYTES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_gpu_readback_bytes // 0' <<<"$RESULT")
+OVERLAY_FRAME_COUNT=$(jq -r '.overlay_render?.artifact?.frame_count // 0' <<<"$RESULT")
+(( OVERLAY_FRAME_COUNT > 0 )) || fail "artifact overlay senza frame_count"
+(( GPU_VULKAN_FRAMES == OVERLAY_FRAME_COUNT )) || fail "Chronon non ha certificato Vulkan su tutti i frame (vulkan=$GPU_VULKAN_FRAMES frames=$OVERLAY_FRAME_COUNT)"
+(( GPU_NVENC_FRAMES == OVERLAY_FRAME_COUNT )) || fail "Chronon non ha certificato NVENC su tutti i frame (nvenc=$GPU_NVENC_FRAMES frames=$OVERLAY_FRAME_COUNT)"
+(( GPU_SOFTWARE_FRAMES == 0 )) || fail "Chronon ha usato software encode ($GPU_SOFTWARE_FRAMES frame)"
+(( GPU_READBACK_BYTES == 0 )) || fail "Chronon ha usato readback GPU→CPU ($GPU_READBACK_BYTES bytes)"
+
 SCRIPT_ID=$(jq -r '.script_id // 0' <<<"$RESULT")
 (( SCRIPT_ID > 0 )) || fail "script non persistito nel database (script_id=$SCRIPT_ID)"
 
@@ -228,6 +239,11 @@ grep -Fq "Semantic Overlay" "$DOC_HTML" || fail "Docs HTML senza sezione Semanti
 grep -Fq "Semantic Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON overlay associato"
 grep -Fq "person:ada-lovelace" "$DOC_HTML" || fail "Docs HTML senza identità canonica Ada Lovelace"
 grep -Fq "Rendered Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON dell'artefatto Chronon"
+grep -Fq "Entities" "$DOC_HTML" || fail "Docs HTML senza sezione Entities"
+grep -Fq "Person:" "$DOC_HTML" || fail "Docs HTML senza riga Person compatta"
+if grep -Fq "<img" "$DOC_HTML"; then
+    fail "Docs HTML contiene ancora un'immagine inline nell'entity summary"
+fi
 
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  PERSON: %s\n' "$PERSON_NAMES"
@@ -235,6 +251,7 @@ printf '  important_phrases: %s\n' "$PHRASE_COUNT"
 printf '  entity image Drive links: %s\n' "$ENTITY_IMAGE_DRIVE_COUNT"
 printf '  background: %s\n' "$BACKGROUND_KIND"
 printf '  overlay items/timed: %s/%s\n' "$OVERLAY_ITEMS" "$TIMED_ITEMS"
+printf '  GPU Vulkan/NVENC/software/readback: %s/%s/%s/%s\n' "$GPU_VULKAN_FRAMES" "$GPU_NVENC_FRAMES" "$GPU_SOFTWARE_FRAMES" "$GPU_READBACK_BYTES"
 printf '  Chronon: %s\n' "$CHRONON_VERSION"
 printf '  overlay Drive: %s\n' "$OVERLAY_DRIVE_LINK"
 printf '  final audio Drive: %s\n' "$FINAL_AUDIO_DRIVE_LINK"

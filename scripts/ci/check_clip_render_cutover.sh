@@ -7,6 +7,15 @@ set -euo pipefail
 # implementation; they must not be wired from production application code.
 # The retired direct-local Chronon implementation is stricter: those source
 # files must not exist at all after the queue-only cutover.
+#
+# PATH B CUDA hybrid (DEMOLISHED): the cuda_native backend and its GPU
+# compositing machinery were removed from the codebase — certified Chronon
+# owns GPU compositing on the Chronon executor. The symbols below must be
+# absent from BOTH the Go production tree and the Rust muscles source:
+#   - Go: BackendCudaNative | cuda_native (no exemptions)
+#   - Rust: cuda_native, scale_cuda, overlay_cuda, hwupload_cuda,
+#     render_backend, the removed GPU graph builders, and any reference to
+#     the chronon3d binary/engine (Rust must never invoke or embed Chronon)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
 
@@ -22,14 +31,49 @@ check_absent() {
     --glob '!**/*_test.go' \
     --glob '!internal/platform/renderinggen/queue_client.go' \
     --glob '!internal/app/wiring/clip_render_runtime.go' \
-    --glob '!internal/capabilities/localization/renderer_media.go' \
     --glob '!internal/capabilities/localization/adapters/render.go' \
     --glob '!internal/capabilities/cliprender/adapters/cliprender_plan.go' \
     --glob '!internal/capabilities/cliprender/backend.go' \
     --glob '!internal/capabilities/cliprender/worker_result.go' \
     --glob '!internal/capabilities/cliprender/worker.go' \
-    --glob '!internal/platform/media/rustexec/clip_renderer.go' \
     --glob '!internal/platform/media/rustexec/protocol.go' \
+    || true)
+  if [[ -n "$hits" ]]; then
+    echo "FAIL: $label"
+    echo "$hits" | sed 's/^/  /'
+    fail=1
+  else
+    echo "PASS: $label"
+  fi
+}
+
+# check_absent_strict has NO exemptions: after the PATH B demolition these
+# symbols must not exist anywhere in production Go, not even in comments.
+check_absent_strict() {
+  local pattern=$1
+  local label=$2
+  local hits
+  hits=$(rg -n "$pattern" "${production_paths[@]}" --glob '*.go' --glob '!**/*_test.go' || true)
+  if [[ -n "$hits" ]]; then
+    echo "FAIL: $label"
+    echo "$hits" | sed 's/^/  /'
+    fail=1
+  else
+    echo "PASS: $label"
+  fi
+}
+
+# check_absent_rust enforces the boundary inside the Rust muscles: the GPU
+# compositing symbols must never reappear and the Rust code must never
+# reference the chronon3d binary/engine (Rust executes the software baseline;
+# Chronon is reached only through the RenderingGen queue from Go).
+check_absent_rust() {
+  local pattern=$1
+  local label=$2
+  local hits
+  hits=$(rg -n -i "$pattern" rust \
+    --glob '!target/**' \
+    --glob '!**/Cargo.lock' \
     || true)
   if [[ -n "$hits" ]]; then
     echo "FAIL: $label"
@@ -56,7 +100,10 @@ done
 check_absent 'NewChrononClipRenderExecutor|chrononClipRenderExecutor' 'direct local Chronon clip executor'
 check_absent 'CHRONON_RENDER_SOCKET|CHRONON_SOCKET_PATH|exec\.Command[^\n]*chronon' 'direct local Chronon process/socket wiring'
 check_absent 'NewClipRendererWithExecutor|\.RenderClip\(' 'direct Rust RenderClip production caller'
-check_absent 'BackendCudaNative|BackendFFmpegFallback|cuda_native|ffmpeg_fallback' 'production CUDA/FFmpeg clip fallback selector'
+check_absent 'BackendFFmpegFallback|ffmpeg_fallback' 'production FFmpeg clip fallback selector'
+check_absent_strict 'BackendCudaNative|cuda_native' 'PATH B CUDA hybrid backend (demolished — must not exist anywhere)'
+check_absent_rust 'chronon3d|CHRONON_' 'Rust must never reference the Chronon engine/binary'
+check_absent_rust 'cuda_native|scale_cuda|overlay_cuda|hwupload_cuda|render_backend|append_video_args_cuda|build_gpu_filter_graph|gpu_native_eligible|has_alpha_pixel_format' 'Rust GPU compositing machinery (demolished with PATH B)'
 
 if [[ ! -f internal/app/wiring/clip_render_runtime.go ]] || \
    ! rg -q 'RenderingGenExecutor' internal/app/wiring/clip_render_runtime.go; then

@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -128,8 +129,6 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"audio_copy_eligible": outcome.AudioCopyEligible,
 			"audio_encode_passes": outcome.AudioEncodePasses,
 			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
-			"gpu_copy_bytes":      outcome.GPUCopyBytes,
-			"video_zero_copy":     outcome.VideoZeroCopy,
 		}
 
 		if outcome.Metrics != nil {
@@ -202,15 +201,39 @@ type SubtitleCacheFacts struct {
 // job result so the benchmark report can show subtitle cache hits.
 var subtitleCacheFacts sync.Map // map[string]SubtitleCacheFacts
 
+// subtitleCacheJanitor bounds the registry over the process lifetime: facts
+// are read once, shortly after being recorded (compile → job result in the
+// same run), so a periodic clear never loses an in-flight read.
+const subtitleCacheJanitorInterval = 10 * time.Minute
+
+var subtitleCacheJanitorOnce sync.Once
+
+func startSubtitleCacheJanitor() {
+	subtitleCacheJanitorOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(subtitleCacheJanitorInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				subtitleCacheFacts.Range(func(key, _ any) bool {
+					subtitleCacheFacts.Delete(key)
+					return true
+				})
+			}
+		}()
+	})
+}
+
 // RecordSubtitleCacheFacts registers cache ownership for a materialized ASS
 // artifact. Called by the SubtitleCompiler adapter after compile.
 func RecordSubtitleCacheFacts(localPath string, facts SubtitleCacheFacts) {
+	startSubtitleCacheJanitor()
 	subtitleCacheFacts.Store(localPath, facts)
 }
 
 // subtitleCacheFactsFor returns the recorded cache facts for a materialized
 // ASS artifact, or an all-false zero value when nothing was recorded.
 func subtitleCacheFactsFor(path string) SubtitleCacheFacts {
+	startSubtitleCacheJanitor()
 	if facts, ok := subtitleCacheFacts.Load(path); ok {
 		return facts.(SubtitleCacheFacts)
 	}
@@ -315,19 +338,17 @@ func projectRendererPhases(ctx context.Context, backend RenderBackend, m *Render
 			Bytes:     int64(bytes),
 		}, 0)
 	}
-	recordBytes(kernobs.OperationGPUCopy, m.GPUCopyBytes)
 	recordBytes(kernobs.OperationGPUUpload, m.GPUUploadBytes)
 	recordBytes(kernobs.OperationGPUReadback, m.GPUReadbackBytes)
 }
 
 // componentForBackend maps the resolved render backend onto the canonical
-// component that owns its measured phases. chronon_vulkan (primary) → chronon;
-// cuda_native → cuda; ffmpeg_fallback → ffmpeg. Unknown backends keep the
-// primary GPU component — a wrong label is never fabricated.
+// component that owns its measured phases. chronon_vulkan (primary) →
+// chronon; ffmpeg_fallback → ffmpeg. Unknown backends keep the primary GPU
+// component — a wrong label is never fabricated. (The CUDA-hybrid → cuda
+// mapping was removed with the PATH B backend.)
 func componentForBackend(b RenderBackend) kernobs.ComponentName {
 	switch b {
-	case BackendCudaNative:
-		return kernobs.ComponentCUDA
 	case BackendFFmpegFallback:
 		return kernobs.ComponentFFmpeg
 	default:

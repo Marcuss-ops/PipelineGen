@@ -158,7 +158,7 @@ func TestBuildSpecSceneDocumentHTML_RendersEntityDriveLinks(t *testing.T) {
 	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Famous people"})
 
 	human := humanDocumentHTML(t, out)
-	require.Contains(t, human, "<strong>Entity image for:</strong> Describe John Cena")
+	require.Contains(t, human, "<strong>Entity:</strong> Describe John Cena")
 	require.Contains(t, human, "https://drive.google.com/file/d/cena/view")
 	require.Contains(t, human, "John Cena enters the arena.")
 
@@ -189,11 +189,9 @@ func TestDocument_EntityImageRenderedInline(t *testing.T) {
 	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "People"})
 
 	human := humanDocumentHTML(t, out)
-	// IDEAL PASS: the entity photograph is rendered inline, not only linked.
-	require.Contains(t, human, `<img src="https://images.example/dwayne.jpg"`)
-	require.Contains(t, human, `alt="Dwayne Johnson"`)
-	// The canonical Drive link is still present.
-	require.Contains(t, human, `<strong>Entity image for:</strong> Dwayne Johnson`)
+	// The human document is intentionally a compact type/name/link projection.
+	require.NotContains(t, human, "<img")
+	require.Contains(t, human, `<strong>Entity:</strong> Dwayne Johnson`)
 	require.Contains(t, human, "https://drive.google.com/file/d/dwayne/view")
 }
 

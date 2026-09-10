@@ -62,18 +62,24 @@ func SafeName(name string) string {
 }
 
 // SanitizeFilename removes potentially dangerous characters from a filename.
+// The character sweep is a single O(n) builder pass: the legacy byte-by-byte
+// splice (name[:i]+name[i+1:]) was quadratic on pathological inputs and this
+// function sits on the Drive/voiceover filename boundary where titles can be
+// arbitrarily long.
 func SanitizeFilename(name string) string {
 	name = strings.ReplaceAll(name, "..", "")
 	name = strings.ReplaceAll(name, "/", "")
 	name = strings.ReplaceAll(name, "\\", "")
 	name = strings.ReplaceAll(name, "\x00", "")
+	var b strings.Builder
+	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {
 		c := name[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' || c == ' ') {
-			name = name[:i] + name[i+1:]
-			i--
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' || c == ' ' {
+			b.WriteByte(c)
 		}
 	}
+	name = b.String()
 	name = strings.TrimSpace(name)
 	if len(name) > 255 {
 		name = name[:255]
@@ -96,9 +102,22 @@ func Truncate(s string, n int) string {
 	return string(r[:n-3]) + "..."
 }
 
-// CountWords returns the number of words in a text.
+// CountWords returns the number of words in a text. It is allocation-free:
+// the legacy len(strings.Fields(...)) form materialised the whole token
+// slice just to count it, and this function runs inside segment-validation
+// and clip-grounding loops on the generation hot path.
 func CountWords(text string) int {
-	return len(strings.Fields(strings.TrimSpace(text)))
+	count := 0
+	inWord := false
+	for _, r := range text {
+		if unicode.IsSpace(r) {
+			inWord = false
+		} else if !inWord {
+			inWord = true
+			count++
+		}
+	}
+	return count
 }
 
 // FirstNonEmpty returns the first non-empty (after trim) string.
@@ -185,9 +204,15 @@ func FormatSecondsToTimestamp(seconds int) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
+// subtitleHTMLTagRe is hoisted to a package var: the legacy inline
+// regexp.MustCompile compiled the pattern on every call, and
+// CleanSubtitleText runs once per subtitle cue (thousands of compilations
+// per long transcript).
+var subtitleHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+
 // CleanSubtitleText removes HTML/VTT tags from subtitle text.
 func CleanSubtitleText(text string) string {
-	text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, "")
+	text = subtitleHTMLTagRe.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 	return text
 }

@@ -83,6 +83,24 @@ type ImageCandidate struct {
 	Score      float64
 }
 
+// MaxImageOverlayDurationMS is the hard editorial ceiling for every image,
+// product and logo overlay.
+const MaxImageOverlayDurationMS int64 = 5_000
+
+func clampImageWindow(candidate ImageCandidate) ImageCandidate {
+	if candidate.StartUS > 0 || candidate.DurationUS > 0 {
+		if candidate.DurationUS > MaxImageOverlayDurationMS*1000 {
+			candidate.DurationUS = MaxImageOverlayDurationMS * 1000
+			candidate.EndMs = (candidate.StartUS + candidate.DurationUS + 999) / 1000
+		}
+		return candidate
+	}
+	if candidate.EndMs-candidate.StartMs > MaxImageOverlayDurationMS {
+		candidate.EndMs = candidate.StartMs + MaxImageOverlayDurationMS
+	}
+	return candidate
+}
+
 type SceneInput struct {
 	ID       string
 	Phrases  []TimedAnnotation
@@ -148,13 +166,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			images = images[:config.MaxImages]
 		}
 		for _, image := range images {
+			image = clampImageWindow(image)
 			id := itemID(scene.ID, "image", image.AssetID)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectImagePreset(input.PlanID, scene.ID, id),
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, SHA256: image.SHA256, MediaType: image.MediaType}},
-				Params:    map[string]any{"position": "right", "style": "popup", "priority": image.Score},
+				Params: map[string]any{"position": "right", "style": "popup", "priority": image.Score,
+					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
 		}
 
@@ -163,12 +183,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			products = products[:config.MaxProducts]
 		}
 		for _, product := range products {
+			product = clampImageWindow(product)
+			id := itemID(scene.ID, "product", product.AssetID)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "product", product.AssetID), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID,
 				Kind: "product", TemplateID: "PRODUCT",
 				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: product.AssetID, URL: product.URL, SHA256: product.SHA256, MediaType: product.MediaType}},
-				Params:    map[string]any{"position": "right", "style": "popup", "priority": product.Score},
+				Params: map[string]any{"position": "right", "style": "popup", "priority": product.Score,
+					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
 		}
 
@@ -177,12 +200,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			logos = logos[:config.MaxLogos]
 		}
 		for _, logo := range logos {
+			logo = clampImageWindow(logo)
+			id := itemID(scene.ID, "logo", logo.AssetID)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "logo", logo.AssetID), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID,
 				Kind: "logo", TemplateID: "LOGO",
 				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: logo.AssetID, URL: logo.URL, SHA256: logo.SHA256, MediaType: logo.MediaType}},
-				Params:    map[string]any{"position": "corner", "style": "logo", "priority": logo.Score},
+				Params: map[string]any{"position": "corner", "style": "logo", "priority": logo.Score,
+					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
 		}
 

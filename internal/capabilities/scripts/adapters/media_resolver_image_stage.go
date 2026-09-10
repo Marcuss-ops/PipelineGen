@@ -3,11 +3,12 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"golang.org/x/text/unicode/norm"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -25,7 +26,12 @@ type internetImageCachePayload struct {
 
 var (
 	entityImageCache sync.Map // canonical entity key -> []SegmentAssetCandidate
-	entityImageLocks sync.Map // canonical entity key -> *sync.Mutex
+	// entityImageLocks is the canonical reference-counted per-key locker: it
+	// serialises concurrent provider/catalog lookups for the same entity key
+	// while leaving different keys fully parallel. Unlike the retired
+	// sync.Map-of-mutexes registry it never leaks entries — the key is removed
+	// when the last holder releases (pkg/concurrent.KeyedLocker).
+	entityImageLocks = concurrent.NewKeyedLocker()
 )
 
 // MediaResolverImageStage handles image discovery for the canonical media
@@ -238,12 +244,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 					return queryResult{}, catalogErr
 				}
 			}
-			var catalogLock *sync.Mutex
 			if catalogEligible {
-				actual, _ := entityImageLocks.LoadOrStore("entity-catalog:"+catalogIdentity.CanonicalEntityID, &sync.Mutex{})
-				catalogLock = actual.(*sync.Mutex)
-				catalogLock.Lock()
-				defer catalogLock.Unlock()
+				releaseCatalogLock := entityImageLocks.Lock("entity-catalog:" + catalogIdentity.CanonicalEntityID)
+				defer releaseCatalogLock()
 				if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 					lookupStarted := time.Now()
 					pool, err := entityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, perQueryLimit)
@@ -296,12 +299,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 					return queryResult{candidates: persisted, query: query, fromCache: true}, nil
 				}
 			}
-			var entityLock *sync.Mutex
 			if !catalogEligible && !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-				actual, _ := entityImageLocks.LoadOrStore(entityCacheKey, &sync.Mutex{})
-				entityLock = actual.(*sync.Mutex)
-				entityLock.Lock()
-				defer entityLock.Unlock()
+				releaseEntityLock := entityImageLocks.Lock(entityCacheKey)
+				defer releaseEntityLock()
 				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
 					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
 						cachedCandidates = normalizeInternetImageCatalogResults(cachedCandidates, query)

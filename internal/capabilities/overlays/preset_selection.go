@@ -17,6 +17,9 @@ var (
 		"image_fast_fade", "image_slide_left", "image_slide_right",
 		"modern_rounded_pop", "bottom_card_rise",
 	}
+	imageAnimationCandidates = []string{
+		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
+	}
 )
 
 func contains(values []string, want string) bool {
@@ -62,4 +65,15 @@ func selectImagePreset(jobID, sceneID, itemID string) string {
 // renderer never has to infer or invent a preset.
 func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
 	return selectImagePreset(jobID, sceneID, itemID)
+}
+
+// SelectEntityImageAnimation chooses a stable-but-varied Chronon entry
+// animation for an entity image. Retries of the same job remain bit-identical.
+func SelectEntityImageAnimation(jobID, sceneID, itemID string) string {
+	return selectPreset(jobID, sceneID, itemID, "entity_image_animation", imageAnimationCandidates)
+}
+
+// SelectImageAnimation is the generic image/product/logo planner selector.
+func SelectImageAnimation(jobID, sceneID, itemID string) string {
+	return SelectEntityImageAnimation(jobID, sceneID, itemID)
 }

@@ -327,6 +327,11 @@ func (e *Engine) generateSegments(
 		return generate(ctx, req)
 	}
 	settings := e.segmentSettings()
+	// The stop-word set is a static lexical projection installed at bootstrap.
+	// Resolve it ONCE per run instead of once per generation attempt: the
+	// legacy call inside clipNarrationHasEvidence re-took the global lexicon
+	// RWMutex and re-read the shared map on every candidate.
+	stopWords := linguistics.DefaultLexicon().StopWords("en")
 	texts := make([]string, len(plan.Segments))
 	var first *ports.GenerationResult
 	type segmentOutput struct {
@@ -421,7 +426,7 @@ func (e *Engine) generateSegments(
 					singleReport.InvalidIndexes = []int{0}
 					singleReport.Reasons = append(singleReport.Reasons, "clip source copied or repeated instead of rewritten")
 				}
-				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan) && e.log != nil {
+				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan, stopWords) && e.log != nil {
 					// Clip descriptions and narration may use different languages
 					// (for example an Italian source brief with an English output).
 					// Keep this lexical check observational: non-empty output,
@@ -580,7 +585,10 @@ func isRepeatedClipSource(candidate, source string) bool {
 // two meaningful anchors from the assigned topic/brief/transcript.  This
 // prevents a generic biography (or another clip's cached answer) from being
 // accepted as a valid scene merely because it is fluent prose.
-func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment, plan *scriptpkg.ResolvedGenerationPlan) bool {
+//
+// stopWords is the caller-resolved lexical set (hoisted per run, never
+// re-resolved through the global lexicon registry per call).
+func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment, plan *scriptpkg.ResolvedGenerationPlan, stopWords map[string]struct{}) bool {
 	// Synthetic sentinel evidence used by contract tests is deliberately not
 	// natural language and cannot provide meaningful lexical anchors.
 	if strings.Contains(segment.SourceText, "_") {
@@ -588,44 +596,51 @@ func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment,
 	}
 	anchors := make(map[string]struct{})
 	sourceAnchors := make(map[string]struct{})
-	stopWords := linguistics.DefaultLexicon().StopWords("en")
-	add := func(text string) {
-		for _, token := range strings.Fields(strings.ToLower(text)) {
-			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+	tokenize := func(text string) []string { return strings.Fields(strings.ToLower(text)) }
+	trimToken := func(token string) string {
+		return strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+	}
+	add := func(tokens []string) {
+		for _, token := range tokens {
+			token = trimToken(token)
 			if _, stop := stopWords[token]; len(token) < 4 || stop {
 				continue
 			}
 			anchors[token] = struct{}{}
 		}
 	}
-	addSource := func(text string) {
-		for _, token := range strings.Fields(strings.ToLower(cleanSegmentSourceText(text))) {
-			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+	addSource := func(tokens []string) {
+		for _, token := range tokens {
+			token = trimToken(token)
 			if _, stop := stopWords[token]; len(token) >= 4 && !stop {
 				sourceAnchors[token] = struct{}{}
 			}
 		}
 	}
-	add(segment.Topic)
 	cleanSource := cleanSegmentSourceText(segment.SourceText)
-	add(cleanSource)
-	addSource(cleanSource)
+	// Tokenise the cleaned source ONCE and feed both anchor surfaces from the
+	// same tokens: the legacy path tokenised cleanSource twice per call and
+	// re-did the global lexicon lookup on every generation attempt.
+	sourceTokens := tokenize(cleanSource)
+	add(tokenize(segment.Topic))
+	add(sourceTokens)
+	addSource(sourceTokens)
 	if plan != nil && plan.ClipEvidence != nil && len(plan.ClipEvidence.SegmentEvidence) > 0 {
 		for _, evidence := range plan.ClipEvidence.SegmentEvidence {
-			add(evidence.Topic)
-			add(evidence.SourceText)
+			add(tokenize(evidence.Topic))
+			add(tokenize(evidence.SourceText))
 			for _, detail := range evidence.Clips {
-				add(detail.Name)
-				add(detail.Description)
-				add(detail.Transcript)
+				add(tokenize(detail.Name))
+				add(tokenize(detail.Description))
+				add(tokenize(detail.Transcript))
 			}
 		}
 	}
 	matched := 0
 	sourceMatched := 0
 	seen := make(map[string]struct{})
-	for _, token := range strings.Fields(strings.ToLower(candidate)) {
-		token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+	for _, token := range tokenize(candidate) {
+		token = trimToken(token)
 		if _, ok := anchors[token]; !ok {
 			continue
 		}

@@ -65,12 +65,13 @@ type RenderOutcome struct {
 	Backend     RenderBackend
 	// FFmpegMS is retained as a read-only compatibility projection of the
 	// canonical Metrics report; adapters must not calculate it independently.
-	FFmpegMS                int64
-	AudioCopyEligible       *bool
-	AudioEncodePasses       *int
-	SubtitleRasterCPU       *bool
-	GPUCopyBytes            *uint64
-	VideoZeroCopy           *bool
+	FFmpegMS          int64
+	AudioCopyEligible *bool
+	AudioEncodePasses *int
+	SubtitleRasterCPU *bool
+	// GPU byte counters are Chronon-owned (the queue artifact metrics); the
+	// Rust zero-copy counters (gpu_copy_bytes / video_zero_copy) were removed
+	// with the PATH B CUDA hybrid.
 	GPUUploadBytes          *uint64
 	GPUReadbackBytes        *uint64
 	EncoderStagingCopyBytes *uint64
@@ -91,7 +92,7 @@ type RenderOutcome struct {
 	AudioMuxMS              *int64
 
 	// Metrics is the sole canonical V2 execution report (metrics.go). All
-	// backends (CUDA, Chronon and FFmpeg) must populate this contract; legacy
+	// backends (Chronon and FFmpeg) must populate this contract; legacy
 	// scalar fields are read-only compatibility projections. The adapter fills
 	// selection facts and derived aggregates. Phases without real
 	// instrumentation stay NOT_INSTRUMENTED — never a fake zero.

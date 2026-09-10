@@ -177,11 +177,16 @@ type DestinationSpec struct {
 // request-level backend signal: the concrete backend is resolved by the
 // RenderBackendResolver from probed host capabilities, never hardcoded here.
 type ExecutionSpec struct {
-	// RequireGPU fails the render unless the resolved backend is any registered
-	// GPU backend (CUDA or Chronon Vulkan). Default false allows software.
+	// RequireGPU fails the render unless the resolved backend is a GPU
+	// backend. The worker enforces it via RenderBackend.IsGPUBackend (today
+	// the only GPU backend is Chronon Vulkan — the PATH B CUDA hybrid was
+	// removed), so a request demanding GPU is never silently served by the
+	// software FFmpeg fallback. Default false allows software.
 	RequireGPU bool `json:"require_gpu,omitempty"`
-	// RequireZeroCopy fails unless the selected executor explicitly certifies
-	// a device-local video path. Unknown (nil) is not treated as success.
+	// RequireZeroCopy demands a device-local video path. It is fail-closed by
+	// construction: after the PATH B CUDA hybrid removal no backend certifies
+	// video_zero_copy, so a request that sets it always fails with a typed
+	// error — never a silent downgrade.
 	RequireZeroCopy bool `json:"require_zero_copy,omitempty"`
 }
 

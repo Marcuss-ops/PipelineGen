@@ -275,10 +275,10 @@ func TestChrononNativeCertifier_FingerprintIncludesEnvironmentComponents(t *test
 
 // TestChrononCertifiedCapabilityProbe_SetsFlagFromCertifier verifies the
 // decorator probe maps the certifier outcome onto the capability flag while
-// passing the base capabilities (binary presence + CUDA chain) through.
+// passing the base capabilities (binary presence) through.
 func TestChrononCertifiedCapabilityProbe_SetsFlagFromCertifier(t *testing.T) {
 	base := chrononRecordingProbe{caps: cliprender.RendererCapabilities{
-		NVDEC: true, NVENCH264: true, ChrononVulkan: true,
+		ChrononVulkan: true,
 	}}
 
 	// Certified binary → flag on, base caps pass through.
@@ -291,9 +291,6 @@ func TestChrononCertifiedCapabilityProbe_SetsFlagFromCertifier(t *testing.T) {
 	}
 	if !caps.ChrononVulkan || !caps.ChrononNativeCertified {
 		t.Fatalf("caps = %+v, want binary present AND certified", caps)
-	}
-	if !caps.NVDEC || !caps.NVENCH264 {
-		t.Fatalf("base caps must pass through, got %+v", caps)
 	}
 
 	// Configured but failed certification → flag stays OFF (the binary is

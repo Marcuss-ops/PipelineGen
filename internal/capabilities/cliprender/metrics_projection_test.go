@@ -29,15 +29,14 @@ func TestProjectRendererPhases_ProjectsMeasuredPhasesAsChrononOperations(t *test
 	m.FrameConversionMS = 300
 	m.EncodeMS = 1800
 	m.AudioMuxMS = 90
-	m.GPUCopyBytes = 1_000_000
 	m.GPUReadbackBytes = 500_000
 
 	projectRendererPhases(ctx, BackendChrononVulkan, m)
 	run.Finish()
 
 	ops := run.Report().Operations
-	if len(ops) != 11 {
-		t.Fatalf("operations = %d, want 11 (9 phases + 2 GPU byte counters), got %+v", len(ops), ops)
+	if len(ops) != 10 {
+		t.Fatalf("operations = %d, want 10 (9 phases + 1 GPU byte counter), got %+v", len(ops), ops)
 	}
 	byName := map[string]kernobs.OperationReport{}
 	for _, op := range ops {
@@ -55,10 +54,9 @@ func TestProjectRendererPhases_ProjectsMeasuredPhasesAsChrononOperations(t *test
 			t.Errorf("operation %s duration = %d ms, want %d", op, got, wantMS)
 		}
 	}
-	// GPU byte counters carry Bytes, never a fake duration.
-	if byName["gpu_copy"].Bytes != 1_000_000 || byName["gpu_copy"].DurationMs != 0 {
-		t.Errorf("gpu_copy = %+v, want Bytes=1000000 duration=0", byName["gpu_copy"])
-	}
+	// GPU byte counters carry Bytes, never a fake duration. (gpu_copy was
+	// removed with the PATH B CUDA hybrid; only the Chronon-owned readback
+	// counter remains.)
 	if byName["gpu_readback"].Bytes != 500_000 || byName["gpu_readback"].DurationMs != 0 {
 		t.Errorf("gpu_readback = %+v, want Bytes=500000 duration=0", byName["gpu_readback"])
 	}
@@ -96,9 +94,6 @@ func TestProjectRendererPhases_MapsComponentByBackend(t *testing.T) {
 	}
 	if got := project(BackendChrononVulkan); got != string(kernobs.ComponentChronon) {
 		t.Errorf("chronon_vulkan component = %q, want chronon", got)
-	}
-	if got := project(BackendCudaNative); got != string(kernobs.ComponentCUDA) {
-		t.Errorf("cuda_native component = %q, want cuda", got)
 	}
 	if got := project(BackendFFmpegFallback); got != string(kernobs.ComponentFFmpeg) {
 		t.Errorf("ffmpeg_fallback component = %q, want ffmpeg", got)

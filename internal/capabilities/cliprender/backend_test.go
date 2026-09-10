@@ -10,34 +10,31 @@ import (
 )
 
 func TestRendererCapabilitiesSatisfies(t *testing.T) {
-	full := RendererCapabilities{
-		NVDEC: true, NVENCH264: true, NVENCHEVC: true,
-		GPUScale: true, GPUBlur: true, GPUAlpha: true, SubtitleTexture: true,
-	}
-	if !full.Satisfies(RendererCapabilities{NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true}) {
-		t.Fatal("full capabilities must satisfy the cuda-native requirements")
+	full := RendererCapabilities{ChrononVulkan: true, ChrononNativeCertified: true}
+	if !full.Satisfies(RendererCapabilities{ChrononVulkan: true, ChrononNativeCertified: true}) {
+		t.Fatal("full capabilities must satisfy the chronon requirements")
 	}
 	if !full.Satisfies(RendererCapabilities{}) {
 		t.Fatal("empty requirements must be satisfied by any capabilities")
 	}
 
-	partial := RendererCapabilities{NVDEC: true, NVENCH264: true}
-	if partial.Satisfies(RendererCapabilities{GPUScale: true}) {
-		t.Fatal("missing gpu_scale must fail satisfaction")
+	partial := RendererCapabilities{ChrononVulkan: true}
+	if partial.Satisfies(RendererCapabilities{ChrononNativeCertified: true}) {
+		t.Fatal("missing certification must fail satisfaction")
 	}
-	if !partial.Satisfies(RendererCapabilities{NVDEC: true}) {
-		t.Fatal("present nvdec must satisfy a requirement for nvdec")
+	if !partial.Satisfies(RendererCapabilities{ChrononVulkan: true}) {
+		t.Fatal("present binary must satisfy a requirement for it")
 	}
 }
 
 func TestNewRenderBackendRegistrySeedsCanonicalBackends(t *testing.T) {
 	registry := NewRenderBackendRegistry()
 	backends := registry.Backends()
-	if len(backends) != 3 {
-		t.Fatalf("backends = %v, want [chronon_vulkan cuda_native ffmpeg_fallback]", backends)
+	if len(backends) != 2 {
+		t.Fatalf("backends = %v, want [chronon_vulkan ffmpeg_fallback]", backends)
 	}
-	if backends[0] != BackendChrononVulkan || backends[1] != BackendCudaNative || backends[2] != BackendFFmpegFallback {
-		t.Fatalf("backends order = %v, want chronon_vulkan preferred (primary), then cuda_native (PATH B), then ffmpeg_fallback", backends)
+	if backends[0] != BackendChrononVulkan || backends[1] != BackendFFmpegFallback {
+		t.Fatalf("backends order = %v, want chronon_vulkan preferred (primary), then ffmpeg_fallback (the PATH B CUDA hybrid was removed)", backends)
 	}
 	// ffmpeg fallback runs on an empty host.
 	if !registry.CanRun(BackendFFmpegFallback, RendererCapabilities{}) {
@@ -46,13 +43,6 @@ func TestNewRenderBackendRegistrySeedsCanonicalBackends(t *testing.T) {
 	// chronon requires the certification gate.
 	if registry.CanRun(BackendChrononVulkan, RendererCapabilities{}) {
 		t.Fatal("chronon must not run without certification")
-	}
-	// cuda native requires the NVDEC/NVENC/GPU chain.
-	if registry.CanRun(BackendCudaNative, RendererCapabilities{}) {
-		t.Fatal("cuda native must not run on empty capabilities")
-	}
-	if !registry.CanRun(BackendCudaNative, RendererCapabilities{NVDEC: true, NVENCH264: true, GPUScale: true, GPUAlpha: true}) {
-		t.Fatal("cuda native must run with the full NVDEC/NVENC/GPU chain")
 	}
 	// Unknown backend never runs.
 	if registry.CanRun(RenderBackend("bogus"), RendererCapabilities{}) {
@@ -72,25 +62,22 @@ func TestRenderBackendResolverPrefersChrononWhenCertified(t *testing.T) {
 		t.Fatalf("backend = %q, want ffmpeg_fallback", backend)
 	}
 
-	// GPU host WITHOUT certification → PATH B CUDA hybrid (for the plans it
-	// can render device-local, like this empty plan). The certification gate
-	// refuses Chronon, but the NVDEC/NVENC chain still unlocks the hybrid.
-	gpuCaps := RendererCapabilities{
-		NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true,
-	}
-	backend, err = resolver.Resolve(context.Background(), ClipRenderPlanV1{}, gpuCaps)
+	// GPU facts are irrelevant for resolution since the PATH B CUDA hybrid
+	// was removed: a host WITHOUT Chronon certification resolves to the
+	// software fallback, never to a GPU compositing path.
+	uncertified := RendererCapabilities{ChrononVulkan: true}
+	backend, err = resolver.Resolve(context.Background(), ClipRenderPlanV1{}, uncertified)
 	if err != nil {
-		t.Fatalf("Resolve(gpu caps): %v", err)
+		t.Fatalf("Resolve(uncertified chronon): %v", err)
 	}
-	if backend != BackendCudaNative {
-		t.Fatalf("backend = %q, want cuda_native (PATH B hybrid, no certified chronon)", backend)
+	if backend != BackendFFmpegFallback {
+		t.Fatalf("backend = %q, want ffmpeg_fallback (no certified chronon)", backend)
 	}
 
 	// Certified Chronon → chronon_vulkan (PRIMARY — preferred over software
 	// for every plan, certified hosts render through Chronon exclusively).
-	gpuCaps.ChrononVulkan = true
-	gpuCaps.ChrononNativeCertified = true
-	backend, err = resolver.Resolve(context.Background(), ClipRenderPlanV1{}, gpuCaps)
+	certified := RendererCapabilities{ChrononVulkan: true, ChrononNativeCertified: true}
+	backend, err = resolver.Resolve(context.Background(), ClipRenderPlanV1{}, certified)
 	if err != nil {
 		t.Fatalf("Resolve(certified): %v", err)
 	}
@@ -186,39 +173,26 @@ func TestRenderRequirementResolver_DerivesFromPlan(t *testing.T) {
 
 func TestRenderBackendResolver_RoutesByPlanRequirements(t *testing.T) {
 	resolver := NewRenderBackendResolver(nil)
-	gpuCaps := RendererCapabilities{
-		NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true,
-	}
-
-	// On a full-GPU host WITHOUT certified Chronon, PATH B handles the
-	// device-local overlay class (watermark, plain), while plans it cannot
-	// render without readback (blur background, scale != 100) route to the
-	// software baseline — never to a readback fallback.
 	wmPlan := requirementsPlan("", &PlanWatermark{Position: PositionTopRight, Opacity: 1}, nil)
 	blurPlan := requirementsPlan(BackgroundModeBlurSource, nil, nil)
 	scaledPlan := ClipRenderPlanV1{Output: PlanOutput{ForegroundScalePercent: 50}}
-	for name, plan := range map[string]ClipRenderPlanV1{
-		"wm plan": wmPlan,
-		"plain":   {},
-	} {
-		backend, err := resolver.Resolve(context.Background(), plan, gpuCaps)
-		if err != nil {
-			t.Fatalf("Resolve(%s, no chronon): %v", name, err)
-		}
-		if backend != BackendCudaNative {
-			t.Fatalf("%s backend = %q, want cuda_native (PATH B hybrid)", name, backend)
-		}
-	}
-	for name, plan := range map[string]ClipRenderPlanV1{
+	allPlans := map[string]ClipRenderPlanV1{
+		"wm plan":     wmPlan,
 		"blur plan":   blurPlan,
+		"plain":       {},
 		"scaled plan": scaledPlan,
-	} {
-		backend, err := resolver.Resolve(context.Background(), plan, gpuCaps)
+	}
+
+	// Without certified Chronon every plan routes to the software baseline:
+	// the PATH B CUDA hybrid that used to absorb the device-local class was
+	// removed, so there is no GPU path outside Chronon.
+	for name, plan := range allPlans {
+		backend, err := resolver.Resolve(context.Background(), plan, RendererCapabilities{ChrononVulkan: true})
 		if err != nil {
 			t.Fatalf("Resolve(%s, no chronon): %v", name, err)
 		}
 		if backend != BackendFFmpegFallback {
-			t.Fatalf("%s backend = %q, want ffmpeg_fallback (PATH B cannot render it without readback)", name, backend)
+			t.Fatalf("%s backend = %q, want ffmpeg_fallback", name, backend)
 		}
 	}
 
@@ -226,15 +200,9 @@ func TestRenderBackendResolver_RoutesByPlanRequirements(t *testing.T) {
 	// PRIMARY backend: it satisfies the full requirement set (blur, scale,
 	// shadows, transitions), so a certified host renders every plan through
 	// Chronon.
-	gpuCaps.ChrononVulkan = true
-	gpuCaps.ChrononNativeCertified = true
-	for name, plan := range map[string]ClipRenderPlanV1{
-		"wm plan":     wmPlan,
-		"blur plan":   blurPlan,
-		"plain":       {},
-		"scaled plan": scaledPlan,
-	} {
-		backend, err := resolver.Resolve(context.Background(), plan, gpuCaps)
+	certified := RendererCapabilities{ChrononVulkan: true, ChrononNativeCertified: true}
+	for name, plan := range allPlans {
+		backend, err := resolver.Resolve(context.Background(), plan, certified)
 		if err != nil {
 			t.Fatalf("Resolve(%s, chronon certified): %v", name, err)
 		}
@@ -254,11 +222,8 @@ func TestRenderBackendResolver_GatesChrononOnCertificationNotBinaryPresence(t *t
 	blurPlan := requirementsPlan(BackgroundModeBlurSource, nil, nil)
 
 	// Binary configured but NOT certified → the resolver must skip Chronon
-	// and land on FFmpeg (CUDA native cannot blur).
-	uncertified := RendererCapabilities{
-		NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true,
-		ChrononVulkan: true,
-	}
+	// and land on FFmpeg.
+	uncertified := RendererCapabilities{ChrononVulkan: true}
 	backend, err := resolver.Resolve(context.Background(), blurPlan, uncertified)
 	if err != nil {
 		t.Fatalf("Resolve(blur, chronon uncertified): %v", err)
@@ -280,10 +245,7 @@ func TestRenderBackendResolver_GatesChrononOnCertificationNotBinaryPresence(t *t
 	// A certified flag WITHOUT binary presence must also fail closed (the
 	// certifier only sets the flag after a successful binary run, so this is
 	// defensive — never trust the flag alone).
-	orphanCert := RendererCapabilities{
-		NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true,
-		ChrononNativeCertified: true,
-	}
+	orphanCert := RendererCapabilities{ChrononNativeCertified: true}
 	backend, err = resolver.Resolve(context.Background(), blurPlan, orphanCert)
 	if err != nil {
 		t.Fatalf("Resolve(blur, orphan cert): %v", err)
