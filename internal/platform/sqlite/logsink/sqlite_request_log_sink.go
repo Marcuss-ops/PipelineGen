@@ -37,6 +37,8 @@ type SQLiteRequestLogSink struct {
 	writerWG   sync.WaitGroup
 	droppedLog uint64
 
+	failedFlush uint64
+
 	stopOnce  sync.Once
 	startOnce sync.Once
 }
@@ -64,6 +66,11 @@ func NewSQLiteRequestLogSink(db *sql.DB, zaplog *zap.Logger) *SQLiteRequestLogSi
 // DroppedLogs returns the number of entries dropped due to backpressure.
 func (s *SQLiteRequestLogSink) DroppedLogs() uint64 {
 	return atomic.LoadUint64(&s.droppedLog)
+}
+
+// FailedFlushes returns the number of batches whose FlushBatch failed.
+func (s *SQLiteRequestLogSink) FailedFlushes() uint64 {
+	return atomic.LoadUint64(&s.failedFlush)
 }
 
 // Log enqueues an entry without blocking. If the channel is full the
@@ -94,6 +101,7 @@ func (s *SQLiteRequestLogSink) FlushBatch(ctx context.Context, batch []appmw.Req
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		log.Printf("sqlite_request_log_sink: failed to start log transaction: %v", err)
+		atomic.AddUint64(&s.failedFlush, 1)
 		return err
 	}
 
@@ -121,6 +129,7 @@ func (s *SQLiteRequestLogSink) FlushBatch(ctx context.Context, batch []appmw.Req
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("sqlite_request_log_sink: failed to commit logs: %v", err)
+		atomic.AddUint64(&s.failedFlush, 1)
 		return err
 	}
 	return nil

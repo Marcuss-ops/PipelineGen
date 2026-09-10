@@ -118,6 +118,19 @@ type CatalogFolderLookup interface {
 	LookupFolder(ctx context.Context, destination, path string) (string, error)
 }
 
+// CatalogFolderRootLookup is the root-aware extension of CatalogFolderLookup.
+// Folder paths are reusable only within the Drive root that created them;
+// keeping the root in the lookup prevents a stale catalog entry from routing
+// a new artifact into a previous deployment's Drive tree.
+//
+// It is an optional extension so lightweight test and legacy adapters can keep
+// implementing CatalogFolderLookup while production adapters opt into the
+// stronger routing contract.
+type CatalogFolderRootLookup interface {
+	CatalogFolderLookup
+	LookupFolderForRoot(ctx context.Context, destination, path, rootFolderID string) (string, error)
+}
+
 // CatalogFolderWriter records a successfully resolved Drive path in the
 // local catalog. It is deliberately separate from CatalogFolderLookup so
 // read-only publisher tests and deployments can opt into caching without

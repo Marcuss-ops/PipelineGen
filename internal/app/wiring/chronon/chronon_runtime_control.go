@@ -1,26 +1,17 @@
 package chronon
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const (
 	defaultChrononGPUConcurrency = 4
 	defaultChrononProbeTTL       = 10 * time.Minute
-	chrononProcessTailBytes      = 64 * 1024
 )
 
 var (
@@ -40,11 +31,6 @@ type chrononProbeKey struct {
 type chrononProbeEntry struct {
 	DurationMS int64
 	ExpiresAt  time.Time
-}
-
-type chrononProcessOutput struct {
-	Tail       []byte
-	TotalBytes int64
 }
 
 // initChrononRuntimeControl owns the process-wide GPU admission policy for the
@@ -108,91 +94,4 @@ func chrononProbeLookup(path string) (int64, bool) {
 	return entry.DurationMS, true
 }
 
-// runChrononCommandStreaming drains stdout and stderr concurrently while the
-// process is running. Output is written directly to logPath; only a bounded
-// tail is kept in memory for diagnostics. JSON event lines are surfaced as
-// structured debug logs when Chronon emits them, without making event parsing
-// part of the correctness path.
-func runChrononCommandStreaming(cmd *exec.Cmd, logPath, runID string, log *zap.Logger) (chrononProcessOutput, error) {
-	if cmd == nil {
-		return chrononProcessOutput{}, fmt.Errorf("chronon: nil command")
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return chrononProcessOutput{}, fmt.Errorf("chronon stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return chrononProcessOutput{}, fmt.Errorf("chronon stderr pipe: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return chrononProcessOutput{}, fmt.Errorf("chronon log dir: %w", err)
-	}
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		return chrononProcessOutput{}, fmt.Errorf("chronon log open: %w", err)
-	}
-	defer file.Close()
 
-	if err := cmd.Start(); err != nil {
-		return chrononProcessOutput{}, err
-	}
-
-	var mu sync.Mutex
-	var tail []byte
-	var total int64
-	consume := func(stream string, r io.Reader) {
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
-		for scanner.Scan() {
-			line := append([]byte(nil), scanner.Bytes()...)
-			line = append(line, '\n')
-			mu.Lock()
-			_, _ = file.Write(line)
-			total += int64(len(line))
-			tail = append(tail, line...)
-			if len(tail) > chrononProcessTailBytes {
-				tail = append([]byte(nil), tail[len(tail)-chrononProcessTailBytes:]...)
-			}
-			mu.Unlock()
-
-			var event map[string]any
-			if json.Unmarshal(bytesTrimSpace(line), &event) == nil {
-				log.Debug("clip.render.chronon.event",
-					zap.String("run_id", runID),
-					zap.String("stream", stream),
-					zap.Any("event", event),
-				)
-			}
-		}
-	}
-
-	var readers sync.WaitGroup
-	readers.Add(2)
-	go func() { defer readers.Done(); consume("stdout", stdout) }()
-	go func() { defer readers.Done(); consume("stderr", stderr) }()
-	// StdoutPipe/StderrPipe require the consumer to drain both streams before
-	// Wait closes their descriptors. The child may exit while the goroutines
-	// are still reading; EOF releases the readers, then Wait reaps the process.
-	readers.Wait()
-	waitErr := cmd.Wait()
-
-	mu.Lock()
-	result := chrononProcessOutput{Tail: append([]byte(nil), tail...), TotalBytes: total}
-	mu.Unlock()
-	return result, waitErr
-}
-
-func bytesTrimSpace(b []byte) []byte {
-	start, end := 0, len(b)
-	for start < end && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {
-		start++
-	}
-	for end > start && (b[end-1] == ' ' || b[end-1] == '\t' || b[end-1] == '\n' || b[end-1] == '\r') {
-		end--
-	}
-	return b[start:end]
-}

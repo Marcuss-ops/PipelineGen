@@ -173,7 +173,7 @@ type Runner struct {
 	// in B's coordinator, failing closed with a run mismatch). The single
 	// fields below remain as the injection seam for tests and as the fallback
 	// when a run has no registered wiring.
-	vidRushMu   sync.Mutex
+	vidRushMu   sync.RWMutex
 	vidRushRuns map[string]vidRushWiring
 
 	// scriptDocsFolderID is the configured default script documents
@@ -431,8 +431,8 @@ func (r *Runner) unregisterVidRush(runID string) {
 // sceneCommitObserverFor resolves the observer for runID: the per-run wiring
 // wins when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) sceneCommitObserverFor(runID string) SceneCommitObserver {
-	r.vidRushMu.Lock()
-	defer r.vidRushMu.Unlock()
+	r.vidRushMu.RLock()
+	defer r.vidRushMu.RUnlock()
 	if w, ok := r.vidRushRuns[runID]; ok {
 		return w.observer
 	}
@@ -442,8 +442,8 @@ func (r *Runner) sceneCommitObserverFor(runID string) SceneCommitObserver {
 // vidRushBarrierFor resolves the barrier for runID: the per-run wiring wins
 // when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) vidRushBarrierFor(runID string) VidRushBarrier {
-	r.vidRushMu.Lock()
-	defer r.vidRushMu.Unlock()
+	r.vidRushMu.RLock()
+	defer r.vidRushMu.RUnlock()
 	if w, ok := r.vidRushRuns[runID]; ok {
 		return w.barrier
 	}
@@ -453,8 +453,8 @@ func (r *Runner) vidRushBarrierFor(runID string) VidRushBarrier {
 // vidRushTimingFor resolves the timing recorder for runID: the per-run wiring
 // wins when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) vidRushTimingFor(runID string) VidRushTimingRecorder {
-	r.vidRushMu.Lock()
-	defer r.vidRushMu.Unlock()
+	r.vidRushMu.RLock()
+	defer r.vidRushMu.RUnlock()
 	if w, ok := r.vidRushRuns[runID]; ok {
 		return w.timing
 	}

@@ -181,21 +181,28 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionC
 	if result == nil || strings.TrimSpace(rendered.LocalPath) == "" || strings.TrimSpace(rendered.SHA256) == "" {
 		return fmt.Errorf("localized render ready: local path and sha256 are required")
 	}
+	// Snapshot under lock, release before I/O.
 	r.localizedRenderMu.Lock()
-	defer r.localizedRenderMu.Unlock()
+	found := false
 	for i := range result.LocalizedRenderStaged {
 		v := &result.LocalizedRenderStaged[i]
 		if v.SceneID == rendered.SceneID && v.Language == rendered.Language && v.ClipID == rendered.ClipID {
 			*v = rendered
-			if err := r.repo.SavePartialResult(ctx, exec.JobID, result); err != nil {
-				return fmt.Errorf("localized render ready: checkpoint update: %w", err)
-			}
-			r.log.Info("localized render staged", zap.String("job_id", exec.JobID), zap.String("scene_id", rendered.SceneID), zap.String("language", string(rendered.Language)), zap.String("clip_id", rendered.ClipID), zap.String("sha256", rendered.SHA256))
-			return nil
+			found = true
+			break
 		}
 	}
-	result.LocalizedRenderStaged = append(result.LocalizedRenderStaged, rendered)
-	if err := r.repo.SavePartialResult(ctx, exec.JobID, result); err != nil {
+	if !found {
+		result.LocalizedRenderStaged = append(result.LocalizedRenderStaged, rendered)
+	}
+	// Copy for checkpoint outside lock.
+	snapshot := *result
+	r.localizedRenderMu.Unlock()
+
+	if err := r.repo.SavePartialResult(ctx, exec.JobID, &snapshot); err != nil {
+		if found {
+			return fmt.Errorf("localized render ready: checkpoint update: %w", err)
+		}
 		return fmt.Errorf("localized render ready: checkpoint save: %w", err)
 	}
 	r.log.Info("localized render staged", zap.String("job_id", exec.JobID), zap.String("scene_id", rendered.SceneID), zap.String("language", string(rendered.Language)), zap.String("clip_id", rendered.ClipID), zap.String("sha256", rendered.SHA256))
@@ -219,15 +226,20 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	if strings.TrimSpace(rendered.AssetID) == "" {
 		rendered.AssetID = "drive:" + strings.TrimSpace(rendered.DriveFileID)
 	}
+	// Snapshot in-memory mutation under lock, release before durable I/O.
+	var snapshot *GenerateResult
 	if result != nil {
 		r.localizedRenderMu.Lock()
 		removeStagedLocalizedRenderLocked(result, rendered)
 		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
 		accumulateLocalizedRenderMetrics(result, rendered)
+		snap := *result
+		snapshot = &snap
+		r.localizedRenderMu.Unlock()
 	}
 	// Durable lineage: the produced video is an OperationRender artifact
 	// joinable on (scene_id, language, asset_id) like every other produced
-	// artifact of the run.
+	// artifact of the run. No lock held — recorder serialises internally.
 	if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
 		OperationID: artifactOperationID(exec.Attempt, OperationRender, rendered.SceneID, string(rendered.Language)),
 		Kind:        OperationRender,
@@ -236,17 +248,13 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 		AssetID:     rendered.AssetID,
 		Status:      "COMPLETED",
 	}); err != nil {
-		if result != nil {
-			r.localizedRenderMu.Unlock()
-		}
 		return err
 	}
 	// Persist immediately after each certified unit, not only when the whole
 	// fan-out joins. This makes a successful render/upload visible to resume
-	// after a process crash in a later sibling.
-	if result != nil {
-		r.checkpoint(ctx, exec.JobID, result)
-		r.localizedRenderMu.Unlock()
+	// after a process crash in a later sibling. Uses snapshot so no lock held.
+	if snapshot != nil {
+		r.repo.SavePartialResult(ctx, exec.JobID, snapshot)
 	}
 	return nil
 }
@@ -287,18 +295,15 @@ func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered Localized
 
 // applyLocalizedRenderLinkLocked replaces the source Drive link in the
 // document-facing clip reference with the certified rendered artifact link.
-// The source link is still retained by the asset registry; a generated script
-// must point at the output produced by this run.
 func applyLocalizedRenderLinkLocked(result *GenerateResult, rendered LocalizedRenderResult) {
 	if result == nil || strings.TrimSpace(rendered.DriveLink) == "" {
 		return
 	}
 	for _, scene := range result.Scenes {
-		// A scene can contain several intro clips, while the renderer reports
-		// one certified artifact per clip on its own scene.  Match by canonical
-		// clip ID across the whole script so every occurrence in the document
-		// points at the regenerated MP4, including repeated intro bindings.
-		for _, clip := range append(append([]*ClipReference{}, scene.Clips...), scene.Clip) {
+		if scene.Clip != nil && scene.Clip.ID == rendered.ClipID {
+			scene.Clip.DriveLink = rendered.DriveLink
+		}
+		for _, clip := range scene.Clips {
 			if clip != nil && clip.ID == rendered.ClipID {
 				clip.DriveLink = rendered.DriveLink
 			}

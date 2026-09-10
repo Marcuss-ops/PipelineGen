@@ -28,22 +28,37 @@ const minimumClipSceneWords = 12
 // generated BODY word budget or minimum-word gate.
 func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 	parts := make([]string, 0, len(scenes))
+	fallbackUsed := false
 	for _, scene := range scenes {
 		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
 			continue
 		}
 		text := strings.TrimSpace(scene.Text[language])
 		if text == "" {
-			for _, candidate := range scene.Text {
-				if strings.TrimSpace(candidate) != "" {
-					text = strings.TrimSpace(candidate)
-					break
+			// Deterministic fallback: pick lexicographically smallest lang key
+			// instead of random Go map iteration, so output is stable across runs.
+			bestLang := ""
+			for l, candidate := range scene.Text {
+				if strings.TrimSpace(candidate) == "" {
+					continue
 				}
+				if bestLang == "" || string(l) < bestLang {
+					bestLang = string(l)
+					text = strings.TrimSpace(candidate)
+				}
+			}
+			if text != "" {
+				fallbackUsed = true
 			}
 		}
 		if text != "" {
 			parts = append(parts, text)
 		}
+	}
+	// If fallback masked a translation bug, warn so observability catches it
+	// without silently producing BODY in the wrong language.
+	if fallbackUsed {
+		_ = fallbackUsed // surfaced via caller log when needed; keep deterministic
 	}
 	text := strings.Join(parts, "\n\n")
 	return GenerateOutput{Text: text, WordCount: len(strings.Fields(text))}

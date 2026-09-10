@@ -107,7 +107,7 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	if len(segments) > 0 {
 		pathKey := strings.Join(segments, "/")
 		if strings.TrimSpace(req.DestinationFolderID) == "" && strings.TrimSpace(req.ParentFolderID) == "" {
-			if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
+			if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey, rootFolderID); cachedID != "" {
 				folderID = cachedID
 			} else {
 				folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
@@ -149,11 +149,21 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 // Catalog lookups are best-effort: an infrastructure error (DB down)
 // is logged at Warn and returns "" so the Publisher falls back to
 // the Drive API path rather than failing the Publish call.
-func (p *Publisher) lookupCatalogFolder(ctx context.Context, dest delivery.DestinationKey, path string) string {
+func (p *Publisher) lookupCatalogFolder(ctx context.Context, dest delivery.DestinationKey, path string, roots ...string) string {
 	if p.catalogLookup == nil {
 		return ""
 	}
-	folderID, err := p.catalogLookup.LookupFolder(ctx, string(dest), path)
+	var folderID string
+	var err error
+	rootFolderID := ""
+	if len(roots) > 0 {
+		rootFolderID = strings.TrimSpace(roots[0])
+	}
+	if rootAware, ok := p.catalogLookup.(CatalogFolderRootLookup); ok && rootFolderID != "" {
+		folderID, err = rootAware.LookupFolderForRoot(ctx, string(dest), path, rootFolderID)
+	} else {
+		folderID, err = p.catalogLookup.LookupFolder(ctx, string(dest), path)
+	}
 	if err != nil {
 		p.log.Warn("delivery: catalog lookup failed, falling back to Drive",
 			zap.String("destination", string(dest)),
@@ -166,6 +176,7 @@ func (p *Publisher) lookupCatalogFolder(ctx context.Context, dest delivery.Desti
 		p.log.Debug("delivery: using cached folder from catalog",
 			zap.String("destination", string(dest)),
 			zap.String("path", path),
+			zap.String("root_folder_id", rootFolderID),
 			zap.String("folder_id", folderID),
 		)
 	}

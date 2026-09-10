@@ -30,16 +30,15 @@
 // `internal/platform/sqlite/{jobs,outboxevents,operations}`
 // and the composition root in `internal/app` wires them up.
 //
-// Thread safety: a single `submitMu sync.Mutex` serialises all
-// Submit calls on the same process. SQLite single-writer
-// semantics (`database/sql`'s BeginTx uses DEFERRED isolation
-// by default — a 2nd BeginTx in the same process on the same
-// DB will block until the 1st commits or rolls back) require
-// the application-level mutex to avoid spurious
-// `SQLITE_BUSY` errors. The mutex is intentionally independent
-// of the existing `jobs.Service.enqueueMu` (the canonical
-// jobs.Service is unchanged; the submission service is a
-// new typed entry point).
+// Thread safety: per-(scope,key) KeyedLocker serialises only
+// contending callers on the same (scope,idempotency_key) bucket.
+// Different keys run fully concurrent. SQLite single-writer
+// semantics are hardened with BEGIN IMMEDIATE (LevelSerializable)
+// at BeginTx so concurrent writers serialize on the DB write lock
+// without spurious SQLITE_BUSY under DEFERRED. A 3-attempt
+// retry with 10ms*attempt backoff covers residual BUSY.
+// Reference-counted locker entries are GC'd when refs==0 so the
+// registry does not leak over process lifetime.
 package operations
 
 import (
@@ -367,7 +366,12 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 		return nil, err
 	}
 	release, lockWait := s.acquireSubmitLock(req)
-	defer release()
+	released := false
+	defer func() {
+		if !released {
+			release()
+		}
+	}()
 
 	prior, err := s.lookupPriorOperation(ctx, req.Scope, req.IdempotencyKey)
 	if err != nil {
@@ -381,11 +385,9 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 	if hitPrior != nil {
 		// Idempotency hit — no DB write. Unlock BEFORE the advisory
 		// canonical-Job read so a slow replay lookup never serialises
-		// unrelated submissions. We must release the per-key lock and
-		// re-acquire semantics: unlock now, read, no re-lock needed.
+		// unrelated submissions.
 		release()
-		// Prevent double-unlock from defer.
-		release = func() {}
+		released = true
 		s.log.Info("operations.Submit: idempotency hit",
 			zap.String("operation_id", hitPrior.OperationID),
 			zap.String("scope", string(req.Scope)),
