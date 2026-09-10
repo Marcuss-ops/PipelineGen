@@ -33,6 +33,16 @@ func (t *testCatalogLookup) LookupFolder(_ context.Context, _, _ string) (string
 	return t.folderID, t.err
 }
 
+type rootAwareCatalogLookup struct {
+	testCatalogLookup
+	gotRoot string
+}
+
+func (t *rootAwareCatalogLookup) LookupFolderForRoot(_ context.Context, _, _, root string) (string, error) {
+	t.gotRoot = root
+	return t.folderID, t.err
+}
+
 // TestLookupCatalogFolder_NilCatalog returns "" when no catalog is wired.
 func TestLookupCatalogFolder_NilCatalog(t *testing.T) {
 	pub := &Publisher{log: zap.NewNop()}
@@ -49,6 +59,19 @@ func TestLookupCatalogFolder_CacheHit(t *testing.T) {
 	got := pub.lookupCatalogFolder(context.Background(), delivery.DestinationStock, "Boxe/pexels/Mike-Tyson")
 	if got != "cached-folder-abc" {
 		t.Errorf("expected 'cached-folder-abc', got %q", got)
+	}
+}
+
+func TestLookupCatalogFolder_UsesCurrentRoot(t *testing.T) {
+	catalog := &rootAwareCatalogLookup{testCatalogLookup: testCatalogLookup{folderID: "current-root-folder"}}
+	pub := &Publisher{log: zap.NewNop(), catalogLookup: catalog}
+
+	got := pub.lookupCatalogFolder(context.Background(), delivery.DestinationScript, "Donald Trump/it/overlay", "current-root")
+	if got != "current-root-folder" {
+		t.Fatalf("expected current-root folder, got %q", got)
+	}
+	if catalog.gotRoot != "current-root" {
+		t.Fatalf("root-aware lookup received %q, want current-root", catalog.gotRoot)
 	}
 }
 

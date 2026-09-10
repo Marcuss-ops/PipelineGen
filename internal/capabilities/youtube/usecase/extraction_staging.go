@@ -105,7 +105,16 @@ func (s *ExtractionService) stageFullSourceOnce(ctx context.Context, req *youtub
 
 func isDownloadOnceEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_DOWNLOAD_ONCE"))
-	return strings.EqualFold(v, "true") || v == "1"
+	if v == "" {
+		return true
+	}
+	if strings.EqualFold(v, "false") || v == "0" || strings.EqualFold(v, "off") || strings.EqualFold(v, "no") {
+		return false
+	}
+	if strings.EqualFold(v, "true") || v == "1" || strings.EqualFold(v, "on") || strings.EqualFold(v, "yes") {
+		return true
+	}
+	return true
 }
 
 func (s *ExtractionService) recordStagedToken(token string, stager acquisition.SourceStager) {

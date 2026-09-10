@@ -168,6 +168,36 @@ func (r *Repository) FindByDestinationAndPath(ctx context.Context, destination, 
 	return entry, nil
 }
 
+// FindByDestinationAndPathAndRoot returns a catalog entry only when its
+// destination/path pair belongs to the requested Drive root. The catalog's
+// parent_folder_id is the root captured by Upsert; including it in the query
+// makes cached folder IDs safe across root changes and migrations.
+func (r *Repository) FindByDestinationAndPathAndRoot(ctx context.Context, destination, path, rootFolderID string) (*CatalogEntry, error) {
+	if strings.TrimSpace(destination) == "" {
+		return nil, fmt.Errorf("%w: destination is required", ErrInvalidEntry)
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("%w: path is required", ErrInvalidEntry)
+	}
+	if strings.TrimSpace(rootFolderID) == "" {
+		return nil, fmt.Errorf("%w: root folder is required", ErrInvalidEntry)
+	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, destination, namespace, path, folder_id, parent_folder_id,
+		       source, status, created_at, updated_at
+		FROM drive_folder_catalog
+		WHERE destination = ? AND path = ? AND parent_folder_id = ?
+	`, destination, path, rootFolderID)
+	entry, err := scanEntry(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("delivery.catalog.FindByDestinationAndPathAndRoot(%q, %q, %q): %w", destination, path, rootFolderID, ErrNotFound)
+		}
+		return nil, fmt.Errorf("delivery.catalog.FindByDestinationAndPathAndRoot(%q, %q, %q): %w", destination, path, rootFolderID, err)
+	}
+	return entry, nil
+}
+
 // FindAll returns all catalog entries ordered by destination, path ASC.
 func (r *Repository) FindAll(ctx context.Context) ([]CatalogEntry, error) {
 	rows, err := r.db.QueryContext(ctx, `

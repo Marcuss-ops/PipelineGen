@@ -4,6 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
@@ -24,6 +29,7 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/portutil"
@@ -34,7 +40,6 @@ import (
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"go.uber.org/zap"
-	"time"
 )
 
 // buildDomainMediaServices constructs the YouTube clip pipeline service
@@ -167,12 +172,33 @@ func buildDomainMediaServices(
 	}
 	_ = canonicalMutator
 	folderPathWriter = &folderPathWriterAdapter{committer: clipWriterFolderPathSource(committer), log: log}
-	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
+	ollamaBuilderInner := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
 		0,
 		log,
 	)
+	var ollamaBuilder ytmetadata.ClipMetadataBuilder = ollamaBuilderInner
+	if dbs.Cache != nil && dbs.Cache.DB != nil {
+		if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, log); cacheErr == nil {
+			model := buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel
+			if model == "" && ai.OllamaClient != nil {
+				model = ai.OllamaClient.Model()
+			}
+			if model == "" {
+				model = "ollama/unknown"
+			}
+			version := "ollama/" + model
+			if decorated, dErr := ytplatform.NewCachedOllamaBuilder(ollamaBuilderInner, cache, version, log); dErr == nil {
+				ollamaBuilder = decorated
+				log.Info("ollama artifact cache wired for youtube metadata", zap.String("processor_version", version))
+			} else {
+				log.Warn("ollama artifact cache decorator unavailable", zap.Error(dErr))
+			}
+		} else {
+			log.Warn("ollama artifact cache unavailable; using uncached builder", zap.Error(cacheErr))
+		}
+	}
 	clipMetadataService, err := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
 		Builder:  ollamaBuilder,
 		Writer:   clipMetadataWriter,
@@ -258,10 +284,58 @@ func buildDomainMediaServices(
 		SegmentPolicy: segmentPolicy,
 		Log:           log,
 	}
+	// P0.1 download-once: wire acquisition SourceStager; the stager is always wired but
+	// fanout only stages the full source when VELOX_YOUTUBE_DOWNLOAD_ONCE=true|1 or when
+	// the batch has >=2 segments and a valid URL (otherwise stageFullSourceOnce no-ops) and each segment cuts locally via
+	// PreDownloadedPath (ffmpeg -c copy). Fail-soft: if wiring fails the fanout
+	// falls back to per-segment yt-dlp (backwards compatible).
+	var youtubeSourceStager acquisition.SourceStager
+	{
+		ytdlpDL := downloader.NewYTDLP(cfg)
+		fetch := func(ctx context.Context, req acquisition.PrepareRequest, dstPath string, _ func(string)) error {
+			dlReq := &downloader.DownloadRequest{
+				URL:        req.Source.URL,
+				OutputPath: dstPath + ".%(ext)s",
+				Timeout:    req.Timeout,
+				UseCookies: true,
+			}
+			if req.Source.MergeFormat != "" {
+				dlReq.MergeFormat = req.Source.MergeFormat
+			} else {
+				dlReq.MergeFormat = "mp4"
+			}
+			if req.Source.DownloadSection != "" {
+				dlReq.DownloadSections = []string{req.Source.DownloadSection}
+				dlReq.ForceKeyframes = req.Source.ForceKeyframes
+			}
+			if err := ytdlpDL.Download(ctx, dlReq); err != nil {
+				return err
+			}
+			tmpl := dstPath + ".%(ext)s"
+			resolved, rErr := downloader.ResolveDownloadedSegmentPath(tmpl)
+			if rErr != nil {
+				return rErr
+			}
+			if resolved != dstPath {
+				if err := os.Rename(resolved, dstPath); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if s, sErr := WireAcquisitionStager(cfg, log, fetch); sErr != nil {
+			log.Warn("youtube download-once stager unavailable; fanout will use per-segment yt-dlp", zap.Error(sErr))
+		} else {
+			youtubeSourceStager = s
+			log.Info("youtube download-once SourceStager wired", zap.String("staging_root", filepath.Join(cfg.Storage.TempPath(), "stock_pipeline_staging")))
+		}
+	}
+
 	processSegMedia := youtube.ProcessSegmentMediaDeps{
 		DriveFolderMgr:    youtubePubAdapter,
 		TextTrackResolver: textTrackResolver,
 		FFProbe:           ytplatform.NewFFProbeAdapter(clipProcessor),
+		Stager:            youtubeSourceStager,
 	}
 	processSegMetadata := youtube.ProcessSegmentMetadataDeps{
 		// Phase 2.b atomic super-tx (clipWriter satisfies both ports —

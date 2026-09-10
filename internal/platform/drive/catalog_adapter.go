@@ -69,3 +69,26 @@ func (a *catalogFolderLookupAdapter) LookupFolder(ctx context.Context, destinati
 	}
 	return entry.FolderID, nil
 }
+
+// LookupFolderForRoot is the production-safe catalog lookup. A folder path
+// such as "Donald Trump/it/overlay" is not globally unique: the same path
+// may exist below multiple configured Drive roots. Only a row whose recorded
+// parent/root matches the current destination root is reusable.
+func (a *catalogFolderLookupAdapter) LookupFolderForRoot(ctx context.Context, destination, path, rootFolderID string) (string, error) {
+	if a == nil || a.repo == nil {
+		return "", nil
+	}
+	entry, err := a.repo.FindByDestinationAndPathAndRoot(ctx, destination, path, rootFolderID)
+	if err != nil {
+		if errors.Is(err, sqlitedelivery.ErrNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	if entry.Status != sqlitedelivery.StatusActive || entry.FolderID == "" {
+		return "", nil
+	}
+	return entry.FolderID, nil
+}
+
+var _ CatalogFolderRootLookup = (*catalogFolderLookupAdapter)(nil)

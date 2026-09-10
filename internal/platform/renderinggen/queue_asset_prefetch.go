@@ -78,21 +78,9 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 					_ = resp.Body.Close()
 					return fmt.Errorf("asset %s download: HTTP %d", hash, resp.StatusCode)
 				}
-				file, err := os.CreateTemp("", "pipelinegen-render-asset-*")
-				if err != nil {
-					_ = resp.Body.Close()
-					return err
-				}
-				path := file.Name()
-				_, copyErr := io.Copy(file, resp.Body)
+				// Single-pass: stream remote → object store without temp file.
+				err = streamPutReader(ctx, storeURL, hash, resp.Body, resp.ContentLength)
 				_ = resp.Body.Close()
-				_ = file.Close()
-				if copyErr != nil {
-					_ = os.Remove(path)
-					return fmt.Errorf("asset %s write: %w", hash, copyErr)
-				}
-				err = streamPutFile(ctx, storeURL, hash, path)
-				_ = os.Remove(path)
 				if err != nil {
 					return fmt.Errorf("asset %s stage: %w", hash, err)
 				}
@@ -139,11 +127,19 @@ func streamPutFile(ctx context.Context, store, key, path string) error {
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/"+key, file)
+	return streamPutReader(ctx, store, key, file, info.Size())
+}
+
+// streamPutReader uploads a streaming reader to the object store.
+// When size >= 0 it is sent as ContentLength; otherwise chunked.
+func streamPutReader(ctx context.Context, store, key string, r io.Reader, size int64) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/"+key, r)
 	if err != nil {
 		return err
 	}
-	req.ContentLength = info.Size()
+	if size >= 0 {
+		req.ContentLength = size
+	}
 	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
 		return err
