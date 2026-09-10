@@ -3,7 +3,6 @@
     "paths": [
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
-      "scripts/bridges/local_nlp_gpu.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
       "scripts/lib/dotenv.sh",
@@ -74,7 +73,6 @@
       "internal/capabilities/assets/providers/stock/",
       "internal/capabilities/assets/providers/artlist/",
       "internal/platform/artlist/",
-      "scripts/youtube_boxer_stock_e2e.py",
       "tests/fixtures/stock/",
       "ops/jobs/"
     ],

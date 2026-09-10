@@ -381,6 +381,9 @@ architecture/*.bak
 /golden06
 /overlaytimings
 
+# Benchmark run outputs (generated per-run clip request/submit/latest JSON, not source)
+ops/benchmarks/cliprender/
+
 # Artifacts verify: generated output vs golden fixtures
 # Golden fixtures live in testdata/golden (versioned); per-run output in artifacts/verify is gitignored
 artifacts/verify/
