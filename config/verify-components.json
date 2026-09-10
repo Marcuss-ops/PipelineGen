@@ -52,6 +52,7 @@
       "internal/capabilities/clips/",
       "internal/capabilities/assets/clips/",
       "config.clip-render.profile.yaml",
+      "config/alerting_rules.yml",
       "assets/fonts/"
     ],
     "go_packages": [
