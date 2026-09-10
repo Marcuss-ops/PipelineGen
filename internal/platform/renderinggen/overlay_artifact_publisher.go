@@ -2,8 +2,6 @@ package renderinggen
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +11,7 @@ import (
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
@@ -116,15 +115,20 @@ func downloadCertifiedArtifact(ctx context.Context, client *http.Client, rawURL 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	h := sha256.New()
-	written, err := io.Copy(io.MultiWriter(file, h), resp.Body)
+	written, err := io.Copy(file, resp.Body)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	actual, err := digest.SHA256Reader(file)
 	if err != nil {
 		return err
 	}
 	if written != expectedSize {
 		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
-	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expectedSHA) {
 		return fmt.Errorf("downloaded SHA-256 %s, want %s", actual, expectedSHA)
 	}

@@ -17,13 +17,10 @@ package wiring
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"io"
 	"mime"
 	"os"
 	"path/filepath"
@@ -31,6 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -126,11 +124,7 @@ func sha256File(path string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return digest.SHA256Reader(f)
 }
 
 // ResolveAudioAsset implements scripts.AudioAssetSource. Only

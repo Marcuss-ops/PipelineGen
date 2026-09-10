@@ -3,8 +3,6 @@ package youtube
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +10,7 @@ import (
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -100,16 +99,7 @@ func (c *CachedOllamaBuilder) readCached(ctx context.Context, entry *capcache.En
 }
 
 func ollamaCacheKey(in youtubetypes.ClipMetadataInput, version string) (capcache.Key, bool) {
-	h := sha256.New()
-	if _, err := io.WriteString(h, in.Transcript); err != nil {
-		return capcache.Key{}, false
-	}
-	if _, err := io.WriteString(h, "|title:"); err != nil {
-		return capcache.Key{}, false
-	}
-	if _, err := io.WriteString(h, in.Title); err != nil {
-		return capcache.Key{}, false
-	}
+	sourceSHA := digest.SHA256String(in.Transcript + "|title:" + in.Title)
 	params := struct {
 		Topics          []string `json:"topics"`
 		Speakers        []string `json:"speakers"`
@@ -124,7 +114,7 @@ func ollamaCacheKey(in youtubetypes.ClipMetadataInput, version string) (capcache
 		return capcache.Key{}, false
 	}
 	return capcache.Key{
-		SourceSHA256:     hex.EncodeToString(h.Sum(nil)),
+		SourceSHA256:     sourceSHA,
 		Operation:        "ollama_analyze_clip",
 		ParametersJSON:   string(paramsJSON),
 		ProcessorVersion: version,

@@ -7,8 +7,6 @@ package renderinggen
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +19,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
 )
 
@@ -345,12 +344,18 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("artifact download HTTP %d", resp.StatusCode)
 	}
-	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
-	h := sha256.New()
-	written, copyErr := io.Copy(file, io.TeeReader(resp.Body, h))
+	written, copyErr := io.Copy(file, resp.Body)
+	if copyErr == nil {
+		_, copyErr = file.Seek(0, io.SeekStart)
+	}
+	var gotSHA string
+	if copyErr == nil {
+		gotSHA, copyErr = digest.SHA256Reader(file)
+	}
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
@@ -361,7 +366,6 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if expectedSize > 0 && written != expectedSize {
 		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
-	gotSHA := hex.EncodeToString(h.Sum(nil))
 	if expectedSHA != "" && !strings.EqualFold(gotSHA, expectedSHA) {
 		return fmt.Errorf("artifact hash %s, want %s", gotSHA, expectedSHA)
 	}
