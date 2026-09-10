@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "person-overlay-drive-20260910T153111Z-28777",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "person-overlay-drive-20260910T153111Z-28777",
+      "project": "person-overlay-drive-e2e",
+      "title": "Ada Lovelace person overlay E2E",
+      "language": "en",
+      "tone": "clear, concise documentary narration",
+      "style": "Use only the supplied facts. Keep Ada Lovelace as the protagonist and do not introduce additional named people, places, organizations, dates, or events.",
+      "source": {
+        "type": "text",
+        "topic": "Ada Lovelace and analytical computing",
+        "source_text": "Ada Lovelace pioneered analytical computing and remains the central person in this short documentary. Her work connected mathematical reasoning with an early analytical engine and helped define an important historical phrase: the first computer program. Keep the narration factual, concise, and focused on Ada Lovelace."
+      },
+      "script_params": {
+        "target_words": 90,
+        "min_words": 50,
+        "segment_words": 90,
+        "images_per_scene": 1,
+        "skip_quality_gate": true,
+        "use_memory": false
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": false,
+        "generate_scene_images": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0.04,
+          0.06,
+          0.12,
+          1
+        ],
+        "fit": "cover",
+        "opacity": 1,
+        "loop": false
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "enabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "special_names",
+            "important_phrases"
+          ],
+          "max_entities_per_segment": 3,
+          "max_important_phrases_per_segment": 3,
+          "max_image_queries_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "planner": {
+          "candidate_limit": 3
+        },
+        "include_trace": true
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "en"
+        ]
+      }
+    }
+  ]
+}
