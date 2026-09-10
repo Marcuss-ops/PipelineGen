@@ -38,6 +38,11 @@ func (s *ExtractionService) extractFanOut(
 	segments []youtubetypes.Segment,
 	videoID, outDir, driveFolderID, driveFolderPath string,
 ) (*youtubetypes.ExtractResponse, error) {
+	// Speed audit P0.1 (Sept 2026): "download once, cut N with ffmpeg -c copy".
+	// When the operator enables VELOX_YOUTUBE_DOWNLOAD_ONCE (and the stager is wired),
+	// stage the FULL source once here; each segment then cuts locally via PreDownloadedPath.
+	preDownloadedPath := s.stageFullSourceOnce(ctx, req, videoID)
+
 	resp := buildInitialResponse(req, segments, videoID, driveFolderID, driveFolderPath)
 	keepAudio := resolveKeepAudio(req)
 	sem := make(chan struct{}, s.maxConcurrentVideos)
@@ -62,6 +67,7 @@ func (s *ExtractionService) extractFanOut(
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, keepAudio)
+			cmd.PreDownloadedPath = preDownloadedPath
 			res, execErr := s.processSeg.Execute(ctx, cmd)
 			if execErr != nil {
 				res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)

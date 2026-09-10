@@ -31,6 +31,7 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -101,6 +102,7 @@ func registerScriptPostProcessors(
 	log *zap.Logger,
 	scriptsRepoAdapter ports.ScriptRepository,
 	metaModel string,
+	searchFanOut assetsearch.SearchFanOut,
 	vidRushProviders *adapters.VidRushAssetProviderRegistry,
 	vidRushFinalizer ports.VidRushArtifactFinalizer,
 	vidRushCache ports.VidRushCachePort,
@@ -254,7 +256,7 @@ func registerScriptPostProcessors(
 
 	// AI-backed processors (entities, metadata, translation,
 	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.
-	if err := registerAIBackedProcessors(ppReg, root, artlistWiring, vidRushProviders, vidRushCache, cfg, log); err != nil {
+	if err := registerAIBackedProcessors(ppReg, root, artlistWiring, searchFanOut, vidRushProviders, vidRushCache, cfg, log); err != nil {
 		return err
 	}
 	// VidRush search processors only discover remote candidates. The shared

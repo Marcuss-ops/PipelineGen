@@ -9,6 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // ── DoctorConfig snapshot factory ────────────────────────────────────────────
@@ -36,69 +37,35 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 	}
 }
 
-// ── Middleware rate-limit adapter ────────────────────────────────────────────
-
-// middlewareRateLimitAdapter wraps *config.Config to satisfy
-// middleware.RateLimitPort. Same one-method-per-call-site discipline.
-type middlewareRateLimitAdapter struct {
-	cfg *config.Config
-}
-
-// Compile-time assertion.
-var _ middleware.RateLimitPort = (*middlewareRateLimitAdapter)(nil)
+// ── Middleware rate-limit adapter (delegating to canonical) ──────────────────
+//
+// CLEANUP (September 2026): the *middlewareRateLimitAdapter inline struct was
+// removed. The canonical concrete is internal/platform/httpserver/middleware.
+// RateLimitAdapter (snapshot-immutable, nil-receiver-safe). The local helpers
+// below snapshot cfg.Security.* into that canonical literal so the wiring layer
+// keeps no duplicate struct — one canonical owner per fact (godlike/06 SSOT).
 
 func newMiddlewareRateLimitAdapter(cfg *config.Config) middleware.RateLimitPort {
 	if cfg == nil {
 		return nil
 	}
-	return &middlewareRateLimitAdapter{cfg: cfg}
-}
-
-func (a *middlewareRateLimitAdapter) RateLimitEnabled() bool {
-	if a.cfg == nil {
-		return false
+	return &mw.RateLimitAdapter{
+		Enabled:  cfg.Security.RateLimitEnabled,
+		Requests: cfg.Security.RateLimitRequests,
 	}
-	return a.cfg.Security.RateLimitEnabled
 }
 
-func (a *middlewareRateLimitAdapter) RateLimitRequests() int {
-	if a.cfg == nil {
-		return 0
-	}
-	return a.cfg.Security.RateLimitRequests
-}
-
-// ── Middleware feature-flags adapter ─────────────────────────────────────────
-
-// middlewareFeatureFlagsAdapter wraps *config.Config to satisfy
-// middleware.FeatureFlagsPort. The per-feature bools read on
-// `cfg.Features.<X>Enabled` get one delegation method each so the
-// future ScriptImagesEnabled flag lands cleanly without changing
-// the port surface.
-type middlewareFeatureFlagsAdapter struct {
-	cfg *config.Config
-}
-
-// Compile-time assertion.
-var _ middleware.FeatureFlagsPort = (*middlewareFeatureFlagsAdapter)(nil)
+// ── Middleware feature-flags adapter (delegating to canonical) ───────────────
+//
+// CLEANUP (September 2026): same delegation pattern for the feature-flags
+// surface. The canonical is middleware.FeatureFlagsAdapter.
 
 func newMiddlewareFeatureFlagsAdapter(cfg *config.Config) middleware.FeatureFlagsPort {
 	if cfg == nil {
 		return nil
 	}
-	return &middlewareFeatureFlagsAdapter{cfg: cfg}
-}
-
-func (a *middlewareFeatureFlagsAdapter) ArtlistEnabled() bool {
-	if a.cfg == nil {
-		return false
+	return &mw.FeatureFlagsAdapter{
+		Artlist:     cfg.Features.ArtlistEnabled,
+		ScriptClips: cfg.Features.ScriptClipsEnabled,
 	}
-	return a.cfg.Features.ArtlistEnabled
-}
-
-func (a *middlewareFeatureFlagsAdapter) ScriptClipsEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Features.ScriptClipsEnabled
 }

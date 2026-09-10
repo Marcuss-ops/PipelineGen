@@ -131,7 +131,7 @@ func (a *ArtifactPublisherAdapter) Publish(
 	}
 
 	// Step 2: Map kind → destination.
-	destKey, err := mapKindToDestination(artifact.Kind)
+	destKey, err := mapArtifactToDestination(artifact)
 	if err != nil {
 		return finalization.AssetLocation{}, err
 	}
@@ -405,6 +405,19 @@ func mapKindToDestination(kind finalization.ArtifactKind) (delivery.DestinationK
 		return delivery.DestinationStock, nil
 	default:
 		return "", fmt.Errorf("%w: %q", ErrArtifactKindUnmapped, kind)
+	}
+}
+
+// mapArtifactToDestination keeps Chronon overlays under the script-owned
+// Drive tree. They are video bytes, but their logical owner is the generated
+// script and language, so routing them through DestinationScript is what
+// makes the canonical path <script>/<language>/overlay.
+func mapArtifactToDestination(artifact finalization.VerifiedArtifact) (delivery.DestinationKey, error) {
+	switch strings.ToLower(strings.TrimSpace(artifact.Source)) {
+	case "chronon", "overlay":
+		return delivery.DestinationScript, nil
+	default:
+		return mapKindToDestination(artifact.Kind)
 	}
 }
 

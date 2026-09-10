@@ -232,10 +232,14 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		return nil, fmt.Errorf("video processing failed: %w", normalizeErr)
 	}
 
-	// 5. Apply watermark overlay if watermark.png exists in the config directory
-	//    The watermark is a green screen PNG that gets chroma-keyed out with 25% opacity.
+	// 5. Apply watermark overlay if watermark.png exists AND watermark is explicitly enabled.
+	//    Speed audit (Sept 2026): watermark is a 2nd full re-encode (chroma-key+overlay)
+	//    on every clip; canonical watermark composition lives in RenderingGen/Chronon (Vulkan
+	//    layer) not in the YouTube clip cut path. Disabled by default; enable via
+	//    VELOX_YOUTUBE_WATERMARK_ENABLED=true when the legacy per-clip burn is required.
 	watermarkPath := "config/watermark.png"
-	if _, wmErr := os.Stat(watermarkPath); wmErr == nil {
+	watermarkEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_WATERMARK_ENABLED")), "true") || strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_WATERMARK_ENABLED")) == "1"
+	if watermarkEnabled && func() bool { _, err := os.Stat(watermarkPath); return err == nil }() {
 		p.log.Info("applying watermark overlay",
 			zap.String("watermark", watermarkPath),
 			zap.String("clip", outputPath))
@@ -260,6 +264,11 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 			p.log.Info("watermark overlay applied successfully",
 				zap.String("path", outputPath))
 		}
+	} else if !watermarkEnabled {
+		p.log.Debug("youtube watermark skipped (VELOX_YOUTUBE_WATERMARK_ENABLED != true; use RenderingGen/Chronon watermark layer for composition)")
+	} else {
+		p.log.Debug("youtube watermark file missing; skipping watermark",
+			zap.String("watermark", watermarkPath))
 	}
 
 	// Cleanup

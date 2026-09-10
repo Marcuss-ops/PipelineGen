@@ -179,11 +179,13 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// ── Step 4 + Step 5: media_assets projection + asset.index.requested outbox ──
 	// PR-ASSET-COMMITTER-COMMITASSET (July 2026): when Committer is
 	// wired, BOTH writes (media_assets row + asset.index.requested
-	// outbox event) are produced by a SINGLE Committer.CommitTx call
-	// inside the caller's tx — atomic, single producer, no out-of-band
-	// path. The legacy ports (LifecycleService, Outbox) remain as
-	// pre-Cutover fallbacks for callers that have not yet wired the
-	// committer.
+	// outbox event) are produced by the canonical committer. For a same-store
+	// composition CommitTx keeps them inside the caller's transaction. For the
+	// production split-store composition (SQLite voiceovers + PostgreSQL
+	// media_assets), CommitAndIndex opens the PostgreSQL transaction itself;
+	// a distributed transaction across the two databases is not available, so
+	// each side remains retry-safe and idempotent rather than sending a foreign
+	// *sql.Tx across the database boundary.
 	//
 	// godlike/06 SSOT: when Committer is wired, it is the SOLE canonical
 	// producer of both writes; the dispatcher is the SOLE canonical
@@ -191,11 +193,24 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	//
 	// The canonical AssetCommitter owns the media_assets write even when the
 	// bytes are not materialized yet. Empty LegacyFileMD5 means REGISTERED-only:
-	// CommitTx persists the asset and deliberately suppresses the index event.
+	// the committer persists the asset and deliberately suppresses the index event.
 	// The LifecycleService branch remains only as a migration compatibility
 	// seam for old compositions where the committer is not wired.
 	if f.deps.Committer != nil {
-		if _, err := f.deps.Committer.CommitTx(ctx, tx, buildVoiceoverCommitRequest(cmd, textPreview)); err != nil {
+		commitRequest := buildVoiceoverCommitRequest(cmd, textPreview)
+		var err error
+		if f.deps.CommitterSelfOwnedTx {
+			f.deps.Logger.Debug("voiceoverFinalizer: canonical media commit uses committer-owned transaction",
+				zap.String("asset_id", cmd.ID),
+				zap.String("transaction_boundary", "split_store"))
+			_, err = f.deps.Committer.CommitAndIndex(ctx, commitRequest)
+		} else {
+			_, err = f.deps.Committer.CommitTx(ctx, tx, commitRequest)
+		}
+		if err != nil {
+			if f.deps.CommitterSelfOwnedTx {
+				return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitAndIndex (media_assets + outbox, split-store): %w", err)
+			}
 			return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitTx (media_assets + outbox): %w", err)
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))

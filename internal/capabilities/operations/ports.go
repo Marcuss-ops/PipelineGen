@@ -107,18 +107,17 @@ type OperationsRepository interface {
 
 // TxManager is the canonical narrow port for opening a
 // caller-managed transaction. The canonical concrete adapter
-// is the *sql.DB's BeginTx method. The port exists so the
-// submission service can be tested with a fake TxManager
-// (in-memory mock that wraps a *sql.DB).
-//
-// godlike/07 minimum-blast-radius: the port is intentionally
-// narrow (just `BeginTx`) — a richer interface (e.g. with
-// retry, savepoint support) would over-design the surface
-// for the FASE 2 atomic-TX shape.
+// is the *sql.DB's BeginTx method with BEGIN IMMEDIATE (write
+// lock at open time) so two concurrent writers serialize on
+// the lock without spurious SQLITE_BUSY under DEFERRED. The
+// port exists so the submission service can be tested with a
+// fake TxManager (in-memory mock that wraps a *sql.DB).
 type TxManager interface {
 	// BeginTx opens a new transaction. The returned *sql.Tx
 	// is the single handle the submission service uses for
 	// all 3 atomic operations (operations + jobs + outbox).
+	// Production uses BEGIN IMMEDIATE (sql.LevelSerializable
+	// maps to immediate on SQLite via TxOptions).
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 }
 

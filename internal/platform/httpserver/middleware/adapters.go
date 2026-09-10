@@ -50,6 +50,60 @@ var _ EnvReader = osEnvReader{}
 // NewOSEnvReader returns the production env reader backed by os.Getenv.
 func NewOSEnvReader() EnvReader { return osEnvReader{} }
 
+// ── Rate-limit adapter (PG-006 canonical) ────────────────────────────────────
+//
+// RateLimitAdapter is the canonical RateLimitPort concrete. It replaces the
+// 3 duplicated inline adapters that previously mirrored each other:
+//
+//   - middlewareRateLimitAdapter  (internal/app/wiring/adapters_middleware.go)
+//   - serverRateLimitAdapter      (internal/platform/httpserver/server.go)
+//   - genDocsRateLimitAdapter     (cmd/admin/internal/rendering/gen_api_docs.go)
+//
+// Each wrapped *config.Config the same way and exposed the same 2 methods.
+// The canonical adapter snapshots the two primitive fields so callers never
+// import internal/platform/config. Nil-receiver-safe (mirrors
+// TokenSecurityAdapter).
+type RateLimitAdapter struct {
+	// Enabled is cfg.Security.RateLimitEnabled (snapshot at construction time).
+	Enabled bool
+	// Requests is cfg.Security.RateLimitRequests (snapshot).
+	Requests int
+}
+
+// RateLimitEnabled reports whether the per-IP token-bucket limiter is wired.
+func (a *RateLimitAdapter) RateLimitEnabled() bool { return a != nil && a.Enabled }
+
+// RateLimitRequests is the per-window fill quota.
+func (a *RateLimitAdapter) RateLimitRequests() int {
+	if a == nil {
+		return 0
+	}
+	return a.Requests
+}
+
+// ── Feature-flags adapter (PG-006 canonical) ─────────────────────────────────
+//
+// FeatureFlagsAdapter is the canonical FeatureFlagsPort concrete. It replaces
+// the 3 duplicated inline adapters:
+//
+//   - middlewareFeatureFlagsAdapter (internal/app/wiring/adapters_middleware.go)
+//   - serverFeatureFlagsAdapter     (internal/platform/httpserver/server.go)
+//   - genDocsFeatureFlagsAdapter    (cmd/admin/internal/rendering/gen_api_docs.go)
+//
+// Snapshot-immutable, nil-receiver-safe.
+type FeatureFlagsAdapter struct {
+	// Artlist is cfg.Features.ArtlistEnabled (snapshot).
+	Artlist bool
+	// ScriptClips is cfg.Features.ScriptClipsEnabled (snapshot).
+	ScriptClips bool
+}
+
+// ArtlistEnabled reports whether the Artlist feature is enabled.
+func (a *FeatureFlagsAdapter) ArtlistEnabled() bool { return a != nil && a.Artlist }
+
+// ScriptClipsEnabled reports whether the ScriptClips feature is enabled.
+func (a *FeatureFlagsAdapter) ScriptClipsEnabled() bool { return a != nil && a.ScriptClips }
+
 // TokenSecurityAdapter is the canonical SecurityAdapter concrete
 // implementation. It exposes the EnableAuth/AdminToken/WorkerToken
 // method set that internal/capabilities/middleware.AuthSecurityPort

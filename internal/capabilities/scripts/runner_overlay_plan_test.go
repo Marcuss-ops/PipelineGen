@@ -23,6 +23,22 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestOverlayCanvasDefaultsPreserveBackgroundAndStyle(t *testing.T) {
+	style := &scriptpkg.OverlayStyleSpec{Color: []float64{0.1, 0.2, 0.3, 1}}
+	background := &capabilityoverlay.OverlayBackground{Kind: "video", Fit: "cover", Loop: true}
+	got := (OverlayCanvasSpec{Background: background, Style: style}).withDefaults()
+
+	if got.Width != 1920 || got.Height != 1080 || got.FPSNum != 24 || got.FPSDen != 1 {
+		t.Fatalf("default canvas = %dx%d@%d/%d, want 1920x1080@24/1", got.Width, got.Height, got.FPSNum, got.FPSDen)
+	}
+	if got.Background != background {
+		t.Fatalf("defaulting dropped background: got %#v, want same semantic pointer", got.Background)
+	}
+	if got.Style != style {
+		t.Fatalf("defaulting dropped style: got %#v, want same semantic pointer", got.Style)
+	}
+}
+
 // overlayScene0Annotations returns the semantic surface of scene-0, whose
 // text (16 words, 100ms each) is:
 //

@@ -149,15 +149,18 @@ func buildVoiceoverPipeline(
 
 	projectionAdapter := vowiring.NewVoiceoverProjectionAdapter(voLifecycle)
 	// NewVoiceoverFinalizer sig is (repo, outbox, lifecycle, committer, logger)
-	// per finalizer_invariants_test.go:390. The canonical AssetCommitter
-	// (VOICEOVER-ASSETCOMMITTER-CUTOVER) makes Step 4+5 a single CommitTx;
-	// the finalizer falls back to the legacy projection writer only for
-	// the empty-LegacyFileMD5 edge case.
-	finalizer := voiceover.NewVoiceoverFinalizer(
+	// The canonical AssetCommitter owns Step 4+5; this composition uses its
+	// self-owned PostgreSQL transaction because the voiceover repository is
+	// SQLite.
+	// Voiceovers are persisted in SQLite while the canonical media projection
+	// is PostgreSQL. Keep the voiceover swap in the caller-owned SQLite tx and
+	// let the canonical committer own its PostgreSQL tx; forwarding the SQLite
+	// tx would cross database dialects.
+	finalizer := voiceover.NewVoiceoverFinalizerWithSelfOwnedCommitter(
 		voRepoAdapter,     // VoiceoverRepository
 		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
 		projectionAdapter, // LifecycleProjectionUpserter
-		committer,         // canonical AssetCommitter (Step 4+5 via CommitTx)
+		committer,         // canonical AssetCommitter (self-owned PostgreSQL tx)
 		log,               // *zap.Logger
 	)
 

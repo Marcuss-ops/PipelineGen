@@ -412,12 +412,8 @@ func (r *SQLiteRecorder) RecoverAbandoned(ctx context.Context, now time.Time) (i
 	if err != nil {
 		return 0, r.fail("", "recover_attempts", err)
 	}
-	attempts, err := res.RowsAffected()
-	if err != nil || attempts != changed {
-		if err == nil {
-			err = errors.New("run and attempt recovery counts differ")
-		}
-		return 0, r.fail("", "recover_rows", err)
+	if _, err := res.RowsAffected(); err != nil {
+		return 0, r.fail("", "recover_attempt_rows", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return 0, r.fail("", "recover_commit", err)

@@ -159,52 +159,40 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		return nil, err
 	}
 	output := filepath.Join(jobDir, safeName(item.ID)+"."+container)
-	if h.Cache.Has("overlays", item.RenderKey, "overlay."+container) {
-		cached := h.Cache.Path("overlays", item.RenderKey, "overlay."+container)
-		if err := copyFile(cached, output); err != nil {
-			return nil, err
+	// Every overlay render is a fresh Chronon execution. The content cache is
+	// intentionally used only by AssetPreparer for reusable input resources
+	// (entity images, backgrounds and fonts); a previous rendered overlay is
+	// never a valid substitute for the new job's output.
+	//
+	// This is deliberately different from an ordinary content-addressed media
+	// cache: two runs may have identical semantic inputs, but the caller still
+	// requires a newly rendered and newly published overlay artifact.
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageProcess,
+		Component: kernobs.ComponentRenderingGen,
+		Operation: kernobs.OperationRender,
+	}, func(ctx context.Context) error {
+		release, err := h.GPUGate.Acquire(ctx)
+		if err != nil {
+			return fmt.Errorf("overlay.render: acquire GPU gate: %w", err)
 		}
-	} else {
-		// render: the GPU-gated Chronon render call — the RenderingGen
-		// "render" phase, mapped as one canonical operation.
-		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage:     kernobs.StageProcess,
-			Component: kernobs.ComponentRenderingGen,
-			Operation: kernobs.OperationRender,
-		}, func(ctx context.Context) error {
-			release, err := h.GPUGate.Acquire(ctx)
-			if err != nil {
-				return fmt.Errorf("overlay.render: acquire GPU gate: %w", err)
-			}
-			planJSON, err := json.Marshal(req.Plan)
-			if err != nil {
-				release()
-				return err
-			}
-			if err := h.Renderer.Render(ctx, planJSON, output); err != nil {
-				release()
-				return err
-			}
-			release()
-			return nil
-		}); err != nil {
-			return nil, err
+		defer release()
+		planJSON, err := json.Marshal(req.Plan)
+		if err != nil {
+			return err
 		}
-		// objectstore_upload: persisting the rendered bytes into the content
-		// cache — the RenderingGen "objectstore_upload" phase.
-		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage:     kernobs.StageProcess,
-			Component: kernobs.ComponentRenderingGen,
-			Operation: kernobs.OperationObjectStoreUpload,
-		}, func(ctx context.Context) error {
-			if _, err := h.Cache.PutFile("overlays", item.RenderKey, "overlay."+container, output); err != nil {
-				return err
-			}
-			return nil
-		}); err != nil {
-			return nil, err
+		if err := h.Renderer.Render(ctx, planJSON, output); err != nil {
+			return err
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
+	// No rendered-output cache write: the previous write-through branch was
+	// dead weight — nothing ever read it back (render is deliberately fresh
+	// every time) and it copied the full video on every job. The certified
+	// artifact is published through the artifact manifest / Drive publisher
+	// below, which is the sole durable output path.
 	// The rendered artifact is certified only after a canonical probe (ffprobe
 	// via rustexec.VideoProcessor.Probe, never a raw subprocess) + content
 	// hash. The renderer's exit code is NOT a validity criterion: an invalid
@@ -239,11 +227,12 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	// The result is stamped READY only here — after render + probe + contract
 	// validation + hash have all succeeded. The probed facts travel with the
 	// result so the Sender can persist them durably.
-	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(item.ID) + "." + container, LocalPath: output, SHA256: probed.SHA256, SizeBytes: probed.SizeBytes, MIMEType: mime, Width: probed.Width, Height: probed.Height, FPSNum: req.Plan.FPSNum, FPSDen: req.Plan.FPSDen, DurationMs: (durationUS + 999) / 1000, HasAlpha: contract.RequiresAlpha, RendererVersion: h.RendererVersion, SceneID: item.SceneID, TemplateID: item.TemplateID, MediaContract: contract.ID, Container: probed.Container, Codec: probed.Codec, PixelFormat: probed.PixelFormat, AudioStreams: probed.AudioStreams, Status: capoverlay.OverlayStatusReady}
-	return artifactResult(j.ID, req.Plan.VideoID, req.Plan.ProjectID, result)
+	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(j.ID) + "_" + safeName(item.ID) + "." + container, LocalPath: output, SHA256: probed.SHA256, SizeBytes: probed.SizeBytes, MIMEType: mime, Width: probed.Width, Height: probed.Height, FPSNum: req.Plan.FPSNum, FPSDen: req.Plan.FPSDen, DurationMs: (durationUS + 999) / 1000, HasAlpha: contract.RequiresAlpha, RendererVersion: h.RendererVersion, SceneID: item.SceneID, TemplateID: item.TemplateID, MediaContract: contract.ID, Container: probed.Container, Codec: probed.Codec, PixelFormat: probed.PixelFormat, AudioStreams: probed.AudioStreams, Status: capoverlay.OverlayStatusReady}
+	return artifactResult(j.ID, req.Plan.VideoID, req.Plan.ProjectID, req.Plan.ScriptName, req.Plan.Language, result)
 }
 
-func artifactResult(jobID, videoID, projectID string, result capoverlay.RenderResult) (map[string]any, error) {
+func artifactResult(jobID, videoID, projectID, scriptName, language string, result capoverlay.RenderResult) (map[string]any, error) {
+	driveSubpath := []string{"overlay"}
 	manifest := job.ArtifactManifest{SchemaVersion: job.SchemaVersionArtifactManifestV1, JobID: jobID, Artifacts: []job.Artifact{{
 		ID:        result.ArtifactID,
 		Kind:      job.ArtifactKindOverlay,
@@ -259,7 +248,7 @@ func artifactResult(jobID, videoID, projectID string, result capoverlay.RenderRe
 		// consume a single source of truth and persist location + sha256.
 		ArtifactMetadata: map[string]any{
 			"source":           "chronon",
-			"drive_subpath":    []string{"overlay"},
+			"drive_subpath":    driveSubpath,
 			"video_id":         videoID,
 			"project_id":       projectID,
 			"renderer_version": result.RendererVersion,
@@ -284,16 +273,15 @@ func artifactResult(jobID, videoID, projectID string, result capoverlay.RenderRe
 			"status":         result.Status,
 		},
 	}}}
+	if strings.TrimSpace(scriptName) != "" {
+		manifest.Artifacts[0].ArtifactMetadata["script_name"] = scriptName
+	}
+	if strings.TrimSpace(language) != "" {
+		manifest.Artifacts[0].ArtifactMetadata["language"] = language
+	}
 	return map[string]any{"schema_version": capoverlay.SchemaVersionResult, "overlay_result": result, job.ManifestKey: manifest}, nil
 }
 
-func copyFile(src, dst string) error {
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, b, 0644)
-}
 func safeName(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {

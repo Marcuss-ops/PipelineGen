@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -27,6 +28,9 @@ type RenderQueueAsset struct {
 	Hash      string `json:"hash"`
 	URL       string `json:"url,omitempty"`
 	SourceURL string `json:"source_url,omitempty"`
+	// LocalPath is producer-side only. The adapter stages it into the object
+	// store and omits it from the RenderingGen wire asset reference.
+	LocalPath string `json:"-"`
 }
 
 // RenderQueueJob is the queue-side view of a submitted render job. It is the
@@ -74,6 +78,18 @@ type RenderCompletionMetrics struct {
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
 	pollInterval time.Duration
+	publisher    OverlayArtifactPublisher
+	// freshRender forces each submission through this enqueuer to receive a
+	// new queue identity. It is used for overlay artifacts: input assets are
+	// reusable, but the rendered video must always be produced by a new
+	// Chronon call. The flag is per-instance: only the enqueuer wired to the
+	// overlay render path enables it; idempotent callers keep the default
+	// plan-id identity and the ErrJobExists recovery path.
+	freshRender bool
+	// freshSeq is the per-instance monotonic counter that disambiguates the
+	// fresh queue identity. It replaces the former package-level global so
+	// concurrent enqueuers (and tests) cannot interfere with one another.
+	freshSeq atomic.Uint64
 	// recorder optionally persists one analytics row per completed attempt.
 	// Nil means analytics are not recorded (no-op, not a failure).
 	recorder RenderAttemptRecorder
@@ -87,6 +103,15 @@ func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, err
 	return &QueueRenderEnqueuer{client: client, pollInterval: defaultQueuePollInterval}, nil
 }
 
+// SetPollInterval tunes the observation cadence independently from the
+// RenderingGen worker. A short interval removes avoidable tail latency after
+// Chronon finishes; a caller may leave it unset to retain the safe default.
+func (e *QueueRenderEnqueuer) SetPollInterval(interval time.Duration) {
+	if e != nil && interval > 0 {
+		e.pollInterval = interval
+	}
+}
+
 // SetRecorder attaches the optional analytics recorder. Production
 // composition injects the SQLite-backed recorder; tests may inject a fake or
 // leave it nil to skip analytics.
@@ -95,6 +120,27 @@ func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
 		return
 	}
 	e.recorder = r
+}
+
+// SetArtifactPublisher attaches the required post-render publication side
+// effect. It is optional for unit-test compositions and enabled by the
+// production composition root when Drive is configured.
+func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
+	if e != nil {
+		e.publisher = p
+	}
+}
+
+// SetFreshRender controls whether EnqueueChrononPlan creates a new queue job
+// for every call. Overlay production enables this so a completed job from an
+// older test or retry can never be returned as the current render artifact.
+// The default remains false for callers that explicitly rely on queue-level
+// idempotency and ErrJobExists recovery. The returned RenderReference.JobID
+// and the analytics attempt_id always carry the real queue job id.
+func (e *QueueRenderEnqueuer) SetFreshRender(on bool) {
+	if e != nil {
+		e.freshRender = on
+	}
 }
 
 // EnqueueChrononPlan submits the semantic OverlayPlan to RenderingGen. The
@@ -134,6 +180,7 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		// owns the canonical workspace logical path after compiling the
 		// semantic asset registry; PipelineGen must not invent one here.
 		asset := RenderQueueAsset{Hash: hash, URL: url}
+		asset.LocalPath = ref.LocalPath
 		if strings.HasPrefix(url, "http") {
 			asset.SourceURL = url
 		}
@@ -162,18 +209,25 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 			break
 		}
 	}
+	jobID := plan.PlanID
+	if e.freshRender {
+		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), e.freshSeq.Add(1))
+	}
 	// Keep the queue dispatch explicit. RenderingGen uses this discriminator to
 	// route the job through the overlay renderer (and to apply the overlay media
 	// contract/ffprobe checks); omitting it silently falls back to the legacy
 	// render_segment path.
 	job := RenderQueueJob{
-		ID:          plan.PlanID,
+		ID:          jobID,
 		JobType:     capoverlay.JobTypeRender,
 		OverlaySpec: spec,
 		Assets:      assets,
 	}
 
 	if err := e.client.Submit(ctx, job); err != nil {
+		if e.freshRender {
+			return RenderReference{}, fmt.Errorf("chronon queue fresh render submit failed: %w", err)
+		}
 		if errors.Is(err, ErrJobExists) {
 			if existing, getErr := e.client.Get(ctx, plan.PlanID); getErr == nil && existing.State == "failed" {
 				if retrier, ok := e.client.(interface {
@@ -187,12 +241,29 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		}
 	}
 
-	done, wait, err := e.waitForCompletion(ctx, plan.PlanID)
+	done, wait, err := e.waitForCompletion(ctx, jobID)
 	if err != nil {
 		return RenderReference{}, err
 	}
+	if e.publisher != nil {
+		if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
+			return RenderReference{}, fmt.Errorf("render job %s completed without certified artifact", jobID)
+		}
+		if err := e.publisher.PublishOverlay(ctx, OverlayPublicationSpec{
+			ScriptName: plan.ScriptName,
+			Language:   plan.Language,
+			ProjectID:  plan.ProjectID,
+			PlanID:     plan.PlanID,
+		}, done.Artifact); err != nil {
+			return RenderReference{}, fmt.Errorf("publish overlay artifact to Drive: %w", err)
+		}
+	}
 	if e.recorder != nil {
-		attempt := BuildRenderAttemptAnalyticsWithWait(plan.PlanID, plan, done.Artifact, wait)
+		// attempt_id is the analytics idempotency key: it must be the real
+		// queue job id. In fresh mode that is the unique per-attempt identity,
+		// so two renders of the same plan record two rows instead of upsert-
+		// colliding on the plan id.
+		attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
 		if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
 			return RenderReference{}, fmt.Errorf("record render attempt analytics: %w", err)
 		}
@@ -202,7 +273,7 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	// one owner-measured operation on the run bound to ctx (the kernel
 	// never re-times a phase the worker already measured).
 	recordRenderingGenPhases(ctx, done.Artifact)
-	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }
 
 // recordRenderingGenPhases projects the worker-reported RenderingGen phase
@@ -302,7 +373,7 @@ func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
 				continue
 			}
 			seen[hash] = true
-			asset := RenderQueueAsset{Hash: hash, URL: ref.URL}
+			asset := RenderQueueAsset{Hash: hash, URL: ref.URL, LocalPath: ref.LocalPath}
 			if strings.HasPrefix(ref.URL, "http") {
 				asset.SourceURL = ref.URL
 			}

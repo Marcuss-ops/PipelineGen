@@ -17,9 +17,15 @@ package wiring
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"io"
+	"mime"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -37,6 +43,94 @@ import (
 type audioAssetSourceAdapter struct {
 	assets    *detail.Service
 	canonical *drivepkg.CanonicalAssetMaterializer
+}
+
+// ResolveOverlayBackground implements scripts.OverlayBackgroundSource. The
+// catalog is authoritative when it contains the asset; the local background
+// directory is a deliberate cache fallback for built-in operator assets such
+// as classic1 that predate catalog registration. Both branches return a
+// verified SHA-256 so the RenderingGen object store remains the single CAS.
+func (r *audioAssetSourceAdapter) ResolveOverlayBackground(ctx context.Context, assetID string) (scriptgen.OverlayBackgroundAsset, error) {
+	assetID = strings.TrimSpace(assetID)
+	if assetID == "" {
+		return scriptgen.OverlayBackgroundAsset{}, errors.New("overlay background asset_id is empty")
+	}
+	if r != nil && r.assets != nil {
+		details, err := r.assets.Get(ctx, assetID)
+		if err == nil && details != nil && details.Asset != nil {
+			a := details.Asset
+			kind := strings.ToLower(string(a.MediaType))
+			if !strings.HasPrefix(kind, "image") && !strings.HasPrefix(kind, "video") {
+				return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("overlay background asset %q has media type %q", assetID, a.MediaType)
+			}
+			ext := filepath.Ext(a.Filename)
+			if ext == "" {
+				ext = ".mp4"
+			}
+			if r.canonical == nil {
+				return scriptgen.OverlayBackgroundAsset{}, errors.New("overlay background materializer not wired")
+			}
+			materialized, matErr := r.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
+				AssetID: assetID, DriveFileID: a.DriveFileID(), ExpectedSHA256: a.Sha256(),
+				Extension: ext, RegisteredPath: strings.TrimSpace(a.LocalPath()),
+			})
+			if matErr != nil {
+				return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("materialize overlay background %q: %w", assetID, matErr)
+			}
+			return scriptgen.OverlayBackgroundAsset{AssetID: a.ID, LocalPath: materialized.LocalPath, URL: a.SourceURL, SHA256: materialized.SHA256, MediaType: string(a.MediaType)}, nil
+		}
+	}
+
+	path := localOverlayBackgroundPath(assetID)
+	if path == "" {
+		return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("overlay background asset %q not found in catalog or local cache", assetID)
+	}
+	hash, err := sha256File(path)
+	if err != nil {
+		return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("hash overlay background %q: %w", assetID, err)
+	}
+	mimeType := mime.TypeByExtension(filepath.Ext(path))
+	if mimeType == "" {
+		mimeType = "video/mp4"
+	}
+	return scriptgen.OverlayBackgroundAsset{AssetID: assetID, LocalPath: path, SHA256: hash, MediaType: mimeType}, nil
+}
+
+func localOverlayBackgroundPath(assetID string) string {
+	name := filepath.Base(assetID)
+	if name == "." || name == string(filepath.Separator) || name != assetID {
+		return ""
+	}
+	candidates := []string{
+		filepath.Join("data", "backgrounds", name),
+		filepath.Join("RenderingGen", "assets", "backgrounds", name),
+	}
+	if filepath.Ext(name) == "" {
+		for _, ext := range []string{".mp4", ".mov", ".webm", ".png", ".jpg", ".jpeg"} {
+			candidates = append(candidates,
+				filepath.Join("data", "backgrounds", name+ext),
+				filepath.Join("RenderingGen", "assets", "backgrounds", name+ext))
+		}
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Size() > 0 {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // ResolveAudioAsset implements scripts.AudioAssetSource. Only

@@ -17,9 +17,11 @@ import (
 	"fmt"
 	"strings"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ProcessedGeneration holds everything produced by the postprocess
@@ -34,13 +36,25 @@ type ProcessedGeneration struct {
 // single prepared plan. It is constructed once per use case and
 // reused across calls.
 type GenerationPostprocessor struct {
-	ppReg *adapters.PostProcessorRegistry
+	ppReg    *adapters.PostProcessorRegistry
+	enricher scriptgen.SegmentEnricher
 }
 
 // NewGenerationPostprocessor constructs a GenerationPostprocessor.
 // ppReg may be nil (postprocessors are skipped).
 func NewGenerationPostprocessor(ppReg *adapters.PostProcessorRegistry) *GenerationPostprocessor {
 	return &GenerationPostprocessor{ppReg: ppReg}
+}
+
+// SetSegmentEnricher wires the canonical SceneIR/VisualNER boundary used by
+// the batch postprocessor path. The durable runner has the same boundary in
+// its incremental coordinator; keeping this setter optional preserves the
+// lightweight unit-test composition while ensuring production batch jobs do
+// not enter media planning with an empty VidRush scene surface.
+func (p *GenerationPostprocessor) SetSegmentEnricher(enricher scriptgen.SegmentEnricher) {
+	if p != nil {
+		p.enricher = enricher
+	}
 }
 
 // Process runs the postprocessor pipeline and returns a
@@ -92,6 +106,15 @@ func (p *GenerationPostprocessor) Process(
 		StockBindings:     append([]scriptpkg.StockBindingInput(nil), plan.StockBindings...),
 		ResearchSources:   append([]scriptpkg.SourceReference(nil), plan.ResearchSources...),
 	}
+	if mediaPostprocessingRequested(plan) {
+		if err := seedVidRushPostprocessInput(ctx, &plan, &procInput, p.enricher); err != nil {
+			return nil, &scriptpkg.PostprocessError{
+				ItemID:    item.ID,
+				Processor: "vidrush_nlp",
+				Inner:     err,
+			}
+		}
+	}
 
 	postResult, err := p.ppReg.RunWithProgress(ctx, &plan, procInput, func(event adapters.ProcessorProgressEvent) {
 		tracker.PhasePostprocessEvent(
@@ -136,6 +159,105 @@ func (p *GenerationPostprocessor) Process(
 		Provenance:    provenance,
 		PostprocessMs: postprocessMs,
 	}, nil
+}
+
+// mediaPostprocessingRequested identifies the batch path that consumes the
+// canonical per-scene semantic surface. Text-only runs without extraction or
+// media planning stay unchanged.
+func mediaPostprocessingRequested(plan scriptpkg.ResolvedGenerationPlan) bool {
+	for _, raw := range plan.Postprocessors {
+		switch adapters.ProcessorName(raw) {
+		case adapters.ProcessorClipSearch,
+			adapters.ProcessorInternetImages,
+			adapters.ProcessorVidRushMaterialization,
+			adapters.ProcessorVisualPlanning:
+			return true
+		}
+	}
+	return false
+}
+
+// seedVidRushPostprocessInput creates the internal segment surface from the
+// generated SpecScene. This is deliberately done before ClipSearch,
+// InternetImages, VisualPlanning and Materialization: those processors are
+// consumers of the surface and must not be asked to infer topology from a
+// zero-length input. The semantic enricher runs in bounded parallelism so
+// multiple scenes/languages can progress concurrently.
+func seedVidRushPostprocessInput(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	input *adapters.ProcessInput,
+	enricher scriptgen.SegmentEnricher,
+) error {
+	if input == nil {
+		return fmt.Errorf("vidrush nlp: process input is nil")
+	}
+	scenes := append([]scriptpkg.SpecScene(nil), input.SpecScene.Scenes...)
+	if len(scenes) == 0 && strings.TrimSpace(input.Text) != "" {
+		scenes = []scriptpkg.SpecScene{{
+			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
+			Text: strings.TrimSpace(input.Text),
+		}}
+		input.SpecScene = scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}
+		input.OriginalSpecScene = input.SpecScene
+	}
+	if len(scenes) == 0 {
+		return fmt.Errorf("vidrush nlp: generated text has no scene surface")
+	}
+
+	seeds := make([]scriptpkg.SpecScene, 0, len(scenes))
+	for i, scene := range scenes {
+		if scene.ExecutionMode.IsFixedMedia() {
+			continue
+		}
+		if strings.TrimSpace(scene.Text) == "" && plan != nil && i < len(plan.Segments) {
+			scene.Text = strings.TrimSpace(plan.Segments[i].SourceText)
+		}
+		if strings.TrimSpace(scene.Text) == "" {
+			continue
+		}
+		if strings.TrimSpace(scene.ID) == "" {
+			scene.ID = fmt.Sprintf("scene-%d", i)
+		}
+		if scene.Index < 0 {
+			scene.Index = i
+		}
+		seeds = append(seeds, scene)
+	}
+	if len(seeds) == 0 {
+		return fmt.Errorf("vidrush nlp: generated scene surface contains no narrative text")
+	}
+
+	if enricher == nil {
+		input.VidRushSegments = make([]scriptpkg.VidRushSegmentResult, 0, len(seeds))
+		for _, scene := range seeds {
+			segmentID := strings.TrimSpace(scene.SegmentID)
+			if segmentID == "" {
+				segmentID = scene.ID
+			}
+			input.VidRushSegments = append(input.VidRushSegments, scriptpkg.VidRushSegmentResult{
+				SegmentID: segmentID,
+				SceneID:   scene.ID,
+				Position:  scene.Index,
+				Text:      scene.Text,
+				TextHash:  scriptpkg.ComputeCanonicalSegmentTextHash(scene.Text),
+			})
+		}
+		return nil
+	}
+
+	workers := 2
+	if plan != nil && plan.Concurrency > 0 {
+		workers = plan.Concurrency
+	}
+	enriched, err := concurrent.Map(ctx, seeds, workers, func(ctx context.Context, _ int, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+		return enricher.Enrich(ctx, plan, scene)
+	})
+	if err != nil {
+		return fmt.Errorf("vidrush nlp: enrich scenes: %w", err)
+	}
+	input.VidRushSegments = enriched
+	return nil
 }
 
 // VidRushTimingFields is a compatibility projection from canonical stage

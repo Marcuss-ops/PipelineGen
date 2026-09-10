@@ -250,8 +250,14 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 		return nil
 	}
 	candidateID, err := entityImageCatalogCandidateID(ctx, p.catalog, discovered)
-	if err != nil || candidateID < 1 || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.LegacyFileMD5) == "" {
+	if err != nil || candidateID < 1 {
 		return err
+	}
+	// A catalog-managed image is reusable only when its canonical materialization
+	// is durable. Do not allow a successful VidRush result to hide a missing
+	// reference-database row or incomplete Drive/hash identity.
+	if strings.TrimSpace(persisted.AssetID) == "" || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.LegacyFileMD5) == "" {
+		return fmt.Errorf("entity image catalog: materialized candidate %d is missing asset_id, drive_link, or legacy_file_md5", candidateID)
 	}
 	now := time.Now().UTC()
 	if err := p.catalog.UpsertMaterialization(ctx, entitycatalog.Materialization{
@@ -280,7 +286,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	}
 	var warnings []string
 	newInternetImageUploads := 0
-	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) []scriptpkg.SegmentAssetCandidate {
+	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) ([]scriptpkg.SegmentAssetCandidate, error) {
 		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 		attempts := make(map[string]int, 3)
 		readyImages := 0
@@ -441,7 +447,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			}
 			observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
 			if catalogErr := p.persistEntityCatalogMaterialization(ctx, candidate, persisted); catalogErr != nil {
-				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog materialization: %v", catalogErr))
+				return nil, fmt.Errorf("vidrush_materialization: entity catalog materialization: %w", catalogErr)
 			}
 			if isImage && readyVidRushCandidate(persisted) {
 				readyImages++
@@ -459,7 +465,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 			}
 		}
-		return materialized
+		return materialized, nil
 	}
 
 	// Search candidates must be acquired and verified before deciding how
@@ -468,14 +474,21 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// assets.
 	imageTarget := vidRushImageTarget(plan)
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
-	updated.Assets.Candidates = materialize(discoveredCandidates, imageTarget)
+	var materializeErr error
+	updated.Assets.Candidates, materializeErr = materialize(discoveredCandidates, imageTarget)
+	if materializeErr != nil {
+		return vidRushMaterializedSegment{}, materializeErr
+	}
 	generationCandidates, generationState := p.planGenerationFallback(plan, updated)
 	updated.Cache.ImageGeneration = generationState
 	if len(generationCandidates) > 0 {
 		// Only the newly planned fallback candidates need a second
 		// acquisition pass. Replaying the already attempted web candidates
 		// here would duplicate downloads after a generation fallback.
-		generated := materialize(generationCandidates, len(generationCandidates))
+		generated, materializeErr := materialize(generationCandidates, len(generationCandidates))
+		if materializeErr != nil {
+			return vidRushMaterializedSegment{}, materializeErr
+		}
 		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, generated)
 	}
 	materialized := updated.Assets.Candidates

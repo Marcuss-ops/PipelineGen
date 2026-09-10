@@ -108,7 +108,7 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 
 // TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting pins the
 // manifest→bridge step of the probe→SHA256→manifest→publisher flow: an
-// overlay.render manifest must project to the youtube_clip destination AND
+// overlay.render manifest must project to the script destination AND
 // carry source=chronon + drive_subpath=[overlay] + probe sha256/size_bytes
 // through to the staged reference the Sender-side publisher consumes.
 func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.T) {
@@ -147,8 +147,8 @@ func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.
 		t.Fatalf("expected 1 artifact, got %d", len(artifacts))
 	}
 	a := artifacts[0]
-	if a.Destination != "youtube_clip" {
-		t.Fatalf("Destination = %q, want youtube_clip", a.Destination)
+	if a.Destination != "script" {
+		t.Fatalf("Destination = %q, want script", a.Destination)
 	}
 	if a.SHA256 != "deadbeef" || a.SizeBytes != 1234567 {
 		t.Fatalf("probe fields lost: sha256=%q size=%d", a.SHA256, a.SizeBytes)

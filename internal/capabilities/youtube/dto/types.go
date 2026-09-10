@@ -284,6 +284,12 @@ type ProcessSegmentCommand struct {
 	SubtitleFolderID          string
 	SubtitleFolderPath        string
 	SubtitlePerClipSubfolders bool
+	// PreDownloadedPath is the optional full-source file staged BEFORE fanout.
+	// When non-empty, VideoPipelineDownloadAndCut MUST cut locally via ffmpeg -c copy
+	// instead of spawning a per-segment yt-dlp --download-sections subprocess.
+	// Speed audit (Sept 2026): enables "download once, cut N with ffmpeg -c copy"
+	// for multi-segment extracts; idle when the orchestrator opts out of staging.
+	PreDownloadedPath string
 	// RequireAllLanguagesBeforeVideo is the per-job override propagated from
 	// ExtractRequest. nil preserves the process-wide policy.
 	RequireAllLanguagesBeforeVideo *bool

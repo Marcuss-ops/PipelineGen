@@ -209,7 +209,11 @@ func destinationForArtifactKind(kind, source string) string {
 	case job.ArtifactKindPDF, job.ArtifactKindMarkdown:
 		return "document"
 	case job.ArtifactKindOverlay:
-		return "youtube_clip"
+		// Overlay videos are script-owned sidecars. The manifest metadata
+		// carries script_name/language, so the canonical script destination
+		// creates <script>/<language>/overlay instead of routing through the
+		// legacy VidRush/youtube_clip tree.
+		return "script"
 	default:
 		if source == "youtube" {
 			return "youtube_clip"

@@ -302,7 +302,7 @@ func (m *sqliteTxManager) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	if m == nil || m.db == nil {
 		return nil, fmt.Errorf("script submission: tx manager not wired")
 	}
-	return m.db.BeginTx(ctx, nil)
+	return m.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 }
 
 func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.Service, error) {
@@ -316,13 +316,23 @@ func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.S
 	}
 	opsRepo := sqliteops.NewSQLiteRepository(root.Jobs.DB.DB)
 	txMgr := &sqliteTxManager{db: root.Jobs.DB.DB}
-	// FASE 2 close-out: jobsStore satisfies JobGetter natively
-	// (its Get(ctx, id) method matches the port shape). Wired
-	// twice — once as JobEnqueuer (CreateInTx use) and once as
-	// JobGetter (canonical-state-on-replay read on the HTTP 202
-	// idempotency-hit path).
-	return opsapp.NewService(opsRepo, root.Jobs.Repo, root.Jobs.Repo, root.Outbox.EventsRepo, txMgr, log), nil
+	svc := opsapp.NewService(opsRepo, root.Jobs.Repo, root.Jobs.Repo, root.Outbox.EventsRepo, txMgr, log)
+	// Per-(scope,key) locker so unrelated submissions never serialise.
+	// Uses the shared pkg/concurrent.KeyedLocker.
+	svc.SetKeyedLocker(newOpsKeyedLockerAdapter())
+	return svc, nil
 }
+
+func newOpsKeyedLockerAdapter() opsapp.KeyedLocker {
+	return opsKeyedLockerAdapter{kl: newConcurrentKeyedLockerImpl()}
+}
+
+// opsKeyedLockerAdapter bridges pkg/concurrent.KeyedLocker to the
+// operations port without the operations package importing pkg/concurrent
+// at the type level — the concrete is created via the factory below.
+type opsKeyedLockerAdapter struct{ kl interface{ Lock(string) func() } }
+
+func (a opsKeyedLockerAdapter) Lock(key string) func() { return a.kl.Lock(key) }
 
 // Compile-time assertion: *sqlitejobs.SQLiteStore implements
 // BOTH the submission service's JobEnqueuer port AND the
