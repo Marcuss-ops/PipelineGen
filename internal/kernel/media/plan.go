@@ -156,9 +156,9 @@ type MediaMaterializationPolicy struct {
 type MediaExtractionPolicy struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// Include selects the semantic surfaces produced for each segment.
-	// Supported values are "entities" and "important_phrases". An omitted
-	// list preserves the legacy behaviour and leaves all extractor surfaces
-	// available to downstream consumers.
+	// Supported values are "entities", "special_names" and
+	// "important_phrases". "special_names" is the named-entity alias used by
+	// the NLP payload; an omitted list preserves legacy unrestricted behavior.
 	Include []string `json:"include,omitempty"`
 	// Device selects local semantic extraction hardware: auto, cpu, or gpu.
 	// Auto falls back to CPU only when the optional GPU backend is unavailable.
@@ -174,6 +174,7 @@ type MediaExtractionPolicy struct {
 
 const (
 	ExtractionIncludeEntities         = "entities"
+	ExtractionIncludeSpecialNames     = "special_names"
 	ExtractionIncludeImportantPhrases = "important_phrases"
 )
 
@@ -190,6 +191,16 @@ func (p MediaExtractionPolicy) Includes(surface string) bool {
 		}
 	}
 	return false
+}
+
+// EntityImageSurfaceEnabled reports whether the requested NLP payload
+// includes the canonical named-identity surface used by the image catalog.
+// The explicit EntityImages policy remains supported for legacy callers, but
+// a payload that explicitly asks for entities no longer needs a second image
+// toggle.
+func (p MediaExtractionPolicy) EntityImageSurfaceEnabled() bool {
+	return p.EntityImages.Enabled || (len(p.Include) > 0 &&
+		(p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames)))
 }
 
 type EntityImagePolicy struct {

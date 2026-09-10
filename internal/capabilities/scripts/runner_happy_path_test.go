@@ -79,6 +79,7 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	for _, record := range docPub.records {
 		assert.Contains(t, record.Content, "<h2>Scene 1</h2>")
 		assert.NotContains(t, record.Content, "<h2>Remote Job Payload JSON</h2>")
+		assert.Contains(t, record.Content, "<h2>SpecScene JSON</h2>")
 		if record.Language == "en" {
 			assert.Contains(t, record.Content, "First scene text")
 			assert.NotContains(t, record.Content, "[TRANSLATED]")

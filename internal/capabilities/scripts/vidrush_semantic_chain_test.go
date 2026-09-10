@@ -155,6 +155,61 @@ func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
 	require.Equal(t, "scene-1", result.SceneID)
 }
 
+func TestSceneIRSegmentEnricherUsesBestPersonForImageSearch(t *testing.T) {
+	entities := []VisualEntity{
+		{Text: "the documentary", Type: scriptpkg.EntityTypeVisualConcept, Score: 0.99, Start: 0, End: 14, Evidence: "The documentary"},
+		{Text: "Ada Lovelace", Type: scriptpkg.EntityTypePerson, Score: 0.72, Start: 15, End: 27, Evidence: "Ada Lovelace"},
+		{Text: "Charles Babbage", Type: scriptpkg.EntityTypePerson, Score: 0.68, Start: 32, End: 47, Evidence: "Charles Babbage"},
+	}
+	// The test stub uses exact source spans; keep the source aligned with them.
+	source := "The documentary Ada Lovelace met Charles Babbage."
+	entities[0].End = len("The documentary")
+	entities[1].Start = len("The documentary ")
+	entities[1].End = entities[1].Start + len(entities[1].Text)
+	entities[2].Start = strings.Index(source, entities[2].Text)
+	entities[2].End = entities[2].Start + len(entities[2].Text)
+
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: entities})
+	require.NoError(t, err)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Extraction: mediadomain.MediaExtractionPolicy{
+				Enabled: true,
+				Include: []string{
+					mediadomain.ExtractionIncludeEntities,
+					mediadomain.ExtractionIncludeSpecialNames,
+					mediadomain.ExtractionIncludeImportantPhrases,
+				},
+				EntityImages: mediadomain.EntityImagePolicy{
+					Enabled: true,
+				},
+			},
+		},
+	}
+	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID:   "ada-01",
+		Text: source,
+	})
+	require.NoError(t, err)
+	// The NLP output keeps every requested entity; only the image retrieval
+	// surface is narrowed to the best named PERSON.
+	require.Len(t, result.Insights.Entities, 3)
+	require.Equal(t, "Ada Lovelace", result.Insights.Entities[1].Value)
+	require.Equal(t, string(scriptpkg.EntityTypePerson), result.Insights.Entities[1].Type)
+	require.NotEmpty(t, result.Insights.ImportantPhrases)
+	require.Equal(t, []string{"Ada Lovelace"}, result.Insights.ImageQueries)
+
+	plan.MediaPlan.Extraction.Include = []string{mediadomain.ExtractionIncludeEntities}
+	withoutPhrases, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID:   "ada-01-no-phrases",
+		Text: source,
+	})
+	require.NoError(t, err)
+	require.Empty(t, withoutPhrases.Insights.ImportantPhrases)
+	require.Equal(t, []string{"Ada Lovelace"}, withoutPhrases.Insights.ImageQueries)
+}
+
 func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testing.T) {
 	segments := []scriptpkg.VidRushSegmentResult{{
 		Insights: scriptpkg.SegmentInsights{
@@ -181,6 +236,26 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 	}
 	if len(got[0].Insights.ImageQueries) != 1 || got[0].Insights.ImageQueries[0] != "Michael Jordan" {
 		t.Fatalf("image queries = %+v, want only entity query", got[0].Insights.ImageQueries)
+	}
+}
+
+func TestFilterEntityRenderSurfaceKeepsSelectedProtagonist(t *testing.T) {
+	segments := []scriptpkg.VidRushSegmentResult{{
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Ada Lovelace", Type: "PERSON", Confidence: 0.99},
+				{Value: "Analytical Engine", Type: "PERSON", Confidence: 0.30},
+			},
+			ImageQueries: []string{"Ada Lovelace"},
+		},
+	}}
+
+	got := filterEntityRenderSurface(segments)
+	if len(got[0].Insights.Entities) != 1 || got[0].Insights.Entities[0].Value != "Ada Lovelace" {
+		t.Fatalf("entities = %+v, want only selected protagonist", got[0].Insights.Entities)
+	}
+	if len(got[0].Insights.ImageQueries) != 1 || got[0].Insights.ImageQueries[0] != "Ada Lovelace" {
+		t.Fatalf("image queries = %+v, want selected protagonist query", got[0].Insights.ImageQueries)
 	}
 }
 

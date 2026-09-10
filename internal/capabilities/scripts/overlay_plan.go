@@ -612,7 +612,7 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 			// Fail-open on an invalid record: the card stays text-only rather
 			// than failing the whole overlay plan over one unverifiable asset.
 			_ = index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
-				AssetID: binding.AssetID, AssetType: "photo",
+				AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
 				SHA256: binding.SHA256, StorageURL: url,
 				QualityScore: score, Source: binding.Source,
 			})
@@ -620,6 +620,33 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 	}
 	media.SetIndex(index)
 	return media, canonicalByStable
+}
+
+// entityImageAssetType keeps the semantic path extension aligned with the
+// verified bytes. Drive download URLs commonly have no suffix, so relying on
+// filepath.Ext(URL) would manufacture a misleading .png path for a JPEG.
+// The worker still sniffs the materialized bytes and can correct an honest
+// provider MIME mismatch before Chronon.
+func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
+	if binding != nil {
+		switch strings.ToLower(strings.TrimSpace(strings.SplitN(binding.MediaType, ";", 2)[0])) {
+		case "image/png":
+			return "photo"
+		case "image/jpeg", "image/jpg":
+			return "photo_jpeg"
+		}
+		url := strings.ToLower(strings.TrimSpace(entityImageURL(binding)))
+		if strings.HasSuffix(url, ".png") {
+			return "photo"
+		}
+		if strings.HasSuffix(url, ".jpg") || strings.HasSuffix(url, ".jpeg") {
+			return "photo_jpeg"
+		}
+	}
+	// Internet image acquisition currently verifies and persists photographs
+	// as JPEG in the live catalog. Keep the fallback explicit and deterministic
+	// for legacy bindings that predate media_type.
+	return "photo_jpeg"
 }
 
 // attachEntityCardAsset resolves the card's canonical_entity_id through the

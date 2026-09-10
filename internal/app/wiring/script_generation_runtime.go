@@ -360,9 +360,10 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	spec.ImagesPerSegment = plan.ImagesPerScene
 	// Entity image assets are canonical by entity identity and are expected to
 	// be reused when the same person/place is mentioned in multiple scenes.
-	// The generic stock-video certification forbids cross-scene reuse, but that
-	// rule must not reject the entity cache contract.
-	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImages.Enabled
+	// Use the same generic extraction surface that enables entity-image
+	// materialization; checking only the legacy nested flag would reject a
+	// payload that opts in through extraction.include.
+	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
 	for i, segment := range plan.Segments {
 		id := strings.TrimSpace(segment.ID)
 		if id == "" {

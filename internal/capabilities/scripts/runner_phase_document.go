@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -220,17 +221,21 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			for _, lang := range docsLangs {
 				model := modelScriptOutputForDocument(result, lang)
 				opts := DocumentRenderOptions{
-					Title:              req.Title,
-					Language:           lang,
-					DefaultLanguage:    req.SourceLanguage,
-					FullAudio:          documentAudioRef(result, lang),
-					FinalAudio:         result.FinalAudio,
-					AudioTimeline:      result.CanonicalTimeline,
-					JobPayload:         jobPayload,
-					PayloadOnly:        true,
+					Title:           req.Title,
+					Language:        lang,
+					DefaultLanguage: req.SourceLanguage,
+					FullAudio:       documentAudioRef(result, lang),
+					FinalAudio:      result.FinalAudio,
+					AudioTimeline:   result.CanonicalTimeline,
+					JobPayload:      jobPayload,
+					// Operator Docs are the audit surface: keep the human semantic
+					// summary and the machine JSON for the exact plan/artifacts.
+					PayloadOnly:        false,
 					SceneSpeechTimings: result.SceneSpeechTimings,
 					ClipMetadata:       clipAssetMetadataForDocument(result),
 					AudioSummary:       documentAudioSummaryFor(result),
+					Overlay:            documentOverlayRef(result),
+					OverlayPlan:        result.OverlayPlan,
 				}
 				var content string
 				var renderErr error
@@ -442,5 +447,28 @@ func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioR
 	return &DocumentAudioRef{
 		AssetID: ref.AssetID, Language: string(language), DriveLink: ref.DriveLink,
 		DurationMS: ref.DurationMS, SHA256: ref.FinalAudioSHA256,
+	}
+}
+
+// documentOverlayRef projects the certified Chronon artifact into the
+// document-facing contract. The renderer receives only public artifact
+// identity; local paths and storage keys stay inside the render pipeline.
+func documentOverlayRef(result *GenerateResult) *DocumentOverlayRef {
+	if result == nil || result.OverlayRender == nil || result.OverlayRender.Artifact == nil {
+		return nil
+	}
+	artifact := result.OverlayRender.Artifact
+	link := strings.TrimSpace(artifact.DriveLink)
+	if link == "" {
+		link = strings.TrimSpace(artifact.URL)
+	}
+	return &DocumentOverlayRef{
+		ArtifactID:   artifact.ID,
+		JobID:        result.OverlayRender.JobID,
+		URL:          link,
+		SHA256:       artifact.SHA256,
+		DurationUS:   artifact.DurationUS,
+		ProfileID:    artifact.ProfileID,
+		CopyEligible: artifact.CopyEligible,
 	}
 }

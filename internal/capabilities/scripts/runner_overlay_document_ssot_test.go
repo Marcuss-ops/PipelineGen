@@ -111,16 +111,16 @@ func TestOverlayPlan_IsSingleSourceOfTruthForDocumentAndRender(t *testing.T) {
 	require.Len(t, docPub.records, 1, "exactly one document (en) published")
 	docHTML := docPub.records[0].Content
 	require.NotEmpty(t, docHTML)
-	// Production documents intentionally expose only the final remote
-	// assembly payload; SpecScene/phrase-timing JSON is an internal surface.
-	require.NotContains(t, docHTML, "<h2>Remote Job Payload JSON</h2>")
-	require.NotContains(t, docHTML, "<h2>SpecScene JSON</h2>")
+	// Production documents expose the operator audit surface: the same
+	// semantic overlay plan and SpecScene annotations used by RenderingGen.
+	require.Contains(t, docHTML, "<h2>Semantic Overlay</h2>")
+	require.Contains(t, docHTML, "<h2>Semantic Overlay JSON</h2>")
+	require.Contains(t, docHTML, "<h2>SpecScene JSON</h2>")
+	require.Contains(t, docHTML, "Tim Cook")
+	require.Contains(t, docHTML, "Elon Musk")
 
-	// ── Document completeness under the PayloadOnly contract: the human
-	//    surface still shows every scene's final script text, and the
-	//    machine surface is exactly the remote assembly payload. The
-	//    SpecScene/phrase-timing JSON that used to be embedded here is now
-	//    an internal surface (removed by design).
+	// ── Document completeness: scene text, semantic annotations and the
+	//    machine-readable plan are all present in the published body.
 	for _, scene := range res.Scenes {
 		require.Contains(t, docHTML, scene.Text["en"], "document missing scene %q script text", scene.ID)
 	}

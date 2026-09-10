@@ -271,7 +271,11 @@ type EntityImageBinding struct {
 	Status      string `json:"status"`
 	AssetID     string `json:"asset_id,omitempty"`
 	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
+	// MediaType is the verified MIME type of the persisted image bytes. It is
+	// carried into the semantic overlay asset ref so a provider URL without an
+	// extension (for example a Drive download URL) gets the right logical path.
+	MediaType string `json:"media_type,omitempty"`
+	DriveLink string `json:"drive_link,omitempty"`
 	// PreviewURL is the direct image URL used for inline rendering in the
 	// Google Doc (IDEAL PASS). It is the candidate's source image URL, never
 	// a Drive view-page link. Empty when no direct image is available.
