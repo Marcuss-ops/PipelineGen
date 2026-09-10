@@ -102,6 +102,24 @@ func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
 		"success path: RootFolderID must be the explicit override (ParentFolderID precedence)")
 }
 
+func TestResolveDestination_ScriptOverlaySubpathCreatesLanguageOverlayFolder(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "overlay-folder-id"}
+	pub, err := NewPublisher(reg, folders, &fakeFileUploader{}, zap.NewNop())
+	require.NoError(t, err)
+
+	resolved, err := pub.resolveDestination(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationScript,
+		ProjectID:          "Donald Trump",
+		Language:           "it",
+		DestinationSubpath: []string{"overlay"},
+		ConflictPolicy:     delivery.ConflictOverwrite,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"Donald Trump", "it", "overlay"}, resolved.PathSegments)
+	require.Equal(t, "overlay-folder-id", resolved.FolderID)
+}
+
 func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{}

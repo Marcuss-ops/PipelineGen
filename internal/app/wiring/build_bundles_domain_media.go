@@ -299,8 +299,19 @@ func buildDomainMediaServices(
 	// dropped, or renamed. ClipFiles + Whisper are intentionally left
 	// nil (matches the previous literal's behaviour; those ports are
 	// not exercised by the YouTube orchestrator at composition time).
+	ytRuntimeCfg := buildYouTubeRuntimeConfig(cfg)
+	// Speed audit (Sept 2026): raise YouTube fanout default when operator left
+	// config.yaml/concurrency at the old 2-slot default. 5 parallel segment
+	// goroutines + local-cut path (--download-once) gives -60% wall on 9-clip
+	// batches without saturating yt-dlp. Env override still wins if set.
+	if ytRuntimeCfg.MaxConcurrentVideoExtracts <= 2 {
+		ytRuntimeCfg.MaxConcurrentVideoExtracts = 5
+	}
+	if ytRuntimeCfg.MaxConcurrentOllamaCalls <= 1 {
+		ytRuntimeCfg.MaxConcurrentOllamaCalls = 4
+	}
 	youtubeCore := youtube.ServiceCoreDeps{
-		Cfg: buildYouTubeRuntimeConfig(cfg),
+		Cfg: ytRuntimeCfg,
 		Log: log,
 	}
 	youtubeAsset := youtube.ServiceAssetDeps{

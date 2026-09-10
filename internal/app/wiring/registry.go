@@ -222,7 +222,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	wiring.SearchFanOut = crossStep.SearchFanOut
 
 	// Step 3 — Scripts: wireScriptFlow orchestration + ScriptHistory module.
-	if err := registerScripts(ctx, registry, log, cfg, root, wiring.ArtlistSvc); err != nil {
+	if err := registerScripts(ctx, registry, log, cfg, root, wiring.ArtlistSvc, crossStep.SearchFanOut); err != nil {
 		return nil, fmt.Errorf("wire registry: scripts: %w", err)
 	}
 

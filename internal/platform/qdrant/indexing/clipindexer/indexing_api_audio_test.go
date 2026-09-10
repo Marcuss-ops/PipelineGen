@@ -91,12 +91,14 @@ func newPhase4TestService(t *testing.T) (*Service, *drive.SQLiteDB, func()) {
 		&Config{
 			Enabled:    true,
 			PythonBin:  "python-invalid-should-not-be-called",
-			ScriptPath: "scripts/bridges/index_clips.py",
+			ScriptPath: "scripts/start_embedding_server.sh",
 		},
 		&drive.SQLiteDB{DB: db},
 		":memory:",
 		zap.NewNop(),
 	)
+	// CLEANUP (September 2026): scripts/bridges/index_clips.py is phantom —
+	// never existed on disk. See service_test.go for the full rationale.
 	svc.SetAssetMutationCommitter(newTestAssetMutationCommitter(db))
 	svc.vectorStore = &mockVectorStoreIndexer{} // BLOCKER #3: UpsertVectorStore now fail-closed on nil
 	cleanup := func() { db.Close() }

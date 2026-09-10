@@ -140,10 +140,14 @@ type GenerationItemV2 struct {
 // optional visual overlay background. Image/video backgrounds identify one
 // content-addressed asset; color backgrounds use RGBA components in [0,1].
 type OverlayBackgroundSpec struct {
-	Kind      string            `json:"kind"`
-	Color     []float64         `json:"color,omitempty"`
-	AssetID   string            `json:"asset_id,omitempty"`
-	URL       string            `json:"url,omitempty"`
+	Kind    string    `json:"kind"`
+	Color   []float64 `json:"color,omitempty"`
+	AssetID string    `json:"asset_id,omitempty"`
+	URL     string    `json:"url,omitempty"`
+	// LocalPath is an internal, verified cache path populated by the
+	// composition-layer asset resolver. Callers normally provide AssetID;
+	// the path never needs to cross the queue boundary.
+	LocalPath string            `json:"local_path,omitempty"`
 	SHA256    string            `json:"sha256,omitempty"`
 	MediaType string            `json:"media_type,omitempty"`
 	Fit       string            `json:"fit,omitempty"`

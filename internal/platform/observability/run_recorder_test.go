@@ -92,6 +92,41 @@ func TestSQLiteRecorder_RecoverAbandonedPersistsWorkerLost(t *testing.T) {
 	}
 }
 
+func TestSQLiteRecorder_RecoverAbandonedCommitsWhenRunAndAttemptCountsDiffer(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	testObservabilitySchema(t, db)
+	recorder := NewSQLiteRecorder(db)
+	now := time.Date(2026, time.August, 5, 10, 0, 0, 0, time.UTC)
+	expires := now.Add(-time.Second)
+	report := &kernobs.RunReport{RunID: "run-lost", JobID: "job-lost", JobType: "script.generate", AttemptID: "attempt-lost", LeaseID: "lease-lost", Status: kernobs.StatusRunning, CreatedAt: now, StartedAt: now, LeaseExpiresAt: expires}
+	if err := recorder.StartReport(context.Background(), report); err != nil {
+		t.Fatal(err)
+	}
+	// Historical databases can contain an expired attempt without a matching
+	// observability run. Recovery must still commit both independent updates.
+	if _, err := db.Exec(`INSERT INTO job_attempts (attempt_id,job_id,run_id,attempt_number,status,started_at,lease_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, "orphan-attempt", "job-orphan", "run-orphan", 1, "RUNNING", now, expires, now, now); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := recorder.RecoverAbandoned(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed != 1 {
+		t.Fatalf("recovered runs = %d, want 1", changed)
+	}
+	var abandoned int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM job_attempts WHERE status='ABANDONED' AND error_code='WORKER_LOST'`).Scan(&abandoned); err != nil {
+		t.Fatal(err)
+	}
+	if abandoned != 2 {
+		t.Fatalf("recovered attempts = %d, want 2", abandoned)
+	}
+}
+
 func TestSQLiteRecorder_ChildLifecycleRefreshesParentIdempotently(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

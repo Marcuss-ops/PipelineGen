@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -172,6 +173,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			canonical: canonical,
 		}
 		runner.SetAudioAssetSource(audioAdapter)
+		runner.SetOverlayBackgroundSource(audioAdapter)
 		runner.SetMediaPreflight(mediasub.NewPreflight(root.Repos.Assets, audioAdapter, audioAdapter))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
@@ -193,6 +195,20 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(queueClient)
 		if err != nil {
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
+		}
+		if cfg.External.RenderingGenPollIntervalMS > 0 {
+			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
+		}
+		// Reuse only input assets (entity images, backgrounds and fonts). Every
+		// overlay video gets a fresh queue identity so RenderingGen/Chronon is
+		// invoked for each new artifact, including repeated test runs.
+		renderEnqueuer.SetFreshRender(true)
+		if root.Drive != nil && root.Drive.Publisher != nil {
+			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
+			renderEnqueuer.SetArtifactPublisher(renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher))
+			log.Info("overlay artifact Drive publisher wired (script/language/overlay)")
+		} else {
+			log.Warn("overlay artifact Drive publisher disabled: Drive publisher is not configured")
 		}
 		var analyticsDB *sql.DB
 		if root.DB != nil {

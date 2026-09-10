@@ -356,6 +356,15 @@ func (r *Runner) SetAudioAssetSource(source AudioAssetSource) {
 	}
 }
 
+// SetOverlayBackgroundSource wires the catalog/cache resolver used for
+// visual background asset_ids. Nil keeps color backgrounds and callers that
+// already provide a complete content-addressed ref compatible.
+func (r *Runner) SetOverlayBackgroundSource(source OverlayBackgroundSource) {
+	if r != nil {
+		r.overlayBackgroundSource = source
+	}
+}
+
 // SetFinalAudioPublisher wires the canonical delivery publisher used to make
 // the certified full-audio Drive link available to the document phase.
 func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {

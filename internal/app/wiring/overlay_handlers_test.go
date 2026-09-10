@@ -271,7 +271,7 @@ func TestPrepareHandlerRejectsFrozenIntent(t *testing.T) {
 	}
 }
 
-func TestRenderHandlerUsesContentCache(t *testing.T) {
+func TestRenderHandlerAlwaysRendersFreshOverlay(t *testing.T) {
 	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
 	if err != nil {
 		t.Fatal(err)
@@ -294,8 +294,8 @@ func TestRenderHandlerUsesContentCache(t *testing.T) {
 	if _, err := h.Render(context.Background(), j, nil); err != nil {
 		t.Fatal(err)
 	}
-	if r.calls != 1 {
-		t.Fatalf("renderer calls=%d, want 1 after cache hit", r.calls)
+	if r.calls != 2 {
+		t.Fatalf("renderer calls=%d, want 2: rendered overlays must never be reused from the output cache", r.calls)
 	}
 }
 
@@ -373,10 +373,14 @@ func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capove
 
 // TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun pins the
 // RenderingGen → canonical mapping for the in-process overlay path: the
-// handler records each RenderingGen phase (plan/materialize/render/
-// objectstore_upload/hash) as one canonical operation on the run bound to
-// ctx (component renderinggen, stage process) instead of a new timing
-// family. Without a bound run the handlers degrade to plain pass-throughs.
+// handler records each RenderingGen phase (plan/materialize/render/hash)
+// as one canonical operation on the run bound to ctx (component
+// renderinggen, stage process) instead of a new timing family. There is
+// deliberately NO objectstore_upload operation: the rendered-output cache
+// write-through was removed as dead code (nothing ever read it back), and
+// the certified artifact is published solely through the artifact manifest
+// / Drive publisher. Without a bound run the handlers degrade to plain
+// pass-throughs.
 func TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun(t *testing.T) {
 	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
 	if err != nil {
@@ -419,10 +423,13 @@ func TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun(t *testing.T) {
 		}
 		got[op.Operation] = true
 	}
-	for _, want := range []string{"plan", "materialize", "render", "objectstore_upload", "hash"} {
+	for _, want := range []string{"plan", "materialize", "render", "hash"} {
 		if !got[want] {
 			t.Fatalf("missing canonical operation %q (got %v)", want, got)
 		}
+	}
+	if got["objectstore_upload"] {
+		t.Fatalf("objectstore_upload must not be recorded: the rendered-output cache write-through was removed (got %v)", got)
 	}
 }
 

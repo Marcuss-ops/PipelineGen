@@ -601,3 +601,34 @@ func TestBuildGenerateRequest_FinalPayloadEnablesNLPAndVeloxRender(t *testing.T)
 		t.Fatalf("render subtitles contract not propagated: %+v", got.Render.Subtitles)
 	}
 }
+
+func TestBuildGenerateRequest_OneSourceFansOutLanguages(t *testing.T) {
+	const raw = `{
+		"version": 2,
+		"items": [{
+			"id": "multilingual-source-once",
+			"title": "multilingual overlay",
+			"language": "en",
+			"source": {"type": "text", "topic": "controlled source", "source_text": "One source text is generated once."},
+			"output": {"languages": ["it", "es", "en"], "extract_entities": true},
+			"media_plan": {"mode": "auto", "extraction": {"enabled": true}}
+		}]
+	}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "multilingual-source-once-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SourceLanguage != "en" {
+		t.Fatalf("source language = %q, want en", got.SourceLanguage)
+	}
+	if len(got.Languages) != 3 || got.Languages[0] != "it" || got.Languages[1] != "es" || got.Languages[2] != "en" {
+		t.Fatalf("target languages = %#v, want [it es en]", got.Languages)
+	}
+	if got.ExtractEntities != scriptpkg.ToggleEnabled {
+		t.Fatalf("entity extraction was lost at the durable request boundary: %q", got.ExtractEntities)
+	}
+}

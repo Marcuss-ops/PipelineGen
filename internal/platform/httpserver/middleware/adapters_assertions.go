@@ -36,3 +36,5 @@ import (
 // resolves to the import — which is exactly why this file's import
 // statement does not need an alias.
 var _ middleware.AuthSecurityPort = (*TokenSecurityAdapter)(nil)
+var _ middleware.RateLimitPort = (*RateLimitAdapter)(nil)
+var _ middleware.FeatureFlagsPort = (*FeatureFlagsAdapter)(nil)

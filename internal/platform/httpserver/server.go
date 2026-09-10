@@ -136,8 +136,19 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			Admin:  cfg.Security.AdminToken,
 			Worker: cfg.Security.WorkerToken,
 		}
-		rateAdapter := &serverRateLimitAdapter{cfg: cfg}
-		featuresAdapter := &serverFeatureFlagsAdapter{cfg: cfg}
+		// CLEANUP (September 2026): serverRateLimitAdapter +
+		// serverFeatureFlagsAdapter inline structs were removed. The
+		// canonical concretes are middleware.RateLimitAdapter +
+		// middleware.FeatureFlagsAdapter — snapshot-literal wiring like
+		// the TokenSecurityAdapter above (godlike/06 one owner per fact).
+		rateAdapter := &middleware.RateLimitAdapter{
+			Enabled:  cfg.Security.RateLimitEnabled,
+			Requests: cfg.Security.RateLimitRequests,
+		}
+		featuresAdapter := &middleware.FeatureFlagsAdapter{
+			Artlist:     cfg.Features.ArtlistEnabled,
+			ScriptClips: cfg.Features.ScriptClipsEnabled,
+		}
 		router := NewRouter(&RouterConfig{
 			Auth:          authAdapter,
 			Rate:          rateAdapter,
@@ -411,51 +422,10 @@ func (s *Server) GetRouter() *gin.Engine {
 	return s.router
 }
 
-// ── PG-006 typed-port bridges (server-scoped) ────────────────────────────
+// ── PG-006 typed-port bridges (DELETED September 2026) ─────────────────────
 //
-// PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
-// was deleted. The canonical concrete is
-// internal/platform/httpserver/middleware.TokenSecurityAdapter (re-located from
-// pkg/middleware round-2). The cfg-wrapping trio that lived in
-// api/server.go + cmd/admin/gen_api_docs.go +
-// internal/app/middleware_security_adapter.go is now collapsed into
-// construction-site snapshots. Only the rate-limit and feature-flags
-// inline adapters remain below (their canonical equivalents are NOT
-// yet tracked under internal/platform/httpserver/middleware; a separate consolidation
-// would promote them — out of scope for PG-006.1).
-
-// serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's
-// middlewareRateLimitAdapter for the RateLimitPort surface (same nil-check
-// shape as the production adapter).
-type serverRateLimitAdapter struct{ cfg *config.Config }
-
-func (a *serverRateLimitAdapter) RateLimitEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Security.RateLimitEnabled
-}
-func (a *serverRateLimitAdapter) RateLimitRequests() int {
-	if a.cfg == nil {
-		return 0
-	}
-	return a.cfg.Security.RateLimitRequests
-}
-
-// serverFeatureFlagsAdapter mirrors internal/app/middleware_security_adapter.go's
-// middlewareFeatureFlagsAdapter for the FeatureFlagsPort surface (same nil-check
-// shape as the production adapter).
-type serverFeatureFlagsAdapter struct{ cfg *config.Config }
-
-func (a *serverFeatureFlagsAdapter) ArtlistEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Features.ArtlistEnabled
-}
-func (a *serverFeatureFlagsAdapter) ScriptClipsEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Features.ScriptClipsEnabled
-}
+// serverRateLimitAdapter + serverFeatureFlagsAdapter were removed in the
+// September 2026 cleanup. The canonical concretes are
+// internal/platform/httpserver/middleware.RateLimitAdapter +
+// middleware.FeatureFlagsAdapter — snapshot-literal wiring at the
+// single construction site above (godlike/06 one owner per fact).

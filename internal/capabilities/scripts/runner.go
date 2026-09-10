@@ -139,15 +139,16 @@ type Runner struct {
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
 	// carries BGM/SFX intents fails closed in the audio-compile phase.
-	audioAssetSource    AudioAssetSource
-	scriptPersistence   ScriptPersistence
-	recorder            ExecutionRecorder
-	sceneCommitObserver SceneCommitObserver
-	vidRushBarrier      VidRushBarrier
-	vidRushTiming       VidRushTimingRecorder
-	generationGate      *GenerationGate
-	nlpGenerationGate   *GenerationGate
-	vidRushPipeline     *VidRushPipeline
+	audioAssetSource        AudioAssetSource
+	overlayBackgroundSource OverlayBackgroundSource
+	scriptPersistence       ScriptPersistence
+	recorder                ExecutionRecorder
+	sceneCommitObserver     SceneCommitObserver
+	vidRushBarrier          VidRushBarrier
+	vidRushTiming           VidRushTimingRecorder
+	generationGate          *GenerationGate
+	nlpGenerationGate       *GenerationGate
+	vidRushPipeline         *VidRushPipeline
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent

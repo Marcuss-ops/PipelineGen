@@ -28,6 +28,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -65,6 +67,7 @@ func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
 	root *ComposeRoot,
 	artlistWiring *ArtlistWiring,
+	searchFanOut search.SearchFanOut,
 	vidRushProviders *adapters.VidRushAssetProviderRegistry,
 	vidRushCache ports.VidRushCachePort,
 	cfg *config.Config,
@@ -140,10 +143,24 @@ func registerAIBackedProcessors(
 		}
 	}
 
-	// Internet image discovery is owned by the unified VidRush MediaResolver
-	// and its Local Stock/MediaSampler chain. The former standalone
-	// Standalone image processor is intentionally not registered here, avoiding a
-	// second provider pipeline in production.
+	// Internet image discovery is the first half of the unified VidRush media
+	// path. It discovers and caches candidates; VidRushMaterialization owns
+	// Acquire → Verify → Drive/SQLite/outbox. Keeping this processor registered
+	// is required because the generation plan explicitly requests the canonical
+	// `internet_images` stage before materialization.
+	imageSearcher := vidrushInternetImageSearcher(root, log)
+	if imageSearcher != nil {
+		var entityImageCatalogRepo entitycatalog.Repository
+		if root != nil && root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		if !ppReg.Register(adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)) {
+			return fmt.Errorf("register internet_images processor: composition bug")
+		}
+		log.Info("InternetImagesProcessor wired through canonical ImageSearchResolver")
+	} else {
+		log.Warn("InternetImagesProcessor: ImageSearchResolver not available; postprocessor not registered")
+	}
 
 	// ── Visual planning ──────────────────────────────────────────────
 	// The processor owns no provider or database implementation: the
@@ -153,8 +170,8 @@ func registerAIBackedProcessors(
 	// candidate list returned by the resolver; on LLM failure the
 	// adapter deterministically falls back to the top-scoring candidate.
 	var visualPlanner adapters.VisualCandidatePlanner
-	if root.Search != nil && root.Search.SearchFanOut != nil && root.DB != nil {
-		resolver, err := WireMediaMemoryResolver(root.Search.SearchFanOut, root.DB.DB, log)
+	if searchFanOut != nil && root.DB != nil {
+		resolver, err := WireMediaMemoryResolver(searchFanOut, root.DB.DB, log)
 		if err != nil {
 			return fmt.Errorf("register visual_planning: wire resolver: %w", err)
 		}

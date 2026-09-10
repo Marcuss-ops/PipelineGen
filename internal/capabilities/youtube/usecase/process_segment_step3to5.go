@@ -71,16 +71,17 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 		normalize = *cmd.Normalize
 	}
 	cutReq := youtubeports.VideoCutRequest{
-		URL:            cmd.VideoURL,
-		VideoID:        cmd.VideoID,
-		Start:          float64(startSec),
-		Duration:       float64(duration),
-		OutputName:     strings.TrimSuffix(out.Item.Filename, ".mp4"),
-		ForceKeyframes: cmd.ForceKeyframes,
-		KeepAudio:      keepAudio,
-		Normalize:      normalize,
-		Strategy:       string(cmd.Strategy),
-		OutputDir:      cmd.OutDir,
+		URL:               cmd.VideoURL,
+		VideoID:           cmd.VideoID,
+		Start:             float64(startSec),
+		Duration:          float64(duration),
+		OutputName:        strings.TrimSuffix(out.Item.Filename, ".mp4"),
+		ForceKeyframes:    cmd.ForceKeyframes,
+		KeepAudio:         keepAudio,
+		Normalize:         normalize,
+		Strategy:          string(cmd.Strategy),
+		OutputDir:         cmd.OutDir,
+		PreDownloadedPath: cmd.PreDownloadedPath,
 		// Explicit segment requests already carry the authoritative summary,
 		// topics and speakers. Do not spawn a best-effort yt-dlp metadata
 		// subprocess before every clip download.

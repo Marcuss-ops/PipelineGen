@@ -131,8 +131,16 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 		Enabled:    true,
 		ServerURL:  server.URL,
 		PythonBin:  "python-invalid-should-not-be-called", // if subprocess is spawned, it will fail
-		ScriptPath: "scripts/bridges/index_clips.py",
+		ScriptPath: "scripts/start_embedding_server.sh",
 	}
+	//
+	// CLEANUP (September 2026): scripts/bridges/index_clips.py never existed
+	// on disk — the phantom ScriptPath was carried since the legacy
+	// subprocess bridge. The canonical embedding surface is now HTTP-only
+	// (ServerURL), so ScriptPath is vestigial; pointing it at the real
+	// launcher keeps the fixture honest. The PythonBin sentinel above
+	// still fails closed if a legacy subprocess path is accidentally
+	// re-introduced.
 	//
 	// PG-016 typed-handle migration (June 2026): clipindexer.NewService now
 	// accepts *storage.SQLiteDB; wrap the test fixture's *sql.DB (returned by

@@ -45,8 +45,9 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"sync"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -166,6 +167,33 @@ type SubmitResult struct {
 	IsSupersede      bool
 }
 
+// keyedLockerAdapter is the minimal per-key locking surface Service
+// consumes. The production adapter wraps pkg/concurrent.KeyedLocker;
+// tests may inject a no-op fake. Kept as an interface so the
+// operations package does not import pkg/concurrent directly — the
+// composition root wires the concrete locker.
+// keyedLockerAdapter is the minimal per-key locking surface Service
+// consumes. The production adapter wraps pkg/concurrent.KeyedLocker;
+// tests may inject a no-op fake or leave it nil (fallback to no
+// cross-key serialisation — tests run single-threaded).
+type keyedLockerAdapter interface {
+	Lock(key string) func()
+}
+
+// submitLockerKey returns the per-key lock key for the (scope,key) bucket.
+func submitLockerKey(scope Scope, key string) string {
+	return string(scope) + "\x00" + key
+}
+
+// isSQLiteBusy reports whether err is a SQLite busy/locked error.
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "database table is locked") || strings.Contains(msg, "sqlite_busy")
+}
+
 // Service is the canonical FASE 2 submission service. It owns
 // the atomic-TX shape: operations + jobs + outbox_events
 // commit TOGETHER or roll back TOGETHER. There is exactly one
@@ -181,18 +209,18 @@ type Service struct {
 	jobIDGen  func() string
 	opIDGen   func() string
 	log       *zap.Logger
-	submitMu  sync.Mutex
-	nowFunc   func() time.Time // injectable for tests; defaults to time.Now
+	locker    keyedLockerAdapter // nil in tests that inject fake TxManager
+	nowFunc   func() time.Time    // injectable for tests; defaults to time.Now
 
 	// SUBMIT-LOCK-INSTRUMENTATION (September 2026): post-remediation
-	// observability for the submission mutex. The P1 remediation moved
-	// the advisory JobGetter read OUTSIDE the mutex and kept the mutex
-	// only around lookup + decision + write; these counters make the
-	// residual contention measurable in production (the analysis's five
-	// metrics, coalesced into the two observable wait surfaces).
-	// Atomic single ints: sampled at DEBUG cost, no locks, no allocations.
-	submitLockWaitNanos atomic.Int64 // cumulative time goroutines spent acquiring submitMu
-	submitHoldCount     atomic.Int64 // number of Submit calls that entered the mutex section
+	// observability for the submission per-key lock. The KeyedLocker
+	// remediation replaced the global submitMu with a per-(scope,key)
+	// locker so unrelated submissions never serialise; these counters
+	// make the residual per-key contention measurable in production.
+	// Padded to avoid false sharing with the hot submitHoldCount path.
+	submitLockWaitNanos atomic.Int64
+	_                   [56]byte // pad to 64B cache line
+	submitHoldCount     atomic.Int64
 }
 
 // NewService constructs the canonical submission service.
@@ -278,40 +306,83 @@ func NewService(
 // (deferred inside persistSubmit). The prior-op UpdateState
 // is part of the same TX so it commits/rolls-back together
 // with the new-op Insert (force_refresh supersede path).
+// SetKeyedLocker wires the per-(scope,key) locker. Nil restores the
+// no-lock fallback (tests). Production MUST wire the shared KeyedLocker
+// from the composition root.
+func (s *Service) SetKeyedLocker(locker keyedLockerAdapter) {
+	if s == nil {
+		return
+	}
+	s.locker = locker
+}
+
+func (s *Service) acquireSubmitLock(req SubmitRequest) (func(), time.Duration) {
+	start := time.Now()
+	var release func()
+	if s.locker != nil {
+		release = s.locker.Lock(submitLockerKey(req.Scope, req.IdempotencyKey))
+	} else {
+		release = func() {}
+	}
+	wait := time.Since(start)
+	if wait > 0 {
+		s.submitLockWaitNanos.Add(int64(wait))
+	}
+	s.submitHoldCount.Add(1)
+	return release, wait
+}
+
+func (s *Service) persistWithRetry(ctx context.Context, req SubmitRequest, prior *Operation, now time.Time) (*SubmitResult, error) {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		res, err := s.persistSubmit(ctx, req, prior, now)
+		if err == nil {
+			return res, nil
+		}
+		if !isSQLiteBusy(err) || attempt == maxAttempts {
+			return nil, err
+		}
+		lastErr = err
+		s.log.Warn("operations.Submit: sqlite busy, retrying",
+			zap.Int("attempt", attempt),
+			zap.String("scope", string(req.Scope)),
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.Error(err),
+		)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt) * 10 * time.Millisecond):
+		}
+	}
+	return nil, fmt.Errorf("operations.Submit: sqlite busy after retries: %w", lastErr)
+}
+
 func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
 	if err := validateSubmitRequest(req); err != nil {
 		return nil, err
 	}
-	// SUBMIT-LOCK-INSTRUMENTATION: measure the mutex wait separately from
-	// the work under the lock. submit_lock_wait_ms is the production number
-	// that answers "does a slow replay lookup still serialise unrelated
-	// submissions?" — it must stay flat as concurrency rises now that the
-	// advisory read is outside the mutex.
-	submitStart := time.Now()
-	s.submitMu.Lock()
-	lockWait := time.Since(submitStart)
-	if lockWait > 0 {
-		s.submitLockWaitNanos.Add(int64(lockWait))
-	}
-	s.submitHoldCount.Add(1)
+	release, lockWait := s.acquireSubmitLock(req)
+	defer release()
 
 	prior, err := s.lookupPriorOperation(ctx, req.Scope, req.IdempotencyKey)
 	if err != nil {
-		s.submitMu.Unlock()
 		return nil, fmt.Errorf("operations.Submit: lookup prior: %w", err)
 	}
 
 	hitPrior, mustPersist, err := s.decideReplayOrFresh(prior, req)
 	if err != nil {
-		s.submitMu.Unlock()
 		return nil, err
 	}
 	if hitPrior != nil {
-		// Idempotency hit — no DB write. Release the write-serialisation
-		// mutex BEFORE the advisory canonical-Job read: the read is
-		// read-only and outside the SQLite write transaction, so holding
-		// the mutex here would only serialise unrelated submissions.
-		s.submitMu.Unlock()
+		// Idempotency hit — no DB write. Unlock BEFORE the advisory
+		// canonical-Job read so a slow replay lookup never serialises
+		// unrelated submissions. We must release the per-key lock and
+		// re-acquire semantics: unlock now, read, no re-lock needed.
+		release()
+		// Prevent double-unlock from defer.
+		release = func() {}
 		s.log.Info("operations.Submit: idempotency hit",
 			zap.String("operation_id", hitPrior.OperationID),
 			zap.String("scope", string(req.Scope)),
@@ -333,14 +404,10 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 		}, nil
 	}
 	if !mustPersist {
-		// Defensive: a non-hit, non-persist classification only happens
-		// via the unreachable branch in decideReplayOrFresh (error).
-		s.submitMu.Unlock()
 		return nil, fmt.Errorf("operations.Submit: unreachable classification (prior=%+v, force_refresh=%v)", prior, req.ForceRefresh)
 	}
 
-	result, persistErr := s.persistSubmit(ctx, req, prior, s.nowFunc())
-	s.submitMu.Unlock()
+	result, persistErr := s.persistWithRetry(ctx, req, prior, s.nowFunc())
 	if persistErr != nil {
 		s.log.Warn("operations.Submit: persist failed",
 			zap.String("scope", string(req.Scope)),
@@ -348,6 +415,12 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 			zap.Duration("lock_wait", lockWait),
 			zap.Error(persistErr),
 		)
+		// Map SQLite busy to a typed retryable error when TxManager
+		// used DEFERRED isolation; with IMMEDIATE the retry above
+		// already handled it. Surface as wrapped error.
+		if isSQLiteBusy(persistErr) {
+			return nil, fmt.Errorf("%w: %v", ErrSQLiteBusy, persistErr)
+		}
 	} else {
 		s.log.Info("operations.Submit: submitted",
 			zap.String("operation_id", result.Operation.OperationID),
@@ -359,3 +432,7 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 	}
 	return result, persistErr
 }
+
+// ErrSQLiteBusy is returned when the underlying SQLite reports
+// SQLITE_BUSY after retries. Callers may map it to 503/429.
+var ErrSQLiteBusy = errors.New("sqlite busy")

@@ -247,6 +247,12 @@ func verifiedFromStagedRef(ctx context.Context, ref *remote.StagedArtifactRefere
 	if source, ok := ref.ArtifactMetadata["source"].(string); ok && source != "" {
 		verified.Source = source
 	}
+	if scriptName, ok := ref.ArtifactMetadata["script_name"].(string); ok && strings.TrimSpace(scriptName) != "" {
+		verified.ProjectID = strings.TrimSpace(scriptName)
+	}
+	if language, ok := ref.ArtifactMetadata["language"].(string); ok && strings.TrimSpace(language) != "" {
+		verified.Language = strings.TrimSpace(language)
+	}
 	if raw, ok := ref.ArtifactMetadata["drive_subpath"].([]any); ok {
 		for _, v := range raw {
 			if s, ok := v.(string); ok {
@@ -258,11 +264,14 @@ func verifiedFromStagedRef(ctx context.Context, ref *remote.StagedArtifactRefere
 	// already-resolved Drive folder (/video/.../overlay/): resolve
 	// the video's folder and pin it as the overlay's destination.
 	// Nil resolver / no video_id → legacy path-builder behaviour.
-	if folderID, ok, err := resolveOverlayParentFolder(ctx, ref.ArtifactMetadata, folderResolver); err != nil {
-		return finalization.VerifiedArtifact{}, fmt.Errorf("broker: resolve overlay parent folder: %w", err)
-	} else if ok {
-		verified.ResolvedFolderID = folderID
-		verified.RootFolderResolved = true
+	_, scriptScoped := ref.ArtifactMetadata["script_name"].(string)
+	if !scriptScoped {
+		if folderID, ok, err := resolveOverlayParentFolder(ctx, ref.ArtifactMetadata, folderResolver); err != nil {
+			return finalization.VerifiedArtifact{}, fmt.Errorf("broker: resolve overlay parent folder: %w", err)
+		} else if ok {
+			verified.ResolvedFolderID = folderID
+			verified.RootFolderResolved = true
+		}
 	}
 	// Script/document destinations require a logical project path;
 	// worker manifests do not need to duplicate it for every file.

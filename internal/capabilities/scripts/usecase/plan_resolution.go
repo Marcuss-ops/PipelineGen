@@ -7,6 +7,7 @@ package usecase
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -99,6 +100,15 @@ func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort
 		return
 	}
 	uc.finalizer.SetVidRushCache(cache)
+}
+
+// SetSegmentEnricher wires the canonical semantic extraction boundary into
+// the batch postprocessor path used by script.generate_item jobs.
+func (uc *GenerateOneUseCase) SetSegmentEnricher(enricher scriptgen.SegmentEnricher) {
+	if uc == nil || uc.postprocessor == nil {
+		return
+	}
+	uc.postprocessor.SetSegmentEnricher(enricher)
 }
 
 // ── Plan-phase helpers ────────────────────────────────────────────────

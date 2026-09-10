@@ -109,6 +109,25 @@ type Translator interface {
 	Translate(ctx context.Context, input TranslationInput) (string, error)
 }
 
+// OverlayBackgroundAsset is the verified asset identity used to turn a
+// caller's visual background asset_id into a content-addressed render input.
+// LocalPath is a producer-side cache location and is never sent to the queue
+// worker; URL/SHA256 are the durable identity used for remote staging.
+type OverlayBackgroundAsset struct {
+	AssetID   string
+	LocalPath string
+	URL       string
+	SHA256    string
+	MediaType string
+}
+
+// OverlayBackgroundSource resolves a visual background from the canonical
+// asset catalog or local cache. It is deliberately separate from the audio
+// asset port because image/video backgrounds have different media rules.
+type OverlayBackgroundSource interface {
+	ResolveOverlayBackground(context.Context, string) (OverlayBackgroundAsset, error)
+}
+
 // ── VoiceoverGenerator ──────────────────────────────────────────────
 
 // VoiceoverInput carries the data needed to generate a voiceover.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +96,22 @@ func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
 	t.Logf("separated metrics: render_ms=%d encode_ms=%d completion_wait_ms=%d polling_sleep_ms=%d polling_interval_ms=%d poll_count=%d wall_elapsed_ms=%d", got.RenderMS, got.EncodeMS, got.CompletionWaitMS, got.PollingSleepMS, got.PollingIntervalMS, got.PollCount, elapsed.Milliseconds())
 }
 
+func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
+	enqueuer, err := NewQueueRenderEnqueuer(newFakeRenderQueueClient())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.SetPollInterval(250 * time.Millisecond)
+	if enqueuer.pollInterval != 250*time.Millisecond {
+		t.Fatalf("poll interval = %s, want 250ms", enqueuer.pollInterval)
+	}
+	// Non-positive values must not disable polling accidentally.
+	enqueuer.SetPollInterval(0)
+	if enqueuer.pollInterval != 250*time.Millisecond {
+		t.Fatalf("non-positive poll interval changed configured value to %s", enqueuer.pollInterval)
+	}
+}
+
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes
 // PipelineGen submit semantic visual instructions to RenderingGen. RenderingGen
 // owns the final semantic→Chronon v2 compilation and submits the certified
@@ -177,6 +194,45 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	}
 	if submitted.Assets[1].Hash != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
 		t.Fatalf("asset 1 not projected: %+v", submitted.Assets[1])
+	}
+}
+
+type freshRenderClient struct {
+	job RenderQueueJob
+}
+
+func (c *freshRenderClient) Submit(_ context.Context, job RenderQueueJob) error {
+	job.State = "completed"
+	job.Artifact = &RenderArtifact{SHA256: "fresh"}
+	c.job = job
+	return nil
+}
+
+func (c *freshRenderClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	if c.job.ID != id {
+		return RenderQueueJob{}, errors.New("unexpected fresh render job id")
+	}
+	return c.job, nil
+}
+
+func TestQueueRenderEnqueuerFreshRenderUsesNewQueueIdentity(t *testing.T) {
+	client := &freshRenderClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.SetFreshRender(true)
+	enqueuer.pollInterval = time.Millisecond
+
+	plan := capoverlay.GoldenOverlayPlanV1()
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if client.job.ID == plan.PlanID {
+		t.Fatalf("fresh render reused logical plan id %q", client.job.ID)
+	}
+	if !strings.HasPrefix(client.job.ID, plan.PlanID+":render:") {
+		t.Fatalf("fresh render job id=%q does not carry plan identity", client.job.ID)
 	}
 }
 

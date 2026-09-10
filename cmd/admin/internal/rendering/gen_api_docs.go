@@ -69,8 +69,19 @@ func RunGenAPIDocs(args []string) error {
 		Admin:  cfg.Security.AdminToken,
 		Worker: cfg.Security.WorkerToken,
 	}
-	rateAdapter := &genDocsRateLimitAdapter{cfg: cfg}
-	featuresAdapter := &genDocsFeatureFlagsAdapter{cfg: cfg}
+	// CLEANUP (September 2026): genDocsRateLimitAdapter +
+	// genDocsFeatureFlagsAdapter inline structs were removed. The
+	// canonical concretes are middleware.RateLimitAdapter +
+	// middleware.FeatureFlagsAdapter — snapshot-literal wiring like
+	// TokenSecurityAdapter above (godlike/06 one owner per fact).
+	rateAdapter := &middleware.RateLimitAdapter{
+		Enabled:  cfg.Security.RateLimitEnabled,
+		Requests: cfg.Security.RateLimitRequests,
+	}
+	featuresAdapter := &middleware.FeatureFlagsAdapter{
+		Artlist:     cfg.Features.ArtlistEnabled,
+		ScriptClips: cfg.Features.ScriptClipsEnabled,
+	}
 	routerCfg := &httpserver.RouterConfig{
 		ServerGinMode: cfg.Server.GinMode,
 		DataDir:       cfg.Storage.DataDir,
@@ -401,32 +412,13 @@ func staleDescriptionKeys(descs map[string]string, routes []gin.RouteInfo, gated
 	return stale
 }
 
-// ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
+// ── Typed-port adapters (DELETED September 2026) ───────────────────────────
 //
-// PG-006.1 (June 2026): the genDocsSecurityAdapter inline struct was
-// deleted — the canonical concrete is
-// internal/api/middleware.TokenSecurityAdapter (re-located from
-// pkg/middleware round-2; pkg/ is leaf-only and HTTP-middleware
-// concrete adapters cannot legitimately live there). The struct is
-// reachable from internal/api, cmd/admin, and internal/app without
-// crossing layering boundaries; cfg.Security is snapshot-fed into
-// the canonical at the call-site. Only the rate-limit and
-// feature-flags inline adapters remain below (their canonical
-// equivalents are NOT yet tracked under internal/api/middleware;
-// a separate consolidation would promote them — out of scope
-// for PG-006.1).
-
-type genDocsRateLimitAdapter struct{ cfg *config.Config }
-
-func (a *genDocsRateLimitAdapter) RateLimitEnabled() bool { return a.cfg.Security.RateLimitEnabled }
-func (a *genDocsRateLimitAdapter) RateLimitRequests() int { return a.cfg.Security.RateLimitRequests }
-
-type genDocsFeatureFlagsAdapter struct{ cfg *config.Config }
-
-func (a *genDocsFeatureFlagsAdapter) ArtlistEnabled() bool { return a.cfg.Features.ArtlistEnabled }
-func (a *genDocsFeatureFlagsAdapter) ScriptClipsEnabled() bool {
-	return a.cfg.Features.ScriptClipsEnabled
-}
+// genDocsRateLimitAdapter + genDocsFeatureFlagsAdapter were removed in the
+// September 2026 cleanup. The canonical concretes are
+// internal/platform/httpserver/middleware.RateLimitAdapter +
+// middleware.FeatureFlagsAdapter — snapshot-literal wiring at the single
+// construction site above (godlike/06 one owner per fact).
 
 // generateMarkdown is also callable from golden-file tests via
 // the gen_api_docs_test.go file in the same package.

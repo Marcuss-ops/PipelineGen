@@ -10,6 +10,7 @@ import (
 	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -28,7 +29,7 @@ import (
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, artlistWiring *ArtlistWiring) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, artlistWiring *ArtlistWiring, searchFanOut assetsearch.SearchFanOut) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -110,7 +111,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidRushDeps, log)
 	}
 	vidRushCache := vidrushCachePort(root, log)
-	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
+	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, searchFanOut, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -245,8 +246,8 @@ func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring) error {
-	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring); err != nil {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring, searchFanOut assetsearch.SearchFanOut) error {
+	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring, searchFanOut); err != nil {
 		return err
 	}
 	return registerScriptHistory(registry, log, cfg, root)

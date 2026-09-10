@@ -63,6 +63,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/destination"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
@@ -110,6 +111,20 @@ func buildScriptUseCases(
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
 	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	if strings.TrimSpace(cfg.External.RustVisualNERPath) != "" {
+		visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
+		visualNER, nerErr := rustexec.NewVisualNERAdapter(visualNERExecutor)
+		if nerErr != nil {
+			log.Warn("wireScriptFlow: batch VisualNER adapter unavailable", zap.Error(nerErr))
+		} else if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER); enrichErr != nil {
+			log.Warn("wireScriptFlow: batch SceneIR enricher unavailable", zap.Error(enrichErr))
+		} else {
+			oneUC.SetSegmentEnricher(enricher)
+			log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired")
+		}
+	} else {
+		log.Warn("wireScriptFlow: batch SceneIR/VisualNER enricher disabled (rust_visualner_path empty)")
+	}
 	if cfg.External.RustMusclesPath != "" {
 		oneUC.SetAudioProcessor(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log))
 		log.Info("wireScriptFlow: canonical Rust audio renderer wired to GenerateOneUseCase")

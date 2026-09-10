@@ -27,10 +27,15 @@ type OverlayPlan struct {
 	PlanID        string `json:"plan_id"`
 	VideoID       string `json:"video_id"`
 	ProjectID     string `json:"project_id,omitempty"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	FPSNum        int    `json:"fps_num"`
-	FPSDen        int    `json:"fps_den"`
+	// ScriptName and Language route freshly rendered overlay artifacts to
+	// <script-name>/<language>/overlay. They are delivery metadata, not
+	// semantic rendering inputs.
+	ScriptName string `json:"script_name,omitempty"`
+	Language   string `json:"language,omitempty"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	FPSNum     int    `json:"fps_num"`
+	FPSDen     int    `json:"fps_den"`
 	// ForegroundScalePercent scales the source video on the full canvas.
 	// Zero/100 preserve the legacy full-canvas behaviour.
 	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
@@ -131,6 +136,7 @@ type OverlayEntityRef struct {
 type OverlayAssetRef struct {
 	AssetID   string `json:"asset_id"`
 	URL       string `json:"url,omitempty"`
+	LocalPath string `json:"-"`
 	SHA256    string `json:"sha256"`
 	MediaType string `json:"media_type,omitempty"`
 }

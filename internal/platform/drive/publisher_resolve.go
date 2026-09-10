@@ -80,6 +80,15 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	} else {
 		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
 	}
+	// DestinationSubpath is a child path below the destination's canonical
+	// semantic path. This is what lets script-owned sidecars resolve as
+	// <script>/<language>/overlay while keeping the registry as the owner of
+	// the root and the first two path segments.
+	for _, child := range req.DestinationSubpath {
+		if child = strings.TrimSpace(child); child != "" {
+			segments = append(segments, child)
+		}
+	}
 
 	// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
 	if policy.RequireSubpath && len(segments) == 0 && pathBuilt && strings.TrimSpace(req.DestinationFolderID) == "" {

@@ -53,8 +53,10 @@ func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 	if c.Width <= 0 || c.Height <= 0 || c.FPSNum <= 0 || c.FPSDen <= 0 {
 		// Production default: derived from the AssemblyReadyVideoContract
 		// (1920×1080 @ 24/1). Golden/certification paths use GoldenOverlayCanvas
-		// explicitly.
-		return OverlayCanvasSpec{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1}
+		// explicitly. Preserve all caller-owned semantic fields: the old
+		// replacement silently dropped Background and Style whenever the
+		// production canvas dimensions were left at zero.
+		c.Width, c.Height, c.FPSNum, c.FPSDen = 1920, 1080, 24, 1
 	}
 	return c
 }
@@ -74,7 +76,7 @@ func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capabil
 	}
 	if src.AssetID != "" || src.URL != "" || src.SHA256 != "" {
 		bg.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
-			AssetID: src.AssetID, URL: src.URL, SHA256: src.SHA256, MediaType: src.MediaType,
+			AssetID: src.AssetID, URL: src.URL, LocalPath: src.LocalPath, SHA256: src.SHA256, MediaType: src.MediaType,
 		}}
 	}
 	return bg
@@ -322,6 +324,8 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		PlanID:                 planID,
 		VideoID:                videoID,
 		ProjectID:              strings.TrimSpace(projectID),
+		ScriptName:             firstNonEmpty(result.OutputName, result.Title, projectID),
+		Language:               string(language),
 		Width:                  canvas.Width,
 		Height:                 canvas.Height,
 		FPSNum:                 canvas.FPSNum,

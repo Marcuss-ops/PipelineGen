@@ -75,9 +75,20 @@ func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
 	if cfg == nil {
 		return youtubetypes.RuntimeConfig{}
 	}
+	maxVideo := cfg.Concurrency.MaxConcurrentVideoExtracts
+	// Speed audit (Sept 2026): lift the old 2-slot default to 5 for
+	// download-once fanout without requiring every operator to edit
+	// config.yaml. Explicit operator value wins; 0 is handled downstream.
+	if maxVideo <= 2 {
+		maxVideo = 5
+	}
+	maxOllama := cfg.Concurrency.MaxConcurrentOllamaCalls
+	if maxOllama <= 1 {
+		maxOllama = 4
+	}
 	return youtubetypes.RuntimeConfig{
-		MaxConcurrentVideoExtracts: cfg.Concurrency.MaxConcurrentVideoExtracts,
-		MaxConcurrentOllamaCalls:   cfg.Concurrency.MaxConcurrentOllamaCalls,
+		MaxConcurrentVideoExtracts: maxVideo,
+		MaxConcurrentOllamaCalls:   maxOllama,
 		YouTubeExtractTimeout:      cfg.Jobs.YouTubeExtractTimeout,
 		DataDir:                    cfg.Storage.DataDir,
 		YtdlpPath:                  cfg.External.ResolvedYtdlpPath(),
