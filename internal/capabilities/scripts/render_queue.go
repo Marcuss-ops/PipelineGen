@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -172,17 +175,17 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 			return
 		}
 		seen[hash] = struct{}{}
-		url := ref.URL
-		if url == "" {
-			url = "assets/" + ref.AssetID
-		}
-		// Keep the producer URL as the durable source location. RenderingGen
-		// owns the canonical workspace logical path after compiling the
-		// semantic asset registry; PipelineGen must not invent one here.
-		asset := RenderQueueAsset{Hash: hash, URL: url}
+		sourceURL := strings.TrimSpace(ref.URL)
+		logicalPath := semanticAssetLogicalPath(ref)
+		// RenderingGen's compiled Chronon plan addresses assets by its
+		// canonical semantic path. Send that same path in the queue manifest
+		// and preserve the provider URL separately for worker self-healing.
+		// Without this identity match, a fresh Drive image can be downloaded
+		// successfully but still be looked up under a different workspace path.
+		asset := RenderQueueAsset{Hash: hash, URL: logicalPath}
 		asset.LocalPath = ref.LocalPath
-		if strings.HasPrefix(url, "http") {
-			asset.SourceURL = url
+		if strings.HasPrefix(sourceURL, "http") {
+			asset.SourceURL = sourceURL
 		}
 		assets = append(assets, asset)
 	}
@@ -274,6 +277,35 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	// never re-times a phase the worker already measured).
 	recordRenderingGenPhases(ctx, done.Artifact)
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+}
+
+var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
+	if strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/") {
+		return filepath.ToSlash(strings.TrimSpace(ref.URL))
+	}
+	id := semanticAssetIDSanitizer.ReplaceAllString(strings.TrimSpace(ref.AssetID), "_")
+	if id == "" {
+		id = "asset"
+	}
+	ext := filepath.Ext(ref.URL)
+	if parsed, err := url.Parse(ref.URL); err == nil && parsed.Path != "" {
+		ext = filepath.Ext(parsed.Path)
+	}
+	if ext == "" {
+		switch strings.ToLower(strings.TrimSpace(strings.SplitN(ref.MediaType, ";", 2)[0])) {
+		case "image/png", "image":
+			ext = ".png"
+		case "image/jpeg", "image/jpg":
+			ext = ".jpg"
+		case "video/mp4", "video/quicktime", "video":
+			ext = ".mp4"
+		case "font/ttf", "font":
+			ext = ".ttf"
+		}
+	}
+	return "assets/semantic/" + id + ext
 }
 
 // recordRenderingGenPhases projects the worker-reported RenderingGen phase
