@@ -164,7 +164,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	// ── Stage 2: manifest → VerifiedArtifact (mirrors broker staged→verified) ──
 	verified := finalization.VerifiedArtifact{
 		ArtifactID:       a.ID,
-		Kind:             finalization.KindVideo, // overlay → youtube_clip → KindVideo
+		Kind:             finalization.KindVideo, // overlay → script destination → KindVideo
 		Filename:         a.Filename,
 		LocalPath:        a.Path,
 		MIMEType:         a.MIMEType,
@@ -202,8 +202,8 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	if pub.last == nil {
 		t.Fatal("Drive publisher was never called")
 	}
-	if pub.last.Destination != delivery.DestinationYouTubeClip {
-		t.Fatalf("publisher destination = %q, want youtube_clip", pub.last.Destination)
+	if pub.last.Destination != delivery.DestinationScript {
+		t.Fatalf("publisher destination = %q, want script", pub.last.Destination)
 	}
 	if pub.last.DestinationFolderID != "artifact-folder-847" {
 		t.Fatalf("publisher folder = %q, want artifact-folder-847", pub.last.DestinationFolderID)
