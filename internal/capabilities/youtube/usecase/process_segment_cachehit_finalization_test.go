@@ -52,7 +52,7 @@ func TestExecute_CacheHit_RunsMetadataEnrichment(t *testing.T) {
 
 	core, media, metadata, observability := validProcessSegmentDeps()
 	core.VideoPipeline = vpipe
-	core.Writer = writer
+	metadata.LocalizedWriter = writer
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_yt_cachehit_meta_0_10_v1.mp4",
 		Duration:      10,

@@ -7,6 +7,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -34,6 +35,28 @@ func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
 	}
 	if stub.plan.DurationUS != 1000000 || len(stub.plan.Tracks) != 1 || len(stub.plan.Tracks[0].Events) != 1 || stub.plan.Version != capabilityaudio.AudioPlanVersion || result.FinalAudio == nil || !result.FinalAudio.CopyEligible {
 		t.Fatalf("plan=%+v audio=%+v", stub.plan, result.FinalAudio)
+	}
+}
+
+func TestRenderCombinedAudioUsesInternalVoiceoverPathAfterResponseSanitization(t *testing.T) {
+	stub := &audioPlanProcessorStub{}
+	uc := &GenerateOneUseCase{audioProcessor: stub}
+	path := testAudioPath(t)
+	result := &scriptpkg.GenerationResult{Output: scriptpkg.ScriptOutput{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", Index: 0, AudioMode: "VOICEOVER",
+			Bindings: scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{Status: "completed", DurationMs: 1000}},
+		}},
+	}}}
+	post := &adapters.PipelineResult{Voiceovers: []adapters.SceneVoiceover{{
+		SceneIndex: 0, Language: "it", Status: "completed", LocalPath: path, DurationMs: 1000,
+	}}}
+	if err := uc.renderCombinedAudio(context.Background(), scriptpkg.GenerationItemV2{ID: "item-1", Language: "it"}, result, post); err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.plan.Tracks) != 1 || len(stub.plan.Tracks[0].Events) != 1 {
+		t.Fatalf("expected one resolved voiceover event, plan=%+v", stub.plan)
 	}
 }
 

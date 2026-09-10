@@ -24,6 +24,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -66,9 +67,28 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	// re-introduce it at that seam).
 
 	// Step 3 — coords into VideoPipeline for cut/download.
-	normalize := true
-	if cmd.Normalize != nil {
-		normalize = *cmd.Normalize
+	//
+	// CutMode (Sept 2026 single-pass contract): the canonical
+	// CutModeResolver is the SOLE owner of copy-vs-render. With the staged
+	// full source + its probed facts, the segment is cut EXACTLY ONCE:
+	// stream-copy when the source is already canonical, one render
+	// otherwise. There is no longer a copy-then-render chain, and the
+	// caller-facing Normalize flag is retired (the resolver decides, not
+	// the API).
+	cutMode := mediaexec.CutModeNormalize
+	if cmd.PreDownloadedPath != "" && cmd.SourceFacts != nil {
+		// The ingest path never applies effects/watermarks to source clips
+		// and tolerates the same keyframe drift the pre-existing
+		// cut_copy→normalize chain accepted, so the boundary is treated as
+		// stream-copy safe here (conservative callers pass false).
+		cutMode = mediaexec.ResolveCutMode(mediaexec.CutEligibilityInput{
+			Source:         *cmd.SourceFacts,
+			Target:         u.media.CutProfile,
+			StartSec:       float64(startSec),
+			EndSec:         float64(endSec),
+			KeepAudio:      keepAudio,
+			StreamCopySafe: true,
+		})
 	}
 	cutReq := youtubeports.VideoCutRequest{
 		URL:               cmd.VideoURL,
@@ -78,7 +98,7 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 		OutputName:        strings.TrimSuffix(out.Item.Filename, ".mp4"),
 		ForceKeyframes:    cmd.ForceKeyframes,
 		KeepAudio:         keepAudio,
-		Normalize:         normalize,
+		CutMode:           cutMode,
 		Strategy:          string(cmd.Strategy),
 		OutputDir:         cmd.OutDir,
 		PreDownloadedPath: cmd.PreDownloadedPath,

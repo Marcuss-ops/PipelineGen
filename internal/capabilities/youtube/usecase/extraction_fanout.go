@@ -24,6 +24,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
@@ -36,14 +37,47 @@ func (s *ExtractionService) extractFanOut(
 	ctx context.Context,
 	req *youtubetypes.ExtractRequest,
 	segments []youtubetypes.Segment,
-	videoID, outDir, driveFolderID, driveFolderPath string,
+	videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID string,
 ) (*youtubetypes.ExtractResponse, error) {
 	// Speed audit P0.1 (Sept 2026): "download once, cut N with ffmpeg -c copy".
 	// When the operator enables VELOX_YOUTUBE_DOWNLOAD_ONCE (and the stager is wired),
 	// stage the FULL source once here; each segment then cuts locally via PreDownloadedPath.
-	preDownloadedPath := s.stageFullSourceOnce(ctx, req, videoID, segments)
-	if preDownloadedPath != "" {
-		defer s.releaseStagedSources(ctx)
+	// The receipt is scoped to THIS call stack (concurrency contract — the shared
+	// ExtractionService must not hold per-request staging state): the deferred
+	// release fires when this Extract() call completes, never for a sibling request.
+	preparedSource, sourceStager := s.stageFullSourceOnce(ctx, req, videoID, segments)
+	preDownloadedPath := ""
+	// sourceFacts is probed ONCE on the staged full source (Sept 2026
+	// single-probe contract): every segment reads the SAME immutable facts
+	// instead of re-probing N times. nil means no staging or probe failure
+	// → every segment degrades to CutModeNormalize (fail-closed).
+	var sourceFacts *mediaexec.MediaFacts
+	if preparedSource != nil && preparedSource.LocalPath != "" && sourceStager != nil {
+		preDownloadedPath = preparedSource.LocalPath
+		defer func() {
+			if err := sourceStager.Release(ctx, preparedSource.CleanupToken); err != nil && s.log != nil {
+				s.log.Debug("release staged youtube source after fanout", zap.Error(err))
+			}
+		}()
+		if s.processSeg != nil {
+			facts, probeErr := s.processSeg.ProbeSourceFacts(ctx, preDownloadedPath)
+			if probeErr != nil {
+				if s.log != nil {
+					s.log.Debug("full-source probe failed; segments will normalize (fail-closed, no unproven stream-copy)",
+						zap.String("video_id", videoID), zap.Error(probeErr))
+				}
+			} else if facts != nil {
+				sourceFacts = facts
+				if s.log != nil {
+					s.log.Info("youtube full-source probed once",
+						zap.String("video_id", videoID),
+					zap.String("video_codec", facts.VideoCodec),
+					zap.Int("width", facts.Width), zap.Int("height", facts.Height),
+					zap.Int("fps_num", facts.FPSNum), zap.Int("fps_den", facts.FPSDen),
+					zap.String("audio_codec", facts.AudioCodec))
+				}
+			}
+		}
 	}
 
 	resp := buildInitialResponse(req, segments, videoID, driveFolderID, driveFolderPath)
@@ -71,6 +105,8 @@ func (s *ExtractionService) extractFanOut(
 			defer func() { <-sem }()
 			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, keepAudio)
 			cmd.PreDownloadedPath = preDownloadedPath
+			cmd.SourceFacts = sourceFacts
+			cmd.SubtitleFolderID = subtitleFolderID
 			res, execErr := s.processSeg.Execute(ctx, cmd)
 			if execErr != nil {
 				res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)
@@ -113,31 +149,18 @@ func buildSegmentCommand(
 		DriveFolderPath:                driveFolderPath,
 		VideoURL:                       req.URL,
 		ForceKeyframes:                 req.ForceKeyframes,
-		Normalize:                      req.Normalize,
 		KeepAudio:                      &keepAudio,
 		Strategy:                       req.Strategy,
 		Destination:                    req.Destination,
-		SubtitleFolderID:               subtitleFolderID(req),
+		SubtitleFolderID:               "", // resolved by the caller (extractFanOut) after pre-resolution
 		SubtitleFolderPath:             subtitleFolderPath(req),
-		SubtitlePerClipSubfolders:      subtitlePerClipSubfolders(req),
 		RequireAllLanguagesBeforeVideo: req.RequireAllLanguagesBeforeVideo,
 		RequireTranscriptReady:         req.RequireTranscriptReady,
 	}
 }
 
-func subtitleFolderID(req *youtubetypes.ExtractRequest) string {
-	if req == nil || req.SubtitleDestination == nil {
-		return ""
-	}
-	return req.SubtitleDestination.FolderID
-}
-
 func subtitleFolderPath(req *youtubetypes.ExtractRequest) string {
 	return ""
-}
-
-func subtitlePerClipSubfolders(req *youtubetypes.ExtractRequest) bool {
-	return req != nil && req.SubtitleDestination != nil && req.SubtitleDestination.PerClipSubfolders
 }
 
 func failedFanOutResult(

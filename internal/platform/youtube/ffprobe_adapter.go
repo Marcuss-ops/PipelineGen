@@ -42,6 +42,47 @@ func NewFFProbeAdapter(probe MediaProbe) *FFProbeAdapter {
 	return &FFProbeAdapter{probe: probe}
 }
 
+// factsFromInfo maps the raw mediaexec.MediaInfo onto the canonical
+// mediaexec.MediaFacts used by the CutModeResolver (single owner of the
+// copy-vs-render decision). Only the fields the resolver compares are
+// projected; everything else stays in MediaInfo.
+func factsFromInfo(info *mediaexec.MediaInfo) *mediaexec.MediaFacts {
+	if info == nil {
+		return nil
+	}
+	return &mediaexec.MediaFacts{
+		VideoCodec:  info.VideoCodec,
+		PixelFormat: info.PixelFormat,
+		Width:       info.Width,
+		Height:      info.Height,
+		FPSNum:      info.FPSNum,
+		FPSDen:      info.FPSDen,
+		HasAudio:    info.HasAudio,
+		AudioCodec:  info.AudioCodec,
+		SampleRate:  info.SampleRate,
+		Channels:    info.Channels,
+	}
+}
+
+// ProbeFacts implements youtubeapp.FFProbePort.ProbeFacts — the "probe
+// the staged full source ONCE per extraction" owner. The fanout calls it
+// before segment fan-out; a nil/errored probe degrades the extraction to
+// CutModeNormalize (fail-closed, no unproven stream-copy).
+func (a *FFProbeAdapter) ProbeFacts(ctx context.Context, localPath string) (*mediaexec.MediaFacts, error) {
+	if a == nil || a.probe == nil {
+		return nil, fmt.Errorf("ffprobe adapter: probe port not wired")
+	}
+	info, err := a.probe.Probe(ctx, localPath)
+	if err != nil {
+		return nil, fmt.Errorf("ffprobe probe failed for %q: %w", localPath, err)
+	}
+	facts := factsFromInfo(info)
+	if facts == nil || facts.Width <= 0 || facts.Height <= 0 || facts.FPSNum <= 0 || facts.FPSDen <= 0 {
+		return nil, fmt.Errorf("ffprobe probe returned incomplete facts for %q", localPath)
+	}
+	return facts, nil
+}
+
 // ValidateClip implements youtubeapp.FFProbePort.ValidateClip.
 // The use case's validateFFProbeReport applies the fail-closed gates
 // (container readable / video stream present / duration tolerance /

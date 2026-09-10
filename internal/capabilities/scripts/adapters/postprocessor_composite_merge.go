@@ -1,8 +1,10 @@
 package adapters
 
 import (
+	"fmt"
 	"strings"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -186,6 +188,15 @@ func mergeVoiceovers(dst *PipelineResult, src *PostProcessResult, currentInput *
 		return
 	}
 	dst.Voiceovers = append(dst.Voiceovers, src.Voiceovers...)
+	for _, v := range src.Voiceovers {
+		if v.TimingArtifact == nil || strings.TrimSpace(v.Language) == "" || v.SceneIndex < 0 {
+			continue
+		}
+		if dst.TimingArtifacts == nil {
+			dst.TimingArtifacts = make(map[string]*capabilityaudio.SpeechTimingArtifact)
+		}
+		dst.TimingArtifacts[sceneTimingArtifactKey(v.Language, v.SceneIndex)] = v.TimingArtifact
+	}
 	if currentInput == nil {
 		return
 	}
@@ -199,6 +210,10 @@ func mergeVoiceovers(dst *PipelineResult, src *PostProcessResult, currentInput *
 		}
 		applyVoiceoverBinding(sc.Bindings.Voiceover, v)
 	}
+}
+
+func sceneTimingArtifactKey(language string, sceneIndex int) string {
+	return fmt.Sprintf("%s:%d", strings.ToLower(strings.TrimSpace(language)), sceneIndex)
 }
 
 func applyVoiceoverBinding(binding *scriptpkg.VoiceoverBinding, v SceneVoiceover) {

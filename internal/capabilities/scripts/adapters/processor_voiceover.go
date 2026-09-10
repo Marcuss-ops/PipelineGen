@@ -326,6 +326,12 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				LocalPath:  out.LocalPath,
 				DurationMs: out.DurationMs,
 				Timing:     voiceoverTimingToDomain(out.Timing),
+				TimingArtifact: func() *audio.SpeechTimingArtifact {
+					if out.Timing == nil {
+						return nil
+					}
+					return out.Timing.Artifact
+				}(),
 			})
 			if out.Status == "failed" {
 				// required timing is fail-closed at the script job level:

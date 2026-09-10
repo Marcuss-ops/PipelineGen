@@ -190,6 +190,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
+		oneUC.SetOverlayBackgroundSource(durableRunner.OverlayBackgroundSource())
+		if overlayEnqueuer := durableRunner.OverlayRenderEnqueuer(); overlayEnqueuer != nil {
+			oneUC.SetOverlayRenderEnqueuer(overlayEnqueuer)
+			log.Info("wireScriptFlow: batch script.generate_item overlay rendering wired through RenderingGen")
+		} else {
+			log.Warn("wireScriptFlow: batch overlay rendering unavailable (RenderingGen enqueuer not configured)")
+		}
 		wireLocalizedRenderEnqueuer(cfg, root, log, durableRunner)
 		log.Info("wireScriptFlow: durable single-item runtime wired through canonical RenderPlan executor")
 	} else {

@@ -17,17 +17,37 @@ import (
 // generation item. It owns only the four phase collaborators and
 // the canonical logger — no monolithic configuration state.
 type GenerateOneUseCase struct {
-	preparer       *GenerationPreparer
-	engineRunner   *GenerationEngineRunner
-	postprocessor  *GenerationPostprocessor
-	finalizer      *GenerationFinalizer
-	log            *zap.Logger
-	audioProcessor mediaexec.AudioProcessor
+	preparer                *GenerationPreparer
+	engineRunner            *GenerationEngineRunner
+	postprocessor           *GenerationPostprocessor
+	finalizer               *GenerationFinalizer
+	log                     *zap.Logger
+	audioProcessor          mediaexec.AudioProcessor
+	overlayRenderEnqueuer   scriptgen.OverlayRenderEnqueuer
+	overlayBackgroundSource scriptgen.OverlayBackgroundSource
 }
 
 func (uc *GenerateOneUseCase) SetAudioProcessor(processor mediaexec.AudioProcessor) {
 	if uc != nil {
 		uc.audioProcessor = processor
+	}
+}
+
+// SetOverlayRenderEnqueuer wires the same RenderingGen/Chronon queue used by
+// the durable runner into the batch child path. Without this boundary a
+// multi-language script could finish Docs/NLP/voiceover successfully while
+// never producing its requested overlay artifact.
+func (uc *GenerateOneUseCase) SetOverlayRenderEnqueuer(enqueuer scriptgen.OverlayRenderEnqueuer) {
+	if uc != nil {
+		uc.overlayRenderEnqueuer = enqueuer
+	}
+}
+
+// SetOverlayBackgroundSource wires the same catalog/cache resolver used by
+// the durable runner into batch script.generate_item jobs.
+func (uc *GenerateOneUseCase) SetOverlayBackgroundSource(source scriptgen.OverlayBackgroundSource) {
+	if uc != nil {
+		uc.overlayBackgroundSource = source
 	}
 }
 

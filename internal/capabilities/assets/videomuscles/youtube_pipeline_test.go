@@ -98,22 +98,6 @@ func TestTempRawPathUniquenessAcrossSameVideoID(t *testing.T) {
 	require.Contains(t, filepath.Base(path2), "raw_")
 }
 
-// TestTempCutPathUniquenessAcrossSameOutputName pins the same uniqueness
-// contract for the PreDownloadedPath (cut_*) temp file naming.
-func TestTempCutPathUniquenessAcrossSameOutputName(t *testing.T) {
-	p := newTestPipeline(t)
-	outputName := "round-7-pacquiao-broner"
-
-	path1 := p.tempCutPath(outputName)
-	path2 := p.tempCutPath(outputName)
-
-	require.NotEqual(t, path1, path2, "cut temp file paths for same output name must differ")
-	require.Contains(t, filepath.Base(path1), outputName)
-	require.Contains(t, filepath.Base(path2), outputName)
-	require.Contains(t, filepath.Base(path1), "cut_")
-	require.Contains(t, filepath.Base(path2), "cut_")
-}
-
 // TestTempRawPathContainsVideoIDForDebuggability ensures the video ID
 // is preserved in the temp path for operator debuggability.
 func TestTempRawPathContainsVideoIDForDebuggability(t *testing.T) {

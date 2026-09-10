@@ -12,7 +12,7 @@ import (
 // timing-frozen plan is compiled. A color background needs no resolver. An
 // image/video background with an asset id must resolve to a verified hash and
 // local/remote source, otherwise the render would silently omit the layer.
-func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.OverlayBackgroundSpec) (*scriptpkg.OverlayBackgroundSpec, error) {
+func ResolveOverlayBackground(ctx context.Context, source OverlayBackgroundSource, src *scriptpkg.OverlayBackgroundSpec) (*scriptpkg.OverlayBackgroundSpec, error) {
 	if src == nil {
 		return nil, nil
 	}
@@ -35,10 +35,10 @@ func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.Ov
 	if strings.TrimSpace(out.AssetID) == "" {
 		return nil, fmt.Errorf("visual background %q requires asset_id when sha256/source is incomplete", out.Kind)
 	}
-	if r == nil || r.overlayBackgroundSource == nil {
+	if source == nil {
 		return nil, fmt.Errorf("visual background asset %q cannot be resolved: resolver is not wired", out.AssetID)
 	}
-	asset, err := r.overlayBackgroundSource.ResolveOverlayBackground(ctx, out.AssetID)
+	asset, err := source.ResolveOverlayBackground(ctx, out.AssetID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,4 +56,11 @@ func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.Ov
 		out.MediaType = asset.MediaType
 	}
 	return &out, nil
+}
+
+func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.OverlayBackgroundSpec) (*scriptpkg.OverlayBackgroundSpec, error) {
+	if r == nil {
+		return nil, fmt.Errorf("visual background asset cannot be resolved: runner is nil")
+	}
+	return ResolveOverlayBackground(ctx, r.overlayBackgroundSource, src)
 }

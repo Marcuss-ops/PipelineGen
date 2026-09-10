@@ -26,14 +26,23 @@ type YouTubeCutRequest struct {
 	OutputName     string
 	ForceKeyframes bool
 	KeepAudio      bool
-	Normalize      bool
-	Strategy       string // verify (default), skip, replace
+	// CutMode is the SINGLE media-operation decision resolved by the
+	// canonical CutModeResolver (mediaexec) before this call. The pipeline
+	// executes it verbatim: CutModeCopy stream-copies the source interval
+	// straight to the final artifact; CutModeNormalize renders it exactly
+	// once. Both operations are NEVER chained for one segment
+	// (Sept 2026 single-pass contract). When empty (legacy caller), the
+	// pipeline defaults to CutModeNormalize (fail-closed — the canonical
+	// profile is mandatory).
+	CutMode  mediaexec.CutMode
+	Strategy string // verify (default), skip, replace
 	// OutputDir is the target directory for the final clip.
 	// When empty, falls back to DataDir/media/clips/general/{videoID}.
 	OutputDir string
 	// PreDownloadedPath is optional. When set, yt-dlp download is SKIPPED and
-	// the clip is cut locally from this file using ffmpeg -c copy (very fast).
-	// This enables the "download once, cut N times" optimization.
+	// the clip is cut locally from this file (stream-copy when CutModeCopy,
+	// one canonical render when CutModeNormalize). This enables the
+	// "download once, cut N times" optimization.
 	PreDownloadedPath string
 	SkipMetadataFetch bool
 }
@@ -49,11 +58,12 @@ type Pipeline struct {
 
 // ClipProcessor is the execution port for YouTube media mechanics. The
 // application owns download/cache/lifecycle policy; the injected adapter owns
-// cutting, normalization and watermark execution.
+// cutting and normalization execution. Watermark composition is NOT part of
+// the ingest contract (Sept 2026): visual composition belongs to
+// RenderingGen/Chronon, so ingest always produces clean source clips.
 type ClipProcessor interface {
 	CutCopy(context.Context, string, string, string, string, bool) error
 	CutAndNormalize(context.Context, string, string, string, string, mediaexec.CutAndNormalizeOptions) error
-	ApplyWatermark(context.Context, string, string, mediaexec.WatermarkOptions) error
 }
 
 // YouTubeCutResult wraps the output of a YouTube cut operation with the local file path
@@ -147,20 +157,51 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		meta, _ = p.ytdlp.GetVideoMetadata(ctx, req.URL)
 	}
 
-	// 3. Get the raw video file — either from a pre-downloaded source or via yt-dlp
-	var rawFile string
+	// 3. Get the raw video file — either from a pre-downloaded source or via yt-dlp.
+	//
+	// Single-pass contract (Sept 2026): the CutModeResolver has ALREADY
+	// decided copy-vs-render for this segment (req.CutMode). The executor
+	// below performs EXACTLY ONE media operation per segment — never a
+	// copy-then-render chain. This removes the old CutCopy→temp→
+	// CutAndNormalize double pass that cost 1 extra temp file, 1 remux and
+	// 1 extra full decode/encode per segment on the download-once path.
+	if p.clipProcess == nil {
+		return nil, fmt.Errorf("ffmpeg clip processor not configured")
+	}
 
 	if req.PreDownloadedPath != "" {
-		p.log.Info("using pre-downloaded video, cutting locally with ffmpeg -c copy",
-			zap.String("source", req.PreDownloadedPath))
+		p.log.Info("using pre-downloaded video, cutting locally",
+			zap.String("source", req.PreDownloadedPath),
+			zap.String("cut_mode", string(req.CutMode)))
 
-		// Cut the specific segment from the pre-downloaded file using ffmpeg -c copy (instant)
 		startStr := p.formatTime(req.Start)
 		endStr := p.formatTime(req.Start + req.Duration)
-		rawFile = p.tempCutPath(req.OutputName)
 
-		if err := p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, rawFile, startStr, endStr, false); err != nil {
-			return nil, fmt.Errorf("failed to cut segment from pre-downloaded file: %w", err)
+		renderTimer := time.Now()
+		var cutErr error
+		if req.CutMode == mediaexec.CutModeCopy {
+			// Stream-copy the segment straight to the final artifact: the
+			// source is already canonical (resolver-verified conformance),
+			// so no re-encode is needed.
+			cutErr = p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, outputPath, startStr, endStr, !req.KeepAudio)
+		} else {
+			// Single canonical render DIRECTLY from the full source (never
+			// through a temp copy). The source interval is exact; encoder
+			// selection is delegated to clipProcess (central VideoConfig
+			// policy).
+			cutErr = p.clipProcess.CutAndNormalize(ctx, req.PreDownloadedPath, outputPath, startStr, endStr, canonicalYouTubeCutOptions(req.KeepAudio))
+		}
+
+		status := "success"
+		if cutErr != nil {
+			status = "failed"
+		}
+		metrics.VideoRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
+		metrics.VideoRenderTotal.WithLabelValues(status, "false").Inc()
+
+		if cutErr != nil {
+			p.log.Error("local cut from pre-downloaded source failed", zap.Error(cutErr))
+			return nil, fmt.Errorf("failed to cut segment from pre-downloaded file: %w", cutErr)
 		}
 	} else {
 		// Download the specific section using yt-dlp
@@ -186,93 +227,41 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 			return nil, fmt.Errorf("no segments downloaded")
 		}
 
-		rawFile = segments[0].Path
-	}
+		rawFile := segments[0].Path
 
-	// 4. Process the downloaded clip with ffmpeg.
-	//
-	// Every persisted YouTube clip must be materialized through the
-	// canonical profile. Normalize=false remains accepted at the port for
-	// compatibility, but is no longer allowed to select a stream-copy
-	// output.
-	if p.clipProcess == nil {
-		return nil, fmt.Errorf("ffmpeg clip processor not configured")
-	}
-	if !req.Normalize {
-		p.log.Warn("normalization override ignored; canonical clip profile is mandatory",
-			zap.String("video_id", videoID))
-		req.Normalize = true
-	}
+		// 4. Process the downloaded section with ffmpeg.
+		//
+		// Every persisted YouTube clip must be materialized through the
+		// canonical profile. yt-dlp's download section may include keyframe
+		// padding, so the raw section is NOT itself a trustworthy clip:
+		// bound the canonical render to the requested duration so the
+		// persisted artifact, Drive object, and SQLite metadata agree
+		// physically. Exactly ONE render — no copy chain. (The per-segment
+		// download path is the fallback when download-once staging is
+		// unavailable; the segment is always normalized here.)
+		renderTimer := time.Now()
+		normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), canonicalYouTubeCutOptions(req.KeepAudio))
 
-	renderTimer := time.Now()
-	var normalizeErr error
-	if req.Normalize {
-		// yt-dlp's download section may include keyframe padding.  The raw
-		// file is therefore not itself a trustworthy 4-second clip.  Bound
-		// the canonical render to the requested duration so the persisted
-		// artifact, Drive object, and SQLite metadata agree physically.
-		// Encoder selection is intentionally delegated to clipProcess, which
-		// was constructed from the central VideoConfig policy.
-		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), canonicalYouTubeCutOptions(req.KeepAudio))
-	} else {
-		// Raw fetch: stream-copy the already-cut segment — no re-encode.
-		// CutCopy with empty start/end is a pure container remux.
-		normalizeErr = p.clipProcess.CutCopy(ctx, rawFile, outputPath, "", "", !req.KeepAudio)
-	}
-
-	status := "success"
-	if normalizeErr != nil {
-		status = "failed"
-	}
-	metrics.VideoRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
-	metrics.VideoRenderTotal.WithLabelValues(status, "false").Inc()
-
-	if normalizeErr != nil {
-		p.log.Error("ffmpeg clip processing failed", zap.Error(normalizeErr))
-		return nil, fmt.Errorf("video processing failed: %w", normalizeErr)
-	}
-
-	// 5. Apply watermark overlay if watermark.png exists AND watermark is explicitly enabled.
-	//    Speed audit (Sept 2026): watermark is a 2nd full re-encode (chroma-key+overlay)
-	//    on every clip; canonical watermark composition lives in RenderingGen/Chronon (Vulkan
-	//    layer) not in the YouTube clip cut path. Disabled by default; enable via
-	//    VELOX_YOUTUBE_WATERMARK_ENABLED=true when the legacy per-clip burn is required.
-	watermarkPath := "config/watermark.png"
-	watermarkEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_WATERMARK_ENABLED")), "true") || strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_WATERMARK_ENABLED")) == "1"
-	if watermarkEnabled && func() bool { _, err := os.Stat(watermarkPath); return err == nil }() {
-		p.log.Info("applying watermark overlay",
-			zap.String("watermark", watermarkPath),
-			zap.String("clip", outputPath))
-
-		watermarkedPath := outputPath + ".wm.mp4"
-		wmOpts := mediaexec.WatermarkOptions{
-			ImagePath: watermarkPath, Opacity: 0.25, Position: "center", ScalePercent: 20,
-			GreenScreenColor: "0x00FF00", GreenScreenSimilarity: 0.3, GreenScreenBlend: 0.1,
+		status := "success"
+		if normalizeErr != nil {
+			status = "failed"
 		}
-		wmOpts.Position = "center"
-		wmOpts.Opacity = 0.25
-		wmOpts.ScalePercent = 20
+		metrics.VideoRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
+		metrics.VideoRenderTotal.WithLabelValues(status, "false").Inc()
 
-		watermarkErr := p.clipProcess.ApplyWatermark(ctx, outputPath, watermarkedPath, wmOpts)
-		if watermarkErr != nil {
-			p.log.Warn("watermark overlay failed, using clip without watermark",
-				zap.Error(watermarkErr))
-			os.Remove(watermarkedPath)
-		} else {
-			os.Remove(outputPath)
-			os.Rename(watermarkedPath, outputPath)
-			p.log.Info("watermark overlay applied successfully",
-				zap.String("path", outputPath))
+		if normalizeErr != nil {
+			p.log.Error("ffmpeg clip processing failed", zap.Error(normalizeErr))
+			_ = os.Remove(rawFile)
+			return nil, fmt.Errorf("video processing failed: %w", normalizeErr)
 		}
-	} else if !watermarkEnabled {
-		p.log.Debug("youtube watermark skipped (VELOX_YOUTUBE_WATERMARK_ENABLED != true; use RenderingGen/Chronon watermark layer for composition)")
-	} else {
-		p.log.Debug("youtube watermark file missing; skipping watermark",
-			zap.String("watermark", watermarkPath))
+		_ = os.Remove(rawFile)
 	}
 
-	// Cleanup
-	_ = os.Remove(rawFile)
+	// 5. (REMOVED — Sept 2026) The legacy YouTube watermark overlay
+	// (ApplyWatermark + VELOX_YOUTUBE_WATERMARK_ENABLED) is gone from the
+	// ingest path: watermark composition is owned by RenderingGen/Chronon,
+	// and ingest must produce clean source clips. No second full re-encode
+	// is ever performed here.
 
 	p.log.Info("successfully processed youtube clip", zap.Duration("total_duration", time.Since(startTimer)))
 
@@ -295,12 +284,6 @@ func (p *Pipeline) hasYouTubeCookies() bool {
 // from colliding (e.g. normal download + no_audio download on same video).
 func (p *Pipeline) tempRawPath(outputName string) string {
 	return filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("raw_%s_%s.mp4", outputName, fileutil.RandomString(8)))
-}
-
-// tempCutPath returns a unique temp file path for pre-downloaded video cuts.
-// Same random-suffix contract as tempRawPath.
-func (p *Pipeline) tempCutPath(outputName string) string {
-	return filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("cut_%s_%s.mp4", outputName, fileutil.RandomString(8)))
 }
 
 func (p *Pipeline) formatTime(sec float64) string {

@@ -24,6 +24,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // ClipMetadataFile is the human-readable metadata saved alongside each clip.
@@ -75,7 +77,6 @@ type ExtractRequest struct {
 	URL                 string                      `json:"url"`
 	Segments            []Segment                   `json:"segments"`
 	ForceKeyframes      bool                        `json:"force_keyframes"`
-	Normalize           *bool                       `json:"normalize,omitempty"`
 	KeepAudio           *bool                       `json:"keep_audio,omitempty"`
 	WriteSummary        *bool                       `json:"write_summary,omitempty"`
 	Strategy            ExtractionStrategy          `json:"strategy,omitempty"`
@@ -271,8 +272,13 @@ type ProcessSegmentCommand struct {
 	DriveFolderPath string
 	VideoURL        string
 	ForceKeyframes  bool
-	Normalize       *bool
 	KeepAudio       *bool
+	// SourceFacts carries the immutable facts of the staged FULL source,
+	// probed ONCE before fan-out (cut_mode_resolver.go). nil means either
+	// no staging happened (per-segment yt-dlp path) or the probe was
+	// unavailable/failed — the pipeline then degrades to
+	// CutModeNormalize (fail-closed, no unproven stream-copy).
+	SourceFacts *mediaexec.MediaFacts
 	// Strategy is the typed ExtractionStrategy (Commit 2/6 #2).
 	// The legacy `string` alias was promoted to a typed enum so
 	// `cmd.Strategy == StrategyReplace` is a typed comparison
@@ -281,9 +287,14 @@ type ProcessSegmentCommand struct {
 	// at the port boundary (process_segment.go::Execute).
 	Strategy                  ExtractionStrategy
 	Destination               *DestinationRequest
-	SubtitleFolderID          string
-	SubtitleFolderPath        string
-	SubtitlePerClipSubfolders bool
+	// SubtitleFolderID is the FINAL Drive folder for subtitle sidecars,
+	// resolved ONCE per extraction before fan-out (Sept 2026 N→1
+	// contract): with per-clip subfolders the extraction already
+	// materialised the per-video child folder, so every segment uploads
+	// straight into it without any per-segment GetOrCreateFolder call.
+	// Empty string means no subtitle destination — Step 6-9 skips upload.
+	SubtitleFolderID   string
+	SubtitleFolderPath string
 	// PreDownloadedPath is the optional full-source file staged BEFORE fanout.
 	// When non-empty, VideoPipelineDownloadAndCut MUST cut locally via ffmpeg -c copy
 	// instead of spawning a per-segment yt-dlp --download-sections subprocess.

@@ -42,6 +42,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
@@ -321,6 +322,9 @@ func (s stubVideoPipelineWithPath) DownloadAndCutYouTubeVideo(_ context.Context,
 // ── Test 6: ClipAsset canonical build ──────────────────────────────
 
 // stubWriterAssetRecorder records the ClipAsset passed to the writer.
+// It records BOTH commit surfaces; since Sept 2026 the canonical commit
+// is the localized super-tx (CommitClipTextAndIndexEvent), which is the
+// method the recording assertions rely on.
 type stubWriterAssetRecorder struct {
 	stubAtomicWriter
 	captured youtubetypes.ClipAsset
@@ -329,6 +333,12 @@ type stubWriterAssetRecorder struct {
 
 func (s *stubWriterAssetRecorder) CommitClipAndIndexEvent(_ context.Context, _ string, asset youtubetypes.ClipAsset, _ youtubeports.IndexEventPayload) error {
 	s.captured = asset
+	s.calls++
+	return nil
+}
+
+func (s *stubWriterAssetRecorder) CommitClipTextAndIndexEvent(_ context.Context, cmd localized.CommitLocalizedClipCommand) error {
+	s.captured = cmd.Clip
 	s.calls++
 	return nil
 }
@@ -581,13 +591,13 @@ func TestProcessSegment_MetadataAnalysisFailure_NoPartialState(t *testing.T) {
 	require.NotNil(t, svc)
 
 	// Build deps: the recording writer stub captures every
-	// CommitClipAndIndexEvent call so we can prove the commit was
+	// CommitClipTextAndIndexEvent call so we can prove the commit was
 	// never reached (the analysis fails first).
 	bundleCore, media, metadata, observability := validProcessSegmentDeps()
 	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	bundleCore.Hash = testStubHash{}   // non-empty so Step 5 passes
-	bundleCore.Writer = writerRecorder // recording stub → proves NO commit
+	bundleCore.Hash = testStubHash{}          // non-empty so Step 5 passes
 	bundleCore.Log = capturedLog
+	metadata.LocalizedWriter = writerRecorder // recording stub → proves NO commit
 	metadata.MetadataService = svc
 	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
@@ -611,7 +621,7 @@ func TestProcessSegment_MetadataAnalysisFailure_NoPartialState(t *testing.T) {
 	// calls proves the canonical commit was never reached — the
 	// analysis failure happened first.
 	require.Equal(t, 0, writerRecorder.calls,
-		"ClipAtomicWriter.CommitClipAndIndexEvent MUST NOT be called when metadata analysis fails before commit (no partial state)")
+		"LocalizedClipWriter.CommitClipTextAndIndexEvent MUST NOT be called when metadata analysis fails before commit (no partial state)")
 
 	// ── (3) Warn log "metadata analysis failed BEFORE clip write" ─
 	entries := recorded.FilterMessageSnippet("metadata analysis failed BEFORE clip write").All()

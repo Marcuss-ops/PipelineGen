@@ -40,7 +40,7 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 		OutputName:        req.OutputName,
 		ForceKeyframes:    req.ForceKeyframes,
 		KeepAudio:         req.KeepAudio,
-		Normalize:         req.Normalize,
+		CutMode:           req.CutMode,
 		Strategy:          req.Strategy,
 		OutputDir:         req.OutputDir,
 		PreDownloadedPath: req.PreDownloadedPath,

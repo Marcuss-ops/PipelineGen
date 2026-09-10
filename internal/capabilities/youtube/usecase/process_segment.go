@@ -42,6 +42,8 @@ package usecase
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
@@ -65,6 +67,35 @@ type ProcessYouTubeSegmentUseCase struct {
 	media         ProcessSegmentMediaDeps
 	metadata      ProcessSegmentMetadataDeps
 	observability ProcessSegmentObservabilityDeps
+	// NOTE (Sept 2026): the per-video subtitle subfolder is resolved ONCE
+	// by the extraction orchestrator (resolveSubtitleDestination) before
+	// fan-out and threaded into every ProcessSegmentCommand. No per-segment
+	// Drive GetOrCreateFolder happens inside Execute anymore, so no memo
+	// state lives on this shared use case.
+}
+
+// ResolveSubtitleFolder get-or-creates the per-video subtitle subfolder
+// under the configured subtitle root. It is the SOLE Drive-folder creation
+// for subtitles in an extraction: the orchestrator calls it ONCE before
+// fan-out (Sept 2026 N→1 contract) and every segment uploads into the
+// returned folder id directly — there is no per-segment GetOrCreateFolder
+// anywhere in Execute. Fail-closed: an empty returned id is a typed error.
+func (u *ProcessYouTubeSegmentUseCase) ResolveSubtitleFolder(ctx context.Context, videoID, parentFolderID string) (string, error) {
+	if u == nil || u.media.DriveFolderMgr == nil {
+		return "", fmt.Errorf("Drive folder manager not wired")
+	}
+	videoFolderName := strings.TrimSpace(videoID)
+	if videoFolderName == "" {
+		videoFolderName = "youtube-video"
+	}
+	folderID, err := u.media.DriveFolderMgr.GetOrCreateFolder(ctx, videoFolderName, parentFolderID)
+	if err != nil {
+		return "", err
+	}
+	if folderID == "" {
+		return "", errors.New("Drive returned an empty subtitle folder ID")
+	}
+	return folderID, nil
 }
 
 // AcquireStockTranscript exposes the existing resolver for the transcript-

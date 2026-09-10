@@ -28,7 +28,12 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID: item.ID, Title: title, Topic: topic, Language: item.Language,
-		Tone: item.Tone, Model: item.Model, Mode: scriptpkg.ModeForSource(item.Source.Type),
+		// Project is the canonical artifact-routing namespace. Keep it on
+		// the resolved plan because the batch postprocessor path builds
+		// voiceover commands from this plan (the durable runner carries the
+		// same fact through its routing context).
+		Project: item.Project,
+		Tone:    item.Tone, Model: item.Model, Mode: scriptpkg.ModeForSource(item.Source.Type),
 		Concurrency: item.ScriptParams.Concurrency,
 		MediaMode:   item.MediaMode, SourceText: item.Source.SourceText,
 		Guidelines: editorialGuidelines(item), TargetWords: item.ScriptParams.TargetWords,

@@ -28,7 +28,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	assetdomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -37,21 +36,13 @@ import (
 
 // ExtractionDeps is the canonical deps bundle for the extraction
 // pipeline. ProcessSeg is REQUIRED (panic fail-closed at ctor; godlike/07).
-// LegacyCompositionDeps holds the legacy CompositionState wiring fields
-// that are kept for back-compat but not used in the canonical path.
-// Grouped into a sub-struct to keep ExtractionDeps under the archcheck
-// 8-field cap.
-type LegacyCompositionDeps struct {
-	VideoPipeline youtubeports.VideoPipelinePort
-	Clips         youtubeports.ClipStorePort
-	Cache         youtubeports.CachePort
-	Monitors      youtubeports.MonitorsStorePort
-}
-
+// The legacy CompositionState wiring fields (VideoPipeline/Clips/Cache/
+// Monitors) were REMOVED in Sept 2026 (LegacyCompositionDeps deleted): the
+// canonical extraction path reads ONLY ProcessSeg + the destination
+// resolver + segments service; nothing else is needed.
 type ExtractionDeps struct {
 	Cfg                 youtubetypes.RuntimeConfig
 	Log                 *zap.Logger
-	Legacy              LegacyCompositionDeps // reserved: legacy wiring kept for CompositionState back-compat (not used in canonical path)
 	AssetDestResolver   assetdomain.Resolver
 	FolderMemory        youtubeports.FolderMemoryPort
 	SegmentsSvc         *SegmentsService              // auto-constructed if nil (lazy-init)
@@ -62,10 +53,9 @@ type ExtractionDeps struct {
 // ExtractionService orchestrates the canonical per-segment pipeline.
 // Per-segment dispatch + concurrency live in extraction_fanout.go.
 // This struct is intentionally slim — only the fields the canonical
-// path ACTUALLY reads are stored (VideoPipeline/Clips/Cache/Monitors
-// scaffolding fields are kept on ExtractionDeps for CompositionState
-// wiring back-compat but not stored on Service; see PR-GODOBJ-1 honest-
-// limitation disclosure in CHANGELOG.md).
+// path ACTUALLY reads are stored (the legacy VideoPipeline/Clips/
+// Cache/Monitors scaffolding was REMOVED with LegacyCompositionDeps in
+// Sept 2026).
 type ExtractionService struct {
 	cfg                 youtubetypes.RuntimeConfig
 	log                 *zap.Logger
@@ -83,10 +73,10 @@ type ExtractionService struct {
 	// means only the explicit mode is supported (selection.mode=
 	// "important" fails closed at resolve time, godlike/07).
 	resolver *SegmentSelectionResolver
-	// download-once state is scoped to the extraction service lifecycle and is
-	// released by extractFanOut after the bounded fan-out completes.
-	stagedToken  string
-	stagedStager acquisition.SourceStager
+	// NOTE: the download-once staged source receipt is deliberately NOT
+	// stored on this shared service (see extraction_staging.go
+	// concurrency contract) — stageFullSourceOnce returns the receipt
+	// and each Extract() call keeps it on its own stack.
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.
@@ -236,5 +226,17 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	}
 
 	outDir := resolveOutDir(s.cfg.DataDir, videoID, canonicalGroup(request))
-	return s.extractFanOut(ctx, request, segments, videoID, outDir, dest.FolderID, dest.FolderPath)
+
+	// Resolve the subtitle destination ONCE before fan-out (Sept 2026
+	// N→1 contract): with per-clip subfolders the per-video child folder
+	// is get-or-created here, so 9 segments no longer issue 9 Drive
+	// GetOrCreateFolder calls for the same folder. Fail-closed: a
+	// resolution error aborts the extraction instead of uploading
+	// subtitles into the wrong folder.
+	subtitleFolderID, sErr := s.resolveSubtitleDestination(ctx, request, videoID)
+	if sErr != nil {
+		return nil, sErr
+	}
+
+	return s.extractFanOut(ctx, request, segments, videoID, outDir, dest.FolderID, dest.FolderPath, subtitleFolderID)
 }

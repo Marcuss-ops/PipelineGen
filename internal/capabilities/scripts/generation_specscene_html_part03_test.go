@@ -213,7 +213,20 @@ func TestDocument_SpecSceneJSONIsComplete(t *testing.T) {
 
 	var decoded scriptpkg.SpecSceneOutput
 	require.NoError(t, json.Unmarshal([]byte(raw), &decoded))
-	require.Equal(t, original, decoded, "embedded SpecScene JSON must round-trip byte-faithfully")
+	expectedRaw, err := json.Marshal(original)
+	require.NoError(t, err)
+	var expected scriptpkg.SpecSceneOutput
+	require.NoError(t, json.Unmarshal(expectedRaw, &expected))
+	for i := range expected.Scenes {
+		if expected.Scenes[i].Bindings.Image != nil {
+			expected.Scenes[i].Bindings.Image.LocalPath = ""
+		}
+		if expected.Scenes[i].Bindings.Voiceover != nil {
+			expected.Scenes[i].Bindings.Voiceover.LocalPath = ""
+		}
+	}
+	require.Equal(t, expected, decoded, "embedded SpecScene JSON must preserve the public shape")
+	require.NotContains(t, raw, "local_path")
 }
 
 func TestDocument_SpecSceneJSONAppearsAfterAllHumanScenes(t *testing.T) {

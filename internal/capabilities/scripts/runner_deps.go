@@ -103,6 +103,17 @@ func (r *Runner) SetOverlayRenderEnqueuer(enqueuer OverlayRenderEnqueuer) {
 	}
 }
 
+// OverlayRenderEnqueuer returns the configured Chronon queue boundary so the
+// legacy batch child path can share the exact same publisher, fresh-render
+// policy and queue client as the durable runner. It is read-only wiring; the
+// runner remains the owner of the field.
+func (r *Runner) OverlayRenderEnqueuer() OverlayRenderEnqueuer {
+	if r == nil {
+		return nil
+	}
+	return r.overlayRenderEnqueuer
+}
+
 // SetLocalizedRenderEnqueuer wires the per-(scene, language) localized render
 // fan-out. A nil enqueuer disables the fan-out (render not registered); a
 // non-nil enqueuer is fail-closed (an enqueue error fails the run).
@@ -368,6 +379,16 @@ func (r *Runner) SetOverlayBackgroundSource(source OverlayBackgroundSource) {
 	if r != nil {
 		r.overlayBackgroundSource = source
 	}
+}
+
+// OverlayBackgroundSource returns the canonical background resolver so the
+// batch child path can use the same catalog/cache boundary as the durable
+// runner. The returned port is read-only and nil when not wired.
+func (r *Runner) OverlayBackgroundSource() OverlayBackgroundSource {
+	if r == nil {
+		return nil
+	}
+	return r.overlayBackgroundSource
 }
 
 // SetFinalAudioPublisher wires the canonical delivery publisher used to make

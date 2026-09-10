@@ -38,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
@@ -315,6 +316,10 @@ func registerPostgresMediaOutboxHandlers(
 	if err := worker.RegisterHandler(cliprender.EventClipRenderDriveDeliveryRequested, clipHandler); err != nil {
 		return fmt.Errorf("register clip.render PostgreSQL Drive delivery handler: %w", err)
 	}
+	worker.WithOutboxStatusMetrics(
+		observability.NewMediaOutboxStatusCountAdapter(),
+		cliprender.EventClipRenderDriveDeliveryRequested,
+	)
 	if imageRepo != nil {
 		imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(imageRepo, drivePublisher, log)
 		if imageErr != nil {
