@@ -68,8 +68,12 @@ verify-fast: verify-foundation verify-static
 verify-dev: verify-foundation verify-static
 	@echo "✅ verify-dev passed"
 
+# verify-changed — agent-loop component gate. The legacy shell runner
+# (scripts/ci/verify-changed.sh) was purged in the Sept 2026 dust cleanup;
+# the registry-driven runner is the canonical replacement (verify-push /
+# verify-main consume the same verify-changed-components target).
 verify-changed:
-	@GO="$(GO)" bash scripts/ci/verify-changed.sh
+	@$(MAKE) verify-changed-components
 
 # verify-agent — agent development loop gate: verify-dev (foundation + static)
 # plus registry-driven tests of ONLY the components impacted by the current
