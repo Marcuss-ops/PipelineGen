@@ -25,8 +25,16 @@ func newFinalAudioPublisher(root *ComposeRoot, committer assetspersistence.Asset
 	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil || committer == nil {
 		return nil
 	}
+	// The committer and the transaction passed to the finalizer must use the
+	// same database engine. Production wiring uses the canonical PostgreSQL
+	// media committer; keep the root DB fallback for legacy/test compositions
+	// that provide a SQLite committer without a media database.
+	mediaDB := root.DB.DB
+	if root.MediaPostgres != nil {
+		mediaDB = root.MediaPostgres
+	}
 	return &finalAudioPublisherAdapter{
-		db: root.DB.DB,
+		db: mediaDB,
 		preparation: assetfinalizer.NewArtifactPreparation(
 			drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log,
 		),
