@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
@@ -85,7 +86,7 @@ func validYouTubeSubBundles() (youtubeapp.ServiceCoreDeps, youtubeapp.ServiceAss
 
 // stubProcessYouTubeSegmentUseCase builds a minimal
 // *ProcessYouTubeSegmentUseCase with no-op stubs for the 5
-// required ports (Cache/VideoPipeline/Hash/Writer/SegmentsSvc).
+// required ports (Cache/VideoPipeline/Hash/LocalizedWriter/SegmentsSvc).
 // Used by composition tests that exercise NewService's
 // construction path without actually invoking the per-segment
 // pipeline. The stubs satisfy the interface signatures so
@@ -98,12 +99,11 @@ func stubProcessYouTubeSegmentUseCase(t *testing.T) *youtubeapp.ProcessYouTubeSe
 			Cache:         &stubClipCachePort{},
 			VideoPipeline: &stubVideoPipelinePort{},
 			Hash:          &stubHashServicePort{},
-			Writer:        &stubClipAtomicWriterPort{},
 			SegmentsSvc:   youtubeapp.NewSegmentsService(),
 			Log:           zap.NewNop(),
 		},
 		youtubeapp.ProcessSegmentMediaDeps{},
-		youtubeapp.ProcessSegmentMetadataDeps{},
+		youtubeapp.ProcessSegmentMetadataDeps{LocalizedWriter: &stubClipAtomicWriterPort{}},
 		youtubeapp.ProcessSegmentObservabilityDeps{},
 	)
 }
@@ -136,6 +136,10 @@ func (s *stubHashServicePort) MD5File(_ string) (string, error)    { return "", 
 type stubClipAtomicWriterPort struct{}
 
 func (s *stubClipAtomicWriterPort) CommitClipAndIndexEvent(_ context.Context, _ string, _ youtubetypes.ClipAsset, _ youtubeports.IndexEventPayload) error {
+	return nil
+}
+
+func (s *stubClipAtomicWriterPort) CommitClipTextAndIndexEvent(_ context.Context, _ localized.CommitLocalizedClipCommand) error {
 	return nil
 }
 

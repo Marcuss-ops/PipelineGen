@@ -93,5 +93,3 @@ func chrononProbeLookup(path string) (int64, bool) {
 	}
 	return entry.DurationMS, true
 }
-
-

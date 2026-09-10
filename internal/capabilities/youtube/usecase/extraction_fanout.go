@@ -71,10 +71,10 @@ func (s *ExtractionService) extractFanOut(
 				if s.log != nil {
 					s.log.Info("youtube full-source probed once",
 						zap.String("video_id", videoID),
-					zap.String("video_codec", facts.VideoCodec),
-					zap.Int("width", facts.Width), zap.Int("height", facts.Height),
-					zap.Int("fps_num", facts.FPSNum), zap.Int("fps_den", facts.FPSDen),
-					zap.String("audio_codec", facts.AudioCodec))
+						zap.String("video_codec", facts.VideoCodec),
+						zap.Int("width", facts.Width), zap.Int("height", facts.Height),
+						zap.Int("fps_num", facts.FPSNum), zap.Int("fps_den", facts.FPSDen),
+						zap.String("audio_codec", facts.AudioCodec))
 				}
 			}
 		}
