@@ -434,7 +434,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	for i := range updatedSegments {
 		normalizeVidRushSegmentAssets(&updatedSegments[i])
 	}
-	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, plan.MediaPlan.Extraction.EntityImages)
+	entityImagePolicy := plan.MediaPlan.Extraction.EntityImages
+	entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
+	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, entityImagePolicy)
 	return &PostProcessResult{
 		VidRushSegments:  updatedSegments,
 		UpdatedSpecScene: updatedSpecScene,
@@ -499,6 +501,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,
 					DriveLink: candidate.DriveLink, Source: candidate.Provider,
+					MediaType:  candidate.MIMEType,
 					License:    candidate.RightsBasis,
 					PreviewURL: entityImagePreviewURL(candidate),
 					// The verified content address is what lets the binding be

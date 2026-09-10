@@ -18,6 +18,15 @@ func TestMediaExtractionPolicyIncludes(t *testing.T) {
 	if selected.Includes("important_words") {
 		t.Fatal("unselected surface must not be enabled")
 	}
+	if !selected.EntityImageSurfaceEnabled() {
+		t.Fatal("explicit entities surface must enable identity images")
+	}
+	if !(MediaExtractionPolicy{Include: []string{ExtractionIncludeSpecialNames}}).EntityImageSurfaceEnabled() {
+		t.Fatal("explicit special names surface must enable identity images")
+	}
+	if (MediaExtractionPolicy{Include: []string{ExtractionIncludeImportantPhrases}}).EntityImageSurfaceEnabled() {
+		t.Fatal("important phrases alone must not enable identity images")
+	}
 }
 
 func TestMediaExtractionPolicyWireContract(t *testing.T) {

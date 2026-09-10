@@ -3,6 +3,7 @@ package wiring
 import (
 	"testing"
 
+	media "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -31,5 +32,18 @@ func TestBuildRuntimeMediaCertSpecUsesExplicitIDsAndDeterministicFallback(t *tes
 	}
 	if spec.SegmentsExpected[0].ID != "authored-a" || spec.SegmentsExpected[1].ID != "scene-1" {
 		t.Fatalf("unexpected explicit identity contract: %+v", spec.SegmentsExpected)
+	}
+}
+
+func TestBuildRuntimeMediaCertSpecAllowsEntityImageReuseFromGenericExtractionSurface(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Mode: "text",
+		MediaPlan: media.MediaPlanSpec{
+			Extraction: media.MediaExtractionPolicy{Include: []string{"entities"}},
+		},
+	}
+	spec := buildRuntimeMediaCertSpec(plan)
+	if !spec.AllowCrossSceneAssetReuse {
+		t.Fatal("entity extraction surface must allow canonical identity-image reuse across scenes")
 	}
 }

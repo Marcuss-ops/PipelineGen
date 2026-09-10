@@ -132,6 +132,7 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		writeDocumentFullAudio(&before, opts)
 		writeDocumentOverlay(&before, opts)
 		writeDocumentSemanticSummary(&before, model)
+		writeDocumentSemanticOverlay(&before, opts)
 		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
 	}
 
@@ -157,6 +158,7 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 	}
 	if !opts.PayloadOnly {
 		writeDocumentFinalAudioJSON(&after, opts)
+		writeDocumentOverlayPlanJSON(&after, opts)
 		writeDocumentOverlayJSON(&after, opts)
 	}
 	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
@@ -383,6 +385,77 @@ func writeDocumentOverlayJSON(b *strings.Builder, opts DocumentRenderOptions) {
 	}
 	if raw, err := json.MarshalIndent(opts.Overlay, "", "  "); err == nil {
 		b.WriteString("<h2>Rendered Overlay JSON</h2><pre><code>")
+		b.WriteString(html.EscapeString(string(raw)))
+		b.WriteString("</code></pre>")
+	}
+}
+
+// writeDocumentSemanticOverlay renders the exact semantic items that were
+// handed to RenderingGen. It is intentionally separate from the rendered
+// artifact reference: one proves what Chronon rendered, the other proves
+// which entity/phrase/timing inputs produced it.
+func writeDocumentSemanticOverlay(b *strings.Builder, opts DocumentRenderOptions) {
+	plan := opts.OverlayPlan
+	if plan == nil || len(plan.Items) == 0 {
+		return
+	}
+	b.WriteString("<section><h2>Semantic Overlay</h2>")
+	if planID := strings.TrimSpace(plan.PlanID); planID != "" {
+		b.WriteString("<p><strong>Plan:</strong> ")
+		b.WriteString(html.EscapeString(planID))
+		b.WriteString("</p>")
+	}
+	b.WriteString("<ul>")
+	for _, item := range plan.Items {
+		b.WriteString("<li>")
+		if item.EntityRef != nil {
+			name := item.EntityRef.Name
+			if name == "" {
+				name = item.Text
+			}
+			b.WriteString("<strong>Entity:</strong> ")
+			b.WriteString(html.EscapeString(name))
+			if item.EntityRef.Type != "" {
+				b.WriteString(" <em>(")
+				b.WriteString(html.EscapeString(item.EntityRef.Type))
+				b.WriteString(")</em>")
+			}
+			if item.EntityRef.CanonicalEntityID != "" {
+				b.WriteString(" <small>[canonical=")
+				b.WriteString(html.EscapeString(item.EntityRef.CanonicalEntityID))
+				b.WriteString("]</small>")
+			}
+		} else if item.Text != "" {
+			b.WriteString("<strong>Phrase:</strong> ")
+			b.WriteString(html.EscapeString(item.Text))
+		} else {
+			b.WriteString("<strong>Overlay:</strong> ")
+			b.WriteString(html.EscapeString(item.Kind))
+		}
+		fmt.Fprintf(b, " — Scene %s — %s → %s", html.EscapeString(item.SceneID),
+			formatTimelineTimestamp(item.StartUSValue()), formatTimelineTimestamp(item.EndUSValue()))
+		if item.TemplateID != "" {
+			b.WriteString(" — template=")
+			b.WriteString(html.EscapeString(item.TemplateID))
+		}
+		for _, asset := range item.AssetRefs {
+			if link := strings.TrimSpace(asset.URL); link != "" {
+				b.WriteString(" — ")
+				b.WriteString(renderDocumentLink("image asset", link, link))
+				break
+			}
+		}
+		b.WriteString("</li>")
+	}
+	b.WriteString("</ul></section>")
+}
+
+func writeDocumentOverlayPlanJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	if opts.OverlayPlan == nil {
+		return
+	}
+	if raw, err := json.MarshalIndent(opts.OverlayPlan, "", "  "); err == nil {
+		b.WriteString("<h2>Semantic Overlay JSON</h2><pre><code>")
 		b.WriteString(html.EscapeString(string(raw)))
 		b.WriteString("</code></pre>")
 	}

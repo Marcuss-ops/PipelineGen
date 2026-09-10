@@ -42,7 +42,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// is useful for generic scene imagery, but must not leak into an
 	// entity-only run because it bypasses entity cache identity and creates
 	// dozens of unrelated provider downloads.
-	if !plan.MediaPlan.Extraction.EntityImages.Enabled {
+	if !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		for _, query := range scriptpkg.QueriesForImages(profile, 7) {
 			duplicate := false
 			for _, existing := range imageQueries {

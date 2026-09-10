@@ -241,6 +241,10 @@ type DocumentRenderOptions struct {
 	// assembly reference the same immutable artifact. Nil when no render was
 	// requested or the render has not produced an artifact.
 	Overlay *DocumentOverlayRef
+	// OverlayPlan is the sealed semantic plan sent to RenderingGen. The
+	// document renders this exact plan so entity/phrase identity, timing and
+	// content-addressed assets remain auditable beside the rendered artifact.
+	OverlayPlan *capabilityoverlay.OverlayPlan
 }
 
 type DocumentAudioRef = scriptpkg.DocumentAudioRef

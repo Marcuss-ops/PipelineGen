@@ -151,6 +151,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	var entityImagePolicy mediadomain.EntityImagePolicy
 	if plan != nil {
 		entityImagePolicy = plan.MediaPlan.Extraction.EntityImages
+		entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
 	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, segments, entityImagePolicy)
 	return &PostProcessResult{

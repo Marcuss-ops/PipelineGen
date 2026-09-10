@@ -183,7 +183,8 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Equal(t, 2, res.DocumentSceneCounts["en"], "document must project both scenes")
 	content := docPub.records[0].Content
 	require.NotContains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must not expose the remote payload")
-	require.NotContains(t, content, "<h2>SpecScene JSON</h2>", "legacy SpecScene surface must stay hidden")
+	require.Contains(t, content, "<h2>SpecScene JSON</h2>", "document must expose the semantic SpecScene audit JSON")
+	require.Contains(t, content, "<h2>Semantic Overlay JSON</h2>", "document must expose the exact overlay plan")
 
 	// The persisted SSOT feeds the overlay resolver: every occurrence gets
 	// an entity_card starting exactly when the entity is spoken.

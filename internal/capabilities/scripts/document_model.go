@@ -119,6 +119,18 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		}
 		spec.Scenes = append(spec.Scenes, converted)
 	}
+	// Durable resume can restore Segments while the mutable Scene annotation
+	// pointer is absent. Project the canonical VidRush enrichment into the
+	// document envelope as a fallback, then preserve any richer scene-local
+	// annotation already carried by the result (notably persisted image data).
+	if len(result.Segments) > 0 {
+		ProjectSegmentAnnotations(&spec, language, result.Segments)
+		for i := range result.Scenes {
+			if result.Scenes[i].Annotations != nil && i < len(spec.Scenes) {
+				spec.Scenes[i].Annotations = result.Scenes[i].Annotations
+			}
+		}
+	}
 
 	return &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,

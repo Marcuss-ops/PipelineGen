@@ -10,7 +10,7 @@ import (
 func internetImageOptions(plan *scriptpkg.ResolvedGenerationPlan) internetImageProcessOptions {
 	return internetImageProcessOptions{
 		cacheOnly:           plan.MediaPlan.Mode == mediadomain.MediaPlanModeCacheOnly,
-		entityImagesEnabled: plan.MediaPlan.Extraction.EntityImages.Enabled,
+		entityImagesEnabled: plan.MediaPlan.Extraction.EntityImageSurfaceEnabled(),
 	}
 }
 

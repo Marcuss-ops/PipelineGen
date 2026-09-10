@@ -145,7 +145,8 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 		}
 		return &scriptpkg.EntityImageBinding{
 			Status: "resolved", AssetID: candidate.AssetID, DriveLink: candidate.DriveLink,
-			Source: candidate.Provider, License: candidate.RightsBasis,
+			MediaType: candidate.MIMEType,
+			Source:    candidate.Provider, License: candidate.RightsBasis,
 			PreviewURL: entityImagePreviewURL(candidate), SHA256: candidate.LegacyFileMD5,
 		}
 	}
