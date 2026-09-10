@@ -25,6 +25,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -33,6 +34,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
@@ -45,6 +47,12 @@ func isAsyncEnrichmentEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_ASYNC_ENRICHMENT"))
 	return strings.EqualFold(v, "true") || v == "1" || strings.EqualFold(v, "on") || strings.EqualFold(v, "yes")
 }
+
+// AsyncEnrichmentEnabled reports whether durable async metadata enrichment
+// is enabled. It is exported so the composition root can fail closed when
+// the gate is on but the PostgreSQL media outbox consumer cannot be wired
+// (godlike/07: never boot with a silent enrichment drop).
+func AsyncEnrichmentEnabled() bool { return isAsyncEnrichmentEnabled() }
 
 // step6to9_SubtitlesDriveWriter is the canonical owner of Steps 6-9.
 //
@@ -136,12 +144,25 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 	}
 
+	// Step 8 + subtitle sidecar (Sept 2026): once txtPath/localPath and the
+	// resolved folder IDs exist there is NO data dependency between the two
+	// uploads, so they run CONCURRENTLY instead of subtitle-then-video. Drive
+	// uploads stay bounded by the fan-out concurrency (one slot per segment),
+	// so this doubles per-segment overlap without unbounded Drive load.
+	//
+	// u.fail mutates `out`, so it is called exactly ONCE on the caller
+	// goroutine after Wait — never from a worker goroutine.
+	var (
+		subtitleUploadErr error
+		videoUploadRes    *youtubeports.UploadResultDTO
+		videoUploadErr    error
+	)
+	uploadGroup, uploadCtx := errgroup.WithContext(ctx)
+
 	// Subtitle sidecar destination. A configured subtitle root is an explicit
 	// persistence contract: never let a READY Whisper bundle disappear merely
 	// because the per-clip-folder flag was omitted or was not propagated by an
-	// older request adapter. The fan-out already bounds these uploads in
-	// parallel with the segment work; DriveFolderMgr is idempotent, so retries
-	// cannot create duplicate artifacts.
+	// older request adapter.
 	if bundle != nil && !bundle.IsEmpty() && cmd.SubtitleFolderID != "" {
 		if u.media.DriveFolderMgr == nil {
 			return nil, u.fail(out, NewExtractionError(
@@ -154,55 +175,67 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		// GetOrCreateFolder happens here (Sept 2026 N→1 contract).
 		subtitleFolderID := cmd.SubtitleFolderID
 		subtitleName := filepath.Base(txtPath)
-		if _, _, uploadErr := u.media.DriveFolderMgr.UploadFileIfChanged(
-			ctx, txtPath, subtitleFolderID, subtitleName,
-			deriveNormalizedGroup(cmd), cmd.VideoID,
-		); uploadErr != nil {
-			return nil, u.fail(out, NewExtractionError(
-				FailureCodeDriveUploadFailed, true,
-				fmt.Sprintf("upload subtitle sidecar: %v", uploadErr), uploadErr))
-		}
+		uploadGroup.Go(func() error {
+			_, _, err := u.media.DriveFolderMgr.UploadFileIfChanged(
+				uploadCtx, txtPath, subtitleFolderID, subtitleName,
+				deriveNormalizedGroup(cmd), cmd.VideoID,
+			)
+			subtitleUploadErr = err
+			return nil
+		})
 	}
 
-	// Step 8 — DriveUploadFileIfChanged (unchanged, body verbatim
-	// from pre-split).
+	// Step 8 — DriveUploadFileIfChanged.
 	if u.media.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
-		if upRes, _, upErr := u.media.DriveFolderMgr.UploadFileIfChanged(
-			ctx, localPath, cmd.DriveFolderID, out.Item.Filename,
-			deriveNormalizedGroup(cmd), cmd.VideoID,
-		); upErr == nil && upRes != nil {
-			out.Item.DriveFileID = upRes.FileID
-			out.Item.DriveLink = upRes.WebViewLink
-		} else if upErr != nil {
-			// godlike/07 observability: if a transcript bundle was
-			// acquired BEFORE the Drive upload failed, surface that
-			// the bundle was discarded (re-acquired on next retry).
-			// Without this log line, operators cannot distinguish
-			// "transcript was never acquired" from "transcript was
-			// acquired and dropped due to upstream failure".
-			if bundle != nil && !bundle.IsEmpty() {
-				u.core.Log.Warn("text bundle dropped due to upstream Drive upload failure; transcript will be re-acquired on the next retry — no atomic super-tx executed",
-					zap.String("clip_id", clipID),
-					zap.String("bundle_language", bundle.LanguageCode),
-					zap.Int("bundle_cues", len(bundle.Cues)),
-					zap.Error(upErr))
-			}
-			retryable := IsTransientExtractionError(upErr)
-			if retryable {
-				u.core.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
-					zap.String("clip_id", clipID), zap.Error(upErr))
-			} else {
-				u.core.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
-					zap.String("clip_id", clipID), zap.Error(upErr))
-			}
-			typed := NewExtractionError(
-				FailureCodeDriveUploadFailed,
-				retryable,
-				fmt.Sprintf("drive upload failed: %v", upErr),
-				upErr,
+		uploadGroup.Go(func() error {
+			res, _, err := u.media.DriveFolderMgr.UploadFileIfChanged(
+				uploadCtx, localPath, cmd.DriveFolderID, out.Item.Filename,
+				deriveNormalizedGroup(cmd), cmd.VideoID,
 			)
-			return nil, u.fail(out, typed)
+			videoUploadRes, videoUploadErr = res, err
+			return nil
+		})
+	}
+	_ = uploadGroup.Wait()
+
+	if subtitleUploadErr != nil {
+		return nil, u.fail(out, NewExtractionError(
+			FailureCodeDriveUploadFailed, true,
+			fmt.Sprintf("upload subtitle sidecar: %v", subtitleUploadErr), subtitleUploadErr))
+	}
+	if videoUploadErr != nil {
+		// godlike/07 observability: if a transcript bundle was
+		// acquired BEFORE the Drive upload failed, surface that
+		// the bundle was discarded (re-acquired on next retry).
+		// Without this log line, operators cannot distinguish
+		// "transcript was never acquired" from "transcript was
+		// acquired and dropped due to upstream failure".
+		if bundle != nil && !bundle.IsEmpty() {
+			u.core.Log.Warn("text bundle dropped due to upstream Drive upload failure; transcript will be re-acquired on the next retry — no atomic super-tx executed",
+				zap.String("clip_id", clipID),
+				zap.String("bundle_language", bundle.LanguageCode),
+				zap.Int("bundle_cues", len(bundle.Cues)),
+				zap.Error(videoUploadErr))
 		}
+		retryable := IsTransientExtractionError(videoUploadErr)
+		if retryable {
+			u.core.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
+				zap.String("clip_id", clipID), zap.Error(videoUploadErr))
+		} else {
+			u.core.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
+				zap.String("clip_id", clipID), zap.Error(videoUploadErr))
+		}
+		typed := NewExtractionError(
+			FailureCodeDriveUploadFailed,
+			retryable,
+			fmt.Sprintf("drive upload failed: %v", videoUploadErr),
+			videoUploadErr,
+		)
+		return nil, u.fail(out, typed)
+	}
+	if videoUploadRes != nil {
+		out.Item.DriveFileID = videoUploadRes.FileID
+		out.Item.DriveLink = videoUploadRes.WebViewLink
 	}
 	out.DriveFileID = out.Item.DriveFileID
 	out.DriveLink = out.Item.DriveLink
@@ -251,27 +284,46 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// no second asset.index.requested event. Analysis failure is
 	// fail-closed: a semantically-poor clip is never committed.
 	//
-	// P1.7 async gate (Sept 2026): when VELOX_YOUTUBE_ASYNC_ENRICHMENT=true|1
-	// the enrichment is skipped on the hot path; the clip commits with
-	// quality_score=0 and raw segment metadata, and the outbox consumer
-	// enriches async (outbox-driven). This decouples the Ollama LLM
-	// (2-4s x N, semaphore 4) from the S9 super-TX writer lock, so fanout
-	// throughput is not LLM-bound. Disabled by default (fail-closed sync).
-	if u.metadata.MetadataService != nil && !isAsyncEnrichmentEnabled() {
-		enrichment, analyzeErr := u.analyzeClipForCommit(ctx, cmd, clipID, startSec, endSec, bundle)
-		if analyzeErr != nil {
-			typed := NewExtractionError(FailureCodeMetadataFailed, false,
-				fmt.Sprintf("metadata analysis failed before commit: %v", analyzeErr), analyzeErr)
-			u.core.Log.Warn("metadata analysis failed BEFORE clip write — clip not committed",
-				zap.String("clip_id", clipID),
-				zap.String("failure_code", string(FailureCodeMetadataFailed)),
-				zap.Error(analyzeErr))
-			return nil, u.fail(out, typed)
+	// Async metadata enrichment (Sept 2026): when VELOX_YOUTUBE_ASYNC_ENRICHMENT
+	// is on, the LLM analysis is deferred to the media outbox worker instead
+	// of running inline. The analysis input (transcript included) is
+	// serialized into the commit so the metadata.enrich.requested event the
+	// writer emits carries everything the worker needs — no second read of
+	// partial state. The clip commits with the raw segment metadata and the
+	// worker writes the semantic snapshot + asset.index.requested atomically.
+	// Disabled by default (fail-closed synchronous enrichment).
+	var metadataEnrichmentJSON string
+	if u.metadata.MetadataService != nil {
+		if isAsyncEnrichmentEnabled() {
+			payload, mErr := json.Marshal(buildClipMetadataInput(cmd, clipID, startSec, endSec, bundle))
+			if mErr != nil {
+				return nil, u.fail(out, NewExtractionError(FailureCodeMetadataFailed, false,
+					fmt.Sprintf("marshal async metadata enrichment payload: %v", mErr), mErr))
+			}
+			metadataEnrichmentJSON = string(payload)
+			u.core.Log.Debug("async enrichment gate active: committing clip without Ollama analysis",
+				zap.String("clip_id", clipID))
+		} else {
+			enrichStart := time.Now()
+			enrichment, analyzeErr := u.analyzeClipForCommit(ctx, cmd, clipID, startSec, endSec, bundle)
+			// Sept 2026 enrichment SRE surface: the synchronous run is
+			// recorded on the canonical enrichment metrics (total /
+			// duration / failures) even when it fails — the failure is
+			// counted BEFORE the fail-closed clip abort below so the
+			// dashboard reflects the analyzer's real error rate, not
+			// just the clips that survived it.
+			u.recordEnrichmentOutcome(analyzeErr, enrichStart)
+			if analyzeErr != nil {
+				typed := NewExtractionError(FailureCodeMetadataFailed, false,
+					fmt.Sprintf("metadata analysis failed before commit: %v", analyzeErr), analyzeErr)
+				u.core.Log.Warn("metadata analysis failed BEFORE clip write — clip not committed",
+					zap.String("clip_id", clipID),
+					zap.String("failure_code", string(FailureCodeMetadataFailed)),
+					zap.Error(analyzeErr))
+				return nil, u.fail(out, typed)
+			}
+			clipAsset = foldEnrichmentIntoClipAsset(clipAsset, enrichment)
 		}
-		clipAsset = foldEnrichmentIntoClipAsset(clipAsset, enrichment)
-	} else if isAsyncEnrichmentEnabled() && u.metadata.MetadataService != nil {
-		u.core.Log.Debug("async enrichment gate active: committing clip without Ollama analysis",
-			zap.String("clip_id", clipID))
 	}
 
 	if u.metadata.LocalizedWriter != nil {
@@ -315,6 +367,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			RequireTranscriptReady:         requireTranscript,
 			RequireAllLanguagesBeforeVideo: requireAllLanguages,
 			PreferredLanguages:             u.observability.PreferredLanguages,
+			MetadataEnrichmentJSON:         metadataEnrichmentJSON,
 		}
 
 		if wErr := u.metadata.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
@@ -372,31 +425,23 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	return bundle, nil
 }
 
-// analyzeClipForCommit runs the PURE metadata analyzer (MetadataAnalyzer.
-// AnalyzeClip) against the resolved transcript bundle. It returns the
-// CanonicalClipEnrichment that the caller folds into the ClipAsset BEFORE
-// the canonical atomic commit — the analyzer never writes media_assets.
-//
-// godlike/07 fail-closed: a nil MetadataService yields a zero enrichment
-// (no analysis) and the caller commits the caller-supplied segment metadata
-// verbatim. An analyzer error is returned to the caller, which MUST fail
-// the run BEFORE the commit (no semantically-poor clip is persisted).
-func (u *ProcessYouTubeSegmentUseCase) analyzeClipForCommit(
-	ctx context.Context,
+// buildClipMetadataInput is the SINGLE canonical constructor of the
+// metadata-analyzer input for one segment. Both the synchronous path
+// (analyzeClipForCommit) and the async path (the serialized
+// metadata.enrich.requested payload) read the SAME input shape, so the two
+// enrichment modes cannot drift (godlike/06 SSOT).
+func buildClipMetadataInput(
 	cmd youtubetypes.ProcessSegmentCommand,
 	clipID string,
 	startSec int,
 	endSec int,
 	bundle *detail.ResolvedTextBundle,
-) (ytmetadata.CanonicalClipEnrichment, error) {
-	if u.metadata.MetadataService == nil {
-		return ytmetadata.CanonicalClipEnrichment{}, nil
-	}
+) youtubetypes.ClipMetadataInput {
 	transcript := ""
 	if bundle != nil && !bundle.IsEmpty() {
 		transcript = bundle.PlainText
 	}
-	in := youtubetypes.ClipMetadataInput{
+	return youtubetypes.ClipMetadataInput{
 		ClipID:           clipID,
 		Title:            cmd.Segment.Name,
 		Description:      segmentDescription(cmd.Segment.Texts),
@@ -419,7 +464,47 @@ func (u *ProcessYouTubeSegmentUseCase) analyzeClipForCommit(
 		Speakers:         append([]string(nil), cmd.Segment.Speakers...),
 		MentionedPeople:  append([]string(nil), cmd.Segment.MentionedPeople...),
 	}
-	return u.metadata.MetadataService.AnalyzeClip(ctx, in)
+}
+
+// recordEnrichmentOutcome reports one synchronous metadata-enrichment
+// run to the canonical enrichment metrics (Sept 2026). Nil-safe: tests
+// and minimal compositions without a recorder skip silently. total is
+// counted for every run (success AND failure); failures are counted on
+// the dedicated failure counter so the SRE surface never has to derive
+// an error rate from a delta.
+func (u *ProcessYouTubeSegmentUseCase) recordEnrichmentOutcome(analyzeErr error, start time.Time) {
+	if u == nil || u.observability.EnrichmentMetrics == nil {
+		return
+	}
+	m := u.observability.EnrichmentMetrics
+	m.IncEnrichmentTotal()
+	m.ObserveEnrichmentDuration(time.Since(start).Seconds())
+	if analyzeErr != nil {
+		m.IncEnrichmentFailures()
+	}
+}
+
+// analyzeClipForCommit runs the PURE metadata analyzer (MetadataAnalyzer.
+// AnalyzeClip) against the resolved transcript bundle. It returns the
+// CanonicalClipEnrichment that the caller folds into the ClipAsset BEFORE
+// the canonical atomic commit — the analyzer never writes media_assets.
+//
+// godlike/07 fail-closed: a nil MetadataService yields a zero enrichment
+// (no analysis) and the caller commits the caller-supplied segment metadata
+// verbatim. An analyzer error is returned to the caller, which MUST fail
+// the run BEFORE the commit (no semantically-poor clip is persisted).
+func (u *ProcessYouTubeSegmentUseCase) analyzeClipForCommit(
+	ctx context.Context,
+	cmd youtubetypes.ProcessSegmentCommand,
+	clipID string,
+	startSec int,
+	endSec int,
+	bundle *detail.ResolvedTextBundle,
+) (ytmetadata.CanonicalClipEnrichment, error) {
+	if u.metadata.MetadataService == nil {
+		return ytmetadata.CanonicalClipEnrichment{}, nil
+	}
+	return u.metadata.MetadataService.AnalyzeClip(ctx, buildClipMetadataInput(cmd, clipID, startSec, endSec, bundle))
 }
 
 // foldEnrichmentIntoClipAsset merges the analyzer's CanonicalClipEnrichment

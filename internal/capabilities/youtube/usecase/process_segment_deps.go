@@ -175,31 +175,20 @@ type ProcessSegmentMetadataDeps struct {
 	MetadataService *ytmetadata.MetadataService
 }
 
-// ProcessSegmentObservabilityDeps bundles the metrics + policy ports.
-// 2 fields. RequireTranscriptReady is a Fase 5 policy gate (boolean);
-// Step10Metrics is a metrics recorder port.
+// ProcessSegmentObservabilityDeps bundles the policy ports.
+// RequireTranscriptReady / RequireAllLanguagesBeforeVideo are Fase 5
+// policy gates; PreferredLanguages carries their language list.
+// EnrichmentMetrics is the OPTIONAL telemetry port for the metadata-
+// enrichment run (Sept 2026, replaces the retired Step10Metrics).
 type ProcessSegmentObservabilityDeps struct {
-	// Step10Metrics is the optional metrics-recorder port for
-	// the partial-state Step 10 failure counter
-	// (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY, July 2026). When
-	// non-nil, the use case calls
-	//   u.observability.Step10Metrics.IncStep10FailAfterClip(...)
-	// on the Step 10 metadata-enrichment failure path BEFORE the
-	// typed *ExtractionError return. The counter is partitioned
-	// by failure_code so dashboards can aggregate partial-state
-	// events across a batch extraction.
-	//
-	// When nil, the counter increment is silently skipped.
-	// Nil-tolerance matches the optional-port pattern of
-	// MediaDeps + MetadataDeps.
-	//
-	// godlike/06 SSOT: this port is the SOLE canonical
-	// application-layer surface for Step 10 partial-state
-	// telemetry. The composition root wires the concrete
-	// adapter (internal/platform/observability.Step10
-	// MetricsAdapter).
-	Step10Metrics youtubeports.Step10MetricsRecorder
-
+	// EnrichmentMetrics is the OPTIONAL observability port for the
+	// metadata-enrichment pipeline (Sept 2026). When non-nil, the
+	// synchronous enrichment path in step6to9 records total / duration /
+	// failures; nil skips silently (tests + minimal compositions). The
+	// async metadata.enrich.requested consumer in the composition root
+	// records queue-age / duration through the SAME collector family
+	// (godlike/06 SSOT: one dashboard surface for both enrichment modes).
+	EnrichmentMetrics youtubeports.MetadataEnrichmentMetrics
 	// RequireTranscriptReady is the Fase 5
 	// (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026) wire-up of
 	// the pre-existing

@@ -81,6 +81,16 @@ type CommitLocalizedClipCommand struct {
 	// payload internally; callers cannot supply a custom envelope.
 	IndexEvent youtubeports.IndexEventPayload
 
+	// MetadataEnrichmentJSON, when non-empty, requests durable async
+	// metadata enrichment. The writer emits a
+	// metadata.enrich.requested outbox event (payload = this JSON, the
+	// serialized metadata-analysis input) in the SAME transaction as the
+	// clip commit, so the LLM analyzer runs off the extraction critical
+	// path. The application layer owns the payload shape; the writer owns
+	// only the event envelope + idempotency key. Empty keeps the legacy
+	// synchronous behavior (the caller folds the enrichment in-place).
+	MetadataEnrichmentJSON string
+
 	// RequireTranscriptReady, when true, makes the writer fail
 	// with ErrClipLocaleNotReady BEFORE the tx (no rows written)
 	// if no transcript-origin track (text_kind=transcript,

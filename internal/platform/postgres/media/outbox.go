@@ -41,6 +41,13 @@ import (
 const (
 	// EventAssetIndexRequested is the canonical asset.index.requested event.
 	EventAssetIndexRequested = "asset.index.requested"
+	// EventMetadataEnrichRequested is the canonical durable async
+	// metadata-enrichment request (Sept 2026). The YouTube clip commit
+	// emits it in the SAME transaction as media_assets so the LLM
+	// (Ollama) analysis runs OUTSIDE the extraction critical path; the
+	// media outbox worker consumes it, runs the analyzer, and writes the
+	// semantic snapshot + asset.index.requested atomically.
+	EventMetadataEnrichRequested = "metadata.enrich.requested"
 	// ReindexEnvelopeV1Schema is the schema_version stamped in the payload.
 	ReindexEnvelopeV1Schema = "asset.index.requested.v1"
 	// SupersedeStatus is the terminal "skipped" status.
