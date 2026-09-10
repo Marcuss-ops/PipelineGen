@@ -47,6 +47,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "config.example.yaml",
         "config.production.example.yaml",
         "config/multilingual.yaml",
+        "config/alerting_rules.yml",
         "config/verify-components.json",
         "config/verify-pipelines.json",
         "scripts/ci/verify-component.py",
