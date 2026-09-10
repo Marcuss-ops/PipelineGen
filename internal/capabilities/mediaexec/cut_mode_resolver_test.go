@@ -260,7 +260,7 @@ func TestResolveCutMode_InterfaceSSOT(t *testing.T) {
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 			HasAudio: true, AudioCodec: "aac", SampleRate: 48000, Channels: 2,
 		},
-		Target: VideoProfile{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, SampleRate: 48000, Channels: 2},
+		Target:   VideoProfile{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, SampleRate: 48000, Channels: 2},
 		StartSec: 0, EndSec: 4, KeepAudio: true, StreamCopySafe: true,
 	}
 	if got := (DefaultCutModeResolver{}).ResolveCutMode(in); got != ResolveCutMode(in) {

@@ -595,7 +595,7 @@ func TestProcessSegment_MetadataAnalysisFailure_NoPartialState(t *testing.T) {
 	// never reached (the analysis fails first).
 	bundleCore, media, metadata, observability := validProcessSegmentDeps()
 	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	bundleCore.Hash = testStubHash{}          // non-empty so Step 5 passes
+	bundleCore.Hash = testStubHash{} // non-empty so Step 5 passes
 	bundleCore.Log = capturedLog
 	metadata.LocalizedWriter = writerRecorder // recording stub → proves NO commit
 	metadata.MetadataService = svc

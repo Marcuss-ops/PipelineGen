@@ -285,8 +285,8 @@ type ProcessSegmentCommand struct {
 	// (no more string-literal typos). VideoCutRequest.Strategy
 	// is still a string; the use case casts `string(cmd.Strategy)`
 	// at the port boundary (process_segment.go::Execute).
-	Strategy                  ExtractionStrategy
-	Destination               *DestinationRequest
+	Strategy    ExtractionStrategy
+	Destination *DestinationRequest
 	// SubtitleFolderID is the FINAL Drive folder for subtitle sidecars,
 	// resolved ONCE per extraction before fan-out (Sept 2026 N→1
 	// contract): with per-clip subfolders the extraction already
