@@ -14,7 +14,7 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
-	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
+	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 // On-the-wire contract for overlay.prepare, lifted verbatim from the central

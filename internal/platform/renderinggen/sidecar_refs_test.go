@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
+	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 // TestToScriptArtifactCarriesChrononTimingReference verifies the raw
