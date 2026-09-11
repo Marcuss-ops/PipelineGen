@@ -22,6 +22,36 @@ import (
 
 const legacyRootNewCodeRule = "percheck_legacy_root_new_code"
 
+// sanitizedGitEnv returns the process environment with every GIT_* variable
+// removed.
+//
+// Git exports GIT_DIR (and friends) to hooks, and the canonical pre-push hook
+// runs this scan — both as a tool and through this package's test suite — with
+// GIT_DIR pointing at the repository being pushed. An inherited GIT_DIR
+// overrides `-C <root>`, so every query below would silently inspect the
+// pushed repository instead of the root under scan: fixture repositories
+// misclassify their own files, and a fixture commit lands on the real branch.
+// Stripping GIT_* keeps `-C <root>` authoritative.
+func sanitizedGitEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "GIT_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// gitInRoot builds a `git -C <root> …` command that an inherited GIT_DIR or
+// GIT_WORK_TREE cannot redirect.
+func gitInRoot(root string, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = sanitizedGitEnv()
+	return cmd
+}
+
 // ScanLegacyRootNewCode rejects files newly added under a migration-only
 // internal root. Git's added-file view is used intentionally: it catches new
 // files once they are part of the commit/working diff without treating
@@ -89,14 +119,14 @@ func addedFilesFromGit(root string) ([]string, error) {
 }
 
 func gitReviewBase(root string) (string, error) {
-	upstream := exec.Command("git", "-C", root, "rev-parse", "--verify", "@{upstream}")
+	upstream := gitInRoot(root, "rev-parse", "--verify", "@{upstream}")
 	if out, err := upstream.Output(); err == nil {
-		mergeBase := exec.Command("git", "-C", root, "merge-base", "HEAD", strings.TrimSpace(string(out)))
+		mergeBase := gitInRoot(root, "merge-base", "HEAD", strings.TrimSpace(string(out)))
 		if base, err := mergeBase.Output(); err == nil {
 			return strings.TrimSpace(string(base)), nil
 		}
 	}
-	parent := exec.Command("git", "-C", root, "rev-parse", "--verify", "HEAD^")
+	parent := gitInRoot(root, "rev-parse", "--verify", "HEAD^")
 	out, err := parent.Output()
 	if err != nil {
 		return "", err
@@ -105,12 +135,12 @@ func gitReviewBase(root string) (string, error) {
 }
 
 func collectAddedPaths(root, base, head string, paths map[string]struct{}) error {
-	args := []string{"-C", root, "diff", "--name-only", "--diff-filter=ACR", base}
+	args := []string{"diff", "--name-only", "--diff-filter=ACR", base}
 	if head != "" {
 		args = append(args, head)
 	}
 	args = append(args, "--", "internal")
-	out, err := exec.Command("git", args...).Output()
+	out, err := gitInRoot(root, args...).Output()
 	if err != nil {
 		return err
 	}
