@@ -141,9 +141,10 @@ func BuildReindexEnvelopeV1(assetID, targetSchemaVersion, sourceVersion string, 
 // regardless of current fingerprint" semantics, and the outbox
 // preserves that intent through the worker contract.
 //
-// Production ingest (asset_committer.go::SQLiteAssetCommitter) and
-// the normal reconciler repair path (service_projection.go) must
-// NOT use this variant — both honor the supersede dedup gate by
+// Production ingest (PostgresMediaCommitter at
+// internal/platform/postgres/media/media_committer.go) and the
+// normal reconciler repair path (service_projection.go) must NOT
+// use this variant — both honor the supersede dedup gate by
 // design.
 func BuildReindexEnvelopeV1Force(assetID, targetSchemaVersion, sourceVersion string, requestedAt time.Time) (eventKey, payloadJSON string, err error) {
 	return buildReindexEnvelopeV1(assetID, targetSchemaVersion, sourceVersion, requestedAt, true)

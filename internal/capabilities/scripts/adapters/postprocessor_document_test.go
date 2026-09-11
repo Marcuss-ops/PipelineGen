@@ -9,31 +9,30 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-type documentServiceStub struct{ titles, content []string }
-type emptyDocumentReferenceStub struct{}
+// documentPublisherStub captures the canonical upsert calls so the tests can
+// pin the exact (title, folder, idempotency key, force-refresh) contract.
+type documentPublisherStub struct{ titles, content []string }
 
-func (*emptyDocumentReferenceStub) CreateDoc(context.Context, string, string, scriptports.FolderResolver, string, string, bool) (string, string, error) {
-	return "", "", nil
+type emptyDocumentReferencePublisherStub struct{}
+
+func (*emptyDocumentReferencePublisherStub) UpsertDocument(context.Context, scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
+	return scriptgen.DocumentReference{}, nil
 }
-func (*emptyDocumentReferenceStub) UpdateDoc(context.Context, string, string, string) error {
-	return nil
-}
-func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string, _ scriptports.FolderResolver, folderID, key string, forceRefresh bool) (string, string, error) {
-	s.titles = append(s.titles, title+"|"+folderID+"|"+key)
-	s.content = append(s.content, content)
-	if forceRefresh {
+
+func (s *documentPublisherStub) UpsertDocument(_ context.Context, in scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
+	s.titles = append(s.titles, in.Title+"|"+in.FolderID+"|"+in.IdempotencyKey)
+	s.content = append(s.content, in.Content)
+	if in.ForceRefresh {
 		s.titles = append(s.titles, "refresh")
 	}
-	return "https://docs.google.com/document/d/doc-1/edit", "doc-1", nil
+	return scriptgen.DocumentReference{ID: "doc-1", Link: "https://docs.google.com/document/d/doc-1/edit"}, nil
 }
-func (s *documentServiceStub) UpdateDoc(context.Context, string, string, string) error { return nil }
 
 func TestDocumentsProcessor_DoesNotRewriteSingleSceneSpecScene(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-full", Title: "Full narrative", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}, SingleScene: true}
 	canonical := "CANONICAL-SCENE-TEXT"
 	global := "GLOBAL-TEXT-DIFFERENT"
@@ -56,7 +55,7 @@ func TestDocumentsProcessor_DoesNotRewriteSingleSceneSpecScene(t *testing.T) {
 }
 
 func TestDocumentsProcessor_ReportsCanonicalRendererMetadata(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
 		ID: "LEGACY-SCENE-ID-SENTINEL", Index: 0, Text: "CANONICAL-TEXT-SENTINEL",
 		Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "SECRET-CLIP-ID"}},
@@ -75,7 +74,7 @@ func TestDocumentsProcessor_ReportsCanonicalRendererMetadata(t *testing.T) {
 // canonical capability renderer for the same model + options (it no longer
 // owns any HTML formatting).
 func TestDocumentsProcessor_OutputMatchesCanonicalRenderer(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
 		ID: "scene-0", Index: 0, Text: "PARITY SCENE",
 		Bindings: scriptpkg.SceneBindings{
@@ -97,7 +96,7 @@ func TestDocumentsProcessor_OutputMatchesCanonicalRenderer(t *testing.T) {
 }
 
 func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-1", Title: "Test", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}, DocsFolderID: "folder-1"}
 	result, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{Text: "generated text", SpecScene: scriptpkg.SpecSceneOutput{Version: 1}})
 	if err != nil {
@@ -113,10 +112,33 @@ func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {
 
 func TestDocumentProcessorRejectsEmptyPublisherReference(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-empty", Title: "Test", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
-	_, err := NewDocumentsProcessor(&emptyDocumentReferenceStub{}).Process(context.Background(), plan, ProcessInput{Text: "generated text"})
+	_, err := NewDocumentsProcessor(&emptyDocumentReferencePublisherStub{}).Process(context.Background(), plan, ProcessInput{Text: "generated text"})
 	if err == nil || !strings.Contains(err.Error(), "empty reference") {
 		t.Fatalf("expected empty reference error, got %v", err)
 	}
+}
+
+// preservedReferencePublisherStub models the provider case where the document
+// exists but its idempotency annotation failed.
+type preservedReferencePublisherStub struct{}
+
+func (*preservedReferencePublisherStub) UpsertDocument(context.Context, scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
+	return scriptgen.DocumentReference{
+		ID:   "doc-preserved",
+		Link: "https://docs.google.com/document/d/doc-preserved/edit",
+	}, scriptgen.ErrDocumentReferencePreserved
+}
+
+// TestDocumentsProcessor_PreservesReferenceAfterIdempotencyAnnotationFailure
+// pins the behavior carried over from the retired DocumentsService: a document
+// that exists but whose idempotency annotation failed is still reported as
+// published instead of failing the stage.
+func TestDocumentsProcessor_PreservesReferenceAfterIdempotencyAnnotationFailure(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-preserved", Title: "Preserved", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
+	result, err := NewDocumentsProcessor(&preservedReferencePublisherStub{}).Process(context.Background(), plan, ProcessInput{Text: "generated text", SpecScene: scriptpkg.SpecSceneOutput{Version: 1}})
+	require.NoError(t, err)
+	require.Equal(t, "doc-preserved", result.DocID)
+	require.NotEmpty(t, result.DocLink)
 }
 
 func TestDocumentsProcessor_DisabledPlanDoesNotRequirePublisher(t *testing.T) {
@@ -127,7 +149,7 @@ func TestDocumentsProcessor_DisabledPlanDoesNotRequirePublisher(t *testing.T) {
 }
 
 func TestDocumentsProcessor_UsesMetadataTitleOnly(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-metadata", Title: "Titolo interno", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}, VideoMetadata: &scriptpkg.VideoMetadata{Title: "Titolo YouTube", Description: "Descrizione <manuale>", Tags: []string{"boxe", "analisi"}}}
 	if _, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{Text: "Testo"}); err != nil {
 		t.Fatal(err)
@@ -195,7 +217,7 @@ func TestResolveDocumentTitle_EmptyReturnsEmpty(t *testing.T) {
 }
 
 func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-2", Title: "With subtitles", DocsLanguages: []string{"en"}, DocsEnabled: true}
 	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{SubtitleLink: "https://drive.google.com/file/d/ass/view"}}}}}})
 	if err != nil {
@@ -207,7 +229,7 @@ func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T)
 }
 
 func TestDocumentsProcessor_RefreshesWhenVoiceoverLinkExists(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-vo", Title: "With voiceover", DocsLanguages: []string{"it"}, DocsEnabled: true}
 	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{Links: map[string]string{"it": "VOICE-IT"}}}}}}})
 	if err != nil {
@@ -219,7 +241,7 @@ func TestDocumentsProcessor_RefreshesWhenVoiceoverLinkExists(t *testing.T) {
 }
 
 func TestDocumentsProcessor_RefreshesWhenMultiClipSubtitleAppears(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-multiclip", Title: "With multi-clip subtitles", DocsLanguages: []string{"en"}, DocsEnabled: true}
 	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{{SubtitleLink: "https://drive.google.com/file/d/ass-b/view"}}}}}}})
 	if err != nil {
@@ -231,7 +253,7 @@ func TestDocumentsProcessor_RefreshesWhenMultiClipSubtitleAppears(t *testing.T) 
 }
 
 func TestDocumentsProcessor_BuildsLanguageSpecificContent(t *testing.T) {
-	stub := &documentServiceStub{}
+	stub := &documentPublisherStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:            "run-multi",
 		Title:         "Multi voiceover",

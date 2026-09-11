@@ -2,11 +2,11 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -19,12 +19,16 @@ const stageDocumentPublish kernobs.StageName = "document.publish"
 
 // DocumentsProcessor publishes the canonical SpecScene representation to
 // Google Docs when the request explicitly enables document output.
+//
+// It consumes the canonical scriptgen.DocumentPublisher port — the SAME
+// upsert contract the durable runner uses — so there is exactly one owner
+// of Google Docs publication semantics in the capability.
 type DocumentsProcessor struct {
-	service scriptports.DocumentsService
+	publisher scriptgen.DocumentPublisher
 }
 
-func NewDocumentsProcessor(service scriptports.DocumentsService) *DocumentsProcessor {
-	return &DocumentsProcessor{service: service}
+func NewDocumentsProcessor(publisher scriptgen.DocumentPublisher) *DocumentsProcessor {
+	return &DocumentsProcessor{publisher: publisher}
 }
 
 func (p *DocumentsProcessor) Name() ProcessorName { return ProcessorDocument }
@@ -37,7 +41,7 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	if plan == nil || !plan.DocsEnabled {
 		return &PostProcessResult{Changed: true}, nil
 	}
-	if p == nil || p.service == nil {
+	if p == nil || p.publisher == nil {
 		return nil, fmt.Errorf("document publisher is not configured")
 	}
 
@@ -82,9 +86,29 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Component: kernobs.ComponentGoogleDocs,
 				Operation: kernobs.OperationPublish,
 			}, func(opCtx context.Context) error {
-				var createErr error
-				link, id, createErr = p.service.CreateDoc(opCtx, documentTitle+"_"+language, content, nil, plan.DocsFolderID, plan.ID+"-"+language, refreshDocument)
-				return createErr
+				docRef, upsertErr := p.publisher.UpsertDocument(opCtx, scriptgen.DocumentInput{
+					RunID:    plan.ID,
+					Language: scriptgen.Language(language),
+					Title:    documentTitle + "_" + language,
+					Content:  content,
+					FolderID: plan.DocsFolderID,
+					// Preserve the historical processor key convention so existing
+					// Drive documents are still found and updated, never duplicated.
+					IdempotencyKey: scriptgen.DocumentPostProcessorIdempotencyKey(plan.ID, language),
+					ForceRefresh:   refreshDocument,
+				})
+				if upsertErr != nil {
+					// A preserved reference means the document exists and only a
+					// non-fatal idempotency annotation failed: keep the link.
+					if errors.Is(upsertErr, scriptgen.ErrDocumentReferencePreserved) &&
+						strings.TrimSpace(docRef.ID) != "" && strings.TrimSpace(docRef.Link) != "" {
+						id, link = strings.TrimSpace(docRef.ID), strings.TrimSpace(docRef.Link)
+						return nil
+					}
+					return upsertErr
+				}
+				id, link = strings.TrimSpace(docRef.ID), strings.TrimSpace(docRef.Link)
+				return nil
 			})
 		}); stageErr != nil {
 			return nil, fmt.Errorf("publish document for language %s: %w", language, stageErr)

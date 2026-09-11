@@ -55,27 +55,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// indexedStateWriterSSOTSkipDirs mirrors the standard sibling scanning
-// policy from percheck_qdrant_index_import_ban.go.
-var indexedStateWriterSSOTSkipDirs = map[string]bool{
-	".git":         true,
-	"vendor":       true,
-	"node_modules": true,
-	"node-scraper": true,
-	"examples":     true,
-	"archivist":    true,
-	"docs":         true,
-	"data":         true,
-}
+// indexedStateWriterSSOTSkipDirs is the shared standard skip-dir set
+// (policy.StandardSkipDirs).
+var indexedStateWriterSSOTSkipDirs = policy.SkipDirs()
 
 // indexedStateWriterSSOTSkipPathPrefixes is the scanner-package-exemption
-// set: cmd/archcheck/scan references this literal pattern for
-// greppability, mirrors the family precedent.
-var indexedStateWriterSSOTSkipPathPrefixes = []string{
-	"cmd/archcheck/scan",
-	"internal/platform/sqlite/assets/imagesregistry/testsupport",
-	"internal/platform/sqlite/assets/imagesregistry/testsupport/",
-}
+// set (shared: archcheck scanner sources + the test-only testsupport double).
+var indexedStateWriterSSOTSkipPathPrefixes = policy.Prefixes(
+	[]string{policy.ScannerSourcePrefix},
+	policy.TestOnlySupportPrefixes,
+)
 
 // indexedStateWriterSSOTCanonicalPaths lists the canonical INDEXED
 // writer packages. setIndexedAt (the SQLite/Qdrant-mode writer of the

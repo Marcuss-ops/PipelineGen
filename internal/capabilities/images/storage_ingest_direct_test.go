@@ -408,11 +408,11 @@ func TestIngestDirect_RetrievedURLPreservesResolvedProvider(t *testing.T) {
 // CommitAsset is the only canonical producer of (media_assets row,
 // asset.index.requested outbox event) pairs.
 //
-// Forward-pointer PR-QDRANT-IMAGES-INTEGRATION-TEST (deadline 2026-08-15):
-// wire a real NewSQLiteAssetCommitter against a temp SQLite DB to
-// verify outbox_events table is populated in the same transaction
-// as media_assets (the full atomicity invariant that the legacy
-// runtime only enforced via the runtime reconcile tool).
+// MEDIA DEMOLITION (September 2026): the forward-pointer to a
+// SQLite-backed NewSQLiteAssetCommitter is retired — that writer no
+// longer exists. The equivalent atomicity proof now runs against the
+// PostgreSQL SSOT (internal/platform/postgres/media/parity_test.go,
+// gated on a live TEST_POSTGRES_DSN).
 func TestIngestDirect_CommitAsset_AtomicSSOTContract(t *testing.T) {
 	svc := testImageService(t)
 	committer := svc.committer.(*recordingCommitter)

@@ -33,9 +33,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -132,9 +132,15 @@ func registerScriptPostProcessors(
 	if root != nil && root.Drive != nil {
 		docClient = root.Drive.DocClient
 	}
-	docPublisher := newDriveDocumentPublisherAdapter(docClient)
-	docService := usecase.NewDocumentsService(docPublisher, log, cfg.Drive.DocumentsFolder())
-	if !ppReg.Register(adapters.NewDocumentsProcessor(docService)) {
+	// The processor consumes the SAME canonical upsert publisher the durable
+	// runner uses (scriptgen.DocumentPublisher), so Google Docs publication
+	// has one owner. When Drive is unavailable the port stays nil and the
+	// processor fails closed for docs-enabled plans.
+	var docPublisher scriptgen.DocumentPublisher
+	if docClient != nil {
+		docPublisher = &scriptGenerationDocumentPublisher{client: docClient}
+	}
+	if !ppReg.Register(adapters.NewDocumentsProcessor(docPublisher)) {
 		return fmt.Errorf("register document processor: composition bug or duplicate name")
 	}
 	log.Info("DocumentProcessor (Google Docs publishing) successfully registered")

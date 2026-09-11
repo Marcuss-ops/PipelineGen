@@ -192,10 +192,17 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 				if log != nil {
 					log.Info("skipping baseline (incremental history already present)", zap.String("filename", m.filename))
 				}
-				// Mark as covered so subsequent historical incrementals
-				// are not treated as satisfied by a missing baseline —
-				// the incremental path owns 1..N.
-				baselineAppliedNow = true
+				// Do NOT set baselineAppliedNow: the baseline was skipped,
+				// so it does not satisfy the frozen window. A partially
+				// migrated DB (e.g. ledger 1..197 with threshold 267) MUST
+				// still apply the missing historical incrementals 198..267
+				// through the incremental path. Marking the baseline as
+				// covered here would skip them, leaving both a real schema
+				// gap and a ledger gap that the next run's
+				// validateAppliedMigrationSet rejects as soon as a later
+				// migration (> threshold) is applied. Already-applied
+				// incrementals are still skipped by the checksum-matched
+				// ledger check below.
 				continue
 			}
 			if isHistoricalWindowCovered(applied, migrations, targetDB, baselineThreshold) {

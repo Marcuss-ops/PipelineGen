@@ -26,15 +26,15 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		return errors.New("outbox.Dispatcher is nil")
 	}
 	if d.canonicalCommitter == nil {
-		return errors.New("outbox.Dispatcher: canonical SQLiteAssetCommitter is required")
+		return errors.New("outbox.Dispatcher: canonical AssetCommitter is required")
 	}
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
 	}
 
 	// Folders are not vector-indexable, but their canonical media_assets row
-	// still must be committed through SQLiteAssetCommitter. Never bypass the
-	// committer with a direct clips.UpsertClipTx fallback.
+	// still must be committed through the canonical AssetCommitter. Never
+	// bypass the committer with a direct clips.UpsertClipTx fallback.
 	if !clip.IsFolder() && contentHash == "" {
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
@@ -105,10 +105,10 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		EmitIndexEvent: !clip.IsFolder(),
 	})
 	if err != nil {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical SQLiteAssetCommitter commit: %w", err)
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical AssetCommitter commit: %w", err)
 	}
 	if d.log != nil {
-		d.log.Debug("dispatcher committed asset through canonical SQLiteAssetCommitter",
+		d.log.Debug("dispatcher committed asset through canonical AssetCommitter",
 			zap.String("asset_id", clip.ID),
 			zap.String("outbox_event_key", commitResult.OutboxEventKey),
 			zap.Bool("index_event_emitted", !clip.IsFolder()),
@@ -126,7 +126,7 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 		return errors.New("outbox.Dispatcher is nil")
 	}
 	if d.discoveryCommitter == nil {
-		return errors.New("outbox.Dispatcher: canonical SQLiteAssetCommitter is required for discovery commits")
+		return errors.New("outbox.Dispatcher: canonical AssetCommitter is required for discovery commits")
 	}
 	if d.txmgr == nil {
 		return errors.New("outbox.Dispatcher: txmgr not configured")
@@ -155,7 +155,7 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 			return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
 		}
 		if d.log != nil {
-			d.log.Debug("dispatcher saved discovered asset through canonical SQLiteAssetCommitter",
+			d.log.Debug("dispatcher saved discovered asset through canonical AssetCommitter",
 				zap.String("asset_id", clip.ID),
 				zap.String("lifecycle_state", string(lifecycle)),
 				zap.String("index_state", string(idx)),
