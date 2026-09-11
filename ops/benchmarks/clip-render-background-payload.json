@@ -1,0 +1,20 @@
+{
+  "source_asset_id": "yt_T6x-kDiQsWM_203_252_v1",
+  "watermark": { "enabled": false },
+  "subtitles": { "enabled": false },
+  "background": {
+    "mode": "asset",
+    "asset_id": "yt_S6ADB98CR7g_358_425_v1"
+  },
+  "output": {
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
+    "fps_den": 1,
+    "foreground_scale_percent": 80
+  },
+  "execution": { "require_gpu": true },
+  "destination": {
+    "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+  }
+}

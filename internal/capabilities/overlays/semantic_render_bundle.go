@@ -241,8 +241,16 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 		} else if e.Type == "ORGANIZATION" {
 			templateID = "org_default"
 		}
-		item := OverlayItem{ID: e.EntityID, SceneID: b.Scene.SegmentID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: e.Text,
-			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: e.Text}}
+		// The displayed text is PipelineGen's decision and is ALWAYS sent: the
+		// RenderingGen compiler renders `text` verbatim and has no entity_ref
+		// fallback. When the surface mention is empty, the canonical name is the
+		// display text.
+		displayText := strings.TrimSpace(e.Text)
+		if displayText == "" {
+			displayText = strings.TrimSpace(e.CanonicalText)
+		}
+		item := OverlayItem{ID: e.EntityID, SceneID: b.Scene.SegmentID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
+			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: displayText}}
 		if a, ok := assets[e.EntityID]; ok {
 			// An image is a capability choice, not merely an extra field on a
 			// text card. The canonical image_popup template/preset owns the

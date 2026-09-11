@@ -3,7 +3,7 @@
 // appears and when), not just that an MP4 comes out. Each scenario is a
 // semantic OverlayPlan twin of a RenderingGen golden job, exactly like
 // GoldenOverlayPlanV1/V2: compiling it must reproduce the deterministic
-// chronon.render-plan.v1 document the RenderingGen worker executes.
+// chronon render-plan document the RenderingGen worker executes.
 //
 // Suite (5s @ 30fps = 150 frames on 1280x720, unless noted):
 //
@@ -83,57 +83,11 @@ func GoldenOverlayPlanContent01Phrases() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanContent01Phrases is the exact chronon.render-plan.v1
+// GoldenChrononPlanContent01Phrases is the exact chronon render-plan
 // document Content01 must compile to.
-var GoldenChrononPlanContent01Phrases = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-content-01-phrases",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 150,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background",
-			Type:           "image",
-			Asset:          "assets/background.jpg",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 150,
-		},
-		{
-			ID:             "important_phrase_1",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "A MAJOR CHANGE",
-			Preset:         "slide_lateral",
-			StartFrame:     24,
-			DurationFrames: 48,
-		},
-		{
-			ID:             "important_phrase_2",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "THIS CHANGES EVERYTHING",
-			Preset:         "clean_slide_up",
-			StartFrame:     90,
-			DurationFrames: 54,
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsContent01Phrases are the content-addressed queue assets
 // Content01 carries (background + the canonical font for the text layers).
-var GoldenChrononAssetsContent01Phrases = []ChrononAsset{
-	{Hash: GoldenBackgroundHash, LogicalPath: "assets/background.jpg"},
-	{Hash: GoldenFontHash, LogicalPath: "assets/fonts/DejaVuSans.ttf"},
-}
 
 // ── Content02 — Important Words ───────────────────────────────────────────
 //
@@ -201,79 +155,11 @@ func GoldenOverlayPlanContent02Words() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanContent02Words is the exact chronon.render-plan.v1
+// GoldenChrononPlanContent02Words is the exact chronon render-plan
 // document Content02 must compile to, animations included.
-var GoldenChrononPlanContent02Words = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-content-02-words",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 150,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background",
-			Type:           "image",
-			Asset:          "assets/background.jpg",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 150,
-		},
-		{
-			ID:             "important_word_1",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "ELON MUSK",
-			Preset:         "snap_scale",
-			StartFrame:     15,
-			DurationFrames: 30,
-			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
-		},
-		{
-			ID:             "important_word_2",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "TESLA",
-			Preset:         "fast_fade_through",
-			StartFrame:     45,
-			DurationFrames: 30,
-			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
-		},
-		{
-			ID:             "important_word_3",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "$10 BILLION",
-			Preset:         "fast_fade_through",
-			StartFrame:     75,
-			DurationFrames: 30,
-			Animation:      &ChrononLayerAnimation{Preset: "fade_shift_vertical"},
-		},
-		{
-			ID:             "important_word_4",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "OPENAI",
-			Preset:         "snap_scale",
-			StartFrame:     105,
-			DurationFrames: 30,
-			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsContent02Words are the content-addressed queue assets
 // Content02 carries (background + the canonical font for the text layers).
-var GoldenChrononAssetsContent02Words = []ChrononAsset{
-	{Hash: GoldenBackgroundHash, LogicalPath: "assets/background.jpg"},
-	{Hash: GoldenFontHash, LogicalPath: "assets/fonts/DejaVuSans.ttf"},
-}
 
 // ── Content03 — Images ────────────────────────────────────────────────────
 //
@@ -356,74 +242,14 @@ func GoldenOverlayPlanContent03Images() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanContent03Images is the exact chronon.render-plan.v1
+// GoldenChrononPlanContent03Images is the exact chronon render-plan
 // document Content03 must compile to. image_overlay_3 keeps the canonical
 // IMAGE_OVERLAY geometry (260×260 contain at [380,0]); the first two carry
 // explicit 300×300 boxes.
-var GoldenChrononPlanContent03Images = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-content-03-images",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 150,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background",
-			Type:           "image",
-			Asset:          "assets/background.jpg",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 150,
-		},
-		{
-			ID:             "image_overlay_1",
-			Type:           "image",
-			Asset:          "assets/overlay_globe.png",
-			Preset:         "modern_rounded_pop",
-			BoxWidth:       300,
-			BoxHeight:      300,
-			Position:       []float64{380, 0},
-			StartFrame:     24,
-			DurationFrames: 72,
-		},
-		{
-			ID:             "image_overlay_2",
-			Type:           "image",
-			Asset:          "assets/overlay_chart.png",
-			Preset:         "image_slide_left",
-			BoxWidth:       300,
-			BoxHeight:      300,
-			Position:       []float64{840, 380},
-			StartFrame:     60,
-			DurationFrames: 72,
-		},
-		{
-			ID:             "image_overlay_3",
-			Type:           "image",
-			Asset:          "assets/apple.png",
-			Preset:         "bottom_card_rise",
-			StartFrame:     102,
-			DurationFrames: 48,
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsContent03Images are the content-addressed queue assets
 // Content03 carries. There are no text layers, so the canonical font is NOT
 // projected: the plan renders images only.
-var GoldenChrononAssetsContent03Images = []ChrononAsset{
-	{Hash: GoldenBackgroundHash, LogicalPath: "assets/background.jpg"},
-	{Hash: GoldenGlobeHash, LogicalPath: "assets/overlay_globe.png"},
-	{Hash: GoldenChartHash, LogicalPath: "assets/overlay_chart.png"},
-	{Hash: GoldenAppleHash, LogicalPath: "assets/apple.png"},
-}
 
 // ── Content05 — Mixed Content ─────────────────────────────────────────────
 //
@@ -513,78 +339,9 @@ func GoldenOverlayPlanContent05Mixed() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanContent05Mixed is the exact chronon.render-plan.v1
+// GoldenChrononPlanContent05Mixed is the exact chronon render-plan
 // document Content05 must compile to (z-index = layer order, bottom → top).
-var GoldenChrononPlanContent05Mixed = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-content-05-mixed",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 150,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background",
-			Type:           "image",
-			Asset:          "assets/background.jpg",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 150,
-		},
-		{
-			ID:             "image_overlay",
-			Type:           "image",
-			Asset:          "assets/overlay_globe.png",
-			Preset:         "modern_rounded_pop",
-			BoxWidth:       300,
-			BoxHeight:      300,
-			Position:       []float64{840, 380},
-			StartFrame:     66,
-			DurationFrames: 60,
-		},
-		{
-			ID:             "light_leak",
-			Type:           "video",
-			Source:         "assets/light_leak_01.mp4",
-			Fit:            "cover",
-			StartFrame:     24,
-			DurationFrames: 54,
-			BlendMode:      "screen",
-			Opacity:        0.5,
-		},
-		{
-			ID:             "important_word",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "-20%",
-			Preset:         "phrase_word_reveal",
-			StartFrame:     30,
-			DurationFrames: 30,
-		},
-		{
-			ID:             "important_phrase",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "A MASSIVE DROP",
-			Preset:         "clean_slide_up",
-			StartFrame:     24,
-			DurationFrames: 60,
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsContent05Mixed are the content-addressed queue assets
 // Content05 carries (background + globe image + light-leak clip + the
 // canonical font for the two text layers).
-var GoldenChrononAssetsContent05Mixed = []ChrononAsset{
-	{Hash: GoldenBackgroundHash, LogicalPath: "assets/background.jpg"},
-	{Hash: GoldenGlobeHash, LogicalPath: "assets/overlay_globe.png"},
-	{Hash: GoldenLightLeak01Hash, LogicalPath: "assets/light_leak_01.mp4"},
-	{Hash: GoldenFontHash, LogicalPath: "assets/fonts/DejaVuSans.ttf"},
-}

@@ -2,6 +2,7 @@ package renderinggen
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
@@ -115,17 +115,15 @@ func downloadCertifiedArtifact(ctx context.Context, client *http.Client, rawURL 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	written, err := io.Copy(file, resp.Body)
+	// Hash while streaming: the certified bytes are hashed by the same
+	// io.Copy that writes them, so the staging file is never re-read from
+	// disk to verify its digest.
+	hasher := digest.NewSHA256()
+	written, err := io.Copy(io.MultiWriter(file, hasher), resp.Body)
 	if err != nil {
 		return err
 	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	actual, err := digest.SHA256Reader(file)
-	if err != nil {
-		return err
-	}
+	actual := hex.EncodeToString(hasher.Sum(nil))
 	if written != expectedSize {
 		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
@@ -152,4 +150,3 @@ func minInt(a, b int) int {
 }
 
 var _ scriptgen.OverlayArtifactPublisher = (*DriveOverlayArtifactPublisher)(nil)
-var _ finalization.PublisherPort = (*drive.ArtifactPublisherAdapter)(nil)

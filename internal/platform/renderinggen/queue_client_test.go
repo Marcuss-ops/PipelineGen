@@ -2,10 +2,15 @@ package renderinggen
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -166,6 +171,79 @@ func TestClientGetDecodesArtifact(t *testing.T) {
 	}
 	if job.State != "completed" || job.Artifact == nil || job.Artifact.ID != "art-1" || !job.Artifact.CopyEligible {
 		t.Fatalf("unexpected job: %+v", job)
+	}
+}
+
+// TestMaterializeArtifactHashesStreamedBytes pins the single-pass download
+// contract: the certified bytes are written to disk and hashed by the same
+// copy, so the materialized file is byte-exact without a second read pass.
+func TestMaterializeArtifactHashesStreamedBytes(t *testing.T) {
+	payload := []byte("certified clip bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	out := filepath.Join(t.TempDir(), "result.mp4")
+	if err := materializeArtifact(context.Background(), srv.URL+"/objects/"+hash, out, int64(len(payload)), hash); err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read materialized artifact: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("materialized bytes = %q, want %q", got, payload)
+	}
+}
+
+// TestMaterializeArtifactRejectsSizeAndHashDrift pins the fail-closed
+// verification even though hashing moved into the streaming copy.
+func TestMaterializeArtifactRejectsSizeAndHashDrift(t *testing.T) {
+	payload := []byte("certified clip bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	url := srv.URL + "/objects/" + hash
+
+	if err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "size.mp4"), int64(len(payload)+1), hash); err == nil {
+		t.Fatal("size drift must fail closed")
+	}
+	if err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "hash.mp4"), int64(len(payload)), strings.Repeat("0", 64)); err == nil {
+		t.Fatal("hash drift must fail closed")
+	}
+}
+
+// TestClientWaitTerminalMapsTerminalJob pins the adapter's event-driven wait:
+// it calls the queue's job-status long poll (GET /jobs/{id}/wait) and maps the
+// terminal job onto the capability's typed job, including the artifact.
+func TestClientWaitTerminalMapsTerminalJob(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/job-1/wait" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"job-1","state":"completed","artifact":{"id":"art-1","artifact_hash":"abc","copy_eligible":true}}`))
+	}))
+	defer srv.Close()
+
+	job, err := New(srv.URL).WaitTerminal(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("wait terminal: %v", err)
+	}
+	if job.State != "completed" || job.Artifact == nil || job.Artifact.SHA256 != "abc" || !job.Artifact.CopyEligible {
+		t.Fatalf("unexpected terminal job: %+v", job)
 	}
 }
 

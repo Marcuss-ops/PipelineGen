@@ -91,9 +91,11 @@ external:
     auto_download:
       enabled: true
       daily_limit: 10
-  # Clip-render queue poll cadence in ms (0 = executor built-in 2s). Each
-  # poll tick is dead time on a finished job, so production sets
-  # RENDERINGGEN_POLL_INTERVAL_MS=250. See types_external.go::RenderingGenPollIntervalMS.
+  # RenderingGen completion is event-driven by default: the queue client
+  # long-polls GET /jobs/{id}/wait and observes the terminal transition
+  # directly. This key only tunes the polling FALLBACK used by a queue
+  # deployment that lacks the wait route (0 = built-in 250ms). See
+  # types_external.go::RenderingGenPollIntervalMS.
   # renderinggen_poll_interval_ms: 250
 
 paths:

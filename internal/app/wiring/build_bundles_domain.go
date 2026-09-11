@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 
 	"go.uber.org/zap"
 )
@@ -28,10 +29,22 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	var canonicalCommitter persistence.AssetCommitter
 	switch {
 	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil:
-		var err error
-		mutationsDisp, err = registrywiring.NewMutationsDispatcherAdapter(outbox.Dispatcher)
-		if err != nil {
-			return nil, fmt.Errorf("compose domains: %w", err)
+		// MEDIA-SSOT P0-2 (September 2026): when the canonical writer is the
+		// PostgreSQL media committer, the delete/restore saga routes through
+		// the PG media SSOT (lifecycle + PG outbox in one PG tx) instead of
+		// the SQLite dispatcher state machine.
+		if pgCommitter, ok := outbox.CanonicalWriter.(*pgmedia.PostgresMediaCommitter); ok {
+			var err error
+			mutationsDisp, err = registrywiring.NewPGMediaSagaDispatcher(pgCommitter)
+			if err != nil {
+				return nil, fmt.Errorf("compose domains: pg media saga dispatcher: %w", err)
+			}
+		} else {
+			var err error
+			mutationsDisp, err = registrywiring.NewMutationsDispatcherAdapter(outbox.Dispatcher)
+			if err != nil {
+				return nil, fmt.Errorf("compose domains: %w", err)
+			}
 		}
 		canonicalCommitter = outbox.CanonicalWriter
 	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter == nil:

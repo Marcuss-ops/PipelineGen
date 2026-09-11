@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
 	"sync/atomic"
 
 	"go.uber.org/zap"
@@ -296,12 +295,3 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 		zap.String("id", id))
 	return nil
 }
-
-// ── unused imports ─────────────────────────────────────────────────────────
-// `sync` may appear unused if all sync types are stripped from the
-// compile unit; the import block is reserved for the future
-// concurrency-affordance (per-id fan-out delete) that will land with
-// PR-QDRANT-005D. The blank import keeps the package gofmt-clean.
-//
-//nolint:unused
-var _ = sync.Mutex{}

@@ -13,6 +13,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
@@ -55,6 +57,7 @@ func buildOutboxDeps(
 	jobs *JobsBundle,
 	qd *QdrantDeps,
 	voiceoverDriver jobsoutbox.VoiceoverCleanupDriver,
+	mediaPostgres *sql.DB,
 	log *zap.Logger,
 ) (*jobsoutbox.Deps, outboxevents.Handler) {
 	// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the outbox http.Client
@@ -102,7 +105,13 @@ func buildOutboxDeps(
 	// place infra concrete types meet application ports — the
 	// outbox.Deps struct no longer needs MetadataDir because the
 	// handler gets its output dir as part of HandlerDeps at wire time.
-	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
+	var metadataExportResolver assetmetadata.AssetResolver
+	if mediaPostgres != nil {
+		metadataExportResolver = pgmedia.NewMetadataExportResolver(mediaPostgres, dbs.DualPool.Writer)
+	}
+	if metadataExportResolver == nil {
+		metadataExportResolver = sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
+	}
 	metadataExportWriter := &filesmetadataexport.FileWriter{}
 	metadataExportDeps := jobsoutbox.MetadataExportHandlerDeps{
 		Resolver:  metadataExportResolver,

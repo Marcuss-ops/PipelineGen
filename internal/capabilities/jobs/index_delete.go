@@ -42,6 +42,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -65,7 +66,7 @@ var indexLifecycleTerminalErr = errors.New("index_delete: terminal envelope erro
 // accepts. Producers MUST send "asset.index.delete_requested.v1"
 // literally. Mismatch is TERMINAL — no retry — so producers upgrade
 // instead of silently retrying on what looks like a routine failure.
-const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
+const DeleteRequestSchemaVersion = event.AssetIndexDeleteRequestedV1Schema
 
 // VectorPointDeleter is satisfied by *qdrant.IndexWriter (see the
 // compile-time assertion at

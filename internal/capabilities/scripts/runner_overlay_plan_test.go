@@ -6,7 +6,7 @@
 // LOGO), every item anchored to the real voiceover word timing (never a
 // text-length estimate), and every template terminating in one of the four
 // canonical primitives (Text / Image / Video / Shape) when compiled to
-// chronon.render-plan.v1.
+// chronon render-plan.
 package scriptgeneration
 
 import (
@@ -260,43 +260,28 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	// "Vision Pro" and "Apple" must NOT also appear as concept cards.
 	require.NotContains(t, templates, "concept_default", "planner-owned entities must not be duplicated as concept cards")
 
-	// ── Compilation into canonical primitives ───────────────────────
-	compiled, err := capabilityoverlay.CompileChrononPlan(*res.OverlayPlan)
-	require.NoError(t, err)
-	layerByID := map[string]capabilityoverlay.ChrononLayer{}
-	for _, layer := range compiled.Plan.Layers {
-		layerByID[layer.ID] = layer
+	// ── Semantic primitives ─────────────────────────────────────────
+	// PipelineGen owns the semantic plan: every item pins an explicit preset
+	// when preset-driven. The visual lowering (layer type, font, geometry) is
+	// RenderingGen's compiler and is asserted by its own tests.
+	itemByID := map[string]capabilityoverlay.OverlayItem{}
+	for _, item := range res.OverlayPlan.Items {
+		itemByID[item.ID] = item
 	}
-	// Preset-driven layers carry NO type (Chronon derives it from
-	// supported_layer); preset-less primitives (PRODUCT / LOGO) still carry
-	// their image/video/color type.
-	for _, layer := range compiled.Plan.Layers {
-		if layer.Type == "" {
-			require.NotEmpty(t, layer.Preset, "layer %q must carry a preset when its type is Chronon-derived", layer.ID)
-			continue
-		}
-		require.Contains(t, []string{"text", "image", "video", "color"}, layer.Type, "layer %q must terminate in a canonical primitive", layer.ID)
-	}
-	require.Equal(t, "text", layerByID["scene-0-phrase-changed-everything"].Type)
-	require.Contains(t, []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}, layerByID["scene-0-phrase-changed-everything"].Preset)
-	require.Equal(t, "text", layerByID["scene-0-keyword-apple"].Type)
-	require.Contains(t, []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}, layerByID["scene-0-keyword-apple"].Preset)
-	require.Equal(t, "text", layerByID["overlay-scene-0-tim-cook"].Type)
-	require.Contains(t, []string{"name_glow_typewriter", "name_glow_slide", "name_glow_pop"}, layerByID["overlay-scene-0-tim-cook"].Preset)
-	// Entity-card portraits remain in the semantic plan's content-addressed
-	// asset refs for audit/materialization; Chronon text layers intentionally
-	// do not project the portrait as a standalone image layer.
-	require.Empty(t, layerByID["overlay-scene-0-tim-cook"].Asset, "entity-card portraits must not become standalone image layers")
-	require.Equal(t, "text", layerByID["overlay-scene-0-cupertino"].Type)
-	require.Equal(t, "text", layerByID["scene-0-number-ten-million"].Type)
-	require.Contains(t, []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}, layerByID["scene-0-number-ten-million"].Preset)
-	require.Equal(t, "text", layerByID["scene-0-quote-changed-everything"].Type)
-	require.Contains(t, []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}, layerByID["scene-0-quote-changed-everything"].Preset)
-	require.Equal(t, "image", layerByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].Type)
-	require.Equal(t, "image", layerByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].Type)
-	// The font is Chronon-owned (VisualPresetRegistry font_asset); PipelineGen
-	// text layers carry no font/font_size.
-	require.Equal(t, "", layerByID["scene-0-phrase-changed-everything"].Font)
+	phrasePresets := []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}
+	wordPresets := []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}
+	namePresets := []string{"name_glow_slide", "name_glow_pop"}
+
+	require.Contains(t, phrasePresets, itemByID["scene-0-phrase-changed-everything"].PresetID)
+	require.Contains(t, wordPresets, itemByID["scene-0-keyword-apple"].PresetID)
+	require.Contains(t, namePresets, itemByID["overlay-scene-0-tim-cook"].PresetID)
+	require.Contains(t, wordPresets, itemByID["scene-0-number-ten-million"].PresetID)
+	require.Contains(t, phrasePresets, itemByID["scene-0-quote-changed-everything"].PresetID)
+	require.NotEmpty(t, itemByID["overlay-scene-0-cupertino"].PresetID)
+	require.Equal(t, "PRODUCT", itemByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].TemplateID)
+	require.Equal(t, "LOGO", itemByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].TemplateID)
+	require.NotEmpty(t, itemByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].AssetRefs)
+	require.NotEmpty(t, itemByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].AssetRefs)
 }
 
 // TestRunner_OverlayIntents_PersistedBeforePlanEnqueue certifies the

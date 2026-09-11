@@ -316,7 +316,7 @@ func (u PreparationUnit) Driver() WorkloadDriver {
 		dim = WorkloadFrames
 	case u.Kind == "asset.download" || u.Kind == "download" || u.Kind == "clip.download" || u.Kind == "NETWORK":
 		dim = WorkloadBytes
-	case u.Kind == "script.generate" || u.Kind == "research.llm" || u.Kind == "LLM":
+	case u.Kind == TypeScriptGenerate || u.Kind == "research.llm" || u.Kind == "LLM":
 		dim = WorkloadTokens
 	}
 	if dim == WorkloadNone {

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -25,15 +26,12 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		ann.Language = "und"
 	}
 	// ── Important phrases / words (mirror of the legacy batch adapter) ─────
-	// The contract is at most ONE important phrase per scene; words keep the
-	// legacy descending score (first word wins). Both are grounded in the
-	// scene text like entities: a phrase/word that never occurs verbatim is
-	// skipped, never faked. They are hints for the overlay planner, NOT
-	// spoken-entity facts: the entity timeline WORD gate never reads them.
-	for i, phrase := range seg.Insights.ImportantPhrases {
-		if i > 0 {
-			break
-		} // contract: at most one important phrase per scene
+	// Every grounded phrase survives; words keep the legacy descending score
+	// (first word wins). Both are grounded in the scene text like entities: a
+	// phrase/word that never occurs verbatim is skipped, never faked. They are
+	// hints for the overlay planner, NOT spoken-entity facts: the entity timeline
+	// WORD gate never reads them.
+	for _, phrase := range seg.Insights.ImportantPhrases {
 		if span, ok := findEntitySpan(text, phrase); ok {
 			ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
 				Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
@@ -225,23 +223,65 @@ func normalizeEntityAnnotationType(raw string) string {
 
 // findEntitySpan locates the first case-sensitive (then case-insensitive)
 // occurrence of value in text and returns its rune span.
+//
+// The exact pass is delegated to the stdlib. The case-insensitive pass walks
+// rune-aligned byte offsets and compares zero-copy substrings with
+// strings.EqualFold: the previous implementation materialised a []rune copy of
+// the WHOLE text and built a fresh string per candidate position, which on a
+// per-scene call path was an O(len(text)) allocation storm (and is invoked
+// once per phrase and once per entity by the phrase grounding gate below).
 func findEntitySpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 	value = strings.TrimSpace(value)
-	if value == "" {
+	if value == "" || text == "" {
 		return scriptpkg.AnnotationSpan{}, false
 	}
-	runes, want := []rune(text), []rune(value)
-	for start := 0; start+len(want) <= len(runes); start++ {
-		if string(runes[start:start+len(want)]) == value {
-			return scriptpkg.AnnotationSpan{Text: string(runes[start : start+len(want)]), StartRune: start, EndRune: start + len(want)}, true
-		}
+	if idx := strings.Index(text, value); idx >= 0 {
+		startRune := utf8.RuneCountInString(text[:idx])
+		return scriptpkg.AnnotationSpan{
+			Text:      text[idx : idx+len(value)],
+			StartRune: startRune,
+			EndRune:   startRune + utf8.RuneCountInString(value),
+		}, true
 	}
-	for start := 0; start+len(want) <= len(runes); start++ {
-		if strings.EqualFold(string(runes[start:start+len(want)]), value) {
-			return scriptpkg.AnnotationSpan{Text: string(runes[start : start+len(want)]), StartRune: start, EndRune: start + len(want)}, true
+	wantRunes := utf8.RuneCountInString(value)
+	if wantRunes == 0 {
+		return scriptpkg.AnnotationSpan{}, false
+	}
+	startRune := 0
+	for start := 0; start < len(text); {
+		if end := advanceRunes(text, start, wantRunes); end > start && strings.EqualFold(text[start:end], value) {
+			return scriptpkg.AnnotationSpan{
+				Text:      text[start:end],
+				StartRune: startRune,
+				EndRune:   startRune + wantRunes,
+			}, true
 		}
+		_, size := utf8.DecodeRuneInString(text[start:])
+		if size <= 0 {
+			break
+		}
+		start += size
+		startRune++
 	}
 	return scriptpkg.AnnotationSpan{}, false
+}
+
+// advanceRunes returns the byte offset n runes after start, or -1 when the
+// string ends first. It lets a caller compare a fixed-rune-length window
+// without allocating a rune slice for the text.
+func advanceRunes(text string, start, n int) int {
+	offset := start
+	for i := 0; i < n; i++ {
+		if offset >= len(text) {
+			return -1
+		}
+		_, size := utf8.DecodeRuneInString(text[offset:])
+		if size <= 0 {
+			return -1
+		}
+		offset += size
+	}
+	return offset
 }
 
 // findAllEntitySpans returns every case-insensitive occurrence of value in

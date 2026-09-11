@@ -22,8 +22,12 @@ import (
 var ErrJobExists = errors.New("render job already exists")
 
 // defaultQueuePollInterval is how long the queue enqueuer waits between
-// status polls while the render is in flight.
-const defaultQueuePollInterval = 2 * time.Second
+// status polls while the render is in flight. It is only exercised by the
+// polling fallback: the primary path is the queue's job-status long poll
+// (RenderQueueWaiter), which observes a terminal job at the transition. The
+// fallback cadence is kept short so an older queue deployment without the
+// wait route does not reintroduce multi-second tail latency.
+const defaultQueuePollInterval = 250 * time.Millisecond
 
 // RenderQueueAsset points at an input asset the central queue worker must
 // fetch. Hash is the object-store lookup key (the SHA-256 of the file).
@@ -62,11 +66,23 @@ type RenderQueueClient interface {
 	Get(ctx context.Context, id string) (RenderQueueJob, error)
 }
 
-// QueueRenderEnqueuer adapts the central RenderingGen queue for the future
-// Chronon overlay render path. It compiles the semantic OverlayPlan into the
-// concrete chronon.render-plan.v1 document and blocks until the render
-// completes, returning the certified artifact reference. The removed video
-// render enqueue path is no longer part of PipelineGen.
+// RenderQueueWaiter is the optional event-driven completion capability. A
+// queue client that implements it lets the enqueuer observe a terminal render
+// at the state transition instead of sampling the job on a cadence: the
+// RenderingGen queue exposes GET /jobs/{id}/wait and the adapter blocks on it.
+// Clients that do not implement it (older deployments, test doubles) keep the
+// polling loop, so the capability is additive and never required.
+type RenderQueueWaiter interface {
+	// WaitTerminal blocks until the job reaches a terminal state (completed,
+	// failed or cancelled) or ctx ends, and returns the last observed job.
+	WaitTerminal(ctx context.Context, id string) (RenderQueueJob, error)
+}
+
+// QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
+// overlay render path. It submits the SEMANTIC OverlayPlan; RenderingGen is the
+// sole owner of the semantic→chronon.render-plan.v2 lowering, and blocks until
+// the render completes, returning the certified artifact reference. The
+// removed video render enqueue path is no longer part of PipelineGen.
 // RenderCompletionMetrics separates the worker-reported Chronon duration from
 // the client-side wait used to observe the queue. PollingSleep is the time
 // deliberately spent sleeping between status requests, so it is the direct
@@ -279,6 +295,43 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }
 
+// terminalRenderState reports whether state is a terminal render state. The
+// canonical terminal set is completed | failed | cancelled and MUST stay
+// aligned with the RenderQueueWaiter contract above; a terminal state that is
+// not recognised here would either be treated as success or poll forever.
+func terminalRenderState(state string) bool {
+	switch state {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+// terminalRenderResult maps a terminal job to the enqueuer's return value.
+// Only "completed" is a success: a failed job surfaces its reason, and a
+// cancelled job fails closed with its own reason rather than being reported as
+// a completed render (which would surface downstream as the misleading
+// "completed without certified artifact" error).
+func terminalRenderResult(job RenderQueueJob, id string, metrics RenderCompletionMetrics) (RenderQueueJob, RenderCompletionMetrics, error) {
+	switch job.State {
+	case "failed":
+		reason := job.FailReason
+		if reason == "" {
+			reason = "unknown failure"
+		}
+		return job, metrics, fmt.Errorf("render job %s failed: %s", id, reason)
+	case "cancelled":
+		reason := job.FailReason
+		if reason == "" {
+			reason = "unknown reason"
+		}
+		return job, metrics, fmt.Errorf("render job %s cancelled: %s", id, reason)
+	default:
+		return job, metrics, nil
+	}
+}
+
 var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
 func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
@@ -434,23 +487,31 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 			FinishedAt: time.Now(),
 		})
 	}()
+
+	// Event-driven completion: the wait parks server-side on the terminal
+	// state transition, so the observed completion latency is the transition
+	// itself rather than up to one poll interval. No client-side polling sleep
+	// is recorded because none is spent.
+	if waiter, ok := e.client.(RenderQueueWaiter); ok {
+		job, err := waiter.WaitTerminal(ctx, id)
+		metrics.CompletionWait = time.Since(waitStarted)
+		if err != nil {
+			return RenderQueueJob{}, metrics, err
+		}
+		return terminalRenderResult(job, id, metrics)
+	}
+
+	// Polling fallback for queue clients without the wait capability.
 	for {
 		job, err := e.client.Get(ctx, id)
 		metrics.PollCount++
 		if err != nil {
 			return RenderQueueJob{}, metrics, err
 		}
-		switch job.State {
-		case "completed":
+		switch {
+		case terminalRenderState(job.State):
 			metrics.CompletionWait = time.Since(waitStarted)
-			return job, metrics, nil
-		case "failed":
-			reason := job.FailReason
-			if reason == "" {
-				reason = "unknown failure"
-			}
-			metrics.CompletionWait = time.Since(waitStarted)
-			return job, metrics, fmt.Errorf("render job %s failed: %s", id, reason)
+			return terminalRenderResult(job, id, metrics)
 		}
 
 		sleepStarted := time.Now()

@@ -33,6 +33,9 @@ Rules: extract at most %d named entities per segment, use only evidence in that
 segment. Add bullet items only when supported by the segment; never copy
 section labels, examples, placeholders, or instructions into the output. Do
 not output JSON, markdown fences, commentary, or missing segment blocks.
+Important phrases are editorial fragments from the source, not entity names:
+do not return a person, place, organization, or partial name as a phrase; use
+the meaningful action, claim, event, or description around it instead.
 `, entityCount)
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
@@ -117,6 +120,11 @@ ENTITY RULES:
 4. Never type generic nouns, adjectives, verbs, titles, or sentence fragments as entities.
 5. Omit uncertain names instead of guessing.
 6. Extract at most %d concrete, segment-specific keywords in parole_importanti.
+
+IMPORTANT PHRASE RULES:
+1. Extract short, meaningful source fragments, not names or partial names.
+2. A person/place/organization name belongs in nomi_speciali, never in frasi_importanti.
+3. Prefer the action, claim, event, or description that makes the segment important.
 
 VISUAL SEARCH RULES:
 1. entity_senza_testo uses "Subject: Description" and must describe a filmable visual.

@@ -238,8 +238,12 @@ func buildDomainMediaServices(
 	// PayloadMapper, the TextTrackResolver here) shares the SAME
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
-	// Compile-time pin: TextTrackRepositorySQLite satisfies detail.TextTrackRepository.
+	// MEDIA-SSOT P0-3 (September 2026): TextTrackRepository is PG-owned.
+	// The SQLite implementation remains only as the degraded / migration
+	// backfill adapter; in PG mode repos.TextTrackRepo is the
+	// TextTrackRepositoryPG (composition.go override).
 	var _ detail.TextTrackRepository = (*texttracks.TextTrackRepositorySQLite)(nil)
+	var _ detail.TextTrackRepository = (*pgmedia.TextTrackRepositoryPG)(nil)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
 	// resolver now consumes cfg.Media.Multilingual.RequireLanguageCertainty
 	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9
@@ -414,13 +418,13 @@ func buildDomainMediaServices(
 		AssetRepo:         repos.Assets.Repository(),
 		AssetDestResolver: drive.DestResolver,
 		LifecycleService: NewLifecycleFromDeps(&AssetLifecycleDeps{
-			Registry: artifacts.NewClipsRegistry(
+			Registry: artifacts.NewClipsRegistryWithLogger(
 				dbs.DualPool.Writer,
 				repos.Assets.Repository(),
 				repos.Assets,
-				repos.Assets.LocationRepository(),
 				repos.Assets.ProcessingRepository(),
 				committer,
+				log,
 			),
 			Publisher:   drive.Publisher,
 			DriveReader: drive.DriveUploader,

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -119,12 +120,12 @@ type bindingIndexRequestV1 struct {
 	RequestedAt   string `json:"requested_at"`
 }
 
-const bindingIndexEventType = "binding.index.requested"
+const bindingIndexEventType = event.BindingIndexRequested
 
 func (d *BindingDispatcher) enqueueBindingIndexEvent(ctx context.Context, tx *sql.Tx, bindingID, conceptID string) error {
 	eventID := uuid.NewString()
 	payload := bindingIndexRequestV1{
-		SchemaVersion: "binding.index.requested.v1",
+		SchemaVersion: event.BindingIndexRequestedV1Schema,
 		EventID:       eventID,
 		BindingID:     bindingID,
 		ConceptID:     conceptID,

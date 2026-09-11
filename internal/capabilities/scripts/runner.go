@@ -317,6 +317,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)
 		}
+		newEnricher.SetImportantPhraseExtractor(p.PhraseExtractor)
 		enricher = newEnricher
 	}
 	if enricher == nil {
@@ -354,6 +355,16 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// enrich editorial fields, but they must not silently re-enable a provider
 	// that the durable request disabled (notably Artlist in images-only runs).
 	if plan != nil {
+		// The run request is the authoritative carrier for Drive output
+		// routing. Keep a resolver implementation that returns only the
+		// semantic/media portion from losing the folder before the
+		// materializer reaches the finalizer.
+		if strings.TrimSpace(plan.DriveFolderID) == "" {
+			plan.DriveFolderID = firstNonEmpty(req.Docs.FolderID, req.DriveFolderID, req.Render.DriveFolderID)
+		}
+		if r.log != nil {
+			r.log.Info("VidRush plan resolved", zap.String("run_id", runID), zap.String("drive_folder_id", strings.TrimSpace(plan.DriveFolderID)), zap.String("title", plan.Title), zap.String("language", plan.Language))
+		}
 		requestedPolicy := req.MediaPlan.ProviderPolicy
 		if requestedPolicy.Artlist != "" || requestedPolicy.YouTube != "" ||
 			requestedPolicy.InternetImages != "" || requestedPolicy.ImageGeneration != "" {

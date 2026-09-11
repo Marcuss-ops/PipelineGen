@@ -7,11 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestOverlayPlanContract_EntityRefSerialized pins the plan's entity_ref
-// contract: an entity-driven item carries the content-addressed entity
-// identity (entity_id + type + name + surface_text) in the emitted JSON, so
-// RenderingGen receives WHO the overlay is about — never a bare name.
-func TestOverlayPlanContract_EntityRefSerialized(t *testing.T) {
+// TestOverlayPlanContract_EntityRefNotSerialized pins that entity_ref is
+// PipelineGen-internal identity: the worker renders from
+// kind/template_id/preset_id/text, so the ref must never reach the
+// overlay-plan.v1 wire. The in-memory plan keeps it for the document/editing
+// projections.
+func TestOverlayPlanContract_EntityRefNotSerialized(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "plan-001", VideoID: "video-001",
@@ -26,28 +27,20 @@ func TestOverlayPlanContract_EntityRefSerialized(t *testing.T) {
 		}},
 	}
 	require.NoError(t, plan.Validate())
+	require.NotNil(t, plan.Items[0].EntityRef, "the in-memory plan keeps the identity for the document/editing projections")
 
 	raw, err := json.Marshal(plan)
 	require.NoError(t, err)
 	var doc struct {
-		Items []struct {
-			EntityRef *struct {
-				EntityID    string `json:"entity_id"`
-				Type        string `json:"type"`
-				Name        string `json:"name"`
-				SurfaceText string `json:"surface_text"`
-			} `json:"entity_ref"`
-			PresetID string `json:"preset_id"`
-		} `json:"items"`
+		Items  []map[string]any `json:"items"`
+		PlanID string           `json:"plan_id"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &doc))
 	require.Len(t, doc.Items, 1)
-	require.NotNil(t, doc.Items[0].EntityRef)
-	require.Equal(t, "ent_abc123", doc.Items[0].EntityRef.EntityID)
-	require.Equal(t, "PERSON", doc.Items[0].EntityRef.Type)
-	require.Equal(t, "Tim Cook", doc.Items[0].EntityRef.Name)
-	require.Equal(t, "Tim Cook", doc.Items[0].EntityRef.SurfaceText)
-	require.Equal(t, "", doc.Items[0].PresetID, "no preset selected → absent (omitempty)")
+	_, present := doc.Items[0]["entity_ref"]
+	require.False(t, present, "entity_ref must not be serialized into overlay-plan.v1")
+	require.Equal(t, "person_default", doc.Items[0]["template_id"])
+	require.Equal(t, "Tim Cook", doc.Items[0]["text"])
 }
 
 // TestOverlayPlanContract_PresetIDSerialized pins the preset_id contract

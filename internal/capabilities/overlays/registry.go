@@ -95,17 +95,14 @@ const (
 //   - Kind: the semantic kind (registry key).
 //   - Template: the template id the item compiles to (OverlayItem.TemplateID
 //     — e.g. "person_default").
-//   - Renderer: the concrete renderer that materializes the template into
-//     pixels (e.g. PersonCardRenderer).
-//   - RequiredInputs: the item fields the renderer requires to produce a
-//     valid layer (text, asset_refs, …).
+//   - RequiredInputs: the item fields the kind requires to produce a valid
+//     semantic item (text, asset_refs, …).
 //   - DurationPolicy: how the layer's duration is derived.
 //   - PositioningPolicy: where the layer is placed.
 //   - Version: the entry's own schema version.
 type OverlayEntry struct {
 	Kind              OverlayKind       `json:"kind"`
 	Template          string            `json:"template"`
-	Renderer          Renderer          `json:"renderer"`
 	RequiredInputs    []string          `json:"required_inputs"`
 	DurationPolicy    DurationPolicy    `json:"duration_policy"`
 	PositioningPolicy PositioningPolicy `json:"positioning_policy"`
@@ -127,7 +124,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindEntityCard,
 		Template:          "person_default",
-		Renderer:          PersonCardRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionEntityCard,
@@ -136,7 +132,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindOrganization,
 		Template:          "org_default",
-		Renderer:          OrganizationCardRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionEntityCard,
@@ -145,7 +140,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindLocation,
 		Template:          "gpe_default",
-		Renderer:          LocationCardRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionEntityCard,
@@ -154,7 +148,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindConcept,
 		Template:          "concept_default",
-		Renderer:          ConceptCardRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionEntityCard,
@@ -163,7 +156,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindLowerThird,
 		Template:          "lower_third",
-		Renderer:          LowerThirdRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionLowerThird,
@@ -172,7 +164,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindImagePopup,
 		Template:          "image_popup",
-		Renderer:          ImagePopupRenderer{},
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionPopup,
@@ -181,7 +172,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindQuote,
 		Template:          "quote",
-		Renderer:          QuoteRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionCentered,
@@ -190,7 +180,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindNumber,
 		Template:          "NUMBER",
-		Renderer:          NumberRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionCentered,
@@ -199,7 +188,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindProduct,
 		Template:          "PRODUCT",
-		Renderer:          ProductRenderer{},
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionPopup,
@@ -208,7 +196,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindLogo,
 		Template:          "LOGO",
-		Renderer:          LogoRenderer{},
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionCorner,
@@ -217,7 +204,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindImportantPhrase,
 		Template:          "IMPORTANT_PHRASE",
-		Renderer:          ImportantPhraseRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionCentered,
@@ -226,7 +212,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindImportantWord,
 		Template:          "IMPORTANT_WORD",
-		Renderer:          ImportantWordRenderer{},
 		RequiredInputs:    []string{"text"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionCentered,
@@ -235,7 +220,6 @@ var canonicalOverlayEntries = []OverlayEntry{
 	{
 		Kind:              KindEntityImage,
 		Template:          "IMAGE_OVERLAY",
-		Renderer:          EntityImageRenderer{},
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionPopup,
@@ -286,15 +270,6 @@ func (r *ChrononOverlayRegistry) ResolveTemplate(kind string) (string, error) {
 		return "", err
 	}
 	return e.Template, nil
-}
-
-// ResolveRenderer returns the concrete renderer for a kind.
-func (r *ChrononOverlayRegistry) ResolveRenderer(kind string) (Renderer, error) {
-	e, err := r.Resolve(kind)
-	if err != nil {
-		return nil, err
-	}
-	return e.Renderer, nil
 }
 
 // Has reports whether a kind is registered (normalized lookup, nil-safe).

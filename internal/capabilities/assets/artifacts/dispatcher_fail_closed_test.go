@@ -68,7 +68,6 @@ func TestPR7_ClipsRegistry_UpsertMedia_NilDispatcher_FailClosed(t *testing.T) {
 		nil, // db
 		nil, // assets.Repository
 		nil, // querySvc
-		nil, // locations
 		nil, // processing
 		nil, // dispatcher nil → strict fail-closed
 	)

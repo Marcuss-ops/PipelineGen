@@ -14,9 +14,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -154,7 +156,7 @@ func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
 	plan := cliprender.ClipRenderPlanV1{
 		Version:    cliprender.PlanVersion,
 		RunID:      "clip-asset-test",
-		Source:     cliprender.PlanSource{AssetID: "src", Path: "/home/pierone/clips/source.mp4", SHA256: sha},
+		Source:     cliprender.PlanSource{AssetID: "src", Path: "/var/lib/velox/clips/source.mp4", SHA256: sha},
 		Background: &cliprender.PlanBackground{Mode: cliprender.BackgroundModeNone},
 		Output:     cliprender.PlanOutput{ContractID: "C", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1},
 		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
@@ -180,6 +182,42 @@ func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
 		if !strings.Contains(ref.LogicalPath, "src/source.mp4") {
 			t.Errorf("asset ref LogicalPath %q does not contain the source identity", ref.LogicalPath)
 		}
+	}
+}
+
+func TestOverlayPlanAssetsShipsFontForBurnSubtitles(t *testing.T) {
+	plan := validClipPlan(t)
+	assPath := t.TempDir() + "/subtitles.ass"
+	assBytes := []byte("[Script Info]\n")
+	if err := os.WriteFile(assPath, assBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan.Subtitles = &cliprender.PlanSubtitles{
+		Mode:   cliprender.SubtitlesModeBurn,
+		Path:   assPath,
+		SHA256: fmt.Sprintf("%x", sha256.Sum256(assBytes)),
+		Style:  &scriptpkg.VideoVisualStyleSpec{Font: "Montserrat"},
+	}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := overlayPlanAssets(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	font, err := watermarkFontAsset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ref := range refs {
+		if ref.Hash == font.Hash && ref.LocalPath == font.LocalPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("burn subtitles must ship the selected font, refs=%+v", refs)
 	}
 }
 
@@ -313,6 +351,47 @@ func TestPrefetchClipAssetsStreamsMissingObject(t *testing.T) {
 	}
 	if rec.gets != 0 {
 		t.Fatalf("prefetch must probe with HEAD, not GET (gets=%d)", rec.gets)
+	}
+}
+
+// eventDrivenClipQueue implements scriptgen.RenderQueueWaiter, so the clip
+// wait must observe completion at the transition instead of polling. Get fails
+// on purpose: using it would prove the polling path ran.
+type eventDrivenClipQueue struct {
+	waits int
+	job   scriptgen.RenderQueueJob
+}
+
+func (q *eventDrivenClipQueue) Submit(context.Context, scriptgen.RenderQueueJob) error { return nil }
+func (q *eventDrivenClipQueue) Get(context.Context, string) (scriptgen.RenderQueueJob, error) {
+	return scriptgen.RenderQueueJob{}, errors.New("Get must not be used on the event-driven path")
+}
+func (q *eventDrivenClipQueue) Retry(context.Context, string) error { return nil }
+func (q *eventDrivenClipQueue) WaitTerminal(context.Context, string) (scriptgen.RenderQueueJob, error) {
+	q.waits++
+	return q.job, nil
+}
+
+// TestWaitClipQueueUsesEventDrivenWait pins that a queue client exposing the
+// wait capability removes the polling cadence from the clip path: the hour-long
+// interval would have stalled a polling loop, but the event-driven branch
+// returns immediately.
+func TestWaitClipQueueUsesEventDrivenWait(t *testing.T) {
+	q := &eventDrivenClipQueue{job: scriptgen.RenderQueueJob{State: "completed"}}
+
+	start := time.Now()
+	got, err := waitClipQueue(context.Background(), q, "clip-1", time.Hour)
+	if err != nil {
+		t.Fatalf("event-driven wait: %v", err)
+	}
+	if q.waits != 1 {
+		t.Fatalf("WaitTerminal calls = %d, want 1", q.waits)
+	}
+	if got.State != "completed" {
+		t.Fatalf("state = %q, want completed", got.State)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("event-driven wait took %v; polling cadence leaked into the path", elapsed)
 	}
 }
 

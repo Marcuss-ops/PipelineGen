@@ -155,7 +155,7 @@ func TestSearchWikimediaCommons_UsesRESTLicenseAndFileMetadata(t *testing.T) {
 	if got.Provider != "wikimedia_commons" || got.License == "" || got.Author != "Example Author" {
 		t.Fatalf("unexpected Commons result: %+v", got)
 	}
-	if got.PreviewURL == "" || got.Width != 1920 || got.Height != 1080 {
-		t.Fatalf("missing REST file metadata: %+v", got)
+	if got.PreviewURL == "" || got.Width != 4000 || got.Height != 2250 {
+		t.Fatalf("missing preferred/original REST file metadata: %+v", got)
 	}
 }

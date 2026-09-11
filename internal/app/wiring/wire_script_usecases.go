@@ -73,6 +73,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
 	"go.uber.org/zap"
@@ -119,6 +120,12 @@ func buildScriptUseCases(
 		} else if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER); enrichErr != nil {
 			log.Warn("wireScriptFlow: batch SceneIR enricher unavailable", zap.Error(enrichErr))
 		} else {
+			if root.AI.OllamaClient != nil {
+				enricher.SetImportantPhraseExtractor(ollamaadapters.NewOllamaImportantPhraseExtractor(root.AI.OllamaClient))
+				log.Info("wireScriptFlow: Ollama important-phrase extractor wired")
+			} else {
+				log.Warn("wireScriptFlow: Ollama important-phrase extractor unavailable")
+			}
 			oneUC.SetSegmentEnricher(enricher)
 			log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired")
 		}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
@@ -20,6 +21,53 @@ type captureOverlayPublisher struct {
 func (p *captureOverlayPublisher) Publish(_ context.Context, artifact finalization.VerifiedArtifact) (finalization.AssetLocation, error) {
 	p.artifact = artifact
 	return finalization.AssetLocation{Provider: "drive", FileID: "drive-file", WebViewLink: "https://drive/file"}, nil
+}
+
+// TestDownloadCertifiedArtifactHashesStreamedBytes pins the single-pass
+// staging contract and its fail-closed verification.
+func TestDownloadCertifiedArtifactHashesStreamedBytes(t *testing.T) {
+	payload := []byte("certified overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	url := srv.URL + "/objects/" + hash
+
+	file, err := os.CreateTemp(t.TempDir(), "artifact-*")
+	if err != nil {
+		t.Fatalf("temp file: %v", err)
+	}
+	defer file.Close()
+	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, file, int64(len(payload)), hash); err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	got, err := os.ReadFile(file.Name())
+	if err != nil {
+		t.Fatalf("read staged artifact: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("staged bytes = %q, want %q", got, payload)
+	}
+
+	sizeFile, err := os.CreateTemp(t.TempDir(), "artifact-size-*")
+	if err != nil {
+		t.Fatalf("temp file: %v", err)
+	}
+	defer sizeFile.Close()
+	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, sizeFile, int64(len(payload)+1), hash); err == nil {
+		t.Fatal("size drift must fail closed")
+	}
+
+	hashFile, err := os.CreateTemp(t.TempDir(), "artifact-hash-*")
+	if err != nil {
+		t.Fatalf("temp file: %v", err)
+	}
+	defer hashFile.Close()
+	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, hashFile, int64(len(payload)), strings.Repeat("0", 64)); err == nil {
+		t.Fatal("hash drift must fail closed")
+	}
 }
 
 func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactWithScriptRoute(t *testing.T) {

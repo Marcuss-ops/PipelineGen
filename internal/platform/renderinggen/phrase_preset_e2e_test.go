@@ -95,24 +95,22 @@ func TestPhrasePresetE2E(t *testing.T) {
 
 		// Compile pass anchors the preset on the document so a regression in
 		// the resolver can't silently rewrite the animation the test selected.
-		compiled, err := capoverlay.CompileChrononPlan(plan)
-		if err != nil {
-			t.Fatalf("[%d/%d] preset %s compile: %v", i+1, len(presets), preset, err)
-		}
-		var phraseLayer *capoverlay.ChrononLayer
-		for li := range compiled.Plan.Layers {
-			if compiled.Plan.Layers[li].ID == "phrase_"+preset {
-				phraseLayer = &compiled.Plan.Layers[li]
+		// Pin the preset on the SEMANTIC plan so a regression on the resolver
+		// cannot silently rewrite the preset selected by the test.
+		var phraseItem *capoverlay.OverlayItem
+		for ii := range plan.Items {
+			if plan.Items[ii].ID == "phrase_"+preset {
+				phraseItem = &plan.Items[ii]
 			}
 		}
-		if phraseLayer == nil {
-			t.Fatalf("[%d/%d] preset %s: PHRASE layer missing in compiled plan", i+1, len(presets), preset)
+		if phraseItem == nil {
+			t.Fatalf("[%d/%d] preset %s: PHRASE item missing in semantic plan", i+1, len(presets), preset)
 		}
-		if phraseLayer.Preset != preset {
-			t.Fatalf("[%d/%d] preset %s: layer.Preset = %q, want %q", i+1, len(presets), preset, phraseLayer.Preset, preset)
+		if phraseItem.PresetID != preset {
+			t.Fatalf("[%d/%d] preset %s: item.PresetID = %q, want %q", i+1, len(presets), preset, phraseItem.PresetID, preset)
 		}
-		if phraseLayer.Text != phraseText {
-			t.Fatalf("[%d/%d] preset %s: layer.Text = %q, want %q", i+1, len(presets), preset, phraseLayer.Text, phraseText)
+		if phraseItem.Text != phraseText {
+			t.Fatalf("[%d/%d] preset %s: item.Text = %q, want %q", i+1, len(presets), preset, phraseItem.Text, phraseText)
 		}
 
 		enqueuer, err := scriptgen.NewQueueRenderEnqueuer(New(queueURL))

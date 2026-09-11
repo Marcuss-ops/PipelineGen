@@ -60,11 +60,6 @@ func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 		if e.Template != expected.template {
 			t.Errorf("Resolve(%q).Template = %q, want %q", kind, e.Template, expected.template)
 		}
-		if e.Renderer == nil {
-			t.Errorf("Resolve(%q).Renderer is nil", kind)
-		} else if e.Renderer.Name() != expected.renderer {
-			t.Errorf("Resolve(%q).Renderer.Name() = %q, want %q", kind, e.Renderer.Name(), expected.renderer)
-		}
 		if e.Version <= 0 {
 			t.Errorf("Resolve(%q).Version = %d, want > 0", kind, e.Version)
 		}
@@ -89,22 +84,18 @@ func TestChrononOverlayRegistry_ResolveNormalizesInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve normalized entity_card: %v", err)
 	}
-	if e.Renderer == nil || e.Renderer.Name() != "PersonCardRenderer" {
-		t.Fatalf("normalized Resolve renderer = %v, want PersonCardRenderer", e.Renderer)
+	if e.Template != "person_default" {
+		t.Fatalf("normalized Resolve template = %q, want person_default", e.Template)
 	}
 }
 
-// TestChrononOverlayRegistry_ResolveTemplateAndRenderer pins the convenience
-// spellings used by planners.
-func TestChrononOverlayRegistry_ResolveTemplateAndRenderer(t *testing.T) {
+// TestChrononOverlayRegistry_ResolveTemplate pins the convenience spelling
+// used by planners.
+func TestChrononOverlayRegistry_ResolveTemplate(t *testing.T) {
 	reg := NewChrononOverlayRegistry()
 	tmpl, err := reg.ResolveTemplate("lower_third")
 	if err != nil || tmpl != "lower_third" {
 		t.Fatalf("ResolveTemplate(lower_third) = %q, %v", tmpl, err)
-	}
-	renderer, err := reg.ResolveRenderer("quote")
-	if err != nil || renderer == nil || renderer.Name() != "QuoteRenderer" {
-		t.Fatalf("ResolveRenderer(quote) = %v, %v", renderer, err)
 	}
 }
 
@@ -183,7 +174,7 @@ func TestChrononOverlayRegistry_ConcurrentReads(t *testing.T) {
 					errCh <- fmt.Errorf("worker %d: Resolve(%q): %w", n, kind, err)
 					return
 				}
-				if e.Kind != kind || e.Renderer == nil {
+				if e.Kind != kind || e.Template == "" {
 					errCh <- fmt.Errorf("worker %d: inconsistent entry for %q: %+v", n, kind, e)
 					return
 				}

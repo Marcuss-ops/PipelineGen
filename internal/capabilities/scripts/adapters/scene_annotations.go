@@ -43,11 +43,8 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		ann.Language = "und"
 	}
 	for i, phrase := range seg.Insights.ImportantPhrases {
-		if i > 0 {
-			break
-		} // contract: at most one important phrase per scene
 		if span, ok := findAnnotationSpan(text, phrase); ok {
-			span.ID = fmt.Sprintf("phrase-%s-001", safeAnnotationID(seg.SegmentID))
+			span.ID = fmt.Sprintf("phrase-%s-%03d", safeAnnotationID(seg.SegmentID), i+1)
 			span.Score = 0.80
 			span.Kind = "key_statement"
 			ann.ImportantPhrases = append(ann.ImportantPhrases, span)

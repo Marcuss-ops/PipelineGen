@@ -365,11 +365,11 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 			}}
 		}
 		if wm.Text != "" && len(wm.AssetRefs) == 0 {
-			font, err := watermarkFontAsset()
+			font, err := watermarkFontAssetForStyle(plan.Watermark.Style)
 			if err != nil {
 				return nil, fmt.Errorf("clip plan mapper: watermark font: %w", err)
 			}
-			wm.FontRef = &overlayAssetRef{AssetID: "font-montserrat-bold", SHA256: font.Hash, URL: font.LogicalPath, MediaType: "font/ttf"}
+			wm.FontRef = &overlayAssetRef{AssetID: fontAssetID(plan.Watermark.Style), SHA256: font.Hash, URL: font.LogicalPath, MediaType: "font/ttf"}
 		}
 		op.Watermark = wm
 	}
@@ -412,16 +412,20 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 			Hash:        plan.Subtitles.SHA256,
 			LogicalPath: hashAddressedPath(plan.Subtitles.SHA256, "subtitles.ass"),
 		})
-		// A subtitle style that names Poppins must ship the Poppins-Bold
-		// glyphs with the job. The RenderingGen subtitle burn resolves the
-		// text-layer font from the first materialised .ttf in the job asset
-		// list, so the Poppins font is emitted BEFORE the watermark font to
-		// keep subtitle glyphs deterministic.
-		if plan.Subtitles.Style != nil &&
-			strings.Contains(strings.ToLower(strings.TrimSpace(plan.Subtitles.Style.Font)), "poppins") {
-			font, err := poppinsFontAsset()
+		// A burn-in subtitle plan must ship a materialised font. RenderingGen
+		// resolves the subtitle glyphs from the first .ttf/.otf in the job's
+		// asset list; previously only Poppins was added here, while the
+		// production default style is Montserrat, causing the worker to fail
+		// after compilation with "requires a materialized font".
+		if plan.Subtitles.Mode == cliprender.SubtitlesModeBurn {
+			fontLoader := watermarkFontAsset
+			if plan.Subtitles.Style != nil &&
+				strings.Contains(strings.ToLower(strings.TrimSpace(plan.Subtitles.Style.Font)), "poppins") {
+				fontLoader = poppinsFontAsset
+			}
+			font, err := fontLoader()
 			if err != nil {
-				return nil, fmt.Errorf("clip plan mapper: poppins subtitle font: %w", err)
+				return nil, fmt.Errorf("clip plan mapper: subtitle font: %w", err)
 			}
 			refs = append(refs, font)
 		}
@@ -433,7 +437,7 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 		})
 	}
 	if plan.Watermark != nil && plan.Watermark.Text != "" && plan.Watermark.SHA256 == "" {
-		font, err := watermarkFontAsset()
+		font, err := watermarkFontAssetForStyle(plan.Watermark.Style)
 		if err != nil {
 			return nil, fmt.Errorf("watermark font: %w", err)
 		}
@@ -456,6 +460,20 @@ func watermarkFontAsset() (assetRef, error) {
 		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-montserrat-bold", "Montserrat-Bold.ttf"), LocalPath: path}, nil
+}
+
+func fontAssetID(style *scriptpkg.VideoVisualStyleSpec) string {
+	if style != nil && strings.Contains(strings.ToLower(strings.TrimSpace(style.Font)), "poppins") {
+		return "font-poppins-bold"
+	}
+	return "font-montserrat-bold"
+}
+
+func watermarkFontAssetForStyle(style *scriptpkg.VideoVisualStyleSpec) (assetRef, error) {
+	if fontAssetID(style) == "font-poppins-bold" {
+		return poppinsFontAsset()
+	}
+	return watermarkFontAsset()
 }
 
 func poppinsFontAsset() (assetRef, error) {

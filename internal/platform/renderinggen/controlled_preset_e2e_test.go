@@ -62,18 +62,16 @@ func TestControlledPresetE2E(t *testing.T) {
 	}
 
 	// Lock the controlled presets on the compiled document before enqueueing.
-	compiled, err := capoverlay.CompileChrononPlan(plan)
-	if err != nil {
-		t.Fatalf("compile controlled preset plan: %v", err)
-	}
+	// Pin the controlled presets on the SEMANTIC plan; RenderingGen owns the
+	// lowering into concrete layers.
 	wantPresets := map[string]string{
 		"image":  "image_slide_left",
 		"phrase": "clean_slide_up",
 		"word":   "snap_scale",
 	}
-	for _, layer := range compiled.Plan.Layers {
-		if w, ok := wantPresets[layer.ID]; ok && layer.Preset != w {
-			t.Fatalf("layer %s preset = %q, want %q", layer.ID, layer.Preset, w)
+	for _, item := range plan.Items {
+		if w, ok := wantPresets[item.ID]; ok && item.PresetID != w {
+			t.Fatalf("item %s preset = %q, want %q", item.ID, item.PresetID, w)
 		}
 	}
 

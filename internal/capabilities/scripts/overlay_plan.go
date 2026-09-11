@@ -16,8 +16,9 @@
 //	                   from the certified EntityTimeline.
 //
 // Every template terminates in one of the four canonical primitives
-// (Text / Image / Video / Shape) via overlays.CompileChrononPlan — the
-// caller compiles the returned plan exactly like the golden canary.
+// (Text / Image / Video / Shape). The returned plan is the SEMANTIC
+// renderinggen.overlay-plan.v1 document; RenderingGen lowers it to
+// chronon.render-plan.v2 — PipelineGen never emits a concrete Chronon plan.
 package scriptgeneration
 
 import (

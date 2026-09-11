@@ -16,7 +16,10 @@
 // anchors already feed metrics_v2), never with a second ad-hoc timer.
 package cliprender
 
-import kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+import (
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+)
 
 const (
 	// StageClipDestinationResolve is the one-time Drive leaf-folder
@@ -35,7 +38,7 @@ const (
 	// StageClipRender is the RenderingGen/Chronon render boundary (queue +
 	// single-pass render). Its wall includes the whole renderer port call;
 	// the chronon.render_clip operation carries the accumulated work.
-	StageClipRender kernobs.StageName = "clip.render"
+	StageClipRender kernobs.StageName = kernobs.StageName(job.TypeClipRender)
 	// StageClipProbe is the post-render byte certification (probe + exact
 	// contract validation). Part of the render-side serial chain.
 	StageClipProbe kernobs.StageName = "clip.probe"

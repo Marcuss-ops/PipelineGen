@@ -3,10 +3,12 @@ package artifacts
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -14,7 +16,8 @@ import (
 )
 
 type ClipsRegistry struct {
-	db *sql.DB
+	db  *sql.DB // operational-only: legacy reads scheduled for demolition (see MEDIA-SSOT items 6/7); never used for media writes
+	log *zap.Logger
 	// assets is retained for the post-dispatch SoftDelete path
 	// (DeleteMedia). The pre-dispatcher media_assets UPSERT
 	// (where `r.assets.Upsert(...)` was previously called) now routes
@@ -31,7 +34,6 @@ type ClipsRegistry struct {
 	// the same tx (v1 conflation invariant).
 	committer  persistence.AssetCommitter
 	querySvc   *detail.Service
-	locations  detail.LocationRepository
 	processing detail.ProcessingRepository
 }
 
@@ -43,7 +45,6 @@ func NewClipsRegistry(
 	db *sql.DB,
 	assets detail.Repository,
 	querySvc *detail.Service,
-	locations detail.LocationRepository,
 	processing detail.ProcessingRepository,
 	committer persistence.AssetCommitter,
 ) *ClipsRegistry {
@@ -51,10 +52,38 @@ func NewClipsRegistry(
 		db:         db,
 		assets:     assets,
 		querySvc:   querySvc,
-		locations:  locations,
 		processing: processing,
 		committer:  committer,
+		log:        zap.NewNop(),
 	}
+}
+
+// NewClipsRegistryWithLogger is the wiring variant that threads the
+// composition logger so operational best-effort warnings (P1-5) are
+// observable.
+func NewClipsRegistryWithLogger(
+	db *sql.DB,
+	assets detail.Repository,
+	querySvc *detail.Service,
+	processing detail.ProcessingRepository,
+	committer persistence.AssetCommitter,
+	log *zap.Logger,
+) *ClipsRegistry {
+	r := NewClipsRegistry(db, assets, querySvc, processing, committer)
+	if log != nil {
+		r.log = log
+	}
+	return r
+}
+
+// logger returns the wired logger, falling back to a no-op for a zero-value
+// ClipsRegistry. Both constructors guarantee a non-nil logger, so this is a
+// guard for direct struct literals only — never a silent-logging decision.
+func (r *ClipsRegistry) logger() *zap.Logger {
+	if r == nil || r.log == nil {
+		return zap.NewNop()
+	}
+	return r.log
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
@@ -75,85 +104,85 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	if rec == nil {
 		return fmt.Errorf("UpsertMedia: MediaRecord is nil (contract violation)")
 	}
-	m := &asset.Asset{
-		ID:             rec.ID,
-		Source:         asset.Source(rec.Source),
-		Name:           rec.Name,
-		Filename:       rec.Filename,
-		MediaType:      asset.MediaType(rec.MediaType),
-		Category:       rec.Category,
-		Group:          rec.Group,
-		SourceURL:      rec.ExternalURL,
-		Duration:       time.Duration(rec.Duration) * time.Millisecond,
-		Tags:           append([]string(nil), rec.Tags...),
-		LifecycleState: asset.StateActive,
-		CreatedAt:      time.Now().UTC(),
-		UpdatedAt:      time.Now().UTC(),
-	}
-	m.SetExternalURL(rec.ExternalURL)
-	m.SetFolderID(rec.FolderID)
-	m.SetFolderPath(rec.FolderPath)
-	m.SetPHash(rec.PHash)
-	m.SetVisualEmbeddingJSON(rec.VisualEmbeddingJSON)
-	m.SetMetadataJSON(rec.Metadata)
-
+	lifecycleState := asset.StateActive
 	if rec.Status == "DELETED" {
-		m.LifecycleState = asset.StateDeleted
+		lifecycleState = asset.StateDeleted
 	}
 
+	// MEDIA-SSOT P0-1 (Sept 2026): asset_locations is part of the media aggregate.
+	// The entire media row + locations + outbox MUST commit in ONE PG transaction.
+	// The previous PG→SQLite two-phase (CommitAndIndex then LocationRepository.Upsert)
+	// produced a partial-commit divergence: PG could succeed while SQLite failed and
+	// the caller would retry an already-durable asset. The locations ride inside the
+	// CommitRequest so the canonical PG committer upserts media_assets +
+	// asset_locations + outbox atomically. The SQLite LocationRepository is
+	// intentionally NOT called from this path (legacy backfill only).
+	var locations []persistence.LocationCommit
+	if rec.LocalPath != "" {
+		locations = append(locations, persistence.LocationCommit{
+			Kind: string(asset.LocationKindLocal), URI: rec.LocalPath,
+			LegacyFileMD5: rec.LegacyFileMD5, IsPrimary: true,
+		})
+	}
+	if rec.DriveLink != "" || rec.DriveFileID != "" {
+		locations = append(locations, persistence.LocationCommit{
+			Kind: string(asset.LocationKindDrive), URI: "drive://" + rec.DriveFileID,
+			ExternalID: rec.DriveFileID, WebViewLink: rec.DriveLink, DownloadURL: rec.DownloadLink,
+			IsPrimary: rec.LocalPath == "", LegacyFileMD5: rec.LegacyFileMD5,
+		})
+	}
 	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
 	// media_assets UPSERT through the canonical persistence.AssetCommitter
 	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
 	// INSERT in one tx) applies uniformly to artifacts-driven write paths.
 	if _, err := r.committer.CommitAndIndex(ctx, persistence.CommitRequest{
-		AssetID: m.ID, Source: string(m.Source), Name: m.Name, Filename: m.Filename,
-		MediaType: string(m.MediaType), ContentHash: rec.LegacyFileMD5, LifecycleState: string(m.LifecycleState),
-		IndexState: m.GetMetadataString("index_state"), EmitIndexEvent: true,
+		AssetID: rec.ID, Source: rec.Source, Name: rec.Name, Filename: rec.Filename,
+		MediaType: rec.MediaType, GroupName: rec.Group,
+		ContentHash: rec.LegacyFileMD5, LifecycleState: string(lifecycleState),
+		IndexState: mediaIndexState(rec.Metadata), Locations: locations, EmitIndexEvent: true,
 	}); err != nil {
 		return fmt.Errorf("committer enqueue: %w", err)
 	}
 
-	// Write locations
-	if rec.LocalPath != "" {
-		loc := &asset.Location{
-			AssetID:       rec.ID,
-			LocationKind:  asset.LocationKindLocal,
-			URI:           rec.LocalPath,
-			LegacyFileMD5: rec.LegacyFileMD5,
-			IsPrimary:     true,
-		}
-		if err := r.locations.Upsert(ctx, loc); err != nil {
-			return err
-		}
-	}
-	if rec.DriveLink != "" || rec.DriveFileID != "" {
-		loc := &asset.Location{
-			AssetID:      rec.ID,
-			LocationKind: asset.LocationKindDrive,
-			URI:          "drive://" + rec.DriveFileID,
-			ExternalID:   rec.DriveFileID,
-			AccessURL:    rec.DriveLink,
-			DownloadURL:  rec.DownloadLink,
-			IsPrimary:    rec.LocalPath == "",
-		}
-		if err := r.locations.Upsert(ctx, loc); err != nil {
-			return err
-		}
-	}
-
-	// Write status/processing step if present. Processing state is part of
-	// the lifecycle contract and must be durable before reporting success.
-	if rec.Status != "" {
+	// P1-5 (Sept 2026): asset_processing is operational / observability
+	// (SQLite) and MUST NOT make a durable PG media commit fail closed.
+	// The media row + locations + outbox are already durably committed in
+	// PG above; a SQLite processing write failure is best-effort and is
+	// logged but does not return an error (the caller already has a
+	// durable asset). This eliminates the PG COMMIT -> SQLite write ->
+	// return error partial-commit boundary.
+	if rec.Status != "" && r.processing != nil {
 		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
 			step = string(asset.StageDownload)
 		}
 		if err := persistMediaProcessingState(ctx, r.processing, rec, step); err != nil {
-			return err
+			r.logger().Warn("clips registry: processing state best-effort write failed (media commit already durable)",
+				zap.String("asset_id", rec.ID), zap.String("step", step), zap.Error(err))
 		}
 	}
 
 	return nil
+}
+
+// mediaIndexState extracts the media_assets.index_state mirror from a
+// metadata_json string. Returns empty on parse failure (same tolerance as the
+// metadata port).
+//
+// It decodes into a typed envelope rather than a map[string]any: this runs on
+// EVERY UpsertMedia (the ingest hot path), and the map form allocated a map,
+// string keys and interface-boxed values just to read one field.
+func mediaIndexState(metadataJSON string) string {
+	if metadataJSON == "" {
+		return ""
+	}
+	var probe struct {
+		IndexState string `json:"index_state"`
+	}
+	if json.Unmarshal([]byte(metadataJSON), &probe) != nil {
+		return ""
+	}
+	return probe.IndexState
 }
 
 func persistMediaProcessingState(ctx context.Context, processing detail.ProcessingRepository, rec *MediaRecord, step string) error {
@@ -177,6 +206,9 @@ func persistMediaProcessingState(ctx context.Context, processing detail.Processi
 }
 
 func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, error) {
+	if pgDB := r.pgDB(); pgDB != nil {
+		return r.getMediaPG(ctx, pgDB, id)
+	}
 	details, err := r.querySvc.Get(ctx, id)
 	if err != nil {
 		if err == asset.ErrNotFound {
@@ -188,10 +220,20 @@ func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, 
 }
 
 func (r *ClipsRegistry) DeleteMedia(ctx context.Context, id string) error {
+	if mut := r.pgMutator(); mut != nil {
+		// MEDIA-SSOT P0-2/P1-6: lifecycle mutation via PG media SSOT.
+		if err := mut.UpdateLifecycle(ctx, id, string(asset.StateDeleted), "", ""); err != nil {
+			return fmt.Errorf("clips registry: pg delete %s: %w", id, err)
+		}
+		return nil
+	}
 	return r.assets.SoftDelete(ctx, id)
 }
 
 func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
+	if pgDB := r.pgDB(); pgDB != nil {
+		return r.getAllWithDriveFileIDPG(ctx, pgDB)
+	}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id FROM media_assets 
 		WHERE drive_file_id IS NOT NULL AND drive_file_id != '' 
@@ -228,6 +270,17 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 	if phash == "" {
 		return "", nil
 	}
+	if pgDB := r.pgDB(); pgDB != nil {
+		var id string
+		err := pgDB.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE phash = $1 AND lifecycle_state != 'DELETED' LIMIT 1`, phash).Scan(&id)
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return id, nil
+	}
 	var id string
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id FROM media_assets 
@@ -241,6 +294,110 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 		return "", err
 	}
 	return id, nil
+}
+
+// pgDB returns the PG media DB when the committer is the PG media
+// committer; nil otherwise (SQLite-only / degraded mode).
+func (r *ClipsRegistry) pgDB() *sql.DB {
+	if r == nil || r.committer == nil {
+		return nil
+	}
+	type pgDBGetter interface{ DB() *sql.DB }
+	if g, ok := r.committer.(pgDBGetter); ok && g != nil {
+		return g.DB()
+	}
+	return nil
+}
+
+func (r *ClipsRegistry) pgMutator() persistence.AssetMutationCommitter {
+	if r == nil || r.committer == nil {
+		return nil
+	}
+	if m, ok := r.committer.(persistence.AssetMutationCommitter); ok {
+		return m
+	}
+	return nil
+}
+
+// mediaRecordPGSelect is the SINGLE canonical MediaRecord projection for the
+// PG media path. Both the single-row read and the list read use it so the
+// column list and the scan order cannot drift apart.
+const mediaRecordPGSelect = `
+		SELECT id, COALESCE(source,''), COALESCE(name,''), COALESCE(filename,''),
+		       COALESCE(media_type,''), COALESCE(category,''), COALESCE(group_name,''),
+		       COALESCE(lifecycle_state,''), COALESCE(index_state,''),
+		       COALESCE(metadata_json,'{}'), COALESCE(search_text,''),
+		       COALESCE(drive_file_id,''), COALESCE(drive_link,''),
+		       COALESCE(download_link,''), COALESCE(local_path,''),
+		       COALESCE(legacy_file_md5,''), COALESCE(phash,'')
+		FROM media_assets`
+
+// mediaRecordScanner is the common row surface of *sql.Row and *sql.Rows.
+type mediaRecordScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanMediaRecordPG decodes one row projected by mediaRecordPGSelect.
+func scanMediaRecordPG(scanner mediaRecordScanner) (*MediaRecord, error) {
+	var (
+		aID, source, name, filename, mediaType, category, groupName string
+		lifecycleState, indexState, metadataJSON                    string
+		searchText, driveFileID, driveLink, downloadLink, localPath string
+		legacyMD5, phash                                            string
+	)
+	if err := scanner.Scan(
+		&aID, &source, &name, &filename, &mediaType, &category, &groupName,
+		&lifecycleState, &indexState, &metadataJSON, &searchText,
+		&driveFileID, &driveLink, &downloadLink, &localPath, &legacyMD5, &phash); err != nil {
+		return nil, err
+	}
+	rec := &MediaRecord{
+		ID: aID, Source: source, Name: name, Filename: filename,
+		MediaType: mediaType, Category: category, Group: groupName,
+		Metadata: metadataJSON, LegacyFileMD5: legacyMD5, PHash: phash,
+		DriveFileID: driveFileID, DriveLink: driveLink, DownloadLink: downloadLink,
+		LocalPath: localPath, Status: "ACTIVE",
+	}
+	if lifecycleState == string(asset.StateDeleted) {
+		rec.Status = "DELETED"
+	}
+	return rec, nil
+}
+
+func (r *ClipsRegistry) getMediaPG(ctx context.Context, pgDB *sql.DB, id string) (*MediaRecord, error) {
+	rec, err := scanMediaRecordPG(pgDB.QueryRowContext(ctx, mediaRecordPGSelect+` WHERE id = $1`, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
+// getAllWithDriveFileIDPG returns every live asset that carries a Drive file
+// id in ONE query. The previous implementation selected the ids and then
+// re-fetched each row by id (a classic N+1: N+1 round-trips and N record
+// decodes for a single sweep).
+func (r *ClipsRegistry) getAllWithDriveFileIDPG(ctx context.Context, pgDB *sql.DB) ([]*MediaRecord, error) {
+	rows, err := pgDB.QueryContext(ctx, mediaRecordPGSelect+
+		` WHERE drive_file_id IS NOT NULL AND drive_file_id != '' AND lifecycle_state != 'DELETED'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*MediaRecord
+	for rows.Next() {
+		rec, scanErr := scanMediaRecordPG(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func detailsToMediaRecord(details *asset.Details) *MediaRecord {

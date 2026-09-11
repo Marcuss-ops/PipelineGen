@@ -265,8 +265,14 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 	renderedPrompt := buildEditorialPromptFromGenReq(req)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:                  req.IdempotencyKey,
-		Title:               title,
+		ID:    req.IdempotencyKey,
+		Title: title,
+		// DriveFolderID is part of the run-scoped plan consumed by the
+		// incremental VidRush materializer. Keep the canonical Docs folder
+		// precedence while preserving the deprecated flat field for older
+		// callers; otherwise entity images cannot be routed into the job
+		// bundle even though render/docs receive the same folder.
+		DriveFolderID:       firstNonEmpty(req.Docs.FolderID, req.DriveFolderID, req.Render.DriveFolderID),
 		Project:             req.Project,
 		Model:               req.Model,
 		Tone:                req.Tone,

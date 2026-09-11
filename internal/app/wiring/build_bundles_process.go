@@ -51,6 +51,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -207,7 +208,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// build_outbox_handlers.go). Same order as the pre-split flat
 	// body: deps construction → core handlers → optional/worker
 	// handlers.
-	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, log)
+	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, mediaPostgres, log)
 	if err := registerOutboxCoreHandlers(eventsRegistry, cfg, repos, qd, outboxDeps, log); err != nil {
 		return nil, nil, err
 	}
@@ -250,10 +251,15 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// boot). A nil driveDeleter in production is a silent
 	// dead-letter regression, so it is surfaced as a loud Warn here.
 	if driveDeleter != nil && repos.ClipsRepo != nil {
+		// MEDIA-SSOT P0-2 (September 2026): when the canonical writer is the
+		// PostgreSQL media committer, the saga's state reads/writes and the
+		// advance+emit hop route through the PG media SSOT; the SQLite
+		// lifecycle ports stay only for the non-PG legacy path.
+		lifecycleReader, lifecycleWriter, stateAdvancer := outboxDepsSagaPorts(repos.ClipsRepo, dispatcher, canonicalCommitter)
 		outboxDeps.DriveDelete = jobsoutbox.DriveDeleteDeps{
-			DrivePatchLifecycle:  repos.ClipsRepo,
-			DrivePatchLifecycleW: repos.ClipsRepo,
-			DrivePatchStateAdv:   dispatcher,
+			DrivePatchLifecycle:  lifecycleReader,
+			DrivePatchLifecycleW: lifecycleWriter,
+			DrivePatchStateAdv:   stateAdvancer,
 			DriveDeleteHandler:   driveDeleter,
 		}
 		log.Info("outbox DriveDeleteHandler deps wired: asset.drive.delete_requested.v1 → Drive Trash/Delete → AdvanceAndEmit (Blocco 3.1 commit 2/3)")
@@ -364,6 +370,31 @@ func (z zapMediaLogger) Error(msg string, fields ...any) {
 	if z.l != nil {
 		z.l.Error(msg, zap.Any("fields", fields))
 	}
+}
+
+// outboxDepsSagaPorts selects the delete/restore saga state ports.
+// MEDIA-SSOT P0-2 (September 2026): when the canonical writer is the
+// PostgreSQL media committer, the saga's lifecycle read/write and
+// advance+emit hop route through the PG media SSOT; otherwise the legacy
+// SQLite dispatcher ports are used (non-PG legacy path only).
+func outboxDepsSagaPorts(
+	clipsRepo jobsoutbox.LifecycleStateReader,
+	dispatcher jobsoutbox.StateAdvancer,
+	canonicalWriter assetspersistence.CanonicalAssetWriter,
+) (jobsoutbox.LifecycleStateReader, jobsoutbox.ClipsLifecycleStateWriter, jobsoutbox.StateAdvancer) {
+	if pgCommitter, ok := canonicalWriter.(*pgmedia.PostgresMediaCommitter); ok {
+		return pgCommitter, pgCommitter, pgCommitter
+	}
+	return clipsRepo, clipsRepoAsLifecycleWriter(clipsRepo), dispatcher
+}
+
+// clipsRepoAsLifecycleWriter downcasts the shared ClipsRepository to the
+// narrow lifecycle-writer port (legacy non-PG path only).
+func clipsRepoAsLifecycleWriter(r jobsoutbox.LifecycleStateReader) jobsoutbox.ClipsLifecycleStateWriter {
+	if w, ok := r.(jobsoutbox.ClipsLifecycleStateWriter); ok {
+		return w
+	}
+	return nil
 }
 
 func zapLoggerAsMediaLogger(l *zap.Logger) pgmedia.Logger { return zapMediaLogger{l: l} }

@@ -129,7 +129,7 @@ const generationFacadeRule = "percheck_no_generic_generation_facade"
 const generationFacadeNote = "forbidden import of the retired generic generation facade (commit 7, PR-GENERATION-FACADE-REMOVE, July 2026). The application-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation') + the domain-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/domain/generation') were git-rm'd in commit 7 because zero production callers remained. The canonical proprietary APIs (book/lesson/script/batch) — if they exist in a future commit — live at the per-domain packages (internal/application/books/, internal/application/lessons/, internal/application/scripts/) and consume the runtime-driver interfaces directly without an interposed 'generation' facade. Per godlike/06 SSOT, the per-domain packages own their handler wiring; re-introducing the generic facade creates a godlike/07 NO-FAKE-AVAILABILITY regression. The forward-prevention gate is percheck_no_generic_generation_facade"
 
 // generationFacadeWarnBucket is the centralized residue-emitter.
-// Mirrors qdrantImportBanWarnBucket + indexedStateWriterSSOTWarnBucket.
+// Mirrors qdrantImportBanWarnBucket; registry-backed rules use ssotWarn.
 func generationFacadeWarnBucket(r *report.Report, label, msg string) {
 	r.Warnings = append(r.Warnings, generationFacadeRule+" "+label+" "+msg)
 }

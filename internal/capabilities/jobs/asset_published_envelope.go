@@ -54,10 +54,13 @@
 // indexing seam.
 package jobs
 
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+
 // AssetPublishedSchemaVersion is the canonical, EXACT string the
 // AssetPublishedHandler accepts. Producers MUST send the literal
-// schema-version value. Mismatch is TERMINAL.
-const AssetPublishedSchemaVersion = "asset.published.v1"
+// schema-version value. Mismatch is TERMINAL. OWNED by
+// internal/kernel/event (godlike/06); compile-time re-export.
+const AssetPublishedSchemaVersion = event.AssetPublishedV1Schema
 
 // AssetPublishedRequestV1 is the canonical v1 envelope for
 // asset.published events.

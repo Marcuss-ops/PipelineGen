@@ -27,17 +27,27 @@
 package detail
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
-import (
 	"strings"
+	"sync/atomic"
 	"time"
 
-	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
+
+// tagDecodeFailures counts media_assets.tags rows that failed to decode.
+// The tags column keeps the pinned fail-OPEN contract (a corrupt row degrades
+// to an empty tag set rather than failing the read), but the degradation must
+// never be invisible: kernel cannot import platform/logging
+// (percheck_kernel_boundary), so the alarm is a stdlib-atomic counter that the
+// observability layer can scrape instead of a swallowed nil logger.
+var tagDecodeFailures atomic.Int64
+
+// TagDecodeFailureCount returns the process-wide number of media_assets.tags
+// rows that degraded to an empty tag set because the column failed to decode.
+// A non-zero, growing value means the tags column is being written corrupt.
+func TagDecodeFailureCount() int64 { return tagDecodeFailures.Load() }
 
 // mediaAssetScanner abstracts away the SQL row source so the same
 // scanner implementation handles `sql.Rows` (many rows) and `sql.Row`
@@ -167,10 +177,15 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.Asset, error) {
 	}
 
 	// Parse tags. A corrupt tags column degrades to an empty tag set (the
-	// repo's pinned loose-decode contract for this scan path), but never
-	// silently: the shared unmarshal-or-log helper surfaces the corruption.
+	// repo's pinned loose-decode contract for this scan path), but the event is
+	// counted so the degradation is observable through TagDecodeFailureCount
+	// rather than silently dropped. Kernel stays technology-neutral: a
+	// stdlib-atomic counter needs no platform/logging import
+	// (percheck_kernel_boundary).
 	if tags != "" && tags != "[]" {
-		jsonutil.UnmarshalOrLog([]byte(tags), &a.Tags, "media_assets.tags", logger.Get())
+		if !jsonutil.UnmarshalOrLog([]byte(tags), &a.Tags, "media_assets.tags", nil) {
+			tagDecodeFailures.Add(1)
+		}
 	}
 
 	// group_name read directly from the column (no metadata_json fallback).

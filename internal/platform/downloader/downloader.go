@@ -122,12 +122,18 @@ func (d *YTDLPDownloader) youtubeSleepIntervalArgs(url string) []string {
 	}
 }
 
-// sleepBetweenAttempts sleeps a random duration in the configured
-// [min,max] window before a fallback retry, so retries after a client error
-// don't hammer a hot IP back-to-back. No-op when pacing is disabled.
-func (d *YTDLPDownloader) sleepBetweenAttempts() {
+// sleepBetweenAttempts waits a random duration in the configured [min,max]
+// window before a fallback retry, so retries after a client error don't hammer
+// a hot IP back-to-back. No-op when pacing is disabled.
+//
+// The wait is ctx-aware: this runs inside the download pipeline, which must
+// remain cancellable, and the window can span many seconds. A cancelled
+// context returns ctx.Err() immediately instead of pinning the worker slot for
+// the whole pacing window (mirrors the canonical ctx-aware sleep used by the
+// job worker lease loops).
+func (d *YTDLPDownloader) sleepBetweenAttempts(ctx context.Context) error {
 	if d.ytMinSleepSeconds <= 0 {
-		return
+		return nil
 	}
 	max := d.ytMaxSleepSeconds
 	if max < d.ytMinSleepSeconds {
@@ -135,7 +141,15 @@ func (d *YTDLPDownloader) sleepBetweenAttempts() {
 	}
 	span := max - d.ytMinSleepSeconds + 1
 	delay := d.ytMinSleepSeconds + rand.Intn(span)
-	time.Sleep(time.Duration(delay) * time.Second)
+
+	timer := time.NewTimer(time.Duration(delay) * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // runWithClientFallback executes a yt-dlp command through buildArgs, which
@@ -150,7 +164,9 @@ func (d *YTDLPDownloader) runWithClientFallback(ctx context.Context, url string,
 	var lastErr error
 	for i, client := range clients {
 		if i > 0 {
-			d.sleepBetweenAttempts()
+			if err := d.sleepBetweenAttempts(ctx); err != nil {
+				return lastResult, err
+			}
 		}
 		result, err := d.run(ctx, buildArgs(client), opts)
 		if err == nil {

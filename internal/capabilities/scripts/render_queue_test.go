@@ -96,6 +96,78 @@ func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
 	t.Logf("separated metrics: render_ms=%d encode_ms=%d completion_wait_ms=%d polling_sleep_ms=%d polling_interval_ms=%d poll_count=%d wall_elapsed_ms=%d", got.RenderMS, got.EncodeMS, got.CompletionWaitMS, got.PollingSleepMS, got.PollingIntervalMS, got.PollCount, elapsed.Milliseconds())
 }
 
+// eventDrivenRenderClient implements RenderQueueWaiter: it reports a terminal
+// job immediately, so the enqueuer must complete without any polling sleep.
+type eventDrivenRenderClient struct {
+	waits int
+	job   RenderQueueJob
+}
+
+func (c *eventDrivenRenderClient) Submit(_ context.Context, job RenderQueueJob) error { return nil }
+func (c *eventDrivenRenderClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	return RenderQueueJob{ID: id, State: "queued"}, nil
+}
+func (c *eventDrivenRenderClient) WaitTerminal(_ context.Context, _ string) (RenderQueueJob, error) {
+	c.waits++
+	return c.job, nil
+}
+
+// TestQueueRenderEnqueuerUsesEventDrivenWait pins the production path: when the
+// queue client supports the job-status long poll, completion is observed at
+// the transition with zero polling sleep, regardless of the configured polling
+// cadence. An hour-long interval proves the polling loop is never entered.
+func TestQueueRenderEnqueuerUsesEventDrivenWait(t *testing.T) {
+	client := &eventDrivenRenderClient{job: RenderQueueJob{
+		ID: "golden-overlay-v1", State: "completed",
+		Artifact: &RenderArtifact{RenderMS: 800, EncodeMS: 200, SHA256: "ab", URL: "https://store/x.mp4", SizeBytes: 1},
+	}}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.pollInterval = time.Hour
+	recorder := &fakeAttemptRecorder{}
+	enqueuer.SetRecorder(recorder)
+
+	start := time.Now()
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatal(err)
+	}
+	if client.waits != 1 {
+		t.Fatalf("WaitTerminal calls = %d, want 1", client.waits)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("event-driven enqueue took %v; polling cadence leaked into the path", elapsed)
+	}
+	if len(recorder.recorded) != 1 {
+		t.Fatalf("recorded attempts = %d, want 1", len(recorder.recorded))
+	}
+	got := recorder.recorded[0]
+	if got.PollingSleepMS != 0 || got.PollCount != 0 {
+		t.Fatalf("event-driven path must not record polling: sleep=%dms polls=%d", got.PollingSleepMS, got.PollCount)
+	}
+	if got.RenderMS != 800 || got.EncodeMS != 200 {
+		t.Fatalf("worker durations lost: render=%d encode=%d", got.RenderMS, got.EncodeMS)
+	}
+}
+
+// TestQueueRenderEnqueuerEventDrivenPropagatesFailure pins that a terminal
+// failed job still surfaces its reason on the event-driven path.
+func TestQueueRenderEnqueuerEventDrivenPropagatesFailure(t *testing.T) {
+	client := &eventDrivenRenderClient{job: RenderQueueJob{ID: "x", State: "failed", FailReason: "chronon exploded"}}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
+	if err == nil {
+		t.Fatal("expected the terminal failure to propagate")
+	}
+	if !strings.Contains(err.Error(), "chronon exploded") {
+		t.Fatalf("failure reason lost: %v", err)
+	}
+}
+
 func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
 	enqueuer, err := NewQueueRenderEnqueuer(newFakeRenderQueueClient())
 	if err != nil {

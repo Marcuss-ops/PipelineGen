@@ -110,7 +110,7 @@ func TestApplySegmentEntityAnnotations_MatchesScenes(t *testing.T) {
 
 // TestProjectEntityAnnotations_ProjectsImportantPhrasesAndWords certifies
 // the phrase/word projection: grounded important phrases/words become
-// annotation spans (one phrase per scene, legacy descending word scores),
+// annotation spans (all grounded phrases, legacy descending word scores),
 // ungrounded ones are skipped, and a segment whose only content is an
 // ungrounded phrase still yields nil (never faked annotations).
 func TestProjectEntityAnnotations_ProjectsImportantPhrasesAndWords(t *testing.T) {
@@ -118,16 +118,17 @@ func TestProjectEntityAnnotations_ProjectsImportantPhrasesAndWords(t *testing.T)
 	seg := scriptpkg.VidRushSegmentResult{
 		SegmentID: "seg-0",
 		Insights: scriptpkg.SegmentInsights{
-			ImportantPhrases: []string{"changed the market", "never grounded phrase"},
+			ImportantPhrases: []string{"changed the market", "Cupertino", "never grounded phrase"},
 			ImportantWords:   []string{"market", "Apple"},
 		},
 	}
 
 	ann := projectEntityAnnotations(text, "en", seg)
 	require.NotNil(t, ann)
-	require.Len(t, ann.ImportantPhrases, 1, "at most one important phrase per scene")
+	require.Len(t, ann.ImportantPhrases, 2, "all grounded important phrases must survive")
 	assert.Equal(t, "changed the market", ann.ImportantPhrases[0].Text)
 	assert.Equal(t, 0.80, ann.ImportantPhrases[0].Score)
+	assert.Equal(t, "Cupertino", ann.ImportantPhrases[1].Text)
 
 	require.Len(t, ann.ImportantWords, 2)
 	assert.Equal(t, "market", ann.ImportantWords[0].Text)

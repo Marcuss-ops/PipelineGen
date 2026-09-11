@@ -401,7 +401,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		}
 		// Render only after canonical timing and the semantic OverlayPlan are
 		// frozen. The prepare job, when configured, already ran independently.
-		if r.overlayRenderEnqueuer != nil && result.OverlayPlan != nil {
+		if req.Render.Enabled && r.overlayRenderEnqueuer != nil && result.OverlayPlan != nil {
 			ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *result.OverlayPlan)
 			if renderErr != nil {
 				cause := fmt.Errorf("overlay render failed: %w", renderErr)

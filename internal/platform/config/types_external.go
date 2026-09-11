@@ -269,20 +269,19 @@ type ExternalConfig struct {
 	// local Rust executor. Empty keeps the local executor as default.
 	RenderingGenQueueURL string `yaml:"renderinggen_queue_url" env:"RENDERINGGEN_QUEUE_URL" default:""`
 
-	// RenderingGenPollIntervalMS is how often the clip-render executor
-	// polls the RenderingGen queue while waiting for a job's certified
-	// artifact (waitClipQueue in internal/platform/renderinggen).
+	// RenderingGenPollIntervalMS tunes the polling FALLBACK used while
+	// waiting for a job's certified artifact.
 	//
-	// The poll granularity is pure dead time on every job: a clip whose
-	// render finishes just after a poll is only noticed at the next
-	// tick, so a coarse interval (the historical 2000 ms) adds up to
-	// ~2 s of idle wall per clip on top of the engine time. Render jobs
-	// complete in a few seconds each, so 250 ms keeps queue-server load
-	// negligible (a handful of lightweight GET /jobs/{id} calls per
-	// clip) while removing almost all polling dead time.
+	// The primary path is event-driven: the RenderingGen queue client
+	// long-polls GET /jobs/{id}/wait, so a terminal transition is observed
+	// directly instead of at the next sampling tick. This key therefore only
+	// matters for a queue deployment without that route (or a client without
+	// the wait capability), where the interval is pure dead time on every
+	// job: a clip whose render finishes just after a poll is only noticed at
+	// the next tick.
 	//
-	// 0 (default) falls back to the executor's built-in 2 s interval so
-	// deployments that don't set the value keep the historical cadence.
+	// 0 (default) keeps the built-in 250 ms fallback cadence. See
+	// waitClipQueue and waitForCompletion for the two fallback loops.
 	RenderingGenPollIntervalMS int `yaml:"renderinggen_poll_interval_ms" env:"RENDERINGGEN_POLL_INTERVAL_MS" default:"0"`
 }
 

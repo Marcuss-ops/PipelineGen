@@ -28,6 +28,7 @@ type ComposeRoot struct {
 
 	Drive      *DriveBundle
 	Repos      *RepoBundle
+	Media      *MediaRepoBundle
 	Search     *SearchBundle
 	Process    *ProcessBundle
 	TextTracks *TextTrackBundle

@@ -89,10 +89,10 @@ type GenerateResult struct {
 	// certified timing surfaces (phrase timings + entity timeline + scene
 	// annotations): IMPORTANT_PHRASE / IMPORTANT_WORD / IMAGE_OVERLAY /
 	// PERSON / NUMBER / QUOTE / LOCATION / PRODUCT / LOGO, each terminating
-	// in a canonical primitive (Text / Image / Video / Shape) when compiled
-	// via overlays.CompileChrononPlan. It is the PipelineGen-side
-	// instruction set for the RenderingGen queue. Nil when the run carried
-	// no derivable overlay surface.
+	// in a canonical primitive (Text / Image / Video / Shape). It is the
+	// semantic renderinggen.overlay-plan.v1 PipelineGen submits to the
+	// RenderingGen queue; lowercasing to chronon.render-plan.v2 is owned by
+	// RenderingGen. Nil when the run carried no derivable overlay surface.
 	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
 
 	// SemanticRenderBundle is the cross-stage audit contract assembled from

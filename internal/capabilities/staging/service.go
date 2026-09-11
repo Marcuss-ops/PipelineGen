@@ -49,6 +49,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
@@ -255,7 +257,7 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 // convention is `<aggregate>.<action>.<version>`; the
 // follow-up consumer is the Drive-upload handler (Push 3.1e
 // forward-pointer) which drains `artifact.staged.v1` events.
-const EventTypeArtifactStaged = "artifact.staged.v1"
+const EventTypeArtifactStaged = event.ArtifactStagedV1
 
 // TypedStageEventPayload is the canonical event payload emitted
 // by Store.Stage. Fields are intentionally narrow: the

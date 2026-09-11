@@ -46,7 +46,6 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math/rand"
 	"strings"
 	"time"
@@ -56,6 +55,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -354,6 +354,28 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	if err != nil {
 		a.log.Warn("VidRush internet image search failed", zap.String("query", req.Query), zap.Error(err))
 		return nil, err
+	}
+	// Concise identity queries get an explicit-license Wikimedia fallback in
+	// addition to DuckDuckGo. DDG often returns hotlink-protected thumbnails;
+	// Commons supplies a durable, license-bearing original that can pass the
+	// same download/verify/finalize lifecycle. Long scene-text queries remain
+	// DDG-only and do not create needless external fan-out.
+	if strings.TrimSpace(req.Entity) != "" && len(strings.Fields(strings.TrimSpace(req.Query))) <= 4 {
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
+				commons, searchErr := commonsSearcher.Search(queryCtx, filter)
+				if searchErr != nil {
+					a.log.Warn("VidRush Wikimedia Commons fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
+				} else if len(commons) > 0 && strings.EqualFold(strings.TrimSpace(commons[0].Provider), "wikimedia_commons") {
+					results = append(commons, results...)
+					if req.Limit > 0 && len(results) > req.Limit {
+						results = results[:req.Limit]
+					}
+				}
+			}
+		}
 	}
 	// Keep provider diagnostics at the VidRush boundary. The downstream
 	// materializer deliberately drops candidates that cannot be acquired,

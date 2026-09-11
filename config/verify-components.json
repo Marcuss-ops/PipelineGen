@@ -362,6 +362,8 @@
   "ollama": {
     "paths": [
       "internal/platform/ollama/",
+      "config/prompts/",
+      "config/prompts.yaml",
       "scripts/systemd/ollama.service.d/"
     ],
     "go_packages": [

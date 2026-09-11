@@ -1,7 +1,7 @@
 // Package overlays — golden.go pins the cross-repo golden workload:
 // PipelineGen's semantic instructions (GoldenOverlayPlanV1) must compile to
-// exactly the chronon.render-plan.v1 document RenderingGen executes as
-// GoldenOverlayJobV1 (RenderingGen/testdata/golden/golden-overlay-job-v1.json
+// exactly the chronon render-plan document RenderingGen executes as
+// GoldenOverlayPlanV1 (RenderingGen/testdata/golden/golden-overlay-job-v2.json
 // + renderinggen/internal/chronon/golden.go).
 //
 // The workload (5s @ 30fps = 150 frames on 1280x720):
@@ -26,8 +26,8 @@ const (
 
 // GoldenOverlayPlanV1 is the canonical semantic instruction set for the
 // golden workload. It is the PipelineGen-side twin of RenderingGen's
-// GoldenOverlayJobV1: compiling it must reproduce the exact
-// chronon.render-plan.v1 document the RenderingGen golden carries.
+// GoldenOverlayPlanV1: compiling it must reproduce the exact
+// chronon render-plan document the RenderingGen golden carries.
 func GoldenOverlayPlanV1() OverlayPlan {
 	return OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -81,69 +81,14 @@ func GoldenOverlayPlanV1() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanV1 is the exact chronon.render-plan.v1 document the golden
+// GoldenChrononPlanV1 is the exact chronon render-plan document the golden
 // semantic plan must compile to. It mirrors RenderingGen's
-// GoldenOverlayJobV1 render_plan field byte-for-byte, including field order,
+// GoldenOverlayPlanV1 render_plan field byte-for-byte, including field order,
 // so the cross-repo golden invariant is a literal document comparison.
-var GoldenChrononPlanV1 = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-overlay-v1",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 150,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background",
-			Type:           "image",
-			Asset:          "assets/background.jpg",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 150,
-		},
-		{
-			ID:             "important_phrase",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "QUESTO CAMBIA TUTTO",
-			Preset:         "fast_fade_through",
-			StartFrame:     20,
-			DurationFrames: 41,
-		},
-		{
-			ID:             "important_word",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "APPLE",
-			Preset:         "fast_fade_through",
-			StartFrame:     65,
-			DurationFrames: 31,
-		},
-		{
-			ID:             "image_overlay",
-			Type:           "image",
-			Asset:          "assets/apple.png",
-			Preset:         "image_slide_right",
-			StartFrame:     90,
-			DurationFrames: 46,
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsV1 are the content-addressed queue assets the golden
 // plan carries, matching the RenderingGen golden job's assets array (the
 // font is required by every text layer).
-var GoldenChrononAssetsV1 = []ChrononAsset{
-	{Hash: GoldenBackgroundHash, LogicalPath: "assets/background.jpg"},
-	{Hash: GoldenAppleHash, LogicalPath: "assets/apple.png"},
-	{Hash: GoldenFontHash, LogicalPath: "assets/fonts/DejaVuSans.ttf"},
-}
 
 // ── GoldenOverlayJobV2: the universal benchmark workload ────────────────
 //
@@ -185,7 +130,7 @@ const (
 // GoldenOverlayPlanV2 is the canonical semantic instruction set for the
 // universal benchmark workload — the PipelineGen-side twin of RenderingGen's
 // GoldenOverlayJobV2: compiling it must reproduce the exact
-// chronon.render-plan.v1 document the RenderingGen golden carries, including
+// chronon render-plan document the RenderingGen golden carries, including
 // the layer animations.
 func GoldenOverlayPlanV2() OverlayPlan {
 	return OverlayPlan{
@@ -297,114 +242,10 @@ func GoldenOverlayPlanV2() OverlayPlan {
 	}
 }
 
-// GoldenChrononPlanV2 is the exact chronon.render-plan.v1 document the v2
+// GoldenChrononPlanV2 is the exact chronon render-plan document the v2
 // golden semantic plan must compile to. It mirrors RenderingGen's
 // GoldenOverlayJobV2 render_plan field, including field order, so the
 // cross-repo golden invariant is a literal document comparison.
-var GoldenChrononPlanV2 = ChrononPlan{
-	Schema:  ChrononSchema,
-	Version: ChrononVersion,
-	JobID:   "golden-overlay-v2",
-	Canvas: ChrononCanvas{
-		Width:  1280,
-		Height: 720,
-		FPSNum: 30, FPSDen: 1,
-		DurationFrames: 240,
-	},
-	Layers: []ChrononLayer{
-		{
-			ID:             "background_video",
-			Type:           "video",
-			Source:         "assets/background.mp4",
-			BoxWidth:       1280,
-			BoxHeight:      720,
-			Fit:            "cover",
-			StartFrame:     0,
-			DurationFrames: 240,
-		},
-		{
-			ID:             "important_phrase_1",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "IL FUTURO È ADESSO",
-			Preset:         "phrase_word_reveal",
-			StartFrame:     24,
-			DurationFrames: 84,
-			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
-		},
-		{
-			ID:             "important_word_1",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "VELOCITÀ",
-			Preset:         "fast_fade_through",
-			StartFrame:     24,
-			DurationFrames: 84,
-			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
-		},
-		{
-			ID:             "image_overlay_1",
-			Type:           "image",
-			Asset:          "assets/overlay_globe.png",
-			Preset:         "image_fast_fade",
-			BoxWidth:       300,
-			BoxHeight:      300,
-			Position:       []float64{380, 0},
-			StartFrame:     24,
-			DurationFrames: 132,
-		},
-		{
-			ID:             "important_phrase_2",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "CAMBIARE IL MERCATO",
-			Preset:         "fast_fade_through",
-			StartFrame:     132,
-			DurationFrames: 84,
-			Animation:      &ChrononLayerAnimation{Preset: "fade_shift_vertical"},
-		},
-		{
-			ID:             "important_word_2",
-			Type:           "text",
-			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
-			Text:           "POTENZA",
-			Preset:         "phrase_word_reveal",
-			StartFrame:     132,
-			DurationFrames: 84,
-			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
-		},
-		{
-			ID:             "image_overlay_2",
-			Type:           "image",
-			Asset:          "assets/overlay_chart.png",
-			Preset:         "image_slide_right",
-			BoxWidth:       300,
-			BoxHeight:      300,
-			Position:       []float64{840, 380},
-			StartFrame:     120,
-			DurationFrames: 108,
-		},
-		{
-			ID:             "logo",
-			Type:           "image",
-			Asset:          "assets/logo_pulse.png",
-			BoxWidth:       160,
-			BoxHeight:      160,
-			Fit:            "contain",
-			Position:       []float64{1060, 40},
-			StartFrame:     0,
-			DurationFrames: 240,
-		},
-	},
-	Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
-}
 
 // GoldenChrononAssetsV2 are the content-addressed queue assets the v2 golden
 // plan carries, matching the RenderingGen golden job's assets array.
-var GoldenChrononAssetsV2 = []ChrononAsset{
-	{Hash: GoldenBackgroundVideoHash, LogicalPath: "assets/background.mp4"},
-	{Hash: GoldenGlobeHash, LogicalPath: "assets/overlay_globe.png"},
-	{Hash: GoldenChartHash, LogicalPath: "assets/overlay_chart.png"},
-	{Hash: GoldenLogoHash, LogicalPath: "assets/logo_pulse.png"},
-	{Hash: GoldenFontHash, LogicalPath: "assets/fonts/DejaVuSans.ttf"},
-}

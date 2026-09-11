@@ -1,0 +1,1 @@
+{"error":{"code":"INVALID_PAYLOAD","message":"generation: plan invalid: item=\"jordan-entity-overlay-drive-20260911T113519Z-3352\"; jordan-entity-overlay-drive-20260911T113519Z-3352: voiceover_enabled requires explicit audio.mode (CHUNKED_VOICEOVER or COMBINED_TIMELINE)","retryable":false,"stage":"request.validation"},"ok":false}

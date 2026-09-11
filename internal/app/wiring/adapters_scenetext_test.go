@@ -96,6 +96,41 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 	}
 }
 
+func TestSceneTextGeneratorResolveVidRushPlanCarriesDriveOutputFolder(t *testing.T) {
+	generator := &SceneTextGenerator{}
+	req := scriptgen.GenerateRequest{
+		SourceLanguage: "en",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
+		Title:          "drive-output",
+		DriveFolderID:  "legacy-root",
+		Docs:           scriptgen.DocumentsConfig{FolderID: "canonical-root"},
+	}
+	plan, err := generator.ResolveVidRushPlan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan == nil || plan.DriveFolderID != "canonical-root" {
+		t.Fatalf("resolved Drive folder = %q, want canonical-root", plan.DriveFolderID)
+	}
+}
+
+func TestSceneTextGeneratorResolveVidRushPlanFallsBackToRenderDriveFolder(t *testing.T) {
+	generator := &SceneTextGenerator{}
+	req := scriptgen.GenerateRequest{
+		SourceLanguage: "en",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
+		Title:          "render-output",
+		Render:         scriptpkg.VideoRenderSpec{DriveFolderID: "render-root"},
+	}
+	plan, err := generator.ResolveVidRushPlan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan == nil || plan.DriveFolderID != "render-root" {
+		t.Fatalf("resolved Drive folder = %q, want render-root", plan.DriveFolderID)
+	}
+}
+
 func TestSceneTextGeneratorResolveVidRushPlanPropagatesLLMIdentity(t *testing.T) {
 	generator := &SceneTextGenerator{}
 	req := scriptgen.GenerateRequest{

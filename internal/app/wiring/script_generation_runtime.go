@@ -27,6 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
@@ -286,9 +287,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
 			return plan, err
 		}),
-		Backpressure: scriptgen.DefaultVidRushBackpressure(),
-		NERPort:      visualNER,
-		SamplerPort:  mediaSampler,
+		Backpressure:    scriptgen.DefaultVidRushBackpressure(),
+		NERPort:         visualNER,
+		PhraseExtractor: ollamaadapters.NewOllamaImportantPhraseExtractor(root.AI.OllamaClient),
+		SamplerPort:     mediaSampler,
 		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
 			return mediacert.Certify(spec, result), nil
 		}),

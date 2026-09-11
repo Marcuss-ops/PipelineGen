@@ -150,6 +150,12 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		IdempotencyKey: "vidrush:" + candidate.Provider + ":" + candidate.AssetID + ":" + artifact.LegacyFileMD5,
 		Description:    candidate.Query, Source: candidate.Provider,
 	}
+	if strings.TrimSpace(artifact.OutputDriveFolderID) != "" {
+		verified.ResolvedFolderID = strings.TrimSpace(artifact.OutputDriveFolderID)
+		verified.RootFolderResolved = true
+		verified.RootFolderName = firstNonEmpty(artifact.OutputDriveSubpath...)
+		verified.DriveSubpath = append([]string(nil), artifact.OutputDriveSubpath...)
+	}
 	published, err := f.preparation.Prepare(ctx, verified)
 	if err != nil {
 		return scriptpkg.SegmentAssetCandidate{}, err

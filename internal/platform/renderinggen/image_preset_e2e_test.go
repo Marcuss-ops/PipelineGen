@@ -109,31 +109,21 @@ func TestImagePresetE2E(t *testing.T) {
 			},
 		}
 
-		// Compile pass anchors the preset on the document so a regression in
-		// the resolver cannot silently rewrite the animation the test picked.
-		compiled, err := capoverlay.CompileChrononPlan(plan)
-		if err != nil {
-			t.Fatalf("[%d/%d] preset %s compile: %v", i+1, len(presets), preset, err)
-		}
-		var imgLayer *capoverlay.ChrononLayer
-		for li := range compiled.Plan.Layers {
-			if compiled.Plan.Layers[li].ID == "image_"+preset {
-				imgLayer = &compiled.Plan.Layers[li]
+		// Anchor the preset on the SEMANTIC plan so a regression in the
+		// resolver cannot silently rewrite the preset the test picked. The
+		// visual lowering (asset path, box geometry, position) is RenderingGen's
+		// compiler and is asserted by its own tests.
+		var imageItem *capoverlay.OverlayItem
+		for ii := range plan.Items {
+			if plan.Items[ii].ID == "image_"+preset {
+				imageItem = &plan.Items[ii]
 			}
 		}
-		if imgLayer == nil {
-			t.Fatalf("[%d/%d] preset %s: IMAGE_OVERLAY layer missing in compiled plan", i+1, len(presets), preset)
+		if imageItem == nil {
+			t.Fatalf("[%d/%d] preset %s: IMAGE_OVERLAY item missing in semantic plan", i+1, len(presets), preset)
 		}
-		if imgLayer.Preset != preset {
-			t.Fatalf("[%d/%d] preset %s: layer.Preset = %q, want %q", i+1, len(presets), preset, imgLayer.Preset, preset)
-		}
-		if imgLayer.Asset != "assets/overlay_globe.png" {
-			t.Fatalf("[%d/%d] preset %s: layer.Asset = %q, want %q", i+1, len(presets), preset, imgLayer.Asset, "assets/overlay_globe.png")
-		}
-		// Sanity dimensions match what the test plan requested.
-		if imgLayer.BoxWidth != 260 || imgLayer.BoxHeight != 260 {
-			t.Errorf("[%d/%d] preset %s: layer.Box[%dx%d], want [260x260]",
-				i+1, len(presets), preset, imgLayer.BoxWidth, imgLayer.BoxHeight)
+		if imageItem.PresetID != preset {
+			t.Fatalf("[%d/%d] preset %s: item.PresetID = %q, want %q", i+1, len(presets), preset, imageItem.PresetID, preset)
 		}
 
 		enqueuer, err := scriptgen.NewQueueRenderEnqueuer(New(queueURL))
@@ -149,12 +139,9 @@ func TestImagePresetE2E(t *testing.T) {
 		}
 
 		r := result{
-			jobID:     jobID,
-			preset:    preset,
-			status:    ref.Status,
-			position:  imgLayer.Position,
-			boxWidth:  imgLayer.BoxWidth,
-			boxHeight: imgLayer.BoxHeight,
+			jobID:  jobID,
+			preset: preset,
+			status: ref.Status,
 		}
 		if ref.Artifact != nil {
 			r.sha256 = ref.Artifact.SHA256

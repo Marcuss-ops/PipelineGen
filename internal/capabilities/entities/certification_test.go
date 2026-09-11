@@ -301,16 +301,14 @@ func certifyJob(t *testing.T, job certJob) {
 		require.GreaterOrEqual(t, item.DurationUS, MinEntityOverlayDurationUS, "scene %s: card has the minimum preset duration", scene.id)
 	}
 
-	// The plan compiles to chronon with one text layer per entity card.
-	compiled, err := capabilityoverlay.CompileChrononPlan(plan)
-	require.NoError(t, err)
-	require.Len(t, compiled.Plan.Layers, len(job.scenes), "job %s: chronon must carry one layer per entity card", job.id)
-	for _, layer := range compiled.Plan.Layers {
-		item := findItem(t, plan, layer.ID)
-		require.Equal(t, "text", layer.Type)
-		require.Equal(t, item.PresetID, layer.Preset)
-		require.NotEmpty(t, layer.Text)
-		require.Greater(t, layer.DurationFrames, int64(0))
+	// The semantic plan carries one entity card per scene, each with an
+	// explicit preset and display text. RenderingGen owns the frame lowering
+	// (type/text-layer derivation) and asserts it in its own compiler tests.
+	require.Len(t, plan.Items, len(job.scenes), "job %s: one item per entity card", job.id)
+	for _, item := range plan.Items {
+		require.NotEmpty(t, item.PresetID, "entity card %q must pin a preset", item.ID)
+		require.NotEmpty(t, item.Text, "entity card %q must carry display text", item.ID)
+		require.Greater(t, item.EndMs, item.StartMs, "entity card %q must have a positive window", item.ID)
 	}
 
 	var report strings.Builder

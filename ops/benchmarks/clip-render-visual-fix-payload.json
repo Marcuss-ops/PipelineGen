@@ -1,0 +1,30 @@
+{
+  "source_asset_id": "yt_T6x-kDiQsWM_203_252_v1",
+  "watermark": {
+    "enabled": true,
+    "text": "VELOX EDITING",
+    "position": "top_right",
+    "opacity": 0.88,
+    "margin_px": 40,
+    "style": {
+      "font": "Poppins",
+      "font_size_px": 42,
+      "width_px": 640,
+      "height_px": 100,
+      "color": "#FFFFFF"
+    }
+  },
+  "subtitles": { "enabled": false },
+  "background": { "mode": "none" },
+  "output": {
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
+    "fps_den": 1,
+    "foreground_scale_percent": 80
+  },
+  "execution": { "require_gpu": true },
+  "destination": {
+    "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+  }
+}

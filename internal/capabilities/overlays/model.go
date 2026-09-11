@@ -106,12 +106,13 @@ type OverlayItem struct {
 	// ImagePresetID is the independent image treatment for entity cards. The
 	// name preset belongs to the text layer; PipelineGen selects both values.
 	ImagePresetID string `json:"image_preset_id,omitempty"`
-	// EntityRef carries the content-addressed entity identity this item
-	// renders (entity_id + type + canonical name + surface text). It is the
-	// plan's entity_ref: the resolver always emits it for entity-driven
-	// items so RenderingGen receives WHO the overlay is about — never a bare
-	// name or URL. Omitempty: non-entity items keep the legacy shape.
-	EntityRef *OverlayEntityRef `json:"entity_ref,omitempty"`
+	// EntityRef carries the content-addressed entity identity this item was
+	// resolved from (entity_id + type + canonical name + surface text). It is
+	// PipelineGen-INTERNAL identity only: the worker renders from
+	// kind/template_id/preset_id/text, so the ref is never serialized onto the
+	// overlay-plan.v1 wire (`json:"-"`). The document/editing projections that
+	// need WHO an overlay is about read it from the in-memory plan.
+	EntityRef *OverlayEntityRef `json:"-"`
 	Text      string            `json:"text,omitempty"`
 	AssetRefs []OverlayAssetRef `json:"asset_refs,omitempty"`
 	Params    map[string]any    `json:"params,omitempty"`
@@ -119,10 +120,11 @@ type OverlayItem struct {
 }
 
 // OverlayEntityRef is the content-addressed entity identity of an overlay
-// item (the plan's entity_ref): the stable entity id, the canonical type,
-// the canonical name and the surface text actually spoken. It is pure
-// identity metadata — the visual rendering is driven by TemplateID/PresetID/
-// Text/AssetRefs, never by this ref.
+// item: the stable entity id, the canonical type, the canonical name and the
+// surface text actually spoken. It is pure identity metadata — the visual
+// rendering is driven by TemplateID/PresetID/Text/AssetRefs, never by this
+// ref — and it is PipelineGen-internal: it is deliberately NOT part of the
+// overlay-plan.v1 wire contract the worker receives.
 type OverlayEntityRef struct {
 	EntityID string `json:"entity_id"`
 	Type     string `json:"type"`

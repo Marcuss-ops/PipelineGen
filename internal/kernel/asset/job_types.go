@@ -1,12 +1,17 @@
 package asset
 
+import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+
 // Canonical asset job type constants.
-// Per godlike/02 capability-specific constants live in their owning domain package.
+//
+// The SHARED wire strings are OWNED by internal/kernel/job (godlike/06 one
+// owner per fact); the entries below are compile-time re-exports so the
+// composition root and this domain can never drift.
 const (
 	// TypeResolve is the canonical job type for semantic asset resolution.
-	TypeResolve = "assets.resolve"
+	TypeResolve = job.TypeAssetsResolve
 
 	// TypeTextMaterialize is the canonical job type for the text-track
 	// materialization pipeline.
-	TypeTextMaterialize = "asset.text.materialize"
+	TypeTextMaterialize = job.TypeAssetTextMaterialize
 )

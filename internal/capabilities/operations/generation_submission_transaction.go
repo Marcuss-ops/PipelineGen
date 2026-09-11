@@ -39,6 +39,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -47,12 +48,12 @@ import (
 // operations INSERT + jobs INSERT. The worker that drains
 // the outbox reads this event_type to route the event to the
 // canonical `script.generate` consumer.
-const EventTypeScriptGenerateQueued = "script.generate.queued"
+const EventTypeScriptGenerateQueued = event.ScriptGenerateQueued
 
 // aggregateTypeScriptGenerate is the canonical "scope" name
 // carried on the outbox row's aggregate_type column. Mirrors
 // the operations.Scope value (`"script.generate"`).
-const aggregateTypeScriptGenerate = "script.generate"
+const aggregateTypeScriptGenerate = job.TypeScriptGenerate
 
 // persistSubmit runs the FASE 2 atomic-TX body (Steps 5-11 of
 // the canonical Submit envelope). The transaction boundary is

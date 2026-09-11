@@ -32,24 +32,27 @@ import (
 	"time"
 
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // Outbox event-type and lifecycle constants — canonical values shared with
 // the SQLite outbox adapter (single fact family, two engine adapters).
-// Do not introduce alternate spellings: event keys are provider-scoped
-// across BOTH engines and must remain byte-identical.
+// Do not introduce alternate spellings: the literal identity is OWNED by
+// internal/kernel/event (godlike/06 one owner per fact) and this block is a
+// compile-time re-export, so the two engine adapters cannot drift.
 const (
 	// EventAssetIndexRequested is the canonical asset.index.requested event.
-	EventAssetIndexRequested = "asset.index.requested"
+	EventAssetIndexRequested = event.AssetIndexRequested
 	// EventMetadataEnrichRequested is the canonical durable async
 	// metadata-enrichment request (Sept 2026). The YouTube clip commit
 	// emits it in the SAME transaction as media_assets so the LLM
 	// (Ollama) analysis runs OUTSIDE the extraction critical path; the
 	// media outbox worker consumes it, runs the analyzer, and writes the
 	// semantic snapshot + asset.index.requested atomically.
-	EventMetadataEnrichRequested = "metadata.enrich.requested"
+	EventMetadataEnrichRequested = event.MetadataEnrichRequested
 	// ReindexEnvelopeV1Schema is the schema_version stamped in the payload.
-	ReindexEnvelopeV1Schema = "asset.index.requested.v1"
+	ReindexEnvelopeV1Schema = event.AssetIndexRequestedV1Schema
 	// SupersedeStatus is the terminal "skipped" status.
 	SupersedeStatus = "superseded"
 

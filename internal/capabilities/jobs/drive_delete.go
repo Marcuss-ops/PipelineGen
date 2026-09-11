@@ -9,15 +9,16 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // DriveDeleteEventType is the outbox event consumed by DriveDeleteHandler.
-const DriveDeleteEventType = "asset.drive.delete_requested"
+const DriveDeleteEventType = event.AssetDriveDeleteRequested
 
 // DriveDeleteRequestSchemaVersion is the exact envelope version accepted by the
 // handler. Schema drift is terminal rather than retryable.
-const DriveDeleteRequestSchemaVersion = "asset.drive.delete_requested.v1"
+const DriveDeleteRequestSchemaVersion = event.AssetDriveDeleteRequestedV1Schema
 
 type driveDeleteRequestV1 struct {
 	SchemaVersion  string `json:"schema_version"`
