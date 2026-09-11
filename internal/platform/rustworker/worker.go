@@ -192,12 +192,23 @@ func (r *PersistentRunner) reset() {
 func (r *PersistentRunner) Reset() { r.mu.Lock(); defer r.mu.Unlock(); r.reset() }
 
 // BoundedBuffer retains only the tail of process output.
+//
+// Tail retention mirrors the Rust process.rs read_tail contract (amortized
+// bulk trim): the buffer is compacted only when it exceeds Limit by more
+// than one chunk (boundedBufferChunk), so a chatty stderr stream pays one
+// O(Limit) in-place shift per chunk of overflow instead of a full copy +
+// rewrite on every write. The final Bytes() pins the retained tail to
+// exactly Limit bytes.
 type BoundedBuffer struct {
 	mu        sync.Mutex
 	buf       bytes.Buffer
 	Limit     int64
 	truncated bool
 }
+
+// boundedBufferChunk is the compaction quantum: the buffer may grow up to
+// Limit + boundedBufferChunk before the next amortized trim.
+const boundedBufferChunk = 8 * 1024
 
 func (b *BoundedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
@@ -212,18 +223,35 @@ func (b *BoundedBuffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	_, _ = b.buf.Write(p)
-	if int64(b.buf.Len()) > b.Limit {
-		all := b.buf.Bytes()
-		tail := append([]byte(nil), all[len(all)-int(b.Limit):]...)
-		b.buf.Reset()
-		_, _ = b.buf.Write(tail)
+	if int64(b.buf.Len()) > b.Limit+boundedBufferChunk {
+		b.discardFront(int64(b.buf.Len()) - b.Limit)
 		b.truncated = true
 	}
 	return len(p), nil
 }
+
+// discardFront drops the oldest n bytes in place. The buffer is only ever
+// written (never read) on this path, so the read offset is always zero and
+// the shift is a single overlapping memmove — no allocation, no rewrite.
+func (b *BoundedBuffer) discardFront(n int64) {
+	all := b.buf.Bytes()
+	if int64(len(all)) <= n {
+		b.buf.Reset()
+		return
+	}
+	copy(all, all[n:])
+	b.buf.Truncate(len(all) - int(n))
+}
+
 func (b *BoundedBuffer) Bytes() []byte {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// Pin the retained tail to exactly Limit before reading (the write path
+	// only compacts per chunk).
+	if b.Limit > 0 && int64(b.buf.Len()) > b.Limit {
+		b.discardFront(int64(b.buf.Len()) - b.Limit)
+		b.truncated = true
+	}
 	result := append([]byte(nil), b.buf.Bytes()...)
 	if !b.truncated || b.Limit <= 0 {
 		return result

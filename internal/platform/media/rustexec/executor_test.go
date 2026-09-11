@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -200,6 +201,96 @@ func dataOrEmpty(t *testing.T, path string) []byte {
 	t.Helper()
 	data, _ := os.ReadFile(path)
 	return data
+}
+
+func TestExecutorPoolRunsRequestsConcurrentlyAcrossWorkers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell process required")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "log")
+	script := filepath.Join(dir, "pool.sh")
+	// Each request writes a <pid> start/end timestamp pair around a 500ms
+	// sleep, then answers. Two requests on a pool of 2 MUST run on two
+	// distinct persistent worker processes and overlap in time; a
+	// single-mutex serialized design would run them back-to-back.
+	body := fmt.Sprintf(
+		"#!/bin/sh\nwhile IFS= read -r line; do\n  printf '%%s start %%s\\n' \"$$\" \"$(date +%%s%%N)\" >> %q\n  sleep 0.5\n  printf '%%s end %%s\\n' \"$$\" \"$(date +%%s%%N)\" >> %q\n  printf '{\\\"ok\\\":true}\\n'\ndone\n",
+		logPath, logPath)
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	executor := NewExecutorWithLimit(script, "ffmpeg", 2, nil)
+
+	started := make(chan struct{}, 2)
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			started <- struct{}{}
+			_, _, err := executor.Run(context.Background(), []byte(`{"request":true}\n`))
+			errs <- err
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		<-started
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent request %d failed: %v", i, err)
+		}
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read worker log: %v", err)
+	}
+	type marker struct{ pid, ns int64 }
+	var starts, ends []marker
+	pids := map[int64]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			t.Fatalf("malformed marker line %q", line)
+		}
+		pid, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			t.Fatalf("parse pid %q: %v", fields[0], err)
+		}
+		ns, err := strconv.ParseInt(fields[2], 10, 64)
+		if err != nil {
+			t.Fatalf("parse ns %q: %v", fields[2], err)
+		}
+		pids[pid] = true
+		marker := marker{pid: pid, ns: ns}
+		if fields[1] == "start" {
+			starts = append(starts, marker)
+		} else if fields[1] == "end" {
+			ends = append(ends, marker)
+		}
+	}
+	if len(starts) != 2 || len(ends) != 2 {
+		t.Fatalf("expected 2 start + 2 end markers, got %d + %d", len(starts), len(ends))
+	}
+	if len(pids) != 2 {
+		t.Fatalf("expected two distinct worker processes, got %d", len(pids))
+	}
+	// Overlap proof: the second request must have started before the first
+	// finished. Sequential execution would violate this by ~500ms.
+	latestStart := starts[0].ns
+	for _, s := range starts[1:] {
+		if s.ns > latestStart {
+			latestStart = s.ns
+		}
+	}
+	earliestEnd := ends[0].ns
+	for _, e := range ends[1:] {
+		if e.ns < earliestEnd {
+			earliestEnd = e.ns
+		}
+	}
+	if latestStart >= earliestEnd {
+		t.Fatalf("requests did not overlap (latest start %d >= earliest end %d) — runner pool is not concurrent", latestStart, earliestEnd)
+	}
 }
 
 func TestResourceLimiterWaitIsCancellationAware(t *testing.T) {

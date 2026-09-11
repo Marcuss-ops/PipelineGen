@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,7 +22,11 @@ func NewVoiceoverStoreAdapter(repo *vorepo.VoiceoversRepository) lifecycle.Asset
 }
 
 func (a *voiceoverStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	return a.repo.Upsert(ctx, mediaRecordToVoiceover(rec))
+	converted, err := mediaRecordToVoiceover(rec)
+	if err != nil {
+		return err
+	}
+	return a.repo.Upsert(ctx, converted)
 }
 
 func (a *voiceoverStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
@@ -135,10 +140,15 @@ func voiceoverToMediaRecord(rec *vorepo.Record) *artifacts.MediaRecord {
 	}
 }
 
-func mediaRecordToVoiceover(rec *artifacts.MediaRecord) *vorepo.Record {
+func mediaRecordToVoiceover(rec *artifacts.MediaRecord) (*vorepo.Record, error) {
 	meta := map[string]any{}
 	if strings.TrimSpace(rec.Metadata) != "" && rec.Metadata != "{}" {
-		_ = json.Unmarshal([]byte(rec.Metadata), &meta)
+		// Fail-closed: corrupt metadata must never silently degrade to an
+		// empty map — the record would lose request_id/text_hash/language/
+		// voice on every read-modify-write cycle.
+		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err != nil {
+			return nil, fmt.Errorf("voiceover record %q metadata: %w", rec.ID, err)
+		}
 	}
 
 	requestID := getString(meta, "request_id")
@@ -172,5 +182,5 @@ func mediaRecordToVoiceover(rec *artifacts.MediaRecord) *vorepo.Record {
 		Metadata:      rec.Metadata,
 		CreatedAt:     now,
 		UpdatedAt:     now,
-	}
+	}, nil
 }

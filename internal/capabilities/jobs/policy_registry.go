@@ -189,6 +189,18 @@ func (r *Registry) Compose() TimeoutMap {
 	return out
 }
 
+// mustRegister is the fail-closed registration path for the per-family
+// register helpers: a duplicate or invalid entry is a composition error
+// (two families colliding on a job type, a malformed declaration) that must
+// abort startup rather than silently drop the entry — the registry would
+// then claim the job type does not exist and jobs of that type would stall
+// with no trace.
+func mustRegister(r *Registry, entry RegistryEntry) {
+	if err := r.Register(entry); err != nil {
+		panic(fmt.Sprintf("jobs registry: register %s: %v", entry.Completion.JobType, err))
+	}
+}
+
 // Compose builds the standard registry with all known job types.
 // Callers wire handlers via the Dispatcher; the registry only holds
 // operational parameters (timeout, retries, queue, concurrency, capabilities).

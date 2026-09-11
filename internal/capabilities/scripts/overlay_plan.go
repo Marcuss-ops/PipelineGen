@@ -24,6 +24,10 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -319,6 +323,31 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		return nil, nil
 	}
 
+	// The master audio/timeline is authoritative for the render extent. The
+	// last semantic item is often shorter than the voiceover (for example a
+	// person card anchored at the beginning), so deriving the canvas only from
+	// item.EndMs truncates the background and the rendered overlay video.
+	// Preserve the scene extent as a defensive lower bound when a malformed or
+	// legacy result has no final-audio reference.
+	var durationUS int64
+	if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 {
+		durationUS = result.FinalAudio.DurationMS * 1000
+	}
+	for _, scene := range resolved {
+		if scene.TimelineStartUS < 0 || scene.DurationUS <= 0 {
+			continue
+		}
+		if endUS := scene.TimelineStartUS + scene.DurationUS; endUS > durationUS {
+			durationUS = endUS
+		}
+	}
+	durationMS := int64(0)
+	if durationUS > 0 {
+		// DurationMS is a transport projection; round up so a sub-ms tail is
+		// never lost when it crosses the PipelineGen → Chronon boundary.
+		durationMS = (durationUS + 999) / 1000
+	}
+
 	plan := capabilityoverlay.OverlayPlan{
 		SchemaVersion:          capabilityoverlay.SchemaVersionPlan,
 		PlanID:                 planID,
@@ -330,6 +359,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Height:                 canvas.Height,
 		FPSNum:                 canvas.FPSNum,
 		FPSDen:                 canvas.FPSDen,
+		DurationMS:             durationMS,
 		ForegroundScalePercent: canvas.ForegroundScalePercent,
 		Background:             canvas.Background,
 		// Overlays are composited over the master video, so they require an
@@ -611,11 +641,19 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 			}
 			// Fail-open on an invalid record: the card stays text-only rather
 			// than failing the whole overlay plan over one unverifiable asset.
-			_ = index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
+			// Fail-open must still be visible: a registry rejecting every
+			// binding would silently degrade every card to text-only.
+			if err := index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
 				AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
 				SHA256: binding.SHA256, StorageURL: url,
 				QualityScore: score, Source: binding.Source,
-			})
+			}); err != nil {
+				logger.Warn("overlay plan: entity card asset not indexed (card stays text-only)",
+					zap.String("entity", entity.CanonicalName),
+					zap.String("canonical_entity_id", canonical),
+					zap.Error(err),
+				)
+			}
 		}
 	}
 	media.SetIndex(index)

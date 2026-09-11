@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,10 @@ func NewImageStoreAdapter(repo *imagesrepo.ImagesRepository, imagesDir string) l
 }
 
 func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
+	metadata, err := mergeImageMetadataJSON(rec.Metadata, rec, relImagePath(a.imagesDir, rec.LocalPath))
+	if err != nil {
+		return err
+	}
 	asset := &detail.ImageAsset{
 		Hash:         stripKindPrefix(rec.ID),
 		SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
@@ -34,14 +39,14 @@ func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaReco
 		Description:  rec.Name,
 		DriveFileID:  rec.DriveFileID,
 		Status:       rec.Status,
-		MetadataJSON: mergeImageMetadataJSON(rec.Metadata, rec, relImagePath(a.imagesDir, rec.LocalPath)),
+		MetadataJSON: metadata,
 		Tags:         append([]string(nil), rec.Tags...),
 		CreatedAt:    time.Now().UTC(),
 	}
 	if asset.Description == "" {
 		asset.Description = rec.Filename
 	}
-	_, err := a.repo.AddImage(ctx, asset)
+	_, err = a.repo.AddImage(ctx, asset)
 	return err
 }
 
@@ -176,10 +181,15 @@ func relImagePath(imagesDir, fullPath string) string {
 	return rel
 }
 
-func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath string) string {
+func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath string) (string, error) {
 	payload := map[string]any{}
 	if strings.TrimSpace(meta) != "" && meta != "{}" {
-		_ = json.Unmarshal([]byte(meta), &payload)
+		// Fail-closed: corrupt metadata must never silently degrade to an
+		// empty map — the merge would drop every existing key (source,
+		// subjects, embedding facts) on the next write.
+		if err := json.Unmarshal([]byte(meta), &payload); err != nil {
+			return "", fmt.Errorf("image asset metadata is corrupt: %w", err)
+		}
 	}
 	if rec != nil {
 		if rec.Source != "" {
@@ -228,9 +238,11 @@ func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath str
 			source = s
 		}
 	}
+	// Build serializes the map; marshal failure of a map[string]any is not
+	// reachable (values are strings/slices), matching the historical shape.
 	metaJSON, _, _ := detail.NewCanonicalImageMetadataBuilder(source, source).
 		WithExtra(payload).
 		WithProvenance("", "", source, "").
 		Build()
-	return metaJSON
+	return metaJSON, nil
 }

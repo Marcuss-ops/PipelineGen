@@ -7,12 +7,13 @@ package imagesrepo
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -109,13 +110,18 @@ func scanImageAssetFromRow(s interface {
 	}
 
 	if tagsJSON.Valid && tagsJSON.String != "" {
-		_ = json.Unmarshal([]byte(tagsJSON.String), &img.Tags)
+		// A corrupt tags column degrades to an empty tag set (pinned
+		// loose-decode contract, see TestScanImageAssetFromRow_SwallowMalformedJSON),
+		// but never silently: the shared unmarshal-or-log helper surfaces it.
+		jsonutil.UnmarshalOrLog([]byte(tagsJSON.String), &img.Tags, "media_assets.tags", logger.Get())
 	}
 
 	if metaJSON.Valid && metaJSON.String != "" {
 		img.MetadataJSON = metaJSON.String
 		var metaMap map[string]any
-		_ = json.Unmarshal([]byte(metaJSON.String), &metaMap)
+		// Same loose-decode contract: subject_id/status lookups degrade to
+		// empty, but the corruption is logged.
+		jsonutil.UnmarshalOrLog([]byte(metaJSON.String), &metaMap, "media_assets.metadata_json", logger.Get())
 		if v, ok := metaMap["subject_id"].(string); ok {
 			img.SubjectID = v
 		}

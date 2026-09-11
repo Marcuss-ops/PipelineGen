@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"encoding/json"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -55,6 +56,29 @@ func TestCompileChrononPlanOptionalBackground(t *testing.T) {
 	}
 	if got := compiled.Plan.Layers[0].DurationFrames; got != compiled.Plan.Canvas.DurationFrames {
 		t.Fatalf("background duration=%d, canvas duration=%d", got, compiled.Plan.Canvas.DurationFrames)
+	}
+}
+
+func TestCompileChrononPlanHonorsMasterDurationAfterLastOverlay(t *testing.T) {
+	plan := GoldenOverlayPlanV1()
+	plan.PlanID = "master-duration-tail"
+	plan.DurationMS = 44_040
+	plan.Background = &OverlayBackground{Kind: "color", Color: []float64{0, 0, 0, 1}}
+	plan.Items = []OverlayItem{{
+		ID: "early-card", TemplateID: "PERSON", Text: "Ada Lovelace",
+		StartMs: 0, EndMs: 5_000,
+	}}
+
+	compiled, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatalf("compile master-duration plan: %v", err)
+	}
+	wantFrames := int64(math.Round(44.040 * 30))
+	if compiled.Plan.Canvas.DurationFrames != wantFrames {
+		t.Fatalf("canvas duration=%d frames, want %d for 44.040s at 30fps", compiled.Plan.Canvas.DurationFrames, wantFrames)
+	}
+	if got := compiled.Plan.Layers[0].DurationFrames; got != wantFrames || compiled.Plan.Layers[0].ID != "background" {
+		t.Fatalf("background duration=%d id=%q, want %d frames", got, compiled.Plan.Layers[0].ID, wantFrames)
 	}
 }
 

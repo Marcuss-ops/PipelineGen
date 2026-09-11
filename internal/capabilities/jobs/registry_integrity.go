@@ -8,7 +8,10 @@ const (
 )
 
 func registerIntegrityEntries(r *Registry) {
-	_ = r.Register(RegistryEntry{
+	// Fail-closed at composition time: a duplicate or invalid entry must
+	// never vanish into a swallowed error — the "integrity" family in
+	// particular cannot silently skip its own integrity.
+	mustRegister(r, RegistryEntry{
 		Completion: CompletionDeclaration{
 			JobType:              TypeIntegrityVerify,
 			ArtifactOwnership:    ArtifactOwnershipNone,
@@ -20,7 +23,7 @@ func registerIntegrityEntries(r *Registry) {
 		Queue:             DefaultQueue,
 		Concurrency:       DefaultConcurrency,
 	})
-	_ = r.Register(RegistryEntry{
+	mustRegister(r, RegistryEntry{
 		Completion: CompletionDeclaration{
 			JobType:              TypeAssetCleanup,
 			ArtifactOwnership:    ArtifactOwnershipNone,

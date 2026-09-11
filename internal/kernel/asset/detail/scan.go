@@ -31,10 +31,11 @@ import (
 )
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -165,9 +166,11 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.Asset, error) {
 		a.SetFolderID(driveFolderID)
 	}
 
-	// Parse tags.
+	// Parse tags. A corrupt tags column degrades to an empty tag set (the
+	// repo's pinned loose-decode contract for this scan path), but never
+	// silently: the shared unmarshal-or-log helper surfaces the corruption.
 	if tags != "" && tags != "[]" {
-		_ = json.Unmarshal([]byte(tags), &a.Tags)
+		jsonutil.UnmarshalOrLog([]byte(tags), &a.Tags, "media_assets.tags", logger.Get())
 	}
 
 	// group_name read directly from the column (no metadata_json fallback).

@@ -51,6 +51,22 @@ func EnrichSpecialNamesWithImages(ctx context.Context, svc ClipServices, special
 	}
 
 	_ = group.Wait()
+	// Fail-open by design (an entity without an image must never fail the
+	// whole script), but never invisible: count the entities that ended up
+	// without an image and surface the degradation so enrichment regressions
+	// (backend down, quota, malformed responses) are detectable in production.
+	failed := 0
+	for _, img := range results {
+		if img.Error != "" {
+			failed++
+		}
+	}
+	if failed > 0 && svc.Logger != nil {
+		svc.Logger.Warn("entity image enrichment degraded: some entities have no image",
+			zap.Int("failed", failed),
+			zap.Int("total", len(specialNames)),
+		)
+	}
 	return results
 }
 

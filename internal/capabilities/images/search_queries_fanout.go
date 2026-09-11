@@ -67,7 +67,18 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 			return nil
 		})
 	}
-	_ = group.Wait()
+	// errFirstHit is the intentional winner signal; context cancellation is a
+	// normal miss. Anything else escaping the fan-out is a real backend
+	// failure and must be visible, never silently swallowed.
+	if waitErr := group.Wait(); waitErr != nil &&
+		!errors.Is(waitErr, errFirstHit) &&
+		!errors.Is(waitErr, context.Canceled) &&
+		!errors.Is(waitErr, context.DeadlineExceeded) {
+		log.Warn("retrieval fan-out backend failed",
+			zap.Int("backends", len(backends)),
+			zap.Error(waitErr),
+		)
+	}
 	img, src, page := col.result()
 	if img != "" {
 		log.Info("retrieval fan-out winner selected", zap.String("source", src), zap.String("url", img), zap.Int("backends", len(backends)))

@@ -9,11 +9,12 @@ package imagesregistry
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	platformlogger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 )
 
 // ── SQL receivers (migrated from search_terms.go) ────────────────────
@@ -245,7 +246,10 @@ func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string
 		}
 
 		var tags []string
-		_ = json.Unmarshal([]byte(tagsJSON), &tags)
+		// A corrupt tags column degrades to an empty tag set during the
+		// rebuild (the row's terms are rebuilt without tags), but never
+		// silently: the shared unmarshal-or-log helper surfaces it.
+		jsonutil.UnmarshalOrLog([]byte(tagsJSON), &tags, "rebuild_search_terms.tags", platformlogger.Get())
 
 		if err := s.UpdateSearchTerms(ctx, id, source, name, tags, searchText); err != nil {
 			continue

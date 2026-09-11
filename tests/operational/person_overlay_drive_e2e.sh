@@ -210,6 +210,20 @@ OVERLAY_DURATION_US=$(jq -r '.overlay_render?.artifact?.duration_us // 0' <<<"$R
 [[ -n "$OVERLAY_SHA" ]] || fail "artifact overlay senza sha256"
 (( OVERLAY_DURATION_US > 0 )) || fail "artifact overlay senza duration_us"
 
+# The semantic tail may end well before the voiceover. The rendered artifact
+# must nevertheless cover the canonical master audio/editing timeline; allow
+# only a small probe/frame quantization delta.
+AUDIO_DURATION_US=$(jq -r '(.final_audio?.duration_us // ((.final_audio?.duration_ms // 0) * 1000))' <<<"$RESULT")
+TIMELINE_DURATION_US=$(jq -r '.editing_timeline?.duration_us // 0' <<<"$RESULT")
+CANONICAL_DURATION_US="$AUDIO_DURATION_US"
+if (( TIMELINE_DURATION_US > CANONICAL_DURATION_US )); then
+    CANONICAL_DURATION_US="$TIMELINE_DURATION_US"
+fi
+(( CANONICAL_DURATION_US > 0 )) || fail "risultato senza durata audio/timeline canonica"
+DURATION_DELTA_US=$(( OVERLAY_DURATION_US - CANONICAL_DURATION_US ))
+(( DURATION_DELTA_US < 0 )) && DURATION_DELTA_US=$(( -DURATION_DELTA_US ))
+(( DURATION_DELTA_US <= 100000 )) || fail "overlay troncato rispetto ad audio/timeline (overlay_us=$OVERLAY_DURATION_US canonical_us=$CANONICAL_DURATION_US delta_us=$DURATION_DELTA_US)"
+
 GPU_VULKAN_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_vulkan_frames // 0' <<<"$RESULT")
 GPU_NVENC_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_nvenc_frames // 0' <<<"$RESULT")
 GPU_SOFTWARE_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_software_encode_frames // 0' <<<"$RESULT")

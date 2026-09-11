@@ -36,6 +36,11 @@ type OverlayPlan struct {
 	Height     int    `json:"height"`
 	FPSNum     int    `json:"fps_num"`
 	FPSDen     int    `json:"fps_den"`
+	// DurationMS is the canonical master-audio/timeline duration projected
+	// onto the overlay plan. It is a floor for the Chronon canvas duration:
+	// overlay items may extend it, but they can never truncate the master
+	// voiceover when the last semantic item ends earlier.
+	DurationMS int64 `json:"duration_ms,omitempty"`
 	// ForegroundScalePercent scales the source video on the full canvas.
 	// Zero/100 preserve the legacy full-canvas behaviour.
 	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
@@ -234,6 +239,9 @@ func (p *OverlayPlan) Validate() error {
 	}
 	if p.Width <= 0 || p.Height <= 0 || p.FPSNum <= 0 || p.FPSDen <= 0 {
 		return fmt.Errorf("overlay plan: width, height and frame rate must be positive")
+	}
+	if p.DurationMS < 0 {
+		return fmt.Errorf("overlay plan: duration_ms must be non-negative")
 	}
 	if strings.TrimSpace(p.MediaContract) != "" {
 		if _, err := ResolveMediaContract(p.MediaContract); err != nil {

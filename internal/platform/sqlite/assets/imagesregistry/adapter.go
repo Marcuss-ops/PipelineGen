@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
@@ -27,6 +28,10 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			if rec == nil {
 				return nil
 			}
+			metadata, mergeErr := mergeImageMetadata(log, rec.Metadata, rec, relativePath(imagesDir, rec.LocalPath))
+			if mergeErr != nil {
+				return mergeErr
+			}
 			img := &detail.ImageAsset{
 				Hash:         imageRecordHash(rec.ID, rec.LegacyFileMD5),
 				SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
@@ -34,7 +39,7 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 				Description:  rec.Name,
 				DriveFileID:  rec.DriveFileID,
 				Status:       rec.Status,
-				MetadataJSON: mergeImageMetadata(rec.Metadata, rec, relativePath(imagesDir, rec.LocalPath)),
+				MetadataJSON: metadata,
 				Tags:         append([]string(nil), rec.Tags...),
 				CreatedAt:    time.Now().UTC(),
 			}
@@ -133,10 +138,15 @@ func imageMetadataString(raw, key string) string {
 	return strings.TrimSpace(value)
 }
 
-func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string) string {
+func mergeImageMetadata(log *zap.Logger, meta string, rec *artifacts.MediaRecord, relPath string) (string, error) {
 	payload := map[string]any{}
 	if strings.TrimSpace(meta) != "" && meta != "{}" {
-		_ = json.Unmarshal([]byte(meta), &payload)
+		// Fail-closed: corrupt metadata must never silently degrade to an
+		// empty map — the merge would drop every existing key (source,
+		// subjects, embedding facts) on the next write.
+		if !jsonutil.UnmarshalOrLog([]byte(meta), &payload, "image_asset.metadata", log) {
+			return "", fmt.Errorf("image asset metadata is corrupt")
+		}
 	}
 	if rec != nil {
 		if rec.Source != "" {
@@ -170,8 +180,11 @@ func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string)
 	if relPath != "" {
 		payload["local_path"] = relPath
 	}
-	out, _ := json.Marshal(payload)
-	return string(out)
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("merge image metadata: %w", err)
+	}
+	return string(out), nil
 }
 
 func relativePath(imagesDir, fullPath string) string {
