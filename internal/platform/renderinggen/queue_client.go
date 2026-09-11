@@ -1,6 +1,6 @@
 // Package renderinggen adapts the central RenderingGen queue's public client
 // to the script-generation capability. PipelineGen no longer owns the HTTP
-// contract: it delegates to github.com/Marcuss-ops/RenderginGen/queue/client
+// contract: it delegates to github.com/Marcuss-ops/RenderingGen/queue/client
 // and only maps between the capability domain types and the queue's wire
 // types, so the wire format can never drift between the two codebases.
 package renderinggen
@@ -20,7 +20,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
+	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 // Client adapts the queue's public client to scriptgen.RenderQueueClient.

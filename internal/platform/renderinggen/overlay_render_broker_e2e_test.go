@@ -15,7 +15,7 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
-	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
+	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 // Local aliases for the on-the-wire discriminator + lifecycle state values

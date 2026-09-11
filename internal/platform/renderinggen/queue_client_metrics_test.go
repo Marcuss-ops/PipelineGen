@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	queueclient "github.com/Marcuss-ops/RenderginGen/queue/client"
+	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 func TestMetricsFromChrononArtifactPropagatesEngineProfile(t *testing.T) {
