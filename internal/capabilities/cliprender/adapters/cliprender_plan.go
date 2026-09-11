@@ -10,13 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 // ClipRenderSubtitleCompiler implements the capability's SubtitleCompiler
@@ -37,33 +36,19 @@ func (c *ClipRenderSubtitleCompiler) SetArtifactRepository(repo detail.SubtitleA
 
 // assContentCache reuses deterministic ASS generation across repeated renders
 // of the same transcript/style. It is a content cache, not a render cache.
-var assContentCache sync.Map // map[string]string
+//
+// The cache is a bounded LRU (assContentCacheCapacity entries): entries are
+// keyed by transcript/style hash and are fully deterministic, so eviction
+// only costs a cheap recompile on the next render of the same cues — never
+// a semantic change. Bounding replaces the historical unbounded sync.Map +
+// full-sweep janitor, which destroyed every warm entry at once every 10
+// minutes (guaranteed cold spike) and burned a goroutine + full scan even
+// when the map was empty.
+const assContentCacheCapacity = 512
 
-// assContentCacheJanitor bounds the no-TTL ASS content cache over the
-// process lifetime. Entries are keyed by transcript/style hash and are fully
-// deterministic, so a periodic clear only costs a cheap recompile on the
-// next render of the same cues — never a semantic change.
-const assContentCacheJanitorInterval = 10 * time.Minute
-
-var assContentCacheJanitorOnce sync.Once
-
-func startAssContentCacheJanitor() {
-	assContentCacheJanitorOnce.Do(func() {
-		go func() {
-			ticker := time.NewTicker(assContentCacheJanitorInterval)
-			defer ticker.Stop()
-			for range ticker.C {
-				assContentCache.Range(func(key, _ any) bool {
-					assContentCache.Delete(key)
-					return true
-				})
-			}
-		}()
-	})
-}
+var assContentCache = cacheutil.NewLRU(assContentCacheCapacity)
 
 func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.SubtitleCompileInput) (*cliprender.SubtitleArtifact, error) {
-	startAssContentCacheJanitor()
 	switch in.Mode {
 	case cliprender.SubtitlesModeBurn, cliprender.SubtitlesModeSidecar:
 	default:
@@ -105,7 +90,7 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	key := digest.SHA256String(fmt.Sprintf("%s\x00%s\x00%v", in.Language, in.StyleID, canonicalCues))
 	var content string
 	contentCacheHit := false
-	if cached, ok := assContentCache.Load(key); ok {
+	if cached, ok := assContentCache.Get(key); ok {
 		content = cached.(string)
 		contentCacheHit = true
 	} else {
@@ -114,7 +99,7 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 			return nil, fmt.Errorf("%w: compile ASS content: %v", cliprender.ErrSubtitleCompileUnavailable, err)
 		}
 		content = generated
-		assContentCache.Store(key, content)
+		assContentCache.Put(key, content)
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create subtitle output dir %q: %w", in.OutputDir, err)

@@ -3,9 +3,10 @@ package voiceover
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -197,7 +198,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// The LifecycleService branch remains only as a migration compatibility
 	// seam for old compositions where the committer is not wired.
 	if f.deps.Committer != nil {
-		commitRequest := buildVoiceoverCommitRequest(cmd, textPreview)
+		commitRequest := buildVoiceoverCommitRequest(cmd, textPreview, f.deps.Logger)
 		var err error
 		if f.deps.CommitterSelfOwnedTx {
 			f.deps.Logger.Debug("voiceoverFinalizer: canonical media commit uses committer-owned transaction",
@@ -295,7 +296,7 @@ func formatRequiredState(step, state string, reason ...string) string {
 	return step + ": " + state + " (" + reason[0] + ")"
 }
 
-func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) assetspersistence.CommitRequest {
+func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *zap.Logger) assetspersistence.CommitRequest {
 	language := ""
 	if cmd.Language != "" {
 		language = string(cmd.Language)
@@ -311,7 +312,10 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		Subjects   []string `json:"semantic_subjects"`
 		Mood       []string `json:"semantic_mood"`
 	}
-	_ = json.Unmarshal(cmd.MetaJSON, &semanticMeta)
+	// Fail-open with observability: corrupt semantic metadata degrades to
+	// the plain text preview, but the loss is logged so a systematic
+	// enrichment failure is detectable.
+	jsonutil.UnmarshalOrLog(cmd.MetaJSON, &semanticMeta, "finalize_command.meta_json", log)
 	searchText := textPreview
 	if semanticMeta.SearchText != "" {
 		searchText = semanticMeta.SearchText

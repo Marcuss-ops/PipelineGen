@@ -7,11 +7,10 @@ package cliprender
 import (
 	"context"
 	"strings"
-	"sync"
-	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 // renderedResult projects the *Prepared + sealed plan + render outcome +
@@ -199,42 +198,27 @@ type SubtitleCacheFacts struct {
 // subtitleCacheFacts is the run-local registry keyed by the materialized ASS
 // path. It is populated by the SubtitleCompiler adapter and projected into the
 // job result so the benchmark report can show subtitle cache hits.
-var subtitleCacheFacts sync.Map // map[string]SubtitleCacheFacts
+//
+// The registry is a bounded LRU: facts are read once, shortly after being
+// recorded (compile → job result in the same run), so eviction at capacity
+// never loses an in-flight read. Bounding replaces the historical unbounded
+// sync.Map + full-sweep janitor, which destroyed every recorded fact at once
+// every 10 minutes and burned a goroutine + full scan even when the map was
+// empty.
+const subtitleCacheFactsCapacity = 2048
 
-// subtitleCacheJanitor bounds the registry over the process lifetime: facts
-// are read once, shortly after being recorded (compile → job result in the
-// same run), so a periodic clear never loses an in-flight read.
-const subtitleCacheJanitorInterval = 10 * time.Minute
-
-var subtitleCacheJanitorOnce sync.Once
-
-func startSubtitleCacheJanitor() {
-	subtitleCacheJanitorOnce.Do(func() {
-		go func() {
-			ticker := time.NewTicker(subtitleCacheJanitorInterval)
-			defer ticker.Stop()
-			for range ticker.C {
-				subtitleCacheFacts.Range(func(key, _ any) bool {
-					subtitleCacheFacts.Delete(key)
-					return true
-				})
-			}
-		}()
-	})
-}
+var subtitleCacheFacts = cacheutil.NewLRU(subtitleCacheFactsCapacity)
 
 // RecordSubtitleCacheFacts registers cache ownership for a materialized ASS
 // artifact. Called by the SubtitleCompiler adapter after compile.
 func RecordSubtitleCacheFacts(localPath string, facts SubtitleCacheFacts) {
-	startSubtitleCacheJanitor()
-	subtitleCacheFacts.Store(localPath, facts)
+	subtitleCacheFacts.Put(localPath, facts)
 }
 
 // subtitleCacheFactsFor returns the recorded cache facts for a materialized
 // ASS artifact, or an all-false zero value when nothing was recorded.
 func subtitleCacheFactsFor(path string) SubtitleCacheFacts {
-	startSubtitleCacheJanitor()
-	if facts, ok := subtitleCacheFacts.Load(path); ok {
+	if facts, ok := subtitleCacheFacts.Get(path); ok {
 		return facts.(SubtitleCacheFacts)
 	}
 	return SubtitleCacheFacts{}

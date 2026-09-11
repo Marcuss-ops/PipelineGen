@@ -19,12 +19,13 @@ package imagesregistry
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	platformlogger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -175,9 +176,11 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 		a.SetFolderID(driveFolderID.String)
 	}
 
-	// Parse tags.
+	// Parse tags. A corrupt tags column degrades to an empty tag set (the
+	// repo's pinned loose-decode contract for this scan path), but never
+	// silently: the shared unmarshal-or-log helper surfaces the corruption.
 	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(tagsNull.String), &a.Tags)
+		jsonutil.UnmarshalOrLog([]byte(tagsNull.String), &a.Tags, "media_assets.tags", platformlogger.Get())
 	}
 
 	// group_name read directly from the column (no metadata_json fallback).

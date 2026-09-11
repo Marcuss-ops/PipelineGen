@@ -23,12 +23,13 @@ package subjectsrepo
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 
 	"github.com/google/uuid"
 )
@@ -208,7 +209,10 @@ func (r *Resolver) scan(s interface {
 		Notes:           description,
 	}
 	if aliasesJSON != "" && aliasesJSON != "[]" {
-		_ = json.Unmarshal([]byte(aliasesJSON), &out.Aliases)
+		// A corrupt aliases column degrades to an empty alias set (alias
+		// lookups for this subject may miss), but never silently: the shared
+		// unmarshal-or-log helper surfaces the corruption.
+		jsonutil.UnmarshalOrLog([]byte(aliasesJSON), &out.Aliases, "subjects.aliases", logger.Get())
 	}
 
 	// createdAt / updatedAt are parsed at the kernel boundary; the

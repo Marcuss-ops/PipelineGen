@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
+
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -250,7 +252,9 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		}
 		meta := map[string]any{}
 		if op.MetadataJSON != "" {
-			_ = json.Unmarshal([]byte(op.MetadataJSON), &meta)
+			// Fail-open with observability: a corrupt operation record loses
+			// only its merged facts, and the loss is logged.
+			jsonutil.UnmarshalOrLog([]byte(op.MetadataJSON), &meta, "operation_report.metadata_json", logger.Get())
 		}
 		meta["model"] = chatMetrics.Model
 		meta["input_tokens"] = chatMetrics.PromptEvalCount

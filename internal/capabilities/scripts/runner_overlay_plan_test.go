@@ -164,6 +164,9 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	res := final.Result
 	require.NotNil(t, res)
 	require.NotNil(t, res.OverlayPlan, "overlay plan must be projected on a real timed run")
+	require.NotNil(t, res.FinalAudio, "the overlay plan must have a certified master-audio extent")
+	require.Equal(t, res.FinalAudio.DurationMS, res.OverlayPlan.DurationMS,
+		"overlay plan duration must follow the certified final audio")
 	require.NoError(t, res.OverlayPlan.Validate())
 
 	// The verbose report is intentionally emitted from the certified plan so

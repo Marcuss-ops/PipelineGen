@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -148,7 +150,10 @@ func (r *WorkerNodesRepository) Get(ctx context.Context, workerID string) (*job.
 		return nil, err
 	}
 	var caps job.WorkerCapabilities
-	_ = json.Unmarshal([]byte(capsJSON), &caps)
+	// A corrupt capabilities column degrades to an empty capability set, but
+	// never silently: the shared unmarshal-or-log helper surfaces the
+	// corruption so a node advertising no capabilities is traceable.
+	jsonutil.UnmarshalOrLog([]byte(capsJSON), &caps, "worker_nodes.capabilities_json", logger.Get())
 	return &job.WorkerSession{
 		WorkerID:         id,
 		SessionID:        sessionID,

@@ -324,7 +324,16 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		return item.EndMs * 1000
 	}
 
+	// DurationMS is the canonical master-audio/timeline duration. Keep the
+	// canvas alive through it even when the final semantic overlay ends early;
+	// otherwise a background-only tail is silently truncated by Chronon.
 	var maxEndUS int64
+	if plan.DurationMS > 0 {
+		if plan.DurationMS > math.MaxInt64/1000 {
+			return ChrononCompileResult{}, fmt.Errorf("overlay plan: duration_ms overflows microseconds")
+		}
+		maxEndUS = plan.DurationMS * 1000
+	}
 	for _, item := range plan.Items {
 		if end := itemEndUS(item); end > maxEndUS {
 			maxEndUS = end

@@ -173,7 +173,13 @@ type HighlightRegistry struct{ selectors map[string]HighlightSelector }
 
 func NewHighlightRegistry() *HighlightRegistry {
 	r := &HighlightRegistry{map[string]HighlightSelector{}}
-	_ = r.Register("youtube", NewHighlightSelector(DefaultHighlightWeights()))
+	// Fail-closed at construction: the builtin "youtube" selector is a
+	// compile-time invariant (non-empty provider + non-nil selector); if
+	// registration ever fails, the registry must not silently start without
+	// the one provider every stock-plan flow relies on.
+	if err := r.Register("youtube", NewHighlightSelector(DefaultHighlightWeights())); err != nil {
+		panic(fmt.Sprintf("highlight registry: register builtin selector: %v", err))
+	}
 	return r
 }
 func (r *HighlightRegistry) Register(provider string, s HighlightSelector) error {

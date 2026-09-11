@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
@@ -133,7 +134,10 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 	if rec.PublishStatus != "" {
 		var metadata map[string]any
 		if strings.TrimSpace(rec.Metadata) != "" {
-			_ = json.Unmarshal([]byte(rec.Metadata), &metadata)
+			// Fail-open with observability: corrupt metadata falls back to a
+			// fresh map, but the degradation is logged so the lost
+			// delivery_status/delivery_error fields are detectable.
+			jsonutil.UnmarshalOrLog([]byte(rec.Metadata), &metadata, "media_record.metadata", f.log)
 		}
 		if metadata == nil {
 			metadata = make(map[string]any)

@@ -99,7 +99,7 @@ func TestBuildVoiceoverCommitRequest_PreservesSemanticMetadata(t *testing.T) {
 		MetaJSON:      []byte(`{"search_text":"semantic search","semantic_tags":["boxing"],"semantic_subjects":["sport"],"semantic_mood":["dramatic"]}`),
 	}
 
-	req := buildVoiceoverCommitRequest(cmd, "plain preview")
+	req := buildVoiceoverCommitRequest(cmd, "plain preview", zap.NewNop())
 	require.Equal(t, "semantic search", req.SearchText)
 	require.Equal(t, []string{"boxing"}, req.Metadata.Tags)
 	require.Equal(t, []string{"sport"}, req.Metadata.Extra["semantic_subjects"])

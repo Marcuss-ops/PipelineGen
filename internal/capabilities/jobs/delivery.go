@@ -547,8 +547,16 @@ func (h *DeliveryHandler) recordDelivery(ctx context.Context, req *deliveryReque
 		  note = excluded.note
 	`, req.Artifact.ArtifactID, req.Destination.DestinationID, req.IdempotencyKey, statusCode, responseHash, now, now, note)
 	if err != nil {
-		h.log.Warn("delivery_log insert failed (audit-only, non-fatal)",
+		// Telemetry loss is audit data loss, not a routine hiccup: a webhook
+		// delivery whose recording failed must not look identical to one that
+		// was recorded. The log line carries enough context to reconstruct the
+		// delivery from other sources (outbox row, receiver logs).
+		h.log.Error("delivery_log insert failed (delivery telemetry lost — audit gap)",
 			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.String("endpoint", req.Destination.DestinationID),
+			zap.String("asset_id", req.Artifact.ArtifactID),
+			zap.Int("status_code", statusCode),
+			zap.String("note", note),
 			zap.Error(err),
 		)
 		return err
