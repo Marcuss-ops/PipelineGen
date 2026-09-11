@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"net/http"
@@ -26,7 +27,9 @@ import (
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/platform/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	processinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
+
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -49,7 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
-func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*RepoBundle, error) {
+func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, mediaPostgres ...*sql.DB) (*RepoBundle, error) {
 	_ = ctx
 	_ = cfg
 	assetsStore := imagesregistry.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
@@ -76,10 +79,21 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
-	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.DualPool.Writer, log)
-	if err != nil {
-		return nil, fmt.Errorf("init text track repository: %w", err)
+	var textTrackRepo detail.TextTrackRepository
+	if len(mediaPostgres) > 0 && mediaPostgres[0] != nil {
+		var textTrackErr error
+		textTrackRepo, textTrackErr = pgmedia.NewTextTrackRepositoryPG(mediaPostgres[0])
+		if textTrackErr != nil {
+			return nil, fmt.Errorf("init postgres text track repository: %w", textTrackErr)
+		}
+	} else {
+		var textTrackErr error
+		textTrackRepo, textTrackErr = texttracks.NewTextTrackRepository(dbs.DualPool.Writer, log)
+		if textTrackErr != nil {
+			return nil, fmt.Errorf("init text track repository: %w", textTrackErr)
+		}
 	}
+
 	subArtRepo, err := texttracks.NewSubtitleArtifactRepository(dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)

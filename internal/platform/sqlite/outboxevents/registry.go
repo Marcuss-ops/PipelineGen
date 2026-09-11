@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // event-type constants are shared between producers (Dispatcher.Enqueue,
@@ -13,9 +15,15 @@ import (
 // event (asset.index.requested) and keeps greppability symmetric across
 // the outbox-events column. The QDRANT-002 ticket's "media.index.*"
 // naming maps to these constants 1:1.
+//
+// IDENTITY NOTE: the literal values are owned by internal/kernel/event
+// (godlike/06 one owner per fact). This block is a compile-time re-export so
+// the SQLite adapter and the PostgreSQL adapter can never drift: both resolve
+// the same constant. A re-declaration of any literal here is a
+// percheck_identity_ssot violation.
 const (
-	EventAssetIndexRequested       = "asset.index.requested"
-	EventAssetIndexDeleteRequested = "asset.index.delete_requested"
+	EventAssetIndexRequested       = event.AssetIndexRequested
+	EventAssetIndexDeleteRequested = event.AssetIndexDeleteRequested
 	// EventAssetIndexRestoreRequested is the canonical event-type
 	// emitted by mutations.AssetMutationDispatcher.EnqueueAndRestore.
 	// Handler (deferred to task 3 of 5, currently
@@ -26,7 +34,7 @@ const (
 	// Naming follows the established asset.index.* family so a single
 	// substring search finds the producer + consumer + tests on the
 	// same grep pass.
-	EventAssetIndexRestoreRequested = "asset.index.restore_requested"
+	EventAssetIndexRestoreRequested = event.AssetIndexRestoreRequested
 
 	// EventAssetDriveDeleteRequested (Blocco 3.1, June 2026) — first
 	// hop of the deletion state machine
@@ -43,20 +51,20 @@ const (
 	// Naming follows the established asset.* family — substring
 	// search for `asset.drive.delete_requested` finds producer +
 	// consumer + tests in one grep pass.
-	EventAssetDriveDeleteRequested = "asset.drive.delete_requested"
+	EventAssetDriveDeleteRequested = event.AssetDriveDeleteRequested
 
-	EventDeliveryRequested            = "delivery.requested"
-	EventAssetMetadataExportRequested = "asset.metadata_export.requested"
-	EventProviderSyncRequested        = "provider.sync.requested"
-	EventWorkflowStepCompleted        = "workflow.step.completed"
-	EventWorkflowStepFailed           = "workflow.step.failed"
-	EventScriptGenerateQueued         = "script.generate.queued"
+	EventDeliveryRequested            = event.DeliveryRequested
+	EventAssetMetadataExportRequested = event.AssetMetadataExportRequested
+	EventProviderSyncRequested        = event.ProviderSyncRequested
+	EventWorkflowStepCompleted        = event.WorkflowStepCompleted
+	EventWorkflowStepFailed           = event.WorkflowStepFailed
+	EventScriptGenerateQueued         = event.ScriptGenerateQueued
 
 	// EventJobCompleted is emitted transactionally with the terminal job
 	// status flip (SUCCEEDED or FAILED) so derived projections that need
 	// the finalized run report (performance_runs / performance_steps) can
 	// be rebuilt without a manual backfill. aggregate_id is the job id.
-	EventJobCompleted = "job.completed"
+	EventJobCompleted = event.JobCompleted
 
 	// EventVoiceoverCleanupRequested (P0.7 Wave 21, Step 10/12, June 2026).
 	// Replaces the pre-fix fire-and-forget `cleanupOrphanVoiceover`
@@ -71,7 +79,7 @@ const (
 	// removes old local files, and returns retryable errors on
 	// transient Drive failures so the pool's exponential backoff
 	// retries per its config.
-	EventVoiceoverCleanupRequested = "voiceover.cleanup.requested"
+	EventVoiceoverCleanupRequested = event.VoiceoverCleanupRequested
 
 	// EventAssetPublished (SEMANTIC-LOCATION-API-2026-07-06 Wave 5,
 	// July 2026). Emitted by the CALLER of Publisher.Publish() —
@@ -87,7 +95,7 @@ const (
 	// caller can emit one OR both. Per godlike/07 minimum-blast-radius
 	// the new event is purely ADDITIVE — no existing producer or
 	// consumer is rewritten.
-	EventAssetPublished = "asset.published"
+	EventAssetPublished = event.AssetPublished
 
 	// EventAssetRightsChanged (PR-CLIPINGEST-PIPELINE Step 10,
 	// July 2026). Emitted by producers that mutate the rights
@@ -111,7 +119,7 @@ const (
 	// schema-version mismatch path is a terminal sentinel per
 	// godlike/06 — the handler fails-fast with a typed error so
 	// the producer MUST upgrade before consumers can resume.
-	EventAssetRightsChanged = "asset.rights.changed"
+	EventAssetRightsChanged = event.AssetRightsChanged
 
 	// EventAssetRightsExtensionBatchApplied is the migration-158
 	// propagation channel for existing rows. The migration emits
@@ -121,7 +129,7 @@ const (
 	// via a startup-time reconcile sweep. Field-name consistency
 	// with EventAssetRightsChanged is intentional so a future
 	// per-row upgrade reuses the same payload codec.
-	EventAssetRightsExtensionBatchApplied = "asset.rights_extension.batch_applied"
+	EventAssetRightsExtensionBatchApplied = event.AssetRightsExtensionBatchApplied
 
 	// EventBindingIndexRequested is emitted by the canonical
 	// BindingMutationDispatcher whenever a media_bindings row is
@@ -129,7 +137,7 @@ const (
 	// reindexes the parent media_concepts row in Qdrant so the
 	// semantic projection stays consistent with the authoritative
 	// SQLite state.
-	EventBindingIndexRequested = "binding.index.requested"
+	EventBindingIndexRequested = event.BindingIndexRequested
 )
 
 // JobCompletedEventKey returns the canonical outbox_events.event_key for
@@ -150,7 +158,7 @@ func JobCompletedEventKey(jobID string) string {
 // Terminal sentinel if the inbound envelope's schema_version
 // does not match this string literally; mismatch cannot be cured
 // by retry, so producers must upgrade.
-const SchemaVersionAssetPublished = "asset.published.v1"
+const SchemaVersionAssetPublished = event.AssetPublishedV1Schema
 
 // SchemaVersionAssetRightsChanged is the canonical v1 schema string
 // for the per-row rights-change event. The consumer (handler
@@ -159,11 +167,11 @@ const SchemaVersionAssetPublished = "asset.published.v1"
 // fast with a typed Terminal sentinel if the inbound envelope's
 // schema_version does not match this string literally; mismatch
 // cannot be cured by retry, so producers MUST upgrade.
-const SchemaVersionAssetRightsChanged = "asset.rights.changed.v1"
+const SchemaVersionAssetRightsChanged = event.AssetRightsChangedV1Schema
 
 // SchemaVersionAssetRightsExtensionBatchApplied is the canonical
 // v1 schema string for the migration-apply batch event.
-const SchemaVersionAssetRightsExtensionBatchApplied = "asset.rights_extension.batch_applied.v1"
+const SchemaVersionAssetRightsExtensionBatchApplied = event.AssetRightsExtensionBatchV1Schema
 
 type Handler interface {
 	EventType() string

@@ -72,27 +72,23 @@ func TestNamePresetE2E(t *testing.T) {
 			},
 		}
 
-		// Compile pass: pin the preset on the compiled document so a
-		// future regression on the resolver cannot silently rewrite the
-		// animation selected by the test.
-		compiled, err := capoverlay.CompileChrononPlan(plan)
-		if err != nil {
-			t.Fatalf("[%d/%d] preset %s compile: %v", i+1, len(presets), preset, err)
-		}
-		var nameLayer *capoverlay.ChrononLayer
-		for li := range compiled.Plan.Layers {
-			if compiled.Plan.Layers[li].ID == "name_"+preset {
-				nameLayer = &compiled.Plan.Layers[li]
+		// Pin the preset on the SEMANTIC plan so a future regression on the
+		// resolver cannot silently rewrite the preset selected by the test.
+		// The visual lowering is RenderingGen's job and is asserted there.
+		var nameItem *capoverlay.OverlayItem
+		for ii := range plan.Items {
+			if plan.Items[ii].ID == "name_"+preset {
+				nameItem = &plan.Items[ii]
 			}
 		}
-		if nameLayer == nil {
-			t.Fatalf("[%d/%d] preset %s: PERSON layer missing in compiled plan", i+1, len(presets), preset)
+		if nameItem == nil {
+			t.Fatalf("[%d/%d] preset %s: PERSON item missing in semantic plan", i+1, len(presets), preset)
 		}
-		if nameLayer.Preset != preset {
-			t.Fatalf("[%d/%d] preset %s: layer.Preset = %q, want %q", i+1, len(presets), preset, nameLayer.Preset, preset)
+		if nameItem.PresetID != preset {
+			t.Fatalf("[%d/%d] preset %s: item.PresetID = %q, want %q", i+1, len(presets), preset, nameItem.PresetID, preset)
 		}
-		if nameLayer.Text != "Michael Jordan" {
-			t.Fatalf("[%d/%d] preset %s: layer.Text = %q, want %q", i+1, len(presets), preset, nameLayer.Text, "Michael Jordan")
+		if nameItem.Text != "Michael Jordan" {
+			t.Fatalf("[%d/%d] preset %s: item.Text = %q, want %q", i+1, len(presets), preset, nameItem.Text, "Michael Jordan")
 		}
 
 		enqueuer, err := scriptgen.NewQueueRenderEnqueuer(New(queueURL))

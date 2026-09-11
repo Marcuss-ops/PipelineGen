@@ -3,8 +3,15 @@ package overlays
 // These candidate ids are owned by Chronon's VisualPresetRegistry. PipelineGen
 // only selects one deterministically and transports the opaque id downstream.
 var (
-	namePresetCandidates = []string{
-		"name_glow_typewriter", "name_glow_slide", "name_glow_pop",
+	// The current REQUIRE_GPU_NATIVE fused text path supports line-level name
+	// motion. character_cascade is glyph-level and deliberately stays in the
+	// official catalog for explicit/certification plans, but must not be chosen
+	// by the generated entity-card planner until Chronon can prepare that
+	// selector on the native path. name_glow_typewriter is retired from this
+	// candidate set for the same reason: there is no second name-candidate
+	// list, so the render-safe set is the ONLY owner of the name surface.
+	namePresetRenderSafeCandidates = []string{
+		"name_glow_slide", "name_glow_pop",
 	}
 	phrasePresetCandidates = []string{
 		"fast_fade_through", "clean_slide_up", "slide_lateral",
@@ -45,7 +52,7 @@ func selectPreset(jobID, sceneID, itemID, family string, candidates []string) st
 // entity occurrence. A new job fingerprint can select another treatment,
 // while retries of the same job remain bit-identical.
 func SelectEntityNamePreset(jobID, sceneID, itemID, entityType string) string {
-	return selectPreset(jobID, sceneID, itemID, "entity_name:"+entityType, namePresetCandidates)
+	return selectPreset(jobID, sceneID, itemID, "entity_name:"+entityType, namePresetRenderSafeCandidates)
 }
 
 func selectPhrasePreset(jobID, sceneID, itemID string) string {

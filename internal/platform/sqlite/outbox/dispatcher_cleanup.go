@@ -13,6 +13,7 @@ import (
 
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -51,7 +52,10 @@ type cleanupRequestV1 struct {
 // "voiceover.cleanup.requested.v1" literally. Mismatch is TERMINAL
 // (godlike/07 — no fake availability; producers upgrade rather than
 // retrying into a repair loop).
-const VoiceoverCleanupSchemaVersion = "voiceover.cleanup.requested.v1"
+//
+// OWNED by internal/kernel/event (godlike/06); this is a compile-time
+// re-export so producer and consumer cannot drift.
+const VoiceoverCleanupSchemaVersion = event.VoiceoverCleanupRequestedV1Schema
 
 // EnqueueCleanupEvent emits the canonical voiceover.cleanup.requested.v1
 // envelope INSIDE a caller-owned *sql.Tx. P0.7 Wave 21 Step 10/12

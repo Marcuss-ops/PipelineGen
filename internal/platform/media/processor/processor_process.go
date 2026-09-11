@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
@@ -344,7 +346,18 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 	// The master is the SOLE canonical rendition (Sept 2026): the legacy
 	// full-file mezzanine copy is removed. Every derived artifact is
 	// derived directly from the immutable master.
+	//
+	// The master bytes are read (hash) and demuxed (probe) EXACTLY ONCE here
+	// and the results are threaded into both the thumbnail timestamp and the
+	// master rendition metadata. Previously the master was hashed twice and
+	// probed twice per asset, i.e. two extra full-file reads plus a second
+	// ffprobe process spawn on the per-asset critical path.
 	masterSHA := hashFileSHA256(masterPath)
+	masterInfo, masterProbeErr := p.ffmpeg.Probe(ctx, masterPath)
+	if masterProbeErr != nil {
+		p.log.Warn("master probe failed; master technical metadata omitted",
+			zap.String("path", masterPath), zap.Error(masterProbeErr))
+	}
 
 	// Derived renditions (preview/thumbnail/storyboard/manifest) have no
 	// dependency on each other, so they run concurrently instead of the
@@ -396,9 +409,11 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 		if err := os.MkdirAll(thumbnailDir, 0o755); err != nil {
 			return fmt.Errorf("create thumbnail dir: %w", err)
 		}
+		// Reuse the single master probe taken above instead of demuxing the
+		// master again for the midpoint frame.
 		thumbnailTimestamp := 1.0
-		if info, err := p.ffmpeg.Probe(gctx, masterPath); err == nil && info.Duration > 0 {
-			thumbnailTimestamp = info.Duration.Seconds() / 2
+		if masterProbeErr == nil && masterInfo != nil && masterInfo.Duration > 0 {
+			thumbnailTimestamp = masterInfo.Duration.Seconds() / 2
 		}
 		thumbnailKey := capcache.Key{}
 		if masterSHA != "" {
@@ -467,46 +482,83 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 	// per-file `Filename` field carries the canonical
 	// `{asset_id}__<role>.<ext>` name; callers thread this into the
 	// Publisher per-file.
-	renditions := []detail.RenditionOutput{
-		p.buildRenditionOutput(ctx, detail.RenditionKindMaster, masterPath),
-	}
-	if fileExists(previewPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindProxy, previewPath))
-	}
-	if fileExists(thumbnailPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindThumbnail, thumbnailPath))
-	}
-	if fileExists(storyboardPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindStoryboard, storyboardPath))
-	}
-	if fileExists(manifestPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, detail.RenditionKindManifest, manifestPath))
+	// The master entry is always reported (its Kind/LocalPath/Filename are
+	// populated before the stat), so the caller's master==nil fail-closed check
+	// is unchanged. Derived renditions are only reported when the file exists,
+	// which the single stat inside buildRenditionOutput now decides — replacing
+	// the previous fileExists + os.Stat double stat per rendition.
+	masterOut, _ := p.buildRenditionOutput(ctx, detail.RenditionKindMaster, masterPath, masterSHA, masterInfo)
+	renditions := []detail.RenditionOutput{masterOut}
+	for _, derived := range []struct {
+		kind detail.RenditionKind
+		path string
+	}{
+		{detail.RenditionKindProxy, previewPath},
+		{detail.RenditionKindThumbnail, thumbnailPath},
+		{detail.RenditionKindStoryboard, storyboardPath},
+		{detail.RenditionKindManifest, manifestPath},
+	} {
+		if out, ok := p.buildRenditionOutput(ctx, derived.kind, derived.path, "", nil); ok {
+			renditions = append(renditions, out)
+		}
 	}
 
 	return renditions, nil
 }
 
-// buildRenditionOutput populates a RenditionOutput from a local file,
-// probing it for technical metadata when possible.
-func (p *Processor) buildRenditionOutput(ctx context.Context, kind detail.RenditionKind, path string) detail.RenditionOutput {
+// buildRenditionOutput populates a RenditionOutput from a local file. It
+// reports whether the file exists so the caller can skip absent derived
+// renditions without a second stat.
+//
+// knownHash / knownInfo are optional pre-computed facts: when the caller has
+// already read and probed the file (the immutable master), passing them avoids
+// a redundant full-file hash and a second ffprobe process spawn. A nil/empty
+// value falls back to reading the file itself.
+func (p *Processor) buildRenditionOutput(ctx context.Context, kind detail.RenditionKind, path, knownHash string, knownInfo *mediaexec.MediaInfo) (detail.RenditionOutput, bool) {
 	out := detail.RenditionOutput{
 		Kind:      kind,
 		LocalPath: path,
 		Filename:  filepath.Base(path),
 	}
-	if info, err := os.Stat(path); err == nil {
+	info, statErr := os.Stat(path)
+	if statErr == nil {
 		out.SizeBytes = info.Size()
+	} else {
+		// A missing/unreadable rendition must not surface as a zero-size
+		// success: the rendition list feeds the canonical Publisher.
+		p.log.Warn("rendition stat failed; size reported as zero",
+			zap.String("path", path), zap.String("kind", string(kind)), zap.Error(statErr))
 	}
-	if hash, _, err := digest.SHA256File(path); err == nil {
-		out.LegacyFileMD5 = hash
+	out.LegacyFileMD5 = knownHash
+	if out.LegacyFileMD5 == "" {
+		if hash, _, err := digest.SHA256File(path); err == nil {
+			out.LegacyFileMD5 = hash
+		} else {
+			// A zero hash would silently weaken the Drive-side integrity check
+			// and the dedup/identity surface for this rendition.
+			p.log.Warn("rendition hash failed; content hash omitted",
+				zap.String("path", path), zap.String("kind", string(kind)), zap.Error(err))
+		}
 	}
-	if info, err := p.ffmpeg.Probe(ctx, path); err == nil {
-		out.Width = info.Width
-		out.Height = info.Height
-		out.FPS = info.FPS
-		out.Bitrate = info.BitRate
+	media := knownInfo
+	if media == nil {
+		probed, err := p.ffmpeg.Probe(ctx, path)
+		if err == nil {
+			media = probed
+		} else {
+			// Zeroed width/height/fps/codec is a lie about the asset: it feeds
+			// the per-asset manifest and any certification check that reads it.
+			p.log.Warn("rendition probe failed; technical metadata omitted",
+				zap.String("path", path), zap.String("kind", string(kind)), zap.Error(err))
+		}
+	}
+	if media != nil {
+		out.Width = media.Width
+		out.Height = media.Height
+		out.FPS = media.FPS
+		out.Bitrate = media.BitRate
 		if kind != detail.RenditionKindThumbnail && kind != detail.RenditionKindStoryboard {
-			out.Codec = info.VideoCodec
+			out.Codec = media.VideoCodec
 		}
 	}
 	out.MimeType = mimeTypeForPath(path)
@@ -514,7 +566,7 @@ func (p *Processor) buildRenditionOutput(ctx context.Context, kind detail.Rendit
 	if out.Container != "" {
 		out.Container = out.Container[1:] // remove leading dot
 	}
-	return out
+	return out, statErr == nil
 }
 
 // mimeTypeForPath returns a best-effort MIME type based on the file extension.
@@ -541,9 +593,4 @@ func mimeTypeForPath(path string) string {
 	default:
 		return "application/octet-stream"
 	}
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

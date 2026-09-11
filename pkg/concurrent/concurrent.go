@@ -8,17 +8,66 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 )
+
+// ── Recovered-panic reporting ──────────────────────────────────────────
+//
+// A recovered goroutine panic is the most severe anomaly a fire-and-forget
+// path can hide: the caller never sees it, no error propagates, and the
+// work is simply lost. The sink below defaults to the stdlib logger so a
+// bare pkg/ consumer still keeps SOME signal, but the count is always
+// maintained and composition roots that own a structured logger MUST
+// install theirs via SetPanicReporter so the anomaly reaches zap/metrics
+// instead of degrading to an unstructured stderr line.
+
+// PanicReporter receives every recovered goroutine panic. goroutine is the
+// caller-supplied name (or a synthesized worker name); recovered is the
+// panic value.
+//
+// Implementations MUST be safe for concurrent use.
+type PanicReporter func(goroutine string, recovered any)
+
+var (
+	panicReporter   atomic.Pointer[PanicReporter]
+	panicsRecovered atomic.Int64
+)
+
+// SetPanicReporter installs the canonical structured sink for recovered
+// goroutine panics. Passing nil restores the default stdlib logger. The
+// recovered-panic counter is maintained independently and is unaffected.
+func SetPanicReporter(reporter PanicReporter) {
+	if reporter == nil {
+		panicReporter.Store(nil)
+		return
+	}
+	panicReporter.Store(&reporter)
+}
+
+// PanicsRecovered returns the process-wide count of recovered goroutine
+// panics since start. It is exported so a metrics exporter can surface the
+// anomaly even when no reporter is installed.
+func PanicsRecovered() int64 { return panicsRecovered.Load() }
+
+// reportPanic is the SINGLE sink for every recovered panic in this package.
+func reportPanic(goroutine string, recovered any) {
+	panicsRecovered.Add(1)
+	if reporter := panicReporter.Load(); reporter != nil {
+		(*reporter)(goroutine, recovered)
+		return
+	}
+	log.Printf("[panic recovery] goroutine %q panicked: %v", goroutine, recovered)
+}
 
 // ── SafeGo — fire-and-forget goroutines with panic recovery ─────────────
 
 // SafeGo runs fn in a new goroutine with panic recovery.
-// If fn panics, the panic is recovered and logged with the goroutine name.
+// If fn panics, the panic is recovered and reported with the goroutine name.
 func SafeGo(name string, fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[panic recovery] goroutine %q panicked: %v", name, r)
+				reportPanic(name, r)
 			}
 		}()
 		fn()
@@ -30,7 +79,7 @@ func SafeGoFunc[T any](name string, arg T, fn func(T)) {
 	go func(a T) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[panic recovery] goroutine %q panicked: %v", name, r)
+				reportPanic(name, r)
 			}
 		}()
 		fn(a)
@@ -73,7 +122,7 @@ func (g *Group) Go(name string, fn func() error) {
 		defer g.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[panic recovery] goroutine %q panicked: %v", name, r)
+				reportPanic(name, r)
 				g.recordError(&errPanic{name: name, val: r})
 			}
 		}()
@@ -187,11 +236,12 @@ func Map[T, R any](
 					err error
 				)
 				func() {
+					workerName := fmt.Sprintf("map-worker-%d", j.idx)
 					defer func() {
 						if r := recover(); r != nil {
-							log.Printf("[panic recovery] Map worker panicked: %v", r)
+							reportPanic(workerName, r)
 							err = &errPanic{
-								name: fmt.Sprintf("map-worker-%d", j.idx),
+								name: workerName,
 								val:  r,
 							}
 						}
@@ -236,25 +286,64 @@ loop:
 	return out, nil
 }
 
-// ParallelMap runs fn for each item with bounded concurrency. Prefer Map
-// for new code when context propagation and error returns are needed.
+// ParallelMap runs fn for each item with bounded concurrency. Results keep
+// item order (results[idx] belongs to items[idx]). Prefer Map for new code
+// when context propagation and error returns are needed.
+//
+// Concurrency is enforced by a fixed worker pool, not by a semaphore in front
+// of a goroutine-per-item spawn: the previous form created one goroutine (and
+// stack) per item regardless of the `concurrency` argument, so a large scene
+// or query slice paid for N schedulable goroutines while only `concurrency`
+// units of work ran. `concurrency <= 0` is clamped to 1 instead of producing a
+// zero-capacity semaphore that suspends every worker forever.
+//
+// Each item is isolated so a panicking fn cannot take down its worker (and
+// with it the process): the panic is reported through the package panic sink
+// and the item keeps its zero value.
 func ParallelMap[T, R any](
 	items []T,
 	concurrency int,
 	fn func(int, T) R,
 ) []R {
+	if len(items) == 0 {
+		return []R{}
+	}
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	if concurrency > len(items) {
+		concurrency = len(items)
+	}
+
 	results := make([]R, len(items))
+	indexes := make(chan int, len(items))
+	for i := range items {
+		indexes <- i
+	}
+	close(indexes)
+
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, concurrency)
-	for i, item := range items {
-		wg.Add(1)
-		go func(idx int, it T) {
+	wg.Add(concurrency)
+	for range concurrency {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			results[idx] = fn(idx, it)
-		}(i, item)
+			for idx := range indexes {
+				runParallelMapItem(results, idx, items[idx], fn)
+			}
+		}()
 	}
 	wg.Wait()
 	return results
+}
+
+// runParallelMapItem executes one ParallelMap item with panic isolation. Each
+// index is written by exactly one worker, so distinct slice elements are not
+// concurrently mutated.
+func runParallelMapItem[T, R any](results []R, idx int, item T, fn func(int, T) R) {
+	defer func() {
+		if r := recover(); r != nil {
+			reportPanic(fmt.Sprintf("parallel-map-item-%d", idx), r)
+		}
+	}()
+	results[idx] = fn(idx, item)
 }

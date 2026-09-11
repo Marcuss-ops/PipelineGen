@@ -91,7 +91,7 @@ func objectKey(sqlStr string) string {
 func main() {
 	targetDir, _ := filepath.Abs("migrations/sqlite")
 	if _, err := os.Stat(targetDir); err != nil {
-		for _, c := range []string{"migrations/sqlite", "refactored/migrations/sqlite", "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/migrations/sqlite"} {
+		for _, c := range []string{"migrations/sqlite", "refactored/migrations/sqlite"} {
 			if _, err := os.Stat(c); err == nil {
 				abs, _ := filepath.Abs(c)
 				targetDir = abs

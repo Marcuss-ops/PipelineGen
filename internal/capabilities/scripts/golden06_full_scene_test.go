@@ -5,7 +5,7 @@
 //	   ↓ auto content selection (annotations + certified word timing)
 //	OverlayPlan            (CompileOverlayPlan)
 //	   ↓
-//	chronon.render-plan.v1 (CompileChrononPlan)
+//	chronon render-plan (CompileChrononPlan)
 //	   ↓
 //	RenderingGen queue     (QueueRenderEnqueuer.EnqueueChrononPlan)
 //	   ↓ certified artifact reference
@@ -85,7 +85,7 @@ func golden06Timeline() *capabilityentities.EntityTimeline {
 // TestGolden06FullScriptScene drives the whole PipelineGen-side chain from a
 // deterministic script scene to the RenderingGen queue: auto content selection
 // (phrases, words, images, entity cards, number, quote, product, logo) →
-// OverlayPlan → chronon.render-plan.v1 → queue submit → certified artifact.
+// OverlayPlan → chronon render-plan → queue submit → certified artifact.
 func TestGolden06FullScriptScene(t *testing.T) {
 	timing := capabilityaudio.SpeechTimingArtifact{
 		Version:      capabilityaudio.SpeechTimingVersion,
@@ -134,22 +134,19 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	}
 	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
 
-	// 3. OverlayPlan → chronon.render-plan.v1.
-	compiled, err := capabilityoverlay.CompileChrononPlan(*plan)
-	require.NoError(t, err)
-	require.NotEmpty(t, compiled.Plan.Layers)
-	require.Equal(t, capabilityoverlay.ChrononSchema, compiled.Plan.Schema)
-
-	// 4. RenderingGen queue: submit + completed artifact (the worker's reply).
+	// 3. RenderingGen queue: submit the SEMANTIC OverlayPlan + completed
+	//    artifact (the worker's reply). RenderingGen owns the v2 lowering.
 	//    The fake client treats a pre-seeded job as idempotent (ErrJobExists),
 	//    so we seed the exact spec/assets the enqueuer would submit and the
 	//    completed artifact the worker would return — mirroring
 	//    TestQueueRenderEnqueuerChrononPlan.
-	spec, err := compiled.Marshal()
+	spec, err := json.Marshal(*plan)
 	require.NoError(t, err)
-	assets := make([]RenderQueueAsset, 0, len(compiled.Assets))
-	for _, a := range compiled.Assets {
-		assets = append(assets, RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
+	assets := make([]RenderQueueAsset, 0)
+	for _, item := range plan.Items {
+		for _, ref := range item.AssetRefs {
+			assets = append(assets, RenderQueueAsset{Hash: ref.SHA256, URL: ref.URL})
+		}
 	}
 	client := newFakeRenderQueueClient()
 	client.jobs["golden-06"] = RenderQueueJob{
@@ -191,14 +188,15 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.NotZero(t, analytics.Content.Words, "content census must count words")
 	require.NotZero(t, analytics.Content.Images, "content census must count images")
 
-	// The submitted queue job carries the chronon.render-plan.v1 document
-	// (not a media render-plan) and the content-addressed assets.
+	// The submitted queue job carries the semantic renderinggen.overlay-plan.v1
+	// document (RenderingGen lowers it to chronon.render-plan.v2) and the
+	// content-addressed assets.
 	submitted, ok := client.jobs["golden-06"]
 	require.True(t, ok, "job must be submitted to the queue")
 	var doc struct {
-		Schema string `json:"schema"`
+		SchemaVersion string `json:"schema_version"`
 	}
 	require.NoError(t, json.Unmarshal(submitted.OverlaySpec, &doc))
-	require.Equal(t, capabilityoverlay.ChrononSchema, doc.Schema)
+	require.Equal(t, capabilityoverlay.SchemaVersionPlan, doc.SchemaVersion)
 	require.NotEmpty(t, submitted.Assets)
 }

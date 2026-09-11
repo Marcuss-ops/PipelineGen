@@ -44,10 +44,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// AssetLocationExists is the narrow PG-media port the reconciler uses to
+// decide whether an asset_locations row exists. In PG-media SSOT mode the
+// authoritative reader is the PostgreSQL media database; in degraded/SQLite
+// mode the caller may inject a SQLite adapter. The port keeps the reconciler
+// engine-agnostic (P2-11, September 2026).
+type AssetLocationExists interface {
+	Exists(ctx context.Context, assetID, externalID string) (bool, error)
+}
+
 // PublicationIntentReconciler scans and recovers orphan publication intents.
 type PublicationIntentReconciler struct {
-	db  *sql.DB
-	log *zap.Logger
+	db             *sql.DB
+	log            *zap.Logger
+	locationExists AssetLocationExists
 }
 
 // NewReconciler creates a new PublicationIntentReconciler.
@@ -56,6 +66,17 @@ func NewReconciler(db *sql.DB, log *zap.Logger) *PublicationIntentReconciler {
 		log = zap.NewNop()
 	}
 	return &PublicationIntentReconciler{db: db, log: log}
+}
+
+// NewReconcilerWithLocations is the PG-media-aware ctor. When
+// locationExists is non-nil it is used for the asset_locations check;
+// otherwise the reconciler falls back to the SQLite db handle (degraded
+// mode).
+func NewReconcilerWithLocations(db *sql.DB, locationExists AssetLocationExists, log *zap.Logger) *PublicationIntentReconciler {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &PublicationIntentReconciler{db: db, log: log, locationExists: locationExists}
 }
 
 // ReconcileOrphanResult reports the outcome of one reconciliation sweep.
@@ -235,8 +256,13 @@ func (r *PublicationIntentReconciler) getJobStatus(ctx context.Context, jobID st
 }
 
 // hasAssetLocation checks whether an asset_locations row exists for the
-// given artifact_id or remote_file_id.
+// given artifact_id or remote_file_id. When a PG media port is wired the
+// check routes to PostgreSQL (authoritative); otherwise it falls back to
+// the SQLite handle (degraded mode).
 func (r *PublicationIntentReconciler) hasAssetLocation(ctx context.Context, artifactID, remoteFileID string) (bool, error) {
+	if r.locationExists != nil {
+		return r.locationExists.Exists(ctx, artifactID, remoteFileID)
+	}
 	var count int
 
 	// Check by artifact_id first (canonical lookup).

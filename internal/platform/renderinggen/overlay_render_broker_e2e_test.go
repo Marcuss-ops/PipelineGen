@@ -94,31 +94,23 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 		},
 	}
 
-	compiled, err := capoverlay.CompileChrononPlan(plan)
-	if err != nil {
-		t.Fatalf("compile timed plan: %v", err)
-	}
-
-	// Pin the timeline so a regression in the timing projection never silently
-	// shifts the rendered seconds away from the spec'd 0-6000/500-3500/1000-4000.
+	// Pin the semantic timeline so a regression in the timing projection never
+	// silently shifts the rendered seconds away from the spec'd window.
+	// RenderingGen owns the frame lowering.
 	wantTiming := map[string]struct{ StartMs, EndMs int64 }{
 		"background": {0, 4000},
 		"image":      {500, 3500},
 		"phrase":     {1000, 4000},
 	}
-	for _, layer := range compiled.Plan.Layers {
-		if want, ok := wantTiming[layer.ID]; ok {
-			canvasFPS := float64(compiled.Plan.Canvas.FPSNum) / float64(compiled.Plan.Canvas.FPSDen)
-			gotStart := int64(float64(layer.StartFrame) * 1000 / canvasFPS)
-			gotDuration := int64(float64(layer.DurationFrames) * 1000 / canvasFPS)
-			gotEnd := gotStart + gotDuration
-			if gotStart != want.StartMs || gotEnd != want.EndMs {
-				t.Fatalf("layer %s timing off: got [%d..%d] ms, want [%d..%d] ms",
-					layer.ID, gotStart, gotEnd, want.StartMs, want.EndMs)
+	for _, item := range plan.Items {
+		if want, ok := wantTiming[item.ID]; ok {
+			if item.StartMs != want.StartMs || item.EndMs != want.EndMs {
+				t.Fatalf("item %s timing off: got [%d..%d] ms, want [%d..%d] ms",
+					item.ID, item.StartMs, item.EndMs, want.StartMs, want.EndMs)
 			}
 		}
 	}
-	t.Logf("compiled plan timing pinned: BG 0-4000, IMAGE 500-3500, PHRASE 1000-4000 ✓")
+	t.Logf("semantic plan timing pinned: BG 0-4000, IMAGE 500-3500, PHRASE 1000-4000 ✓")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

@@ -24,7 +24,6 @@ package jobs
 
 import (
 	"database/sql"
-	"fmt"
 
 	"go.uber.org/zap"
 
@@ -35,7 +34,7 @@ import (
 )
 
 // Deps bundles the dependencies consumed by the outbox event handlers.
-// Each field is optional unless required by RegisterCoreHandlers; a nil
+// Each field is optional unless required by a handler registration; a nil
 // optional field means the corresponding optional handler is skipped.
 //
 // DB: *sql.DB backing store. Required for the DeliveryHandler
@@ -162,71 +161,14 @@ type Deps struct {
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
 // redeclare here.
 
-// RegisterCoreHandlers wires handlers that MUST be present when
-// cfg.Qdrant.Enabled is true (verdict Qdrant section #5, PR 3
-// fix/qdrant-outbox-fail-closed). Missing any mandatory dep returns a
-// typed error so BuildOutboxBundle aborts boot instead of warning.
-//
-//		Mandatory deps when cfg.Qdrant.Enabled:
-//
-//	  - indexer (IndexClipper; production concrete is *clipindexer.Service).
-//	  - deps.Jobs.SourceVersionQuerier (production concrete is
-//	    *assets.ClipsRepository — IndexingHandler source-version
-//	    supersede gate cannot run without it).
-//	  - deps.Jobs.VectorPointDeleter (production concrete is
-//	    *qdrant.IndexWriter from QdrantRuntime.Writer — PR 4
-//	    consolidated the previous QdrantDeleter type into this single
-//	    outbox.VectorPointDeleter port; IndexDeleteHandler cannot
-//	    issue Qdrant DELETE-points without it).
-//	  - deps.Jobs.AssetDeleter (production concrete is *assets.ClipsRepository
-//	    — IndexDeleteHandler cannot tombstone the SQLite row without
-//	    it).
-//
-// Operators reading the error get the literal name of the missing dep
-// so a grep of the boot log finds it instantly. The handler list is
-// NOT registered on failure so the caller can retry without
-// accumulating duplicates.
-//
-// Returns: nil on success, an error naming the first missing
-// dependency otherwise.
-func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps) error {
-	if registry == nil {
-		return fmtError("outbox RegisterCoreHandlers: registry is nil")
-	}
-	if indexer == nil {
-		return fmtError("outbox RegisterCoreHandlers: IndexingHandler mandatory dep missing (indexer=nil; buildQdrantDeps did not construct a ClipIndexer service)")
-	}
-	if deps == nil {
-		return fmtError("outbox RegisterCoreHandlers: deps is nil (composition omitted outbox.Deps — wiring bug)")
-	}
-	if deps.Jobs.SourceVersionQuerier == nil {
-		return fmtError("outbox RegisterCoreHandlers: IndexingHandler source-version gate cannot run (SourceVersionQuerier=nil; ClipsRepo was nil at BuildOutboxBundle call site despite cfg.Qdrant.Enabled=true)")
-	}
-	if deps.Jobs.VectorPointDeleter == nil {
-		return fmtError("outbox RegisterCoreHandlers: IndexDeleteHandler cannot run (VectorPointDeleter=nil; Qdrant enabled but no IndexWriter built from buildQdrantDeps)")
-	}
-	if deps.Jobs.AssetDeleter == nil {
-		// Reachable root cause: ClipsRepo was nil at the BuildOutboxBundle
-		// call site despite cfg.Qdrant.Enabled=true. The compound message
-		// previously listed "OR Qdrant.Enabled=false" which is unreachable
-		// because BuildOutboxBundle gates RegisterCoreHandlers behind
-		// `if cfg.Qdrant.Enabled`.
-		return fmtError("outbox RegisterCoreHandlers: IndexDeleteHandler cannot run (AssetDeleter=nil; ClipsRepo was nil at BuildOutboxBundle call site despite cfg.Qdrant.Enabled=true)")
-	}
-	core := []outboxevents.Handler{
-		buildIndexingHandler(indexer, deps.Jobs.SourceVersionQuerier, log),
-		NewIndexDeleteHandler(log, deps.Jobs.VectorPointDeleter, deps.Jobs.AssetDeleter),
-	}
-	for _, h := range core {
-		if err := registry.Register(h); err != nil {
-			return err
-		}
-	}
-	log.Info("outbox core handlers registered (fail-closed contract when cfg.Qdrant.Enabled)",
-		zap.Int("registered", len(core)),
-	)
-	return nil
-}
+// MEDIA-CUTOVER (September 2026): the retired `RegisterCoreHandlers` media/
+// Qdrant surface is DELETED. The media projection plane is the PostgreSQL
+// pgvector `PostgresIndexWorker` (asset.index.requested → embed →
+// media_embeddings → INDEXED); the SQLite outbox registers NO media/Qdrant
+// projection handler in ANY mode, and the composition root's
+// `registerOutboxCoreHandlers` unconditionally returns. A stray media event
+// in the SQLite outbox dead-letters loudly instead of projecting into
+// Qdrant. See docs/migrations/BASELINE_PLAN.md.
 
 // RegisterOptionalHandlers wires handlers that tolerate missing
 // dependencies (best-effort). Missing deps are logged at Info and
@@ -258,8 +200,8 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 // wire time. The application package no longer touches *sql.DB or os.
 //
 // Returns: the first registration error. The handler list is NOT
-// registered on failure; this keeps semantics compatible with
-// RegisterCoreHandlers.
+// registered on failure; this keeps semantics compatible across the
+// handler families.
 func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps, metadataExportHandler outboxevents.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
@@ -363,40 +305,3 @@ func fmtError(msg string) error { return &registryError{msg: msg} }
 type registryError struct{ msg string }
 
 func (e *registryError) Error() string { return e.msg }
-
-// buildIndexingHandler is the canonical constructor for the
-// IndexingHandler with auto-wired state-updater (PR-QDRANT-INDEXCLIP-GUARD,
-// July 2026).
-//
-// godlike/06 SSOT: the production IndexClipper concrete
-// (*clipindexer.Service) is the SAME instance that satisfies
-// clipindexer.IndexerStateUpdater (compile-time pinned at
-// internal/capabilities/indexing/clipindexer/state_writer.go:
-// `var _ IndexerStateUpdater = (*Service)(nil)`). When RegisterCoreHandlers
-// RegisterCoreHandlers receives a *Service from the composition root; the
-// type-assertion below auto-wires the IndexerStateUpdater port so
-// the ErrIndexClipDisabledButEventRequested branch can stamp
-// INDEXING_SKIPPED_NO_INDEXER on media_assets without a separate
-// Deps field.
-//
-// godlike/07 minimum-blast-radius: test fakes that satisfy
-// IndexClipper but NOT IndexerStateUpdater (e.g. mockIndexClipper in
-// the test files) get a *IndexingHandler with stateUpdater=nil —
-// the sentinel-detect branch still routes to retry correctly (the
-// err is returned regardless of state-update success per
-// godlike/07 fail-closed), but the state-update side-effect is
-// skipped. The handler logs a Warn line so the production wire
-// path's missing-port surface is auditable.
-//
-// Returns the wired handler for inclusion in the registry list.
-func buildIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
-	h := NewIndexingHandler(indexer, sourceQuerier, log)
-	if su, ok := indexer.(IndexerStateUpdater); ok {
-		h.WithStateUpdater(su)
-		return h
-	}
-	log.Info("outbox buildIndexingHandler: indexer does not implement IndexerStateUpdater; sentinel-driven state-write will be skipped (retry path still fires)",
-		zap.String("indexer_type", fmt.Sprintf("%T", indexer)),
-	)
-	return h
-}

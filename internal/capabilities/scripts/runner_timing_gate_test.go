@@ -195,6 +195,7 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	req.Languages = []Language{"en"}
 	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-render-frozen"
+	req.Render.Enabled = true
 
 	runID := "run-overlay-render-frozen"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -225,4 +226,43 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	// The render reference is persisted on the durable result.
 	require.NotNil(t, final.Result.OverlayRender, "render reference must be persisted")
 	require.Equal(t, runID, final.Result.OverlayRender.JobID)
+}
+
+func TestOverlayRender_DisabledKeepsSemanticPlanWithoutEnqueue(t *testing.T) {
+	repo := newInMemRunRepository()
+	textGen := newStubTextGenerator([]Scene{
+		{
+			ID: "scene-0", Index: 0,
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Annotations: overlayScene0Annotations(),
+			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		},
+	})
+	docPub := newStubDocumentPublisher()
+	renderEnq := &recordingOverlayRenderEnqueuer{}
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
+	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRenderEnqueuer(renderEnq)
+
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.Source.Type = SourceText
+	req.Languages = []Language{"en"}
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
+	req.Project = "overlay-render-disabled"
+	req.Render.Enabled = false
+
+	runID := "run-overlay-render-disabled"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status, "pre-render run must complete: %s", final.ErrorMessage)
+	require.NotNil(t, final.Result)
+	require.NotNil(t, final.Result.OverlayPlan, "semantic overlay plan must still be compiled")
+	require.Nil(t, renderEnq.captured(), "disabled render must not enqueue Chronon")
+	require.Nil(t, final.Result.OverlayRender, "disabled render must not persist a render reference")
 }

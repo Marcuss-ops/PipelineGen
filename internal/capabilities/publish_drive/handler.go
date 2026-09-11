@@ -43,6 +43,7 @@ import (
 
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
@@ -59,7 +60,7 @@ import (
 // agree on the literal value; a divergence test
 // (TestEventTypeAgreementWithStagingProducer) pins the contract
 // at the bottom of this file.
-const EventTypeArtifactStaged = "artifact.staged.v1"
+const EventTypeArtifactStaged = event.ArtifactStagedV1
 
 // ── Typed-error sentinel chain (godlike/07) ────────────────────────────
 

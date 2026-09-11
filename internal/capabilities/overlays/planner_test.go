@@ -251,14 +251,11 @@ func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 	if teslaCount != 1 {
 		t.Fatalf("keyword %q emitted %d times, want exactly 1", "TESLA", teslaCount)
 	}
-	// Kinetic words: every kept keyword compiles to a modern word preset.
-	compiled, err := CompileChrononPlan(plan)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, layer := range compiled.Plan.Layers {
-		if layer.Type == "text" && layer.Preset == "" {
-			t.Fatalf("text layer %q has empty preset", layer.ID)
+	// Kinetic words: every kept keyword carries a non-empty preset id, so
+	// RenderingGen can lower it without inventing a default.
+	for _, item := range plan.Items {
+		if item.TemplateID == "IMPORTANT_WORD" && item.PresetID == "" {
+			t.Fatalf("keyword item %q has an empty preset_id", item.ID)
 		}
 	}
 }

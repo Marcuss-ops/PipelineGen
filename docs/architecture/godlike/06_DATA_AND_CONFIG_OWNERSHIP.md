@@ -99,33 +99,33 @@ Every fact in the system has one canonical owner. No two packages may independen
 ## Canonical media_assets writer family
 
 `media_assets` writes have exactly one owner: the `persistence.AssetCommitter`
-port (implemented by `PostgresMediaCommitter` in media-SSOT mode;
-`SQLiteAssetCommitter` is migration-only) and its sibling
-`persistence.CanonicalAssetWriter` surface (`SQLiteMediaCommitter`). Every
-asset commit (YouTube, Artlist, local, voiceover, images, recovery) MUST
-route through `AssetCommitter.CommitAndIndex` / `CommitTx`. The canonical
-media search store is pgvector inside the same PostgreSQL SSOT
-(`internal/platform/postgres/media.MediaSearcher` implements the canonical
-`search.VectorStorePort`); in media-SSOT mode the composition root resolves
-the pgvector plane fail-closed and no Qdrant media collection is consulted.
-Direct SQL writes to `media_assets` outside this family
-are banned and enforced by the `percheck_media_assets_writer_canonical` CI
-gate (see godlike/08). Cutover certification:
-`make certify-media-cutover` (POSTGRES_MEDIA_SSOT gate).
+port, implemented by `PostgresMediaCommitter` in the canonical PostgreSQL +
+pgvector engine. Every asset commit (YouTube, Artlist, local, voiceover,
+images, recovery) MUST route through `AssetCommitter.CommitAndIndex` /
+`CommitTx`. The canonical media search store is pgvector inside the same
+PostgreSQL SSOT (`internal/platform/postgres/media.MediaSearcher` implements
+the canonical `search.VectorStorePort`); the composition root resolves the
+pgvector plane fail-closed and no Qdrant media collection is consulted.
 
-The canonical SQL-owning files (the SSOT family, 5 files as of the
-asset-persistence unification cutover, August 2026):
+MEDIA DEMOLITION (September 2026): the SQLite media writer family
+(`SQLiteAssetCommitter` / `SQLiteMediaCommitter` and the `asset_committer*`
+files of `internal/platform/sqlite/assets/imagesregistry`) has been REMOVED.
+PostgreSQL + pgvector is the SOLE production writer of `media_assets`. The
+only surviving SQLite write surface is the non-media mutation primitive
+`media_asset_mutations.go` (narrow UPDATEs, no commit, no outbox emission).
+Do not reintroduce a SQLite media writer: it is a violation, not an
+exemption.
 
-1. `internal/platform/sqlite/assets/imagesregistry/asset_committer.go`
-2. `internal/platform/sqlite/assets/imagesregistry/asset_committer_mutations.go`
-3. `internal/platform/sqlite/assets/imagesregistry/asset_committer_projection_mutations.go`
-4. `internal/platform/sqlite/assets/imagesregistry/canonical_clip_mutations.go`
-5. `internal/platform/sqlite/assets/imagesregistry/media_committer.go`
-
-The gate's allowlist (`mediaAssetsWriterCanonicalOwners` in
-`cmd/archcheck/scan/boundaries/percheck_media_assets_writer_canonical.go`)
-holds exactly these five files; any other file that writes `media_assets`
-SQL must delegate to this family or be migrated before it can be committed.
+Direct SQL writes to `media_assets` outside this family are banned and
+enforced by the `percheck_media_assets_writer_canonical` CI gate (see
+godlike/08). The gate resolves canonical ownership through
+`policy.IsCanonicalMediaWriter` (`cmd/archcheck/policy/exempt.go`), which is
+PACKAGE-based: the whole `internal/platform/postgres/media/` package IS the
+SSOT, plus the surviving SQLite primitive by explicit file. Package
+ownership is deliberate — the previous hand-maintained filename list drifted
+the moment a new canonical file landed (`delete_saga.go`, MEDIA-SSOT P0-2)
+and the gate then reported the SSOT owner itself as a violation. Cutover
+certification: `make certify-media-cutover` (POSTGRES_MEDIA_SSOT gate).
 
 ## Database rules
 

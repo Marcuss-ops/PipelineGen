@@ -35,8 +35,11 @@ type RenderAttemptAnalytics struct {
 	EncodeMS int64 `json:"encode_ms,omitempty"`
 
 	// Queue observation metrics. PollingSleepMS is the time spent sleeping
-	// between status polls; with the production 2s cadence it quantifies the
-	// polling-induced latency directly rather than attributing it to Chronon.
+	// between status polls; it quantifies polling-induced latency directly
+	// rather than attributing it to Chronon. On the event-driven path (the
+	// queue's job-status long poll) there is no client-side sleep, so it stays
+	// 0 while CompletionWaitMS still measures the true end-to-end observation
+	// wait.
 	CompletionWaitMS  int64 `json:"completion_wait_ms,omitempty"`
 	PollingSleepMS    int64 `json:"polling_sleep_ms,omitempty"`
 	PollingIntervalMS int64 `json:"polling_interval_ms,omitempty"`

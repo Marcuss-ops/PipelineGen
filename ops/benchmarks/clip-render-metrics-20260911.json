@@ -1,0 +1,31 @@
+{
+  "date": "2026-09-11",
+  "endpoint": "/api/clips/render",
+  "source_asset_id": "yt_T6x-kDiQsWM_203_252_v1",
+  "duration_seconds": 49,
+  "frames": 1176,
+  "certified_plain": {
+    "job_id": "job_1789147377163411663_9832e044",
+    "artifact_sha256": "cd639bf786c08208090ef322e7ec0b2c97a2c64bf24f90f582e18cc4a170761c",
+    "total_ms": 4887.114,
+    "render_ms": 3665.943,
+    "render_loop_ms": 1531.441,
+    "render_loop_fps": 767.904,
+    "realtime_factor": 26.394,
+    "nv12_to_rgba_frames": 0,
+    "rgba_to_nv12_frames": 0,
+    "software_fallback_nodes": 0,
+    "gpu_readback_bytes": 0
+  },
+  "concurrency_plain_4": {
+    "completed": 4,
+    "failed": 0,
+    "total_ms": [4761.49, 8411.963, 12112.119, 15540.843],
+    "render_loop_ms": [1523.415, 1530.313, 1524.222, 1558.199]
+  },
+  "not_certified": {
+    "text_watermark": "fragmented MTSDF output",
+    "background_asset": "DirectCudaYuv kernel dispatch failed at frame 0",
+    "burn_subtitles": "FullGraph/native surface path not certified"
+  }
+}

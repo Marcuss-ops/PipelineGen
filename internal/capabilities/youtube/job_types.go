@@ -3,7 +3,10 @@ package youtube
 import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 // Canonical youtube job type constants.
-// Per godlike/02 capability-specific constants live in their owning domain package.
+//
+// The SHARED wire strings are OWNED by internal/kernel/job (godlike/06 one
+// owner per fact); TypeClipExtract below is a compile-time re-export. The
+// youtube-only types have a single declaration site and stay here.
 const (
 	// TypeExtract is the canonical job type for youtube clip extraction
 	// (URL -> media_assets row + outbox).
@@ -28,8 +31,10 @@ const (
 	// registration). The historical wire string is
 	// "youtube_clip.extract" (with the underscore separator
 	// between youtube and clip — preserved for back-compat
-	// with in-flight SQLite jobs.type rows).
-	TypeClipExtract = "youtube_clip.extract"
+	// with in-flight SQLite jobs.type rows); it is owned by
+	// internal/kernel/job so the C3 registry, the runtime graph and the
+	// preparation planner all resolve the SAME value.
+	TypeClipExtract = job.TypeYouTubeClipExtract
 
 	// TypeRebuildSearchText is the canonical job type for the
 	// YouTube search-text rebuild pipeline (rebuild the

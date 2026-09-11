@@ -13,6 +13,7 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -189,7 +190,15 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	if p.log != nil {
-		p.log.Info("VidRush materialization started", zap.String("segment_id", segment.SegmentID), zap.Int("candidates", len(segment.Assets.Candidates)), zap.Int("secondary_images", len(segment.Assets.SecondaryImages)), zap.String("mode", plan.MediaPlan.Materialization.Mode))
+		driveFolderID := ""
+		planTitle := ""
+		planLanguage := ""
+		if plan != nil {
+			driveFolderID = strings.TrimSpace(plan.DriveFolderID)
+			planTitle = plan.Title
+			planLanguage = plan.Language
+		}
+		p.log.Info("VidRush materialization started", zap.String("segment_id", segment.SegmentID), zap.Int("candidates", len(segment.Assets.Candidates)), zap.Int("secondary_images", len(segment.Assets.SecondaryImages)), zap.String("mode", plan.MediaPlan.Materialization.Mode), zap.String("drive_folder_id", driveFolderID), zap.String("plan_title", planTitle), zap.String("plan_language", planLanguage))
 	}
 	out, err := p.materializeOne(ctx, plan, segment)
 	if err != nil {
@@ -294,7 +303,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) ([]scriptpkg.SegmentAssetCandidate, error) {
 		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 		attempts := make(map[string]int, 3)
-		readyImages := 0
+		readyImageGroups := make(map[string]struct{}, targetImages)
+		markReadyImage := func(candidate scriptpkg.SegmentAssetCandidate) {
+			if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
+				return
+			}
+			if group := vidRushImageGroup(candidate); group != "" {
+				readyImageGroups[group] = struct{}{}
+			}
+		}
 		for _, candidate := range candidates {
 			// Materialized caches are shared across runs, so a cached artifact is
 			// untrusted with respect to the current scene. Never let a stale
@@ -317,7 +334,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 				candidate = hydrated
 			}
-			if isImage && targetImages > 0 && readyImages >= targetImages {
+			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages {
 				// Keep the remaining remote hits for diagnostics/candidate-set
 				// hashing, but do not download or persist surplus images. This
 				// prevents Qdrant/Drive fan-out from exceeding the scene plan.
@@ -332,11 +349,16 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
-			if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
+			// A catalog hit is normally terminal and avoids a second download.
+			// For an entity image in a run with an explicit Drive output root,
+			// the run bundle is also an output contract: reacquire the source so
+			// the common finalizer can publish a copy into this job's images
+			// folder. Without this exception a warm catalog hit would keep only
+			// the old global vidrush link and reproduce the missing-image bug.
+			publishToRunOutput := entityImageOutputRequested(plan, candidate)
+			if readyVidRushCandidate(candidate) && !publishToRunOutput && (!candidate.IsLegacyCandidate() || legacyPersisted) {
 				materialized = append(materialized, candidate)
-				if isImage {
-					readyImages++
-				}
+				markReadyImage(candidate)
 				continue
 			}
 			refreshMaterialized := plan != nil && (plan.ForceRefresh || plan.MediaPlan.ForceRefreshAssets)
@@ -347,9 +369,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 							(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
 							readyVidRushCandidate(persisted) {
 							materialized = append(materialized, persisted)
-							if isImage {
-								readyImages++
-							}
+							markReadyImage(persisted)
 							continue
 						}
 					}
@@ -361,9 +381,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 						readyVidRushCandidate(persisted) {
 						materialized = append(materialized, persisted)
 						vidrushMaterializedCache.Store(key, persisted)
-						if isImage {
-							readyImages++
-						}
+						markReadyImage(persisted)
 						continue
 					}
 				}
@@ -430,6 +448,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			verified := lifecycle.verified
+			verified = routeEntityImageToGenerationOutput(plan, verified)
 			cacheKey := vidRushCandidateIdentity(candidate)
 			var persisted scriptpkg.SegmentAssetCandidate
 			err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
@@ -455,7 +474,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				return nil, fmt.Errorf("vidrush_materialization: entity catalog materialization: %w", catalogErr)
 			}
 			if isImage && readyVidRushCandidate(persisted) {
-				readyImages++
+				markReadyImage(persisted)
 			}
 			if key := vidRushCandidateIdentity(persisted); key != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
 				vidrushMaterializedCache.Store(key, persisted)
@@ -534,6 +553,36 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// reused, 1 per freshly finalized internet_images candidate otherwise.
 	updated.Cache.InternetImagesNewUploads = newInternetImageUploads
 	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
+}
+
+// routeEntityImageToGenerationOutput carries the generation destination all
+// the way to the common finalizer. The materializer must not upload through a
+// second ad-hoc Drive client: the finalizer remains the only publication
+// boundary, while this small projection tells it where this run's image
+// bundle belongs.
+func routeEntityImageToGenerationOutput(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
+	if plan == nil || strings.TrimSpace(plan.DriveFolderID) == "" || !isEntityImageCandidate(artifact.Candidate) {
+		return artifact
+	}
+	artifact.OutputDriveFolderID = strings.TrimSpace(plan.DriveFolderID)
+	artifact.OutputDriveSubpath = []string{
+		filesystem.SafeFolderName(plan.Title),
+		filesystem.SafeFolderName(plan.Language),
+		"images",
+	}
+	return artifact
+}
+
+func entityImageOutputRequested(plan *scriptpkg.ResolvedGenerationPlan, candidate scriptpkg.SegmentAssetCandidate) bool {
+	return plan != nil && strings.TrimSpace(plan.DriveFolderID) != "" &&
+		strings.TrimSpace(candidate.SourceURL) != "" && isEntityImageCandidate(candidate)
+}
+
+func isEntityImageCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
+	if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
+		return false
+	}
+	return strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")
 }
 
 func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
@@ -669,6 +718,19 @@ func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []script
 	return out
 }
 
+// vidRushImageGroup is the identity used by image-only selection: one durable
+// image per entity/query, rather than several catalog rows for the same name.
+func vidRushImageGroup(candidate scriptpkg.SegmentAssetCandidate) string {
+	group := strings.ToLower(strings.TrimSpace(candidate.Query))
+	if group == "" {
+		group = strings.ToLower(strings.TrimSpace(candidate.Entity))
+	}
+	if group == "" {
+		group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
+	}
+	return group
+}
+
 // selectExactVidRushImages is the final selected-image projection. In an
 // Images-only plan, internet_images is the complete provider allowlist and
 // image_generation is deliberately excluded. Candidates are grouped by their
@@ -696,13 +758,7 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
-		group := strings.ToLower(strings.TrimSpace(candidate.Query))
-		if group == "" {
-			group = strings.ToLower(strings.TrimSpace(candidate.Entity))
-		}
-		if group == "" {
-			group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
-		}
+		group := vidRushImageGroup(candidate)
 		if _, exists := seenGroups[group]; exists {
 			// Candidate order is discovery order. Semantic selection belongs to
 			// MediaSampler and must not be reconstructed in this boundary.
@@ -738,13 +794,7 @@ func prioritizeExactVidRushImageCandidates(candidates []scriptpkg.SegmentAssetCa
 			others = append(others, candidate)
 			continue
 		}
-		group := strings.ToLower(strings.TrimSpace(candidate.Query))
-		if group == "" {
-			group = strings.ToLower(strings.TrimSpace(candidate.Entity))
-		}
-		if group == "" {
-			group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
-		}
+		group := vidRushImageGroup(candidate)
 		index, exists := groupIndex[group]
 		if !exists {
 			index = len(groups)

@@ -69,6 +69,9 @@ type VidRushPipeline struct {
 	// pipeline builds a SceneIRSegmentEnricher that compiles a SceneIR
 	// (Fase 1) and extracts source-grounded entities via this port.
 	NERPort VisualNERPort
+	// PhraseExtractor is the model-owned important-phrase port. It is copied
+	// into each run-scoped SceneIRSegmentEnricher alongside NERPort.
+	PhraseExtractor ImportantPhraseExtractor
 	// StockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver
 	// (Fase 5). When set (with SamplerPort), the pipeline builds a
 	// SemanticProviderResolver that consults local Qdrant/SQLite first.

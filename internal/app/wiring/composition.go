@@ -33,11 +33,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose media postgres: %w", err)
 	}
 
-	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
+	repos, err := BuildRepoBundle(ctx, cfg, dbs, log, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose repos: %w", err)
 	}
-
+	// P1-7 (Sept 2026): MediaRepoBundle is the sole media-authoritative
+	// bundle (PostgreSQL). RepoBundle retains only operational SQLite
+	// surfaces; new media reads/writes MUST target Media, not Repos.
+	mediaBundle := NewMediaRepoBundle(mediaPG, repos.TextTrackRepo)
+	_ = mediaBundle
 	search, err := BuildSearchBundle(ctx, cfg, dbs, log, repos)
 	if err != nil {
 		return nil, fmt.Errorf("compose search: %w", err)
@@ -176,6 +180,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		MediaPostgres:        mediaPG,
 		Drive:                driveBundle,
 		Repos:                repos,
+		Media:                mediaBundle,
 		Search:               search,
 		Process:              process,
 		TextTracks:           textTracks,

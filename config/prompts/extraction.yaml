@@ -9,8 +9,8 @@ entity_extraction: |
   Every item must start with "- ".
 
   ## frasi_importanti
-  - [first evocative sentence verbatim from the segment]
-  - [second evocative sentence verbatim from the segment]
+  - [short evocative source fragment, 2-4 words, excluding named entities]
+  - [second short evocative source fragment, 2-4 words, excluding named entities]
 
   ## entity_senza_testo
   - VisualSubject1: precise visual search description
@@ -41,7 +41,9 @@ entity_extraction: |
   2. "parole_importanti": Extract a MAXIMUM of {{.EntityCount}} concrete, segment-specific keywords.
      - Prefer nouns and noun phrases useful for image/video retrieval.
      - Reject stop words, generic words, repeated names, dates without context, and vague abstractions.
-  3. "frasi_importanti": Extract up to 5 evocative verbatim fragments that actually appear in the segment.
+  3. "frasi_importanti": Extract up to 5 meaningful verbatim fragments of 2-4 words that actually appear in the segment.
+     - Do not return a person, place, organization, or partial name; names belong only in "nomi_speciali".
+     - Prefer the action, claim, event, or descriptive fragment that explains why the segment matters.
   4. "entity_senza_testo": Map identifiable visual subjects to concise, concrete search descriptions using "Subject: Description".
   5. "artlist_phrases": Extract EXACTLY 3 to 5 SHORT VISUAL CONCEPT PHRASES, ideally 2-4 words, suitable for stock-footage search.
 

@@ -59,7 +59,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			structure.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
 		{"file_size_strict", structure.ScanFileLinesStrict},
-		{"percheck_finalizer_no_direct_sql", boundaries.ScanFinalizerNoDirectSQL},
+		// The finalizer-package SQL fence is owned by
+		// percheck_media_assets_writer_canonical (scoped asset_locations /
+		// outbox_events rules) — the two scanners encoded the same fact.
 		{"percheck_media_assets_writer_canonical", boundaries.ScanMediaAssetsWriterCanonical},
 		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
@@ -121,5 +123,10 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_speech_timing_ssot", governance.ScanSpeechTimingSSOT},
 		{"percheck_project_derivation_ssot", governance.ScanProjectDerivationSSOT},
 		{"percheck_evidence_precedence_ssot", governance.ScanEvidencePrecedenceSSOT},
+		// ONE data-driven gate for every canonical identity fact: event names
+		// and envelope schema versions (internal/kernel/event) plus shared job
+		// types (internal/kernel/job). The vocabulary is read from the owner
+		// packages' registries, never copied here.
+		{"percheck_identity_ssot", governance.ScanIdentitySSOT},
 	}
 }

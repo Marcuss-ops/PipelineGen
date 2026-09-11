@@ -42,10 +42,11 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	if err != nil {
 		return nil, fmt.Errorf("clip render runtime: build RenderingGen executor: %w", err)
 	}
-	// Tighten the queue poll cadence when configured. Each poll tick is
-	// pure dead time on a finished job, so the configured value (default 0
-	// → the executor's built-in 2 s) is applied before the runtime is
-	// cached in the composition root.
+	// Completion is event-driven (the queue client long-polls
+	// GET /jobs/{id}/wait), so this only tunes the polling FALLBACK used when
+	// the queue server lacks that route. The configured value (default 0 →
+	// the built-in 250 ms) is applied before the runtime is cached in the
+	// composition root.
 	if cfg.External.RenderingGenPollIntervalMS > 0 {
 		executor.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 	}

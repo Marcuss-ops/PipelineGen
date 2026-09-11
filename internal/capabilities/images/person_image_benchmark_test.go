@@ -1,14 +1,10 @@
 package images
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -472,14 +468,3 @@ func logConcurrencyRun(t *testing.T, run personImageBenchConcurrencyRun) {
 	t.Logf("  other provider errs   %d", run.OtherErrors)
 	t.Logf("  at-least-1-valid rate %.1f%%", run.CorrectImageRate*100)
 }
-
-// Ensure the host package symbols are accessible.
-var _ = fmt.Sprintf
-var _ = bytes.Compare
-var _ = image.Decode
-var _ = io.ReadAll
-var _ = http.NewRequest
-var _ = sync.Mutex{}
-var _ = zap.NewNop
-var _ = testing.T{}
-var _ = context.Background

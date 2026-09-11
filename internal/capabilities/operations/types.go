@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Scope identifies the request family that an Operation belongs to.
@@ -39,7 +41,11 @@ const (
 	// POST /api/script/generate submissions. The pre-FASE-2
 	// Idempotency-Key header (255-char opaque) maps 1:1 to the
 	// operations.idempotency_key column for this scope.
-	ScopeScriptGenerate Scope = "script.generate"
+	//
+	// The wire string is owned by internal/kernel/job (godlike/06); the
+	// scope IS the script.generate job family, so it aliases the owner
+	// constant rather than re-declaring the literal.
+	ScopeScriptGenerate Scope = Scope(job.TypeScriptGenerate)
 )
 
 // IsValid returns true if s is a known operation scope.

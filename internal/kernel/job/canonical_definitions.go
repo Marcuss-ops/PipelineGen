@@ -46,40 +46,54 @@ import (
 	"time"
 )
 
-// Canonical type string literals. These mirror the capability-owned
-// constants in internal/kernel/<capability>/job_types.go. Keeping the
-// literal values here (rather than importing the domain packages)
-// preserves the kernel's stdlib-only import discipline while still
-// giving the composition root a stable set of canonical JobDefinitions.
+// Canonical job-type wire strings.
+//
+// OWNERSHIP (godlike/06 one owner per fact): THIS package is the single
+// owner of every SHARED job-type identity. A job type is a wire fact — it
+// is the SQLite jobs.type discriminator and the C3 dispatcher routing key —
+// so two declarations of the same literal are a silent dispatch hazard.
+//
+// Domain and capability packages MUST alias these
+// (e.g. script.TypeGenerate = job.TypeScriptGenerate,
+// images.TypeImagesGenerate = job.TypeImagesGenerate) instead of
+// re-declaring the literal. percheck_identity_ssot fails closed on a
+// re-declaration outside this package.
+//
+// The previous revision declared private canonicalTypeXxx copies "to
+// preserve the kernel's stdlib-only import discipline". That claim was
+// inaccurate (kernel/asset already imports kernel/media + kernel/digest) and
+// the copies had already drifted: TypeScriptGenerateItem held
+// "script.generate.item" while the value actually REGISTERED with the C3
+// registry is "script.generate_item" (kernel/script.TypeGenerateItem), so
+// the preparation planner matched a job type no producer ever emits. One
+// owner per fact makes that class of drift impossible.
 const (
-	canonicalTypeScriptGenerate = "script.generate"
-	canonicalTypeImagesGenerate = "images.generate"
-	canonicalTypeAssetsResolve  = "assets.resolve"
-	canonicalTypeClipRegister   = "media.clip"
+	TypeScriptGenerate       = "script.generate"
+	TypeScriptGenerateItem   = "script.generate_item"
+	TypeImagesGenerate       = "images.generate"
+	TypeImageGenerateGoogle  = "image.generate.google"
+	TypeAssetsResolve        = "assets.resolve"
+	TypeMediaClip            = "media.clip"
+	TypeAssetTextMaterialize = "asset.text.materialize"
 
 	TypeVoiceoverGenerate     = "voiceover.generate"
 	TypeVoiceoverBatch        = "voiceover.batch"
 	TypeVoiceoverGenerateItem = "voiceover.generate_item"
 	TypeVoiceoverPromo        = "voiceover.promo"
 
-	// Re-exported canonical job type constants previously in
-	// internal/kernel/job (deleted July 2026). Callers that
-	// imported `job "internal/kernel/job"` can now import
-	// `job "internal/kernel/job"` unmodified.
-	TypeYouTubeClipExtract   = "youtube.clip.extract"
-	TypeScriptGenerate       = "script.generate"
-	TypeScriptGenerateItem   = "script.generate.item"
-	TypeAssetTextMaterialize = "asset.text.materialize"
-	TypeSubtitleGenerate     = "subtitle.generate"
-	TypeCatalogSync          = "catalog.sync"
-	TypeSystemCleanup        = "system.cleanup"
-	TypeDriveFolderSync      = "drive.folder_sync"
+	// The youtube clip-extraction wire string is the historical
+	// "youtube_clip.extract" (underscore separator), preserved for
+	// back-compat with in-flight SQLite jobs.type rows and owned here so the
+	// preparation planner and the C3 registry cannot disagree.
+	TypeYouTubeClipExtract = "youtube_clip.extract"
+	TypeSubtitleGenerate   = "subtitle.generate"
+	TypeCatalogSync        = "catalog.sync"
+	TypeSystemCleanup      = "system.cleanup"
+	TypeDriveFolderSync    = "drive.folder_sync"
 
 	// TypeClipRender is the canonical job type for the clip.render
 	// capability (canonical VeloxEditing-compatible clip
-	// post-processing). The literal lives here (kernel owns shared
-	// job-type identities) and is re-exported by the owning capability
-	// (internal/capabilities/cliprender) + the application registry.
+	// post-processing).
 	TypeClipRender = "clip.render"
 )
 
@@ -87,7 +101,7 @@ const (
 // script.generate — the workflow entry-point that fans out to
 // images.generate + assets.resolve + document.generate downstream.
 var CanonicalScriptGenerate = JobDefinition{
-	Type:           canonicalTypeScriptGenerate,
+	Type:           TypeScriptGenerate,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        60 * time.Minute,
@@ -97,8 +111,8 @@ var CanonicalScriptGenerate = JobDefinition{
 		"script.generate",
 		"media.script.generate",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", canonicalTypeScriptGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", canonicalTypeScriptGenerate),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", TypeScriptGenerate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", TypeScriptGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -111,7 +125,7 @@ var CanonicalScriptGenerate = JobDefinition{
 // images.generate — heavy queue, multi-image artifacts, capacity-2
 // concurrency.
 var CanonicalImagesGenerate = JobDefinition{
-	Type:           canonicalTypeImagesGenerate,
+	Type:           TypeImagesGenerate,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "heavy",
 	Timeout:        30 * time.Minute,
@@ -120,8 +134,8 @@ var CanonicalImagesGenerate = JobDefinition{
 	RequiredCapabilities: []Capability{
 		"media.image.generate",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", canonicalTypeImagesGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", canonicalTypeImagesGenerate),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", TypeImagesGenerate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", TypeImagesGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -134,7 +148,7 @@ var CanonicalImagesGenerate = JobDefinition{
 // assets.resolve — pure-data job. Zero ArtifactPolicy:
 // ProducesArtifacts=false + RequireManifest=false (pure-data default).
 var CanonicalAssetsResolve = JobDefinition{
-	Type:           canonicalTypeAssetsResolve,
+	Type:           TypeAssetsResolve,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        10 * time.Minute,
@@ -144,8 +158,8 @@ var CanonicalAssetsResolve = JobDefinition{
 		"qdrant.search",
 		"asset.reference",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", canonicalTypeAssetsResolve),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", canonicalTypeAssetsResolve),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", TypeAssetsResolve),
 	// Pure-data job: zero ArtifactPolicy left implicit.
 }
 
@@ -159,7 +173,7 @@ var CanonicalAssetsResolve = JobDefinition{
 // (mirror of youtube_clip.extract); the broker's legacy Complete is
 // the canonical mark-SUCCEEDED seam.
 var CanonicalClipRegister = JobDefinition{
-	Type:           canonicalTypeClipRegister,
+	Type:           TypeMediaClip,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        30 * time.Minute,
@@ -169,8 +183,8 @@ var CanonicalClipRegister = JobDefinition{
 		"media.clip.extract",
 		"drive.write",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", canonicalTypeClipRegister),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", canonicalTypeClipRegister),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeMediaClip),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeMediaClip),
 	// ProducesArtifacts=false: per-item tx owns artifact persistence.
 }
 

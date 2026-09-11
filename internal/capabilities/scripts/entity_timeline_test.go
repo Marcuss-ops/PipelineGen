@@ -195,10 +195,8 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Equal(t, string(capabilityoverlay.KindEntityCard), item.Kind)
 	require.Equal(t, "person_default", item.TemplateID)
 	require.Equal(t, int64(700), item.StartMs, "scene-1 Tom Hanks card starts at 0.700s")
-
-	compiled, err := capabilityoverlay.CompileChrononPlan(plan)
-	require.NoError(t, err)
-	require.Len(t, compiled.Plan.Layers, 4)
+	require.NotEmpty(t, item.PresetID, "every entity card must pin a preset")
+	require.NotEmpty(t, item.Text, "every entity card must carry display text")
 }
 
 func occurrenceByID(t *testing.T, scene capabilityentities.SceneEntityTimeline, entityID string) capabilityentities.EntityOccurrence {

@@ -2,10 +2,10 @@
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): this file is the
 // canonical RE-EXPORT surface for the registry's per-job-type data shapes.
-// The canonical string literals live in their owning capability domain
-// packages (per godlike/02 §Capability-specific constants stay in their
-// owning domain package). Every Type* constant here is an alias (= pkg.TypeXxx)
-// — ZERO new string literals.
+// The canonical string literals are OWNED by the neutral leaf owner: shared
+// job-type identities live in internal/kernel/job (godlike/06 one owner per
+// fact), domain-only types live in their owning domain package. Every Type*
+// constant here is an alias (= pkg.TypeXxx) — ZERO new string literals.
 //
 //   - RegistryEntry + JobPolicy (type alias) — the per-job-type
 //     policy record surface (Wave 19 / P1-9, June 2026).
@@ -210,7 +210,7 @@ const (
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
 	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
-	TypeImageGenerateGoogle   = "image.generate.google"
+	TypeImageGenerateGoogle   = job.TypeImageGenerateGoogle
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
 	// (NOT in codec.go) so the package-level re-export surface stays in
@@ -275,7 +275,7 @@ const (
 	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
 	TypeYouTubeClipExtract     = youtube.TypeClipExtract
 	TypeScriptGenerate         = script.TypeGenerate
-	TypeImagesGenerate         = "images.generate"
+	TypeImagesGenerate         = job.TypeImagesGenerate
 	TypeBulkUploadYouTubeClips = media.TypeBulkUploadYouTubeClips
 	TypeAssetTextMaterialize   = asset.TypeTextMaterialize
 

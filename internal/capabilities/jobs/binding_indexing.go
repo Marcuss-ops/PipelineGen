@@ -17,12 +17,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // BindingIndexRequestSchemaVersion is the only schema version this
-// handler accepts.
-const BindingIndexRequestSchemaVersion = "binding.index.requested.v1"
+// handler accepts. OWNED by internal/kernel/event (godlike/06);
+// compile-time re-export.
+const BindingIndexRequestSchemaVersion = event.BindingIndexRequestedV1Schema
 
 // BindingIndexer is the narrow surface the handler needs to update
 // the Qdrant projection for a concept. Production wiring passes the

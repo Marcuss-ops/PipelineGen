@@ -52,14 +52,28 @@ func (r *registryProcessingErrorRepo) DeleteAll(context.Context, string) error  
 
 var _ detail.ProcessingRepository = (*registryProcessingErrorRepo)(nil)
 
+// P1-5 (Sept 2026): asset_processing is operational best-effort SQLite and
+// MUST NOT make a durable PG media commit fail. The registry logs the
+// processing error but returns nil so the caller sees the durable media row.
 func TestClipsRegistryUpsertMediaPropagatesProcessingError(t *testing.T) {
 	cause := errors.New("registry complete failed")
 	processing := &registryProcessingErrorRepo{completeErr: cause}
-	registry := NewClipsRegistry(nil, nil, nil, nil, processing, processingTestCommitter{})
+	registry := NewClipsRegistry(nil, nil, nil, processing, processingTestCommitter{})
 
 	err := registry.UpsertMedia(context.Background(), &MediaRecord{ID: "clip-registry", Status: "ACTIVE"})
 
-	if !errors.Is(err, cause) {
-		t.Fatalf("error = %v, want processing cause", err)
+	if err != nil {
+		t.Fatalf("error = %v, want nil (processing is best-effort, media commit already durable)", err)
+	}
+}
+
+func TestClipsRegistryUpsertMediaProcessingBestEffortDoesNotBlockPGCommit(t *testing.T) {
+	cause := errors.New("processing write failed")
+	processing := &registryProcessingErrorRepo{completeErr: cause}
+	registry := NewClipsRegistry(nil, nil, nil, processing, processingTestCommitter{})
+
+	err := registry.UpsertMedia(context.Background(), &MediaRecord{ID: "clip-best-effort", Status: "ACTIVE", MediaType: "audio"})
+	if err != nil {
+		t.Fatalf("best-effort processing must not fail UpsertMedia: %v", err)
 	}
 }

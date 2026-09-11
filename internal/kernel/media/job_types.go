@@ -1,7 +1,12 @@
 package media
 
+import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+
 // Canonical media job type constants.
-// Per godlike/02 capability-specific constants live in their owning domain package.
+//
+// The SHARED wire strings are OWNED by internal/kernel/job (godlike/06 one
+// owner per fact); TypeClipRegister below is a compile-time re-export. The
+// media-only types have a single declaration site and stay here.
 const (
 	// TypeBulkUploadYouTubeClips is the canonical job type for
 	// bulk uploading a list of YouTube clips to the operator's
@@ -26,7 +31,7 @@ const (
 	// canonical; renaming the identifier does NOT change the
 	// wire value so in-flight jobs / orchestration records
 	// continue to dispatch post cutover.
-	TypeClipRegister = "media.clip"
+	TypeClipRegister = job.TypeMediaClip
 
 	// ── Commits 9.1 (PR-KERNEL-JOB-POPULATE follow-up, July 2026) ───
 	// The following constants are required by the back-compat

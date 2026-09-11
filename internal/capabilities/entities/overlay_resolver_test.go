@@ -99,40 +99,28 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 	require.Equal(t, int64(53_460), third.EndMs)
 }
 
-// TestResolveEntityOverlayPlan_CompilesToChronon certifies the full chain the
-// spec asks for BEFORE Chronon: EntityTimeline → OverlayPlan → concrete
-// chronon.render-plan.v1 layers. The entity card must appear exactly on the
-// frames where the entity is spoken: 48.240s @ 30fps = frame 1447, duration
-// 0.120s = 4 frames.
-func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
+// TestResolveEntityOverlayPlan_SemanticCardWindow certifies the chain the spec
+// asks for BEFORE Chronon: EntityTimeline → OverlayPlan. PipelineGen owns the
+// semantic window (the entity card appears exactly while the entity is
+// spoken); RenderingGen owns the frame lowering and asserts it separately.
+func TestResolveEntityOverlayPlan_SemanticCardWindow(t *testing.T) {
 	timeline := entityTimelineFixture(t)
 	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-002", "video-002", "", 1280, 720, 30, 1)
 	require.NoError(t, err)
+	require.Equal(t, capabilityoverlay.SchemaVersionPlan, plan.SchemaVersion)
+	require.Equal(t, "plan-entity-002", plan.PlanID)
+	require.Len(t, plan.Items, 3)
 
-	compiled, err := capabilityoverlay.CompileChrononPlan(plan)
-	require.NoError(t, err)
-	require.Equal(t, capabilityoverlay.ChrononSchema, compiled.Plan.Schema)
-	require.Equal(t, 1, compiled.Plan.Version)
-	require.Equal(t, "plan-entity-002", compiled.Plan.JobID)
-	require.Len(t, compiled.Plan.Layers, 3)
-
-	layerByID := map[string]capabilityoverlay.ChrononLayer{}
-	for _, layer := range compiled.Plan.Layers {
-		layerByID[layer.ID] = layer
-	}
-
-	// scene-3 Tom Hanks starts at frame 1447 and lasts five seconds = 150 frames.
-	tom := layerByID["overlay-scene-3-tom-hanks"]
-	require.Equal(t, "text", tom.Type)
-	require.Equal(t, findItem(t, plan, tom.ID).PresetID, tom.Preset)
+	// scene-3 Tom Hanks is spoken at 48.240s for five seconds.
+	tom := findItem(t, plan, "overlay-scene-3-tom-hanks")
 	require.Equal(t, "Tom Hanks", tom.Text)
-	require.Equal(t, int64(1447), tom.StartFrame)
-	require.Equal(t, int64(150), tom.DurationFrames)
+	require.NotEmpty(t, tom.PresetID)
+	require.Equal(t, int64(48240), tom.StartMs)
+	require.Equal(t, int64(5000), tom.EndMs-tom.StartMs)
 
-	// scene-0 Tom Hanks at frame 0.
-	first := layerByID["overlay-scene-0-tom-hanks"]
-	require.Equal(t, int64(0), first.StartFrame)
-	require.Equal(t, int64(150), first.DurationFrames)
+	// scene-0 Tom Hanks starts at 0.
+	first := findItem(t, plan, "overlay-scene-0-tom-hanks")
+	require.Equal(t, int64(0), first.StartMs)
 }
 
 // TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic repeats the
@@ -164,24 +152,15 @@ func TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic(t *testing.T)
 	require.NoError(t, err)
 	require.True(t, reflect.DeepEqual(first, second), "same job/scene/item identities must produce identical OverlayPlans")
 
-	firstChronon, err := capabilityoverlay.CompileChrononPlan(first)
-	require.NoError(t, err)
-	secondChronon, err := capabilityoverlay.CompileChrononPlan(second)
-	require.NoError(t, err)
-	require.True(t, reflect.DeepEqual(firstChronon.Plan, secondChronon.Plan), "same job/scene/item identities must produce identical Chronon plans")
-
 	for _, item := range first.Items {
 		t.Logf("PRESET_REPLAY_TABLE job=%s scene=%s item=%s preset=%s render_key=%s", jobID, item.SceneID, item.ID, item.PresetID, item.RenderKey)
-	}
-	for i, layer := range firstChronon.Plan.Layers {
-		require.Equal(t, first.Items[i].PresetID, layer.Preset, "layer %q preset must match semantic plan", layer.ID)
 	}
 }
 
 func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
 	for _, entityType := range []string{"PERSON", "ORGANIZATION", "LOCATION", "UNKNOWN"} {
 		got := capabilityoverlay.SelectEntityNamePreset("test-job", "scene", "entity-"+entityType, entityType)
-		require.Contains(t, []string{"name_glow_typewriter", "name_glow_slide", "name_glow_pop"}, got, entityType)
+		require.Contains(t, []string{"name_glow_slide", "name_glow_pop"}, got, entityType)
 	}
 }
 

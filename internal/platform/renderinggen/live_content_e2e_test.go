@@ -2,7 +2,6 @@ package renderinggen
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -102,115 +101,35 @@ func TestLiveContentShowcaseE2E(t *testing.T) {
 		},
 	}
 
-	// Compile through the production compiler and lock the content upgrades
-	// on the compiled document before enqueueing.
-	compiled, err := capoverlay.CompileChrononPlan(plan)
-	if err != nil {
-		t.Fatalf("compile content plan: %v", err)
+	// Lock the content upgrades on the SEMANTIC plan before enqueueing; the
+	// visual lowering (layer geometry, collision slot layout, animation
+	// projection) is RenderingGen's compiler and is asserted by its tests.
+	itemByID := map[string]capoverlay.OverlayItem{}
+	for _, item := range plan.Items {
+		itemByID[item.ID] = item
 	}
-	phraseOK := false
-	var phrase *capoverlay.ChrononLayer
-	var imgA, imgB *capoverlay.ChrononLayer
-	for i := range compiled.Plan.Layers {
-		layer := &compiled.Plan.Layers[i]
-		switch layer.ID {
-		case "phrase_long":
-			if layer.Preset == "" {
-				t.Fatalf("long phrase compiled without a semantic preset: %+v", layer)
-			}
-			if layer.Animation == nil || layer.Animation.Preset != "fade_in" {
-				t.Fatalf("long phrase did not carry the animation override fade_in: %+v", layer.Animation)
-			}
-			phrase = layer
-			phraseOK = true
-		case "image_a":
-			imgA = layer
-		case "image_b":
-			imgB = layer
-		}
+	phraseItem, ok := itemByID["phrase_long"]
+	if !ok {
+		t.Fatal("missing phrase_long item")
 	}
-	if !phraseOK {
-		t.Fatal("missing phrase_long layer")
+	if phraseItem.PresetID == "" {
+		t.Fatalf("long phrase compiled without a semantic preset: %+v", phraseItem)
 	}
-	if imgA == nil || imgB == nil {
-		t.Fatal("missing image layers")
+	if itemByID["image_a"].PresetID == "" || itemByID["image_b"].PresetID == "" {
+		t.Fatalf("image overlays must carry image presets: a=%q b=%q", itemByID["image_a"].PresetID, itemByID["image_b"].PresetID)
 	}
-	if len(imgA.Position) != 2 || len(imgB.Position) != 2 {
-		t.Fatalf("image layers must carry resolved positions: a=%v b=%v", imgA.Position, imgB.Position)
-	}
-	if imgA.Position[0] == imgB.Position[0] && imgA.Position[1] == imgB.Position[1] {
-		t.Fatalf("collision layout failed: image_a and image_b share %v", imgA.Position)
-	}
-	t.Logf("content plan compiled: phrase preset=%s animation=%s image_a=%v image_b=%v",
-		phrase.Preset, phrase.Animation.Preset, imgA.Position, imgB.Position)
-
-	// The scriptgen enqueuer compiles internally and re-emits assets from
-	// its own locateAssets pass — that pass DOES NOT project fonts the
-	// planning compile didn't list. To satisfy Chronon's font_asset lookup
-	// for both DejaVuSans and Poppins-Bold we hand-build the queue job here
-	// and append the Poppins-Bold asset alongside what the compile emitted.
-	spec, err := json.Marshal(compiled.Plan)
-	if err != nil {
-		t.Fatalf("marshal plan: %v", err)
-	}
-	assets := make([]scriptgen.RenderQueueAsset, 0, len(compiled.Assets)+1)
-	for _, a := range compiled.Assets {
-		assets = append(assets, scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
-	}
-	alreadyHasPoppins := false
-	for _, a := range assets {
-		if a.Hash == goldenPoppinsBoldHash {
-			alreadyHasPoppins = true
-			break
-		}
-	}
-	if !alreadyHasPoppins {
-		assets = append(assets, scriptgen.RenderQueueAsset{Hash: goldenPoppinsBoldHash, URL: goldenPoppinsBoldPath})
-	}
+	t.Logf("semantic content plan: phrase preset=%s animation=%v", phraseItem.PresetID, phraseItem.Params["animation"])
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	client := New(queueURL)
-	job := scriptgen.RenderQueueJob{
-		ID:          jobID,
-		JobType:     capoverlay.JobTypeRender,
-		OverlaySpec: spec,
-		Assets:      assets,
+	enqueuer, err := scriptgen.NewQueueRenderEnqueuer(New(queueURL))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := client.Submit(ctx, job); err != nil {
-		t.Fatalf("submit render job: %v", err)
+	ref, err := enqueuer.EnqueueChrononPlan(ctx, plan)
+	if err != nil {
+		t.Fatalf("enqueue render job: %v", err)
 	}
-	deadline := time.Now().Add(2 * time.Minute)
-	var ref scriptgen.RenderReference
-	for {
-		current, err := client.Get(ctx, jobID)
-		if err != nil {
-			t.Fatalf("poll render job: %v", err)
-		}
-		switch current.State {
-		case "completed":
-			if current.Artifact == nil {
-				t.Fatal("completed job has nil artifact")
-			}
-			ref = scriptgen.RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: current.Artifact}
-			goto done
-		case "failed":
-			reason := current.FailReason
-			if reason == "" {
-				reason = "unknown failure"
-			}
-			t.Fatalf("render job %s failed: %s", jobID, reason)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("render job %s did not complete before deadline", jobID)
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("poll deadline: %v", ctx.Err())
-		case <-time.After(2 * time.Second):
-		}
-	}
-done:
 	if ref.JobID != jobID || ref.Status != "COMPLETED" || ref.Artifact == nil {
 		t.Fatalf("unexpected live render reference: %+v", ref)
 	}

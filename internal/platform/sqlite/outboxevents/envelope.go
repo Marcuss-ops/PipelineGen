@@ -68,12 +68,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // ReindexEnvelopeV1Schema is the canonical schema_version literal
-// for asset.index.requested.v1 events. Mirrored from outbox.Dispatcher
-// (see application side for the production writers).
-const ReindexEnvelopeV1Schema = "asset.index.requested.v1"
+// for asset.index.requested.v1 events. OWNED by internal/kernel/event
+// (godlike/06 one owner per fact); this is a compile-time re-export, not a
+// second declaration.
+const ReindexEnvelopeV1Schema = event.AssetIndexRequestedV1Schema
 
 // forceEventKeySuffix is appended to the event_key ONLY when
 // BuildReindexEnvelopeV1Force is called (force=true). Lets a forced

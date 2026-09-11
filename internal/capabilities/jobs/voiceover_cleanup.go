@@ -52,6 +52,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/googleapi"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -60,7 +61,7 @@ import (
 // "voiceover.cleanup.requested.v1" literally. Mismatch is TERMINAL
 // (godlike/07 — no fake availability; producers upgrade rather than
 // retrying into a repair loop).
-const VoiceoverCleanupSchemaVersion = "voiceover.cleanup.requested.v1"
+const VoiceoverCleanupSchemaVersion = event.VoiceoverCleanupRequestedV1Schema
 
 // VoiceoverCleanupDriver is the narrow Drive surface the
 // VoiceoverCleanupHandler uses for orphan file deletion. Declared

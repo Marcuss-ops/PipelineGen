@@ -180,6 +180,7 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	req.Languages = []Language{"en"}
 	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "3scene-cert"
+	req.Render.Enabled = true
 
 	runID := "run-3scene-vertical-slice"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

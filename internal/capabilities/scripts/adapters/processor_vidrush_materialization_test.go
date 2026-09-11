@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,48 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestRouteEntityImageToGenerationOutput(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:         "Michael Jordan: A Story",
+		Language:      "en",
+		DriveFolderID: "drive-root",
+	}
+	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
+		AssetID: "entity-image-michael-jordan", Provider: scriptpkg.VidRushProviderInternetImages,
+		Entity: "Michael Jordan",
+	}}
+	got := routeEntityImageToGenerationOutput(plan, artifact)
+	if got.OutputDriveFolderID != "drive-root" {
+		t.Fatalf("output drive folder = %q, want drive-root", got.OutputDriveFolderID)
+	}
+	wantPath := []string{"Michael Jordan_ A Story", "en", "images"}
+	if !reflect.DeepEqual(got.OutputDriveSubpath, wantPath) {
+		t.Fatalf("output drive subpath = %#v, want %#v", got.OutputDriveSubpath, wantPath)
+	}
+}
+
+func TestRouteEntityImageToGenerationOutputIgnoresNonEntityMedia(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "en", DriveFolderID: "drive-root"}
+	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
+		AssetID: "scene-image", Provider: scriptpkg.VidRushProviderInternetImages,
+	}}
+	got := routeEntityImageToGenerationOutput(plan, artifact)
+	if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
+		t.Fatalf("non-entity image was routed to output: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+	}
+}
+
+func TestEntityImageOutputRequestedForWarmCatalogHit(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{DriveFolderID: "drive-root"}
+	candidate := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Michael Jordan",
+		SourceURL: "https://images.example/michael-jordan.jpg",
+	}
+	if !entityImageOutputRequested(plan, candidate) {
+		t.Fatal("entity image with a source URL and output root must be republished into the run bundle")
+	}
+}
 
 type materializationProviderStub struct{}
 

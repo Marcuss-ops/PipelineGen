@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -47,6 +48,13 @@ type VisualEntity struct {
 // production implementation; the rule it enforces is NO EVIDENCE → NO ENTITY.
 type VisualNERPort interface {
 	Extract(ctx context.Context, sourceText string, entityCount int) ([]VisualEntity, error)
+}
+
+// ImportantPhraseExtractor is the NLP semantic phrase surface. It is kept
+// separate from VisualNER: the latter owns named entities, while this port
+// asks the language model to identify meaningful source-grounded fragments.
+type ImportantPhraseExtractor interface {
+	ExtractImportantPhrases(ctx context.Context, sourceText string, limit int, language, model string) ([]string, error)
 }
 
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
@@ -91,7 +99,8 @@ func (f MediaCertSpecResolverFunc) ResolveMediaCertSpec(plan *scriptpkg.Resolved
 // + the VisualNER entities, so downstream provider search consumes
 // SourceText + Profile (never NarrationText).
 type SceneIRSegmentEnricher struct {
-	nerPort VisualNERPort
+	nerPort         VisualNERPort
+	phraseExtractor ImportantPhraseExtractor
 }
 
 // NewSceneIRSegmentEnricher wires the new enricher. nerPort must be non-nil.
@@ -100,6 +109,15 @@ func NewSceneIRSegmentEnricher(nerPort VisualNERPort) (*SceneIRSegmentEnricher, 
 		return nil, fmt.Errorf("scriptgeneration: VisualNERPort is required for SceneIRSegmentEnricher")
 	}
 	return &SceneIRSegmentEnricher{nerPort: nerPort}, nil
+}
+
+// SetImportantPhraseExtractor injects the NLP phrase extractor. The
+// enrichment path never invents phrases when this port is absent; this keeps
+// deterministic entity NER and model-driven phrase extraction distinct.
+func (e *SceneIRSegmentEnricher) SetImportantPhraseExtractor(extractor ImportantPhraseExtractor) {
+	if e != nil {
+		e.phraseExtractor = extractor
+	}
 }
 
 // Enrich compiles a SceneIR from the committed scene and extracts entities.
@@ -187,16 +205,18 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		NounChunks: entitiesToStrings(entities),
 		Concepts:   extractedToConcepts(extractedEntities),
 	}
-	// VisualNER returns source-grounded noun phrases, while the downstream
-	// overlay/document surfaces also need one explicit editorial phrase. Keep
-	// that phrase grounded in the same extracted evidence.
-	if includeImportantPhrases {
-		for _, entity := range entities {
-			if strings.Contains(strings.TrimSpace(entity.Text), " ") {
-				entityResult.ImportantPhrases = []string{entity.Text}
-				break
-			}
+	// Important phrases come from the injected NLP/model extractor. This
+	// runner only validates and grounds its output; it never derives phrases
+	// from the entity list.
+	if includeImportantPhrases && e.phraseExtractor != nil {
+		phrases, phraseErr := e.phraseExtractor.ExtractImportantPhrases(
+			ctx, ir.SourceText, extraction.MaxImportantPhrasesPerSegment,
+			generationPlanLanguage(plan), generationPlanModel(plan),
+		)
+		if phraseErr != nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("important phrase extract: %w", phraseErr)
 		}
+		entityResult.ImportantPhrases = groundImportantPhrases(ir.SourceText, entities, phrases, extraction.MaxImportantPhrasesPerSegment)
 	}
 	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
 	if err != nil {
@@ -206,10 +226,9 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	visual := scriptpkg.BuildSegmentVisualProfile(ir.Profile)
 	visualProfile := &visual
 	artlistQueries := scriptpkg.BuildArtlistQueries(ir.Profile, 5)
-	// Entity extraction is the source for identity-image queries. When a PERSON
-	// exists, image lookup is narrowed to that best named identity; otherwise
-	// the historical entity fan-out is preserved. Do not replace this with the
-	// broader visual-profile query builder, which defeats entity caching.
+	// Entity extraction is the source for identity-image queries. PERSON
+	// identities are queried independently; the broader visual-profile query
+	// builder is not used because it defeats entity-level caching.
 	if !includeEntities {
 		imageQueries = nil
 	}
@@ -239,41 +258,119 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	return result, nil
 }
 
+func generationPlanLanguage(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return ""
+	}
+	return plan.Language
+}
+
+func generationPlanModel(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return ""
+	}
+	return plan.Model
+}
+
+func groundImportantPhrases(source string, entities []VisualEntity, phrases []string, limit int) []string {
+	if limit <= 0 {
+		limit = len(phrases)
+	}
+	out := make([]string, 0, min(limit, len(phrases)))
+	seen := make(map[string]struct{}, len(phrases))
+
+	// Entity spans do not depend on the phrase being tested, so they are
+	// resolved ONCE per segment instead of once per (phrase, entity) pair. The
+	// previous nested resolution made this gate O(phrases × entities × source
+	// length) on every scene.
+	entitySpans := make([]scriptpkg.AnnotationSpan, 0, len(entities))
+	for _, entity := range entities {
+		if entitySpan, entityOK := findEntitySpan(source, entity.Text); entityOK {
+			entitySpans = append(entitySpans, entitySpan)
+		}
+	}
+
+	for _, phrase := range phrases {
+		phrase = strings.TrimSpace(phrase)
+		if len(strings.Fields(phrase)) < 2 {
+			continue
+		}
+		// Keep the phrase surface free of proper-name runs even when the
+		// entity extractor missed a name. This is a validation gate for the
+		// model output, not a phrase generator or a replacement value.
+		if containsProperNamePair(phrase) {
+			continue
+		}
+		span, ok := findEntitySpan(source, phrase)
+		if !ok {
+			continue
+		}
+		// A phrase is editorial text, not an entity-bearing label. Reject
+		// model spans that overlap any extracted named entity, including
+		// partial forms such as "LeBron James and Johann" or "Sebastian
+		// Bach". Those belong to the entity surface only.
+		phraseOverlapsEntity := false
+		for _, entitySpan := range entitySpans {
+			if span.StartRune < entitySpan.EndRune && entitySpan.StartRune < span.EndRune {
+				phraseOverlapsEntity = true
+				break
+			}
+		}
+		if phraseOverlapsEntity {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(span.Text))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, span.Text)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func containsProperNamePair(value string) bool {
+	previousTitle := false
+	// FieldsSeq iterates without materialising the []string that
+	// strings.Fields would allocate for every candidate phrase.
+	for raw := range strings.FieldsSeq(value) {
+		word := strings.Trim(raw, ".,;:!?\"'’()[]{}")
+		currentTitle := false
+		for _, r := range word {
+			currentTitle = unicode.IsUpper(r)
+			break
+		}
+		if currentTitle && previousTitle {
+			return true
+		}
+		previousTitle = currentTitle
+	}
+	return false
+}
+
 // imageSearchEntities derives the identity surface from the normal NLP
 // entities. PERSON is the canonical named-identity surface for image search;
-// when a text contains one or more PERSON entities, only the best one is sent
-// to the image provider. All extracted entities remain available in the NLP
-// result and overlay annotations.
+// every grounded PERSON is sent to the image provider so each identity can be
+// indexed independently. If no PERSON exists, the historical entity fan-out
+// is preserved.
 func imageSearchEntities(entities []VisualEntity) []VisualEntity {
 	if len(entities) == 0 {
 		return nil
 	}
-	best := -1
-	for i, entity := range entities {
+	persons := make([]VisualEntity, 0, len(entities))
+	for _, entity := range entities {
 		if !strings.EqualFold(string(entity.Type), string(scriptpkg.EntityTypePerson)) {
 			continue
 		}
-		if best < 0 || visualEntityRanksBefore(entity, entities[best]) {
-			best = i
-		}
+		persons = append(persons, entity)
 	}
-	if best < 0 {
-		return entities
+	if len(persons) > 0 {
+		return persons
 	}
-	return []VisualEntity{entities[best]}
-}
-
-func visualEntityRanksBefore(candidate, current VisualEntity) bool {
-	if candidate.Score != current.Score {
-		return candidate.Score > current.Score
-	}
-	if candidate.Start != current.Start {
-		return candidate.Start < current.Start
-	}
-	if candidate.End != current.End {
-		return candidate.End < current.End
-	}
-	return strings.TrimSpace(candidate.Text) < strings.TrimSpace(current.Text)
+	return append([]VisualEntity(nil), entities...)
 }
 
 // visualImageAnchor extracts the subject phrase from the first source clause.
@@ -528,7 +625,6 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 	for i, seg := range segments {
 		out[i] = seg
 		entities := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
-		allowedValues := make(map[string]struct{}, len(seg.Insights.Entities))
 		for _, entity := range seg.Insights.Entities {
 			kind := scriptpkg.NormalizeAnnotationType(entity.Type)
 			if !scriptpkg.IsAnnotationEntityKind(kind) {
@@ -540,74 +636,6 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 				continue
 			}
 			entities = append(entities, entity)
-			allowedValues[strings.ToLower(entity.Value)] = struct{}{}
-		}
-		// Entity-image extraction deliberately selects the best PERSON as the
-		// protagonist query. Keep that same selected identity on the render
-		// surface; otherwise the full NLP entity list (which remains available
-		// in the source result) creates a false fanout mismatch at certification.
-		// Only narrow when at least one query matches an imageable entity, so
-		// generic non-entity runs retain their historical entity surface.
-		queryValues := make(map[string]struct{}, len(seg.Insights.ImageQueries))
-		for _, query := range seg.Insights.ImageQueries {
-			if value := normalizeProtagonistQuery(query); value != "" {
-				queryValues[value] = struct{}{}
-			}
-		}
-		if len(queryValues) > 0 && len(queryValues) < len(entities) {
-			// Provider enrichment may decorate a selected query (for example
-			// with "portrait") and therefore not compare equal to the source
-			// surface. Select exactly one source entity per distinct query, with
-			// the first PERSON as the deterministic protagonist fallback. This
-			// keeps the render/certification surface aligned with the image fanout
-			// while the complete NLP entity list remains upstream in the result.
-			matched := make([]scriptpkg.ExtractedEntity, 0, len(queryValues))
-			used := make(map[string]struct{}, len(queryValues))
-			for query := range queryValues {
-				for _, entity := range entities {
-					if normalizeProtagonistQuery(entity.Value) == query {
-						matched = append(matched, entity)
-						used[normalizeProtagonistQuery(entity.Value)] = struct{}{}
-						break
-					}
-				}
-			}
-			if len(matched) < len(queryValues) {
-				for _, entity := range entities {
-					if !strings.EqualFold(entity.Type, "PERSON") {
-						continue
-					}
-					key := normalizeProtagonistQuery(entity.Value)
-					if _, ok := used[key]; ok {
-						continue
-					}
-					matched = append(matched, entity)
-					used[key] = struct{}{}
-					if len(matched) == len(queryValues) {
-						break
-					}
-				}
-			}
-			if len(matched) < len(queryValues) {
-				for _, entity := range entities {
-					key := normalizeProtagonistQuery(entity.Value)
-					if _, ok := used[key]; ok {
-						continue
-					}
-					matched = append(matched, entity)
-					used[key] = struct{}{}
-					if len(matched) == len(queryValues) {
-						break
-					}
-				}
-			}
-			if len(matched) > 0 {
-				entities = matched
-				allowedValues = make(map[string]struct{}, len(entities))
-				for _, entity := range entities {
-					allowedValues[strings.ToLower(entity.Value)] = struct{}{}
-				}
-			}
 		}
 		out[i].Insights.Entities = entities
 		out[i].Insights.ImportantWords = nil
@@ -629,9 +657,6 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 			if q == "" || key == "" {
 				continue
 			}
-			if _, ok := allowedValues[key]; !ok {
-				continue
-			}
 			if _, ok := seenQueries[key]; ok {
 				continue
 			}
@@ -641,12 +666,6 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 		out[i].Insights.ImageQueries = queries
 	}
 	return out
-}
-
-func normalizeProtagonistQuery(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.TrimSuffix(strings.TrimSuffix(value, "'s"), "’s")
-	return strings.Join(strings.Fields(value), " ")
 }
 
 // toMediaResultSegments projects the VidRushSegmentResult slice into the

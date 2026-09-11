@@ -54,13 +54,9 @@ func TestPresetCertificationMatrixE2E(t *testing.T) {
 			jobID := baseJobID + "-" + cell.Family + "-" + cell.Preset
 			plan := capoverlay.BuildPresetCertificationPlan(cell, jobID)
 
-			compiled, err := capoverlay.CompileChrononPlan(plan)
-			if err != nil {
-				t.Fatalf("compile %s/%s: %v", cell.Family, cell.Preset, err)
-			}
-			for i := range compiled.Plan.Layers {
-				if compiled.Plan.Layers[i].ID != "background_video" && compiled.Plan.Layers[i].Preset != cell.Preset {
-					t.Fatalf("compiled preset = %q, want %q", compiled.Plan.Layers[i].Preset, cell.Preset)
+			for _, item := range plan.Items {
+				if item.ID != "background_video" && item.PresetID != cell.Preset {
+					t.Fatalf("semantic preset = %q, want %q", item.PresetID, cell.Preset)
 				}
 			}
 

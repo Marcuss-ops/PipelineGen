@@ -7,6 +7,7 @@ package renderinggen
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
+	"golang.org/x/sync/errgroup"
 )
 
 // Client adapts the queue's public client to scriptgen.RenderQueueClient.
@@ -90,6 +92,28 @@ func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, 
 	if err != nil {
 		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen get: %w", err)
 	}
+	return toScriptJob(job), nil
+}
+
+// WaitTerminal implements scriptgen.RenderQueueWaiter over the queue's
+// job-status long poll (GET /jobs/{id}/wait). The enqueuer observes a
+// terminal render at the state transition instead of at the next polling
+// tick; the queue client degrades to polling on its own when the wait route
+// is absent (older server).
+func (c *Client) WaitTerminal(ctx context.Context, id string) (scriptgen.RenderQueueJob, error) {
+	if c == nil || c.q == nil {
+		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen wait: client is not configured")
+	}
+	job, err := c.q.WaitTerminal(ctx, id)
+	if err != nil {
+		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen wait: %w", err)
+	}
+	return toScriptJob(job), nil
+}
+
+// toScriptJob maps a queue wire job onto the capability's typed job. It is the
+// single projection shared by Get and WaitTerminal.
+func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 	return scriptgen.RenderQueueJob{
 		ID:          job.ID,
 		OverlaySpec: job.RenderPlan,
@@ -97,7 +121,7 @@ func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, 
 		State:       string(job.State),
 		FailReason:  job.FailReason,
 		Artifact:    toScriptArtifact(job.Artifact),
-	}, nil
+	}
 }
 
 // Retry resets a failed job back to pending state.
@@ -347,14 +371,13 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if err != nil {
 		return err
 	}
-	written, copyErr := io.Copy(file, resp.Body)
-	if copyErr == nil {
-		_, copyErr = file.Seek(0, io.SeekStart)
-	}
-	var gotSHA string
-	if copyErr == nil {
-		gotSHA, copyErr = digest.SHA256Reader(file)
-	}
+	// Hash while streaming: the digest is computed from the exact bytes that
+	// land on disk in the same io.Copy that writes them, so the file is never
+	// re-read. Re-reading the whole artifact to hash it (the previous
+	// Seek(0)+SHA256Reader form) doubled the disk I/O of every certified
+	// download on the render critical path.
+	hasher := digest.NewSHA256()
+	written, copyErr := io.Copy(io.MultiWriter(file, hasher), resp.Body)
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
@@ -362,6 +385,7 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if closeErr != nil {
 		return closeErr
 	}
+	gotSHA := hex.EncodeToString(hasher.Sum(nil))
 	if expectedSize > 0 && written != expectedSize {
 		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
@@ -404,30 +428,40 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 	if plan.Watermark != nil && plan.Watermark.SHA256 != "" {
 		paths[plan.Watermark.SHA256] = plan.Watermark.Path
 	}
+	// The source, background, subtitle and watermark/font objects are
+	// independent. Probe/upload them concurrently, but keep a small bound so
+	// one render cannot monopolise the object-store connection pool. This is
+	// the clip-render equivalent of the shared prefetcher's four-transfer cap.
+	var group errgroup.Group
+	group.SetLimit(4)
 	for _, ref := range refs {
-		path := paths[ref.Hash]
-		if path == "" {
-			// overlayPlanAssets carries a LocalPath for assets it reads directly
-			// (subtitle/watermark fonts); the paths map above only knows the
-			// plan-owned files. Prefer the ref's own source so a Poppins
-			// subtitle font is uploaded like any other font.
-			path = ref.LocalPath
-		}
-		if path == "" {
-			return fmt.Errorf("asset %s has no resolved local path", ref.Hash)
-		}
-		present, err := objectStored(ctx, store, ref.Hash)
-		if err != nil {
-			return fmt.Errorf("asset %s probe: %w", ref.Hash, err)
-		}
-		if present {
-			continue
-		}
-		if err := streamPutFile(ctx, store, ref.Hash, path); err != nil {
-			return fmt.Errorf("upload %s: %w", ref.Hash, err)
-		}
+		ref := ref
+		group.Go(func() error {
+			path := paths[ref.Hash]
+			if path == "" {
+				// overlayPlanAssets carries a LocalPath for assets it reads directly
+				// (subtitle/watermark fonts); the paths map above only knows the
+				// plan-owned files. Prefer the ref's own source so a Poppins
+				// subtitle font is uploaded like any other font.
+				path = ref.LocalPath
+			}
+			if path == "" {
+				return fmt.Errorf("asset %s has no resolved local path", ref.Hash)
+			}
+			present, err := objectStored(ctx, store, ref.Hash)
+			if err != nil {
+				return fmt.Errorf("asset %s probe: %w", ref.Hash, err)
+			}
+			if present {
+				return nil
+			}
+			if err := streamPutFile(ctx, store, ref.Hash, path); err != nil {
+				return fmt.Errorf("upload %s: %w", ref.Hash, err)
+			}
+			return nil
+		})
 	}
-	return nil
+	return group.Wait()
 }
 
 func boolPtr(b bool) *bool { return &b }
@@ -441,6 +475,13 @@ func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 }
 
 func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval time.Duration) (scriptgen.RenderQueueJob, error) {
+	// Event-driven completion: the queue's job-status long poll returns the
+	// instant the job reaches a terminal state, removing the tail latency of
+	// the polling cadence. Queues without the wait capability (older servers,
+	// test doubles) keep the polling loop below.
+	if waiter, ok := q.(scriptgen.RenderQueueWaiter); ok {
+		return waiter.WaitTerminal(ctx, id)
+	}
 	if interval <= 0 {
 		interval = 500 * time.Millisecond
 	}
@@ -474,4 +515,5 @@ func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval t
 }
 
 var _ scriptgen.RenderQueueClient = (*Client)(nil)
+var _ scriptgen.RenderQueueWaiter = (*Client)(nil)
 var _ cliprender.RenderExecutor = (*ClipRenderExecutor)(nil)

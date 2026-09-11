@@ -24,7 +24,24 @@ import (
 // prefetch uploads and certified-artifact downloads). Without a timeout
 // a hanging store would pin the caller — and the lease it holds —
 // forever.
-var objectStoreHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+var objectStoreHTTPClient = &http.Client{
+	Timeout:   5 * time.Minute,
+	Transport: objectStoreTransport(),
+}
+
+// objectStoreTransport sizes the shared connection pool for the object
+// store's real concurrency. The prefetch bridge uploads up to four assets in
+// parallel to the same host (errgroup.SetLimit(4)) and the same client serves
+// every subsequent HEAD/PUT/GET, so the default MaxIdleConnsPerHost=2 would
+// close and rebuild connections between jobs. A larger idle pool keeps the
+// concurrent transfers on reused keep-alive connections instead of paying a
+// fresh TCP (and TLS, when configured) handshake per request.
+func objectStoreTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 64
+	transport.MaxIdleConnsPerHost = 32
+	return transport
+}
 
 // NewHTTPAssetPrefetcher bridges durable image bindings (verified
 // remote URL) into RenderingGen's content-addressed object store. The

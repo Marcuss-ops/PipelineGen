@@ -72,13 +72,29 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 		if fileErr != nil {
 			continue
 		}
-		imageURL := firstNonEmptyImageURL(filePayload.Thumbnail.URL, filePayload.Preferred.URL, filePayload.Original.URL)
+		// Prefer a sufficiently large source for PERSON identity images. The
+		// thumbnail may be a valid JPEG but still fail the catalog's minimum
+		// quality gate (for example 600x812); keep it as the final fallback.
+		imageURL := firstNonEmptyImageURL(filePayload.Preferred.URL, filePayload.Original.URL, filePayload.Thumbnail.URL)
 		if imageURL == "" || strings.HasSuffix(strings.ToLower(strings.Split(imageURL, "?")[0]), ".svg") {
 			continue
 		}
-		width, height := filePayload.Thumbnail.Width, filePayload.Thumbnail.Height
+		width, height := filePayload.Preferred.Width, filePayload.Preferred.Height
 		if width <= 0 || height <= 0 {
 			width, height = filePayload.Original.Width, filePayload.Original.Height
+		}
+		if width <= 0 || height <= 0 {
+			width, height = filePayload.Thumbnail.Width, filePayload.Thumbnail.Height
+		}
+		// A valid Commons file can still be unusable for an identity card. Keep
+		// searching when the selected source is below the PERSON image quality
+		// floor so a later, larger result can be materialized instead.
+		longSide := width
+		if height > longSide {
+			longSide = height
+		}
+		if longSide < 800 || width*height < 400000 {
+			continue
 		}
 		return retrieved.RetrievalSearchResult{
 			Provider: detail.ProviderWikimediaCommons, Origin: detail.ImageOriginRetrieved,

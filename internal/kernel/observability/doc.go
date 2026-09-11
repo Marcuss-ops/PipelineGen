@@ -5,7 +5,7 @@
 //
 // It owns the canonical cross-capability observability contract shared by
 // every job family (script.generate, voiceover.generate, stock.run,
-// youtube.clip.extract, transcription, indexing, VidRush, cleanup and
+// youtube_clip.extract, transcription, indexing, VidRush, cleanup and
 // reconciliation). The contract is:
 //
 //	Run        — one job execution (created by RunObserver.StartRun)

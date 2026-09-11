@@ -26,6 +26,8 @@ import (
 
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // DriveDeleteRequestSchemaVersion is the canonical, EXACT string the
@@ -38,7 +40,10 @@ import (
 // Producers MUST send "asset.drive.delete_requested.v1" literally.
 // Mismatch is TERMINAL — no retry — so producers upgrade instead of
 // silently retrying on what looks like a routine failure.
-const DriveDeleteRequestSchemaVersion = "asset.drive.delete_requested.v1"
+//
+// OWNED by internal/kernel/event (godlike/06); this is a compile-time
+// re-export so producer and consumer cannot drift.
+const DriveDeleteRequestSchemaVersion = event.AssetDriveDeleteRequestedV1Schema
 
 // driveDeleteRequestV1 is the canonical envelope for asset.drive.delete_requested.v1
 // events.
