@@ -11,6 +11,8 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"time"
 
 	"fmt"
@@ -177,9 +179,20 @@ type DocumentInput struct {
 	Title    string
 	Content  string
 	FolderID string
+	// IdempotencyKey overrides the default Drive idempotency identity
+	// (run_id + ":" + language). Callers that already ship a different
+	// key convention MUST set it explicitly so a provider change cannot
+	// silently re-key — and therefore duplicate — existing documents.
+	IdempotencyKey string
+	// ForceRefresh overwrites an existing document whose content hash
+	// still matches. It exists for late-bound refreshes (voiceover and
+	// clip subtitle links that arrive after the first publish).
+	ForceRefresh bool
 }
 
-// DocumentPublisher publishes (creates or updates) a Google Doc.
+// DocumentPublisher is the SOLE canonical owner of the Google Docs
+// publication surface. Every code path that publishes a script document
+// (durable runner, post-processor) MUST route through this port.
 //
 // Verdetto: must be UPSERT, not CREATE — the identity is deterministic
 // (generation_run_id + language). On retry the same document is updated
@@ -188,6 +201,47 @@ type DocumentPublisher interface {
 	// UpsertDocument creates a new document or updates an existing one
 	// identified by (run_id, language) Drive properties.
 	UpsertDocument(ctx context.Context, input DocumentInput) (DocumentReference, error)
+}
+
+// ErrDocumentReferencePreserved marks the narrow provider case where the
+// document exists (and is usable) but a post-create idempotency annotation
+// failed. Callers may safely use the returned reference and must not retry
+// publication as a new create.
+var ErrDocumentReferencePreserved = errors.New("documents: reference preserved after non-fatal idempotency annotation failure")
+
+// DocumentIdempotencyKey returns the canonical Drive idempotency key for the
+// durable-runner publication path, keyed by (generation run, language).
+//
+// It is a pure function of stable identity inputs — never of wall-clock time
+// or randomness — so a retry, resume, or process restart derives the SAME key
+// and the existing Google Doc is updated instead of being duplicated.
+func DocumentIdempotencyKey(runID string, language Language) string {
+	return strings.TrimSpace(runID) + ":" + strings.TrimSpace(string(language))
+}
+
+// DocumentPostProcessorIdempotencyKey returns the canonical Drive idempotency
+// key for the post-processor publication path, keyed by (generation plan,
+// language).
+//
+// VERDETTO: this intentionally uses a DISTINCT separator ("-") from the
+// durable runner (":"). Both conventions already have documents in the wild,
+// and re-keying either one would orphan the existing Doc and create a duplicate
+// on the next publication. Both derivations are therefore pinned by
+// TestDocumentIdempotencyKeys_Parity: changing a separator is a breaking change
+// that requires a Drive-side migration, never a silent edit.
+func DocumentPostProcessorIdempotencyKey(planID, language string) string {
+	return planID + "-" + language
+}
+
+// ResolveDocumentIdempotencyKey returns the Drive idempotency key a publication
+// request must use. An explicit DocumentInput.IdempotencyKey always wins, so a
+// caller with an established convention never re-keys its existing documents;
+// otherwise the canonical runner key is derived from the stable identity.
+func ResolveDocumentIdempotencyKey(input DocumentInput) string {
+	if key := strings.TrimSpace(input.IdempotencyKey); key != "" {
+		return key
+	}
+	return DocumentIdempotencyKey(input.RunID, input.Language)
 }
 
 // DocumentPublisherPreflight is implemented only by real provider-backed

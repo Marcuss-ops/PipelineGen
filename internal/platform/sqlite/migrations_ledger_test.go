@@ -460,6 +460,24 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 		db.Close()
 		t.Fatalf("preserved transcript = %q", transcript)
 	}
+	// Regression (September 2026): a partially-migrated DB whose ledger stops
+	// at 197 must still apply the missing historical incrementals (198..267)
+	// through the incremental path. When the runner wrongly marked the skipped
+	// baseline as "covered", 198..267 were silently dropped while 268 (above
+	// the baseline threshold) was applied, so the next run failed with
+	// "migration ledger gap: version 198 ... while later version 268 is
+	// applied" and the database stayed at the pre-198 schema.
+	for _, version := range []int{198, 199, 200, 266} {
+		var ledgerRows int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&ledgerRows); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+		if ledgerRows != 1 {
+			db.Close()
+			t.Fatalf("ledger missing historical incremental %d after partial-migration upgrade", version)
+		}
+	}
 	db.Close()
 
 	// Reapplication must be a no-op and retain the same rows.

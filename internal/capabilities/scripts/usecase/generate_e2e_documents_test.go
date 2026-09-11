@@ -17,30 +17,30 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// documentsE2EStub is a capture-only DocumentsService for the document E2E
-// path. It never touches Drive and records every published title + content.
+// documentsE2EStub is a capture-only canonical DocumentPublisher for the
+// document E2E path. It never touches Drive and records every published
+// title + content.
 type documentsE2EStub struct {
 	titles  []string
 	content []string
 }
 
-func (s *documentsE2EStub) CreateDoc(_ context.Context, title, content string, _ scriptports.FolderResolver, _, _ string, _ bool) (string, string, error) {
-	s.titles = append(s.titles, title)
-	s.content = append(s.content, content)
-	return "https://docs.google.com/document/d/doc-e2e/edit", "doc-e2e", nil
+func (s *documentsE2EStub) UpsertDocument(_ context.Context, in scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
+	s.titles = append(s.titles, in.Title)
+	s.content = append(s.content, in.Content)
+	return scriptgen.DocumentReference{ID: "doc-e2e", Link: "https://docs.google.com/document/d/doc-e2e/edit"}, nil
 }
-
-func (s *documentsE2EStub) UpdateDoc(context.Context, string, string, string) error { return nil }
 
 // buildUsecaseWithDocuments wires the canonical text source, the real
 // clip-bindings processor, and the real documents processor (backed by the
 // capture stub) into a GenerateOneUseCase.
-func buildUsecaseWithDocuments(gen *fakeOllamaGen, docs scriptports.DocumentsService) *GenerateOneUseCase {
+func buildUsecaseWithDocuments(gen *fakeOllamaGen, docs scriptgen.DocumentPublisher) *GenerateOneUseCase {
 	reg := adapters.NewSourceRegistry(zap.NewNop())
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()

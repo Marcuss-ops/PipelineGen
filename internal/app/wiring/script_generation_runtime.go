@@ -103,15 +103,29 @@ func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, 
 	if a == nil || a.client == nil {
 		return scriptgen.DocumentReference{}, fmt.Errorf("script generation document publisher is not configured")
 	}
-	key := strings.TrimSpace(input.RunID) + ":" + strings.TrimSpace(string(input.Language))
-	doc, err := a.client.CreateDocIdempotent(ctx, input.Title, input.Content, input.FolderID, key, false)
+	// Key derivation is owned by the capability (scriptgen), never by this
+	// adapter: both the durable runner and the post-processor derive their
+	// Drive idempotency key through the canonical, deterministic helpers so
+	// a retry/resume/restart can never re-key an existing Google Doc.
+	key := scriptgen.ResolveDocumentIdempotencyKey(input)
+	doc, err := a.client.CreateDocIdempotent(ctx, input.Title, input.Content, input.FolderID, key, input.ForceRefresh)
+	ref := scriptgen.DocumentReference{}
+	if doc != nil {
+		ref = scriptgen.DocumentReference{ID: strings.TrimSpace(doc.ID), Link: strings.TrimSpace(doc.URL)}
+	}
 	if err != nil {
+		// The provider created/updated the doc but failed to tag it with the
+		// idempotency key. Keep the usable reference behind the canonical
+		// typed sentinel instead of losing the link.
+		if ref.ID != "" && ref.Link != "" && key != "" && strings.Contains(strings.ToLower(err.Error()), "idempotency") {
+			return ref, scriptgen.ErrDocumentReferencePreserved
+		}
 		return scriptgen.DocumentReference{}, err
 	}
-	if doc == nil || strings.TrimSpace(doc.ID) == "" || strings.TrimSpace(doc.URL) == "" {
+	if ref.ID == "" || ref.Link == "" {
 		return scriptgen.DocumentReference{}, fmt.Errorf("drive document publisher returned incomplete reference")
 	}
-	return scriptgen.DocumentReference{ID: doc.ID, Link: doc.URL}, nil
+	return ref, nil
 }
 
 func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {

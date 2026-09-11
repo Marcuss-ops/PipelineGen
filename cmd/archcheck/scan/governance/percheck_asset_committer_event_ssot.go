@@ -9,13 +9,14 @@
 //  1. (caller) AssetCommitter.CommitAsset(ctx, *asset.Asset)
 //  2. internally: media_assets UPSERT +
 //     outbox_events INSERT (event_type='asset.index.requested')
-//     in the SAME SQLite TX (QDRANT-002 atomicity invariant).
+//     in the SAME PostgreSQL transaction (media-SSOT atomicity;
+//     September 2026 PostgreSQL + pgvector cutover).
 //
 // Any other production-code site that emits
 // `event_type='asset.index.requested'` (via outbox dispatcher,
 // SQL string literal, outbox-events API) bypasses the canonical
 // COMMIT pipeline and risks:
-//   - silent QDRANT-002 atomicity regression (Qdrant indexing a
+//   - silent media-SSOT atomicity regression (pgvector indexing a
 //     not-yet-committed media_assets row).
 //   - duplicate-outbox-event emission (a future cleanup that
 //     looks for ONE event per asset would over-flag).
@@ -41,11 +42,11 @@
 //     documentation).
 //   - skip the canonical AssetCommitter files (the SOLE
 //     authority on the event_type string).
-//   - skip the canonical outboxevents package
-//     (internal/platform/sqlite/outboxevents)
-//     — the constants `EventAssetIndexRequested` are the
-//     single source of truth for the literal value; the
-//     package IS the SSOT definition site.
+//   - skip internal/kernel/event — the identity OWNER. That package is the
+//     single declaration site of the literal
+//     (godlike/06 one owner per fact); the SQLite outboxevents package and
+//     the PostgreSQL media adapter re-export it. Re-declaration anywhere
+//     else is caught by the complementary gate percheck_identity_ssot.
 //   - skip `tests/**` paths — these test packages legitimately
 //     emulate the outbox event for end-to-end pipeline
 //     validation.
@@ -54,6 +55,10 @@
 //     data correction.
 //   - comment-only references are residue-accounted as WARN
 //     (godlike/07).
+//
+// scope split: this gate protects EMISSION (an ad-hoc producer handing the
+// literal to the outbox); percheck_identity_ssot protects DECLARATION (the
+// literal being re-declared as a constant).
 //
 // matched rule_id: `percheck_asset_committer_event_ssot`.
 package governance
@@ -70,84 +75,73 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// assetCommitterEventSSOTSkipDirs is the standard skip-dir set.
-var assetCommitterEventSSOTSkipDirs = map[string]bool{
-	".git":         true,
-	"vendor":       true,
-	"node_modules": true,
-	"node-scraper": true,
-	"examples":     true,
-	"archivist":    true,
-	"docs":         true,
-	"data":         true,
-}
+// assetCommitterEventSSOTSkipDirs is the shared standard skip-dir set
+// (policy.StandardSkipDirs).
+var assetCommitterEventSSOTSkipDirs = policy.SkipDirs()
 
 // assetCommitterEventSSOTSkipPathPrefixes is the scan's own
-// package exemption (the scanner file + sibling scanners
-// reference the literal for documentation).
-var assetCommitterEventSSOTSkipPathPrefixes = []string{
-	"cmd/archcheck/scan",
-}
+// package exemption (the scanner file + sibling scanners reference the
+// literal for documentation).
+var assetCommitterEventSSOTSkipPathPrefixes = []string{policy.ScannerSourcePrefix}
 
-// assetCommitterEventSSOTExemptPathPrefixes is the canonical
-// exempt set — files that legitimately emit or reference the
-// canonical `asset.index.requested` envelope without bypassing
-// the AssetCommitter chain.
+// assetCommitterEventSSOTExemptPathPrefixes is the canonical exempt set —
+// packages that legitimately reference the `asset.index.requested` literal
+// without bypassing the AssetCommitter chain.
+//
+// TRUTHFULNESS (godlike/08 zero-baseline): every entry below is verified to
+// still hold at least one file containing the literal. The three stale
+// entries removed in the identity-SSOT refactor
+// (internal/capabilities/assets/mutations/, internal/capabilities/images/workflow/,
+// internal/recommendation/) exempted packages with ZERO occurrences — an
+// exception list that lies is worse than none, because the next reader
+// believes the package is a canonical emission site when it is not.
+//
+// This gate protects EMISSION (an ad-hoc producer handing the literal to the
+// outbox). The complementary gate percheck_identity_ssot protects
+// DECLARATION (the literal being re-declared as a constant).
 var assetCommitterEventSSOTExemptPathPrefixes = []string{
-	// 1. Canonical AssetCommitter files — the SOLE authority
-	//    on the asset.index.requested emission site.
+	// 1. The identity ssot owner — internal/kernel/event is the ONE package
+	//    allowed to declare the literal (godlike/06 one owner per fact).
+	"internal/kernel/event/",
+	// 2. Canonical AssetCommitter files — the SOLE authority on the
+	//    asset.index.requested emission site.
 	"internal/capabilities/assets/persistence/",
-	// 2. The canonical outboxevents package — the constants
-	//    that define EventAssetIndexRequested as the literal
-	//    value (single source of truth for the literal value).
+	// 3. The canonical outboxevents package — re-exports the owner constant
+	//    and documents the event family.
 	"internal/platform/sqlite/outboxevents/",
-	// 2b. The PostgreSQL media outbox adapter — engine mirror of the
-	//     outboxevents constants for the staged media-domain cutover;
-	//     defines the same canonical literal values for the pgvector
-	//     engine adapter (one fact family, two engine adapters).
+	// 3b. The PostgreSQL media outbox adapter — engine mirror of the
+	//     outboxevents re-exports (one fact family, two engine adapters).
 	"internal/platform/postgres/media/",
-	// 3. Mutations.AssetMutationDispatcher — the canonical
-	//    envelope surface (EnqueueAndIndex emits the canonical
-	//    envelope inside the commit pipeline).
-	"internal/capabilities/assets/mutations/",
-	// 4. Finalizer / texttracks / voiceover / image ingest /
-	//    soundeffect / catalogsync / provider — surfaces that
-	//    route through the canonical AssetCommitter pipeline
-	//    (lambda-flow-down). These ARE the canonical owner
-	//    chain for the literal value (per godlike/06 SSOT).
+	// 4. Finalizer / texttracks / voiceover / catalogsync / provider —
+	//    surfaces that route through the canonical AssetCommitter pipeline
+	//    (lambda-flow-down).
 	"internal/capabilities/assets/finalizer/",
 	"internal/capabilities/assets/texttracks/",
 	"internal/capabilities/voiceover/service/",
-	"internal/capabilities/images/workflow/",
 	"internal/capabilities/assets/soundeffect/",
 	"internal/capabilities/assets/catalogsync/",
 	"internal/capabilities/assets/providers/",
-	"internal/recommendation/",
-	// 5. Composition-root bundles — emit the canonical
-	//    event_type literal only as typed documentation.
+	// 5. Composition-root bundles — emit the canonical event_type literal
+	//    only as typed documentation.
 	"internal/app/",
-	// 6. Idempotency keys package — the canonical
-	//    asset.index.requested.v1 envelope is documented at
-	//    internal/kernel/idempotency/keys.go::OutboxKey.
+	// 6. Idempotency keys package — the canonical asset.index.requested.v1
+	//    envelope is documented at internal/kernel/idempotency/keys.go.
 	"internal/kernel/idempotency/",
-	// 7. CLI admin tools — operator tooling (reconciliation,
-	//    diagnostics) legitimately inspects and possibly
-	//    emits asset.index.requested for data correction.
+	// 7. CLI admin tools — operator tooling (reconciliation, diagnostics)
+	//    legitimately inspects and possibly emits asset.index.requested for
+	//    data correction.
 	"cmd/admin/",
-	// 8. Soundeffect / image API surfaces — typed-port
-	//    documentation referencing the canonical event_type
-	//    literal.
-	"internal/capabilities/assets/soundeffect/",
+	// 8. Image API surfaces — typed-port documentation referencing the
+	//    canonical event_type literal.
 	"internal/capabilities/images/",
-	// 9. Metrics / observability — event_type labels for
-	//    metric dimensions (NOT for emission).
+	// 9. Metrics / observability — event_type labels for metric dimensions
+	//    (NOT for emission).
 	"internal/platform/observability/",
-	// 10. Qdrant search dead-letter adapter — references the
-	//     literal event_type for classification (NOT for
-	//     emission).
+	// 10. Qdrant search dead-letter adapter — references the literal
+	//     event_type for classification (NOT for emission).
 	"internal/platform/qdrant/search/",
-	// 11. Tests folder — regression-guard fixtures that
-	//     legitimately reference the literal.
+	// 11. Tests folder — regression-guard fixtures that legitimately
+	//     reference the literal.
 	"tests/",
 }
 

@@ -47,7 +47,8 @@ func NewAssetLocationReconciliationProcessor(
 
 // NewDurableAssetLocationReconciliationProcessor adds the canonical
 // location commit port. The production value is implemented by the same
-// SQLiteMediaCommitter instance used by every other asset mutation path.
+// PostgresMediaCommitter-backed mutation surface used by every other
+// asset mutation path.
 func NewDurableAssetLocationReconciliationProcessor(
 	verifier scriptpkg.AssetLocationVerifier,
 	mutator persistence.AssetMutator,

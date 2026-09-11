@@ -11,16 +11,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
 	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
 	texttracksport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
-	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
@@ -457,28 +453,15 @@ func buildDomainMediaServices(
 	}
 	bundle.YoutubeClipService = youtube.NewServiceFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter)
 
-	// PR-YOUTUBE-SERVICE-SPLIT (July 2026): composition-root wiring
-	// for the 6 typed-narrow packages (godlike/06 SSOT). Phase 1
-	// validates the wiring at compile time via function-value
-	// references — each entry resolves the package + constructor
-	// symbol at build time; any signature drift surfaces as a
-	// compile failure rather than a runtime nil-port panic. Phase 2
-	// (separate commit) consumes the typed-narrow ports directly
-	// here and promotes the function-value references to actual
-	// construction calls (with godlike/07 fail-closed nil-port
-	// guards + typed sentinels). godlike/06 SSOT one-canonical-
-	// owner-per-fact: each new package owns exactly one canonical
-	// contract (Acquirer, Metadata, Transcriber, Publisher,
-	// Committer, Recommender); the legacy canonical impl
-	// (youtube.Service, WhisperTranscriberAdapter, PublishClipToDrive,
-	// AssetTxFinalizer) stays untouched in this commit.
-	var (
-		_ = ytacquisition.NewServiceAdapter
-		_ = transcripts.NewWhisperAdapter
-		_ = publication.NewDriveAdapter
-		_ = commit.NewTxAdapter
-	)
-
+	// PR-YOUTUBE-SERVICE-SPLIT phase-1 typed-narrow skeletons were
+	// removed here (September 2026): the `_ =` function-value pins for
+	// ytacquisition.Acquirer, transcripts.Transcriber,
+	// publication.Publisher and commit.Committer referenced constructors
+	// whose Commit/Transcribe/Acquire delegation was never implemented
+	// (each returned a phase-2 NotImplemented sentinel or a silent
+	// no-op). Dead fake-availability surfaces are a godlike/07
+	// violation, so the stubs and their pins are deleted rather than
+	// kept as compile-time decoration.
 	return voMetaWriter, clipWriter, folderPathWriter, nil
 }
 
