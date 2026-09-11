@@ -55,6 +55,7 @@ config.yaml
 /model-registry-gen
 /seed_fixture
 /gen-api-docs
+/gen_baseline
 *.exe
 *.dll
 *.so

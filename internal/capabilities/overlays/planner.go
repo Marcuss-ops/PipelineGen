@@ -217,8 +217,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			numbers = numbers[:config.MaxNumbers]
 		}
 		for _, number := range numbers {
+			id := itemID(scene.ID, "number", number.Text)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "number", number.Text), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
 				Kind: "number", TemplateID: "NUMBER", Text: number.Text,
 				StartMs: number.StartMs, EndMs: number.EndMs, StartUS: number.StartUS, DurationUS: number.DurationUS,
 				Params: map[string]any{"position": "center", "style": "stat", "priority": number.Score},
@@ -230,8 +231,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			quotes = quotes[:config.MaxQuotes]
 		}
 		for _, quote := range quotes {
+			id := itemID(scene.ID, "quote", quote.Text)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "quote", quote.Text), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "quote", TemplateID: "QUOTE", Text: quote.Text,
 				StartMs: quote.StartMs, EndMs: quote.EndMs, StartUS: quote.StartUS, DurationUS: quote.DurationUS,
 				Params: map[string]any{"position": "center", "style": "quote", "priority": quote.Score},
