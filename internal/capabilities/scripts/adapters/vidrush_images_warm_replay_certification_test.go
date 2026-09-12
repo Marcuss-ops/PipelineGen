@@ -7,6 +7,7 @@ import (
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 type warmReplayImageMetrics struct {
@@ -39,7 +40,7 @@ func (m *warmReplayImageMetrics) IncProviderRequest(_ string) {
 }
 
 func TestVidRushGoldenT6ColdWarmHasZeroNewSearchesDownloadsAndUploads(t *testing.T) {
-	vidrushImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	cache := newMemoryVidRushCache()
 	searcher := &countingImageSearcher{}
 	metrics := &warmReplayImageMetrics{}
@@ -98,7 +99,7 @@ func TestVidRushGoldenT6ColdWarmHasZeroNewSearchesDownloadsAndUploads(t *testing
 }
 
 func TestVidRushImagesWarmReplayPersistsAndReusesL2(t *testing.T) {
-	vidrushImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	cache := newMemoryVidRushCache()
 	searcher := &countingImageSearcher{}
 	metrics := &warmReplayImageMetrics{}

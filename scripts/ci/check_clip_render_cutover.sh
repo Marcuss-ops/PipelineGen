@@ -97,37 +97,20 @@ for legacy in "${legacy_local_files[@]}"; do
   fi
 done
 
-# Wave C gate (single-pass overlays). The FFmpeg overlay compositor is the last
-# remaining "encode the clip a second time" path. It is retained ONLY as the
-# PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0 fallback until the single-pass overlay
-# carries a GPU artifact equivalence certificate. Until then exactly ONE
-# production caller may exist (the composition root wiring) plus the single
-# definition file: a new caller means a new second-transcode path and must be
-# rejected. When the certificate lands and the compositor is deleted, this gate
-# keeps passing with zero hits — it permanently forbids the regression.
+# Wave C gate (single-pass overlays). The FFmpeg overlay compositor was the last
+# "encode the clip a second time" path; it is DELETED. Chronon composites a
+# declared overlay as a timed video layer inside the single render pass, so any
+# reference to an FFmpeg overlay compositor in production is a regression that
+# would reintroduce a second full transcode — rejected outright.
 check_ffmpeg_overlay_compositor_callers() {
-  # Two definition sites (the composite pass and its constructor wrapper) plus
-  # the single composition-root caller. Anything else is a new second-transcode
-  # caller and fails the gate.
-  local allowed="internal/capabilities/cliprender/adapters/cliprender_overlay.go
-internal/capabilities/cliprender/adapters/constructors.go
-internal/app/wiring/registry_internal_modules.go"
-  local -a hits
-  mapfile -t hits < <(rg -l 'NewFFmpegOverlayCompositor' "${production_paths[@]}" \
-    --glob '*.go' --glob '!**/*_test.go' || true)
-  local offender=0
-  local file
-  for file in "${hits[@]}"; do
-    [[ -z "$file" ]] && continue
-    if ! grep -qxF "$file" <<< "$allowed"; then
-      echo "FAIL: new FFmpeg overlay compositor caller (a second transcode path): $file"
-      offender=1
-    fi
-  done
-  if (( offender )); then
+  if rg -q 'NewFFmpegOverlayCompositor|FFmpegOverlayCompositor|OverlayCompositor' \
+    "${production_paths[@]}" --glob '*.go' --glob '!**/*_test.go'; then
+    rg -n 'NewFFmpegOverlayCompositor|FFmpegOverlayCompositor|OverlayCompositor' \
+      "${production_paths[@]}" --glob '*.go' --glob '!**/*_test.go' | sed 's/^/  /'
+    echo 'FAIL: FFmpeg overlay compositor reference (a second transcode path) was reintroduced'
     fail=1
   else
-    echo 'PASS: no new FFmpeg overlay compositor caller (overlays composite inside the single Chronon pass)'
+    echo 'PASS: no FFmpeg overlay compositor (overlays composite inside the single Chronon pass)'
   fi
 }
 

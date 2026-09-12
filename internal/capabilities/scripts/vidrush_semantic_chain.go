@@ -1,20 +1,17 @@
 // Package scriptgeneration — vidrush_semantic_chain.go owns the Fase 1-5
-// semantic cutover: the new implementations of SegmentEnricher,
-// SegmentProviderResolver and the barrier MediaCert hook that replace the
-// legacy extractor/chooser with the SceneIR → VisualNER → MediaSampler →
-// Local Stock → MediaCert chain.
+// semantic cutover: the new implementations of SegmentEnricher and
+// SegmentProviderResolver that replace the legacy extractor/chooser with the
+// SceneIR → VisualNER → MediaSampler → Local Stock → MediaCert chain.
 //
 // The implementations are a big-bang replacement of the legacy ports
 // (per the cutover decision): VidRushPipeline now wires
 // SceneIRSegmentEnricher + SemanticProviderResolver instead of the legacy
-// enricher/resolver, and the coordinator's barrier wraps in
-// MediaCertBarrier so a SUCCEEDED run with CERTIFIED=false fails the job.
+// enricher/resolver, and the coordinator's barrier wraps in MediaCertBarrier
+// so a SUCCEEDED run with CERTIFIED=false fails the job.
 //
-// The Rust crates (rust/visualner, rust/mediasampler) are invoked through
-// the VisualNERPort / MediaSamplerPort interfaces so production can swap
-// in the stdio-JSON FFI adapter without the coordinator knowing about
-// process spawning. The stockintelligence and mediacert packages are pure
-// Go and are called directly.
+// The port/value contracts live in vidrush_semantic_ports.go and the barrier
+// in vidrush_mediacert_barrier.go (split 2026-09-12 to keep every file under
+// max_lines_per_file_strict=600, godlike/08).
 package scriptgeneration
 
 import (
@@ -23,74 +20,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-// VisualEntity is the source-grounded entity produced by the VisualNER
-// Rust crate. It mirrors rust/visualner::VisualEntity so the FFI adapter
-// can decode the crate's JSON output without translation.
-type VisualEntity struct {
-	Text     string               `json:"text"`
-	Type     scriptpkg.EntityType `json:"type"`
-	Score    float32              `json:"score"`
-	Start    int                  `json:"start"`
-	End      int                  `json:"end"`
-	Evidence string               `json:"evidence,omitempty"`
-}
-
-// VisualNERPort extracts source-grounded visual entities from a scene's
-// source text. The deterministic Rust crate (rust/visualner) is the
-// production implementation; the rule it enforces is NO EVIDENCE → NO ENTITY.
-type VisualNERPort interface {
-	Extract(ctx context.Context, sourceText string, entityCount int) ([]VisualEntity, error)
-}
-
-// ImportantPhraseExtractor is the NLP semantic phrase surface. It is kept
-// separate from VisualNER: the latter owns named entities, while this port
-// asks the language model to identify meaningful source-grounded fragments.
-type ImportantPhraseExtractor interface {
-	ExtractImportantPhrases(ctx context.Context, sourceText string, limit int, language, model string) ([]string, error)
-}
-
-// LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
-// stockintelligence.Service is the production implementation; it consults the
-// local Qdrant search + SQLite hydrate first and falls back to the provider
-// only when local_candidates < threshold or best_score < minimum_quality.
-type LocalStockResolverPort interface {
-	Resolve(ctx context.Context, req stockintelligence.ResolveRequest) (stockintelligence.ResolveResult, error)
-}
-
-// MediaCertifierPort certifies a completed VidRush run against a spec. The
-// mediacert.Certify function is the production implementation. A
-// CERTIFIED=false report must fail the job even when JobStatus=SUCCEEDED.
-type MediaCertifierPort interface {
-	Certify(ctx context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error)
-}
-
-// MediaCertifierFunc adapts the canonical mediacert.Certify function to the
-// pipeline boundary. It deliberately contains no certification rules.
-type MediaCertifierFunc func(context.Context, mediacert.Spec, mediacert.MediaResult) (mediacert.Report, error)
-
-func (f MediaCertifierFunc) Certify(ctx context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
-	return f(ctx, spec, result)
-}
-
-// MediaCertSpecResolver creates the run-specific contract from the resolved
-// plan instead of using a hard-coded fixture in production.
-type MediaCertSpecResolver interface {
-	ResolveMediaCertSpec(*scriptpkg.ResolvedGenerationPlan) mediacert.Spec
-}
-
-type MediaCertSpecResolverFunc func(*scriptpkg.ResolvedGenerationPlan) mediacert.Spec
-
-func (f MediaCertSpecResolverFunc) ResolveMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
-	return f(plan)
-}
 
 // SceneIRSegmentEnricher implements SegmentEnricher using the new chain:
 // it compiles a SceneIR from the committed scene (Fase 1, immutable source
@@ -558,147 +493,3 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 	segment.Cache.InternetImagesProviderSearches = stockRes.ProviderLiveRequests
 	return segment, nil
 }
-
-// MediaCertBarrier wraps a VidRushBarrier and runs mediacert.Certify on the
-// completed results before returning them. A CERTIFIED=false report fails the
-// job even when the underlying barrier returned no error. This is the explicit
-// rejection of the count-only test that declared success at a semantically
-// broken pipeline (e.g. a boxing clip bound to Greek Salad).
-type MediaCertBarrier struct {
-	inner     VidRushBarrier
-	certifier MediaCertifierPort
-	spec      mediacert.Spec
-}
-
-// NewMediaCertBarrier wraps a barrier with a MediaCertifierPort + Spec. The
-// spec is the golden Mediterranean fixture's expected contract in production;
-// tests pass a synthetic spec. inner and certifier must be non-nil.
-func NewMediaCertBarrier(inner VidRushBarrier, certifier MediaCertifierPort, spec mediacert.Spec) (*MediaCertBarrier, error) {
-	if inner == nil {
-		return nil, fmt.Errorf("scriptgeneration: inner VidRushBarrier is required for MediaCertBarrier")
-	}
-	if certifier == nil {
-		return nil, fmt.Errorf("scriptgeneration: MediaCertifierPort is required for MediaCertBarrier")
-	}
-	return &MediaCertBarrier{inner: inner, certifier: certifier, spec: spec}, nil
-}
-
-// WaitForVidRush delegates to the inner barrier, then certifies the result.
-// A CERTIFIED=false report returns an error so the runner fails the job.
-func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
-	segments, err := b.inner.WaitForVidRush(ctx, runID)
-	if err != nil {
-		return nil, err
-	}
-	segments = filterEntityRenderSurface(segments)
-	result := mediacert.MediaResult{
-		JobStatus: "SUCCEEDED",
-		Segments:  toMediaResultSegments(segments),
-	}
-	report, err := b.certifier.Certify(ctx, b.spec, result)
-	if err != nil {
-		return nil, fmt.Errorf("mediacert certify: %w", err)
-	}
-	if !report.Certified {
-		var violations []string
-		for _, c := range report.Checks {
-			if !c.Passed {
-				detail := string(c.Name)
-				if len(c.Violations) > 0 {
-					detail += ": " + c.Violations[0].Detail
-				}
-				violations = append(violations, detail)
-			}
-		}
-		return nil, fmt.Errorf("vidrush semantic certification failed: CERTIFIED=false (%s)", strings.Join(violations, ", "))
-	}
-	return segments, nil
-}
-
-// filterEntityRenderSurface is the explicit product policy for the entity
-// render path: only imageable named entities and important phrases cross the
-// VidRush→render boundary. Value entities, concepts, keywords and important
-// words remain useful to other editorial paths, but must not become entity
-// overlays or affect the entity certification counts.
-func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
-	out := make([]scriptpkg.VidRushSegmentResult, len(segments))
-	for i, seg := range segments {
-		out[i] = seg
-		entities := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
-		for _, entity := range seg.Insights.Entities {
-			kind := scriptpkg.NormalizeAnnotationType(entity.Type)
-			if !scriptpkg.IsAnnotationEntityKind(kind) {
-				continue
-			}
-			entity.Type = kind
-			entity.Value = strings.TrimSpace(entity.Value)
-			if entity.Value == "" {
-				continue
-			}
-			entities = append(entities, entity)
-		}
-		out[i].Insights.Entities = entities
-		out[i].Insights.ImportantWords = nil
-		// This render surface is intentionally narrower than the full media
-		// retrieval surface: no stock-video or YouTube query may leak into an
-		// entity-only run. The caller can run those providers in a separate
-		// clip path, but they are not extracted here.
-		out[i].Insights.ArtlistQueries = nil
-		out[i].Insights.YouTubeQueries = nil
-		// The entity value is the only allowed image query at this boundary.
-		// Do not trust provider-generated/enriched queries: they can introduce
-		// a second subject or a generic scene image and break entity↔asset
-		// provenance. One deterministic query is emitted per imageable entity.
-		queries := make([]string, 0, len(entities))
-		seenQueries := make(map[string]struct{}, len(entities))
-		for _, entity := range entities {
-			q := strings.TrimSpace(entity.Value)
-			key := strings.ToLower(q)
-			if q == "" || key == "" {
-				continue
-			}
-			if _, ok := seenQueries[key]; ok {
-				continue
-			}
-			seenQueries[key] = struct{}{}
-			queries = append(queries, q)
-		}
-		out[i].Insights.ImageQueries = queries
-	}
-	return out
-}
-
-// toMediaResultSegments projects the VidRushSegmentResult slice into the
-// mediacert.ResultSegment shape so the certifier can check identity, profile,
-// grounding, ownership, relevance and fanout without depending on the full
-// VidRush wire shape.
-func toMediaResultSegments(segments []scriptpkg.VidRushSegmentResult) []mediacert.ResultSegment {
-	out := make([]mediacert.ResultSegment, 0, len(segments))
-	for _, seg := range segments {
-		profile := seg.CanonicalSemanticProfile()
-		insights := seg.Insights
-		if insights.VisualProfile == nil {
-			visual := scriptpkg.BuildSegmentVisualProfile(profile)
-			insights.VisualProfile = &visual
-		}
-		out = append(out, mediacert.ResultSegment{
-			SegmentID:       seg.SegmentID,
-			Position:        seg.Position,
-			SourceText:      seg.Text,
-			SourceTextHash:  seg.TextHash,
-			SemanticProfile: &profile,
-			Insights:        insights,
-			Assets:          seg.Assets,
-		})
-	}
-	return out
-}
-
-// Compile-time contract assertions: the new implementations satisfy the
-// existing port interfaces so VidRushPipeline can swap them in without the
-// coordinator knowing about the new chain.
-var (
-	_ SegmentEnricher         = (*SceneIRSegmentEnricher)(nil)
-	_ SegmentProviderResolver = (*SemanticProviderResolver)(nil)
-	_ VidRushBarrier          = (*MediaCertBarrier)(nil)
-)

@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,9 @@ import (
 type stubEmbedder struct {
 	vecs  map[string][]float32
 	fails map[string]error
+	// batchCalls counts EmbedAssetTexts invocations so a test can pin that
+	// the worker's batch fast-path is the one actually taken.
+	batchCalls atomic.Int64
 }
 
 func (s *stubEmbedder) EmbedAssetText(_ context.Context, assetID string) ([]float32, error) {
@@ -38,6 +42,26 @@ func (s *stubEmbedder) EmbedAssetText(_ context.Context, assetID string) ([]floa
 		return v, nil
 	}
 	return []float32{0.25, 0.25, 0.25, 0.25}, nil
+}
+
+// EmbedAssetTexts makes the stub satisfy the optional BatchAssetEmbedder
+// surface so the worker's N→1 batch leg is exercised by the drain tests. A
+// failing asset fails the whole batch, which is the fail-safe contract: the
+// worker then retries every event through the per-asset path.
+func (s *stubEmbedder) EmbedAssetTexts(_ context.Context, assetIDs []string) (map[string][]float32, error) {
+	s.batchCalls.Add(1)
+	out := make(map[string][]float32, len(assetIDs))
+	for _, id := range assetIDs {
+		if err, ok := s.fails[id]; ok {
+			return nil, err
+		}
+		if v, ok := s.vecs[id]; ok {
+			out[id] = v
+			continue
+		}
+		out[id] = []float32{0.25, 0.25, 0.25, 0.25}
+	}
+	return out, nil
 }
 
 func newWorkerFixture(t *testing.T) (*pgmedia.PostgresIndexWorker, *sql.DB, *stubEmbedder) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 type boundedVidRushSearchProvider struct {
@@ -247,8 +247,8 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 //   - Run B (warm, same segment identity): the L2 hit replays the empty result
 //     as HIT_EXACT with zero provider calls.
 func TestVidRushProviderFanoutCachesEmptyImageResults(t *testing.T) {
-	vidrushImageCache = sync.Map{}
-	entityImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
 	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
 
@@ -302,8 +302,8 @@ func TestVidRushProviderFanoutCachesEmptyImageResults(t *testing.T) {
 // the segment identity and per-query key (topic+query+language) are unchanged,
 // so a force-refresh run re-searches instead of reporting HIT_EXACT.
 func TestVidRushProviderFanoutForceRefreshBypassesCache(t *testing.T) {
-	vidrushImageCache = sync.Map{}
-	entityImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
 	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
 

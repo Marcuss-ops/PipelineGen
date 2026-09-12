@@ -126,6 +126,29 @@ type RenderExecutor interface {
 	Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
 }
 
+// AsyncRenderExecutor is the SPLIT form of RenderExecutor: the same render
+// boundary exposed as its two halves so the Master slot is released while
+// RenderingGen renders (Wave B).
+//
+//   - Submit performs everything up to and including the durable enqueue of
+//     the remote render (plan mapping, asset prefetch, submit). It must return
+//     as soon as the remote job is accepted — it must NOT wait for it.
+//   - Settle performs the post-submit half: wait for the terminal state,
+//     require the certified Chronon artifact, download it (hashing in the same
+//     pass) and project the render outcome.
+//
+// The split is resumable by construction: the remote job id is the sealed
+// plan's deterministic RunID, so a Settle that runs after a process restart
+// addresses the same remote render without any process-local state.
+//
+// A boundary may implement BOTH RenderExecutor and AsyncRenderExecutor: the
+// worker uses the split form when it is available and the blocking Render when
+// it is not, so no existing deployment breaks on this cut.
+type AsyncRenderExecutor interface {
+	Submit(ctx context.Context, plan ClipRenderPlanV1) error
+	Settle(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
+}
+
 // OutputProbe is the capability-owned projection of the rendered output's
 // media facts, collected by the OutputProber port AFTER render_clip. The
 // probe reads the actual bytes on disk — contract validation never trusts
@@ -332,36 +355,10 @@ type OverlaySegmentResolver interface {
 	Resolve(ctx context.Context, in OverlayResolveInput) (*OverlaySegment, error)
 }
 
-// OverlayCompositeInput is the fully-resolved input for the compositing
-// pass. Every value comes from the worker (source clip, resolved segment,
-// declared window, output path); the compositor never resolves anything
-// itself. Width/Height are legacy; Contract is the assembly-ready contract
-// (FPS/timebase/color/GOP) that the compositor MUST honor exactly.
-type OverlayCompositeInput struct {
-	RunID      string
-	SourcePath string // the rendered source clip (rendered-clip.mp4)
-	Segment    *OverlaySegment
-	StartUS    int64 // declared window on the final timeline
-	EndUS      int64
-	OutputPath string
-	Width      int // target geometry (contract) — deprecated: use Contract
-	Height     int
-	Contract   *ResolvedContract // assembly-ready contract (FPS/timebase/color exact)
-}
-
-// OverlayCompositeResult is the typed outcome of the compositing pass.
-type OverlayCompositeResult struct {
-	OutputPath  string
-	SHA256      string
-	SizeBytes   int64
-	CompositeMS int64
-}
-
-// OverlayCompositor blends the rendered overlay segment onto the source
-// clip at the declared [start_us, end_us) window, producing the final video
-// that contains the overlay in its pixels. Fail-closed: a missing segment,
-// an invalid window, or a failed blend is a typed error — the final video
-// is never reported as containing an overlay it does not actually carry.
-type OverlayCompositor interface {
-	Composite(ctx context.Context, in OverlayCompositeInput) (*OverlayCompositeResult, error)
-}
+// NOTE: the overlay COMPOSITOR port was DEMOLISHED with the single-pass
+// overlay cutover. A declared overlay is no longer blended by a post-render
+// pass (which encoded the whole clip a second time); the resolved segment is
+// sealed into ClipRenderPlanV1.Overlay and composited inside the same Chronon
+// render as a timed video layer. OverlaySegmentResolver is the only remaining
+// overlay port, and scripts/ci/check_clip_render_cutover.sh fails on any new
+// FFmpeg overlay compositor caller.

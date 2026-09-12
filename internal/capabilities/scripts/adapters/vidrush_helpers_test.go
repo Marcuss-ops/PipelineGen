@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 func TestBuildCanonicalSegments_SingleSceneUsesDeclaredMainSegment(t *testing.T) {
@@ -155,10 +156,8 @@ func TestFinalizeVidRushBindings_UsesDurableL2AcrossL1Restart(t *testing.T) {
 	if first[0].Cache.Binding != "MISS" {
 		t.Fatalf("first binding cache = %q, want MISS", first[0].Cache.Binding)
 	}
-	vidrushBindingCache.Range(func(key, _ any) bool {
-		vidrushBindingCache.Delete(key)
-		return true
-	})
+	// Simulate an L1 restart: a fresh bounded LRU must re-warm from the L2 cache.
+	vidrushBindingCache = cacheutil.NewLRU(vidrushBindingL1Capacity)
 	second := FinalizeVidRushBindingsWithCache(context.Background(), []scriptpkg.VidRushSegmentResult{segment}, false, cache)
 	if second[0].Cache.Binding != "HIT_EXACT" {
 		t.Fatalf("durable binding cache = %q, want HIT_EXACT", second[0].Cache.Binding)

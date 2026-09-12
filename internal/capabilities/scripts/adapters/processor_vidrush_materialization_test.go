@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
 func TestRouteEntityImageToGenerationOutput(t *testing.T) {
@@ -560,7 +560,7 @@ func TestVidRushMaterializationMaterializeFailsClosedWhenDependenciesMissing(t *
 // candidate (candidate_found, remote provenance only) must move through
 // acquire → verify → persist → Drive, and only then bind as the entity image.
 func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
-	vidrushMaterializedCache = sync.Map{}
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(internetImageMaterializationProviderStub{}); err != nil {
 		t.Fatal(err)
@@ -696,7 +696,7 @@ func TestVidRushMaterializationMarksCatalogURLBrokenAfterAcquireFailure(t *testi
 }
 
 func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize(t *testing.T) {
-	vidrushMaterializedCache = sync.Map{}
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
 	repo := newIntegrationEntityImageCatalog()
 	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan.jpg")
 	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")

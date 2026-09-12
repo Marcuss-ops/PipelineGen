@@ -1,8 +1,11 @@
 # TICKET — clip.render: one compositor (Chronon single pass) (Wave C)
 
 **Priority:** P1.
-**Status:** IMPLEMENTED (single-pass path is the default) — the only remaining
-step is the GPU artifact certificate that gates DELETING the legacy compositor.
+**Status:** DONE — single-pass is the ONLY path. The legacy FFmpeg overlay
+compositor, its port API, worker options, composition-root wiring and env
+switch are DELETED; the CI gate forbids their return. The only open item is the
+GPU artifact certificate for the single-pass output itself (see §3.3), which is
+evidence, not a code change.
 **Owner:** `internal/capabilities/cliprender` (worker + adapters) + `RenderingGen/renderinggen` (overlay compiler).
 
 ## 1. Problem (what this replaced)
@@ -58,11 +61,11 @@ window — the same semantics the FFmpeg path expressed with
   segment's `asset_refs`.
 * `overlayPlanAssets` + `prefetchClipAssets` stage the segment from its local
   path, deduplicated by content digest.
-* `Worker` resolves the overlay **before** sealing when single-pass is enabled
-  (`WithSinglePassOverlay`), and skips the post-render composite entirely.
-* Composition root: `singlePassOverlayEnabled` — **default enabled**; set
-  `PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0` to revert to the legacy compositor
-  without a code change (logged at wiring time).
+* `Worker` resolves the overlay **before** sealing (unconditionally: a declared
+  overlay is always a sealed timed layer) and never composites post-render.
+* Composition root: the resolver is the only overlay adapter wired; there is no
+  compositor, no toggle and no env switch — the single-pass path is the only
+  path (see §3.3).
 
 ### 2.3 Contract bug found by the cross-repo test
 
@@ -72,60 +75,70 @@ items are now **omitted** when empty. This was caught by feeding PipelineGen's
 real mapper output through RenderingGen's compiler + schema validator
 (`pipelinegen_overlay_contract_test.go`), not by inspection.
 
-## 3. Remaining — the deletion gate
+## 3. Deletion — DONE
 
-### 3.0 CI gate (LANDED)
+### 3.1 What was deleted (executed change set)
 
-`scripts/ci/check_clip_render_cutover.sh` now runs
-`check_ffmpeg_overlay_compositor_callers`: it fails on any
-`NewFFmpegOverlayCompositor` reference outside the three permitted sites (the
-composite pass, its constructor wrapper and the composition-root wiring).
-Verified in both directions — the gate passes on the current tree and fails on
-a simulated new caller. It keeps passing with zero hits after the deletion, so
-it permanently forbids the regression.
-
-The composition root also logs a `WARN` when single-pass is disabled, so a
-deployment left on the deprecated second-transcode path is visible instead of
-being discovered from a benchmark.
-
-### 3.1 Delete only when certified
-
-Do NOT delete the FFmpeg compositor until:
-
-1. A **GPU artifact certificate** compares the single-pass output against the
-   legacy composited output on a real host: geometry, fps/timebase, color, GOP,
-   audio sync and overlay placement (the audit's golden equivalence step).
-2. The **segment-scale caveat** is confirmed: Chronon renders a video layer into
-   the canvas box (video layers carry no per-layer `fit`), so an overlay segment
-   rendered at the output contract is identity-composited, while a segment with
-   a DIFFERENT aspect ratio is scaled rather than letterboxed (the legacy
-   `scale=…:force_original_aspect_ratio=decrease,pad=…` behaviour). Confirm the
-   segment is always produced at the assembly contract, or add the letterbox.
-3. `PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0` is no longer needed in production.
-
-### 3.2 Exact deletion change set (mechanical, once certified)
-
-1. `internal/app/wiring/registry_internal_modules.go`: remove the
+1. `internal/app/wiring/registry_internal_modules.go`: removed the
    `worker.WithOverlayCompositor(...)` call and the `singlePassOverlayEnabled`
-   helper + `PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY` env var (single-pass becomes
-   unconditional); drop the now-unused encoder args.
-2. `internal/capabilities/cliprender/worker.go`: drop the
-   `singlePassOverlay` condition, make overlay resolution unconditional when an
-   overlay is declared, delete the legacy composite block, require only the
-   `OverlaySegmentResolver`.
-3. `internal/capabilities/cliprender/worker_options.go`: delete
+   helper + the `PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY` env var (single-pass is
+   now unconditional); dropped the now-unused encoder args and the `strconv` /
+   `strings` imports.
+2. `internal/capabilities/cliprender/worker.go`: dropped the
+   `singlePassOverlay` field and condition, made overlay resolution
+   unconditional when an overlay is declared, deleted the legacy composite
+   block (composite call + second post-composite probe + `StageClipOverlay`
+   recording). The worker now requires only `OverlaySegmentResolver`.
+3. `internal/capabilities/cliprender/worker_options.go`: deleted
    `WithSinglePassOverlay` and `WithOverlayCompositor`.
-4. `ports.go`: delete `OverlayCompositor`, `OverlayCompositeInput`,
-   `OverlayCompositeResult`.
-5. `adapters/`: delete `FFmpegOverlayCompositor` (composite pass) and its
-   `NewFFmpegOverlayCompositor` entry in `constructors.go`; KEEP
-   `OverlaySegmentResolver`.
-6. `worker_single_pass_overlay_test.go`: delete the legacy-path test; keep the
-   single-pass tests (they assert `renderer.plan.Overlay` and must not reference
-   the removed option).
-7. Drop the `composite` parameter from `renderedResult` and its callers.
-8. `scripts/ci/check_clip_render_cutover.sh`: the allowed-file list becomes
-   moot (zero hits still passes); remove the entries for tidiness.
+4. `ports.go`: deleted `OverlayCompositor`, `OverlayCompositeInput`,
+   `OverlayCompositeResult`, replaced by a note pointing at this ticket.
+5. `adapters/`: deleted `FFmpegOverlayCompositor` (composite pass) and its
+   `NewFFmpegOverlayCompositor` entry in `constructors.go`;
+   `OverlaySegmentResolver` is kept.
+6. `worker_single_pass_overlay_test.go`: deleted the legacy-path test; the
+   remaining tests assert the SEALED plan (`renderer.plan.Overlay`) and the
+   render boundary's certified digest, and never reference the removed option.
+   `worker_test.go`: removed `fakeOverlayCompositor`, converted the compositor
+   fail-closed cases into plan-validation fail-closed cases, and repointed the
+   overlay lineage test at the sealed plan + the single render output.
+7. Dropped the `composite` parameter from `renderedResult` and all callers
+   (worker + `chronon_timing_result_test.go`).
+8. `stage_timing.go`: deleted the dead `StageClipOverlay` (`clip.overlay`)
+   stage name — the overlay cost is now part of `StageClipRender`. The
+   `metrics_v2.composite_ms` projection stays: that is the renderer's own
+   Chronon GPU kernel phase, unrelated to the deleted overlay blend.
+9. `worker_result.go`: the overlay result block no longer carries
+   `composited` / `composite_ms`; it carries `single_pass: true`,
+   `start_ms`, `end_ms` and `segment_sha256` from the sealed plan.
+
+### 3.2 CI gate (zero allowlist)
+
+`scripts/ci/check_clip_render_cutover.sh` runs
+`check_ffmpeg_overlay_compositor_callers`, which now fails on **any**
+`NewFFmpegOverlayCompositor` / `FFmpegOverlayCompositor` / `OverlayCompositor`
+reference in production code — the permitted-site list is gone because the
+permitted count is now zero. Verified in both directions: it passes on the
+current tree (`CLIP_RENDER_CUTOVER=PASS`) and fails when a simulated caller is
+dropped in. Because the deleted identifiers are no longer mentioned anywhere in
+production code (not even in comments), the gate needs no allowlist to stay
+truthful.
+
+### 3.3 Residual risk (evidence still owed)
+
+The deletion removes the only runtime revert path, so the remaining caveat must
+be closed by evidence rather than by a fallback:
+
+1. A **GPU artifact certificate** for the single-pass output: geometry,
+   fps/timebase, colour, GOP, audio sync and overlay placement, compared
+   against the legacy composited artifact captured before this deletion.
+2. The **segment-scale question**: Chronon renders a video layer into the canvas
+   box (video layers carry no per-layer `fit`), so an overlay segment rendered at
+the output contract is identity-composited, while a segment with a DIFFERENT
+   aspect ratio is scaled rather than letterboxed (the legacy
+   `scale=…:force_original_aspect_ratio=decrease,pad=…` behaviour). Confirm the
+   segment is always produced at the assembly contract, or add the letterbox —
+   in RenderingGen/Chronon, since the FFmpeg pass no longer exists.
 
 ## 4. Rejected alternative
 
@@ -141,7 +154,10 @@ audio-sync and GOP-discontinuity hazards.
       tests on both sides).
 - [x] Producer payload validated against the published contract + lowered by
       the real compiler (cross-repo golden fixture).
-- [ ] GPU artifact equivalence certificate (legacy vs single-pass) recorded.
-- [x] CI gate prevents a new FFmpeg overlay compositor caller.
-- [ ] No production caller of `NewFFmpegOverlayCompositor` remains.
-- [ ] `FFmpegOverlayCompositor` deleted (change set in §3.2).
+- [ ] GPU artifact certificate for the single-pass output recorded (legacy vs
+      single-pass; the legacy artifact must come from a pre-deletion capture).
+- [x] CI gate prevents a new FFmpeg overlay compositor caller (zero allowlist).
+- [x] No production caller of `NewFFmpegOverlayCompositor` remains (gate-verified).
+- [x] `FFmpegOverlayCompositor`, its port API, options, wiring and
+      `PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY` env switch deleted (§3.1).
+- [x] No second-transcode path remains; the single-pass plan is the only path.

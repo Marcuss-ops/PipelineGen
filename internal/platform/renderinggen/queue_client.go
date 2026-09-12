@@ -256,12 +256,32 @@ func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRender
 	return e
 }
 
+// Render is the BLOCKING form of the render boundary: Submit followed by
+// Settle in one call. It is retained because the async split is opt-in per
+// worker; a boundary that is asked for the blocking form must keep behaving
+// exactly as before.
 func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+	if err := e.Submit(ctx, plan); err != nil {
+		return nil, err
+	}
+	return e.Settle(ctx, plan)
+}
+
+// Submit is the PRE-RENDER half of the boundary (Wave B): validate the plan,
+// map it onto the renderinggen.overlay-plan.v1 contract, resolve + prefetch its
+// content-addressed assets and enqueue the remote render. It returns as soon as
+// the remote job is ACCEPTED — it never waits for the render, which is what
+// lets the caller release its worker slot.
+//
+// Idempotent by construction: the remote job id is plan.RunID, so a retried
+// submit addresses the same remote job (the queue answers 409 → ErrJobExists)
+// and a FAILED remote job is reset to pending rather than left stuck.
+func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRenderPlanV1) error {
 	if e == nil || e.queue == nil {
-		return nil, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
+		return fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
 	}
 	if err := plan.Validate(); err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
+		return fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
 	// MapClipPlanToOverlayPlan produces the renderinggen.overlay-plan.v1
 	// semantic contract. Sending a raw ClipRenderPlanV1 (no schema_version)
@@ -270,17 +290,17 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	// single authoritative serialisation point for clip render jobs.
 	rawPlan, err := MapClipPlanToOverlayPlan(plan)
 	if err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: map plan: %w", err)
+		return fmt.Errorf("renderinggen clip executor: map plan: %w", err)
 	}
 	// Build hash-addressed asset refs. LogicalPath uses the content-addressed
 	// object-store key so remote RenderingGen workers can materialise each
 	// asset by hash — local VPS paths are never forwarded to the queue.
 	refs, err := overlayPlanAssets(plan)
 	if err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: asset refs: %w", err)
+		return fmt.Errorf("renderinggen clip executor: asset refs: %w", err)
 	}
 	if err := prefetchClipAssets(ctx, plan, refs); err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: prefetch assets: %w", err)
+		return fmt.Errorf("renderinggen clip executor: prefetch assets: %w", err)
 	}
 	assets := make([]queueclient.AssetRef, len(refs))
 	for i, r := range refs {
@@ -288,7 +308,7 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	}
 	submitErr := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)})
 	if submitErr != nil && !errors.Is(submitErr, scriptgen.ErrJobExists) {
-		return nil, fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
+		return fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
 	}
 	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrJobExists) {
 		if existing, getErr := e.queue.Get(ctx, plan.RunID); getErr == nil && existing.State == string(queueclient.StateFailed) {
@@ -297,9 +317,27 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 			// retry failure instead of degrading into the generic
 			// "completed without certified artifact" wait timeout.
 			if retryErr := e.queue.Retry(ctx, plan.RunID); retryErr != nil {
-				return nil, fmt.Errorf("renderinggen clip executor: retry failed for %s: %w", plan.RunID, retryErr)
+				return fmt.Errorf("renderinggen clip executor: retry failed for %s: %w", plan.RunID, retryErr)
 			}
 		}
+	}
+	return nil
+}
+
+// Settle is the POST-SUBMIT half of the boundary: wait for the remote render's
+// terminal state, require the certified Chronon artifact, download it into the
+// plan's output path (hashing while streaming) and project the render outcome.
+//
+// It is the ONLY place that blocks on RenderingGen, which is why the async
+// boundary can hand it to a continuation job instead of holding the submission's
+// worker slot. Resumable: it addresses plan.RunID, so it needs no process-local
+// state from the submit call.
+func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+	if e == nil || e.queue == nil {
+		return nil, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
+	}
+	if err := plan.Validate(); err != nil {
+		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
 	completed, err := waitClipQueue(ctx, e.queue, plan.RunID, e.interval)
 	if err != nil {

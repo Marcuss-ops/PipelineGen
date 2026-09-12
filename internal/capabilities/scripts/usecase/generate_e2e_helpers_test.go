@@ -6,12 +6,14 @@ package usecase
 import (
 	"context"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"sync"
 	"time"
 
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/qualitygate"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -183,7 +185,7 @@ func buildOverlappingText(numScenes int, sourceText string) string {
 	}
 	// Tokenise source text and keep only non-stop-word tokens so the
 	// coverage check sees real overlap.
-	tokens := tokenize(sourceText)
+	tokens := qualitygate.Tokenize(sourceText)
 	var words []string
 	for _, t := range tokens {
 		if !stopWordTest(t) {

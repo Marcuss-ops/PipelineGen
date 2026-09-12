@@ -66,9 +66,34 @@ func ScanFileLinesStrict(root string, pol *policy.Policy, r *report.Report) {
 		return
 	}
 	allowlist := loadLineStrictAllowlist(root, pol.MaxLinesStrictAllowlist)
-	skipDirs := map[string]bool{
-		".git": true, "vendor": true, "node_modules": true,
-		"node-scraper": true, "examples": true, "scripts": true,
+	// The historical skip set matched directory BASENAMES, which silently
+	// exempted the production roots internal/capabilities/scripts and
+	// internal/platform/sqlite/scripts from the entire rule family (the
+	// "scripts" entry was meant for the repo-root tooling dir only).
+	// Directory skips are now resolved against the REPO-RELATIVE path:
+	// only the top-level tooling dirs are exempt; any basename collision
+	// inside internal/ or cmd/ is scanned like a normal production package
+	// (fail-closed, godlike/07 no-fake-availability).
+	isSkipped := func(root, path string) bool {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return false
+		}
+		rel = filepath.ToSlash(rel)
+		parts := strings.Split(rel, "/")
+		for i, part := range parts {
+			switch part {
+			case ".git", "vendor", "node_modules", "node-scraper", "examples":
+				return true
+			case "scripts":
+				// Exempt ONLY the repo-root tooling dir (top-level path
+				// component). Deeper basenames are production code.
+				if i == 0 {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	for _, sub := range []string{"internal", "cmd"} {
 		base := filepath.Join(root, sub)
@@ -77,7 +102,7 @@ func ScanFileLinesStrict(root string, pol *policy.Policy, r *report.Report) {
 				return nil
 			}
 			if d.IsDir() {
-				if skipDirs[filepath.Base(path)] {
+				if isSkipped(root, path) {
 					return filepath.SkipDir
 				}
 				return nil

@@ -1,5 +1,5 @@
 // Package search provides YouTube search and video metadata retrieval, with
-// L1 (in-memory sync.Map) and L2 cache-port backed caching.
+// L1 (in-memory bounded LRU) and L2 cache-port backed caching.
 // Extracted from the root youtube package during PR5 Phase 2 (June 2026).
 //
 // Design: SearchDeps accepts max 3 fields. The L1 caches live on the Service
@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
@@ -38,9 +38,20 @@ type SearchService struct {
 	cache        ports.CachePort
 	log          *zap.Logger
 
-	searchL1   sync.Map // map[string]searchL1Entry — live search results
-	metadataL1 sync.Map // map[string]metadataL1Entry — video metadata
+	// L1 caches are bounded pkg/cacheutil.LRU registries rather than
+	// unbounded sync.Maps: the key space is user-supplied search text, so the
+	// process-lifetime footprint must be fixed. Each entry carries its own
+	// AddedAt freshness fence, so an eviction only ever costs an L2 read.
+	searchL1   *cacheutil.LRU // key: query|limit|sort -> searchL1Entry
+	metadataL1 *cacheutil.LRU // key: videoID -> metadataL1Entry
 }
+
+// L1 capacities. The search key includes the raw query text (a long tail);
+// metadata is keyed by video ID and is read far more often than written.
+const (
+	searchL1Capacity   = 512
+	metadataL1Capacity = 2048
+)
 
 // ── L1 cache entry types ──────────────────────────────────────────────────
 
@@ -60,6 +71,8 @@ func NewSearchService(deps SearchDeps) *SearchService {
 		searchRunner: deps.SearchRunner,
 		cache:        deps.Cache,
 		log:          deps.Log,
+		searchL1:     cacheutil.NewLRU(searchL1Capacity),
+		metadataL1:   cacheutil.NewLRU(metadataL1Capacity),
 	}
 }
 
@@ -89,7 +102,7 @@ func (s *SearchService) SearchLive(ctx context.Context, query string, limit int,
 	cacheKey := fmt.Sprintf("%s|%d|%s", query, limit, sort)
 
 	// 1. Check L1 memory cache
-	if val, ok := s.searchL1.Load(cacheKey); ok {
+	if val, ok := s.searchL1.Get(cacheKey); ok {
 		if entry, ok := val.(searchL1Entry); ok {
 			if time.Since(entry.AddedAt) < 6*time.Hour {
 				s.log.Info("Serving YouTube search results from L1 cache", zap.String("query", query))
@@ -101,7 +114,7 @@ func (s *SearchService) SearchLive(ctx context.Context, query string, limit int,
 	// 2. Check L2 SQLite cache
 	if cached, ok := s.getCachedSearch(ctx, cacheKey); ok {
 		s.log.Info("Serving YouTube search results from L2 SQLite cache", zap.String("query", query))
-		s.searchL1.Store(cacheKey, searchL1Entry{Results: cached, AddedAt: time.Now()})
+		s.searchL1.Put(cacheKey, searchL1Entry{Results: cached, AddedAt: time.Now()})
 		return cached, nil
 	}
 
@@ -137,7 +150,7 @@ func (s *SearchService) SearchLive(ctx context.Context, query string, limit int,
 
 	// Cache the search results
 	s.setCachedSearch(ctx, cacheKey, results)
-	s.searchL1.Store(cacheKey, searchL1Entry{Results: results, AddedAt: time.Now()})
+	s.searchL1.Put(cacheKey, searchL1Entry{Results: results, AddedAt: time.Now()})
 
 	return results, nil
 }
@@ -156,7 +169,7 @@ func (s *SearchService) GetVideoInfo(ctx context.Context, videoURL string) (*por
 
 	// 1. Check L1 Cache
 	if videoID != "" {
-		if val, ok := s.metadataL1.Load(videoID); ok {
+		if val, ok := s.metadataL1.Get(videoID); ok {
 			if entry, ok := val.(metadataL1Entry); ok {
 				if time.Since(entry.AddedAt) < 7*24*time.Hour {
 					s.log.Info("Serving YouTube video metadata from L1 cache", zap.String("videoID", videoID))
@@ -170,7 +183,7 @@ func (s *SearchService) GetVideoInfo(ctx context.Context, videoURL string) (*por
 	if videoID != "" {
 		if cached, ok := s.getCachedVideoMetadata(ctx, videoID); ok {
 			s.log.Info("Serving YouTube video metadata from L2 SQLite cache", zap.String("videoID", videoID))
-			s.metadataL1.Store(videoID, metadataL1Entry{Metadata: cached, AddedAt: time.Now()})
+			s.metadataL1.Put(videoID, metadataL1Entry{Metadata: cached, AddedAt: time.Now()})
 			return cached, nil
 		}
 	}
@@ -196,7 +209,7 @@ func (s *SearchService) GetVideoInfo(ctx context.Context, videoURL string) (*por
 	// Cache the video metadata
 	if info.ID != "" {
 		s.setCachedVideoMetadata(ctx, info.ID, info)
-		s.metadataL1.Store(info.ID, metadataL1Entry{Metadata: info, AddedAt: time.Now()})
+		s.metadataL1.Put(info.ID, metadataL1Entry{Metadata: info, AddedAt: time.Now()})
 	}
 
 	return info, nil
@@ -217,7 +230,7 @@ func (s *SearchService) PrewarmHotVideoMetadataCache(ctx context.Context) error 
 		if err := json.Unmarshal([]byte(row.MetadataJSON), &metadata); err != nil {
 			continue
 		}
-		s.metadataL1.Store(row.VideoID, metadataL1Entry{Metadata: &metadata, AddedAt: time.Now()})
+		s.metadataL1.Put(row.VideoID, metadataL1Entry{Metadata: &metadata, AddedAt: time.Now()})
 	}
 	s.log.Info("Successfully pre-warmed L1 cache", zap.Int("entries_loaded", len(rows)))
 	return nil

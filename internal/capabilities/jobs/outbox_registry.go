@@ -84,17 +84,6 @@ import (
 // media_assets soft-delete via *assets.ClipsRepository). nil →
 // IndexDeleteHandler is skipped (same effect as VectorPointDeleter nil).
 //
-// SourceVersionQuerier: SourceVersionQuerier for the IndexingHandler
-// pre-flight supersede gate (real media_assets source_version via
-// *assets.ClipsRepository.SourceVersionFor, which delegates to the
-// canonical SQL helper in
-// internal/platform/sqlite/assets/source_version.go).
-// PR 11 follow-up (June 2026) replaced the legacy AssetSourceChecker
-// port — both the producer-side (cmd/admin/reconcile_qdrant.go) and
-// consumer-side (this handler) priority chains now share that single
-// function so future drift is structurally impossible. nil →
-// IndexingHandler is wired WITHOUT the source_version supersede gate.
-//
 // VoiceoverCleanupDriver: VoiceoverCleanupDriver for the
 // VoiceoverCleanupHandler (P0.7 Wave 21 Step 10/12, June 2026) —
 // consumes voiceover.cleanup.requested events durably emitted from
@@ -113,11 +102,14 @@ type InfraDeps struct {
 
 // JobDeps groups the job + cleanup ports so Deps stays under the
 // archcheck 8-field cap.
+// MEDIA-CUTOVER (2026-09-12): the SourceVersionQuerier field is REMOVED
+// with the retired IndexingHandler family — the supersede gate it fed
+// consumed SQLite-outbox asset.index.requested events, a pipeline with
+// zero production consumers since the PostgreSQL media cutover.
 type JobDeps struct {
 	Jobs                   JobsEnqueuer
 	VectorPointDeleter     VectorPointDeleter
 	AssetDeleter           AssetDeleter
-	SourceVersionQuerier   SourceVersionQuerier
 	VoiceoverCleanupDriver VoiceoverCleanupDriver
 	// BindingIndexer + BindingConceptRepo + BindingRepo wire the
 	// optional binding.index.requested handler. All three are nil

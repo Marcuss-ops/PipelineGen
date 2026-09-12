@@ -60,6 +60,34 @@
           "offset": [0, 2]
         }
       },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": ["entities", "important_phrases"],
+          "max_entities_per_segment": 4,
+          "max_important_phrases_per_segment": 2,
+          "max_important_words_per_segment": 3,
+          "max_image_queries_per_segment": 2,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": ["PERSON", "ORG", "GPE", "PRODUCT", "LOGO"],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "force_refresh_extraction": true,
+        "force_refresh_assets": true,
+        "force_refresh_bindings": true
+      },
       "docs": {
         "enabled": true,
         "languages": ["it"],
@@ -77,7 +105,7 @@
         "save_to_db": true,
         "generate_timeline": true,
         "generate_metadata": false,
-        "extract_entities": "disabled",
+        "extract_entities": "enabled",
         "voiceover_enabled": true,
         "render": {
           "enabled": true,

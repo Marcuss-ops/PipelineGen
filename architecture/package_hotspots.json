@@ -12,7 +12,7 @@
       },
       "current": {
         "files": 2,
-        "max_loc": 138
+        "max_loc": 137
       },
       "target_packages": [
         "cmd/admin/commands",
@@ -192,7 +192,7 @@
         "max_loc": 0
       },
       "current": {
-        "files": 150,
+        "files": 148,
         "max_loc": 0
       },
       "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Deadline aligns with the internal/app hotspot (2026-09-30). SPLIT STARTED 2026-09-04 (181->158 measured, ratcheted down): chronon domain extracted to internal/app/wiring/chronon (11 files incl. semantic_asset_wiring.go + its tests, per the 2026-09-01/02 ratchet notes), voiceover TTS/adapter layer to internal/app/wiring/voiceover (19 files incl. rate limits + chunked TTS + their tests, constructors exported New*), vidrush materialization to internal/app/wiring/vidrush (dependency inversion via VidRushMaterializationDeps; the root keeps nil-safe call-site helpers vidrushCachePort/vidrushInternetImageSearcher). Sub-packages never import the root package; cross-domain types (ScriptVoiceoverGenerator, ChrononMeasuredPhases, VidRushMaterializationDeps) are exported from the leaf and referenced as vowiring./vidrushwiring. Artlist/stock orchestration (build_bundles_artlist_*, build_bundles_stock*, wire_stock_pipeline, artlist/stock types + bundle errors) remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. RATCHETED 2026-09-05 158->150: search backends extracted to internal/app/wiring/search (composition bridge Build/BuildSearchBackends, provider/local/semantic backends, media-read + pgvector + qdrant-transport adapters, search.Build freeze gate + their tests; the root keeps the ComposeRoot-shaped WireMediasearchReadiness readiness probe) and the delivery signer adapter extracted to adapters_delivery_signer.go (strict 600-LOC cap on registry_internal_modules.go). Sub-packages never import the root package; leaf surfaces are exported (search.Build, search.RerankerClient, search.NewSearchReadAdapter, search.SelectMediaVectorStore/PGVectorStoreFrom, search.NewQdrantEndpointAdapter). Artlist/stock orchestration remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph.",
@@ -213,7 +213,7 @@
         "max_loc": 0
       },
       "current": {
-        "files": 98,
+        "files": 75,
         "max_loc": 0
       },
       "note": "Registered 2026-08-29: image capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (generation/search/validation/persist).",
@@ -233,7 +233,7 @@
         "max_loc": 0
       },
       "current": {
-        "files": 95,
+        "files": 75,
         "max_loc": 0
       },
       "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). The preparation registry/planning/speculation family is now materialised under internal/capabilities/jobs/scheduling, which is the current owner of polling/backoff, retry timing, preparation planning, and resource speculation. Debt stays under the same owner/deadline; any further split must preserve scheduling as the policy owner and keep the root jobs package as a compatibility facade.",
@@ -241,6 +241,66 @@
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/scheduling",
         "internal/capabilities/jobs/finalize"
+      ]
+    },
+    {
+      "path": "internal/capabilities/scripts",
+      "owner": "scripts capability (research/generation/runner surface)",
+      "deadline": "2026-12-31",
+      "baseline_files": 84,
+      "baseline": {
+        "files": 84,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 84,
+        "max_loc": 0
+      },
+      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. The package carries the whole script.run orchestration surface (runner phases, audio timeline compile/prefetch, overlay plan/publication, document projections, vidrush pipeline, execution model). The 600-LOC split wave (document_audio_blocks/document_links, model_render/model_values, ports_document/ports_execution, incremental_coordinator_stages/incremental_coordinator_timing) reduced per-file size by materialising cohesive siblings in the SAME directory, which is why the file count rose rather than fell. Debt stays under the same owner/deadline; the split must keep the root scripts package as the compatibility facade and move each family into its target subpackage.",
+      "target_packages": [
+        "internal/capabilities/scripts/runner",
+        "internal/capabilities/scripts/audio",
+        "internal/capabilities/scripts/overlay",
+        "internal/capabilities/scripts/vidrush"
+      ]
+    },
+    {
+      "path": "internal/capabilities/scripts/adapters",
+      "owner": "scripts capability adapters (processor/postprocessor/vidrush)",
+      "deadline": "2026-12-31",
+      "baseline_files": 90,
+      "baseline": {
+        "files": 90,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 90,
+        "max_loc": 0
+      },
+      "note": "Registered 2026-09-12: adapters surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. Three families dominate: the generation processor pipeline (processor_*), the postprocessor fan-out (postprocessor_*) and the vidrush provider/fan-out plane (vidrush_*). Each family is a cohesive subpackage candidate; the adapters package must end up a re-export/compat surface only.",
+      "target_packages": [
+        "internal/capabilities/scripts/adapters/processor",
+        "internal/capabilities/scripts/adapters/postprocessor",
+        "internal/capabilities/scripts/adapters/vidrush"
+      ]
+    },
+    {
+      "path": "internal/capabilities/scripts/usecase",
+      "owner": "scripts capability use cases (source resolution/quality gate/generation)",
+      "deadline": "2026-12-31",
+      "baseline_files": 79,
+      "baseline": {
+        "files": 79,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 79,
+        "max_loc": 0
+      },
+      "note": "Registered 2026-09-12: usecase surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. The package holds the source-resolution family (source_resolver_*), the quality-gate family, the clip-source family (clip_source*/clip_sampler_*) and the generation engine (engine_*/generation_*). WAVE 1 DONE 2026-09-12: the quality-gate family was moved to internal/capabilities/scripts/usecase/qualitygate (9 production files + 2 test files + its own lexicon TestMain); 88 -> 79 files, baseline re-ratcheted. The family was fully forward-closed (no dependency on the usecase package), so the parent only imports qualitygate.Evaluate/Tokenize. NEXT WAVE (measured, not yet done): the engine_*/segment_validation/generation_* core is one forward-closed component of 33 files (segment_+engine_ seeds); the remaining families are source-resolver+clip+document+translation. The 600-LOC split wave materialised segment_validation_rules.go and source_resolver_preflight.go in the SAME directory; move each family behind its own subpackage instead of adding further sibling files.",
+      "target_packages": [
+        "internal/capabilities/scripts/usecase/sourceresolver",
+        "internal/capabilities/scripts/usecase/generation"
       ]
     }
   ],

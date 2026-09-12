@@ -47,6 +47,29 @@ func TestProjectEntityAnnotations_GroundsAndClassifies(t *testing.T) {
 	}
 }
 
+func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric(t *testing.T) {
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "seg-0",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Ada Lovelace", Type: "PERSON", Confidence: 0.99},
+		}},
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "ada-portrait", Provider: scriptpkg.VidRushProviderInternetImages,
+			Entity: "Ada Lovelace", Query: "historical portrait",
+			DriveLink: "https://drive.google.com/file/d/ada/view", LegacyFileMD5: "ada-md5",
+			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			RightsBasis: "public-domain",
+		}}},
+	}
+
+	ann := projectEntityAnnotations("Ada Lovelace pioneered computing.", "en", seg)
+	require.NotNil(t, ann)
+	require.Len(t, ann.PrimaryEntities, 1)
+	require.NotNil(t, ann.PrimaryEntities[0].Image, "the durable entity identity must bind the image")
+	assert.Equal(t, "ada-portrait", ann.PrimaryEntities[0].Image.AssetID)
+}
+
 func TestProjectEntityAnnotations_PromotesGroundedConceptToImportantPhrase(t *testing.T) {
 	text := "Dwayne The Rock Johnson built his career as a former professional wrestler."
 	seg := scriptpkg.VidRushSegmentResult{
