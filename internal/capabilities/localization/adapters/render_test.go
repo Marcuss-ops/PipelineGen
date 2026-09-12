@@ -317,3 +317,101 @@ func TestLocalizationRenderPlanExecutor_NilRendererFailsClosed(t *testing.T) {
 		t.Fatal("Execute must fail closed on an unwired renderer")
 	}
 }
+
+// localizedRenderFixture writes a source + rendered output pair and returns the
+// sealed plan, the real digest of the rendered bytes and its size.
+func localizedRenderFixture(t *testing.T) (render.RenderPlan, string, string, int64) {
+	t.Helper()
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "source.mp4")
+	if err := os.WriteFile(srcPath, []byte("source-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcSHA, _, err := digest.SHA256File(srcPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(dir, "clip-1.es.mp4")
+	if err := os.WriteFile(outPath, []byte("rendered-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realSHA, _, err := digest.SHA256File(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return appTestRenderPlan(t, srcPath, srcSHA, outPath), outPath, realSHA, info.Size()
+}
+
+// TestLocalizationRenderPlanExecutor_ReusesCertifiedDigest pins the waste
+// removal: when the render boundary certifies the output digest, the adapter
+// adopts it verbatim instead of re-reading the whole artifact. The certified
+// digest is deliberately NOT the real digest of the bytes on disk, so a
+// regression that goes back to hashing the file cannot pass this test.
+func TestLocalizationRenderPlanExecutor_ReusesCertifiedDigest(t *testing.T) {
+	plan, outPath, realSHA, size := localizedRenderFixture(t)
+	certified := strings.Repeat("a", 64)
+	if certified == realSHA {
+		t.Fatal("fixture must use a certified digest distinct from the real bytes")
+	}
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath:  outPath,
+		SizeBytes:   size,
+		SHA256:      certified,
+		DurationSec: 8.432,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1}, zap.NewNop())
+
+	facts, err := adapter.Execute(context.Background(), plan, nil)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if facts.SHA256 != certified {
+		t.Fatalf("facts.SHA256 = %q, want the certified digest %q (a re-hash means the artifact was read twice)", facts.SHA256, certified)
+	}
+	if facts.SizeBytes != size {
+		t.Fatalf("facts.SizeBytes = %d, want %d", facts.SizeBytes, size)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_FailsClosedOnUncertifiedOutcome pins the
+// fallback: an outcome with no certified digest (a legacy/test renderer) still
+// gets the real bytes hashed, never a trusted empty string.
+func TestLocalizationRenderPlanExecutor_FailsClosedOnUncertifiedOutcome(t *testing.T) {
+	plan, outPath, realSHA, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: outPath, SizeBytes: size, DurationSec: 8.432}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+
+	facts, err := adapter.Execute(context.Background(), plan, nil)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if facts.SHA256 != realSHA {
+		t.Fatalf("facts.SHA256 = %q, want the real bytes digest %q", facts.SHA256, realSHA)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_RehashesOnCertifiedSizeMismatch pins the
+// fail-closed guard: a certified digest whose certified size no longer matches
+// the file on disk is never trusted, and the real bytes are hashed instead.
+func TestLocalizationRenderPlanExecutor_RehashesOnCertifiedSizeMismatch(t *testing.T) {
+	plan, outPath, realSHA, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath:  outPath,
+		SizeBytes:   size + 1, // certified size drifted from the bytes on disk
+		SHA256:      strings.Repeat("b", 64),
+		DurationSec: 8.432,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+
+	facts, err := adapter.Execute(context.Background(), plan, nil)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if facts.SHA256 != realSHA {
+		t.Fatalf("facts.SHA256 = %q, want the re-hashed real digest %q", facts.SHA256, realSHA)
+	}
+}

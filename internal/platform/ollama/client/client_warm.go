@@ -24,7 +24,8 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 	}
 
 	_, err, _ := c.warmModelGroup.Do(model, func() (any, error) {
-		resident, checkErr := c.IsModelResident(ctx, model)
+		const requiredContext int64 = types.ProductionRunnerContext
+		resident, checkErr := c.IsModelResidentWithContext(ctx, model, requiredContext)
 		if checkErr != nil {
 			return nil, fmt.Errorf("verify live residency for %q: %w", model, checkErr)
 		}
@@ -35,15 +36,15 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 		// A minimal chat request forces Ollama to load the model while keeping
 		// it resident. The real scene fan-out starts only after this returns.
 		_, err := c.ChatDetailed(ctx, []types.Message{{Role: "system", Content: "warmup"}}, map[string]any{
-			// Match the short-scene bucket used by the real fan-out. Ollama can
-			// reload/reconfigure a resident model when the context changes, so a
-			// 4096 probe followed by 2048 scene calls would create a false warmup.
-			"model": model, "num_predict": 1, "num_ctx": 2048,
+			// Match the production runner bucket. Ollama reloads/reconfigures a
+			// resident model when the context changes, so one fixed bucket keeps
+			// cold-start work outside the first production request.
+			"model": model, "num_predict": 1, "num_ctx": requiredContext,
 		}, nil)
 		if err != nil {
 			return nil, err
 		}
-		resident, checkErr = c.IsModelResident(ctx, model)
+		resident, checkErr = c.IsModelResidentWithContext(ctx, model, requiredContext)
 		if checkErr != nil {
 			return nil, fmt.Errorf("verify post-warm residency for %q: %w", model, checkErr)
 		}

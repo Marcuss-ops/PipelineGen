@@ -17,20 +17,17 @@ func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 
 // WithRenderExecutor attaches the RenderingGen/Chronon render boundary. A
 // missing executor remains a typed failure; a sealed plan is never reported
-// as a rendered clip. If the composition runtime also exposes the optional
-// AsyncCompletionProvider capability, this is the ONE discovery point for the
-// continuation dependencies — no second wiring registry is introduced.
+// as a rendered clip.
+//
+// Async enablement is NOT discovered here: the worker selects Submit/Settle
+// exactly when the renderer implements AsyncRenderExecutor AND both durable
+// continuation ports are attached (WithContinuationStore +
+// WithContinuationEnqueuer), and that single decision lives in Worker.Handle.
+// A second provider-based discovery path used to exist and could disagree with
+// it, which made the live mode impossible to read from the wiring.
 func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 	if w != nil {
 		w.renderer = r
-		if provider, ok := r.(AsyncCompletionProvider); ok {
-			store, enqueuer, enabled := provider.AsyncCompletionDependencies()
-			if enabled {
-				w.continuationStore = store
-				w.continuationEnqueuer = enqueuer
-				w.asyncCompletion = true
-			}
-		}
 	}
 	return w
 }

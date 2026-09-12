@@ -41,7 +41,6 @@ type Worker struct {
 	workspaceDir         string
 	subtitles            SubtitleCompiler          // optional until the ASS-compiler step wires it
 	renderer             RenderExecutor            // optional until the render-phase step consumes it
-	asyncCompletion      bool                      // enabled when durable Submit/Settle wiring is attached
 	continuationStore    ContinuationStore         // required for the async submit/settle path
 	continuationEnqueuer ContinuationEnqueuer      // required for the async submit/settle path
 	publisher            RenderPublisher           // optional in unit tests; required by production wiring

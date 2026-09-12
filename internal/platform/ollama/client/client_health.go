@@ -76,6 +76,17 @@ func (c *Client) ListRunningModels(ctx context.Context) ([]types.RunningModel, e
 // IsModelResident checks live Ollama state. It deliberately does not trust
 // the client's TTL cache because Ollama may evict a model independently.
 func (c *Client) IsModelResident(ctx context.Context, model string) (bool, error) {
+	return c.IsModelResidentWithContext(ctx, model, 0)
+}
+
+// IsModelResidentWithContext checks that a live model has the requested
+// runner context as well as the requested name. Ollama may keep the same
+// model loaded while rebuilding the runner for a different context length;
+// treating that state as ready would move the cold reload into the first
+// production request.
+func (c *Client) IsModelResidentWithContext(
+	ctx context.Context, model string, requiredContext int64,
+) (bool, error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		model = c.model
@@ -89,10 +100,12 @@ func (c *Client) IsModelResident(ctx context.Context, model string) (bool, error
 		// configured tag. Compare the canonical tag prefix as well as the
 		// exact wire name, without treating /api/tags availability as residency.
 		name := strings.TrimSpace(running.Name)
-		if name == model || strings.TrimSuffix(name, "@"+strings.TrimPrefix(name, "@")) == model {
-			return true, nil
-		}
+		nameMatches := name == model ||
+			strings.TrimSuffix(name, "@"+strings.TrimPrefix(name, "@")) == model
 		if at := strings.IndexByte(name, '@'); at > 0 && name[:at] == model {
+			nameMatches = true
+		}
+		if nameMatches && (requiredContext <= 0 || running.ContextLength == requiredContext) {
 			return true, nil
 		}
 	}

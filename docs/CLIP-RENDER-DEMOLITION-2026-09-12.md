@@ -467,10 +467,12 @@ internal/capabilities/localization/service.go:190          s.renderer.Render(...
 internal/capabilities/cliprender/bench_harness_test.go:746 benchBlockingRenderer     ← baseline BEFORE del benchmark
 ```
 
-Il ramo bloccante del worker è ora esplicito (`asyncCompletion`, impostato dai
-soli switch di composizione) e `handleAsyncSettle` **fallisce chiuso** se il
-worker non è configurato per lo split — quindi la modalità non può degradare in
-silenzio. La cancellazione di `RenderExecutor.Render` resta impossibile finché
+Il ramo bloccante del worker resta esplicito e `handleAsyncSettle` **fallisce
+chiuso** se il worker non è configurato per lo split — quindi la modalità non
+può degradare in silenzio. La discovery duplicata (`asyncCompletion`,
+`AsyncCompletionProvider` e il wrapper env-gated) è stata rimossa: `Worker.Handle`
+è l'unico owner della decisione Submit/Settle. La cancellazione di
+`RenderExecutor.Render` resta impossibile finché
 il sottosistema `localization` (scene × lingua, senza continuation store,
 aggregatore o settle) non è migrato a Submit/Settle, e finché il benchmark usa
 il renderer bloccante come modello pre-split.
