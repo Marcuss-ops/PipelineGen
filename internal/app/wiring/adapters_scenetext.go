@@ -9,7 +9,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -54,7 +54,7 @@ func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64)
 }
 
 type SceneTextGenerator struct {
-	Engine             *usecase.Engine
+	Engine             *gencore.Engine
 	Registry           *adapters.SourceRegistry
 	ClipAssets         ClipAssetResolver
 	Probe              ClipProber
@@ -77,7 +77,7 @@ func (g *SceneTextGenerator) SetSegmentConcurrency(concurrency int) {
 }
 
 // NewSceneTextGenerator constructs the generator; nil engine panics.
-func NewSceneTextGenerator(engine *usecase.Engine, log *zap.Logger) *SceneTextGenerator {
+func NewSceneTextGenerator(engine *gencore.Engine, log *zap.Logger) *SceneTextGenerator {
 	if engine == nil {
 		panic("app: SceneTextGenerator requires a non-nil engine")
 	}

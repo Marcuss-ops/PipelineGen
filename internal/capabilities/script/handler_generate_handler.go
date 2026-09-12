@@ -64,6 +64,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
@@ -86,7 +87,7 @@ type HandlerGenerate struct {
 	scriptgenSvc *scriptgen.GenerationRunStarter
 	factory      *submission.SubmitRequestFactory
 	log          *zap.Logger
-	validator    *usecase.PayloadValidator
+	validator    *gencore.PayloadValidator
 	preflight    usecase.ResearchPreflight
 }
 
@@ -106,14 +107,14 @@ func NewHandlerGenerate(
 	scriptgenSvc *scriptgen.GenerationRunStarter,
 	factory *submission.SubmitRequestFactory,
 	log *zap.Logger,
-	validator *usecase.PayloadValidator,
+	validator *gencore.PayloadValidator,
 	preflight ...usecase.ResearchPreflight,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	if validator == nil {
-		validator = usecase.NewDefaultPayloadValidator()
+		validator = gencore.NewDefaultPayloadValidator()
 	}
 	if factory == nil {
 		factory = submission.NewSubmitRequestFactory()

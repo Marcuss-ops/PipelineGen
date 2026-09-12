@@ -9,6 +9,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -56,7 +57,7 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	if cached := r.loadAggregateCache(ctx, aggregateKey, src, topic, lang, resCtx); cached != nil {
 		return cached, nil
 	}
-	if normalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeCacheOnly {
+	if gencore.NormalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeCacheOnly {
 		return nil, ErrResearchCacheMiss
 	}
 	if r.ranker == nil {
@@ -170,7 +171,7 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	aggregateReport.Evidence = pack
 	aggregateReport.CacheSaved = false
 	projection := pack.ModelSourceText()
-	if r.cache != nil && normalizeCacheMode(src.CachePolicy.Mode) != scriptpkg.SourceCacheModeDisabled {
+	if r.cache != nil && gencore.NormalizeCacheMode(src.CachePolicy.Mode) != scriptpkg.SourceCacheModeDisabled {
 		if err := r.saveAggregateCache(ctx, aggregateKey, src, topic, lang, pack, aggregateReport, projection); err != nil {
 			return nil, err
 		}
@@ -296,7 +297,7 @@ func resolveRankingMetric(src scriptpkg.SourceSpec, topic string) scriptpkg.Rank
 }
 
 func (r *WebResearchResolver) loadAggregateCache(ctx context.Context, key string, src scriptpkg.SourceSpec, topic, language string, resCtx scriptpkg.SourceResolutionContext) *scriptpkg.ResolvedSource {
-	if r.cache == nil || normalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeDisabled || src.ForceRefresh || normalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeForceRefresh {
+	if r.cache == nil || gencore.NormalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeDisabled || src.ForceRefresh || gencore.NormalizeCacheMode(src.CachePolicy.Mode) == scriptpkg.SourceCacheModeForceRefresh {
 		return nil
 	}
 	cached, err := r.cache.GetResearchCache(ctx, key)
@@ -323,7 +324,7 @@ func (r *WebResearchResolver) loadAggregateCache(ctx context.Context, key string
 }
 
 func aggregateResearchCacheAvailable(ctx context.Context, cache scriptports.TopicSourceCache, key, mode string) bool {
-	if cache == nil || normalizeCacheMode(mode) == scriptpkg.SourceCacheModeDisabled {
+	if cache == nil || gencore.NormalizeCacheMode(mode) == scriptpkg.SourceCacheModeDisabled {
 		return false
 	}
 	recordReader, ok := cache.(interface {

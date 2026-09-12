@@ -9,11 +9,10 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	"go.uber.org/zap"
 )
@@ -30,25 +29,25 @@ type ScriptGenerateItemPayload struct {
 }
 
 // GenerateOneExecutor is the narrow Pattern-0 port the child handler
-// needs. The production *usecase.GenerateOneUseCase satisfies this
+// needs. The production *gencore.GenerateOneUseCase satisfies this
 // implicitly; tests inject stubs without instantiating the full
 // 5-resolver + postprocessor pipeline. The tracker parameter
 // matches the canonical GenerateOneUseCase.Execute signature — the
-// canonical tracker is *usecase.ProgressTracker (constructed from
+// canonical tracker is *gencore.ProgressTracker (constructed from
 // NewProgressTracker(progressFn, id)); nil is acceptable when the
 // caller does not need progress reporting (the canonical child
 // handler emits progress via tools.Progress, not via the per-item
 // tracker).
 type GenerateOneExecutor interface {
-	Execute(ctx context.Context, item domainScript.GenerationItemV2, preset domainScript.Preset, tracker *usecase.ProgressTracker) (*domainScript.GenerationResult, error)
+	Execute(ctx context.Context, item domainScript.GenerationItemV2, preset domainScript.Preset, tracker *gencore.ProgressTracker) (*domainScript.GenerationResult, error)
 }
 
-// Compile-time assertion: *usecase.GenerateOneUseCase satisfies
+// Compile-time assertion: *gencore.GenerateOneUseCase satisfies
 // GenerateOneExecutor. The assertion runs in the composition root
 // (internal/app/composition.go) via `var _ GenerateOneExecutor =
-// (*usecase.GenerateOneUseCase)(nil)`; the canonical job pkg does
+// (*gencore.GenerateOneUseCase)(nil)`; the canonical job pkg does
 // not import usecase to keep port directionality clean.
-var _ GenerateOneExecutor = (*usecase.GenerateOneUseCase)(nil)
+var _ GenerateOneExecutor = (*gencore.GenerateOneUseCase)(nil)
 
 // ScriptGenerateItemJobHandler is the canonical per-item child
 // handler for script.generate_item jobs (job.TypeScriptGenerateItem).
@@ -164,7 +163,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	// in tools.Progress (above) only. The parent's GenerateManyFanoutUseCase
 	// is responsible for the aggregate progress reporting. A nil
 	// tracker is canonically accepted by GenerateOneUseCase.Execute.
-	tracker := (*usecase.ProgressTracker)(nil)
+	tracker := (*gencore.ProgressTracker)(nil)
 
 	execCtx := ctx
 	if parentJobID != "" && parentJobID != "unknown" {

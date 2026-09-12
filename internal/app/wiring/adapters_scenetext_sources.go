@@ -10,7 +10,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scenepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -372,7 +372,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 // the simple Scene type consumed by the scriptgeneration runner.
 func (g *SceneTextGenerator) convertScenes(
 	ctx context.Context,
-	result *usecase.EngineResult,
+	result *gencore.EngineResult,
 	sourceLang scriptgen.Language,
 	requestedAudio capabilityaudio.AudioMode,
 	requireLocalMedia bool,

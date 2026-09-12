@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -47,9 +48,9 @@ import (
 // produces a typed error — perfect for asserting the handler
 // propagates it as a non-nil Go error.
 
-func newFailingOneUseCase() *usecase.GenerateOneUseCase {
+func newFailingOneUseCase() *gencore.GenerateOneUseCase {
 	reg := adapters.NewSourceRegistry(zap.NewNop())
-	return usecase.NewGenerateOneUseCase(
+	return gencore.NewGenerateOneUseCase(
 		adapters.NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // engine nil → every Execute returns ErrGenerationFailed

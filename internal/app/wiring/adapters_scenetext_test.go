@@ -15,7 +15,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -165,7 +165,7 @@ func TestSceneTextGeneratorConvertScenesEnrichesCanonicalClipFields(t *testing.T
 	clip.SetLegacyFileMD5("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
 	generator := &SceneTextGenerator{ClipAssets: scenetextClipResolver{clip: clip}}
-	result := &usecase.EngineResult{Output: scriptpkg.ModelScriptOutputV1{
+	result := &gencore.EngineResult{Output: scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 			ID: "scene-1", Index: 0, Text: "clip narration",
 			Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{
@@ -192,7 +192,7 @@ func TestSceneTextGeneratorConvertScenesPreservesAllClipBindings(t *testing.T) {
 	clip.SetLocalPath("/var/lib/pipelinegen/clips/clip.mp4")
 	clip.SetLegacyFileMD5("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	generator := &SceneTextGenerator{ClipAssets: scenetextClipResolver{clip: clip}}
-	result := &usecase.EngineResult{Output: scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+	result := &gencore.EngineResult{Output: scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 		ID: "scene-1", Index: 0, Text: "multi clip",
 		Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{{ClipID: "clip-a"}, {ClipID: "clip-b"}}},
 	}}}}}
@@ -210,8 +210,8 @@ func TestSceneTextGeneratorConvertScenesPreservesAllClipBindings(t *testing.T) {
 
 // driveOnlyFixture returns a SpecScene bound to a Drive-only clip: registry
 // row with a Drive link and duration, but no local path and no file hash.
-func driveOnlyFixture() *usecase.EngineResult {
-	return &usecase.EngineResult{Output: scriptpkg.ModelScriptOutputV1{
+func driveOnlyFixture() *gencore.EngineResult {
+	return &gencore.EngineResult{Output: scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 			ID: "scene-1", Index: 0, Text: "clip narration",
 			Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{
@@ -453,7 +453,7 @@ func (g *recordingStreamScriptGenerator) snapshotEvents() []string {
 // each scene is emitted as soon as its own model result is final.
 func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
 	gen := &recordingStreamScriptGenerator{}
-	engine := usecase.NewEngine(gen, nil, zap.NewNop())
+	engine := gencore.NewEngine(gen, nil, zap.NewNop())
 	generator := NewSceneTextGenerator(engine, zap.NewNop())
 
 	req := scriptgen.GenerateRequest{
@@ -518,7 +518,7 @@ func (g *proseBatchScriptGenerator) GenerateScript(_ context.Context, _ scriptpo
 // seam the runner consumes).
 func TestSceneTextGeneratorStreamFallsBackToBatchForProse(t *testing.T) {
 	gen := &proseBatchScriptGenerator{}
-	engine := usecase.NewEngine(gen, nil, zap.NewNop())
+	engine := gencore.NewEngine(gen, nil, zap.NewNop())
 	generator := NewSceneTextGenerator(engine, zap.NewNop())
 
 	req := scriptgen.GenerateRequest{

@@ -73,6 +73,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	capvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -115,7 +116,7 @@ type CreatorRoot = CreatorRuntime
 //   - Log — required by the canonical app.CleanupFunc contract for
 //     diagnostic-on-cleanup-failure (workspace removal BestEffort).
 type CreatorRuntime struct {
-	ScriptEngine *usecase.Engine
+	ScriptEngine *gencore.Engine
 
 	// VoiceoverEngine generates per-scene voiceover audio via Ollama TTS.
 	// Typed-nil when the TTS backend is not configured.
@@ -215,7 +216,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), nil, log)
+	engine := gencore.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), nil, log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(cfg.Scripts.SegmentWordsTolerancePercent, cfg.Scripts.TotalWordsTolerancePercent, cfg.Scripts.MaxSegmentRegenerationAttempts)
 
@@ -250,7 +251,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
 	sourceReg := adapters.NewSourceRegistry(log)
-	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	generateOne := gencore.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	generateMany := usecase.NewGenerateManyUseCase(log)
 	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, log)
 

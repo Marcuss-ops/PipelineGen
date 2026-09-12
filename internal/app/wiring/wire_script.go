@@ -17,6 +17,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
@@ -209,7 +210,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			GenRunStarter: scriptgen.NewGenerationRunStarterWithRepo(nil, runRepo),
 			Factory:       submission.NewSubmitRequestFactory(),
 			Log:           log,
-			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
+			Validator:     gencore.NewPayloadValidator(cfg.Scripts),
 			ResearchPreflight: func() usecase.ResearchPreflight {
 				if root.CacheDB == nil || root.CacheDB.DB == nil {
 					return nil

@@ -22,7 +22,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -44,14 +44,14 @@ type SingleGenerationExecutor interface {
 // singleGenerationExecutor implements SingleGenerationExecutor using
 // the canonical GenerateOneUseCase.
 type singleGenerationExecutor struct {
-	one *usecase.GenerateOneUseCase
+	one *gencore.GenerateOneUseCase
 	log *zap.Logger
 }
 
 // NewSingleGenerationExecutor constructs the canonical
 // SingleGenerationExecutor. one may be nil; Execute will fail-closed
 // at runtime rather than panic.
-func NewSingleGenerationExecutor(one *usecase.GenerateOneUseCase, log *zap.Logger) SingleGenerationExecutor {
+func NewSingleGenerationExecutor(one *gencore.GenerateOneUseCase, log *zap.Logger) SingleGenerationExecutor {
 	return &singleGenerationExecutor{
 		one: one,
 		log: log,
@@ -88,7 +88,7 @@ func (e *singleGenerationExecutor) Execute(
 
 	progressFn := appjobs.SafeProgressFn(tools)
 	eventFn := appjobs.SafeEventFn(tools)
-	tracker := usecase.NewProgressTracker(progressFn, item.ID)
+	tracker := gencore.NewProgressTracker(progressFn, item.ID)
 	tracker.SetEventFn(eventFn)
 	tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageRunning), j.ID, "")
 	tracker.SetEventFn(eventFn)
@@ -103,7 +103,7 @@ func (e *singleGenerationExecutor) Execute(
 		e.log.Info("script.generate: item source text metrics",
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),
-			zap.Any("source_text", usecase.SourceTextLogFields(item.Source.SourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
+			zap.Any("source_text", gencore.SourceTextLogFields(item.Source.SourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
 	}
 
 	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
