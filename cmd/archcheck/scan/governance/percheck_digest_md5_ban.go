@@ -120,8 +120,7 @@ func digestMD5WarnBucket(r *report.Report, label, msg string) {
 // crypto/md5) trip `percheck_digest_md5_ban_allowlist_stale` so the
 // allowlist ratchets to zero. A missing allowlist file trips
 // `percheck_digest_md5_ban_allowlist_missing` (fail-closed).
-func ScanDigestMD5Ban(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanDigestMD5Ban(root string, _ *policy.Policy, r *report.Report) {
 
 	allowlistPath := filepath.Join(root, filepath.FromSlash(digestMD5AllowlistFile))
 	allowlist := map[string]bool{}

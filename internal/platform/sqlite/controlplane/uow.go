@@ -10,6 +10,7 @@ import (
 	"time"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -272,13 +273,13 @@ func (u *UnitOfWork) appendAudit(ctx context.Context, tx *sql.Tx, command capcon
 	return seq, nil
 }
 
+// isTerminalOutboxStatus delegates to the canonical predicate OWNED by
+// internal/kernel/event (godlike/06 one owner per fact). Before this became a
+// delegation there were four independent copies and two of them disagreed on
+// the legacy `dead` spelling — a row classified terminal by the control-plane
+// UoW was non-terminal for the media reindex requester.
 func isTerminalOutboxStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "dead", "dead_letter", "superseded":
-		return true
-	default:
-		return false
-	}
+	return event.IsTerminalOutboxStatus(status)
 }
 
 // isCompletedReplay permits a deterministic mutation to be replayed after

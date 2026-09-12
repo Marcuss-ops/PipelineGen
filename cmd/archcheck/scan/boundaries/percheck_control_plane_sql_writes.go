@@ -72,8 +72,7 @@ var controlPlaneSQLExecRE = regexp.MustCompile(`(?i)\b(?:exec(?:context)?|queryr
 // The scanner is inherently production-only: test files and comments are
 // excluded, so the productionOnly argument is retained for CheckSpec
 // compatibility but has no alternate behavior.
-func ScanControlPlaneSQLWrites(root string, pol *policy.Policy, r *report.Report, _ bool) {
-	_ = pol
+func ScanControlPlaneSQLWrites(root string, _ *policy.Policy, r *report.Report, _ bool) {
 
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {

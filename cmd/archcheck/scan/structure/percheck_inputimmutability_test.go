@@ -24,7 +24,7 @@ func inputImmutabilityTestRoot(t *testing.T, relPath, body string) string {
 
 func scanInputViolations(t *testing.T, body string) []report.Violation {
 	t.Helper()
-	root := inputImmutabilityTestRoot(t, "internal/application/example/example.go", body)
+	root := inputImmutabilityTestRoot(t, "internal/capabilities/example/example.go", body)
 	r := &report.Report{}
 	ScanInputImmutability(root, nil, r)
 	return r.Violations
@@ -153,7 +153,7 @@ func Generate(req *GenerateCommand) {
 }
 
 func TestScanInputImmutability_TestFilesAreSkipped(t *testing.T) {
-	root := inputImmutabilityTestRoot(t, "internal/application/example/example_test.go", `package example
+	root := inputImmutabilityTestRoot(t, "internal/capabilities/example/example_test.go", `package example
 
 type GenerateRequest struct { Source string }
 func Generate(req *GenerateRequest) { req.Source = "test" }

@@ -216,8 +216,10 @@ type ConfigPort interface {
 // ── Enrichment ports ──────────────────────────────────────────────────
 
 // EnrichmentPort triggers async enrichment and indexing after registration.
+// The removed localPath/source register-flow args had zero readers at every
+// call site; the use case resolves the asset from clipID itself.
 type EnrichmentPort interface {
-	EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error
+	EnrichAndIndex(ctx context.Context, clipID string) error
 }
 
 // IndexDispatcherPort is the narrow surface of outbox.Dispatcher needed by
@@ -312,7 +314,7 @@ var (
 // when the enrichment handler is unwired at composition time. Returning
 // nil (the pre-fix silent-success class) is a godlike/07 violation.
 type SourcingAtomicPort interface {
-	EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error
+	EnrichAndIndex(ctx context.Context, clipID string) error
 	UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error
 }
 

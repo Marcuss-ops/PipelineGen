@@ -1,5 +1,14 @@
 # Data layer certification
 
+> **AVAILABILITY (September 2026):** the driver this page documents,
+> `scripts/ci/certify-data-layer.sh` (with its siblings `certify-storage.sh`,
+> `certify-media-cutover.sh`, `certify-rust-migration.sh`), was DELETED by
+> commit `7e6965aab`. `make certify-data-layer` now fails closed with an
+> explicit "the certification driver … is ABSENT — NOTHING is certified"
+> message; it never prints a pass. Treat the procedure below as the contract to
+> RESTORE, not as a gate that currently runs. The live substitutes are the
+> SQLite migration tests plus `go run ./cmd/archcheck --strict`.
+
 The final four-plane gate is:
 
 ```bash

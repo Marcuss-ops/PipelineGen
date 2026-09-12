@@ -191,8 +191,12 @@ func TestMaterializeArtifactHashesStreamedBytes(t *testing.T) {
 	defer srv.Close()
 
 	out := filepath.Join(t.TempDir(), "result.mp4")
-	if err := materializeArtifact(context.Background(), srv.URL+"/objects/"+hash, out, int64(len(payload)), hash); err != nil {
+	certifiedSHA, certifiedSize, err := materializeArtifact(context.Background(), srv.URL+"/objects/"+hash, out, int64(len(payload)), hash)
+	if err != nil {
 		t.Fatalf("materialize: %v", err)
+	}
+	if certifiedSHA != hash || certifiedSize != int64(len(payload)) {
+		t.Fatalf("certified digest/size = %q/%d, want %q/%d (the streaming pass must certify the bytes)", certifiedSHA, certifiedSize, hash, len(payload))
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
@@ -215,10 +219,10 @@ func TestMaterializeArtifactRejectsSizeAndHashDrift(t *testing.T) {
 	defer srv.Close()
 	url := srv.URL + "/objects/" + hash
 
-	if err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "size.mp4"), int64(len(payload)+1), hash); err == nil {
+	if _, _, err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "size.mp4"), int64(len(payload)+1), hash); err == nil {
 		t.Fatal("size drift must fail closed")
 	}
-	if err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "hash.mp4"), int64(len(payload)), strings.Repeat("0", 64)); err == nil {
+	if _, _, err := materializeArtifact(context.Background(), url, filepath.Join(t.TempDir(), "hash.mp4"), int64(len(payload)), strings.Repeat("0", 64)); err == nil {
 		t.Fatal("hash drift must fail closed")
 	}
 }

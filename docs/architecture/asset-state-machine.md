@@ -1,7 +1,9 @@
 # Asset State Machine
 
-The `AssetState` enum in `internal/domain/asset` is the canonical, explicit
-14-state machine for the asset journey from discovery to multilingual ready.
+The `AssetState` enum in `internal/kernel/asset/asset_state_values.go` is the
+canonical, explicit 14-state machine for the asset journey from discovery to
+multilingual ready. (The historical `internal/domain/asset` package was
+deleted in August 2026; any reference to it is stale.)
 It is the single source of truth for the alphabet, the transition matrix,
 and the helper predicates. No other package may declare an `AssetState`
 enum or shadowed constant.

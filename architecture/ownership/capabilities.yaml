@@ -84,8 +84,10 @@ application_assets:
   # the legacy table identifier. Future closure: migration 110 ships
   # atomically (deadline 2026-08-31, Wave CONFORMANCE-001 close); see
   # architecture/current.yaml#id-24 follow_up_tickets for A1.3 / A2.1
-  # details + transitional baseline (2 ARCH-ALLOWLIST files per
-  # docs/migrations/monitored-sources-allowlist.txt).
+  # details. (The former per-file baseline
+  # docs/migrations/monitored-sources-allowlist.txt was demolished
+  # 2026-09-12 in the governance sweep: its only consumer was the
+  # deleted scripts/ci-architectural-checks.sh ratchet.)
   category_channels_owns_monitor_state: category_channels owns monitor-state
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
 application_images:

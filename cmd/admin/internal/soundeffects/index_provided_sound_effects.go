@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 type providedSoundEffect struct {
@@ -190,7 +191,7 @@ func RunIndexProvidedSoundEffects(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
-	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
 	if err != nil {
 		return fmt.Errorf("read outbox baseline: %w", err)
 	}

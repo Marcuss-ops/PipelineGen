@@ -216,8 +216,7 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 // (the application-layer mirror) are out of scope — they're
 // application types and may be imported freely. Only the literal
 // `internal/platform/qdrant` import is banned.
-func ScanQdrantIndexImportBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanQdrantIndexImportBan(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

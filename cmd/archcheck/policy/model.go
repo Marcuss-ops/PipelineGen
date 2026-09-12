@@ -35,10 +35,11 @@ package policy
 // first-level `internal/<x>` not in either list as an unknown-root violation,
 // so unmanaged roots cannot appear silently.
 //
-// `Capabilities` and `PlatformSubzones` are targets for Phase 1+
-// enforcement of "expected zones exist" rules. For Phase 0 they are
-// declared in the policy so the report snapshot is forward-compatible,
-// but no enforcement logic runs against them yet.
+// `PlatformSubzones` is a target for Phase 1+ enforcement of "expected
+// zones exist" rules. For Phase 0 it is declared in the policy so the report
+// snapshot is forward-compatible, but no enforcement logic runs against it
+// yet. (The retired `capabilities:` key was deleted: it was parsed but never
+// consumed and named stale capabilities, so it was a duplicate registry.)
 type Policy struct {
 	MaxFilesPerPackage int
 	MaxLinesPerFile    int
@@ -58,8 +59,9 @@ type Policy struct {
 	// one repo-root-relative forward-slashed path per line; `#` comments
 	// and blank lines are ignored. Empty string opts out (the rule
 	// is unenforced for the un-allowlisted population). Forward-
-	// compatible with the existing permit-only model used by
-	// admin-sql-allowlist.txt and duplicate-types-allowlist.txt.
+	// compatible with the permit-only model used by the per-file
+	// allowlists (tracked by percheck_governance_artifacts, which fails on
+	// orphaned files).
 	MaxLinesStrictAllowlist string
 	MaxConstructorDeps      int
 	MaxStructDeps           int
@@ -82,7 +84,6 @@ type Policy struct {
 	MaxWarnings               int
 	ForbiddenTopLevelDirs     []string
 	KernelSubzones            []string
-	Capabilities              []string
 	CanonicalApplicationAreas []string
 	PlatformSubzones          []string
 	LegacyInternalRoots       []string

@@ -99,8 +99,7 @@ const handlerGenerateFieldMissingDeclRule = handlerGenerateFieldRule + "_decl_mi
 // Has no productionOnly interaction: the AST walk produces no
 // comment-only residue (comments are NOT parsed as field
 // declarations).
-func ScanHandlerGenerateFields(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanHandlerGenerateFields(root string, _ *policy.Policy, r *report.Report) {
 
 	full := root + "/" + handlerGenerateFieldScanScope
 

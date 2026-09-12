@@ -27,4 +27,7 @@ const (
 	ErrCodeInvalidPayload  = "INVALID_PAYLOAD"
 	ErrCodeUnknownField    = "UNKNOWN_FIELD"
 	ErrCodeJobsUnavailable = "JOBS_UNAVAILABLE"
+	// ErrCodePayloadTooLarge is returned (HTTP 413) when the bounded request
+	// body exceeds MaxClipRenderRequestBytes.
+	ErrCodePayloadTooLarge = "PAYLOAD_TOO_LARGE"
 )

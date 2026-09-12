@@ -8,8 +8,12 @@
 // extraction: the engine owns those once for every fact.
 //
 // Before the consolidation each fact below carried its own copy of that
-// skeleton; the four stateful scanners at the bottom of this file were ~150
+// skeleton; the stateful scanners at the bottom of these files were ~150
 // to ~380 lines each, most of it the same walk/emit/truncate boilerplate.
+//
+// The hardcoded-lexicon (stop-word map) fact lives in its sibling
+// ssot_fact_lexicon.go: it carries the LEXICON_MIRROR_DEBT deferral machinery,
+// and splitting keeps both files under the max_lines_per_file_strict cap.
 package governance
 
 import (
@@ -37,9 +41,14 @@ const (
 	projectDerivationSSOTRule      = "percheck_project_derivation_ssot"
 	evidencePrecedenceSSOTRule     = "percheck_evidence_precedence_ssot"
 	stopwordMapRule                = "percheck_stopword_maps_in_app"
-	metadataKeyScannerRule         = "percheck_metadata_registry"
-	indexedStateWriterSSOTRule     = "percheck_indexed_state_writer_ssot"
-	assetCommitterEventSSOTRule    = "percheck_asset_committer_event_ssot"
+	// metadataKeyScannerRule is the rule id of THIS gate. It deliberately
+	// does NOT reuse the historical `percheck_metadata_registry` id (which
+	// belonged to the retirement-tracked `map[string]any` ban): a shared id
+	// made two semantically independent gates indistinguishable in the
+	// report, in policy hard_gates and in the golden fixtures.
+	metadataKeyScannerRule      = "percheck_metadata_key_registry"
+	indexedStateWriterSSOTRule  = "percheck_indexed_state_writer_ssot"
+	assetCommitterEventSSOTRule = "percheck_asset_committer_event_ssot"
 )
 
 // ── 1. Embedding model-id constants ───────────────────────────────────────
@@ -54,11 +63,15 @@ const (
 // optionally preceded by const/var). Struct-literal fields (`Model: "..."`)
 // are data flowing through the Qdrant schema / config surfaces, which the
 // boot-time embedding-contract handshake already validates.
+// The set covers BOTH embedding families (text/E5 AND visual/SigLIP): the
+// visual model id has the same one-owner contract as the text one, and a
+// second declaration of it (e.g. a package-local DefaultVisualModelID) drifts
+// the HNSW dimension, the sidecar handshake and the Python mirror together.
 var embeddingModelIDLiteralRE = regexp.MustCompile(
-	`^\s*(?:const|var)?\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*"(nomic-embed-text|intfloat/multilingual-e5-base|multilingual-e5-base|multilingual-e5-small|multilingual-e5-large)"`,
+	`^\s*(?:const|var)?\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*"(nomic-embed-text|intfloat/multilingual-e5-base|multilingual-e5-base|multilingual-e5-small|multilingual-e5-large|google/siglip-so400m-patch14-384|siglip-so400m-patch14-384)"`,
 )
 
-const embeddingConstantsNote = "forbidden embedding model-id declaration outside the canonical model-registry SSOT (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires every text-embedding identity fact (model id, revision, dimension) to be owned ONLY by internal/kernel/models. Do NOT declare a new embedding-model constant/variable in another package — reference internal/kernel/models.CanonicalTextModelID (or the internal/kernel/embedding aliases) instead. Historical drift (nomic-embed-text vs multilingual-e5-base) broke query/document vector coherence; this gate fails closed on any re-introduction."
+const embeddingConstantsNote = "forbidden embedding model-id declaration outside the canonical model-registry SSOT (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires every embedding identity fact (model id, revision, dimension) to be owned ONLY by internal/kernel/models, for BOTH families (text: intfloat/multilingual-e5-base; visual: google/siglip-so400m-patch14-384). Do NOT declare a new embedding-model constant/variable in another package — reference internal/kernel/models.CanonicalTextModelID / CanonicalVisualModelID (or the internal/kernel/embedding aliases) instead. Historical drift (nomic-embed-text vs multilingual-e5-base text, and 768 vs 1152 visual) broke query/document vector coherence; this gate fails closed on any re-introduction."
 
 // ── 2. Duration probe (no raw ffprobe/ffmpeg spawn) ───────────────────────
 //
@@ -131,92 +144,7 @@ var evidencePrecedenceSSOTTranscriptRe = regexp.MustCompile(`"transcript"`)
 // a transcript-first selection may be ordered against.
 var evidencePrecedenceSSOTOtherTierRe = regexp.MustCompile(`"semantic_summary"|"visual_summary"|"summary"|"description"`)
 
-// ── 7. Stopword maps (no hardcoded linguistic maps) ───────────────────────
-//
-// Stop-word sets MUST be loaded from the LexiconRegistry
-// (internal/domain/linguistics/) at bootstrap. Any production file that
-// defines a literal stop-word map is a godlike/06 SSOT violation — stop words
-// are linguistic data, not code. The gate is SCOPED to the application and
-// infrastructure trees, which is what exempts the canonical lexicon home.
-const stopwordMapNote = "forbidden hardcoded stop-word map in application/infrastructure code. Stop-word sets MUST be loaded from the LexiconRegistry (internal/domain/linguistics/) at bootstrap via linguistics.DefaultLexicon().StopWords(). Hardcoded linguistic maps are a godlike/06 SSOT violation. See internal/domain/linguistics/lexicon_registry.go for the canonical approach."
-
-// stopwordMapOpenRe matches a line that OPENS a hardcoded stop-word map
-// literal: `map[string]struct{}{`, `map[string]bool{`, or the nested
-// `map[string]map[string]struct{}{` form used by per-language marker maps. The
-// pattern is deliberately loose so expanded multi-line literals (one quoted
-// word per line — the codebase norm) are tracked by the brace-depth state
-// machine in scanStopwordMapRuleFile instead of requiring words on the opener
-// line.
-var stopwordMapOpenRe = regexp.MustCompile(`map\[string\].*?(?:struct\{\}|bool)\{`)
-
-// stopwordWordRe matches common stop-word-like quoted strings that appear as
-// keys inside a hardcoded stop-word map literal.
-var stopwordWordRe = regexp.MustCompile(`"the"|"and"|"for"|"with"|"from"|"that"|"this"`)
-
-// scanStopwordMapRuleFile is the stateful stopword-map detector: it tracks the
-// brace depth of an opened map literal and emits AT MOST ONE violation per
-// map, anchored at the opener line, with the offending stop-word line as the
-// snippet.
-func scanStopwordMapRuleFile(_ any, path, relPath string, r *report.Report, rule *ssotRule) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	lineNo := 0
-	inMap := false
-	mapOpenLine := 0
-	reported := false
-	braceDepth := 0
-
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		// Comment-only lines carry no structural map state; skip them
-		// (godlike/07: descriptive prose is non-fatal residue).
-		if ssotIsComment(line, ssotCommentPrefixes) {
-			continue
-		}
-
-		if !inMap {
-			if !stopwordMapOpenRe.MatchString(line) {
-				continue
-			}
-			// Opener line: a single-line literal with stop-words on the
-			// same line is a direct violation.
-			if stopwordWordRe.MatchString(line) {
-				ssotEmit(r, rule, relPath, lineNo, rule.MatchedRule,
-					stopwordMapNote+" | snippet: "+truncateSSOTSnippet(line))
-			}
-			braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
-			if braceDepth > 0 {
-				// Expanded multi-line literal: track the body until the
-				// closing brace so one-word-per-line maps are caught.
-				inMap = true
-				mapOpenLine = lineNo
-				reported = stopwordWordRe.MatchString(line)
-			}
-			continue
-		}
-
-		// Inside an opened stop-word map literal body.
-		if !reported && stopwordWordRe.MatchString(line) {
-			ssotEmit(r, rule, relPath, mapOpenLine, rule.MatchedRule,
-				stopwordMapNote+" | snippet: "+truncateSSOTSnippet(line))
-			reported = true
-		}
-		braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
-		if braceDepth <= 0 {
-			inMap = false
-		}
-	}
-}
-
-// ── 8. Metadata-key registry (name-spaced Asset.Metadata alphabet) ────────
+// ── 7. Metadata-key registry (name-spaced Asset.Metadata alphabet) ────────
 //
 // Every name-spaced (`a.b.c`-containing) key in `Asset.Metadata[...]` literals
 // or the typed accessor surface MUST be declared in the canonical registry.
@@ -383,7 +311,7 @@ func scanMetadataKeysRuleFile(state any, path, relPath string, r *report.Report,
 	}
 }
 
-// ── 9. Indexed-state writer (single canonical outbox consumer) ────────────
+// ── 8. Indexed-state writer (single canonical outbox consumer) ──────────
 //
 // The ONLY legitimate writer of media_assets.index_state='INDEXED' is the
 // canonical outbox consumer chain
@@ -468,7 +396,7 @@ func scanIndexedStateWriterRuleFile(_ any, path, relPath string, r *report.Repor
 	}
 }
 
-// ── 10. Asset-committer event (single canonical emission site) ────────────
+// ── 9. Asset-committer event (single canonical emission site) ────────────
 //
 // The canonical `asset.index.requested` outbox event is created in EXACTLY
 // ONE place: the canonical AssetCommitter chain (media_assets UPSERT + outbox
@@ -476,60 +404,28 @@ func scanIndexedStateWriterRuleFile(_ any, path, relPath string, r *report.Repor
 // the commit pipeline and risks silent atomicity/duplicate-emission
 // regressions. This gate protects EMISSION; percheck_identity_ssot protects
 // DECLARATION.
-const assetCommitterEventSSOTNote = "forbidden emission of canonical 'asset.index.requested' outbox-event literal outside the canonical AssetCommitter chain (PR-DIAGNOSI-FINALE rule 3, July 2026); godlike/06 SSOT requires the canonical envelope (asset.index.requested.v1) to be emitted ONLY by the AssetCommitter.CommitAsset pathway (internal/capabilities/assets/persistence/committer.go) via the mutations.AssetMutationDispatcher (atomic UPSERT + outbox INSERT in single TX, QDRANT-002 atomicity invariant). Any other emission site risks silent QDRANT-002 regression (Qdrant indexing a not-yet-committed media_assets row) or duplicate-emission regression (a future cleanup over-counts events per asset_id). Exempt zones per scanner policy: canonical AssetCommitter files, outboxevents constants package, mutations.Dispatcher envelope, provider services routing through AssetCommitter, finalizer/post-processing surfaces that emit via the canonical AssetMutationDispatcher envelope, CLI admin tools (cmd/admin/**), test fixtures (tests/**)."
+const assetCommitterEventSSOTNote = "forbidden raw declaration of the canonical 'asset.index.requested' outbox-event literal (PR-DIAGNOSI-FINALE rule 3, July 2026; symbol-scoped 2026-09-12). godlike/06 SSOT: the literal is DECLARED only by internal/kernel/event (AssetIndexRequested / AssetIndexRequestedV1Schema); internal/platform/sqlite/outboxevents re-exports it. Every other package MUST reference the typed symbol, never re-declare the raw string: a second declaration drifts silently from the SQLite/PG outbox event_type, the jobs.type discriminator and the C3 routing key. The EMISSION itself must stay inside the canonical AssetCommitter chain (persistence.AssetCommitter via mutations.AssetMutationDispatcher, atomic UPSERT + outbox INSERT in one TX). Log/error MESSAGES that merely mention the event are not declarations and are residue-accounted separately."
 
 // assetCommitterEventSSOTLiteralRe matches production-code emission of the
 // literal `asset.index.requested` AND the canonical envelope
 // `asset.index.requested.v1`.
 var assetCommitterEventSSOTLiteralRe = regexp.MustCompile(`['"]asset\.index\.requested(\.v1)?['"]`)
 
-// assetCommitterEventSSOTExemptPathPrefixes is the canonical exempt set —
-// packages that legitimately reference the literal without bypassing the
-// AssetCommitter chain. Every entry is verified to still hold at least one
-// file containing the literal (godlike/08 zero-baseline: an exception list
-// that lies is worse than none).
-var assetCommitterEventSSOTExemptPathPrefixes = []string{
-	// 1. The identity ssot owner — internal/kernel/event is the ONE package
-	//    allowed to declare the literal (godlike/06 one owner per fact).
+// assetCommitterEventSSOTOwnerPaths is the symbol-scoped owner set: ONLY the
+// package that DECLARES the canonical wire literal may contain it.
+//
+// Replaces the former 18-entry path-prefix allowlist (September 2026). That
+// allowlist exempted whole domains — the entire provider tree, images,
+// observability, app/wiring, cmd/admin — so a NEW raw-literal declaration could
+// hide inside any of them and the gate would report green while claiming
+// "EXACTLY ONE place". Scoping the exemption to the declaration site makes the
+// single-owner claim true: every other package must reference the typed symbol
+// (internal/kernel/event.AssetIndexRequested / AssetIndexRequestedV1Schema,
+// re-exported by internal/platform/sqlite/outboxevents), and the emission path
+// stays inside the AssetCommitter chain.
+var assetCommitterEventSSOTOwnerPaths = []string{
+	// The identity owner — internal/kernel/event DECLARES the wire literal.
 	"internal/kernel/event/",
-	// 2. Canonical AssetCommitter files — the SOLE authority on the
-	//    asset.index.requested emission site.
-	"internal/capabilities/assets/persistence/",
-	// 3. The canonical outboxevents package — re-exports the owner constant
-	//    and documents the event family.
-	"internal/platform/sqlite/outboxevents/",
-	// 3b. The PostgreSQL media outbox adapter — engine mirror of the
-	//     outboxevents re-exports (one fact family, two engine adapters).
-	"internal/platform/postgres/media/",
-	// 4. Finalizer / texttracks / voiceover / catalogsync / provider —
-	//    surfaces that route through the canonical AssetCommitter pipeline.
-	"internal/capabilities/assets/finalizer/",
-	"internal/capabilities/assets/texttracks/",
-	"internal/capabilities/voiceover/service/",
-	"internal/capabilities/assets/soundeffect/",
-	"internal/capabilities/assets/catalogsync/",
-	"internal/capabilities/assets/providers/",
-	// 5. Composition-root bundles — emit the canonical event_type literal
-	//    only as typed documentation.
-	"internal/app/",
-	// 6. Idempotency keys package — the canonical asset.index.requested.v1
-	//    envelope is documented at internal/kernel/idempotency/keys.go.
-	"internal/kernel/idempotency/",
-	// 7. CLI admin tools — operator tooling legitimately inspects and
-	//    possibly emits asset.index.requested for data correction.
-	"cmd/admin/",
-	// 8. Image API surfaces — typed-port documentation referencing the
-	//    canonical event_type literal.
-	"internal/capabilities/images/",
-	// 9. Metrics / observability — event_type labels for metric dimensions
-	//    (NOT for emission).
-	"internal/platform/observability/",
-	// 10. Qdrant search dead-letter adapter — references the literal
-	//     event_type for classification (NOT for emission).
-	"internal/platform/qdrant/search/",
-	// 11. Tests folder — regression-guard fixtures that legitimately
-	//     reference the literal.
-	"tests/",
 }
 
 // scanAssetCommitterEventRuleFile emits a violation per canonical-envelope

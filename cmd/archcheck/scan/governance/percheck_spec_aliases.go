@@ -120,7 +120,7 @@ const specAliasesScanNote = "forbidden `spec_aliases.go` outside approved territ
 // --strict mode promotes to ExitViolations). For non-strict mode,
 // the runner still prints the report; the exit code remains 0
 // unless --strict is on.
-func ScanSpecAliasesTerritory(root string, pol *policy.Policy, r *report.Report) {
+func ScanSpecAliasesTerritory(root string, _ *policy.Policy, r *report.Report) {
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

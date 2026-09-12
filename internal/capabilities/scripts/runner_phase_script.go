@@ -12,6 +12,7 @@ import (
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
@@ -55,13 +56,12 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 			parts = append(parts, text)
 		}
 	}
-	// If fallback masked a translation bug, warn so observability catches it
-	// without silently producing BODY in the wrong language.
-	if fallbackUsed {
-		_ = fallbackUsed // surfaced via caller log when needed; keep deterministic
-	}
 	text := strings.Join(parts, "\n\n")
-	return GenerateOutput{Text: text, WordCount: len(strings.Fields(text))}
+	return GenerateOutput{
+		Text:                       text,
+		WordCount:                  len(strings.Fields(text)),
+		SourceLanguageFallbackUsed: fallbackUsed,
+	}
 }
 
 // minimumGeneratedWords returns the minimum number of generated BODY words.
@@ -316,6 +316,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return result, false
 		}
 		output := outputFromScenes(scenes, req.SourceLanguage)
+		if output.SourceLanguageFallbackUsed {
+			// A masked translation bug must be observable: the body is in the
+			// wrong language but the word-count gate cannot detect it.
+			observability.ScriptFallbackUsedTotal.WithLabelValues("source_language_missing").Inc()
+			r.log.Warn("script body fell back to a non-requested scene language",
+				zap.String("run_id", runID),
+				zap.String("requested_language", string(req.SourceLanguage)))
+		}
 		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
 			cause := fmt.Errorf("minimum generated text gate: %w", gateErr)
 			r.failExecutionStep(ctx, exec, scriptStep, cause)

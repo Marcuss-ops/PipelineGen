@@ -166,8 +166,12 @@ semantic/transcript. Per generarli in parallelo:
 
 ```bash
 cd refactored
-# fai partire il job media.reindex con limite (es. 1000) per non saturare la GPU:
-go run ./cmd/... jobs reindex --source admin --limit 1000    # adatta comando al dispatcher corrente
+# richiedi la reindicizzazione via il consumer canonico dell'outbox PostgreSQL:
+# il job type `media.reindex` NON esiste più (rimosso con il binding clipindexer,
+# POSTGRES-MEDIA-CUTOVER 2026-09-12). Usare la superficie operatore canonica,
+# che accoda asset.index.requested nel PG outbox; il drain è di PostgresIndexWorker.
+curl -sS -X POST "$VELOX_URL/api/assets/operator/assets/<asset_id>/reindex" \
+  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN"
 # oppure programmaticamente via il job handler in
 # internal/infrastructure/indexing/clipindexer/batch.go::HandleJob.
 ```

@@ -1,20 +1,25 @@
 package voiceover
 
 import (
-	skinny "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// Re-export canonical job type constants from the skinny domain-types
-// leaf package so callers of this package don't need a separate import.
+// Voiceover job-type constants.
+//
+// The wire strings are OWNED by internal/kernel/job (godlike/06 one owner per
+// fact). These are compile-time re-exports of the KERNEL origin, not of the
+// sibling capabilities/voiceover leaf package: an alias-of-alias chain makes a
+// rename in the kernel leaf silently useless and amplifies every change across
+// two capability layers. Capability packages reference the kernel constant
+// directly (P2-15, September 2026).
 const (
-	TypeGenerate     = skinny.TypeGenerate
-	TypeBatch        = skinny.TypeBatch
-	TypeGenerateItem = skinny.TypeGenerateItem
-	TypePromo        = skinny.TypePromo
+	TypeGenerate     = job.TypeVoiceoverGenerate
+	TypeBatch        = job.TypeVoiceoverBatch
+	TypeGenerateItem = job.TypeVoiceoverGenerateItem
+	TypePromo        = job.TypeVoiceoverPromo
 )
 
-const JobGenerate = skinny.TypeGenerate
+const JobGenerate = job.TypeVoiceoverGenerate
 
 type JobGenerateHandlerFunc = job.JobHandlerFunc
 

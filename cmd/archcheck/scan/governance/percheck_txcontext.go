@@ -42,7 +42,7 @@ import (
 // this directory is the ONLY allowed caller surface for the 5
 // wire methods. Matches the shell check's
 // --glob '!**/internal/capabilities/jobs/policy/**' allowlist.
-const txContextCompletionRelPath = "internal/capabilities/jobs/policy"
+const txContextCompletionRelPath = "internal/capabilities/jobs/completion"
 
 // txContextWireMethods is the canonical list of 5 wire methods
 // (per P0 C7, July 2026) that MUST only be called from the
@@ -62,10 +62,10 @@ var txContextWireMethods = []string{
 	"InsertOutboxEnvelope",
 }
 
-// ScanTxContextBan walks <root>/internal/application/** and
-// <root>/internal/api/** for non-test .go files, scanning each
+// ScanTxContextBan walks <root>/internal/capabilities/** and
+// <root>/internal/platform/httpserver/** for non-test .go files, scanning each
 // line for any of the 5 TxContext wire-method call patterns.
-// Files under internal/capabilities/jobs/policy/ are
+// Files under internal/capabilities/jobs/completion/ are
 // allowlisted (the canonical service package). Full-line
 // comments (lines starting with `//` after trim) are excluded
 // so descriptive prose doesn't trigger false positives.
@@ -73,7 +73,7 @@ var txContextWireMethods = []string{
 // Severity is `error` (mirrors the shell check's exit 1 on
 // hits). The runner --strict mode promotes `error` violations
 // to ExitViolations.
-func ScanTxContextBan(root string, pol *policy.Policy, r *report.Report) {
+func ScanTxContextBan(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
@@ -81,10 +81,11 @@ func ScanTxContextBan(root string, pol *policy.Policy, r *report.Report) {
 
 	completionPrefix := filepath.ToSlash(txContextCompletionRelPath) + "/"
 
-	// Scan two roots: internal/application and internal/api.
-	// The shell check's `internal/application internal/api`
-	// glob list matches this exactly.
-	for _, subdir := range []string{"internal/application", "internal/api"} {
+	// Rescoped 2026-09-12: internal/application and internal/api were deleted in
+	// the August 2026 root consolidation, so this gate walked nothing. The
+	// application layer is internal/capabilities and the HTTP layer is
+	// internal/platform/httpserver.
+	for _, subdir := range []string{"internal/capabilities", "internal/platform/httpserver"} {
 		dir := filepath.Join(root, subdir)
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {

@@ -1,19 +1,26 @@
 # .github/workflows/architecture.yml
 #
-# Single source of truth for architecture governance + P1 finalize.
+# Single source of truth for architecture governance.
 #
-# Replaces (deleted in consolidation):
-#   - architecture-governance.yml  → governance  job (push+PR on main)
-#   - architecture-p1-finalize.yml → finalize    job (self-mutating push to this file)
+# Scope: the `governance` job (push + PR on main) reproduces the active
+# architecture catalogs and generates the commit-bound cmd/archcheck report.
 #
-# Two jobs, scoped permissions per job. Top-level `permissions: {}` denies
-# everything by default; each job grants only what it needs.
+# REMOVED 2026-09-12 — the `finalize` job (self-mutating maintainer). It ran
+# `python3 scripts/admin/architecture_p1_finalize.py`, which does not exist in
+# the tree, then `gofmt -w` over ~20 paths deleted by the
+# application/api/infrastructure → app/capabilities/platform migration, and
+# finally `compile_one clips ./internal/api/assets/clips/...` (also deleted).
+# The job therefore aborted on every run while holding `contents: write`, and
+# its trigger (`any push that modifies this file`) turned each edit of this
+# workflow into a guaranteed red self-mutating run. The real architecture gate
+# is `go run ./cmd/archcheck` (without --strict it still fails closed on every
+# hard gate; ci.yml additionally runs `--strict`). Git history retains the
+# removed job if the normalization pass is ever rebuilt.
 #
-# finalize is guarded by an `if:` expression that matches the legacy
-# `paths: [.github/workflows/architecture-p1-finalize.yml]` filter — i.e.
-# it runs ONLY when a push to main modified this very file.
+# Top-level `permissions: {}` denies everything by default; the job grants only
+# what it needs.
 
-name: Architecture Governance + Finalize
+name: Architecture Governance
 
 on:
   push:
@@ -70,178 +77,3 @@ jobs:
           path: ${{ runner.temp }}/archcheck-report.json
           if-no-files-found: error
           retention-days: 30
-
-  finalize:
-    name: P1 finalize (self-mutating maintainer)
-    # Mirrors the legacy `push: paths: [.github/workflows/architecture-p1-finalize.yml]`
-    # trigger: only fires when THIS file (architecture.yml) is in the modified list
-    # of a push to main. PRs do NOT trigger finalize (head_commit is undefined).
-    if: >-
-      github.event_name == 'push'
-      && contains(github.event.head_commit.modified, '.github/workflows/architecture.yml')
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: write
-      statuses: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: false
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Patch, verify, and publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TRIGGER_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -u -o pipefail
-
-          post_status() {
-            local sha="$1" state="$2" context="$3" description="$4"
-            curl -fsS -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${REPOSITORY}/statuses/${sha}" \
-              -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "${state}" "${context}" "${description}")" >/dev/null
-          }
-
-          post_error_slug() {
-            local stage="$1" log_file="$2"
-            local slug
-            slug=$(python3 - "${log_file}" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
-          patterns = (
-              r"[^\n]+\.go:\d+(?::\d+)?:[^\n]+",
-              r"undefined:[^\n]+",
-              r"cannot use[^\n]+",
-              r"too many arguments[^\n]+",
-              r"not enough arguments[^\n]+",
-              r"imported and not used[^\n]+",
-              r"unknown field[^\n]+",
-              r"FAIL\s+[^\n]+",
-          )
-          hit = "unknown-compile-error"
-          for pattern in patterns:
-              match = re.search(pattern, text)
-              if match:
-                  hit = match.group(0)
-                  break
-          hit = re.sub(r"[^A-Za-z0-9_.-]+", "-", hit).strip("-").lower()
-          print(hit[:52] or "unknown-compile-error")
-          PY
-          )
-            post_status "${TRIGGER_SHA}" failure "p1-error-${stage}-${slug}" "${stage} compile error"
-          }
-
-          post_status "${TRIGGER_SHA}" pending "architecture-p1-finalize" "P1 verification running"
-
-          git fetch origin main
-          git reset --hard origin/main
-          python3 scripts/admin/architecture_p1_finalize.py
-
-          gofmt -w \
-            cmd/archcheck/debt_budget.go \
-            cmd/archcheck/main.go \
-            scripts/archcheck/gates/gate_c2_source_catalog_only_main.go \
-            scripts/archcheck/gates/gate_c2_route_manifest_main.go \
-            internal/app/capability_registry.go \
-            internal/app/registry_late_bindings.go \
-            internal/app/registry_assets.go \
-            internal/app/wire_assets.go \
-            internal/app/wire_assets_clips.go \
-            internal/app/build_bundles_maint.go \
-            internal/app/build_bundles_stock.go \
-            internal/app/build_bundles_stock_enrichment.go \
-            internal/app/wire_stock_pipeline.go \
-            internal/application/assets/maintenance/service.go \
-            internal/application/assets/deletion/deletion.go \
-            internal/application/assets/deletion/delete_clip.go \
-            internal/application/assets/deletion/complete_asset.go \
-            internal/application/assets/deletion/cleanup_orphan.go \
-            internal/application/assets/deletion/legacy_constructor_test.go \
-            internal/api/assets/clips/module.go \
-            internal/api/assets/clips/handler.go \
-            internal/api/assets/clips/handler_delegators.go \
-            internal/api/assets/clips/clip_action.go \
-            internal/api/assets/clips/dispatcher_fail_closed_test.go
-
-          compile_one() {
-            local stage="$1" package="$2" log_file="/tmp/p1-${stage}.log"
-            post_status "${TRIGGER_SHA}" pending "p1-compile-${stage}" "Compiling ${package}"
-            if ! go test -run '^$' "${package}" >"${log_file}" 2>&1; then
-              tail -n 50 "${log_file}"
-              post_status "${TRIGGER_SHA}" failure "p1-compile-${stage}" "Compilation failed"
-              post_error_slug "${stage}" "${log_file}"
-              post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during ${stage} compilation"
-              exit 1
-            fi
-            post_status "${TRIGGER_SHA}" success "p1-compile-${stage}" "Compilation passed"
-          }
-
-          compile_one clips ./internal/api/assets/clips/...
-          compile_one app ./internal/app
-          compile_one deletion ./internal/application/assets/deletion
-          compile_one maintenance ./internal/application/assets/maintenance
-          compile_one stock ./internal/capabilities/assets/providers/stock/...
-          compile_one archcheck ./cmd/archcheck
-
-          gate_log=/tmp/architecture-p1-gates.log
-          post_status "${TRIGGER_SHA}" pending "architecture-p1-ratchets" "Code-derived ratchet verification running"
-          if ! {
-            go run -tags=c2_source_catalog_only -- ./scripts/archcheck/gates/gate_c2_source_catalog_only_main.go .
-            go run -tags=c2_route_manifest -- ./scripts/archcheck/gates/gate_c2_route_manifest_main.go --root="$(pwd)"
-            go run ./cmd/archcheck --strict
-          } >"${gate_log}" 2>&1; then
-            tail -n 50 "${gate_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-ratchets" "Architecture ratchet verification failed"
-            post_error_slug ratchets "${gate_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during ratchet verification"
-            exit 1
-          fi
-          post_status "${TRIGGER_SHA}" success "architecture-p1-ratchets" "Code-derived ratchets passed"
-
-          verify_log=/tmp/architecture-p1-verify-main.log
-          post_status "${TRIGGER_SHA}" pending "architecture-p1-verify-main" "make verify-main running"
-          if ! make verify-main >"${verify_log}" 2>&1; then
-            tail -n 70 "${verify_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-verify-main" "make verify-main failed"
-            post_error_slug verify-main "${verify_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during make verify-main"
-            exit 1
-          fi
-          post_status "${TRIGGER_SHA}" success "architecture-p1-verify-main" "make verify-main passed"
-
-          if git diff --quiet; then
-            post_status "${TRIGGER_SHA}" success "architecture-p1-finalize" "Verification passed; no normalization delta"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/ci-architectural-checks.sh architecture/capability_inventory.yaml architecture/capability_inventory/*.yaml architecture/policy.yaml
-          git add '*.go' ':(glob)**/*.go'
-          git commit -m "refactor(arch): finalize P1 boundaries and ratchets"
-          git pull --rebase origin main
-          git push origin HEAD:main
-          FINAL_SHA=$(git rev-parse HEAD)
-          post_status "${TRIGGER_SHA}" success "architecture-p1-finalize" "P1 patch verified and published"
-          post_status "${FINAL_SHA}" success "architecture-p1-finalize" "make verify-main passed before publish"

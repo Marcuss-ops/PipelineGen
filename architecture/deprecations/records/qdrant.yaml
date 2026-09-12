@@ -17,7 +17,7 @@ deprecations:
         the infrastructure SwitchReport and is not part of this consolidation.
       introduction_date: 2026-06
       removal_date: 2026-Q4
-      tracking_issue: PR-QDRANT-WIRE-MIRROR (deprecation ID self-reference; runbook 06 removed July 2026 — superseded by Check 5 CI gate + duplicate-types-allowlist.txt)
+      tracking_issue: PR-QDRANT-WIRE-MIRROR (deprecation ID self-reference; runbook 06 removed July 2026 — superseded by the percheck_typeredecl gate in cmd/archcheck; its transitional allowlist was retired 2026-09-12)
       compatibility_test: |
         See architecture/policy.yaml Check 5 for full canonical-evidence list (superseded runbook 06, removed July 2026).
       usage_metric: |

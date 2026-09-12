@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -48,7 +49,10 @@ func (h *Handler) handleStatus(c *gin.Context) {
 		return
 	}
 
-	statuses := []string{"pending", "processing", "completed", "dead_letter", "superseded"}
+	// Canonical lifecycle vocabulary OWNED by internal/kernel/event: a
+	// local copy of this slice is how the operator views drifted apart
+	// (two of them omitted `superseded`, hiding terminal rows forever).
+	statuses := event.OutboxLifecycleStatuses()
 	counts := make(map[string]int64, len(statuses))
 
 	for _, status := range statuses {

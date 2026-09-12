@@ -156,8 +156,7 @@ func sceneFieldWriteWarnBucket(r *report.Report, label, msg string) {
 // / .Index / .ID. Any future helper that legitimately needs to
 // touch these fields must extend the canonical owner (and add
 // tests there), not bypass this gate.
-func ScanBinderSceneFieldWrites(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanBinderSceneFieldWrites(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

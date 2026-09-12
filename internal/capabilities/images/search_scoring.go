@@ -152,10 +152,10 @@ func meaningfulLookupTokens(value string) []string {
 		return nil
 	}
 
-	stopwords := map[string]struct{}{}
-	if registry := linguistics.DefaultLexiconOrNil(); registry != nil {
-		stopwords = registry.StopWords("fallback")
-	}
+	// The fallback lexicon selection (including the not-yet-bootstrapped
+	// case) is owned by the linguistics capability; a local copy of that
+	// decision is a second source of truth for which stop words apply.
+	stopwords := linguistics.DefaultStopWords()
 
 	parts := strings.Fields(value)
 	tokens := make([]string, 0, len(parts))

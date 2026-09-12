@@ -30,4 +30,12 @@ var (
 		Name: "script_phase_total",
 		Help: "Total number of script phase executions",
 	}, []string{"phase", "topic"})
+
+	// ScriptFallbackUsedTotal counts every deterministic fallback applied to
+	// the generated narration body. A non-zero rate signals a translation or
+	// segment-validation regression that the plain word-count gate cannot see.
+	ScriptFallbackUsedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "script_fallback_used_total",
+		Help: "Total number of generated-body fallbacks applied, by bounded reason.",
+	}, []string{"reason"})
 )

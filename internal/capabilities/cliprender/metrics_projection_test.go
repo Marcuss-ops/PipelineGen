@@ -95,8 +95,11 @@ func TestProjectRendererPhases_MapsComponentByBackend(t *testing.T) {
 	if got := project(BackendChrononVulkan); got != string(kernobs.ComponentChronon) {
 		t.Errorf("chronon_vulkan component = %q, want chronon", got)
 	}
-	if got := project(BackendFFmpegFallback); got != string(kernobs.ComponentFFmpeg) {
-		t.Errorf("ffmpeg_fallback component = %q, want ffmpeg", got)
+	// Chronon is the only render backend; an unknown/unreported identity must
+	// still project onto the canonical component rather than fabricate a
+	// different owner for phases nobody measured.
+	if got := project(RenderBackend("unknown_backend")); got != string(kernobs.ComponentChronon) {
+		t.Errorf("unknown backend component = %q, want chronon", got)
 	}
 }
 

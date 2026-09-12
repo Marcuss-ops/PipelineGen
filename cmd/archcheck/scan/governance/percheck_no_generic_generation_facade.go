@@ -148,8 +148,7 @@ func generationFacadeWarnBucket(r *report.Report, label, msg string) {
 // auditable via len(r.Violations) == 0. Mirrors the family
 // precedent from percheck_voiceover_alias_ban.go +
 // percheck_root_override.go + percheck_providers_searchaggregator_ban.go.
-func ScanNoGenericGenerationFacade(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanNoGenericGenerationFacade(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

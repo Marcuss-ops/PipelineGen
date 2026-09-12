@@ -29,15 +29,6 @@ var (
 	}
 )
 
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
 	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
 		JobFingerprint: jobID,

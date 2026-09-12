@@ -96,10 +96,10 @@ gates_baseline:
     current: 0
     baseline_initial: 48
     baseline_target: "0 (reached 2026-08-26)"
-    governance: "scripts/archcheck/gates/gate_c2_source_catalog_only_main.go + make verify-architecture"
+    governance: "cmd/archcheck/gates/gate_c2_source_catalog_only_main.go + make verify-architecture"
     scope: "internal/**/*.go excluding *_test.go and the Source Catalog allowlist (migration-only roots internal/application + internal/api + internal/domain deleted 2026-08-25)"
     migration_owner: internal/capabilities/scripts/adapters/source_registry.go (canonical SourceRegistry; migration-only roots deleted 2026-08-26)
-    enforcing_test: scripts/archcheck/gates/gate_c2_source_catalog_only.go
+    enforcing_test: cmd/archcheck/gates/gate_c2_source_catalog_only_main.go
     ratchet_status: closed_at_step_C2-C
     walker_scope_rationale: "infrastructure adapters, pkg leaves and cmd tooling are outside the canonical source-dispatch scope"
   - gate_id: C2-D
@@ -119,7 +119,7 @@ gates_baseline:
     governance: "cmd/admin/gen_api_docs.go writes routes.yaml + ACTIVE_API_GENERATED.md; make verify-architecture runs C2-E"
     scope: "internal/**/*.go (legacy internal/api route surface deleted 2026-08-25) + cmd/server/main.go + docs/api/ACTIVE_API_GENERATED.md"
     migration_owner: internal/app/registry.go + scripts/admin/generate_routes_yaml.go + cmd/admin/gen_api_docs.go
-    enforcing_test: scripts/archcheck/gates/gate_c2_route_manifest.go
+    enforcing_test: cmd/archcheck/gates/gate_c2_route_manifest_main.go
     ratchet_status: closed_at_step_C2-E
     known_limitations: |
       The runtime Gin capture is the canonical route source; the legacy AST

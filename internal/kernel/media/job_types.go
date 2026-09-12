@@ -71,10 +71,6 @@ const (
 	// these jobs at dispatch.
 	TypeGenerate = "media.generate_missing_asset"
 
-	// TypeReindex is the canonical job type for the Qdrant
-	// reindex pipeline (assets → Qdrant upsert).
-	TypeReindex = "media.reindex"
-
 	// TypeEnrich is the canonical job type for the media-enrich
 	// pipeline (asset metadata enrichment via RLM).
 	TypeEnrich = "media.enrich"

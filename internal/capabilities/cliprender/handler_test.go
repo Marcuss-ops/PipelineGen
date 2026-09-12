@@ -76,6 +76,32 @@ func doRender(r *gin.Engine, rawBody string) *httptest.ResponseRecorder {
 	return rec
 }
 
+// TestRenderHandler_RejectsOversizedBody pins item 19: the request body is
+// bounded BEFORE decoding, so a caller streaming an unbounded JSON document
+// fails at the transport (413 PAYLOAD_TOO_LARGE) and never occupies a Master
+// worker slot.
+func TestRenderHandler_RejectsOversizedBody(t *testing.T) {
+	jobsSvc := &stubJobsSvc{}
+	r := newTestRouter(jobsSvc)
+
+	huge := strings.Repeat("a", int(MaxClipRenderRequestBytes)+1)
+	rec := doRender(r, `{"source_asset_id":"`+huge+`"}`)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status: got %d, want 413; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp renderResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.ErrorCode != ErrCodePayloadTooLarge {
+		t.Fatalf("error_code = %q, want %q", resp.ErrorCode, ErrCodePayloadTooLarge)
+	}
+	if jobsSvc.enqueued != nil {
+		t.Fatal("oversized body must never reach the Master enqueue path")
+	}
+}
+
 // TestRenderHandler_HappyPath_CanonicalWireShape verifies the spec
 // request round-trips into a normalized RenderRequest payload and the
 // endpoint responds 202 {job_id, status: QUEUED}.

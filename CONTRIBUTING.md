@@ -154,17 +154,19 @@ follow-up.
   install via `make install-hooks` (registers `core.hooksPath = scripts/hooks`).
   Bypass with `PIPELINEGEN_SKIP_PRECOMMIT=1` (loud-on-stdout, paired with
   immediate follow-up `fixup!` autosquash).
-- **`scripts/ci-architectural-checks.sh`** — broad architectural gate
-  suite. Some pre-existing findings may surface unrelated to the current
-  edit; cross-reference before fixing.
-- **`cmd/archcheck`** — produces the per-run structural report
-  (`scripts/archcheck/current_report.json`; gitignored).
-- **`scripts/archcheck/deprecations_validator.go`** — hard-fails on
-  duplicate IDs across `architecture/deprecations/records/*.yaml`
-  (cross-shard via `architecture/deprecations/index.yaml`; the
-  validator's default path is the sharded directory, not the
-  now-removed single file), expired `removal_date` for non-removed
-  records, missing required keys per record.
+- **`cmd/archcheck`** — the canonical architecture gate suite: structural
+  report + the per-fact forward-prevention scanners. `make verify-architecture`
+  runs it (and `make archcheck-strict` adds `--strict`, which ci.yml also runs).
+  It is the live successor of the retired `scripts/ci-architectural-checks.sh`
+  shell ratchet, which was deleted and is no longer a gate.
+- **`architecture/deprecations/records/*.yaml`** — WITHDRAWN VALIDATION
+  (2026-09-12). The validator that hard-failed on duplicate IDs (cross-shard
+  via `architecture/deprecations/index.yaml`), expired `removal_date` for
+  non-removed records, and missing required keys per record lived in the
+  legacy-burndown binary `scripts/archcheck`. That binary was never invoked by
+  any make target or workflow, so the checks never ran in CI; it has been
+  demolished. Nothing validates these records today — re-implement the
+  validator in `cmd/archcheck` before treating the shards as enforced.
 
 For audit-pin migration notes (e.g., test funcs renamed or moved across
 test-split boundaries): `grep -c <old-symbol> architecture/deprecations/records/<bucket>.yaml`

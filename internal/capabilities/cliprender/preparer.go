@@ -111,7 +111,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	var wave1 errgroup.Group
 	wave1.Go(func() error {
 		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "resolve_source_start"),
 			zap.String("run_id", runID),
@@ -130,7 +130,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 			return fmt.Errorf("clip.render: resolve source %q: %w", req.SourceAssetID, err)
 		}
 		sourceRef = ref
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "resolve_source_done"),
 			zap.String("run_id", runID),
@@ -149,7 +149,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if watermarkAsset {
 		wave1.Go(func() error {
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "resolve_watermark_start"),
 				zap.String("run_id", runID),
@@ -167,7 +167,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				return fmt.Errorf("clip.render: resolve watermark %q: %w", req.Watermark.AssetID, err)
 			}
 			watermarkRef = ref
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "resolve_watermark_done"),
 				zap.String("run_id", runID),
@@ -182,7 +182,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if backgroundAsset {
 		wave1.Go(func() error {
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "resolve_background_start"),
 				zap.String("run_id", runID),
@@ -200,7 +200,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				return fmt.Errorf("clip.render: resolve background %q: %w", req.Background.AssetID, err)
 			}
 			backgroundRef = ref
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "resolve_background_done"),
 				zap.String("run_id", runID),
@@ -215,7 +215,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if lookupTranscript {
 		wave1.Go(func() error {
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "transcript_resolve_start"),
 				zap.String("run_id", runID),
@@ -237,7 +237,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				return fmt.Errorf("clip.render: transcript lookup: %w", err)
 			}
 			existing, existingFound = res, found
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "transcript_resolve_done"),
 				zap.String("run_id", runID),
@@ -249,7 +249,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	}
 	wave1.Go(func() error {
 		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "resolve_contract_start"),
 			zap.String("run_id", runID),
@@ -269,7 +269,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 			"fps_den":     c.FPSDen,
 		})
 		contract = c
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "resolve_contract_done"),
 			zap.String("run_id", runID),
@@ -307,7 +307,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	var wave2 errgroup.Group
 	wave2.Go(func() error {
 		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "materialize_source_start"),
 			zap.String("run_id", runID),
@@ -335,7 +335,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 			)
 			return fmt.Errorf("clip.render: materialize source %q: %w", sourceRef.AssetID, err)
 		}
-		p.log.Info("clip.render.prepare.phase",
+		p.log.Debug("clip.render.prepare.phase",
 			zap.String("subsystem", "cliprender_preparer"),
 			zap.String("phase", "materialize_source_done"),
 			zap.String("run_id", runID),
@@ -350,7 +350,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if watermarkRef != nil {
 		wave2.Go(func() error {
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "materialize_watermark_start"),
 				zap.String("run_id", runID),
@@ -376,7 +376,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				)
 				return fmt.Errorf("clip.render: materialize watermark %q: %w", watermarkRef.AssetID, err)
 			}
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "materialize_watermark_done"),
 				zap.String("run_id", runID),
@@ -393,7 +393,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if backgroundRef != nil {
 		wave2.Go(func() error {
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "materialize_background_start"),
 				zap.String("run_id", runID),
@@ -419,7 +419,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				)
 				return fmt.Errorf("clip.render: materialize background %q: %w", backgroundRef.AssetID, err)
 			}
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "materialize_background_done"),
 				zap.String("run_id", runID),
@@ -443,7 +443,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				return fmt.Errorf("clip.render: transcript generation aborted: source materialization failed: %w", sourceErr)
 			}
 			t0 := time.Now()
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "transcript_generate_start"),
 				zap.String("run_id", runID),
@@ -475,7 +475,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				)
 				return fmt.Errorf("clip.render: transcript generation: %w", err)
 			}
-			p.log.Info("clip.render.prepare.phase",
+			p.log.Debug("clip.render.prepare.phase",
 				zap.String("subsystem", "cliprender_preparer"),
 				zap.String("phase", "transcript_generate_done"),
 				zap.String("run_id", runID),
@@ -519,7 +519,11 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 		zap.Bool("parallel", timings.Parallel),
 		zap.Bool("transcript_reused", transcript.Reused),
 	)
-	p.log.Info("clip.render.prepare.done", phaseFields...)
+	// prepare.done carries the aggregate durations only; it is Debug like the
+	// per-wave detail. Info stays reserved for the job-level milestones
+	// (started → submitted → remote render completed → publish completed →
+	// failed) so the operator log is not flooded by internal wave chatter.
+	p.log.Debug("clip.render.prepare.done", phaseFields...)
 
 	return &Prepared{
 		RunID:      runID,

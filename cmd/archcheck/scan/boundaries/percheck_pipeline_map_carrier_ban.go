@@ -96,8 +96,7 @@ func pipelineMapCarrierBanWarn(r *report.Report, label, msg string) {
 // ScanPipelineMapCarrierBan walks the gate's pre-canned
 // target file set and emits a violation for any non-exempt
 // `map[string]any` reference inside them.
-func ScanPipelineMapCarrierBan(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol
+func ScanPipelineMapCarrierBan(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
 	for _, target := range pipelineMapCarrierBanTargets {
 		full := filepath.Join(root, target)

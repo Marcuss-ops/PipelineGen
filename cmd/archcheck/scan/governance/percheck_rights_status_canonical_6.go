@@ -17,8 +17,9 @@
 //	(d) migration 158's CHECK constraint comment (the
 //	    comment-block alphabet that mirrors the runtime
 //	    enum check),
-//	(e) the percheck_rights_status_canonical_6 count
-//	    literal (this file's wantCount).
+//	(e) nothing here — this scanner derives wantCount from
+//	    asset.CanonicalRightsStatusValues(), so the cardinality has
+//	    exactly one owner (internal/kernel/asset).
 //
 // Drift in any of (a..e) surfaces as a single CI violation
 // from THIS scanner; the comment-based godlike/07 residue-
@@ -48,6 +49,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // rightsStatusCanonical6Path is the canonical SOLE owner of
@@ -104,8 +106,7 @@ func rightsStatusWarn(r *report.Report, label, msg string) {
 // for the pattern) catches duplicate declarations outside the
 // canonical file; the alphabet value drift is captured at
 // runtime by rights_state_test.go's TestRightsStatus_StringLiteralValues.
-func ScanRightsStatusCanonical6(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanRightsStatusCanonical6(root string, _ *policy.Policy, r *report.Report) {
 	path := filepath.Join(root, rightsStatusCanonical6Path)
 	f, err := os.Open(path)
 	if err != nil {
@@ -128,7 +129,11 @@ func ScanRightsStatusCanonical6(root string, pol *policy.Policy, r *report.Repor
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	const wantCount = 6
+	// wantCount is derived from the canonical owner, never re-declared here:
+	// the enum cardinality is a fact owned by internal/kernel/asset, and a
+	// literal copy in this scanner would have to be edited in lockstep with
+	// the enum (the exact change amplification godlike/06 forbids).
+	wantCount := len(asset.CanonicalRightsStatusValues())
 	count := 0
 	commentOnly := 0
 	lineNo := 0

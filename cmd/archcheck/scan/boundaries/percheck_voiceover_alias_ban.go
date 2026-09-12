@@ -207,11 +207,11 @@ var retiredVoiceoverSkipFiles = map[string]bool{}
 // productionOnly + comment-only WARN/VIOLATION split established
 // by percheck_player_client.go and extended by percheck_root_override.go.
 //
-// pol is reserved for future PR-A plumbing (per-check severity
-// overrides per godlike/08 evolution track). Typed parameter
-// retention keeps the CheckSpec.Run signature uniform.
-func scanVoiceoverAliasBanOne(root, literal, note string, r *report.Report, productionOnly bool, pol *policy.Policy) {
-	_ = pol // reserved (PR-A godlike/08 evolution may plumb severity overrides)
+// LOCALPATH-STYLE PARAM DEMOLITION (September 2026): this private helper never
+// read its *policy.Policy argument (it only carried the `_ = pol` pin), so the
+// parameter is REMOVED rather than retained. Only the public CheckSpec.Run
+// entry point keeps a (now unnamed) policy slot for signature uniformity.
+func scanVoiceoverAliasBanOne(root, literal, note string, r *report.Report, productionOnly bool) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -255,14 +255,12 @@ func scanVoiceoverAliasBanOne(root, literal, note string, r *report.Report, prod
 	})
 }
 
-// ScanVoiceoverAliasBan (the public entry point) threads
-// pol through to the per-alias walker. The reserved-typed
-// parameter keeps the CheckSpec.Run signature uniform without
-// requiring per-alias closure capture.
-func ScanVoiceoverAliasBan(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol // same reserved-plumbing rationale as scanVoiceoverAliasBanOne
+// ScanVoiceoverAliasBan is the public entry point. The policy slot is intentionally
+// unnamed: the check is text-substring based and has nothing to read from it, so
+// it is kept only because CheckSpec.Run is uniform across every check.
+func ScanVoiceoverAliasBan(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 	for _, alias := range retiredVoiceoverAliases {
-		scanVoiceoverAliasBanOne(root, alias.Literal, alias.Note, r, productionOnly, pol)
+		scanVoiceoverAliasBanOne(root, alias.Literal, alias.Note, r, productionOnly)
 	}
 }
 

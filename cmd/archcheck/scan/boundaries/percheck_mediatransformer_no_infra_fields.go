@@ -257,8 +257,7 @@ func mediaTransformerWarn(r *report.Report, label, msg string) {
 // forbidden fields. The violations are EXPECTED and documented
 // as forward-pointers to step 2 of PR-MEDIATRANSFORMER-RENAME,
 // which deletes the forbidden fields.
-func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanMediaTransformerNoInfraFields(root string, _ *policy.Policy, r *report.Report) {
 	path := filepath.Join(root, mediaTransformerCanonicalPath)
 	f, err := os.Open(path)
 	if err != nil {

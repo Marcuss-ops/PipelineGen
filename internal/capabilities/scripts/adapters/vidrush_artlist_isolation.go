@@ -19,6 +19,14 @@ type artlistIsolationContext struct {
 	termOwners     map[string]string
 }
 
+// LEXICON_MIRROR_DEBT: owner=scripts, deadline=2026-12-31 — the English
+// function/stop words below are already canonical lexicon data
+// (config/lexicons/en/{function_words,stopwords}.txt); the remaining entries
+// are this heuristic's own content terms and stay explicit. The canonical part
+// must be loaded from the LexiconRegistry before that date, with the
+// isolation golden tests re-run (it changes which terms a segment owns). Until
+// then percheck_stopword_maps_in_app reports this file as residue (non-fatal)
+// and fails closed automatically after 2026-12-31.
 var artlistIsolationStopWords = map[string]struct{}{
 	"about": {}, "after": {}, "also": {}, "and": {}, "are": {}, "around": {},
 	"been": {}, "being": {}, "built": {}, "cooked": {}, "creating": {},

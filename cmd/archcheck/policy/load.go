@@ -30,7 +30,6 @@ var policyBindings = map[string]fieldBinding{
 	"max_warnings":                    nonNegativeIntBinding("MaxWarnings", "runner warning budget", func(p *Policy, n int) { p.MaxWarnings = n }),
 	"forbidden_top_level_dirs":        stringListBinding("ForbiddenTopLevelDirs", "scan.ScanForbiddenDirs", func(p *Policy, v []string) { p.ForbiddenTopLevelDirs = v }),
 	"kernel_subzones":                 stringListBinding("KernelSubzones", "scan.ScanKernelSubzoneHints + ScanKernelSubzoneIntegrity", func(p *Policy, v []string) { p.KernelSubzones = v }),
-	"capabilities":                    stringListBinding("Capabilities", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.Capabilities = v }),
 	"canonical_application_areas":     canonicalApplicationAreasBinding(),
 	"platform_subzones":               stringListBinding("PlatformSubzones", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.PlatformSubzones = v }),
 	"legacy_internal_roots":           stringListBinding("LegacyInternalRoots", "scan.ScanUnknownInternalRoots", func(p *Policy, v []string) { p.LegacyInternalRoots = v }),

@@ -171,10 +171,10 @@ func loadLineStrictAllowlist(root, path string) map[string]bool {
 		}
 		// Strip inline trailing `# ...` annotation. The literal
 		// " #" (space then hash) is the canonical separator used
-		// across the project's existing allowlists (admin-sql-
-		//  allowlist.txt, duplicates-types-allowlist.txt); paths
-		// containing "#" without a preceding whitespace (e.g.
-		// URL-fragment paths) are NOT considered annotations.
+		// across the project's allowlists (e.g.
+		// max-lines-strict-allowlist.txt); paths containing "#"
+		// without a preceding whitespace (e.g. URL-fragment
+		// paths) are NOT considered annotations.
 		if i := strings.Index(line, " #"); i >= 0 {
 			line = strings.TrimSpace(line[:i])
 			if line == "" {

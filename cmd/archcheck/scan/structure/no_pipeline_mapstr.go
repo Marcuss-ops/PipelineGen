@@ -107,8 +107,7 @@ func noPipelineMapStrWarn(r *report.Report, label, msg string) {
 // `map[string]any` reference inside them.
 //
 // productionOnly=true silences the comment-only WARN bucket.
-func ScanNoPipelineMapStr(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol
+func ScanNoPipelineMapStr(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
 	for _, target := range noPipelineMapStrTargets {
 		full := filepath.Join(root, target)

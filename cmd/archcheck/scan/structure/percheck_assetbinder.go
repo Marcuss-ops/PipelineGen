@@ -48,11 +48,11 @@ var assetBinderForbiddenPatterns = []struct {
 	{"StockBinding{", "direct scriptpkg.StockBinding literal"},
 }
 
-// ScanAssetBinderSSOT walks <root>/internal/application/** and
-// <root>/internal/api/** for non-test .go files, scanning each line
+// ScanAssetBinderSSOT walks <root>/internal/capabilities/** and
+// <root>/internal/platform/httpserver/** for non-test .go files, scanning each line
 // for direct scene-binding mutations outside the canonical binder.
 // Full-line comments lines (leading `//` after trim) are excluded.
-func ScanAssetBinderSSOT(root string, pol *policy.Policy, r *report.Report) {
+func ScanAssetBinderSSOT(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
@@ -60,7 +60,10 @@ func ScanAssetBinderSSOT(root string, pol *policy.Policy, r *report.Report) {
 
 	binderPrefix := filepath.ToSlash(assetBinderRelPath)
 
-	for _, subdir := range []string{"internal/application", "internal/api"} {
+	// Rescoped 2026-09-12: internal/application and internal/api were deleted in
+	// the August 2026 root consolidation; the application layer is
+	// internal/capabilities and the HTTP layer is internal/platform/httpserver.
+	for _, subdir := range []string{"internal/capabilities", "internal/platform/httpserver"} {
 		dir := filepath.Join(root, subdir)
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {

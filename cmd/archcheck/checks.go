@@ -49,7 +49,10 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_api_module_deps_max_8", governance.ScanApiModuleDepsMax8},
 		{"percheck_assetbinder_ssot", structure.ScanAssetBinderSSOT},
 		{"percheck_drive_access_ssot", boundaries.ScanDriveAccessSSOT},
-		{"percheck_metadata_registry", governance.ScanMetadataRegistry},
+		// The typed-metadata `map[string]any` ban (percheck_metadata_registry)
+		// was DEMOLISHED: its scanner walked internal/domain, a root deleted in
+		// August 2026, so it could never match a file and reported green for a
+		// hard gate that protected nothing.
 		{"percheck_metadata_key_registry", governance.ScanMetadataKeys},
 		{"percheck_input_immutability", structure.ScanInputImmutability},
 		{"percheck_sourcestager_transformer", boundaries.ScanSourceStagerTransformer},
@@ -128,5 +131,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// types (internal/kernel/job). The vocabulary is read from the owner
 		// packages' registries, never copied here.
 		{"percheck_identity_ssot", governance.ScanIdentitySSOT},
+		// Governance-artifact integrity: orphan allowlists, dangling
+		// references, ghost entries and expired remediation deadlines. The
+		// enforcement layer is subject to godlike/06 too.
+		{"percheck_governance_artifacts", governance.ScanGovernanceArtifacts},
 	}
 }

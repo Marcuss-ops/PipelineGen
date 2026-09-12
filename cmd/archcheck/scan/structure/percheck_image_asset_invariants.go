@@ -120,8 +120,7 @@ func defaultImageAssetInvariants() []imageAssetInvariant {
 // the default SeverityError. The parameter stays on the public
 // signature so the runner wiring does not need to migrate when
 // the closure pattern is upgraded.
-func ScanImageAssetInvariants(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved (PR-A godlike/08 evolution may plumb severity overrides)
+func ScanImageAssetInvariants(root string, _ *policy.Policy, r *report.Report) {
 	for _, rule := range defaultImageAssetInvariants() {
 		rule.Scan(root, r)
 	}

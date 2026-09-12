@@ -622,4 +622,9 @@ func (s Scene) FixedPlaybackSourceOutMS() int64 {
 type GenerateOutput struct {
 	Text      string `json:"text"`
 	WordCount int    `json:"word_count"`
+	// SourceLanguageFallbackUsed records that at least one scene had no text
+	// for the requested language and a first-available language was used
+	// instead. It is an internal observability signal (not part of the
+	// durable output.text contract) so the runner can warn and count it.
+	SourceLanguageFallbackUsed bool `json:"-"`
 }

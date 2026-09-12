@@ -24,7 +24,7 @@
 // BuildOutboxBundle were extracted to sibling files of this package
 // per the documented layout in build_process_qdrant.go:
 //   - internal/app/build_outbox_handlers.go (buildOutboxDeps +
-//     registerOutboxCoreHandlers + registerOutboxWorkers +
+//     assertSingleMediaIndexOwner + registerOutboxWorkers +
 //     noopIndexClipper — the outbox deps + handler-registration
 //     sub-blocks)
 //   - internal/app/build_media_processor.go (wireMediaProcessor +
@@ -158,8 +158,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
 
 	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
-	// construction happens AFTER the fail-closed CORE handler
-	// registration (registerOutboxCoreHandlers above), so when
+	// construction happens AFTER the fail-closed media-index-owner
+	// assertion (assertSingleMediaIndexOwner above), so when
 	// repos.ClipsRepo was nil the call returns the typed error the
 	// fail-closed contract requires instead of an internal panic
 	// (NewDispatcher / NewMultiClipsUpserter panic on nil inputs).
@@ -209,7 +209,9 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// body: deps construction → core handlers → optional/worker
 	// handlers.
 	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, mediaPostgres, log)
-	if err := registerOutboxCoreHandlers(eventsRegistry, cfg, repos, qd, outboxDeps, log); err != nil {
+	// POSTGRES-MEDIA-CUTOVER: fail-closed single-owner assertion for the media
+	// index plane (replaces the retired registerOutboxCoreHandlers no-op).
+	if err := assertSingleMediaIndexOwner(cfg, eventsRegistry, pgIndexWorker, log); err != nil {
 		return nil, nil, err
 	}
 
@@ -267,7 +269,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
 	}
 
-	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, repos.ImageRepo, drivePublisher)
+	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)
 	if err != nil {
 		return nil, nil, err
 	}

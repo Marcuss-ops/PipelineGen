@@ -86,18 +86,12 @@ jobs:
       run: go vet ./...
 
     - name: Run Architectural Checks
-      # Check 17 (June 2026 codex/db-sql-ownership-gate) gates `database/sql`
-      # imports against a 42-file grandfathered baseline. Regressions above
-      # baseline exit 1; the baseline can be shrunk by followup PRs that
-      # port each file off `database/sql`. See ARCHITECTURE.md §12 +
-      # scripts/ci-architectural-checks.sh::Check 17 for the rationale.
-      run: |
-        if [ -f scripts/ci-architectural-checks.sh ]; then
-          chmod +x scripts/ci-architectural-checks.sh
-          bash scripts/ci-architectural-checks.sh
-        else
-          echo "info: scripts/ci-architectural-checks.sh not present — skipping textual rg-based check"
-        fi
+      # The historical shell ratchet (scripts/ci-architectural-checks.sh)
+      # was deleted in commit 7e6965aab; its rules are owned by the Go gate
+      # (cmd/archcheck). The previous conditional silently skipped the step
+      # whenever the file was missing, i.e. it reported success without
+      # enforcing anything. The real gate runs here now.
+      run: go run ./cmd/archcheck --strict
 
     - name: Build all packages
       run: go build ./...

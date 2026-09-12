@@ -73,7 +73,7 @@ func filterDepsMaxViolations(r *report.Report) []report.Violation {
 // `Dependencies` struct produces zero violations.
 func TestScanApiModuleDepsMax8_BelowCap(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Dependencies struct {
 	A int
@@ -108,7 +108,7 @@ func Build(deps Dependencies) error { return nil }
 // (≤8 is the legal band).
 func TestScanApiModuleDepsMax8_Boundary8(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Dependencies struct {
 	A int
@@ -142,7 +142,7 @@ func Build(deps Dependencies) error { return nil }
 // trigger exactly one violation with the correct count surface.
 func TestScanApiModuleDepsMax8_OverCap(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Dependencies struct {
 	A int
@@ -237,7 +237,7 @@ func Build(deps Dependencies) error { return nil }
 // separately.
 func TestScanApiModuleDepsMax8_TypeAlias(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Foo struct {
 	A int
@@ -268,7 +268,7 @@ func Build(deps Dependencies) error { return nil }
 // pattern in some pre-Card-10 module.go files).
 func TestScanApiModuleDepsMax8_DepsAltName(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Deps struct {
 	A int
@@ -308,7 +308,7 @@ func Build(deps Deps) error { return nil }
 // some are pure helper rows and don't carry a typed bag).
 func TestScanApiModuleDepsMax8_NoDeps(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Config struct {
 	A int
@@ -353,7 +353,7 @@ type Dependencies struct {
 }
 `
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": broken,
+		"internal/capabilities/test/module.go": broken,
 	})
 	r := &report.Report{
 		Summary: report.Summary{
@@ -381,7 +381,7 @@ type Dependencies struct {
 //   - Total: 1 + 8 = 9 (over the 8 cap, must violate)
 func TestScanApiModuleDepsMax8_EmbeddedField(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type Inner struct{}
 
@@ -425,7 +425,7 @@ func Build(deps Dependencies) error { return nil }
 //     Total: 2 + 2 + 5 + 1 = 10 (over the 8 cap, must violate)
 func TestScanApiModuleDepsMax8_GroupedMultiDecl(t *testing.T) {
 	root := testPercheckDepsRoot(t, map[string]string{
-		"internal/api/test/module.go": `package test
+		"internal/capabilities/test/module.go": `package test
 
 type X struct{}
 
@@ -497,9 +497,9 @@ func TestIsApiModuleDepsBypass(t *testing.T) {
 		}
 	}
 	nonMembers := []string{
-		"internal/api/assets/module.go",
-		"internal/api/script/module.go",
-		"internal/api/assets/clips/submodule/module.go",
+		"internal/capabilities/assets/module.go",
+		"internal/capabilities/script/module.go",
+		"internal/capabilities/assets/clips/submodule/module.go",
 	}
 	for _, rel := range nonMembers {
 		if isApiModuleDepsBypass(rel) {

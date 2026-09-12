@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/google/uuid"
 )
 
@@ -121,11 +122,10 @@ func (r *ReindexRequester) RequestIndex(ctx context.Context, assetID string) err
 	return nil
 }
 
+// isTerminalOutboxStatus delegates to the canonical predicate OWNED by
+// internal/kernel/event (godlike/06 one owner per fact). The local copy used to
+// omit the legacy `dead` spelling, so it disagreed with the control-plane UoW
+// on the same row.
 func isTerminalOutboxStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "dead_letter", "superseded":
-		return true
-	default:
-		return false
-	}
+	return event.IsTerminalOutboxStatus(status)
 }

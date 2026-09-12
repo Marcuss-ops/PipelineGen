@@ -62,7 +62,7 @@ import (
 //	   TypeSubtitleGenerate, TypeYouTubeUpload,
 //	   TypeYouTubeClipExtract, TypeCatalogSync, TypeArtlistRun,
 //	   TypeSystemCleanup, TypeMediaGenerate,
-//		    TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
+//		    TypeBooksProcess, TypeLessonsProcess,
 //		    TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
 //		    TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
 //		    TypeMediaCurate, TypeVoiceoverPromo.
@@ -95,7 +95,6 @@ var canonicalJobTypes = []string{
 	TypeArtlistCacheRefresh,    // domain/media/job_types.go (durable stale-cache refresh)
 	TypeSystemCleanup,          // domain/job/job.go
 	TypeMediaGenerate,          // domain/job/job.go
-	TypeMediaReindex,           // domain/job/job.go
 	TypeMediaEnrich,            // domain/job/job.go
 	TypeYouTubeRebuildST,       // domain/job/job.go
 	TypeScriptGenerate,         // domain/job/job.go

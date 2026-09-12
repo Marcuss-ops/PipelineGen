@@ -14,11 +14,12 @@ import (
 // newClipsIndexerAdapter + clips.ClipIndexerPort are REMOVED. The port
 // existed only to serve the clips HTTP reindex transports
 // (ReindexClip + BatchReindex); both were retired in favor of the
-// canonical /api/assets/operator/assets/:id/reindex surface and the
-// media.reindex job (enqueueable via POST /api/jobs). The concrete
-// *clipindexer.Service remains wired independently as the media.reindex
-// job handler (wireClipIndexerJobBinding) and the outbox indexing
-// handler — no application-layer clips port is needed for those paths.
+// canonical /api/assets/operator/assets/:id/reindex surface. The concrete
+// *clipindexer.Service remains wired as the compatibility seam for
+// imperative reindex callers (SetCanonicalIndexRequester → PostgreSQL
+// asset.index.requested). The media.reindex job binding and the outbox
+// indexing handler were REMOVED by POSTGRES-MEDIA-CUTOVER (2026-09-12) —
+// no application-layer clips port is needed for either surface.
 
 // PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): the
 // `clipsFolderMemoryAdapter` + `newClipsFolderMemoryAdapter` + the

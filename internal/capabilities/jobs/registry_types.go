@@ -198,7 +198,6 @@ const (
 	TypeArtlistCacheRefresh = media.TypeArtlistCacheRefresh
 	TypeSystemCleanup       = job.TypeSystemCleanup
 	TypeMediaGenerate       = media.TypeGenerate
-	TypeMediaReindex        = media.TypeReindex
 	TypeMediaEnrich         = media.TypeEnrich
 	TypeYouTubeRebuildST    = youtube.TypeRebuildSearchText
 	TypeDriveFolderSync     = job.TypeDriveFolderSync

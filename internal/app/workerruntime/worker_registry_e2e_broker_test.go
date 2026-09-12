@@ -74,8 +74,8 @@ func (m *mockBroker) renewCounterOrZero() int32 {
 // serveLease configures the mock broker to return the supplied lease
 // on the next Claim call. Subsequent Claim calls return (nil, nil)
 // so Worker.Runner naturally falls into its idle/retry branch and
-// can be cancelled cleanly. Used by TestE2E_RemoteWorkerExecutesMediaReindex
-// to deliver a single media.reindex job to the worker.
+// can be cancelled cleanly. Used by the Phase 6 acceptance test to
+// deliver a single bound-handler job to the worker.
 //
 // Calling serveLease after Claim has already been invoked is a logic
 // error (the lease is meant to be threaded in before Run starts).
@@ -235,42 +235,3 @@ func containsPath(haystack, needle string) bool {
 	}
 	return false
 }
-
-// ── Phase 6 — Remote worker executes a real bound handler end-to-end ──────
-
-// TestE2E_RemoteWorkerExecutesMediaReindex is the W1 Phase 6 acceptance
-// proof that the remote worker can execute a real bound handler
-// end-to-end: claim → dispatch → handler return → completion reported
-// back to the broker. The chosen job type is media.reindex because
-// the Phase 0 inventory showed it is:
-//
-//	(a) bound to the in-process Dispatcher via
-//	    clipindexer.RegisterJobHandler in composition.go,
-//	(b) remote-safe — the handler reads input only from Job.Payload +
-//	    the shared SQLite DB and writes output only back to the DB,
-//	(c) trivially fast on an empty DB — it returns {total:0,
-//	    indexed:0, failed:0} without invoking any python subprocess
-//	    or Qdrant HTTP call.
-//
-// The test exercises, end-to-end:
-//
-//   - clipindexer.Service.HandleJob running through the Dispatcher
-//   - worker.Registry populated from dispatcher.AllHandlers() via an
-//     inline adaptHandler (the same bridging path
-//     BuildWorkerRegistry uses in production cmd/worker)
-//   - worker.Tools.Progress / IsCancelled forwarding to the broker
-//   - worker.Runner.runLease completing the lifecycle (parsing
-//     payload, calling the handler, marshalling the result, calling
-//     broker.Complete)
-//
-// What this test does NOT pretend to cover (deferred to later waves):
-//
-//   - python/Qdrant subprocess paths — the handler exits early on
-//     empty DB. python / Qdrant paths are exercised in W3 + W5.
-//   - lease renewal — Runner.runLease does not renew in this short
-//     happy path (W1 Phase 7).
-//   - HTTP broker round-trip — the broker is stubbed; the W2
-//     acceptance gate covers the network path bit-for-bit.
-//   - progress event emission to the server's jobs table — broker
-//     Progress here is a no-op counter; the worker-server
-//     integration proves the same path at the network layer in W3.

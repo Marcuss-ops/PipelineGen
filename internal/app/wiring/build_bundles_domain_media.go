@@ -90,7 +90,10 @@ func buildDomainMediaServices(
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
-	_ = voMetaWriter // P0-#2: voMetaWriter is nil in production (no real semantic tagger); retained on the return tuple for forward-compat with future real-implementation wiring
+	// P0-#2: voMetaWriter stays nil in production (no real semantic tagger yet).
+	// The former `_ = voMetaWriter` pin here was dead: the named return value is
+	// already consumed by this function's `return voMetaWriter, ...` statement, so
+	// the pin documented nothing and only kept a dead marker alive.
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	youtubePubAdapter := ytadapters.NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})

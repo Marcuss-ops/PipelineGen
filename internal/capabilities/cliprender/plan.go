@@ -82,6 +82,28 @@ type PlanSubtitles struct {
 	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
+// PlanOverlay is the resolved entity overlay composited onto the clip INSIDE
+// the single Chronon render pass. It replaces the historical post-render
+// FFmpeg compositing pass (which encoded the whole clip a second time): the
+// segment becomes a timed video layer in the same render graph, so a clip
+// carrying an overlay is encoded ONCE.
+//
+// Path/SHA256 reference the materialized overlay.render segment (the artifact
+// the declared render_job_id/render_key lineage produced); StartMS/EndMS are
+// the declared window on the final timeline. Chronon samples the segment at
+// (frame - layer_start), so the segment's first frame lands on StartMS and the
+// layer is composited only inside [StartMS, EndMS). Audio is never taken from
+// the segment: the plan's audio block owns the source audio.
+type PlanOverlay struct {
+	RenderJobID string `json:"render_job_id"`
+	RenderKey   string `json:"render_key"`
+	Path        string `json:"path"`
+	SHA256      string `json:"sha256"`
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	StartMS     int64  `json:"start_ms"`
+	EndMS       int64  `json:"end_ms"`
+}
+
 // PlanOutput is the resolved VeloxEditing output contract. The render worker
 // must produce exactly this container/codec/pixel/resolution/fps — no codec
 // decisions.
@@ -120,10 +142,22 @@ type ClipRenderPlanV1 struct {
 	Background *PlanBackground `json:"background,omitempty"`
 	Watermark  *PlanWatermark  `json:"watermark,omitempty"`
 	Subtitles  *PlanSubtitles  `json:"subtitles,omitempty"`
+	Overlay    *PlanOverlay    `json:"overlay,omitempty"`
 	Output     PlanOutput      `json:"output"`
 	Audio      PlanAudio       `json:"audio"`
 	OutputPath string          `json:"output_path"`
 	PlanSHA256 string          `json:"plan_sha256"`
+}
+
+// PlanOverlayInput is the resolved overlay compositing input for the sealed
+// plan: the materialized overlay.render segment plus its declared window on the
+// final timeline. It is produced by the OverlaySegmentResolver BEFORE the plan
+// is sealed (the single-pass path composites inside the Chronon render, so the
+// overlay must be part of the plan rather than a post-render pass).
+type PlanOverlayInput struct {
+	Segment *OverlaySegment
+	StartMS int64
+	EndMS   int64
 }
 
 // CompileInput is the fully-resolved input set for Compile. Every value comes
@@ -140,10 +174,15 @@ type CompileInput struct {
 	Subtitles      *SubtitleArtifact  // nil when disabled
 	// SubtitlesStyle is the caller's subtitle visual override block (canonical
 	// kernel/script shape). Nil means the compiled ASS style applies verbatim.
-	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
-	Cues                   []Cue
-	Contract               *ResolvedContract
-	AudioMode              string
+	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+	Cues           []Cue
+	Contract       *ResolvedContract
+	AudioMode      string
+	// Overlay is the resolved entity overlay segment + window for SINGLE-PASS
+	// compositing inside the Chronon render. Nil means the plan carries no
+	// overlay (either none was requested, or the request uses the legacy
+	// post-render compositor).
+	Overlay                *PlanOverlayInput
 	OutputPath             string
 	ForegroundScalePercent int
 }
@@ -281,6 +320,28 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		}
 	}
 
+	if in.Overlay != nil {
+		seg := in.Overlay.Segment
+		if seg == nil || seg.LocalPath == "" || !isSHA256Hex(seg.SHA256) {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: overlay requires the materialized segment with path + sha256", ErrInvalidClipPlan)
+		}
+		if in.Overlay.StartMS < 0 || in.Overlay.EndMS <= in.Overlay.StartMS {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: overlay window [%d, %d) is invalid", ErrInvalidClipPlan, in.Overlay.StartMS, in.Overlay.EndMS)
+		}
+		if in.DurationMS > 0 && in.Overlay.EndMS > in.DurationMS {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: overlay window end %dms exceeds the clip duration %dms", ErrInvalidClipPlan, in.Overlay.EndMS, in.DurationMS)
+		}
+		plan.Overlay = &PlanOverlay{
+			RenderJobID: seg.RenderJobID,
+			RenderKey:   seg.RenderKey,
+			Path:        seg.LocalPath,
+			SHA256:      seg.SHA256,
+			SizeBytes:   seg.SizeBytes,
+			StartMS:     in.Overlay.StartMS,
+			EndMS:       in.Overlay.EndMS,
+		}
+	}
+
 	if err := plan.Seal(); err != nil {
 		return ClipRenderPlanV1{}, err
 	}
@@ -411,6 +472,18 @@ func (p ClipRenderPlanV1) Validate() error {
 		}
 		if p.Subtitles.Path == "" || !isSHA256Hex(p.Subtitles.SHA256) {
 			return fmt.Errorf("%w: subtitles require an ASS path + sha256", ErrInvalidClipPlan)
+		}
+	}
+
+	if p.Overlay != nil {
+		if p.Overlay.Path == "" || !isSHA256Hex(p.Overlay.SHA256) {
+			return fmt.Errorf("%w: overlay requires a segment path + sha256", ErrInvalidClipPlan)
+		}
+		if p.Overlay.StartMS < 0 || p.Overlay.EndMS <= p.Overlay.StartMS {
+			return fmt.Errorf("%w: overlay window [%d, %d) is invalid", ErrInvalidClipPlan, p.Overlay.StartMS, p.Overlay.EndMS)
+		}
+		if p.DurationMS > 0 && p.Overlay.EndMS > p.DurationMS {
+			return fmt.Errorf("%w: overlay window end %dms exceeds the clip duration %dms", ErrInvalidClipPlan, p.Overlay.EndMS, p.DurationMS)
 		}
 	}
 

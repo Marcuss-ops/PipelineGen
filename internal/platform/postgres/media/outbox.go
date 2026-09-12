@@ -53,13 +53,15 @@ const (
 	EventMetadataEnrichRequested = event.MetadataEnrichRequested
 	// ReindexEnvelopeV1Schema is the schema_version stamped in the payload.
 	ReindexEnvelopeV1Schema = event.AssetIndexRequestedV1Schema
-	// SupersedeStatus is the terminal "skipped" status.
-	SupersedeStatus = "superseded"
+	// SupersedeStatus is the terminal "skipped" status. Re-export of the
+	// canonical value OWNED by internal/kernel/event/outbox_status.go; the
+	// SQLite outbox carries the same value and the two must never drift.
+	SupersedeStatus = event.OutboxStatusSuperseded
 
 	// PriorityNormal is the default scheduling priority.
-	PriorityNormal = 5
+	PriorityNormal = event.OutboxPriorityNormal
 	// PriorityHigh is the script-required index request priority.
-	PriorityHigh = 10
+	PriorityHigh = event.OutboxPriorityHigh
 )
 
 // EnqueueResult is the typed feedback from Enqueue (SQLite parity:

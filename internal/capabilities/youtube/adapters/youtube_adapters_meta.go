@@ -146,7 +146,7 @@ type SourcingEnrichmentAdapter struct {
 	enricher appclips.ClipEnricher
 }
 
-func (a *SourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
+func (a *SourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID string) error {
 	if a.enricher == nil {
 		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
 		// pre-return — replaces the pre-fix silent-success nil.
@@ -156,13 +156,13 @@ func (a *SourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, 
 		// a no-op success (godlike/07 NO-FAKE-AVAILABILITY).
 		return sourcing.ErrSourcingEnrichAndIndexDisabled
 	}
-	// Card 10 (July 2026): pass clipID only — the use case performs
-	// the assetRepo lookup internally (pre-Card-10 the adapter
-	// constructed a minimal Asset shape and called the handler
-	// delegator). localPath + source are preserved on the adapter's
-	// outer signature for caller-back-compat (composition root never
-	// reads them; they're historic register-flow args).
-	_ = localPath
-	_ = source
+	// Card 10 (July 2026): the use case performs the assetRepo lookup
+	// internally (pre-Card-10 the adapter constructed a minimal Asset
+	// shape and called the handler delegator).
+	//
+	// LOCALPATH DEMOLITION (September 2026): the historic localPath/source
+	// register-flow arguments were never read — every call site passes clipID
+	// alone — so they are removed from the port and this adapter instead of
+	// being kept alive by `_ = param` pins (godlike/07).
 	return a.enricher.EnrichAndIndex(ctx, clipID)
 }

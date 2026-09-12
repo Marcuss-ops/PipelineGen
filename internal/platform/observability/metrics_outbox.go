@@ -143,6 +143,33 @@ var (
 		Name: "media_outbox_status_count",
 		Help: "Current PostgreSQL media outbox row count by event type and lifecycle status.",
 	}, []string{"event_type", "status"})
+
+	// MediaOutboxBacklogCount is the queue depth (pending + processing) for
+	// one media event type. It makes a stalled drain visible even when the
+	// worker is not claiming any event.
+	MediaOutboxBacklogCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "media_outbox_backlog_count",
+		Help: "Current PostgreSQL media outbox backlog (pending + processing) by event type.",
+	}, []string{"event_type"})
+
+	// MediaOutboxOldestEventAgeSeconds is the age of the oldest pending media
+	// outbox event. A rising value with a flat backlog means the drain loop
+	// is stuck or lease-thrashing.
+	MediaOutboxOldestEventAgeSeconds = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "media_outbox_oldest_event_age_seconds",
+		Help: "Age in seconds of the oldest pending PostgreSQL media outbox event by event type.",
+	}, []string{"event_type"})
+
+	// MediaOutboxProcessedTotal counts events this engine drained to terminal
+	// success. It is a counter, not a gauge, so the operator reads the
+	// PROCESSING RATE as rate(media_outbox_processed_total[5m]) and compares it
+	// with MediaOutboxBacklogCount: a flat rate under a rising backlog is the
+	// canonical "drain is stuck or lease-thrashing" signal, and a missing
+	// series is distinguishable from a zero rate.
+	MediaOutboxProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "media_outbox_processed_total",
+		Help: "Cumulative PostgreSQL media outbox events drained to terminal success, by event type.",
+	}, []string{"event_type"})
 )
 
 // ObserveOutboxStatus is the composition adapter consumed by the media
@@ -153,6 +180,26 @@ func (m *MediaOutboxStatusCountAdapter) ObserveOutboxStatus(eventType, status st
 		return
 	}
 	MediaOutboxStatusCount.WithLabelValues(eventType, status).Set(float64(count))
+}
+
+// ObserveOutboxBacklog projects the media outbox backlog depth and the age of
+// the oldest pending event. It deliberately exposes only the projection
+// operation; SQL remains owned by internal/platform/postgres/media.
+func (m *MediaOutboxStatusCountAdapter) ObserveOutboxBacklog(eventType string, backlogCount int64, oldestEventAgeSeconds float64) {
+	if m == nil || eventType == "" {
+		return
+	}
+	MediaOutboxBacklogCount.WithLabelValues(eventType).Set(float64(backlogCount))
+	MediaOutboxOldestEventAgeSeconds.WithLabelValues(eventType).Set(oldestEventAgeSeconds)
+}
+
+// ObserveOutboxProcessed projects one successfully drained event onto the
+// processing-rate counter.
+func (m *MediaOutboxStatusCountAdapter) ObserveOutboxProcessed(eventType string) {
+	if m == nil || eventType == "" {
+		return
+	}
+	MediaOutboxProcessedTotal.WithLabelValues(eventType).Inc()
 }
 
 // MediaOutboxStatusCountAdapter adapts the canonical media worker status

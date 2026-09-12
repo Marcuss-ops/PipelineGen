@@ -3,7 +3,7 @@ package clips
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/scripts/archcheck/gate"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/gate"
 )
 
 // prohibitedPatterns is the per-area list for internal/api/assets/clips.

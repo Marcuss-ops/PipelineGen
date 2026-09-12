@@ -102,7 +102,15 @@ var driveAccessForbiddenPatterns = []driveAccessPattern{
 	// uploaddrive.* and rely on the global file-level allowlist).
 	{"drive.NewDriveServiceFromFiles(", "direct drive.NewDriveServiceFromFiles construction (creates *drive.Uploader with Admin methods)", "", ""},
 	{"drive.NewFileLifecycleAdapter(", "direct drive.NewFileLifecycleAdapter construction (composition root wraps this; outside root, route through internal/app/)", "", ""},
-	{"drive.Admin", "direct drive.Admin type reference", "", ""},
+	// drive.Admin carries a scoped allowInPath for the Pattern-0 port
+	// adapter internal/capabilities/youtube/adapters/clips_adapters_drive.go:
+	// it wraps drive.Admin + drive.Reader behind clips.ClipDriveUploaderPort and
+	// is the migration seam that retires the raw concrete from the youtube
+	// capability. This exemption is TRANSITIONAL — owner=youtube-capability,
+	// deadline=2026-12-31 — and was recorded when the gate was rescoped off the
+	// deleted internal/application root (2026-09-12). The forward-pointer lives
+	// in architecture/deprecations.yaml.
+	{"drive.Admin", "direct drive.Admin type reference", "internal/capabilities/youtube/adapters/clips_adapters_drive.go", "Pattern-0 port adapter; retires the raw concrete from the youtube capability"},
 	{"*drive.Admin", "pointer to concrete drive.Admin", "", ""},
 
 	// PR-DRIVE-CLEANUP aliased-import coverage: uploaddrive alias
@@ -117,13 +125,13 @@ var driveAccessForbiddenPatterns = []driveAccessPattern{
 	{"*uploaddrive.Admin", "pointer to aliased drive.Admin", "", ""},
 }
 
-// ScanDriveAccessSSOT walks <root>/internal/application/** and
-// <root>/internal/api/** for non-test .go files, scanning each line
+// ScanDriveAccessSSOT walks <root>/internal/capabilities/** and
+// <root>/internal/platform/httpserver/** for non-test .go files, scanning each line
 // for low-level Drive concrete references. The Drive infrastructure
 // package, the delivery port package, and the composition root are
 // globally allowlisted; application packages have no concrete Drive
 // exemption.
-func ScanDriveAccessSSOT(root string, pol *policy.Policy, r *report.Report) {
+func ScanDriveAccessSSOT(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
@@ -135,7 +143,12 @@ func ScanDriveAccessSSOT(root string, pol *policy.Policy, r *report.Report) {
 		"internal/app/",
 	}
 
-	for _, subdir := range []string{"internal/application", "internal/api", "internal/capabilities/images/workflow"} {
+	// Rescoped 2026-09-12: the previous roots (internal/application,
+	// internal/api, internal/capabilities/images/workflow) were all deleted in
+	// the August 2026 root consolidation, so this gate walked nothing and could
+	// never fire. The application layer is internal/capabilities and the HTTP
+	// layer is internal/platform/httpserver.
+	for _, subdir := range []string{"internal/capabilities", "internal/platform/httpserver"} {
 		dir := filepath.Join(root, subdir)
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {

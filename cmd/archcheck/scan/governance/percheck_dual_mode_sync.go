@@ -177,13 +177,12 @@ func dualModeSyncAllowlistMatch(relSlash string) bool {
 // The function signature matches the canonical CheckSpec
 // closure contract:
 //
-//	func(root string, pol *policy.Policy, r *report.Report)
+//	func(root string, _ *policy.Policy, r *report.Report)
 //
 // No productionOnly plumbing is required (the canonical
 // async-only wire shape is unconditional — no producer/consumer
 // split exists in the gate).
-func ScanDualModeSync(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // policy is unused; gate is text-substring based.
+func ScanDualModeSync(root string, _ *policy.Policy, r *report.Report) {
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

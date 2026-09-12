@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 func RunApplyAssetMetadataBatch(args []string) error {
@@ -88,7 +89,7 @@ func RunApplyAssetMetadataBatch(args []string) error {
 			clip.SetMetadataString(key, string(encoded))
 		}
 		clip.UpdatedAt = time.Now().UTC()
-		before, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+		before, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
 		if err != nil {
 			return err
 		}

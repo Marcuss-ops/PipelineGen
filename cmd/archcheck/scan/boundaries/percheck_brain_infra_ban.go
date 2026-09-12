@@ -69,8 +69,7 @@ var brainInfraBannedExecRe = regexp.MustCompile(
 // ScanBrainInfraBan walks the brain and mediamemory application zones
 // and reports any direct use of banned infrastructure imports or
 // process-spawning literals.
-func ScanBrainInfraBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future severity override
+func ScanBrainInfraBan(root string, _ *policy.Policy, r *report.Report) {
 
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

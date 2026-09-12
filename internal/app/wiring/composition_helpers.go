@@ -133,33 +133,14 @@ func (a *artifactAssetIndexAdapter) Upsert(ctx context.Context, rec *artifacts.A
 
 var _ artifacts.AssetIndexPort = (*artifactAssetIndexAdapter)(nil)
 
-// Package app — clipindexer job handler late-binding.
-// wireClipIndexerJobBinding registers the media_reindex handler into
-// jobs.Service.
-func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
-	if process.ClipIndexerService != nil && jobs.Service != nil {
-		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
-			return fmt.Errorf("clipindexer.media_reindex: %w", err)
-		}
-	}
-	return nil
-}
-
-// appendClipIndexerCriticalValidator populates the critical-handler
-// validators slice with the clipindexer.media_reindex binding.
-func appendClipIndexerCriticalValidator(process *ProcessBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
-	if process.ClipIndexerService != nil && jobs.Service != nil {
-		ci := process.ClipIndexerService
-		*validators = append(*validators,
-			CriticalHandler{
-				Name: "clipindexer.media_reindex",
-				Bind: func(svc *appjobs.Service) error {
-					return ci.RegisterJobHandler(svc)
-				},
-			},
-		)
-	}
-}
+// POSTGRES-MEDIA-CUTOVER (2026-09-12): the `media.reindex` job binding is
+// REMOVED. It was the last reachable path from the job broker into the retired
+// clipindexer batch reindex (clipindexer.Service.RegisterJobHandler →
+// jobmedia.TypeReindex → HandleJob → IndexClip). The canonical media index
+// plane is the PostgreSQL outbox: AssetCommitter emits asset.index.requested,
+// PostgresIndexWorker drains it (embed → pgvector). Reindex is requested
+// through media_reindex-free surfaces (operator reindex API + backfill CLI),
+// both of which enqueue the same canonical event.
 
 // Package app — images job handler late-binding (extracted from
 // composition.go NewComposition per PG-028 capability split, July 2026).

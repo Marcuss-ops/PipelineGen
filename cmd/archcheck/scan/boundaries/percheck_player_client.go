@@ -127,7 +127,7 @@ var playerClientSkipPathPrefixes = []string{
 // Comment-only hits are logged as warnings via r.Warnings
 // (godlike/07 no-fake-availability residue accounting) but
 // do NOT contribute to the hard-fail set.
-func ScanPlayerClientCentralization(root string, pol *policy.Policy, r *report.Report) {
+func ScanPlayerClientCentralization(root string, _ *policy.Policy, r *report.Report) {
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

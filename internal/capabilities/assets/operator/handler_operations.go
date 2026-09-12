@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -50,10 +51,12 @@ func (h *Handler) handleOperationsErrors(c *gin.Context) {
 		}
 	}
 
-	// Outbox events with errors (pending/processing/dead_letter/completed)
+	// Outbox events carrying a last_error. The bucket list is OWNED by
+	// internal/kernel/event: the previous local list omitted `superseded`,
+	// so a superseded row with a last_error was invisible to this sweep.
 	if h.outboxPort != nil {
 		var outboxErrors []any
-		for _, status := range []string{"pending", "processing", "dead_letter", "completed"} {
+		for _, status := range event.OutboxErrorStatuses() {
 			events, err := h.outboxPort.ListByStatus(ctx, status)
 			if err != nil {
 				h.log.Warn("failed to list outbox events for errors", zap.String("status", status), zap.Error(err))

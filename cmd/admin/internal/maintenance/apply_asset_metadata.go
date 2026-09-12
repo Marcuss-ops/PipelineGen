@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // assetMetadataManifest is the reusable, data-only input for
@@ -103,7 +104,7 @@ func RunApplyAssetMetadata(args []string) error {
 		clip.SetMetadataString(key, string(encoded))
 	}
 	clip.UpdatedAt = time.Now().UTC()
-	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
 	if err != nil {
 		return fmt.Errorf("read outbox baseline: %w", err)
 	}

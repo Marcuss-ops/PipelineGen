@@ -211,8 +211,7 @@ func isRootOverrideForbidden(relSlash string) bool {
 // RootFolderOverride in production code surfaces as a violation
 // even in production-only mode, so the baseline check is robust
 // to comment noise.
-func ScanRootOverrideBan(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol // reserved for future allowlist tuning
+func ScanRootOverrideBan(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

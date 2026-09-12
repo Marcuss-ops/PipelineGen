@@ -15,9 +15,9 @@ import (
 // PostgreSQL pgvector `PostgresIndexWorker`
 // (internal/platform/postgres/media/outbox_worker.go), whose fail-closed
 // contract is the nil-dependency panics in `NewPostgresIndexWorker`, and the
-// composition root's `registerOutboxCoreHandlers`
-// (internal/app/wiring/build_outbox_handlers.go) unconditionally registers no
-// media handler in any mode.
+// composition root's `assertSingleMediaIndexOwner`
+// (internal/app/wiring/build_outbox_handlers.go) fails the boot if this plane
+// ever registers a media index handler.
 //
 // The surviving fail-closed invariant on this package's registration entry
 // point is pinned here: a nil registry aborts with a typed error before any

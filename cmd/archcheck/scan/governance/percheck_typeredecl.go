@@ -14,18 +14,16 @@
 //     wave-tracker entry that registers this closure.
 //   - architecture/current.yaml#id-20: the original type-redecl
 //     tracker (QDRANT-RECOVERY-001 follow-up).
-//   - docs/migrations/duplicate-types-allowlist.txt: the per-package
-//     allowlist the scanner reads (same file the shell check reads —
-//     single source of truth). Post-P1-7 the allowlist has zero
-//     internal/domain/job cells; the canonical kernel/job surface is
-//     the sole owner of all job-related types.
+//   - docs/migrations/duplicate-types-allowlist.txt: DELETED 2026-09-12.
+//     It carried zero active entries (all purged 2026-09-11) and its loader
+//     was dead indirection, so the scanner now fails directly on every
+//     same-package duplicate type declaration.
 //   - docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"moved-to-shared-types-package":
 //     the canonical resolution order (pick one file as canonical OR
 //     add an allowlist row with owner + deadline).
 package governance
 
 import (
-	"bufio"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -38,13 +36,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
-
-// duplicateTypesAllowlistRelPath is the repo-relative path to the
-// canonical per-package type-redeclaration allowlist. The shell
-// check reads the same file (single source of truth per godlike/06
-// SSOT). The path is relative to the project root (not the
-// archcheck binary's CWD) so the scanner is CWD-stable.
-const duplicateTypesAllowlistRelPath = "docs/migrations/duplicate-types-allowlist.txt"
 
 // ScanTypeRedeclarations walks every non-test .go file under
 // <root>/internal/, extracts each package's exported type
@@ -73,18 +64,10 @@ const duplicateTypesAllowlistRelPath = "docs/migrations/duplicate-types-allowlis
 // the type name (X), with the type parameter list ignored — the
 // shell awk regex matches the same way.
 //
-// Allowlist file format (matches shell, with dirpath-aware superset):
-//
-//	# comments are ignored
-//	<pkg>:<TypeName>                 # legacy — suffix-match against new key
-//	<dirpath>\x00<pkg>\x00<TypeName>  # precise — exact key match
-//
-// Only the first whitespace-separated token is consumed. A
-// missing allowlist file is treated as zero entries (no
-// exceptions), matching the shell `if [ -f ... ]` guard.
-func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
-	allowlist := loadDuplicateTypesAllowlist(root)
-
+// There is NO allowlist: the transitional per-package allowlist file was
+// deleted (2026-09-12) after it was found to carry zero active entries. A
+// same-package duplicate type declaration is therefore always a violation.
+func ScanTypeRedeclarations(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
@@ -181,29 +164,6 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 		if len(sites) < 2 {
 			continue
 		}
-		// Allowlist matching accepts BOTH the dirpath-aware
-		// composite key (new format) AND the legacy
-		// `<pkg>:<TypeName>` form (existing entries). Legacy
-		// entries are matched as a suffix of the dirpath-aware
-		// key: we convert their `:` separator to `\x00` and
-		// check whether the converted entry suffix-matches the
-		// trailing portion of the key.
-		allowed := false
-		if _, ok := allowlist[key]; ok {
-			allowed = true
-		}
-		if !allowed {
-			for entry := range allowlist {
-				converted := strings.Replace(entry, ":", "\x00", 1)
-				if converted != entry && strings.HasSuffix(key, converted) {
-					allowed = true
-					break
-				}
-			}
-		}
-		if allowed {
-			continue
-		}
 		// Split the dirpath-aware key back into its 3 parts.
 		parts := strings.Split(key, "\x00")
 		if len(parts) != 3 {
@@ -245,38 +205,6 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 			Note:        off.pkg + "." + off.name + " (count=" + strconv.Itoa(len(sortedSites)) + " in same package); sites: " + strings.Join(siteStrs, ", "),
 		})
 	}
-}
-
-// loadDuplicateTypesAllowlist reads the canonical per-package
-// type-redecl allowlist from the repo-relative path. Returns an
-// empty set when the file is missing (matches shell `if [ -f ...
-// ]` guard). Lines starting with `#` or whitespace-only are
-// skipped; only the first whitespace-separated token
-// (`<pkg>:<TypeName>`) is consumed.
-func loadDuplicateTypesAllowlist(root string) map[string]bool {
-	out := map[string]bool{}
-	path := filepath.Join(root, duplicateTypesAllowlistRelPath)
-	f, err := os.Open(path)
-	if err != nil {
-		return out
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		// First whitespace-separated token.
-		if idx := strings.IndexAny(line, " \t"); idx > 0 {
-			line = line[:idx]
-		}
-		if line == "" {
-			continue
-		}
-		out[line] = true
-	}
-	return out
 }
 
 // shortLine extracts the trailing :line:col from a token.Position

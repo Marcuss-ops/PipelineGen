@@ -32,7 +32,13 @@ var optionalFieldTypes = map[string]bool{
 
 var typeDeclRe = regexp.MustCompile(`^\s*type\s+(\w+)\s+struct\s*\{`)
 
-const clipIngestPipelineDepsRelPath = "internal/application/assets/ingest/clip_ingest_pipeline.go"
+// clipIngestPipelineDepsRelPath is the canonical owner of the 9-component
+// ClipIngestPipeline surface. It MUST match
+// boundaries.canonicalClipIngestPipelineFile (the forward-prevention gate's
+// path): the previous value pointed at internal/application/assets/ingest/,
+// a root deleted in August 2026, so the max_clip_ingest_pipeline_fields
+// exception silently protected nothing.
+const clipIngestPipelineDepsRelPath = "internal/capabilities/assets/ingest/clip_ingest_pipeline.go"
 
 // ScanStructDeps walks non-test Go source files under <root>/internal/ and
 // reports dependency structs whose mandatory field count exceeds the policy

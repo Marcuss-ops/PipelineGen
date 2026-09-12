@@ -1,6 +1,7 @@
 package cliprender
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -333,5 +334,92 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 	plain.Normalize()
 	if err := plain.Validate(); err != nil {
 		t.Errorf("plain clip without overlay must validate: %v", err)
+	}
+}
+
+// TestNormalize_HonoursExplicitZeroWatermarkValues locks the contract that an
+// explicit opacity 0 ("invisible") and an explicit margin_px 0 ("flush to the
+// edge") are caller intent, not "unset". Only an ABSENT key takes the
+// canonical default; a requested 0 must never be rewritten.
+func TestNormalize_HonoursExplicitZeroWatermarkValues(t *testing.T) {
+	const doc = `{
+		"source_asset_id": "asset-1",
+		"watermark": {"enabled": true, "text": "LOGO", "opacity": 0, "margin_px": 0}
+	}`
+	var req RenderRequest
+	if err := json.Unmarshal([]byte(doc), &req); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	req.Normalize()
+	if req.Watermark.Opacity != 0 {
+		t.Errorf("explicit opacity 0 must be preserved, got %v", req.Watermark.Opacity)
+	}
+	if req.Watermark.MarginPX != 0 {
+		t.Errorf("explicit margin_px 0 must be preserved, got %d", req.Watermark.MarginPX)
+	}
+	if err := req.Validate(); err != nil {
+		t.Errorf("opacity 0 / margin_px 0 must validate: %v", err)
+	}
+}
+
+// TestNormalize_DefaultsAbsentWatermarkValues is the complement of the test
+// above: a key that was never sent still receives the canonical default.
+func TestNormalize_DefaultsAbsentWatermarkValues(t *testing.T) {
+	const doc = `{
+		"source_asset_id": "asset-1",
+		"watermark": {"enabled": true, "text": "LOGO"}
+	}`
+	var req RenderRequest
+	if err := json.Unmarshal([]byte(doc), &req); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	req.Normalize()
+	if req.Watermark.Opacity != 1.0 {
+		t.Errorf("absent opacity must default to 1.0, got %v", req.Watermark.Opacity)
+	}
+	if req.Watermark.MarginPX != 100 {
+		t.Errorf("absent margin_px must default to 100 for a text watermark, got %d", req.Watermark.MarginPX)
+	}
+}
+
+// TestExplicitZeroSurvivesJobPayloadRoundTrip proves the presence marker plus
+// the non-omitempty opacity/margin_px tags keep an explicit 0 across the
+// persisted job payload, where the worker re-runs Normalize on the decoded
+// request. Without this, the HTTP entry would honour the 0 and the worker
+// would silently reintroduce the default.
+func TestExplicitZeroSurvivesJobPayloadRoundTrip(t *testing.T) {
+	const doc = `{"source_asset_id":"asset-1","watermark":{"enabled":true,"text":"LOGO","opacity":0,"margin_px":0}}`
+	var first RenderRequest
+	if err := json.Unmarshal([]byte(doc), &first); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	first.Normalize()
+	payload, err := json.Marshal(&first)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var second RenderRequest
+	if err := json.Unmarshal(payload, &second); err != nil {
+		t.Fatalf("re-decode: %v", err)
+	}
+	second.Normalize()
+	if second.Watermark.Opacity != 0 || second.Watermark.MarginPX != 0 {
+		t.Errorf("explicit zeros lost across the payload round trip: opacity=%v margin=%d payload=%s",
+			second.Watermark.Opacity, second.Watermark.MarginPX, payload)
+	}
+}
+
+// TestValidate_FailsClosedOnUnnormalizedRequest locks the fail-closed input
+// contract: Validate must return a typed error for a request whose nested
+// blocks were never materialized by Normalize, instead of panicking on a nil
+// dereference that no caller can handle.
+func TestValidate_FailsClosedOnUnnormalizedRequest(t *testing.T) {
+	req := &RenderRequest{SourceAssetID: "asset-1"}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("Validate on an unnormalized request must fail")
+	}
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("want ErrInvalidRequest, got %v", err)
 	}
 }

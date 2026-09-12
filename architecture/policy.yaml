@@ -37,8 +37,7 @@ max_lines_per_file: 1000
 # 400-LOC safety margin between the soft warning and the hard ceiling.
 max_lines_per_file_strict: 600
 # Path (relative to root) of the per-file allowlist for the strict cap.
-# Format: same plain-text convention as admin-sql-allowlist.txt and
-# duplicate-types-allowlist.txt — one repo-root-relative forward-slashed path
+# Format: plain-text, one repo-root-relative forward-slashed path
 # per line; `#`-prefixed comments + blank lines are ignored. Inline
 # `# owner=...` annotations document per-entry governance metadata (parser
 # does not consume them but operators must keep them in sync with the
@@ -103,9 +102,12 @@ legacy_policy_doc: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
 
 # Canonical CI-gates manifest (path relative to project root) — the
 # single source of truth for executable architecture rules and CI gate
-# definitions. The on-disk enforcement lives in scripts/ci-architectural-
-# checks.sh (legacy ratchets) and cmd/archcheck/main.go::scanCIGatesDoc
-# (this doc). Promotion: June 2026. Leave empty to opt out.
+# definitions. The on-disk enforcement lives in cmd/archcheck/main.go::scanCIGatesDoc
+# (the Go gate: `go run ./cmd/archcheck --strict`, run by
+# .github/workflows/architecture.yml and by `make archcheck-strict`).
+# The historical scripts/ci-architectural-checks.sh shell ratchet was
+# deleted (commit 7e6965aab) and must not be referenced again.
+# Promotion: June 2026. Leave empty to opt out.
 ci_gates_doc: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
 
 # Canonical agent execution playbook (path relative to project root) —
@@ -154,10 +156,9 @@ stale_prose_paths:
 # absent list as “no migration-boundary areas to check” when the
 # corresponding hard gates are not enabled (see hard_gates below).
 
-# Expected capability slices (target: internal/capabilities/<x>).
-# Each owns module.go, contract.go, service.go, http.go, jobs.go,
-# events.go, repository.go, adapters.go per proposal §"internal/capabilities".
-capabilities: assets, artlist, youtube, scripts, images, voiceover, content, channels, jobs, system
+# (The retired `capabilities:` key was deleted 2026-09-12: it was parsed but
+# never consumed and named stale capabilities. The live capability inventory
+# is architecture/capability_inventory.yaml.)
 
 # ── Platform adapter ownership (2026-08-23 Cleanup Day) ───────────────
 # Each on-disk subzone maps to exactly one technology concern. Ownership is
@@ -236,7 +237,7 @@ debt_budget:
   catalog_file: architecture/issues.yaml
   counter_id_prefix: "PRE-EXISTING-"
   counter_status_includes: ["open", "in_progress"]
-  ci_gate: scripts/ci-architectural-checks.sh (Check 64)
+  ci_gate: cmd/archcheck --strict (cmd/archcheck/debt_budget.go::validateDebtBudget, wired in main.go)
 
 # Wave-22 hard-gate promotion (godlike/08 evolution PR2,
 # post-Wave 22 per architecture/current.yaml). The canonical
@@ -252,11 +253,14 @@ debt_budget:
 #     are fail-closed forward-prevention guards.
 #   - the Wave-5 typed metadata registry (map[string]any ban)
 #     already in pre-Wave-22 promotion.
-#   - the Wave-22 forward-prevention gate for low-level
-#     infrastructure imports in the API layer (Go-side mirror
-#     of scripts/ci/architecture/checks/check_19); both the
-#     hit rule and the fail-closed missing-allowlist rule are
-#     in the set.
+#   - the non-inert residue of the Wave-22 API-layer import
+#     ban. The two original ids
+#     (`percheck_api_infrastructure_imports` and its
+#     `_allowlist_missing` companion) are DEMOLISHED
+#     2026-09-12: the scanner was repurposed to the four-root
+#     retired-root check and emits `percheck_legacy_root_ban`,
+#     so neither id could ever fire. They were inert hard gates
+#     (a false "always fails closed" claim).
 # SSOT for Wave-22 gate promotion. Bypassing requires an
 # explicit SSOT-marker demotion in architecture/current.yaml
 # (no in-tree override).
@@ -276,15 +280,18 @@ hard_gates:
   - agent_playbook_doc_incomplete
   - removal_doc_missing
   - removal_doc_incomplete
-  # Wave-5 typed metadata registry (pre-Wave-22 promotion).
-  - percheck_metadata_registry
-  # Wave-22 forward-prevention: banned infrastructure imports
-  # in the API layer (Go-side mirror of Check 19). The hit
-  # rule and the fail-closed missing-allowlist rule are
-  # both in the set — operators must keep the canonical
-  # allowlist on disk (godlike/07 NO-FAKE-AVAILABILITY).
-  - percheck_api_infrastructure_imports
-  - percheck_api_infrastructure_imports_allowlist_missing
+  # Wave-5 metadata KEY registry (pre-Wave-22 promotion). The retired
+  # `map[string]any` ban used to share this id and scanned internal/domain,
+  # a root deleted in August 2026: it was DEMOLISHED 2026-09-12 together
+  # with its allowlist (see cmd/archcheck/checks.go).
+  - percheck_metadata_key_registry
+  # Wave-22 API-layer import ban: DEMOLISHED 2026-09-12.
+  # The scanner was repurposed to the retired-root check and emits
+  # `percheck_legacy_root_ban`, so these two ids could never be emitted.
+  # Declaring them made the list claim a fail-closed gate that no scanner
+  # owned. A future re-introduction must ship the scanner that emits its own
+  # id; cmd/archcheck::TestHardGatesAreEmittable fails closed on a declared
+  # id that no scanner references.
   # Brain capability hard gates: the brain must never import
   # infrastructure or spawn processes, and each canonical
   # brain component must have exactly one production implementation.
@@ -370,3 +377,8 @@ hard_gates:
   # AssetMutator implementation family may contain direct media_assets SQL.
   - percheck_media_assets_writer_canonical
   - percheck_asset_committer_event_ssot
+  # Governance-artifact integrity (added 2026-09-12 with the governance
+  # sweep): no orphan allowlist, no dangling allowlist reference, no ghost
+  # allowlist entry, no passed remediation deadline. A gate must not
+  # protect knowledge that no longer exists.
+  - percheck_governance_artifacts

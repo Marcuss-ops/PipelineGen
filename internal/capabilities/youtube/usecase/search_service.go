@@ -294,7 +294,7 @@ func extractVideoIDFromURL(url string) (string, error) {
 	for _, prefix := range []string{"https://www.youtube.com/watch?v=", "http://www.youtube.com/watch?v=", "https://youtube.com/watch?v="} {
 		if len(url) > len(prefix) && url[:len(prefix)] == prefix {
 			id := url[len(prefix):]
-			if idx := indexOf(id, '&'); idx >= 0 {
+			if idx := strings.IndexByte(id, '&'); idx >= 0 {
 				id = id[:idx]
 			}
 			if id != "" {
@@ -303,13 +303,4 @@ func extractVideoIDFromURL(url string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("could not extract video ID from URL")
-}
-
-func indexOf(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
 }

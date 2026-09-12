@@ -49,7 +49,17 @@ func (noopLogger) Info(string, ...any)  {}
 func (noopLogger) Error(string, ...any) {}
 
 type recordingOutboxStatusMetrics struct {
-	values map[string]int64
+	values    map[string]int64
+	backlog   map[string]int64
+	oldest    map[string]float64
+	processed map[string]int64
+}
+
+func (m *recordingOutboxStatusMetrics) ObserveOutboxProcessed(eventType string) {
+	if m.processed == nil {
+		m.processed = make(map[string]int64)
+	}
+	m.processed[eventType]++
 }
 
 func (m *recordingOutboxStatusMetrics) ObserveOutboxStatus(eventType, status string, count int64) {
@@ -57,6 +67,17 @@ func (m *recordingOutboxStatusMetrics) ObserveOutboxStatus(eventType, status str
 		m.values = make(map[string]int64)
 	}
 	m.values[eventType+"/"+status] = count
+}
+
+func (m *recordingOutboxStatusMetrics) ObserveOutboxBacklog(eventType string, backlogCount int64, oldestEventAgeSeconds float64) {
+	if m.backlog == nil {
+		m.backlog = make(map[string]int64)
+	}
+	if m.oldest == nil {
+		m.oldest = make(map[string]float64)
+	}
+	m.backlog[eventType] = backlogCount
+	m.oldest[eventType] = oldestEventAgeSeconds
 }
 
 // TestWorker_RefreshesObservedOutboxStatuses pins the operational metrics
@@ -88,6 +109,14 @@ func TestWorker_RefreshesObservedOutboxStatuses(t *testing.T) {
 	if got := metrics.values[eventType+"/dead_letter"]; got != 0 {
 		t.Fatalf("dead_letter metric = %d, want 0", got)
 	}
+	// Backlog + oldest-event age are projected by the same query so a
+	// stalled drain is observable without a per-claim probe.
+	if got := metrics.backlog[eventType]; got != 1 {
+		t.Fatalf("backlog metric = %d, want 1", got)
+	}
+	if got := metrics.oldest[eventType]; got < 0 {
+		t.Fatalf("oldest_event_age metric = %v, want >= 0", got)
+	}
 
 	if _, err := db.Exec(`UPDATE outbox_events SET status='dead_letter' WHERE event_key='clip-metrics-v1'`); err != nil {
 		t.Fatalf("dead-letter clip delivery intent: %v", err)
@@ -100,6 +129,12 @@ func TestWorker_RefreshesObservedOutboxStatuses(t *testing.T) {
 	}
 	if got := metrics.values[eventType+"/dead_letter"]; got != 1 {
 		t.Fatalf("dead_letter metric after terminal transition = %d, want 1", got)
+	}
+	if got := metrics.backlog[eventType]; got != 0 {
+		t.Fatalf("backlog metric after terminal transition = %d, want 0", got)
+	}
+	if got := metrics.oldest[eventType]; got != 0 {
+		t.Fatalf("oldest_event_age after terminal transition = %v, want 0", got)
 	}
 }
 

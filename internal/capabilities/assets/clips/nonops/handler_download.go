@@ -30,11 +30,10 @@ import (
 // interface conformance; the slim enrichUC.EnrichAndIndex looks up
 // the asset by clipID internally so the source context is not needed
 // at this call site.
-func (h *NonOpsHandler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
+func (h *NonOpsHandler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, _ string) {
 	if h.enrichUC == nil {
 		return
 	}
-	_ = source
 	h.enrichUC.EnrichAndIndex(ctx, clip.ID)
 }
 

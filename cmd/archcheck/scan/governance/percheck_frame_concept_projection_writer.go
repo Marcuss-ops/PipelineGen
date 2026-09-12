@@ -95,8 +95,7 @@ const frameConceptWriterNote = "forbidden point write to a frame/concept project
 // ScanFrameConceptProjectionWriter walks every .go file under internal/** and
 // emits a violation for any point-write call site that targets the frame or
 // concept collection outside the respective projection writer file.
-func ScanFrameConceptProjectionWriter(root string, pol *policy.Policy, r *report.Report, _ bool) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanFrameConceptProjectionWriter(root string, _ *policy.Policy, r *report.Report, _ bool) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

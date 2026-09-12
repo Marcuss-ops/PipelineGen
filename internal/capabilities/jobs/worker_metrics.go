@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -303,7 +304,7 @@ func inputAssetIDs(raw []byte) []string {
 		ids = append(ids, v.AssetID)
 	}
 	for _, item := range v.InputAssets {
-		if item.AssetID != "" && !contains(ids, item.AssetID) {
+		if item.AssetID != "" && !slices.Contains(ids, item.AssetID) {
 			ids = append(ids, item.AssetID)
 		}
 	}
@@ -321,7 +322,7 @@ func outputAssetIDs(raw []byte) []string {
 		case map[string]any:
 			for k, child := range v {
 				if (k == "asset_id" || k == "remote_asset_id") && key != "input_assets" {
-					if id, ok := child.(string); ok && id != "" && !contains(ids, id) {
+					if id, ok := child.(string); ok && id != "" && !slices.Contains(ids, id) {
 						ids = append(ids, id)
 					}
 				}
@@ -418,12 +419,4 @@ func nonEmpty(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }

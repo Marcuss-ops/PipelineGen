@@ -100,7 +100,6 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 		{"TypeMediaExtract", TypeMediaExtract},
 		{"TypeMediaStock", TypeMediaStock},
 		{"TypeMediaGenerate", TypeMediaGenerate},
-		{"TypeMediaReindex", TypeMediaReindex},
 		{"TypeMediaEnrich", TypeMediaEnrich},
 		{"TypeBulkUploadYouTubeClips", TypeBulkUploadYouTubeClips}, // HC-1 anchor
 
