@@ -27,16 +27,24 @@ type CriticalPathStage struct {
 // script.postprocess → processors → persistence.sqlite/document.publish) so
 // each wall-clock millisecond is attributed to exactly one sequential phase.
 type Breakdown struct {
-	// AttributedStageMs is the sum of top-level (exclusive/sequential) stage
-	// wall times.
+	// AttributedStageMs is the WALL TIME covered by the top-level
+	// (exclusive/sequential) stages — the union of their intervals, never the
+	// sum of their durations. Summing durations is only equal to the union when
+	// the stages are strictly sequential; under concurrency (the streaming
+	// script pipeline overlaps generate/translate/TTS/render) a sum can exceed
+	// the run wall and would inflate the attributed budget instead of showing
+	// the overlap. Union keeps this value wall-bounded by construction.
 	AttributedStageMs int64
-	// UnattributedMs is total_wall_ms - attributed_stage_ms. A large value
+	// UnattributedMs is total_wall_ms - measured_coverage_ms. A large value
 	// means the pipeline is missing stage instrumentation.
 	UnattributedMs int64
 	// UnattributedPercent is UnattributedMs as a percentage of total wall time.
 	UnattributedPercent float64
-	// OverlappedMs is wall time covered by measured nested/parallel work but
-	// not represented by the sum of top-level critical stages.
+	// OverlappedMs is the top-level phase WORK that ran concurrently (the sum
+	// of top-level stage durations minus the wall time they actually covered).
+	// It is zero for a strictly sequential pipeline and grows exactly by the
+	// work that overlapped another phase, so a run can never hide concurrency
+	// behind an attributed_stage_ms larger than total_wall_ms.
 	OverlappedMs int64
 	// BottleneckStage is the name of the top-level stage with the largest wall
 	// time.
@@ -69,16 +77,22 @@ func (r *RunReport) Breakdown() Breakdown {
 // same breakdown before WallTimeMs is finalized.
 func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 	top := topLevelStages(r.Stages)
-	attributed := int64(0)
+	// Attributed wall time is the UNION of the top-level intervals, not the sum
+	// of their durations: overlapping phases must not inflate it beyond the run
+	// wall. The summed work is reported separately as OverlappedMs.
+	attributed := topLevelWallMs(r, top, wall)
+	sumTop := int64(0)
 	for _, st := range top {
-		attributed += nonNegative(st.DurationMs)
+		sumTop += nonNegative(st.DurationMs)
 	}
 	covered := measuredCoverageMs(r, wall)
 	unattributed := wall - covered
 	if unattributed < 0 {
 		unattributed = 0
 	}
-	overlapped := covered - attributed
+	// The concurrency excess: phase work measured above the wall time those
+	// same phases covered. Zero for a strictly sequential pipeline.
+	overlapped := sumTop - attributed
 	if overlapped < 0 {
 		overlapped = 0
 	}
@@ -107,47 +121,39 @@ func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 	return b
 }
 
-// measuredCoverageMs computes the union of all anchored stage and operation
-// intervals. Summing them would double-count concurrency; taking their union
-// tells us how much wall time has an owner at all. This is deliberately kept
-// separate from the critical-path sum used for AttributedStageMs.
-func measuredCoverageMs(r *RunReport, wall int64) int64 {
-	if r == nil || wall <= 0 {
-		return 0
+// wallInterval is a half-open [start,end] window in milliseconds relative to
+// the run's StartedAt anchor, clamped to the run wall.
+type wallInterval struct{ start, end int64 }
+
+// wallIntervalFor converts a start/finish pair into a wall-anchored interval.
+// It reports ok=false when the pair is unusable (zero, inverted, or entirely
+// outside the run wall) so callers can fall back to a declared duration.
+func wallIntervalFor(start, finish, base time.Time, wall int64) (wallInterval, bool) {
+	if start.IsZero() || finish.IsZero() || !finish.After(start) {
+		return wallInterval{}, false
 	}
-	type interval struct{ start, end int64 }
-	intervals := make([]interval, 0, len(r.Stages)+len(r.Operations))
-	base := r.StartedAt
-	if base.IsZero() {
-		return attributedFallback(r, wall)
+	s := start.Sub(base).Milliseconds()
+	e := finish.Sub(base).Milliseconds()
+	if e <= 0 || s >= wall {
+		return wallInterval{}, false
 	}
-	add := func(start, finish time.Time) {
-		if start.IsZero() || finish.IsZero() || !finish.After(start) {
-			return
-		}
-		s := start.Sub(base).Milliseconds()
-		e := finish.Sub(base).Milliseconds()
-		if e <= 0 || s >= wall {
-			return
-		}
-		if s < 0 {
-			s = 0
-		}
-		if e > wall {
-			e = wall
-		}
-		if e > s {
-			intervals = append(intervals, interval{s, e})
-		}
+	if s < 0 {
+		s = 0
 	}
-	for _, stage := range r.Stages {
-		add(stage.StartedAt, stage.FinishedAt)
+	if e > wall {
+		e = wall
 	}
-	for _, operation := range r.Operations {
-		add(operation.StartedAt, operation.FinishedAt)
+	if e <= s {
+		return wallInterval{}, false
 	}
+	return wallInterval{s, e}, true
+}
+
+// unionWallMs returns the measure of the union of the intervals. Summing them
+// would double-count overlapping work; the union is the wall time they cover.
+func unionWallMs(intervals []wallInterval) int64 {
 	if len(intervals) == 0 {
-		return attributedFallback(r, wall)
+		return 0
 	}
 	sort.Slice(intervals, func(i, j int) bool {
 		if intervals[i].start == intervals[j].start {
@@ -168,6 +174,72 @@ func measuredCoverageMs(r *RunReport, wall int64) int64 {
 		}
 	}
 	return covered + end - start
+}
+
+// topLevelWallMs returns the wall time covered by the union of the top-level
+// stage intervals — the attributed (sequential) budget. Stages without a usable
+// anchor contribute their declared duration instead, because an interval that
+// cannot be placed on the wall cannot be unioned. The result is always
+// wall-bounded, so attributed_ms can never exceed total_wall_ms.
+func topLevelWallMs(r *RunReport, top []StageReport, wall int64) int64 {
+	if r == nil || wall <= 0 || len(top) == 0 {
+		return 0
+	}
+	base := r.StartedAt
+	if base.IsZero() {
+		sum := int64(0)
+		for _, st := range top {
+			sum += nonNegative(st.DurationMs)
+		}
+		if sum > wall {
+			return wall
+		}
+		return sum
+	}
+	intervals := make([]wallInterval, 0, len(top))
+	unanchored := int64(0)
+	for _, st := range top {
+		if iv, ok := wallIntervalFor(st.StartedAt, st.FinishedAt, base, wall); ok {
+			intervals = append(intervals, iv)
+			continue
+		}
+		unanchored += nonNegative(st.DurationMs)
+	}
+	covered := unionWallMs(intervals) + unanchored
+	if covered > wall {
+		return wall
+	}
+	return covered
+}
+
+// measuredCoverageMs computes the union of all anchored stage and operation
+// intervals. Summing them would double-count concurrency; taking their union
+// tells us how much wall time has an owner at all. This is deliberately kept
+// separate from the critical-path union used for AttributedStageMs.
+func measuredCoverageMs(r *RunReport, wall int64) int64 {
+	if r == nil || wall <= 0 {
+		return 0
+	}
+	base := r.StartedAt
+	if base.IsZero() {
+		return attributedFallback(r, wall)
+	}
+	intervals := make([]wallInterval, 0, len(r.Stages)+len(r.Operations))
+	add := func(start, finish time.Time) {
+		if iv, ok := wallIntervalFor(start, finish, base, wall); ok {
+			intervals = append(intervals, iv)
+		}
+	}
+	for _, stage := range r.Stages {
+		add(stage.StartedAt, stage.FinishedAt)
+	}
+	for _, operation := range r.Operations {
+		add(operation.StartedAt, operation.FinishedAt)
+	}
+	if len(intervals) == 0 {
+		return attributedFallback(r, wall)
+	}
+	return unionWallMs(intervals)
 }
 
 func attributedFallback(r *RunReport, wall int64) int64 {

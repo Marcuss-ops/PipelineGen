@@ -127,6 +127,60 @@ func TestBreakdown_UnanchoredStagesAreTopLevel(t *testing.T) {
 	}
 }
 
+// TestBreakdown_AttributedIsWallBoundedUnderOverlap pins the honest-overlap
+// contract: when top-level phases run concurrently, attributed_ms is the WALL
+// TIME they covered (the union), never the sum of their durations, so it can
+// never exceed total_wall_ms. The concurrency excess is reported as
+// OverlappedMs instead of hiding in an inflated attributed budget.
+func TestBreakdown_AttributedIsWallBoundedUnderOverlap(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 10000,
+		Stages: []StageReport{
+			// A(0..6000) and B(4000..10000) overlap by 2000ms: the streaming
+			// pipeline overlaps generate with translate/TTS/render exactly like
+			// this. Summed durations = 12000 > wall = 10000.
+			stageAt("generate", 0, 6000),
+			stageAt("voiceover", 4000, 10000),
+		},
+	}
+	bd := report.Breakdown()
+	if bd.AttributedStageMs != 10000 {
+		t.Fatalf("AttributedStageMs = %d, want 10000 (union of the wall, not the 12000 sum)", bd.AttributedStageMs)
+	}
+	if bd.AttributedStageMs > report.WallTimeMs {
+		t.Fatalf("AttributedStageMs = %d must never exceed wall %d", bd.AttributedStageMs, report.WallTimeMs)
+	}
+	if bd.OverlappedMs != 2000 {
+		t.Fatalf("OverlappedMs = %d, want 2000 (the concurrent excess)", bd.OverlappedMs)
+	}
+	if bd.UnattributedMs != 0 {
+		t.Fatalf("UnattributedMs = %d, want 0 (the wall is fully owned)", bd.UnattributedMs)
+	}
+}
+
+// TestBreakdown_SequentialStagesHaveNoOverlap pins that a strictly sequential
+// pipeline reports zero overlap — the honest-overlap change must not invent
+// concurrency where there is none.
+func TestBreakdown_SequentialStagesHaveNoOverlap(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 10000,
+		Stages: []StageReport{
+			stageAt("a", 0, 4000),
+			stageAt("b", 4000, 9000),
+		},
+	}
+	bd := report.Breakdown()
+	if bd.OverlappedMs != 0 {
+		t.Fatalf("OverlappedMs = %d, want 0 for sequential stages", bd.OverlappedMs)
+	}
+	if bd.AttributedStageMs != 9000 {
+		t.Fatalf("AttributedStageMs = %d, want 9000", bd.AttributedStageMs)
+	}
+	if bd.UnattributedMs != 1000 {
+		t.Fatalf("UnattributedMs = %d, want 1000", bd.UnattributedMs)
+	}
+}
+
 // TestBreakdown_ZeroWallIsSafe pins no NaN/negative on an empty run.
 func TestBreakdown_ZeroWallIsSafe(t *testing.T) {
 	bd := (&RunReport{}).Breakdown()

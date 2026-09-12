@@ -619,3 +619,132 @@ single-pass, DirectYUV, Ollama warm. Sono tutti già verificati qui.
 - Le run analizzate sono batch concorrenti su coda condivisa: il render medio
   di 92 s include l'attesa di accodamento, non solo il tempo di esecuzione
   Chronon.
+
+---
+
+## 16. Addendum — fix di attribuzione implementato (2026-09-12, fase 2)
+
+Questa sezione registra cosa è stato effettivamente chiuso dopo l'audit. È la
+risposta ai criteri A–D di §14. Il resto di §14 resta aperto.
+
+### 16.1 Il render è uno stage proprio, sibling di audio_compile
+
+```text
+prima:  audio_compile [ compile + overlay render (bloccante) + timeline + drive ]
+dopo:   audio_compile   → solo il lavoro che possiede (timeline + OverlayPlan)
+        overlay_render  → submit + attesa del GPU remoto   (wall_ms reale)
+        audio_finalize  → proiezione EditingTimelineV1 + chiusura step
+        audio_publish   → upload Drive dell'artifact audio certificato
+```
+
+Il render è un **sibling**, non un wrapper: `breakdown` attribuisce uno stage
+annidato al suo contenitore, quindi un wrapper non avrebbe cambiato nulla.
+Dettagli:
+
+- `internal/capabilities/scripts/runner_phase_overlay_render.go` (nuovo) — il
+  boundary bloccante, con i gate invariati (fail-closed, stesso execution step).
+- `internal/capabilities/scripts/runner_phase_audio_finalize.go` (nuovo) —
+  proiezione timeline + `completeExecutionStep`, eseguita **dopo** il render
+  perché lo span overlay della timeline porta l'artifact certificato.
+- `runner_execution.go:367-386` — i quattro stage sono misurati in sequenza:
+  `audioCompileStage`, `StageOverlayRender`, `StageAudioFinalize`,
+  `StageAudioPublish`.
+- `render_queue.go` — `recordRenderingGenPhases` lega le operation del render a
+  `StageOverlayRender`. Prima erano legate a `StageProcess`, che nessuna fase
+  produceva: le operation non potevano essere unite a nessun wall e il loro
+  costo ricadeva sullo stage contenitore.
+
+### 16.2 Il modello di timing ora è wall-bounded e onesto
+
+`internal/kernel/observability/breakdown.go`: `AttributedStageMs` non è più la
+**somma** delle durate top-level, ma l'**unione** dei loro intervalli; il lavoro
+concorrente che prima gonfiava l'attribuzione è ora il bucket `OverlappedMs`.
+
+```text
+attributed_ms   = union(intervalli top-level)        ≤ wall, per costruzione
+overlapped_ms   = Σ durate top-level − attributed     (eccesso di concorrenza)
+unattributed_ms = wall − copertura misurata           (invariato)
+```
+
+Stages senza ancora (nessun `StartedAt`) contribuiscono con la durata dichiarata:
+un intervallo che non si può collocare sul wall non si può unire.
+
+### 16.3 Verifica sul corpus (32 run, non più 26)
+
+Il corpus `tests/operational/results/` contiene ora **32 run** con `timing`
+persistito. Sotto il modello vecchio:
+
+```text
+attributed_ms > wall_ms      : 32 / 32     ← attribuzione incoerente, sempre
+overlapped_ms != 0           :  0 / 32     ← la concorrenza non è mai visibile
+unattributed_ms              :  0.08%      ← il gate passa mentre il buco è altrove
+
+esempio  status-person-overlay-drive-20260912T154240Z-9379.json
+  wall_ms       =  77 908
+  attributed_ms =  98 411   (+26% oltre il wall)
+  overlapped_ms =       0
+  bottleneck    =  audio_compile → drive.upload   ← render + publish dentro l'audio
+
+aggregato su 32 run
+  Σ wall_ms            = 4 814 851
+  Σ attributed_ms      = 5 430 594   (+615 743 = +12.8% oltre il wall)
+  Σ overlapped_ms (vecchio modello) = 0
+```
+
+Poiché `attributed_new = union(top-level) ≤ copertura misurata`, il lavoro
+concorrente che il vecchio modello nascondeva è **almeno**
+`Σ attributed_old − copertura`:
+
+```text
+lower bound overlap (nuovo modello) = 619 815 ms = 12.9% del wall
+```
+
+cioè **~10 minuti** di lavoro di fase che correva in parallelo e che il report
+presentava come sequenziale. Il numero esatto per-run non è ricomputabile dal
+corpus, che non persiste `started_at` per stage (§15); il lower bound sì, ed è
+già sufficiente a rendere visibile la concorrenza.
+
+### 16.4 Gate di regressione
+
+| Test | Cosa impedisce |
+|---|---|
+| `certification_3scene_vertical_slice_test.go` GATE 9 | `audio_compile` non può più contenere il render: lo stage deve finire **prima** che il render inizi, entrambi devono stare sul critical path, e il bottleneck operation dell'audio non può essere quella del render |
+| `runner_phase_split_test.go` | le quattro fasi restano stage distinti con wall misurato (lo stub render dorme, quindi la magnitudine è reale) |
+| `TestBreakdown_AttributedIsWallBoundedUnderOverlap` | due stage top-level sovrapposti: `attributed_ms` = unione (10 000), mai la somma (12 000), e `overlapped_ms` = 2 000 |
+| `TestBreakdown_SequentialStagesHaveNoOverlap` | una pipeline sequenziale riporta `overlapped_ms = 0`: il fix non inventa concorrenza |
+
+### 16.5 Criteri di §14 chiusi
+
+| # | Stato | Evidenza |
+|---|---|---|
+| A | **CHIUSO** | `overlay_render` è uno stage con wall proprio; GATE 9 impone la geometria sibling |
+| B | **CHIUSO** | `attributed_ms` non può più superare `wall_ms` (unione vs somma) |
+| C | **CHIUSO** | `overlapped_ms` è l'eccesso di concorrenza; 12.9% del wall sul corpus |
+| D | **CHIUSO** | l'invariante `attributed_ms ≤ wall_ms` è garantita per costruzione, non stimata |
+| E–J | aperti | vedi §17 |
+
+---
+
+## 17. Prossimi passi, in ordine
+
+```text
+1.  Convergere i due orchestratori (streaming vs phase) su un solo execution
+    graph — §2. È il prossimo item a più alto valore dopo l'attribuzione.
+2.  Authority unica di concorrenza: assorbire translationConcurrency (4) +
+    ttsConcurrency (4) + requestSlots (4) + renderGate (2) + uploadGate (4) +
+    GPUGate flock in un solo resource scheduler. Il numero 4 compare tre volte
+    per lo stesso lavoro TTS; la concorrenza effettiva misurata era 1.9, e
+    SetTranslationConcurrency non ha chiamanti di produzione.
+3.  Separare COMPUTE_COMPLETE da PUBLISH_COMPLETE (§7): il render core non deve
+    aspettare Docs/Drive.
+4.  Gate TTS legacy: mode esplicito + contatore + alert (§8).
+5.  Invariante TTS hardcoded → misurato (§12.2).
+6.  Decisione sul worker overlay in-process (CommandRenderer + GPUGate flock):
+    sopravvive o si demolisce (§5).
+7.  Benchmark matrix 1/3/10 scene × 1/3/10 lingue × cold/warm (§11).
+8.  Solo dopo: profiling Chronon granulare e packet copy / GOP surgery.
+```
+
+**Cosa non rifare:** image cache/singleflight, cache script/TTS con fingerprint
+semantica, `force_refresh` fuori dalla key, master audio single-pass, DirectYUV,
+Ollama warm. Già verificati.
