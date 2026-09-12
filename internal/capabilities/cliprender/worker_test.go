@@ -55,6 +55,12 @@ type fakeRenderExecutor struct {
 	outcome *RenderOutcome
 }
 
+type nilRenderPublisher struct{}
+
+func (nilRenderPublisher) Publish(context.Context, RenderPublishInput) (*RenderPublishResult, error) {
+	return nil, nil
+}
+
 type fakeAsyncRenderExecutor struct {
 	submitCalls int
 	settleCalls int
@@ -262,6 +268,27 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	// assets to disk" cost instead of leaving it in the unaccounted gap.
 	if int64(metrics.AssetMaterializeMS) == NotInstrumented {
 		t.Fatalf("asset_materialize_ms = %d, want the measured materialize phase wall", int64(metrics.AssetMaterializeMS))
+	}
+}
+
+func TestWorker_NilRenderOutcomeFailsClosedWithoutPanic(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{})
+
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-nil-outcome", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	if err == nil || !strings.Contains(err.Error(), "nil outcome") {
+		t.Fatalf("nil outcome error = %v, want a fail-closed nil outcome error", err)
+	}
+}
+
+func TestWorker_NilPublicationFailsClosedWithoutPanic(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
+	w.WithRenderPublisher(nilRenderPublisher{})
+
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-nil-publication", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	if err == nil || !strings.Contains(err.Error(), "nil publication") {
+		t.Fatalf("nil publication error = %v, want a fail-closed nil publication error", err)
 	}
 }
 

@@ -217,6 +217,12 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	if event.SceneID == "" {
 		return fmt.Errorf("vidrush incremental coordinator: scene commit missing scene id")
 	}
+	if !event.ExecutionMode.IsFixedMedia() && c.enricher == nil {
+		// Validate before wg.Add. Returning after incrementing the barrier
+		// counter would permanently block Wait for a coordinator that cannot
+		// perform enrichment.
+		return fmt.Errorf("vidrush incremental coordinator: SegmentEnricher not configured")
+	}
 
 	c.mu.Lock()
 	if c.runID == "" {
@@ -240,10 +246,6 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		// materialization enrichment.
 		return nil
 	}
-	if c.enricher == nil {
-		return fmt.Errorf("vidrush incremental coordinator: SegmentEnricher not configured")
-	}
-
 	scene := scriptpkg.SpecScene{
 		ID:            event.SceneID,
 		Index:         event.SceneIndex,

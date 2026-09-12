@@ -299,9 +299,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}()
 	renderEnd := time.Now()
 	renderMS := renderEnd.Sub(renderStart).Milliseconds()
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusCompleted, nil)
+	renderStatus := kernobs.StageStatusCompleted
+	if err != nil {
+		renderStatus = kernobs.StageStatusFailed
+	}
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, renderStatus, err)
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, renderEnd, err)
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, err)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, renderStatus, err)
 	if err != nil {
 		w.log.Error("clip.render.job.render_failed",
 			zap.String("job_id", j.ID),
@@ -309,6 +313,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("clip.render: render plan: %w", err)
+	}
+	if outcome == nil {
+		return nil, fmt.Errorf("clip.render: renderer returned a nil outcome")
+	}
+	if outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
+		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
 	w.log.Debug("clip.render.job.phase",
 		zap.String("subsystem", "clip_render_worker"),
@@ -320,9 +330,6 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.Int64("size_bytes", outcome.SizeBytes),
 		zap.String("output_path", outcome.OutputPath),
 	)
-	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
-		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
-	}
 	// Fail-closed GPU gate: a request that demands GPU must never be silently
 	// served by the software fallback. The only GPU backend is Chronon (only
 	// when certified by the host gate); the PATH B CUDA hybrid was removed —
@@ -468,6 +475,9 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
 	}
+	if publication == nil {
+		return nil, fmt.Errorf("clip.render: publisher returned a nil publication")
+	}
 	// Publication metrics have ONE chronometer owner: the publisher. When it
 	// reports its measured walls they are projected into the canonical V2
 	// report as-is — the worker never re-times publication with a second
@@ -495,7 +505,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			logPublishMS = pm.TotalMS
 		}
 	}
-	if publication == nil || publication.AssetID == "" ||
+	if publication.AssetID == "" ||
 		(!publication.DrivePending && publication.DriveFileID == "") {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}

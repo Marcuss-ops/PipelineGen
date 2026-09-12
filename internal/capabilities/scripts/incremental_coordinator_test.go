@@ -394,3 +394,20 @@ func TestIncrementalCoordinator_FailureAttributedToCorrectScene(t *testing.T) {
 	assert.Contains(t, err.Error(), "scene-1")
 	assert.Contains(t, err.Error(), "extraction exploded")
 }
+
+func TestIncrementalCoordinator_MissingEnricherDoesNotLeakWaitGroup(t *testing.T) {
+	coordinator := NewVidRushIncrementalCoordinator(nil, nil, 4)
+	event := SceneCommitted{
+		RunID: "run-missing-enricher", SceneID: "scene-0", SceneIndex: 0,
+		Text: "A scene", TextHash: SceneTextHash("A scene"), Revision: 1,
+	}
+	if err := coordinator.OnSceneCommitted(context.Background(), event); err == nil {
+		t.Fatal("missing enricher must fail before entering the barrier")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := coordinator.Wait(ctx); err != nil {
+		t.Fatalf("Wait() after rejected scene = %v, want no leaked pending enrichment", err)
+	}
+}
