@@ -50,7 +50,19 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	if cfg.External.RenderingGenPollIntervalMS > 0 {
 		executor.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 	}
-	runtime := &ClipRenderRuntime{RenderingGenExecutor: executor}
+
+	// The async wrapper is composition-owned and opt-in. When disabled this is
+	// literally the historical executor. When enabled it exposes the SAME
+	// executor plus durable CAS/enqueue dependencies through
+	// cliprender.AsyncCompletionProvider; Worker.WithRenderExecutor discovers
+	// that capability without a second registry or a second backend selector.
+	var renderExecutor cliprender.RenderExecutor = executor
+	renderExecutor, err = wrapClipRenderAsyncCompletion(cfg, root, renderExecutor, log)
+	if err != nil {
+		return nil, err
+	}
+
+	runtime := &ClipRenderRuntime{RenderingGenExecutor: renderExecutor}
 	root.ClipRenderRuntime = runtime
 	return runtime, nil
 }

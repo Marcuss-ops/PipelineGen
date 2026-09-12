@@ -15,12 +15,22 @@ func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 	return w
 }
 
-// WithRenderExecutor attaches the RenderingGen/Chronon render boundary. A missing
-// executor remains a typed failure; a sealed plan is never reported as a
-// rendered clip.
+// WithRenderExecutor attaches the RenderingGen/Chronon render boundary. A
+// missing executor remains a typed failure; a sealed plan is never reported
+// as a rendered clip. If the composition runtime also exposes the optional
+// AsyncCompletionProvider capability, this is the ONE discovery point for the
+// continuation dependencies — no second wiring registry is introduced.
 func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 	if w != nil {
 		w.renderer = r
+		if provider, ok := r.(AsyncCompletionProvider); ok {
+			store, enqueuer, enabled := provider.AsyncCompletionDependencies()
+			if enabled {
+				w.continuationStore = store
+				w.continuationEnqueuer = enqueuer
+				w.asyncCompletion = true
+			}
+		}
 	}
 	return w
 }
@@ -61,8 +71,8 @@ func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
 }
 
 // WithOutputProber attaches the post-render byte probe. When wired, the worker
-// certifies actual bytes via ProbeOutput→ValidateContract before Publish and
-// again after overlay composition. Optional in tests; required in production.
+// certifies actual bytes via ProbeOutput→ValidateContract before Publish.
+// Optional in tests; required in production.
 func (w *Worker) WithOutputProber(p OutputProber) *Worker {
 	if w != nil {
 		w.outputProber = p
