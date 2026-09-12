@@ -10,6 +10,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -424,7 +425,7 @@ func (s *countingImageSearcher) SearchImages(_ context.Context, req InternetImag
 //   - Run C (forced refresh): force_refresh_assets=true → the cache must NOT
 //     suppress a fresh provider call, cache state REFRESHED.
 func TestInternetImagesCacheColdWarmForcedRefresh(t *testing.T) {
-	vidrushImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	searcher := &countingImageSearcher{}
 	processor := NewMediaResolverImageStage(searcher)
 
@@ -492,8 +493,8 @@ func TestInternetImagesCacheColdWarmForcedRefresh(t *testing.T) {
 //   - Run C (forced refresh): force_refresh_assets=true → the entity-image
 //     cache must NOT suppress a fresh provider call.
 func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
-	vidrushImageCache = sync.Map{}
-	entityImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &entityImageSearcher{}
 	processor := NewMediaResolverImageStage(searcher)
 
@@ -573,8 +574,8 @@ func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
 //     → every query is served from the per-query cache, no provider call,
 //     cache state HIT_EXACT.
 func TestInternetImagesResearchPathCacheColdWarm(t *testing.T) {
-	vidrushImageCache = sync.Map{}
-	entityImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &countingImageSearcher{}
 	processor := NewMediaResolverImageStage(searcher)
 
@@ -640,8 +641,8 @@ func TestInternetImagesResearchPathCacheColdWarm(t *testing.T) {
 //   - Run B (warm): force_refresh_assets=false → the L2 hit replays the empty
 //     result as HIT_EXACT with zero provider calls.
 func TestInternetImagesProcessorCachesEmptyResultsInL2(t *testing.T) {
-	vidrushImageCache = sync.Map{}
-	entityImageCache = sync.Map{}
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
 	processor := NewMediaResolverImageStageWithCache(searcher, newMemoryVidRushCache())
 

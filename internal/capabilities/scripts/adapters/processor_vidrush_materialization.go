@@ -13,7 +13,6 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -287,10 +286,6 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 // It is shared by the batch Process path and the single-segment Materialize
 // port so the materialization stage is implemented exactly once.
 func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
-	// The L1 materialized cache is bounded by the shared VidRush janitor; the
-	// direct Load/Store sites below bypass the cacheLoad/cacheStore helpers,
-	// so start the janitor here (idempotent, once per process).
-	startVidrushCacheJanitor()
 	updated := cloneVidRushSegmentResult(segment)
 	if segment.ExecutionMode.IsFixedMedia() {
 		// Fixed media is already authoritative and must not be acquired,
@@ -364,7 +359,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			refreshMaterialized := plan != nil && (plan.ForceRefresh || plan.MediaPlan.ForceRefreshAssets)
 			if !refreshMaterialized {
 				if key := vidRushCandidateIdentity(candidate); key != "" {
-					if cached, ok := vidrushMaterializedCache.Load(key); ok {
+					if cached, ok := vidrushMaterializedCache.Get(key); ok {
 						if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok &&
 							(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
 							readyVidRushCandidate(persisted) {
@@ -380,7 +375,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 						(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
 						readyVidRushCandidate(persisted) {
 						materialized = append(materialized, persisted)
-						vidrushMaterializedCache.Store(key, persisted)
+						vidrushMaterializedCache.Put(key, persisted)
 						markReadyImage(persisted)
 						continue
 					}
@@ -477,13 +472,13 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				markReadyImage(persisted)
 			}
 			if key := vidRushCandidateIdentity(persisted); key != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-				vidrushMaterializedCache.Store(key, persisted)
+				vidrushMaterializedCache.Put(key, persisted)
 				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", key, persisted); cacheErr != nil {
 					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", key, cacheErr))
 				}
 			}
 			if cacheKey != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-				vidrushMaterializedCache.Store(cacheKey, persisted)
+				vidrushMaterializedCache.Put(cacheKey, persisted)
 				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", cacheKey, persisted); cacheErr != nil {
 					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", cacheKey, cacheErr))
 				}
@@ -534,7 +529,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		updated.Assets.PrimaryVideo = nil
 	}
 	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
-		diagnostics := make([]string, 0, minInt(len(materialized), 3))
+		diagnostics := make([]string, 0, min(len(materialized), 3))
 		diagnostics = vidRushArtlistDiagnostics(materialized)
 		if len(diagnostics) == 0 {
 			providers := make(map[string]int)
@@ -556,266 +551,3 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 }
 
 // routeEntityImageToGenerationOutput carries the generation destination all
-// the way to the common finalizer. The materializer must not upload through a
-// second ad-hoc Drive client: the finalizer remains the only publication
-// boundary, while this small projection tells it where this run's image
-// bundle belongs.
-func routeEntityImageToGenerationOutput(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
-	if plan == nil || strings.TrimSpace(plan.DriveFolderID) == "" || !isEntityImageCandidate(artifact.Candidate) {
-		return artifact
-	}
-	artifact.OutputDriveFolderID = strings.TrimSpace(plan.DriveFolderID)
-	artifact.OutputDriveSubpath = []string{
-		filesystem.SafeFolderName(plan.Title),
-		filesystem.SafeFolderName(plan.Language),
-		"images",
-	}
-	return artifact
-}
-
-func entityImageOutputRequested(plan *scriptpkg.ResolvedGenerationPlan, candidate scriptpkg.SegmentAssetCandidate) bool {
-	return plan != nil && strings.TrimSpace(plan.DriveFolderID) != "" &&
-		strings.TrimSpace(candidate.SourceURL) != "" && isEntityImageCandidate(candidate)
-}
-
-func isEntityImageCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
-	if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
-		return false
-	}
-	return strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")
-}
-
-func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
-	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if (candidate.Provider == scriptpkg.VidRushProviderArtlist || candidate.Provider == scriptpkg.VidRushProviderYouTube) && readyVidRushCandidate(candidate) {
-			eligible = append(eligible, candidate)
-		}
-	}
-	if len(eligible) == 0 {
-		return nil
-	}
-	visual := scriptpkg.BuildSegmentVisualProfile(profile)
-	winnerID, err := p.sampler.Sample(ctx, profile.SegmentID, visual.Subject, visual.Terms, eligible, false)
-	if err != nil || strings.TrimSpace(winnerID) == "" {
-		return nil
-	}
-	for i := range eligible {
-		if eligible[i].AssetID == winnerID {
-			winner := eligible[i]
-			winner.SelectionReason = "MediaSampler selected verified candidate"
-			return &winner
-		}
-	}
-	return nil
-}
-
-func vidRushMaterializationRequested(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
-	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)) {
-		return true
-	}
-	for _, segment := range input.VidRushSegments {
-		for _, candidate := range segment.Assets.Candidates {
-			if scriptpkg.IsVidRushProvider(candidate.Provider) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// requireVidRushEnabledProviders makes capability availability explicit at
-// the materialization boundary. A plan that enables a provider must never
-// complete successfully with an empty result merely because composition did
-// not register that provider.
-func requireVidRushEnabledProviders(plan *scriptpkg.ResolvedGenerationPlan, registry *VidRushAssetProviderRegistry) error {
-	if plan == nil || registry == nil {
-		return nil
-	}
-	checks := []struct {
-		name    string
-		enabled bool
-	}{
-		{name: scriptpkg.VidRushProviderArtlist, enabled: plan.MediaPlan.ProviderPolicy.Artlist.AsBool()},
-		{name: scriptpkg.VidRushProviderInternetImages, enabled: plan.MediaPlan.ProviderPolicy.InternetImages.AsBool()},
-		{name: scriptpkg.VidRushProviderImageGeneration, enabled: plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()},
-		{name: scriptpkg.VidRushProviderYouTube, enabled: plan.MediaPlan.ProviderPolicy.YouTube.AsBool()},
-	}
-	for _, check := range checks {
-		if !check.enabled {
-			continue
-		}
-		if _, err := registry.Provider(check.name); err != nil {
-			return fmt.Errorf("vidrush materialization: provider %q is enabled but unavailable: %w", check.name, err)
-		}
-	}
-	return nil
-}
-
-func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) ([]scriptpkg.SegmentAssetCandidate, string) {
-	if plan == nil || !providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
-		return nil, "BYPASSED"
-	}
-	targetImages := vidRushImageTarget(plan)
-	verified := 0
-	for _, candidate := range segment.Assets.Candidates {
-		if (candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration) && readyVidRushCandidate(candidate) {
-			verified++
-		}
-	}
-	missing := targetImages - verified
-	if missing <= 0 {
-		return nil, "HIT_EXACT"
-	}
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, missing)
-	for i := 0; i < missing; i++ {
-		prompt := strings.TrimSpace(segment.Text)
-		if prompt == "" {
-			prompt = strings.Join(segment.Insights.ImageQueries, ", ")
-		}
-		key := VidRushGenerationCacheKey(VidRushGenerationRequest{
-			SegmentTextHash: segment.TextHash, Prompt: prompt, Style: "cinematic",
-			Width: 1920, Height: 1080, Provider: scriptpkg.VidRushProviderImageGeneration,
-			PromptVersion: plan.PromptVersion, TargetImages: targetImages,
-		})
-		out = append(out, scriptpkg.SegmentAssetCandidate{
-			AssetID: key + fmt.Sprintf("-%d", i), Provider: scriptpkg.VidRushProviderImageGeneration,
-			Query: prompt, Score: 1, RelevanceScore: 1, TechnicalQualityScore: 1,
-			RightsScore: 1, DiversityScore: 1, ProviderReliability: 1,
-			RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound,
-		})
-	}
-	return out, "MISS"
-}
-
-const vidRushDefaultImagesPerScene = 2
-
-func vidRushImageTarget(plan *scriptpkg.ResolvedGenerationPlan) int {
-	if plan == nil {
-		return 0
-	}
-	if plan.ImagesPerScene > 0 {
-		return plan.ImagesPerScene
-	}
-	if plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() || plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool() {
-		return vidRushDefaultImagesPerScene
-	}
-	return 0
-}
-
-func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
-			continue
-		}
-		if readyVidRushCandidate(candidate) {
-			out = append(out, candidate)
-		}
-	}
-	return out
-}
-
-// vidRushImageGroup is the identity used by image-only selection: one durable
-// image per entity/query, rather than several catalog rows for the same name.
-func vidRushImageGroup(candidate scriptpkg.SegmentAssetCandidate) string {
-	group := strings.ToLower(strings.TrimSpace(candidate.Query))
-	if group == "" {
-		group = strings.ToLower(strings.TrimSpace(candidate.Entity))
-	}
-	if group == "" {
-		group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
-	}
-	return group
-}
-
-// selectExactVidRushImages is the final selected-image projection. In an
-// Images-only plan, internet_images is the complete provider allowlist and
-// image_generation is deliberately excluded. Candidates are grouped by their
-// entity (or query when the provider did not return an entity), keeping the
-// highest-scored durable result from each group so the selected set contains
-// at most one image per entity.
-func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, target int, plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SegmentAssetCandidate {
-	if target <= 0 {
-		return nil
-	}
-	images := durableVidRushImages(candidates)
-	imagesOnly := plan != nil &&
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&
-		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) &&
-		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) &&
-		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)
-	if !imagesOnly {
-		return images[:minInt(target, len(images))]
-	}
-
-	selected := make([]scriptpkg.SegmentAssetCandidate, 0, minInt(target, len(images)))
-	seenGroups := make(map[string]int, target)
-	seenAssets := make(map[string]struct{}, target)
-	for _, candidate := range images {
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
-			continue
-		}
-		group := vidRushImageGroup(candidate)
-		if _, exists := seenGroups[group]; exists {
-			// Candidate order is discovery order. Semantic selection belongs to
-			// MediaSampler and must not be reconstructed in this boundary.
-			continue
-		}
-		assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
-		if _, exists := seenAssets[assetID]; exists {
-			continue
-		}
-		seenGroups[group] = len(selected)
-		seenAssets[assetID] = struct{}{}
-		selected = append(selected, candidate)
-	}
-	if len(selected) > target {
-		selected = selected[:target]
-	}
-	return selected
-}
-
-func prioritizeExactVidRushImageCandidates(candidates []scriptpkg.SegmentAssetCandidate, target int, plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SegmentAssetCandidate {
-	if target <= 0 || plan == nil ||
-		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
-		return candidates
-	}
-	groups := make([][]scriptpkg.SegmentAssetCandidate, 0, target)
-	groupIndex := make(map[string]int, target)
-	others := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
-			others = append(others, candidate)
-			continue
-		}
-		group := vidRushImageGroup(candidate)
-		index, exists := groupIndex[group]
-		if !exists {
-			index = len(groups)
-			groupIndex[group] = index
-			groups = append(groups, nil)
-		}
-		groups[index] = append(groups[index], candidate)
-	}
-	ordered := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for round := 0; ; round++ {
-		added := false
-		for _, group := range groups {
-			if round >= len(group) {
-				continue
-			}
-			ordered = append(ordered, group[round])
-			added = true
-		}
-		if !added {
-			break
-		}
-	}
-	return append(ordered, others...)
-}

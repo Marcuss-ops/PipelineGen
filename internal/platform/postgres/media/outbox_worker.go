@@ -16,182 +16,14 @@ package media
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
-
-	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	"github.com/google/uuid"
 )
 
 // ErrLeaseLost is returned when a lifecycle mutator's lease fence fails:
-// the event was re-assigned or is already terminal. Mirrors the SQLite
-// outbox error so worker code is engine-agnostic.
-var ErrLeaseLost = errors.New("outbox lease lost")
-
-// OutboxEvent is the consumption projection of one outbox_events row
-// (SQLite outboxevents.Event parity).
-type OutboxEvent struct {
-	ID          int64
-	EventType   string
-	AggregateID string
-	// AggregateType mirrors the SQLite envelope ("asset").
-	AggregateType string
-	PayloadJSON   string
-	Status        string
-	AttemptCount  int
-	MaxAttempts   int
-	LastError     string
-	EventKey      string
-	Priority      int
-	CreatedAt     string
-	UpdatedAt     string
-}
-
-// OutboxClaim is one claimed event plus its lease identity.
-type OutboxClaim struct {
-	Event    OutboxEvent
-	WorkerID string
-	LeaseID  string
-}
-
-// OutboxHandler performs the work for one non-index event claimed from the
-// PostgreSQL media outbox. The worker owns the lease lifecycle: a successful
-// handler return is followed by MarkCompleted, while an error is retried or
-// dead-lettered through the canonical lease-fenced path.
-type OutboxHandler interface {
-	Handle(ctx context.Context, claim *OutboxClaim) error
-}
-
-// OutboxStatusMetrics is the narrow observability port for the PostgreSQL
-// outbox. The worker owns the SQL truth; the metrics implementation only
-// projects the current status counts and never becomes a second store.
-type OutboxStatusMetrics interface {
-	ObserveOutboxStatus(eventType, status string, count int64)
-	// ObserveOutboxBacklog projects the queue depth and the age of the
-	// oldest unprocessed event so a stalled drain is visible without the
-	// worker paying a COUNT(*) probe per claim.
-	ObserveOutboxBacklog(eventType string, backlogCount int64, oldestEventAgeSeconds float64)
-	// ObserveOutboxProcessed records one event that reached terminal success.
-	// It is the numerator for the processing-rate panel: Prometheus derives
-	// rate(media_outbox_processed_total[5m]) per event type, so a flat rate
-	// against a rising backlog is the unambiguous "drain is stuck" signal.
-	ObserveOutboxProcessed(eventType string)
-}
-
-// ClaimNext claims the oldest pending event atomically (CTE claim with
-// row-level fencing — PostgreSQL UPDATE ... WHERE status='pending' is
-// atomic under concurrent workers). Ordering: priority DESC,
-// next_attempt_at ASC, id ASC (migration 186 parity).
-func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration) (*OutboxClaim, error) {
-	now := timeutil.FormatRFC3339(time.Now())
-	leaseID := uuid.NewString()
-	leaseExpiry := timeutil.FormatRFC3339(time.Now().Add(leaseTTL))
-
-	var id int64
-	err := r.db.QueryRowContext(ctx, `
-		WITH candidate AS (
-			SELECT id FROM outbox_events
-			WHERE status = 'pending'
-			  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
-			ORDER BY priority DESC, next_attempt_at ASC, id ASC
-			LIMIT 1
-			FOR UPDATE SKIP LOCKED
-		)
-		UPDATE outbox_events
-		SET status = 'processing',
-		    attempt_count = attempt_count + 1,
-		    worker_id = $2, lease_id = $3, lease_expiry = $4,
-		    updated_at = $1
-		WHERE id = (SELECT id FROM candidate)
-		  AND status = 'pending'
-		RETURNING id
-	`, now, workerID, leaseID, leaseExpiry).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("media outbox ClaimNext: %w", err)
-	}
-
-	var evt OutboxEvent
-	err = r.db.QueryRowContext(ctx, `
-		SELECT id, event_type, aggregate_id, aggregate_type, payload_json,
-		       status, attempt_count, max_attempts, last_error, event_key,
-		       priority, created_at, updated_at
-		FROM outbox_events WHERE id = $1
-	`, id).Scan(&evt.ID, &evt.EventType, &evt.AggregateID, &evt.AggregateType, &evt.PayloadJSON,
-		&evt.Status, &evt.AttemptCount, &evt.MaxAttempts, &evt.LastError, &evt.EventKey,
-		&evt.Priority, &evt.CreatedAt, &evt.UpdatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("media outbox ClaimNext refetch(%d): %w", id, err)
-	}
-	return &OutboxClaim{Event: evt, WorkerID: workerID, LeaseID: leaseID}, nil
-}
-
-// MarkCompleted completes a claimed event (lease-fenced).
-func (r *Repository) MarkCompleted(ctx context.Context, eventID int64, leaseID string) error {
-	now := timeutil.FormatRFC3339(time.Now())
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE outbox_events
-		SET status = 'completed', completed_at = $1, updated_at = $1
-		WHERE id = $2 AND status = 'processing' AND lease_id = $3
-	`, now, eventID, leaseID)
-	if err != nil {
-		return fmt.Errorf("media outbox MarkCompleted(%d): %w", eventID, err)
-	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		return fmt.Errorf("media outbox MarkCompleted(%d): %w", eventID, ErrLeaseLost)
-	}
-	return nil
-}
-
-// MarkFailed records a failed attempt. Attempts remaining → back to
-// pending with exponential backoff; exhausted → dead_letter.
-func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error {
-	var attemptCount, maxAttempts int
-	if err := r.db.QueryRowContext(ctx,
-		`SELECT attempt_count, max_attempts FROM outbox_events WHERE id = $1`, eventID,
-	).Scan(&attemptCount, &maxAttempts); err != nil {
-		return fmt.Errorf("media outbox MarkFailed read(%d): %w", eventID, err)
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-
-	if attemptCount >= maxAttempts {
-		result, err := r.db.ExecContext(ctx, `
-			UPDATE outbox_events
-			SET status = 'dead_letter', last_error = $1, updated_at = $2,
-			    worker_id = '', lease_id = '', lease_expiry = NULL
-			WHERE id = $3 AND lease_id = $4 AND status = 'processing'
-		`, errMsg, now, eventID, leaseID)
-		if err != nil {
-			return fmt.Errorf("media outbox MarkFailed dead_letter(%d): %w", eventID, err)
-		}
-		if n, _ := result.RowsAffected(); n == 0 {
-			return fmt.Errorf("media outbox MarkFailed dead_letter(%d): %w", eventID, ErrLeaseLost)
-		}
-		return nil
-	}
-
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE outbox_events
-		SET status = 'pending', last_error = $1, next_attempt_at = $2,
-		    updated_at = $3, worker_id = '', lease_id = '', lease_expiry = NULL
-		WHERE id = $4 AND lease_id = $5 AND status = 'processing'
-	`, errMsg, timeutil.FormatRFC3339(nextAttemptAt), now, eventID, leaseID)
-	if err != nil {
-		return fmt.Errorf("media outbox MarkFailed retry(%d): %w", eventID, err)
-	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		return fmt.Errorf("media outbox MarkFailed retry(%d): %w", eventID, ErrLeaseLost)
-	}
-	return nil
-}
-
 // IndexEventPayload is the asset.index.requested envelope
 // (ReindexEnvelopeV1Schema parity with the SQLite dispatcher).
 type IndexEventPayload struct {
@@ -209,6 +41,19 @@ type IndexEventPayload struct {
 // so query and document spaces cannot drift).
 type AssetEmbedder interface {
 	EmbedAssetText(ctx context.Context, assetID string) ([]float32, error)
+}
+
+// BatchAssetEmbedder is the OPTIONAL batch surface of the embedding port.
+// When the wired AssetEmbedder implements it, the worker resolves a whole
+// claim batch (search_text read + provider leg) in one pass instead of one
+// SELECT per event; the per-asset path stays the contract for embedders
+// that cannot batch, and remains the fallback whenever the batch leg fails.
+//
+// Implementations MUST omit (never fabricate) an asset they could not
+// resolve: the worker then re-runs that event through the per-asset path so
+// the failure is attributed, retried and dead-lettered per event.
+type BatchAssetEmbedder interface {
+	EmbedAssetTexts(ctx context.Context, assetIDs []string) (map[string][]float32, error)
 }
 
 // PostgresIndexWorker is the canonical consumer of asset.index.requested
@@ -360,6 +205,22 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 		return nil
 	}
 
+	// Index events go through the canonical INDEXED transition. A nil vec
+	// means "resolve it here"; the batch fast-path in processClaims passes a
+	// prefetched vector instead, so the per-asset SELECT/Embed is skipped.
+	return w.handleIndexEvent(ctx, claim, nil)
+}
+
+// handleIndexEvent applies the canonical INDEXED transition for one
+// asset.index.requested claim. A non-empty vec (prefetched by the batch
+// leg) skips the per-asset embed; nil falls back to the single-asset path.
+//
+// Idempotent by construction: the embedding upsert is keyed on
+// (asset_id, embedding_type, model_id) and the index_state flip is a no-op
+// when the state/content already match — a redelivered event converges to
+// the same terminal state.
+func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *OutboxClaim, vec []float32) error {
+	evt := claim.Event
 	var payload IndexEventPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {
 		// A malformed envelope is terminal — retrying cannot fix bytes.
@@ -379,9 +240,12 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 		return fmt.Errorf("media index worker: event %d carries no asset identity", evt.ID)
 	}
 
-	vec, err := w.embedder.EmbedAssetText(ctx, assetID)
-	if err != nil {
-		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: embed asset %q: %w", assetID, err))
+	if len(vec) == 0 {
+		resolved, err := w.embedder.EmbedAssetText(ctx, assetID)
+		if err != nil {
+			return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: embed asset %q: %w", assetID, err))
+		}
+		vec = resolved
 	}
 	if len(vec) == 0 {
 		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: zero-length embedding for asset %q", assetID))
@@ -415,6 +279,89 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 	return nil
 }
 
+// indexAssetID resolves the asset identity an asset.index.requested event
+// addresses: payload.asset_id wins over the aggregate id (exactly as
+// handleIndexEvent resolves it). Returns "" for any other event type or an
+// unparseable envelope, which keeps the batch leg conservative.
+func indexAssetID(evt OutboxEvent) string {
+	if evt.EventType != EventAssetIndexRequested {
+		return ""
+	}
+	var payload IndexEventPayload
+	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {
+		return ""
+	}
+	if payload.AssetID != "" {
+		return payload.AssetID
+	}
+	return evt.AggregateID
+}
+
+// prefetchBatchVectors resolves the text-channel vector for every distinct
+// asset in the claimed batch with ONE search_text read when the wired
+// embedder exposes the optional BatchAssetEmbedder surface. It returns nil
+// whenever batching is unavailable, the batch has fewer than two distinct
+// assets (no round-trip to amortise), or the batch leg fails — in all three
+// cases each event falls back to the per-asset path, so a batch-leg error
+// can never change delivery, retry or dead-letter semantics.
+func (w *PostgresIndexWorker) prefetchBatchVectors(ctx context.Context, claims []*OutboxClaim) map[string][]float32 {
+	batch, ok := w.embedder.(BatchAssetEmbedder)
+	if !ok {
+		return nil
+	}
+	ids := make([]string, 0, len(claims))
+	seen := make(map[string]struct{}, len(claims))
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		id := indexAssetID(claim.Event)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) < 2 {
+		return nil
+	}
+	vectors, err := batch.EmbedAssetTexts(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return vectors
+}
+
+// processClaims drains one claimed batch. Index events whose vector was
+// resolved by the batch leg skip the per-asset embed; every other event (and
+// every asset the batch leg could not resolve) goes through Handle. The loop
+// never aborts on a per-event failure — the event owns its retry/dead-letter
+// lifecycle.
+func (w *PostgresIndexWorker) processClaims(ctx context.Context, claims []*OutboxClaim, log Logger) {
+	vectors := w.prefetchBatchVectors(ctx, claims)
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		var err error
+		if vec, ok := vectors[indexAssetID(claim.Event)]; ok {
+			err = w.handleIndexEvent(ctx, claim, vec)
+		} else {
+			err = w.Handle(ctx, claim)
+		}
+		if err != nil {
+			w.logf(log, "media index worker: event "+fmt.Sprint(claim.Event.ID)+" failed", err)
+			continue
+		}
+		if w.metrics != nil {
+			w.metrics.ObserveOutboxProcessed(claim.Event.EventType)
+		}
+	}
+}
+
 // failOrFail records the failure with exponential backoff and surfaces
 // the error so the worker loop can log it. The event is retried until
 // max_attempts, then dead-lettered (never silently dropped).
@@ -435,8 +382,11 @@ const DefaultPollInterval = 2 * time.Second
 // reclaimable (attempt_count already incremented — no infinite loop).
 const DefaultLeaseTTL = 5 * time.Minute
 
-// Run drains asset.index.requested events until ctx is cancelled: claim →
-// handle → repeat, sleeping pollInterval whenever the outbox is empty.
+// Run drains asset.index.requested events until ctx is cancelled: claim a
+// batch → process → repeat, sleeping pollInterval whenever the outbox is
+// empty. A batch shares one lease token and, when the wired embedder exposes
+// the optional BatchAssetEmbedder surface, one search_text read (N→1)
+// instead of one SELECT per event.
 // It is the production entry point (launched via SafeGo from the
 // composition root's start closure) and is also exercisable directly in
 // tests with a short interval.
@@ -470,7 +420,7 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 			}
 		default:
 		}
-		claim, err := w.repo.ClaimNext(ctx, workerID, leaseTTL)
+		claims, err := w.repo.ClaimBatch(ctx, workerID, leaseTTL, outboxDrainBatchSize)
 		if err != nil {
 			w.logf(log, "media index worker: claim failed", err)
 			if !w.waitForNextTick(ctx, metricsTicker, log) {
@@ -478,20 +428,14 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 			}
 			continue
 		}
-		if claim == nil {
+		if len(claims) == 0 {
 			// Outbox drained: wait for the next tick instead of busy-polling.
 			if !w.waitForNextTick(ctx, metricsTicker, log) {
 				return
 			}
 			continue
 		}
-		if err := w.Handle(ctx, claim); err != nil {
-			w.logf(log, "media index worker: event "+fmt.Sprint(claim.Event.ID)+" failed", err)
-			continue
-		}
-		if w.metrics != nil {
-			w.metrics.ObserveOutboxProcessed(claim.Event.EventType)
-		}
+		w.processClaims(ctx, claims, log)
 	}
 }
 
@@ -523,41 +467,4 @@ func (w *PostgresIndexWorker) logf(log Logger, msg string, err error) {
 		return
 	}
 	log.Error(msg, map[string]any{"error": err.Error()})
-}
-
-// EmbedAssetTextAdapter adapts the kernel asset.Embedder (HTTPTextEmbedder)
-// to the worker's AssetEmbedder port: the asset's search_text is fetched
-// from the media SSOT and embedded with the canonical text-channel model.
-type EmbedAssetTextAdapter struct {
-	db      *sql.DB
-	embeder coreasset.Embedder
-}
-
-// NewEmbedAssetTextAdapter constructs the adapter. Both deps required.
-func NewEmbedAssetTextAdapter(db *sql.DB, embedder coreasset.Embedder) *EmbedAssetTextAdapter {
-	if db == nil {
-		panic("media.NewEmbedAssetTextAdapter: db is required")
-	}
-	if embedder == nil {
-		panic("media.NewEmbedAssetTextAdapter: embedder is required")
-	}
-	return &EmbedAssetTextAdapter{db: db, embeder: embedder}
-}
-
-// EmbedAssetText reads search_text from media_assets and embeds it.
-func (a *EmbedAssetTextAdapter) EmbedAssetText(ctx context.Context, assetID string) ([]float32, error) {
-	var text string
-	if err := a.db.QueryRowContext(ctx,
-		`SELECT search_text FROM media_assets WHERE id = $1`, assetID,
-	).Scan(&text); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("embed asset %q: asset not found in media SSOT", assetID)
-		}
-		return nil, fmt.Errorf("embed asset %q: read search_text: %w", assetID, err)
-	}
-	res, err := a.embeder.Embed(ctx, text)
-	if err != nil {
-		return nil, err
-	}
-	return res.Vector, nil
 }

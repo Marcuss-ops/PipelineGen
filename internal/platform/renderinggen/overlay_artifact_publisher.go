@@ -70,7 +70,7 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	filename := fmt.Sprintf("%s-%s-overlay-%s.mp4",
 		pathutil.SafeFolderName(scriptName),
 		pathutil.SafeFolderName(language),
-		strings.ToLower(artifact.SHA256[:minInt(len(artifact.SHA256), 12)]))
+		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
 	artifactID := firstNonEmpty(spec.PlanID, artifact.ID, artifact.SHA256)
 	loc, err := p.publisher.Publish(ctx, finalization.VerifiedArtifact{
 		ArtifactID:       "overlay:" + artifactID,
@@ -140,13 +140,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 var _ scriptgen.OverlayArtifactPublisher = (*DriveOverlayArtifactPublisher)(nil)

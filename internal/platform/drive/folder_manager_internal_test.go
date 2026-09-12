@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/stretchr/testify/require"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -189,9 +190,10 @@ func TestEnsureFolder_SingleflightCoalescesConcurrentCalls(t *testing.T) {
 	// passes. The lookup seam returns an existing ID, so Files.Create
 	// is never reached.
 	adapter := &DriveFolderManagerAdapter{
-		svc:    &driveapi.Service{},
-		log:    nil,
-		lookup: stubLookup,
+		svc:         &driveapi.Service{},
+		log:         nil,
+		lookup:      stubLookup,
+		folderCache: cacheutil.NewLRU(driveFolderCacheCapacity),
 	}
 
 	const numGoroutines = 4

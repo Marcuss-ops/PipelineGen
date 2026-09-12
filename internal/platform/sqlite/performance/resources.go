@@ -246,7 +246,7 @@ func (t *peakTracker) apply(o capperformance.ResourceObservation) capperformance
 	}
 	o.CPUPeakPct = f64Ptr(t.cpuPeak, o.CPUPeakPct)
 
-	rss := maxInt64(ptrInt64(o.RSSAvgBytes), ptrInt64(o.RSSPeakBytes))
+	rss := max(ptrInt64(o.RSSAvgBytes), ptrInt64(o.RSSPeakBytes))
 	if rss > t.rssPeak {
 		t.rssPeak = rss
 	}
@@ -298,12 +298,6 @@ func ptrInt64(v *int64) int64 {
 	return *v
 }
 func maxFloat(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-func maxInt64(a, b int64) int64 {
 	if a > b {
 		return a
 	}

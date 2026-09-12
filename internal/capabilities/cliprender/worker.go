@@ -40,21 +40,15 @@ var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 // the Preparer and bound to the Master via
 // job.Service.RegisterHandler(TypeClipRender, job.HandlerFunc(worker.Handle)).
 type Worker struct {
-	preparer          *Preparer
-	workspaceDir      string
-	subtitles         SubtitleCompiler          // optional until the ASS-compiler step wires it
-	renderer          RenderExecutor            // optional until the render-phase step consumes it
-	publisher         RenderPublisher           // optional in unit tests; required by production wiring
-	folderResolver    DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
-	overlayResolver   OverlaySegmentResolver    // optional until overlay compositing is wired
-	overlayCompositor OverlayCompositor         // legacy post-render compositor; unused on the single-pass path
-	// singlePassOverlay composites the entity overlay INSIDE the Chronon
-	// render (the sealed plan carries the timed video layer), so the clip is
-	// encoded once. When false the legacy post-render compositor performs a
-	// second full transcode (kept as the transitional path).
-	singlePassOverlay bool
-	outputProber      OutputProber // probes actual bytes for exact contract validation
-	log               *zap.Logger
+	preparer        *Preparer
+	workspaceDir    string
+	subtitles       SubtitleCompiler          // optional until the ASS-compiler step wires it
+	renderer        RenderExecutor            // optional until the render-phase step consumes it
+	publisher       RenderPublisher           // optional in unit tests; required by production wiring
+	folderResolver  DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
+	overlayResolver OverlaySegmentResolver    // required when a request declares an overlay
+	outputProber    OutputProber              // probes actual bytes for exact contract validation
+	log             *zap.Logger
 }
 
 // NewWorker constructs the canonical worker. Fail-closed: preparer and log
@@ -213,16 +207,15 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// WatermarkSpec is the single owner of watermark text/position/opacity/
 	// margin/style; there is no separate WatermarkText spelling.
 	// ── Entity overlay resolution ───────────────────────────────────────
-	// SINGLE-PASS path: the overlay segment must be part of the sealed plan,
-	// so it is resolved BEFORE Compile and Chronon composites it as a timed
-	// video layer in the same render pass — the clip is encoded once. LEGACY
-	// path: the segment is resolved after the render and blended by the
-	// post-render compositor (a second full transcode, retained transitionally).
+	// The overlay segment must be part of the sealed plan, so it is resolved
+	// BEFORE Compile and Chronon composites it as a timed video layer INSIDE
+	// the same render pass — the clip is encoded once. There is no
+	// post-render compositing path: it was demolished with the single-pass
+	// cutover (the CI gate rejects any new second-transcode caller).
 	var overlayInput *PlanOverlayInput
-	singlePassOverlay := w.singlePassOverlay && req.Overlay != nil
-	if singlePassOverlay {
+	if req.Overlay != nil {
 		if w.overlayResolver == nil {
-			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (single-pass compositing not configured)")
+			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (single-pass overlay compositing not configured)")
 		}
 		segment, err := w.overlayResolver.Resolve(ctx, OverlayResolveInput{
 			RenderJobID: req.Overlay.RenderJobID,
@@ -285,7 +278,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"background":   plan.Background.Mode,
 	})
 	if w.renderer == nil {
-		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil, nil)
+		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
 		result["phase"] = "plan_sealed"
 		return result, fmt.Errorf(
 			"%w: job_id=%s source_asset_id=%s plan_sha256=%s",
@@ -439,86 +432,10 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		})
 	}
 
-	// ── Overlay compositing (legacy post-render path) ───────────────────
-	// Only used when single-pass compositing is disabled. The declared overlay
-	// is resolved from the render_job_id lineage and blended onto the source
-	// at [start_us, end_us), which encodes the clip a SECOND time. Fail-closed:
-	// an overlay declared without a wired resolver/compositor, an unresolvable
-	// segment, or a failed blend is a typed error — the published video never
-	// claims an overlay it does not carry.
+	// The rendered artifact IS the published artifact: the overlay was
+	// composited inside the Chronon pass, so there is no second encode and no
+	// intermediate file to certify separately.
 	publishPath := outcome.OutputPath
-	var composite *OverlayCompositeResult
-	if req.Overlay != nil && !singlePassOverlay {
-		if w.overlayResolver == nil {
-			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (compositing step not configured)")
-		}
-		if w.overlayCompositor == nil {
-			return nil, fmt.Errorf("clip.render: overlay declared but no OverlayCompositor is wired (compositing step not configured)")
-		}
-		segment, err := w.overlayResolver.Resolve(ctx, OverlayResolveInput{
-			RenderJobID: req.Overlay.RenderJobID,
-			RenderKey:   req.Overlay.RenderKey,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("clip.render: resolve overlay segment: %w", err)
-		}
-		if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
-			return nil, fmt.Errorf("clip.render: overlay resolver returned an invalid segment")
-		}
-		compositeStart := time.Now()
-		emit("clip.render.overlay.segment_resolved", "overlay segment resolved", map[string]any{
-			"render_job_id": req.Overlay.RenderJobID,
-			"render_key":    req.Overlay.RenderKey,
-			"path":          segment.LocalPath,
-			"sha256":        segment.SHA256,
-		})
-		composite, err = w.overlayCompositor.Composite(ctx, OverlayCompositeInput{
-			RunID:      j.ID,
-			SourcePath: outcome.OutputPath,
-			Segment:    segment,
-			StartUS:    req.Overlay.StartUS,
-			EndUS:      req.Overlay.EndUS,
-			OutputPath: filepath.Join(runDir, "composited-clip.mp4"),
-			Width:      int(prepared.Contract.Width),
-			Height:     int(prepared.Contract.Height),
-			Contract:   prepared.Contract,
-		})
-		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipOverlay}, compositeStart, time.Now(), err)
-		if err != nil {
-			return nil, fmt.Errorf("clip.render: composite overlay: %w", err)
-		}
-		if composite == nil || composite.OutputPath == "" || composite.SHA256 == "" {
-			return nil, fmt.Errorf("clip.render: overlay compositor returned an invalid result")
-		}
-		publishPath = composite.OutputPath
-		emit("clip.render.overlay.composited", "overlay composited onto source", map[string]any{
-			"output_path":  composite.OutputPath,
-			"sha256":       composite.SHA256,
-			"composite_ms": composite.CompositeMS,
-			"start_us":     req.Overlay.StartUS,
-			"end_us":       req.Overlay.EndUS,
-		})
-		// Post-composite byte certification is MANDATORY when an overlay was
-		// composited. The compositor did a full decode+encode cycle — the
-		// output MUST pass exact contract validation before it reaches
-		// publication. Fail-closed: a missing prober when overlay is declared
-		// is a configuration error.
-		if w.outputProber == nil {
-			return nil, fmt.Errorf("clip.render: overlay composited but no OutputProber is wired — composited bytes MUST be certified before publication")
-		}
-		probe, err := w.outputProber.ProbeOutput(ctx, composite.OutputPath)
-		if err != nil {
-			return nil, fmt.Errorf("clip.render: probe composited output: %w", err)
-		}
-		if err := ValidateContract(prepared.Contract, probe); err != nil {
-			return nil, fmt.Errorf("clip.render: composited output violates contract: %w", err)
-		}
-		emit("clip.render.probe.certified", "composited bytes certified exact", map[string]any{
-			"output_path": composite.OutputPath,
-			"fps_num":     probe.FPSNum,
-			"fps_den":     probe.FPSDen,
-		})
-	}
 
 	if w.publisher == nil {
 		// Rendering and publication are separate boundaries. A local render
@@ -532,7 +449,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		})
 		progress(100, "clip.render completed")
 		finalizeMetrics(outcome.Metrics, time.Since(jobStart).Milliseconds(), outcome.DurationSec)
-		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, nil), nil
+		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, nil), nil
 	}
 	// The publish stage is the true publisher boundary (Drive upload + asset
 	// commit), distinct from the render-side probe/overlay stages — so the
@@ -545,13 +462,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// previous start==end marker reported a fake 0 ms.
 	uploadSlotStart := time.Now()
 	publishStart := uploadSlotStart
-	// The certified digest published is the digest of the EXACT bytes at
-	// publishPath: the renderer-certified artifact for a plain render, or the
-	// overlay compositor's own digest when it re-encoded the clip.
+	// The certified digest published is the render boundary's own digest of the
+	// EXACT bytes at publishPath (computed while the artifact was streamed to
+	// disk and verified against the queue's expected digest). The overlay was
+	// composited inside that same render, so no second digest exists.
 	certifiedSHA, certifiedSize := outcome.SHA256, outcome.SizeBytes
-	if composite != nil {
-		certifiedSHA, certifiedSize = composite.SHA256, composite.SizeBytes
-	}
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:              j.ID,
 		SourceAssetID:      req.SourceAssetID,
@@ -631,5 +546,5 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	)
 	progress(100, "clip.render completed")
 
-	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, publication), nil
+	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, publication), nil
 }

@@ -116,7 +116,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		// force-refresh flag enabled; a miss is reported below and must never
 		// fall through to Artlist.
 		if cacheOnly || !plan.MediaPlan.ForceRefreshAssets {
-			if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
+			if cached, ok := cacheLoad(vidrushArtlistCache, cacheKey); ok {
 				if payload, ok := cached.(artlistSegmentCachePayload); ok {
 					payload = cloneArtlistSegmentCachePayload(payload)
 					payload.Candidates = filterArtlistCandidatesForSegment(payload.Candidates, updated, input.VidRushSegments)
@@ -138,7 +138,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				persisted.Candidates = filterArtlistCandidatesForSegment(persisted.Candidates, updated, input.VidRushSegments)
 				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
 				updated.Cache.Artlist = "HIT_EXACT"
-				cacheStore(&vidrushArtlistCache, cacheKey, persisted)
+				cacheStore(vidrushArtlistCache, cacheKey, persisted)
 				segments = append(segments, updated)
 				aggregated = append(aggregated, persisted.Matches...)
 				if p.metrics != nil {
@@ -224,7 +224,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 		segments = append(segments, updated)
 		aggregated = append(aggregated, segmentMatches...)
-		cacheStore(&vidrushArtlistCache, cacheKey, artlistSegmentCachePayload{
+		cacheStore(vidrushArtlistCache, cacheKey, artlistSegmentCachePayload{
 			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 			Matches:    cloneArtlistMatches(segmentMatches),
 		})

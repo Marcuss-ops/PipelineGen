@@ -369,6 +369,10 @@ type ArtifactResult struct {
 	// campo Raw". Persists only as a courtesy round-trip
 	// marshalling of Entities.
 	EntitiesJSON string `json:"entities_json,omitempty"`
+	// Overlay is the certified semantic overlay artifact returned by the
+	// RenderingGen/Chronon boundary. It is intentionally the same compact
+	// public reference used by document rendering: no local path is exposed.
+	Overlay *DocumentOverlayRef `json:"overlay,omitempty"`
 }
 
 // VoiceoverLanguageArtifact is the public multilingual voiceover index for

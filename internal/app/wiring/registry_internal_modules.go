@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
@@ -24,10 +22,7 @@ import (
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
-	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -346,33 +341,6 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
 }
 
-// singlePassOverlayEnabled reports whether clip.render composites a declared
-// entity overlay INSIDE the Chronon render (one encode) instead of the legacy
-// post-render FFmpeg pass (a second full transcode of the whole clip).
-//
-// Default: ENABLED. Chronon's video layers are timeline-addressed (the video
-// node samples the segment at frame - layer_start) and the RenderingGen
-// compiler lowers the overlay item fail-closed, so a clip carrying an overlay
-// is encoded exactly once. The escape hatch is deliberate: set
-// PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0 to fall back to the legacy compositor
-// without a code change. An unparseable value keeps the default and is
-// reported rather than silently flipping behaviour.
-func singlePassOverlayEnabled(log *zap.Logger) bool {
-	raw := strings.TrimSpace(os.Getenv("PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY"))
-	if raw == "" {
-		return true
-	}
-	enabled, err := strconv.ParseBool(raw)
-	if err != nil {
-		if log != nil {
-			log.Warn("PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY is not a boolean; keeping single-pass overlay compositing",
-				zap.String("value", raw))
-		}
-		return true
-	}
-	return enabled
-}
-
 func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.ClipRenderEnabled {
 		log.Info("registerClipRender: ClipRender feature is disabled; skipping HTTP route registration + job binding")
@@ -501,13 +469,15 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	}
 	worker.WithDestinationFolderResolver(destinationResolver)
 
-	// Overlay compositing hop (entity overlays): the segment resolver reads
-	// the SAME content cache the overlay.render handler writes (the
+	// Overlay hop (entity overlays): the segment resolver reads the SAME
+	// content cache the overlay.render handler writes (the
 	// RENDERINGGEN_CACHE_ROOT / default root BuildRenderingRuntime uses — a
-	// plain directory, so a second cache handle is harmless), and the ffmpeg
-	// compositor blends the segment onto the source at the declared window
-	// using the resolved encoder policy. Fail-closed at call time: an
-	// overlay declared without these adapters is a typed worker error.
+	// plain directory, so a second cache handle is harmless). The resolved
+	// segment is sealed into the plan and composited by Chronon INSIDE the
+	// single render pass; there is no post-render compositor (the FFmpeg
+	// second-transcode path was demolished and the CI gate rejects new
+	// callers). Fail-closed at call time: an overlay declared without the
+	// resolver is a typed worker error.
 	cacheRoot := os.Getenv("RENDERINGGEN_CACHE_ROOT")
 	if cacheRoot == "" {
 		cacheRoot = filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "cache")
@@ -517,31 +487,9 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
 	}
 	worker.WithOverlaySegmentResolver(clipadapters.NewOverlaySegmentResolver(overlayCache))
-	worker.WithOverlayCompositor(clipadapters.NewFFmpegOverlayCompositor(
-		cfg.External.FfmpegPath,
-		mediaConfig.Policy.Codec,
-		mediaConfig.Policy.Preset,
-		mediaConfig.Policy.CRF,
-	))
-	// Single-pass overlay compositing (default): the resolved overlay segment
-	// travels INSIDE the sealed plan as a timed video layer, so Chronon
-	// composites it in the same render pass and the clip is encoded ONCE. The
-	// FFmpeg compositor above is retained as the opt-out path — set
-	// PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0 to temporarily revert to the
-	// legacy second transcode without a code change.
-	singlePassOverlay := singlePassOverlayEnabled(log)
-	worker.WithSinglePassOverlay(singlePassOverlay)
-	if !singlePassOverlay {
-		// Loud on purpose: the fallback re-encodes every overlay clip, so a
-		// deployment left on it must be visible in the logs rather than
-		// discovered from a benchmark. Removing this branch (and the
-		// compositor behind it) is the last Wave C step.
-		log.Warn("registerClipRender: SINGLE-PASS OVERLAY DISABLED — overlays are composited by the deprecated FFmpeg pass, re-encoding the whole clip",
-			zap.String("revert", "unset PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY or set it to 1"))
-	}
 	log.Info("registerClipRender: clip render boundary wired (RenderingGen queue → Chronon certified artifact)",
 		zap.String("renderinggen_queue", cfg.External.RenderingGenQueueURL),
-		zap.Bool("single_pass_overlay", singlePassOverlay),
+		zap.String("overlay_compositing", "single-pass (sealed into the Chronon plan)"),
 		zap.String("encoder", mediaConfig.Policy.Codec),
 		zap.String("preset", mediaConfig.Policy.Preset),
 		zap.Int("crf", mediaConfig.Policy.CRF),
@@ -570,55 +518,4 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 
 	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing, parallel preparation wired)")
 	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
-}
-
-func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
-	bundle := capjobs.NewBundleWithHistory(
-		root.Jobs.Service,
-		root.Jobs.Service,
-		root.Jobs.History,
-		func() bool { return true },
-		log,
-	)
-	if err := registry.RegisterCapabilityModule(bundle, module.BuildContext{}); err != nil {
-		return fmt.Errorf("wire registry: jobs: %w", err)
-	}
-	log.Info("created Jobs module")
-
-	// PG-M2M (Aug 2026): build the M2M job surface from the SAME bundle
-	// so Enqueue/Get stay single-implementation. The M2M module is
-	// NOT registered in the public /api registry (it would collide
-	// with the admin /jobs prefix and inherit the admin Auth guard);
-	// it is plumbed through RegistryWiring → AppDeps.Handlers and
-	// mounted on its own /api/v1/jobs group by the server composition.
-	// Enabled closure is true so the M2M surface mounts whenever the
-	// M2MSecurityPort is wired (the port's EnableM2M() is the real
-	// gate inside JobClientAuthMiddleware; this closure only decides
-	// whether the routes exist at all).
-	m2mModule := capjobs.NewM2MJobsModule(bundle.Handler(), func() bool { return true })
-	if wiring != nil {
-		wiring.M2MJobsHandler = m2mModule
-	}
-	log.Info("created M2M Jobs module (POST + GET /:id on /api/v1/jobs)")
-	return nil
-}
-
-// applyLateBindings is retained as an orchestration name for a pure handler
-// preparation phase. Provider adapters and descriptor-owned providers have
-// already been registered and frozen before this function is called.
-func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
-	prepared := PreparedCapabilities{}
-	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
-	}
-	// Media-search transport follows the canonical media plane, not the legacy
-	// Qdrant process bundle. When PostgreSQL is deployed, readiness reports any
-	// missing semantic dependency through the handler instead of hiding the route.
-	if root != nil && root.MediaPostgres != nil && crossStep.SearchAggregator != nil {
-		searchAgg := mediasearchapi.AggregatorSearcher(crossStep.SearchAggregator)
-		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
-			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
-		})
-	}
-	return prepared, nil
 }

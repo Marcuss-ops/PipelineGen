@@ -48,12 +48,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -100,9 +100,15 @@ type DriveFolderManagerAdapter struct {
 
 	// folderCache stores resolved folder IDs for completed path
 	// segments so repeated EnsureFolder calls can return immediately
-	// without re-running lookup.
-	folderCache sync.Map
+	// without re-running lookup. Bounded LRU (pkg/cacheutil) rather than
+	// an unbounded sync.Map: a Drive account can surface a long tail of
+	// (parent, name) pairs and the cache must not grow for the process
+	// lifetime.
+	folderCache *cacheutil.LRU
 }
+
+// driveFolderCacheCapacity bounds the resolved-folder-ID L1.
+const driveFolderCacheCapacity = 2048
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
 // Drive SDK service. The composition root in internal/app/module_sources.go::WireArtlist
@@ -114,9 +120,10 @@ func NewDriveFolderManagerAdapter(svc *driveapi.Service, log *zap.Logger) *Drive
 		log = zap.NewNop()
 	}
 	return &DriveFolderManagerAdapter{
-		svc:    svc,
-		log:    log,
-		lookup: newDefaultFolderLookup(svc, log),
+		svc:         svc,
+		log:         log,
+		lookup:      newDefaultFolderLookup(svc, log),
+		folderCache: cacheutil.NewLRU(driveFolderCacheCapacity),
 	}
 }
 
@@ -165,19 +172,19 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 		// Mirrors Uploader.GetOrCreateFolder's folderOps pattern
 		// (uploader_ops.go:87).
 		key := currentParent + ":" + seg
-		if cached, ok := a.folderCache.Load(key); ok {
+		if cached, ok := a.folderCache.Get(key); ok {
 			folderID := cached.(string)
 			leafID = folderID
 			currentParent = folderID
 			continue
 		}
 		result, sfErr, _ := a.folderOps.Do(key, func() (any, error) {
-			if cached, ok := a.folderCache.Load(key); ok {
+			if cached, ok := a.folderCache.Get(key); ok {
 				return cached.(string), nil
 			}
 			folderID, err := a.findOrCreateFolder(ctx, currentParent, seg)
 			if err == nil && folderID != "" {
-				a.folderCache.Store(key, folderID)
+				a.folderCache.Put(key, folderID)
 			}
 			return folderID, err
 		})
@@ -186,7 +193,7 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 		}
 		folderID := result.(string)
 		if folderID != "" {
-			a.folderCache.Store(key, folderID)
+			a.folderCache.Put(key, folderID)
 		}
 		leafID = folderID
 		currentParent = folderID

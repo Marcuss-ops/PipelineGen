@@ -76,22 +76,6 @@ func (f *fakeOverlayResolver) Resolve(_ context.Context, in OverlayResolveInput)
 	return f.segment, nil
 }
 
-// fakeOverlayCompositor records the composite input and returns a canned
-// composited output, mirroring the real pass contract (a new hashed file).
-type fakeOverlayCompositor struct {
-	composite *OverlayCompositeResult
-	err       error
-	got       OverlayCompositeInput
-}
-
-func (f *fakeOverlayCompositor) Composite(_ context.Context, in OverlayCompositeInput) (*OverlayCompositeResult, error) {
-	f.got = in
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.composite, nil
-}
-
 // fakeOutputProber returns a canned probe for post-render certification.
 type fakeOutputProber struct {
 	probe *OutputProbe
@@ -109,7 +93,7 @@ func TestRenderedResult_LegacyFieldsAreReadOnlyProjections(t *testing.T) {
 	outcome := &RenderOutcome{OutputPath: "/work/out.mp4", SizeBytes: 1, DurationSec: 1, FFmpegMS: 1234, SubtitleRasterCPU: boolPtr(true), Metrics: NewRenderMetricsV2()}
 	outcome.Metrics.CompositeMS = 1234
 	outcome.Metrics.SubtitleRasterCPU = true
-	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse_or_generate"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil, nil)
+	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse_or_generate"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil)
 	render, ok := result["render"].(map[string]any)
 	if !ok {
 		t.Fatalf("render result = %v", result["render"])
@@ -731,18 +715,11 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		RenderJobID: "render-michael-jordan-overlay-001",
 		RenderKey:   "rk-michael-jordan",
 		LocalPath:   "/work/overlay-segment.mp4",
-		SHA256:      "segment-sha256",
+		SHA256:      strings.Repeat("e", 64),
 		SizeBytes:   4096,
 	}}
-	compositor := &fakeOverlayCompositor{composite: &OverlayCompositeResult{
-		OutputPath:  "/work/composited-clip.mp4",
-		SHA256:      "composited-sha256",
-		SizeBytes:   8192,
-		CompositeMS: 137,
-	}}
 	w.WithOverlaySegmentResolver(resolver)
-	w.WithOverlayCompositor(compositor)
-	// Post-composite probe is mandatory when overlay is declared.
+	// Post-render probe is mandatory when overlay is declared.
 	w.WithOutputProber(&fakeOutputProber{probe: &OutputProbe{
 		Container: "mp4", HasVideo: true, HasAudio: true,
 		VideoCodec: "h264", VideoProfile: "high", PixelFormat: "yuv420p",
@@ -777,28 +754,34 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		t.Errorf("overlay window = %v..%v, want 50000..950000", overlay["start_us"], overlay["end_us"])
 	}
 
-	// The compositing pass must have been invoked with the exact declared
-	// lineage + window: the resolver got the render_job_id, the compositor
-	// got the resolved segment and the [start_us, end_us) window.
+	// The resolver must have been invoked with the exact declared lineage.
+	// The resolved segment is then SEALED into the plan (single encode): the
+	// post-render compositor is gone, so the sealed plan is the compositing
+	// evidence, and the segment's [start, end) window is part of it.
 	if resolver.got.RenderJobID != "render-michael-jordan-overlay-001" || resolver.got.RenderKey != "rk-michael-jordan" {
 		t.Errorf("overlay resolver input = %+v", resolver.got)
 	}
-	if compositor.got.Segment == nil || compositor.got.Segment.SHA256 != "segment-sha256" {
-		t.Errorf("overlay compositor segment = %+v", compositor.got.Segment)
+	sealed := renderer.plan.Overlay
+	if sealed == nil {
+		t.Fatal("sealed plan must carry the declared overlay segment")
 	}
-	if compositor.got.StartUS != 50000 || compositor.got.EndUS != 950000 {
-		t.Errorf("overlay compositor window = %d..%d, want 50000..950000", compositor.got.StartUS, compositor.got.EndUS)
+	if sealed.RenderJobID != "render-michael-jordan-overlay-001" || sealed.RenderKey != "rk-michael-jordan" {
+		t.Errorf("sealed overlay lineage = %+v", sealed)
 	}
-	if compositor.got.SourcePath != "/work/rendered-clip.mp4" {
-		t.Errorf("overlay compositor source = %q", compositor.got.SourcePath)
+	if sealed.SHA256 != strings.Repeat("e", 64) || sealed.Path != "/work/overlay-segment.mp4" {
+		t.Errorf("sealed overlay segment = %+v", sealed)
 	}
-	if overlay["composited"] != true || overlay["sha256"] != "composited-sha256" || overlay["composite_ms"] != int64(137) {
-		t.Errorf("overlay compositing facts = %v", overlay)
+	if sealed.StartMS != 50 || sealed.EndMS != 950 {
+		t.Errorf("sealed overlay window = [%d, %d)ms, want [50, 950)", sealed.StartMS, sealed.EndMS)
+	}
+	if overlay["single_pass"] != true || overlay["segment_sha256"] != strings.Repeat("e", 64) {
+		t.Errorf("overlay single-pass facts = %v", overlay)
 	}
 
 	// The final video asset block carries the Drive identity of the derived
 	// asset: source_video_asset_id (request) → final_video_asset_id + Drive.
-	// The published file must be the COMPOSITED output, never the raw render.
+	// The published file is the RENDER output itself: the overlay is inside
+	// that single encode, so there is no composited intermediate.
 	assetBlock, ok := result["asset"].(map[string]any)
 	if !ok {
 		t.Fatalf("result must carry a published asset block, got %+v", result)
@@ -809,8 +792,8 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	if assetBlock["drive_file_id"] != "drive-file-001" {
 		t.Errorf("final video drive_file_id = %v", assetBlock["drive_file_id"])
 	}
-	if publisher.input.OutputPath != "/work/composited-clip.mp4" {
-		t.Errorf("published output = %q, want the composited clip", publisher.input.OutputPath)
+	if publisher.input.OutputPath != "/work/rendered-clip.mp4" {
+		t.Errorf("published output = %q, want the single render output", publisher.input.OutputPath)
 	}
 	if result["source_asset_id"] != "asset-source" {
 		t.Errorf("source_asset_id = %v", result["source_asset_id"])
@@ -838,47 +821,39 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 }
 
 // TestWorker_OverlayCompositing_FailClosedWithoutWiring certifies the
-// fail-closed half of compositing: a request that declares an overlay but
-// arrives at a worker without a segment resolver (or compositor) fails with
-// a typed error — the final video never claims an overlay it cannot
-// composite.
+// fail-closed half of overlay compositing: a request that declares an overlay
+// but arrives at a worker without a segment resolver fails with a typed error
+// before any render is submitted — the final video never claims an overlay it
+// cannot composite.
 func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
-	for name, wire := range map[string]func(*Worker){
-		"no resolver": func(w *Worker) {},
-		"no compositor": func(w *Worker) {
-			w.WithOverlaySegmentResolver(&fakeOverlayResolver{segment: &OverlaySegment{
-				RenderJobID: "render-job-001", RenderKey: "key-001", LocalPath: "/work/seg.mp4", SHA256: "s",
-			}})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			w, _, _ := newTestWorker(t)
-			w.WithRenderExecutor(&fakeRenderExecutor{outcome: &RenderOutcome{
-				OutputPath:  "/work/rendered-clip.mp4",
-				SizeBytes:   4096,
-				DurationSec: 3,
-				Width:       1920,
-				Height:      1080,
-				FPSNum:      24,
-				FPSDen:      1,
-				Backend:     BackendChrononVulkan,
-			}})
-			wire(w)
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
+	}}
+	w.WithRenderExecutor(renderer)
 
-			req := baseRenderRequest()
-			req.Overlay = &OverlayRefSpec{
-				RenderJobID:        "render-job-001",
-				PlanFingerprint:    "fp-001",
-				RenderKey:          "key-001",
-				SourceVideoAssetID: "source-video-001",
-				StartUS:            50000,
-				EndUS:              950000,
-			}
-			_, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-fail", Payload: renderJobPayload(t, req)}, nil)
-			if err == nil {
-				t.Fatal("overlay declared without compositing wiring must fail")
-			}
-		})
+	req := baseRenderRequest()
+	req.Overlay = &OverlayRefSpec{
+		RenderJobID:        "render-job-001",
+		PlanFingerprint:    "fp-001",
+		RenderKey:          "key-001",
+		SourceVideoAssetID: "source-video-001",
+		StartUS:            50000,
+		EndUS:              950000,
+	}
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-fail", Payload: renderJobPayload(t, req)}, nil)
+	if err == nil {
+		t.Fatal("overlay declared without a segment resolver must fail closed")
+	}
+	if renderer.called != 0 {
+		t.Fatalf("renderer calls = %d, want 0 (fail closed before submission)", renderer.called)
 	}
 }
 
@@ -934,13 +909,13 @@ func TestWorker_RequireGPU_SucceedsOnGPUBackend(t *testing.T) {
 	}
 }
 
-// TestWorker_OverlayCompositing_FailClosedOnResolutionError certifies that
-// an unresolvable segment or a failed blend aborts the job — the published
+// TestWorker_OverlayCompositing_FailClosedOnResolutionError certifies that an
+// unresolvable segment or an unsealable one aborts the job — the published
 // video never claims an overlay it does not carry.
 func TestWorker_OverlayCompositing_FailClosedOnResolutionError(t *testing.T) {
 	for name, setup := range map[string]func() (*OverlaySegment, error){
 		"resolver error": func() (*OverlaySegment, error) { return nil, errors.New("overlay.render job not found") },
-		"compositor error": func() (*OverlaySegment, error) {
+		"invalid segment digest": func() (*OverlaySegment, error) {
 			return &OverlaySegment{RenderJobID: "render-job-001", RenderKey: "key-001", LocalPath: "/work/seg.mp4", SHA256: "s"}, nil
 		},
 	} {
@@ -960,10 +935,7 @@ func TestWorker_OverlayCompositing_FailClosedOnResolutionError(t *testing.T) {
 			w.WithRenderPublisher(publisher)
 
 			segment, resolverErr := setup()
-			resolver := &fakeOverlayResolver{segment: segment, err: resolverErr}
-			compositor := &fakeOverlayCompositor{err: errors.New("blend failed")}
-			w.WithOverlaySegmentResolver(resolver)
-			w.WithOverlayCompositor(compositor)
+			w.WithOverlaySegmentResolver(&fakeOverlayResolver{segment: segment, err: resolverErr})
 
 			req := baseRenderRequest()
 			req.Overlay = &OverlayRefSpec{

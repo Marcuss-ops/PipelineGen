@@ -54,7 +54,7 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		if span, ok := findAnnotationSpan(text, word); ok {
 			span.Lemma = strings.ToLower(strings.TrimSpace(word))
 			span.ID = fmt.Sprintf("word-%s-%03d", safeAnnotationID(seg.SegmentID), i+1)
-			span.Score = float64(maxInt(1, len(seg.Insights.ImportantWords)-i)) / float64(maxInt(1, len(seg.Insights.ImportantWords)))
+			span.Score = float64(max(1, len(seg.Insights.ImportantWords)-i)) / float64(max(1, len(seg.Insights.ImportantWords)))
 			ann.ImportantWords = append(ann.ImportantWords, span)
 		}
 	}
@@ -510,11 +510,4 @@ func safeAnnotationID(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

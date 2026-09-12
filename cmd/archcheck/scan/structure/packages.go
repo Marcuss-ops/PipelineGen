@@ -55,9 +55,34 @@ func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines m
 // expiry and unregistered production hotspots remain fail-closed.
 func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int, productionOnly bool) {
 	pkgCounts := map[string]int{}
-	skipDirs := map[string]bool{
-		".git": true, "vendor": true, "node_modules": true,
-		"node-scraper": true, "examples": true, "scripts": true,
+	// The historical skip set matched directory BASENAMES, which silently
+	// exempted the production roots internal/capabilities/scripts and
+	// internal/platform/sqlite/scripts from this rule family (the
+	// "scripts" entry was meant for the repo-root tooling dir only).
+	// Directory skips are now resolved against the REPO-RELATIVE path:
+	// only the top-level tooling dirs are exempt; any basename collision
+	// inside internal/ or cmd/ is scanned like a normal production package
+	// (fail-closed, godlike/07 no-fake-availability).
+	isSkipped := func(path string) bool {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return false
+		}
+		rel = filepath.ToSlash(rel)
+		parts := strings.Split(rel, "/")
+		for i, part := range parts {
+			switch part {
+			case ".git", "vendor", "node_modules", "node-scraper", "examples":
+				return true
+			case "scripts":
+				// Exempt ONLY the repo-root tooling dir (top-level path
+				// component). Deeper basenames are production code.
+				if i == 0 {
+					return true
+				}
+			}
+		}
+		return false
 	}
 
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -65,7 +90,7 @@ func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, file
 			return nil
 		}
 		if d.IsDir() {
-			if skipDirs[filepath.Base(path)] {
+			if isSkipped(path) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -84,13 +109,18 @@ func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, file
 		}
 		fileLines[path] = n
 		if n > pol.MaxLinesPerFile {
+			// The 1000-LOC ceiling is the HARD cap (policy.yaml
+			// max_lines_per_file, godlike/08 §"Mandatory checks"): a file
+			// past it is an error in every mode, not a warning. The old
+			// warn severity let files above the hard cap pass --strict
+			// forever — semantic drift inside the enforcement tool.
 			r.Violations = append(r.Violations, report.Violation{
 				File:        filepath.ToSlash(filepath.Join(relDir, filepath.Base(path))),
 				ActualLines: n,
 				MaxLines:    pol.MaxLinesPerFile,
 				MatchedRule: "max_lines_per_file",
 				Rule:        "file_size",
-				Severity:    "warn",
+				Severity:    "error",
 			})
 		}
 		return nil

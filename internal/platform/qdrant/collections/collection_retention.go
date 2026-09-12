@@ -124,16 +124,9 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 		cm.log.Info("retention: dropped old collection",
 			zap.String("name", name),
 			zap.Int("retention_days", cfg.RetentionDays),
-			zap.Int("keep_last_n", maxInt(cfg.KeepLastN, 2)))
+			zap.Int("keep_last_n", max(cfg.KeepLastN, 2)))
 	}
 	return result, nil
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // projectionStatuses reads the durable projection lifecycle statuses from

@@ -74,7 +74,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			Provider:              scriptpkg.VidRushProviderInternetImages,
 			Query:                 identity.CanonicalName,
 			Entity:                identity.CanonicalName,
-			Score:                 1.0 / float64(maxInt(1, row.Rank)),
+			Score:                 1.0 / float64(max(1, row.Rank)),
 			SourceURL:             row.SourceURL,
 			PreviewURL:            row.ThumbnailURL,
 			Width:                 row.Width,

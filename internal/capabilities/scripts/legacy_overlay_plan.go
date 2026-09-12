@@ -27,6 +27,25 @@ func CompileOverlayPlanFromGenerationResult(
 	planID string,
 	projectID string,
 ) (*capabilityoverlay.OverlayPlan, error) {
+	return CompileOverlayPlanFromGenerationResultWithStyle(
+		result, language, timingArtifacts, background, nil, planID, projectID,
+	)
+}
+
+// CompileOverlayPlanFromGenerationResultWithStyle is the batch bridge used by
+// script.generate_item. It keeps the legacy signature above source-compatible
+// while carrying the same caller-owned overlay style that the durable Runner
+// already applies. The style is a render override only; preset selection and
+// timing remain owned by the canonical overlay compiler.
+func CompileOverlayPlanFromGenerationResultWithStyle(
+	result *scriptpkg.GenerationResult,
+	language Language,
+	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
+	background *scriptpkg.OverlayBackgroundSpec,
+	style *scriptpkg.OverlayStyleSpec,
+	planID string,
+	projectID string,
+) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -114,6 +133,9 @@ func CompileOverlayPlanFromGenerationResult(
 	if err := compileResultEntityTimeline(capResult, language); err != nil {
 		return nil, fmt.Errorf("legacy overlay plan: compile entity timeline: %w", err)
 	}
-	canvas := OverlayCanvasSpec{Background: overlayBackgroundFromPayload(background)}
+	canvas := OverlayCanvasSpec{
+		Background: overlayBackgroundFromPayload(background),
+		Style:      style,
+	}
 	return CompileOverlayPlan(capResult, language, canvas, planID, planID, projectID)
 }

@@ -159,7 +159,7 @@ func NewResourceScheduler(config SpeculationConfig, gate ActiveWorkGate) *Resour
 		if budget.SpeculativeMax > 0 {
 			config.MaxByResource[resource] = budget.SpeculativeMax
 		} else if budget.Capacity > 0 {
-			config.MaxByResource[resource] = maxInt(0, budget.Capacity-budget.ActiveReserved)
+			config.MaxByResource[resource] = max(0, budget.Capacity-budget.ActiveReserved)
 		}
 	}
 	return &ResourceScheduler{config: config, gate: gate, running: make(map[SpeculationResource]int)}
@@ -176,8 +176,8 @@ func (s *ResourceScheduler) Admit(candidates []SpeculationCandidate) []Speculati
 		if ordered[i].Depth != ordered[j].Depth {
 			return ordered[i].Depth < ordered[j].Depth
 		}
-		left := ordered[i].EstimatedTimeSavedMS * maxInt64(1, ordered[j].EstimatedCostMS)
-		right := ordered[j].EstimatedTimeSavedMS * maxInt64(1, ordered[i].EstimatedCostMS)
+		left := ordered[i].EstimatedTimeSavedMS * max(1, ordered[j].EstimatedCostMS)
+		right := ordered[j].EstimatedTimeSavedMS * max(1, ordered[i].EstimatedCostMS)
 		if left != right {
 			return left > right
 		}
@@ -186,7 +186,7 @@ func (s *ResourceScheduler) Admit(candidates []SpeculationCandidate) []Speculati
 		}
 		return ordered[i].Unit.ID < ordered[j].Unit.ID
 	})
-	out := make([]SpeculationCandidate, 0, minInt(s.config.MaxUnits, len(ordered)))
+	out := make([]SpeculationCandidate, 0, min(s.config.MaxUnits, len(ordered)))
 	costs := make(map[SpeculationCost]int)
 	resources := make(map[SpeculationResource]int)
 	for _, candidate := range ordered {
@@ -321,22 +321,4 @@ func preparationCost(unit PreparationUnit) SpeculationCost {
 	default:
 		return CostPrepare
 	}
-}
-func maxInt64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

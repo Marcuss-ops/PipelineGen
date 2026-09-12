@@ -75,30 +75,11 @@ func buildOutboxDeps(
 		hmacSecrets = append(hmacSecrets, []byte(prev))
 	}
 
-	// SourceVersionQuerier is the narrow port consumed by the
-	// IndexingHandler source_version supersede gate (PR 11 follow-up,
-	// June 2026). The production concrete is *assets.ClipsRepository
-	// (already wired into the dispatcher's MultiClipsUpserter; same
-	// instance also implements SourceVersionQuerier via a thin
-	// delegating method). nil ClipsRepo → nil SourceVersionQuerier →
-	// IndexingHandler skips the supersede gate (acceptable in test
-	// dbs; production always wires non-nil).
-	//
-	// Wave 16 (June 2026): typed-port direct assignment per
-	// AGENTS.md Pattern 0. The previous
-	// `any(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
-	// raw cast is replaced because *assets.ClipsRepository
-	// statically implements the port (compile-time assertion at
-	// internal/platform/sqlite/assets/clips_repository.go).
-	// Dropping the `, ok` form is safe: the assertion fails the build
-	// if port drift ever breaks the static implementation contract.
-	// PR 11 follow-up extends the assertion to SourceVersionQuerier
-	// (single-method port) — the previous AssetSourceChecker port
-	// (GetClip → walk Asset) is removed entirely.
-	var sourceQuerier jobsoutbox.SourceVersionQuerier
-	if repos.ClipsRepo != nil {
-		sourceQuerier = repos.ClipsRepo
-	}
+	// MEDIA-CUTOVER (2026-09-12): the SourceVersionQuerier wiring is
+	// REMOVED with the retired IndexingHandler family. The supersede gate
+	// it fed consumed SQLite-outbox asset.index.requested events — a
+	// pipeline with zero production consumers since the PostgreSQL media
+	// cutover (media index plane = PostgresIndexWorker).
 
 	// Step 2 (June 2026): pre-build the canonical MetadataExportHandler
 	// via the new typed-port adapters. The composition root is the ONLY
@@ -129,8 +110,7 @@ func buildOutboxDeps(
 			InsecureDev: cfg.Security.DeliveryInsecureDev,
 		},
 		Jobs: jobsoutbox.JobDeps{
-			Jobs:                 jobs.Service,
-			SourceVersionQuerier: sourceQuerier,
+			Jobs: jobs.Service,
 		},
 	}
 	// PR 4 (June 2026, refactor/single-qdrant-runtime): wire

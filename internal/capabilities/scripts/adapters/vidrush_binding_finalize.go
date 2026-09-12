@@ -101,18 +101,18 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 		if len(valid) == 0 {
 			seg.Cache.Binding = "BYPASSED"
 		} else if !forceRefresh {
-			_, l1Hit := cacheLoad(&vidrushBindingCache, bindingKey)
+			_, l1Hit := cacheLoad(vidrushBindingCache, bindingKey)
 			l2Hit, _ := loadVidRushPersistentJSON(ctx, cache, "binding", bindingKey, new(bool))
 			if l1Hit || l2Hit {
 				seg.Cache.Binding = "HIT_EXACT"
 			} else {
 				seg.Cache.Binding = "MISS"
-				cacheStore(&vidrushBindingCache, bindingKey, true)
+				cacheStore(vidrushBindingCache, bindingKey, true)
 				_ = storeVidRushPersistentJSON(ctx, cache, "binding", bindingKey, true)
 			}
 		} else {
 			seg.Cache.Binding = "REFRESHED"
-			cacheStore(&vidrushBindingCache, bindingKey, true)
+			cacheStore(vidrushBindingCache, bindingKey, true)
 			_ = storeVidRushPersistentJSON(ctx, cache, "binding", bindingKey, true)
 		}
 		if existing, ok := segmentIndex[seg.SegmentID]; ok && strings.TrimSpace(seg.SegmentID) != "" {

@@ -77,7 +77,7 @@ func SearchScriptAssets(ctx context.Context, svc ClipServices, queries []string,
 }
 
 func filterSearchAssets(matches []RealtimeMatchAsset, topicKeywords string, seen map[string]struct{}, limit int) []ScriptAssetSuggestion {
-	out := make([]ScriptAssetSuggestion, 0, minInt(limit, len(matches)))
+	out := make([]ScriptAssetSuggestion, 0, min(limit, len(matches)))
 	for _, asset := range matches {
 		if len(out) >= limit {
 			break

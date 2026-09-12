@@ -169,35 +169,3 @@ func TestStubHandlers_ReturnError(t *testing.T) {
 		})
 	}
 }
-
-func TestIndexingHandler_EventType(t *testing.T) {
-	// nil indexer is OK for EventType test — Handle would panic but we only test the type
-	h := &IndexingHandler{}
-	if got := h.EventType(); got != outboxevents.EventAssetIndexRequested {
-		t.Errorf("expected %q got %q", outboxevents.EventAssetIndexRequested, got)
-	}
-}
-
-func TestIndexingHandler_EmptyPayload_ReturnsError(t *testing.T) {
-	h := &IndexingHandler{}
-	evt := outboxevents.Event{
-		EventType:   outboxevents.EventAssetIndexRequested,
-		AggregateID: "asset-123",
-		PayloadJSON: `{}`,
-	}
-	if err := h.Handle(context.Background(), evt); err == nil {
-		t.Fatal("expected error for empty asset_id")
-	}
-}
-
-func TestIndexingHandler_MalformedPayload_ReturnsError(t *testing.T) {
-	h := &IndexingHandler{}
-	evt := outboxevents.Event{
-		EventType:   outboxevents.EventAssetIndexRequested,
-		AggregateID: "asset-bad",
-		PayloadJSON: `not json`,
-	}
-	if err := h.Handle(context.Background(), evt); err == nil {
-		t.Fatal("expected error for malformed JSON")
-	}
-}

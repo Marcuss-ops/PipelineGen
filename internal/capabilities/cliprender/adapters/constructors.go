@@ -43,9 +43,3 @@ func (r *ClipRenderTranscriptResolver) SetStreaming(streaming *ClipRenderStreami
 func NewOverlaySegmentResolver(cache *infraoverlays.Cache) *OverlaySegmentResolver {
 	return &OverlaySegmentResolver{cache: cache}
 }
-
-// NewFFmpegOverlayCompositor wires the ffmpeg blend compositor with the
-// composition-root encoder policy.
-func NewFFmpegOverlayCompositor(ffmpegPath, codec, preset string, crf int) *FFmpegOverlayCompositor {
-	return &FFmpegOverlayCompositor{ffmpegPath: ffmpegPath, codec: codec, preset: preset, crf: crf}
-}

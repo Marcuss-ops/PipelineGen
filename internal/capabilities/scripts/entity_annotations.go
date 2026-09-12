@@ -41,7 +41,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 	}
 	for i, word := range seg.Insights.ImportantWords {
 		if span, ok := findEntitySpan(text, word); ok {
-			score := float64(maxInt(1, len(seg.Insights.ImportantWords)-i)) / float64(maxInt(1, len(seg.Insights.ImportantWords)))
+			score := float64(max(1, len(seg.Insights.ImportantWords)-i)) / float64(max(1, len(seg.Insights.ImportantWords)))
 			ann.ImportantWords = append(ann.ImportantWords, scriptpkg.AnnotationSpan{
 				Text: span.Text, Lemma: strings.ToLower(strings.TrimSpace(word)),
 				StartRune: span.StartRune, EndRune: span.EndRune,
@@ -127,6 +127,8 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 		return nil
 	}
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	var best *scriptpkg.SegmentAssetCandidate
+	bestRank := 0
 	for _, candidate := range all {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
 			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.LegacyFileMD5) == "" ||
@@ -137,15 +139,35 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
 			continue
 		}
+		entity := normalizeEntityImageName(candidate.Entity)
 		query := normalizeEntityImageName(candidate.Query)
-		if query != want && !strings.Contains(query, want) {
+		rank := 0
+		switch {
+		case entity == want:
+			rank = 3
+		case query == want:
+			rank = 2
+		case strings.Contains(entity, want) || strings.Contains(query, want):
+			rank = 1
+		}
+		if rank == 0 {
 			continue
 		}
+		// Prefer the candidate's identity stamp over a generic search query,
+		// while preserving provider order for equal matches (the upstream
+		// selector has already ranked candidates for quality and rights).
+		if rank > bestRank {
+			candidateCopy := candidate
+			best = &candidateCopy
+			bestRank = rank
+		}
+	}
+	if best != nil {
 		return &scriptpkg.EntityImageBinding{
-			Status: "resolved", AssetID: candidate.AssetID, DriveLink: candidate.DriveLink,
-			MediaType: candidate.MIMEType,
-			Source:    candidate.Provider, License: candidate.RightsBasis,
-			PreviewURL: entityImagePreviewURL(candidate), SHA256: candidate.LegacyFileMD5,
+			Status: "resolved", AssetID: best.AssetID, DriveLink: best.DriveLink,
+			MediaType: best.MIMEType,
+			Source:    best.Provider, License: best.RightsBasis,
+			PreviewURL: entityImagePreviewURL(*best), SHA256: best.LegacyFileMD5,
 		}
 	}
 	return nil
@@ -202,15 +224,6 @@ func driveFileID(link string) string {
 		}
 	}
 	return ""
-}
-
-// maxInt returns the larger of the two integers (mirror of the legacy batch
-// adapter helper used by the important-word score projection).
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // normalizeEntityAnnotationType maps an extracted entity type onto the

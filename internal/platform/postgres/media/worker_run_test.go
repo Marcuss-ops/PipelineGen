@@ -200,6 +200,58 @@ func TestWorker_Run_DrainsPendingEvents(t *testing.T) {
 	t.Fatal("drain loop did not complete both events within deadline")
 }
 
+// TestRepository_ClaimBatch pins the N→1 claim contract the drain loop
+// relies on: one statement claims up to N pending events under a single
+// lease token, each with its attempt_count already incremented, and the
+// remaining work stays claimable exactly once (no double delivery).
+func TestRepository_ClaimBatch(t *testing.T) {
+	db := newMediaTestDB(t)
+	ctx := context.Background()
+	repo := pgmedia.NewOutboxRepository(db)
+
+	if claims, err := repo.ClaimBatch(ctx, "test-worker", time.Minute, 4); err != nil {
+		t.Fatalf("empty-outbox ClaimBatch: %v", err)
+	} else if len(claims) != 0 {
+		t.Fatalf("empty-outbox ClaimBatch len = %d, want 0", len(claims))
+	}
+
+	for _, id := range []string{"yt_batch_1_v1", "yt_batch_2_v1", "yt_batch_3_v1"} {
+		seedIndexableAsset(t, db, id)
+	}
+
+	claims, err := repo.ClaimBatch(ctx, "test-worker", time.Minute, 2)
+	if err != nil {
+		t.Fatalf("ClaimBatch: %v", err)
+	}
+	if len(claims) != 2 {
+		t.Fatalf("ClaimBatch len = %d, want 2 (the LIMIT must be honoured)", len(claims))
+	}
+	if claims[0].LeaseID != claims[1].LeaseID {
+		t.Fatal("ClaimBatch must share ONE lease token across the batch")
+	}
+	seen := map[int64]bool{}
+	for _, claim := range claims {
+		if claim.Event.Status != "processing" {
+			t.Fatalf("claimed status = %q, want processing", claim.Event.Status)
+		}
+		if claim.Event.AttemptCount != 1 {
+			t.Fatalf("claimed attempt_count = %d, want 1 (RETURNING carries the increment)", claim.Event.AttemptCount)
+		}
+		if seen[claim.Event.ID] {
+			t.Fatalf("event %d claimed twice in one batch", claim.Event.ID)
+		}
+		seen[claim.Event.ID] = true
+	}
+
+	rest, err := repo.ClaimBatch(ctx, "test-worker", time.Minute, 10)
+	if err != nil {
+		t.Fatalf("second ClaimBatch: %v", err)
+	}
+	if len(rest) != 1 {
+		t.Fatalf("remaining claimable = %d, want 1 (already-leased rows must not be re-claimed)", len(rest))
+	}
+}
+
 // TestWorker_Run_SurvivesPerEventFailures pins that a poison event does
 // not kill the loop: the failing event retries/dead-letters while later
 // healthy events still complete.

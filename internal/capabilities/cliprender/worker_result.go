@@ -14,10 +14,11 @@ import (
 )
 
 // renderedResult projects the *Prepared + sealed plan + render outcome +
-// composited overlay (when declared) + published derived asset into the
-// canonical job result map. Only JSON-safe values — the result envelope is
-// persisted by the Master.
-func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, composite *OverlayCompositeResult, published *RenderPublishResult) job.Result {
+// declared overlay lineage + published derived asset into the canonical job
+// result map. Only JSON-safe values — the result envelope is persisted by the
+// Master. There is no composited-overlay projection: the overlay travels in
+// the sealed plan and is composited by the render boundary itself.
+func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, published *RenderPublishResult) job.Result {
 	jobID := ""
 	if j != nil {
 		jobID = j.ID
@@ -159,11 +160,14 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"start_us":              req.Overlay.StartUS,
 			"end_us":                req.Overlay.EndUS,
 		}
-		if composite != nil {
-			overlayBlock["composited"] = true
-			overlayBlock["output_path"] = composite.OutputPath
-			overlayBlock["sha256"] = composite.SHA256
-			overlayBlock["composite_ms"] = composite.CompositeMS
+		// The overlay is composited inside the render, so the plan is the
+		// authority for WHERE it landed (the window is part of the plan digest)
+		// and the render block is the authority for the output bytes.
+		if plan.Overlay != nil {
+			overlayBlock["single_pass"] = true
+			overlayBlock["start_ms"] = plan.Overlay.StartMS
+			overlayBlock["end_ms"] = plan.Overlay.EndMS
+			overlayBlock["segment_sha256"] = plan.Overlay.SHA256
 		}
 		result["overlay"] = overlayBlock
 	}

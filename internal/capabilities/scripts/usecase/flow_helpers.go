@@ -4,8 +4,7 @@
 // flow_helpers.go into 4 domain-specific files per AGENTS.md Pattern 5:
 //
 //   - flow_helpers.go           — shared: RealtimeMatchAsset,
-//     AssociationCandidatesRequest/Response,
-//     minInt
+//     AssociationCandidatesRequest/Response
 //   - flow_helpers_clips.go     — clips: AssetSearchTarget,
 //     ScriptAssetSuggestion,
 //     ScriptPhraseClipSuggestion,
@@ -57,11 +56,3 @@ type AssociationCandidatesResponse struct {
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
-
-// minInt is a local helper (avoid import cycle from sliceutil).
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

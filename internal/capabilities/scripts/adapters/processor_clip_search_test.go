@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,7 +123,7 @@ func (s *countingArtlistSearcher) SearchClips(_ context.Context, _ string, queri
 }
 
 func TestClipSearchProcessorReusesWarmArtlistSegmentCache(t *testing.T) {
-	vidrushArtlistCache = sync.Map{}
+	vidrushArtlistCache = cacheutil.NewLRU(vidrushArtlistL1Capacity)
 	searcher := &countingArtlistSearcher{}
 	processor := NewClipSearchProcessor(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Top 10 foods", Language: "en", MediaPlan: media.MediaPlanSpec{
@@ -146,7 +146,7 @@ func TestClipSearchProcessorReusesWarmArtlistSegmentCache(t *testing.T) {
 }
 
 func TestClipSearchProcessorColdWarmAndIntentInvalidation(t *testing.T) {
-	vidrushArtlistCache = sync.Map{}
+	vidrushArtlistCache = cacheutil.NewLRU(vidrushArtlistL1Capacity)
 	searcher := &countingArtlistSearcher{}
 	processor := NewClipSearchProcessor(searcher)
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Top 10 foods", Language: "en", MediaPlan: media.MediaPlanSpec{
@@ -313,7 +313,7 @@ func (multiClipArtlistSearcher) SearchClips(_ context.Context, _ string, queries
 			Phrase:         q,
 			FolderLink:     "https://drive.example/folder",
 			ClipNames:      []string{"valid clip"},
-			ClipDriveLinks: []string{"https://drive.example/valid-" + q[:minInt(8, len(q))]},
+			ClipDriveLinks: []string{"https://drive.example/valid-" + q[:min(8, len(q))]},
 		})
 	}
 	return out, nil

@@ -22,7 +22,7 @@ func TestRenderedResultCarriesChrononTimingReference(t *testing.T) {
 		ChrononTimingSizeBytes:   218,
 		ChrononTimingContentType: "application/json",
 	}
-	result := renderedResult(nil, nil, nil, ClipRenderPlanV1{}, nil, outcome, nil, nil)
+	result := renderedResult(nil, nil, nil, ClipRenderPlanV1{}, nil, outcome, nil)
 	renderBlock, ok := result["render"].(map[string]any)
 	if !ok {
 		t.Fatalf("render block missing from result: %+v", result)
@@ -49,7 +49,7 @@ func TestRenderedResultOmitsChrononTimingWithoutPreservedSidecar(t *testing.T) {
 		Backend:    BackendChrononVulkan,
 		Metrics:    NewRenderMetricsV2(),
 	}
-	result := renderedResult(nil, nil, nil, ClipRenderPlanV1{}, nil, outcome, nil, nil)
+	result := renderedResult(nil, nil, nil, ClipRenderPlanV1{}, nil, outcome, nil)
 	renderBlock, ok := result["render"].(map[string]any)
 	if !ok {
 		t.Fatalf("render block missing from result: %+v", result)

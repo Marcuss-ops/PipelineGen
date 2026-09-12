@@ -262,7 +262,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				)
 			*/
 			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-				if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
+				if cached, ok := cacheLoad(vidrushArtlistCache, cacheKey); ok {
 					if payload, ok := cached.(artlistSegmentCachePayload); ok {
 						candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
 						if f.metrics != nil {
@@ -279,7 +279,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				} else if hit {
 					persisted = cloneArtlistSegmentCachePayload(persisted)
 					if len(persisted.Candidates) > 0 {
-						cacheStore(&vidrushArtlistCache, cacheKey, persisted)
+						cacheStore(vidrushArtlistCache, cacheKey, persisted)
 					}
 					if f.metrics != nil {
 						f.metrics.IncAssetCache("artlist", true)
@@ -307,7 +307,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 				Matches:    cloneArtlistMatches(dedupeArtlistMatches(matches)),
 			}
-			cacheStore(&vidrushArtlistCache, cacheKey, payload)
+			cacheStore(vidrushArtlistCache, cacheKey, payload)
 			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, payload); cacheErr != nil {
 				outcomes <- vidRushProviderOutcome{provider: "artlist", err: cacheErr}
 				return
@@ -336,7 +336,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				)
 			*/
 			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-				if cached, ok := cacheLoad(&vidrushImageCache, segmentCacheKeyStr); ok {
+				if cached, ok := cacheLoad(vidrushImageCache, segmentCacheKeyStr); ok {
 					if payload, ok := cached.(internetImageCachePayload); ok {
 						outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...), allCacheHits: true}
 						return
@@ -348,7 +348,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					return
 				} else if hit {
 					if len(persisted.Candidates) > 0 {
-						cacheStore(&vidrushImageCache, segmentCacheKeyStr, persisted)
+						cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
 					}
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...), allCacheHits: true}
 					return
@@ -407,7 +407,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					}
 				}
 				if !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh && !fromCache {
-					if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
+					if cached, ok := cacheLoad(entityImageCache, entityCacheKey); ok {
 						if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
 							results = append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...)
 							fromCache = true
@@ -423,7 +423,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							return
 						} else if hit {
 							if len(persisted) > 0 {
-								cacheStore(&entityImageCache, entityCacheKey, persisted)
+								cacheStore(entityImageCache, entityCacheKey, persisted)
 							}
 							results = persisted
 							fromCache = true
@@ -498,7 +498,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					}
 					results = appendProviderCandidatesUnique(catalogFallback, providerResults)
 					if len(results) > 0 {
-						cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
+						cacheStore(entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
 					}
 					if results == nil {
 						results = []scriptpkg.SegmentAssetCandidate{}
@@ -541,7 +541,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			// so a warm replay of this exact segment is deterministic.
 			payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
 			if len(payload.Candidates) > 0 {
-				cacheStore(&vidrushImageCache, segmentCacheKeyStr, payload)
+				cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
 			}
 			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
 				// Cache persistence is a projection, not the source of truth for
