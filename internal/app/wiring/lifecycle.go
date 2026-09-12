@@ -177,6 +177,9 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *Databases
 	var channelMon *monitor.ChannelMonitor
 
 	if runWorker {
+		if step := buildOllamaWarmStep(cfg, root, log); step != nil {
+			steps = append(steps, *step)
+		}
 		steps = append(steps, buildWorkerSteps(workerDeps{root: root, cfg: cfg, log: log})...)
 	}
 	if runScheduler {

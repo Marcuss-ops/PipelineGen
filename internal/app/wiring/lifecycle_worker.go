@@ -21,6 +21,8 @@ package wiring
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -50,6 +52,43 @@ type workerDeps struct {
 	root *ComposeRoot
 	cfg  *config.Config
 	log  *zap.Logger
+}
+
+// buildOllamaWarmStep makes model residency a startup contract for worker
+// mode. A job runner must not accept expensive generation work while the
+// first request is still paying the model load. WarmModel owns the /api/ps
+// check, singleflight and post-warm residency verification.
+func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger) *StartupStep {
+	if cfg == nil || root == nil || root.AI == nil || root.AI.OllamaClient == nil {
+		return nil
+	}
+	model := strings.TrimSpace(cfg.External.OllamaModel)
+	if model == "" {
+		model = root.AI.OllamaClient.Model()
+	}
+	if model == "" {
+		return nil
+	}
+	return &StartupStep{
+		Name:     "ollama-model-warm",
+		Required: true,
+		Start: func(startCtx context.Context) error {
+			ctx, cancel := context.WithTimeout(startCtx, 2*time.Minute)
+			defer cancel()
+			started := time.Now()
+			if err := root.AI.OllamaClient.WarmModel(ctx, model); err != nil {
+				return fmt.Errorf("warm Ollama model %q: %w", model, err)
+			}
+			if log != nil {
+				log.Info("StartupStep: Ollama model resident",
+					zap.String("model", model),
+					zap.Int64("warm_ms", time.Since(started).Milliseconds()),
+				)
+			}
+			return nil
+		},
+		Stop: func(context.Context) error { return nil },
+	}
 }
 
 // buildWorkerSteps returns the worker-mode StartupStep list:

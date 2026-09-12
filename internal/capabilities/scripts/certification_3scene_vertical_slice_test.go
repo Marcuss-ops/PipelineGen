@@ -29,6 +29,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -186,7 +187,12 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
-	runner.Execute(context.Background(), runID, req)
+	// The canonical Run is bound so the stage geometry can be certified: the
+	// blocking overlay render must be a SIBLING of the audio compile stage,
+	// never a nested part of it (the breakdown attributes a nested stage to its
+	// enclosure, which is how the render used to be charged to audio_compile).
+	obsRun := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: runID, AttemptID: "attempt-1"})
+	runner.Execute(kernobs.WithRun(context.Background(), obsRun), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, "vertical slice must complete: %s", final.ErrorMessage)
 
@@ -301,4 +307,50 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 		require.Equal(t, et.Scenes[i-1].EndUS, et.Scenes[i].StartUS, "scene %d/%d must be contiguous", i-1, i)
 	}
 	require.Equal(t, et.DurationUS, et.Scenes[2].EndUS, "scenes must cover the canonical duration exactly")
+
+	// ── GATE 9: STAGE GEOMETRY OF THE AUDIO/RENDER SPLIT ─────────────
+	// The blocking overlay render must be a SIBLING of the audio compile stage,
+	// not a nested part of it. The breakdown attributes a nested stage to its
+	// enclosure, so before the split the render's wall time was charged to
+	// audio_compile and never appeared on the critical path.
+	obsRun.Finish()
+	report := obsRun.Report()
+	stageByName := map[string]kernobs.StageReport{}
+	for _, st := range report.Stages {
+		stageByName[st.Name] = st
+	}
+	compileStage, ok := stageByName[string(audioCompileStage)]
+	require.True(t, ok, "audio_compile must be measured, got %+v", report.Stages)
+	renderStage, ok := stageByName[string(StageOverlayRender)]
+	require.True(t, ok, "overlay_render must be its own measured stage, got %+v", report.Stages)
+	require.True(t, stageByName[string(StageAudioFinalize)].Name != "",
+		"audio_finalize must be its own measured stage, got %+v", report.Stages)
+
+	// Sibling geometry: the compile stage ends where the render starts, so
+	// neither interval contains the other. A containment here means the render
+	// went back inside the audio stage.
+	require.False(t, compileStage.StartedAt.After(renderStage.StartedAt),
+		"audio_compile must start before the render (compile=%v render=%v)", compileStage.StartedAt, renderStage.StartedAt)
+	require.False(t, compileStage.FinishedAt.After(renderStage.StartedAt),
+		"audio_compile must END before the render starts, otherwise the render is nested and re-charged to it (compile_end=%v render_start=%v)",
+		compileStage.FinishedAt, renderStage.StartedAt)
+
+	// The split is only real if the report reads the render as the dominant
+	// boundary of the audio/render block rather than the audio stage absorbing
+	// it. The stub render enqueuer returns immediately, so assert the shape of
+	// the attribution rather than a magnitude: the render stage is top-level and
+	// the critical path lists it separately from the compile stage.
+	var renderedOnPath, compiledOnPath bool
+	for _, cp := range report.Breakdown().CriticalPath {
+		switch cp.Name {
+		case string(StageOverlayRender):
+			renderedOnPath = true
+		case string(audioCompileStage):
+			compiledOnPath = true
+		}
+	}
+	require.True(t, renderedOnPath, "overlay_render must appear on the critical path, got %+v", report.Breakdown().CriticalPath)
+	require.True(t, compiledOnPath, "audio_compile must appear on the critical path, got %+v", report.Breakdown().CriticalPath)
+	require.NotEqual(t, string(audioCompileStage), report.Breakdown().BottleneckOperation,
+		"the audio stage must not absorb the render's work as its dominant operation")
 }
