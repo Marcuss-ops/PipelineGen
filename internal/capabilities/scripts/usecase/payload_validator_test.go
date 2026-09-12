@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 func TestPayloadValidator_ValidEnvelope(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -36,7 +37,7 @@ func TestPayloadValidator_ValidEnvelope(t *testing.T) {
 }
 
 func TestPayloadValidator_SourceTextTooManyChars(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 10})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 10})
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -65,7 +66,7 @@ func TestPayloadValidator_SourceTextTooManyChars(t *testing.T) {
 }
 
 func TestPayloadValidator_SourceTextTooManyBytes(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextBytes: 10})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextBytes: 10})
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -93,7 +94,7 @@ func TestPayloadValidator_SourceTextTooManyBytes(t *testing.T) {
 }
 
 func TestPayloadValidator_SourceTextExceedsTargetRatio(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextToTargetWordsRatio: 2.0})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextToTargetWordsRatio: 2.0})
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -121,7 +122,7 @@ func TestPayloadValidator_SourceTextExceedsTargetRatio(t *testing.T) {
 }
 
 func TestPayloadValidator_TokenEstimate(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextTokens: 2})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextTokens: 2})
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -149,7 +150,7 @@ func TestPayloadValidator_TokenEstimate(t *testing.T) {
 }
 
 func TestPayloadValidator_SourceTextExceedsMultipleLimits(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{
 		MaxSourceTextChars:  5,
 		MaxSourceTextBytes:  5,
 		MaxSourceTextTokens: 1,
@@ -183,7 +184,7 @@ func TestPayloadValidator_SourceTextExceedsMultipleLimits(t *testing.T) {
 }
 
 func TestPayloadValidator_SourceTextTooLargeDoesNotLeakText(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 5})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 5})
 	secret := "this source text contains a secret 12345"
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
@@ -211,7 +212,7 @@ func TestPayloadValidator_SourceTextTooLargeDoesNotLeakText(t *testing.T) {
 }
 
 func TestPayloadValidator_DuplicateClipIDs(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -236,7 +237,7 @@ func TestPayloadValidator_DuplicateClipIDs(t *testing.T) {
 }
 
 func TestPayloadValidator_TargetWordsMustBePositive(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -265,7 +266,7 @@ func TestPayloadValidator_TargetWordsMustBePositive(t *testing.T) {
 }
 
 func TestPayloadValidator_UnsupportedLanguage(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -291,7 +292,7 @@ func TestPayloadValidator_UnsupportedLanguage(t *testing.T) {
 }
 
 func TestPayloadValidator_InvalidGroundingPolicy(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -317,7 +318,7 @@ func TestPayloadValidator_InvalidGroundingPolicy(t *testing.T) {
 }
 
 func TestPayloadValidator_IncompatibleFallbackPolicy(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -343,7 +344,7 @@ func TestPayloadValidator_IncompatibleFallbackPolicy(t *testing.T) {
 }
 
 func TestPayloadValidator_UnknownSourceType(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -368,7 +369,7 @@ func TestPayloadValidator_UnknownSourceType(t *testing.T) {
 }
 
 func TestPayloadValidator_ClipsSourceWithoutClipIDs(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -395,7 +396,7 @@ func TestPayloadValidator_ClipsSourceWithoutClipIDs(t *testing.T) {
 
 func TestPayloadValidator_TargetWordsZeroWithSegmentsAllowed(t *testing.T) {
 	t.Parallel()
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -422,7 +423,7 @@ func TestPayloadValidator_TargetWordsZeroWithSegmentsAllowed(t *testing.T) {
 
 func TestPayloadValidator_SegmentsEmpty(t *testing.T) {
 	t.Parallel()
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -452,7 +453,7 @@ func TestPayloadValidator_SegmentsEmpty(t *testing.T) {
 
 func TestPayloadValidator_SegmentTopicEmpty(t *testing.T) {
 	t.Parallel()
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -487,7 +488,7 @@ func TestPayloadValidator_SegmentTopicEmpty(t *testing.T) {
 func TestPayloadValidator_TooManySegments(t *testing.T) {
 	t.Parallel()
 	// Default cap comes from WithDefaults → MaxSegmentsCap=50.
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	segments := make([]scriptpkg.ScriptSegment, 51)
 	for i := range segments {
 		segments[i] = scriptpkg.ScriptSegment{Topic: fmt.Sprintf("topic_%d", i)}
@@ -521,7 +522,7 @@ func TestPayloadValidator_TooManySegments(t *testing.T) {
 
 func TestPayloadValidator_HappyPathFourSegments(t *testing.T) {
 	t.Parallel()
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -550,7 +551,7 @@ func TestPayloadValidator_HappyPathFourSegments(t *testing.T) {
 }
 
 func TestPayloadValidator_LongSourceTextWithinLimit(t *testing.T) {
-	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 100})
+	v := gencore.NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 100})
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -571,7 +572,7 @@ func TestPayloadValidator_LongSourceTextWithinLimit(t *testing.T) {
 }
 
 func TestPayloadValidator_VideoMetadataEmpty(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -601,7 +602,7 @@ func TestPayloadValidator_VideoMetadataEmpty(t *testing.T) {
 }
 
 func TestPayloadValidator_VideoMetadataWhitespaceOnly(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -632,7 +633,7 @@ func TestPayloadValidator_VideoMetadataWhitespaceOnly(t *testing.T) {
 }
 
 func TestPayloadValidator_VideoMetadataValid(t *testing.T) {
-	v := NewDefaultPayloadValidator()
+	v := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,
@@ -656,7 +657,7 @@ func TestPayloadValidator_VideoMetadataValid(t *testing.T) {
 }
 
 func TestPayloadValidator_RejectsEmptyVideoMetadata(t *testing.T) {
-	validator := NewDefaultPayloadValidator()
+	validator := gencore.NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  scriptpkg.PresetCustom,

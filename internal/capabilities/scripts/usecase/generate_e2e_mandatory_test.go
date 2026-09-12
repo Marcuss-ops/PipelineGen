@@ -1,7 +1,7 @@
 // Package scripts — generate_e2e_mandatory_test.go is the mandatory
 // end-to-end acceptance suite for POST /api/script/generate.
 //
-// Each test exercises the full GenerateOneUseCase.Execute path with
+// Each test exercises the full gencore.GenerateOneUseCase.Execute path with
 // controlled fakes so the scenarios are deterministic and do not need
 // a running Ollama / Drive / database.
 package usecase
@@ -21,15 +21,17 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// buildUsecaseWithClipResolver returns a GenerateOneUseCase wired with a
+// buildUsecaseWithClipResolver returns a gencore.GenerateOneUseCase wired with a
 // fake clip resolver, a fake Ollama generator, and a minimal postprocessor
 // registry. Callers can optionally register extra postprocessors before the
 // registry is frozen.
-func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipResolver) *GenerateOneUseCase {
+func buildUsecaseWithClipResolver(gen *testsupport.FakeOllamaGen, clipResolver *fakeClipResolver) *gencore.GenerateOneUseCase {
 	var builder *ClipSourceBuilder
 	if clipResolver != nil {
 		builder = NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
@@ -39,7 +41,7 @@ func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipReso
 	return buildUsecaseWithClipBuilder(gen, builder)
 }
 
-func buildUsecaseWithClipBuilder(gen *fakeOllamaGen, builder *ClipSourceBuilder) *GenerateOneUseCase {
+func buildUsecaseWithClipBuilder(gen *testsupport.FakeOllamaGen, builder *ClipSourceBuilder) *gencore.GenerateOneUseCase {
 	reg := adapters.NewSourceRegistry(zap.NewNop())
 	if builder != nil {
 		reg.Register(scriptpkg.SourceClips, NewClipsSourceResolver(builder, zap.NewNop()))
@@ -47,18 +49,18 @@ func buildUsecaseWithClipBuilder(gen *fakeOllamaGen, builder *ClipSourceBuilder)
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	// Wire the real clip-bindings processor so clip-source plans can
 	// synthesise scenes when the engine returns plain text.
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
-	ppReg.Register(&stubPostProcessor{
+	ppReg.Register(&testsupport.StubPostProcessor{
 		name:   "persistence",
 		result: &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
-	return NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
 }
 
 // TestGenerateE2E_OneClipWithoutSourceText verifies that a single clip
@@ -70,7 +72,7 @@ func TestGenerateE2E_OneClipWithoutSourceText(t *testing.T) {
 	clipResolver := newFakeClipResolver()
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -99,7 +101,7 @@ func TestGenerateE2E_MissingTranscriptFailsClosed(t *testing.T) {
 			"clip-valid:en": makeTrack("clip-valid", "en", "valid transcript"),
 		},
 	})
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:    canonicalSceneJSON(2, []string{"clip-valid", "clip-missing-transcript"}, ""),
 		WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
@@ -129,7 +131,7 @@ func TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback(t *t
 
 	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      genericFallback,
 		WordCount:   9,
 		EstDuration: 3,
@@ -160,7 +162,7 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
 	sourceText := "Use this editorial angle about the quick brown fox."
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -186,7 +188,7 @@ func TestGenerateE2E_SourcePrimaryGroundingPolicy(t *testing.T) {
 	t.Parallel()
 
 	sourceText := "The quick brown fox jumps over the lazy dog."
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, nil, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -214,7 +216,7 @@ func TestGenerateE2E_IncompatibleInput_FiveSecondClipNineHundredWords(t *testing
 	clipResolver.AddClip(makeTestClip("short-clip", "Short", 5*time.Second))
 
 	sourceText := strings.Repeat("word ", 950)
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"short-clip"}, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -232,7 +234,7 @@ func TestGenerateE2E_NonexistentClip(t *testing.T) {
 	t.Parallel()
 
 	clipResolver := newFakeClipResolver()
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"does-not-exist"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -251,7 +253,7 @@ func TestGenerateE2E_NonexistentClip(t *testing.T) {
 func TestGenerateE2E_OllamaUnavailable(t *testing.T) {
 	t.Parallel()
 
-	gen := &fakeOllamaGen{returnErr: errors.New("ollama connection refused")}
+	gen := &testsupport.FakeOllamaGen{returnErr: errors.New("ollama connection refused")}
 	uc := buildUsecaseWithClipResolver(gen, nil)
 	item := makeTextOnlyItem("e2e-ollama-down", "Some source text for the script.")
 
@@ -272,7 +274,7 @@ func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
 	// Use text that overlaps with the clip evidence so the quality gate
 	// passes without needing model-emitted scenes.
 	plainText := buildOverlappingText(1, defaultClipSearchText)
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, plainText),
 		WordCount:   10,
 		EstDuration: 4,
@@ -313,7 +315,7 @@ func TestGenerateE2E_Concurrency(t *testing.T) {
 		clipResolver.AddClip(makeTestClip(fmt.Sprintf("clip-%d", i), fmt.Sprintf("Clip %d", i), 10*time.Second))
 	}
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(2, []string{"clip-0", "clip-1"}, ""), WordCount: 10, EstDuration: 6, Model: "llama3:8b",
 	}}
 

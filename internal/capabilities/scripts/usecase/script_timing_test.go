@@ -26,6 +26,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -41,17 +43,17 @@ func startScriptTimingRun(t *testing.T) (context.Context, *kernobs.Run) {
 	return kernobs.WithRun(context.Background(), run), run
 }
 
-// buildTextTimingUseCase builds a text-only GenerateOneUseCase with a stubbed
+// buildTextTimingUseCase builds a text-only gencore.GenerateOneUseCase with a stubbed
 // engine and a frozen postprocessor registry (entities + persistence).
-func buildTextTimingUseCase(t *testing.T) *GenerateOneUseCase {
+func buildTextTimingUseCase(t *testing.T) *gencore.GenerateOneUseCase {
 	t.Helper()
-	e := buildTestEngine(&fakeOllamaGen{}, nil)
+	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	return NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
 }
 
 // newSearchTimingResolver builds a SearchSourceResolver backed by a fake
@@ -139,11 +141,11 @@ func TestScriptTiming_TotalUsesCanonicalRunClock(t *testing.T) {
 	// selects (entity extraction no longer runs as a legacy "entities"
 	// postprocessor stage), so the sleeping stub is guaranteed to run.
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	uc := NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, buildTestEngine(&fakeOllamaGen{}, nil), ppReg, zap.NewNop())
+	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil), ppReg, zap.NewNop())
 
 	result, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
@@ -232,8 +234,8 @@ func TestScriptTiming_SQLiteHydrationMeasuredOnce(t *testing.T) {
 // records exactly one ollama.generate operation.
 func TestScriptTiming_OllamaMeasuredOnce(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
-	gen := &fakeOllamaGen{}
-	e := buildTestEngine(gen, nil)
+	gen := &testsupport.FakeOllamaGen{}
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	_, err := e.Generate(ctx, &scriptpkg.ResolvedGenerationPlan{
 		Title:    "Ollama Timing",
@@ -257,8 +259,8 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	ppReg.Freeze()
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Postprocessors: []string{"entities", "metadata"}}
@@ -280,12 +282,12 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 
 // TestScriptTiming_GoogleDocsMeasured pins that document publication records
 // the document.publish stage and exactly one google_docs.publish operation per
-// language through the full GenerateOneUseCase.Execute path.
+// language through the full gencore.GenerateOneUseCase.Execute path.
 func TestScriptTiming_GoogleDocsMeasured(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
 	docs := &documentsE2EStub{}
-	uc := buildUsecaseWithDocuments(&fakeOllamaGen{}, docs)
+	uc := buildUsecaseWithDocuments(&testsupport.FakeOllamaGen{}, docs)
 
 	item := makeTextOnlyItem("script-timing-docs", "Source text about clean energy for the document surface.")
 	item.Language = "it"
@@ -391,14 +393,14 @@ func TestScriptTiming_UnattributedTime(t *testing.T) {
 func TestScriptTiming_LegacyProjectionMatchesCanonical(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
-	e := buildTestEngine(&fakeOllamaGen{}, nil)
+	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&stubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
 
-	uc := NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
 	result, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 

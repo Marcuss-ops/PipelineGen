@@ -6,7 +6,7 @@
 // (commit e959e6618) with a fresh implementation focused on
 // the editorial-quality-gate target-words tolerance contract.
 // Same orchestrator seam (buildUsecaseWithClipResolver +
-// fakeOllamaGen + fakeClipResolver), different contract under
+// testsupport.FakeOllamaGen + fakeClipResolver), different contract under
 // test.
 //
 // USER-SPEC INVARIANTS — "tolleranza":
@@ -72,6 +72,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -150,7 +152,7 @@ func p0iGenerateProse(targetWords int) string {
 
 // p0iBuildLengthToleranceOrchestrator wires the canonical
 // orchestrator (buildUsecaseWithClipResolver) with a
-// fakeOllamaGen emitting a vocabulary-repeated prose of
+// testsupport.FakeOllamaGen emitting a vocabulary-repeated prose of
 // EXACTLY targetWords words. The clip resolver is registered
 // with BOTH canonical clips using the SHARED p0iLengthVocabulary
 // so source-text coverage is ~1.0.
@@ -158,13 +160,13 @@ func p0iGenerateProse(targetWords int) string {
 // Returns: (orchestrator, item, targetWords) — the third
 // return value lets the test compute the tolerance window
 // without re-typing the target literal.
-func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*GenerateOneUseCase, scriptpkg.GenerationItemV2, int) {
+func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2, int) {
 	t.Helper()
 
 	prose := p0iGenerateProse(targetWords)
 	envelope := p0iBuildLengthToleranceEnvelope(prose)
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      envelope,
 		WordCount:   targetWords,
 		EstDuration: 3,
@@ -222,7 +224,7 @@ func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*Genera
 //     unsupported claims=0, generic text=false).
 //
 // Test seam: orchestrator-level (buildUsecaseWithClipResolver
-// + fakeOllamaGen + fakeClipResolver with both canonical
+// + testsupport.FakeOllamaGen + fakeClipResolver with both canonical
 // clips registered). The default stub postprocessor does
 // NOT mutate the result.
 func TestLengthTolerance_P0I(t *testing.T) {

@@ -1,6 +1,6 @@
 // Package scripts — llm_errors_p1c_test.go is the P1.C — Errori
 // modello LLM engine-level test suite. It simulates 8 LLM error
-// scenarios via the fakeOllamaGen seam and pins the engine's
+// scenarios via the testsupport.FakeOllamaGen seam and pins the engine's
 // error behavior for each.
 //
 // USER SPEC (verbatim, July 2026): "Implementa la suite P1.C —
@@ -101,7 +101,7 @@
 //   CONTRACT PR-2 says the model should return prose.
 //   TestLLMErrors_P1C_JSONInsteadOfPlainText returns a
 //   canonical V1 JSON envelope and the engine decodes it
-//   successfully via decodeV1, producing a valid EngineResult
+//   successfully via decodeV1, producing a valid gencore.EngineResult
 //   with structured scenes. The plain-text contract says
 //   the model should emit raw narrative prose and the
 //   downstream SceneSynthesizer should derive structured
@@ -117,11 +117,11 @@
 //
 // ── Test seam ──────────────────────────────────────────────────
 //
-// The tests inject fakeOllamaGen (defined in engine_test.go,
+// The tests inject testsupport.FakeOllamaGen (defined in engine_test.go,
 // same package) to simulate each scenario without a real
 // Ollama / HTTP / network. The seam is the canonical narrow
 // `scriptOllamaGenerator` interface declared in engine.go —
-// production wires *ollama.Generator, tests wire fakeOllamaGen.
+// production wires *ollama.Generator, tests wire testsupport.FakeOllamaGen.
 //
 // ── Sibling / counterpart files ─────────────────────────────────
 //
@@ -151,13 +151,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // makeLLMErrorTestPlan returns a canonical ResolvedGenerationPlan
 // for the P1.C engine-level tests. Each test uses the same plan
-// shape so the only thing under test is the fakeOllamaGen's
+// shape so the only thing under test is the testsupport.FakeOllamaGen's
 // response (the error path the suite is designed to exercise).
 //
 // Language=it is the default — scenarios 7 (English-instead-of-
@@ -211,10 +212,10 @@ func makeLLMErrorTestPlan() *scriptpkg.ResolvedGenerationPlan {
 // substring-match "404" to detect this case. See file header.
 func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		returnErr: fmt.Errorf("ollama chat returned status 404"),
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -264,7 +265,7 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 //     fix itself; workers MUST NOT retry)
 func TestLLMErrors_P1C_EmptyResponse(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		result: &scriptports.GenerationResult{
 			Script:      "",
 			WordCount:   0,
@@ -273,7 +274,7 @@ func TestLLMErrors_P1C_EmptyResponse(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -317,7 +318,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 	// (the model is supposed to return prose), but the graceful
 	// decoder currently accepts it.
 	v1JSON := `{"schema_version":1,"text":"Full script prose.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"Full script prose.","kind":"narration","bindings":{}}]}}`
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		result: &scriptports.GenerationResult{
 			Script:      v1JSON,
 			WordCount:   3,
@@ -326,7 +327,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -359,7 +360,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 	// graceful decode makes both shapes succeed.
 	t.Run("malformed_JSON_rejected", func(t *testing.T) {
 		t.Parallel()
-		badGen := &fakeOllamaGen{
+		badGen := &testsupport.FakeOllamaGen{
 			result: &scriptports.GenerationResult{
 				Script:      `{"foo": "bar", "wrong": "shape"}`,
 				WordCount:   2,
@@ -367,7 +368,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 				Model:       "llama3:8b",
 			},
 		}
-		badEng := buildTestEngine(badGen, nil)
+		badEng := testsupport.BuildTestEngine(badGen, nil)
 		_, badErr := badEng.Generate(context.Background(), makeLLMErrorTestPlan())
 
 		// ModeCompatibility removed: JSON-shaped input that isn't valid V1
@@ -395,7 +396,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 func TestLLMErrors_P1C_TextTooShort(t *testing.T) {
 	t.Parallel()
 	shortV1 := `{"schema_version":1,"text":"Breve.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"Breve.","kind":"narration","bindings":{}}]}}`
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		result: &scriptports.GenerationResult{
 			Script:      shortV1,
 			WordCount:   1, // Model reports 1 word — way below the 200-word target.
@@ -404,7 +405,7 @@ func TestLLMErrors_P1C_TextTooShort(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -441,7 +442,7 @@ func TestLLMErrors_P1C_TextTooShort(t *testing.T) {
 func TestLLMErrors_P1C_EnglishInsteadOfItalian(t *testing.T) {
 	t.Parallel()
 	englishV1 := `{"schema_version":1,"text":"This is an English response, not Italian.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"This is an English response, not Italian.","kind":"narration","bindings":{}}]}}`
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		result: &scriptports.GenerationResult{
 			Script:      englishV1,
 			WordCount:   7,
@@ -450,7 +451,7 @@ func TestLLMErrors_P1C_EnglishInsteadOfItalian(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	// Plan requests Italian; fake returns English.
 	plan := makeLLMErrorTestPlan() // Language=it
@@ -504,7 +505,7 @@ func TestLLMErrors_P1C_TruncatedResponse(t *testing.T) {
 	// future SUT-side validator would detect this as the
 	// unterminated-sentence signature.
 	truncatedV1 := `{"schema_version":1,"text":"La costituzione italiana stabilisce che tutti i cittadini sono uguali davanti alla legge, senza distinzione di","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"La costituzione italiana...","kind":"narration","bindings":{}}]}}`
-	gen := &fakeOllamaGen{
+	gen := &testsupport.FakeOllamaGen{
 		result: &scriptports.GenerationResult{
 			Script:      truncatedV1,
 			WordCount:   18,
@@ -513,7 +514,7 @@ func TestLLMErrors_P1C_TruncatedResponse(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 

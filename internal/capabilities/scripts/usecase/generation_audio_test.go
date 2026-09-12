@@ -8,6 +8,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -27,7 +28,7 @@ func (s *audioPlanProcessorStub) RenderAudioPlan(_ context.Context, plan capabil
 
 func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
 	stub := &audioPlanProcessorStub{}
-	uc := &GenerateOneUseCase{audioProcessor: stub}
+	uc := &gencore.GenerateOneUseCase{audioProcessor: stub}
 	result := &scriptpkg.GenerationResult{Output: scriptpkg.ScriptOutput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-1", Index: 0, AudioMode: "VOICEOVER", Bindings: scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{Status: "completed", LocalPath: testAudioPath(t), DurationMs: 1000}}}}}}}
 	item := scriptpkg.GenerationItemV2{ID: "item-1", Language: "en"}
 	if err := uc.renderCombinedAudio(context.Background(), item, result, nil); err != nil {
@@ -40,7 +41,7 @@ func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
 
 func TestRenderCombinedAudioUsesInternalVoiceoverPathAfterResponseSanitization(t *testing.T) {
 	stub := &audioPlanProcessorStub{}
-	uc := &GenerateOneUseCase{audioProcessor: stub}
+	uc := &gencore.GenerateOneUseCase{audioProcessor: stub}
 	path := testAudioPath(t)
 	result := &scriptpkg.GenerationResult{Output: scriptpkg.ScriptOutput{SpecScene: scriptpkg.SpecSceneOutput{
 		Version: 1,

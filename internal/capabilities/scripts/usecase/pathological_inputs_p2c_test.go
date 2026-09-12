@@ -77,10 +77,11 @@ package usecase_test
 
 import (
 	"context"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 

@@ -1,6 +1,6 @@
 // Package scripts — output_sanitizer_test.go (PR-CS-1, FASE 4, DoD #7).
 //
-// Pins SanitizeScriptOutput behaviour against the user-spec test
+// Pins gencore.SanitizeScriptOutput behaviour against the user-spec test
 // list. The tests are deliberately narrow (single-artifact cases)
 // so a regression surfaces with one failing case and a one-line
 // diagnosis — instead of one mega-test where every regression looks
@@ -27,6 +27,8 @@ package usecase
 import (
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 )
 
 // ── 1. SEGMENT N markers ───────────────────────────────────────────────
@@ -63,7 +65,7 @@ func TestStrip_SEGMENT_N(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := SanitizeScriptOutput(tc.input)
+			got := gencore.SanitizeScriptOutput(tc.input)
 			if got != tc.want {
 				t.Fatalf("want %q, got %q", tc.want, got)
 			}
@@ -76,7 +78,7 @@ func TestStrip_SEGMENT_N(t *testing.T) {
 func TestStrip_TopicColonLine(t *testing.T) {
 	t.Parallel()
 	input := "Topic: Introduzione\nPacquiao opened aggressively."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "Pacquiao opened aggressively."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -93,7 +95,7 @@ func TestStrip_TopicColonLine(t *testing.T) {
 func TestStrip_SourceTextColonLine(t *testing.T) {
 	t.Parallel()
 	input := "Source text: Pacquiao opened aggressively.\n\nHe landed the jab at 1:12 of round 1."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "He landed the jab at 1:12 of round 1."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -108,7 +110,7 @@ func TestStrip_SourceTextColonLine(t *testing.T) {
 func TestStrip_clip_id(t *testing.T) {
 	t.Parallel()
 	input := "Pacquiao opened aggressively.\nclip_id: abc123\nHe landed the jab."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "Pacquiao opened aggressively.\nHe landed the jab."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -123,7 +125,7 @@ func TestStrip_clip_id(t *testing.T) {
 func TestStrip_accepted_clip_ids(t *testing.T) {
 	t.Parallel()
 	input := "He kept his guard up.\naccepted_clip_ids: [\"clip-1\", \"clip-2\"]\nHe landed the jab."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "He kept his guard up.\nHe landed the jab."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -138,7 +140,7 @@ func TestStrip_accepted_clip_ids(t *testing.T) {
 func TestStrip_schema_version(t *testing.T) {
 	t.Parallel()
 	input := "The fight was historic.\nschema_version: asset.script.v1\nIt went 12 rounds."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "The fight was historic.\nIt went 12 rounds."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -153,7 +155,7 @@ func TestStrip_schema_version(t *testing.T) {
 func TestStrip_specscene(t *testing.T) {
 	t.Parallel()
 	input := "The bell rang at 2:30.\nspecscene_id: spec-intro-001\nScorecards read 116-110."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "The bell rang at 2:30.\nScorecards read 116-110."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -168,14 +170,14 @@ func TestStrip_specscene(t *testing.T) {
 func TestStrip_MarkdownFence(t *testing.T) {
 	t.Parallel()
 	input := "```\nThe fight was held in Las Vegas.\n```"
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "The fight was held in Las Vegas."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
 	}
 	// 4-backtick fence also drops (regex >=3 backticks).
 	input4 := "````\nThe bell rang at 2:30.\n````"
-	got4 := SanitizeScriptOutput(input4)
+	got4 := gencore.SanitizeScriptOutput(input4)
 	if got4 != "The bell rang at 2:30." {
 		t.Fatalf("4-backtick fence trim: want prose only, got %q", got4)
 	}
@@ -186,8 +188,8 @@ func TestStrip_MarkdownFence(t *testing.T) {
 func TestStrip_Idempotent(t *testing.T) {
 	t.Parallel()
 	input := "Pacquiao opened aggressively.\n\nHe landed the jab at 1:12 of round 1."
-	once := SanitizeScriptOutput(input)
-	twice := SanitizeScriptOutput(once)
+	once := gencore.SanitizeScriptOutput(input)
+	twice := gencore.SanitizeScriptOutput(once)
 	if once != twice {
 		t.Fatalf("sanitizer is not idempotent: once=%q twice=%q", once, twice)
 	}
@@ -195,8 +197,8 @@ func TestStrip_Idempotent(t *testing.T) {
 	// even under repeated application (cache-write path runs it,
 	// cache-hit then re-runs it on replay).
 	dirty := "SEGMENT 1\nTopic: Intro\n```\nschema_version: v1\nclip_id: x\n```\nReal prose line."
-	clean := SanitizeScriptOutput(dirty)
-	if SanitizeScriptOutput(clean) != clean {
+	clean := gencore.SanitizeScriptOutput(dirty)
+	if gencore.SanitizeScriptOutput(clean) != clean {
 		t.Fatalf("dirty->clean->clean MUST be invariant; clean=%q", clean)
 	}
 }
@@ -206,7 +208,7 @@ func TestStrip_Idempotent(t *testing.T) {
 func TestStrip_PreservesContinuousText(t *testing.T) {
 	t.Parallel()
 	prose := "In the main event, Manny Pacquiao faced Adrien Broner at the MGM Grand in Las Vegas on January 19, 2019. Pacquiao opened aggressively, scoring with the jab in round 1, and secured a unanimous decision victory with scorecards of 116-110, 116-110, and 117-109."
-	got := SanitizeScriptOutput(prose)
+	got := gencore.SanitizeScriptOutput(prose)
 	if got != prose {
 		t.Fatalf("clean prose MUST flow through unchanged\nwant %q\ngot  %q", prose, got)
 	}
@@ -219,7 +221,7 @@ func TestStrip_PreservesContinuousText(t *testing.T) {
 func TestStrip_CollapsesExcessBlankLines(t *testing.T) {
 	t.Parallel()
 	input := "Line A.\n\n\n\n\nLine B."
-	got := SanitizeScriptOutput(input)
+	got := gencore.SanitizeScriptOutput(input)
 	want := "Line A.\n\nLine B."
 	if got != want {
 		t.Fatalf("want %q, got %q", want, got)
@@ -232,7 +234,7 @@ func TestStrip_EmptyInput(t *testing.T) {
 	t.Parallel()
 	cases := []string{"", "   ", "\n\n\n", "\t\n  \n"}
 	for _, c := range cases {
-		if got := SanitizeScriptOutput(c); got != "" {
+		if got := gencore.SanitizeScriptOutput(c); got != "" {
 			t.Fatalf("empty-class input MUST return \"\", got %q for input %q", got, c)
 		}
 	}

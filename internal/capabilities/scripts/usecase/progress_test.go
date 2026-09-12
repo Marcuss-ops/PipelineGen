@@ -1,8 +1,8 @@
 // Package usecase — progress_test.go (Issue 8 / P2, June 2026).
 //
-// Pins the nil-safety contract on ProgressTracker:
+// Pins the nil-safety contract on gencore.ProgressTracker:
 //
-//  1. TestProgressTracker_PhaseMethodsNilSafe: a nil *ProgressTracker
+//  1. TestProgressTracker_PhaseMethodsNilSafe: a nil *gencore.ProgressTracker
 //     receiver must not panic on any of the 8 Phase* method calls.
 //     Pre-Issue-8, each Phase* accessed p.item BEFORE calling Emit,
 //     which panicked on a nil receiver. The fix routes all Phase*
@@ -30,11 +30,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestProgressTracker_PhaseMethodsNilSafe is the canonical Issue 8
-// / P2 test. Calls every Phase* method on a nil *ProgressTracker
+// / P2 test. Calls every Phase* method on a nil *gencore.ProgressTracker
 // pointer and asserts each call does not panic.
 //
 // The sub-tests cover the 8 documented phase methods in source
@@ -55,7 +56,7 @@ import (
 func TestProgressTracker_PhaseMethodsNilSafe(t *testing.T) {
 	t.Parallel()
 
-	var p *ProgressTracker // explicit nil pointer; no construction.
+	var p *gencore.ProgressTracker // explicit nil pointer; no construction.
 
 	// Each sub-test wraps one Phase* call. The assert.NotPanics
 	// helper recovers any panic and surfaces the failure with the
@@ -91,7 +92,7 @@ func TestProgressTracker_PhaseMethodsNilSafe(t *testing.T) {
 func TestProgressTracker_EmitOnNil(t *testing.T) {
 	t.Parallel()
 
-	var p *ProgressTracker
+	var p *gencore.ProgressTracker
 	assert.NotPanics(t, func() { p.Emit(50, "ignored") },
 		"Emit on nil receiver must not panic")
 }
@@ -131,7 +132,7 @@ func TestProgressTracker_PhaseHelper(t *testing.T) {
 	t.Parallel()
 
 	rec := &recordingProgressFn{}
-	tracker := NewProgressTracker(rec.record, "item-xyz")
+	tracker := gencore.NewProgressTracker(rec.record, "item-xyz")
 
 	// Direct call to the phase helper with a format that takes no args.
 	tracker.phase(42, "custom message")
@@ -151,7 +152,7 @@ func TestProgressTracker_PhaseHelper_VariadicArgs(t *testing.T) {
 	t.Parallel()
 
 	rec := &recordingProgressFn{}
-	tracker := NewProgressTracker(rec.record, "v-1")
+	tracker := gencore.NewProgressTracker(rec.record, "v-1")
 
 	tracker.phase(95, "Running postprocessor: %s...", "clip_bindings")
 
@@ -167,7 +168,7 @@ func TestProgressTracker_PhaseHelper_VariadicArgs(t *testing.T) {
 func TestProgressTracker_PhaseHelper_NilSafe(t *testing.T) {
 	t.Parallel()
 
-	var p *ProgressTracker
+	var p *gencore.ProgressTracker
 	assert.NotPanics(t, func() { p.phase(99, "ignored") },
 		"phase helper on nil receiver must not panic")
 }
@@ -186,7 +187,7 @@ func TestProgressTracker_EventForwarding(t *testing.T) {
 	}, 1)
 
 	rec := &recordingProgressFn{}
-	tracker := NewProgressTracker(rec.record, "event-item")
+	tracker := gencore.NewProgressTracker(rec.record, "event-item")
 	tracker.SetEventFn(func(eventType, message string, data map[string]any) {
 		observed <- struct {
 			et string
@@ -208,12 +209,12 @@ func TestProgressTracker_EventForwarding(t *testing.T) {
 func TestProgressTracker_EventNilSafe(t *testing.T) {
 	t.Parallel()
 
-	var p *ProgressTracker
+	var p *gencore.ProgressTracker
 	assert.NotPanics(t, func() { p.TrackEvent("x", "y", nil) },
 		"TrackEvent on nil receiver must not panic")
 
 	rec := &recordingProgressFn{}
-	tracker := NewProgressTracker(rec.record, "no-event")
+	tracker := gencore.NewProgressTracker(rec.record, "no-event")
 	assert.NotPanics(t, func() { tracker.TrackEvent("x", "y", nil) },
 		"TrackEvent with nil callback must not panic")
 }
@@ -237,38 +238,38 @@ func TestProgressTracker_EventNilSafe(t *testing.T) {
 // the sequence across goroutines.
 //
 // Case-table signature note: the 7 niladic Phase* methods fit
-// `func(*ProgressTracker)` directly via method-values
-// `(*ProgressTracker).PhaseXxx`. `PhasePostprocess(processor string)`
+// `func(*gencore.ProgressTracker)` directly via method-values
+// `(*gencore.ProgressTracker).PhaseXxx`. `PhasePostprocess(processor string)`
 // takes a string arg, so the case row uses a closure to bind the
 // arg instead of a method-value -- the method-value's type
-// `func(*ProgressTracker, string)` does not match the case-table
-// `func(*ProgressTracker)` type, which would be a compile error.
+// `func(*gencore.ProgressTracker, string)` does not match the case-table
+// `func(*gencore.ProgressTracker)` type, which would be a compile error.
 func TestProgressTracker_HappyPath_PhaseMethodsEmit(t *testing.T) {
 	t.Parallel()
 
 	// Method-value captures the canonical fn signature
-	// `func(*ProgressTracker)`. The `(*ProgressTracker).PhaseXxx`
+	// `func(*gencore.ProgressTracker)`. The `(*gencore.ProgressTracker).PhaseXxx`
 	// method-values let the case table stay declarative while the
 	// per-sub-test tracker is constructed below.
 	type expectation struct {
 		name    string
-		fn      func(*ProgressTracker)
+		fn      func(*gencore.ProgressTracker)
 		percent int
 	}
 	cases := []expectation{
-		{"PhaseNormalize", (*ProgressTracker).PhaseNormalize, 5},
-		{"PhaseValidate", (*ProgressTracker).PhaseValidate, 15},
-		{"PhaseResolveSource", (*ProgressTracker).PhaseResolveSource, 25},
-		{"PhaseBuildPlan", (*ProgressTracker).PhaseBuildPlan, 45},
-		{"PhaseGenerateStart", (*ProgressTracker).PhaseGenerateStart, 55},
-		{"PhaseGenerateDone", (*ProgressTracker).PhaseGenerateDone, 85},
+		{"PhaseNormalize", (*gencore.ProgressTracker).PhaseNormalize, 5},
+		{"PhaseValidate", (*gencore.ProgressTracker).PhaseValidate, 15},
+		{"PhaseResolveSource", (*gencore.ProgressTracker).PhaseResolveSource, 25},
+		{"PhaseBuildPlan", (*gencore.ProgressTracker).PhaseBuildPlan, 45},
+		{"PhaseGenerateStart", (*gencore.ProgressTracker).PhaseGenerateStart, 55},
+		{"PhaseGenerateDone", (*gencore.ProgressTracker).PhaseGenerateDone, 85},
 		// PhasePostprocess takes a `processor string` arg, so the
 		// case-row is a closure that binds the sentinel arg. The
-		// bare method-value `(*ProgressTracker).PhasePostprocess`
-		// has type `func(*ProgressTracker, string)` and would NOT
-		// match the `fn func(*ProgressTracker)` case-table type.
-		{"PhasePostprocess", func(t *ProgressTracker) { t.PhasePostprocess("test") }, 95},
-		{"PhaseComplete", (*ProgressTracker).PhaseComplete, 100},
+		// bare method-value `(*gencore.ProgressTracker).PhasePostprocess`
+		// has type `func(*gencore.ProgressTracker, string)` and would NOT
+		// match the `fn func(*gencore.ProgressTracker)` case-table type.
+		{"PhasePostprocess", func(t *gencore.ProgressTracker) { t.PhasePostprocess("test") }, 95},
+		{"PhaseComplete", (*gencore.ProgressTracker).PhaseComplete, 100},
 	}
 
 	for _, c := range cases {
@@ -277,7 +278,7 @@ func TestProgressTracker_HappyPath_PhaseMethodsEmit(t *testing.T) {
 			t.Parallel()
 			// Per-sub-test fresh state: no shared-mutation race.
 			rec := &recordingProgressFn{}
-			tracker := NewProgressTracker(rec.record, "happy-item")
+			tracker := gencore.NewProgressTracker(rec.record, "happy-item")
 			c.fn(tracker)
 
 			gotPercent, gotMessage, gotCalled := rec.snapshot()

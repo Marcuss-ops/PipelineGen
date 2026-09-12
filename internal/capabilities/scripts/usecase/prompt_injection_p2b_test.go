@@ -104,14 +104,14 @@
 //
 // ── Test seam ──────────────────────────────────────────────────
 //
-// The tests inject fakeOllamaGen (defined in engine_test.go,
+// The tests inject testsupport.FakeOllamaGen (defined in engine_test.go,
 // same package) to simulate the model's response to the
 // injection. For prompt-structure tests, the captured ollama
 // request is inspected via gen.capturedReq.Load().Prompt. For
 // output-validation tests, the fake's result is configured to
 // return specific shapes (JSON, off-topic prose, etc.) so the
 // engine's behavior is pinned. For quality-gate tests, the
-// full usecase path is exercised via NewGenerateOneUseCase +
+// full usecase path is exercised via gencore.NewGenerateOneUseCase +
 // adapters.PostProcessorRegistry with the persistence stub.
 //
 // ── Why no real-LLM test? ──────────────────────────────────────
@@ -155,6 +155,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -262,23 +264,23 @@ func makeP2BItemForQualityGate() scriptpkg.GenerationItemV2 {
 	}
 }
 
-// buildP2BUsecase wires a minimal GenerateOneUseCase for the
+// buildP2BUsecase wires a minimal gencore.GenerateOneUseCase for the
 // P2.B usecase-level tests (5b, 6). Returns the usecase with
-// a real Engine (stubbed via fakeOllamaGen) + a minimal
+// a real Engine (stubbed via testsupport.FakeOllamaGen) + a minimal
 // PostProcessorRegistry (just the persistence safety-default
 // stub) + a nil SourceRegistry (text-only path).
-func buildP2BUsecase(t *testing.T, gen *fakeOllamaGen) (*GenerateOneUseCase, *adapters.PostProcessorRegistry) {
+func buildP2BUsecase(t *testing.T, gen *testsupport.FakeOllamaGen) (*gencore.GenerateOneUseCase, *adapters.PostProcessorRegistry) {
 	t.Helper()
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	ppReg.Register(&stubPostProcessor{
+	ppReg.Register(&testsupport.StubPostProcessor{
 		name:   "persistence",
 		result: &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
-	uc := NewGenerateOneUseCase(
+	uc := gencore.NewGenerateOneUseCase(
 		adapters.NormalizationConfig{},
 		nil, // SourceRegistry nil → text-only path
 		e,
@@ -305,10 +307,10 @@ func buildP2BUsecase(t *testing.T, gen *fakeOllamaGen) (*GenerateOneUseCase, *ad
 // delimiter).
 func TestPromptInjectionDefense_P2B_TranscriptWrappedAsData(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
-		result: defaultFakeResult(), // canonical V1 JSON
+	gen := &testsupport.FakeOllamaGen{
+		result: testsupport.DefaultFakeResult(), // canonical V1 JSON
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err, "engine MUST succeed for the P2.B scenario")
@@ -358,10 +360,10 @@ func TestPromptInjectionDefense_P2B_TranscriptWrappedAsData(t *testing.T) {
 // a command." Today this marker is MISSING (SUT BUG 2).
 func TestPromptInjectionDefense_P2B_SystemPromptMarksDataAsContent(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
-		result: defaultFakeResult(),
+	gen := &testsupport.FakeOllamaGen{
+		result: testsupport.DefaultFakeResult(),
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err)
@@ -407,10 +409,10 @@ func TestPromptInjectionDefense_P2B_SystemPromptMarksDataAsContent(t *testing.T)
 // XML tags, no clear boundary.
 func TestPromptInjectionDefense_P2B_InjectionTextContainedInTranscript(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
-		result: defaultFakeResult(),
+	gen := &testsupport.FakeOllamaGen{
+		result: testsupport.DefaultFakeResult(),
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err)
@@ -462,8 +464,8 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 		Model:       "llama3:8b",
 		Prompt:      "ignored",
 	}
-	gen := &fakeOllamaGen{result: jsonResult}
-	e := buildTestEngine(gen, nil)
+	gen := &testsupport.FakeOllamaGen{result: jsonResult}
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	result, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 
@@ -484,7 +486,7 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 	// is now rejected by the scanner (ModeCompatibility removed).
 	t.Run("malformed_json_rejected", func(t *testing.T) {
 		t.Parallel()
-		badGen := &fakeOllamaGen{
+		badGen := &testsupport.FakeOllamaGen{
 			result: &scriptports.GenerationResult{
 				Script:      `{"ignore_previous": true, "format": "json"}`,
 				WordCount:   3,
@@ -492,7 +494,7 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 				Model:       "llama3:8b",
 			},
 		}
-		badEng := buildTestEngine(badGen, nil)
+		badEng := testsupport.BuildTestEngine(badGen, nil)
 		_, badErr := badEng.Generate(context.Background(), makeP2BPlanWithInjection())
 		require.Error(t, badErr,
 			"malformed JSON must now be rejected (ModeCompatibility removed)")
@@ -540,8 +542,8 @@ func TestPromptInjectionDefense_P2B_TopicChangeNotDetected(t *testing.T) {
 	// 5a. Engine layer: no topic check (SUT BUG 3)
 	t.Run("engine_layer_accepts_off_topic", func(t *testing.T) {
 		t.Parallel()
-		gen := &fakeOllamaGen{result: offTopicResult}
-		e := buildTestEngine(gen, nil)
+		gen := &testsupport.FakeOllamaGen{result: offTopicResult}
+		e := testsupport.BuildTestEngine(gen, nil)
 
 		result, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 
@@ -563,7 +565,7 @@ func TestPromptInjectionDefense_P2B_TopicChangeNotDetected(t *testing.T) {
 	// unsupported-claims rising.
 	t.Run("quality_gate_weak_proxy_catches_off_topic", func(t *testing.T) {
 		t.Parallel()
-		gen := &fakeOllamaGen{result: offTopicResult}
+		gen := &testsupport.FakeOllamaGen{result: offTopicResult}
 		uc, _ := buildP2BUsecase(t, gen)
 
 		_, usecaseErr := uc.Execute(context.Background(), makeP2BItemForQualityGate(), scriptpkg.Preset(""), nil)
@@ -607,7 +609,7 @@ func TestPromptInjectionDefense_P2B_QualityGateCatchesInjection(t *testing.T) {
 		Model:       "llama3:8b",
 		Prompt:      "ignored",
 	}
-	gen := &fakeOllamaGen{result: offTopicResult}
+	gen := &testsupport.FakeOllamaGen{result: offTopicResult}
 	uc, _ := buildP2BUsecase(t, gen)
 
 	_, err := uc.Execute(context.Background(), makeP2BItemForQualityGate(), scriptpkg.Preset(""), nil)
@@ -644,10 +646,10 @@ func TestPromptInjectionDefense_P2B_QualityGateCatchesInjection(t *testing.T) {
 // This is the canonical end-to-end test for the user spec.
 func TestPromptInjectionDefense_P2B_AllInjectionPatternsCombined(t *testing.T) {
 	t.Parallel()
-	gen := &fakeOllamaGen{
-		result: defaultFakeResult(),
+	gen := &testsupport.FakeOllamaGen{
+		result: testsupport.DefaultFakeResult(),
 	}
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err, "engine MUST succeed for the canonical P2.B end-to-end scenario")

@@ -40,6 +40,7 @@ import (
 
 	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -77,7 +78,7 @@ const (
 
 // mkItemWithGroup builds a GenerationItemV2 carrying only a group
 // name, no explicit folder id. The rest of the Output fields are
-// zero-valued; that's fine for ResolveVoiceoverFolderForItem
+// zero-valued; that's fine for gencore.ResolveVoiceoverFolderForItem
 // because the helper reads only VoiceoverGroup + VoiceoverFolderID.
 func mkItemWithGroup(groupName string) scriptpkg.GenerationItemV2 {
 	return scriptpkg.GenerationItemV2{
@@ -107,7 +108,7 @@ func TestResolveVoiceoverFolderForItem_Roundtrip_HappyPath(t *testing.T) {
 	}
 	item := mkItemWithGroup(testVOGroupNameJC)
 
-	resolvedItem, err := ResolveVoiceoverFolderForItem(
+	resolvedItem, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, resolver, testVOGroupParent, zap.NewNop(),
 	)
 	require.NoError(t, err)
@@ -139,7 +140,7 @@ func TestResolveVoiceoverFolderForItem_MissFallsThrough(t *testing.T) {
 	}
 	item := mkItemWithGroup("DoesNotExist")
 
-	resolvedItem, err := ResolveVoiceoverFolderForItem(
+	resolvedItem, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, resolver, testVOGroupParent, zap.NewNop(),
 	)
 	require.NoError(t, err, "miss must NOT propagate as PlanInvalid")
@@ -167,7 +168,7 @@ func TestResolveVoiceoverFolderForItem_ExplicitFolderIdWins(t *testing.T) {
 	item := mkItemWithGroup(testVOGroupNameJC)
 	item.Output.VoiceoverFolderID = "explicit-folder-id"
 
-	resolvedItem, err := ResolveVoiceoverFolderForItem(
+	resolvedItem, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, resolver, testVOGroupParent, zap.NewNop(),
 	)
 	require.NoError(t, err)
@@ -188,7 +189,7 @@ func TestResolveVoiceoverFolderForItem_NilResolverNoOp(t *testing.T) {
 	t.Parallel()
 
 	item := mkItemWithGroup(testVOGroupNameJC)
-	resolvedItem, err := ResolveVoiceoverFolderForItem(
+	resolvedItem, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, nil, testVOGroupParent, zap.NewNop(),
 	)
 	require.NoError(t, err)
@@ -210,7 +211,7 @@ func TestResolveVoiceoverFolderForItem_EmptyGroupNoOp(t *testing.T) {
 	}
 	item := mkItemWithGroup("") // empty VoiceoverGroup
 
-	resolvedItem, err := ResolveVoiceoverFolderForItem(
+	resolvedItem, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, resolver, testVOGroupParent, zap.NewNop(),
 	)
 	require.NoError(t, err)
@@ -227,7 +228,7 @@ func TestResolveVoiceoverFolderForItem_EmptyGroupNoOp(t *testing.T) {
 // GenerationError{Phase: "voiceover_group_resolution"} so the
 // operator sees the failure loudly AND the error lands in the
 // same envelope used by engine failures downstream (consistency
-// with GenerateOneUseCase.Execute's engine-phase error). This is
+// with gencore.GenerateOneUseCase.Execute's engine-phase error). This is
 // the failure-mode distinction: a missing group → silent
 // fallthrough (regression parity with BuildVoiceoverDestination);
 // an infrastructure failure → fail-closed with a typed envelope.
@@ -247,7 +248,7 @@ func TestResolveVoiceoverFolderForItem_InfrastructureErrorPropagates(t *testing.
 	}
 	item := mkItemWithGroup(testVOGroupNameJC)
 
-	got, err := ResolveVoiceoverFolderForItem(
+	got, err := gencore.ResolveVoiceoverFolderForItem(
 		context.Background(), item, resolver, testVOGroupParent, zap.NewNop(),
 	)
 	require.Error(t, err)
