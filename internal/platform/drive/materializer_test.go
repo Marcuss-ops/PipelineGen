@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -36,6 +38,57 @@ func (*materializerReader) SearchFiles(context.Context, string) ([]DriveFileInfo
 type byteReader struct {
 	data []byte
 	off  int
+}
+
+type overlappingMaterializerReader struct {
+	content []byte
+	calls   atomic.Int32
+	gate    chan struct{}
+	close   sync.Once
+}
+
+func (r *overlappingMaterializerReader) DownloadFile(context.Context, string) (io.ReadCloser, string, error) {
+	if r.calls.Add(1) == 2 {
+		r.close.Do(func() { close(r.gate) })
+	}
+	return io.NopCloser(&gatedByteReader{data: r.content, gate: r.gate}), "video/mp4", nil
+}
+func (*overlappingMaterializerReader) GetFileMD5(context.Context, string) (string, error) {
+	return "", nil
+}
+func (*overlappingMaterializerReader) GetFileMeta(context.Context, string) (*FileMeta, error) {
+	return nil, nil
+}
+func (*overlappingMaterializerReader) ListFiles(context.Context, string) ([]DriveFileInfo, error) {
+	return nil, nil
+}
+func (*overlappingMaterializerReader) FindFileByName(context.Context, string, string) (ExistingFileLookup, error) {
+	return ExistingFileLookup{}, nil
+}
+func (*overlappingMaterializerReader) FileIsNotTrashed(context.Context, string) (bool, error) {
+	return true, nil
+}
+func (*overlappingMaterializerReader) FileExists(context.Context, string) (bool, error) {
+	return true, nil
+}
+func (*overlappingMaterializerReader) SearchFiles(context.Context, string) ([]DriveFileInfo, error) {
+	return nil, nil
+}
+
+type gatedByteReader struct {
+	data []byte
+	off  int
+	gate <-chan struct{}
+}
+
+func (r *gatedByteReader) Read(p []byte) (int, error) {
+	<-r.gate
+	if r.off == len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.off:])
+	r.off += n
+	return n, nil
 }
 
 func bytesReader(data []byte) *byteReader { return &byteReader{data: data} }
@@ -127,6 +180,56 @@ func TestCanonicalAssetMaterializer_CASHitAvoidsSecondWrite(t *testing.T) {
 	}
 	if reader.calls != 1 {
 		t.Fatalf("downloads = %d, want 1", reader.calls)
+	}
+}
+
+func TestCanonicalAssetMaterializer_ConcurrentProcessesDoNotSharePartFile(t *testing.T) {
+	scratch := t.TempDir()
+	content := []byte("concurrent CAS artifact")
+	expected := materializerHash(content)
+	reader := &overlappingMaterializerReader{content: content, gate: make(chan struct{})}
+	m1, err := NewCanonicalAssetMaterializer(reader, scratch, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2, err := NewCanonicalAssetMaterializer(reader, scratch, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := MaterializeRequest{AssetID: "asset-concurrent", DriveFileID: "drive-concurrent", ExpectedSHA256: expected, Extension: ".mp4"}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, m := range []*CanonicalAssetMaterializer{m1, m2} {
+		wg.Add(1)
+		go func(m *CanonicalAssetMaterializer) {
+			defer wg.Done()
+			_, materializeErr := m.Materialize(context.Background(), req)
+			errs <- materializeErr
+		}(m)
+	}
+	wg.Wait()
+	close(errs)
+	for materializeErr := range errs {
+		if materializeErr != nil {
+			t.Fatal(materializeErr)
+		}
+	}
+
+	final := filepath.Join(scratch, "assets", expected, "source.mp4")
+	got, err := os.ReadFile(final)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("concurrent CAS artifact = %q, want %q", got, content)
+	}
+	parts, err := filepath.Glob(filepath.Join(filepath.Dir(final), ".source-*.part"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 0 {
+		t.Fatalf("temporary CAS files remain: %v", parts)
 	}
 }
 

@@ -33,6 +33,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // MaterializeRequest is the input for a single asset materialization.
@@ -95,6 +96,10 @@ type CanonicalAssetMaterializer struct {
 	// times. It is the shared kernel authority, so the clip.render layer and
 	// this layer cannot disagree about what "already verified" means.
 	verifier *digest.Verifier
+	// downloads collapses same-path misses inside one process. The on-disk
+	// protocol below remains safe across processes by using unique temp files
+	// and no-overwrite winner adoption.
+	downloads singleflight.Group
 }
 
 // NewCanonicalAssetMaterializer builds the materializer. reader is the
@@ -255,6 +260,28 @@ func (m *CanonicalAssetMaterializer) verifyAndReturn(path, branch string, req Ma
 // verifies the hash, and atomically renames into the appropriate cache
 // location.
 func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req MaterializeRequest, expected string, t0 time.Time) (*MaterializeResult, error) {
+	key := expected
+	if key == "" {
+		key = req.AssetID
+	}
+	key += "\x00" + req.Extension
+	value, err, _ := m.downloads.Do(key, func() (any, error) {
+		return m.downloadAndVerifyLeader(ctx, req, expected, t0)
+	})
+	if err != nil {
+		return nil, err
+	}
+	result, ok := value.(*MaterializeResult)
+	if !ok || result == nil {
+		return nil, fmt.Errorf("materialize asset %q: singleflight returned an invalid result", req.AssetID)
+	}
+	return result, nil
+}
+
+// downloadAndVerifyLeader performs one miss resolution. It is called through
+// singleflight for in-process deduplication, while its unique temp file and
+// no-overwrite adoption make concurrent processes safe too.
+func (m *CanonicalAssetMaterializer) downloadAndVerifyLeader(ctx context.Context, req MaterializeRequest, expected string, t0 time.Time) (*MaterializeResult, error) {
 	cacheDir := filepath.Join(m.scratchDir, "assets")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		m.log.Error("canonical_materializer.materialize.failed",
@@ -305,15 +332,10 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 		}
 	}
 
-	// Download to .part file.
-	partPath := finalPath + ".part"
+	// Download to a unique temp file in the destination directory. A shared
+	// finalPath+".part" lets concurrent processes truncate and remove each
+	// other's bytes; CreateTemp gives every writer an independent inode.
 	downloadStart := time.Now()
-	m.log.Info("canonical_materializer.drive_download.start",
-		zap.String("asset_id", req.AssetID),
-		zap.String("drive_file_id", req.DriveFileID),
-		zap.String("part_path", partPath),
-		zap.String("final_path", finalPath),
-	)
 
 	rc, _, err := m.reader.DownloadFile(ctx, req.DriveFileID)
 	if err != nil {
@@ -327,15 +349,23 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 	}
 	defer rc.Close()
 
-	out, err := os.Create(partPath)
+	out, err := os.CreateTemp(filepath.Dir(finalPath), ".source-*.part")
 	if err != nil {
 		m.log.Error("canonical_materializer.materialize.failed",
 			zap.String("asset_id", req.AssetID),
 			zap.String("branch", "create_part"),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("create part file %q: %w", partPath, err)
+		return nil, fmt.Errorf("create part file in %q: %w", filepath.Dir(finalPath), err)
 	}
+	partPath := out.Name()
+	defer os.Remove(partPath)
+	m.log.Info("canonical_materializer.drive_download.start",
+		zap.String("asset_id", req.AssetID),
+		zap.String("drive_file_id", req.DriveFileID),
+		zap.String("part_path", partPath),
+		zap.String("final_path", finalPath),
+	)
 
 	n, copyErr := io.Copy(out, rc)
 
@@ -350,7 +380,6 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 
 	// On any write/close error, clean up the part file.
 	if copyErr != nil || closeErr != nil || syncErr != nil {
-		_ = os.Remove(partPath)
 		if copyErr != nil {
 			m.log.Error("canonical_materializer.materialize.failed",
 				zap.String("asset_id", req.AssetID),
@@ -377,7 +406,6 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 	}
 
 	if n <= 0 {
-		_ = os.Remove(partPath)
 		m.log.Error("canonical_materializer.materialize.failed",
 			zap.String("asset_id", req.AssetID),
 			zap.String("branch", "empty_download"),
@@ -387,7 +415,6 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 
 	// Hash verification against expected SHA256.
 	if expected != "" && computed != expected {
-		_ = os.Remove(partPath)
 		m.log.Error("canonical_materializer.materialize.failed",
 			zap.String("asset_id", req.AssetID),
 			zap.String("branch", "hash_mismatch"),
@@ -397,14 +424,24 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 		return nil, fmt.Errorf("asset %q: downloaded hash %s does not match expected %s", req.AssetID, computed, expected)
 	}
 
-	// Atomic rename: part → final.
-	if err := os.Rename(partPath, finalPath); err != nil {
-		// If rename fails (e.g., cross-device), fall back to copy+remove.
-		if copyErr := copyFile(partPath, finalPath); copyErr != nil {
-			_ = os.Remove(partPath)
-			return nil, fmt.Errorf("rename/copy part to final %q: %w (rename: %v)", finalPath, copyErr, err)
+	// Adopt the completed inode without overwriting another process's winner.
+	// Both writers have verified the same expected digest, so the first link is
+	// the winner and later writers reuse it after verification.
+	if err := os.Link(partPath, finalPath); err != nil {
+		if !os.IsExist(err) {
+			return nil, fmt.Errorf("adopt part file %q as %q: %w", partPath, finalPath, err)
 		}
-		_ = os.Remove(partPath)
+		winnerSHA, winnerSize, winnerErr := m.contentVerifier().Verify(finalPath)
+		if winnerErr == nil && (expected == "" || winnerSHA == expected) {
+			return &MaterializeResult{
+				LocalPath: finalPath,
+				SHA256:    winnerSHA,
+				SizeBytes: winnerSize,
+				FromCache: true,
+				Branch:    "download_concurrent_cache",
+			}, nil
+		}
+		return nil, fmt.Errorf("materialize asset %q: existing cache winner %q is invalid (sha=%q err=%v)", req.AssetID, finalPath, winnerSHA, winnerErr)
 	}
 
 	m.log.Info("canonical_materializer.materialize.done",
