@@ -12,7 +12,6 @@ package cliprender
 // RenderingGen job, persists a CAS continuation and releases the Master slot.
 // The settle continuation resumes directly at the remote-render boundary and
 // reuses the single completion tail in worker_completion.go.
-package cliprender
 
 import (
 	"context"
@@ -36,18 +35,18 @@ var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 // opt-in composition concern; when disabled, the historical blocking path is
 // byte-compatible and still calls the exact same completion tail.
 type Worker struct {
-	preparer              *Preparer
-	workspaceDir          string
-	subtitles             SubtitleCompiler
-	renderer              RenderExecutor
-	publisher             RenderPublisher
-	folderResolver        DestinationFolderResolver
-	overlayResolver       OverlaySegmentResolver
-	outputProber          OutputProber
-	continuationStore     ContinuationStore
-	continuationEnqueuer  ContinuationEnqueuer
-	asyncCompletion       bool
-	log                   *zap.Logger
+	preparer             *Preparer
+	workspaceDir         string
+	subtitles            SubtitleCompiler
+	renderer             RenderExecutor
+	publisher            RenderPublisher
+	folderResolver       DestinationFolderResolver
+	overlayResolver      OverlaySegmentResolver
+	outputProber         OutputProber
+	continuationStore    ContinuationStore
+	continuationEnqueuer ContinuationEnqueuer
+	asyncCompletion      bool
+	log                  *zap.Logger
 }
 
 func NewWorker(preparer *Preparer, workspaceDir string, log *zap.Logger) (*Worker, error) {
