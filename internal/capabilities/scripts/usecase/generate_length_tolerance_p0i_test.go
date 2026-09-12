@@ -166,7 +166,7 @@ func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*gencor
 	prose := p0iGenerateProse(targetWords)
 	envelope := p0iBuildLengthToleranceEnvelope(prose)
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:      envelope,
 		WordCount:   targetWords,
 		EstDuration: 3,

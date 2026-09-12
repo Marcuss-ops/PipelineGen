@@ -49,14 +49,14 @@ func buildUsecaseWithClipBuilder(gen *testsupport.FakeOllamaGen, builder *ClipSo
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	// Wire the real clip-bindings processor so clip-source plans can
 	// synthesise scenes when the engine returns plain text.
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
 	ppReg.Register(&testsupport.StubPostProcessor{
-		name:   "persistence",
-		result: &adapters.PostProcessResult{Changed: true},
+		ProcessorName: "persistence",
+		Result:        &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
@@ -72,7 +72,7 @@ func TestGenerateE2E_OneClipWithoutSourceText(t *testing.T) {
 	clipResolver := newFakeClipResolver()
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -101,7 +101,7 @@ func TestGenerateE2E_MissingTranscriptFailsClosed(t *testing.T) {
 			"clip-valid:en": makeTrack("clip-valid", "en", "valid transcript"),
 		},
 	})
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:    canonicalSceneJSON(2, []string{"clip-valid", "clip-missing-transcript"}, ""),
 		WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
@@ -115,7 +115,7 @@ func TestGenerateE2E_MissingTranscriptFailsClosed(t *testing.T) {
 	var notReady *ErrTextTrackNotReady
 	require.True(t, errors.As(err, &notReady), "expected *ErrTextTrackNotReady in script.generate error: %v", err)
 	require.Equal(t, "clip-missing-transcript", notReady.AssetID)
-	require.Nil(t, gen.capturedReq.Load(), "LLM must not be invoked when transcript evidence is missing")
+	require.Nil(t, gen.CapturedReq.Load(), "LLM must not be invoked when transcript evidence is missing")
 }
 
 // TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback
@@ -131,7 +131,7 @@ func TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback(t *t
 
 	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:      genericFallback,
 		WordCount:   9,
 		EstDuration: 3,
@@ -147,8 +147,8 @@ func TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback(t *t
 	var notReady *ErrTextTrackNotReady
 	require.ErrorAs(t, err, &notReady)
 	require.Equal(t, "clip-no-transcript", notReady.AssetID)
-	require.Equal(t, int32(0), gen.calls.Load(), "the LLM must not receive empty clip evidence")
-	require.Nil(t, gen.capturedReq.Load(), "no Ollama request may be created for missing transcript evidence")
+	require.Equal(t, int32(0), gen.Calls.Load(), "the LLM must not receive empty clip evidence")
+	require.Nil(t, gen.CapturedReq.Load(), "no Ollama request may be created for missing transcript evidence")
 	require.NotContains(t, err.Error(), genericFallback, "generic fallback prose must not be returned as a successful job")
 }
 
@@ -162,7 +162,7 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
 	sourceText := "Use this editorial angle about the quick brown fox."
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -172,7 +172,7 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 	_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 	assert.Contains(t, captured.Prompt, "CLIP-GROUNDED WRITING RULES:")
 	assert.Contains(t, captured.Prompt, "Use this editorial angle")
@@ -188,7 +188,7 @@ func TestGenerateE2E_SourcePrimaryGroundingPolicy(t *testing.T) {
 	t.Parallel()
 
 	sourceText := "The quick brown fox jumps over the lazy dog."
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, nil, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -199,7 +199,7 @@ func TestGenerateE2E_SourcePrimaryGroundingPolicy(t *testing.T) {
 	_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 	assert.Equal(t, scriptpkg.GroundingPolicySourcePrimary, captured.GroundingPolicy)
 }
@@ -216,7 +216,7 @@ func TestGenerateE2E_IncompatibleInput_FiveSecondClipNineHundredWords(t *testing
 	clipResolver.AddClip(makeTestClip("short-clip", "Short", 5*time.Second))
 
 	sourceText := strings.Repeat("word ", 950)
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"short-clip"}, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -234,7 +234,7 @@ func TestGenerateE2E_NonexistentClip(t *testing.T) {
 	t.Parallel()
 
 	clipResolver := newFakeClipResolver()
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"does-not-exist"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -253,7 +253,7 @@ func TestGenerateE2E_NonexistentClip(t *testing.T) {
 func TestGenerateE2E_OllamaUnavailable(t *testing.T) {
 	t.Parallel()
 
-	gen := &testsupport.FakeOllamaGen{returnErr: errors.New("ollama connection refused")}
+	gen := &testsupport.FakeOllamaGen{ReturnErr: errors.New("ollama connection refused")}
 	uc := buildUsecaseWithClipResolver(gen, nil)
 	item := makeTextOnlyItem("e2e-ollama-down", "Some source text for the script.")
 
@@ -274,7 +274,7 @@ func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
 	// Use text that overlaps with the clip evidence so the quality gate
 	// passes without needing model-emitted scenes.
 	plainText := buildOverlappingText(1, defaultClipSearchText)
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:      fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, plainText),
 		WordCount:   10,
 		EstDuration: 4,
@@ -315,7 +315,7 @@ func TestGenerateE2E_Concurrency(t *testing.T) {
 		clipResolver.AddClip(makeTestClip(fmt.Sprintf("clip-%d", i), fmt.Sprintf("Clip %d", i), 10*time.Second))
 	}
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(2, []string{"clip-0", "clip-1"}, ""), WordCount: 10, EstDuration: 6, Model: "llama3:8b",
 	}}
 

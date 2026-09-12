@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -20,7 +21,7 @@ func TestModelSourceTextUsesResearchEvidenceOverStalePlanText(t *testing.T) {
 		}},
 	}
 
-	modelText, err := modelSourceText(&scriptpkg.ResolvedGenerationPlan{
+	modelText, err := gencore.ModelSourceText(&scriptpkg.ResolvedGenerationPlan{
 		ID: "research-plan", SourceKind: string(scriptpkg.SourceResearch),
 		SourceText: "STALE/WRONG TEXT", ResearchEvidence: pack,
 	})
@@ -31,7 +32,7 @@ func TestModelSourceTextUsesResearchEvidenceOverStalePlanText(t *testing.T) {
 }
 
 func TestModelSourceTextRejectsResearchWithoutEvidence(t *testing.T) {
-	_, err := modelSourceText(&scriptpkg.ResolvedGenerationPlan{
+	_, err := gencore.ModelSourceText(&scriptpkg.ResolvedGenerationPlan{
 		ID: "research-plan", SourceKind: string(scriptpkg.SourceResearch), SourceText: "STALE/WRONG TEXT",
 	})
 	require.Error(t, err)

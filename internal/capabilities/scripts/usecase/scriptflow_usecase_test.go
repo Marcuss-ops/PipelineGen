@@ -94,8 +94,8 @@ type fakePostGenExtractor struct {
 
 func (f *fakePostGenExtractor) ExtractEntitiesFromScriptWithModel(_ context.Context, _ []string, _ int, _ string) (*detail.FullEntityAnalysis, error) {
 	f.calls.Add(1)
-	if f.returnErr != nil {
-		return nil, f.returnErr
+	if f.ReturnErr != nil {
+		return nil, f.ReturnErr
 	}
 	if f.analysis != nil {
 		return f.analysis, nil

@@ -421,7 +421,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, prose)
 
 	uc := buildUsecaseWithClipResolver(
-		&testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+		&testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 			Script:      cleanJSON,
 			WordCount:   10,
 			EstDuration: 3,
