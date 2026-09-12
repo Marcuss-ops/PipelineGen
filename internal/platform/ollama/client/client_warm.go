@@ -37,8 +37,8 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 		_, err := c.ChatDetailed(ctx, []types.Message{{Role: "system", Content: "warmup"}}, map[string]any{
 			// Match the short-scene bucket used by the real fan-out. Ollama can
 			// reload/reconfigure a resident model when the context changes, so a
-			// 2048 probe followed by 4096 scene calls would create a false warmup.
-			"model": model, "num_predict": 1, "num_ctx": 4096,
+			// 4096 probe followed by 2048 scene calls would create a false warmup.
+			"model": model, "num_predict": 1, "num_ctx": 2048,
 		}, nil)
 		if err != nil {
 			return nil, err

@@ -104,8 +104,12 @@ type GenerateRequest struct {
 	// ExtractEntities carries the caller's entity-extraction intent
 	// (output.extract_entities). ToggleDisabled skips the incremental VidRush
 	// entity extraction (and its provider fan-out) for the run; ToggleDefault
-	// and ToggleEnabled preserve the canonical always-extract behavior.
+	// and ToggleEnabled are resolved by NeedsSemanticEnrichment based on the
+	// actual downstream consumers.
 	ExtractEntities scriptpkg.Toggle `json:"extract_entities,omitempty"`
+	// GenerateSceneImages is carried separately because image generation is a
+	// semantic consumer even when named-entity extraction itself is omitted.
+	GenerateSceneImages scriptpkg.Toggle `json:"generate_scene_images,omitempty"`
 
 	// SourceLanguage is the primary language of the input (e.g. "en").
 	// Scenes in this language are NOT translated.

@@ -126,12 +126,29 @@ func TestTimingSummary_OperationsAggregateCallsAndWork(t *testing.T) {
 	if len(s.Operations) > 0 {
 		prev := ""
 		for _, op := range s.Operations {
-			key := op.Component + "\x00" + op.Operation
+			key := op.Stage + "\x00" + op.Component + "\x00" + op.Operation
 			if prev != "" && key < prev {
 				t.Fatalf("operations not sorted: %q before %q", key, prev)
 			}
 			prev = key
 		}
+	}
+}
+
+func TestTimingSummary_OperationsKeepStageIdentity(t *testing.T) {
+	report := &RunReport{Operations: []OperationReport{
+		{Stage: "generate", Component: "ollama", Operation: "generate", DurationMs: 700},
+		{Stage: "translate", Component: "ollama", Operation: "generate", DurationMs: 300},
+	}}
+	operations := report.TimingSummary().Operations
+	if len(operations) != 2 {
+		t.Fatalf("operations = %+v, want one entry per stage", operations)
+	}
+	if operations[0].Stage != "generate" || operations[0].WorkMs != 700 {
+		t.Fatalf("first operation = %+v, want generate/700", operations[0])
+	}
+	if operations[1].Stage != "translate" || operations[1].WorkMs != 300 {
+		t.Fatalf("second operation = %+v, want translate/300", operations[1])
 	}
 }
 

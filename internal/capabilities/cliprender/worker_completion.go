@@ -74,8 +74,12 @@ func (w *Worker) completeRendered(
 		probeStart := time.Now()
 		probe, err := w.outputProber.ProbeOutput(ctx, outcome.OutputPath)
 		probeEnd := time.Now()
+		probeStatus := kernobs.StageStatusCompleted
+		if err != nil {
+			probeStatus = kernobs.StageStatusFailed
+		}
 		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, probeEnd, err)
-		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseHashProbe, probeStart, probeEnd, kernobs.StageStatusCompleted, err)
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseHashProbe, probeStart, probeEnd, probeStatus, err)
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
 		}
@@ -128,11 +132,18 @@ func (w *Worker) completeRendered(
 		CertifiedSizeBytes: outcome.SizeBytes,
 	})
 	publishEnd := time.Now()
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseUploadSlot, uploadSlotStart, publishEnd, kernobs.StageStatusCompleted, err)
+	publishStatus := kernobs.StageStatusCompleted
+	if err != nil {
+		publishStatus = kernobs.StageStatusFailed
+	}
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseUploadSlot, uploadSlotStart, publishEnd, publishStatus, err)
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, publishEnd, err)
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseDrive, publishStart, publishEnd, kernobs.StageStatusCompleted, err)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseDrive, publishStart, publishEnd, publishStatus, err)
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
+	}
+	if publication == nil {
+		return nil, fmt.Errorf("clip.render: publisher returned a nil publication")
 	}
 
 	logPublishMS := int64(NotInstrumented)
@@ -147,7 +158,7 @@ func (w *Worker) completeRendered(
 		outcome.Metrics.DriveUploadMS = Metric(driveMS)
 		logPublishMS = pm.TotalMS
 	}
-	if publication == nil || publication.AssetID == "" || (!publication.DrivePending && publication.DriveFileID == "") {
+	if publication.AssetID == "" || (!publication.DrivePending && publication.DriveFileID == "") {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
 

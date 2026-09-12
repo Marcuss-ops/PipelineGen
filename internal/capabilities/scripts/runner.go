@@ -293,12 +293,11 @@ func NewRunner(
 // construction. This keeps the capability testable without importing an HTML
 // or Drive implementation into the capability package.
 func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateRequest) (*VidRushIncrementalCoordinator, error) {
-	// Request-level kill switch: a caller that explicitly disables entity
-	// extraction (output.extract_entities=disabled) skips the incremental
-	// VidRush pipeline entirely — no per-scene entity extraction and no
-	// provider fan-out derived from it. ToggleDefault/ToggleEnabled keep the
-	// canonical always-extract behavior.
-	if req.EntityExtractionDisabled() {
+	// Request-level semantic gate: plain text/audio/docs runs have no consumer
+	// for per-scene VidRush enrichment, so they skip extraction, provider
+	// search, and materialization entirely. Explicit entities/images/media
+	// plans still opt in; explicit disabled always wins.
+	if !req.NeedsSemanticEnrichment() {
 		return nil, nil
 	}
 	p := r.vidRushPipeline

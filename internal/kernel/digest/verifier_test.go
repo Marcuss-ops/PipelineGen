@@ -3,6 +3,8 @@ package digest
 import (
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -43,6 +45,57 @@ func TestVerifier_MemoizesUnchangedFile(t *testing.T) {
 	}
 	if want := SHA256Bytes(content); firstSHA != want {
 		t.Fatalf("sha = %s, want %s", firstSHA, want)
+	}
+}
+
+type gatedVerifierHasher struct {
+	calls   atomic.Int32
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *gatedVerifierHasher) hash(path string) (string, int64, error) {
+	h.calls.Add(1)
+	h.once.Do(func() { close(h.started) })
+	<-h.release
+	return SHA256File(path)
+}
+
+func TestVerifier_CoalescesConcurrentCacheMisses(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "source.mp4")
+	if err := os.WriteFile(path, []byte("concurrent content-addressed bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hasher := &gatedVerifierHasher{started: make(chan struct{}), release: make(chan struct{})}
+	verifier := NewVerifier(hasher.hash)
+
+	const callers = 16
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, err := verifier.Verify(path)
+			errs <- err
+		}()
+	}
+	close(start)
+	<-hasher.started
+	close(hasher.release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent verify: %v", err)
+		}
+	}
+	if got := hasher.calls.Load(); got != 1 {
+		t.Fatalf("full-file hashes = %d, want 1 under concurrent cache miss", got)
 	}
 }
 

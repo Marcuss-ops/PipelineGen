@@ -52,8 +52,8 @@ type TimingSummary struct {
 	// Stages is the exhaustive per-stage wall-time list (nested stages
 	// included), aggregated by name and sorted by name.
 	Stages []TimingStage `json:"stages,omitempty"`
-	// Operations is the exhaustive per-"component.operation" work list with
-	// call counts, sorted by component then operation. WorkMs is accumulated
+	// Operations is the exhaustive per-stage "component.operation" work list
+	// with call counts, sorted by stage, component, then operation. WorkMs is accumulated
 	// (summed) work and MUST NOT be reported as pipeline wall time.
 	Operations []TimingOperation `json:"operations,omitempty"`
 	// Fanout separates stage wall time from summed parallel work for fan-out
@@ -69,6 +69,7 @@ type TimingStage struct {
 
 // TimingOperation is one technical boundary and its accumulated work.
 type TimingOperation struct {
+	Stage     string `json:"stage,omitempty"`
 	Component string `json:"component"`
 	Operation string `json:"operation"`
 	// Calls is the number of times the boundary was measured.
@@ -162,21 +163,23 @@ func timingStages(stages []StageReport) []TimingStage {
 	return out
 }
 
-// timingOperations aggregates operations by (component, operation), counting
-// calls and accumulating work. Output is sorted by component then operation.
+// timingOperations aggregates operations by (stage, component, operation),
+// counting calls and accumulating work. Stage is part of the identity because
+// the same technical operation can have different meanings and costs in
+// different pipeline phases.
 func timingOperations(ops []OperationReport) []TimingOperation {
 	if len(ops) == 0 {
 		return nil
 	}
-	type key struct{ component, operation string }
+	type key struct{ stage, component, operation string }
 	byKey := make(map[key]*TimingOperation, len(ops))
 	var keys []key
 	seen := make(map[key]bool, len(ops))
 	for _, op := range ops {
-		k := key{op.Component, op.Operation}
+		k := key{op.Stage, op.Component, op.Operation}
 		a := byKey[k]
 		if a == nil {
-			a = &TimingOperation{Component: op.Component, Operation: op.Operation}
+			a = &TimingOperation{Stage: op.Stage, Component: op.Component, Operation: op.Operation}
 			byKey[k] = a
 		}
 		a.Calls++
@@ -189,6 +192,9 @@ func timingOperations(ops []OperationReport) []TimingOperation {
 		}
 	}
 	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].stage != keys[j].stage {
+			return keys[i].stage < keys[j].stage
+		}
 		if keys[i].component != keys[j].component {
 			return keys[i].component < keys[j].component
 		}

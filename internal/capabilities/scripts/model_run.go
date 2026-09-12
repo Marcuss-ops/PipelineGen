@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -92,6 +93,24 @@ var ErrMinimumTextGate = errors.New("scriptgeneration: generated text failed the
 // canonical always-extract behavior.
 func (req GenerateRequest) EntityExtractionDisabled() bool {
 	return req.ExtractEntities == scriptpkg.ToggleDisabled
+}
+
+// NeedsSemanticEnrichment reports whether the run has a real downstream
+// consumer for per-scene semantic extraction. Omitted entity extraction is
+// intentionally no longer an implicit NLP request: plain text/audio/docs
+// runs do not need VidRush, while explicit entities, scene images, enabled
+// extraction policy, or an active visual media plan do.
+func (req GenerateRequest) NeedsSemanticEnrichment() bool {
+	if req.ExtractEntities == scriptpkg.ToggleDisabled {
+		return false
+	}
+	if req.ExtractEntities == scriptpkg.ToggleEnabled || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
+		return true
+	}
+	if req.MediaPlan.Extraction.Enabled || req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return true
+	}
+	return mediadomain.IsActiveMediaPlanMode(req.MediaPlan.Mode)
 }
 
 // ResolveDocsConfig resolves the effective document publishing config

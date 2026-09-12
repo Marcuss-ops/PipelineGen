@@ -106,6 +106,26 @@ func TestBreakdown_NoDoubleCountingNestedStages(t *testing.T) {
 	}
 }
 
+func TestBreakdown_EqualIntervalsRemainTopLevel(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 1000,
+		Stages: []StageReport{
+			stageAt("parallel.a", 0, 1000),
+			stageAt("parallel.b", 0, 1000),
+		},
+	}
+	bd := report.Breakdown()
+	if bd.AttributedStageMs != 1000 {
+		t.Fatalf("AttributedStageMs = %d, want 1000 (equal intervals share the covered wall)", bd.AttributedStageMs)
+	}
+	if bd.OverlappedMs != 1000 {
+		t.Fatalf("OverlappedMs = %d, want 1000 (equal intervals are concurrent top-level stages)", bd.OverlappedMs)
+	}
+	if len(bd.CriticalPath) != 2 {
+		t.Fatalf("CriticalPath = %+v, want both equal-interval stages", bd.CriticalPath)
+	}
+}
+
 // TestBreakdown_UnanchoredStagesAreTopLevel: a stage without an interval
 // cannot be nested, so it is attributed at the top level.
 func TestBreakdown_UnanchoredStagesAreTopLevel(t *testing.T) {

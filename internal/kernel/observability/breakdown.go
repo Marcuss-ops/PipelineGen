@@ -313,7 +313,8 @@ func topLevelStages(stages []StageReport) []StageReport {
 			if other.StartedAt.IsZero() || other.FinishedAt.IsZero() {
 				continue
 			}
-			if !other.StartedAt.After(st.StartedAt) && !other.FinishedAt.Before(st.FinishedAt) {
+			if !other.StartedAt.After(st.StartedAt) && !other.FinishedAt.Before(st.FinishedAt) &&
+				(other.StartedAt.Before(st.StartedAt) || other.FinishedAt.After(st.FinishedAt)) {
 				contained = true
 				break
 			}
