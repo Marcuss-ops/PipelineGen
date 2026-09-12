@@ -40,10 +40,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"os/exec"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 

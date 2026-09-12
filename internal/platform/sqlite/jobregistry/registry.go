@@ -7,8 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	"github.com/google/uuid"

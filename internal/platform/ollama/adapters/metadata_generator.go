@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 )
@@ -38,7 +39,7 @@ type OllamaMetadataGeneratorAdapter struct {
 
 // NewOllamaMetadataGeneratorAdapter constructs the adapter. gen may be
 // nil — in that case, GenerateMetadata returns
-// scriptadapters.ErrMetadataGeneratorUnavailable (fail-closed per
+// processor.ErrMetadataGeneratorUnavailable (fail-closed per
 // godlike/07) so callers probe identically to the unavailable adapter.
 func NewOllamaMetadataGeneratorAdapter(gen *ollama.Generator) scriptadapters.MetadataGenerator {
 	return &OllamaMetadataGeneratorAdapter{gen: gen}
@@ -57,7 +58,7 @@ func NewOllamaMetadataGeneratorAdapter(gen *ollama.Generator) scriptadapters.Met
 //     - TranslationStatus = "translated" (backend returns English)
 func (a *OllamaMetadataGeneratorAdapter) GenerateMetadata(ctx context.Context, req script.MetadataGenerationRequest) ([]script.VideoMetadata, error) {
 	if a.gen == nil {
-		return nil, scriptadapters.ErrMetadataGeneratorUnavailable
+		return nil, processor.ErrMetadataGeneratorUnavailable
 	}
 
 	title := strings.TrimSpace(req.Title)

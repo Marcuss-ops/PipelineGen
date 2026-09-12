@@ -403,8 +403,8 @@ func prepareTestRequest(planID string) capoverlay.PrepareRequest {
 
 // TestQueuePrepareEnqueuer_SubmitsPrepareJob pins the overlay.prepare
 // path: the pre-timing PrepareRequest is submitted as an overlay.prepare
-// job whose id is "prepare-"+planID (idempotency key), whose spec round-trips
-// back to the same intents, and whose assets are the deduplicated
+// job whose id is "prepare-"+planID (idempotency key), whose spec contains
+// the strict worker projection of those intents, and whose assets are the deduplicated
 // entity-image refs carried on the intents.
 func TestQueuePrepareEnqueuer_SubmitsPrepareJob(t *testing.T) {
 	client := newFakeRenderQueueClient()
@@ -424,14 +424,14 @@ func TestQueuePrepareEnqueuer_SubmitsPrepareJob(t *testing.T) {
 	if job.JobType != capoverlay.JobTypePrepare {
 		t.Fatalf("job type = %q, want %q", job.JobType, capoverlay.JobTypePrepare)
 	}
-	var got capoverlay.PrepareRequest
+	var got overlayPrepareWire
 	if err := json.Unmarshal(job.OverlaySpec, &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.PlanID != req.PlanID || got.SchemaVersion != capoverlay.SchemaVersionPrepare {
 		t.Fatalf("spec did not round-trip: %+v", got)
 	}
-	if len(got.Intents) != 2 || got.Intents[0].TemplateID != "person_default" || got.Intents[1].TimingState != capoverlay.TimingStatePending {
+	if len(got.Intents) != 2 || got.Intents[0].TemplateID != "person_default" || got.Intents[1].TimingState != string(capoverlay.TimingStatePending) {
 		t.Fatalf("intents not projected: %+v", got.Intents)
 	}
 	// Assets are deduplicated by content hash (case-insensitive).

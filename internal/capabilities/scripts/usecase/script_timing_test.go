@@ -26,6 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -47,13 +48,13 @@ func startScriptTimingRun(t *testing.T) (context.Context, *kernobs.Run) {
 // engine and a frozen postprocessor registry (entities + persistence).
 func buildTextTimingUseCase(t *testing.T) *gencore.GenerateOneUseCase {
 	t.Helper()
-	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{})
+	e := buildTestEngine(&testsupport.FakeOllamaGen{})
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", Result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
 }
 
 // newSearchTimingResolver builds a SearchSourceResolver backed by a fake
@@ -141,13 +142,13 @@ func TestScriptTiming_TotalUsesCanonicalRunClock(t *testing.T) {
 	// selects (entity extraction no longer runs as a legacy "entities"
 	// postprocessor stage), so the sleeping stub is guaranteed to run.
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "clip_search", SleepMs: 5, Result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}), ppReg, zap.NewNop())
+	uc := gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, buildTestEngine(&testsupport.FakeOllamaGen{}), ppReg, zap.NewNop())
 
-	result, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
+	result, err := uc.Execute(ctx, testsupport.ItemForTimings(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 
 	// TotalMs was captured from the run clock mid-Execute, so it must be
@@ -175,7 +176,7 @@ func TestScriptTiming_PrepareHasSubstageBreakdown(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 	uc := buildTextTimingUseCase(t)
 
-	_, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
+	_, err := uc.Execute(ctx, testsupport.ItemForTimings(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 
 	report := run.Report()
@@ -235,7 +236,7 @@ func TestScriptTiming_SQLiteHydrationMeasuredOnce(t *testing.T) {
 func TestScriptTiming_OllamaMeasuredOnce(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 	gen := &testsupport.FakeOllamaGen{}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	_, err := e.Generate(ctx, &scriptpkg.ResolvedGenerationPlan{
 		Title:    "Ollama Timing",
@@ -259,8 +260,8 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", Result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	ppReg.Freeze()
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Postprocessors: []string{"entities", "metadata"}}
@@ -334,7 +335,7 @@ func TestScriptTiming_ParallelTTSWallTimeNotSummed(t *testing.T) {
 	f := fanout[0]
 	assert.Equal(t, "voiceover.generate", f.Stage)
 	assert.Equal(t, int64(5210), f.WallMs, "wall must be the stage wall time")
-	assert.Equal(t, int64(10), f.calls, "calls must count each parallel operation")
+	assert.Equal(t, int64(10), f.Calls, "calls must count each parallel operation")
 	assert.Equal(t, int64(4090), f.MaxMs, "max must be the longest single call")
 	assert.Equal(t, int64(40450), f.WorkMs, "work must be the summed call durations")
 	assert.Greater(t, f.WorkMs, f.WallMs,
@@ -393,15 +394,15 @@ func TestScriptTiming_UnattributedTime(t *testing.T) {
 func TestScriptTiming_LegacyProjectionMatchesCanonical(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
-	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{})
+	e := buildTestEngine(&testsupport.FakeOllamaGen{})
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", Result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
 
-	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
-	result, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
+	uc := gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	result, err := uc.Execute(ctx, testsupport.ItemForTimings(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 
 	report := run.Report()

@@ -4,11 +4,11 @@
 // moved out of wire_script.go. The adapter bridges the concrete
 // *imgservice.Service signature (which returns *detail.ImageAsset
 // and takes tags []string as the search-input carrier) into the
-// canonical adapters.ImageGenService typed-port shape (which
-// returns *adapters.ImageResult). This is the only canonical
+// canonical processor.ImageGenService typed-port shape (which
+// returns *processor.ImageResult). This is the only canonical
 // bridge between the composition-root concrete service and the
 // application-layer typed-port interface consumed by
-// adapters.ImageProcessor.
+// processor.ImageProcessor.
 //
 // Curation scope per FASE 2.A spec: "media_curator, scene_builder,
 // evidence_builder, clip_source_builder". Today the COMPLETE
@@ -28,7 +28,7 @@
 // structurally did — the 10-arg usecase GenerateSmartImage had
 // a different signature than the consumer's smartImageGenService
 // type-assertion target). The shim now ONLY implements the
-// adapters.ImageGenService interface (single method:
+// processor.ImageGenService interface (single method:
 // SearchAndDownload) + the optional imagePrewarmer interface
 // (TriggerPrewarm). The composition root injects the canonical
 // *images.Service directly; the shim is a pure, non-broken
@@ -46,7 +46,7 @@
 //     imageGenSvcAdapter inline in the image processor
 //     registration block at line ~109).
 //   - internal/capabilities/scripts/adapters/processor_images.go:
-//     the consumer (adapters.ImageGenService + imagePrewarmer
+//     the consumer (processor.ImageGenService + imagePrewarmer
 //     typed-port shapes).
 //   - internal/capabilities/images: *imgservice.Service (the
 //     concrete implementation the adapter wraps).
@@ -59,18 +59,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // imageGenSvcAdapter adapts *imgservice.Service →
-// adapters.ImageGenService (the canonical typed port consumed by
-// adapters.ImageProcessor).
+// processor.ImageGenService (the canonical typed port consumed by
+// processor.ImageProcessor).
 //
 // The adapter invokes AI image generation (GenerateSmartImage) via
 // the wrapped concrete service and bridges the result shape
 // (*detail.ImageAsset) into the consumer's typed-port shape
-// (*adapters.ImageResult). On failure the error is propagated.
+// (*processor.ImageResult). On failure the error is propagated.
 // The concrete SearchAndDownload path of *imgservice.Service (a
 // Wikipedia/SearXNG/DuckDuckGo web-search fallback) is intentionally
 // NOT used: the caller wants AI-generated images.
@@ -81,7 +82,7 @@ import (
 // usecase.ImageGenService (which it never structurally did, since
 // the 10-arg usecase GenerateSmartImage had a different signature
 // than the consumer's smartImageGenService type-assertion target).
-// The shim now ONLY implements adapters.ImageGenService (single
+// The shim now ONLY implements processor.ImageGenService (single
 // method: SearchAndDownload) + the optional imagePrewarmer
 // interface (TriggerPrewarm). The composition root injects the
 // canonical *images.Service directly; the shim is a pure,
@@ -107,8 +108,8 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, to
 
 // SearchAndDownload bridges the concrete *imgservice.Service
 // signature (returns *detail.ImageAsset) to the canonical
-// adapters.ImageGenService interface (returns
-// *adapters.ImageResult). ImageResult exposes only SourceURL, so
+// processor.ImageGenService interface (returns
+// *processor.ImageResult). ImageResult exposes only SourceURL, so
 // the bridge copies that single field after a defensive nil-check
 // on the underlying detail.ImageAsset. A nil inner result becomes
 // an EMPTY ImageResult (SourceURL="") so the downstream
@@ -118,7 +119,7 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, to
 //
 // AI-first: GenerateSmartImage is called with the scene query as
 // prompt. On failure the error is propagated — no web search fallback.
-func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string) (*adapters.ImageResult, error) {
+func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string) (*processor.ImageResult, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
@@ -128,14 +129,14 @@ func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, descri
 		return nil, fmt.Errorf("AI image generation failed for %q: %w", name, err)
 	}
 	if imgAsset == nil {
-		return &adapters.ImageResult{}, nil
+		return &processor.ImageResult{}, nil
 	}
 
 	url := imgAsset.SourceURL
 	if !strings.HasPrefix(url, "http") && imgAsset.DriveFileID != "" {
 		url = fmt.Sprintf("https://drive.google.com/file/d/%s/view", imgAsset.DriveFileID)
 	}
-	return &adapters.ImageResult{SourceURL: url, DriveFileID: imgAsset.DriveFileID}, nil
+	return &processor.ImageResult{SourceURL: url, DriveFileID: imgAsset.DriveFileID}, nil
 }
 
 // TriggerPrewarm forwards the warmup signal to the concrete image
@@ -149,13 +150,13 @@ func (a *imageGenSvcAdapter) TriggerPrewarm(ctx context.Context, jobID string, c
 }
 
 // Compile-time assertions: imageGenSvcAdapter satisfies the canonical
-// adapters.ImageGenService typed port (single method: SearchAndDownload)
+// processor.ImageGenService typed port (single method: SearchAndDownload)
 // AND the optional imagePrewarmer interface (TriggerPrewarm). Drift in
 // either interface breaks the build immediately rather than panicking
 // on the first script request that requests images.
 var (
-	_ adapters.ImageGenService = (*imageGenSvcAdapter)(nil)
-	_ imagePrewarmer           = (*imageGenSvcAdapter)(nil)
+	_ processor.ImageGenService = (*imageGenSvcAdapter)(nil)
+	_ imagePrewarmer            = (*imageGenSvcAdapter)(nil)
 )
 
 // imagePrewarmer mirrors the typed-port interface declared in

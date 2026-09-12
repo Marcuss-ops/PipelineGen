@@ -6,9 +6,10 @@ import (
 	"math"
 	"strings"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scenepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -207,7 +208,7 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 // non-text sources (clips, catalog, search, curate). The registry is
 // built later in the composition root than the SceneTextGenerator,
 // so it is supplied via this setter.
-func (g *SceneTextGenerator) SetSourceRegistry(reg *adapters.SourceRegistry) {
+func (g *SceneTextGenerator) SetSourceRegistry(reg *processor.SourceRegistry) {
 	g.Registry = reg
 }
 
@@ -230,7 +231,7 @@ func (g *SceneTextGenerator) SetClipProber(prober ClipProber) {
 // engine directly (not through the legacy finalizer), so the save must
 // happen here to make COLD→WARM replay deterministic. Optional: when nil,
 // caching is a no-op.
-func (g *SceneTextGenerator) SetMemoryService(svc *adapters.Service) {
+func (g *SceneTextGenerator) SetMemoryService(svc *processor.Service) {
 	if g != nil {
 		g.Memory = svc
 	}

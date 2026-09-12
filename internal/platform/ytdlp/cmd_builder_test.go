@@ -13,9 +13,10 @@ package ytdlp
 import (
 	"reflect"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"slices"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // youTubeURLA is canonical YouTube URL used for the matrix.

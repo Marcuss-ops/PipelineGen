@@ -71,6 +71,7 @@ package wiring
 import (
 	"context"
 	"errors"
+
 	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"

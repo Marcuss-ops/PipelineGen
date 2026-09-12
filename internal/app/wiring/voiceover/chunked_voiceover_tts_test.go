@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 )
 
 func TestSplitVoiceoverWordsBoundariesAndReconstruction(t *testing.T) {

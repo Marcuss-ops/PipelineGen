@@ -14,7 +14,7 @@ func (p *VidRushMaterializationProcessor) metadataOnlyResult(plan *scriptpkg.Res
 	}
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	for _, segment := range input.VidRushSegments {
-		segments = append(segments, cloneVidRushSegmentResult(segment))
+		segments = append(segments, CloneVidRushSegmentResult(segment))
 	}
 	return &PostProcessResult{VidRushSegments: segments, Changed: len(segments) > 0}, true
 }

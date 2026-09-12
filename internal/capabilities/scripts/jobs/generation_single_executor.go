@@ -20,8 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -103,7 +104,7 @@ func (e *singleGenerationExecutor) Execute(
 		e.log.Info("script.generate: item source text metrics",
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),
-			zap.Any("source_text", gencore.SourceTextLogFields(item.Source.SourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
+			zap.Any("source_text", gencore.SourceTextLogFields(item.Source.SourceText, processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
 	}
 
 	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
@@ -147,7 +148,7 @@ func (e *singleGenerationExecutor) Execute(
 		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
 	}
 
-	artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, result, e.log)
+	artifacts, persistErr := processor.PersistGeneratedArtifacts(ctx, j.ID, result, e.log)
 	if persistErr != nil {
 		// FASE 1 (c) — typed-error contract: the handler MUST NOT
 		// swallow persistence failure as a silent drop. The error is

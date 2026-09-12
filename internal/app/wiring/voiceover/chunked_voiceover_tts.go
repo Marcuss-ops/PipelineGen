@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 const voiceoverChunkMaxWords = 400

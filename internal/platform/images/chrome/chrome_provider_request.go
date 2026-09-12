@@ -22,9 +22,10 @@ package chrome
 
 import (
 	"fmt"
-	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"os"
 	"path/filepath"
+
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 )
 
 // resolveOutputPath returns the canonical output path for the

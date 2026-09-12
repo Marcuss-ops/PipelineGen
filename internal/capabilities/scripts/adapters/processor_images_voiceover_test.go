@@ -12,7 +12,7 @@
 // ImageGenService, VoiceoverService, ImageResult all live).
 // Updated Process() call signatures to match the canonical
 // (ctx, plan, ProcessInput) shape. Updated fakeImageGen return
-// type to *adapterspkg.ImageResult.
+// type to *processor.ImageResult.
 //
 // PR-LEGACY-CLEANUP-2026-07-10 Item 2: the obsolete `PostProcessArtifact`
 // type alias (the historical accumulator name, never used in
@@ -35,7 +35,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -45,12 +46,12 @@ import (
 // ── Image processor fakes ─────────────────────────────────────────
 
 type fakeImageGen struct {
-	results []*adapterspkg.ImageResult
+	results []*processor.ImageResult
 	errs    []error
 	calls   atomic.Int32
 }
 
-func (f *fakeImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
+func (f *fakeImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
 	i := int(f.calls.Add(1) - 1)
 	// Keep the fake deterministic under parallel fan-out by mapping
 	// scene-<n> back to the corresponding fixture slot when possible.
@@ -92,7 +93,7 @@ func (f *blockingImageGen) TriggerPrewarm(_ context.Context, _ string, _ int) {
 	f.prewarmCalled.Store(1)
 }
 
-func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
+func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
 	if f.prewarmCalled.Load() == 0 {
 		f.prewarmMisses.Add(1)
 	}
@@ -106,7 +107,7 @@ func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _,
 	f.calls.Add(1)
 	<-f.release
 	f.inFlight.Add(-1)
-	return &adapterspkg.ImageResult{SourceURL: "http://img/" + sceneName}, nil
+	return &processor.ImageResult{SourceURL: "http://img/" + sceneName}, nil
 }
 
 type generatedPriorityImageGen struct {
@@ -115,9 +116,9 @@ type generatedPriorityImageGen struct {
 	lastPrompts []string
 }
 
-func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
+func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
 	f.searchCalls.Add(1)
-	return &adapterspkg.ImageResult{SourceURL: "http://search/" + sceneName}, nil
+	return &processor.ImageResult{SourceURL: "http://search/" + sceneName}, nil
 }
 
 func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
@@ -234,7 +235,7 @@ func processInputFromModel(model *scriptpkg.ModelScriptOutputV1) adapterspkg.Pro
 
 func TestImageProcessorNilGen(t *testing.T) {
 	t.Parallel()
-	proc := adapterspkg.NewImageProcessor(nil, zap.NewNop())
+	proc := processor.NewImageProcessor(nil, zap.NewNop())
 	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nScenesModel(2)))
 	if err == nil {
 		t.Fatal("expected error when ImageGenService is nil")
@@ -243,8 +244,8 @@ func TestImageProcessorNilGen(t *testing.T) {
 
 func TestImageProcessorNoScenes(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{results: []*adapterspkg.ImageResult{{SourceURL: "http://img1"}}}
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1"}}}
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	model := nScenesModel(0)
 	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
 	if err != nil {
@@ -256,8 +257,8 @@ func TestImageProcessorNoScenes(t *testing.T) {
 
 func TestImageProcessorNilModel(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{results: []*adapterspkg.ImageResult{{SourceURL: "http://img1"}}}
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1"}}}
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -269,8 +270,8 @@ func TestImageProcessorNilModel(t *testing.T) {
 
 func TestImageProcessorSuccess(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{results: []*adapterspkg.ImageResult{{SourceURL: "http://img1.jpg"}}}
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1.jpg"}}}
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	model := nScenesModel(1)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -284,7 +285,7 @@ func TestImageProcessorSuccess(t *testing.T) {
 func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
 	t.Parallel()
 	gen := &generatedPriorityImageGen{}
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		Text:          "Generated script.",
@@ -319,10 +320,10 @@ func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
 func TestImageProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeImageGen{
-		results: []*adapterspkg.ImageResult{{SourceURL: "http://img1.jpg"}, nil},
+		results: []*processor.ImageResult{{SourceURL: "http://img1.jpg"}, nil},
 		errs:    []error{nil, errors.New("timeout")},
 	}
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	model := nScenesModel(2)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -344,7 +345,7 @@ func TestImageProcessorWarmupAndParallelFanout(t *testing.T) {
 		release: make(chan struct{}),
 	}
 
-	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	proc := processor.NewImageProcessor(gen, zap.NewNop())
 	model := nScenesModel(4)
 
 	done := make(chan struct{})
@@ -377,7 +378,7 @@ func TestImageProcessorWarmupAndParallelFanout(t *testing.T) {
 
 func TestVoiceoverProcessorNilGen(t *testing.T) {
 	t.Parallel()
-	proc := adapterspkg.NewVoiceoverProcessor(nil, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(nil, zap.NewNop())
 	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nScenesModel(2)))
 	if err == nil {
 		t.Fatal("expected error when VoiceoverService is nil")
@@ -387,7 +388,7 @@ func TestVoiceoverProcessorNilGen(t *testing.T) {
 func TestVoiceoverProcessorNoScenes(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{}
-	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(0)
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
 	if err != nil {
@@ -400,7 +401,7 @@ func TestVoiceoverProcessorNoScenes(t *testing.T) {
 func TestVoiceoverProcessorNilModel(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{}
-	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -423,7 +424,7 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 			}, nil
 		},
 	}
-	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(1)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -452,7 +453,7 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 			}, nil
 		},
 	}
-	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(2)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -469,14 +470,14 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 // ── Test: processor names ─────────────────────────────────────────
 
 func TestImageProcessorName(t *testing.T) {
-	proc := adapterspkg.NewImageProcessor(&fakeImageGen{results: []*adapterspkg.ImageResult{}}, zap.NewNop())
+	proc := processor.NewImageProcessor(&fakeImageGen{results: []*processor.ImageResult{}}, zap.NewNop())
 	if proc.Name() != adapterspkg.ProcessorImages {
 		t.Errorf("expected name \"images\", got %q", proc.Name())
 	}
 }
 
 func TestVoiceoverProcessorName(t *testing.T) {
-	proc := adapterspkg.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
+	proc := processor.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
 	if proc.Name() != adapterspkg.ProcessorVoiceover {
 		t.Errorf("expected name \"voiceover\", got %q", proc.Name())
 	}

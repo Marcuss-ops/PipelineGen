@@ -13,8 +13,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )

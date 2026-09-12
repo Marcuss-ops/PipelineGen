@@ -16,9 +16,10 @@ package schema
 
 import (
 	"fmt"
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"strconv"
 	"strings"
+
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
 // ConceptCollectionName is the canonical physical collection

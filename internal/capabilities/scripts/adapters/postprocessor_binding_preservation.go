@@ -105,8 +105,8 @@ func preserveResolvedEntityImages(replacement *scriptpkg.SpecScene, previous scr
 }
 
 func preserveBindings(previous, replacement scriptpkg.SceneBindings) scriptpkg.SceneBindings {
-	previous = cloneSceneBindings(previous)
-	replacement = cloneSceneBindings(replacement)
+	previous = CloneSceneBindings(previous)
+	replacement = CloneSceneBindings(replacement)
 	if replacement.Stock == nil {
 		replacement.Stock = previous.Stock
 	}
@@ -275,7 +275,7 @@ func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg
 // Segment identity is shared, but provider assets are additive state and
 // must not be replaced by the last processor to touch the segment.
 func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
-	out := cloneVidRushSegmentResult(dst)
+	out := CloneVidRushSegmentResult(dst)
 	if src.SceneID != "" {
 		out.SceneID = src.SceneID
 	}
@@ -308,9 +308,9 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	// Provider deltas are normalized against the owning segment before they
 	// are merged. A stamped candidate from another segment is discarded
 	// instead of being rebound by the last processor to touch this result.
-	out.Assets.Candidates = appendProviderCandidatesUnique(out.Assets.Candidates, normalizeVidRushCandidateList(src.Assets.Candidates, out))
-	out.Assets.SecondaryImages = appendProviderCandidatesUnique(out.Assets.SecondaryImages, normalizeVidRushCandidateList(src.Assets.SecondaryImages, out))
-	out.Assets.GeneratedImages = appendProviderCandidatesUnique(out.Assets.GeneratedImages, normalizeVidRushCandidateList(src.Assets.GeneratedImages, out))
+	out.Assets.Candidates = AppendProviderCandidatesUnique(out.Assets.Candidates, normalizeVidRushCandidateList(src.Assets.Candidates, out))
+	out.Assets.SecondaryImages = AppendProviderCandidatesUnique(out.Assets.SecondaryImages, normalizeVidRushCandidateList(src.Assets.SecondaryImages, out))
+	out.Assets.GeneratedImages = AppendProviderCandidatesUnique(out.Assets.GeneratedImages, normalizeVidRushCandidateList(src.Assets.GeneratedImages, out))
 	if src.Assets.PrimaryVideo != nil {
 		if primary, ok := normalizeVidRushCandidate(*src.Assets.PrimaryVideo, out); ok {
 			out.Assets.PrimaryVideo = &primary

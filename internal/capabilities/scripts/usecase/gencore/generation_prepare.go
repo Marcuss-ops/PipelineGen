@@ -23,6 +23,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -54,8 +55,8 @@ type PrepareStageReports struct {
 // generation item. It is constructed once per use case and reused
 // across calls.
 type GenerationPreparer struct {
-	cfg             adapters.NormalizationConfig
-	registry        *adapters.SourceRegistry
+	cfg             processor.NormalizationConfig
+	registry        *processor.SourceRegistry
 	ppReg           *adapters.PostProcessorRegistry
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
@@ -81,8 +82,8 @@ func (p *GenerationPreparer) SetTopicSourceCache(cache scriptports.TopicSourceCa
 // registry may be nil (source resolution is skipped); ppReg may be
 // nil (postprocessor validation is skipped).
 func NewGenerationPreparer(
-	cfg adapters.NormalizationConfig,
-	registry *adapters.SourceRegistry,
+	cfg processor.NormalizationConfig,
+	registry *processor.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,
 	log *zap.Logger,
 ) *GenerationPreparer {
@@ -120,7 +121,7 @@ func (p *GenerationPreparer) Prepare(
 	// clock (no ad-hoc time.Now() at a phase boundary).
 	tracker.PhaseNormalize()
 	if report, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptNormalize, func(stageCtx context.Context) error {
-		adapters.NormalizeItem(&item, preset, p.cfg)
+		processor.NormalizeItem(&item, preset, p.cfg)
 		return nil
 	}); err != nil {
 		return nil, PrepareStageReports{}, p.logPhaseError(item, "normalize", scriptpkg.ErrPlanInvalid, err, tracker)

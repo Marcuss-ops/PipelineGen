@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 ) // GenerateOneUseCase orchestrates the unified pipeline for a single
@@ -58,8 +59,8 @@ func (uc *GenerateOneUseCase) SetOverlayBackgroundSource(source scriptgen.Overla
 // fixtures that don't exercise routing continue to work without
 // parameter churn.
 func NewGenerateOneUseCase(
-	cfg adapters.NormalizationConfig,
-	registry *adapters.SourceRegistry,
+	cfg processor.NormalizationConfig,
+	registry *processor.SourceRegistry,
 	engine *Engine,
 	ppReg *adapters.PostProcessorRegistry,
 	log *zap.Logger,
@@ -105,7 +106,7 @@ func (uc *GenerateOneUseCase) SetTopicSourceCache(cache scriptports.TopicSourceC
 // SetMemoryService wires the gemmamemory service used to cache
 // generated scripts in the finalizer. Optional: if not called, the
 // finalizer does not persist to the script cache.
-func (uc *GenerateOneUseCase) SetMemoryService(svc *adapters.Service) {
+func (uc *GenerateOneUseCase) SetMemoryService(svc *processor.Service) {
 	if uc == nil {
 		return
 	}

@@ -17,9 +17,9 @@
 // marker pointing at the inline shape.
 package schema
 
-import ()
-
-import "context"
+import (
+	"context"
+)
 
 // ── Search types ─────────────────────────────────────────────────────
 

@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // ensureStarted launches the persistent TTS server if not already running.
@@ -168,17 +170,24 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	// Warmup: PORT means the socket was allocated, not that aiohttp has
 	// completed startup. Retry the probe briefly so concurrent first callers
 	// do not incorrectly fall back to the legacy spawn-per-call path.
+	// Routed through the shared retry engine (2026-09-12 audit F6c): the
+	// previous hand-rolled `attempt < 30` loop bypassed the shared-policy
+	// rule. 30 attempts × 100 ms fixed poll = the same ~3 s startup window,
+	// expressed as canonical Options (fixed 100 ms backoff via factor 1.0,
+	// no jitter — a local process warmup has no thundering-herd surface).
 	var healthErr error
-	for attempt := 0; attempt < 30; attempt++ {
-		if healthErr = p.healthCheck(); healthErr == nil {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			healthErr = ctx.Err()
-			attempt = 30
-		case <-time.After(100 * time.Millisecond):
-		}
+	_ = retry.Do(ctx, func() error {
+		healthErr = p.healthCheck()
+		return healthErr
+	}, retry.Options{
+		MaxAttempts:    30,
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     100 * time.Millisecond,
+		BackoffFactor:  1.0,
+		DisableJitter:  true,
+	})
+	if healthErr == nil && ctx.Err() != nil {
+		healthErr = ctx.Err()
 	}
 	if healthErr != nil {
 		p.started = false

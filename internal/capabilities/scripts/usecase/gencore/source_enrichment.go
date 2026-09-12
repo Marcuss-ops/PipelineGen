@@ -10,9 +10,10 @@ package gencore
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

@@ -8,8 +8,9 @@ import (
 	"errors"
 	"testing"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -18,8 +19,8 @@ import (
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-func newTestRegistry() *adapterspkg.SourceRegistry {
-	return adapterspkg.NewSourceRegistry(zap.NewNop())
+func newTestRegistry() *processor.SourceRegistry {
+	return processor.NewSourceRegistry(zap.NewNop())
 }
 
 // ── Registry: basic registration ───────────────────────────────────
@@ -127,7 +128,7 @@ func TestSourceRegistryResolveUnknownType(t *testing.T) {
 // ── Registry: nil safety ───────────────────────────────────────────
 
 func TestSourceRegistryNilReceiver(t *testing.T) {
-	var reg *adapterspkg.SourceRegistry
+	var reg *processor.SourceRegistry
 
 	if reg.Register(scriptpkg.SourceText, scripts.NewTextSourceResolver()) {
 		t.Error("nil registry: Register should return false")
@@ -464,7 +465,7 @@ func TestClipsResolverNilClipBuilder(t *testing.T) {
 
 func TestResolversSatisfyInterface(t *testing.T) {
 	// Compile-time check that each resolver type satisfies SourceResolver.
-	var _ adapterspkg.SourceResolver = scripts.NewTextSourceResolver()
+	var _ processor.SourceResolver = scripts.NewTextSourceResolver()
 	// Clips, Catalog, Search require non-trivial dependencies at construction
 	// but their *types* satisfy the interface.
 	var clips *scripts.ClipsSourceResolver
@@ -564,8 +565,8 @@ func TestCatalogSearchParity_SourceTypeChangesIdentity(t *testing.T) {
 	catItem := scriptpkg.GenerationItemV2{Source: catalogSrc}
 	searchItem := scriptpkg.GenerationItemV2{Source: searchSrc}
 
-	catID := adapterspkg.BuildItemIdentity(catItem)
-	searchID := adapterspkg.BuildItemIdentity(searchItem)
+	catID := processor.BuildItemIdentity(catItem)
+	searchID := processor.BuildItemIdentity(searchItem)
 
 	if catID == searchID {
 		t.Errorf("catalog and search should produce different identities when SourceType differs:\n  catalog: %s\n  search:  %s", catID, searchID)

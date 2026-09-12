@@ -4,13 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 )
 
 func TestSourceTextLogFields_NeverContainsRawText(t *testing.T) {
 	secret := "this is a secret source text that must not leak into logs"
-	fields := gencore.SourceTextLogFields(secret, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})
+	fields := gencore.SourceTextLogFields(secret, processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})
 
 	raw, _ := fields["source_text_preview"]
 	if raw == secret {
@@ -30,7 +31,7 @@ func TestSourceTextLogFields_NeverContainsRawText(t *testing.T) {
 
 func TestSourceTextLogFields_PreviewTruncated(t *testing.T) {
 	text := strings.Repeat("a", 200)
-	fields := gencore.SourceTextLogFields(text, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 10})
+	fields := gencore.SourceTextLogFields(text, processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 10})
 	preview, ok := fields["source_text_preview"].(string)
 	if !ok {
 		t.Fatalf("source_text_preview must be a string")
@@ -44,14 +45,14 @@ func TestSourceTextLogFields_PreviewTruncated(t *testing.T) {
 }
 
 func TestSourceTextLogFields_PreviewDisabled(t *testing.T) {
-	fields := gencore.SourceTextLogFields("some source text", adapters.NormalizationConfig{LogSourceTextPreview: false, SourceTextPreviewChars: 80})
+	fields := gencore.SourceTextLogFields("some source text", processor.NormalizationConfig{LogSourceTextPreview: false, SourceTextPreviewChars: 80})
 	if _, ok := fields["source_text_preview"]; ok {
 		t.Errorf("source_text_preview must be omitted when preview is disabled")
 	}
 }
 
 func TestSourceTextLogFields_EmptyText(t *testing.T) {
-	fields := gencore.SourceTextLogFields("", adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})
+	fields := gencore.SourceTextLogFields("", processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})
 	if _, ok := fields["source_text_preview"]; ok {
 		t.Errorf("source_text_preview must be omitted for empty text")
 	}

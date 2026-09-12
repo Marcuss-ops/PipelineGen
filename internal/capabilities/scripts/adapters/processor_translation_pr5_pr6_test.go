@@ -6,7 +6,7 @@
 // PR-5 wired OutputSpec.TranslateTo into ResolvedGenerationPlan
 // + buildPostprocessorList (translation between metadata and
 // clip_bindings). PR-6 populated PostProcessResult.TranslatedText
-// + TranslatedSpecScene + updated mergePostProcessResult to
+// + TranslatedSpecScene + updated MergePostProcessResult to
 // propagate the translated surface into PipelineResult. Without
 // these explicit fields, IsEmpty() would FLAG the workaround
 // (in-place ProcessInput mutation only) as "returned empty
@@ -102,7 +102,7 @@ func TestPostProcessResult_IsEmpty_RespectsTranslatedFields(t *testing.T) {
 // not accidentally overwrite a previously-set translated surface
 // (last-writer-wins preserves the most-recent real translation).
 //
-// godlike/06 SSOT (one-canonical-owner-per-fact): mergePostProcessResult
+// godlike/06 SSOT (one-canonical-owner-per-fact): MergePostProcessResult
 // lives ONLY here in adapters. This test is the canonical SOLE
 // regression guard for the PR-6 propagation contract.
 func TestMergePostProcessResult_PropagatesTranslatedFields(t *testing.T) {
@@ -113,7 +113,7 @@ func TestMergePostProcessResult_PropagatesTranslatedFields(t *testing.T) {
 			Warnings:       []string{"translation soft-warn"},
 			TranslatedText: "testo tradotto",
 		}
-		mergePostProcessResult(dst, src, nil)
+		MergePostProcessResult(dst, src, nil)
 		if dst.TranslatedText != "testo tradotto" {
 			t.Fatalf("dst.TranslatedText=%q after merge with src.TranslatedText=%q; "+
 				"the last-writer-wins propagation contract from PR-6 has regressed.",
@@ -137,7 +137,7 @@ func TestMergePostProcessResult_PropagatesTranslatedFields(t *testing.T) {
 				}},
 			},
 		}
-		mergePostProcessResult(dst, src, nil)
+		MergePostProcessResult(dst, src, nil)
 		if len(dst.TranslatedSpecScene.Scenes) != 1 {
 			t.Fatalf("dst.TranslatedSpecScene.Scenes len=%d after merge; "+
 				"expected 1 scene; the propagation contract from PR-6 has regressed. "+
@@ -160,7 +160,7 @@ func TestMergePostProcessResult_PropagatesTranslatedFields(t *testing.T) {
 			TranslatedText: "prior translation preserved",
 		}
 		src := &PostProcessResult{TranslatedText: ""}
-		mergePostProcessResult(dst, src, nil)
+		MergePostProcessResult(dst, src, nil)
 		if dst.TranslatedText != "prior translation preserved" {
 			t.Fatalf("dst.TranslatedText=%q after empty-src merge; "+
 				"expected prior translation 'prior translation preserved' preserved "+

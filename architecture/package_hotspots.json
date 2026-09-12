@@ -283,25 +283,6 @@
         "internal/capabilities/scripts/adapters/postprocessor",
         "internal/capabilities/scripts/adapters/vidrush"
       ]
-    },
-    {
-      "path": "internal/capabilities/scripts/usecase",
-      "owner": "scripts capability use cases (source resolution/quality gate/generation)",
-      "deadline": "2026-12-31",
-      "baseline_files": 79,
-      "baseline": {
-        "files": 79,
-        "max_loc": 0
-      },
-      "current": {
-        "files": 79,
-        "max_loc": 0
-      },
-      "note": "Registered 2026-09-12: usecase surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. The package holds the source-resolution family (source_resolver_*), the quality-gate family, the clip-source family (clip_source*/clip_sampler_*) and the generation engine (engine_*/generation_*). WAVE 1 DONE 2026-09-12: the quality-gate family was moved to internal/capabilities/scripts/usecase/qualitygate (9 production files + 2 test files + its own lexicon TestMain); 88 -> 79 files, baseline re-ratcheted. The family was fully forward-closed (no dependency on the usecase package), so the parent only imports qualitygate.Evaluate/Tokenize. NEXT WAVE (measured, not yet done): the engine_*/segment_validation/generation_* core is one forward-closed component of 33 files (segment_+engine_ seeds); the remaining families are source-resolver+clip+document+translation. The 600-LOC split wave materialised segment_validation_rules.go and source_resolver_preflight.go in the SAME directory; move each family behind its own subpackage instead of adding further sibling files.",
-      "target_packages": [
-        "internal/capabilities/scripts/usecase/sourceresolver",
-        "internal/capabilities/scripts/usecase/generation"
-      ]
     }
   ],
   "root_migrations": [],

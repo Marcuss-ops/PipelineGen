@@ -11,11 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -74,7 +75,7 @@ func (f *SubmitRequestFactory) Build(cmd GenerateCommand) (opsapp.SubmitRequest,
 		return opsapp.SubmitRequest{}, fmt.Errorf("%w: %v", ErrMarshalEnvelope, err)
 	}
 
-	if adapters.BuildEnvelopeIdentity(cmd.Envelope) == "" {
+	if processor.BuildEnvelopeIdentity(cmd.Envelope) == "" {
 		return opsapp.SubmitRequest{}, ErrInvalidEnvelopeIdentity
 	}
 	// Idempotency compares the complete request payload. The generation

@@ -2,11 +2,12 @@ package embeddings
 
 import (
 	"context"
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
 func TestContractProbe_Fetch_ParsesCanonicalContract(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// ── mergePostProcessResult: aggregate helper ──────────────────────────
+// ── MergePostProcessResult: aggregate helper ──────────────────────────
 
-// mergePostProcessResult copies non-zero fields from a processor
+// MergePostProcessResult copies non-zero fields from a processor
 // result into the aggregate PipelineResult, and writes back the
 // synthesised Scene slice into the registry-local ProcessInput so
 // subsequent postprocessors see the populated input.SpecScene.Scenes
@@ -20,7 +20,7 @@ import (
 // the prose-fallback clip-bindings heuristic).
 //
 // Issue #1 (June 2026): the canonical pipeline-level SpecScene
-// surface lives on PipelineResult.FinalSpecScene. mergePostProcessResult
+// surface lives on PipelineResult.FinalSpecScene. MergePostProcessResult
 // captures the post-walk SpecScene after every processor (in
 // last-writer-wins order — there's only ever one synthesizer at a
 // time so a copy is sufficient) so buildGenerationResult reads the
@@ -34,7 +34,7 @@ import (
 // Each field is merged by a dedicated helper so the aggregate stays a
 // flat, ordered list of last-writer-wins steps rather than one deeply
 // nested function.
-func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
+func MergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
 	mergeScalarIdentity(dst, src)
 	mergeVisualPlans(dst, src)
 	mergeVisualAssignments(dst, src, currentInput)
@@ -102,7 +102,7 @@ func mergeVisualAssignments(dst *PipelineResult, src *PostProcessResult, current
 	// contract in sync. Timeline post-segment clips are also the
 	// primary clip for their narrative scene; the timeline still
 	// remains authoritative when multiple clips share one scene.
-	projectPostSegmentClipBindings(currentInput.SpecScene.Scenes, src.VisualAssignments)
+	ProjectPostSegmentClipBindings(currentInput.SpecScene.Scenes, src.VisualAssignments)
 	dst.FinalSpecScene = currentInput.SpecScene
 }
 

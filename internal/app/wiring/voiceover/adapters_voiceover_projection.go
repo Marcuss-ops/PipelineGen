@@ -28,7 +28,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 )
 
 // ─────────────────────────────────────────────────────────────────────

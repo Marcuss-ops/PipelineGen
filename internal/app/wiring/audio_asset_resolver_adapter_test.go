@@ -8,12 +8,13 @@ package wiring
 
 import (
 	"context"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/stretchr/testify/require"
 

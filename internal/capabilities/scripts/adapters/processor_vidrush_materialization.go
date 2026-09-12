@@ -112,7 +112,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	if allSegmentsFixedMedia(input.SpecScene, input.VidRushSegments) {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
-			cloned := cloneVidRushSegmentResult(segment)
+			cloned := CloneVidRushSegmentResult(segment)
 			cloned.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
 			segments = append(segments, cloned)
 		}
@@ -175,7 +175,7 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 		return result.VidRushSegments[0], nil
 	}
 	if segment.ExecutionMode.IsFixedMedia() {
-		cloned := cloneVidRushSegmentResult(segment)
+		cloned := CloneVidRushSegmentResult(segment)
 		cloned.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
 		return cloned, nil
 	}
@@ -183,7 +183,7 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	if p.providers == nil || p.finalizer == nil {
-		return cloneVidRushSegmentResult(segment), nil
+		return CloneVidRushSegmentResult(segment), nil
 	}
 	if err := requireVidRushEnabledProviders(plan, p.providers); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
@@ -286,7 +286,7 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 // It is shared by the batch Process path and the single-segment Materialize
 // port so the materialization stage is implemented exactly once.
 func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
-	updated := cloneVidRushSegmentResult(segment)
+	updated := CloneVidRushSegmentResult(segment)
 	if segment.ExecutionMode.IsFixedMedia() {
 		// Fixed media is already authoritative and must not be acquired,
 		// verified, persisted, ranked or replaced by this processor.
@@ -508,7 +508,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		if materializeErr != nil {
 			return vidRushMaterializedSegment{}, materializeErr
 		}
-		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, generated)
+		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, generated)
 	}
 	materialized := updated.Assets.Candidates
 	updated.Assets.SecondaryImages = selectExactVidRushImages(materialized, imageTarget, plan)

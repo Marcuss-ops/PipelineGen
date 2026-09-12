@@ -26,10 +26,11 @@ package wiring
 import (
 	"context"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

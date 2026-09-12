@@ -115,7 +115,7 @@ func (p *MediaResolverImageStage) handleBypassOrUnavailable(plan *scriptpkg.Reso
 func markInternetImagesBypassed(input []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input))
 	for _, segment := range input {
-		cloned := cloneVidRushSegmentResult(segment)
+		cloned := CloneVidRushSegmentResult(segment)
 		cloned.Cache.InternetImages = "BYPASSED"
 		segments = append(segments, cloned)
 	}
@@ -138,7 +138,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	updatedSegments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
-		updated := cloneVidRushSegmentResult(seg)
+		updated := CloneVidRushSegmentResult(seg)
 		if !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position) {
 			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
@@ -181,8 +181,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			if cached, ok := cacheLoad(vidrushImageCache, cacheKey); ok {
 				if payload, ok := cached.(internetImageCachePayload); ok {
 					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
-					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
-					updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
+					updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+					updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
 					updated.Cache.InternetImages = "HIT_EXACT"
 					updatedSegments = append(updatedSegments, updated)
 					if p.metrics != nil {
@@ -196,8 +196,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				return nil, cacheErr
 			} else if hit {
 				persisted.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...)
-				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
-				updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, persisted.Candidates)
+				updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
+				updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, persisted.Candidates)
 				updated.Cache.InternetImages = "HIT_EXACT"
 				if len(persisted.Candidates) > 0 {
 					cacheStore(vidrushImageCache, cacheKey, persisted)
@@ -360,7 +360,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 						return queryResult{}, catalogErr
 					}
 				}
-				results = appendProviderCandidatesUnique(catalogFallback, results)
+				results = AppendProviderCandidatesUnique(catalogFallback, results)
 				// Empty results are durable-cached in L2 (TTL 48h) so a warm
 				// replay of the same query does not re-call the provider, but
 				// they are kept out of the no-TTL L1 map to avoid unbounded
@@ -423,8 +423,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 		// "provider search = N" proof the certification consumes.
 		updated.Cache.InternetImagesProviderSearches = providerSearches
 		if len(candidates) > 0 {
-			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
-			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
+			updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+			updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
 		}
 		payload := internetImageCachePayload{
 			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),

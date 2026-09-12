@@ -20,8 +20,8 @@
 //   - generate_one_usecase.go (this file) — Execute orchestrator
 //
 // Dependencies:
-//   - adapters.NormalizationConfig: config-driven defaults
-//   - adapters.SourceRegistry: resolves source → ResolvedSource
+//   - processor.NormalizationConfig: config-driven defaults
+//   - processor.SourceRegistry: resolves source → ResolvedSource
 //   - Engine: calls ollama for script text
 //   - adapters.PostProcessorRegistry: runs postprocessors (entities, metadata,
 //     voiceover, images, document, persistence)

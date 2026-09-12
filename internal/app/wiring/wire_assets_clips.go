@@ -4,6 +4,7 @@ package wiring
 
 import (
 	"fmt"
+
 	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"

@@ -19,12 +19,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"mime"
 	"os"
 	"path/filepath"
 	"strings"
+
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

@@ -2,8 +2,9 @@ package wiring
 
 import (
 	"context"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

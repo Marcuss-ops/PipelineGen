@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
@@ -42,25 +43,25 @@ func buildUsecaseWithClipResolver(gen *testsupport.FakeOllamaGen, clipResolver *
 }
 
 func buildUsecaseWithClipBuilder(gen *testsupport.FakeOllamaGen, builder *ClipSourceBuilder) *gencore.GenerateOneUseCase {
-	reg := adapters.NewSourceRegistry(zap.NewNop())
+	reg := processor.NewSourceRegistry(zap.NewNop())
 	if builder != nil {
 		reg.Register(scriptpkg.SourceClips, NewClipsSourceResolver(builder, zap.NewNop()))
 	}
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	// Wire the real clip-bindings processor so clip-source plans can
 	// synthesise scenes when the engine returns plain text.
-	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
+	ppReg.Register(processor.NewClipBindingsProcessor(zap.NewNop()))
 	ppReg.Register(&testsupport.StubPostProcessor{
 		ProcessorName: "persistence",
 		Result:        &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
-	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
 }
 
 // TestGenerateE2E_OneClipWithoutSourceText verifies that a single clip

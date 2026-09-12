@@ -27,10 +27,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	_ "github.com/mattn/go-sqlite3"
 	"testing"
 	"time"
+
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Package artifactstages — internal/platform/sqlite/artifact_stages/repository_test.go

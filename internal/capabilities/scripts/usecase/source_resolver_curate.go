@@ -15,7 +15,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ptrutil"
@@ -76,7 +77,7 @@ func (r *CurateSourceResolver) SetAssetSearchPort(port AssetSearchPort) {
 }
 
 // Compile-time assertion: CurateSourceResolver satisfies SourceResolver.
-var _ adapters.SourceResolver = (*CurateSourceResolver)(nil)
+var _ processor.SourceResolver = (*CurateSourceResolver)(nil)
 
 // Resolve implements SourceResolver.
 //

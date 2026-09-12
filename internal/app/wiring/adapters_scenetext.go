@@ -7,8 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -55,10 +56,10 @@ func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64)
 
 type SceneTextGenerator struct {
 	Engine             *gencore.Engine
-	Registry           *adapters.SourceRegistry
+	Registry           *processor.SourceRegistry
 	ClipAssets         ClipAssetResolver
 	Probe              ClipProber
-	Memory             *adapters.Service
+	Memory             *processor.Service
 	Log                *zap.Logger
 	segmentConcurrency int
 }
@@ -202,7 +203,7 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generate failed: %w", index, genErr)}
 		}
 		if g.Memory != nil && segmentPlan.UseMemory && result.CacheStatus == "generated" && result.Output.Text != "" {
-			if _, saveErr := g.Memory.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+			if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
 				ChannelID: "default",
 				Mode:      segmentPlan.Mode,
 				Language:  segmentPlan.Language,
@@ -337,7 +338,7 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 	// downstream per-segment caches (keyed on the deterministic scene text
 	// hash) hit exactly. Exact hits are never re-persisted.
 	if g.Memory != nil && plan.UseMemory && engineResult.CacheStatus == "generated" && engineResult.Output.Text != "" {
-		if _, saveErr := g.Memory.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+		if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
 			ChannelID: "default",
 			Mode:      plan.Mode,
 			Language:  plan.Language,

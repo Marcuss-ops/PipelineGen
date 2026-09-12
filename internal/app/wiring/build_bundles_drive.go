@@ -22,8 +22,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	"os"
+
+	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"

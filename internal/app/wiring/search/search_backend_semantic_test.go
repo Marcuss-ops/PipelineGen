@@ -15,10 +15,11 @@ package search
 import (
 	"context"
 	"errors"
+	"testing"
+
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
-	"testing"
 )
 
 // Package app — search_backend_semantic_test.go covers the Fase 6

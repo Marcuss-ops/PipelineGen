@@ -25,7 +25,7 @@ type ProcessInput struct {
 	ResearchSources     []scriptpkg.SourceReference
 
 	// Entities carries the entity-extraction result, populated by
-	// mergePostProcessResult when the entities processor produces
+	// MergePostProcessResult when the entities processor produces
 	// output. Threaded through to the canonical document renderer so
 	// the Google Doc renders the <h2>Entities</h2> section when
 	// non-empty. Nil until the entities processor runs.
@@ -37,7 +37,7 @@ type ProcessInput struct {
 	VidRushSegments []scriptpkg.VidRushSegmentResult
 
 	// Metadata carries the video-metadata result, populated by
-	// mergePostProcessResult when the metadata processor produces
+	// MergePostProcessResult when the metadata processor produces
 	// output. Threaded through to the canonical document renderer so
 	// the Google Doc renders the <h2>Video Metadata</h2> section
 	// when non-empty. Nil until the metadata processor runs.

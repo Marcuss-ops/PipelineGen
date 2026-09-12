@@ -2,9 +2,10 @@ package adapters
 
 import (
 	"encoding/json"
+	"testing"
+
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"testing"
 )
 
 func TestExplainVidRushSegment(t *testing.T) {

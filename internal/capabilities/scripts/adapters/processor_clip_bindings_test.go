@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -97,7 +98,7 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 		NumClips:     3, // NumClips > resolved count — binder binds the single resolved ID to scene 0 only
 	}
 
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
@@ -162,7 +163,7 @@ func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     3,
 	}
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
@@ -271,7 +272,7 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     3,
 	}
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
@@ -334,7 +335,7 @@ func TestClipBindings_SynthesizesScenesFromClipEvidence_P0(t *testing.T) {
 	// Empty SpecScene simulates plain-text engine output.
 	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{}}
 
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	result, err := p.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("process error = %v", err)
@@ -374,7 +375,7 @@ func TestClipBindings_SynthesizesScenesFromClipEvidence_P0(t *testing.T) {
 		}
 	}
 
-	// In the real pipeline mergePostProcessResult writes
+	// In the real pipeline MergePostProcessResult writes
 	// result.SynthesizedScenes back into currentInput.SpecScene.Scenes.
 	// The direct Process call receives input by value, so we assert
 	// on the returned SynthesizedScenes surface.
@@ -407,7 +408,7 @@ func TestClipBindings_ClipEvidence_EmptyScenes_SynthesizesScenes(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{ClipEvidence: ev, NumClips: 2}
 	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{}}
 
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	result, err := p.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("process error = %v", err)
@@ -458,7 +459,7 @@ func TestClipBindings_ModelProducedScenes_BindsClips(t *testing.T) {
 		},
 	}}
 
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	result, err := p.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("process error = %v", err)
@@ -522,7 +523,7 @@ func TestClipBindings_ExplicitSegmentsPreserveCardinalityAndMultiClipOwnership(t
 	}
 	input := adapters.ProcessInput{Text: "Intro paragraph.\n\nCombined paragraph.\n\nText-only paragraph.\n\nClosing paragraph."}
 
-	result, err := adapters.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	result, err := processor.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("process error = %v", err)
 	}
@@ -576,7 +577,7 @@ func TestClipBindings_ExplicitSegmentsPreserveLinksTimingAndReuse(t *testing.T) 
 		},
 	}
 	input := adapters.ProcessInput{Text: "A.\n\nB.\n\nC."}
-	result, err := adapters.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	result, err := processor.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("process error = %v", err)
 	}
@@ -635,7 +636,7 @@ func TestClipBindings_NoClipEvidence_NoOp(t *testing.T) {
 				Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Only scene"}},
 			}}
 
-			p := adapters.NewClipBindingsProcessor(zap.NewNop())
+			p := processor.NewClipBindingsProcessor(zap.NewNop())
 			result, err := p.Process(context.Background(), tt.plan, input)
 			if err != nil {
 				t.Fatalf("process error = %v", err)
@@ -692,7 +693,7 @@ func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     2,
 	}
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}

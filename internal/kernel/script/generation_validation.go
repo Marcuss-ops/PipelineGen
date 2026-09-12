@@ -81,7 +81,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			}
 		}
 
-		if item.Language != "" && !IsSupportedLanguage(item.Language) {
+		if item.Language != "" && !IsValidGenerationLanguage(item.Language) {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{

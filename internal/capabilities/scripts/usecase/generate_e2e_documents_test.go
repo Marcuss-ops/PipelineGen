@@ -19,6 +19,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
@@ -43,21 +44,21 @@ func (s *documentsE2EStub) UpsertDocument(_ context.Context, in scriptgen.Docume
 // clip-bindings processor, and the real documents processor (backed by the
 // capture stub) into a gencore.GenerateOneUseCase.
 func buildUsecaseWithDocuments(gen *testsupport.FakeOllamaGen, docs scriptgen.DocumentPublisher) *gencore.GenerateOneUseCase {
-	reg := adapters.NewSourceRegistry(zap.NewNop())
+	reg := processor.NewSourceRegistry(zap.NewNop())
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
-	ppReg.Register(adapters.NewDocumentsProcessor(docs))
+	ppReg.Register(processor.NewClipBindingsProcessor(zap.NewNop()))
+	ppReg.Register(processor.NewDocumentsProcessor(docs))
 	ppReg.Register(&testsupport.StubPostProcessor{
 		ProcessorName: "persistence",
 		Result:        &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
-	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
 }
 
 // documentHumanSurface returns the human-facing part of a rendered document

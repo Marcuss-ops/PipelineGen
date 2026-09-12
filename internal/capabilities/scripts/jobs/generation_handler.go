@@ -25,9 +25,10 @@ import (
 	"context"
 	"fmt"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -216,7 +217,7 @@ func (h *GenerateJobHandler) Handle(
 		if domainResult == nil {
 			return nil, fmt.Errorf("generate job handler: durable result is empty")
 		}
-		artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, domainResult, h.log)
+		artifacts, persistErr := processor.PersistGeneratedArtifacts(ctx, j.ID, domainResult, h.log)
 		if persistErr != nil {
 			return nil, fmt.Errorf("generate job handler: durable artifact persistence: %w", persistErr)
 		}

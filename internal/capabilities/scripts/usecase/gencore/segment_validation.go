@@ -9,11 +9,12 @@ package gencore
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"

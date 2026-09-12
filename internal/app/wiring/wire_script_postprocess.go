@@ -28,6 +28,7 @@ package wiring
 import (
 	"context"
 	"fmt"
+
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -35,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -120,7 +122,7 @@ func registerScriptPostProcessors(
 	// Owner: PersistenceProcessor is the SOLE canonical owner of
 	// scripts/script_assets SQLite row writes post FASE PR-5.
 	if scriptsRepoAdapter != nil {
-		if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
+		if !ppReg.Register(processor.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
 			return fmt.Errorf("register persistence processor: composition bug or duplicate name")
 		}
 	}
@@ -140,7 +142,7 @@ func registerScriptPostProcessors(
 	if docClient != nil {
 		docPublisher = &scriptGenerationDocumentPublisher{client: docClient}
 	}
-	if !ppReg.Register(adapters.NewDocumentsProcessor(docPublisher)) {
+	if !ppReg.Register(processor.NewDocumentsProcessor(docPublisher)) {
 		return fmt.Errorf("register document processor: composition bug or duplicate name")
 	}
 	log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
@@ -148,7 +150,7 @@ func registerScriptPostProcessors(
 	// Inline Image generation processor (temporarily restored).
 	if root.Domains != nil && root.Domains.ImageService != nil {
 		imgGenSvc := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		if !ppReg.Register(adapters.NewImageProcessor(imgGenSvc, log)) {
+		if !ppReg.Register(processor.NewImageProcessor(imgGenSvc, log)) {
 			return fmt.Errorf("register image processor: composition bug or duplicate name")
 		}
 		log.Info("ImageProcessor (inline scene images) successfully registered")
@@ -172,7 +174,7 @@ func registerScriptPostProcessors(
 	// but the inline postprocessor path is now exclusively the
 	// narrow-port surface.
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
-		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverProcessItem, log)
+		voProc := processor.NewVoiceoverProcessor(root.Domains.VoiceoverProcessItem, log)
 		voiceMap := make(map[string]string)
 		if registry, registryErr := BuildLanguageRegistry(ActiveMultilingualConfig(cfg)); registryErr == nil {
 			for _, spec := range registry.EnabledLanguages() {
@@ -208,13 +210,13 @@ func registerScriptPostProcessors(
 	// bindings consumed by both the Google Doc builder (via
 	// DocumentProcessor) AND the JSON response writer (via
 	// result.Output.SpecScene.Scenes). BestEffort policy.
-	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
+	if !ppReg.Register(processor.NewClipBindingsProcessor(log)) {
 		return fmt.Errorf("register clip_bindings processor: composition bug")
 	}
-	if !ppReg.Register(adapters.NewStockBindingsProcessor()) {
+	if !ppReg.Register(processor.NewStockBindingsProcessor()) {
 		return fmt.Errorf("register stock_bindings processor: composition bug")
 	}
-	if !ppReg.Register(adapters.NewNarrationSanitizer()) {
+	if !ppReg.Register(processor.NewNarrationSanitizer()) {
 		return fmt.Errorf("register narration_sanitizer processor: composition bug")
 	}
 	// AssetLocationReconciliationProcessor verifies every drive_link
@@ -240,15 +242,15 @@ func registerScriptPostProcessors(
 			verifier = drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
 			log.Info("AssetLocationReconciliationProcessor (BestEffort, shallow: Drive-only) successfully registered")
 		}
-		var locationProcessor *adapters.AssetLocationReconciliationProcessor
+		var locationProcessor *processor.AssetLocationReconciliationProcessor
 		if root != nil && root.CanonicalAssetWriter != nil {
 			mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
 			if !ok || mutator == nil {
 				return fmt.Errorf("register asset_location_reconciliation processor: canonical writer does not implement AssetMutator")
 			}
-			locationProcessor = adapters.NewDurableAssetLocationReconciliationProcessor(verifier, mutator)
+			locationProcessor = processor.NewDurableAssetLocationReconciliationProcessor(verifier, mutator)
 		} else {
-			locationProcessor = adapters.NewAssetLocationReconciliationProcessor(verifier)
+			locationProcessor = processor.NewAssetLocationReconciliationProcessor(verifier)
 		}
 		if !ppReg.Register(locationProcessor) {
 			return fmt.Errorf("register asset_location_reconciliation processor: composition bug or duplicate name")

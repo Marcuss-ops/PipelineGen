@@ -11,7 +11,12 @@ import "testing"
 func TestGoldenHash_OverlayPlanFingerprint(t *testing.T) {
 	plan := GoldenOverlayPlanV1()
 	got := plan.FingerprintValue()
-	const want = "dface49de8a6261e6c95224863211d2a5cb6baa92647d74604730f6efa778e8f"
+	// Re-pinned 2026-09-12: commit 40905c51b added the derived
+	// `duration_ms` field to OverlayItem.MarshalJSON, deliberately
+	// changing the plan JSON byte shape (complete millisecond timing
+	// tuple on the wire). Persisted pre-change fingerprints remain
+	// valid data — verification re-computes against the current shape.
+	const want = "41d77687588f1155c9c23ca4b0daba997efa9ccf0a499739f7090c8cb58fa4bb"
 	if got != want {
 		t.Fatalf("GoldenOverlayPlanV1().FingerprintValue() = %q, want %q (old hash != new hash)", got, want)
 	}

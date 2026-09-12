@@ -5,15 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
 func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
 	gate := newFakeScriptMemoryGate()
-	svc := adapters.NewService(gate, zap.NewNop())
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	svc := processor.NewService(gate, zap.NewNop())
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	finalizer.SetMemoryService(svc)
 
 	item := scriptpkg.GenerationItemV2{ID: "finalize-cache"}
@@ -54,7 +55,7 @@ func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
 	}
 
 	// Verify the row was written.
-	res, err := svc.CheckGate(context.Background(), adapters.MemoryGateRequest{
+	res, err := svc.CheckGate(context.Background(), processor.MemoryGateRequest{
 		ChannelID: "default",
 		Mode:      "text",
 		CacheKey:  "cache-key-123",
@@ -79,12 +80,12 @@ func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
 
 func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
 	gate := newFakeScriptMemoryGate()
-	svc := adapters.NewService(gate, zap.NewNop())
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	svc := processor.NewService(gate, zap.NewNop())
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	finalizer.SetMemoryService(svc)
 
 	// Pre-seed the cache.
-	_, err := svc.SaveAfterGeneration(context.Background(), adapters.SaveGenerationInput{
+	_, err := svc.SaveAfterGeneration(context.Background(), processor.SaveGenerationInput{
 		ChannelID: "default",
 		Mode:      "text",
 		Language:  "en",
@@ -127,7 +128,7 @@ func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	res, err := svc.CheckGate(context.Background(), adapters.MemoryGateRequest{
+	res, err := svc.CheckGate(context.Background(), processor.MemoryGateRequest{
 		ChannelID: "default",
 		Mode:      "text",
 		CacheKey:  "cache-key-dup",
@@ -142,7 +143,7 @@ func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-success"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-success",
@@ -183,7 +184,7 @@ func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-clip"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-clip",
@@ -218,7 +219,7 @@ func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-quality"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:          "finalize-quality",
@@ -256,7 +257,7 @@ func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_SkipQualityGate(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-skip"}
 	item.ScriptParams.SkipQualityGate = true
 	plan := scriptpkg.ResolvedGenerationPlan{

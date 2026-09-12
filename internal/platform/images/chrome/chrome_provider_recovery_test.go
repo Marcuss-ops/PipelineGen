@@ -39,11 +39,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 
 	"go.uber.org/zap"
 )

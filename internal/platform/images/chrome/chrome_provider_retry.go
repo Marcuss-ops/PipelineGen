@@ -25,6 +25,7 @@ package chrome
 import (
 	"context"
 	"errors"
+
 	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 
 	"go.uber.org/zap"

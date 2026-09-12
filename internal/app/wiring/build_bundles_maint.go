@@ -10,9 +10,10 @@ package wiring
 import (
 	"context"
 	"fmt"
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"net/http"
 	"time"
+
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"go.uber.org/zap"
 

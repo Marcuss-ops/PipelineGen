@@ -17,8 +17,9 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/diagnostics"

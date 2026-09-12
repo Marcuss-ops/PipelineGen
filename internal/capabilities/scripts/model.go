@@ -22,10 +22,11 @@
 package scriptgeneration
 
 import (
+	"time"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"time"
 )
 
 // ── Domain aggregates ───────────────────────────────────────────────

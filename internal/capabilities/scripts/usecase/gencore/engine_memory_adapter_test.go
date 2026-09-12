@@ -4,7 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"go.uber.org/zap"
 )
@@ -51,7 +52,7 @@ func (f *fakeScriptMemoryGate) SweepAll(context.Context) (int64, error) {
 
 func TestMemoryGateAdapter_MissThenHit(t *testing.T) {
 	gate := newFakeScriptMemoryGate()
-	svc := adapters.NewService(gate, zap.NewNop())
+	svc := processor.NewService(gate, zap.NewNop())
 	checker := NewMemoryGateChecker(svc)
 
 	req := memoryGateRequest{
@@ -73,7 +74,7 @@ func TestMemoryGateAdapter_MissThenHit(t *testing.T) {
 	}
 
 	// Save a row through the service.
-	_, err = svc.SaveAfterGeneration(context.Background(), adapters.SaveGenerationInput{
+	_, err = svc.SaveAfterGeneration(context.Background(), processor.SaveGenerationInput{
 		ChannelID: "default",
 		Mode:      "text",
 		Language:  "en",

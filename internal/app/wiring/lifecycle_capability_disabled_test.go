@@ -16,9 +16,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"strings"
 	"testing"
+
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"

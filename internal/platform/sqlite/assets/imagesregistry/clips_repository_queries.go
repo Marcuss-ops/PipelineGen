@@ -3,8 +3,9 @@ package imagesregistry
 import (
 	"context"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )

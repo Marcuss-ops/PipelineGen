@@ -19,7 +19,7 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 	boundAssetOwners := make(map[string]string)
 	artlistContext, artlistContextErr := newArtlistIsolationContext(segments)
 	for _, original := range segments {
-		seg := cloneVidRushSegmentResult(original)
+		seg := CloneVidRushSegmentResult(original)
 		normalizeVidRushSegmentAssets(&seg)
 		if seg.ExecutionMode.IsFixedMedia() {
 			// Fixed media is already authoritative. Do not filter, rank,

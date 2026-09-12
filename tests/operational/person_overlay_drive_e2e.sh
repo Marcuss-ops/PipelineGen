@@ -72,7 +72,8 @@ jq -n \
           generate_metadata: false,
           generate_scene_images: false,
           generate_timeline: true,
-          voiceover_enabled: true
+          voiceover_enabled: true,
+          render: { enabled: true }
         },
         overlay_background: {
           kind: "color",

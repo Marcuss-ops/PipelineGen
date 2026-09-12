@@ -9,7 +9,7 @@
 package gencore
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -19,7 +19,7 @@ const defaultWordsPerSecondClipEvidence = 2.5
 // what the resolved clip evidence duration can support. It only
 // applies to clip-based sources when the caller provided source_text
 // and WordsPerSecondClipEvidence is configured.
-func enforceClipEvidenceTextSupport(plan *scriptpkg.ResolvedGenerationPlan, cfg adapters.NormalizationConfig) error {
+func enforceClipEvidenceTextSupport(plan *scriptpkg.ResolvedGenerationPlan, cfg processor.NormalizationConfig) error {
 	if cfg.WordsPerSecondClipEvidence <= 0 {
 		return nil
 	}

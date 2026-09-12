@@ -12,7 +12,7 @@ func filterNLPScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 	return out
 }
 
-func filterMediaResolutionScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
+func FilterMediaResolutionScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 	out := make([]scriptpkg.SpecScene, 0, len(scenes))
 	for _, scene := range scenes {
 		if sceneAllowsMediaResolution(scene) {
@@ -95,7 +95,7 @@ func hasMediaSearchSegments(input ProcessInput) bool {
 func markArtlistBypassed(input []scriptpkg.VidRushSegmentResult) *PostProcessResult {
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input))
 	for _, segment := range input {
-		cloned := cloneVidRushSegmentResult(segment)
+		cloned := CloneVidRushSegmentResult(segment)
 		if cloned.ExecutionMode.IsFixedMedia() {
 			cloned.Cache.Artlist = "BYPASSED"
 		}

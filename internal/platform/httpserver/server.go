@@ -4,12 +4,13 @@ package httpserver
 import (
 	"context"
 	"fmt"
-	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"net/http"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
