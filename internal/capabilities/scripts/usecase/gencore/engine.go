@@ -52,8 +52,9 @@ package gencore
 import (
 	"context"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -154,12 +155,12 @@ type memoryGateResult struct {
 }
 
 // memoryGateAdapter bridges the canonical gemmamemory adapter
-// (internal/capabilities/scripts/adapters.Service) to the engine's
+// (internal/capabilities/scripts/processor.Service) to the engine's
 // in-package memoryGateChecker interface. This keeps the engine's
 // narrow contract local while still allowing the real SQLite-backed
 // service to be injected from the composition root.
 type memoryGateAdapter struct {
-	svc *adapters.Service
+	svc *processor.Service
 }
 
 // CheckGate implements memoryGateChecker by forwarding to the canonical
@@ -168,7 +169,7 @@ func (a *memoryGateAdapter) CheckGate(ctx context.Context, req memoryGateRequest
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
-	res, err := a.svc.CheckGate(ctx, adapters.MemoryGateRequest{
+	res, err := a.svc.CheckGate(ctx, processor.MemoryGateRequest{
 		ChannelID:    req.ChannelID,
 		Title:        req.Title,
 		Prompt:       req.Prompt,
@@ -192,7 +193,7 @@ func (a *memoryGateAdapter) CheckGate(ctx context.Context, req memoryGateRequest
 // NewMemoryGateChecker wraps the canonical gemmamemory service so it
 // satisfies the engine's narrow memoryGateChecker interface. A nil
 // service returns a checker that always reports a cache miss.
-func NewMemoryGateChecker(svc *adapters.Service) memoryGateChecker {
+func NewMemoryGateChecker(svc *processor.Service) memoryGateChecker {
 	return &memoryGateAdapter{svc: svc}
 }
 

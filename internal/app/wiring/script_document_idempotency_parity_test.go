@@ -6,6 +6,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -49,7 +50,7 @@ func (f *recordingDocClient) doc(id string) *drive.Doc {
 //   - the durable runner (single-item generation), which publishes through
 //     scriptGenerationDocumentPublisher with scriptgen.DocumentIdempotencyKey
 //   - the post-processor (batch generation), which publishes through
-//     adapters.DocumentsProcessor with the explicit historical key
+//     processor.DocumentsProcessor with the explicit historical key
 //
 // Both paths are driven twice with the identical logical document. The Drive
 // idempotency key captured on the second publication MUST equal the first, so
@@ -81,7 +82,7 @@ func TestDocumentPathsNeverReKeyExistingGoogleDoc(t *testing.T) {
 	}
 
 	// ── post-processor path ────────────────────────────────────────────────
-	processor := adapters.NewDocumentsProcessor(publisher)
+	processor := processor.NewDocumentsProcessor(publisher)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:            runID,
 		Title:         "T",

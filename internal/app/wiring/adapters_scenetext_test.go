@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -34,7 +35,7 @@ func (r *captureSourceResolver) Resolve(_ context.Context, src scriptpkg.SourceS
 
 func TestSceneTextGeneratorResolveVidRushPlanPreservesResearchPolicy(t *testing.T) {
 	capture := &captureSourceResolver{}
-	registry := adapters.NewSourceRegistry(nil)
+	registry := processor.NewSourceRegistry(nil)
 	if !registry.Register(scriptpkg.SourceResearch, capture) {
 		t.Fatal("register research resolver")
 	}

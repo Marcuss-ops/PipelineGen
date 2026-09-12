@@ -2,7 +2,7 @@
 // July 2026) updated for PR-GODOBJ-4 KILL-K1.
 //
 // Per KILL-K1, the §8.4 multi-artifact emission is owned by
-// adapters.PersistGeneratedArtifacts (filesystem ops), the typed
+// processor.PersistGeneratedArtifacts (filesystem ops), the typed
 // manifest assembly is owned by buildManifestFromArtifacts
 // (PURE constructor), and the typed ExecutionResult dual-shape
 // merge is owned by MergeTypedExecutionEnvelope (PURE marshal/unmarshal).
@@ -25,7 +25,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -127,7 +128,7 @@ func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (ma
 	t.Helper()
 	ensureFixtureFiles(t, jobID, res)
 	ctx := context.Background()
-	artifacts, err := adapters.PersistGeneratedArtifacts(ctx, jobID, res, nil)
+	artifacts, err := processor.PersistGeneratedArtifacts(ctx, jobID, res, nil)
 	if err != nil {
 		t.Fatalf("canonicalEmit: PersistGeneratedArtifacts(%q): %v", jobID, err)
 	}

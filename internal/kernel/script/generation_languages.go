@@ -2,9 +2,16 @@ package script
 
 import "strings"
 
-// SupportedLanguages is the canonical allowlist of target output
-// languages for script generation. ISO 639-1 two-letter codes.
-var SupportedLanguages = []string{
+// GenerationLanguageCodes is the ISO-639-1 code list that generation
+// accepts as target output languages. This is a FORMAT vocabulary ("is
+// this a well-formed ISO-639-1 code we can generate output in?"), NOT
+// the project-wide materialization whitelist — that SSOT is
+// asset.SupportedLanguages (internal/kernel/asset/bcp47.go, the 10-code
+// BCP-47 production whitelist) + asset.LanguageRegistry (the per-language
+// capability registry). Renamed 2026-09-12 from the ambiguous
+// "SupportedLanguages" to kill the two-meanings-one-name collision
+// flagged by the 2026-09-12 audit (F4).
+var GenerationLanguageCodes = []string{
 	"aa", "ab", "af", "am", "ar", "as", "ay", "az", "ba", "be",
 	"bg", "bh", "bi", "bn", "bo", "br", "bs", "ca", "ce", "ch",
 	"co", "cr", "cs", "cv", "cy", "da", "de", "dv", "dz", "ee",
@@ -25,15 +32,15 @@ var SupportedLanguages = []string{
 	"wa", "wo", "xh", "yi", "yo", "za", "zh", "zu",
 }
 
-// IsSupportedLanguage returns true when code is a supported ISO 639-1
+// IsValidGenerationLanguage returns true when code is a supported ISO 639-1
 // language code. Empty string is treated as supported (caller will
 // apply the configured default language).
-func IsSupportedLanguage(code string) bool {
+func IsValidGenerationLanguage(code string) bool {
 	code = strings.ToLower(strings.TrimSpace(code))
 	if code == "" {
 		return true
 	}
-	for _, lang := range SupportedLanguages {
+	for _, lang := range GenerationLanguageCodes {
 		if lang == code {
 			return true
 		}

@@ -14,10 +14,10 @@
 package gencore
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"unicode/utf8"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // SourceTextLogFields returns a map suitable for zap.Any/ zap.Any
@@ -30,7 +30,7 @@ import (
 // the logged preview can never be the full raw text, preventing
 // accidental leakage of short inputs. When the text fits within the
 // budget the preview field is omitted entirely.
-func SourceTextLogFields(text string, cfg adapters.NormalizationConfig) map[string]any {
+func SourceTextLogFields(text string, cfg processor.NormalizationConfig) map[string]any {
 	fields := map[string]any{
 		"source_text_hash":   hashSourceTextForLog(text),
 		"source_text_chars":  utf8.RuneCountInString(text),

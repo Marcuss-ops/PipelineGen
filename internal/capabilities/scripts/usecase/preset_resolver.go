@@ -9,7 +9,7 @@
 // of the single precedence chain). This file is preserved as a thin
 // wrapper so existing callers that imported usecase.ApplyPreset
 // (e.g. tests via the `scripts` import alias) keep working; new
-// callers should reference adapters.ApplyPreset directly.
+// callers should reference processor.ApplyPreset directly.
 //
 // The canonical semantic table is in
 // docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md §6
@@ -23,12 +23,12 @@
 //
 // PR 8 narrowing note: `with_images` no longer forces voiceover /
 // document / entities / metadata. Only the canonical
-// `adapters.ApplyPreset` knows the current row-by-row semantics;
+// `processor.ApplyPreset` knows the current row-by-row semantics;
 // this wrapper inherits all of those guarantees by delegation.
 package usecase
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -45,5 +45,5 @@ import (
 // the caller > preset > config > safety precedence from the
 // canonical implementation.
 func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
-	adapters.ApplyPreset(item, preset)
+	processor.ApplyPreset(item, preset)
 }

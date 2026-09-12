@@ -20,11 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )

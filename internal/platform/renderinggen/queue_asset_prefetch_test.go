@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
@@ -57,5 +58,48 @@ func TestHTTPAssetPrefetcherStagesVerifiedLocalAsset(t *testing.T) {
 	}
 	if strings.Contains(string(uploaded), localPath) {
 		t.Fatal("local path leaked into staged bytes")
+	}
+}
+
+func TestHTTPAssetPrefetcherStagesCanonicalPresetFont(t *testing.T) {
+	font, err := ResolveFontAsset(FontPoppinsBold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := os.ReadFile(font.LocalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uploaded []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+font.Hash {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodHead:
+			http.NotFound(w, r)
+		case http.MethodPut:
+			uploaded, err = io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
+	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+		Hash: font.Hash, URL: capoverlay.CanonicalPresetFontPath,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(uploaded) != string(payload) {
+		t.Fatalf("staged preset font bytes = %d, want %d", len(uploaded), len(payload))
 	}
 }

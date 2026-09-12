@@ -19,11 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -93,18 +90,59 @@ func DefaultFakeResult() *scriptports.GenerationResult {
 	}
 }
 
-// BuildTestEngine returns a generation Engine wired to the supplied fake
-// generator and a nil memory gate, with lenient segment tolerances so unit
-// tests are not fighting the production QA policy.
+// NOTE: the Engine builder is deliberately NOT here. Building a
+// *gencore.Engine would make this package import usecase/gencore, which
+// would then forbid gencore's own tests from importing testsupport
+// (import cycle not allowed in test). The usecase package defines its own
+// buildTestEngine helper in a _test.go file instead.
+
+// ── Fixtures ──────────────────────────────────────────────────────────────
+
+// ItemForTimings builds a minimal text-only GenerationItemV2 that:
+//   - emits SourceSpec.Type=SourceText so source-resolution is a no-op
+//     (no clip-search / Qdrant / drive calls)
+//   - opts-in to ExtractEntities + GenerateMetadata so buildPostprocessorList
+//     emits "entities" + "metadata" in plan.Postprocessors (both Required-class
+//     and registered in the test's registry — the canonical two procs whose
+//     per-stage variance the timing assertion inspects)
+//   - leaves SaveToDB false (NormalizeItem overrides it to true) and
+//     VoiceoverFolderID empty so ResolveVoiceoverFolderForItem short-circuits
 //
-// A nil memory gate is safe only for tests that exercise NON-memory paths
-// (UseMemory=false or ForceRefresh=true); tests that assert memory-path
-// behaviour must construct the engine in-package where the narrow
-// memory-gate types are visible.
-func BuildTestEngine(gen *FakeOllamaGen) *gencore.Engine {
-	e := gencore.NewEngine(gen, nil, zap.NewNop())
-	e.ConfigureSegmentValidation(50, 50, 0)
-	return e
+// SourceSpec.Topic is populated so the model's prompts carry an anchor; the
+// validator reads Topic + SourceText + Title through ResolveGenerationPlan
+// downstream.
+//
+// Lives here rather than in a _test.go file because both usecase and
+// usecase/gencore tests need it and test helpers are not importable.
+func ItemForTimings() scriptpkg.GenerationItemV2 {
+	return scriptpkg.GenerationItemV2{
+		ID:       "iss3-timings-item",
+		Title:    "Stage Durations Plumbing",
+		Language: "en",
+		Tone:     "neutral",
+		Style:    "standard",
+		Model:    "llama3:8b",
+		Source: scriptpkg.SourceSpec{
+			Type:  scriptpkg.SourceText,
+			Topic: "Stage durations plumbing",
+			// SourceText length is well above any sensible validator minimum
+			// so ValidateItem succeeds even if the validator enforces one.
+			SourceText: "This is a generated script with multiple sentences and narrative depth. A canonical test about per-stage postprocessor duration plumbing.",
+		},
+		ScriptParams: scriptpkg.ScriptSpec{
+			TargetWords: 12,
+		},
+		Output: scriptpkg.OutputSpec{
+			// Procs the test exercises:
+			ExtractEntities:  scriptpkg.ToggleEnabled, // selects clip_search + provider search
+			GenerateMetadata: scriptpkg.ToggleEnabled,
+			// Opt out of every optional postprocessor; the plan still gains the
+			// unconditional clip_bindings / asset_location_reconciliation /
+			// persistence stages, but only the registered-and-planned stubs
+			// (clip_search, metadata, persistence) execute.
+			SaveToDB: false,
+		},
+	}
 }
 
 // ── Post-processor fake ───────────────────────────────────────────────────

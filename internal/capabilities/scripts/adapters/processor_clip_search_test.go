@@ -404,21 +404,21 @@ func TestValidateVidRushArtlistIsolationAcrossFiveMediterraneanSegments(t *testi
 	}
 
 	queryContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
-	queryContamination[1] = cloneVidRushSegmentResult(queryContamination[1])
+	queryContamination[1] = CloneVidRushSegmentResult(queryContamination[1])
 	queryContamination[1].Insights.ArtlistQueries = []string{"seafood paella shrimp"}
 	if err := ValidateVidRushArtlistIsolation(queryContamination); err == nil {
 		t.Fatal("foreign Paella query was accepted by the Hummus segment")
 	}
 
 	candidateContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
-	candidateContamination[1] = cloneVidRushSegmentResult(candidateContamination[1])
+	candidateContamination[1] = CloneVidRushSegmentResult(candidateContamination[1])
 	candidateContamination[1].Assets.Candidates[0].Query = "seafood paella shrimp"
 	if err := ValidateVidRushArtlistIsolation(candidateContamination); err == nil {
 		t.Fatal("foreign Artlist candidate query was accepted by the Hummus segment")
 	}
 
 	winnerContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
-	winnerContamination[1] = cloneVidRushSegmentResult(winnerContamination[1])
+	winnerContamination[1] = CloneVidRushSegmentResult(winnerContamination[1])
 	winner := *winnerContamination[1].Assets.PrimaryVideo
 	winner.Query = "seafood paella shrimp"
 	winnerContamination[1].Assets.PrimaryVideo = &winner
@@ -427,7 +427,7 @@ func TestValidateVidRushArtlistIsolationAcrossFiveMediterraneanSegments(t *testi
 	}
 
 	assetContamination := append([]scriptpkg.VidRushSegmentResult(nil), segments...)
-	assetContamination[4] = cloneVidRushSegmentResult(assetContamination[4])
+	assetContamination[4] = CloneVidRushSegmentResult(assetContamination[4])
 	assetContamination[4].Assets.Candidates[0].AssetID = assetContamination[0].Assets.Candidates[0].AssetID
 	if err := ValidateVidRushArtlistIsolation(assetContamination); err == nil {
 		t.Fatal("Artlist asset rebound across segments was accepted")

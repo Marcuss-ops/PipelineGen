@@ -2,10 +2,11 @@ package searchtext
 
 import (
 	"context"
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"testing"
+
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestRegistry_Build_NilAssetID(t *testing.T) {

@@ -2,8 +2,9 @@ package artifactsinfra
 
 import (
 	"context"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

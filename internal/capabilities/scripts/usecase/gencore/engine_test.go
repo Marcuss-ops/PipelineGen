@@ -695,7 +695,6 @@ func TestEngineGenerate_AlwaysAppendsVSuffix(t *testing.T) {
 
 // ── PR 2: prompt / fingerprint / cache-key separation ──────────────────
 
-
 // TestEngineGenerate_FeedsCacheKeyToMemoryGate asserts that the
 // canonical CacheKey (computed by script.BuildCacheKey in the use
 // case) propagates through to memoryGateRequest.CacheKey when the

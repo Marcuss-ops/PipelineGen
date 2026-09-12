@@ -22,15 +22,18 @@ package gencore
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
-	"testing"
-	"time"
 )
 
 // Package scripts — generate_one_usecase_test.go (June 2026,
@@ -86,59 +89,6 @@ func (s *stubPostProcessor) Process(
 		time.Sleep(time.Duration(s.sleepMs) * time.Millisecond)
 	}
 	return s.result, nil
-}
-
-// itemForTimingsTest builds a minimal text-only GenerationItemV2
-// that:
-//   - emits SourceSpec.Type=SourceText so source-resolution is
-//     a no-op (no clip-search / Qdrant / drive calls)
-//   - opts-in to ExtractEntities + GenerateMetadata so
-//     buildPostprocessorList emits "entities" + "metadata" in
-//     plan.Postprocessors (both Required-class per
-//     `defaultPolicyByName` and registered in the test's
-//     registry — the canonical two procs whose per-stage
-//     variance the assertion inspects).
-//   - SaveToDB is a safety default (July 2026) — the test
-//     explicitly sets it false so NormalizeItem overrides it
-//     to true; persistence is registered in the test registry to
-//     satisfy ValidateRequested.
-//   - leaves VoiceoverFolderID empty so ResolveVoiceoverFolderForItem
-//     short-circuits before touching anything
-//
-// SourceSpec.Topic is populated so the model's prompts carry an
-// anchor; the validator reads Topic + SourceText + Title through
-// ResolveGenerationPlan downstream.
-func itemForTimingsTest() scriptpkg.GenerationItemV2 {
-	return scriptpkg.GenerationItemV2{
-		ID:       "iss3-timings-item",
-		Title:    "Stage Durations Plumbing",
-		Language: "en",
-		Tone:     "neutral",
-		Style:    "standard",
-		Model:    "llama3:8b",
-		Source: scriptpkg.SourceSpec{
-			Type:  scriptpkg.SourceText,
-			Topic: "Stage durations plumbing",
-			// SourceText length is well above any sensible
-			// validator minimum so ValidateItem succeeds even
-			// if the validator enforces one.
-			SourceText: "This is a generated script with multiple sentences and narrative depth. A canonical test about per-stage postprocessor duration plumbing.",
-		},
-		ScriptParams: scriptpkg.ScriptSpec{
-			TargetWords: 12,
-		},
-		Output: scriptpkg.OutputSpec{
-			// Procs the test exercises:
-			ExtractEntities:  scriptpkg.ToggleEnabled, // selects clip_search + provider search
-			GenerateMetadata: scriptpkg.ToggleEnabled,
-			// Opt out of every optional postprocessor; the plan
-			// still gains the unconditional clip_bindings /
-			// asset_location_reconciliation / persistence stages,
-			// but only the registered-and-planned stubs
-			// (clip_search, metadata, persistence) execute.
-			SaveToDB: false,
-		},
-	}
 }
 
 // TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations
@@ -207,14 +157,14 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	// means "no preset override" so NormalizeItem leaves the
 	// item's existing flags intact.
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, // SourceRegistry — text-only plan path skips it
 		e,
 		ppReg,
 		zap.NewNop(),
 	)
 
-	item := itemForTimingsTest()
+	item := testsupport.ItemForTimings()
 
 	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "timings", AttemptID: "timings"})
 	ctx := kernobs.WithRun(context.Background(), run)
@@ -306,7 +256,7 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnEngineNil(t *testing.T) {
 	log := zap.New(core)
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, // SourceRegistry nil
 		nil, // Engine nil → triggers ErrGenerationFailed (typed sentinel)
 		nil, // ppReg nil
@@ -360,7 +310,7 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnValidateFailure(t *testin
 	e := buildTestEngine(gen, nil)
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, // SourceRegistry nil
 		e,
 		nil, // ppReg nil
@@ -406,7 +356,7 @@ func TestEnforceClipEvidenceTextSupport_AllowedWithinBudget(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
 	if err := enforceClipEvidenceTextSupport(plan, cfg); err != nil {
 		t.Fatalf("expected no error for source_text within clip evidence budget, got %v", err)
 	}
@@ -422,7 +372,7 @@ func TestEnforceClipEvidenceTextSupport_ExceedsBudget(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
 	err := enforceClipEvidenceTextSupport(plan, cfg)
 	require.Error(t, err)
 	var pve *scriptpkg.PayloadValidationError
@@ -444,7 +394,7 @@ func TestEnforceClipEvidenceTextSupport_DisabledWhenZero(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 0}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 0}
 	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
 }
 
@@ -459,7 +409,7 @@ func TestEnforceClipEvidenceTextSupport_SumsMultipleClips(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
 	if err := enforceClipEvidenceTextSupport(plan, cfg); err != nil {
 		t.Fatalf("expected no error when total clip duration supports source_text, got %v", err)
 	}
@@ -475,7 +425,7 @@ func TestEnforceClipEvidenceTextSupport_IgnoresTextSource(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
 	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
 }
 
@@ -489,7 +439,7 @@ func TestEnforceClipEvidenceTextSupport_NoSourceText(t *testing.T) {
 			},
 		},
 	}
-	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	cfg := processor.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
 	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
 }
 
@@ -513,7 +463,7 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, e, ppReg, zap.NewNop(),
 	)
 
@@ -683,7 +633,7 @@ func umbrellaCoverageVoiceoverResolve(t *testing.T) {
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
 	// Wire a voGroupResolver that errors. Set VoiceoverGroup
@@ -746,7 +696,7 @@ func umbrellaCoverageEngine(t *testing.T) {
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
 
@@ -814,7 +764,7 @@ func umbrellaCoveragePostprocess(t *testing.T) {
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
 
@@ -887,7 +837,7 @@ func umbrellaCoverageEngineNil(t *testing.T) {
 	log := zap.New(core)
 
 	uc := NewGenerateOneUseCase(
-		adapters.NormalizationConfig{},
+		processor.NormalizationConfig{},
 		nil, // SourceRegistry nil
 		nil, // Engine nil → triggers ErrGenerationFailed (typed sentinel)
 		nil, // ppReg nil

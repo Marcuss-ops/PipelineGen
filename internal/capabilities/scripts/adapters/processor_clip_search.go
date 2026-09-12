@@ -56,7 +56,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	if !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
-			cloned := cloneVidRushSegmentResult(segment)
+			cloned := CloneVidRushSegmentResult(segment)
 			cloned.Cache.Artlist = "BYPASSED"
 			segments = append(segments, cloned)
 		}
@@ -88,7 +88,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	var warnings []string
 
 	for _, seg := range input.VidRushSegments {
-		updated := cloneVidRushSegmentResult(seg)
+		updated := CloneVidRushSegmentResult(seg)
 		if !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position) {
 			updated.Cache.Artlist = "BYPASSED"
 			segments = append(segments, updated)
@@ -120,7 +120,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				if payload, ok := cached.(artlistSegmentCachePayload); ok {
 					payload = cloneArtlistSegmentCachePayload(payload)
 					payload.Candidates = filterArtlistCandidatesForSegment(payload.Candidates, updated, input.VidRushSegments)
-					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
+					updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
 					updated.Cache.Artlist = "HIT_EXACT"
 					segments = append(segments, updated)
 					aggregated = append(aggregated, payload.Matches...)
@@ -136,7 +136,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			} else if hit {
 				persisted = cloneArtlistSegmentCachePayload(persisted)
 				persisted.Candidates = filterArtlistCandidatesForSegment(persisted.Candidates, updated, input.VidRushSegments)
-				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
+				updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
 				updated.Cache.Artlist = "HIT_EXACT"
 				cacheStore(vidrushArtlistCache, cacheKey, persisted)
 				segments = append(segments, updated)
@@ -217,7 +217,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			continue
 		}
 
-		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
 		updated.Cache.Artlist = "MISS"
 		if plan.MediaPlan.ForceRefreshAssets {
 			updated.Cache.Artlist = "REFRESHED"
@@ -323,7 +323,7 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 	return out
 }
 
-func appendProviderCandidatesUnique(base, additions []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+func AppendProviderCandidatesUnique(base, additions []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := append([]scriptpkg.SegmentAssetCandidate(nil), base...)
 	seen := make(map[string]struct{}, len(out)+len(additions))
 	for _, candidate := range out {

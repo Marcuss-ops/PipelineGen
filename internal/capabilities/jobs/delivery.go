@@ -49,7 +49,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"net/http"
 	"time"
@@ -454,6 +453,9 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 			zap.String("idempotency_key", req.IdempotencyKey),
 			zap.String("endpoint", req.Destination.DestinationID),
 		)
+		// Audit-trail failures are surfaced (logged inside recordDelivery)
+		// but do not change the terminal classification — the refusal is
+		// terminal either way.
 		_ = h.recordDelivery(ctx, req, 0, "", "refused:hmac_not_configured")
 		// Terminal — retry won't bring the secret into existence.
 		return fmt.Errorf("delivery.requested: HMAC not configured (refusing): %w", ErrSchemaVersionMismatch)
@@ -478,7 +480,15 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 			zap.Int("attempt", evt.AttemptCount),
 			zap.Error(err),
 		)
-		_ = h.recordDelivery(ctx, req, statusCode, "", "network:"+err.Error())
+		if recErr := h.recordDelivery(ctx, req, statusCode, "", "network:"+err.Error()); recErr != nil {
+			// godlike/07 no-fake-availability: the audit gap must be visible
+			// on the retry path, not only in the log stream. Join so the
+			// outbox pool's error classifier still sees the network cause.
+			return errors.Join(
+				fmt.Errorf("delivery.requested POST %s: %w", req.Destination.DestinationID, err),
+				fmt.Errorf("delivery_log recording failed (audit gap): %w", recErr),
+			)
+		}
 		return fmt.Errorf("delivery.requested POST %s: %w", req.Destination.DestinationID, err)
 	}
 	defer resp.Body.Close()
@@ -486,7 +496,20 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 	// Read response body, capped. A greedy receiver cannot OOM the worker.
 	responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, maxDeliveryResponseBytes))
 	statusCode = resp.StatusCode
-	_ = h.recordDelivery(ctx, req, statusCode, hashBody(responseBody), "ok")
+	if recErr := h.recordDelivery(ctx, req, statusCode, hashBody(responseBody), "ok"); recErr != nil {
+		// A success whose audit write failed must not be silently
+		// indistinguishable from a recorded one (2026-09-12 audit F6).
+		// Surface the gap to the pool: the joined error is retryable,
+		// and the retry re-runs recordDelivery idempotently
+		// (ON CONFLICT DO UPDATE) — no duplicate audit rows.
+		h.log.Warn("delivery.requested succeeded but delivery_log write failed — surfacing audit gap (will retry)",
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.String("endpoint", req.Destination.DestinationID),
+			zap.Int("status", statusCode),
+			zap.Error(recErr),
+		)
+		return fmt.Errorf("delivery_log recording failed for successful delivery (audit gap): %w", recErr)
+	}
 
 	switch {
 	case statusCode >= 200 && statusCode < 300:
@@ -522,60 +545,4 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 		)
 		return fmt.Errorf("delivery.requested %s → HTTP %d", req.Destination.DestinationID, statusCode)
 	}
-}
-
-// recordDelivery writes (or updates) a delivery_log row keyed by
-// idempotency_key (UNIQUE constraint). ON CONFLICT DO UPDATE collapses
-// re-deliveries (e.g. after a 5xx retry) onto the same audit row. When
-// db is nil the write is silently skipped so unit tests can construct
-// the handler without a fixture.
-func (h *DeliveryHandler) recordDelivery(ctx context.Context, req *deliveryRequest, statusCode int, responseHash, note string) error {
-	if h.db == nil {
-		return nil
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	// Use a detached context so the audit write is not cancelled when
-	// the caller's HTTP request context expires. The write is
-	// idempotent (ON CONFLICT DO UPDATE) so retries are safe.
-	_, err := h.db.ExecContext(context.WithoutCancel(ctx), `
-		INSERT INTO delivery_log (asset_id, endpoint_url, delivery_id, status_code, response_hash, delivered_at, created_at, note)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(delivery_id) DO UPDATE SET
-		  status_code = excluded.status_code,
-		  response_hash = excluded.response_hash,
-		  delivered_at = excluded.delivered_at,
-		  note = excluded.note
-	`, req.Artifact.ArtifactID, req.Destination.DestinationID, req.IdempotencyKey, statusCode, responseHash, now, now, note)
-	if err != nil {
-		// Telemetry loss is audit data loss, not a routine hiccup: a webhook
-		// delivery whose recording failed must not look identical to one that
-		// was recorded. The log line carries enough context to reconstruct the
-		// delivery from other sources (outbox row, receiver logs).
-		h.log.Error("delivery_log insert failed (delivery telemetry lost — audit gap)",
-			zap.String("idempotency_key", req.IdempotencyKey),
-			zap.String("endpoint", req.Destination.DestinationID),
-			zap.String("asset_id", req.Artifact.ArtifactID),
-			zap.Int("status_code", statusCode),
-			zap.String("note", note),
-			zap.Error(err),
-		)
-		return err
-	}
-	return nil
-}
-
-// hashBody returns the lowercase hex SHA-256 of b. Empty input returns
-// the SHA-256 of the empty string (a fixed constant), not "" — keeping
-// the column stable for audits.
-func hashBody(b []byte) string {
-	return digest.SHA256Bytes(b)
-}
-
-// truncate returns at most n bytes of b. Used only for log lines; the
-// delivery_log row stores the 1 MiB capped body hash.
-func truncate(b []byte, n int) []byte {
-	if len(b) <= n {
-		return b
-	}
-	return b[:n]
 }

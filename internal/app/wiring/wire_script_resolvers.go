@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -27,8 +28,8 @@ func buildScriptSourceResolvers(
 	root *ComposeRoot,
 	log *zap.Logger,
 ) (
-	adapters.NormalizationConfig,
-	*adapters.SourceRegistry,
+	processor.NormalizationConfig,
+	*processor.SourceRegistry,
 	*usecase.ClipSourceBuilder,
 	scriptports.AssetSearchPort,
 ) {
@@ -56,7 +57,7 @@ func buildScriptSourceResolvers(
 		}
 	}
 
-	normCfg := adapters.NormalizationConfig{
+	normCfg := processor.NormalizationConfig{
 		DefaultLanguage:            cfg.Scripts.DefaultLanguage,
 		DefaultTone:                cfg.Scripts.DefaultTone,
 		WordsPerMinute:             cfg.Scripts.Defaults.WordsPerMinute,
@@ -77,7 +78,7 @@ func buildScriptSourceResolvers(
 		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
 
-	sourceReg := adapters.NewSourceRegistry(log)
+	sourceReg := processor.NewSourceRegistry(log)
 	sourceReg.Register(scriptpkg.SourceText, usecase.NewTextSourceResolver())
 
 	if gen != nil && gen.GetClient() != nil && gen.GetClient().WebSearcher() != nil {

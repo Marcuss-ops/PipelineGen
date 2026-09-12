@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -89,7 +90,7 @@ func registerAIBackedProcessors(
 		)
 	}
 
-	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
+	if !ppReg.Register(processor.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("register metadata processor: composition bug")
 	}
 
@@ -109,7 +110,7 @@ func registerAIBackedProcessors(
 		if mErr != nil {
 			return fmt.Errorf("register translation processor: metrics adapter: %w", mErr)
 		}
-		transProc := adapters.NewTranslationProcessor(
+		transProc := processor.NewTranslationProcessor(
 			translatorPort,
 			metricsPort,
 			usecase.NewTranslationUseCaseAdapter(),

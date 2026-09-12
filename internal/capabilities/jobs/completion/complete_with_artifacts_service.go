@@ -49,6 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"go.uber.org/zap"
 )
 
 // ── Service struct ─────────────────────────────────────────────────
@@ -72,6 +73,10 @@ import (
 type WithArtifactsService struct {
 	rxRunner CompleteJobTxRunner
 	cache    IdempotencyCachePort
+	// log is the nil-safe observability seam for non-fatal
+	// post-TX side-effect failures (e.g. StoreCanonical) — the
+	// same contract as Service.log (2026-09-12 audit F6).
+	log *zap.Logger
 }
 
 // NewWithArtifactsService is the canonical constructor. Returns
@@ -85,7 +90,20 @@ func NewWithArtifactsService(rxRunner CompleteJobTxRunner, cache IdempotencyCach
 	if cache == nil {
 		return nil, fmt.Errorf("%w: cache", remote.ErrCompleteWithArtifactsNotConfigured)
 	}
-	return &WithArtifactsService{rxRunner: rxRunner, cache: cache}, nil
+	return &WithArtifactsService{rxRunner: rxRunner, cache: cache, log: zap.NewNop()}, nil
+}
+
+// WithLogger wires a nil-safe logger. Returns the receiver for
+// fluent-chain composition; nil logger → zap.NewNop().
+func (s *WithArtifactsService) WithLogger(log *zap.Logger) *WithArtifactsService {
+	if s == nil {
+		return nil
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	s.log = log
+	return s
 }
 
 // Compile-time pins (Pattern 0): catastrophic drift between the
@@ -214,13 +232,20 @@ func (s *WithArtifactsService) CompleteWithArtifacts(
 	// LOGGED but NOT fatal — the SQLite ON CONFLICT dedup remains
 	// the authoritative gate (the cache is an optimisation, not
 	// the authority).
-	_ = s.cache.StoreCanonical(ctx, req.JobID, req.Attempt, req.ResultHash, &remote.CompleteJobResponse{
+	canonicalResp := &remote.CompleteJobResponse{
 		Status:         outResp.Status,
 		JobArtifactIDs: append([]string(nil), outResp.JobArtifactIDs...),
 		JobID:          outResp.JobID,
 		Attempt:        outResp.Attempt,
 		ResultHash:     outResp.ResultHash,
-	})
+	}
+	if cacheErr := s.cache.StoreCanonical(ctx, req.JobID, req.Attempt, req.ResultHash, canonicalResp); cacheErr != nil {
+		s.log.Warn("complete with artifacts: idempotency cache StoreCanonical failed (non-fatal; SQLite ON CONFLICT dedup remains authoritative)",
+			zap.String("job_id", req.JobID),
+			zap.Int("attempt", req.Attempt),
+			zap.Error(cacheErr),
+		)
+	}
 	return outResp, nil
 }
 

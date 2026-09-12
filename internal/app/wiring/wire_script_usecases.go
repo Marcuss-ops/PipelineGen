@@ -65,6 +65,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -97,8 +98,8 @@ import (
 func buildScriptUseCases(
 	cfg *config.Config,
 	root *ComposeRoot,
-	normCfg adapters.NormalizationConfig,
-	sourceReg *adapters.SourceRegistry,
+	normCfg processor.NormalizationConfig,
+	sourceReg *processor.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,
 	clipSearchPort scriptports.AssetSearchPort,
 	clipSourceBuilder *usecase.ClipSourceBuilder,
@@ -189,7 +190,7 @@ func wireScriptChildJobAuditP04(
 	jobsSvc *appjobs.Service,
 	oneUC *gencore.GenerateOneUseCase,
 	manyUC *usecase.GenerateManyUseCase,
-	normCfg adapters.NormalizationConfig,
+	normCfg processor.NormalizationConfig,
 	log *zap.Logger,
 ) error {
 	if jobsSvc == nil {

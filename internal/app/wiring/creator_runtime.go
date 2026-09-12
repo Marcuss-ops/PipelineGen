@@ -71,6 +71,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
@@ -234,7 +235,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Script generate handler ───────────────────────
 	// Build the minimal dependency chain for script.generate:
 	//   Engine -> GenerateOneUseCase -> GenerateManyUseCase -> GenerateJobHandler
-	normCfg := adapters.NormalizationConfig{
+	normCfg := processor.NormalizationConfig{
 		DefaultLanguage:            cfg.Scripts.DefaultLanguage,
 		DefaultTone:                cfg.Scripts.DefaultTone,
 		WordsPerMinute:             cfg.Scripts.Defaults.WordsPerMinute,
@@ -250,7 +251,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
 		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
-	sourceReg := adapters.NewSourceRegistry(log)
+	sourceReg := processor.NewSourceRegistry(log)
 	generateOne := gencore.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	generateMany := usecase.NewGenerateManyUseCase(log)
 	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, log)
@@ -427,8 +428,8 @@ func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegis
 	// metadata -> typed-fail adapter wrapped in BestEffort policy.
 	// PR-noop-adapters-purge (2026-07-25): see entities comment
 	// above — same godlike/07 NO-FAKE-AVAILABILITY rationale.
-	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
-	metadataProc := adapters.NewMetadataProcessor(metadataAdapter)
+	metadataAdapter := processor.NewUnavailableMetadataGenerationAdapter()
+	metadataProc := processor.NewMetadataProcessor(metadataAdapter)
 	if !ppReg.Register(&creatorBestEffort{inner: metadataProc, name: "metadata"}) {
 		if log != nil {
 			log.Warn("creator: failed to register metadata processor")
@@ -436,7 +437,7 @@ func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegis
 	}
 
 	// clip_bindings -> canonical processor (in-memory, no external deps).
-	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
+	if !ppReg.Register(processor.NewClipBindingsProcessor(log)) {
 		if log != nil {
 			log.Warn("creator: failed to register clip_bindings processor")
 		}

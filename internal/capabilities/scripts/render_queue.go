@@ -426,7 +426,13 @@ func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverla
 	if err := req.Validate(); err != nil {
 		return err
 	}
-	spec, err := json.Marshal(req)
+	// Prepare has its own deliberately small wire contract. The capability
+	// intent is rich (entity identity, payload and asset refs), but the worker
+	// only needs template_id + PENDING timing to warm its registry; the asset
+	// refs travel in the queue manifest. Projecting here prevents the rich
+	// OverlayIntent fields (for example kind/entity) from crossing a strict
+	// renderinggen.overlay-prepare.v1 boundary.
+	spec, err := json.Marshal(newOverlayPrepareWire(req))
 	if err != nil {
 		return fmt.Errorf("chronon queue prepare marshal: %w", err)
 	}
@@ -443,6 +449,39 @@ func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverla
 		return fmt.Errorf("chronon queue prepare submit failed: %w", err)
 	}
 	return nil
+}
+
+type overlayPrepareWire struct {
+	SchemaVersion string                     `json:"schema_version"`
+	PlanID        string                     `json:"plan_id"`
+	VideoID       string                     `json:"video_id"`
+	Width         int                        `json:"width"`
+	Height        int                        `json:"height"`
+	FPSNum        int                        `json:"fps_num"`
+	FPSDen        int                        `json:"fps_den"`
+	Intents       []overlayPrepareIntentWire `json:"intents"`
+}
+
+type overlayPrepareIntentWire struct {
+	TemplateID  string `json:"template_id"`
+	TimingState string `json:"timing_state"`
+}
+
+func newOverlayPrepareWire(req capoverlay.PrepareRequest) overlayPrepareWire {
+	wire := overlayPrepareWire{
+		SchemaVersion: req.SchemaVersion,
+		PlanID:        req.PlanID,
+		VideoID:       req.VideoID,
+		Width:         req.Width,
+		Height:        req.Height,
+		FPSNum:        req.FPSNum,
+		FPSDen:        req.FPSDen,
+		Intents:       make([]overlayPrepareIntentWire, len(req.Intents)),
+	}
+	for i, intent := range req.Intents {
+		wire.Intents[i] = overlayPrepareIntentWire{TemplateID: intent.TemplateID, TimingState: string(intent.TimingState)}
+	}
+	return wire
 }
 
 // prepareAssets collects the entity-image assets referenced by the intents,

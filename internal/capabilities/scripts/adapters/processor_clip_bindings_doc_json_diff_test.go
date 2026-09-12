@@ -27,6 +27,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -70,7 +71,7 @@ func TestSpecScene_DocumentEmbeddedJSON_Equals_JSONWire(t *testing.T) {
 		NumClips:     numScenes,
 	}
 
-	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	p := processor.NewClipBindingsProcessor(zap.NewNop())
 	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: scenes},
 	}); err != nil {

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
@@ -25,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"io"
 )
 
 // registryCrossStepState carries dependencies produced by the internal-module

@@ -31,6 +31,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 
 	"go.uber.org/zap"

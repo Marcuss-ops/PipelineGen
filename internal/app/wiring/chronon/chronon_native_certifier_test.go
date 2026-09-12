@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"errors"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // fakeCertRunner stands in for every command the certifier shells out to.

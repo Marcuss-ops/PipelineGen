@@ -106,7 +106,7 @@ func normalizeVidRushSegmentAssets(segment *scriptpkg.VidRushSegmentResult) {
 	}
 }
 
-func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
+func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
 	out := in
 	if strings.TrimSpace(out.TextHash) == "" {
 		identityText := out.Text

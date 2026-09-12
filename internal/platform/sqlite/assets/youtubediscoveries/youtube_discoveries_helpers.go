@@ -1,8 +1,9 @@
 package youtubediscoveries
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // deriveDiscoveryID computes the canonical ledger id from

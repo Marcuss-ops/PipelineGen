@@ -2,9 +2,10 @@ package scriptgeneration
 
 import (
 	"encoding/json"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

@@ -44,7 +44,7 @@ func TestMergePostProcessResult_SynthesizedScenesPreserveNewClipBindings(t *test
 		Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "clip-0"}},
 	}}}
 
-	mergePostProcessResult(&PipelineResult{}, src, currentInput)
+	MergePostProcessResult(&PipelineResult{}, src, currentInput)
 	scene := currentInput.SpecScene.Scenes[0]
 	if scene.Bindings.Clip == nil || scene.Bindings.Clip.ClipID != "clip-0" {
 		t.Fatalf("synthesized clip binding was lost: %+v", scene.Bindings.Clip)
@@ -89,7 +89,7 @@ func TestMergeVidRushSegments_PreservesCandidatesAcrossProviderDeltas(t *testing
 //   - currentInput.Text starts as "I will defeat you." (English, canonical pre-translation state)
 //   - currentInput.SpecScene has 1 scene with English text
 //   - src.PostProcessResult carries TranslatedText="Sconfiggerò." + TranslatedSpecScene with 1 Italian scene
-//   - After mergePostProcessResult call:
+//   - After MergePostProcessResult call:
 //   - currentInput.Text MUST equal "Sconfiggerò." (the translated surface
 //     propagates IN-PLACE for the next postprocessor's downstream use).
 //   - currentInput.SpecScene.Scenes[0].Text MUST equal "Sconfiggerò." (per-scene).
@@ -154,13 +154,13 @@ func TestMergePostProcessResult_PropagatesTranslatedToCurrentInput(t *testing.T)
 	}
 
 	// ── Act ────────────────────────────────────────────────────────────────
-	mergePostProcessResult(dst, src, currentInput)
+	MergePostProcessResult(dst, src, currentInput)
 
 	// ── Assert ─────────────────────────────────────────────────────────────
 	// Primary regression guard: in-place TEXT propagation.
 	if currentInput.Text != translatedText {
 		t.Errorf("currentInput.Text = %q, want %q "+
-			"(mergePostProcessResult must propagate src.TranslatedText into "+
+			"(MergePostProcessResult must propagate src.TranslatedText into "+
 			"currentInput.Text so the NEXT-stage postprocessor reads the "+
 			"translated surface, not the pre-translation English surface)",
 			currentInput.Text, translatedText)
@@ -169,13 +169,13 @@ func TestMergePostProcessResult_PropagatesTranslatedToCurrentInput(t *testing.T)
 	// Secondary regression guard: per-scene SpecScene TEXT propagation.
 	if len(currentInput.SpecScene.Scenes) == 0 {
 		t.Errorf("currentInput.SpecScene.Scenes is unexpectedly empty post-merge " +
-			"(mergePostProcessResult must preserve SpecScene structure when " +
+			"(MergePostProcessResult must preserve SpecScene structure when " +
 			"propagating src.TranslatedSpecScene)")
 	} else {
 		got := currentInput.SpecScene.Scenes[0].Text
 		if got != translatedText {
 			t.Errorf("currentInput.SpecScene.Scenes[0].Text = %q, want %q "+
-				"(mergePostProcessResult must propagate src.TranslatedSpecScene "+
+				"(MergePostProcessResult must propagate src.TranslatedSpecScene "+
 				"into currentInput.SpecScene.Scenes[0].Text so document/persistence "+
 				"output the translated per-scene text)",
 				got, translatedText)
@@ -197,16 +197,16 @@ func TestCloneSceneBindings_PreservesMultiClipBindings(t *testing.T) {
 		{ClipID: "clip-a", DriveLink: "https://drive/a", StartMs: 100, EndMs: 1100},
 		{ClipID: "clip-b", DriveLink: "https://drive/b", StartMs: 200, EndMs: 2200},
 	}}
-	cloned := cloneSceneBindings(original)
+	cloned := CloneSceneBindings(original)
 	if len(cloned.Clips) != 2 || cloned.Clips[0] != original.Clips[0] || cloned.Clips[1] != original.Clips[1] {
-		t.Fatalf("cloneSceneBindings lost multi-clip bindings: got %#v, want %#v", cloned.Clips, original.Clips)
+		t.Fatalf("CloneSceneBindings lost multi-clip bindings: got %#v, want %#v", cloned.Clips, original.Clips)
 	}
 	if cloned.Clip == nil || cloned.Clip.ClipID != "clip-a" {
 		t.Fatalf("legacy alias = %#v, want first canonical clip", cloned.Clip)
 	}
 	cloned.Clips[0].DriveLink = ""
 	if original.Clips[0].DriveLink == "" {
-		t.Fatal("cloneSceneBindings must isolate the multi-clip slice from the source")
+		t.Fatal("CloneSceneBindings must isolate the multi-clip slice from the source")
 	}
 }
 
@@ -220,14 +220,14 @@ func TestCloneSceneBindings_DeepCopiesVoiceoverTimingMap(t *testing.T) {
 		},
 	}}
 
-	cloned := cloneSceneBindings(original)
+	cloned := CloneSceneBindings(original)
 	if cloned.Voiceover == nil || cloned.Voiceover.Timing["en"].JSONLink != "https://drive/timing-en.json" || cloned.Voiceover.Timing["it"].Status != "failed" {
-		t.Fatalf("cloneSceneBindings lost the voiceover timing map: %#v", cloned.Voiceover)
+		t.Fatalf("CloneSceneBindings lost the voiceover timing map: %#v", cloned.Voiceover)
 	}
 	// Mutating the clone's timing map must not affect the original.
 	cloned.Voiceover.Timing["en"] = scriptpkg.VoiceoverTimingBinding{Status: "failed"}
 	if original.Voiceover.Timing["en"].Status == "failed" {
-		t.Fatal("cloneSceneBindings must deep-copy the voiceover timing map")
+		t.Fatal("CloneSceneBindings must deep-copy the voiceover timing map")
 	}
 }
 
@@ -236,13 +236,13 @@ func TestCloneSceneBindings_PreservesMediaBindings(t *testing.T) {
 		Media: []scriptpkg.ResolvedMediaBinding{{Slot: "background", AssetID: "asset-1", DriveLink: "https://drive.google.com/file/d/media-1/view"}},
 	}
 
-	cloned := cloneSceneBindings(original)
+	cloned := CloneSceneBindings(original)
 	if len(cloned.Media) != 1 || cloned.Media[0] != original.Media[0] {
-		t.Fatalf("cloneSceneBindings lost Media binding: got %#v, want %#v", cloned.Media, original.Media)
+		t.Fatalf("CloneSceneBindings lost Media binding: got %#v, want %#v", cloned.Media, original.Media)
 	}
 	cloned.Media[0].DriveLink = ""
 	if original.Media[0].DriveLink == "" {
-		t.Fatal("cloneSceneBindings must isolate the Media slice from the source")
+		t.Fatal("CloneSceneBindings must isolate the Media slice from the source")
 	}
 }
 
@@ -370,7 +370,7 @@ func TestMergePostProcessResult_ImageBinding_FailClosed(t *testing.T) {
 							Bindings: scriptpkg.SceneBindings{
 								// Pre-fix pre-existing Image binding on the
 								// dst-side currentInput.SpecScene.Scenes[i]
-								// (this is what mergePostProcessResult writes
+								// (this is what MergePostProcessResult writes
 								// back into). Start it nil so the merge must
 								// initialise it via `if sc.Bindings.Image == nil`.
 								Image: nil,
@@ -387,7 +387,7 @@ func TestMergePostProcessResult_ImageBinding_FailClosed(t *testing.T) {
 			dst := &PipelineResult{}
 
 			// ── Act ───────────────────────────────────────────────────────
-			mergePostProcessResult(dst, src, currentInput)
+			MergePostProcessResult(dst, src, currentInput)
 
 			// ── Assert ────────────────────────────────────────────────────
 			sc := &currentInput.SpecScene.Scenes[0]
@@ -395,7 +395,7 @@ func TestMergePostProcessResult_ImageBinding_FailClosed(t *testing.T) {
 			// The binding MUST be initialised (the merge code path
 			// initialises via `if sc.Bindings.Image == nil`).
 			if sc.Bindings.Image == nil {
-				t.Fatalf("sc.Bindings.Image unexpectedly nil post-merge (mergePostProcessResult must initialise it)")
+				t.Fatalf("sc.Bindings.Image unexpectedly nil post-merge (MergePostProcessResult must initialise it)")
 			}
 
 			// Status: must match the spec’d case.

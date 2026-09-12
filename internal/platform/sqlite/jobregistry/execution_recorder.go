@@ -3,9 +3,10 @@ package jobregistry
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"

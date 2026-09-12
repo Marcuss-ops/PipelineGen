@@ -26,9 +26,10 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"html"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

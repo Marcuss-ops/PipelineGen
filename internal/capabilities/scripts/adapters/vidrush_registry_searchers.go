@@ -11,6 +11,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
 )
 
@@ -72,21 +73,22 @@ func (s *VidRushRegistryMediaResolver) SearchClips(ctx context.Context, title st
 		}
 		defer releaseVidRushArtlistSearch()
 		var candidates []scriptpkg.SegmentAssetCandidate
-		var err error
-		for attempt := 0; attempt < 3; attempt++ {
+		// Shared retry engine (2026-09-12 audit F6c; replaces the
+		// hand-rolled `attempt < 3` loop): 3 attempts, 1s→2s backoff,
+		// retrying ONLY on Artlist rate-limit errors.
+		candidates, searchErr := retry.DoWithValue(ctx, func() ([]scriptpkg.SegmentAssetCandidate, error) {
 			queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-			candidates, err = s.Registry.Search(queryCtx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{SceneID: title, Text: title, Query: phrase, Limit: 10})
-			cancel()
-			if !isArtlistRateLimited(err) || attempt == 2 {
-				break
-			}
-			backoff := time.Duration(1<<attempt) * time.Second
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return queryResult{err: fmt.Errorf("artlist query %q: retry canceled: %w", phrase, ctx.Err())}, nil
-			}
-		}
+			defer cancel()
+			return s.Registry.Search(queryCtx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{SceneID: title, Text: title, Query: phrase, Limit: 10})
+		}, retry.Options{
+			MaxAttempts:    3,
+			InitialBackoff: 1 * time.Second,
+			MaxBackoff:     2 * time.Second,
+			BackoffFactor:  2.0,
+			DisableJitter:  true,
+			IsRetryable:    isArtlistRateLimited,
+		})
+		err := searchErr
 		if err != nil {
 			return queryResult{err: fmt.Errorf("artlist query %q: %w", phrase, err)}, nil
 		}
@@ -184,7 +186,7 @@ func NewVidRushProviderFanoutWithCatalog(artlist ArtlistClipSearcher, images Int
 // unavailable backend into a silent successful empty result (the searchers
 // already return typed errors, and their absence is reflected in the result).
 func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
-	updated := cloneVidRushSegmentResult(segment)
+	updated := CloneVidRushSegmentResult(segment)
 	if plan == nil {
 		return updated, nil
 	}
@@ -496,7 +498,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 							return
 						}
 					}
-					results = appendProviderCandidatesUnique(catalogFallback, providerResults)
+					results = AppendProviderCandidatesUnique(catalogFallback, providerResults)
 					if len(results) > 0 {
 						cacheStore(entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
 					}

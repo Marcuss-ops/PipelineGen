@@ -25,13 +25,14 @@ package wiring
 import (
 	"context"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -306,7 +307,7 @@ func WireArtlist(
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
 	bundle.ClipResolver = NewClipResolverRecommendAdapter(
-		scripts_adapters.NewClipResolver(bundle.ClipsRepo, log),
+		processor.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
 

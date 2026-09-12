@@ -46,6 +46,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -74,7 +75,7 @@ func (s *stubTranslator) Translate(ctx context.Context, text, targetLang string)
 // canonical ports.TranslationUseCase + ports.TranslationReasonClassifier
 // via the typed usecase adapters). Returns the processor + a
 // metrics handler that exposes the counter for assertions.
-func newTestProcessor(t *testing.T, translator ports.ScriptTranslator) (*adapters.TranslationProcessor, *observability.TranslationMetricsAdapter) {
+func newTestProcessor(t *testing.T, translator ports.ScriptTranslator) (*processor.TranslationProcessor, *observability.TranslationMetricsAdapter) {
 	t.Helper()
 	// Per-test prometheus registry so counter assertions don't
 	// collide with global state (per CR#1+#2+#3 review-fix: the
@@ -85,7 +86,7 @@ func newTestProcessor(t *testing.T, translator ports.ScriptTranslator) (*adapter
 	if err != nil {
 		t.Fatalf("observability.NewTranslationMetricsAdapter(reg): unexpected error: %v", err)
 	}
-	proc := adapters.NewTranslationProcessor(
+	proc := processor.NewTranslationProcessor(
 		translator,
 		adapter,
 		usecase.NewTranslationUseCaseAdapter(),
@@ -408,7 +409,7 @@ func TestTranslationWiredPipeline_EmptyTranslation(t *testing.T) {
 // nil-receiver guard: (*TranslationProcessor)(nil).Process()
 // returns a non-nil empty result + nil error (does NOT panic).
 func TestTranslationWiredPipeline_NilReceiver(t *testing.T) {
-	var proc *adapters.TranslationProcessor
+	var proc *processor.TranslationProcessor
 	input := makeSpecSceneInput()
 	plan := makePlan()
 
@@ -517,7 +518,7 @@ func TestTranslationWiredPipeline_NilAdapterMetrics(t *testing.T) {
 	tr := &stubTranslator{fn: func(ctx context.Context, text, targetLang string) (string, error) {
 		return text + " [IT]", nil
 	}}
-	proc := adapters.NewTranslationProcessor(
+	proc := processor.NewTranslationProcessor(
 		tr,
 		nil, // metrics: nil — must fall back to noop
 		usecase.NewTranslationUseCaseAdapter(),

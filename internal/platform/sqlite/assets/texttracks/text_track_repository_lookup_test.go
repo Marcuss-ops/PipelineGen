@@ -13,8 +13,9 @@ package texttracks
 import (
 	"context"
 	"database/sql"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
+
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"

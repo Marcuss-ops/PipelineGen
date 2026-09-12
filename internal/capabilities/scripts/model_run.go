@@ -4,8 +4,9 @@ package scriptgeneration
 
 import (
 	"errors"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"time"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type GenerationRun struct {

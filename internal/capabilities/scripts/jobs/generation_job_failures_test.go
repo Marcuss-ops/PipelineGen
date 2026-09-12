@@ -28,8 +28,9 @@ import (
 	"strings"
 	"testing"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
@@ -49,9 +50,9 @@ import (
 // propagates it as a non-nil Go error.
 
 func newFailingOneUseCase() *gencore.GenerateOneUseCase {
-	reg := adapters.NewSourceRegistry(zap.NewNop())
+	reg := processor.NewSourceRegistry(zap.NewNop())
 	return gencore.NewGenerateOneUseCase(
-		adapters.NormalizationConfig{DefaultLanguage: "en"},
+		processor.NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // engine nil → every Execute returns ErrGenerationFailed
 		nil,

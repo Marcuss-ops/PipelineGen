@@ -215,7 +215,7 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 	gen := &testsupport.FakeOllamaGen{
 		ReturnErr: fmt.Errorf("ollama chat returned status 404"),
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -274,7 +274,7 @@ func TestLLMErrors_P1C_EmptyResponse(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -327,7 +327,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -368,7 +368,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 				Model:       "llama3:8b",
 			},
 		}
-		badEng := testsupport.BuildTestEngine(badGen)
+		badEng := buildTestEngine(badGen)
 		_, badErr := badEng.Generate(context.Background(), makeLLMErrorTestPlan())
 
 		// ModeCompatibility removed: JSON-shaped input that isn't valid V1
@@ -405,7 +405,7 @@ func TestLLMErrors_P1C_TextTooShort(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 
@@ -451,7 +451,7 @@ func TestLLMErrors_P1C_EnglishInsteadOfItalian(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	// Plan requests Italian; fake returns English.
 	plan := makeLLMErrorTestPlan() // Language=it
@@ -514,7 +514,7 @@ func TestLLMErrors_P1C_TruncatedResponse(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := testsupport.BuildTestEngine(gen)
+	e := buildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
 

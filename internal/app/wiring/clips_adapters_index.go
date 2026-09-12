@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"

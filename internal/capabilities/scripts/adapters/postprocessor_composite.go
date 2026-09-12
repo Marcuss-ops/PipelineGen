@@ -7,7 +7,7 @@
 //	postprocessor_composite.go       — types + constructor + simple methods
 //	                                    (this file)
 //	postprocessor_composite_run.go   — Run method
-//	postprocessor_composite_merge.go — mergePostProcessResult helper
+//	postprocessor_composite_merge.go — MergePostProcessResult helper
 package adapters
 
 import (

@@ -24,8 +24,9 @@ import (
 	"errors"
 	"testing"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 )
 
 // ── Fakes (canonical hermetic stubs) ──────────────────────────────────
@@ -75,10 +76,10 @@ var _ search.QueryEmbedder = (*fakeEmbedder)(nil)
 
 // newTestAdapter wires the fakes into a fresh SemanticAssetSearch
 // (with composition-time defaults from the production file).
-func newTestAdapter() (*adapterspkg.SemanticAssetSearch, *fakeSearcher, *fakeEmbedder) {
+func newTestAdapter() (*processor.SemanticAssetSearch, *fakeSearcher, *fakeEmbedder) {
 	fs := &fakeSearcher{name: "test-backend", caps: []search.Capability{search.CapVideo}}
 	fe := &fakeEmbedder{}
-	a := adapterspkg.NewSemanticAssetSearch(fs, fe, nil)
+	a := processor.NewSemanticAssetSearch(fs, fe, nil)
 	return a, fs, fe
 }
 
@@ -102,7 +103,7 @@ func TestSemanticAssetSearch_EmptyQueryReturnsEmptyWithoutEmbed(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+			hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 				Query:    tc.query,
 				Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true}, // bypass workspace gate for this test
 				Limit:    10,
@@ -128,13 +129,13 @@ func TestSemanticAssetSearch_EmptyQueryReturnsEmptyWithoutEmbed(t *testing.T) {
 // (godlike/07 fail-closed at the seam, NOT a panic, NOT a silent success).
 func TestSemanticAssetSearch_NilSearcherFails(t *testing.T) {
 	fe := &fakeEmbedder{}
-	a := adapterspkg.NewSemanticAssetSearch(nil, fe, nil) // nil Searcher
+	a := processor.NewSemanticAssetSearch(nil, fe, nil) // nil Searcher
 
-	hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+	hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 		Query: "hello",
 		Actor: search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 	})
-	if !errors.Is(err, adapterspkg.ErrSemanticSearchNilSearcher) {
+	if !errors.Is(err, processor.ErrSemanticSearchNilSearcher) {
 		t.Errorf("err = %v, want errors.Is(ErrSemanticSearchNilSearcher)", err)
 	}
 	if hits != nil {
@@ -151,13 +152,13 @@ func TestSemanticAssetSearch_NilSearcherFails(t *testing.T) {
 // Embedder field returns the typed sentinel ErrSemanticSearchNilEmbedder.
 func TestSemanticAssetSearch_NilEmbedderFails(t *testing.T) {
 	fs := &fakeSearcher{name: "test-backend"}
-	a := adapterspkg.NewSemanticAssetSearch(fs, nil, nil) // nil Embedder
+	a := processor.NewSemanticAssetSearch(fs, nil, nil) // nil Embedder
 
-	hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+	hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 		Query: "hello",
 		Actor: search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 	})
-	if !errors.Is(err, adapterspkg.ErrSemanticSearchNilEmbedder) {
+	if !errors.Is(err, processor.ErrSemanticSearchNilEmbedder) {
 		t.Errorf("err = %v, want errors.Is(ErrSemanticSearchNilEmbedder)", err)
 	}
 	if hits != nil {
@@ -177,7 +178,7 @@ func TestSemanticAssetSearch_NilEmbedderFails(t *testing.T) {
 func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 	t.Run("zero_limit_uses_default", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query: "hello",
 			Actor: search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			Limit: 0, // explicitly unset
@@ -192,7 +193,7 @@ func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 
 	t.Run("negative_limit_uses_default", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query: "hello",
 			Actor: search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			Limit: -5, // negative is treated as unset
@@ -207,7 +208,7 @@ func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 
 	t.Run("explicit_limit_is_respected", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query: "hello",
 			Actor: search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			Limit: 7, // explicit override
@@ -222,7 +223,7 @@ func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 
 	t.Run("zero_minscore_uses_default", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "hello",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			MinScore: 0, // explicitly unset
@@ -237,7 +238,7 @@ func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 
 	t.Run("negative_minscore_uses_default", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "hello",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			MinScore: -0.1,
@@ -252,7 +253,7 @@ func TestSemanticAssetSearch_DefaultsLimitAndMinScore(t *testing.T) {
 
 	t.Run("explicit_minscore_is_respected", func(t *testing.T) {
 		a, fs, _ := newTestAdapter()
-		_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "hello",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			MinScore: 0.85,
@@ -298,7 +299,7 @@ func TestSemanticAssetSearch_SourceStockBuildsStockFilter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a, fs, _ := newTestAdapter()
 
-			_, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+			_, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 				Query:  "search term",
 				Source: tc.source,
 				Actor:  search.Actor{WorkspaceID: "ws-1", IsSystem: true},
@@ -337,14 +338,14 @@ func TestSemanticAssetSearch_SourceStockBuildsStockFilter(t *testing.T) {
 func TestSemanticAssetSearch_WorkspaceRequiredForUserTraffic(t *testing.T) {
 	a, fs, fe := newTestAdapter()
 
-	hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+	hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 		Query: "hello",
 		Actor: search.Actor{
 			WorkspaceID: "",    // empty workspace
 			IsSystem:    false, // user traffic (not IsSystem)
 		},
 	})
-	if !errors.Is(err, adapterspkg.ErrSemanticSearchWorkspaceRequired) {
+	if !errors.Is(err, processor.ErrSemanticSearchWorkspaceRequired) {
 		t.Errorf("err = %v, want errors.Is(ErrSemanticSearchWorkspaceRequired)", err)
 	}
 	if hits != nil {
@@ -371,7 +372,7 @@ func TestSemanticAssetSearch_IsSystemAllowsEmptyWorkspace(t *testing.T) {
 		{AssetID: "sys-asset-1", Score: 0.95, DriveLink: "https://drive.google.com/file/d/sys-asset-1/view", Source: "youtube", Title: "System Asset"},
 	}
 
-	hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+	hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 		Query: "reconcile scan",
 		Actor: search.Actor{
 			WorkspaceID: "", // empty
@@ -421,7 +422,7 @@ func TestSemanticAssetSearch_ConvertsDriveURLFallback(t *testing.T) {
 		// A valid Drive file URL — the file ID is `abc123def456`.
 		driveURL := "https://drive.google.com/file/d/abc123def456/view"
 
-		hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "search term",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			DriveURL: driveURL,
@@ -448,7 +449,7 @@ func TestSemanticAssetSearch_ConvertsDriveURLFallback(t *testing.T) {
 		}
 		driveURL := "https://drive.google.com/file/d/abc123def456/view"
 
-		hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "search term",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			DriveURL: driveURL,
@@ -468,7 +469,7 @@ func TestSemanticAssetSearch_ConvertsDriveURLFallback(t *testing.T) {
 		a, fs, _ := newTestAdapter()
 		fs.candidates = nil
 
-		hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "search term",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			DriveURL: "", // empty
@@ -488,7 +489,7 @@ func TestSemanticAssetSearch_ConvertsDriveURLFallback(t *testing.T) {
 		// Not a Drive URL at all — FileIDFromDriveLink returns an error.
 		driveURL := "https://example.com/not-a-drive-url"
 
-		hits, err := a.SearchAssets(context.Background(), adapterspkg.SemanticAssetSearchRequest{
+		hits, err := a.SearchAssets(context.Background(), processor.SemanticAssetSearchRequest{
 			Query:    "search term",
 			Actor:    search.Actor{WorkspaceID: "ws-1", IsSystem: true},
 			DriveURL: driveURL,

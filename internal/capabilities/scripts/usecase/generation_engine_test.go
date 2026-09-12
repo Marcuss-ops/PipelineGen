@@ -22,7 +22,7 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	t.Parallel()
 
 	gen := &testsupport.FakeOllamaGen{}
-	engine := testsupport.BuildTestEngine(gen)
+	engine := buildTestEngine(gen)
 	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-success"}
@@ -52,7 +52,7 @@ func TestGenerationEngineRunner_Generate_Error(t *testing.T) {
 
 	forcedErr := errors.New("forced engine error")
 	gen := &testsupport.FakeOllamaGen{ReturnErr: forcedErr}
-	engine := testsupport.BuildTestEngine(gen)
+	engine := buildTestEngine(gen)
 	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-error"}

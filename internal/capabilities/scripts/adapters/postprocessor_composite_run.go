@@ -81,7 +81,7 @@ func (r *PostProcessorRegistry) run(
 
 	// Concurrency safety: the caller's ProcessInput may share
 	// SpecScene slices with other goroutines (e.g. a cached
-	// engineResult.Output). Deep-clone before mergePostProcessResult
+	// engineResult.Output). Deep-clone before MergePostProcessResult
 	// mutates Scenes / Bindings in place so concurrent Runs cannot
 	// race on the same underlying memory.
 	input.SpecScene = cloneSpecSceneOutput(input.SpecScene)
@@ -98,10 +98,10 @@ func (r *PostProcessorRegistry) run(
 	// Issue #1 (June 2026): seed FinalSpecScene with the
 	// pre-walk envelope so buildGenerationResult's empty-aware
 	// fallback sees a populated surface even when the loop
-	// short-circuits before calling mergePostProcessResult
+	// short-circuits before calling MergePostProcessResult
 	// (empty-plan early return already covered above; processor
 	// outcomes that IsEmpty()==true also skip merge here). The
-	// mergePostProcessResult hook below overwrites this seed
+	// MergePostProcessResult hook below overwrites this seed
 	// with the post-walk envelope whenever a processor
 	// successfully returns a non-empty result, so capturing
 	// currentInput.SpecScene acts as the canonical "last writer
@@ -183,7 +183,7 @@ func (r *PostProcessorRegistry) run(
 				// A processor may return a fail-closed UpdatedSpecScene
 				// together with its error. Merge that safe surface before
 				// deciding whether the walk can continue.
-				mergePostProcessResult(result, ppResult, &input)
+				MergePostProcessResult(result, ppResult, &input)
 				if len(ppResult.Warnings) > 0 {
 					warnings = append(warnings, ppResult.Warnings...)
 				}
@@ -251,7 +251,7 @@ func (r *PostProcessorRegistry) run(
 			requiredSucceeded++
 		}
 
-		mergePostProcessResult(result, ppResult, &input)
+		MergePostProcessResult(result, ppResult, &input)
 		if r.log != nil {
 			segments, candidates := vidRushPipelineCounts(input.VidRushSegments)
 			r.log.Debug("postprocessor VidRush scene surface",
@@ -359,12 +359,12 @@ func runNarrationSanitizer(ctx context.Context, plan *scriptpkg.ResolvedGenerati
 	if err != nil {
 		return err
 	}
-	mergePostProcessResult(result, ppResult, input)
+	MergePostProcessResult(result, ppResult, input)
 	return nil
 }
 
 // cloneSpecSceneOutput returns a deep copy of the specscene envelope.
-// Run() needs an independent copy because mergePostProcessResult
+// Run() needs an independent copy because MergePostProcessResult
 // mutates Scenes and Bindings in place; without cloning, concurrent
 // Runs operating on the same cached engine output would race on the
 // same underlying slices and pointer fields.
@@ -395,7 +395,7 @@ func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput
 			ann.SecondaryEntities = cloneAnnotatedEntities(sc.Annotations.SecondaryEntities)
 			out.Scenes[i].Annotations = &ann
 		}
-		out.Scenes[i].Bindings = cloneSceneBindings(sc.Bindings)
+		out.Scenes[i].Bindings = CloneSceneBindings(sc.Bindings)
 	}
 	return out
 }
@@ -416,10 +416,10 @@ func cloneAnnotatedEntities(in []scriptpkg.AnnotatedEntity) []scriptpkg.Annotate
 	return out
 }
 
-// cloneSceneBindings returns a deep copy of bindings so that in-place
+// CloneSceneBindings returns a deep copy of bindings so that in-place
 // mutations of Image / Voiceover / Clip / Stock pointers in one Run
 // do not affect another Run sharing the same underlying scene.
-func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
+func CloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 	out := scriptpkg.SceneBindings{}
 	if len(b.Media) > 0 {
 		out.Media = make([]scriptpkg.ResolvedMediaBinding, len(b.Media))

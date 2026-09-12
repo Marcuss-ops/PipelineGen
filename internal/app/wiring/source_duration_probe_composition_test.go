@@ -2,8 +2,9 @@ package wiring
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

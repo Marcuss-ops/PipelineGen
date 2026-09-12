@@ -41,12 +41,13 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

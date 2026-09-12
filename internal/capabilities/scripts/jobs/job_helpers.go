@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -158,14 +159,14 @@ func GenerateSceneVoiceovers(
 	// triggered it.
 	voCtx, voCancel := background.DetachWithTimeout(ctx, "voiceover-generation", 30*time.Minute)
 	defer voCancel()
-	inputs := make([]adapterspkg.VoiceoverSceneInput, 0, len(scenes))
+	inputs := make([]processor.VoiceoverSceneInput, 0, len(scenes))
 	for _, sc := range scenes {
 		sceneText := strings.TrimSpace(sc.Text)
 		if sceneText == "" {
 			continue
 		}
 		sceneSlug := textutil.SlugifyWithMax(sceneText, 30)
-		inputs = append(inputs, adapterspkg.VoiceoverSceneInput{
+		inputs = append(inputs, processor.VoiceoverSceneInput{
 			SceneIndex:  sc.SceneIndex,
 			Text:        sceneText,
 			Filename:    sceneSlug,
@@ -175,8 +176,8 @@ func GenerateSceneVoiceovers(
 	// P0-#3 final closure (July 2026): the fanout now takes the
 	// canonical VoiceoverItemExecutor port; real failures surface as
 	// typed Go errors per scene (no Result{OK:false} masking).
-	outcomes := adapterspkg.RunVoiceoverSceneFanout(voCtx, voExecutor, language, inputs, 4)
-	successCount := adapterspkg.CountCompletedSceneOutcomes(outcomes)
+	outcomes := processor.RunVoiceoverSceneFanout(voCtx, voExecutor, language, inputs, 4)
+	successCount := processor.CountCompletedSceneOutcomes(outcomes)
 	if log != nil {
 		for _, out := range outcomes {
 			if out.Status != "failed" {

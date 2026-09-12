@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/qualitygate"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -30,19 +31,19 @@ import (
 // reused across calls.
 type GenerationFinalizer struct {
 	log          *zap.Logger
-	cfg          adapters.NormalizationConfig
-	memSvc       *adapters.Service
+	cfg          processor.NormalizationConfig
+	memSvc       *processor.Service
 	vidRushCache scriptports.VidRushCachePort
 }
 
 // NewGenerationFinalizer constructs a GenerationFinalizer.
-func NewGenerationFinalizer(log *zap.Logger, cfg adapters.NormalizationConfig) *GenerationFinalizer {
+func NewGenerationFinalizer(log *zap.Logger, cfg processor.NormalizationConfig) *GenerationFinalizer {
 	return &GenerationFinalizer{log: log, cfg: cfg}
 }
 
 // SetMemoryService wires the gemmamemory service used to cache
 // successfully generated scripts. If nil, caching is a no-op.
-func (f *GenerationFinalizer) SetMemoryService(svc *adapters.Service) {
+func (f *GenerationFinalizer) SetMemoryService(svc *processor.Service) {
 	if f != nil {
 		f.memSvc = svc
 	}
@@ -158,7 +159,7 @@ func (f *GenerationFinalizer) Finalize(
 	// generations overwrite the exact row.
 	if f.memSvc != nil && plan.UseMemory &&
 		engineResult.CacheStatus == "generated" && engineResult.Output.Text != "" {
-		_, saveErr := f.memSvc.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+		_, saveErr := f.memSvc.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
 			ChannelID: "default",
 			Mode:      plan.Mode,
 			Language:  plan.Language,

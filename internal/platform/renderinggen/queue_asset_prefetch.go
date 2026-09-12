@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,13 +56,27 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 		seen := make(map[string]struct{}, len(assets))
 		for _, asset := range assets {
 			asset := asset
+			localPath := strings.TrimSpace(asset.LocalPath)
 			downloadURL := asset.SourceURL
 			if downloadURL == "" {
 				downloadURL = asset.URL
 			}
+			// Official RenderingGen presets reference their font by canonical
+			// logical path. That path is intentionally not an HTTP source and
+			// LocalPath is producer-only, so resolve it against the configured
+			// asset bundle before deciding whether the asset is stageable.
+			// Without this bridge the font reaches the queue manifest but is
+			// silently skipped by prefetch, leaving the worker with a cache miss.
+			if localPath == "" && canonicalPresetFontPath(downloadURL) {
+				font, err := ResolveFontAsset(FontPoppinsBold)
+				if err != nil {
+					return fmt.Errorf("resolve preset font %q: %w", downloadURL, err)
+				}
+				localPath = font.LocalPath
+			}
 			if strings.TrimSpace(asset.Hash) == "" ||
-				(strings.TrimSpace(asset.LocalPath) == "" && strings.TrimSpace(downloadURL) == "") ||
-				(strings.TrimSpace(asset.LocalPath) == "" && !strings.HasPrefix(downloadURL, "http")) {
+				(localPath == "" && strings.TrimSpace(downloadURL) == "") ||
+				(localPath == "" && !strings.HasPrefix(downloadURL, "http")) {
 				continue
 			}
 			hash := strings.ToLower(strings.TrimSpace(asset.Hash))
@@ -77,8 +92,8 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				if present {
 					return nil
 				}
-				if strings.TrimSpace(asset.LocalPath) != "" {
-					if err := streamPutFile(ctx, storeURL, hash, asset.LocalPath); err != nil {
+				if localPath != "" {
+					if err := streamPutFile(ctx, storeURL, hash, localPath); err != nil {
 						return fmt.Errorf("asset %s local stage: %w", hash, err)
 					}
 					return nil
@@ -106,6 +121,15 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 		}
 		return group.Wait()
 	})
+}
+
+func canonicalPresetFontPath(path string) bool {
+	switch strings.TrimSpace(filepath.Clean(path)) {
+	case "assets/fonts/Poppins-Bold.ttf", "fonts/Poppins-Bold.ttf", "Poppins-Bold.ttf":
+		return true
+	default:
+		return false
+	}
 }
 
 // objectStored reports whether the object store already holds key,

@@ -2,14 +2,15 @@ package scriptgeneration_test
 
 import (
 	"encoding/json"
+	"html"
+	"strings"
+	"testing"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
-	"html"
-	"strings"
-	"testing"
 )
 
 func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {

@@ -37,7 +37,7 @@ type PipelineResult struct {
 	AlreadyPersisted bool
 	StageProgress    map[string]job.StageProgress `json:"stage_progress,omitempty"`
 	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
-	// after mergePostProcessResult — the canonical pipeline-level
+	// after MergePostProcessResult — the canonical pipeline-level
 	// surface for processors that reconstructed scenes from prose.
 	// FASE 3 (June 2026): added for the clip-bindings prose-fallback
 	// heuristic. omitempty keeps the JSON envelope stable for
@@ -54,7 +54,7 @@ type PipelineResult struct {
 	// synthesised scenes into PipelineResult.SynthesizedScenes, but
 	// the synthesised bundle never reached GenerationResult.Output
 	// .SpecScene — the JSON envelope went out with empty scenes even
-	// when the heuristic engaged. Post-fix: mergePostProcessResult
+	// when the heuristic engaged. Post-fix: MergePostProcessResult
 	// writes SynthesizedScenes back into the registry-local
 	// ProcessInput.SpecScene.Scenes (so document/persistence see
 	// populated scenes during the same Run) AND captures the
@@ -66,7 +66,7 @@ type PipelineResult struct {
 	FinalSpecScene scriptpkg.SpecSceneOutput `json:"final_specscene,omitempty"`
 	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): the canonical
 	// pipeline-level surface for the translated text + translated
-	// SpecScene (Last-writer-wins from mergePostProcessResult).
+	// SpecScene (Last-writer-wins from MergePostProcessResult).
 	// omitempty so callers that did not opt into translation don't
 	// see a serialisation diff. The buildGenerationResult consumer
 	// in usecase/generate_one_usecase.go prefers these fields

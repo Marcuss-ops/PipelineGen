@@ -35,12 +35,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	imggeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/generation"
 )
 
 // Package images — smoke_test.go: 5-prompt integration smoke that

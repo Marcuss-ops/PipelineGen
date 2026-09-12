@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptgencore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
@@ -33,7 +33,7 @@ type AIBundle struct {
 	ScriptGen                *ollama.Generator
 	OllamaTranslator         *translation.OllamaTranslator
 	MemoryRepo               scriptports.MemoryGate
-	MemorySvc                *adapters.Service
+	MemorySvc                *processor.Service
 	ScriptEngine             *scriptgencore.Engine
 	WhisperTranscriber       youtubeports.WhisperTranscriberPort
 	SceneTextGenerator       *SceneTextGenerator

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -149,7 +150,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			zap.Bool("use_memory", useMemory),
 			zap.Bool("force_refresh", skipMemory),
 			zap.Bool("save_to_db", saveToDB),
-			zap.Any("source_text", SourceTextLogFields(sourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
+			zap.Any("source_text", SourceTextLogFields(sourceText, processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
 	}
 
 	// Memory gate: check if we have a cached result.

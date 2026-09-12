@@ -14,6 +14,7 @@ import (
 	"google.golang.org/api/googleapi"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -448,7 +449,7 @@ func TestControlledReconciliationDataset(t *testing.T) {
 	for assetID := range assetStore.calls {
 		assetStore.calls[assetID] = 0
 	}
-	processor := adapters.NewAssetLocationReconciliationProcessor(resolver)
+	processor := processor.NewAssetLocationReconciliationProcessor(resolver)
 	result, err := processor.Process(context.Background(), nil, adapters.ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: processorScenes},
 	})

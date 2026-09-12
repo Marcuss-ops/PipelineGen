@@ -19,7 +19,7 @@ func TestProjectPostSegmentClipBindingsKeepsTimelineAssignments(t *testing.T) {
 		{SegmentID: "boxer-sugar-ray-robinson", Slot: mediadomain.VisualSlotPostSegment, AssetID: "robinson-clip-2", Position: 1, DurationMs: 6000},
 	}
 
-	projectPostSegmentClipBindings(scenes, assignments)
+	ProjectPostSegmentClipBindings(scenes, assignments)
 
 	if got := scenes[1].Bindings.Clip; got == nil || got.ClipID != "tyson-clip" || got.DurationMs != 7000 {
 		t.Fatalf("Tyson clip binding = %#v", got)

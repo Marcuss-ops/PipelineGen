@@ -33,9 +33,9 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 	outcome.candidates = filtered
 	// Providers contribute discovery metadata only. Semantic scoring and
 	// winner selection belong to MediaSampler during materialization.
-	updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
+	updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
 	if outcome.provider == scriptpkg.VidRushProviderInternetImages {
-		updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
+		updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
 	}
 	if outcome.err != nil {
 		if outcome.provider == scriptpkg.VidRushProviderArtlist && vidRushArtlistOnlyPlan(plan) {

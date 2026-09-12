@@ -8,12 +8,15 @@
 package adapters_test
 
 import (
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	generation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 	"testing"
+
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
+	generation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Package scripts_test — normalizer_plan_tests_test.go exercises
@@ -24,8 +27,8 @@ import (
 //
 // Every test verifies one invariant from the plan §10-12.
 
-func defaultCfg() adapters.NormalizationConfig {
-	return adapters.NormalizationConfig{
+func defaultCfg() processor.NormalizationConfig {
+	return processor.NormalizationConfig{
 		DefaultLanguage:          "it",
 		DefaultTone:              "documentary",
 		DefaultDurationSeconds:   600,
@@ -69,7 +72,7 @@ func TestNormalizeItemPrecedenceCallerBeatsPreset(t *testing.T) {
 	item := textItem()
 	item.Language = "de" // caller explicit
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != "de" {
 		t.Errorf("caller language should beat preset/config: got %q", item.Language)
@@ -82,7 +85,7 @@ func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
 	item := textItem()
 	item.Language = "" // not set by caller
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != "en" {
 		t.Errorf("config should fill unset language: got %q, want %q", item.Language, "en")
@@ -97,7 +100,7 @@ func TestNormalizeItemDocsFolderCallerOverrideWins(t *testing.T) {
 	item := textItem()
 	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}, FolderID: "PAYLOAD_FOLDER"}
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Docs.FolderID != "PAYLOAD_FOLDER" {
 		t.Errorf("caller docs.folder_id must win over the configured default: got %q", item.Docs.FolderID)
@@ -110,7 +113,7 @@ func TestNormalizeItemDocsFolderConfiguredDefault(t *testing.T) {
 	item := textItem()
 	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Docs.FolderID != "CONFIG_FOLDER" {
 		t.Errorf("configured default must fill an empty docs.folder_id: got %q", item.Docs.FolderID)
@@ -122,7 +125,7 @@ func TestNormalizeItemDocsFolderStaysEmptyWhenUnresolvable(t *testing.T) {
 	item := textItem()
 	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	// The normalizer has no error channel; the empty folder is rejected by
 	// ValidateItem (docs enabled but no script docs folder configured).
@@ -148,11 +151,11 @@ func TestNormalizeItemDocsFolderStaysEmptyWhenUnresolvable(t *testing.T) {
 // invariant from the specific code so future engine swaps
 // don't re-break the wiring.
 func TestNormalizeItemPrecedenceConfigBeatsHardDefault(t *testing.T) {
-	cfg := adapters.NormalizationConfig{} // no config defaults
+	cfg := processor.NormalizationConfig{} // no config defaults
 	item := textItem()
 	item.Language = ""
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if strings.TrimSpace(item.Language) == "" {
 		t.Errorf("hard safety default must yield a non-empty language: got %q", item.Language)
@@ -169,11 +172,11 @@ func TestNormalizeItemIdempotent(t *testing.T) {
 	item := textItem()
 
 	// First normalization.
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	first := item
 
 	// Second normalization — should not change anything.
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != first.Language {
 		t.Errorf("language changed on second pass: %q → %q", first.Language, item.Language)
@@ -204,7 +207,7 @@ func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
 			Topic: "Original Topic",
 		},
 	}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Source.Topic != "Original Topic" {
 		t.Errorf("normalizer must not mutate Source.Topic: got %q", item.Source.Topic)
@@ -216,12 +219,12 @@ func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
 }
 
 func TestNormalizeItemNil(t *testing.T) {
-	adapters.NormalizeItem(nil, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(nil, scriptpkg.PresetCustom, defaultCfg())
 	// Must not panic.
 }
 
 func TestNormalizeEnvelopeNil(t *testing.T) {
-	result := adapters.NormalizeEnvelope(nil, defaultCfg())
+	result := processor.NormalizeEnvelope(nil, defaultCfg())
 	if result != nil {
 		t.Errorf("expected nil from nil envelope, got %v", result)
 	}
@@ -229,7 +232,7 @@ func TestNormalizeEnvelopeNil(t *testing.T) {
 
 func TestNormalizeEnvelopeEmpty(t *testing.T) {
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
-	result := adapters.NormalizeEnvelope(env, defaultCfg())
+	result := processor.NormalizeEnvelope(env, defaultCfg())
 	if result != nil {
 		t.Errorf("expected nil from empty envelope, got %d items", len(result))
 	}
@@ -258,7 +261,7 @@ func TestNormalizeItemDurationToWords(t *testing.T) {
 	cfg.DefaultDurationSeconds = 300 // 5 minutes
 	item := textItem()
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	expected := 750           // canonical duration-derived estimate at 150 wpm × 300s / 60
 	tolerance := expected / 7 // ≈14% tolerance band
@@ -277,7 +280,7 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 	item := textItem()
 	item.ScriptParams.TargetWords = 500 // caller explicit
 
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.ScriptParams.TargetWords != 500 {
 		t.Errorf("caller words should beat duration-derived: got %d", item.ScriptParams.TargetWords)
@@ -323,7 +326,7 @@ func TestNormalizeItemExplicitVoiceoverDisabledWinsOverRouting(t *testing.T) {
 		VoiceoverGroup:    "Comedy",
 		VoiceoverFolderID: "folder-id",
 	}}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 	if item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled {
 		t.Fatalf("voiceover_enabled=%q, want disabled", item.Output.VoiceoverEnabled)
 	}
@@ -331,7 +334,7 @@ func TestNormalizeItemExplicitVoiceoverDisabledWinsOverRouting(t *testing.T) {
 
 func TestNormalizeItemLegacyVoiceoverRoutingEnablesCapability(t *testing.T) {
 	item := scriptpkg.GenerationItemV2{Output: scriptpkg.OutputSpec{VoiceoverGroup: "Comedy"}}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 	if item.Output.VoiceoverEnabled != scriptpkg.ToggleEnabled {
 		t.Fatalf("legacy routing voiceover_enabled=%q, want enabled", item.Output.VoiceoverEnabled)
 	}
@@ -357,25 +360,25 @@ func TestNormalizeItemLegacyVoiceoverRoutingEnablesCapability(t *testing.T) {
 
 func TestValidateItemValidText(t *testing.T) {
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	if err := scripts.ValidateItem(item); err != nil {
+	if err := gencore.ValidateItem(item); err != nil {
 		t.Errorf("valid text item should not error: %v", err)
 	}
 }
 
 func TestValidateItemValidClips(t *testing.T) {
 	item := clipsItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	if err := scripts.ValidateItem(item); err != nil {
+	if err := gencore.ValidateItem(item); err != nil {
 		t.Errorf("valid clips item should not error: %v", err)
 	}
 }
 
 func TestNormalizeItemDefaultsClipTranscriptPolicyToStrict(t *testing.T) {
 	item := clipsItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	if got := item.Source.TranscriptPolicy; got != scriptpkg.TranscriptPolicyStrict {
 		t.Fatalf("clip transcript policy = %q, want strict", got)
@@ -386,7 +389,7 @@ func TestValidateItemEmptySource(t *testing.T) {
 	item := scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceClips, ClipIDs: nil},
 	}
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("empty clip source should fail validation")
 	}
@@ -396,7 +399,7 @@ func TestValidateItemUnknownSourceType(t *testing.T) {
 	item := scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceType("bogus")},
 	}
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("unknown source type should fail validation")
 	}
@@ -405,7 +408,7 @@ func TestValidateItemUnknownSourceType(t *testing.T) {
 func TestValidateItemNegativeTargetWords(t *testing.T) {
 	item := textItem()
 	item.ScriptParams.TargetWords = -1
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("negative target_words should fail validation")
 	}
@@ -414,23 +417,23 @@ func TestValidateItemNegativeTargetWords(t *testing.T) {
 func TestValidateItemExcessiveSentencesPerImage(t *testing.T) {
 	item := textItem()
 	item.ScriptParams.SentencesPerImage = 200
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("excessive sentences_per_image should fail validation")
 	}
 }
 
 func TestNormalizeItemMediaDensityExpandsCadenceAndPreservesOverrides(t *testing.T) {
-	cfg := adapters.NormalizationConfig{DefaultSentencesPerImage: 10, DefaultImagesPerScene: 2}
+	cfg := processor.NormalizationConfig{DefaultSentencesPerImage: 10, DefaultImagesPerScene: 2}
 	item := &scriptpkg.GenerationItemV2{ScriptParams: scriptpkg.ScriptSpec{MediaDensity: "dense"}}
-	adapters.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
 	if item.ScriptParams.SentencesPerImage != 4 || item.ScriptParams.ImagesPerScene != 2 {
 		t.Fatalf("dense cadence = (%d,%d), want (4,2)", item.ScriptParams.SentencesPerImage, item.ScriptParams.ImagesPerScene)
 	}
 	item = &scriptpkg.GenerationItemV2{ScriptParams: scriptpkg.ScriptSpec{
 		MediaDensity: "sparse", SentencesPerImage: 3,
 	}}
-	adapters.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(item, scriptpkg.PresetCustom, cfg)
 	if item.ScriptParams.SentencesPerImage != 3 || item.ScriptParams.ImagesPerScene != 1 {
 		t.Fatalf("partial cadence override = (%d,%d), want (3,1)", item.ScriptParams.SentencesPerImage, item.ScriptParams.ImagesPerScene)
 	}
@@ -439,7 +442,7 @@ func TestNormalizeItemMediaDensityExpandsCadenceAndPreservesOverrides(t *testing
 func TestValidateItemBadOutputFmt(t *testing.T) {
 	item := textItem()
 	item.Output.OutputFmt = "xml"
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("bad output_fmt should fail validation")
 	}
@@ -452,7 +455,7 @@ func TestValidateItemBadOutputFmt(t *testing.T) {
 func TestValidateItemRejectsProse(t *testing.T) {
 	item := textItem()
 	item.Output.OutputFmt = "prose"
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("'prose' output_fmt should fail validation in canonical pipeline")
 	}
@@ -465,7 +468,7 @@ func TestNormalizeItemDefaultOutputFmtIsJSON(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
 	item.Output.OutputFmt = ""
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	if item.Output.OutputFmt != "json" {
 		t.Fatalf("default OutputFmt: got %q, want %q", item.Output.OutputFmt, "json")
 	}
@@ -474,7 +477,7 @@ func TestNormalizeItemDefaultOutputFmtIsJSON(t *testing.T) {
 func TestValidateItemDuplicateLanguages(t *testing.T) {
 	item := textItem()
 	item.Output.Languages = []string{"it", "en", "it"}
-	err := scripts.ValidateItem(item)
+	err := gencore.ValidateItem(item)
 	if err == nil {
 		t.Fatal("duplicate languages should fail validation")
 	}
@@ -485,7 +488,7 @@ func TestValidateItemDuplicateLanguages(t *testing.T) {
 func TestBuildPlanTextFieldMapping(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := generation.BuildPlan(item)
 
@@ -515,7 +518,7 @@ func TestBuildPlanTextFieldMapping(t *testing.T) {
 func TestBuildPlanClipsFieldMapping(t *testing.T) {
 	cfg := defaultCfg()
 	item := clipsItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := generation.BuildPlan(item)
 
@@ -531,7 +534,7 @@ func TestBuildPlanClipsFieldMapping(t *testing.T) {
 func TestBuildPlanDeterministic(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan1 := generation.BuildPlan(item)
 	plan2 := generation.BuildPlan(item)
@@ -557,7 +560,7 @@ func TestBuildPlanDeterministic(t *testing.T) {
 func TestBuildPlanNoEndpointNames(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := generation.BuildPlan(item)
 
@@ -586,8 +589,8 @@ func TestBuildPlansMultiple(t *testing.T) {
 	item2 := clipsItem()
 	item1.ID = "one"
 	item2.ID = "two"
-	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
-	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
 
 	plans := generation.BuildPlans([]scriptpkg.GenerationItemV2{item1, item2})
 
@@ -616,7 +619,7 @@ func TestSingleBatchParityNormalization(t *testing.T) {
 	item := textItem()
 
 	// Normalize standalone.
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	single := item
 
 	// Normalize via envelope.
@@ -625,7 +628,7 @@ func TestSingleBatchParityNormalization(t *testing.T) {
 		Items:   []scriptpkg.GenerationItemV2{textItem()},
 		Preset:  scriptpkg.PresetCustom,
 	}
-	normalized := adapters.NormalizeEnvelope(env, cfg)
+	normalized := processor.NormalizeEnvelope(env, cfg)
 	batchItem := normalized[0]
 
 	if batchItem.Language != single.Language {
@@ -662,7 +665,7 @@ func TestValidateItemFuzz(t *testing.T) {
 					t.Errorf("item %d: ValidateItem panicked: %v", i, r)
 				}
 			}()
-			_ = scripts.ValidateItem(item)
+			_ = gencore.ValidateItem(item)
 		}()
 	}
 }
@@ -681,7 +684,7 @@ func TestBuildPlanTopicFromSource(t *testing.T) {
 			Topic: "Climate Change",
 		},
 	}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := generation.BuildPlan(item)
 
@@ -704,7 +707,7 @@ func TestBuildPlanTopicFallbackToTitle(t *testing.T) {
 			Topic: "",
 		},
 	}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := generation.BuildPlan(item)
 
@@ -724,7 +727,7 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 			Type: scriptpkg.SourceText,
 		},
 	}
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 	// After normalization, item.Title should be "Untitled Script".
 	if item.Title != "Untitled Script" {
 		t.Fatalf("expected normalizer to set Title to 'Untitled Script', got %q", item.Title)
@@ -741,10 +744,10 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 
 func TestBuildItemIdentityDeterministic(t *testing.T) {
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := adapters.BuildItemIdentity(item)
-	id2 := adapters.BuildItemIdentity(item)
+	id1 := processor.BuildItemIdentity(item)
+	id2 := processor.BuildItemIdentity(item)
 
 	if id1 != id2 {
 		t.Errorf("identity not deterministic: %q vs %q", id1, id2)
@@ -758,11 +761,11 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	item1 := textItem()
 	item2 := textItem()
 	item2.Source.SourceText = "Different source text that changes the generated script."
-	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := adapters.BuildItemIdentity(item1)
-	id2 := adapters.BuildItemIdentity(item2)
+	id1 := processor.BuildItemIdentity(item1)
+	id2 := processor.BuildItemIdentity(item2)
 
 	if id1 == id2 {
 		t.Error("items with different source text should have different identities")
@@ -778,11 +781,11 @@ func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 	item2 := clipsItem()
 	item2.Source.ClipIDs = []string{"clip-c", "clip-b", "clip-a"}
 
-	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := adapters.BuildItemIdentity(item1)
-	id2 := adapters.BuildItemIdentity(item2)
+	id1 := processor.BuildItemIdentity(item1)
+	id2 := processor.BuildItemIdentity(item2)
 
 	if id1 != id2 {
 		t.Errorf("identity should be stable regardless of clip ID order: %q vs %q", id1, id2)
@@ -794,7 +797,7 @@ func TestBuildItemIdentityNilSafety(t *testing.T) {
 	// isn't possible at the Go level. But empty items should still
 	// produce a stable identity.
 	item := scriptpkg.GenerationItemV2{}
-	id := adapters.BuildItemIdentity(item)
+	id := processor.BuildItemIdentity(item)
 	if id == "" {
 		t.Error("empty item should still produce a non-empty identity")
 	}
@@ -802,15 +805,15 @@ func TestBuildItemIdentityNilSafety(t *testing.T) {
 
 func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
 	item := textItem()
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Items:   []scriptpkg.GenerationItemV2{item},
 	}
 
-	envID := adapters.BuildEnvelopeIdentity(env)
-	itemID := adapters.BuildItemIdentity(item)
+	envID := processor.BuildEnvelopeIdentity(env)
+	itemID := processor.BuildItemIdentity(item)
 
 	if envID != itemID {
 		t.Errorf("single-item envelope identity should equal item identity: %q vs %q",
@@ -823,35 +826,35 @@ func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
 	item1.ID = "a"
 	item2 := clipsItem()
 	item2.ID = "b"
-	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	processor.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
 		Items:   []scriptpkg.GenerationItemV2{item1, item2},
 	}
 
-	envID := adapters.BuildEnvelopeIdentity(env)
+	envID := processor.BuildEnvelopeIdentity(env)
 	if len(envID) != 16 {
 		t.Errorf("multi-item envelope identity should be 16 hex chars, got %d: %q",
 			len(envID), envID)
 	}
 
 	// Multi-item identity should differ from any single-item identity.
-	if envID == adapters.BuildItemIdentity(item1) {
+	if envID == processor.BuildItemIdentity(item1) {
 		t.Error("multi-item identity should not equal item1 identity")
 	}
-	if envID == adapters.BuildItemIdentity(item2) {
+	if envID == processor.BuildItemIdentity(item2) {
 		t.Error("multi-item identity should not equal item2 identity")
 	}
 }
 
 func TestBuildEnvelopeIdentityNil(t *testing.T) {
-	if id := adapters.BuildEnvelopeIdentity(nil); id != "" {
+	if id := processor.BuildEnvelopeIdentity(nil); id != "" {
 		t.Errorf("nil envelope should return empty identity: got %q", id)
 	}
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
-	if id := adapters.BuildEnvelopeIdentity(env); id != "" {
+	if id := processor.BuildEnvelopeIdentity(env); id != "" {
 		t.Errorf("empty-items envelope should return empty identity: got %q", id)
 	}
 }

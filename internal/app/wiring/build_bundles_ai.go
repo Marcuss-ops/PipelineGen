@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
@@ -22,7 +24,6 @@ import (
 	"go.uber.org/zap"
 
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
@@ -135,14 +136,14 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
 	// gemma-memory-sweeper (internal/app/go:393).
 	//
-	// The application-layer adapters.Service depends on the typed
+	// The application-layer processor.Service depends on the typed
 	// scriptports.MemoryGate port; the concrete SQLite implementation is
 	// provided by sqlitescripts.MemoryRepository and wrapped here in the
 	// composition root so that no application-layer package imports
 	// database/sql (PR-REFACTOR-P0-IO-BINDER).
 	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
 	memGate := scriptwiring.NewMemoryGate(scriptMemRepo)
-	memSvc := adapters.NewService(memGate, log)
+	memSvc := processor.NewService(memGate, log)
 	engine := gencore.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), gencore.NewMemoryGateChecker(memSvc), log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(

@@ -56,6 +56,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"go.uber.org/zap"
 )
 
 // ── Service (canonical owner of "complete a job") ────────────────────
@@ -66,6 +67,12 @@ import (
 type Service struct {
 	rxRunner CompleteJobTxRunner
 	cache    IdempotencyCachePort
+	// log is the nil-safe observability seam for non-fatal
+	// post-TX side-effect failures (e.g. StoreCanonical). The
+	// cache remains an optimisation — the SQLite ON CONFLICT dedup
+	// is the authoritative gate — but a cache-write failure must
+	// be VISIBLE (2026-09-12 audit F6), not silently swallowed.
+	log *zap.Logger
 	// registry (FASE 0.1 July 4 2026): optional JobTypeRegistry port.
 	// Nil-safe during EXPAND phase; BACKFILL wires via
 	// WithJobTypeRegistry at the composition root. When non-nil, the
@@ -85,7 +92,21 @@ func NewService(rxRunner CompleteJobTxRunner, cache IdempotencyCachePort) (*Serv
 	if cache == nil {
 		return nil, fmt.Errorf("%w: cache", remote.ErrCompleteJobNotConfigured)
 	}
-	return &Service{rxRunner: rxRunner, cache: cache}, nil
+	return &Service{rxRunner: rxRunner, cache: cache, log: zap.NewNop()}, nil
+}
+
+// WithLogger wires a nil-safe logger. Returns the receiver for
+// fluent-chain composition; nil logger → zap.NewNop() (never a silent
+// discard of audit-relevant failures).
+func (s *Service) WithLogger(log *zap.Logger) *Service {
+	if s == nil {
+		return nil
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	s.log = log
+	return s
 }
 
 // WithJobTypeRegistry wires the JobTypeRegistry port (godlike/06 SSOT
@@ -182,7 +203,13 @@ func (s *Service) Complete(ctx context.Context, req *remote.CompleteJobRequest) 
 	// but NOT fatal — the SQLite ON CONFLICT dedup remains the
 	// authoritative gate (the cache is an optimisation, not the
 	// authority).
-	_ = s.cache.StoreCanonical(ctx, req.JobID, req.Attempt, req.ResultHash, outResp)
+	if cacheErr := s.cache.StoreCanonical(ctx, req.JobID, req.Attempt, req.ResultHash, outResp); cacheErr != nil {
+		s.log.Warn("complete job: idempotency cache StoreCanonical failed (non-fatal; SQLite ON CONFLICT dedup remains authoritative)",
+			zap.String("job_id", req.JobID),
+			zap.Int("attempt", req.Attempt),
+			zap.Error(cacheErr),
+		)
+	}
 	return outResp, nil
 }
 

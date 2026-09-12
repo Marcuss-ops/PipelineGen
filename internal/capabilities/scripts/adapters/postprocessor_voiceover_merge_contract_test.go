@@ -32,7 +32,7 @@ func TestMergePostProcessResult_PreservesReorderedMultiClipBindings(t *testing.T
 		},
 	}}
 
-	mergePostProcessResult(&PipelineResult{}, src, currentInput)
+	MergePostProcessResult(&PipelineResult{}, src, currentInput)
 
 	if got := currentInput.SpecScene.Scenes[0].Bindings.Clips; len(got) != 0 {
 		t.Fatalf("reordered scene-b unexpectedly inherited scene-a clips: %#v", got)
@@ -61,7 +61,7 @@ func TestMergePostProcessResult_PreservesVoiceoverFieldsAndLanguageLinks(t *test
 	}}
 	result := &PipelineResult{}
 
-	mergePostProcessResult(result, &PostProcessResult{Voiceovers: []SceneVoiceover{
+	MergePostProcessResult(result, &PostProcessResult{Voiceovers: []SceneVoiceover{
 		{SceneIndex: 0, Language: "en", Status: "completed", Link: "https://drive/vo-en", LocalPath: "/tmp/vo-en.mp3", DurationMs: 4100},
 		{SceneIndex: 0, Language: "it", Status: "completed", Link: "https://drive/vo-it", LocalPath: "/tmp/vo-it.mp3", DurationMs: 4200},
 	}}, currentInput)
@@ -79,7 +79,7 @@ func TestMergePostProcessResult_PreservesVoiceoverFieldsAndLanguageLinks(t *test
 
 	// A later translated/updated scene with an empty binding must retain the
 	// complete voiceover binding rather than replacing it with zero values.
-	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{UpdatedSpecScene: scriptpkg.SpecSceneOutput{
+	MergePostProcessResult(&PipelineResult{}, &PostProcessResult{UpdatedSpecScene: scriptpkg.SpecSceneOutput{
 		Version: 1,
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "translated"}},
 	}}, currentInput)
@@ -103,7 +103,7 @@ func TestMergePostProcessResult_PreservesVoiceoverTimingMap(t *testing.T) {
 
 	// First merge: two languages, one completed bundle + one explicit
 	// best-effort failure (failed status must stay visible).
-	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{Voiceovers: []SceneVoiceover{
+	MergePostProcessResult(&PipelineResult{}, &PostProcessResult{Voiceovers: []SceneVoiceover{
 		{SceneIndex: 0, Language: "en", Status: "completed", Link: "https://drive/vo-en", Timing: &scriptpkg.VoiceoverTimingBinding{
 			Status: "completed", JSONLink: "https://drive/timing-en.json", SRTLink: "https://drive/timing-en.srt",
 			BoundaryMode: "word", WordCount: 184, DurationUS: 18_342_000, TextSHA256: "text-en", AudioSHA256: "audio-en",
@@ -126,7 +126,7 @@ func TestMergePostProcessResult_PreservesVoiceoverTimingMap(t *testing.T) {
 
 	// Phase 2 — scene replacement (translation/synthesis path): an empty
 	// replacement scene must retain the complete timing map.
-	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{UpdatedSpecScene: scriptpkg.SpecSceneOutput{
+	MergePostProcessResult(&PipelineResult{}, &PostProcessResult{UpdatedSpecScene: scriptpkg.SpecSceneOutput{
 		Version: 1,
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "translated"}},
 	}}, currentInput)
@@ -137,7 +137,7 @@ func TestMergePostProcessResult_PreservesVoiceoverTimingMap(t *testing.T) {
 
 	// Phase 3 — translated-scene write-back: same preservation guarantee
 	// through the TranslatedSpecScene path.
-	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{TranslatedSpecScene: scriptpkg.SpecSceneOutput{
+	MergePostProcessResult(&PipelineResult{}, &PostProcessResult{TranslatedSpecScene: scriptpkg.SpecSceneOutput{
 		Version: 1,
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "tradotto"}},
 	}}, currentInput)

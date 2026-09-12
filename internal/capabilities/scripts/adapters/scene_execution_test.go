@@ -20,7 +20,7 @@ func TestSceneExecutionFiltersProtectFixedMedia(t *testing.T) {
 		t.Fatalf("NLP filter = %#v, want only generated body", nlp)
 	}
 
-	media := filterMediaResolutionScenes(scenes)
+	media := FilterMediaResolutionScenes(scenes)
 	if len(media) != 1 || media[0].ID != "body" {
 		t.Fatalf("media filter = %#v, want only generated body", media)
 	}
@@ -52,7 +52,7 @@ func fixedMediaSegment() scriptpkg.VidRushSegmentResult {
 	}
 }
 
-func TestFixedMediaDoesNotEnterVisualPlanningOrImageGeneration(t *testing.T) {
+func TestFixedMediaDoesNotEnterVisualPlanning(t *testing.T) {
 	resolver := &countingVisualResolver{}
 	visualProcessor := NewVisualPlanningProcessor(resolver, fixedPlanner{id: "replacement"}, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "job", MediaPlan: mediadomain.MediaPlanSpec{Mode: mediadomain.MediaPlanModeHybrid}}
@@ -66,13 +66,8 @@ func TestFixedMediaDoesNotEnterVisualPlanningOrImageGeneration(t *testing.T) {
 		t.Fatalf("fixed scene entered visual planning: calls=%d result=%+v", resolver.calls, result)
 	}
 
-	imageResult, err := NewImageProcessor(nil, nil).Process(context.Background(), plan, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if imageResult.Changed || len(imageResult.SceneImages) != 0 {
-		t.Fatalf("fixed scene entered image generation: %+v", imageResult)
-	}
+	// The image-generation half of this guard now lives with the processor
+	// that owns it: adapters/processor fixed_media_guard_test.go
 }
 
 func TestFixedMediaSkipsArtlistAndInternetImageSearch(t *testing.T) {
