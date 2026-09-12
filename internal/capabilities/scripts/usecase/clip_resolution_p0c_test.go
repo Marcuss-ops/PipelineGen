@@ -47,11 +47,13 @@ package usecase
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -490,7 +492,7 @@ func TestClipResolution_P0C_Orchestrator_AllMissing(t *testing.T) {
 	// Ollama stub configured to return a valid script IF execution
 	// ever reaches the engine (it won't here because the resolution
 	// fails first, but the stub is required by the helpers).
-	gen := &fakeOllamaGen{returnErr: errors.New("should never reach engine in all-missing scenario")}
+	gen := &testsupport.FakeOllamaGen{returnErr: errors.New("should never reach engine in all-missing scenario")}
 
 	uc := buildUsecaseWithClipResolver(gen, resolver)
 	item := makeClipsItem("p0c-all-missing", []string{"missing-1", "missing-2", "missing-3"}, "")

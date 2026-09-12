@@ -32,10 +32,11 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -434,7 +435,7 @@ func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
 
 // TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly pins the
 // model-facing projection contract. The builder still produces a
-// technical AssembledText for compatibility, but ModelSourceText
+// technical AssembledText for compatibility, but gencore.ModelSourceText
 // must be free of technical locators and include only the narrative
 // clip view.
 func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
@@ -461,7 +462,7 @@ func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
 	require.NotNil(t, ev)
 	require.NotEmpty(t, sourceText)
 
-	modelText := ev.ModelSourceText()
+	modelText := ev.gencore.ModelSourceText()
 	require.NotEmpty(t, modelText)
 	assert.Contains(t, modelText, "NARRATIVE EVIDENCE 1")
 	assert.Contains(t, modelText, "Ref: clip_1")

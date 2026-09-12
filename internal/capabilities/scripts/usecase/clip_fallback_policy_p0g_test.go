@@ -26,7 +26,7 @@
 //     ItemStatusSucceededWithWarnings + ModeInfo flip
 //
 // Test seam: orchestrator-level (buildUsecaseWithClipResolver +
-// fakeOllamaGen + fakeClipResolver). The default stub
+// testsupport.FakeOllamaGen + fakeClipResolver). The default stub
 // postprocessor does NOT set FinalSpecScene.Scenes, so the
 // engine's 1 scene persists into enforceClipNativeContract —
 // no binder override happens, no clip-native scene
@@ -68,6 +68,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -137,7 +139,7 @@ func p0gBuildEnvelope(prose string) string {
 
 // p0gBuildFallbackOrchestrator wires the canonical
 // orchestrator (buildUsecaseWithClipResolver) with a
-// fakeOllamaGen emitting the 1-scene envelope. The clip
+// testsupport.FakeOllamaGen emitting the 1-scene envelope. The clip
 // resolver is registered with BOTH canonical clips using the
 // SHARED p0gVocabulary so source-text coverage is ~1.0.
 // The default stub postprocessor in buildUsecaseWithClipResolver
@@ -145,10 +147,10 @@ func p0gBuildEnvelope(prose string) string {
 // propagates into enforceClipNativeContract as finalScenes = 1
 // (vs clipIDs = 2 from effectiveClipIDs → mismatch → policy
 // branch).
-func p0gBuildFallbackOrchestrator(t *testing.T) (*GenerateOneUseCase, scriptpkg.GenerationItemV2) {
+func p0gBuildFallbackOrchestrator(t *testing.T) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      p0gBuildEnvelope(p0gProse),
 		WordCount:   54,
 		EstDuration: 3,

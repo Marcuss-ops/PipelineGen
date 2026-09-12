@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -19,15 +21,15 @@ import (
 func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	t.Parallel()
 
-	gen := &fakeOllamaGen{}
-	engine := buildTestEngine(gen, nil)
-	runner := NewGenerationEngineRunner(engine)
+	gen := &testsupport.FakeOllamaGen{}
+	engine := testsupport.BuildTestEngine(gen, nil)
+	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-success"}
 	plan := scriptpkg.ResolvedGenerationPlan{ID: "runner-success", Title: "Runner Success"}
 
 	var events []string
-	tracker := NewProgressTracker(nil, item.ID)
+	tracker := gencore.NewProgressTracker(nil, item.ID)
 	tracker.SetEventFn(func(eventType, _ string, _ map[string]any) {
 		events = append(events, eventType)
 	})
@@ -35,7 +37,7 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	draft, err := runner.Generate(context.Background(), item, plan, tracker)
 	require.NoError(t, err)
 	require.NotNil(t, draft)
-	require.NotNil(t, draft.EngineResult)
+	require.NotNil(t, draft.gencore.EngineResult)
 	assert.GreaterOrEqual(t, draft.EngineMs, int64(0))
 	assert.Equal(t, int32(1), gen.calls.Load())
 
@@ -49,9 +51,9 @@ func TestGenerationEngineRunner_Generate_Error(t *testing.T) {
 	t.Parallel()
 
 	forcedErr := errors.New("forced engine error")
-	gen := &fakeOllamaGen{returnErr: forcedErr}
-	engine := buildTestEngine(gen, nil)
-	runner := NewGenerationEngineRunner(engine)
+	gen := &testsupport.FakeOllamaGen{returnErr: forcedErr}
+	engine := testsupport.BuildTestEngine(gen, nil)
+	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-error"}
 	plan := scriptpkg.ResolvedGenerationPlan{ID: "runner-error", Title: "Runner Error"}
@@ -71,7 +73,7 @@ func TestGenerationEngineRunner_Generate_Error(t *testing.T) {
 func TestGenerationEngineRunner_Generate_NilRunner(t *testing.T) {
 	t.Parallel()
 
-	runner := NewGenerationEngineRunner(nil)
+	runner := gencore.NewGenerationEngineRunner(nil)
 	item := scriptpkg.GenerationItemV2{ID: "runner-nil"}
 	plan := scriptpkg.ResolvedGenerationPlan{ID: "runner-nil"}
 
@@ -86,9 +88,9 @@ func TestGenerationEngineRunner_Generate_NilRunner(t *testing.T) {
 
 // TestGenerationEngineRunner_NewWithNilEngine verifies that the
 // constructor returns nil when given a nil engine, preserving the
-// pre-construction error behavior of GenerateOneUseCase.
+// pre-construction error behavior of gencore.GenerateOneUseCase.
 func TestGenerationEngineRunner_NewWithNilEngine(t *testing.T) {
 	t.Parallel()
-	runner := NewGenerationEngineRunner(nil)
+	runner := gencore.NewGenerationEngineRunner(nil)
 	require.Nil(t, runner)
 }

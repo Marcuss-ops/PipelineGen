@@ -19,10 +19,11 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"reflect"
 	"strings"
 	"testing"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 

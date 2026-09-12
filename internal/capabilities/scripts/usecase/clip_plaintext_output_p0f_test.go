@@ -41,8 +41,8 @@
 //	    containing all 8 signatures must trip ALL 8 matches, not
 //	    just the first).
 //
-//	(b) ORCHESTRATOR level — drives GenerateOneUseCase via
-//	    buildUsecaseWithClipResolver + fakeOllamaGen + a
+//	(b) ORCHESTRATOR level — drives gencore.GenerateOneUseCase via
+//	    buildUsecaseWithClipResolver + testsupport.FakeOllamaGen + a
 //	    text-only source, asserts the canonical result.Output.Text
 //	    passes the contract. Proves the regex check applies to
 //	    the REAL model-emitted output end-to-end, not just
@@ -64,6 +64,8 @@ import (
 	"testing"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -327,8 +329,8 @@ func TestPlaintextOutput_P0F_SignatureIndex_AllReported(t *testing.T) {
 }
 
 // TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse
-// drives the FULL orchestrator path (GenerateOneUseCase) with a
-// fakeOllamaGen emitting a clean prose JSON envelope via a
+// drives the FULL orchestrator path (gencore.GenerateOneUseCase) with a
+// testsupport.FakeOllamaGen emitting a clean prose JSON envelope via a
 // text-only source, and asserts the canonical result.Output.Text
 // passes the contract.
 //
@@ -419,7 +421,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, prose)
 
 	uc := buildUsecaseWithClipResolver(
-		&fakeOllamaGen{result: &scriptports.GenerationResult{
+		&testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 			Script:      cleanJSON,
 			WordCount:   10,
 			EstDuration: 3,
@@ -456,7 +458,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 	// ProgressFn (see progress.go); handlers that fire during this
 	// test are silently absorbed so contract assertions below stay
 	// green without operator UI coupling.
-	tracker := NewProgressTracker(func(int, string) {}, item.ID)
+	tracker := gencore.NewProgressTracker(func(int, string) {}, item.ID)
 	result, err := uc.Execute(context.Background(), item, scriptpkg.PresetCustom, tracker)
 	require.NoErrorf(t, err,
 		"orchestrator-level execution MUST NOT error under Option A fixture-overlap fix (PRE-EXISTING-13 follow_up)")

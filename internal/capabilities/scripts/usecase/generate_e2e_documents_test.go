@@ -1,6 +1,6 @@
 // Package scripts — generate_e2e_documents_test.go is the end-to-end
 // acceptance check for the document publication surface. It exercises the
-// full GenerateOneUseCase.Execute path with the real DocumentsProcessor and a
+// full gencore.GenerateOneUseCase.Execute path with the real DocumentsProcessor and a
 // stub Drive publisher, then asserts that the published document's human
 // section shows only the title, per-scene headings/text, and the
 // language-correct voiceover URL — never clip/stock/entity/description/tags,
@@ -20,6 +20,8 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -39,23 +41,23 @@ func (s *documentsE2EStub) UpsertDocument(_ context.Context, in scriptgen.Docume
 
 // buildUsecaseWithDocuments wires the canonical text source, the real
 // clip-bindings processor, and the real documents processor (backed by the
-// capture stub) into a GenerateOneUseCase.
-func buildUsecaseWithDocuments(gen *fakeOllamaGen, docs scriptgen.DocumentPublisher) *GenerateOneUseCase {
+// capture stub) into a gencore.GenerateOneUseCase.
+func buildUsecaseWithDocuments(gen *testsupport.FakeOllamaGen, docs scriptgen.DocumentPublisher) *gencore.GenerateOneUseCase {
 	reg := adapters.NewSourceRegistry(zap.NewNop())
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := buildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
 	ppReg.Register(adapters.NewDocumentsProcessor(docs))
-	ppReg.Register(&stubPostProcessor{
+	ppReg.Register(&testsupport.StubPostProcessor{
 		name:   "persistence",
 		result: &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
-	return NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
 }
 
 // documentHumanSurface returns the human-facing part of a rendered document
@@ -128,7 +130,7 @@ func TestGenerateE2E_DocumentHumanSurfaceShowsOnlyTitleScenesVoiceover(t *testin
 	scriptJSON, err := json.Marshal(model)
 	require.NoError(t, err)
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: string(scriptJSON), WordCount: 20, EstDuration: 6, Model: "llama3:8b",
 	}}
 

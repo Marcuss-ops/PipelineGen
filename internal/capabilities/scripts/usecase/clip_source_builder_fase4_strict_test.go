@@ -55,9 +55,10 @@ package usecase
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 	"testing"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 

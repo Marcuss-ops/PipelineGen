@@ -52,8 +52,8 @@
 //   - result.Output.Text MUST mention "Broner" (case-insensitive).
 //
 // Test seam: orchestrator-level (buildUsecaseWithClipResolver +
-// fakeOllamaGen + fakeClipResolver with BOTH canonical clips
-// registered). The fakeOllamaGen emits a hardcoded ~55-word Italian
+// testsupport.FakeOllamaGen + fakeClipResolver with BOTH canonical clips
+// registered). The testsupport.FakeOllamaGen emits a hardcoded ~55-word Italian
 // prose via a JSON envelope with 2 scenes, each bound to its
 // canonical clip. The default stub postprocessor in
 // buildUsecaseWithClipResolver does NOT extract entities, so
@@ -81,6 +81,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -179,7 +181,7 @@ func p0hBuildControlledEnvelope(prose string) string {
 }
 
 // p0hBuildPacquiaoBronerOrchestrator wires the canonical
-// orchestrator (buildUsecaseWithClipResolver) with a fakeOllamaGen
+// orchestrator (buildUsecaseWithClipResolver) with a testsupport.FakeOllamaGen
 // emitting the controlled 2-scene envelope. The clip resolver is
 // registered with BOTH canonical clips (p0hClipPacquiaoR1 +
 // p0hClipBronerR7) using a SHARED p0hClipSearchText that
@@ -189,10 +191,10 @@ func p0hBuildControlledEnvelope(prose string) string {
 // countUnsupportedClaims returns 0 trivially (godlike/07
 // honest-lock: this is documented in the test header, NOT a
 // silent no-op).
-func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*GenerateOneUseCase, scriptpkg.GenerationItemV2) {
+func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      p0hBuildControlledEnvelope(p0hProse),
 		WordCount:   55,
 		EstDuration: 3,
@@ -242,7 +244,7 @@ func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*GenerateOneUseCase, scri
 // P0.H contract end-to-end on a single controlled fixture.
 //
 // Test flow:
-//  1. The fakeOllamaGen returns a hardcoded ~55-word Italian
+//  1. The testsupport.FakeOllamaGen returns a hardcoded ~55-word Italian
 //     prose about Pacquiao and Broner (NO Mayweather, NO Las
 //     Vegas, NO scorecard, NO citations, NO extra rounds, NO
 //     medical details) wrapped in a 2-scene envelope (1 scene
