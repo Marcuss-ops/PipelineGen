@@ -27,6 +27,25 @@ const (
 	// StageOverlayPrepare is the stage under which the overlay.prepare job
 	// enqueue (submitted before TTS) is recorded.
 	StageOverlayPrepare kernobs.StageName = "overlay.prepare"
+	// StageOverlayRender is the stage under which the BLOCKING overlay render
+	// (submit + wait for completion + publish + RenderingGen phase projection)
+	// is recorded.
+	//
+	// It exists because that render was sequenced inside the audio phase and
+	// therefore charged to `audio_compile`: the audio stage reported a wall
+	// time dominated by a video render it does not own, the render never
+	// appeared on the critical path, and the run's reported bottleneck was the
+	// audio stage with a misleading dominant operation. The render is a
+	// distinct business boundary, so it gets its own stage — sibling to the
+	// audio stage, never nested inside it, or the breakdown would re-attribute
+	// it to the enclosing stage.
+	StageOverlayRender kernobs.StageName = "overlay_render"
+	// StageAudioPublish is the stage under which the certified final-audio
+	// artifact is uploaded to Drive. It is separated from the audio compile
+	// stage for the same reason: publishing is IO against an external system,
+	// not audio compilation, and merging the two made drive.upload the
+	// reported dominant operation of the audio stage.
+	StageAudioPublish kernobs.StageName = "audio_publish"
 	// StageDocumentPrepare is the stage under which the document HTML
 	// render (the prepare half of docs) is recorded, distinct from the
 	// document.publish google_docs.publish boundary.

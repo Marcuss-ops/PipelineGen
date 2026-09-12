@@ -368,6 +368,13 @@ func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
 // recorded as zero. The queue wait is already a canonical WaitCompletion
 // observation (waitForCompletion) and the job wall time is the run's own
 // WallTimeMs, so neither is duplicated here.
+//
+// The operations are bound to StageOverlayRender, the stage the render phase
+// is measured under. Binding them to StageProcess instead left the render's
+// work attached to a stage that no phase produced: the operations could never
+// be joined to a stage wall time, so the breakdown reported the render's cost
+// under the enclosing audio stage and gave that stage a dominant operation
+// from another subsystem.
 func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 	if artifact == nil {
 		return
@@ -389,7 +396,7 @@ func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 			continue
 		}
 		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-			Stage:     kernobs.StageProcess,
+			Stage:     StageOverlayRender,
 			Component: kernobs.ComponentRenderingGen,
 			Operation: phase.operation,
 		}, phase.durationMS)

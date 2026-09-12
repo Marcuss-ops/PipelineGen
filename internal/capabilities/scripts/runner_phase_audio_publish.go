@@ -20,8 +20,11 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	lang := req.SourceLanguage
 	result.FinalAudio.Filename = audioOutputFilename(req.OutputName, lang)
 	var published FinalAudioPublishResult
+	// The upload is measured under its own stage, not under the audio compile
+	// stage: publishing is IO against Drive, and charging it to the audio stage
+	// made drive.upload that stage's reported dominant operation.
 	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage: audioCompileStage, Component: "drive", Operation: "upload", Provider: "drive",
+		Stage: StageAudioPublish, Component: "drive", Operation: "upload", Provider: "drive",
 	}, func(measureCtx context.Context) error {
 		var err error
 		published, err = r.finalAudioPublisher.PublishFinalAudio(measureCtx, runID, lang, *result.FinalAudio, routing.VoiceoverFolderID)
@@ -29,7 +32,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	})
 	var uploadMS int64
 	if run := kernobs.FromContext(ctx); run != nil {
-		uploadMS = kernobs.SummarizeOperations(run.Report(), audioCompileStage, "upload").TotalMs
+		uploadMS = kernobs.SummarizeOperations(run.Report(), string(StageAudioPublish), "upload").TotalMs
 	}
 	if err != nil || strings.TrimSpace(published.DriveLink) == "" || strings.TrimSpace(published.AssetID) == "" {
 		if err == nil {
