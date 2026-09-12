@@ -43,6 +43,13 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 		if err != nil {
 			return nil, err
 		}
+		resident, checkErr = c.IsModelResident(ctx, model)
+		if checkErr != nil {
+			return nil, fmt.Errorf("verify post-warm residency for %q: %w", model, checkErr)
+		}
+		if !resident {
+			return nil, fmt.Errorf("model %q is not resident after warmup", model)
+		}
 		return nil, nil
 	})
 	if err != nil {
