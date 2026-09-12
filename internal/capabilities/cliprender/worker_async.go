@@ -138,7 +138,7 @@ func (w *Worker) handleAsyncSubmit(
 	}
 
 	emit("clip.render.remote.submitted", "RenderingGen render accepted; Master slot released", map[string]any{
-		"render_job_id":  plan.RunID,
+		"render_job_id": plan.RunID,
 		"plan_sha256":   plan.PlanSHA256,
 		"settle_job_id": childID,
 		"resume_sha256": resumeRef.SHA256,
