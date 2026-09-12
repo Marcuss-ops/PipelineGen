@@ -16,6 +16,10 @@ const (
 	StreamBufferSize       = 100
 	DefaultTemperature     = 0.35
 	DefaultNumPredict      = 16384
+	// ProductionRunnerContext is the single resident Ollama runner used by
+	// script generation. 8192 covers the long entity canary as well as short
+	// scenes, preventing a 4096↔8192 runner rebuild in the first real request.
+	ProductionRunnerContext = 8192
 	// DefaultNumCtx is the Ollama context window sent for script generation.
 	// Research-sourced prompts embed the full resolved source text twice
 	// (editorial "Source text:" block + the template's "REFERENCE INPUT"

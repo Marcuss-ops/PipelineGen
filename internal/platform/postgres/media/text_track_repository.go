@@ -124,6 +124,17 @@ func (r *TextTrackRepositoryPG) find(ctx context.Context, where string, args ...
 	}
 	return t, nil
 }
+func (r *TextTrackRepositoryPG) FindByID(ctx context.Context, trackID int64) (*detail.TextTrack, []detail.TimedCue, error) {
+	if trackID <= 0 {
+		return nil, nil, fmt.Errorf("postgres text tracks: FindByID: TrackID is required")
+	}
+	t, err := r.find(ctx, `WHERE id=$1`, trackID)
+	if err != nil || t == nil {
+		return t, nil, err
+	}
+	cues, err := r.cues(ctx, t.ID)
+	return t, cues, err
+}
 func (r *TextTrackRepositoryPG) FindReady(ctx context.Context, assetID, language string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	t, err := r.find(ctx, `WHERE asset_id=$1 AND language_code=$2 AND text_kind=$3 AND is_current=1 AND status=$4`, assetID, language, string(kind), string(detail.TextTrackReady))
 	if err != nil || t == nil {

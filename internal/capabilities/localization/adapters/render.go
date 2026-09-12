@@ -3,7 +3,9 @@ package adapters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -13,6 +15,42 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
+
+// certifiedOutputDigest resolves the content address of a rendered localized
+// clip WITHOUT re-reading bytes the render boundary already certified.
+//
+// The RenderingGen boundary computes the digest of the exact bytes it wrote
+// while streaming the certified download (queue_client.materializeArtifact
+// hashes in the same io.Copy that produced the file and verifies size + digest
+// against the queue's expected values), so RenderOutcome.SHA256 is the
+// certified identity of OutputPath. `digest.SHA256File` here was therefore a
+// second full pass over every localized clip for a fact already proven — the
+// exact waste the clip.render completion path already removed by forwarding
+// outcome.SHA256 straight to the publisher.
+//
+// Fail-closed: an outcome with no certified digest (a legacy or test renderer),
+// or one whose certified size no longer matches the file on disk, is hashed
+// from the real bytes instead of being trusted. certified reports which branch
+// ran so the choice is observable on the phase log.
+func certifiedOutputDigest(outcome *cliprender.RenderOutcome) (digestValue string, certified bool, err error) {
+	if outcome == nil {
+		return "", false, errors.New("render outcome is nil")
+	}
+	if outcome.SHA256 != "" {
+		info, statErr := os.Stat(outcome.OutputPath)
+		if statErr != nil {
+			return "", false, statErr
+		}
+		if outcome.SizeBytes > 0 && info.Size() == outcome.SizeBytes {
+			return outcome.SHA256, true, nil
+		}
+	}
+	sha, _, hashErr := digest.SHA256File(outcome.OutputPath)
+	if hashErr != nil {
+		return "", false, hashErr
+	}
+	return sha, false, nil
+}
 
 // RenderPlanExecutor implements localization.RenderPlanExecutor.
 // It is fail-closed: an unwired render executor, an invalid plan, or a missing
@@ -214,7 +252,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	)
 
 	hashStart := time.Now()
-	sha, _, err := digest.SHA256File(outcome.OutputPath)
+	sha, certifiedDigest, err := certifiedOutputDigest(outcome)
 	if err != nil {
 		a.logPhaseFailure("hash_failed", plan.Revision, zap.Int64("duration_ms", time.Since(hashStart).Milliseconds()), zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: hash rendered output: %w", err)
@@ -223,6 +261,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	a.logPhase("hash_done", plan.Revision,
 		zap.Int64("duration_ms", hashMS),
 		zap.String("sha256", sha),
+		zap.Bool("certified_digest_reused", certifiedDigest),
 	)
 	totalMS := compileMS + renderMS + hashMS
 	a.log.Info("clip.render.localization.completed",
@@ -236,6 +275,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.Int64("render_ms", renderMS),
 		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
 		zap.Int64("hash_ms", hashMS),
+		zap.Bool("certified_digest_reused", certifiedDigest),
 		zap.Int64("total_ms", totalMS),
 	)
 

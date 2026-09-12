@@ -187,9 +187,9 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	} else if _, ok := options["num_predict"]; !ok {
 		options["num_predict"] = ResolveOutputBudget(req)
 	}
-	// num_ctx is derived from the actual prompt and output budget. Short scene
-	// generation must not reserve the 16K research window; callers can still
-	// override it explicitly for research or other large prompts.
+	// num_ctx is derived from the actual prompt and output budget. Production
+	// requests stay on the resident 8192 runner so Ollama does not reload the
+	// same model when a later scene needs a larger prompt.
 	if _, ok := options["num_ctx"]; !ok {
 		options["num_ctx"] = ResolveContextBudget(messages, options["num_predict"])
 	}
@@ -257,6 +257,15 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 			jsonutil.UnmarshalOrLog([]byte(op.MetadataJSON), &meta, "operation_report.metadata_json", logger.Get())
 		}
 		meta["model"] = chatMetrics.Model
+		// Keep the request shape beside Ollama's server timings. In particular,
+		// a load spike is only actionable when we know whether the call stayed
+		// on the resident runner context or asked Ollama to resize it.
+		if value, ok := options["num_ctx"]; ok {
+			meta["num_ctx"] = value
+		}
+		if value, ok := options["num_predict"]; ok {
+			meta["num_predict"] = value
+		}
 		meta["input_tokens"] = chatMetrics.PromptEvalCount
 		meta["output_tokens"] = chatMetrics.EvalCount
 		meta["model_load_ms"] = chatMetrics.ModelLoadMS()

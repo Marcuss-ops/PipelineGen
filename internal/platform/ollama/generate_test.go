@@ -78,8 +78,8 @@ func TestGenerateScriptForwardsExplicitModelOverride(t *testing.T) {
 		if body.Model != "gemma2:2b" {
 			t.Errorf("chat model=%q, want explicit request model", body.Model)
 		}
-		if got := body.Options["num_ctx"]; got != float64(2048) {
-			t.Errorf("chat num_ctx=%v, want 2048 for a short scene", got)
+		if got := body.Options["num_ctx"]; got != float64(types.ProductionRunnerContext) {
+			t.Errorf("chat num_ctx=%v, want %d resident runner", got, types.ProductionRunnerContext)
 		}
 		if got := body.Options["num_predict"]; got != float64(96) {
 			t.Errorf("chat num_predict=%v, want 96 for a short scene", got)

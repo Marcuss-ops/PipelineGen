@@ -22,11 +22,11 @@ func TestResolveOutputBudgetDoesNotReserveThinkingOverhead(t *testing.T) {
 
 func TestResolveContextBudgetUsesSmallestSafeBucket(t *testing.T) {
 	messages := []types.Message{{Role: "user", Content: "short prompt"}}
-	if got := ResolveContextBudget(messages, 96); got != 2048 {
-		t.Fatalf("short context = %d, want 2048", got)
+	if got := ResolveContextBudget(messages, 96); got != types.ProductionRunnerContext {
+		t.Fatalf("short context = %d, want %d resident runner", got, types.ProductionRunnerContext)
 	}
 	large := []types.Message{{Role: "user", Content: string(make([]byte, 18000))}}
-	if got := ResolveContextBudget(large, 512); got != 8192 {
-		t.Fatalf("large context = %d, want 8192", got)
+	if got := ResolveContextBudget(large, 512); got != types.ProductionRunnerContext {
+		t.Fatalf("large context = %d, want %d", got, types.ProductionRunnerContext)
 	}
 }

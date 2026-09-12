@@ -41,9 +41,11 @@ func ResolveOutputBudget(req types.TextGenerationRequest) int {
 	return budget
 }
 
-// ResolveContextBudget chooses the smallest safe Ollama context bucket for a
-// prompt plus its output budget. Prompt-token estimation is intentionally
-// conservative and deterministic; explicit request options remain authoritative.
+// ResolveContextBudget chooses a safe Ollama context bucket for a prompt plus
+// its output budget. Production keeps one 8192 runner resident: the long
+// entity workload needs 8192, and switching a resident model between 4096 and
+// 8192 moves tens of seconds into the first real request. Explicit request
+// options remain authoritative for callers that intentionally opt out.
 func ResolveContextBudget(messages []types.Message, output any) int {
 	promptChars := 0
 	for _, message := range messages {
@@ -67,7 +69,7 @@ func ResolveContextBudget(messages []types.Message, output any) int {
 		outputTokens = 96
 	}
 	required := promptTokens + outputTokens + 256
-	for _, bucket := range []int{2048, 4096, 8192, 16384} {
+	for _, bucket := range []int{types.ProductionRunnerContext, 16384, 32768} {
 		if required <= bucket {
 			return bucket
 		}
