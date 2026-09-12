@@ -7,8 +7,20 @@ import (
 	"testing"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
+
+// countingOverlayHasher counts full-file hashes so the segment memoization
+// contract (hash a reused segment once, not once per clip) is provable.
+type countingOverlayHasher struct {
+	calls int
+}
+
+func (c *countingOverlayHasher) hash(path string) (string, int64, error) {
+	c.calls++
+	return digest.SHA256File(path)
+}
 
 // TestOverlaySegmentResolver_ResolvesFromCache certifies the render_job_id →
 // artifact hop: the resolver finds the cached overlay segment by render_key
@@ -45,6 +57,41 @@ func TestOverlaySegmentResolver_ResolvesFromCache(t *testing.T) {
 	}
 	if seg.LocalPath == "" || seg.SHA256 == "" || seg.SizeBytes != int64(len(segmentContent)) {
 		t.Errorf("segment artifact = %+v", seg)
+	}
+}
+
+// TestOverlaySegmentResolver_MemoizesSegmentVerification pins the batch win:
+// clips that reuse one overlay segment must hash it once, not per clip.
+func TestOverlaySegmentResolver_MemoizesSegmentVerification(t *testing.T) {
+	cache, err := infraoverlays.NewCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	renderKey := "6f1d5e2c8a4b9d3f0e7c1a2b4d6f8e0a1c3b5d7f9e1a3c5b7d9f1e3a5c7b9d1f"
+	segmentContent := []byte("reused overlay segment bytes")
+	segPath := filepath.Join(t.TempDir(), "overlay.mp4")
+	if err := os.WriteFile(segPath, segmentContent, 0644); err != nil {
+		t.Fatalf("write segment: %v", err)
+	}
+	if _, err := cache.PutFile("overlays", renderKey, "overlay.mp4", segPath); err != nil {
+		t.Fatalf("cache put: %v", err)
+	}
+	counted := &countingOverlayHasher{}
+	resolver := &OverlaySegmentResolver{cache: cache, verifier: cliprender.NewContentVerifier(counted.hash)}
+	for i := 0; i < 3; i++ {
+		seg, err := resolver.Resolve(context.Background(), cliprender.OverlayResolveInput{
+			RenderJobID: "render-overlay-memo-001",
+			RenderKey:   renderKey,
+		})
+		if err != nil {
+			t.Fatalf("Resolve %d: %v", i, err)
+		}
+		if seg == nil || seg.SHA256 == "" || seg.SizeBytes != int64(len(segmentContent)) {
+			t.Fatalf("Resolve %d segment = %+v", i, seg)
+		}
+	}
+	if counted.calls != 1 {
+		t.Fatalf("segment hashes across 3 resolves = %d, want 1", counted.calls)
 	}
 }
 

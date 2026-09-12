@@ -2,11 +2,14 @@ package wiring
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	infraartifacts "github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	"go.uber.org/zap"
@@ -16,6 +19,30 @@ import (
 // only executor; it owns semantic lowering, queue execution, and Chronon.
 type ClipRenderRuntime struct {
 	RenderingGenExecutor cliprender.RenderExecutor
+	ContinuationStore    cliprender.ContinuationStore
+}
+
+// assetMaterializationRoot is the ONE content-addressed materialization root
+// every asset consumer shares. The materializer caches under
+// <root>/assets/<sha256>/source.<ext>, so a single root means a source
+// downloaded once is reused by every capability instead of being downloaded a
+// second time into a second tree.
+//
+// This replaced two parallel roots (temp/cliprender and temp/localization) that
+// each held a private copy of the same bytes: the clip.render flow and the
+// localization flow cached the same asset twice, and the two trees were free to
+// drift. Only the ASSET CACHE moves here — each consumer keeps its own work
+// directory (worker scratch, localized outputs, Drive staging), which holds
+// genuinely different content.
+func assetMaterializationRoot(cfg *config.Config) string {
+	return filepath.Join(cfg.Storage.TempPath(), "materialized")
+}
+
+// assetMaterializationResolverRoot is the prepared-asset resolver's view of
+// assetMaterializationRoot: the resolver addresses files as
+// <root>/<sha256>/source.<ext>, i.e. the materializer's "assets" subdirectory.
+func assetMaterializationResolverRoot(cfg *config.Config) string {
+	return filepath.Join(assetMaterializationRoot(cfg), "assets")
 }
 
 func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*ClipRenderRuntime, error) {
@@ -50,19 +77,20 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	if cfg.External.RenderingGenPollIntervalMS > 0 {
 		executor.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 	}
-
-	// The async wrapper is composition-owned and opt-in. When disabled this is
-	// literally the historical executor. When enabled it exposes the SAME
-	// executor plus durable CAS/enqueue dependencies through
-	// cliprender.AsyncCompletionProvider; Worker.WithRenderExecutor discovers
-	// that capability without a second registry or a second backend selector.
-	var renderExecutor cliprender.RenderExecutor = executor
-	renderExecutor, err = wrapClipRenderAsyncCompletion(cfg, root, renderExecutor, log)
+	casRoot := filepath.Join(cfg.Storage.AbsDataDir(), "cas")
+	stager, err := infraartifacts.NewLocalStore(infraartifacts.Config{Workspace: filepath.Join(casRoot, ".staging")})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("clip render runtime: build continuation stager: %w", err)
 	}
-
-	runtime := &ClipRenderRuntime{RenderingGenExecutor: renderExecutor}
+	casStore, err := cas.NewStore(cas.Config{Root: casRoot, Stager: stager})
+	if err != nil {
+		return nil, fmt.Errorf("clip render runtime: build continuation CAS: %w", err)
+	}
+	continuationStore, err := renderinggen.NewCASContinuationStore(casStore)
+	if err != nil {
+		return nil, fmt.Errorf("clip render runtime: build continuation store: %w", err)
+	}
+	runtime := &ClipRenderRuntime{RenderingGenExecutor: executor, ContinuationStore: continuationStore}
 	root.ClipRenderRuntime = runtime
 	return runtime, nil
 }

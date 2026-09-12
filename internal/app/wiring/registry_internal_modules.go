@@ -361,11 +361,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
+	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, assetMaterializationRoot(cfg), log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
-	preparedResolver, err := cliprender.NewPreparedAssetResolver(filepath.Join(cfg.Storage.TempPath(), "cliprender", "assets"), materializer)
+	preparedResolver, err := cliprender.NewPreparedAssetResolver(assetMaterializationResolverRoot(cfg), materializer)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build prepared asset resolver: %w", err)
 	}
@@ -418,8 +418,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// config (encoder policy + profile owned by the composition root, never
 	// by Rust). Fail-closed when the media config is missing, mirroring
 	// WireStockPipeline. The Chronon clip executor is attached to the worker via the
-	// RenderExecutor port; the render phase consumes it in the follow-up
-	// step (until then Handle fails closed with ErrRenderPhaseNotImplemented).
+	// RenderExecutor port; the worker selects Submit/Settle when the async
+	// continuation ports are wired, retaining Render as a compatibility path.
 	mediaConfig := root.MediaExec
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
 		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
@@ -429,6 +429,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}
 	worker.WithRenderExecutor(renderRuntime.RenderingGenExecutor)
+	worker.WithContinuationStore(renderRuntime.ContinuationStore)
+	worker.WithContinuationEnqueuer(&clipRenderContinuationEnqueuer{jobs: root.Jobs.Facade})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
@@ -510,8 +512,9 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
 	}
 
-	// Canonical worker binding: parallel preparation and the Chronon-backed
-	// RenderingGen execution are real; missing execution wiring fails closed.
+	// Canonical worker binding: parallel preparation, asynchronous
+	// RenderingGen submission/settle, and parent aggregation are wired here;
+	// missing execution wiring still fails closed.
 	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(worker.Handle)); err != nil {
 		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
 	}

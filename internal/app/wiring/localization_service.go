@@ -243,7 +243,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		return nil, fmt.Errorf("localization service: text-track repository %T does not expose FindByID (subtitle PK lookup)", root.Repos.TextTrackRepo)
 	}
 
-	scratchDir := filepath.Join(cfg.Storage.TempPath(), "localization")
+	scratchDir := assetMaterializationRoot(cfg)
 	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 	if resolverErr != nil {
 		return nil, fmt.Errorf("localization service: build asset resolver: %w", resolverErr)

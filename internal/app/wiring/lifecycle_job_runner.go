@@ -118,6 +118,16 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 	}
 	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
 
+	// Event-driven aggregate-parent finalisation: a child that commits terminal
+	// hands its parent straight to the clip.render aggregator, so a finished clip
+	// does not wait for the recovery sweeper. The adapter ignores every child
+	// type it does not own, so attaching it to all workers is safe.
+	if deps.cfg.Features.ClipRenderEnabled {
+		if clipAgg := clipRenderParentAggregator(deps.root, deps.log); clipAgg != nil {
+			runner.WithParentCompletionNotifier(&clipRenderParentNotifier{agg: clipAgg})
+		}
+	}
+
 	if deps.root.DB != nil && deps.root.DB.DB != nil {
 		store, err := perfstore.NewResourceStore(deps.root.DB.DB)
 		if err != nil {

@@ -136,6 +136,9 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 		}
 	} else {
 		w.log.Info("job completed with artifacts", zap.String("job_id", j.ID), zap.String("job_type", j.Type))
+		// The child is durable and terminal — the only moment its parent can
+		// become eligible. Finalise it now instead of waiting for the sweep.
+		w.notifyParentCompletion(ctx, j)
 	}
 	return canonicalAssetIDs
 }
@@ -160,5 +163,8 @@ func (w *Worker) finalizeJobLegacyComplete(ctx context.Context, j *job.Job, work
 		}
 	} else {
 		w.log.Info("job completed", zap.String("job_id", j.ID))
+		// The child is durable and terminal — the only moment its parent can
+		// become eligible. Finalise it now instead of waiting for the sweep.
+		w.notifyParentCompletion(ctx, j)
 	}
 }

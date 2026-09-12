@@ -35,13 +35,32 @@ func NewRenderPlanExecutor(renderer cliprender.RenderExecutor, profile mediaexec
 
 var _ localization.RenderPlanExecutor = (*RenderPlanExecutor)(nil)
 
+// logPhase emits the per-phase progress trace of the client-side
+// validate/compile/render/hash window at Debug level. The hot path keeps only
+// the canonical lifecycle events at Info (completed) and Warn (failed): the
+// ten-ish per-phase lines this executor used to emit for EVERY localized clip
+// were diagnostics, not operator events — the same facts already live on the
+// RunReport stages and the render metrics.
 func (a *RenderPlanExecutor) logPhase(phase, planID string, fields ...zap.Field) {
 	all := append([]zap.Field{
 		zap.String("subsystem", "localization_render"),
 		zap.String("phase", phase),
 		zap.String("plan_revision", planID),
 	}, fields...)
-	a.log.Info("clip.render.localization.phase", all...)
+	a.log.Debug("clip.render.localization.phase", all...)
+}
+
+// logPhaseFailure is the canonical FAILED event for a localized render: exactly
+// one Warn per failed clip, carrying the phase that failed and its cause,
+// instead of scattering the failure across Info-level progress lines that an
+// operator had to join by hand.
+func (a *RenderPlanExecutor) logPhaseFailure(phase, planID string, fields ...zap.Field) {
+	all := append([]zap.Field{
+		zap.String("subsystem", "localization_render"),
+		zap.String("phase", phase),
+		zap.String("plan_revision", planID),
+	}, fields...)
+	a.log.Warn("clip.render.localization.failed", all...)
 }
 
 // Execute maps the sealed render.RenderPlan + subtitle ASS into a concrete
@@ -76,23 +95,23 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan executor not wired")
 	}
 	if err := plan.Validate(); err != nil {
-		a.logPhase("validate_failed", plan.Revision, zap.Error(err))
+		a.logPhaseFailure("validate_failed", plan.Revision, zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan validation failed: %w", err)
 	}
 	if len(plan.Manifest) == 0 {
-		a.logPhase("validate_failed", plan.Revision, zap.String("reason", "empty_manifest"))
+		a.logPhaseFailure("validate_failed", plan.Revision, zap.String("reason", "empty_manifest"))
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan has no source manifest entry")
 	}
 	src := plan.Manifest[0]
 	if src.Path == "" || src.SHA256 == "" {
-		a.logPhase("validate_failed", plan.Revision, zap.String("reason", "incomplete_source"))
+		a.logPhaseFailure("validate_failed", plan.Revision, zap.String("reason", "incomplete_source"))
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan source is incomplete")
 	}
 
 	var sub *cliprender.SubtitleArtifact
 	if subtitle != nil {
 		if subtitle.LocalPath == "" || subtitle.SHA256 == "" {
-			a.logPhase("validate_failed", plan.Revision, zap.String("reason", "incomplete_subtitle"))
+			a.logPhaseFailure("validate_failed", plan.Revision, zap.String("reason", "incomplete_subtitle"))
 			return localization.RenderFacts{}, fmt.Errorf("localization: subtitle ASS is incomplete")
 		}
 		sub = &cliprender.SubtitleArtifact{
@@ -160,7 +179,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	})
 	compileMS := time.Since(compileStart).Milliseconds()
 	if err != nil {
-		a.logPhase("compile_failed", plan.Revision, zap.Int64("duration_ms", compileMS), zap.Error(err))
+		a.logPhaseFailure("compile_failed", plan.Revision, zap.Int64("duration_ms", compileMS), zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: compile clip render plan: %w", err)
 	}
 	a.logPhase("compile_done", plan.Revision,
@@ -176,11 +195,11 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	outcome, err := a.renderer.Render(ctx, clipPlan)
 	renderMS := time.Since(renderStart).Milliseconds()
 	if err != nil {
-		a.logPhase("render_failed", plan.Revision, zap.Int64("duration_ms", renderMS), zap.Error(err))
+		a.logPhaseFailure("render_failed", plan.Revision, zap.Int64("duration_ms", renderMS), zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: execute clip render: %w", err)
 	}
 	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
-		a.logPhase("render_invalid_outcome", plan.Revision,
+		a.logPhaseFailure("render_invalid_outcome", plan.Revision,
 			zap.Int64("duration_ms", renderMS),
 			zap.Any("outcome", outcome),
 		)
@@ -197,7 +216,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	hashStart := time.Now()
 	sha, _, err := digest.SHA256File(outcome.OutputPath)
 	if err != nil {
-		a.logPhase("hash_failed", plan.Revision, zap.Int64("duration_ms", time.Since(hashStart).Milliseconds()), zap.Error(err))
+		a.logPhaseFailure("hash_failed", plan.Revision, zap.Int64("duration_ms", time.Since(hashStart).Milliseconds()), zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: hash rendered output: %w", err)
 	}
 	hashMS := time.Since(hashStart).Milliseconds()

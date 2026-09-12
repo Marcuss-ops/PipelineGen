@@ -34,6 +34,14 @@ type sceneReadyCoordinator struct {
 	transCalls int
 	ttsCalls   int
 
+	// translationSlots and ttsSlots are the coordinator's own bounded pools.
+	// A (scene, language) task acquires a translation slot only for its own
+	// target text and a TTS slot only for its own synthesis, never both at
+	// once, so the two certified pool widths stay enforced independently
+	// while a scene's languages advance independently of each other.
+	translationSlots concurrent.Semaphore
+	ttsSlots         concurrent.Semaphore
+
 	// rendered accumulates the certified produced videos of the localized
 	// render fan-out fired from this coordinator's scene workers. The runner
 	// merges them into the run result once the stream joins (the coordinator
@@ -42,8 +50,119 @@ type sceneReadyCoordinator struct {
 	failures []LocalizedRenderFailure
 }
 
+// sceneLanguageWork is one independent (scene, language) unit of the
+// SceneTextReady downstream: which language, and whether its target text still
+// needs translating. The source language never needs translation, so it
+// carries no translation dependency at all.
+type sceneLanguageWork struct {
+	lang             Language
+	needsTranslation bool
+}
+
+// sceneLanguageOutcome is the per-language result of the fan-out. The
+// coordinator applies it to the scene after the join, so the scene's Text and
+// Voiceover maps keep exactly one writer.
+type sceneLanguageOutcome struct {
+	lang       Language
+	text       string
+	translated bool
+	audioRef   AudioReference
+}
+
+// buildSceneLanguageWork projects the ordered language list into the
+// per-language work items, preserving the canonical dispatch order. A target
+// language is translated only when its text is still empty; the source
+// language is never a translation work item.
+func buildSceneLanguageWork(langs []Language, text map[Language]string, source Language) []sceneLanguageWork {
+	work := make([]sceneLanguageWork, 0, len(langs))
+	for _, lang := range langs {
+		needsTranslation := lang != source && text[lang] == ""
+		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: needsTranslation})
+	}
+	return work
+}
+
+// poolSize falls back to the certified default when a configured pool width is
+// missing. It keeps the semaphore constructor's >= 1 precondition explicit at
+// the call site instead of panicking on a zero-width pool.
+func poolSize(value, fallback int) int {
+	if value < 1 {
+		return fallback
+	}
+	return value
+}
+
 func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
-	return &sceneReadyCoordinator{ctx: ctx, runner: runner, runID: runID, req: req, routing: routing, exec: exec, results: make(map[int]Scene), started: time.Now()}
+	return &sceneReadyCoordinator{
+		ctx:     ctx,
+		runner:  runner,
+		runID:   runID,
+		req:     req,
+		routing: routing,
+		exec:    exec,
+		results: make(map[int]Scene),
+		started: time.Now(),
+
+		translationSlots: concurrent.NewSemaphore(poolSize(runner.translationConcurrency, DefaultTranslationConcurrency)),
+		ttsSlots:         concurrent.NewSemaphore(poolSize(runner.ttsConcurrency, DefaultTTSConcurrency)),
+	}
+}
+
+// languageWorkers sizes the per-scene (scene, language) task pool: one worker
+// per translation slot plus one per TTS slot. Both pools can therefore be
+// saturated at the same time (which is the point of removing the barrier)
+// without any worker holding two slots at once.
+func (c *sceneReadyCoordinator) languageWorkers(needsTTS bool) int {
+	workers := c.translationSlots.Cap()
+	if needsTTS {
+		workers += c.ttsSlots.Cap()
+	}
+	return workers
+}
+
+// translateLanguage runs one measured target-language translation under the
+// coordinator's translation pool. The slot is released before the caller moves
+// on to TTS, so a task never holds two pools at once and no cycle can form.
+func (c *sceneReadyCoordinator) translateLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, sourceText string) (string, error) {
+	if err := c.translationSlots.AcquireCtx(ctx); err != nil {
+		return "", err
+	}
+	defer c.translationSlots.Release()
+
+	var value string
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: "translation", Component: "translator", Operation: "translate", Provider: string(lang),
+		WorkerID: fmt.Sprintf("translation-%d", itemIdx), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", sceneID, lang),
+	}, func(measureCtx context.Context) error {
+		var err error
+		value, err = c.runner.translator.Translate(measureCtx, TranslationInput{SceneID: sceneID, SourceLanguage: c.req.SourceLanguage, TargetLanguage: lang, SourceText: sourceText})
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("translate ready scene %s to %s: %w", sceneID, lang, err)
+	}
+	return value, nil
+}
+
+// synthesizeLanguage runs one measured voiceover synthesis under the
+// coordinator's TTS pool. The text is the value produced for THIS language
+// (translated or already present), never a shared map read.
+func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, text string) (AudioReference, error) {
+	if err := c.ttsSlots.AcquireCtx(ctx); err != nil {
+		return AudioReference{}, err
+	}
+	defer c.ttsSlots.Release()
+
+	var audioRef AudioReference
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize, Provider: string(lang),
+		WorkerID: fmt.Sprintf("tts-%d", itemIdx), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", sceneID, lang),
+	}, func(measureCtx context.Context) error {
+		var err error
+		audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{SceneID: sceneID, Language: lang, Text: text, Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
+		return err
+	})
+	return audioRef, err
 }
 
 func (c *sceneReadyCoordinator) submit(scene Scene) {
@@ -77,88 +196,108 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			langs = append(langs, lang)
 		}
 	}
-	transWork := make([]Language, 0, len(langs))
-	for _, lang := range langs {
-		if lang != c.req.SourceLanguage && out.Text[lang] == "" {
-			transWork = append(transWork, lang)
+
+	// Per-(scene, language) work: a target translates its OWN text; the source
+	// language has no translation dependency at all. The order is the canonical
+	// dispatch order, so results stay deterministic.
+	work := buildSceneLanguageWork(langs, out.Text, c.req.SourceLanguage)
+	translationWork := 0
+	for _, item := range work {
+		if item.needsTranslation {
+			translationWork++
 		}
 	}
-	transStart := time.Now().UTC()
-	if len(transWork) > 0 {
-		out.TranslationStartedAt = transStart
-	}
-	translated, err := concurrent.Map(c.ctx, transWork, c.runner.translationConcurrency, func(ctx context.Context, worker int, lang Language) (string, error) {
-		var value string
-		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage: "translation", Component: "translator", Operation: "translate", Provider: string(lang),
-			WorkerID: fmt.Sprintf("translation-%d", worker), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", out.ID, lang),
-		}, func(measureCtx context.Context) error {
-			var err error
-			value, err = c.runner.translator.Translate(measureCtx, TranslationInput{SceneID: out.ID, SourceLanguage: c.req.SourceLanguage, TargetLanguage: lang, SourceText: out.Text[c.req.SourceLanguage]})
-			return err
-		})
-		if err != nil {
-			return "", fmt.Errorf("translate ready scene %s to %s: %w", out.ID, lang, err)
-		}
-		return value, nil
-	})
-	if err != nil {
-		return Scene{}, err
-	}
-	for i, lang := range transWork {
-		out.Text[lang] = translated[i]
-	}
-	// Per-(scene, language) translation correlation: record each target
-	// translation so "Spanish Scene 4" is traceable to this exact operation.
-	for _, lang := range transWork {
-		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
-			OperationID: artifactOperationID(c.exec.Attempt, OperationTranslation, out.ID, string(lang)),
-			Kind:        OperationTranslation,
-			SceneID:     out.ID,
-			Language:    lang,
-			Status:      "COMPLETED",
-		}); err != nil {
-			return Scene{}, err
-		}
-	}
-	c.mu.Lock()
-	c.transCalls += len(transWork)
-	c.mu.Unlock()
+	// The source text is read once, on the coordinator goroutine, before the
+	// fan-out: workers never re-read the shared map for it.
+	sourceText := out.Text[c.req.SourceLanguage]
 
 	mode, err := capabilityaudio.ResolveAudioMode(c.req.Audio, false)
 	if err != nil {
 		return Scene{}, err
 	}
 	needsTTS := (mode == capabilityaudio.AudioModeChunkedVoiceover || mode == capabilityaudio.AudioModeCombinedTimeline) && c.runner.voiceoverGen != nil
+	if needsTTS && strings.TrimSpace(c.routing.Project) == "" {
+		return Scene{}, fmt.Errorf("voiceover publishing requires a resolved Project")
+	}
+
+	// A scene records when its downstream branches began: translation for the
+	// scene's target work, TTS when any voiceover is produced.
+	if translationWork > 0 {
+		out.TranslationStartedAt = time.Now().UTC()
+	}
+	if needsTTS {
+		out.TTSStartedAt = time.Now().UTC()
+	}
+
+	// ── Independent (scene, language) pipeline ─────────────────────────
+	// ONE task per language, instead of "join every translation, then start
+	// every TTS". A target language translates its own text and then
+	// synthesises; the source language skips translation entirely and starts
+	// TTS immediately, so it no longer waits for the scene's target
+	// translations. Translation and TTS keep their own bounded pools, so the
+	// certified widths are unchanged.
+	outcomes, err := concurrent.Map(c.ctx, work, c.languageWorkers(needsTTS), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
+		res := sceneLanguageOutcome{lang: item.lang, text: out.Text[item.lang]}
+		if item.needsTranslation {
+			translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
+			if err != nil {
+				return sceneLanguageOutcome{}, err
+			}
+			res.text = translated
+			res.translated = true
+		}
+		if needsTTS {
+			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text)
+			if err != nil {
+				return sceneLanguageOutcome{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)
+			}
+			res.audioRef = audioRef
+		}
+		return res, nil
+	})
+	if err != nil {
+		return Scene{}, err
+	}
+
+	// Apply from the coordinator goroutine: the scene's Text/Voiceover maps
+	// have exactly one writer, and the durable artifacts are recorded in
+	// canonical (scene, language) order regardless of completion order.
+	for _, res := range outcomes {
+		if res.translated {
+			out.Text[res.lang] = res.text
+		}
+	}
+	// Per-(scene, language) translation correlation: record each target
+	// translation so "Spanish Scene 4" is traceable to this exact operation.
+	for _, res := range outcomes {
+		if !res.translated {
+			continue
+		}
+		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
+			OperationID: artifactOperationID(c.exec.Attempt, OperationTranslation, out.ID, string(res.lang)),
+			Kind:        OperationTranslation,
+			SceneID:     out.ID,
+			Language:    res.lang,
+			Status:      "COMPLETED",
+		}); err != nil {
+			return Scene{}, err
+		}
+	}
+	c.mu.Lock()
+	c.transCalls += translationWork
+	c.mu.Unlock()
+
 	if !needsTTS {
 		return out, nil
 	}
-	if strings.TrimSpace(c.routing.Project) == "" {
-		return Scene{}, fmt.Errorf("voiceover publishing requires a resolved Project")
-	}
-	ttsStart := time.Now().UTC()
-	out.TTSStartedAt = ttsStart
-	tts, err := concurrent.Map(c.ctx, langs, c.runner.ttsConcurrency, func(ctx context.Context, worker int, lang Language) (AudioReference, error) {
-		var audioRef AudioReference
-		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize, Provider: string(lang),
-			WorkerID: fmt.Sprintf("tts-%d", worker), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", out.ID, lang),
-		}, func(measureCtx context.Context) error {
-			var err error
-			audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{SceneID: out.ID, Language: lang, Text: out.Text[lang], Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
-			return err
-		})
-		return audioRef, err
-	})
-	if err != nil {
-		return Scene{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)
-	}
+
 	if out.Voiceover == nil {
 		out.Voiceover = make(map[Language]AudioReference)
 	}
-	for i, lang := range langs {
-		out.Voiceover[lang] = tts[i]
-		audioRef := tts[i]
+	for _, res := range outcomes {
+		out.Voiceover[res.lang] = res.audioRef
+		audioRef := res.audioRef
+		lang := res.lang
 		if lang == c.req.SourceLanguage && out.Clip == nil && !out.ExecutionMode.IsFixedMedia() {
 			out.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
 			out.AudioIntents = []capabilityaudio.AudioIntent{out.Audio}
@@ -187,16 +326,15 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		if strings.TrimSpace(renderText) == "" {
 			renderText = out.Text[c.req.SourceLanguage]
 		}
-		sourceText := out.Text[c.req.SourceLanguage]
-		if strings.TrimSpace(sourceText) == "" {
-			sourceText = renderText
+		renderSourceText := out.Text[c.req.SourceLanguage]
+		if strings.TrimSpace(renderSourceText) == "" {
+			renderSourceText = renderText
 		}
-		if strings.TrimSpace(sourceText) == "" {
-			sourceText = c.req.Source.SourceText
-			renderText = sourceText
+		if strings.TrimSpace(renderSourceText) == "" {
+			renderSourceText = c.req.Source.SourceText
+			renderText = renderSourceText
 		}
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
-		lang := lang
 		c.renderWg.Add(1)
 		go func() {
 			defer c.renderWg.Done()
@@ -209,7 +347,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 				Text:           renderText,
 				Voiceover:      audioRef,
 				SourceLanguage: c.req.SourceLanguage,
-				SourceText:     sourceText,
+				SourceText:     renderSourceText,
 				ClipID:         clipID,
 				ClipAssetID:    clipAssetID,
 				ClipSHA256:     clipSHA256,
@@ -241,9 +379,12 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			}
 		}()
 	}
-	if (mode == capabilityaudio.AudioModeCombinedTimeline || out.Clip == nil) && len(tts) > 0 && tts[0].Duration > 0 {
-		out.DurationMS = int64(tts[0].Duration*1000 + 0.5)
-		out.DurationUS = int64(tts[0].Duration*1_000_000 + 0.5)
+	// The scene duration is the source language's narration length: langs[0]
+	// is the source language whenever it is set, so outcomes[0] is its
+	// voiceover — identical to the previous joined fan-out's tts[0].
+	if len(outcomes) > 0 && outcomes[0].audioRef.Duration > 0 && (mode == capabilityaudio.AudioModeCombinedTimeline || out.Clip == nil) {
+		out.DurationMS = int64(outcomes[0].audioRef.Duration*1000 + 0.5)
+		out.DurationUS = int64(outcomes[0].audioRef.Duration*1_000_000 + 0.5)
 	}
 	c.mu.Lock()
 	c.ttsCalls += len(langs)

@@ -23,6 +23,7 @@ import (
 	"context"
 	"time"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
@@ -193,6 +194,31 @@ func buildWorkerSteps(deps workerDeps) []StartupStep {
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
+	}
+
+	// Clip render parent RECOVERY sweeper. The healthy path is event-driven: the
+	// settle child's terminal commit reports its parent directly (see
+	// clip_render_parent_completion.go and Worker.WithParentCompletionNotifier),
+	// so a finished clip flips its parent in the same instant. This ticker exists
+	// only for the case that event cannot cover — a crash between the child
+	// commit and the notification — which is why it runs at the recovery cadence
+	// rather than as the primary completion mechanism.
+	if jobsService != nil && deps.cfg.Features.ClipRenderEnabled {
+		clipAgg := clipRenderParentAggregator(deps.root, deps.log)
+		if clipAgg == nil {
+			deps.log.Warn("Clip render parent recovery sweeper unavailable (jobs service missing)")
+		} else {
+			steps = append(steps, StartupStep{
+				Name: "clip-render-parent-recovery-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					clipAgg.Start(startCtx)
+					deps.log.Info("Clip render parent recovery sweeper started",
+						zap.Duration("interval", cliprender.DefaultParentAggregationInterval))
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		}
 	}
 
 	return steps

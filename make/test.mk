@@ -59,6 +59,24 @@ verify-go:
 verify-unit-fast:
 	$(GO) test ./internal/kernel/... ./internal/capabilities/... ./cmd/... ./pkg/...
 
+# bench-cliprender — the canonical clip.render performance benchmark. Headless
+# and CI-safe: it drives the REAL worker (submit + settle phases), the real
+# ParentAggregator and the real kernel RunReport against a deterministic
+# RenderingGen lane simulator, so no server, GPU or Drive is required. It
+# emits one KPI table per scenario (wall, clips/min, p50/p95, submit/settle
+# slot occupancy, GPU utilisation, hashes, downloads).
+#
+#   make bench-cliprender                       all scenarios
+#   make bench-cliprender BENCH_CLIPRENDER_RUN=TestScenario2  one scenario
+#
+# Set VELOX_BENCH_WRITE_REPORT=1 to persist the JSON artifacts under
+# tests/operational/results/cliprender-bench/ (off by default: the working
+# tree stays clean).
+BENCH_CLIPRENDER_RUN ?= TestScenario
+bench-cliprender:
+	VELOX_BENCH_WRITE_REPORT=$(VELOX_BENCH_WRITE_REPORT) \
+		$(GO) test ./internal/capabilities/cliprender/ -run '$(BENCH_CLIPRENDER_RUN)' -count=1 -v
+
 VERIFY_JOBS ?= 2
 verify-unit: go-version-check
 	@$(MAKE) -j$(VERIFY_JOBS) verify-go-core verify-go-infrastructure verify-go-api verify-go-commands

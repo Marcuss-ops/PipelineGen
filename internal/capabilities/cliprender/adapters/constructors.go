@@ -4,6 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
@@ -39,7 +40,9 @@ func (r *ClipRenderTranscriptResolver) SetStreaming(streaming *ClipRenderStreami
 	r.streaming = streaming
 }
 
-// NewOverlaySegmentResolver wires the overlays content-cache resolver.
+// NewOverlaySegmentResolver wires the overlays content-cache resolver. The
+// resolver owns the process-lifetime content-verification memo so repeated
+// renders of the same overlay segment do not re-hash it per clip.
 func NewOverlaySegmentResolver(cache *infraoverlays.Cache) *OverlaySegmentResolver {
-	return &OverlaySegmentResolver{cache: cache}
+	return &OverlaySegmentResolver{cache: cache, verifier: cliprender.NewContentVerifier(nil)}
 }

@@ -55,6 +55,103 @@ type fakeRenderExecutor struct {
 	outcome *RenderOutcome
 }
 
+type fakeAsyncRenderExecutor struct {
+	submitCalls int
+	settleCalls int
+	plan        ClipRenderPlanV1
+	outcome     *RenderOutcome
+}
+
+func (f *fakeAsyncRenderExecutor) Render(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
+	f.plan = plan
+	return f.outcome, nil
+}
+
+func (f *fakeAsyncRenderExecutor) Submit(_ context.Context, plan ClipRenderPlanV1) error {
+	f.submitCalls++
+	f.plan = plan
+	return nil
+}
+
+func (f *fakeAsyncRenderExecutor) Settle(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
+	f.settleCalls++
+	f.plan = plan
+	return f.outcome, nil
+}
+
+type fakeContinuationStore struct {
+	doc      ResumeDocument
+	putCalls int
+}
+
+func (s *fakeContinuationStore) PutResumeDocument(_ context.Context, doc ResumeDocument) (ContinuationRef, error) {
+	s.putCalls++
+	s.doc = doc
+	return ContinuationRef{SHA256: strings.Repeat("a", 64), SizeBytes: 1}, nil
+}
+
+func (s *fakeContinuationStore) GetResumeDocument(_ context.Context, _ ContinuationRef) (ResumeDocument, error) {
+	return s.doc, nil
+}
+
+type fakeContinuationEnqueuer struct {
+	req   ContinuationRequest
+	calls int
+}
+
+func (e *fakeContinuationEnqueuer) EnqueueContinuation(_ context.Context, req ContinuationRequest) (string, error) {
+	e.calls++
+	e.req = req
+	return "settle-child-1", nil
+}
+
+func TestWorker_AsyncSubmitReleasesRenderSlotAndSettleResumesFromCAS(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeAsyncRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1920,
+		Height:      1080,
+		FPSNum:      24,
+		FPSDen:      1,
+		Backend:     BackendChrononVulkan,
+	}}
+	store := &fakeContinuationStore{}
+	enqueuer := &fakeContinuationEnqueuer{}
+	w.WithRenderExecutor(renderer).WithContinuationStore(store).WithContinuationEnqueuer(enqueuer)
+
+	parent := &job.Job{ID: "job-async-parent", Payload: renderJobPayload(t, baseRenderRequest())}
+	result, err := w.Handle(context.Background(), parent, nil)
+	if err != nil {
+		t.Fatalf("submit Handle() error = %v", err)
+	}
+	if result["phase"] != "submitted" || result["parent_state"] != ParentStateWaitingChildren {
+		t.Fatalf("submit result = %v, want submitted/waiting_children", result)
+	}
+	if renderer.submitCalls != 1 || renderer.settleCalls != 0 {
+		t.Fatalf("submit/settle calls = %d/%d, want 1/0", renderer.submitCalls, renderer.settleCalls)
+	}
+	if store.putCalls != 1 || enqueuer.calls != 1 || enqueuer.req.ParentJobID != parent.ID {
+		t.Fatalf("continuation handoff store=%d enqueue=%d request=%+v", store.putCalls, enqueuer.calls, enqueuer.req)
+	}
+
+	settlePayload, err := encodeContinuationPayload(enqueuer.req.Continuation)
+	if err != nil {
+		t.Fatalf("encode settle payload: %v", err)
+	}
+	settleResult, err := w.Handle(context.Background(), &job.Job{ID: "settle-child-1", Payload: settlePayload}, nil)
+	if err != nil {
+		t.Fatalf("settle Handle() error = %v", err)
+	}
+	if settleResult["phase"] != "rendered" || renderer.settleCalls != 1 {
+		t.Fatalf("settle result/calls = %v/%d, want rendered/1", settleResult["phase"], renderer.settleCalls)
+	}
+	if renderer.plan.PlanSHA256 != enqueuer.req.Continuation.Submission.PlanSHA256 {
+		t.Fatalf("settle plan digest = %q, want %q", renderer.plan.PlanSHA256, enqueuer.req.Continuation.Submission.PlanSHA256)
+	}
+}
+
 func (f *fakeRenderExecutor) Render(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
 	f.called++
 	f.plan = plan
