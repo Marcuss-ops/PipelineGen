@@ -61,7 +61,7 @@
 	test-postgres test-postgres-down \
 	doctor artlist auth-check regenerate-token \
 	smoke-pipeline smoke-run-all smoke-dry smoke-voiceover \
-	deps tidy-check vuln bench benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
+	deps tidy-check vuln bench bench-cliprender benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
 # the high-traffic targets; for the FULL ~90-target catalog see the
@@ -128,8 +128,11 @@ help:
 	@echo "  make test-pipeline-youtube-stock YouTube/stock pipeline diagnostic"
 	@echo "  make verify-pipeline-vidrush     Vidrush pipeline"
 	@echo ""
-	@echo "BENCHMARK (require running server + /ready)"
+	@echo "BENCHMARK"
+	@echo "  make bench-cliprender   Canonical clip.render benchmark (headless; no server/GPU needed)"
 	@echo "  make benchmark-generate  Video benchmark (BENCH_TOPIC=BENCH_CLIP_ID=)"
+	@echo ""
+	@echo "BENCHMARK (require running server + /ready)"
 	@echo "  make benchmark-ollama-models  Cold/prewarmed/steady-state e4b/e2b comparison"
 	@echo "  make dev-up              Deterministic staged startup (Infrastructure→Server→Worker→Preflight)"
 	@echo "  make dev-down            Stop all services + remove orphans"

@@ -35,6 +35,25 @@ func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 	return w
 }
 
+// WithContinuationStore attaches the durable CAS-backed resume store used by
+// the asynchronous submit/settle boundary.
+func (w *Worker) WithContinuationStore(s ContinuationStore) *Worker {
+	if w != nil {
+		w.continuationStore = s
+	}
+	return w
+}
+
+// WithContinuationEnqueuer attaches the durable job enqueue port for the
+// settle continuation. The worker stays capability-only; composition owns the
+// concrete job service and parent-link injection.
+func (w *Worker) WithContinuationEnqueuer(e ContinuationEnqueuer) *Worker {
+	if w != nil {
+		w.continuationEnqueuer = e
+	}
+	return w
+}
+
 // WithRenderPublisher attaches the canonical Drive publication + SQLite
 // commit boundary. Production composition must wire it before exposing the
 // route; tests may omit it when exercising preparation only.

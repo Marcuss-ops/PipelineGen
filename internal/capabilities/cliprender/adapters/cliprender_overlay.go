@@ -31,7 +31,6 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
@@ -44,6 +43,11 @@ import (
 // an unknown key or a missing/unreadable artifact is a typed error.
 type OverlaySegmentResolver struct {
 	cache *infraoverlays.Cache
+	// verifier memoizes the segment digest (size+modtime keyed): the cached
+	// overlay artifact is immutable for a given render_key, so a batch of
+	// clips that reuse the same segment hashes it once instead of once per
+	// render. A nil verifier falls back to the canonical one-shot hash.
+	verifier *cliprender.ContentVerifier
 }
 
 // resolveOverlaySegmentInCache locates the cached overlay artifact for a
@@ -80,7 +84,11 @@ func (r *OverlaySegmentResolver) Resolve(_ context.Context, in cliprender.Overla
 	if err != nil {
 		return nil, err
 	}
-	sha, size, err := digest.SHA256File(path)
+	verifier := r.verifier
+	if verifier == nil {
+		verifier = cliprender.NewContentVerifier(nil)
+	}
+	sha, size, err := verifier.Verify(path)
 	if err != nil {
 		return nil, fmt.Errorf("overlay segment resolver: hash artifact: %w", err)
 	}

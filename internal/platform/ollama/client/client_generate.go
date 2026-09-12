@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
@@ -23,71 +24,128 @@ func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 	return c.GenerateWithOptions(ctx, c.model, prompt, nil)
 }
 
-// GenerateWithOptions genera testo con opzioni esplicite (Legacy API)
+// GenerateMetrics carries the timing/token facts returned by Ollama's legacy
+// /api/generate endpoint. Durations are nanoseconds, matching Ollama's wire
+// contract, so callers can derive cold-start and token-throughput metrics.
+type GenerateMetrics struct {
+	Model                string
+	LoadDurationNS       int64
+	PromptEvalCount      int64
+	PromptEvalDurationNS int64
+	EvalCount            int64
+	EvalDurationNS       int64
+	TotalDurationNS      int64
+}
+
+func (m *GenerateMetrics) ModelLoadMS() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.LoadDurationNS / 1e6
+}
+
+func (m *GenerateMetrics) TokensPerSecond() float64 {
+	if m == nil || m.EvalDurationNS <= 0 {
+		return 0
+	}
+	return float64(m.EvalCount) / (float64(m.EvalDurationNS) / 1e9)
+}
+
+// GenerateResult is the metrics-aware result of a legacy generation call.
+type GenerateResult struct {
+	Content string
+	Metrics *GenerateMetrics
+}
+
+// GenerateWithOptions genera testo con opzioni esplicite (Legacy API).
+// It remains a string-returning compatibility wrapper; use GenerateDetailed
+// when the caller needs Ollama timing/token facts.
 func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, options map[string]any) (string, error) {
+	result, err := c.GenerateDetailed(ctx, model, prompt, options)
+	if err != nil {
+		return "", err
+	}
+	return result.Content, nil
+}
+
+// GenerateDetailed is the metrics-aware legacy /api/generate call.
+func (c *Client) GenerateDetailed(ctx context.Context, model, prompt string, options map[string]any) (GenerateResult, error) {
 	if model == "" {
 		model = c.model
 	}
 
-	format, think, options := extractGenerateControls(options)
+	format, think, keepAlive, options := extractGenerateControls(options)
 	req := types.GenerateRequest{
-		Model:   model,
-		Prompt:  prompt,
-		Stream:  false,
-		Think:   think,
-		Format:  format,
-		Options: options,
+		Model:     model,
+		Prompt:    prompt,
+		Stream:    false,
+		KeepAlive: keepAlive,
+		Think:     think,
+		Format:    format,
+		Options:   options,
 	}
 
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return GenerateResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return GenerateResult{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return "", fmt.Errorf("ollama request failed: %w", err)
+			return GenerateResult{}, fmt.Errorf("ollama request failed: %w", err)
 		}
-		return "", fmt.Errorf("ollama request failed: %w", &retry.TransientInfrastructureError{Err: err})
+		return GenerateResult{}, fmt.Errorf("ollama request failed: %w", &retry.TransientInfrastructureError{Err: err})
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
-			return "", fmt.Errorf("ollama returned status %d: %w", resp.StatusCode, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama returned status %d", resp.StatusCode)})
+			return GenerateResult{}, fmt.Errorf("ollama returned status %d: %w", resp.StatusCode, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama returned status %d", resp.StatusCode)})
 		}
-		return "", fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return GenerateResult{}, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
 	var result types.GenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		return GenerateResult{}, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	logger.Info("Ollama generate response received",
 		zap.Int("chars", len(result.Response)),
 	)
 
-	return result.Response, nil
+	return GenerateResult{
+		Content: result.Response,
+		Metrics: &GenerateMetrics{
+			Model:                model,
+			LoadDurationNS:       result.LoadDuration,
+			PromptEvalCount:      result.PromptEvalCount,
+			PromptEvalDurationNS: result.PromptEvalDuration,
+			EvalCount:            result.EvalCount,
+			EvalDurationNS:       result.EvalDuration,
+			TotalDurationNS:      result.TotalDuration,
+		},
+	}, nil
 }
 
 // extractGenerateFormat keeps the public options map backward-compatible
 // while placing Ollama's structured-output format at the request level. The
 // Ollama API ignores format when it is nested inside options.
-func extractGenerateControls(options map[string]any) (any, *bool, map[string]any) {
+func extractGenerateControls(options map[string]any) (any, *bool, string, map[string]any) {
 	if len(options) == 0 {
-		return nil, nil, nil
+		return nil, nil, "30m", nil
 	}
 	copyOptions := make(map[string]any, len(options))
 	var format any
 	var think *bool
+	keepAlive := "30m"
 	for key, value := range options {
 		if key == "format" {
 			format = value
@@ -99,12 +157,18 @@ func extractGenerateControls(options map[string]any) (any, *bool, map[string]any
 			}
 			continue
 		}
+		if key == "keep_alive" {
+			if value, ok := value.(string); ok && strings.TrimSpace(value) != "" {
+				keepAlive = value
+			}
+			continue
+		}
 		copyOptions[key] = value
 	}
 	if len(copyOptions) == 0 {
 		copyOptions = nil
 	}
-	return format, think, copyOptions
+	return format, think, keepAlive, copyOptions
 }
 
 // SimpleGenerate is a convenience wrapper for the common pattern of calling
@@ -134,11 +198,15 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 		model = c.model
 	}
 
+	format, think, keepAlive, requestOptions := extractGenerateControls(options)
 	req := types.GenerateRequest{
-		Model:   model,
-		Prompt:  prompt,
-		Stream:  true,
-		Options: options,
+		Model:     model,
+		Prompt:    prompt,
+		Stream:    true,
+		KeepAlive: keepAlive,
+		Think:     think,
+		Format:    format,
+		Options:   requestOptions,
 	}
 
 	body, err := json.Marshal(req)

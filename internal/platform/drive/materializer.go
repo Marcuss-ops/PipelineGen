@@ -11,7 +11,9 @@ package drive
 //      (when expectedSHA256 is known), not scratch/assets/<asset_id>.mp4.
 //   2. The cache hit check verifies the computed SHA256 matches the
 //      expected value — a stale cache silently serving wrong bytes is a
-//      bug, not a feature.
+//      bug, not a feature. Verification is memoized per process by size
+//      and modification time (digest.Verifier), so the full-file read
+//      happens when the bytes enter the system, not once per consumer.
 //   3. Downloads write to a .part file, verify the hash, fsync, then
 //      atomically rename to the canonical path. An interrupted download
 //      never leaves a partial file at the canonical location.
@@ -86,6 +88,13 @@ type CanonicalAssetMaterializer struct {
 	reader     Reader
 	scratchDir string
 	log        *zap.Logger
+	// verifier owns content verification for this materializer. Cache hits
+	// are confirmed from the digest recorded when the bytes entered the
+	// system (size+modtime keyed) instead of re-reading the whole file on
+	// every call: a batch of N jobs over one source must hash it ONCE, not N
+	// times. It is the shared kernel authority, so the clip.render layer and
+	// this layer cannot disagree about what "already verified" means.
+	verifier *digest.Verifier
 }
 
 // NewCanonicalAssetMaterializer builds the materializer. reader is the
@@ -99,7 +108,12 @@ func NewCanonicalAssetMaterializer(reader Reader, scratchDir string, log *zap.Lo
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &CanonicalAssetMaterializer{reader: reader, scratchDir: scratchDir, log: log}, nil
+	return &CanonicalAssetMaterializer{
+		reader:     reader,
+		scratchDir: scratchDir,
+		log:        log,
+		verifier:   digest.NewVerifier(nil),
+	}, nil
 }
 
 // Materialize ensures the asset bytes are local and content-verified.
@@ -144,7 +158,7 @@ func (m *CanonicalAssetMaterializer) Materialize(ctx context.Context, req Materi
 	if expected != "" {
 		casPath := m.contentAddressedPath(expected, req.Extension)
 		if info, err := os.Stat(casPath); err == nil && !info.IsDir() {
-			computed, size, hashErr := hashFilePath(casPath)
+			computed, size, hashErr := m.contentVerifier().Verify(casPath)
 			if hashErr == nil && computed == expected {
 				m.log.Info("canonical_materializer.materialize.done",
 					zap.String("asset_id", req.AssetID),
@@ -200,7 +214,7 @@ func (m *CanonicalAssetMaterializer) Materialize(ctx context.Context, req Materi
 // ExpectedSHA256, and returns the result. It is used for the registered
 // local path and legacy cache paths.
 func (m *CanonicalAssetMaterializer) verifyAndReturn(path, branch string, req MaterializeRequest, t0 time.Time) (*MaterializeResult, error) {
-	computed, size, err := hashFilePath(path)
+	computed, size, err := m.contentVerifier().Verify(path)
 	if err != nil {
 		m.log.Error("canonical_materializer.materialize.failed",
 			zap.String("asset_id", req.AssetID),
@@ -268,7 +282,7 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 	// If the final path already exists with the right hash, it was just
 	// downloaded by a concurrent call or the CAS cache was populated.
 	if info, err := os.Stat(finalPath); err == nil && !info.IsDir() {
-		computed, size, hashErr := hashFilePath(finalPath)
+		computed, size, hashErr := m.contentVerifier().Verify(finalPath)
 		if hashErr == nil {
 			if expected == "" || computed == expected {
 				m.log.Info("canonical_materializer.materialize.done",
@@ -329,7 +343,7 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 	syncErr := out.Sync()
 	closeErr := out.Close()
 
-	computed, _, hashErr := hashFilePath(partPath)
+	computed, _, hashErr := m.contentVerifier().Verify(partPath)
 	if copyErr == nil && hashErr != nil {
 		copyErr = hashErr
 	}
@@ -426,23 +440,14 @@ func (m *CanonicalAssetMaterializer) legacyPath(assetID, ext string) string {
 
 // ── helpers ─────────────────────────────────────────────────────────
 
-// hashFilePath returns the SHA-256 hex digest and byte size of the file
-// at path. The caller must ensure the file exists and is readable.
-func hashFilePath(path string) (sha256hex string, size int64, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
+// contentVerifier returns the materializer's verifier, tolerating a
+// zero-value materializer (a nil verifier still hashes correctly, it just
+// loses the memo).
+func (m *CanonicalAssetMaterializer) contentVerifier() *digest.Verifier {
+	if m == nil {
+		return nil
 	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return "", 0, err
-	}
-	computed, err := digest.SHA256Reader(f)
-	if err != nil {
-		return "", 0, err
-	}
-	return computed, info.Size(), nil
+	return m.verifier
 }
 
 // copyFile copies src to dst (used as a fallback when os.Rename fails

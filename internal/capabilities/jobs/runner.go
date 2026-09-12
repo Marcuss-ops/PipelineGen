@@ -32,6 +32,12 @@ type Runner struct {
 	// propagated to every Worker by buildWorkers. It fires on the real
 	// ClaimNext() instant — before any unit executes. nil = un-instrumented.
 	claimSnapshot ClaimSnapshotter
+
+	// parentNotifier is the event-driven aggregate-parent finaliser propagated
+	// to every Worker by buildWorkers. nil = polling-only parent finalisation
+	// (correct, but every fan-out pays the sweeper's interval as completion
+	// latency).
+	parentNotifier ParentCompletionNotifier
 }
 
 func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg RunnerConfig) *Runner {
@@ -87,6 +93,16 @@ func (r *Runner) WithClaimSnapshotter(snapshotter ClaimSnapshotter) *Runner {
 	return r
 }
 
+// WithParentCompletionNotifier attaches the event-driven aggregate-parent
+// finaliser to the Runner; buildWorkers propagates it to every Worker, which
+// reports each child that commits terminal. Nil-tolerant: without a notifier
+// the aggregator's recovery sweep is the only finalisation path, which is
+// correct but pays the sweep interval as latency on every fan-out.
+func (r *Runner) WithParentCompletionNotifier(n ParentCompletionNotifier) *Runner {
+	r.parentNotifier = n
+	return r
+}
+
 // buildWorkers constructs the worker pool and attaches every wired
 // dependency (registry, broker, job ledger, observer) to each Worker.
 // Start() runs these workers; the helper exists so tests can assert
@@ -123,6 +139,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		}
 		if r.claimSnapshot != nil {
 			w.WithClaimSnapshotter(r.claimSnapshot)
+		}
+		if r.parentNotifier != nil {
+			w.WithParentCompletionNotifier(r.parentNotifier)
 		}
 		workers = append(workers, w)
 	}

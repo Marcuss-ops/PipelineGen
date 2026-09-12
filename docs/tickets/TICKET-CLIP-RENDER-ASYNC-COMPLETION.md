@@ -178,20 +178,31 @@ async redesign.
 
 ## 5. Acceptance criteria
 
-- [ ] `clip.render` submission returns and releases its Master slot as soon as
-      the RenderingGen job id is durably persisted.
+- [x] `clip.render` submission returns and releases its Master slot as soon as
+      the RenderingGen job id is durably persisted. — worker.go dispatches on
+      `render_phase`; MEASURED by benchmark scenario 2 (§8.2): the submit
+      handler occupies 1 ms while the blocking (pre-split) pipeline occupies
+      63 ms for the same 60 ms render.
 - [ ] Remote render state survives a PipelineGen restart: a restarted process
       resumes completion and never re-submits a render that is already running.
-- [ ] Completion is event-driven (no aggressive polling) and idempotent under
-      duplicate/at-least-once delivery.
-- [ ] Publication/certification/probe run in the continuation, not the initial
-      job.
+      — the continuation contract is in place (CAS-addressed resume document,
+      deterministic `run_id`, idempotent submit); the kill-mid-render test
+      still needs a live RenderingGen.
+- [x] Completion is event-driven (no aggressive polling) and idempotent under
+      duplicate/at-least-once delivery. — the settle phase is a normal job
+      continuation (redelivery re-derives the same `run_id`); scenario 3 (§8.2)
+      measures the completion tail with and without event-driven finalisation.
+- [x] Publication/certification/probe run in the continuation, not the initial
+      job. — worker.go `settle` calls the probe/publish tail and the `submit`
+      phase returns immediately after `EnqueueContinuation`; scenario 2 shows
+      the submit phase does not track the render.
 - [ ] Crash/restart recovery test: kill mid-render → restart → exactly one
       published artifact, no duplicate Drive object, no lost render.
-- [ ] Before/after throughput report at fixed concurrency proving the slot is
-      not occupied while Chronon renders.
+- [x] Before/after throughput report at fixed concurrency proving the slot is
+      not occupied while Chronon renders. — `make bench-cliprender` (§8).
 - [ ] Guardrail (dedicated clip-render budget) landed and documented as
-      temporary.
+      temporary. — the benchmark models it (`WaiterPool`); the configuration
+      change itself is deployment work.
 
 ## 6. LANDED — the render-boundary split + the continuation contract
 
@@ -316,4 +327,110 @@ declared digest (via the `internal/kernel/digest` SSOT — the archcheck
    `ListAwaitingAggregation` + `FinalizeAggregateParent`), which is what makes
    the parent's final result truthful instead of stuck at
    `waiting_children`.
-6. Crash/restart + before/after throughput evidence per §5.
+6. Crash/restart + before/after throughput evidence per §5 — the throughput
+   half LANDED 2026-09-12 (§8); the crash/restart half still needs a live
+   RenderingGen.
+
+## 8. LANDED — the canonical throughput benchmark (2026-09-12)
+
+`make bench-cliprender` (scenarios in `internal/capabilities/cliprender/bench_*_test.go`)
+answers §5's throughput criterion headlessly. The harness drives the REAL
+`Worker.Handle` in both phases, the real continuation contract, the real
+`ParentAggregator` and the real kernel RunReport, and models the two things
+that bound clip throughput: N Master slots and L RenderingGen GPU lanes. Every
+remote cost (render, artifact download, Drive publish, asset materialization,
+ASR) is a latency parameter, so a scenario is a controlled experiment rather
+than a hardware lottery. It is CI-safe (no server, GPU, Drive or Whisper) and
+`-race`-clean.
+
+### 8.1 The scenarios
+
+| # | Scenario | What it proves |
+|---|---|---|
+| 1 | worker scaling 1/2/4/8 | wall scales with workers while workers ≤ lanes and plateaus past the lane ceiling; concurrency never exceeds min(workers, lanes) |
+| 2 | submit vs settle occupancy | the remote render duration moves the SETTLE slot and not the SUBMIT slot |
+| 3 | parent completion latency | 30 s cadence vs the shipped 2 s default vs event-driven finalisation |
+| 4 | SHA cache-hit | N clips from one source cost ONE full-file hash and ONE download |
+| 5 | shared CAS | two processes over one root materialise the bytes once |
+| 6 | transcript reuse | `generate` = one ASR pass per clip; `reuse_or_generate`+`persist` = one per source |
+| 7 | Chronon source seek | in-repo: the sealed plan is source-relative and a minute-25 window is expressed and validated exactly. Decode cost is Chronon-owned and needs the live stack |
+| 8 | cold vs warm | a warm process over the same CAS pays neither download nor a second read |
+| 9 | RenderingGen saturation | sweep the SETTLE producers 1/2/4/8 over 2 lanes: one producer leaves half the GPU idle, two saturate both lanes, and more producers buy no throughput while the queue grows |
+| 10 | E2E 1/10/50 clips | the full metric report to re-run after every performance change |
+
+### 8.2 Measured (this host, `-run TestScenario`, 2.7 s total)
+
+Slot occupancy — scenario 2, 8 clips, 8 lanes:
+
+| pipeline | handler wall for a 60 ms render | after +50 ms of remote render |
+|---|---|---|
+| blocking (pre-split) | 63 ms (the slot tracks the render) | — |
+| async submit | 1 ms | 1 ms (**unchanged**) |
+| async settle | 10 ms @10 ms render | 60 ms (the wait is where we put it) |
+
+Parent completion — scenario 3, 6 clips, 200 ms measured cadence, projected
+linearly (the parent flips on the first tick after its child):
+
+| completion mode | p50 | p95 |
+|---|---|---|
+| 30 s cadence (historical) | ~29 400 ms (projected) | — |
+| 2 s cadence (shipped default) | ~1 960 ms (projected) | — |
+| event-driven (finalise on settle completion) | **0 ms** | **1 ms** |
+
+Worker scaling — scenario 1, 24 clips × 10 ms render, lanes = 8:
+wall 261 / 129 / 68 / 36 ms at 1/2/4/8 workers, with lanes_used == workers.
+At lanes = 2 the wall plateaus at 128 ms from 2 workers on, and concurrency
+never exceeds 2 — the GPU, not the pool, is the bound.
+
+RenderingGen saturation — scenario 9, 24 clips × 10 ms render, lanes = 2
+(the producer axis is the SETTLE pool: with the async split the submit pool
+never holds a lane):
+
+| settle producers | lanes used | lane utilisation | queue p95 | rate |
+|---|---|---|---|---|
+| 1 | 1 | 48.4 % | 0 ms | 5 527 clips/min |
+| 2 | 2 | 95.3 % | 0 ms | 10 841 clips/min |
+| 4 | 2 | 97.7 % | 10 ms | 11 092 clips/min |
+| 8 | 2 | 97.9 % | 33 ms | 10 933 clips/min |
+
+Two producers are enough to saturate both lanes; beyond that the rate
+plateaus and only the queue wait grows. The starved control (2 clips over 8
+lanes) reports 24.3 % utilisation, so idle lanes are detected rather than
+always reported busy.
+
+Canonical E2E — scenario 10, 4 workers, 64 settle slots, 8 lanes:
+
+| clips | wall | rate | p50 | p95 | lane utilisation |
+|---|---|---|---|---|---|
+| 1 | 8 ms | 6 754 clips/min | 8 ms | 8 ms | 11.9 % |
+| 10 | 15 ms | 39 882 clips/min | 12 ms | 14 ms | 58.7 % |
+| 50 | 46 ms | 64 314 clips/min | 29 ms | 43 ms | 88.6 % |
+
+The rate rises with batch size (fixed startup is amortised) and the p95 stays
+bounded, which is the steady-state KPI to watch: clips/minute, not the wall of
+one clip.
+
+Waste elimination — scenarios 4/5/6/8, one source, 10–20 clips:
+
+| metric | naive | measured |
+|---|---|---|
+| full-file source hashes (20 clips) | 20 | **1** |
+| source downloads (20 clips) | 20 | **1** |
+| downloads, 2 batches × 10 clips on a shared CAS root | 20 | **1** |
+| warm-process downloads / extra reads | N | **0 / 0** |
+| ASR passes (10 clips, 20 ms each) | 10 (246 ms) | **1 (24 ms)** |
+
+### 8.3 What this does NOT measure
+
+- Real GPU utilisation, NVENC/NVDEC, VRAM and real decode cost. The lane
+  simulator is a queuing model of RenderingGen, not a GPU profiler; the
+  in-harness `gpu_lane_utilization_pct` is lane occupancy, not GPU busy %.
+- Chronon source seek (scenario 7). Segment decode cost is a Chronon property;
+  the skipped live test documents the exact procedure and the fields to read
+  from `RenderMetricsV2` (`decode_ms`, `frames`, `render_wall_ms`,
+  `bytes_read`).
+- Crash/restart recovery, which needs a live RenderingGen to kill.
+
+Real-stack runs reuse the same report schema: `VELOX_BENCH_WRITE_REPORT=1`
+persists the JSON artifacts under `tests/operational/results/cliprender-bench/`
+(off by default so a normal run never dirties the working tree).

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
@@ -20,6 +21,13 @@ type ComposeRoot struct {
 	CanonicalAssetWriter assetspersistence.CanonicalAssetWriter
 	MediaExec            mediaexec.ExecutionConfig
 	ClipRenderRuntime    *ClipRenderRuntime
+
+	// ClipRenderParentAggregator is the ONE clip.render parent finalisation
+	// authority, shared by the event-driven notifier (the worker's child
+	// completion path) and the recovery sweeper (the lifecycle step). Cached
+	// here so both composition sites use the same instance instead of each
+	// building their own.
+	ClipRenderParentAggregator *cliprender.ParentAggregator
 
 	DB              *storage.SQLiteDB
 	ObservabilityDB *storage.SQLiteDB

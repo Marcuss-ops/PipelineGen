@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -484,7 +483,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset resolver unavailable)", zap.Error(resolverErr))
 		return
 	}
-	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(root.Drive.Reader, filepath.Join(cfg.Storage.TempPath(), "localization"), log)
+	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(root.Drive.Reader, assetMaterializationRoot(cfg), log)
 	if materializerErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset materializer unavailable)", zap.Error(materializerErr))
 		return

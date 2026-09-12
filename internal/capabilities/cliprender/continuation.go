@@ -264,6 +264,8 @@ type ResumeDocument struct {
 	Plan            ClipRenderPlanV1  `json:"plan"`
 	Request         RenderRequest     `json:"request"`
 	PublishFolderID string            `json:"publish_folder_id,omitempty"`
+	SourceTitle     string            `json:"source_title,omitempty"`
+	SourceSizeBytes int64             `json:"source_size_bytes,omitempty"`
 	Contract        *ResolvedContract `json:"contract,omitempty"`
 	Transcript      *TranscriptResult `json:"transcript,omitempty"`
 	Subtitles       *SubtitleArtifact `json:"subtitles,omitempty"`

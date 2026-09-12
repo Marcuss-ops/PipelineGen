@@ -151,6 +151,15 @@ type Worker struct {
 	// ms) is pristine. nil = legacy un-instrumented behaviour. See
 	// WithClaimSnapshotter().
 	claimSnapshot ClaimSnapshotter
+
+	// parentNotifier is the optional event-driven parent finaliser. When
+	// non-nil, a child job that commits terminal hands its parent to this
+	// port so the aggregate parent turns terminal WITHOUT waiting for the
+	// aggregator's recovery sweep. nil = polling-only behaviour, which is
+	// correct (the sweep is the durability net) but pays the sweep's
+	// interval as user-visible latency on every fan-out. See
+	// WithParentCompletionNotifier().
+	parentNotifier ParentCompletionNotifier
 }
 
 // WorkerDeps carries the dependencies for NewWorker. Grouping them
@@ -312,6 +321,28 @@ func (w *Worker) WithObserver(observer *kernobs.RunObserver) *Worker {
 func (w *Worker) WithResourceSampler(s kernobs.RunResourceSampler, host string) *Worker {
 	w.resourceSampler = s
 	w.host = host
+	return w
+}
+
+// WithParentCompletionNotifier attaches the event-driven parent finaliser.
+//
+// Why this exists: an aggregate parent (clip.render's submit phase is the
+// canonical one) deliberately completes as waiting_children while a child job
+// owns the rest of the work. The parent only turns terminal when something
+// re-reads the child — historically a background poll, which put the poll
+// interval directly on the user-visible completion latency of every fan-out and
+// kept a continuous query running for a case that is normally instantaneous.
+//
+// With a notifier wired, the terminal child is handed to the parent finaliser
+// the moment its completion commits. The finalisation is the same no-lease CAS
+// the poller uses, so a duplicate notification (or a notification racing the
+// sweep) is an idempotent no-op. Notification is best-effort by contract: the
+// child's terminal state is already durable, so a failure is logged and the
+// recovery sweep finalises the parent — it never fails the completed job.
+//
+// Returns the receiver to allow builder-style chaining at the composition site.
+func (w *Worker) WithParentCompletionNotifier(n ParentCompletionNotifier) *Worker {
+	w.parentNotifier = n
 	return w
 }
 

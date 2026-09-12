@@ -41,6 +41,42 @@ func TestPreparedAssetResolver_HitAvoidsFallback(t *testing.T) {
 	}
 }
 
+// TestPreparedAssetResolver_MemoizesVerificationAcrossRenders pins the batch
+// win: N renders of the same content-addressed source must verify it ONCE, not
+// once per clip. The counting hasher proves no second full-file read happened.
+func TestPreparedAssetResolver_MemoizesVerificationAcrossRenders(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("shared source bytes")
+	sum := sha256.Sum256(content)
+	sha := fmtHash(sum[:])
+	path := filepath.Join(root, sha, "source.mp4")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	counted := &countingHasher{}
+	fallback := &fallbackMaterializer{asset: &MaterializedAsset{LocalPath: "fallback"}}
+	resolver, err := NewPreparedAssetResolver(root, fallback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.verifier = NewContentVerifier(counted.hash)
+	for i := 0; i < 3; i++ {
+		got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-4", MediaType: "video", LegacyFileMD5: sha})
+		if err != nil || got.LocalPath != path || !got.FromCache || got.SHA256 != sha || got.SizeBytes != int64(len(content)) {
+			t.Fatalf("render %d: got=%#v err=%v", i, got, err)
+		}
+	}
+	if counted.calls != 1 {
+		t.Fatalf("full-file hashes across 3 renders = %d, want 1", counted.calls)
+	}
+	if fallback.calls != 0 {
+		t.Fatalf("fallback calls = %d, want 0", fallback.calls)
+	}
+}
+
 func TestPreparedAssetResolver_MissFallsBack(t *testing.T) {
 	fallback := &fallbackMaterializer{asset: &MaterializedAsset{LocalPath: "downloaded", SHA256: "sha"}}
 	resolver, err := NewPreparedAssetResolver(t.TempDir(), fallback)
