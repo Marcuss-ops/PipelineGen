@@ -501,7 +501,7 @@ func TestQueueRenderEnqueuerChrononPlanPropagatesFailure(t *testing.T) {
 // TestRecordRenderingGenPhasesMapsWorkerTimingsToCanonicalRun pins the
 // RenderingGen → canonical mapping: every worker-reported phase becomes one
 // owner-measured operation on the run (component renderinggen, stage
-// process), and phases the worker did not report are skipped — never a fake
+// overlay_render), and phases the worker did not report are skipped — never a fake
 // zero. The kernel never re-times a phase the worker already measured.
 func TestRecordRenderingGenPhasesMapsWorkerTimingsToCanonicalRun(t *testing.T) {
 	obs := kernobs.NewRunObserver(nil)
@@ -524,8 +524,8 @@ func TestRecordRenderingGenPhasesMapsWorkerTimingsToCanonicalRun(t *testing.T) {
 		if op.Component != string(kernobs.ComponentRenderingGen) {
 			t.Fatalf("operation %s component=%q, want renderinggen", op.Operation, op.Component)
 		}
-		if op.Stage != string(kernobs.StageProcess) {
-			t.Fatalf("operation %s stage=%q, want process", op.Operation, op.Stage)
+		if op.Stage != string(StageOverlayRender) {
+			t.Fatalf("operation %s stage=%q, want overlay_render", op.Operation, op.Stage)
 		}
 		if _, dup := got[op.Operation]; dup {
 			t.Fatalf("operation %s recorded twice", op.Operation)
