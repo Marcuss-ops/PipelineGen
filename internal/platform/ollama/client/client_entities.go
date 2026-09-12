@@ -76,6 +76,17 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req de
 
 	result, err := parseEntityExtractionResult(response, req.SegmentIndex)
 	if err != nil {
+		if c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
+			// A truncated/invalid structured response is an extraction failure,
+			// not a reason to fail the whole generation job. Keep the existing
+			// explicit heuristic fallback contract used by the batch/script path;
+			// the Source field makes the degraded extraction observable.
+			result = fallbackEntityExtractionResult(req.SegmentText, req.SegmentIndex, entityCount, req.Language)
+			return capEntityExtractionResult(
+				sanitizeEntityExtractionResult(req.SegmentText, result, entityCount, req.Language),
+				entityCount,
+			), nil
+		}
 		return nil, fmt.Errorf("failed to parse entity result: %w", err)
 	}
 	// The model response is an untrusted boundary. Apply the same grounding
@@ -465,7 +476,12 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 	var raw struct {
 		FrasiImportanti  []string        `json:"frasi_importanti"`
 		EntitaSenzaTesto json.RawMessage `json:"entity_senza_testo"`
-		NomiSpeciali     []string        `json:"nomi_speciali"`
+		// Models using the structured JSON format have emitted both the
+		// canonical list shape ("PERSON: Ada Lovelace") and the grouped
+		// object shape ({"PERSON":["Ada Lovelace"]}). Keep the parser
+		// tolerant at this untrusted boundary; the downstream grounding
+		// gates still decide which values may become annotations.
+		NomiSpeciali     json.RawMessage `json:"nomi_speciali"`
 		ParoleImportanti []string        `json:"parole_importanti"`
 		ArtlistPhrases   []string        `json:"artlist_phrases"`
 		NounChunks       []string        `json:"noun_chunks"`
@@ -478,9 +494,7 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 	if raw.FrasiImportanti == nil {
 		raw.FrasiImportanti = []string{}
 	}
-	if raw.NomiSpeciali == nil {
-		raw.NomiSpeciali = []string{}
-	}
+	nomiSpeciali := decodeSpecialNames(raw.NomiSpeciali)
 	if raw.ParoleImportanti == nil {
 		raw.ParoleImportanti = []string{}
 	}
@@ -514,11 +528,48 @@ func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*detail.Enti
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  raw.FrasiImportanti,
 		EntitaSenzaTesto: entityMap,
-		NomiSpeciali:     raw.NomiSpeciali,
+		NomiSpeciali:     nomiSpeciali,
 		ParoleImportanti: raw.ParoleImportanti,
 		ArtlistPhrases:   raw.ArtlistPhrases,
 		NounChunks:       raw.NounChunks,
 	}, nil
+}
+
+// decodeSpecialNames accepts both JSON wire shapes seen in the wild:
+// ["PERSON: Ada Lovelace"] and {"PERSON":["Ada Lovelace"]}. Invalid or
+// unsupported values are ignored here and remain subject to the normal
+// entity fallback/grounding policy instead of failing the whole extraction.
+func decodeSpecialNames(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []string{}
+	}
+	var list []string
+	if err := json.Unmarshal(raw, &list); err == nil {
+		return list
+	}
+	var grouped map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &grouped); err != nil {
+		return []string{}
+	}
+	out := make([]string, 0, len(grouped))
+	for kind, values := range grouped {
+		var names []string
+		if err := json.Unmarshal(values, &names); err != nil {
+			var one string
+			if json.Unmarshal(values, &one) == nil {
+				names = []string{one}
+			}
+		}
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			kind = strings.TrimSpace(kind)
+			if name == "" || kind == "" {
+				continue
+			}
+			out = append(out, kind+": "+name)
+		}
+	}
+	return out
 }
 
 func resultIsEmpty(result *detail.EntityExtractionResult) bool {

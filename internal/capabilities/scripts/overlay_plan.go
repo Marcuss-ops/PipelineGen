@@ -239,7 +239,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:     scenes,
 		Background: canvas.Background,
-	}, capabilityoverlay.PlannerConfig{})
+	}, capabilityoverlay.AllCandidatesPlannerConfig(scenes))
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}

@@ -27,9 +27,9 @@ type OverlayPlan struct {
 	PlanID        string `json:"plan_id"`
 	VideoID       string `json:"video_id"`
 	ProjectID     string `json:"project_id,omitempty"`
-	// ScriptName and Language route freshly rendered overlay artifacts to
-	// <script-name>/<language>/overlay. They are delivery metadata, not
-	// semantic rendering inputs.
+	// ScriptName and Language identify freshly rendered overlay artifacts in
+	// delivery metadata. The configured Drive root is selected by the
+	// composition root; these fields never cause a caller-side upload.
 	ScriptName string `json:"script_name,omitempty"`
 	Language   string `json:"language,omitempty"`
 	Width      int    `json:"width"`

@@ -51,6 +51,35 @@ func TestBuildPlanNeverInventsTiming(t *testing.T) {
 	}
 }
 
+func TestAllCandidatesPlannerConfigKeepsEveryValidCandidate(t *testing.T) {
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "all-candidates", VideoID: "video-all-candidates", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
+		Scenes: []SceneInput{{
+			ID: "scene-1",
+			Phrases: []TimedAnnotation{
+				{Text: "a very long phrase that is still spoken and must be rendered", StartMs: 100, EndMs: 600, Score: 1},
+				{Text: "second phrase", StartMs: 100, EndMs: 600, Score: 0.9},
+			},
+			Keywords: []TimedAnnotation{{Text: "KEYWORD", StartMs: 100, EndMs: 600}},
+			Images:   []ImageCandidate{{AssetID: "image-1", SHA256: "hash", StartMs: 100, EndMs: 600}},
+		}},
+	}, AllCandidatesPlannerConfig([]SceneInput{{
+		ID: "scene-1",
+		Phrases: []TimedAnnotation{
+			{Text: "a very long phrase that is still spoken and must be rendered", StartMs: 100, EndMs: 600},
+			{Text: "second phrase", StartMs: 100, EndMs: 600},
+		},
+		Keywords: []TimedAnnotation{{Text: "KEYWORD", StartMs: 100, EndMs: 600}},
+		Images:   []ImageCandidate{{AssetID: "image-1", SHA256: "hash", StartMs: 100, EndMs: 600}},
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 4 {
+		t.Fatalf("items = %d, want all 4 valid candidates: %+v", len(plan.Items), plan.Items)
+	}
+}
+
 func TestBuildPlanClampsImageDurationAndSelectsAnimation(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "image-duration", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,

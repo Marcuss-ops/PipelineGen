@@ -167,6 +167,10 @@ RESULT=$(jq -c '.result.data.result // .result.result // .result.data.items[0].r
 BACKGROUND_KIND=$(jq -r '.overlay_plan.background.kind // empty' <<<"$RESULT")
 [[ "$BACKGROUND_KIND" == "color" ]] || fail "background non selezionato nel piano (kind=$BACKGROUND_KIND)"
 
+GENERATED_TEXT=$(jq -r '(.output?.text // .script?.text // .text // empty)' <<<"$RESULT")
+(( ${#GENERATED_TEXT} >= 80 )) || fail "testo generato assente o troppo corto"
+grep -Fqi "Ada Lovelace" <<<"$GENERATED_TEXT" || fail "testo generato senza Ada Lovelace"
+
 PERSON_NAMES=$(jq -r '
   ([.entities?.persons[]?.value] +
    [.entity_timeline?.scenes[]?.entities[]? | select(.type == "PERSON") | .name])
@@ -194,6 +198,14 @@ OVERLAY_ITEMS=$(jq -r '
 ' <<<"$RESULT")
 (( OVERLAY_ITEMS > 0 )) || fail "OverlayPlan senza item con timing valido"
 
+PHRASE_OVERLAY_ITEMS=$(jq -r '
+  [.overlay_plan?.items[]? |
+   select((.kind == "text_phrase" or .template_id == "IMPORTANT_PHRASE") and
+          ((.preset_id // "") | length > 0) and
+          ((.start_ms // 0) >= 0 and (.end_ms // 0) > (.start_ms // 0)))] | length
+' <<<"$RESULT")
+(( PHRASE_OVERLAY_ITEMS > 0 )) || fail "nessun important_phrase con preset e timing nel piano"
+
 TIMED_ITEMS=$(jq -r '
   [.overlay_plan?.items[]? |
    select((.start_us // 0) >= 0 and (.duration_us // 0) > 0)] | length
@@ -202,11 +214,13 @@ TIMED_ITEMS=$(jq -r '
 
 RENDER_STATUS=$(jq -r '.overlay_render?.status // empty' <<<"$RESULT")
 OVERLAY_DRIVE_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESULT")
+OVERLAY_DRIVE_FOLDER=$(jq -r '.overlay_render?.artifact?.drive_folder_id // empty' <<<"$RESULT")
 CHRONON_VERSION=$(jq -r '.overlay_render?.artifact?.chronon_version // empty' <<<"$RESULT")
 OVERLAY_SHA=$(jq -r '.overlay_render?.artifact?.sha256 // empty' <<<"$RESULT")
 OVERLAY_DURATION_US=$(jq -r '.overlay_render?.artifact?.duration_us // 0' <<<"$RESULT")
 [[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato (status=$RENDER_STATUS)"
 [[ "$OVERLAY_DRIVE_LINK" == http* ]] || fail "overlay render senza drive_link"
+[[ "$OVERLAY_DRIVE_FOLDER" == "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E" ]] || fail "overlay render pubblicato nella cartella errata (folder=$OVERLAY_DRIVE_FOLDER)"
 [[ -n "$CHRONON_VERSION" ]] || fail "artifact overlay senza chronon_version"
 [[ -n "$OVERLAY_SHA" ]] || fail "artifact overlay senza sha256"
 (( OVERLAY_DURATION_US > 0 )) || fail "artifact overlay senza duration_us"
@@ -262,13 +276,16 @@ fi
 
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  PERSON: %s\n' "$PERSON_NAMES"
+printf '  generated text chars: %s\n' "${#GENERATED_TEXT}"
 printf '  important_phrases: %s\n' "$PHRASE_COUNT"
 printf '  entity image Drive links: %s\n' "$ENTITY_IMAGE_DRIVE_COUNT"
 printf '  background: %s\n' "$BACKGROUND_KIND"
 printf '  overlay items/timed: %s/%s\n' "$OVERLAY_ITEMS" "$TIMED_ITEMS"
+printf '  phrase preset items: %s\n' "$PHRASE_OVERLAY_ITEMS"
 printf '  GPU Vulkan/NVENC/software/readback: %s/%s/%s/%s\n' "$GPU_VULKAN_FRAMES" "$GPU_NVENC_FRAMES" "$GPU_SOFTWARE_FRAMES" "$GPU_READBACK_BYTES"
 printf '  Chronon: %s\n' "$CHRONON_VERSION"
 printf '  overlay Drive: %s\n' "$OVERLAY_DRIVE_LINK"
+printf '  overlay Drive folder: %s\n' "$OVERLAY_DRIVE_FOLDER"
 printf '  final audio Drive: %s\n' "$FINAL_AUDIO_DRIVE_LINK"
 printf '  Docs: %s\n' "$DOC_LINK"
 printf '  full result: %s\n' "$FULL"

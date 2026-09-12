@@ -228,6 +228,9 @@ func (a *ArtifactPublisherAdapter) Publish(
 // per-video artifact folder, never below a second global Drive root.
 // Explicit DriveSubpath remains available for future sidecar families.
 func artifactDriveSubpath(artifact finalization.VerifiedArtifact) []string {
+	if artifact.DirectDriveRoot {
+		return nil
+	}
 	if len(artifact.DriveSubpath) > 0 {
 		return append([]string(nil), artifact.DriveSubpath...)
 	}

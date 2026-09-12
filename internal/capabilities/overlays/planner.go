@@ -26,6 +26,55 @@ type PlannerConfig struct {
 	MaxOverlap int
 }
 
+// AllCandidatesPlannerConfig is the production generation policy: every
+// valid, uniquely identified candidate received from the certified semantic
+// surfaces is kept in the plan. Timing validation, duplicate removal and the
+// hard image-duration ceiling remain active; only editorial count/overlap
+// caps are disabled. This is intentionally explicit instead of changing the
+// conservative defaults used by the standalone planner/certification tests.
+func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
+	maxPerScene := func(count func(SceneInput) int) int {
+		max := 0
+		for _, scene := range scenes {
+			if n := count(scene); n > max {
+				max = n
+			}
+		}
+		return max
+	}
+	maxPhraseWords := 0
+	totalCandidates := 0
+	for _, scene := range scenes {
+		for _, phrase := range scene.Phrases {
+			if n := len(strings.Fields(phrase.Text)); n > maxPhraseWords {
+				maxPhraseWords = n
+			}
+		}
+		totalCandidates += len(scene.Phrases) + len(scene.Keywords) + len(scene.Images) +
+			len(scene.Numbers) + len(scene.Quotes) + len(scene.Products) + len(scene.Logos)
+	}
+	// A positive value is required to avoid withDefaults restoring a cap. The
+	// extra slot makes the overlap budget strictly larger than every possible
+	// planner-owned candidate in this input.
+	if totalCandidates < 1 {
+		totalCandidates = 1
+	}
+	if maxPhraseWords < 1 {
+		maxPhraseWords = 1
+	}
+	return PlannerConfig{
+		MaxPhrases:     maxPerScene(func(s SceneInput) int { return len(s.Phrases) }),
+		MaxKeywords:    maxPerScene(func(s SceneInput) int { return len(s.Keywords) }),
+		MaxImages:      maxPerScene(func(s SceneInput) int { return len(s.Images) }),
+		MaxPhraseWords: maxPhraseWords,
+		MaxNumbers:     maxPerScene(func(s SceneInput) int { return len(s.Numbers) }),
+		MaxQuotes:      maxPerScene(func(s SceneInput) int { return len(s.Quotes) }),
+		MaxProducts:    maxPerScene(func(s SceneInput) int { return len(s.Products) }),
+		MaxLogos:       maxPerScene(func(s SceneInput) int { return len(s.Logos) }),
+		MaxOverlap:     totalCandidates + 1,
+	}
+}
+
 func (c PlannerConfig) withDefaults() PlannerConfig {
 	if c.MaxPhrases <= 0 {
 		c.MaxPhrases = 1
