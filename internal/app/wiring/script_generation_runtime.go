@@ -218,12 +218,18 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// overlay video gets a fresh queue identity so RenderingGen/Chronon is
 		// invoked for each new artifact, including repeated test runs.
 		renderEnqueuer.SetFreshRender(true)
+		overlayFolderID := cfg.Drive.OverlayRenderFolder()
+		if strings.TrimSpace(overlayFolderID) == "" {
+			return nil, fmt.Errorf("build overlay render runtime: overlay_render_root_folder is required")
+		}
 		if root.Drive != nil && root.Drive.Publisher != nil {
 			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
-			renderEnqueuer.SetArtifactPublisher(renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher))
-			log.Info("overlay artifact Drive publisher wired (script/language/overlay)")
+			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
+			overlayPublisher.SetRootFolderID(overlayFolderID)
+			renderEnqueuer.SetArtifactPublisher(overlayPublisher)
+			log.Info("overlay artifact Drive publisher wired", zap.String("root_folder_id", overlayFolderID))
 		} else {
-			log.Warn("overlay artifact Drive publisher disabled: Drive publisher is not configured")
+			return nil, fmt.Errorf("build overlay render runtime: automatic Drive publisher is required")
 		}
 		var analyticsDB *sql.DB
 		if root.DB != nil {

@@ -67,8 +67,9 @@ type RenderArtifact struct {
 	// DriveFileID and DriveLink are the Google Drive publication identity of
 	// the rendered artifact (populated by the worker's publish phase). Empty
 	// when the artifact was not published to Drive.
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
+	DriveFileID   string `json:"drive_file_id,omitempty"`
+	DriveLink     string `json:"drive_link,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
 	// Metrics is the numeric projection of Chronon's timing sidecar returned
 	// by RenderingGen and correlated with this artifact.
 	Metrics map[string]float64 `json:"metrics,omitempty"`

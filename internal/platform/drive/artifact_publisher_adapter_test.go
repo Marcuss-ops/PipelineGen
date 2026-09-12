@@ -304,6 +304,39 @@ func TestArtifactPublisherAdapter_Publish_OverlayManifestFlow(t *testing.T) {
 	}
 }
 
+func TestArtifactPublisherAdapter_Publish_ConfiguredOverlayRootIsDirect(t *testing.T) {
+	content := "direct overlay bytes"
+	localPath, sha := writeTempFile(t, content)
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	_, err := adapter.Publish(context.Background(), finalization.VerifiedArtifact{
+		ArtifactID:         "overlay:direct-root",
+		Kind:               finalization.KindVideo,
+		Filename:           "overlay.mp4",
+		LocalPath:          localPath,
+		MIMEType:           "video/mp4",
+		SizeBytes:          int64(len(content)),
+		SHA256:             sha,
+		SourceVersion:      1,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		IdempotencyKey:     "overlay:direct-root",
+		Source:             "chronon",
+		ResolvedFolderID:   "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E",
+		RootFolderResolved: true,
+		DirectDriveRoot:    true,
+	})
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+	if len(stub.lastReq.DestinationSubpath) != 0 {
+		t.Fatalf("direct configured overlay root received subpath %#v", stub.lastReq.DestinationSubpath)
+	}
+	if stub.lastReq.DestinationFolderID != "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E" {
+		t.Fatalf("DestinationFolderID = %q, want configured overlay root", stub.lastReq.DestinationFolderID)
+	}
+}
+
 func TestArtifactPublisherAdapter_Publish_UnverifiedResolvedFolderFailsClosed(t *testing.T) {
 	content := "unverified folder artifact"
 	localPath, sha := writeTempFile(t, content)

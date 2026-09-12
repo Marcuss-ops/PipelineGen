@@ -14,8 +14,12 @@ var (
 		"name_glow_slide", "name_glow_pop",
 	}
 	phrasePresetCandidates = []string{
+		// These are the automatic GPU-native phrase choices. undertext_pop
+		// uses a lower-third line animation that Chronon cannot prepare in
+		// the strict fused-text path, so it remains available only to
+		// explicit compatibility plans, never to generated overlays.
 		"fast_fade_through", "clean_slide_up", "slide_lateral",
-		"phrase_word_reveal", "undertext_pop",
+		"phrase_word_reveal",
 	}
 	wordPresetCandidates = []string{
 		"snap_scale", "fast_fade_through", "phrase_word_reveal",

@@ -40,6 +40,14 @@ func TestExtractEntitiesFromSegment_UsesBoundedOperationBudget(t *testing.T) {
 	require.Equal(t, float64(entityExtractionNumPredict), request.Options["num_predict"])
 }
 
+func TestParseEntityExtractionResult_AcceptsGroupedSpecialNames(t *testing.T) {
+	result, err := parseEntityExtractionResult(`{"frasi_importanti":["first computer program"],"entity_senza_testo":{},"nomi_speciali":{"PERSON":["Ada Lovelace"]},"parole_importanti":["computing"],"artlist_phrases":["analytical engine"],"noun_chunks":["analytical computing"]}`, 0)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"first computer program"}, result.FrasiImportanti)
+	require.Equal(t, []string{"PERSON: Ada Lovelace"}, result.NomiSpeciali)
+}
+
 func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	var request struct {
 		Prompt  string         `json:"prompt"`

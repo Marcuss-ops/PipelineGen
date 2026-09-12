@@ -23,15 +23,31 @@ import (
 type DriveOverlayArtifactPublisher struct {
 	publisher finalization.PublisherPort
 	client    *http.Client
+	// rootFolderID is the explicit Drive folder selected by the composition
+	// root for generated overlay renders. Production requires it: uploads are
+	// pinned to this folder by code after render certification.
+	rootFolderID string
 }
 
 func NewDriveOverlayArtifactPublisher(pub finalization.PublisherPort) *DriveOverlayArtifactPublisher {
 	return &DriveOverlayArtifactPublisher{publisher: pub, client: objectStoreHTTPClient}
 }
 
+// SetRootFolderID pins generated overlay renders to one configured and
+// startup-validated Drive folder, so the caller never has to choose a folder
+// manually after rendering.
+func (p *DriveOverlayArtifactPublisher) SetRootFolderID(folderID string) {
+	if p != nil {
+		p.rootFolderID = strings.TrimSpace(folderID)
+	}
+}
+
 func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec scriptgen.OverlayPublicationSpec, artifact *scriptgen.RenderArtifact) error {
 	if p == nil || p.publisher == nil {
 		return fmt.Errorf("overlay Drive publisher is not configured")
+	}
+	if strings.TrimSpace(p.rootFolderID) == "" {
+		return fmt.Errorf("overlay Drive publisher requires configured root folder")
 	}
 	if artifact == nil || strings.TrimSpace(artifact.URL) == "" || strings.TrimSpace(artifact.SHA256) == "" || artifact.SizeBytes <= 0 {
 		return fmt.Errorf("overlay artifact certification is incomplete")
@@ -72,7 +88,7 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		pathutil.SafeFolderName(language),
 		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
 	artifactID := firstNonEmpty(spec.PlanID, artifact.ID, artifact.SHA256)
-	loc, err := p.publisher.Publish(ctx, finalization.VerifiedArtifact{
+	verified := finalization.VerifiedArtifact{
 		ArtifactID:       "overlay:" + artifactID,
 		Kind:             finalization.KindVideo,
 		Filename:         filename,
@@ -86,16 +102,24 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		RootFolderName:   scriptName,
 		Description:      "Chronon overlay " + scriptName + " (" + language + ")",
 		Source:           "chronon",
-		DriveSubpath:     []string{"overlay"},
 		ProjectID:        scriptName,
 		Language:         language,
 		ArtifactMetadata: map[string]any{"script_name": scriptName, "language": language, "source": "chronon", "plan_id": spec.PlanID},
-	})
+	}
+	// The configured root is already validated by the Drive startup gate.
+	// Mark it resolved so the delivery adapter pins the upload there and does
+	// not rebuild a different semantic path. There is deliberately no legacy
+	// subfolder fallback: every generated overlay follows the same rule.
+	verified.ResolvedFolderID = p.rootFolderID
+	verified.RootFolderResolved = true
+	verified.DirectDriveRoot = true
+	loc, err := p.publisher.Publish(ctx, verified)
 	if err != nil {
 		return err
 	}
 	artifact.DriveFileID = loc.FileID
 	artifact.DriveLink = loc.WebViewLink
+	artifact.DriveFolderID = loc.FolderID
 	return nil
 }
 

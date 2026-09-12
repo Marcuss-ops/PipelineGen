@@ -123,6 +123,12 @@ type VerifiedArtifact struct {
 	// segment idempotently.
 	DriveSubpath []string `json:"drive_subpath,omitempty"`
 
+	// DirectDriveRoot disables the legacy overlay child-path fallback when the
+	// producer intentionally pins this artifact to ResolvedFolderID. It is
+	// used by the configured overlay publisher so the render lands directly in
+	// the selected Drive folder.
+	DirectDriveRoot bool `json:"direct_drive_root,omitempty"`
+
 	// ProjectID and Language are canonical delivery metadata for destinations
 	// such as voiceover. They describe logical routing only; folder resolution
 	// remains owned by the delivery registry.
