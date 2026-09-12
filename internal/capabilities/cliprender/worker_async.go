@@ -230,9 +230,12 @@ func (w *Worker) handleAsyncSettle(ctx context.Context, j *job.Job, tools *job.J
 	}()
 	renderEnd := time.Now()
 	renderMS := renderEnd.Sub(renderStart).Milliseconds()
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusCompleted, err)
+	renderStatus := kernobs.StageStatusCompleted
+	if err != nil {
+		renderStatus = kernobs.StageStatusFailed
+	}
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, renderStatus, err)
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, renderEnd, err)
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: settle remote render: %w", err)
 	}

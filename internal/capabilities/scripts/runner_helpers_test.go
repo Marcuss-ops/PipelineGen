@@ -342,10 +342,11 @@ func defaultTestRequest() GenerateRequest {
 			Type:  SourceText,
 			Topic: "Test topic",
 		},
-		SourceLanguage: "en",
-		Languages:      []Language{"en", "es"},
-		Audio:          capabilityaudio.AudioModeChunkedVoiceover,
-		Docs:           DocumentsConfig{Enabled: true, Languages: []Language{"en", "es"}},
+		SourceLanguage:  "en",
+		Languages:       []Language{"en", "es"},
+		Audio:           capabilityaudio.AudioModeChunkedVoiceover,
+		ExtractEntities: scriptpkg.ToggleEnabled,
+		Docs:            DocumentsConfig{Enabled: true, Languages: []Language{"en", "es"}},
 		// Project is the resolved semantic project namespace; voiceover-mode
 		// runs fail closed before TTS when it is empty (ErrProjectRequired).
 		Project: "test-project",

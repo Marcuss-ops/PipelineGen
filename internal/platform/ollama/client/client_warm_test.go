@@ -51,6 +51,10 @@ func TestWarmModelLoadsOnceAndVerifiesResidency(t *testing.T) {
 	if got, _ := chatBody["model"].(string); got != "gemma4:e4b" {
 		t.Fatalf("model = %q, want configured model", got)
 	}
+	options, _ := chatBody["options"].(map[string]any)
+	if got := options["num_ctx"]; got != float64(2048) {
+		t.Fatalf("options.num_ctx = %v, want 2048 short-scene bucket", got)
+	}
 }
 
 func TestWarmModelSkipsChatWhenAlreadyResident(t *testing.T) {

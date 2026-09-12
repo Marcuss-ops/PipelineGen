@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
+	"golang.org/x/sync/singleflight"
 )
 
 // DefaultVerifierCapacity bounds the number of memoized file verifications. The
@@ -54,8 +55,9 @@ type fileVerification struct {
 // the canonical implementation, so the type can be embedded as an optional
 // dependency without a nil guard at every call site.
 type Verifier struct {
-	hash  FileHasher
-	cache *cacheutil.LRU
+	hash    FileHasher
+	cache   *cacheutil.LRU
+	flights singleflight.Group
 }
 
 // NewVerifier constructs the verifier. hash may be nil, in which case
@@ -90,14 +92,45 @@ func (v *Verifier) Verify(path string) (string, int64, error) {
 			}
 		}
 	}
-	sha, size, err := v.hashFile(path)
+	if v == nil {
+		return v.hashFile(path)
+	}
+	if v.cache == nil {
+		return v.hashFile(path)
+	}
+	value, err, _ := v.flights.Do(path, func() (any, error) {
+		// A caller may have populated the memo while this goroutine was
+		// waiting for the per-path flight. Re-stat and re-check before doing
+		// another full read.
+		current, statErr := os.Stat(path)
+		if statErr != nil {
+			return nil, statErr
+		}
+		if current.IsDir() {
+			return nil, fmt.Errorf("digest verifier: %q is a directory", path)
+		}
+		if cached, ok := v.cache.Get(path); ok {
+			if entry, ok := cached.(fileVerification); ok &&
+				entry.size == current.Size() && entry.modTime.Equal(current.ModTime()) {
+				return entry, nil
+			}
+		}
+		sha, size, hashErr := v.hashFile(path)
+		if hashErr != nil {
+			return nil, hashErr
+		}
+		entry := fileVerification{size: size, modTime: current.ModTime(), sha256: sha}
+		v.cache.Put(path, entry)
+		return entry, nil
+	})
 	if err != nil {
 		return "", 0, err
 	}
-	if v != nil && v.cache != nil {
-		v.cache.Put(path, fileVerification{size: size, modTime: info.ModTime(), sha256: sha})
+	entry, ok := value.(fileVerification)
+	if !ok {
+		return "", 0, fmt.Errorf("digest verifier: invalid singleflight result for %q", path)
 	}
-	return sha, size, nil
+	return entry.sha256, entry.size, nil
 }
 
 // hashFile applies the configured hasher, defaulting to the canonical

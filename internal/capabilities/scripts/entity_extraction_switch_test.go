@@ -1,9 +1,6 @@
 // Package scriptgeneration — entity_extraction_switch_test.go certifies the
-// request-level kill switch that disables incremental VidRush entity
-// extraction: BuildGenerateRequest carries output.extract_entities into the
-// durable request, and beginVidRush returns no coordinator when the caller
-// explicitly disabled extraction, so the completed run carries no entity
-// aggregate and the enricher is never invoked.
+// semantic gate for incremental VidRush enrichment: explicit consumers opt in,
+// while plain runs without semantic outputs skip the NLP/provider pipeline.
 package scriptgeneration
 
 import (
@@ -16,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -111,8 +109,8 @@ func entitySwitchPipeline(enricher SegmentEnricher) *VidRushPipeline {
 }
 
 // TestRunner_BeginVidRushSkippedWhenEntityExtractionDisabled certifies the
-// gate site: a disabled request builds no coordinator, while a default
-// request still builds one.
+// gate site: a disabled request builds no coordinator, while an explicit
+// entity request still builds one.
 func TestRunner_BeginVidRushSkippedWhenEntityExtractionDisabled(t *testing.T) {
 	runner, _, _, _, _, _, _ := newTestRunner()
 	runner.SetVidRushPipeline(entitySwitchPipeline(&entitySwitchEnricher{}))
@@ -157,16 +155,16 @@ func TestRunner_ExtractEntitiesDisabledLeavesResultWithoutEntities(t *testing.T)
 	}
 }
 
-// TestRunner_DefaultExtractEntitiesStillRunsVidRush guards the non-regression
-// side: an omitted toggle keeps the canonical always-extract behavior, so the
-// enricher runs exactly once per committed scene and the aggregate is present.
-func TestRunner_DefaultExtractEntitiesStillRunsVidRush(t *testing.T) {
+// TestRunner_ExplicitExtractEntitiesStillRunsVidRush guards the opt-in side:
+// an explicit entity consumer runs the enricher exactly once per committed
+// scene and persists the aggregate.
+func TestRunner_ExplicitExtractEntitiesStillRunsVidRush(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	enricher := &entitySwitchEnricher{}
 	runner.SetVidRushPipeline(entitySwitchPipeline(enricher))
 
 	req := defaultTestRequest()
-	runID := "run-extract-default-001"
+	runID := "run-extract-enabled-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
@@ -178,4 +176,24 @@ func TestRunner_DefaultExtractEntitiesStillRunsVidRush(t *testing.T) {
 	require.NotNil(t, final.Result)
 	require.NotNil(t, final.Result.Entities, "default request must still extract the entity aggregate")
 	assert.Equal(t, len(defaultTestScenes()), enricher.callCount(), "each committed scene enriched exactly once")
+}
+
+func TestGenerateRequest_NeedsSemanticEnrichment(t *testing.T) {
+	plain := GenerateRequest{}
+	assert.False(t, plain.NeedsSemanticEnrichment(), "no semantic consumer must skip VidRush")
+
+	for name, req := range map[string]GenerateRequest{
+		"explicit entities":     {ExtractEntities: scriptpkg.ToggleEnabled},
+		"explicit scene images": {GenerateSceneImages: scriptpkg.ToggleEnabled},
+		"active media plan":     {MediaPlan: mediadomain.MediaPlanSpec{Mode: mediadomain.MediaPlanModeAuto}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.True(t, req.NeedsSemanticEnrichment())
+		})
+	}
+
+	assert.False(t, GenerateRequest{
+		ExtractEntities:     scriptpkg.ToggleDisabled,
+		GenerateSceneImages: scriptpkg.ToggleEnabled,
+	}.NeedsSemanticEnrichment(), "explicit disable must win")
 }
