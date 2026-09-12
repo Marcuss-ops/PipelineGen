@@ -98,20 +98,28 @@ def main():
     run_id = f"bench-5clips-{int(time.time())}"
     payload["correlation_id"] = run_id
     if payload.get("items"):
-        payload["items"][0]["id"] = run_id
+        item = payload["items"][0]
+        item["id"] = run_id
+        # Force no-audio fast path to benchmark clip render directly
+        item["audio"] = {"mode": "NONE"}
+        item["output"]["voiceover_enabled"] = "disabled"
+
         # Force 5 concurrency, Pale Olive background, center watermark, subs burn
-        r = payload["items"][0]["output"]["render"]
+        r = item["output"]["render"]
         r["render_concurrency"] = 5
         r["background"] = {"mode": "asset", "asset_id": "classic1"}
+        r["watermark"]["text"] = "VELOX EDITING"
         r["watermark"]["position"] = "center"
         r["subtitles"]["enabled"] = True
         r["subtitles"]["mode"] = "burn"
+        r["subtitles"]["preset"] = "impact"
 
     print(f"Run ID:            {run_id}")
     print(f"Clips count:       {len(payload['items'][0]['source']['clip_ids'])}")
     print(f"Background:        {payload['items'][0]['output']['render']['background']['asset_id']} (Pale Olive)")
+    print(f"Watermark text:    {payload['items'][0]['output']['render']['watermark']['text']}")
     print(f"Watermark pos:     {payload['items'][0]['output']['render']['watermark']['position']}")
-    print(f"Subtitles:         mode={payload['items'][0]['output']['render']['subtitles']['mode']}")
+    print(f"Subtitles mode:    {payload['items'][0]['output']['render']['subtitles']['mode']}")
     print(f"Concurrency:       {payload['items'][0]['output']['render']['render_concurrency']}")
     print("-" * 70)
 
@@ -176,24 +184,52 @@ def main():
         local_path = r.get("local_path") or r.get("output_path", "")
         scene_id = r.get("scene_id", f"scene-{idx}")
         clip_id = r.get("clip_id", "")
+        sha256 = r.get("sha256", "")
         render_wall_ms = r.get("wall_ms", 0)
 
+        # If local_path doesn't exist on disk, attempt downloading from objectstore
+        if (not local_path or not os.path.exists(local_path)) and sha256:
+            obj_url = f"http://127.0.0.1:9000/objects/{sha256}"
+            dest_file = f"/tmp/bench_clip_{idx}_{sha256[:8]}.mp4"
+            try:
+                urllib.request.urlretrieve(obj_url, dest_file)
+                if os.path.exists(dest_file) and os.path.getsize(dest_file) > 0:
+                    local_path = dest_file
+            except Exception as e:
+                print(f"  Note: could not retrieve {obj_url}: {e}")
+
         probe = probe_clip(local_path)
+        frame_png = None
+        if probe and probe.get("exists") and local_path:
+            frame_png = f"/tmp/bench_frame_scene_{idx}.png"
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-ss", "00:00:01", "-i", local_path,
+                    "-vframes", "1", "-q:v", "2", frame_png
+                ], capture_output=True, check=True)
+            except Exception:
+                frame_png = None
+
         verified_clips.append({
             "index": idx,
             "scene_id": scene_id,
             "clip_id": clip_id,
+            "sha256": sha256,
             "local_path": local_path,
             "render_wall_ms": render_wall_ms,
-            "probe": probe
+            "probe": probe,
+            "frame_png": frame_png
         })
 
         print(f"\nClip #{idx}: {scene_id} (source: {clip_id})")
         print(f"  Path:       {local_path}")
+        print(f"  SHA256:     {sha256}")
         print(f"  Render Wall: {render_wall_ms} ms")
         if probe:
             print(f"  Specs:      {probe.get('width')}x{probe.get('height')} @ {probe.get('fps')} fps ({probe.get('codec')})")
             print(f"  Duration:   {probe.get('duration')}s, Size: {probe.get('size_mb')} MB")
+            if frame_png and os.path.exists(frame_png):
+                print(f"  Frame:      Extracted {frame_png}")
         else:
             print(f"  Probe:      File not found or unreadable on local disk")
 
