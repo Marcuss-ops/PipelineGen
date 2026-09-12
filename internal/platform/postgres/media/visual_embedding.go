@@ -30,13 +30,18 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
-// Canonical visual model identity (kernel/models registry SSOT:
-// SigLIP so400m patch14-384, 1152 dims, cosine, normalized).
+// Canonical visual model identity. These are ALIASES of the kernel/models
+// registry SSOT (SigLIP so400m patch14-384, 1152 dims, cosine, normalized):
+// the model id and its dimension are declared exactly once, in
+// internal/kernel/models, and derived here so the media pipeline cannot drift
+// from the schema, the HNSW indexes or the Python sidecar mirror.
 const (
-	DefaultVisualModelID = "google/siglip-so400m-patch14-384"
-	DefaultVisualDim     = 1152
+	DefaultVisualModelID = models.CanonicalVisualModelID
+	DefaultVisualDim     = models.CanonicalVisualModelDimensions
 )
 
 // VisualEmbedder produces one embedding vector per input frame path.

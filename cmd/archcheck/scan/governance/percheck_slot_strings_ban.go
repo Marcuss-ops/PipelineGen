@@ -75,8 +75,7 @@ const slotStringsSSOTScanScope = "internal/"
 // and emits a violation for any production file (NOT _test.go)
 // outside the canonical slot.go that contains a hardcoded slot
 // string literal.
-func ScanSlotStringsBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanSlotStringsBan(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 )
@@ -288,7 +289,11 @@ func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID stri
 // *SupersedeError path (see supersede.go). The status string is
 // intentionally lower-cased + pluralised to map unambiguously onto
 // the "completed | dead_letter | superseded" triad.
-const SupersedeStatus = "superseded"
+//
+// OWNED by internal/kernel/event/outbox_status.go (godlike/06 one owner per
+// fact). This is a compile-time re-export, not a second declaration: the
+// PostgreSQL media outbox carries the same value and the two must never drift.
+const SupersedeStatus = event.OutboxStatusSuperseded
 
 // MarkSuperseded moves a claimed event straight to status='superseded',
 // bypassing the attempt-count+max-attempts comparison that

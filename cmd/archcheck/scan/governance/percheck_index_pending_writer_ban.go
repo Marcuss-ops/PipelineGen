@@ -56,8 +56,7 @@ const indexPendingWriterScanScope = "internal/"
 // ScanIndexPendingWriterBan walks every production .go file under
 // <root>/internal/ and emits a violation when a file outside the
 // exempt set references asset.StateIndexPending.
-func ScanIndexPendingWriterBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanIndexPendingWriterBan(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

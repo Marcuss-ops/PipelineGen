@@ -61,10 +61,13 @@
 #
 # Sibling of verify-main (NOT a child of verify-architecture):
 #   `make archcheck-strict` — same cmd/archcheck binary with the
-#   --strict flag (debt-budget ratchet, NOT the Phase 0 scan
-#   baseline). Intentionally NOT pulled into verify-main; runs
-#   out-of-band on .github/workflows/architecture-p1-finalize.yml
-#   as a separate ratchet-verification job.
+#   --strict flag (non-hard-gate violations become failures). It is
+#   intentionally NOT pulled into verify-main; ci.yml runs the same
+#   `go run ./cmd/archcheck --strict` in its build job, so CI is the
+#   authoritative strict surface. (The historical
+#   .github/workflows/architecture-p1-finalize.yml job that ran it
+#   out-of-band was removed 2026-09-12 — the script it invoked no
+#   longer existed and every run aborted.)
 
 #     This hook invokes ONLY the umbrella recipe `make verify-main`;
 #     the transitive composition above is what the Makefile SSOT

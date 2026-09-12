@@ -315,7 +315,8 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	if a.Backend != string(cliprender.BackendChrononVulkan) {
 		return nil, fmt.Errorf("renderinggen clip executor: job %s rendered with backend %q; clip.render requires Chronon (%s)", plan.RunID, a.Backend, cliprender.BackendChrononVulkan)
 	}
-	if err := materializeArtifact(ctx, a.URL, plan.OutputPath, a.SizeBytes, a.SHA256); err != nil {
+	certifiedSHA, certifiedSize, err := materializeArtifact(ctx, a.URL, plan.OutputPath, a.SizeBytes, a.SHA256)
+	if err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: materialize certified artifact: %w", err)
 	}
 	// The zero-copy certification surface was removed with the PATH B CUDA
@@ -323,7 +324,8 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 	// transport, so a request that demands it fails closed in the worker.
 	return &cliprender.RenderOutcome{
 		OutputPath:        plan.OutputPath,
-		SizeBytes:         a.SizeBytes,
+		SizeBytes:         certifiedSize,
+		SHA256:            certifiedSHA,
 		DurationSec:       float64(a.DurationUS) / 1e6,
 		Width:             uint32(a.Width),
 		Height:            uint32(a.Height),
@@ -348,51 +350,53 @@ func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRen
 // adapter makes probing and final publication try to open an HTTP URL as a
 // local file. Single-pass: hashes while streaming (network → disk + SHA-256
 // in one pass, no re-read).
-func materializeArtifact(ctx context.Context, rawURL, outputPath string, expectedSize int64, expectedSHA string) error {
+//
+// It returns the CERTIFIED digest and byte count of the materialized file:
+// the digest is computed from the exact bytes written to disk in the same
+// io.Copy that produced them and verified against the queue's expected
+// digest, so downstream publication reuses it instead of re-reading the
+// artifact (the previous Seek(0)+SHA256Reader form doubled the disk I/O of
+// every certified download and forced the publisher into a third read).
+func materializeArtifact(ctx context.Context, rawURL, outputPath string, expectedSize int64, expectedSHA string) (string, int64, error) {
 	if rawURL == "" || outputPath == "" {
-		return fmt.Errorf("artifact URL and output path are required")
+		return "", 0, fmt.Errorf("artifact URL and output path are required")
 	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-		return fmt.Errorf("create output directory: %w", err)
+		return "", 0, fmt.Errorf("create output directory: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("artifact download HTTP %d", resp.StatusCode)
+		return "", 0, fmt.Errorf("artifact download HTTP %d", resp.StatusCode)
 	}
 	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o600)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
-	// Hash while streaming: the digest is computed from the exact bytes that
-	// land on disk in the same io.Copy that writes them, so the file is never
-	// re-read. Re-reading the whole artifact to hash it (the previous
-	// Seek(0)+SHA256Reader form) doubled the disk I/O of every certified
-	// download on the render critical path.
 	hasher := digest.NewSHA256()
 	written, copyErr := io.Copy(io.MultiWriter(file, hasher), resp.Body)
 	closeErr := file.Close()
 	if copyErr != nil {
-		return copyErr
+		return "", 0, copyErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return "", 0, closeErr
 	}
 	gotSHA := hex.EncodeToString(hasher.Sum(nil))
 	if expectedSize > 0 && written != expectedSize {
-		return fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
+		return "", 0, fmt.Errorf("downloaded size %d, want %d", written, expectedSize)
 	}
 	if expectedSHA != "" && !strings.EqualFold(gotSHA, expectedSHA) {
-		return fmt.Errorf("artifact hash %s, want %s", gotSHA, expectedSHA)
+		return "", 0, fmt.Errorf("artifact hash %s, want %s", gotSHA, expectedSHA)
 	}
-	return nil
+	return gotSHA, written, nil
 }
 
 // prefetchClipAssets publishes the already-resolved local assets to the
@@ -416,9 +420,6 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 		store = "http://127.0.0.1:9000"
 	}
 	paths := map[string]string{plan.Source.SHA256: plan.Source.Path}
-	if font, err := watermarkFontAsset(); err == nil {
-		paths[font.Hash] = font.LocalPath
-	}
 	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
 		paths[plan.Background.SHA256] = plan.Background.Path
 	}
@@ -434,8 +435,20 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 	// the clip-render equivalent of the shared prefetcher's four-transfer cap.
 	var group errgroup.Group
 	group.SetLimit(4)
+	seen := make(map[string]struct{}, len(refs))
 	for _, ref := range refs {
 		ref := ref
+		key := strings.ToLower(strings.TrimSpace(ref.Hash))
+		if key == "" {
+			continue
+		}
+		// Deduplicate by content address (never by name/path): the same bytes
+		// reachable from several plan slots (e.g. a font referenced by both the
+		// watermark and the burn-in subtitles) are staged exactly once.
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		group.Go(func() error {
 			path := paths[ref.Hash]
 			if path == "" {

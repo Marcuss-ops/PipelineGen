@@ -73,10 +73,10 @@ func computeSourceTextCoverage(generated, source string) float64 {
 
 // filterStopWords removes common stop words from a token list.
 func filterStopWords(tokens []string) []string {
-	stopWords := map[string]struct{}{}
-	if registry := linguistics.DefaultLexiconOrNil(); registry != nil {
-		stopWords = registry.StopWords("fallback")
-	}
+	// The fallback lexicon selection (including the not-yet-bootstrapped
+	// case) is owned by the linguistics capability; a local copy of that
+	// decision is a second source of truth for which stop words apply.
+	stopWords := linguistics.DefaultStopWords()
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
 		if _, ok := stopWords[t]; !ok {

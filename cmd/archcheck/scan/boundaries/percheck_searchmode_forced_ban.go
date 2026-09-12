@@ -62,8 +62,7 @@ const searchModeForcedScanScope = "internal/"
 // ScanSearchModeForcedBan walks every .go file under <root>/internal/**
 // and emits a violation for any production file that hardcodes a
 // Mode assignment to SearchModeANN outside the exempt zones.
-func ScanSearchModeForcedBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanSearchModeForcedBan(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

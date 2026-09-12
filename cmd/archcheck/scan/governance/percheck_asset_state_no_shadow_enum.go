@@ -108,8 +108,7 @@ func assetStateWarnShadow(r *report.Report, label, msg string) {
 // `StateAssetX AssetState = "..."` const declaration outside
 // the canonical SOLE owner + the scanner's own package.
 // Test files (_test.go) are exempt.
-func ScanAssetStateNoShadowEnum(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanAssetStateNoShadowEnum(root string, _ *policy.Policy, r *report.Report) {
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

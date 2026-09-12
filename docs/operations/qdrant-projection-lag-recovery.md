@@ -1,5 +1,14 @@
 # Qdrant projection-lag + ENOMEM recovery runbook
 
+> **SCOPE (September 2026):** the Qdrant **media** projection is RETIRED —
+> PostgreSQL + pgvector is the media SSOT and the media index plane is
+> `pgmedia.PostgresIndexWorker`. This runbook therefore applies ONLY to the
+> legitimate non-media Qdrant consumers that remain (mediamemory frame
+> concepts, maintenance disaster-recovery, admin audit tooling). References to
+> `media_assets_v3_*` collections or to a `qdrant-collection` boot step for
+> media describe the pre-cutover system and must not be used to plan media
+> work; see `docs/migrations/BASELINE_PLAN.md` and `make certify-media-cutover`.
+
 Recovery for the two failure modes that can stop PipelineGen boot or a
 projection rebuild:
 

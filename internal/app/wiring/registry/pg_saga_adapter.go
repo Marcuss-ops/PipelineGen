@@ -31,10 +31,7 @@ func NewPGMediaSagaDispatcher(saga *pgmedia.PostgresMediaCommitter) (mutations.A
 	return &pgMediaSagaDispatcherAdapter{saga: saga}, nil
 }
 
-func (a *pgMediaSagaDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
-	_ = ctx
-	_ = clip
-	_ = contentHash
+func (a *pgMediaSagaDispatcherAdapter) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
 	return mutations.ErrDispatcherUnavailable
 }
 

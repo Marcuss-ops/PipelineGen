@@ -326,18 +326,13 @@ func projectRendererPhases(ctx context.Context, backend RenderBackend, m *Render
 	recordBytes(kernobs.OperationGPUReadback, m.GPUReadbackBytes)
 }
 
-// componentForBackend maps the resolved render backend onto the canonical
-// component that owns its measured phases. chronon_vulkan (primary) →
-// chronon; ffmpeg_fallback → ffmpeg. Unknown backends keep the primary GPU
-// component — a wrong label is never fabricated. (The CUDA-hybrid → cuda
-// mapping was removed with the PATH B backend.)
-func componentForBackend(b RenderBackend) kernobs.ComponentName {
-	switch b {
-	case BackendFFmpegFallback:
-		return kernobs.ComponentFFmpeg
-	default:
-		return kernobs.ComponentChronon
-	}
+// componentForBackend maps the render backend onto the canonical component
+// that owns its measured phases. Chronon is the only render backend, so every
+// measured render phase belongs to the chronon component. The parameter is
+// retained so the projection site stays explicit about which backend produced
+// the phases; a wrong label is never fabricated for an unknown value.
+func componentForBackend(_ RenderBackend) kernobs.ComponentName {
+	return kernobs.ComponentChronon
 }
 
 // safeProgress returns a nil-safe progress callback.

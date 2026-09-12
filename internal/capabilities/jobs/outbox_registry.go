@@ -166,7 +166,7 @@ type Deps struct {
 // pgvector `PostgresIndexWorker` (asset.index.requested → embed →
 // media_embeddings → INDEXED); the SQLite outbox registers NO media/Qdrant
 // projection handler in ANY mode, and the composition root's
-// `registerOutboxCoreHandlers` unconditionally returns. A stray media event
+// `assertSingleMediaIndexOwner` fails the boot if one is registered. A stray media event
 // in the SQLite outbox dead-letters loudly instead of projecting into
 // Qdrant. See docs/migrations/BASELINE_PLAN.md.
 

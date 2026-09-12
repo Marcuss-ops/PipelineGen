@@ -27,7 +27,7 @@ func caller(ctx context.Context) {
 	_ = svc.InsertOutboxEnvelope(ctx, "ev-1", []byte("{}"))
 }
 `
-	writeFileFixture(t, root, "internal/application/example/caller.go", src)
+	writeFileFixture(t, root, "internal/capabilities/example/caller.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 5 {
@@ -47,7 +47,7 @@ func caller(ctx context.Context) {
 // allowlist path: a call to .UpdateJobToSucceededCAS inside the
 // canonical completion service package MUST NOT surface as a
 // violation. The path match is
-// internal/capabilities/jobs/policy/...
+// internal/capabilities/jobs/completion/...
 func TestScanTxContextBan_AllowlistCompletionService(t *testing.T) {
 	root := t.TempDir()
 	src := `package completion
@@ -58,7 +58,7 @@ func Service_Complete(ctx context.Context) error {
 	return svc.UpdateJobToSucceededCAS(ctx, "job-1", "lease-1")
 }
 `
-	writeFileFixture(t, root, "internal/capabilities/jobs/policy/service.go", src)
+	writeFileFixture(t, root, "internal/capabilities/jobs/completion/service.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {
@@ -79,7 +79,7 @@ func TestDirectCall(t *testing.T) {
 	svc.UpdateJobToSucceededCAS(context.Background(), "job-1", "lease-1")
 }
 `
-	writeFileFixture(t, root, "internal/application/example/caller_test.go", src)
+	writeFileFixture(t, root, "internal/capabilities/example/caller_test.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {
@@ -99,7 +99,7 @@ func TestScanTxContextBan_CommentLines(t *testing.T) {
 // callers — route through completion.Service.
 func f() {}
 `
-	writeFileFixture(t, root, "internal/application/example/caller.go", src)
+	writeFileFixture(t, root, "internal/capabilities/example/caller.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {
@@ -108,8 +108,8 @@ func f() {}
 }
 
 // TestScanTxContextBan_OnlyScansApplicationAndApi pins the scope
-// contract: the scanner walks ONLY internal/application/** and
-// internal/api/**. A wire-method call in any other subtree (e.g.
+// contract: the scanner walks ONLY internal/capabilities/** and
+// internal/platform/httpserver/**. A wire-method call in any other subtree (e.g.
 // internal/jobs/, internal/infrastructure/) is OUT OF SCOPE for
 // this check (the shell check's glob is the same).
 func TestScanTxContextBan_OnlyScansApplicationAndApi(t *testing.T) {
@@ -144,7 +144,7 @@ func caller(ctx context.Context) {
 	svc.UpdateJobToSucceededCAS(ctx, "job-1", "lease-1"); svc.InsertResultOnConflict(ctx, "job-1", 1, nil)
 }
 `
-	writeFileFixture(t, root, "internal/application/example/caller.go", src)
+	writeFileFixture(t, root, "internal/capabilities/example/caller.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 2 {

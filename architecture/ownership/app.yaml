@@ -127,24 +127,28 @@ http_entrypoint:
 
 # ── Architecture governance (CLI tool) ───────────────────────────────────────
 # Added FASE 1.C PR1 (June 2026): cmd/archcheck is the canonical
-# target-tree governance binary — the permanent half of PipelineGen's
-# architectural gating. Sister binary to scripts/archcheck/ (the
-# transient legacy-burndown ratchet, owned by a separate workstream).
+# target-tree governance binary — the ONLY architectural gate binary.
 # cmd/archcheck reads architecture/policy.yaml, walks the project
 # tree, and emits a JSON violation report on stdout. Phase 0 is
-# report-only; --strict promotes to a hard gate.
+# report-only; --strict promotes every violation to a hard gate.
+#
+# 2026-09-12: the legacy-burndown sister binary scripts/archcheck (root
+# package) was demolished, and its surviving directories were folded into
+# this control plane: cmd/archcheck/gate (the test-gate library imported by
+# internal/capabilities|platform/*/gate_test.go) and cmd/archcheck/gates
+# (the C2 gate mains run by make verify-architecture). cmd/archcheck is now
+# the single archcheck control plane.
 
-# FASE 1.C PR1 (June 2026) split cmd/archcheck/main.go (996 LOC) into
-# cmd/archcheck/{policy,report}/{model,load}.go + the scan* function
-# family still in main.go (PR2-PR4 will move scans into scan/*.go and
-# the orchestration into runner.go). The package boundary is
+# FASE 1.C PR1 (June 2026) split cmd/archcheck/main.go into
+# cmd/archcheck/{policy,report}/ + the scan/*.go rule families, with
+# runner.go owning the CheckSpec dispatch. The package boundary is
 # `package policy` + `package report` (separate Go packages) with no
-# cyclic imports — the architectural snapshot test
-# (cmd/archcheck/runner_test.go) locks the refactor's behavior
-# preservation by golden-file comparison against
-# cmd/archcheck/testdata/report_golden.json.
+# cyclic imports — the architectural contract test
+# (cmd/archcheck/runner_test.go::TestReportContract) locks the report
+# schema and determinism (the full-repository golden snapshot was
+# retired in favour of deterministic schema assertions).
 archcheck_cli:
-  owner: scripts/archcheck
+  owner: cmd/archcheck
   rationale: |
     cmd/archcheck is the canonical target-tree governance binary. It
     reads architecture/policy.yaml (flat key:value, stdlib-parseable,
@@ -164,10 +168,10 @@ archcheck_cli:
     of violations; --strict promotes any violation to os.Exit(1)
     for Phase N hard-gate promotion.
   rule: |
-    cmd/archcheck is the canonical target-tree validator. The on-disk
-    enforcement lives in this binary (NOT in scripts/archcheck/,
-    which is the LEGACY-BURNDOWN ratchet — see the scripts/archcheck/
-    doc for the scope split). Stdlib only — no gopkg.in/yaml.v3
+    cmd/archcheck is the canonical target-tree validator and the ONLY
+    architectural gate binary (the legacy-burndown scripts/archcheck
+    binary was demolished 2026-09-12; no gate ever invoked it).
+    Stdlib only — no gopkg.in/yaml.v3
     import (the flat policy format is intentionally simple). The
     report JSON contract (`passed`, `mode`, `policy_path`,
     `scan_root`, `phase`, `policy_snapshot`, `summary`, `violations`,
@@ -185,12 +189,12 @@ archcheck_cli:
     - cmd/archcheck/scan/constructors.go # PR3: 8-dep cap scanner
     - cmd/archcheck/scan/roots.go        # PR2: top-level dir whitelist + banned helpers/utils/models
     - cmd/archcheck/scan/documents.go    # PR2: arch docs pointer consistency
-    - cmd/archcheck/runner_test.go       # PR1: golden-file snapshot test
-    - cmd/archcheck/testdata/report_golden.json  # PR1: snapshot golden file
+    - cmd/archcheck/runner_test.go       # report-schema contract + hard-gate fail-closed tests
+    - cmd/archcheck/hardgate_integrity_test.go  # every declared hard_gate must be emittable by a scanner
   cross_refs:
     policy: architecture/policy.yaml
     ownership: architecture/ownership.generated.yaml (this file)
-    sister_binary: scripts/archcheck/  # LEGACY-BURNDOWN ratchet (sister binary, separate ownership)
+    legacy_ratchet_removed: scripts/archcheck/  # demolished 2026-09-12; its gate/ + gates/ dirs moved under cmd/archcheck/
     north_star: docs/architecture/godlike/01_NORTH_STAR.md
     ci_gates_doc: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
     wave_ref: architecture/current.yaml#id-16  # Wave 16 KEEP_BOTH decision

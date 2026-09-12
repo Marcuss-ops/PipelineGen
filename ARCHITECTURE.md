@@ -19,14 +19,15 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 | Technical adapters and transport platform | `internal/platform` |
 
 `internal/app`, `internal/kernel`, `internal/capabilities`, and
-`internal/platform` are the only target roots. The existing
-`internal/application`, `internal/api`, `internal/infrastructure`, and
-`internal/domain` roots are migration-only zones: **no new capabilities, no
-new public contracts, no new providers, no new routes, and no new files or
-packages** may be introduced there. Changes in those zones are limited to
-migration work, correctness/security fixes required to keep the system
-running, or removal of legacy code, and must have a registered migration owner
-and deadline in `architecture/package_hotspots.json`.
+`internal/platform` are the only target roots — and the only internal roots
+that exist on disk. The former `internal/application`, `internal/api`,
+`internal/infrastructure`, and `internal/domain` roots were **deleted** (last
+two on 2026-08-25); `architecture/policy.yaml` declares no legacy roots, and
+their re-introduction is a hard-gate failure (`percheck_legacy_root_ban`,
+`percheck_legacy_root_new_code`). Do not add files or packages under those
+paths, and do not read them as a current architecture: new capabilities, public
+contracts, providers, routes, and packages belong to the four target roots
+only.
 
 PostgreSQL + pgvector is authoritative for the media domain. SQLite remains
 authoritative only for non-media domains that have not migrated. Qdrant is not
@@ -83,8 +84,9 @@ cmd
 
 internal/app is the composition root. Capabilities depend on kernel contracts
 and typed ports; platform supplies concrete adapters and transport mechanics.
-The former application/api/infrastructure/domain roots remain only as
-migration-only zones and are not valid homes for new architecture.
+The former application/api/infrastructure/domain roots were deleted and are not
+valid homes for any code; the hardened ban lives in
+`architecture/policy.yaml` (`percheck_legacy_root_ban`).
 
 pkg is leaf-only and must not import internal packages.
 ```

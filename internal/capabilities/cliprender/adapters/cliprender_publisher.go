@@ -117,14 +117,29 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.Bool("has_subtitles", in.Subtitles != nil),
 	)
 
-	// ── Phase 1: hash the rendered mp4 on disk ────────────────────────
-	hashStart := time.Now()
-	contentHash, size, err := digest.SHA256File(in.OutputPath)
-	if err != nil {
-		p.publishPhase("hash_failed", runID, zap.Error(err))
-		return nil, fmt.Errorf("hash rendered output: %w", err)
+	// ── Phase 1: adopt the caller-certified artifact digest ───────────
+	// The render boundary already certified these exact bytes: the
+	// RenderingGen download computed SHA-256 while streaming the artifact to
+	// disk (and verified it against the queue's expected digest), and the
+	// overlay compositor digested its own encode. Re-reading the file here was
+	// a third full pass over the same bytes on the render critical path.
+	// Fail-closed: an artifact published without a certified digest is a typed
+	// error — the publisher never silently re-hashes what the caller claimed.
+	contentHash := strings.ToLower(strings.TrimSpace(in.CertifiedSHA256))
+	size := in.CertifiedSizeBytes
+	if contentHash == "" {
+		p.publishPhase("certified_digest_missing", runID, zap.String("output_path", in.OutputPath))
+		return nil, fmt.Errorf("publish rendered clip: certified SHA-256 missing for %s (the producing boundary must certify the artifact)", in.OutputPath)
 	}
-	metrics.HashMS = time.Since(hashStart).Milliseconds()
+	if size <= 0 {
+		p.publishPhase("certified_size_missing", runID,
+			zap.String("output_path", in.OutputPath), zap.String("sha256", contentHash))
+		return nil, fmt.Errorf("publish rendered clip: certified size missing for %s", in.OutputPath)
+	}
+	// No hash pass ran, so the phase carries no measured work. HashMS stays 0
+	// (a real zero, not NOT_INSTRUMENTED): the certified digest replaced the
+	// read instead of hiding it.
+	metrics.HashMS = 0
 	assetID := "cliprender_" + contentHash[:24]
 
 	ext := filepath.Ext(in.OutputPath)

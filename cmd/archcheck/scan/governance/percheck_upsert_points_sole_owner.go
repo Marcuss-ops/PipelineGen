@@ -1,22 +1,27 @@
-// Package scan — Check 80 (PR-DIAGNOSI-FINALE rule 4, July 2026):
-// only the Outbox IndexingHandler calls qdrant.UpsertPoints.
+// Package scan — Check 80 (PR-DIAGNOSI-FINALE rule 4, July 2026;
+// scope revised by POSTGRES-MEDIA-CUTOVER, 2026-09-12): only the
+// non-media projection writers under
+// internal/platform/qdrant/indexing/ call qdrant.UpsertPoints.
 //
 // scan/percheck_upsert_points_sole_owner.go pins the
 // godlike/06 SSOT that the sole production caller of
 // `transport.Client.UpsertPoints(` is
-// `internal/platform/qdrant/indexing/` (the IndexingHandler
-// outbox consumer). The canonical apply-path is:
+// `internal/platform/qdrant/indexing/` (non-media projection
+// writers). The MEDIA index plane is PostgreSQL + pgvector, so the
+// historical outbox apply-path is RETIRED:
 //
 //	(caller) asset.index.requested asset.index.delete_requested outbox
 //	                 |
 //	                 v
-//	IndexingHandler (outbox worker)
+//	PostgresIndexWorker (PG outbox, pgvector) — NOT Qdrant
+//
+//	(legacy, removed) IndexingHandler (outbox worker)
 //	  -> qdrant.IndexClip / qdrant.DeletePointsByFilter
 //	     -> (internally) client.UpsertPoints(
 //
 // Any other production-code site that calls
-// `client.UpsertPoints(` directly bypasses the outbox pipeline
-// and risks:
+// `client.UpsertPoints(` directly bypasses the canonical projection
+// writer and risks:
 //   - silent outbox-bypass (a Qdrant projection may reflect a
 //     point that has no durable outbox record — the operator
 //     cannot re-derive it on rebuild).
@@ -132,13 +137,13 @@ const upsertPointsSoleOwnerRule = "percheck_upsert_points_sole_owner"
 // The message references the canonical IndexingHandler +
 // outbox pipeline + the docs/migrations/archcheck-strict-baseline.json
 // residue list so the operator sees the migration path inline.
-const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
+const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside internal/platform/qdrant/indexing/ (PR-DIAGNOSI-FINALE rule 4, July 2026; scope revised by POSTGRES-MEDIA-CUTOVER, 2026-09-12); godlike/06 SSOT: the MEDIA index plane is PostgreSQL + pgvector (AssetCommitter → asset.index.requested → PostgresIndexWorker), so the ONLY legitimate remaining UpsertPoints callers are the non-media projection writers under internal/platform/qdrant/indexing/ (frame-concept / mediamemory). The former media path (asset.index.requested → IndexingHandler → clipindexer.IndexClip → client.UpsertPoints() is RETIRED: the IndexingHandler has zero production callers and the media.reindex job binding (clipindexer.Service.RegisterJobHandler → jobmedia.TypeReindex) has been removed with media.TypeReindex. Any direct caller from a non-canonical path bypasses the projection writer contract and risks silent at-least-once regression (durable outbox delivery with idempotency-key dedup; direct callers do not have it). Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
 
 // deletePointsSoleOwnerNote is the violation Note for any non-canonical
 // production call site of `.DeletePoints(`. It is the destructive twin of
 // upsertPointsSoleOwnerNote: a direct DeletePoints bypasses the projection
 // writer's retention/alias contract and can silently orphan points.
-const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/indexing/mediamemory/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json."
+const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (non-media projections) or internal/platform/qdrant/indexing/mediamemory/. The media-plane DeletePoints twin of the retired IndexingHandler path is gone with the media.reindex binding (POSTGRES-MEDIA-CUTOVER, 2026-09-12). A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in docs/migrations/archcheck-strict-baseline.json."
 
 // upsertPointsSoleOwnerWarn is the residue-emitter for
 // comment-only references.
@@ -158,8 +163,7 @@ func upsertPointsSoleOwnerWarn(r *report.Report, label, msg string) {
 // the operator-facing "zero production-code hits" claim
 // (PR-P12-PERCHECK-BASELINE-ZERO pattern) is auditable via
 // len(r.Violations) == 0.
-func ScanUpsertPointsSoleOwner(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanUpsertPointsSoleOwner(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

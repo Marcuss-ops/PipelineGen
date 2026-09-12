@@ -16,6 +16,7 @@ package governance
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
@@ -80,6 +81,41 @@ func TestSSOTRegistryMatchesPinnedSet(t *testing.T) {
 			t.Errorf("duplicate rule id %q", name)
 		}
 		seen[name] = true
+	}
+}
+
+// TestSSOTRegistryPathsExist fails closed on a registry row whose Scope,
+// Owners or SkipPathPrefixes name a path that does not exist.
+//
+// This is the registry-level mirror of the hard-gate emission check: a rule
+// scoped to a deleted root walks nothing, so it emits no violation and looks
+// green forever. The historical stopword rule was scoped to
+// internal/application/ + internal/infrastructure/ (both deleted in August
+// 2026) and could never fire — a gate that cannot fire is worse than no gate,
+// because it is read as enforcement.
+func TestSSOTRegistryPathsExist(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := findRepoRoot(t, findTestWorkingDir(t))
+
+	check := func(ruleName, kind string, prefixes []string) {
+		for _, prefix := range prefixes {
+			target := strings.TrimSuffix(prefix, "/")
+			if target == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(target))); err != nil {
+				t.Errorf("rule %q declares %s prefix %q, which does not exist under the repo root. "+
+					"The rule can never match a real file: repoint the prefix at the current architecture or delete the rule.",
+					ruleName, kind, prefix)
+			}
+		}
+	}
+
+	for _, rule := range ssotRules {
+		check(rule.Name, "Scope", rule.Scope)
+		check(rule.Name, "Owners", rule.Owners)
+		check(rule.Name, "SkipPathPrefixes", rule.SkipPathPrefixes)
 	}
 }
 

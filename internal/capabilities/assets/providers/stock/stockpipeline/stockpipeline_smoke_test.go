@@ -109,10 +109,10 @@ func TestStockStageSourcesStep_CanonicalizesYouTubeURL(t *testing.T) {
 
 // TestDeps_FieldCountCap locks the PR-D 8-per-bundle cap on the stock
 // Deps struct. The test is a TEXTUAL guard: if a future maintainer adds a
-// 9th field, this test must be updated alongside the struct change AND a
-// (documented) entry to docs/migrations/deps-struct-allowlist.txt. The
-// loss of this test is the warning signal — remove the assertion only
-// together with the allowed cap-bump PR.
+// 9th field, this test must be updated alongside the struct change and the
+// cap itself (max_struct_deps in architecture/policy.yaml, enforced by
+// cmd/archcheck::ScanStructDeps). The loss of this test is the warning
+// signal — remove the assertion only together with the allowed cap-bump PR.
 func TestDeps_FieldCountCap(t *testing.T) {
 	// We do not parse the .go file with reflect (the Deps struct has no
 	// exported fields of pure kind 'pointer' to enumerate cheaply); the

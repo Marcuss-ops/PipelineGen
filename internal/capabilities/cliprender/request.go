@@ -14,6 +14,7 @@
 package cliprender
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -105,17 +106,50 @@ type BackgroundSpec struct {
 
 // WatermarkSpec overlays a canonical watermark asset. When disabled the
 // block may be omitted entirely.
+//
+// Opacity and MarginPX deliberately carry NO `omitempty`: both have a non-zero
+// contract default, so a requested explicit 0 (invisible watermark / flush to
+// the edge) must survive the JSON round trip into the persisted job payload.
+// With omitempty an explicit 0 was dropped on marshal and re-defaulted by the
+// next Normalize(), which silently changed what the caller asked for.
 type WatermarkSpec struct {
 	Enabled  bool    `json:"enabled,omitempty"`
 	Text     string  `json:"text,omitempty"`
-	AssetID  string  `json:"asset_id,omitempty"`  // required when enabled
-	Position string  `json:"position,omitempty"`  // default top_right
-	Opacity  float64 `json:"opacity,omitempty"`   // 0.0–1.0, default 1.0
-	MarginPX int     `json:"margin_px,omitempty"` // >= 0, default 100
+	AssetID  string  `json:"asset_id,omitempty"` // required when enabled
+	Position string  `json:"position,omitempty"` // default top_right
+	Opacity  float64 `json:"opacity"`            // 0.0–1.0, default 1.0 when absent
+	MarginPX int     `json:"margin_px"`          // >= 0, default 100 when absent
 	// Style is the canonical visual override block (size, color, shadow,
 	// transition). It is the kernel/script SSOT definition — this boundary
 	// projects it verbatim, never re-defines it.
 	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
+
+	// opacitySet and marginSet record whether the decoded JSON document
+	// carried the key at all. "Absent" and "explicit 0" are different
+	// contracts and Normalize() must be able to tell them apart.
+	// Unexported so the wire shape stays unchanged.
+	opacitySet bool
+	marginSet  bool
+}
+
+// UnmarshalJSON records the presence of the two optional fields whose default
+// is non-zero. encoding/json alone cannot distinguish an omitted key from an
+// explicit 0, which is exactly the ambiguity that made a requested opacity 0
+// render as 1.0. The alias type avoids recursing into this method.
+func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
+	type watermarkAlias WatermarkSpec
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(data, &present); err != nil {
+		return err
+	}
+	var decoded watermarkAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*w = WatermarkSpec(decoded)
+	_, w.opacitySet = present["opacity"]
+	_, w.marginSet = present["margin_px"]
+	return nil
 }
 
 // TranscriptSpec controls canonical transcript resolution. The worker
@@ -173,15 +207,16 @@ type DestinationSpec struct {
 	SubfolderName string `json:"subfolder_name,omitempty"`
 }
 
-// ExecutionSpec selects the render execution policy. It is the ONLY
-// request-level backend signal: the concrete backend is resolved by the
-// RenderBackendResolver from probed host capabilities, never hardcoded here.
+// ExecutionSpec selects the render execution policy. It never names a
+// backend: PipelineGen describes WHAT to render and RenderingGen decides HOW
+// (asset resolution, semantic plan lowering, backend selection, Chronon
+// execution).
 type ExecutionSpec struct {
-	// RequireGPU fails the render unless the resolved backend is a GPU
-	// backend. The worker enforces it via RenderBackend.IsGPUBackend (today
-	// the only GPU backend is Chronon Vulkan — the PATH B CUDA hybrid was
-	// removed), so a request demanding GPU is never silently served by the
-	// software FFmpeg fallback. Default false allows software.
+	// RequireGPU fails the render unless the artifact reports a GPU backend.
+	// The worker enforces it via RenderBackend.IsGPUBackend (Chronon is the
+	// only render backend and is GPU-native), so a request demanding GPU is
+	// never satisfied by a non-GPU artifact. Default false skips the extra
+	// assertion without weakening the unconditional Chronon-only gate.
 	RequireGPU bool `json:"require_gpu,omitempty"`
 	// RequireZeroCopy demands a device-local video path. It is fail-closed by
 	// construction: after the PATH B CUDA hybrid removal no backend certifies
@@ -257,12 +292,19 @@ func (r *RenderRequest) Normalize() {
 	if r.Watermark.Position == "" {
 		r.Watermark.Position = PositionTopRight
 	}
-	if r.Watermark.Opacity == 0 {
+	// An explicit opacity 0 means "invisible" and an explicit margin 0 means
+	// "flush to the edge": both are honoured. Only an ABSENT key falls back to
+	// the default (a Go-constructed literal with a zero value counts as absent,
+	// which preserves the historical default for every non-JSON caller).
+	if r.Watermark.Opacity == 0 && !r.Watermark.opacitySet {
 		r.Watermark.Opacity = 1.0
+		// The default applied here is now explicit, not implied by a zero
+		// value, so the persisted payload carries it verbatim.
+		r.Watermark.opacitySet = true
 	}
 	// Watermark defaults are owned SOLELY by Normalize (single owner). The
 	// downstream mapper/plan serialise verbatim without re-defaulting.
-	if r.Watermark.Enabled && r.Watermark.MarginPX == 0 {
+	if r.Watermark.Enabled && r.Watermark.MarginPX == 0 && !r.Watermark.marginSet {
 		if strings.TrimSpace(r.Watermark.Text) != "" {
 			r.Watermark.MarginPX = 100
 		} else {
@@ -360,6 +402,15 @@ func (r *RenderRequest) Validate() error {
 	}
 	if r.SourceAssetID == "" {
 		return fmt.Errorf("%w: source_asset_id is required (a canonical clip asset)", ErrInvalidRequest)
+	}
+	// Normalize() is the single owner of the nested-block defaults, so every
+	// nested block it materializes must exist before this gate reads it.
+	// Failing closed with a typed error is the contract: dereferencing nil here
+	// used to panic, which no caller can handle.
+	if r.Background == nil || r.Watermark == nil || r.Transcript == nil ||
+		r.Subtitles == nil || r.Output == nil || r.Audio == nil ||
+		r.Destination == nil {
+		return fmt.Errorf("%w: request is not normalized (call Normalize before Validate)", ErrInvalidRequest)
 	}
 
 	switch r.Background.Mode {

@@ -37,32 +37,42 @@ import (
 // SourceStager / MediaTransformer adapters.
 var sourceStagerAllowPatterns = []string{
 	"stager_adapter.go",
-	"internal/infrastructure/media/",
+	"internal/platform/media/",
 	"internal/app/",
 }
 
 // sourceStagerForbiddenPatterns are the raw binary invocation patterns
 // that are forbidden in application code outside the adapter allowlist.
+// sourceStagerForbiddenPatterns are the raw binary SPAWN patterns that are
+// forbidden in application code outside the adapter allowlist.
+//
+// 2026-09-12: the second, bare-literal pattern (`"(ffmpeg|yt-dlp|wget)"`) was
+// dropped. It matched a binary NAME wherever it appeared — health probes
+// (`toolChecker.CommandExists("ffmpeg")`, `LookPath`) and diagnostic labels — so
+// it could not be rescoped onto live code without a fresh exemption list of
+// false positives. This gate's declared intent is "direct use of os/exec to run
+// ffmpeg / yt-dlp / wget", which is exactly what the remaining pattern anchors.
 var sourceStagerForbiddenPatterns = []struct {
 	re   *regexp.Regexp
 	desc string
 }{
 	{regexp.MustCompile(`exec\.(Command|CommandContext)[^"]*"(ffmpeg|yt-dlp|wget)`),
 		"raw os/exec invocation of ffmpeg/yt-dlp/wget"},
-	{regexp.MustCompile(`"(ffmpeg|yt-dlp|wget)"`),
-		"literal reference to ffmpeg/yt-dlp/wget binary"},
 }
 
-// ScanSourceStagerTransformer walks <root>/internal/application/** for
+// ScanSourceStagerTransformer walks <root>/internal/capabilities/** for
 // non-test .go files and flags raw binary invocations outside the
 // canonical adapter allowlist.
-func ScanSourceStagerTransformer(root string, pol *policy.Policy, r *report.Report) {
+func ScanSourceStagerTransformer(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
 	}
 
-	dir := filepath.Join(root, "internal/application")
+	// Rescoped 2026-09-12: internal/application was deleted in the August 2026
+	// root consolidation (the application layer is now internal/capabilities), so
+	// this gate walked nothing.
+	dir := filepath.Join(root, "internal/capabilities")
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

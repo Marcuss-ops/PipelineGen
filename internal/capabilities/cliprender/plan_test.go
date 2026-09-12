@@ -81,6 +81,81 @@ func TestCompile_SealsDeterministicPlan(t *testing.T) {
 	}
 }
 
+// TestCompile_SealsSinglePassOverlay verifies the resolved overlay segment is
+// sealed into the plan with its exact window and lineage, so Chronon
+// composites it in the SAME render pass (one encode) instead of a post-render
+// compositing pass.
+func TestCompile_SealsSinglePassOverlay(t *testing.T) {
+	in := baseCompileInput()
+	in.DurationMS = 4000
+	in.Overlay = &PlanOverlayInput{
+		Segment: &OverlaySegment{
+			RenderJobID: "render-overlay-001",
+			RenderKey:   "rk-overlay-001",
+			LocalPath:   "/scratch/overlay-segment.mp4",
+			SHA256:      strings.Repeat("b", 64),
+			SizeBytes:   2048,
+		},
+		StartMS: 1000,
+		EndMS:   3000,
+	}
+	plan, err := Compile(in)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if plan.Overlay == nil {
+		t.Fatal("sealed plan must carry the overlay")
+	}
+	if plan.Overlay.RenderJobID != "render-overlay-001" || plan.Overlay.RenderKey != "rk-overlay-001" {
+		t.Fatalf("overlay lineage = %+v", plan.Overlay)
+	}
+	if plan.Overlay.Path != "/scratch/overlay-segment.mp4" || plan.Overlay.SHA256 != strings.Repeat("b", 64) {
+		t.Fatalf("overlay segment = %+v", plan.Overlay)
+	}
+	if plan.Overlay.StartMS != 1000 || plan.Overlay.EndMS != 3000 {
+		t.Fatalf("overlay window = [%d, %d)ms, want [1000, 3000)", plan.Overlay.StartMS, plan.Overlay.EndMS)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("Validate failed on a sealed overlay plan: %v", err)
+	}
+	// The overlay is part of the sealed identity: a different window changes
+	// the plan digest (a rerun can never silently reuse a stale plan).
+	other := baseCompileInput()
+	other.DurationMS = 4000
+	other.Overlay = &PlanOverlayInput{Segment: in.Overlay.Segment, StartMS: 1000, EndMS: 2500}
+	otherPlan, err := Compile(other)
+	if err != nil {
+		t.Fatalf("Compile(other) failed: %v", err)
+	}
+	if otherPlan.PlanSHA256 == plan.PlanSHA256 {
+		t.Fatal("a different overlay window must change the sealed plan digest")
+	}
+}
+
+// TestCompile_OverlayFailClosed pins the overlay validation rules.
+func TestCompile_OverlayFailClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		overlay *PlanOverlayInput
+	}{
+		{"missing segment", &PlanOverlayInput{StartMS: 0, EndMS: 1000}},
+		{"segment without sha256", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4"}, EndMS: 1000}},
+		{"empty window", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: 1000, EndMS: 1000}},
+		{"negative start", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: -1, EndMS: 1000}},
+		{"window past clip duration", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: 0, EndMS: 9000}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := baseCompileInput()
+			in.DurationMS = 4000
+			in.Overlay = tc.overlay
+			if _, err := Compile(in); err == nil {
+				t.Fatal("invalid overlay must fail closed")
+			}
+		})
+	}
+}
+
 // TestCompile_ResolvedWatermarkBackgroundSubtitles verifies every optional
 // block is carried into the sealed plan verbatim — Rust never resolves them.
 func TestCompile_ResolvedWatermarkBackgroundSubtitles(t *testing.T) {

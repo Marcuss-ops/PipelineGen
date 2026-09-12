@@ -231,9 +231,6 @@ func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundl
 	if err := wireImagesJobBinding(domains, jobs); err != nil {
 		return fmt.Errorf("compose images late-binding: %w", err)
 	}
-	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
-		return fmt.Errorf("compose clipindexer late-binding: %w", err)
-	}
 	if err := WireTextTrackJobBindings(textTracks, jobs); err != nil {
 		return fmt.Errorf("compose texttracks late-binding: %w", err)
 	}
@@ -248,7 +245,6 @@ func validateCriticalHandlers(jobs *JobsBundle, sync *SyncBundle, domains *Domai
 	var criticalHandlerValidators []CriticalHandler
 	appendYoutubeCatalogCriticalValidators(sync, domains, jobs, &criticalHandlerValidators)
 	appendImagesCriticalValidator(domains, jobs, &criticalHandlerValidators)
-	appendClipIndexerCriticalValidator(process, jobs, &criticalHandlerValidators)
 	appendVoiceoverCriticalValidators(domains, jobs, &criticalHandlerValidators)
 	if err := ValidateCriticalHandlers(jobs.Service, log, criticalHandlerValidators); err != nil {
 		return fmt.Errorf("compose critical-handler validation: %w", err)

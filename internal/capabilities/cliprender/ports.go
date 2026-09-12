@@ -55,8 +55,15 @@ type ContractResolver interface {
 // geometry, copy policy, subtitle stage and encode timing) comes from the
 // certified Chronon artifact; the concrete adapter never re-derives them.
 type RenderOutcome struct {
-	OutputPath  string
-	SizeBytes   int64
+	OutputPath string
+	SizeBytes  int64
+	// SHA256 is the CERTIFIED content digest of OutputPath. The rendering
+	// boundary already streams the artifact through SHA-256 while downloading
+	// it (verifying the queue's expected digest), so this is the certified
+	// digest of the exact bytes on disk — never a second hash pass. Empty only
+	// when a boundary could not certify the bytes; publication fails closed on
+	// an uncertified artifact instead of silently re-reading it.
+	SHA256      string
 	DurationSec float64
 	Width       uint32
 	Height      uint32
@@ -187,6 +194,16 @@ type RenderPublishInput struct {
 	// as an .ass sidecar next to the clip.
 	Subtitles     *SubtitleArtifact
 	DriveFolderID string // fully-resolved leaf folder (the worker resolved subfolder_name; the publisher never creates folders)
+
+	// CertifiedSHA256/CertifiedSizeBytes certify the EXACT bytes published at
+	// OutputPath. The worker forwards the digest the producing boundary
+	// already computed (RenderOutcome.SHA256 for a plain render, the overlay
+	// compositor's digest when an overlay was composited) so publication never
+	// performs its own full-file hash pass. Fail-closed: an empty digest or a
+	// non-positive size is a typed error — the publisher never silently
+	// re-reads the artifact to reconstruct a digest the caller did not certify.
+	CertifiedSHA256    string
+	CertifiedSizeBytes int64
 }
 
 // PublicationMetrics carries the publisher's OWN measured publication

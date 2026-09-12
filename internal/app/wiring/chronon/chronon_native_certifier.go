@@ -13,9 +13,15 @@ package chronon
 // ChrononNativeCertified=true. The result is cached per
 // environment fingerprint (chronon binary SHA256 + GPU driver/model/compute
 // capability) and re-certified automatically when any of those change — so a
-// broken handoff adds ZERO latency to real renders (the resolver never even
-// attempts chronon_vulkan), and a fixed or changed binary/driver/GPU is
-// picked up without operator intervention.
+// broken handoff adds ZERO latency to real renders (the render lane is gated
+// on a certified Chronon before it is exposed to the queue), and a fixed or
+// changed binary/driver/GPU is picked up without operator intervention.
+//
+// Certification is a HOST READINESS diagnostic. It no longer projects a
+// PipelineGen backend capability: PipelineGen does not select backends
+// (RenderingGen owns selection behind the queue boundary), so the former
+// chrononCertifiedCapabilityProbe decorator was removed with the backend
+// authority demolition.
 
 import (
 	"context"
@@ -28,7 +34,6 @@ import (
 	"sync"
 	"time"
 
-	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"go.uber.org/zap"
@@ -442,23 +447,3 @@ func (c *chrononNativeCertifier) verifyCertOutput(ctx context.Context, path stri
 	}
 	return frames, nil
 }
-
-// chrononCertifiedCapabilityProbe decorates the base probe (which already
-// reports ChrononVulkan binary presence) with the certified flag. The
-// registry gates chronon_vulkan on ChrononNativeCertified, so a configured
-// but uncertified binary is never selected — zero wasted GPU attempts.
-type chrononCertifiedCapabilityProbe struct {
-	base cliprender.BackendCapabilityProbe
-	cert *chrononNativeCertifier
-}
-
-func (p chrononCertifiedCapabilityProbe) ProbeCapabilities(ctx context.Context) (cliprender.RendererCapabilities, error) {
-	caps, err := p.base.ProbeCapabilities(ctx)
-	if err != nil {
-		return caps, err
-	}
-	caps.ChrononNativeCertified = p.cert != nil && p.cert.Certified(ctx)
-	return caps, nil
-}
-
-var _ cliprender.BackendCapabilityProbe = (*chrononCertifiedCapabilityProbe)(nil)

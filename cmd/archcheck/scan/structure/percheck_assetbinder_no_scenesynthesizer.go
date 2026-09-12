@@ -115,8 +115,7 @@ func assetBinderSynthesizerWarn(r *report.Report, label, msg string) {
 // (PR-P12-PERCHECK-BASELINE-ZERO pattern) is auditable via
 // len(r.Violations) == 0. The per-file commentOnly counter is
 // still incremented so the audit lane stays residue-honest.
-func ScanAssetBinderNoSynthesizer(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
-	_ = pol
+func ScanAssetBinderNoSynthesizer(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 	path := filepath.Join(root, assetBinderSynthesizerScopePath)
 	f, err := os.Open(path)
 	if err != nil {

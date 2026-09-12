@@ -98,8 +98,7 @@ func assetStateWarn(r *report.Report, label, msg string) {
 // declarations outside the canonical file; the alphabet
 // value drift is captured at runtime by
 // TestAssetState_StringLiteralValues.
-func ScanAssetStateCanonical14(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanAssetStateCanonical14(root string, _ *policy.Policy, r *report.Report) {
 	path := filepath.Join(root, assetStateCanonical14Path)
 	f, err := os.Open(path)
 	if err != nil {
@@ -123,7 +122,7 @@ func ScanAssetStateCanonical14(root string, pol *policy.Policy, r *report.Report
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	// wantCount is the canonical inventory size, sourced from
-	// internal/domain/asset.AssetStateAlphabetCount (godlike/06
+	// internal/kernel/asset.AssetStateAlphabetCount (godlike/06
 	// SSOT — single literal source-of-truth for the canonical
 	// alphabet size across the codebase). A future agent
 	// changing that constant surfaces in the matrix tests too,

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
@@ -344,6 +346,33 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
 }
 
+// singlePassOverlayEnabled reports whether clip.render composites a declared
+// entity overlay INSIDE the Chronon render (one encode) instead of the legacy
+// post-render FFmpeg pass (a second full transcode of the whole clip).
+//
+// Default: ENABLED. Chronon's video layers are timeline-addressed (the video
+// node samples the segment at frame - layer_start) and the RenderingGen
+// compiler lowers the overlay item fail-closed, so a clip carrying an overlay
+// is encoded exactly once. The escape hatch is deliberate: set
+// PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0 to fall back to the legacy compositor
+// without a code change. An unparseable value keeps the default and is
+// reported rather than silently flipping behaviour.
+func singlePassOverlayEnabled(log *zap.Logger) bool {
+	raw := strings.TrimSpace(os.Getenv("PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY"))
+	if raw == "" {
+		return true
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		if log != nil {
+			log.Warn("PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY is not a boolean; keeping single-pass overlay compositing",
+				zap.String("value", raw))
+		}
+		return true
+	}
+	return enabled
+}
+
 func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.ClipRenderEnabled {
 		log.Info("registerClipRender: ClipRender feature is disabled; skipping HTTP route registration + job binding")
@@ -494,8 +523,25 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		mediaConfig.Policy.Preset,
 		mediaConfig.Policy.CRF,
 	))
+	// Single-pass overlay compositing (default): the resolved overlay segment
+	// travels INSIDE the sealed plan as a timed video layer, so Chronon
+	// composites it in the same render pass and the clip is encoded ONCE. The
+	// FFmpeg compositor above is retained as the opt-out path — set
+	// PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY=0 to temporarily revert to the
+	// legacy second transcode without a code change.
+	singlePassOverlay := singlePassOverlayEnabled(log)
+	worker.WithSinglePassOverlay(singlePassOverlay)
+	if !singlePassOverlay {
+		// Loud on purpose: the fallback re-encodes every overlay clip, so a
+		// deployment left on it must be visible in the logs rather than
+		// discovered from a benchmark. Removing this branch (and the
+		// compositor behind it) is the last Wave C step.
+		log.Warn("registerClipRender: SINGLE-PASS OVERLAY DISABLED — overlays are composited by the deprecated FFmpeg pass, re-encoding the whole clip",
+			zap.String("revert", "unset PIPELINEGEN_CLIP_SINGLE_PASS_OVERLAY or set it to 1"))
+	}
 	log.Info("registerClipRender: clip render boundary wired (RenderingGen queue → Chronon certified artifact)",
 		zap.String("renderinggen_queue", cfg.External.RenderingGenQueueURL),
+		zap.Bool("single_pass_overlay", singlePassOverlay),
 		zap.String("encoder", mediaConfig.Policy.Codec),
 		zap.String("preset", mediaConfig.Policy.Preset),
 		zap.Int("crf", mediaConfig.Policy.CRF),

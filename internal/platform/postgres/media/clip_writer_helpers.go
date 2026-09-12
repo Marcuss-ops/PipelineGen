@@ -19,7 +19,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -487,5 +486,3 @@ func clipAssetToDomainAsset(clipID string, clipAsset youtubetypes.ClipAsset) *as
 	_ = clipAsset
 	return nil
 }
-
-var _ = mediacommit.TextTrack{} // keep mediacommit import stable for future upsert consolidation

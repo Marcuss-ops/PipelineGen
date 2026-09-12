@@ -16,9 +16,9 @@ import (
 
 func TestDeps_FieldCountCap(t *testing.T) {
 	// Authoritative source: the literal in service.go. The cap is
-	// hard 8 (PR-D spec) — if a future PR adds a 9th field, this
-	// test fails loud AND the maintainer must add an entry to
-	// docs/migrations/deps-struct-allowlist.txt + amend ADR §D3.x.
+	// hard 8 (max_struct_deps in architecture/policy.yaml, enforced by
+	// cmd/archcheck::ScanStructDeps) — if a future PR adds a 9th field,
+	// this test fails loud AND the maintainer must amend ADR §D3.x.
 	//
 	// The field list remains at five: the four application ports are carried
 	// by Targets/Deps while AssetTree and logging stay composition-owned. The

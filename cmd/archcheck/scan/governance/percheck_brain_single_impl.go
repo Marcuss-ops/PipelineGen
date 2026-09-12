@@ -63,8 +63,7 @@ var brainComponents = []canonicalBrainComponent{
 // ScanBrainSingleImpl walks the canonical home packages of every
 // registered brain component and reports duplicate production
 // constructors.
-func ScanBrainSingleImpl(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future severity override
+func ScanBrainSingleImpl(root string, _ *policy.Policy, r *report.Report) {
 	for _, comp := range brainComponents {
 		pkgDir := filepath.Join(root, filepath.FromSlash(comp.PkgPath))
 		count := countProductionConstructors(pkgDir, comp.Constructors)

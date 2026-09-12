@@ -133,8 +133,8 @@ verify-architecture:
 	@bash scripts/ci/check_clip_render_cutover.sh && \
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
 	$(GO) run ./cmd/archcheck && \
-	$(GO) run -tags=c2_source_catalog_only scripts/archcheck/gates/gate_c2_source_catalog_only_main.go . && \
-	$(GO) run -tags=c2_route_manifest scripts/archcheck/gates/gate_c2_route_manifest_main.go --baseline=171 --root=.
+	$(GO) run -tags=c2_source_catalog_only cmd/archcheck/gates/gate_c2_source_catalog_only_main.go . && \
+	$(GO) run -tags=c2_route_manifest cmd/archcheck/gates/gate_c2_route_manifest_main.go --root=.
 	@echo "✅ Architecture verification passed"
 
 # test-main-stock — diagnostic Stock-focused gate. The authoritative Stock
@@ -180,13 +180,28 @@ regen-routes-yaml:
 	@$(GO) run ./cmd/admin gen-api-docs
 	@echo "✅ regen-routes-yaml refreshed runtime docs and route manifest"
 
-# archcheck-strict — invokes go run ./cmd/archcheck --strict which is
-# the gate-promoted Phase-0 governance check. Used by CI + locally as
-# the failure-mode baseline for promote-to-enforce-zero ratchets.
-# Mirrors scripts/ci-architectural-checks.sh with the --strict flag
-# applied (any violation = non-zero exit).
+# archcheck-strict — invokes go run ./cmd/archcheck --strict, the
+# gate-promoted Phase-0 governance check. Used by CI + locally as the
+# failure-mode baseline for promote-to-enforce-zero ratchets (any
+# violation = non-zero exit, plus the fail-closed debt-budget check).
+# This is the SAME enforcement CI runs in
+# .github/workflows/architecture.yml; make verify-main only runs the
+# report-only form (`go run ./cmd/archcheck`).
 archcheck-strict:
 	@$(GO) run ./cmd/archcheck --strict
+
+# ── Certification drivers: FAIL-CLOSED availability guard ───────────────
+#
+# Four certification drivers (storage, data-layer, media-cutover,
+# rust-migration) lived under scripts/ci/ and were deleted by commit
+# 7e6965aab ("purge 94% shell + 87% python dust"). The make targets that
+# invoked them survived, so every `make certify-*` died with a cryptic
+# `bash: ... No such file or directory` while AGENTS.md, CANONICAL.md,
+# architecture/current.yaml and docs/operations still presented those
+# targets as the authoritative POSTGRES_MEDIA_SSOT / FINAL_CERTIFIED
+# certificates. A certificate that cannot run must say so, loudly, and must
+# never look like a pass. The message lives here ONCE.
+CERTIFY_DRIVER_ABSENT = ❌ %s: the certification driver %s is ABSENT — deleted in commit 7e6965aab. NOTHING is certified. Live structural enforcement for this axis: %s
 
 # certify-storage — canonical storage certification (20 gate, binary PASS/FAIL).
 # Permanent regression gate for the double-DB / double-writer / Qdrant-as-second-DB invariant.
@@ -194,18 +209,22 @@ archcheck-strict:
 # all asset commits route through persistence.AssetCommitter, producers never UpsertPoints directly.
 # Produces FINAL_CERTIFIED=true only when all gates pass. Use --json for machine-readable output.
 certify-storage:
+	@test -f scripts/ci/certify-storage.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-storage" "scripts/ci/certify-storage.sh" "go run ./cmd/archcheck --strict + internal/platform/postgres/media tests" >&2; exit 1; }
 	@bash scripts/ci/certify-storage.sh
 
 certify-storage-json:
+	@test -f scripts/ci/certify-storage.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-storage-json" "scripts/ci/certify-storage.sh" "go run ./cmd/archcheck --strict + internal/platform/postgres/media tests" >&2; exit 1; }
 	@bash scripts/ci/certify-storage.sh --json
 
 # certify-data-layer — stable four-plane data-layer contract. The detailed
 # SQLite/Qdrant/outbox rules remain owned by certify-storage.sh; this target
 # exposes the final verdict required by release certification.
 certify-data-layer:
+	@test -f scripts/ci/certify-data-layer.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-data-layer" "scripts/ci/certify-data-layer.sh" "internal/platform/sqlite migration tests + go run ./cmd/archcheck --strict" >&2; exit 1; }
 	@bash scripts/ci/certify-data-layer.sh
 
 certify-data-layer-json:
+	@test -f scripts/ci/certify-data-layer.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-data-layer-json" "scripts/ci/certify-data-layer.sh" "internal/platform/sqlite migration tests + go run ./cmd/archcheck --strict" >&2; exit 1; }
 	@bash scripts/ci/certify-data-layer.sh --json
 
 # certify-media-cutover — POSTGRES_MEDIA_CUTOVER gate (binary PASS/FAIL).
@@ -218,7 +237,9 @@ certify-data-layer-json:
 # Requires docker for the ephemeral PostgreSQL 18 + pgvector container
 # (pgvector/pgvector:pg18) unless TEST_POSTGRES_DSN is already reachable.
 certify-media-cutover:
+	@test -f scripts/ci/certify-media-cutover.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-media-cutover" "scripts/ci/certify-media-cutover.sh" "TEST_POSTGRES_DSN=... go test ./internal/platform/postgres/media/ -count=1 + go run ./cmd/archcheck --strict (percheck_media_assets_writer_canonical, percheck_asset_committer_event_ssot)" >&2; exit 1; }
 	@bash scripts/ci/certify-media-cutover.sh
 
 certify-media-cutover-json:
+	@test -f scripts/ci/certify-media-cutover.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-media-cutover-json" "scripts/ci/certify-media-cutover.sh" "TEST_POSTGRES_DSN=... go test ./internal/platform/postgres/media/ -count=1 + go run ./cmd/archcheck --strict" >&2; exit 1; }
 	@bash scripts/ci/certify-media-cutover.sh --json

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -185,7 +186,36 @@ func TestClipRenderExecutorAssetRefsAreHashAddressed(t *testing.T) {
 	}
 }
 
+// repoRootDir walks up from the test's working directory until it finds the
+// module root that carries the checked-in asset bundle. Tests that read
+// "assets/fonts/..." must resolve it from the repository root: `go test`
+// always runs with the package directory as the working directory, so a bare
+// relative path made the fixture unreachable and the test failed for a reason
+// unrelated to the behaviour under test.
+func repoRootDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "assets", "fonts")); err == nil {
+				return dir
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("repository root with assets/fonts not found above %s", dir)
+		}
+		dir = parent
+	}
+}
+
 func TestOverlayPlanAssetsShipsFontForBurnSubtitles(t *testing.T) {
+	// The mapper reads the bundled font as a repository-relative path, which
+	// only resolves when the process CWD is the repository root.
+	t.Chdir(repoRootDir(t))
 	plan := validClipPlan(t)
 	assPath := t.TempDir() + "/subtitles.ass"
 	assBytes := []byte("[Script Info]\n")
@@ -351,6 +381,34 @@ func TestPrefetchClipAssetsStreamsMissingObject(t *testing.T) {
 	}
 	if rec.gets != 0 {
 		t.Fatalf("prefetch must probe with HEAD, not GET (gets=%d)", rec.gets)
+	}
+}
+
+// TestPrefetchClipAssetsDeduplicatesByContentAddress pins items 14/15: the
+// same content address reachable from several plan slots (a font referenced
+// by both the watermark and the burned subtitles) is probed and staged
+// exactly ONCE, never once per reference.
+func TestPrefetchClipAssetsDeduplicatesByContentAddress(t *testing.T) {
+	plan := validClipPlan(t)
+	refs, err := overlayPlanAssets(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) == 0 {
+		t.Fatal("expected at least one plan asset ref")
+	}
+	duplicated := append(append([]assetRef(nil), refs...), refs...)
+
+	rec := &storeRecorder{present: map[string][]byte{}, putBodies: map[string][]byte{}}
+	srv := httptest.NewServer(http.HandlerFunc(rec.handler))
+	defer srv.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", srv.URL)
+
+	if err := prefetchClipAssets(context.Background(), plan, duplicated); err != nil {
+		t.Fatalf("prefetch duplicated refs: %v", err)
+	}
+	if rec.puts != len(refs) || rec.heads != len(refs) {
+		t.Fatalf("dedupe by content address: heads=%d puts=%d, want %d/%d (one probe+upload per unique digest)", rec.heads, rec.puts, len(refs), len(refs))
 	}
 }
 

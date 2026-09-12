@@ -59,7 +59,7 @@ type stubEnrichment struct {
 	indexingEnabled bool
 }
 
-func (s *stubEnrichment) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
+func (s *stubEnrichment) EnrichAndIndex(ctx context.Context, clipID string) error {
 	return nil
 }
 

@@ -31,7 +31,7 @@ const legacyHotspotRatchetRule = "percheck_legacy_hotspot_growth"
 // hotspot registered in package_hotspots.json. Growth is a hard error regardless
 // of whether the package exceeds the 65-file emergency ceiling and regardless of
 // which internal root the package lives under.
-func ScanLegacyHotspotGrowth(root string, pol *policy.Policy, r *report.Report) {
+func ScanLegacyHotspotGrowth(root string, _ *policy.Policy, r *report.Report) {
 	registry, err := loadPackageHotspotRegistry(root)
 	if err != nil {
 		// The registry loader already emits its own violation; do not

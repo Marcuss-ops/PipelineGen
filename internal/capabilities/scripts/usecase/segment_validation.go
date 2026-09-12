@@ -15,9 +15,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
+
+// isSegmentValidationExhausted is the SINGLE classification function for the
+// segment-validation fallback path. It classifies exclusively with errors.Is
+// against the canonical ErrSegmentValidationFailed sentinel
+// (internal/kernel/script) so a reworded message can never silently re-route
+// the fallback. String matching on the error text is banned here.
+func isSegmentValidationExhausted(err error) bool {
+	return errors.Is(err, scriptpkg.ErrSegmentValidationFailed)
+}
 
 const (
 	defaultSegmentWordsTolerancePercent = 15.0
@@ -457,7 +467,7 @@ func (e *Engine) generateSegments(
 			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return exactly one paragraph between %d and %d words (target %d). Do not exceed %d words and do not add headings or a second paragraph.", budget.Min, budget.Max, budget.Target, budget.Max)
 		}
 		if lastErr != nil {
-			validationFailure := validationExhausted || errors.Is(lastErr, scriptpkg.ErrSegmentValidationFailed) || strings.Contains(strings.ToLower(lastErr.Error()), "segment validation failed")
+			validationFailure := validationExhausted || isSegmentValidationExhausted(lastErr)
 			fallbackSource := cleanSegmentSourceText(segment.SourceText)
 			if fallbackSource == "" {
 				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
@@ -473,6 +483,11 @@ func (e *Engine) generateSegments(
 					fallbackCopy.Script = fallback
 					fallbackCopy.WordCount = textutil.CountWords(fallback)
 					fallbackCopy.GenerationSource = "source_text_fallback"
+					observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
+					if e.log != nil {
+						e.log.Warn("segment validation exhausted; used source-text fallback paragraph",
+							zap.String("segment_id", segmentIdentity(segment, index)))
+					}
 					return segmentOutput{index: index, result: &fallbackCopy, text: fallback}
 				}
 			}
@@ -528,7 +543,7 @@ func (e *Engine) generateSegments(
 	for output := range results {
 		if output.err != nil {
 			if output.index >= 0 && output.index < len(plan.Segments) &&
-				strings.Contains(strings.ToLower(output.err.Error()), "segment validation failed") {
+				isSegmentValidationExhausted(output.err) {
 				budget := segmentBudgetFor(plan, output.index, settings.segmentTolerancePercent)
 				fallbackSource := plan.Segments[output.index].SourceText
 				if strings.TrimSpace(fallbackSource) == "" {
@@ -539,6 +554,7 @@ func (e *Engine) generateSegments(
 				fallbackPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[output.index]}
 				fallbackPlan.TargetWords = budget.Target
 				if fallback != "" && validateSegmentTexts(&fallbackPlan, []string{fallback}, settings).Valid {
+					observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
 					texts[output.index] = fallback
 					continue
 				}

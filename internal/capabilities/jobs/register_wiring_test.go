@@ -52,7 +52,6 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
@@ -118,13 +117,6 @@ func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 			name: "catalogsync.Service.RegisterDriveFolderSyncHandler (drive.folder.sync)",
 			call: func(svc *jobs.Service) error {
 				return (&catalogsync.Service{}).RegisterDriveFolderSyncHandler(svc)
-			},
-		},
-		// clipindexer — 1 method.
-		{
-			name: "clipindexer.Service.RegisterJobHandler (media.reindex)",
-			call: func(svc *jobs.Service) error {
-				return (&clipindexer.Service{}).RegisterJobHandler(svc)
 			},
 		},
 		// images — *images.Service{} is the canonical, sole canonical

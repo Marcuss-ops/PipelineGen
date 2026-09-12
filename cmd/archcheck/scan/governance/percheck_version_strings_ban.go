@@ -58,8 +58,7 @@ const versionStringsSSOTScanScope = "internal/"
 // ScanVersionStringsBan walks every .go file under <root>/internal/**
 // and emits a violation for any production file that contains a
 // hardcoded pipeline version string outside the canonical registry.
-func ScanVersionStringsBan(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanVersionStringsBan(root string, _ *policy.Policy, r *report.Report) {
 
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

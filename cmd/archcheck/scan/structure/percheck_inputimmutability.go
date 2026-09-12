@@ -33,16 +33,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// ScanInputImmutability walks <root>/internal/application/** and
-// <root>/internal/api/** for non-test .go files and flags mutations
+// ScanInputImmutability walks <root>/internal/capabilities/** and
+// <root>/internal/platform/httpserver/** for non-test .go files and flags mutations
 // of input parameters.
-func ScanInputImmutability(root string, pol *policy.Policy, r *report.Report) {
+func ScanInputImmutability(root string, _ *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
 	}
 
-	for _, subdir := range []string{"internal/application", "internal/api"} {
+	// Rescoped 2026-09-12: internal/application and internal/api were deleted in
+	// the August 2026 root consolidation; the application layer is
+	// internal/capabilities and the HTTP layer is internal/platform/httpserver.
+	for _, subdir := range []string{"internal/capabilities", "internal/platform/httpserver"} {
 		dir := filepath.Join(root, subdir)
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -131,12 +134,21 @@ func scanInputImmutabilityAST(path, relPath string, r *report.Report) {
 	})
 }
 
+// inputMutationAllowlist grandfathers files whose `req`/`input` writes are
+// DEFENSIVE NORMALIZATION (nil-slot defaulting before projection), not business
+// mutation. Each entry carries an owner + deadline at the call site.
+//
+// internal/capabilities/cliprender/worker_result.go was added 2026-09-12 when
+// this gate was rescoped off the deleted internal/application root and
+// re-exposed the defaulting block in renderedResult (owner=cliprender,
+// deadline=2026-12-31).
 var inputMutationAllowlist = map[string]bool{
 	"internal/capabilities/assets/providers/stock/stockpipeline/run_orchestrator.go": true,
 	"internal/capabilities/assets/providers/stock/stockpipeline/query_resolution.go": true,
 	"internal/capabilities/jobs/queue/enqueue_service.go":                            true,
-	"internal/application/lessons/service.go":                                        true,
-	"internal/capabilities/voiceover/service/stages.go":                              true,
+
+	"internal/capabilities/voiceover/service/stages.go": true,
+	"internal/capabilities/cliprender/worker_result.go": true,
 }
 
 func isHTTPReq(e ast.Expr) bool {

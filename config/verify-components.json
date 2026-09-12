@@ -167,6 +167,8 @@
       "docs/",
       "README.md",
       "AGENTS.md",
+      "CONTRIBUTING.md",
+      "CANONICAL.md",
       "scripts/README.md",
       "ops/benchmarks/"
     ],
@@ -342,7 +344,7 @@
       "internal/platform/httpserver/middleware/",
       "internal/platform/httpserver/transport/",
       "scripts/admin/generate_routes_yaml.go",
-      "scripts/archcheck/gates/"
+      "cmd/archcheck/gates/"
     ],
     "go_packages": [
       "./internal/capabilities/middleware/...",

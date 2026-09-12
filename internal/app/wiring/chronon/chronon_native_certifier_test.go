@@ -11,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
 // fakeCertRunner stands in for every command the certifier shells out to.
@@ -273,50 +271,24 @@ func TestChrononNativeCertifier_FingerprintIncludesEnvironmentComponents(t *test
 	}
 }
 
-// TestChrononCertifiedCapabilityProbe_SetsFlagFromCertifier verifies the
-// decorator probe maps the certifier outcome onto the capability flag while
-// passing the base capabilities (binary presence) through.
-func TestChrononCertifiedCapabilityProbe_SetsFlagFromCertifier(t *testing.T) {
-	base := chrononRecordingProbe{caps: cliprender.RendererCapabilities{
-		ChrononVulkan: true,
-	}}
-
-	// Certified binary → flag on, base caps pass through.
-	runnerOK := &fakeCertRunner{}
-	certOK := newTestCertifier(t, runnerOK)
-	probeOK := chrononCertifiedCapabilityProbe{base: base, cert: certOK}
-	caps, err := probeOK.ProbeCapabilities(context.Background())
-	if err != nil {
-		t.Fatalf("ProbeCapabilities(certified): %v", err)
-	}
-	if !caps.ChrononVulkan || !caps.ChrononNativeCertified {
-		t.Fatalf("caps = %+v, want binary present AND certified", caps)
+// TestChrononNativeCertifier_StaysReadyAcrossCertification pins the
+// post-demolition contract: certification is a host-readiness diagnostic.
+// PipelineGen no longer projects it into a backend capability (RenderingGen
+// owns backend selection), so the certifier is exercised directly instead of
+// through a removed capability probe decorator.
+func TestChrononNativeCertifier_StaysReadyAcrossCertification(t *testing.T) {
+	cert := newTestCertifier(t, &fakeCertRunner{})
+	if !cert.Certified(context.Background()) {
+		t.Fatal("a healthy certification run must report Certified=true")
 	}
 
-	// Configured but failed certification → flag stays OFF (the binary is
-	// still reported as configured for diagnostics; the resolver gates on
-	// the certified flag only).
-	runnerBad := &fakeCertRunner{renderErr: errors.New("exit status 1")}
-	certBad := newTestCertifier(t, runnerBad)
-	probeBad := chrononCertifiedCapabilityProbe{base: base, cert: certBad}
-	caps, err = probeBad.ProbeCapabilities(context.Background())
-	if err != nil {
-		t.Fatalf("ProbeCapabilities(uncertified): %v", err)
-	}
-	if !caps.ChrononVulkan {
-		t.Fatal("binary presence must still be reported for diagnostics")
-	}
-	if caps.ChrononNativeCertified {
-		t.Fatal("certified = true after a failed certification, want false")
+	failed := newTestCertifier(t, &fakeCertRunner{renderErr: errors.New("exit status 1")})
+	if failed.Certified(context.Background()) {
+		t.Fatal("a failed certification run must report Certified=false")
 	}
 
-	// No certifier at all (never wired) → flag OFF, base still passes.
-	probeNil := chrononCertifiedCapabilityProbe{base: base}
-	caps, err = probeNil.ProbeCapabilities(context.Background())
-	if err != nil {
-		t.Fatalf("ProbeCapabilities(nil cert): %v", err)
-	}
-	if caps.ChrononNativeCertified {
-		t.Fatal("certified = true with a nil certifier, want false")
+	var never *chrononNativeCertifier
+	if never.Certified(context.Background()) {
+		t.Fatal("a nil certifier must report Certified=false")
 	}
 }

@@ -15,6 +15,7 @@
 package operator
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -39,7 +40,8 @@ func (h *Handler) handleOutboxStatus(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	statuses := []string{"pending", "processing", "completed", "dead_letter", "superseded"}
+	// Canonical lifecycle vocabulary OWNED by internal/kernel/event.
+	statuses := event.OutboxLifecycleStatuses()
 	counts := make(map[string]int64, len(statuses))
 
 	for _, status := range statuses {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -49,6 +50,9 @@ func writeFakeVideo(t *testing.T) string {
 }
 
 func publishInput(videoPath, title, mode, folderID string) cliprender.RenderPublishInput {
+	// The publisher adopts the caller-certified digest and never re-reads the
+	// artifact, so the fixture certifies the exact bytes it wrote.
+	contentHash, size, _ := digest.SHA256File(videoPath)
 	in := cliprender.RenderPublishInput{
 		RunID:         "run-pub-1",
 		SourceAssetID: "source-asset-001",
@@ -56,10 +60,13 @@ func publishInput(videoPath, title, mode, folderID string) cliprender.RenderPubl
 		OutputPath:    videoPath,
 		Outcome: &cliprender.RenderOutcome{
 			OutputPath:  videoPath,
-			SizeBytes:   1,
+			SizeBytes:   size,
+			SHA256:      contentHash,
 			DurationSec: 3,
 		},
-		DriveFolderID: folderID,
+		CertifiedSHA256:    contentHash,
+		CertifiedSizeBytes: size,
+		DriveFolderID:      folderID,
 	}
 	if mode != "" {
 		in.Subtitles = &cliprender.SubtitleArtifact{
@@ -117,6 +124,33 @@ func TestClipRenderPublisher_BurnMode_NeverUploadsAss(t *testing.T) {
 	}
 	if commits[0].FolderID != "leaf-123" {
 		t.Errorf("commit folder = %q, want leaf-123", commits[0].FolderID)
+	}
+}
+
+// TestClipRenderPublisher_FailsClosedWithoutCertifiedDigest pins item 8: the
+// publisher adopts the digest the producing boundary already certified and
+// never silently re-reads the artifact. An uncertified artifact is a typed
+// error before any Drive upload or asset commit.
+func TestClipRenderPublisher_FailsClosedWithoutCertifiedDigest(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPublisher() error = %v", err)
+	}
+	video := writeFakeVideo(t)
+
+	in := publishInput(video, "Uncertified", cliprender.SubtitlesModeBurn, "leaf-uncertified")
+	in.CertifiedSHA256 = ""
+	in.CertifiedSizeBytes = 0
+	if _, err := p.Publish(context.Background(), in); err == nil {
+		t.Fatal("publication without a certified digest must fail closed")
+	}
+	if got := len(drive.publishRequests()); got != 0 {
+		t.Fatalf("Drive uploads = %d, want 0 when the artifact is uncertified", got)
+	}
+	if got := len(committer.commitRequests()); got != 0 {
+		t.Fatalf("asset commits = %d, want 0 when the artifact is uncertified", got)
 	}
 }
 

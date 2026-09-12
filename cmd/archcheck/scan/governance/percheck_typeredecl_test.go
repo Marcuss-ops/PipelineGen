@@ -90,12 +90,11 @@ type Dup struct {
 	}
 }
 
-// TestScanTypeRedeclarations_AllowlistRespected pins the canonical
-// godlike/08 zero-baseline rule semantics: a (pkg, TypeName) pair
-// listed in the allowlist is exempt. The allowlist path is
-// docs/migrations/duplicate-types-allowlist.txt (matches
-// the shell check's `if [ -f ... ]` guard).
-func TestScanTypeRedeclarations_AllowlistRespected(t *testing.T) {
+// TestScanTypeRedeclarations_DeletedAllowlistNoLongerSuppresses pins the
+// post-2026-09-12 contract: the transitional allowlist file was deleted with
+// its loader, so even a seeded copy is inert and the duplicate surfaces. The
+// gate now fails directly on any same-package duplicate type declaration.
+func TestScanTypeRedeclarations_DeletedAllowlistNoLongerSuppresses(t *testing.T) {
 	root := t.TempDir()
 	writeFileFixture(t, root, "internal/foo/a.go", `package foo
 
@@ -105,13 +104,14 @@ type Dup struct{ A int }
 
 type Dup struct{ B string }
 `)
-	// Seed the allowlist with the (pkg, type) pair.
+	// Seed the retired allowlist path with the (pkg, type) pair — it must be
+	// ignored now that the loader is gone.
 	writeFileFixture(t, root, "docs/migrations/duplicate-types-allowlist.txt",
 		"foo:Dup   # transitional — owner: @test, deadline: 2026-09-01\n")
 	r := &report.Report{}
 	ScanTypeRedeclarations(root, &policy.Policy{}, r)
-	if len(r.Violations) != 0 {
-		t.Errorf("allowlisted (foo, Dup) should produce 0 violations, got %d: %+v", len(r.Violations), r.Violations)
+	if len(r.Violations) != 1 {
+		t.Errorf("duplicate must surface regardless of a seeded allowlist file, got %d: %+v", len(r.Violations), r.Violations)
 	}
 }
 
@@ -220,37 +220,4 @@ type Dup struct{ B int }
 	if len(r.Violations) != 1 {
 		t.Fatalf("missing allowlist should not suppress violations; got %d: %+v", len(r.Violations), r.Violations)
 	}
-}
-
-// TestLoadDuplicateTypesAllowlist pins the parser contract:
-// comment lines are skipped, blank lines are skipped, and the
-// first whitespace-separated token is consumed verbatim. A
-// missing file returns an empty map (no exceptions).
-func TestLoadDuplicateTypesAllowlist(t *testing.T) {
-	t.Run("missing file returns empty set", func(t *testing.T) {
-		root := t.TempDir()
-		got := loadDuplicateTypesAllowlist(root)
-		if len(got) != 0 {
-			t.Errorf("missing allowlist should return empty set, got %v", got)
-		}
-	})
-	t.Run("parses first whitespace token per line", func(t *testing.T) {
-		root := t.TempDir()
-		writeFileFixture(t, root, "docs/migrations/duplicate-types-allowlist.txt",
-			"# header comment\n"+
-				"\n"+
-				"foo:Alpha   # rationale + owner + deadline\n"+
-				"bar:Beta\n"+
-				"  baz:Gamma  \n", // leading whitespace + trailing whitespace
-		)
-		got := loadDuplicateTypesAllowlist(root)
-		if len(got) != 3 {
-			t.Fatalf("expected 3 entries, got %d: %v", len(got), got)
-		}
-		for _, k := range []string{"foo:Alpha", "bar:Beta", "baz:Gamma"} {
-			if !got[k] {
-				t.Errorf("allowlist missing key %q; got %v", k, got)
-			}
-		}
-	})
 }

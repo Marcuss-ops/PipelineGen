@@ -32,7 +32,7 @@ import (
 // interface-method signature match.
 type stubAtomic struct{}
 
-func (s *stubAtomic) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
+func (s *stubAtomic) EnrichAndIndex(ctx context.Context, clipID string) error {
 	return nil
 }
 

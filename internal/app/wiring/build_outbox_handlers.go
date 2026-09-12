@@ -3,8 +3,8 @@
 // Extracted from build_bundles_process.go::BuildOutboxBundle (July 2026
 // sub-section split). Owns: buildOutboxDeps (outbox.Deps construction
 // incl. httpClient/HMAC secrets/source querier/metadata-export handler),
-// registerOutboxCoreHandlers (media-demolished: no media/Qdrant handler
-// in any mode) and registerOutboxWorkers (optional +
+// assertSingleMediaIndexOwner (fail-closed single-owner assertion for the
+// media index plane) and registerOutboxWorkers (optional +
 // script.generate.queued + publisher + drive-uploader workers). All
 // error strings keep the canonical "BuildOutboxBundle:" prefix so the
 // fail-closed contract observed by composition_failclosed_test.go is
@@ -175,30 +175,43 @@ func buildOutboxDeps(
 	return outboxDeps, metadataExportHandler
 }
 
-// registerOutboxCoreHandlers registers the fail-closed core outbox
-// handlers. Extracted verbatim from BuildOutboxBundle (July 2026).
+// assertSingleMediaIndexOwner is the fail-closed composition assertion that
+// replaced the retired registerOutboxCoreHandlers no-op (POSTGRES-MEDIA-CUTOVER,
+// September 2026). The previous function registered nothing and returned nil in
+// every mode, so its six parameters were dead architecture kept alive only by
+// `_ = param` pins; a no-op cannot fail closed, so it could not actually enforce
+// the invariant its log line described.
 //
-// MEDIA DEMOLITION (September 2026, POSTGRES-MEDIA-CUTOVER): the staged
-// Qdrant compatibility branch is GONE. The SQLite outbox NEVER registers a
-// media index handler in any mode: the media index plane is the pgvector
-// PostgresIndexWorker over the PostgreSQL SSOT, and the canonical media
-// committer emits asset.index.requested into the PG outbox. A stray media
-// event in the SQLite outbox dead-letters loudly instead of silently
-// projecting into Qdrant (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0,
-// unconditionally).
-func registerOutboxCoreHandlers(
-	eventsRegistry *outboxevents.HandlerRegistry,
+// The invariant it now *enforces* at boot is that the media index plane has
+// exactly one owner — the pgvector PostgresIndexWorker over the PostgreSQL SSOT:
+//
+//   - PostgreSQL media enabled but no worker built => the plane has NO owner.
+//     Boot aborts: continuing would dead-letter every asset.index.requested.
+//   - the SQLite control-plane outbox registering a consumer for
+//     asset.index.requested => a SECOND owner. Boot aborts: a stray media event
+//     must dead-letter loudly rather than project into a third plane.
+//
+// The retired Qdrant media projection branch is gone, so there is no ordering
+// dependency left and this assertion takes no Repository/Qdrant handles.
+func assertSingleMediaIndexOwner(
 	cfg *config.Config,
-	repos *RepoBundle,
-	qd *QdrantDeps,
-	outboxDeps *jobsoutbox.Deps,
+	eventsRegistry *outboxevents.HandlerRegistry,
+	pgIndexWorker *pgmedia.PostgresIndexWorker,
 	log *zap.Logger,
 ) error {
-	_ = cfg
-	_ = repos
-	_ = qd
-	_ = outboxDeps
-	log.Info("POSTGRES-MEDIA-CUTOVER: media index plane = pgvector PostgresIndexWorker; SQLite outbox registers NO media/Qdrant projection handlers in any mode (QDRANT_MEDIA_WRITES=0, QDRANT_MEDIA_READS=0, QDRANT_MEDIA_COMPATIBILITY=0)")
+	if cfg == nil {
+		return fmt.Errorf("BuildOutboxBundle: media index owner assertion requires a config")
+	}
+	if cfg.MediaPostgreSQL.Enabled && pgIndexWorker == nil {
+		return fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but no PostgresIndexWorker was built; the media index plane would have no owner (POSTGRES-MEDIA-CUTOVER)")
+	}
+	if eventsRegistry != nil {
+		if _, registered := eventsRegistry.Get(outboxevents.EventAssetIndexRequested); registered {
+			return fmt.Errorf("BuildOutboxBundle: SQLite outbox registered a handler for %q; the media index plane is owned by the PostgreSQL PostgresIndexWorker (POSTGRES-MEDIA-CUTOVER)", outboxevents.EventAssetIndexRequested)
+		}
+	}
+	log.Info("POSTGRES-MEDIA-CUTOVER: single media index owner asserted; media index plane = pgvector PostgresIndexWorker",
+		zap.Bool("postgres_media_enabled", cfg.MediaPostgreSQL.Enabled))
 	return nil
 }
 
@@ -215,7 +228,6 @@ func registerOutboxWorkers(
 	jobs *JobsBundle,
 	stagingSvc staging.Store,
 	repo detail.ArtifactStageRepository,
-	imageRepo *imagesrepo.ImagesRepository,
 	drivePublisher delivery.Publisher,
 ) (*publishoutbox.Handler, *publishdrive.Handler, error) {
 	// Optional handlers: best-effort. Missing deps here are logged
@@ -285,23 +297,14 @@ func registerOutboxWorkers(
 	}
 	log.Info("outbox publish_drive handler registered: artifact.staged.v1 → delivery.Publisher.Publish + Repository.MarkPublished (FASE 3 Push 3.1e)")
 
-	imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(imageRepo, drivePublisher, log)
-	if imageErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: image Drive delivery handler: %w", imageErr)
-	}
-	if regErr := eventsRegistry.Register(imageDriveDeliveryOutboxAdapter{handler: imageHandler}); regErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: register image Drive delivery handler: %w", regErr)
-	}
-	log.Info("outbox image Drive delivery handler registered: image.drive_delivery.requested → delivery.Publisher.Publish")
+	// NB: image.drive_delivery.requested is deliberately NOT registered on the
+	// SQLite outbox. The canonical media committer emits it into the
+	// PostgreSQL outbox (see registerPostgresMediaOutboxHandlers), so a SQLite
+	// registration could never receive an event: it would only be a second
+	// consumer for the same fact. The image Drive handler is wired once, on
+	// the PG worker.
 
 	return publisherHandler, driveUploadHandler, nil
-}
-
-// imageDriveDeliveryOutboxAdapter keeps the SQLite outbox envelope at the
-// composition boundary. The image capability owns only its payload handler;
-// this adapter owns the concrete outboxevents.Handler contract.
-type imageDriveDeliveryOutboxAdapter struct {
-	handler *imagesapp.ImageDriveDeliveryHandler
 }
 
 // registerPostgresMediaOutboxHandlers wires external delivery consumers into
@@ -342,16 +345,6 @@ func registerPostgresMediaOutboxHandlers(
 	return nil
 }
 
-func (a imageDriveDeliveryOutboxAdapter) EventType() string {
-	return imagesapp.EventTypeImageDriveDeliveryRequested
-}
-func (a imageDriveDeliveryOutboxAdapter) IdempotencyKey() string {
-	return imagesapp.EventTypeImageDriveDeliveryRequested + ".v1"
-}
-func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxevents.Event) error {
-	return a.handler.HandlePayload(ctx, evt.PayloadJSON)
-}
-
 // registerPerformanceProjectionHandler registers the job.completed
 // performance-projection handler. It is best-effort (derived projection): a
 // missing DB handle or a construction error logs a Warn and skips — the
@@ -384,7 +377,7 @@ func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRe
 }
 
 // jobCompletedPerformanceAdapter keeps the SQLite outbox envelope at the
-// composition boundary (mirrors imageDriveDeliveryOutboxAdapter). The
+// composition boundary. The
 // performance capability owns only the ProjectionService port; this adapter
 // owns the concrete outboxevents.Handler contract and extracts the job id
 // from the event envelope before delegating to the projection.

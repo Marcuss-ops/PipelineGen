@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -219,7 +220,7 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 			return capregistry.BackfillReport{}, err
 		}
 		plannedKey := sourceType + "\x00" + sourceRef
-		if plannedOwner, ok := plannedOwners[plannedKey]; ok && !containsString(owners, plannedOwner) {
+		if plannedOwner, ok := plannedOwners[plannedKey]; ok && !slices.Contains(owners, plannedOwner) {
 			owners = append(owners, plannedOwner)
 		}
 		switch {
@@ -263,15 +264,6 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 		}
 	}
 	return report, nil
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 // deriveSourceIdentity maps only explicit durable source columns. It does not

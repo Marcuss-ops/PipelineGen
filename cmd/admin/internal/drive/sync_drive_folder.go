@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 const normalClipsDriveFolderID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
@@ -59,7 +60,7 @@ func RunSyncDriveFolder(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
 	if err != nil {
 		return fmt.Errorf("read outbox dead-letter baseline: %w", err)
 	}
@@ -96,15 +97,15 @@ func RunSyncDriveFolder(args []string) error {
 
 func WaitForAssetIndexOutbox(ctx context.Context, root *wiring.ComposeRoot, deadLettersBefore int64) error {
 	for {
-		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "pending")
+		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "pending")
 		if err != nil {
 			return fmt.Errorf("read pending asset index events: %w", err)
 		}
-		processing, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "processing")
+		processing, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "processing")
 		if err != nil {
 			return fmt.Errorf("read processing asset index events: %w", err)
 		}
-		deadLetters, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+		deadLetters, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
 		if err != nil {
 			return fmt.Errorf("read asset index dead letters: %w", err)
 		}

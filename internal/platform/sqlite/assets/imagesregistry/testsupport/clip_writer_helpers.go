@@ -27,8 +27,8 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // ── Column-mapping derivation helpers (from clip_atomic_writer_asset.go) ─
@@ -124,10 +124,11 @@ func filepathBase(p string) string {
 
 // ── Outbox helpers (from clip_atomic_writer_outbox.go) ──────────────
 
-// isTerminalOutboxStatus reports whether an outbox row's status is
-// terminal (dead_letter or superseded).
+// isTerminalOutboxStatus reports whether an outbox row's status is terminal.
+// Delegates to the canonical predicate OWNED by internal/kernel/event so the
+// test double cannot disagree with production about the lifecycle set.
 func isTerminalOutboxStatus(status string) bool {
-	return status == "dead_letter" || status == outboxevents.SupersedeStatus
+	return event.IsTerminalOutboxStatus(status)
 }
 
 // checkOutboxTerminalAfterCommit inspects the outbox enqueue result

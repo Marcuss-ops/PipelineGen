@@ -4,7 +4,7 @@
 // (PR-API-MODULE-DEPS-MAX-8, July 2026).
 //
 // scan/percheck_api_module_deps_max_8.go owns the Go-migrated
-// forward-prevention gate. It walks <root>/internal/api/**/module.go
+// forward-prevention gate. It walks <root>/internal/capabilities/**/module.go
 // in AST mode (`go/parser` + `go/ast` + `go/token`) — strictly
 // more robust than regex line-counting for grouped multi-decl
 // fields (`A, B Service` counts as 2), embedded fields (anonymous
@@ -28,11 +28,11 @@
 // ClipsModule's `Dependencies` is the WIRE-IN to the 7 sub-
 // descriptors — its wide shape is intentional — and the 7 sub-
 // modules are the narrow typed-cluster consumers. Every other
-// module under internal/api/**/module.go whose `Dependencies`
+// module under internal/capabilities/**/module.go whose `Dependencies`
 // bag carries > 8 fields trips the gate and surfaces as a CI
 // build failure (godlike/07 NO-FAKE-AVAILABILITY).
 //
-// Detection rule: walk only `<root>/internal/api/**/module.go`
+// Detection rule: walk only `<root>/internal/capabilities/**/module.go`
 // (the canonical Build-entrypoint location per the Capability
 // Standard module.go contract). Each module.go is parsed; any
 // top-level `*ast.TypeSpec` whose `Name.Name in {"Dependencies",
@@ -96,14 +96,18 @@ const apiModuleDepsMaxRule = "percheck_api_module_deps_max_8"
 // Operators adding a new already-split module rewrite the
 // comment block above AND append the path here in lockstep.
 var apiModuleDepsMaxBypassRelPaths = []string{
-	"internal/api/assets/clips/module.go",         // upper ClipsModule (PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE)
-	"internal/api/assets/clips/catalog/module.go", // catalog sub
-	"internal/api/assets/clips/ingest/module.go",  // ingest sub
-	"internal/api/assets/clips/processing/module.go",
-	"internal/api/assets/clips/publication/module.go",
-	"internal/api/assets/clips/indexing/module.go",
-	"internal/api/assets/clips/operations/module.go",
-	"internal/api/assets/clips/bulk/module.go",
+	"internal/capabilities/assets/clips/module.go",         // upper ClipsModule (PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE)
+	"internal/capabilities/assets/clips/catalog/module.go", // catalog sub
+	"internal/capabilities/assets/clips/ingest/module.go",  // ingest sub
+	"internal/capabilities/assets/clips/processing/module.go",
+	"internal/capabilities/assets/clips/publication/module.go",
+	// NOTE 2026-09-12: the previous `…/clips/indexing/module.go` entry was a
+	// ghost — no such file exists (the live sub-descriptors are catalog, ingest,
+	// processing, publication, operations, bulk plus the upper module). A
+	// never-matching exemption silently inflates the apparent perimeter, so it
+	// was dropped rather than carried forward.
+	"internal/capabilities/assets/clips/operations/module.go",
+	"internal/capabilities/assets/clips/bulk/module.go",
 }
 
 // apiModuleDepsMaxNote is the violation Note string for
@@ -129,8 +133,7 @@ func apiDepsWarn(r *report.Report, label, msg string) {
 // Each module is parsed once; structural parse errors are
 // surfaced as single violations per file (operator-readable
 // infra failure, not silent skip).
-func ScanApiModuleDepsMax8(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanApiModuleDepsMax8(root string, _ *policy.Policy, r *report.Report) {
 	walkApiModuleFiles(root, func(relPath, absPath string) {
 		count, found, parseErr := scanApiModuleDepsFile(absPath)
 		if parseErr != nil {
@@ -180,13 +183,18 @@ func ScanApiModuleDepsMax8(root string, pol *policy.Policy, r *report.Report) {
 	})
 }
 
-// walkApiModuleFiles walks <root>/internal/api/**/module.go.
+// walkApiModuleFiles walks <root>/internal/capabilities/**/module.go.
 // Test files (`_test.go`) are skipped at the basename level even
 // though module.go is rarely a test path — defence-in-depth for
 // future fixture patterns. Skip-dir mirrors the canonical
 // skip-dir set used by sibling perchecks.
 func walkApiModuleFiles(root string, fn func(relPath, absPath string)) {
-	apiRoot := filepath.Join(root, "internal", "api")
+	// Rescoped 2026-09-12: internal/api was deleted in the August 2026 root
+	// consolidation, so the walk yielded nothing and this cap was unenforced. The
+	// HTTP-layer module packages now live under internal/platform/httpserver, and
+	// the per-capability module packages under internal/capabilities — the latter
+	// is where module.go files exist today.
+	apiRoot := filepath.Join(root, "internal", "capabilities")
 	skipDirs := map[string]bool{
 		".git":         true,
 		"vendor":       true,

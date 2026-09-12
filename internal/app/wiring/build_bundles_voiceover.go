@@ -140,8 +140,14 @@ func buildVoiceoverPipeline(
 	var outboxEnqueuer voiceover.TxOutboxEnqueuer
 	if outboxDispatcher != nil {
 		outboxEnqueuer = outboxDispatcher
+		// POSTGRES-MEDIA-CUTOVER (2026-09-12): the media index consumer is
+		// the PostgreSQL outbox worker (PostgresIndexWorker), NOT clipindexer.
+		// clipindexer.Enabled is therefore no longer a precondition for
+		// consumer-side indexing; the check is retained only to flag a
+		// half-wired compatibility seam (imperative IndexClip callers that
+		// would fall through to the retired SQLite → Qdrant implementation).
 		if clipIndexerService == nil || !clipIndexerService.IsEnabled() {
-			log.Warn("voiceover service wired with outbox dispatcher but clipIndexer disabled — asset.index.requested events will be enqueued but no consumer-side indexing will execute")
+			log.Warn("voiceover service wired with outbox dispatcher but the clipindexer compatibility seam is disabled — asset.index.requested events are still consumed by the PostgreSQL outbox worker (pgvector), but imperative IndexClip callers have no fallback")
 		}
 	} else {
 		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
@@ -277,8 +283,6 @@ func buildVoiceoverPipeline(
 	// destResolver==nil branch above), processItemUseCase is nil
 	// and Service.GeneratePromo surfaces a typed error — fail-closed
 	// per godlike/07 NO-FAKE-AVAILABILITY.
-	// pylint: disable=unused
-	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	return voRepo, processItemUseCase, audioProcessor, publishPool, nil

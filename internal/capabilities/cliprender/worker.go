@@ -47,8 +47,13 @@ type Worker struct {
 	publisher         RenderPublisher           // optional in unit tests; required by production wiring
 	folderResolver    DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
 	overlayResolver   OverlaySegmentResolver    // optional until overlay compositing is wired
-	overlayCompositor OverlayCompositor         // optional until overlay compositing is wired
-	outputProber      OutputProber              // probes actual bytes for exact contract validation
+	overlayCompositor OverlayCompositor         // legacy post-render compositor; unused on the single-pass path
+	// singlePassOverlay composites the entity overlay INSIDE the Chronon
+	// render (the sealed plan carries the timed video layer), so the clip is
+	// encoded once. When false the legacy post-render compositor performs a
+	// second full transcode (kept as the transitional path).
+	singlePassOverlay bool
+	outputProber      OutputProber // probes actual bytes for exact contract validation
 	log               *zap.Logger
 }
 
@@ -207,6 +212,44 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// ── Seal the fully-resolved plan ───────────────────────────────────
 	// WatermarkSpec is the single owner of watermark text/position/opacity/
 	// margin/style; there is no separate WatermarkText spelling.
+	// ── Entity overlay resolution ───────────────────────────────────────
+	// SINGLE-PASS path: the overlay segment must be part of the sealed plan,
+	// so it is resolved BEFORE Compile and Chronon composites it as a timed
+	// video layer in the same render pass — the clip is encoded once. LEGACY
+	// path: the segment is resolved after the render and blended by the
+	// post-render compositor (a second full transcode, retained transitionally).
+	var overlayInput *PlanOverlayInput
+	singlePassOverlay := w.singlePassOverlay && req.Overlay != nil
+	if singlePassOverlay {
+		if w.overlayResolver == nil {
+			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (single-pass compositing not configured)")
+		}
+		segment, err := w.overlayResolver.Resolve(ctx, OverlayResolveInput{
+			RenderJobID: req.Overlay.RenderJobID,
+			RenderKey:   req.Overlay.RenderKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: resolve overlay segment: %w", err)
+		}
+		if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
+			return nil, fmt.Errorf("clip.render: overlay resolver returned an invalid segment")
+		}
+		overlayInput = &PlanOverlayInput{
+			Segment: segment,
+			// Microsecond lineage → millisecond plan window, rounded to the
+			// nearest millisecond so the window is never systematically early.
+			StartMS: (req.Overlay.StartUS + 500) / 1000,
+			EndMS:   (req.Overlay.EndUS + 500) / 1000,
+		}
+		emit("clip.render.overlay.single_pass", "overlay composited inside the Chronon render pass (single encode)", map[string]any{
+			"render_job_id": req.Overlay.RenderJobID,
+			"render_key":    req.Overlay.RenderKey,
+			"sha256":        segment.SHA256,
+			"start_ms":      overlayInput.StartMS,
+			"end_ms":        overlayInput.EndMS,
+		})
+	}
+
 	var watermarkSpec *WatermarkSpec
 	if req.Watermark != nil && req.Watermark.Enabled {
 		watermarkSpec = req.Watermark
@@ -224,6 +267,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		Cues:                   prepared.Transcript.Cues,
 		Contract:               prepared.Contract,
 		AudioMode:              req.Audio.Mode,
+		Overlay:                overlayInput,
 		OutputPath:             filepath.Join(runDir, "rendered-clip.mp4"),
 		ForegroundScalePercent: req.Output.ForegroundScalePercent,
 	})
@@ -249,9 +293,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	progress(90, "plan sealed; rendering with Chronon")
+	// render_slot is the interval this Master job HOLDS its render slot. It is
+	// measured from the renderer invocation to the materialized artifact, i.e.
+	// the real occupancy the slot pool/gate bounds — never a zero-width marker
+	// (the previous start==end form measured nothing and reported 0 ms of slot
+	// wait for every render).
 	renderSlotStart := time.Now()
-	renderSlotEnd := renderSlotStart
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderSlotEnd, kernobs.StageStatusCompleted, nil)
 	renderStart := time.Now()
 	w.log.Info("clip.render.job.phase",
 		zap.String("subsystem", "clip_render_worker"),
@@ -278,6 +325,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}()
 	renderEnd := time.Now()
 	renderMS := renderEnd.Sub(renderStart).Milliseconds()
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusCompleted, nil)
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, renderEnd, err)
 	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {
@@ -391,17 +439,16 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		})
 	}
 
-	// ── Overlay compositing (entity overlays) ───────────────────────────
-	// When the request declares an overlay, the final video must contain
-	// THAT overlay in its pixels: resolve the rendered segment from the
-	// declared render_job_id, then blend it onto the source at the declared
-	// [start_us, end_us) window. Fail-closed: an overlay declared without a
-	// wired resolver/compositor, an unresolvable segment, or a failed blend
-	// is a typed error — the published video never claims an overlay it does
-	// not carry.
+	// ── Overlay compositing (legacy post-render path) ───────────────────
+	// Only used when single-pass compositing is disabled. The declared overlay
+	// is resolved from the render_job_id lineage and blended onto the source
+	// at [start_us, end_us), which encodes the clip a SECOND time. Fail-closed:
+	// an overlay declared without a wired resolver/compositor, an unresolvable
+	// segment, or a failed blend is a typed error — the published video never
+	// claims an overlay it does not carry.
 	publishPath := outcome.OutputPath
 	var composite *OverlayCompositeResult
-	if req.Overlay != nil {
+	if req.Overlay != nil && !singlePassOverlay {
 		if w.overlayResolver == nil {
 			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (compositing step not configured)")
 		}
@@ -492,22 +539,34 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// RunReport critical path separates the clip.render "drive" phase from
 	// the render chain. Publication metrics come exclusively from the
 	// publisher-owned report; no worker chronometer is copied into a V2 field.
+	// upload_slot is the real publication-slot occupancy: the wall the worker
+	// spends inside the publisher (hash-free certified commit + Drive hand-off
+	// or upload). Recorded after the publish call with measured anchors — the
+	// previous start==end marker reported a fake 0 ms.
 	uploadSlotStart := time.Now()
-	uploadSlotEnd := uploadSlotStart
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseUploadSlot, uploadSlotStart, uploadSlotEnd, kernobs.StageStatusCompleted, nil)
-	publishStart := time.Now()
+	publishStart := uploadSlotStart
+	// The certified digest published is the digest of the EXACT bytes at
+	// publishPath: the renderer-certified artifact for a plain render, or the
+	// overlay compositor's own digest when it re-encoded the clip.
+	certifiedSHA, certifiedSize := outcome.SHA256, outcome.SizeBytes
+	if composite != nil {
+		certifiedSHA, certifiedSize = composite.SHA256, composite.SizeBytes
+	}
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
-		RunID:         j.ID,
-		SourceAssetID: req.SourceAssetID,
-		SourceTitle:   prepared.Source.Title,
-		OutputPath:    publishPath,
-		Outcome:       outcome,
-		Contract:      prepared.Contract,
-		Transcript:    prepared.Transcript,
-		Subtitles:     subtitleArtifact,
-		DriveFolderID: publishFolderID,
+		RunID:              j.ID,
+		SourceAssetID:      req.SourceAssetID,
+		SourceTitle:        prepared.Source.Title,
+		OutputPath:         publishPath,
+		Outcome:            outcome,
+		Contract:           prepared.Contract,
+		Transcript:         prepared.Transcript,
+		Subtitles:          subtitleArtifact,
+		DriveFolderID:      publishFolderID,
+		CertifiedSHA256:    certifiedSHA,
+		CertifiedSizeBytes: certifiedSize,
 	})
 	publishEnd := time.Now()
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseUploadSlot, uploadSlotStart, publishEnd, kernobs.StageStatusCompleted, err)
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipPublish}, publishStart, publishEnd, err)
 	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseDrive, publishStart, publishEnd, kernobs.StageStatusCompleted, err)
 	if err != nil {

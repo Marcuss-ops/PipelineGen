@@ -8,13 +8,18 @@
 #   internal/application/voiceover  →  internal/capabilities/voiceover
 #   internal/application/youtube    →  internal/capabilities/youtube
 #   internal/application/scripts    →  internal/capabilities/scripts
-# The canonical prefix→bucket map lives in
-# scripts/archcheck/categorize_deprecations.go (subsystemPrefixes) and is
-# the SSOT for bucketing; the `voiceover` shard below now hosts records
-# rooted at internal/capabilities/voiceover, while youtube records root at
-# internal/capabilities/youtube (→ bucket "media", currently zero records).
-# Regenerate this file with `go run ./scripts/archcheck -migrate-deprecations`
-# after any record add/remove/move so the counts cannot drift.
+# The prefix→bucket map that produced the buckets below lived in
+# scripts/archcheck/categorize_deprecations.go (subsystemPrefixes), and the
+# generator/migrator was `go run ./scripts/archcheck -migrate-deprecations`.
+# Both were part of the legacy-burndown binary `scripts/archcheck`, which NO
+# make target or workflow ever invoked; it was demolished 2026-09-12.
+#
+# CONSEQUENCE: the counts below can no longer be regenerated automatically and
+# the deprecation-record validator (duplicate ids, expired removal_date,
+# required keys across records/*.yaml) is WITHDRAWN — nothing validates these
+# records today. Treat the shards as documentation until the validator is
+# re-implemented (e.g. as a cmd/archcheck scanner). Hand-edit the counts only
+# together with the records they summarise.
 audit:
     manifest_version: sharded-migration-v1
     total_records: 7

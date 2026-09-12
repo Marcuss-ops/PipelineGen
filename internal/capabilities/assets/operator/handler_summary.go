@@ -18,6 +18,7 @@ package operator
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -125,17 +126,19 @@ func (h *Handler) handleSummary(c *gin.Context) {
 		}
 	}
 
-	// Outbox stats
+	// Outbox stats. The bucket identifiers are OWNED by
+	// internal/kernel/event: the summary surfaces two counters
+	// (pending / dead_letter) but must not invent its own spellings.
 	if h.outboxPort != nil {
-		for _, status := range []string{"pending", "processing", "dead_letter"} {
+		for _, status := range []string{event.OutboxStatusPending, event.OutboxStatusProcessing, event.OutboxStatusDeadLetter} {
 			count, err := h.outboxPort.CountByStatus(ctx, status)
 			if err != nil {
 				continue
 			}
 			switch status {
-			case "pending":
+			case event.OutboxStatusPending:
 				summary["outbox_pending"] = count
-			case "dead_letter":
+			case event.OutboxStatusDeadLetter:
 				summary["outbox_failed"] = count
 			}
 		}

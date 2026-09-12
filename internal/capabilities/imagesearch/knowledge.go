@@ -334,6 +334,15 @@ var eventRE = regexp.MustCompile(`((?:historic|major|championship|title|epic|leg
 var eventREIT = regexp.MustCompile(`((?:storico|grande|importante|epico|leggendario)\s+(?:scontro|battaglia|clash|duello)(?:\s+dei\s+pesi\s+massimi)?)`)
 
 // ── Structural vocabulary ─────────────────────────────────────────────
+//
+// LEXICON_MIRROR_DEBT: owner=imagesearch, deadline=2026-12-31 — the maps
+// below are hardcoded mirrors of the canonical lexicon data
+// (config/lexicons/<lang>/{negative_particles,function_words,stopwords}.txt),
+// already drifted (`nor` here, absent from negative_particles.txt). They must
+// be migrated onto LexiconProfile before that date; the migration changes the
+// entity resolver's behaviour, so it ships with the golden battery. Until then
+// percheck_stopword_maps_in_app reports them as residue (non-fatal) and fails
+// closed automatically after 2026-12-31.
 
 // negationPhrases are the English constructions that exclude an entity that
 // follows them: particles ("not Mike Tyson") and multi-word contrast

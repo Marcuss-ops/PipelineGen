@@ -92,12 +92,19 @@ var ssotRules = []ssotRule{
 		}),
 	},
 	{
-		Name:             stopwordMapRule,
-		MatchedRule:      "stopword_maps_ssot_gate",
-		Scope:            []string{"internal/application/", "internal/infrastructure/"},
+		Name:        stopwordMapRule,
+		MatchedRule: "stopword_maps_ssot_gate",
+		// Scope = every target root that can hold production code. The
+		// historical scope (internal/application/, internal/infrastructure/)
+		// pointed at two roots deleted in August 2026, so this gate walked
+		// nothing and could never fire.
+		Scope:            []string{"internal/"},
 		SkipDirs:         policy.SkipDirs(),
 		SkipPathPrefixes: []string{ssotScannerSourcePrefix},
-		ScanFile:         scanStopwordMapRuleFile,
+		// The canonical linguistic-data owner is exempt by construction:
+		// stop-word sets are DATA of the LexiconRegistry, not code.
+		Owners:   []string{"internal/capabilities/linguistics/"},
+		ScanFile: scanStopwordMapRuleFile,
 	},
 	{
 		Name:             metadataKeyScannerRule,
@@ -135,7 +142,7 @@ var ssotRules = []ssotRule{
 		Scope:            []string{"internal/", "tests/", "cmd/"},
 		SkipDirs:         policy.SkipDirs(),
 		SkipPathPrefixes: []string{policy.ScannerSourcePrefix},
-		Owners:           assetCommitterEventSSOTExemptPathPrefixes,
+		Owners:           assetCommitterEventSSOTOwnerPaths,
 		ScanFile:         scanAssetCommitterEventRuleFile,
 	},
 }
@@ -186,7 +193,7 @@ func ScanStopwordMapsInApp(root string, _ *policy.Policy, r *report.Report) {
 }
 
 // ScanMetadataKeys is the registry-backed entry point for
-// percheck_metadata_key_registry (emitted rule id percheck_metadata_registry).
+// percheck_metadata_key_registry (emitted rule id percheck_metadata_key_registry).
 func ScanMetadataKeys(root string, _ *policy.Policy, r *report.Report) {
 	scanSSOTRule(root, r, ssotRuleByName(metadataKeyScannerRule))
 }

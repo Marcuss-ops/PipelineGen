@@ -72,6 +72,23 @@ func (w *Worker) WithOverlayCompositor(c OverlayCompositor) *Worker {
 	return w
 }
 
+// WithSinglePassOverlay selects how a declared entity overlay is composited.
+//
+// true  — the overlay segment is resolved before the plan is sealed and
+// carried INSIDE the Chronon render as a timed video layer: the clip is
+// encoded exactly once (the canonical path).
+// false — the legacy post-render FFmpeg compositor blends the segment after
+// the render, re-encoding the whole clip (transitional fallback).
+//
+// Defaults to false so a worker constructed without an explicit decision keeps
+// the historical behaviour; the composition root opts in explicitly.
+func (w *Worker) WithSinglePassOverlay(enabled bool) *Worker {
+	if w != nil {
+		w.singlePassOverlay = enabled
+	}
+	return w
+}
+
 // WithOutputProber attaches the post-render byte probe. When wired, the worker
 // certifies actual bytes via ProbeOutput→ValidateContract before Publish and
 // again after overlay composition. Optional in tests; required in production.

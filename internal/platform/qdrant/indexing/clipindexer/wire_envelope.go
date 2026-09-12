@@ -31,9 +31,10 @@
 //   - The request-side payload construction (4 map[string]any sites
 //     in indexing_api.go that build POST bodies) is NOT migrated —
 //     those are the Go→sidecar shape, not the sidecar→Go shape.
-//   - batch.go::HandleJob's map[string]any return for the job result
-//     is NOT migrated — that's a job-handler convention
-//     (appjobs.HandlerFunc), not a Qdrant wire-shape.
+//   - job-handler result shapes (the historical batch.go::HandleJob
+//     map[string]any return, removed with the media.reindex binding) are
+//     NOT migrated — that is an appjobs.HandlerFunc convention, not a
+//     Qdrant wire-shape.
 //
 // Backwards-compat: the existing extractEmbedding +
 // extractEmbeddingField + averageFrameEmbeddings + readJSONResponse

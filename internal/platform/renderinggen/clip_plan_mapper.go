@@ -27,11 +27,9 @@ package renderinggen
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -186,6 +184,56 @@ type overlayAudio struct {
 	Codec      string `json:"codec,omitempty"`
 	SampleRate int    `json:"sample_rate,omitempty"`
 	Channels   int    `json:"channels,omitempty"`
+}
+
+// Semantic contract slots for a rendered video overlay item. They mirror the
+// RenderingGen compiler's video-overlay kind/template (registry.go) — the
+// single spelling both sides share.
+const (
+	// SemanticKindVideoOverlay is the semantic kind of a pre-rendered overlay
+	// segment composited inside the same Chronon render pass.
+	SemanticKindVideoOverlay = "video_overlay"
+	// SemanticTemplateVideoOverlay is the registry template_id backing it.
+	SemanticTemplateVideoOverlay = "VIDEO_OVERLAY"
+)
+
+// overlayItem is the wire projection of one RenderingGen semantic item. The
+// field set mirrors semanticItem in RenderingGen's compiler, whose decoder
+// rejects unknown fields and requires the non-omitempty keys to be present —
+// so every slot is emitted explicitly, even when empty.
+type overlayItem struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	TemplateID string `json:"template_id"`
+	// PresetID/MotionID are ABSENT when empty: the published overlay-plan.v1
+	// contract declares them with minLength 1, so emitting "" would fail
+	// schema validation. A preset-less item (the rendered video overlay
+	// carries its own pixels) legitimately omits both.
+	PresetID     string            `json:"preset_id,omitempty"`
+	MotionID     string            `json:"motion_id,omitempty"`
+	MotionParams map[string]any    `json:"motion_params"`
+	Text         string            `json:"text"`
+	StartMS      int64             `json:"start_ms"`
+	EndMS        int64             `json:"end_ms"`
+	Params       map[string]any    `json:"params"`
+	Assets       []overlayAssetRef `json:"asset_refs"`
+}
+
+// overlaySegmentAssetID is the SINGLE owner of the overlay segment's
+// content-addressed asset identity. The mapper (plan emission) and the asset
+// prefetch (object-store staging) both derive the logical path from it, so the
+// URL the plan references is exactly the object the queue materializes.
+func overlaySegmentAssetID(overlay *cliprender.PlanOverlay) string {
+	short := strings.ToLower(strings.TrimSpace(overlay.SHA256))
+	if len(short) > 16 {
+		short = short[:16]
+	}
+	if short == "" {
+		// Fail-safe: the plan validator requires a sha256, so this is only
+		// reachable from a hand-built plan; keep the id content-independent.
+		short = "segment"
+	}
+	return "overlay-" + short
 }
 
 // overlayAssetRef references a content-addressed asset. The LogicalPath is
@@ -382,6 +430,34 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		Channels:   plan.Audio.Channels,
 	}
 
+	// Entity overlay — a pre-rendered segment composited INSIDE the same
+	// Chronon render pass. Emitting it as a semantic item is what removes the
+	// second full transcode: the clip is encoded once, with the overlay timed
+	// on the timeline (Chronon samples the segment at frame - layer_start).
+	if plan.Overlay != nil {
+		assetID := overlaySegmentAssetID(plan.Overlay)
+		item := overlayItem{
+			ID:           assetID,
+			Kind:         SemanticKindVideoOverlay,
+			TemplateID:   SemanticTemplateVideoOverlay,
+			MotionParams: map[string]any{},
+			Params:       map[string]any{"fit": "cover"},
+			StartMS:      plan.Overlay.StartMS,
+			EndMS:        plan.Overlay.EndMS,
+			Assets: []overlayAssetRef{{
+				AssetID:   assetID,
+				SHA256:    plan.Overlay.SHA256,
+				URL:       hashAddressedPath(assetID, "overlay.mp4"),
+				MediaType: "video/mp4",
+			}},
+		}
+		rawItem, err := json.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("clip plan mapper: marshal overlay item: %w", err)
+		}
+		op.Items = append(op.Items, json.RawMessage(rawItem))
+	}
+
 	raw, err := json.Marshal(op)
 	if err != nil {
 		return nil, fmt.Errorf("clip plan mapper: marshal overlay plan: %w", err)
@@ -436,6 +512,14 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 			LogicalPath: hashAddressedPath(plan.Watermark.AssetID, "watermark.png"),
 		})
 	}
+	if plan.Overlay != nil {
+		assetID := overlaySegmentAssetID(plan.Overlay)
+		refs = append(refs, assetRef{
+			Hash:        plan.Overlay.SHA256,
+			LogicalPath: hashAddressedPath(assetID, "overlay.mp4"),
+			LocalPath:   plan.Overlay.Path,
+		})
+	}
 	if plan.Watermark != nil && plan.Watermark.Text != "" && plan.Watermark.SHA256 == "" {
 		font, err := watermarkFontAssetForStyle(plan.Watermark.Style)
 		if err != nil {
@@ -454,33 +538,20 @@ type assetRef struct {
 }
 
 func watermarkFontAsset() (assetRef, error) {
-	const path = "assets/fonts/Montserrat-Bold.ttf"
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
-	}
-	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-montserrat-bold", "Montserrat-Bold.ttf"), LocalPath: path}, nil
+	return ResolveFontAsset(FontMontserratBold)
 }
 
 func fontAssetID(style *scriptpkg.VideoVisualStyleSpec) string {
 	if style != nil && strings.Contains(strings.ToLower(strings.TrimSpace(style.Font)), "poppins") {
-		return "font-poppins-bold"
+		return FontPoppinsBold
 	}
-	return "font-montserrat-bold"
+	return FontMontserratBold
 }
 
 func watermarkFontAssetForStyle(style *scriptpkg.VideoVisualStyleSpec) (assetRef, error) {
-	if fontAssetID(style) == "font-poppins-bold" {
-		return poppinsFontAsset()
-	}
-	return watermarkFontAsset()
+	return ResolveFontAsset(fontAssetID(style))
 }
 
 func poppinsFontAsset() (assetRef, error) {
-	const path = "assets/fonts/Poppins-Bold.ttf"
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return assetRef{}, fmt.Errorf("read %s: %w", path, err)
-	}
-	return assetRef{Hash: digest.SHA256Bytes(b), LogicalPath: hashAddressedPath("font-poppins-bold", "Poppins-Bold.ttf"), LocalPath: path}, nil
+	return ResolveFontAsset(FontPoppinsBold)
 }

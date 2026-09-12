@@ -72,6 +72,15 @@ type OutboxHandler interface {
 // projects the current status counts and never becomes a second store.
 type OutboxStatusMetrics interface {
 	ObserveOutboxStatus(eventType, status string, count int64)
+	// ObserveOutboxBacklog projects the queue depth and the age of the
+	// oldest unprocessed event so a stalled drain is visible without the
+	// worker paying a COUNT(*) probe per claim.
+	ObserveOutboxBacklog(eventType string, backlogCount int64, oldestEventAgeSeconds float64)
+	// ObserveOutboxProcessed records one event that reached terminal success.
+	// It is the numerator for the processing-rate panel: Prometheus derives
+	// rate(media_outbox_processed_total[5m]) per event type, so a flat rate
+	// against a rising backlog is the unambiguous "drain is stuck" signal.
+	ObserveOutboxProcessed(eventType string)
 }
 
 // ClaimNext claims the oldest pending event atomically (CTE claim with
@@ -271,18 +280,26 @@ func (w *PostgresIndexWorker) RefreshOutboxStatusMetrics(ctx context.Context) er
 		return nil
 	}
 	for eventType := range w.metricTypes {
-		var pending, deadLetter int64
+		var pending, deadLetter, backlog int64
+		var oldestEventAgeSeconds float64
+		// ONE round-trip per event type: the drain loop must never pay a
+		// COUNT(*) FILTER probe per claim. backlog = pending + processing
+		// (all uncompleted work); oldest_age = age of the oldest pending
+		// row, 0 when the queue is empty.
 		if err := w.repo.db.QueryRowContext(ctx, `
 			SELECT
 				COUNT(*) FILTER (WHERE status = 'pending'),
-				COUNT(*) FILTER (WHERE status = 'dead_letter')
+				COUNT(*) FILTER (WHERE status = 'dead_letter'),
+				COUNT(*) FILTER (WHERE status IN ('pending', 'processing')),
+				COALESCE(EXTRACT(EPOCH FROM (now() - MIN(created_at_ts) FILTER (WHERE status = 'pending'))), 0)
 			FROM outbox_events
 			WHERE event_type = $1
-		`, eventType).Scan(&pending, &deadLetter); err != nil {
+		`, eventType).Scan(&pending, &deadLetter, &backlog, &oldestEventAgeSeconds); err != nil {
 			return fmt.Errorf("media outbox status metrics %q: %w", eventType, err)
 		}
 		w.metrics.ObserveOutboxStatus(eventType, "pending", pending)
 		w.metrics.ObserveOutboxStatus(eventType, "dead_letter", deadLetter)
+		w.metrics.ObserveOutboxBacklog(eventType, backlog, oldestEventAgeSeconds)
 	}
 	return nil
 }
@@ -434,33 +451,62 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 	if leaseTTL <= 0 {
 		leaseTTL = DefaultLeaseTTL
 	}
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
+	// Metrics ride their own cadence, decoupled from claims: the loop below
+	// drains flat out while the outbox has work and idles on this ticker
+	// only once it is empty.
+	metricsTicker := time.NewTicker(pollInterval)
+	defer metricsTicker.Stop()
 
 	workerID := "pg-media-index-worker:" + w.ModelID
+	if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
+		w.logf(log, "media outbox: status metrics refresh failed", err)
+	}
 	for {
+		// Opportunistic metrics refresh while work is flowing (non-blocking).
 		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
-			w.logf(log, "media outbox: status metrics refresh failed", err)
+		case <-metricsTicker.C:
+			if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
+				w.logf(log, "media outbox: status metrics refresh failed", err)
+			}
+		default:
 		}
 		claim, err := w.repo.ClaimNext(ctx, workerID, leaseTTL)
 		if err != nil {
 			w.logf(log, "media index worker: claim failed", err)
+			if !w.waitForNextTick(ctx, metricsTicker, log) {
+				return
+			}
 			continue
 		}
 		if claim == nil {
-			continue // outbox drained
+			// Outbox drained: wait for the next tick instead of busy-polling.
+			if !w.waitForNextTick(ctx, metricsTicker, log) {
+				return
+			}
+			continue
 		}
 		if err := w.Handle(ctx, claim); err != nil {
 			w.logf(log, "media index worker: event "+fmt.Sprint(claim.Event.ID)+" failed", err)
+			continue
 		}
+		if w.metrics != nil {
+			w.metrics.ObserveOutboxProcessed(claim.Event.EventType)
+		}
+	}
+}
+
+// waitForNextTick blocks until the next poll interval (refreshing the outbox
+// status gauges on the same tick) and reports whether the loop should
+// continue: false means ctx was cancelled.
+func (w *PostgresIndexWorker) waitForNextTick(ctx context.Context, metricsTicker *time.Ticker, log Logger) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-metricsTicker.C:
 		if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
 			w.logf(log, "media outbox: status metrics refresh failed", err)
 		}
+		return true
 	}
 }
 
@@ -514,11 +560,4 @@ func (a *EmbedAssetTextAdapter) EmbedAssetText(ctx context.Context, assetID stri
 		return nil, err
 	}
 	return res.Vector, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

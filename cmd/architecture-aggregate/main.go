@@ -2,14 +2,14 @@
 //
 // Concatenates architecture/ownership/{modules,jobs,services,application,
 // infrastructure,packages}.yaml into architecture/ownership.generated.yaml
-// (committed canonical view consumed by scripts/archcheck/main.go).
+// (the committed canonical ownership view).
 //
 // Determinism: the generator is stdlib only (no gopkg.in/yaml.v3) because
-// yaml.v3 round-trips drop comments + reorder keys — the SSOT for
-// scripts/archcheck is the on-disk YAML file with its comments preserved
-// as documentation. Concatenation is byte-stable as long as each split
-// file is byte-stable, which is enforced by the per-file deterministic
-// writer in the splitter (architecture/ownership/<section>.yaml).
+// yaml.v3 round-trips drop comments + reorder keys — the SSOT is the on-disk
+// YAML file with its comments preserved as documentation. Concatenation is
+// byte-stable as long as each split file is byte-stable, which is enforced by
+// the per-file deterministic writer in the splitter
+// (architecture/ownership/<section>.yaml).
 //
 // Flags:
 //

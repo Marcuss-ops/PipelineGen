@@ -93,8 +93,7 @@ func identityOwners() map[string]identityOwner {
 // ScanIdentitySSOT walks every non-test .go file under <root>/internal/** and
 // <root>/cmd/** and emits a violation for each declaration of a canonical
 // identity literal made outside its owner package.
-func ScanIdentitySSOT(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanIdentitySSOT(root string, _ *policy.Policy, r *report.Report) {
 
 	owners := identityOwners()
 	skipDirs := policy.SkipDirs()

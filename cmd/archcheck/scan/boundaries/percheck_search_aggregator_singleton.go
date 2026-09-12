@@ -140,8 +140,7 @@ func searchAggregatorSingletonWarn(r *report.Report, label, msg string) {
 // site (counted even if total > 1) is recorded inline in the
 // violation Note so the operator can grep for the canonical
 // composition site.
-func ScanSearchAggregatorSingleton(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol
+func ScanSearchAggregatorSingleton(root string, _ *policy.Policy, r *report.Report) {
 
 	totalCallSites := 0
 	firstConstructionSite := ""

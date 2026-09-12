@@ -4,11 +4,13 @@
 // Hermetic (t.TempDir-anchored). Validates the four core
 // invariants of the AssetCommitter-event SSOT gate:
 //
-//  1. The canonical AssetCommitter emitting the literal is
-//     EXEMPT (no violation).
+//  1. The identity owner internal/kernel/event may DECLARE the
+//     literal (no violation); ANY other package declaring it
+//     trips the gate as SeverityError (symbol-based rule).
 //  2. A non-canonical producer emitting the literal trips
 //     the gate as SeverityError.
-//  3. Test fixtures are exempt.
+//  3. *_test.go files are skipped; non-_test fixtures are NOT
+//     exempt (they must reference the typed symbol).
 //  4. Comment-only references are residue-accounted (WARN in
 //     !productionOnly mode; silenced in productionOnly mode).
 //  5. The literal .v1 envelope form is also caught.
@@ -34,12 +36,29 @@ func makeFileForCommitterEventTest(t *testing.T, root, relPath, content string) 
 	}
 }
 
-// TestScanAssetCommitterEventSSOT_CanonicalExempt verifies
-// the canonical AssetCommitter emitting the literal is
-// EXEMPT (zero violations).
-func TestScanAssetCommitterEventSSOT_CanonicalExempt(t *testing.T) {
+// TestScanAssetCommitterEventSSOT_CanonicalOwnerExempt verifies the identity
+// owner (internal/kernel/event) may DECLARE the literal — the symbol-based
+// owner exemption.
+func TestScanAssetCommitterEventSSOT_CanonicalOwnerExempt(t *testing.T) {
 	root := t.TempDir()
-	// The canonical AssetCommitter emitting the literal.
+	makeFileForCommitterEventTest(t, root, "internal/kernel/event/identities.go",
+		`package event
+const AssetIndexRequested = "asset.index.requested"
+`)
+	rep := &report.Report{}
+	ScanAssetCommitterEventSSOT(root, nil, rep, true)
+	if got := len(rep.Violations); got != 0 {
+		t.Fatalf("owner declaration trips gate: got %d violations\nfirst: %s",
+			got, rep.Violations[0].Note)
+	}
+}
+
+// TestScanAssetCommitterEventSSOT_NonOwnerDeclarationTrips verifies a raw
+// literal declared OUTSIDE the owner package trips the gate. The former
+// 18-prefix allowlist wrongly exempted this exact path; the symbol-based rule
+// now requires internal/kernel/event.AssetIndexRequested instead.
+func TestScanAssetCommitterEventSSOT_NonOwnerDeclarationTrips(t *testing.T) {
+	root := t.TempDir()
 	makeFileForCommitterEventTest(t, root, "internal/capabilities/assets/persistence/committer.go",
 		`package persistence
 const AssetIndexRequestedLiteral = "asset.index.requested"
@@ -47,9 +66,8 @@ func CommitAsset() {}
 `)
 	rep := &report.Report{}
 	ScanAssetCommitterEventSSOT(root, nil, rep, true)
-	if got := len(rep.Violations); got != 0 {
-		t.Fatalf("canonical exempt trips gate: got %d violations\nfirst: %s",
-			got, rep.Violations[0].Note)
+	if got := len(rep.Violations); got == 0 {
+		t.Fatalf("non-owner raw-literal declaration did NOT trip gate; expected >= 1 violation")
 	}
 }
 
@@ -112,9 +130,10 @@ func TestEventLiteral(t *testing.T) {
 	}
 }
 
-// TestScanAssetCommitterEventSSOT_FixtureExempt verifies
-// tests/ folder is exempt.
-func TestScanAssetCommitterEventSSOT_FixtureExempt(t *testing.T) {
+// TestScanAssetCommitterEventSSOT_NonOwnerFixtureTrips verifies the former
+// blanket tests/ exemption is gone: a non-_test fixture that re-declares the
+// literal must reference the typed symbol instead.
+func TestScanAssetCommitterEventSSOT_NonOwnerFixtureTrips(t *testing.T) {
 	root := t.TempDir()
 	makeFileForCommitterEventTest(t, root, "tests/e2e/event_fixture.go",
 		`package e2e
@@ -125,9 +144,8 @@ func Fixture() {
 `)
 	rep := &report.Report{}
 	ScanAssetCommitterEventSSOT(root, nil, rep, true)
-	if got := len(rep.Violations); got != 0 {
-		t.Fatalf("tests/ folder tripped gate: got %d violations\nfirst: %s",
-			got, rep.Violations[0].Note)
+	if got := len(rep.Violations); got == 0 {
+		t.Fatalf("non-owner fixture did NOT trip gate; expected >= 1 violation")
 	}
 }
 

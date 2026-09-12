@@ -884,9 +884,12 @@ func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
 
 // TestWorker_RequireGPU_FailsClosedOnSoftwareBackend certifies the
 // ExecutionSpec.RequireGPU contract: a request demanding GPU must never be
-// served by the software FFmpeg fallback. The worker reports the specific
-// require_gpu violation (before the unconditional Chronon-only gate).
+// served by a non-GPU artifact. PipelineGen has no selectable software
+// backend left, so the fake boundary reports the retired identity literally;
+// the worker still reports the specific require_gpu violation (before the
+// unconditional Chronon-only gate).
 func TestWorker_RequireGPU_FailsClosedOnSoftwareBackend(t *testing.T) {
+	const nonGPUBackend = RenderBackend("ffmpeg_fallback")
 	w, _, _ := newTestWorker(t)
 	w.WithRenderExecutor(&fakeRenderExecutor{outcome: &RenderOutcome{
 		OutputPath:  "/work/rendered-clip.mp4",
@@ -896,7 +899,7 @@ func TestWorker_RequireGPU_FailsClosedOnSoftwareBackend(t *testing.T) {
 		Height:      1080,
 		FPSNum:      24,
 		FPSDen:      1,
-		Backend:     BackendFFmpegFallback,
+		Backend:     nonGPUBackend,
 	}})
 
 	req := baseRenderRequest()
@@ -908,7 +911,7 @@ func TestWorker_RequireGPU_FailsClosedOnSoftwareBackend(t *testing.T) {
 	if !strings.Contains(err.Error(), "require_gpu") {
 		t.Fatalf("expected the require_gpu typed violation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), string(BackendFFmpegFallback)) {
+	if !strings.Contains(err.Error(), string(nonGPUBackend)) {
 		t.Fatalf("require_gpu error must name the resolved backend, got %v", err)
 	}
 }

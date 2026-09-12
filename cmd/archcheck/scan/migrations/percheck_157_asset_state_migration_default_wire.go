@@ -108,8 +108,7 @@ func migration157DefaultWarn(r *report.Report, label, msg string) {
 // ALTER TABLE line; a future migration that introduces
 // additional DEFAULTs would be picked up by the same regex
 // (the first match wins).
-func ScanAssetStateMigration157DefaultWire(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanAssetStateMigration157DefaultWire(root string, _ *policy.Policy, r *report.Report) {
 	path := filepath.Join(root, migration157AssetStatePath)
 	f, err := os.Open(path)
 	if err != nil {

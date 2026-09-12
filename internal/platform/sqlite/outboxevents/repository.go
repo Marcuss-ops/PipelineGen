@@ -37,6 +37,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -69,17 +70,13 @@ type Event struct {
 	Priority int
 }
 
-// Priority constants for outbox event scheduling (migration 186).
-// ClaimNext orders by (priority DESC, next_attempt_at ASC, id ASC).
-//
-//   - PriorityNormal (5)  : bulk-folder-sync / catalog re-sync — the
-//     default for producers that do not stamp an explicit priority.
-//   - PriorityHigh (10)   : script-required index requests (stock
-//     pipeline finalizer emitting asset.index.requested for assets a
-//     script generation job is blocked on).
+// Priority constants for outbox event scheduling (migration 186). OWNED by
+// internal/kernel/event/outbox_status.go (godlike/06 one owner per fact);
+// this is a compile-time re-export so the SQLite and PostgreSQL engines cannot
+// drift. ClaimNext orders by (priority DESC, next_attempt_at ASC, id ASC).
 const (
-	PriorityNormal = 5
-	PriorityHigh   = 10
+	PriorityNormal = event.OutboxPriorityNormal
+	PriorityHigh   = event.OutboxPriorityHigh
 )
 
 // Claim is the fencing token returned by ClaimNext.

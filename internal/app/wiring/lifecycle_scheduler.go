@@ -224,7 +224,6 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 	// system would otherwise omit the suppressed capability. The
 	// server_lifecycle Start Warn log surfaces the typed error.
 	if deps.root.Domains.YoutubeClipService != nil {
-		_ = deps.root.Domains.YoutubeClipService // late-bound: future Phase 2+ wiring will consume this
 		steps = append(steps, StartupStep{
 			Name: "yt-cache-prewarm", Required: false,
 			Start: func(startCtx context.Context) error {

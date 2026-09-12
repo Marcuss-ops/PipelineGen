@@ -86,7 +86,7 @@ const archAllowlistMarker = "ARCH-ALLOWLIST: monitor-infra-import"
 // above the enclosing `import (` declaration. The direct-import-spec
 // form matches the retained shell Check 54 and is the form used by the
 // monitor SQLite hermetic tests.
-func ScanMonitorInfraImport(root string, pol *policy.Policy, r *report.Report) {
+func ScanMonitorInfraImport(root string, _ *policy.Policy, r *report.Report) {
 	for _, relDir := range []string{monitorPkgRelPath, monitorLegacyPkgRelPath} {
 		dir := filepath.Join(root, relDir)
 		// Hard-fail on missing monitor/ package (defensive — the

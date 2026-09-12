@@ -36,34 +36,20 @@ scripts/
 │   ├── whisper_preflight.py       #  Whisper preflight check
 │   └── whisper_runtime.py         #  Whisper runtime execution
 ├── admin/                        # Administrative Go tooling
-│   ├── architecture_p1_finalize.py
 │   ├── generate_routes_yaml.go    #  Route manifest generator
 │   ├── routes_yaml_ast.go
 │   ├── routes_yaml_dedup.go
 │   ├── routes_yaml_discovery.go
 │   └── routes_yaml_types.go
-├── archcheck/                    # Architecture governance CLI (legacy-burndown ratchet)
-│   ├── main.go                    #  CLI entrypoint
-│   ├── baseline/                  #  Baseline comparison + seeding
-│   ├── gate/                      #  Gate runner
-│   ├── gates/                     #  C2 gates (registry, route manifest, source catalog)
-│   ├── testdata/                  #  Test fixtures (deprecations, report schema)
-│   ├── checks*.go                 #  Architecture checks
-│   ├── deprecations_*.go          #  Deprecation loader, validator, migrator
-│   ├── phase0_*.go                #  Phase 0 report-mode checks
-│   └── snapshot_test.go           #  Golden-file snapshot test
+├── archcheck/                    # Gate scaffolding + CI gates. The legacy burndown binary (root *.go + baseline/) was demolished 2026-09-12: no make target or workflow ever invoked it.
+│   ├── gate/                      #  Shared gate scaffolding, imported by internal/capabilities/*/gate_test.go
+│   └── gates/                     #  C2 gates (registry, route manifest, source catalog) — LIVE via `make verify-architecture`
 ├── ci/                           # CI verification scripts
-│   ├── architecture/checks/       #  Per-check shell scripts (15–73)
-│   ├── architecture/checks/lib/   #  Shared CI libraries (00–59)
-│   ├── verify-*.py                #  Python verification runners
-│   ├── verify-changed.sh
-│   ├── verify-split-contract.sh
-│   ├── verify-stock-claim.sh
-│   ├── verify-stock-receipt.sh
-│   ├── ci-*.sh                    #  CI helpers (clean checkout, no-secrets, submodule, etc.)
+│   ├── verify_*.py, verify-*.py    #  Component registry runners (canonical)
 │   ├── get-fingerprint.sh
-│   ├── reconcile-pipeline.py
-│   └── whisper-deployment-contract_test.py
+│   ├── ci-no-secrets-audit.sh
+│   ├── ci-submodule-integrity.sh
+│   └── check_clip_render_cutover.sh
 ├── lib/                          # Shell libraries
 │   ├── dotenv.sh
 │   └── artlist_pipeline_*.sh      #  Artlist pipeline helpers

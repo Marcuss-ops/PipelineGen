@@ -145,8 +145,7 @@ func digestSHA256WarnBucket(r *report.Report, label, msg string) {
 // crypto/sha256) trip `percheck_digest_sha256_ban_allowlist_stale` so
 // the allowlist ratchets to zero. A missing allowlist file trips
 // `percheck_digest_sha256_ban_allowlist_missing` (fail-closed).
-func ScanDigestSHA256Ban(root string, pol *policy.Policy, r *report.Report) {
-	_ = pol // reserved for future SeverityOverride plumbing.
+func ScanDigestSHA256Ban(root string, _ *policy.Policy, r *report.Report) {
 
 	allowlistPath := filepath.Join(root, filepath.FromSlash(digestSHA256AllowlistFile))
 	allowlist := map[string]bool{}

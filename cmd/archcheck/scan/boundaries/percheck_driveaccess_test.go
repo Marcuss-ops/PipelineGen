@@ -14,7 +14,7 @@
 // Scenarios pinned (7 tests):
 //
 //  1. PASS: pure-clean tree (no drive.* references in any
-//     .go file under internal/application/) → 0 violations.
+//     .go file under internal/capabilities/) → 0 violations.
 //  2. FAIL: drive.Uploader in non-canonical application
 //     subpackage → 1 violation pointing at the offending file.
 //  3. FAIL: drive.Admin in non-canonical application
@@ -24,12 +24,12 @@
 //     scanned to prevent the catalogsync-only allowlist from
 //     becoming a stealth bypass for new callers).
 //  5. PASS (forward-pointer allowlist): uploaddrive.Uploader in
-//     internal/application/assets/catalogsync/ → 0 violations.
+//     internal/capabilities/assets/catalogsync/ → 0 violations.
 //  6. PASS (composition-root allowlist): drive.Admin +
 //     drive.NewDriveServiceFromFiles( in internal/app/ → 0
 //     violations (composition root is the canonical wire site).
 //  7. PASS (_test.go exemption): drive.Uploader in any
-//     internal/application/**/*_test.go → 0 violations
+//     internal/capabilities/**/*_test.go → 0 violations
 //     (tests may construct fakes directly).
 //
 // godlike/07 fail-fast: the scanner must deterministically
@@ -103,7 +103,7 @@ func countViolationsOnFile(r *report.Report, relPath string) int {
 }
 
 // TestScanDriveAccessSSOT_CleanTreePasses — pure-clean tree
-// (no drive.* references anywhere in internal/application/)
+// (no drive.* references anywhere in internal/capabilities/)
 // emits ZERO violations. Baseline regression guard.
 func TestScanDriveAccessSSOT_CleanTreePasses(t *testing.T) {
 	tempDir := t.TempDir()
@@ -154,7 +154,7 @@ func TestScanDriveAccessSSOT_UploaderTypeInApplicationForbids(t *testing.T) {
 // the dotted-name boundary.
 func TestScanDriveAccessSSOT_AdminTypeInApplicationForbids(t *testing.T) {
 	tempDir := t.TempDir()
-	rel := "internal/application/clips/admin_direct_construct.go"
+	rel := "internal/capabilities/clips/admin_direct_construct.go"
 	makeFixture(t, tempDir, rel,
 		"package clips\n\n"+
 			"import \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+
@@ -198,7 +198,7 @@ func TestScanDriveAccessSSOT_AdminTypeInApplicationForbids(t *testing.T) {
 // concern #3: every row of the aliased matrix MUST be pinned).
 func TestScanDriveAccessSSOT_UploaddriveAliasOutsideCatalogsyncForbids(t *testing.T) {
 	tempDir := t.TempDir()
-	rel := "internal/application/youtube/uploaddrive_legacy.go"
+	rel := "internal/capabilities/youtube/uploaddrive_legacy.go"
 	makeFixture(t, tempDir, rel,
 		"package youtube\n\n"+
 			"import uploaddrive \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+
@@ -233,7 +233,7 @@ func TestScanDriveAccessSSOT_UploaddriveAliasOutsideCatalogsyncForbids(t *testin
 // concrete Drive uploader after migration to drive.Reader.
 func TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncForbidden(t *testing.T) {
 	tempDir := t.TempDir()
-	rel := "internal/application/assets/catalogsync/subscriber_uploaddrive.go"
+	rel := "internal/capabilities/assets/catalogsync/subscriber_uploaddrive.go"
 	makeFixture(t, tempDir, rel,
 		"package catalogsync\n\n"+
 			"import uploaddrive \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+
@@ -255,7 +255,7 @@ func TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncForbidden(t *testing.T
 // delivery.Publisher AND drive.FileLifecycle + drive.Admin
 // (the composition root is allowed to construct the
 // infrastructure concrete; it just MUST not leak those
-// references into internal/application/).
+// references into internal/capabilities/).
 func TestScanDriveAccessSSOT_CompositionRootAllowsAdminReferences(t *testing.T) {
 	tempDir := t.TempDir()
 	rel := "internal/app/admin_wiring.go"
@@ -282,7 +282,7 @@ func TestScanDriveAccessSSOT_CompositionRootAllowsAdminReferences(t *testing.T) 
 // (the canonical regression-guard surface).
 func TestScanDriveAccessSSOT_TestFilesExempt(t *testing.T) {
 	tempDir := t.TempDir()
-	rel := "internal/application/clips/fake_drives_test.go"
+	rel := "internal/capabilities/clips/fake_drives_test.go"
 	makeFixture(t, tempDir, rel,
 		"package clips\n\n"+
 			"import \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+
