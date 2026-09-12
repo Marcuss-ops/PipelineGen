@@ -11,7 +11,26 @@ import (
 	"go.uber.org/zap"
 )
 
-func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+// audioCompileState carries the state the audio compile phase must hand to the
+// phases that follow it (the overlay render and the audio finalize). The compile
+// phase ends before the render because the render is measured as its own stage:
+// the kernel attributes a nested stage to its enclosing stage, so a render
+// sequenced inside this phase would be charged to audio_compile again.
+type audioCompileState struct {
+	// Step is the AUDIO_COMPILE execution step started by the compile phase. It
+	// stays open across the render and the finalize so a render failure is
+	// still reported against the step that owns the work.
+	Step ExecutionStep
+	// AudioSkipped reports that the compile phase had no audio work to do for
+	// this attempt (resumed past the stage, or no timeline requested).
+	AudioSkipped bool
+}
+
+// runAudioCompilePhase compiles the canonical timeline and the semantic
+// OverlayPlan. It deliberately stops before the overlay render and before the
+// editing-timeline projection: both are separate measured boundaries owned by
+// runOverlayRenderPhase and runAudioFinalizePhase.
+func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult, out *audioCompileState) bool {
 	// ── Compile Audio (before document publication) ───────────────
 	payloadStep, startErr := r.startExecutionStep(ctx, exec, "AUDIO_COMPILE", "audio")
 	if startErr != nil {
@@ -400,38 +419,15 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
-		// The overlay render is deliberately NOT here: it is a separate business
-		// boundary with its own stage (runOverlayRenderPhase), so the blocking
-		// video render is never charged to the audio compile stage. It runs
-		// after this phase, once the semantic OverlayPlan is frozen.
-		// ── EDITING TIMELINE PROJECTION ──────────────────────────────
-		// Build the canonical EditingTimelineV1 from frozen facts. This is
-		// the single projection consumed by downstream editing; no component
-		// maintains a second independently calculated timeline.
-		if et, err := BuildEditingTimeline(result); err != nil {
-			cause := fmt.Errorf("editing timeline compilation failed: %w", err)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		} else if et != nil {
-			result.EditingTimeline = et
-		}
-		r.log.Info("audio compile complete",
-			zap.String("run_id", runID),
-			zap.String("audio_mode", string(mode)),
-		)
-		r.checkpoint(ctx, runID, result)
+		// END OF THE MEASURED AUDIO COMPILE STAGE. The blocking overlay render
+		// (runOverlayRenderPhase), the editing-timeline projection and the step
+		// completion (runAudioFinalizePhase) are separate boundaries with their
+		// own stages; keeping them here is what made audio_compile report a wall
+		// time dominated by a video render it does not own.
 	}
-	if audioSkipped {
-		if err := r.skipExecutionStep(ctx, exec, payloadStep); err != nil {
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
-			return false
-		}
-	} else if err := r.completeExecutionStep(ctx, exec, payloadStep); err != nil {
-		r.failExecutionStep(ctx, exec, payloadStep, err)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
-		return false
+	if out != nil {
+		out.Step = payloadStep
+		out.AudioSkipped = audioSkipped
 	}
-
 	return true
 }

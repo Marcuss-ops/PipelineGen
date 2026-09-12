@@ -9,30 +9,29 @@ import (
 
 // runner_phase_overlay_render.go owns the BLOCKING overlay render boundary.
 //
-// Why it is its own phase instead of a block inside the audio compile phase:
+// Why it is its own phase rather than a block inside the audio compile phase:
 //
-// The render submits the Chronon plan and then WAITS for the remote GPU to
-// finish — the single longest wait in a script run. It lived inside
-// runAudioCompilePhase, so the audio stage's wall time included a render it
-// does not own, the render never appeared on the critical path, and the
-// breakdown reported `audio_compile` as the bottleneck with a dominant
-// operation that belonged to a different subsystem. The kernel attributes a
-// nested stage to its enclosing stage, so the only way to attribute the render
-// correctly is to make it a SIBLING phase of the audio stage — which is what
-// this file does.
+// The render submits the Chronon plan and then WAITS for the remote GPU — the
+// single longest wait in a script run. It used to be sequenced inside
+// runAudioCompilePhase, so the audio stage's wall time included a render it does
+// not own, the render never appeared on the critical path, and the breakdown
+// reported `audio_compile` as the bottleneck with a dominant operation borrowed
+// from another subsystem. The kernel attributes a nested stage to its enclosing
+// stage, so attributing the render correctly requires it to be a SIBLING of the
+// audio stage — which is what this file provides.
 //
 // The render itself is unchanged: same gates, same enqueuer, same fail-closed
-// outcome. Only the measurement boundary moved.
+// outcome, same execution step on failure. Only the measurement boundary moved.
 
 // runOverlayRenderPhase renders the frozen semantic OverlayPlan and records the
-// result on the run.
+// certified reference on the run.
 //
-// It is a no-op (and returns true) when the request did not ask for a render, no
-// render enqueuer is wired, or the overlay plan was never projected — exactly
-// the conditions the in-phase block used to check. When the audio phase was
-// already satisfied by a prior attempt, the render was part of that work and is
-// not repeated; an already-rendered result is likewise never re-rendered.
-func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, resumeIdx int, result *GenerateResult) bool {
+// It returns true without rendering when the request did not ask for a render,
+// no render enqueuer is wired, the overlay plan was never projected, the result
+// already carries a render, or a prior attempt was already resumed past the
+// audio stage (the render used to be part of that stage's work, so a resumed run
+// must not re-wait on it).
+func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
 	if result == nil || result.OverlayPlan == nil {
 		return true
 	}
@@ -43,15 +42,16 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 		return true
 	}
 	if stageSkipped(resumeIdx, StageCompilingAudio) {
-		// The render used to be sequenced inside the audio phase, so a resumed
-		// run past that stage has already rendered (or already decided not to).
-		// Preserve that contract rather than re-waiting on a completed job.
 		return true
 	}
 
 	ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *result.OverlayPlan)
 	if renderErr != nil {
 		cause := fmt.Errorf("overlay render failed: %w", renderErr)
+		// The AUDIO_COMPILE step stays open across the render precisely so a
+		// render failure is still reported against the work that produced the
+		// plan (its pre-split behaviour).
+		r.failExecutionStep(ctx, exec, state.Step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}

@@ -40,6 +40,12 @@ const (
 	// audio stage, never nested inside it, or the breakdown would re-attribute
 	// it to the enclosing stage.
 	StageOverlayRender kernobs.StageName = "overlay_render"
+	// StageAudioFinalize is the stage under which the canonical
+	// EditingTimelineV1 projection and the AUDIO_COMPILE step completion are
+	// recorded. It is separate from the compile stage because it runs AFTER the
+	// overlay render (the timeline's overlay span carries the certified render
+	// artifact), and because audio_compile must report only the work it owns.
+	StageAudioFinalize kernobs.StageName = "audio_finalize"
 	// StageAudioPublish is the stage under which the certified final-audio
 	// artifact is uploaded to Drive. It is separated from the audio compile
 	// stage for the same reason: publishing is IO against an external system,

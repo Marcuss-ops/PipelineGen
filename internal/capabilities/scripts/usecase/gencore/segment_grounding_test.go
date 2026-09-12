@@ -8,6 +8,7 @@ package gencore
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"testing"
 
@@ -100,10 +101,15 @@ func TestEngineGenerate_SegmentSourceTextOverridesGlobalSource(t *testing.T) {
 	if len(sources) != 2 {
 		t.Fatalf("provider calls = %d, want one per segment (2)", len(sources))
 	}
-	if sources[0] != "OWN_SEGMENT_SOURCE" {
-		t.Errorf("request[0].SourceText = %q, want the explicit per-segment source", sources[0])
-	}
-	if sources[1] != globalSourceSentinel {
-		t.Errorf("request[1].SourceText = %q, want the global source for the segment without its own source_text", sources[1])
+	// Generation is intentionally scene-parallel, so completion order is not
+	// the segment order. Assert the multiset of grounding inputs instead of
+	// treating request arrival order as a semantic contract.
+	sort.Strings(sources)
+	want := []string{globalSourceSentinel, "OWN_SEGMENT_SOURCE"}
+	sort.Strings(want)
+	for i := range want {
+		if sources[i] != want[i] {
+			t.Errorf("sorted SourceText[%d] = %q, want %q (completion order is intentionally nondeterministic)", i, sources[i], want[i])
+		}
 	}
 }
