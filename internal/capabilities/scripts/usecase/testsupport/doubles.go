@@ -3,7 +3,7 @@
 //
 // Reason it exists (2026-09-12): the generation core moved out of
 // internal/capabilities/scripts/usecase into
-// internal/capabilities/scripts/usecase/generation. Several tests that stay
+// internal/capabilities/scripts/usecase/gencore. Several tests that stay
 // in the parent package (clip-resolution, end-to-end generate, timing)
 // still need an ollama generator fake and an Engine built with lenient
 // segment validation, but a package's internal `_test.go` helpers are not
@@ -22,9 +22,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/generation"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -102,8 +101,8 @@ func DefaultFakeResult() *scriptports.GenerationResult {
 // (UseMemory=false or ForceRefresh=true); tests that assert memory-path
 // behaviour must construct the engine in-package where the narrow
 // memory-gate types are visible.
-func BuildTestEngine(gen *FakeOllamaGen) *generation.Engine {
-	e := generation.NewEngine(gen, nil, zap.NewNop())
+func BuildTestEngine(gen *FakeOllamaGen) *gencore.Engine {
+	e := gencore.NewEngine(gen, nil, zap.NewNop())
 	e.ConfigureSegmentValidation(50, 50, 0)
 	return e
 }

@@ -10,6 +10,7 @@ package wiring
 import (
 	"context"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
@@ -22,7 +23,7 @@ import (
 
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -142,7 +143,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
 	memGate := scriptwiring.NewMemoryGate(scriptMemRepo)
 	memSvc := adapters.NewService(memGate, log)
-	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), usecase.NewMemoryGateChecker(memSvc), log)
+	engine := gencore.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), gencore.NewMemoryGateChecker(memSvc), log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(
 		cfg.Scripts.SegmentWordsTolerancePercent,

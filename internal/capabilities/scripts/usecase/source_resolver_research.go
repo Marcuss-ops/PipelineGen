@@ -21,6 +21,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -182,7 +183,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if lang == "" {
 		lang = "it"
 	}
-	cacheMode := normalizeCacheMode(src.CachePolicy.Mode)
+	cacheMode := gencore.NormalizeCacheMode(src.CachePolicy.Mode)
 	version := strings.TrimSpace(src.CachePolicy.Version)
 	if version == "" {
 		version = researchVersion

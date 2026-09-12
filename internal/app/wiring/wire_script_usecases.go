@@ -69,6 +69,7 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -103,7 +104,7 @@ func buildScriptUseCases(
 	clipSourceBuilder *usecase.ClipSourceBuilder,
 	log *zap.Logger,
 ) (
-	*usecase.GenerateOneUseCase,
+	*gencore.GenerateOneUseCase,
 	*usecase.GenerateManyUseCase,
 	*jobs.GenerateJobHandler,
 	*scriptdto.MediaCurator,
@@ -111,7 +112,7 @@ func buildScriptUseCases(
 	engine := root.AI.ScriptEngine
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
-	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	oneUC := gencore.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	if strings.TrimSpace(cfg.External.RustVisualNERPath) != "" {
 		visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
 		visualNER, nerErr := rustexec.NewVisualNERAdapter(visualNERExecutor)
@@ -186,7 +187,7 @@ func buildScriptUseCases(
 // Extracted from wire_script.go (AZIONE 2, July 2026).
 func wireScriptChildJobAuditP04(
 	jobsSvc *appjobs.Service,
-	oneUC *usecase.GenerateOneUseCase,
+	oneUC *gencore.GenerateOneUseCase,
 	manyUC *usecase.GenerateManyUseCase,
 	normCfg adapters.NormalizationConfig,
 	log *zap.Logger,

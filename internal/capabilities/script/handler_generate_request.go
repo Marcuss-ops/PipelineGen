@@ -23,7 +23,7 @@
 // All helpers are transport-side per AGENTS.md rule:
 //
 //   - bindGenerateEnvelope CALLS the application validator
-//     (usecase.PayloadValidator) but does NOT own SQL/FFmpeg/Drive.
+//     (gencore.PayloadValidator) but does NOT own SQL/FFmpeg/Drive.
 //   - validateIdempotencyKey + the canonical printable-ASCII rule live
 //     in handler_generate_helpers.go (enqueueTimeout + isValid*).
 //
@@ -48,7 +48,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 )
 
 // bindGenerateEnvelope JSON-binds the request body into a
@@ -70,7 +70,7 @@ import (
 //     with {"ok":false,"error":{"code":"INVALID_PAYLOAD","message":..,"stage":"request.validation","retryable":false}}
 //
 // Validator runs BEFORE the submitter is invoked — P0.A invariant 3.
-func bindGenerateEnvelope(c *gin.Context, validator *usecase.PayloadValidator) (*scriptpkg.GenerationEnvelopeV2, bool) {
+func bindGenerateEnvelope(c *gin.Context, validator *gencore.PayloadValidator) (*scriptpkg.GenerationEnvelopeV2, bool) {
 	var env scriptpkg.GenerationEnvelopeV2
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -222,7 +222,7 @@ func validateIdempotencyKey(c *gin.Context) (string, bool) {
 // application layer.
 func buildGenerateCommand(
 	c *gin.Context,
-	validator *usecase.PayloadValidator,
+	validator *gencore.PayloadValidator,
 ) (submission.GenerateCommand, bool) {
 	// Step 1: bind envelope + run validator (writes its own errors).
 	env, ok := bindGenerateEnvelope(c, validator)

@@ -27,6 +27,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
@@ -40,7 +41,7 @@ type GenerateDeps struct {
 	GenRunStarter     *scriptgen.GenerationRunStarter
 	Factory           *submission.SubmitRequestFactory
 	Log               *zap.Logger
-	Validator         *usecase.PayloadValidator
+	Validator         *gencore.PayloadValidator
 	ResearchPreflight usecase.ResearchPreflight
 }
 

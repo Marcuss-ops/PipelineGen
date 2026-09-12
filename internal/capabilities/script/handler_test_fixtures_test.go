@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -253,7 +253,7 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 			// module. Tests now exercise the canonical envelope path
 			// directly (the bindGenerateEnvelope DisallowUnknownFields
 			// check rejects deleted-flag callers with HTTP 400).
-			Validator: usecase.NewDefaultPayloadValidator(),
+			Validator: gencore.NewDefaultPayloadValidator(),
 		},
 	}
 	return deps, submitter

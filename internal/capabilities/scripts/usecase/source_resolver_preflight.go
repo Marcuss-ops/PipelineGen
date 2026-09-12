@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -77,7 +78,7 @@ func (p *ResearchSubmissionPreflight) Validate(ctx context.Context, item scriptp
 		}
 		return nil
 	}
-	mode := normalizeCacheMode(src.CachePolicy.Mode)
+	mode := gencore.NormalizeCacheMode(src.CachePolicy.Mode)
 	if !src.Search && (mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh) {
 		return researchPreflightError(ErrResearchDisabledCacheMiss)
 	}
@@ -135,7 +136,7 @@ func (r *WebResearchResolver) Validate(ctx context.Context, item scriptpkg.Gener
 		}
 		return nil
 	}
-	mode := normalizeCacheMode(src.CachePolicy.Mode)
+	mode := gencore.NormalizeCacheMode(src.CachePolicy.Mode)
 	if !src.Search && (mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh) {
 		return researchPreflightError(ErrResearchDisabledCacheMiss)
 	}

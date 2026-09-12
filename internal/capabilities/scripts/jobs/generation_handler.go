@@ -29,6 +29,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -53,7 +54,7 @@ type GenerateJobHandler struct {
 // NewGenerateJobHandler wires the handler to the unified use cases.
 // It internally builds the single/batch executors and the dispatcher.
 func NewGenerateJobHandler(
-	one *usecase.GenerateOneUseCase,
+	one *gencore.GenerateOneUseCase,
 	many *usecase.GenerateManyUseCase,
 	log *zap.Logger,
 	runRepo ...scriptgen.RunRepository,
