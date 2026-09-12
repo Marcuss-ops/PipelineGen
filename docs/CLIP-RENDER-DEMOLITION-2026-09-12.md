@@ -4,9 +4,11 @@
 compatibilità, doppioni e meccanismi che non servono più.
 **Regola applicata (la tua):** *prima sostituiamo → testiamo → misuriamo → poi
 cancelliamo il vecchio percorso.*
-**Esito:** 1 item demolito in questo passaggio (9), 5 verificati già demoliti
+**Esito:** 1 item demolito nel primo passaggio (9), 5 verificati già demoliti
 (5, 6, 7, 8, 10), 4 bloccati da un consumatore reale o dal gate dei benchmark
-(1, 2, 3, 4). Nessuna cancellazione di codice vivo.
+(1, 2, 3, 4). Nel secondo passaggio (**§14**) sono stati demoliti gli item 2 e 3
+e chiuso l'item 4; resta bloccato il solo item 1. Nessuna cancellazione di
+codice vivo.
 
 ---
 
@@ -356,7 +358,160 @@ Nota pre-esistente e non correlata: `internal/capabilities/scripts/usecase/genco
 è flaky (≈1/10 run, test diverso ogni volta) anche **senza** le modifiche di
 questo passaggio.
 
-## 14. Ordine confermato
+## 14. AGGIORNAMENTO — secondo passaggio (sostituisce i verdetti di §9, §10, §11)
+
+Questo passaggio ha eseguito i prerequisiti PRE-2 e PRE-3 e ha chiuso PRE-4.
+I verdetti di §9, §10 e §11 sono **superati**: restano nel documento come
+fotografia dello stato precedente.
+
+### Item 2 — DEMOLITO: finalizzazione event-driven del parent
+
+Il tick era l'unico finaliser cablato: il parent di un clip finito restava
+non-terminale fino al tick successivo. Ora il figlio terminale notifica il
+proprio parent nell'istante in cui il commit atterra, e il tick è degradato a
+**recovery sweeper** (30 s, la stessa cadenza degli aggregatori voiceover/script).
+
+```text
+internal/kernel/…  (nessuna modifica al CAS)
+internal/capabilities/jobs/parent_completion.go        NUOVO
+    ParentCompletionNotifier  + notifyParentCompletion (best-effort, 5 s timeout)
+internal/capabilities/jobs/worker.go
+    Worker.parentNotifier + WithParentCompletionNotifier
+internal/capabilities/jobs/worker_finalize_paths.go
+    notifica dopo il commit terminale (ramo artifact + ramo legacy)
+internal/capabilities/jobs/runner.go
+    Runner.parentNotifier + WithParentCompletionNotifier → buildWorkers
+internal/capabilities/cliprender/aggregator.go
+    FinalizeParent(ctx, parentJobID) — single-shot, idempotente
+    DefaultParentAggregationInterval  2 s → 30 s (recovery)
+internal/app/wiring/clip_render_parent_completion.go   NUOVO
+    builder memoizzato sull'unica authority + adattatore del port
+internal/app/wiring/lifecycle_job_runner.go / lifecycle_worker.go
+    notifier cablato sul runner; ticker = "clip-render-parent-recovery-sweeper"
+```
+
+Proprietà difese dai test, non asserite:
+
+- **idempotente**: la finalizzazione è lo stesso CAS senza lease di `Tick`, quindi
+  una notifica che corre contro lo sweep è un no-op, non un doppio flip;
+- **best-effort**: il figlio è già durable quando la notifica parte, quindi un
+  errore del notifier viene loggato e **non** fallisce il job — la rete di
+  sicurezza resta lo sweep;
+- **ownership**: l'adattatore finalizza solo figli `clip.render` (voiceover e
+  script hanno semantiche multi-figlio e i loro aggregatori), e
+  `FinalizeParent` verifica anche il tipo del parent;
+- **non-finalizza troppo presto**: un figlio ancora `RUNNING` non fa flip.
+
+Il modello del benchmark è stato allineato alla produzione: lo scenario
+`event_driven` non chiama più `Tick` (scansione completa) ma `FinalizeParent`
+(un solo parent).
+
+**Misura** (`TestScenario3_ParentCompletionLatency`, 6 clip, cadenza
+misurata 200 ms):
+
+```text
+measured_tick              p50=184 ms  p95=193 ms
+event                      p50=0 ms    p95=0 ms
+event @30s recovery        p95=17 ms     ← la cadenza lenta non entra nella latenza
+polling-only @30s (proiezione) p50=27600 ms  ← cosa avrebbe pagato un deployment a solo polling
+```
+
+### Item 3 — DEMOLITO: una sola root di materializzazione
+
+Erano due alberi che tenevano **la stessa immagine dei byte**: `temp/cliprender`
+(flow clip.render) e `temp/localization` (flow localization + enqueuer localized
+render). Ogni flow riscaricava lo stesso asset nella propria cache
+content-addressed.
+
+```text
+internal/app/wiring/clip_render_runtime.go
+    assetMaterializationRoot(cfg)          → <temp>/materialized
+    assetMaterializationResolverRoot(cfg)  → <temp>/materialized/assets
+registry_internal_modules.go / localization_service.go / localized_render_enqueuer.go
+    tutti e tre i materializer usano la root condivisa
+```
+
+Le directory di *lavoro* restano separate (scratch del worker, output localizzati,
+staging Drive): contengono contenuto realmente diverso. Converge solo la cache
+degli asset, che è content-addressed e quindi condivisibile per costruzione.
+
+### Item 4 — CHIUSO: un'unica authority per il digest
+
+C'era **una seconda implementazione** della memoizzazione
+(`cliprender.ContentVerifier`) e il materializer canonico della piattaforma
+**non la usava affatto**: `verifyAndReturn` e il ramo CAS rilanciavano un
+`SHA-256` full-file a ogni cache hit.
+
+```text
+internal/kernel/digest/verifier.go        NUOVO — l'unica authority
+    Verifier: memo keyed su (size, modTime), bounded LRU, nil-safe
+internal/capabilities/cliprender/content_verifier.go
+    ora è un alias sottile su digest.Verifier (API e test invariati)
+internal/platform/drive/materializer.go
+    verifyAndReturn / cas_cache / download_concurrent_cache → verifier.Verify
+    hashFilePath rimosso: il digest nasce una volta
+```
+
+Contratto difeso dai test: 3 cache hit = **1 lettura completa**, e la
+memoizzazione **non** diventa fiducia — un file che non matcha l'atteso resta
+rifiutato.
+
+### Item 1 — ancora BLOCCATO (verificato di nuovo sul tree ribasato)
+
+Nessun cambiamento al verdetto di §8. Sul tree attuale:
+
+```text
+internal/capabilities/cliprender/worker.go:294        w.renderer.Render(opCtx, plan)   ← ramo non-async
+internal/capabilities/localization/adapters/render.go:195  a.renderer.Render(...)   ← PRODUZIONE, altro sottosistema
+internal/capabilities/localization/service.go:190          s.renderer.Render(...)
+internal/capabilities/cliprender/bench_harness_test.go:746 benchBlockingRenderer     ← baseline BEFORE del benchmark
+```
+
+Il ramo bloccante del worker è ora esplicito (`asyncCompletion`, impostato dai
+soli switch di composizione) e `handleAsyncSettle` **fallisce chiuso** se il
+worker non è configurato per lo split — quindi la modalità non può degradare in
+silenzio. La cancellazione di `RenderExecutor.Render` resta impossibile finché
+il sottosistema `localization` (scene × lingua, senza continuation store,
+aggregatore o settle) non è migrato a Submit/Settle, e finché il benchmark usa
+il renderer bloccante come modello pre-split.
+
+### Gate rieseguito
+
+```text
+go build ./...                                            OK
+go test ./internal/kernel/digest/...                      ok
+go test ./internal/platform/drive/...                      ok
+go test ./internal/capabilities/cliprender/...             ok
+go test ./internal/capabilities/jobs/                       ok
+go test ./internal/app/wiring/...                           ok
+scenario 10 (1/10/50 clip)  wall 11/17/59 ms · 5076/34435/50664 clip/min · 0 failures
+scenario 3  (parent latency)  event p50=0 ms p95=0 ms
+```
+
+Flake **pre-esistente e non correlato**: `TestPreparationCoordinator_UsesNotifierInsteadOfPolling`
+(`internal/capabilities/jobs`) fallisce sotto `-race` — verificato identico con
+le modifiche di questo passaggio rimosse. `TestScenario10_EndToEndCanonical`
+asserisce un rapporto di throughput wall-clock con tolleranza 10% su pareti di
+~20-80 ms: sotto `-race` e con il resto della suite in esecuzione la misura
+oscilla oltre la banda (in isolamento passa 4/4).
+
+### Ordine aggiornato
+
+```text
+FATTO  PRE-2  finalizzazione event-driven + tick come recovery sweeper
+FATTO  PRE-3  convergenza su una sola root content-addressed
+FATTO  PRE-4  un'unica authority del digest, hash-once sui cache hit
+       ↓
+PRE-1  migrare localization/adapters/render.go a submit/continuation/settle  → sblocca item 1
+       ↓
+       benchmark 1/10/50 sullo stack reale (baseline BEFORE registrata)
+       ↓
+       demolition definitiva di item 1 (RenderExecutor.Render + i test che lo certificano)
+```
+
+---
+
+## 15. Ordine confermato (primo passaggio — superato da §14)
 
 La tua sequenza è corretta e va invertita solo nella percezione: **la demolition
 non è il passo successivo, è il passo dopo il prossimo.** Oggi mancano ancora
