@@ -101,11 +101,11 @@ func (w *Worker) completeRendered(
 
 	if w.publisher == nil {
 		emit("clip.render.completed", "Chronon render completed without publication", map[string]any{
-			"output_path": outcome.OutputPath,
-			"size_bytes": outcome.SizeBytes,
+			"output_path":  outcome.OutputPath,
+			"size_bytes":   outcome.SizeBytes,
 			"duration_sec": outcome.DurationSec,
-			"ffmpeg_ms": outcome.FFmpegMS,
-			"backend": outcome.Backend,
+			"ffmpeg_ms":    outcome.FFmpegMS,
+			"backend":      outcome.Backend,
 		})
 		progress(100, "clip.render completed")
 		finalizeMetrics(outcome.Metrics, time.Since(jobStart).Milliseconds(), outcome.DurationSec)
@@ -152,11 +152,11 @@ func (w *Worker) completeRendered(
 	}
 
 	emit("clip.render.completed", "Chronon render completed", map[string]any{
-		"output_path": outcome.OutputPath,
-		"size_bytes": outcome.SizeBytes,
+		"output_path":  outcome.OutputPath,
+		"size_bytes":   outcome.SizeBytes,
 		"duration_sec": outcome.DurationSec,
-		"ffmpeg_ms": outcome.FFmpegMS,
-		"backend": outcome.Backend,
+		"ffmpeg_ms":    outcome.FFmpegMS,
+		"backend":      outcome.Backend,
 	})
 	totalMS := time.Since(jobStart).Milliseconds()
 	finalizeMetrics(outcome.Metrics, totalMS, outcome.DurationSec)
