@@ -138,12 +138,12 @@ func (w *Worker) handleAsyncSubmit(
 	}
 
 	emit("clip.render.remote.submitted", "RenderingGen render accepted; Master slot released", map[string]any{
-		"render_job_id": plan.RunID,
-		"plan_sha256": plan.PlanSHA256,
+		"render_job_id":  plan.RunID,
+		"plan_sha256":   plan.PlanSHA256,
 		"settle_job_id": childID,
 		"resume_sha256": resumeRef.SHA256,
-		"remote_state": RemoteRenderSubmitted,
-		"submit_ms": submitMS,
+		"remote_state":  RemoteRenderSubmitted,
+		"submit_ms":     submitMS,
 	})
 	progress(100, "clip.render submitted; awaiting remote completion")
 	w.log.Info("clip.render.job.submitted",
@@ -156,17 +156,17 @@ func (w *Worker) handleAsyncSubmit(
 	)
 
 	return job.Result{
-		"job_id":          j.ID,
-		"phase":           string(RenderPhaseSubmit),
-		"parent_state":    ParentStateWaitingChildren,
-		"child_job_ids":   []string{childID},
-		"render_job_id":   plan.RunID,
-		"plan_sha256":     plan.PlanSHA256,
-		"remote_state":    RemoteRenderSubmitted,
-		"settle_job_id":   childID,
-		"resume_sha256":   resumeRef.SHA256,
+		"job_id":            j.ID,
+		"phase":             string(RenderPhaseSubmit),
+		"parent_state":      ParentStateWaitingChildren,
+		"child_job_ids":     []string{childID},
+		"render_job_id":     plan.RunID,
+		"plan_sha256":       plan.PlanSHA256,
+		"remote_state":      RemoteRenderSubmitted,
+		"settle_job_id":     childID,
+		"resume_sha256":     resumeRef.SHA256,
 		"resume_size_bytes": resumeRef.SizeBytes,
-		"submit_ms":       submitMS,
+		"submit_ms":         submitMS,
 	}, nil
 }
 
@@ -211,7 +211,7 @@ func (w *Worker) handleAsyncSettle(ctx context.Context, j *job.Job, tools *job.J
 	progress(10, "resuming submitted RenderingGen render")
 	emit("clip.render.remote.settling", "waiting for submitted RenderingGen render", map[string]any{
 		"render_job_id": continuation.Submission.RenderJobID,
-		"remote_state": RemoteRenderRendering,
+		"remote_state":  RemoteRenderRendering,
 	})
 
 	renderSlotStart := time.Now()
