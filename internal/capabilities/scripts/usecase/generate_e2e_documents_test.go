@@ -47,13 +47,13 @@ func buildUsecaseWithDocuments(gen *testsupport.FakeOllamaGen, docs scriptgen.Do
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
 	ppReg.Register(adapters.NewDocumentsProcessor(docs))
 	ppReg.Register(&testsupport.StubPostProcessor{
-		name:   "persistence",
-		result: &adapters.PostProcessResult{Changed: true},
+		ProcessorName: "persistence",
+		Result:        &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
@@ -130,7 +130,7 @@ func TestGenerateE2E_DocumentHumanSurfaceShowsOnlyTitleScenesVoiceover(t *testin
 	scriptJSON, err := json.Marshal(model)
 	require.NoError(t, err)
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script: string(scriptJSON), WordCount: 20, EstDuration: 6, Model: "llama3:8b",
 	}}
 

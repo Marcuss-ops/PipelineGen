@@ -47,11 +47,11 @@ func startScriptTimingRun(t *testing.T) (context.Context, *kernobs.Run) {
 // engine and a frozen postprocessor registry (entities + persistence).
 func buildTextTimingUseCase(t *testing.T) *gencore.GenerateOneUseCase {
 	t.Helper()
-	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil)
+	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{})
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
 	return gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
 }
@@ -141,11 +141,11 @@ func TestScriptTiming_TotalUsesCanonicalRunClock(t *testing.T) {
 	// selects (entity extraction no longer runs as a legacy "entities"
 	// postprocessor stage), so the sleeping stub is guaranteed to run.
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "clip_search", sleepMs: 5, result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil), ppReg, zap.NewNop())
+	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}), ppReg, zap.NewNop())
 
 	result, err := uc.Execute(ctx, itemForTimingsTest(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestScriptTiming_SQLiteHydrationMeasuredOnce(t *testing.T) {
 func TestScriptTiming_OllamaMeasuredOnce(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 	gen := &testsupport.FakeOllamaGen{}
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	_, err := e.Generate(ctx, &scriptpkg.ResolvedGenerationPlan{
 		Title:    "Ollama Timing",
@@ -243,7 +243,7 @@ func TestScriptTiming_OllamaMeasuredOnce(t *testing.T) {
 		Mode:     "text",
 	})
 	require.NoError(t, err)
-	require.Equal(t, int32(1), gen.calls.Load(), "the fake Ollama must be called once")
+	require.Equal(t, int32(1), gen.Calls.Load(), "the fake Ollama must be called once")
 
 	report := run.Report()
 	assert.Equal(t, 1, scriptTimingOpCount(report, "ollama", "generate"),
@@ -259,8 +259,8 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	ppReg.Freeze()
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Postprocessors: []string{"entities", "metadata"}}
@@ -334,7 +334,7 @@ func TestScriptTiming_ParallelTTSWallTimeNotSummed(t *testing.T) {
 	f := fanout[0]
 	assert.Equal(t, "voiceover.generate", f.Stage)
 	assert.Equal(t, int64(5210), f.WallMs, "wall must be the stage wall time")
-	assert.Equal(t, int64(10), f.Calls, "calls must count each parallel operation")
+	assert.Equal(t, int64(10), f.calls, "calls must count each parallel operation")
 	assert.Equal(t, int64(4090), f.MaxMs, "max must be the longest single call")
 	assert.Equal(t, int64(40450), f.WorkMs, "work must be the summed call durations")
 	assert.Greater(t, f.WorkMs, f.WallMs,
@@ -393,11 +393,11 @@ func TestScriptTiming_UnattributedTime(t *testing.T) {
 func TestScriptTiming_LegacyProjectionMatchesCanonical(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 
-	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{}, nil)
+	e := testsupport.BuildTestEngine(&testsupport.FakeOllamaGen{})
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "entities", result: &adapters.PostProcessResult{Changed: true}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
-	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{name: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "entities", result: &adapters.PostProcessResult{Changed: true}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
+	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
 
 	uc := gencore.NewGenerateOneUseCase(adapters.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())

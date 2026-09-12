@@ -462,7 +462,7 @@ func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
 	require.NotNil(t, ev)
 	require.NotEmpty(t, sourceText)
 
-	modelText := ev.gencore.ModelSourceText()
+	modelText := ev.ModelSourceText()
 	require.NotEmpty(t, modelText)
 	assert.Contains(t, modelText, "NARRATIVE EVIDENCE 1")
 	assert.Contains(t, modelText, "Ref: clip_1")

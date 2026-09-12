@@ -194,7 +194,7 @@ func p0hBuildControlledEnvelope(prose string) string {
 func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:      p0hBuildControlledEnvelope(p0hProse),
 		WordCount:   55,
 		EstDuration: 3,

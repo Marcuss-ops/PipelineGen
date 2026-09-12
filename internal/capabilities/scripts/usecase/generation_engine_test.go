@@ -22,7 +22,7 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	t.Parallel()
 
 	gen := &testsupport.FakeOllamaGen{}
-	engine := testsupport.BuildTestEngine(gen, nil)
+	engine := testsupport.BuildTestEngine(gen)
 	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-success"}
@@ -37,9 +37,9 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	draft, err := runner.Generate(context.Background(), item, plan, tracker)
 	require.NoError(t, err)
 	require.NotNil(t, draft)
-	require.NotNil(t, draft.gencore.EngineResult)
+	require.NotNil(t, draft.EngineResult)
 	assert.GreaterOrEqual(t, draft.EngineMs, int64(0))
-	assert.Equal(t, int32(1), gen.calls.Load())
+	assert.Equal(t, int32(1), gen.Calls.Load())
 
 	wantEvents := []string{"script.generated", "scenes.created"}
 	assert.Equal(t, wantEvents, events)
@@ -51,8 +51,8 @@ func TestGenerationEngineRunner_Generate_Error(t *testing.T) {
 	t.Parallel()
 
 	forcedErr := errors.New("forced engine error")
-	gen := &testsupport.FakeOllamaGen{returnErr: forcedErr}
-	engine := testsupport.BuildTestEngine(gen, nil)
+	gen := &testsupport.FakeOllamaGen{ReturnErr: forcedErr}
+	engine := testsupport.BuildTestEngine(gen)
 	runner := gencore.NewGenerationEngineRunner(engine)
 
 	item := scriptpkg.GenerationItemV2{ID: "runner-error"}

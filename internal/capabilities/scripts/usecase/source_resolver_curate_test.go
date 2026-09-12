@@ -34,8 +34,8 @@ type fakeClipSearch struct {
 }
 
 func (f *fakeClipSearch) SearchAssets(_ context.Context, _ ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
-	if f.returnErr != nil {
-		return nil, f.returnErr
+	if f.ReturnErr != nil {
+		return nil, f.ReturnErr
 	}
 	out := make([]ports.AssetSearchHit, 0, len(f.hits))
 	for _, hit := range f.hits {
@@ -53,8 +53,8 @@ type fakeClipBuilder struct {
 }
 
 func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *ClipGenerationOptions) (*scriptpkg.ClipEvidence, string, string, error) {
-	if f.returnErr != nil {
-		return nil, "", "", f.returnErr
+	if f.ReturnErr != nil {
+		return nil, "", "", f.ReturnErr
 	}
 	return f.ev, f.title, f.sourceText, nil
 }

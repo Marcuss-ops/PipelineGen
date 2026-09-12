@@ -1,15 +1,14 @@
-package usecase
+package gencore
 
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 func TestProgressTrackerTrackStageAggregatesByLanguage(t *testing.T) {
 	var events []map[string]any
-	tracker := gencore.NewProgressTracker(nil, "item-1")
+	tracker := NewProgressTracker(nil, "item-1")
 	tracker.SetEventFn(func(_ string, _ string, data map[string]any) {
 		events = append(events, data)
 	})
@@ -36,7 +35,7 @@ func TestProgressTrackerTrackStageAggregatesByLanguage(t *testing.T) {
 
 func TestProgressTrackerPostprocessUsesDynamicPercent(t *testing.T) {
 	var percents []int
-	tracker := gencore.NewProgressTracker(func(percent int, _ string) { percents = append(percents, percent) }, "item-1")
+	tracker := NewProgressTracker(func(percent int, _ string) { percents = append(percents, percent) }, "item-1")
 	tracker.PhasePostprocessProgress(0, 4, "translation")
 	tracker.PhasePostprocessProgress(1, 4, "voiceover")
 	tracker.PhasePostprocessProgress(3, 4, "persistence")

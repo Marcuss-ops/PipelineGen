@@ -150,7 +150,7 @@ func p0gBuildEnvelope(prose string) string {
 func p0gBuildFallbackOrchestrator(t *testing.T) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &testsupport.FakeOllamaGen{result: &scriptports.GenerationResult{
+	gen := &testsupport.FakeOllamaGen{Result: &scriptports.GenerationResult{
 		Script:      p0gBuildEnvelope(p0gProse),
 		WordCount:   54,
 		EstDuration: 3,

@@ -107,7 +107,7 @@
 // The tests inject testsupport.FakeOllamaGen (defined in engine_test.go,
 // same package) to simulate the model's response to the
 // injection. For prompt-structure tests, the captured ollama
-// request is inspected via gen.capturedReq.Load().Prompt. For
+// request is inspected via gen.CapturedReq.Load().Prompt. For
 // output-validation tests, the fake's result is configured to
 // return specific shapes (JSON, off-topic prose, etc.) so the
 // engine's behavior is pinned. For quality-gate tests, the
@@ -271,12 +271,12 @@ func makeP2BItemForQualityGate() scriptpkg.GenerationItemV2 {
 // stub) + a nil SourceRegistry (text-only path).
 func buildP2BUsecase(t *testing.T, gen *testsupport.FakeOllamaGen) (*gencore.GenerateOneUseCase, *adapters.PostProcessorRegistry) {
 	t.Helper()
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	ppReg.Register(&testsupport.StubPostProcessor{
-		name:   "persistence",
-		result: &adapters.PostProcessResult{Changed: true},
+		ProcessorName: "persistence",
+		Result:        &adapters.PostProcessResult{Changed: true},
 	})
 	ppReg.Freeze()
 
@@ -308,15 +308,15 @@ func buildP2BUsecase(t *testing.T, gen *testsupport.FakeOllamaGen) (*gencore.Gen
 func TestPromptInjectionDefense_P2B_TranscriptWrappedAsData(t *testing.T) {
 	t.Parallel()
 	gen := &testsupport.FakeOllamaGen{
-		result: testsupport.DefaultFakeResult(), // canonical V1 JSON
+		Result: testsupport.DefaultFakeResult(), // canonical V1 JSON
 	}
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err, "engine MUST succeed for the P2.B scenario")
-	require.NotNil(t, gen.capturedReq.Load(), "ollama request must be captured")
+	require.NotNil(t, gen.CapturedReq.Load(), "ollama request must be captured")
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 
 	// The injection transcript MUST appear in the prompt
@@ -361,14 +361,14 @@ func TestPromptInjectionDefense_P2B_TranscriptWrappedAsData(t *testing.T) {
 func TestPromptInjectionDefense_P2B_SystemPromptMarksDataAsContent(t *testing.T) {
 	t.Parallel()
 	gen := &testsupport.FakeOllamaGen{
-		result: testsupport.DefaultFakeResult(),
+		Result: testsupport.DefaultFakeResult(),
 	}
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err)
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 
 	// The plainTextInstruction suffix MUST be present
@@ -410,14 +410,14 @@ func TestPromptInjectionDefense_P2B_SystemPromptMarksDataAsContent(t *testing.T)
 func TestPromptInjectionDefense_P2B_InjectionTextContainedInTranscript(t *testing.T) {
 	t.Parallel()
 	gen := &testsupport.FakeOllamaGen{
-		result: testsupport.DefaultFakeResult(),
+		Result: testsupport.DefaultFakeResult(),
 	}
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err)
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 
 	// The injection text MUST appear exactly once in the
@@ -464,8 +464,8 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 		Model:       "llama3:8b",
 		Prompt:      "ignored",
 	}
-	gen := &testsupport.FakeOllamaGen{result: jsonResult}
-	e := testsupport.BuildTestEngine(gen, nil)
+	gen := &testsupport.FakeOllamaGen{Result: jsonResult}
+	e := testsupport.BuildTestEngine(gen)
 
 	result, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 
@@ -487,14 +487,14 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 	t.Run("malformed_json_rejected", func(t *testing.T) {
 		t.Parallel()
 		badGen := &testsupport.FakeOllamaGen{
-			result: &scriptports.GenerationResult{
+			Result: &scriptports.GenerationResult{
 				Script:      `{"ignore_previous": true, "format": "json"}`,
 				WordCount:   3,
 				EstDuration: 1,
 				Model:       "llama3:8b",
 			},
 		}
-		badEng := testsupport.BuildTestEngine(badGen, nil)
+		badEng := testsupport.BuildTestEngine(badGen)
 		_, badErr := badEng.Generate(context.Background(), makeP2BPlanWithInjection())
 		require.Error(t, badErr,
 			"malformed JSON must now be rejected (ModeCompatibility removed)")
@@ -542,8 +542,8 @@ func TestPromptInjectionDefense_P2B_TopicChangeNotDetected(t *testing.T) {
 	// 5a. Engine layer: no topic check (SUT BUG 3)
 	t.Run("engine_layer_accepts_off_topic", func(t *testing.T) {
 		t.Parallel()
-		gen := &testsupport.FakeOllamaGen{result: offTopicResult}
-		e := testsupport.BuildTestEngine(gen, nil)
+		gen := &testsupport.FakeOllamaGen{Result: offTopicResult}
+		e := testsupport.BuildTestEngine(gen)
 
 		result, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 
@@ -565,7 +565,7 @@ func TestPromptInjectionDefense_P2B_TopicChangeNotDetected(t *testing.T) {
 	// unsupported-claims rising.
 	t.Run("quality_gate_weak_proxy_catches_off_topic", func(t *testing.T) {
 		t.Parallel()
-		gen := &testsupport.FakeOllamaGen{result: offTopicResult}
+		gen := &testsupport.FakeOllamaGen{Result: offTopicResult}
 		uc, _ := buildP2BUsecase(t, gen)
 
 		_, usecaseErr := uc.Execute(context.Background(), makeP2BItemForQualityGate(), scriptpkg.Preset(""), nil)
@@ -609,7 +609,7 @@ func TestPromptInjectionDefense_P2B_QualityGateCatchesInjection(t *testing.T) {
 		Model:       "llama3:8b",
 		Prompt:      "ignored",
 	}
-	gen := &testsupport.FakeOllamaGen{result: offTopicResult}
+	gen := &testsupport.FakeOllamaGen{Result: offTopicResult}
 	uc, _ := buildP2BUsecase(t, gen)
 
 	_, err := uc.Execute(context.Background(), makeP2BItemForQualityGate(), scriptpkg.Preset(""), nil)
@@ -647,14 +647,14 @@ func TestPromptInjectionDefense_P2B_QualityGateCatchesInjection(t *testing.T) {
 func TestPromptInjectionDefense_P2B_AllInjectionPatternsCombined(t *testing.T) {
 	t.Parallel()
 	gen := &testsupport.FakeOllamaGen{
-		result: testsupport.DefaultFakeResult(),
+		Result: testsupport.DefaultFakeResult(),
 	}
-	e := testsupport.BuildTestEngine(gen, nil)
+	e := testsupport.BuildTestEngine(gen)
 
 	_, err := e.Generate(context.Background(), makeP2BPlanWithInjection())
 	require.NoError(t, err, "engine MUST succeed for the canonical P2.B end-to-end scenario")
 
-	captured := gen.capturedReq.Load()
+	captured := gen.CapturedReq.Load()
 	require.NotNil(t, captured)
 
 	// 1. The injection text appears in the prompt.
