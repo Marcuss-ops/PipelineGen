@@ -1,5 +1,13 @@
 # PipelineGen — Pipeline Waste Audit
 
+> **Status banner (added 2026-09-13).** This document is a dated snapshot kept for its reasoning and
+> its historical numbers. **Read §17 for the current state before acting on anything in §1–§16** —
+> most of the code-level findings here have since been closed, and §17 carries the AC-by-AC status
+> plus the corrected tail measurement. The remaining open items are deployment-bound and are tracked
+> in `docs/tickets/TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT-2026-09-13.md` (measurement) and
+> `docs/tickets/TICKET-CORE-READY-DURABLE-DAG.md` (the durable DAG design). Nothing in §1–§16 has
+> been rewritten, so the numbers below still describe the 2026-09-12 tree.
+
 **Date:** 2026-09-12
 **Scope:** PipelineGen (`refactored/`), RenderingGen, Chronon3d
 **Mode:** audit only — no code was changed
@@ -611,3 +619,55 @@ Stated explicitly so nothing here is over-read:
   were read from the recorded artifacts, not recomputed from source.
 - No code was changed. No test suite was executed as part of this audit; all
   numbers are read from recorded artifacts.
+
+---
+
+## 17. Status update — 2026-09-13
+
+This audit was written as a snapshot. Most of its code-level findings have since been
+closed. Read §1–§15 as the reasoning, and this section as the current state. Nothing in
+§1–§16 was rewritten, so the historical numbers stay intact.
+
+### Closed in code
+
+| item | status | evidence |
+|---|---|---|
+| §2.1 warm probe `num_ctx` 4096 vs the real 2048 bucket | **FIXED** | `platform/ollama/client/client_warm.go` now pins `types.ProductionRunnerContext` for the probe *and* the real call; `TestWarmModelLoadsOnceAndVerifiesResidency` pins the bucket. |
+| §2.3 the probe's load was invisible in telemetry | **FIXED** | the probe is now its own canonical operation `ollama/warm` (`kernel/observability/registry.go` → `OperationWarm`, `AllOperations` 38 → 39) wrapped in `MeasureOperation`, merging `model_load_ms`, `cold_start`, `inference_work_ms`, `num_ctx`. `TestWarmModelRecordsItsOwnMeasuredOperation` asserts a 45 s load is reported as its own operation instead of hiding inside the `generate` stage wall. |
+| §3.1 "no TTS cache at all" | **FIXED (was already)** | `capabilities/voiceover/service/process_segment_fingerprint.go::BuildVoiceoverContentFingerprint` is keyed on textHash + language + voice + destination + timing/silence policy + output format, JobID excluded so it is cross-run; `VoiceoverCacheAdapter` consumes it. |
+| §3.3 certification scripts hard-code `force_refresh: true` | **FIXED** | `tests/operational/person_overlay_drive_e2e.sh` and `jordan_entity_overlay_drive_e2e.sh` are env-driven and **warm by default** (`FORCE_REFRESH=true` restores the cold leg; `FORCE_REFRESH_MEDIA` controls only the `media_plan` sub-flags). The warm leg is measurable for the first time. |
+| §4 render wall attributed to `audio_compile` | **FIXED** | the stage is split into siblings `audio_compile` / `overlay_render` / `audio_finalize` / `audio_publish` (`capabilities/scripts/runner_execution.go`), so the render is no longer charged to audio. |
+| §5 `overlapped_ms = 0`, `attributed_ms > wall_ms` | **FIXED** | latest recorded run: `overlapped_ms` 4,642, `unattributed_ms` 73, `attributed_ms` 50,115 ≤ `wall_ms` 50,188. The parallel fan-out is also visible per stage (`scene_analysis` 19,048 ms of work in 11,973 ms of wall; `voiceover` 12,532 in 7,321). |
+| §6.2 gate capacities implicit in Go constants | **FIXED** | `platform/config/scripts.go` exposes `nlp_concurrency`, `script_generation_concurrency`, `tts_concurrency` and the newly added `translation_concurrency`; the first three are consumed by `app/wiring/script_generation_runtime.go`, and `translation_concurrency` is now wired through `Runner.SetTranslationConcurrency` (it previously had **no** operator surface at all). `config.yaml` declares the effective widths. Pinned by `TestScriptsConcurrencyEnvResolution`, `TestScriptsConfigWithDefaults_DoesNotFakeTTSDefault`, `TestScriptsConfigGateCapacitiesAreOperatorVisible`. |
+| §7 no duplicate-entity-download assertion | **ALREADY SATISFIED** | `IncEntityImageCatalogDriveReuse` / `IncEntityImageCatalogNewDownload` exist and `TestEntityImageCatalogOperationalMetricsDriveReuseAndBrokenDownload` asserts Drive reuse = 1 with **0** new downloads and **0** acquire calls. |
+| §8.2 "editing one scene re-synthesizes only that scene" | **FIXED** | `TestBuildVoiceoverContentFingerprint_PerSceneIndependence` pins per-scene isolation: editing scene 1 changes only scene 1's fingerprint, leaves scene 0 a cache hit, and the same scene in a later run stays warm. |
+
+### Still open — deployment-bound
+
+These cannot be closed from a source checkout; each needs a live GPU/Chronon/RenderingGen
+run or a preserved benchmark artifact. They are tracked in
+`docs/tickets/TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT-2026-09-13.md`.
+
+| item | measured evidence |
+|---|---|
+| §11 Docs/Drive off the critical path | **Now measured against the real boundary** rather than inferred. On the one artifact that emitted it (`person-overlay-drive/full-…20260913T084243Z-18144.json`): wall 102 595 ms, `core_ready_ms` **90 974 ms**, tail to the terminal flip **11 621 ms = 11.3%**, split 5 975 ms Docs (`document.publish` 5 959) + 12 ms `complete_finalize` + 5 634 ms `post_writer_finalize`. Across 39 recorded runs the tail is a near-flat cost: median 11 721 ms, 11.3% of wall, max 83 208 ms (39.2%). See `docs/tickets/TICKET-CORE-READY-DURABLE-DAG.md` §7. |
+| §11b **the tail is a Drive upload problem, not a Docs problem** | The outliers in `post_writer_finalize` (78 623 ms and 44 045 ms) are one slow Drive transfer. In the *same* runs the unrelated final-audio upload spikes to 80 947 ms / 38 994 ms against a healthy 5 055 ms. Throughput is the variable, not size: 7.04 MB at **89 KB/s** and a **0.87 MB** file at **22 KB/s**, versus ~1 150 KB/s healthy. Mechanism: `uploader_put.go:480` keeps everything under 16 MB on the non-resumable single-shot `Media()` path; `auth.go:93` sets no `http.Client.Timeout`; and `token.go:24` holds a **process-wide mutex across both the token refresh and the `SaveToken` disk write**, so one stalled refresh blocks every concurrent Drive request. Full write-up: ticket §8. |
+| §11c the tail is now a runnable gate | `make gate-core-ready-tail` (`tests/operational/measure_core_ready_tail.sh --gate`) fails closed when the two tail reconstructions disagree beyond the run's own `unattributed_ms`, when a tail exceeds `MAX_TAIL_MS`, or (opt-in) when an artifact carries `CORE_READY` without the projected `core_ready_ms`. Corpus today: 39/39 reconciled. |
+| §10 render serialization / GPU gate | `overlay_render`: 4 calls, 6,227 ms of work, **11,160 ms of wall** (max single call 5,312 ms) → ~5 s of queue/lock wait, not render work. |
+| §9 Chronon warm daemon | `platform/overlays/renderer.go` still spawns one CLI process per render; the warm daemon + cold/warm benchmark already exist in RenderingGen. |
+| §6 / §12 warm-vs-cold certification | now *possible* (see §3.3 above) but never yet measured; needs a preserved warm `full-*.json`. |
+| §12 scenes × languages × cache × renderer grid + indexed results corpus | no single producing command; results are still a flat timestamped directory. |
+
+### Also still true
+
+- **Two Ollama warm call sites remain** (`app/wiring/lifecycle_preparation.go:175`
+  queue-time, `usecase/gencore/segment_validation.go:114` pre-fan-out). They no longer
+  disagree with the real request (both resolve the same resident bucket, and the probe is
+  singleflight), so this is redundancy rather than the self-defeating pair §14 described —
+  but it is still two warmers where one would do.
+- **Disk weight is untouched**: `Chronon3d/build` ≈ 72 GB, `refactored/.venv-whisper` 2.6 GB,
+  `refactored/bin` 661 MB, `refactored/data` 1.1 GB. `Chronon3d/build` is a regenerable cmake
+  tree and is the cheapest large win.
+- **The results corpus is still a flat directory** and `status-*.json` files have been deleted
+  by hand before (see §14). Preserve them; they are the only record of production-shaped
+  timings.

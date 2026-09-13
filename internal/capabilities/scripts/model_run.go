@@ -71,6 +71,20 @@ const (
 	StagePublishingDocuments  Stage = "PUBLISHING_DOCUMENTS"
 	StageCompleted            Stage = "COMPLETED"
 	StageFailed               Stage = "FAILED"
+	// StageCoreReady is the CORE_READY milestone: the certified render, the
+	// published final audio and the canonical script result are durable, and
+	// only the post-processing legs remain (Google Docs publication and the
+	// artifact/Drive finalization the worker performs after this run returns).
+	//
+	// It is deliberately NOT a member of stageOrder: it is a milestone with no
+	// work of its own, so StageIndex returns -1 for it exactly like the
+	// terminal stages. ResumeFrom maps it explicitly onto the first phase that
+	// still has work (StagePublishingDocuments) instead of restarting the run.
+	//
+	// It is also NOT a terminal state. SUCCEEDED/COMPLETED keeps its existing
+	// meaning — every requested artifact is published — so observing
+	// CORE_READY can never be mistaken for "the job is done".
+	StageCoreReady Stage = "CORE_READY"
 )
 
 // ErrProjectRequired is the typed sentinel surfaced when a
@@ -145,17 +159,24 @@ func (s Stage) IsTerminal() bool {
 
 // ── Completion contract ─────────────────────────────────────────────
 
-// IsRunCompletable checks whether a run has satisfied all preconditions
-// for transitioning to COMPLETED. Verdetto contract:
+// IsCoreCompletable checks whether the CORE half of a run is durable.
+//
+// CORE contract (the part that must hold at the CORE_READY boundary):
 //
 //	scene normalizzate > 0
-//	ogni scena ha testo EN
-//	ogni scena ha testo ES
-//	ogni voiceover richiesto è READY
-//	documento EN ha id e link
-//	documento ES ha id e link
-//	nessuna fase richiesta è PENDING
-func IsRunCompletable(result *GenerateResult, wantedLanguages []Language) bool {
+//	ogni scena ha testo per ogni lingua richiesta
+//
+// It deliberately says NOTHING about Google Docs. The render, the certified
+// final audio and the script row are already durable by the time this is
+// evaluated — they are produced by the phases that precede the boundary
+// (audioCompile → persist) and are not re-derived here. What this predicate
+// answers is the question the boundary actually asks: "is the canonical
+// scene/text core present, so that the only thing left is post-processing?"
+//
+// NO-FAKE-AVAILABILITY: a caller must never advertise core readiness when
+// this returns false, so a run whose text is incomplete cannot look ready
+// while Docs/Drive are still pending.
+func IsCoreCompletable(result *GenerateResult, wantedLanguages []Language) bool {
 	if result == nil {
 		return false
 	}
@@ -170,6 +191,27 @@ func IsRunCompletable(result *GenerateResult, wantedLanguages []Language) bool {
 				return false
 			}
 		}
+	}
+
+	return true
+}
+
+// IsRunCompletable checks whether a run has satisfied all preconditions for
+// transitioning to COMPLETED. It is the CORE contract PLUS every requested
+// document, so the terminal state keeps its existing meaning: a run is only
+// COMPLETED once the post-processing legs have actually produced their
+// artifacts. The split exists so the interim CORE_READY boundary can be
+// asserted honestly (IsCoreCompletable) without weakening COMPLETED.
+//
+// Verdetto contract:
+//
+//	scene normalizzate > 0
+//	ogni scena ha testo per ogni lingua richiesta
+//	documento per ogni lingua richiesta ha id e link
+//	nessuna fase richiesta è PENDING
+func IsRunCompletable(result *GenerateResult, wantedLanguages []Language) bool {
+	if !IsCoreCompletable(result, wantedLanguages) {
+		return false
 	}
 
 	// Every wanted language must have a published document with ID and link.
@@ -260,6 +302,13 @@ func ResumeFrom(run *GenerationRun) Stage {
 		}
 		return StageNormalizing
 	case RunStatusRunning:
+		// CORE_READY is a milestone, not a work phase (StageIndex returns -1
+		// for it). The canonical result is already durable at this point, so
+		// resuming from here must re-enter at the first phase that still has
+		// work — the post-processing legs — instead of replaying the run.
+		if run.CurrentStage == StageCoreReady {
+			return StagePublishingDocuments
+		}
 		// Already running — resume from current stage.
 		if run.CurrentStage != "" && StageIndex(run.CurrentStage) >= 0 {
 			return run.CurrentStage

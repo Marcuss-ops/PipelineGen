@@ -63,7 +63,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 			AudioSourceInMS:  scene.FixedPlaybackSourceInMS(),
 			AudioSourceOutMS: scene.FixedPlaybackSourceOutMS(),
 			Bindings:         scriptpkg.SceneBindings{},
-			Annotations:      scene.Annotations,
+			Annotations:      annotationForLanguage(scene, language),
 		}
 		if scene.ExecutionMode.IsFixedMedia() {
 			converted.Kind = fixedSceneKind(scene)
@@ -124,7 +124,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 	// pointer is absent. Project the canonical VidRush enrichment into the
 	// document envelope as a fallback, then preserve any richer scene-local
 	// annotation already carried by the result (notably persisted image data).
-	if len(result.Segments) > 0 {
+	if len(result.Segments) > 0 && documentUsesSourceAnnotations(result, language) {
 		ProjectSegmentAnnotations(&spec, language, result.Segments)
 		for i := range result.Scenes {
 			if result.Scenes[i].Annotations != nil && i < len(spec.Scenes) {
@@ -138,6 +138,38 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		Text:          strings.Join(allText, "\n\n"),
 		SpecScene:     spec,
 	}
+}
+
+func annotationForLanguage(scene Scene, language Language) *scriptpkg.SceneAnnotations {
+	if scene.LocalizedAnnotations != nil {
+		if annotations := scene.LocalizedAnnotations[language]; annotations != nil {
+			return annotations
+		}
+	}
+	if scene.Annotations != nil && strings.EqualFold(strings.TrimSpace(scene.Annotations.Language), string(language)) {
+		return scene.Annotations
+	}
+	return nil
+}
+
+func documentUsesSourceAnnotations(result *GenerateResult, language Language) bool {
+	for _, scene := range result.Scenes {
+		if len(scene.LocalizedAnnotations) > 0 {
+			// A localized annotation map means this result uses the new
+			// per-language contract; source segments must not leak into a
+			// translated document.
+			return false
+		}
+	}
+	for _, scene := range result.Scenes {
+		if scene.Annotations != nil && strings.EqualFold(strings.TrimSpace(scene.Annotations.Language), string(language)) {
+			return true
+		}
+	}
+	// Legacy durable results may carry Segments without a scene annotation
+	// pointer. Preserve their source-document fallback until all old results
+	// have been rewritten with LocalizedAnnotations.
+	return true
 }
 
 // latestLocalizedRenderLinks is the document projection of the render

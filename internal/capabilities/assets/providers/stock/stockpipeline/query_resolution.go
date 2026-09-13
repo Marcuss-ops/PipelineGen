@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
@@ -175,4 +176,89 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 			ErrStockPipelineAllQueriesFailed, failed, total, lastErr)
 	}
 	return nil
+}
+
+// directURLDurationProbeTimeout bounds each provider metadata probe so a
+// slow or hung yt-dlp invocation cannot stall the run before its first
+// planned step. The inner ListChannel call owns a longer 60s process
+// timeout; this is the tighter outer bound for the planning phase.
+const directURLDurationProbeTimeout = 20 * time.Second
+
+// enrichDirectURLDurations resolves provider-known durations for direct
+// source URLs that carry none, populating input.SourceDurations so the
+// deterministic planner distributes clip windows inside the REAL source
+// length instead of the budget*10 fallback.
+//
+// Why this exists: search-resolved sources arrive with a provider duration
+// (resolveInputQueries propagates it), but a bare `direct_url` does not. A
+// direct URL with no duration and no explicit clips therefore planned a
+// budget*10 horizon — windows far past the end of any real video — and died
+// at stock.extract_clips with ErrStockClipsOutOfRange. This reuses the
+// already-wired ChannelLister (the same provider surface resolveQuery
+// consumes) so no new port or composition-root plumbing is required.
+//
+// Scope and skip conditions:
+//   - nil service/input, nil ChannelLister, no DirectURLs, or any explicit
+//     Clips present → no-op (nothing to resolve / not needed: the explicit
+//     planner consumes the operator windows verbatim and ignores the
+//     deterministic horizon).
+//   - Non-YouTube direct URLs are skipped (the duration-native metadata path
+//     here is YouTube-only).
+//   - URLs whose duration is already known are never overwritten.
+//
+// godlike/07 contract: a failed or empty probe is NON-FATAL. It logs a Warn
+// and leaves the plan on the planner's conservative fallback; it never
+// fabricates a duration, so a genuinely out-of-range plan still fails closed
+// at extract time.
+func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput) {
+	if s == nil || input == nil || s.channelLister == nil {
+		return
+	}
+	if len(input.Clips) > 0 || len(input.DirectURLs) == 0 {
+		return
+	}
+	for _, raw := range input.DirectURLs {
+		url := strings.TrimSpace(raw)
+		if url == "" {
+			continue
+		}
+		if known := input.SourceDurations[url]; known > 0 {
+			continue
+		}
+		if InferSourceProvider(url) != SourceProviderYouTube {
+			continue
+		}
+
+		probeCtx, cancel := context.WithTimeout(ctx, directURLDurationProbeTimeout)
+		videos, err := s.channelLister.ListChannel(probeCtx, url, 1)
+		cancel()
+		if err != nil {
+			if s.log != nil {
+				s.log.Warn("stock: direct URL duration probe failed — planner fallback applies",
+					zap.String("source_url", url), zap.Error(err))
+			}
+			continue
+		}
+		duration := 0.0
+		for _, video := range videos {
+			if video.Duration > duration {
+				duration = video.Duration
+			}
+		}
+		if duration <= 0 {
+			if s.log != nil {
+				s.log.Warn("stock: direct URL duration probe returned no duration — planner fallback applies",
+					zap.String("source_url", url))
+			}
+			continue
+		}
+		if input.SourceDurations == nil {
+			input.SourceDurations = make(map[string]float64)
+		}
+		input.SourceDurations[url] = duration
+		if s.log != nil {
+			s.log.Info("stock: enriched direct URL duration from provider metadata",
+				zap.String("source_url", url), zap.Float64("duration_sec", duration))
+		}
+	}
 }

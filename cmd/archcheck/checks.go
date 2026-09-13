@@ -66,6 +66,11 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// percheck_media_assets_writer_canonical (scoped asset_locations /
 		// outbox_events rules) — the two scanners encoded the same fact.
 		{"percheck_media_assets_writer_canonical", boundaries.ScanMediaAssetsWriterCanonical},
+		// MEDIA-SSOT (September 2026): the write gate bans direct SQL; this
+		// companion bans the TRANSACTION-BOUND seam on the write boundary —
+		// the construct that let a SQLite *sql.Tx reach the PostgreSQL media
+		// writer. Together they make the old media path unrepresentable.
+		{"percheck_media_txn_boundary", boundaries.ScanMediaTxBoundary},
 		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
 		{"percheck_rights_status_canonical_6", governance.ScanRightsStatusCanonical6},

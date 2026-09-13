@@ -72,16 +72,19 @@ func TestCompileLegacyOverlayPlan_PreservesEntityImagePresetAndTiming(t *testing
 
 	var foundEntity, foundPhrase bool
 	for _, item := range plan.Items {
-		if item.TemplateID == "PERSON" || item.TemplateID == "person_default" {
+		if item.TemplateID == "PERSON" || item.TemplateID == "person_default" || item.TemplateID == "image_popup" {
 			foundEntity = true
-			if item.ImagePresetID == "" {
-				t.Error("entity card has no image preset")
+			if item.PresetID == "" {
+				t.Error("entity image has no image preset")
+			}
+			if item.Text != "" {
+				t.Errorf("entity image must not carry rendered text: %q", item.Text)
 			}
 			if len(item.AssetRefs) != 1 || item.AssetRefs[0].SHA256 == "" {
-				t.Errorf("entity card has no verified image asset: %+v", item.AssetRefs)
+				t.Errorf("entity image has no verified image asset: %+v", item.AssetRefs)
 			}
 			if item.DurationUS <= 0 || item.StartUS != 0 {
-				t.Errorf("entity card is not anchored to real timing: start=%d duration=%d", item.StartUS, item.DurationUS)
+				t.Errorf("entity image is not anchored to real timing: start=%d duration=%d", item.StartUS, item.DurationUS)
 			}
 		}
 		if item.TemplateID == "IMPORTANT_PHRASE" {
@@ -92,7 +95,7 @@ func TestCompileLegacyOverlayPlan_PreservesEntityImagePresetAndTiming(t *testing
 		}
 	}
 	if !foundEntity {
-		t.Fatal("legacy bridge did not produce the entity card")
+		t.Fatal("legacy bridge did not produce the entity image")
 	}
 	if !foundPhrase {
 		t.Fatal("legacy bridge did not produce the timed phrase")

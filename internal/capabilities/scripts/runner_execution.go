@@ -10,6 +10,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -118,6 +119,17 @@ func (e *executionRun) start() bool {
 			zap.Int("attempt", run.AttemptCount+1),
 		)
 		e.run = run
+		// Adopt the durable result from the checkpoint. Repository.Get returns
+		// the checkpointed Result, and every phase that runs BEFORE the resume
+		// index is skipped — so without this adoption a resume from
+		// PUBLISHING_DOCUMENTS (including a resume from the CORE_READY boundary)
+		// would continue against an empty result and publish nothing, silently
+		// discarding the completed core work the checkpoint was written to
+		// preserve. A fresh run has no checkpointed result, so this is a no-op
+		// there.
+		if e.result == nil && run.Result != nil {
+			e.result = run.Result
+		}
 	} else {
 		// New run — set RUNNING.
 		if err := e.r.updateStage(e.ctx, e.runID, RunStatusRunning, StageNormalizing); err != nil {
@@ -246,6 +258,9 @@ func (e *executionRun) sceneTextReady() bool {
 		ok = e.parallelFanOut()
 	}
 	if ok {
+		if err := e.r.runTranslatedNLP(e.ctx, e.req, e.result); err != nil {
+			return e.fail(StageTranslatingScenes, err)
+		}
 		e.result.SourceTrace = sourceTraceFromResult(e.result)
 	}
 	return ok
@@ -276,7 +291,19 @@ func (e *executionRun) serialFanOut() bool {
 func (e *executionRun) parallelFanOut() bool {
 	prepareCtx, cancelPrepare := context.WithCancel(e.ctx)
 	defer cancelPrepare()
-	prepareDone := make(chan vidRushPrepareOutcome, 1)
+	// Start semantic enrichment first and independently. The old version put
+	// DocsPrepare + audio prefetch in front of runVidRushJoinAndPrepare inside
+	// one goroutine; a slow document skeleton therefore delayed NLP until after
+	// TTS, even though the outer fan-out was nominally parallel.
+	semanticDone := make(chan vidRushPrepareOutcome, 1)
+	go func() {
+		res, err := e.r.runVidRushJoinAndPrepare(prepareCtx, e.runID, e.req, e.snapshot)
+		semanticDone <- vidRushPrepareOutcome{result: res, err: err}
+	}()
+
+	// DocsPrepare and audio prefetch are independent of semantic enrichment;
+	// keep them on a second branch so they also overlap both NLP and TTS.
+	assetsDone := make(chan vidRushPrepareOutcome, 1)
 	go func() {
 		// Early DocsPrepare: render the scene-text-only document skeleton
 		// first so CPU render overlaps both TTS and NLP.
@@ -313,13 +340,9 @@ func (e *executionRun) parallelFanOut() bool {
 				prefetched = pf
 			}
 		}
-
-		res, err := e.r.runVidRushJoinAndPrepare(prepareCtx, e.runID, e.req, e.snapshot)
-		prepareDone <- vidRushPrepareOutcome{
-			result:     res,
+		assetsDone <- vidRushPrepareOutcome{
 			skeletons:  skel,
 			prefetched: prefetched,
-			err:        err,
 		}
 	}()
 
@@ -331,20 +354,24 @@ func (e *executionRun) parallelFanOut() bool {
 		return false
 	}
 
-	// Join the prepare branch; an error fails the run (fail-closed).
-	var outcome vidRushPrepareOutcome
+	// Join both early branches; an error fails the run (fail-closed). The
+	// semantic branch is intentionally joined separately from the assets branch
+	// so its start is never delayed by document rendering or audio prefetch.
+	var semanticOutcome vidRushPrepareOutcome
+	var assetsOutcome vidRushPrepareOutcome
 	kernobs.MeasureStage(e.ctx, "prepare_join", func(stageCtx context.Context) error {
-		outcome = <-prepareDone
-		return outcome.err
+		semanticOutcome = <-semanticDone
+		assetsOutcome = <-assetsDone
+		return semanticOutcome.err
 	})
-	if outcome.err != nil {
-		return e.fail(StageGeneratingSceneText, outcome.err)
+	if semanticOutcome.err != nil {
+		return e.fail(StageGeneratingSceneText, semanticOutcome.err)
 	}
-	applyVidRushPrepareProjections(e.result, outcome.result)
-	e.skeletons = outcome.skeletons
+	applyVidRushPrepareProjections(e.result, semanticOutcome.result)
+	e.skeletons = assetsOutcome.skeletons
 	// Store the prefetched audio assets so the audio-compile phase consumes
 	// them without blocking on I/O.
-	e.result.AudioPrefetch = outcome.prefetched
+	e.result.AudioPrefetch = assetsOutcome.prefetched
 	e.checkpoint()
 	return true
 }
@@ -390,10 +417,61 @@ func (e *executionRun) audioCompile() bool {
 // produces localized clip artifacts; complete-video assembly is outside this
 // capability and is not part of the script.generate contract.
 func (e *executionRun) persist() bool {
-	return e.measure(kernobs.StageName(stagePersistence), func(c context.Context) bool {
+	if !e.measure(kernobs.StageName(stagePersistence), func(c context.Context) bool {
 		e.checkpoint()
 		return e.r.persistScript(c, e.runID, e.req, e.exec, e.resumeIdx, e.result)
-	})
+	}) {
+		return false
+	}
+	// The core is durable from here: see markCoreReady.
+	e.markCoreReady()
+	return true
+}
+
+// markCoreReady records the CORE_READY boundary. At this point the certified
+// overlay render, the published final audio and the canonical script row are
+// durable, and only the post-processing legs remain: Google Docs publication
+// inside this run, then the artifact/Drive finalization the worker performs
+// after this run returns.
+//
+// The boundary is observability, never a terminal state. It exists because
+// SUCCEEDED has to keep meaning "every requested artifact is published": the
+// core becoming available earlier must be visible WITHOUT pretending that
+// Docs and Drive are done. Consumers read `current_stage == CORE_READY` (and
+// the core_ready_ms KPI) instead of inferring availability from the tail.
+//
+// It deliberately stays silent in two cases:
+//   - no post-processing leg is deferred (docs disabled), where CORE_READY
+//     would just be a second name for COMPLETED;
+//   - the core contract does not hold, because the milestone must never
+//     advertise a core that is not durable (NO-FAKE-AVAILABILITY).
+func (e *executionRun) markCoreReady() {
+	docsEnabled, docsLangs, _ := e.req.ResolveDocsConfig()
+	if !docsEnabled || len(docsLangs) == 0 {
+		return
+	}
+	if !IsCoreCompletable(e.result, docsLangs) {
+		return
+	}
+
+	started := time.Now()
+	kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: kernobs.StageName(StageCoreReady)}, started, time.Now(), nil)
+	if run := kernobs.FromContext(e.ctx); run != nil {
+		kernobs.RecordKPIMilestone(e.ctx, "core_ready_ms", run.ElapsedMs())
+	}
+	// Durable projection: CurrentStage becomes CORE_READY, which is both what
+	// a resumed attempt reads to re-enter at the post-processing legs
+	// (ResumeFrom) and what an availability consumer polls.
+	if err := e.r.updateStage(e.ctx, e.runID, RunStatusRunning, StageCoreReady); err != nil {
+		// An observation must never fail a run whose core work succeeded.
+		e.log("scriptgeneration: core ready stage update failed", zap.String("error", err.Error()))
+		return
+	}
+	e.log("scriptgeneration: core ready",
+		zap.Bool("core_ready", true),
+		zap.String("current_stage", string(StageCoreReady)),
+		zap.Int("pending_document_languages", len(docsLangs)),
+	)
 }
 
 // documents runs the document (Docs) publishing phase with the pre-rendered

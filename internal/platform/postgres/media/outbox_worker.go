@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // ErrLeaseLost is returned when a lifecycle mutator's lease fence fails:
@@ -362,10 +364,22 @@ func (w *PostgresIndexWorker) processClaims(ctx context.Context, claims []*Outbo
 	}
 }
 
-// failOrFail records the failure with exponential backoff and surfaces
-// the error so the worker loop can log it. The event is retried until
-// max_attempts, then dead-lettered (never silently dropped).
+// failOrFail records the failure and surfaces the error so the worker loop can
+// log it. The classification is the shared kernel one:
+//
+//   - terminal error (kernel/event.IsTerminal) → MarkDeadLetter immediately;
+//     retrying cannot fix a malformed envelope, and burning the backoff budget
+//     would only delay the operator signal.
+//   - retryable error → backoff until max_attempts, then dead_letter.
+//
+// Never silently dropped in either case.
 func (w *PostgresIndexWorker) failOrFail(ctx context.Context, claim *OutboxClaim, cause error) error {
+	if event.IsTerminal(cause) {
+		if err := w.repo.MarkDeadLetter(ctx, claim.Event.ID, claim.LeaseID, cause.Error()); err != nil {
+			return errors.Join(cause, fmt.Errorf("media index worker: mark dead-letter: %w", err))
+		}
+		return cause
+	}
 	backoff := time.Duration(1<<min(claim.Event.AttemptCount, 6)) * time.Second
 	if err := w.repo.MarkFailed(ctx, claim.Event.ID, claim.LeaseID, cause.Error(), time.Now().Add(backoff)); err != nil {
 		return errors.Join(cause, fmt.Errorf("media index worker: mark failed: %w", err))

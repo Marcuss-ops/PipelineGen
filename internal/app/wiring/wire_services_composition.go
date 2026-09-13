@@ -170,15 +170,16 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 			}
 			jobOutbox := outboxevents.NewRepository(jobDB)
 			finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
-			if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != root.DB.DB {
-				broker.WithFinalizer(&splitPlaneFinalizer{
-					mediaDB: root.MediaPostgres, mediaOutbox: pgmedia.NewOutboxRepository(root.MediaPostgres),
-					assetTx: assetTx, jobsFinalizer: finalizer,
-				})
-			} else {
-				finalizer = jobsfinalizer.New(jobDB, jobOutbox, assetTx, log)
-				broker.WithFinalizer(finalizer)
-			}
+			// MEDIA-SSOT P0-2 (September 2026): assetCommitter is non-nil only for
+			// a media PostgreSQL handle, and the job terminal state is always on
+			// the SQLite job plane — the engines cannot share a tx. Use the
+			// two-phase split-plane boundary unconditionally; the legacy
+			// single-transaction shape would have handed a PostgreSQL committer
+			// a SQLite job transaction.
+			broker.WithFinalizer(&splitPlaneFinalizer{
+				mediaDB: root.MediaPostgres, mediaOutbox: pgmedia.NewOutboxRepository(root.MediaPostgres),
+				assetTx: assetTx, jobsFinalizer: finalizer,
+			})
 			if root.Drive != nil && root.Drive.Publisher != nil {
 				preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 				broker.WithArtifactPreparation(preparation)

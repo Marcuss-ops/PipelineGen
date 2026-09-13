@@ -202,6 +202,30 @@ func (r *Repository) MarkCompleted(ctx context.Context, eventID int64, leaseID s
 	return nil
 }
 
+// MarkDeadLetter moves a claimed event straight to the terminal dead_letter
+// state (lease-fenced), bypassing the remaining attempts.
+//
+// Used when a handler reports a TERMINAL error (kernel/event.IsTerminal):
+// retrying cannot fix the cause, so burning the backoff budget would only
+// delay the operator signal. Parity with the SQLite repository's
+// MarkDeadLetter.
+func (r *Repository) MarkDeadLetter(ctx context.Context, eventID int64, leaseID, errMsg string) error {
+	now := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET status = 'dead_letter', last_error = $1, updated_at = $2,
+		    worker_id = '', lease_id = '', lease_expiry = NULL
+		WHERE id = $3 AND lease_id = $4 AND status = 'processing'
+	`, errMsg, now, eventID, leaseID)
+	if err != nil {
+		return fmt.Errorf("media outbox MarkDeadLetter(%d): %w", eventID, err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return fmt.Errorf("media outbox MarkDeadLetter(%d): %w", eventID, ErrLeaseLost)
+	}
+	return nil
+}
+
 // MarkFailed records a failed attempt. Attempts remaining → back to
 // pending with exponential backoff; exhausted → dead_letter.
 func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error {

@@ -825,8 +825,8 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	if len(AllComponents()) != 15 {
 		t.Fatalf("components = %d, want 15", len(AllComponents()))
 	}
-	if len(AllOperations()) != 38 {
-		t.Fatalf("operations = %d, want 38", len(AllOperations()))
+	if len(AllOperations()) != 39 {
+		t.Fatalf("operations = %d, want 39", len(AllOperations()))
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")

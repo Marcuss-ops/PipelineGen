@@ -117,6 +117,12 @@ type Service struct {
 	// transaction passed to assetFinalizer.
 	mainDB *sql.DB
 
+	// mediaDB is the PostgreSQL media SSOT handle. When non-nil it is the
+	// engine of the wired assetFinalizer/committer, so the finalizer
+	// transaction MUST be opened on it rather than on mainDB (SQLite). Nil
+	// keeps the legacy/test fallback to mainDB.
+	mediaDB *sql.DB
+
 	// stager is the canonical acquisition.SourceStager port. Optional.
 	stager acquisition.SourceStager
 
@@ -240,6 +246,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		assetVersions:     deps.Repos.AssetVerRepo,
 		assetFinalizer:    deps.Finalizer.AssetFinalizerTx,
 		mainDB:            deps.Infra.MainDB,
+		mediaDB:           deps.Infra.MediaDB,
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
@@ -279,4 +286,18 @@ func NewService(deps ServiceDeps) (*Service, error) {
 // dal composition root (vedi internal/app/composition.go::NewComposition).
 func (s *Service) Close() error {
 	return nil
+}
+
+// assetFinalizerDB returns the DB handle whose engine matches the wired
+// assetFinalizer/committer. The media cutover (September 2026) puts the
+// canonical writer on PostgreSQL while mainDB stays the operational SQLite
+// handle; opening the finalizer tx on mainDB would feed PostgreSQL SQL to
+// SQLite (`unrecognized token: ":"`). Prefer mediaDB whenever it is wired and
+// fall back to mainDB only for legacy/test compositions whose committer is
+// SQLite.
+func (s *Service) assetFinalizerDB() *sql.DB {
+	if s.mediaDB != nil {
+		return s.mediaDB
+	}
+	return s.mainDB
 }

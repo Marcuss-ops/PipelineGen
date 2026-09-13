@@ -120,19 +120,19 @@ func TestGolden06FullScriptScene(t *testing.T) {
 
 	// 2. Content selection: the semantic vocabulary, each anchored to
 	//    certified timing (never estimated). The chosen entity (Tim Cook) is
-	//    the person card carrying its image asset — entity-card images never
-	//    render as a separate IMAGE_OVERLAY (the card replaces it).
+	//    the image-only entity overlay carrying its image asset — it never
+	//    renders a second name layer.
 	templates := map[string]bool{}
 	for _, item := range plan.Items {
 		templates[item.TemplateID] = true
 	}
 	for _, want := range []string{
 		"IMPORTANT_PHRASE", "IMPORTANT_WORD",
-		"person_default", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
+		"image_popup", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
 	} {
 		require.True(t, templates[want], "plan must carry template %q (got %v)", want, templates)
 	}
-	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
+	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity images must not render twice")
 
 	// 3. RenderingGen queue: submit the SEMANTIC OverlayPlan + completed
 	//    artifact (the worker's reply). RenderingGen owns the v2 lowering.

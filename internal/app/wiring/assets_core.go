@@ -42,6 +42,8 @@
 package wiring
 
 import (
+	"database/sql"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -183,4 +185,9 @@ type AssetsModuleDeps struct {
 	Search     SearchDeps
 	Delivery   DeliveryDeps
 	Background BackgroundDeps
+	// MediaPostgres is the PostgreSQL media SSOT handle (root.MediaPostgres).
+	// It selects the PostgreSQL sourcing clip store for the YouTube registrar
+	// so dedupe reads the same engine the producers write. Nil keeps the
+	// documented graceful-degrade SQLite store.
+	MediaPostgres *sql.DB
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -34,6 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -54,7 +54,7 @@ const (
 
 // folderRec mirrors the columns of `clip_folders` used by the canonical
 // listing + Drive folder sync code. Used purely to (de)serialise a
-// folder before issuing the SQL upsert.
+// folder before handing it to the canonical folder repository.
 type folderRec struct {
 	ID         string
 	Source     string
@@ -62,9 +62,16 @@ type folderRec struct {
 	FolderID   string
 	FolderPath string
 	SourceURL  string
-	SearchKey  string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// clipFolderWriter is the narrow canonical folder-write port the Drive
+// scanner consumes. *imagesregistry.ClipsRepository implements it; the
+// concrete type is deliberately not imported here so the operator tool
+// depends on the port rather than the storage package.
+type clipFolderWriter interface {
+	UpsertFolder(ctx context.Context, folder *detail.ClipFolder) error
 }
 
 func RunListDriveFolder(args []string) error {
@@ -112,7 +119,10 @@ func RunListDriveFolder(args []string) error {
 	fmt.Printf("Root Folder ID: %s\n", *folder)
 	fmt.Printf("Sync to Database: %t\n\n", *syncDB)
 
-	count, err := scanFolders(ctx, driveReader, root.DB.DB, *folder, "", "", *syncDB, log)
+	if root.Repos == nil || root.Repos.ClipsRepo == nil {
+		return fmt.Errorf("list-drive-folder: canonical clips repository is required for --sync-db")
+	}
+	count, err := scanFolders(ctx, driveReader, root.Repos.ClipsRepo, *folder, "", "", *syncDB, log)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
@@ -139,7 +149,7 @@ func RunListDriveFolder(args []string) error {
 func scanFolders(
 	ctx context.Context,
 	reader drive.Reader,
-	db *sql.DB,
+	writer clipFolderWriter,
 	folderID, currentPath, source string,
 	syncDB bool,
 	log *zap.Logger,
@@ -198,7 +208,7 @@ func scanFolders(
 
 		fmt.Printf("Folder: %s (%s) [source: %s, path: %s, link: %s]\n", file.Name, file.ID, childSource, childPath, link)
 
-		if syncDB && db != nil {
+		if syncDB && writer != nil {
 			now := time.Now().UTC()
 			cf := folderRec{
 				ID:         file.ID,
@@ -207,11 +217,10 @@ func scanFolders(
 				FolderID:   file.ID,
 				FolderPath: childPath,
 				SourceURL:  link,
-				SearchKey:  strings.ToLower(strings.ReplaceAll(childSource+file.Name, " ", "")),
 				CreatedAt:  now,
 				UpdatedAt:  now,
 			}
-			if err := upsertClipFolder(ctx, db, cf); err != nil {
+			if err := upsertClipFolder(ctx, writer, cf); err != nil {
 				log.Warn("Failed to upsert folder in DB", zap.String("name", file.Name), zap.Error(err))
 			} else {
 				fmt.Printf("  -> Saved in DB\n")
@@ -219,7 +228,7 @@ func scanFolders(
 			}
 		}
 
-		subCount, err := scanFolders(ctx, reader, db, file.ID, childPath, childSource, syncDB, log)
+		subCount, err := scanFolders(ctx, reader, writer, file.ID, childPath, childSource, syncDB, log)
 		if err != nil {
 			log.Warn("Failed to scan subfolder", zap.String("name", file.Name), zap.Error(err))
 		}
@@ -228,21 +237,25 @@ func scanFolders(
 	return count, nil
 }
 
-// upsertClipFolder writes a single folderRec into the `clip_folders`
-// table using the canonical INSERT OR REPLACE shape. Column set
-// mirrors migration 011_create_characters.sql.
-func upsertClipFolder(ctx context.Context, db *sql.DB, cf folderRec) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO clip_folders
-			(id, source, source_url, folder_id, folder_path, group_name, search_key,
-			 metadata, created_at, updated_at)
-		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		cf.ID, cf.Source, cf.SourceURL, cf.FolderID, cf.FolderPath,
-		cf.GroupName, cf.SearchKey, "{}", cf.CreatedAt.UTC().Format(time.RFC3339),
-		cf.UpdatedAt.UTC().Format(time.RFC3339),
-	)
-	return err
+// upsertClipFolder writes a single folderRec through the canonical folder
+// repository.
+//
+// MEDIA-SSOT (POSTGRES-MEDIA-CUTOVER): the raw `clip_folders` INSERT OR
+// REPLACE is gone. The repository owns the operational row AND mirrors it
+// into the PostgreSQL folder projection (search_key is derived canonically
+// from group + folder_path rather than passed in).
+func upsertClipFolder(ctx context.Context, writer clipFolderWriter, cf folderRec) error {
+	return writer.UpsertFolder(ctx, &detail.ClipFolder{
+		ID:         cf.ID,
+		Source:     cf.Source,
+		SourceURL:  cf.SourceURL,
+		FolderID:   cf.FolderID,
+		FolderPath: cf.FolderPath,
+		Group:      cf.GroupName,
+		Metadata:   "{}",
+		CreatedAt:  cf.CreatedAt,
+		UpdatedAt:  cf.UpdatedAt,
+	})
 }
 
 func runListDriveFolderCleanupPolluted(ctx context.Context, uploader any, args ...any) error {

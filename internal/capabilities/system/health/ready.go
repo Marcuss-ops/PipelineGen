@@ -59,6 +59,10 @@ type ReadyChecker struct {
 	// Script-generation readiness check (July 2026).
 	scriptGenerateCheck ScriptGenerateChecker
 	scriptRouteMounted  func() bool
+
+	// PR-YTDLP-HEALTH-GUARD: yt-dlp version staleness + PO Token provider
+	// availability. WARN-ONLY — see runYTDLPHealthCheck.
+	ytdlpHealth YTDLPHealthChecker
 }
 
 // NewReadyChecker wraps the canonical *Service with the readiness policy.
@@ -141,6 +145,10 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 	// Script-generation readiness: database, job registry/worker, Ollama,
 	// document service, Drive, and the /api/script route.
 	r.runScriptGenerateCheck(ctx, &resp)
+
+	// PR-YTDLP-HEALTH-GUARD: yt-dlp toolchain drift (stale version / missing
+	// PO Token provider). Warn-only: it never flips resp.OK.
+	r.runYTDLPHealthCheck(ctx, &resp)
 
 	return resp
 }

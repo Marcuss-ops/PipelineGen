@@ -52,11 +52,10 @@ func (r *recordingOutboxEventsRepo) Enqueue(_ context.Context, _ *sql.Tx, eventT
 var _ outboxEnqueuer = (*recordingOutboxEventsRepo)(nil)
 
 // txMgrRun is a TxManager that records the *sql.Tx the dispatcher
-// passes to the closure (always nil in these tests because the fake
-// doesn't open a real tx; the value is only used to satisfy the
-// interface). The InTransaction callback runs the fn synchronously
-// with a nil tx — which is acceptable because fakeClips.UpsertClipTx
-// ignores the tx in these tests.
+// passes to the closure (always a fresh placeholder in these tests
+// because the fake doesn't open a real tx; the value is only used to
+// satisfy the interface). The InTransaction callback runs the fn
+// synchronously with a placeholder tx.
 //
 // Named `txMgrRun` (not `txMgrCapture`) to avoid clashing with the
 // same-named pointer-receiver type in delete_envelope_test.go.
@@ -70,6 +69,18 @@ func (*txMgrRun) DB() *sql.DB { return nil }
 // Compile-time guard.
 var _ TxManager = (*txMgrRun)(nil)
 
+// newRecordingDispatcher builds a dispatcher wired to the recording outbox
+// and a fake canonical committer, mirroring the production contract: the
+// dispatcher only ever invokes self-owned committer entry points.
+func newRecordingDispatcher(rec *recordingOutboxEventsRepo, discovery *fakeDiscoveryRecorder) *Dispatcher {
+	if discovery == nil {
+		discovery = &fakeDiscoveryRecorder{}
+	}
+	return NewDispatcher(rec, &txMgrRun{}, zap.NewNop(), &fakeSQLiteAssetCommitter{
+		outbox: rec, txmgr: &txMgrRun{}, discovery: discovery,
+	})
+}
+
 // ── SaveDiscoveredAsset: JobKey stamping ───────────────────────────────
 
 // TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata pins the wire-in:
@@ -78,16 +89,9 @@ var _ TxManager = (*txMgrRun)(nil)
 // The source_version at discovery is the literal sentinel "discovered"
 // (per Commit 2 design — see dispatcher_index.go rationale).
 func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
-	clips := &fakeClips{}
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:              clips,
-		outboxEventsRepo:   rec,
-		txmgr:              &txMgrRun{},
-		log:                zap.NewNop(),
-		discoveryCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
-		canonicalCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
-	}
+	discovery := &fakeDiscoveryRecorder{}
+	d := newRecordingDispatcher(rec, discovery)
 	clip := &asset.Asset{
 		ID:     "artlist_abc123",
 		Source: asset.Source("artlist"),
@@ -98,10 +102,10 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 		t.Fatalf("SaveDiscoveredAsset: %v", err)
 	}
 
-	if len(clips.upserts) != 1 {
-		t.Fatalf("expected 1 UpsertClipTx call, got %d", len(clips.upserts))
+	if len(discovery.upserts) != 1 {
+		t.Fatalf("expected 1 discovery commit, got %d", len(discovery.upserts))
 	}
-	stamped := clips.upserts[0].Metadata["job_key"]
+	stamped := discovery.upserts[0].Metadata["job_key"]
 	if stamped == "" {
 		t.Fatal("SaveDiscoveredAsset must stamp metadata_json.job_key; got empty")
 	}
@@ -121,16 +125,7 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 // IDs that happen to share the same string MUST still produce
 // distinct JobKeys.
 func TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys(t *testing.T) {
-	clips := &fakeClips{}
-	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:              clips,
-		outboxEventsRepo:   rec,
-		txmgr:              &txMgrRun{},
-		log:                zap.NewNop(),
-		discoveryCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
-		canonicalCommitter: &fakeSQLiteAssetCommitter{outbox: rec, txmgr: &txMgrRun{}, discovery: clips},
-	}
+	d := newRecordingDispatcher(&recordingOutboxEventsRepo{}, nil)
 	a := &asset.Asset{ID: "x", Source: asset.Source("artlist")}
 	b := &asset.Asset{ID: "x", Source: asset.Source("youtube")}
 	if err := d.SaveDiscoveredAsset(context.Background(), a, asset.StateStaging, asset.StateDiscovered); err != nil {
@@ -156,17 +151,8 @@ func TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys(t *testin
 // (eventType:provider:clipID:sourceVersion), not the legacy
 // 5-segment indexEventKey shape.
 func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
-	clips := &fakeClips{}
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            clips,
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	clip := &asset.Asset{
 		ID:     "artlist_abc123",
 		Source: asset.Source("artlist"),
@@ -207,11 +193,7 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 	// NOTE: the byte-equality check above (got != want against
 	// idempotency.OutboxKey(...)) is the LOAD-BEARING assertion
 	// and already pins the full sourceVersion (PR 5 gate). This
-	// shape check is a minimal segment-count pin; we don't try
-	// to extract parts[3] because the position-based extraction
-	// would break for clipIDs that legitimately contain ':'
-	// (e.g. "planner:abc:0" — the data-field colon guard was
-	// relaxed in commit e8c0f1909).
+	// shape check is a minimal segment-count pin.
 	parts := strings.SplitN(got, ":", 4)
 	if len(parts) != 4 {
 		t.Errorf("event_key must be 4-segment (eventType:provider:clipID:sourceVersion); got %q (split into %d parts)", got, len(parts))
@@ -224,15 +206,7 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 // outbox UNIQUE INDEX dedup collapses them).
 func TestEnqueueAndIndex_SameInputsSameEventKey(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	clip := &asset.Asset{
 		ID:     "artlist_xyz",
 		Source: asset.Source("artlist"),
@@ -261,15 +235,7 @@ func TestEnqueueAndIndex_SameInputsSameEventKey(t *testing.T) {
 // underlying file changes).
 func TestEnqueueAndIndex_DifferentContentHashDifferentEventKey(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	clip := &asset.Asset{ID: "artlist_xyz", Source: asset.Source("artlist")}
 	if err := d.EnqueueAndIndex(context.Background(), clip, "sha256:aaaa"); err != nil {
 		t.Fatalf("enqueue a: %v", err)
@@ -288,15 +254,7 @@ func TestEnqueueAndIndex_DifferentContentHashDifferentEventKey(t *testing.T) {
 // event_keys.
 func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	const contentHash = "sha256:cafecafe"
 	yt := &asset.Asset{ID: "vid_1", Source: asset.Source("youtube")}
 	art := &asset.Asset{ID: "vid_1", Source: asset.Source("artlist")}
@@ -325,15 +283,7 @@ func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 // assetID prefix via DetectSourceFromAssetID.
 func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	const assetID = "vo_voiceover_xyz"
 	const contentHash = "sha256:deadbeef"
 
@@ -375,16 +325,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recordingOutboxEventsRepo{}
-			clips := &fakeClips{}
-			d := &Dispatcher{
-				clips:            clips,
-				outboxEventsRepo: rec,
-				txmgr:            &txMgrRun{},
-				log:              zap.NewNop(),
-				canonicalCommitter: &fakeSQLiteAssetCommitter{
-					outbox: rec, txmgr: &txMgrRun{}, discovery: clips,
-				},
-			}
+			d := newRecordingDispatcher(rec, nil)
 			const contentHash = "sha256:1234"
 			if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), tc.assetID, tc.wantSegment, contentHash); err != nil {
 				t.Fatalf("EnqueueIndexEvent(%q): %v", tc.assetID, err)
@@ -406,15 +347,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 // EnqueueIndexEvent must surface that as a wrapped error.
 func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), "weird_unknown_xyz", "", "sha256:1234")
 	if err == nil {
 		t.Fatal("EnqueueIndexEvent with unknown assetID prefix must fail-closed (ErrEmptyProvider via OutboxKey)")
@@ -432,19 +365,10 @@ func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 // TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey
 // pins the cross-method invariant: both entry points MUST produce
 // the SAME event_key when given the same (provider, clipID,
-// contentHash) tuple. This is the canonical Qdrant upsert invariant
-// per user spec ("outbox key canonica per Qdrant upsert").
+// contentHash) tuple.
 func TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := &Dispatcher{
-		clips:            &fakeClips{},
-		outboxEventsRepo: rec,
-		txmgr:            &txMgrRun{},
-		log:              zap.NewNop(),
-		canonicalCommitter: &fakeSQLiteAssetCommitter{
-			outbox: rec, txmgr: &txMgrRun{}, discovery: &fakeClips{},
-		},
-	}
+	d := newRecordingDispatcher(rec, nil)
 	const assetID = "yt_vid_0_60_v1" // DetectSourceFromAssetID → "youtube"
 	const contentHash = "sha256:abcdef"
 

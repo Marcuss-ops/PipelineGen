@@ -11,6 +11,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive/resolver"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
@@ -53,7 +55,7 @@ import (
 func newAssetRegisterService(
 	cfg *config.Config,
 	log *zap.Logger,
-	clipsRepo *assetsrepo.ClipsRepository,
+	sourcingClips sourcing.ClipStorePort,
 	textTrackRepo detail.TextTrackRepository,
 	driveUploader *driveutil.Uploader,
 	lifecycle driveutil.FileLifecycle,
@@ -96,7 +98,7 @@ func newAssetRegisterService(
 	// + internal/app/youtube_adapters_drive.go for the comment audit-pin.
 	ytSvc := youtube.NewService(youtube.ServiceDeps{
 		Fetcher:     ytadapters.NewSourcingFetchAdapter(providerRegistry),
-		Clips:       ytadapters.NewSourcingClipStoreAdapter(clipsRepo),
+		Clips:       sourcingClips,
 		Publisher:   ytadapters.NewSourcingPublisherAdapter(publisher),
 		Transcriber: ytadapters.NewSourcingTranscriberAdapter(cfg, log),
 		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
@@ -346,6 +348,21 @@ var _ batch.ClipJobEnqueuer = (*clipJobEnqueuerAdapter)(nil)
 // SourcingAtomicPort concrete implementation (interface-only argument +
 // struct{} + cfg) so it is testable in isolation with zero infrastructure
 // dependencies.
+// newSourcingClipStore selects the YouTube sourcing clip store. PostgreSQL is
+// the media SSOT, so dedupe/read go through it whenever the handle is wired;
+// the legacy SQLite ClipsRepository is used only for the documented
+// graceful-degrade path (media PostgreSQL disabled). Reading dedupe state from
+// SQLite while producers commit to PostgreSQL was the read split-brain that
+// made PG-registered YouTube clips look new.
+func newSourcingClipStore(mediaDB *sql.DB, clipsRepo *assetsrepo.ClipsRepository) sourcing.ClipStorePort {
+	if mediaDB != nil {
+		if adapter := ytadapters.NewSourcingClipStorePGAdapter(pgmedia.NewMediaSearcher(mediaDB)); adapter != nil {
+			return adapter
+		}
+	}
+	return ytadapters.NewSourcingClipStoreAdapter(clipsRepo)
+}
+
 func wireSourcingAtomic(cfg *config.Config, h sourcing.SourcingAtomicPort) (sourcing.SourcingAtomicPort, error) {
 	if h == nil {
 		if cfg != nil && cfg.Features.MediaDriveRequired {

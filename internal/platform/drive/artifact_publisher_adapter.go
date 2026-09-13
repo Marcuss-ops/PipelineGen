@@ -224,13 +224,10 @@ func (a *ArtifactPublisherAdapter) Publish(
 }
 
 // artifactDriveSubpath returns the canonical child path for specialized
-// artifacts. Overlay output is always colocated below the already-created
-// per-video artifact folder, never below a second global Drive root.
-// Explicit DriveSubpath remains available for future sidecar families.
+// artifacts. Overlay output and its timing receipt are colocated below the
+// configured parent folder in the deterministic `overlay` child. Explicit
+// DriveSubpath remains available for future sidecar families.
 func artifactDriveSubpath(artifact finalization.VerifiedArtifact) []string {
-	if artifact.DirectDriveRoot {
-		return nil
-	}
 	if len(artifact.DriveSubpath) > 0 {
 		return append([]string(nil), artifact.DriveSubpath...)
 	}
@@ -240,7 +237,7 @@ func artifactDriveSubpath(artifact finalization.VerifiedArtifact) []string {
 	// retained for back-compat with pre-chronon producers).
 	switch strings.ToLower(strings.TrimSpace(artifact.Source)) {
 	case "overlay", "chronon":
-		return []string{"overlay"}
+		return []string{finalization.OverlayChildFolder}
 	}
 	return nil
 }

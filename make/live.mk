@@ -77,4 +77,32 @@ verify-live: auth-check verify-images-live verify-artlist-live verify-script-liv
 	@echo "✅ verify-live passed"
 # ─── end Post-deploy live batteries ─────────────────────────────────────
 
+# ─── CORE_READY tail gate (September 2026) ─────────────────────────────
+#
+# gate-core-ready-tail — validates the CORE_READY tail invariants against
+# recorded script.generate E2E artifacts. The two independent tail
+# reconstructions (the recorded critical-path chain after `persistence` vs the
+# stage durations document + complete_finalize + post_writer_finalize) must
+# agree within the run's own unattributed_ms. A disagreement means the timing
+# model regressed and the tail number must not be quoted.
+#
+# It reads stored JSON only — no auth, no live service, no Chrome — which is
+# why it carries no auth-check dependency and is safe for the pre-push chain.
+#
+# Scoped to the shipped E2E corpora by default. Point it at a fresh run:
+#   make gate-core-ready-tail RESULTS_DIRS="tests/operational/results/<run-dir>"
+# Budget a tail ceiling in milliseconds:
+#   make gate-core-ready-tail MAX_TAIL_MS=30000
+# Enforce the artifact projection invariant (an artifact carrying a CORE_READY
+# stage must also carry core_ready_ms) on runs produced by a binary that
+# includes the projection:
+#   make gate-core-ready-tail CORE_READY_ENFORCE_PROJECTION=1
+.PHONY: gate-core-ready-tail
+# audit-repro: tail = wall_ms - core_ready_ms on a recorded run; see
+# docs/tickets/TICKET-CORE-READY-DURABLE-DAG.md section 7 for the baseline.
+gate-core-ready-tail:
+	@CORE_READY_ENFORCE_PROJECTION="$(CORE_READY_ENFORCE_PROJECTION)" \
+	 MAX_TAIL_MS="$(MAX_TAIL_MS)" \
+	 bash tests/operational/measure_core_ready_tail.sh --gate $(RESULTS_DIRS)
+
 # verify-images — quick verification dedicated to the Images module.

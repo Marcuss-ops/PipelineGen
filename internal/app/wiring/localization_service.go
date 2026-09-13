@@ -222,8 +222,14 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	if root == nil {
 		return nil, fmt.Errorf("localization service: composition root is nil")
 	}
-	if root.Repos == nil || root.Repos.Assets == nil {
-		return nil, fmt.Errorf("localization service: asset registry is required")
+	if root.Repos == nil {
+		return nil, fmt.Errorf("localization service: repo bundle is required")
+	}
+	// MEDIA-SSOT P1-5: the media read surface is the PostgreSQL SSOT whenever
+	// it is available; the legacy SQLite asset registry is only the
+	// graceful-degrade fallback when the media plane is intentionally off.
+	if root.MediaPostgres == nil && root.Repos.Assets == nil {
+		return nil, fmt.Errorf("localization service: media read surface is required (postgres media SSOT or legacy asset registry)")
 	}
 	if root.Drive == nil || root.Drive.Publisher == nil {
 		return nil, fmt.Errorf("localization service: Drive publisher is required")
@@ -244,7 +250,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	}
 
 	scratchDir := assetMaterializationRoot(cfg)
-	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, resolverErr := newClipRenderMediaResolver(root, log)
 	if resolverErr != nil {
 		return nil, fmt.Errorf("localization service: build asset resolver: %w", resolverErr)
 	}

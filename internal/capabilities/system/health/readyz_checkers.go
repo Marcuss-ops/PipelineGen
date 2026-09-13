@@ -55,6 +55,7 @@ package system
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -64,6 +65,14 @@ import (
 // nil-safe: passing nil means the tools check is opted out.
 func (r *ReadyChecker) WithTools(tc ToolsChecker) *ReadyChecker {
 	r.tools = tc
+	return r
+}
+
+// WithYTDLPHealth attaches the yt-dlp toolchain guard (version staleness +
+// PO Token provider availability) to the ReadyChecker.
+// nil-safe: passing nil means the check is opted out.
+func (r *ReadyChecker) WithYTDLPHealth(checker YTDLPHealthChecker) *ReadyChecker {
+	r.ytdlpHealth = checker
 	return r
 }
 
@@ -202,6 +211,51 @@ func (r *ReadyChecker) runToolsCheck(ctx context.Context, resp *HealthResponse) 
 		resp.OK = false
 		resp.Status = "unhealthy"
 	}
+}
+
+// runYTDLPHealthCheck reports yt-dlp version staleness and PO Token provider
+// availability.
+//
+// WARN-ONLY BY DESIGN: a stale yt-dlp or a missing POT provider degrades
+// download reliability but does not make the service unavailable, so this
+// check deliberately never flips resp.OK. The degradation is carried as a
+// `note` (plus structured fields) for operators/dashboards, and the checker
+// itself logs a Warn.
+func (r *ReadyChecker) runYTDLPHealthCheck(ctx context.Context, resp *HealthResponse) {
+	if r.ytdlpHealth == nil {
+		resp.Checks["ytdlp_health"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
+		return
+	}
+	start := time.Now()
+	report := r.ytdlpHealth.CheckYTDLPHealth(ctx)
+	elapsed := time.Since(start).Milliseconds()
+
+	result := CheckResult{
+		"ok":            true,
+		"applicable":    true,
+		"duration_ms":   elapsed,
+		"version":       report.Version,
+		"age_days":      report.AgeDays,
+		"max_age_days":  report.MaxAgeDays,
+		"stale":         report.Stale,
+		"pot_providers": report.POTProviders,
+		"pot_checked":   report.POTChecked,
+		"pot_missing":   report.POTMissing,
+	}
+	if warnings := warningsFor(report); len(warnings) > 0 {
+		result["note"] = strings.Join(warnings, "; ")
+		result["warnings"] = warnings
+	}
+	if report.ProbeError != "" {
+		result["probe_error"] = report.ProbeError
+	}
+	if !report.POTChecked && report.Version == "" && report.ProbeError == "" {
+		// Cold start: the background refresh has not completed yet. Report it
+		// explicitly so an empty note is never mistaken for "healthy".
+		result["pending"] = true
+		result["note"] = "yt-dlp health probe pending (first evaluation in progress)"
+	}
+	resp.Checks["ytdlp_health"] = result
 }
 
 func (r *ReadyChecker) runClipsPathCheck(resp *HealthResponse) {

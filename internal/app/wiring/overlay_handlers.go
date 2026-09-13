@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -232,7 +233,7 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 }
 
 func artifactResult(jobID, videoID, projectID, scriptName, language string, result capoverlay.RenderResult) (map[string]any, error) {
-	driveSubpath := []string{"overlay"}
+	driveSubpath := []string{finalization.OverlayChildFolder}
 	manifest := job.ArtifactManifest{SchemaVersion: job.SchemaVersionArtifactManifestV1, JobID: jobID, Artifacts: []job.Artifact{{
 		ID:        result.ArtifactID,
 		Kind:      job.ArtifactKindOverlay,

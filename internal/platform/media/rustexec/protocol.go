@@ -86,24 +86,28 @@ type request struct {
 	// width (0 = leave the overlay at its native size). GreenScreen* drive
 	// the ffmpeg chromakey filter that removes the backdrop before the
 	// alpha/opacity pass.
-	ScalePercent          uint32             `json:"scale_percent,omitempty"`
-	GreenScreenColor      string             `json:"green_screen_color,omitempty"`
-	GreenScreenSimilarity float64            `json:"green_screen_similarity,omitempty"`
-	GreenScreenBlend      float64            `json:"green_screen_blend,omitempty"`
-	InputPaths            []string           `json:"input_paths,omitempty"`
-	Jobs                  []cutRequestJob    `json:"jobs,omitempty"`
-	NoTransitions         bool               `json:"no_transitions,omitempty"`
-	ClipDurationSec       int                `json:"clip_duration_sec,omitempty"`
-	NoEffects             bool               `json:"no_effects,omitempty"`
-	Transitions           []renderTransition `json:"transitions,omitempty"`
-	EffectPaths           []renderEffectPath `json:"effect_paths,omitempty"`
-	OverlayOpacity        float64            `json:"overlay_opacity,omitempty"`
-	Font                  string             `json:"font,omitempty"`
-	Effects               []renderEffect     `json:"effects,omitempty"`
-	Overlays              []renderOverlay    `json:"overlays,omitempty"`
-	MaxDurationSec        float64            `json:"max_duration_sec,omitempty"`
-	AudioPlan             json.RawMessage    `json:"audio_plan,omitempty"`
-	AudioAssets           []audioAsset       `json:"audio_assets,omitempty"`
+	ScalePercent          uint32          `json:"scale_percent,omitempty"`
+	GreenScreenColor      string          `json:"green_screen_color,omitempty"`
+	GreenScreenSimilarity float64         `json:"green_screen_similarity,omitempty"`
+	GreenScreenBlend      float64         `json:"green_screen_blend,omitempty"`
+	InputPaths            []string        `json:"input_paths,omitempty"`
+	Jobs                  []cutRequestJob `json:"jobs,omitempty"`
+	// NoTransitions / NoEffects / ClipDurationSec are retained for the
+	// transport envelope's back-compat shape, but render_stock no longer
+	// derives its graph from them: the executor consumes the sealed
+	// render_plan (see RenderPlan below). The legacy `transitions` /
+	// `effect_paths` / `overlay_opacity` fields were removed outright —
+	// no production writer populated them and the executor fails closed
+	// without a canonical plan, so they only encoded a dead wire shape.
+	NoTransitions   bool            `json:"no_transitions,omitempty"`
+	ClipDurationSec int             `json:"clip_duration_sec,omitempty"`
+	NoEffects       bool            `json:"no_effects,omitempty"`
+	Font            string          `json:"font,omitempty"`
+	Effects         []renderEffect  `json:"effects,omitempty"`
+	Overlays        []renderOverlay `json:"overlays,omitempty"`
+	MaxDurationSec  float64         `json:"max_duration_sec,omitempty"`
+	AudioPlan       json.RawMessage `json:"audio_plan,omitempty"`
+	AudioAssets     []audioAsset    `json:"audio_assets,omitempty"`
 	// RenderPlan is the sealed generation-time contract. The Go adapter
 	// validates its hashes and manifest files before this envelope is sent;
 	// keeping the exact JSON here lets the executor audit the same plan.
@@ -237,17 +241,6 @@ func (r request) Validate() error {
 type audioAsset struct {
 	AssetID string `json:"asset_id"`
 	Path    string `json:"path"`
-}
-
-type renderTransition struct {
-	ClipIndex int    `json:"clip_index"`
-	Segment   string `json:"segment"`
-	ID        string `json:"id"`
-}
-
-type renderEffectPath struct {
-	ClipIndex int    `json:"clip_index"`
-	Path      string `json:"path"`
 }
 
 type renderEffect struct {

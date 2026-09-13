@@ -280,18 +280,18 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		}
 	}
 
-	// Entity cards (PERSON / ORGANIZATION / LOCATION / CONCEPT) come from the
+	// Entity overlays (PERSON / ORGANIZATION / LOCATION / CONCEPT) come from the
 	// certified EntityTimeline via the overlay resolver. NUMBER / QUOTE /
 	// PRODUCT / LOGO entities are owned by the planner above: their resolver
 	// items (and concept cards derived from the same names) are dropped so no
 	// entity is ever rendered twice.
 	//
-	// The chosen entity BECOMES the card with its image asset: each card
-	// resolves the best content-addressed asset of its canonical_entity_id
-	// through the EntityMediaResolver (the run's own entity-image bindings,
-	// indexed by the resolver's CanonicalEntityID) and carries it as
-	// AssetRefs + EntityRef.CanonicalEntityID. Cards without an indexed
-	// asset stay text-only — the card is never dropped for lack of media.
+	// The chosen entity BECOMES an image-only overlay when it has media: the
+	// resolver picks the best content-addressed asset of its
+	// canonical_entity_id through the EntityMediaResolver (the run's own
+	// entity-image bindings, indexed by the resolver's CanonicalEntityID) and
+	// carries it as AssetRefs + EntityRef.CanonicalEntityID. Entities without
+	// an indexed asset stay text-only — they are never dropped for lack of media.
 	if result.EntityTimeline != nil && len(result.EntityTimeline.Scenes) > 0 {
 		owned := plannerOwnedEntityIDs(result)
 		media, canonicalByStable := entityCardMediaIndex(result)
@@ -306,7 +306,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 			if owned[item.EntityID] {
 				continue
 			}
-			item = attachEntityCardAsset(item, media, canonicalByStable)
+			item = attachEntityCardAsset(item, media, canonicalByStable, planID)
 			for _, ref := range item.AssetRefs {
 				if strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") {
 					item.AssetRefs = nil
@@ -414,7 +414,11 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 		for _, item := range items {
 			matches := intent.SceneID == item.SceneID
 			if intent.Source == capabilityoverlay.IntentSourceEntity {
-				matches = matches && intent.Entity.CanonicalName == item.Text
+				entityName := item.Text
+				if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.Name) != "" {
+					entityName = item.EntityRef.Name
+				}
+				matches = matches && intent.Entity.CanonicalName == entityName
 			} else {
 				matches = matches && intent.SourceText == item.Text
 			}

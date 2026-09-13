@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
@@ -273,6 +274,67 @@ func TestWorker_FailureRetriesThenDeadLetters(t *testing.T) {
 	_ = db.QueryRow(`SELECT index_state FROM media_assets WHERE id='yt_worker_dead_v1'`).Scan(&state)
 	if state == "INDEXED" {
 		t.Fatal("dead-lettered asset must not be INDEXED")
+	}
+}
+
+// terminalFailingHandler reports a non-retryable failure, the shape a handler
+// uses for a malformed or schema-drifted envelope.
+type terminalFailingHandler struct{}
+
+func (terminalFailingHandler) Handle(context.Context, *pgmedia.OutboxClaim) error {
+	return event.NewTerminalError(errors.New("malformed envelope (cannot be fixed by retry)"))
+}
+
+// TestWorker_TerminalErrorDeadLettersImmediately pins the shared classifier on
+// the PostgreSQL engine: a terminal handler error must dead-letter on the FIRST
+// attempt instead of burning the whole backoff budget. Before the shared
+// kernel classifier the PG worker retried terminal envelopes max_attempts
+// times before dead-lettering.
+func TestWorker_TerminalErrorDeadLettersImmediately(t *testing.T) {
+	worker, db, _ := newWorkerFixture(t)
+	ctx := context.Background()
+	repo := pgmedia.NewOutboxRepository(db)
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if _, err := repo.Enqueue(ctx, tx, "test.terminal.event", "asset-term", "media_asset", `{}`, "term:1"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if err := worker.RegisterHandler("test.terminal.event", terminalFailingHandler{}); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	claim := claimPendingEvent(t, db)
+	if claim == nil {
+		t.Fatal("expected a pending event")
+	}
+	if claim.Event.EventType != "test.terminal.event" {
+		t.Fatalf("event type = %q, want test.terminal.event", claim.Event.EventType)
+	}
+
+	if err := worker.Handle(ctx, claim); err == nil {
+		t.Fatal("a terminal handler error must still surface to the drain loop")
+	}
+
+	var status, lastErr string
+	var attempts int
+	if err := db.QueryRow(`SELECT status, attempt_count, last_error FROM outbox_events WHERE id = $1`, claim.Event.ID).Scan(&status, &attempts, &lastErr); err != nil {
+		t.Fatalf("read event: %v", err)
+	}
+	if status != "dead_letter" {
+		t.Errorf("status = %q, want dead_letter on the first attempt", status)
+	}
+	if attempts > 1 {
+		t.Errorf("terminal error must not consume the retry budget; attempt_count = %d", attempts)
+	}
+	if lastErr == "" {
+		t.Error("dead_letter row must record last_error (never silently dropped)")
 	}
 }
 

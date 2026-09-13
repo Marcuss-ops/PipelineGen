@@ -5,10 +5,10 @@ test-youtube-url:
 	$(YOUTUBE_STOCK_TEST) -run TestYouTubeAcquisitionContracts
 
 test-youtube-metadata:
-	$(GO) test -count=1 ./internal/infrastructure/youtube -run 'TestGetVideoMetadata|TestYouTubeMetadata'
+	$(GO) test -count=1 ./internal/platform/youtube -run 'TestGetVideoMetadata|TestYouTubeMetadata'
 
 test-youtube-transcript:
-	$(GO) test -count=1 ./internal/infrastructure/youtube -run 'Test.*Subtitle|Test.*Whisper'
+	$(GO) test -count=1 ./internal/platform/youtube -run 'Test.*Subtitle|Test.*Whisper'
 
 test-highlight-selection test-stock-download test-stock-cache:
 	$(YOUTUBE_STOCK_TEST) -run TestYouTubeAcquisitionContracts

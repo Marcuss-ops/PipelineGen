@@ -240,9 +240,20 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	if repos.ClipsRepo != nil {
 		repos.ClipsRepo.SetCanonicalWriter(canonicalCommitter)
 	}
-	dispatcher := outbox.NewDispatcher(nil, nil, outboxEventsRepo, outboxTxMgr, log,
-		canonicalCommitter)
+	// POSTGRES-MEDIA-CUTOVER: the canonical media writer lives on PostgreSQL
+	// while this dispatcher's TxManager is the SQLite outbox pool — the two
+	// cannot share a transaction. NewDispatcher therefore accepts the
+	// canonical committer directly and has NO tx-bound media path: every media
+	// commit goes through canonicalCommitter.CommitAndIndex (one PostgreSQL tx
+	// for media_assets + the PostgreSQL outbox event). The former variadic
+	// `extra ...any` surface is gone, so an incoherent cross-engine dispatcher
+	// is no longer expressible at the call site.
+	dispatcher := outbox.NewDispatcher(outboxEventsRepo, outboxTxMgr, log, canonicalCommitter)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
+	// POSTGRES-MEDIA-CUTOVER: in portable mode SaveDiscoveredAsset also routes
+	// through the committer's own transaction, so the canonical writer must
+	// satisfy the self-owned-transaction discovery port too.
+	var _ outbox.DiscoveryCommitAndIndexCommitter = (*pgmedia.PostgresMediaCommitter)(nil)
 
 	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps
 	// (asset.drive.delete_requested.v1 → Drive Trash/Delete → atomic
@@ -267,6 +278,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		log.Info("outbox DriveDeleteHandler deps wired: asset.drive.delete_requested.v1 → Drive Trash/Delete → AdvanceAndEmit (Blocco 3.1 commit 2/3)")
 	} else {
 		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
+	}
+	// MEDIA-SSOT (September 2026, audit finding #3): the canonical PG committer
+	// emits asset.drive.delete_requested into the PostgreSQL outbox, so the
+	// PostgreSQL worker must own a consumer for it. Registering only on the
+	// SQLite registry left every PG-emitted delete event to dead-letter.
+	if err := registerPostgresDeleteSagaHandlers(pgIndexWorker, canonicalCommitter, outboxDeps.DriveDelete, log); err != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL delete-saga handler: %w", err)
 	}
 
 	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)

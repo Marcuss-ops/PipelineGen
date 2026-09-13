@@ -18,7 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -27,6 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 const videoAIFolderName = "video ai"
@@ -100,7 +100,7 @@ func RunResetVideoAI(args []string) error {
 
 	// Step 3: Create DB entry in clip_folders
 	if *apply {
-		if err := createClipFolderEntry(ctx, root.DB.DB, videoAIFolderID); err != nil {
+		if err := createClipFolderEntry(ctx, root, videoAIFolderID); err != nil {
 			return fmt.Errorf("failed to create DB entry: %w", err)
 		}
 		fmt.Printf("✅ Created DB entry: clipfolder_stock_video-ai\n")
@@ -113,34 +113,24 @@ func RunResetVideoAI(args []string) error {
 }
 
 // createClipFolderEntry upserts the canonical `clip_folders` row for the
-// "video ai" sub-folder. Column shape matches migration
-// 011_create_characters.sql.
-func createClipFolderEntry(ctx context.Context, db *sql.DB, folderID string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO clip_folders
-			(id, source, source_url, video_id, folder_id, folder_path,
-			 local_folder_path, group_name, manifest_txt_path, manifest_json_path,
-			 clip_count, processed_count, failed_count, skipped_count, last_error,
-			 metadata, created_at, updated_at, search_key)
-		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"clipfolder_stock_video-ai",
-		"stock",
-		"",
-		"",
-		folderID,
-		videoAIFolderName,
-		"",
-		videoAIFolderName,
-		"",
-		"",
-		0, 0, 0, 0,
-		"",
-		"{}",
-		now,
-		now,
-		"",
-	)
-	return err
+// "video ai" sub-folder.
+//
+// MEDIA-SSOT (POSTGRES-MEDIA-CUTOVER): the raw `clip_folders` INSERT OR
+// REPLACE is gone — the canonical folder repository owns the operational row
+// AND mirrors it into the PostgreSQL folder projection.
+func createClipFolderEntry(ctx context.Context, root *wiring.ComposeRoot, folderID string) error {
+	if root == nil || root.Repos == nil || root.Repos.ClipsRepo == nil {
+		return fmt.Errorf("reset-video-ai: canonical clips repository is required")
+	}
+	now := time.Now().UTC()
+	return root.Repos.ClipsRepo.UpsertFolder(ctx, &detail.ClipFolder{
+		ID:         "clipfolder_stock_video-ai",
+		Source:     "stock",
+		FolderID:   folderID,
+		FolderPath: videoAIFolderName,
+		Group:      videoAIFolderName,
+		Metadata:   "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
 }

@@ -267,3 +267,42 @@ func TestTimingSummary_FormatCriticalPath(t *testing.T) {
 		t.Fatalf("empty summary FormatCriticalPath = %q, want empty", got)
 	}
 }
+
+// TestTimingSummary_CarriesCoreReadyMs pins that the CORE_READY boundary is
+// projected into the timing summary. Without this the tail between "the render
+// is usable" and the terminal flip is only discoverable by grepping logs, and
+// a stored run cannot be audited for it at all.
+func TestTimingSummary_CarriesCoreReadyMs(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 102595,
+		KPIs:       PipelineKPIs{CoreReadyMs: 90974},
+		Stages: []StageReport{
+			stageAt("persistence", 90000, 90026),
+			stageAt("document", 90026, 96001),
+			stageAt("post_writer_finalize", 96013, 101647),
+		},
+	}
+	s := report.TimingSummary()
+	if s.CoreReadyMs != 90974 {
+		t.Fatalf("CoreReadyMs = %d, want 90974", s.CoreReadyMs)
+	}
+	if tail := s.WallMs - s.CoreReadyMs; tail != 11621 {
+		t.Fatalf("wall - core_ready_ms = %d, want the 11621ms post-processing tail", tail)
+	}
+}
+
+// TestTimingSummary_CoreReadyMsZeroWhenBoundaryNotReached pins the silent
+// contract: a run that never reached CORE_READY (no deferred work, or the core
+// contract did not hold) must not fabricate a boundary.
+func TestTimingSummary_CoreReadyMsZeroWhenBoundaryNotReached(t *testing.T) {
+	report := &RunReport{WallTimeMs: 44022}
+	if got := report.TimingSummary().CoreReadyMs; got != 0 {
+		t.Fatalf("CoreReadyMs = %d, want 0 when the boundary was not emitted", got)
+	}
+	// A negative persisted value must be clamped, never surfaced as a
+	// boundary in the future.
+	neg := &RunReport{WallTimeMs: 1000, KPIs: PipelineKPIs{CoreReadyMs: -5}}
+	if got := neg.TimingSummary().CoreReadyMs; got != 0 {
+		t.Fatalf("CoreReadyMs = %d, want negative clamped to 0", got)
+	}
+}

@@ -56,11 +56,10 @@ const MediaAssetColumns = `
 
 type ClipsRepository struct {
 	*AssetStoreSQLite
-	db              *sql.DB
-	log             *zap.Logger
-	assetCommitter  persistence.AssetCommitter
-	assetMutator    persistence.AssetMutator
-	canonicalWriter persistence.CanonicalAssetWriter
+	db             *sql.DB
+	log            *zap.Logger
+	assetCommitter persistence.AssetCommitter
+	assetMutator   persistence.AssetMutator
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
@@ -82,6 +81,11 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 // SetCanonicalWriter attaches the single production writer to the repository.
 // The repository keeps reader/query responsibilities; compatibility mutation
 // methods delegate to these narrow ports and fail closed if they are absent.
+//
+// MEDIA-SSOT (September 2026): it no longer captures a tx-bound
+// CanonicalAssetWriter. The media mutation surface this repository delegates
+// to is self-owned only, because a SQLite caller-owned transaction must never
+// reach the PostgreSQL media SSOT.
 func (r *ClipsRepository) SetCanonicalWriter(committer persistence.AssetCommitter) {
 	if r == nil {
 		return
@@ -89,9 +93,6 @@ func (r *ClipsRepository) SetCanonicalWriter(committer persistence.AssetCommitte
 	r.assetCommitter = committer
 	if mutator, ok := committer.(persistence.AssetMutator); ok {
 		r.assetMutator = mutator
-	}
-	if writer, ok := committer.(persistence.CanonicalAssetWriter); ok {
-		r.canonicalWriter = writer
 	}
 }
 

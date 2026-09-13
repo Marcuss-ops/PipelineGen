@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -99,6 +100,98 @@ func (c *PostgresMediaCommitter) GetClip(ctx context.Context, id string) (*asset
 		clip.SetMetadataString("download_link", downloadLink)
 	}
 	return clip, nil
+}
+
+// GetClipByDriveFileID resolves the minimal deletion view of an asset from
+// its Google Drive identity. It mirrors the legacy SQLite reader
+// (imagesregistry.AssetStoreSQLite.GetClipByDriveFileID) field-for-field:
+// drive_file_id, drive_link and download_link are matched with LIKE
+// containment, and a miss returns (nil, nil) — never a fake match.
+func (c *PostgresMediaCommitter) GetClipByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error) {
+	if c == nil || c.db == nil {
+		return nil, errors.New("media delete saga: committer not wired")
+	}
+	trimmed := strings.TrimSpace(fileID)
+	if trimmed == "" {
+		return nil, errors.New("drive file id is required")
+	}
+	pattern := "%" + trimmed + "%"
+	var (
+		id, state, driveFileID, driveLink, downloadLink string
+	)
+	err := c.db.QueryRowContext(ctx, `
+		SELECT COALESCE(id,''), COALESCE(lifecycle_state,''), COALESCE(drive_file_id,''),
+		       COALESCE(drive_link,''), COALESCE(download_link,'')
+		FROM media_assets
+		WHERE drive_file_id LIKE $1 OR drive_link LIKE $1 OR download_link LIKE $1
+		LIMIT 1`, pattern).
+		Scan(&id, &state, &driveFileID, &driveLink, &downloadLink)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("media delete saga: GetClipByDriveFileID %s: %w", fileID, err)
+	}
+	clip := &asset.Asset{ID: id, LifecycleState: asset.LifecycleState(state)}
+	if driveFileID != "" {
+		clip.SetMetadataString("drive_file_id", driveFileID)
+	}
+	if driveLink != "" {
+		clip.SetMetadataString("drive_link", driveLink)
+	}
+	if downloadLink != "" {
+		clip.SetMetadataString("download_link", downloadLink)
+	}
+	return clip, nil
+}
+
+// SoftDeleteAsset retires the asset row in the PostgreSQL media SSOT: it
+// stamps lifecycle_state=DELETED and deleted_at with the same timestamp. It is
+// the exact mirror of imagesregistry.ClipsRepository.SoftDelete (which
+// delegates to UpdateMediaAssetLifecycle with that same pair), so the
+// index-delete hop of the deletion saga behaves identically on both engines.
+// Consumed through the jobs.AssetDeleter port.
+func (c *PostgresMediaCommitter) SoftDeleteAsset(ctx context.Context, assetID string) error {
+	if c == nil || c.db == nil {
+		return errors.New("media delete saga: committer not wired")
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return errors.New("media delete saga: asset id is required")
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	return c.UpdateLifecycle(ctx, assetID, string(asset.StateDeleted), nowStr, nowStr)
+}
+
+// DeleteAssetIndexPoints removes the pgvector index surfaces for the supplied
+// assets. This is the PostgreSQL media plane's equivalent of the retired
+// Qdrant DeletePoints call inside IndexDeleteHandler: media_embeddings is the
+// ONLY vector index for the media domain, so deleting those rows IS deleting
+// the asset's index points (the FK cascades from media_assets, but the explicit
+// delete is what makes the parallel-index semantics observable and idempotent).
+//
+// Scoped to the index plane only: media_asset_features is enrichment, not the
+// search index, and is deliberately left untouched. A zero-row delete is
+// success (idempotent re-run), never an error.
+func (c *PostgresMediaCommitter) DeleteAssetIndexPoints(ctx context.Context, assetIDs []string) error {
+	if c == nil || c.db == nil {
+		return errors.New("media delete saga: committer not wired")
+	}
+	ids := dedupeHydrationIDs(assetIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	if _, err := c.db.ExecContext(ctx,
+		`DELETE FROM media_embeddings WHERE asset_id IN (`+strings.Join(placeholders, ", ")+`)`,
+		args...); err != nil {
+		return fmt.Errorf("media delete saga: delete index points for %d asset(s): %w", len(ids), err)
+	}
+	return nil
 }
 
 // SetLifecycleState stamps lifecycle_state (no deletion-chain guard —
@@ -263,7 +356,7 @@ func (c *PostgresMediaCommitter) EnqueueAndRestore(ctx context.Context, assetID 
 		}
 	}()
 
-	if err := c.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
+	if err := c.setIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
 		return fmt.Errorf("media delete saga: restore SetIndexStateTx=DISCOVERED %s: %w", assetID, err)
 	}
 
@@ -287,6 +380,78 @@ func (c *PostgresMediaCommitter) EnqueueAndRestore(ctx context.Context, assetID 
 		return fmt.Errorf("media delete saga: commit restore: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+// RestoreIndexedAsset performs the CONSUMER half of the restore saga step on
+// the PostgreSQL media SSOT: it re-emits the canonical asset.index.requested
+// envelope for the asset in ONE PostgreSQL transaction, so the pgvector index
+// plane rebuilds the projection from scratch (the documented contract of
+// asset.index.restore_requested: "outbox handler re-indexes from scratch").
+//
+// The producer half is EnqueueAndRestore, which already stamped
+// index_state=DISCOVERED. A row that has vanished since is treated as an
+// idempotent success — there is nothing left to index, and retrying cannot
+// bring the row back.
+//
+// The deterministic event key comes from the canonical CommitIndexRequestTx
+// helper plus the ":restore" suffix, so a redelivered restore_requested (whose
+// own event key is the fixed "restore:<assetID>") collapses onto the same
+// outbox row instead of duplicating index work.
+func (c *PostgresMediaCommitter) RestoreIndexedAsset(ctx context.Context, assetID string) error {
+	if c == nil || c.db == nil {
+		return errors.New("media delete saga: committer not wired")
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return errors.New("media delete saga: asset id is required")
+	}
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("media restore: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var source, mediaType, sourceVersion, contentHash string
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(source,''), COALESCE(media_type,''), COALESCE(source_version,''),
+		       COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,''), COALESCE(legacy_file_md5,''))
+		FROM media_assets WHERE id = $1`, assetID).
+		Scan(&source, &mediaType, &sourceVersion, &contentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Row gone → idempotent success, nothing to re-index.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("media restore: read asset %s: %w", assetID, err)
+	}
+	if sourceVersion == "" {
+		sourceVersion = contentHash
+	}
+	if sourceVersion == "" {
+		return fmt.Errorf("media restore: asset %s has no source_version or content hash to key the index request", assetID)
+	}
+
+	if _, err := CommitIndexRequestTx(ctx, tx, c.box, IndexRequest{
+		AssetID:        assetID,
+		Source:         source,
+		MediaType:      mediaType,
+		SourceVersion:  sourceVersion,
+		RequestedAt:    time.Now(),
+		EventKeySuffix: ":restore",
+	}); err != nil {
+		return fmt.Errorf("media restore: re-emit index request %s: %w", assetID, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("media restore: commit %s: %w", assetID, err)
+	}
+	committed = true
+	c.log.Debug("media delete saga: restore re-emitted asset.index.requested (PG SSOT)", zap.String("asset_id", assetID))
 	return nil
 }
 

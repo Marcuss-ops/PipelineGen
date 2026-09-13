@@ -49,8 +49,10 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// from the same canonical PostgreSQL MediaSearcher. There is deliberately
 	// no seed from the legacy vector service and no legacy hydration adapter,
 	// so Qdrant/SQLite cannot re-enter the media read path as fallbacks.
-	// selectMediaSearchStore(cfg, root.MediaPostgres) is the canonical probe
-	// string for certify-media-cutover Gate A/C.
+	// SelectMediaSearchStore(cfg, root.MediaPostgres) is the canonical
+	// fail-closed resolver for the media search store; the deleted
+	// certify-media-cutover driver's Gate A/C used to probe it, and the live
+	// enforcement is now the Go gate suite + the postgres/media tests.
 	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := searchwiring.SelectMediaSearchStore(cfg, root.MediaPostgres, log)
 	if mediaSearchErr != nil {
 		return registryCrossStepState{}, mediaSearchErr
@@ -148,11 +150,14 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// resolver instead of fabricating an AssetID from the provider ID.
 	var canonicalResolver search.CanonicalIdentityResolver
 	if root != nil {
-		var db *sql.DB
+		var legacyDB *sql.DB
 		if root.DB != nil {
-			db = root.DB.DB
+			legacyDB = root.DB.DB
 		}
-		canonicalResolver = newCanonicalIdentityResolver(db)
+		// Identity is a MEDIA fact: resolve against the PostgreSQL media SSOT
+		// whenever it is deployed, and keep the operational SQLite registry
+		// only for the graceful-degrade path (MEDIA-SSOT P1-8).
+		canonicalResolver = newCanonicalIdentityResolver(root.MediaPostgres, legacyDB)
 	}
 
 	searchFanOut, searchBackends, searchAgg, searchErr := searchwiring.Build(
@@ -244,6 +249,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 			MediaExec:          root.MediaExec,
 			Committer:          canonicalCommitterOrSkipped(root, log),
 			DB:                 root.DB,
+			MediaDB:            root.MediaPostgres,
 			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,
 			DriveClient:        nil,
@@ -353,7 +359,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Parallel-preparation adapters (composition root owns mechanics,
 	// the capability owns the ports). Every adapter is fail-closed at
 	// call time when a dependency is missing.
-	resolver, err := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, err := newClipRenderMediaResolver(root, log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset resolver: %w", err)
 	}

@@ -6,23 +6,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// stockDispatcherWriter adapts the canonical SQLite asset/outbox
-// dispatcher to the resilient orchestrator's transactional writer port.
-// The dispatcher owns the single transaction for media_assets and the
-// asset.index.requested outbox event.
+// stockDispatcherWriter adapts the canonical asset/outbox dispatcher to the
+// resilient orchestrator's transactional writer port. The dispatcher owns the
+// single canonical commit: PostgreSQL media_assets + the media index outbox
+// event. Search text travels with that commit (`clip.SearchText` →
+// `media_assets.search_text`), so no second index is maintained here.
 type stockDispatcherWriter struct {
-	dispatcher  stockChunkDispatcher
-	termUpdater stockClipsSearchTermUpdater
+	dispatcher stockChunkDispatcher
 }
 
 func (w stockDispatcherWriter) WriteAndEnqueue(ctx context.Context, clip *asset.Asset, fileHash string) error {
-	if err := w.dispatcher.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-		return err
-	}
-	if w.termUpdater != nil {
-		if err := w.termUpdater.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), clip.Name, clip.Tags, clip.SearchText); err != nil {
-			return err
-		}
-	}
-	return nil
+	return w.dispatcher.EnqueueAndIndex(ctx, clip, fileHash)
 }

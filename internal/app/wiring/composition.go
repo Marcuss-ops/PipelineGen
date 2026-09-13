@@ -41,7 +41,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// bundle (PostgreSQL). RepoBundle retains only operational SQLite
 	// surfaces; new media reads/writes MUST target Media, not Repos.
 	mediaBundle := NewMediaRepoBundle(mediaPG, repos.TextTrackRepo)
-	_ = mediaBundle
 	search, err := BuildSearchBundle(ctx, cfg, dbs, log, repos)
 	if err != nil {
 		return nil, fmt.Errorf("compose search: %w", err)
@@ -115,7 +114,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
 
-	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle, outbox)
+	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle, outbox, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}
@@ -169,6 +168,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 
 	if err := validateCriticalHandlers(jobs, sync, domains, process, log); err != nil {
 		return nil, err
+	}
+
+	// MEDIA-SSOT P1-7: attach the canonical media writer to the media bundle so
+	// MediaRepoBundle is the complete media boundary (reader + identity +
+	// writer). The committer is built by BuildOutboxBundle, hence the late
+	// binding; it stays nil only in the degraded (PG-disabled) mode.
+	if mediaBundle != nil {
+		mediaBundle.Writer = outbox.CanonicalWriter
 	}
 
 	root := &ComposeRoot{

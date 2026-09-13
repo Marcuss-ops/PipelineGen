@@ -413,6 +413,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					169: "2fa6489ebcae70eff4073a2caab7f0cee78796a850f0d47a584b66d4c6d953ab",
 					170: "0a4da5918aab3f68f744a19d0bdc2d419c7042e7cf4b47da188b7d59a16c178f",
 					230: "0a471101a2bfc372236ca551d87f95200801da816551c9caaf2289ec3900d4ea",
+					268: "6c4ee47536ce159249cfed000c8de253dcee760d071f529cdce5b89186f582bf",
 				}
 				if expected, ok := legacyCommentChecksums[m.version]; ok && (targetDB == "primary" || targetDB == "observability") && prev.filename == m.filename && prev.checksum == expected {
 					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
