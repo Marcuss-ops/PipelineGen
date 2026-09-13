@@ -1,119 +1,14 @@
-# Verify-Release Workflow (tier 3)
+# Live & end-to-end verification
 
-**Owner**: this doc is the operator-facing canonical reference for
-`make verify-release`, the tier-3 pre-deploy gate.
+**Owner**: this doc is the canonical reference for the **live / end-to-end
+layer** — the retired tier-4 shell matrix, the 10-step pipeline E2E gate that
+replaced it, and the auth contract for live HTTP surfaces.
 
-**Lockstep surface**: complements
-`docs/operations/verify-main-workflow.md` (tier 1 + 2 — dev loop + pre-push
-headless). Do not duplicate the per-area Make-target reference or the
-recommended dev-loop workflow that already lives there.
+**Headless gates (tiers 1–3, `make verify-main` … `make verify-release`) live in
+[`verify-main-workflow.md`](verify-main-workflow.md).** Do not duplicate the
+gate family or the dev loop here.
 
-**Tier 4 (`make verify-live`) was retired on 2026-09-13.** See
-[Retired: tier-4 live batteries](#retired-tier-4-live-batteries) below. The
-single replacement live gate is the 10-step pipeline E2E battery — see
-[Current live gate](#current-live-gate-pipeline-e2e-10-steps).
-
-**Audience**: every operator running pre-deploy certification.
-
----
-
-## When to run `make verify-release`
-
-`make verify-release` is the **pre-deploy gate (tier 3)**.
-
-### Composition (per Makefile)
-
-```text
-verify-release  =  verify-full  +  verify-integration
-                 =  (verify-main + verify-race)
-                 with shared foundation prerequisites deduplicated by Make
-                 +  verify-integration   (= verify-go-tests = the ./tests/... suite)
-```
-
-Verify the live position with `grep -nE '^verify-release:' make/verify.mk` —
-do not hardcode line numbers; the Make fragments are the SSOT.
-
-### When to run
-
-- **After every merge commit lands on `main`** (post-merge verification of
-  the integration surface).
-- **Before triggering the deploy job** (final pre-deploy gate).
-- **On a fresh clone or after `git pull origin main`** — catches drift
-  between the pushed state and the deployed branch.
-
-### What it costs
-
-A few minutes for the inherited `verify-main` chain (headless tier 2), plus
-several minutes more for `verify-integration` (Go tests under `./tests/...` —
-some suites exercise cross-package integration surfaces and may depend on
-Drive / Qdrant / scraper fixtures). These are **approximate budgets**;
-measure on the actual operational host before relying on them for scheduling.
-
-### What to do if RED (fail-closed)
-
-Per AGENTS.md fail-closed + "never represent absence as success":
-
-- **DO NOT proceed to deploy.**
-- Identify the failing sub-gate. `verify-release` fails atomically — the
-  sub-gate that printed the first non-zero exit is the culprit. Re-run each
-  sub-gate individually:
-
-```bash
-make verify-main          # tier 2: foundation + static + changed components + architecture
-make verify-race          # explicit race gate
-make verify-integration   # ./tests/... suite
-```
-
-- Fix the failing gate and re-run the whole chain. There is no bypass flag.
-
----
-
-## Retired: tier-4 live batteries
-
-`make verify-live` and every member battery it composed
-(`verify-images-live`, `verify-artlist-live`, `verify-script-live`,
-`verify-vidrush-live`, `verify-vidrush-maya`/`-dry`, `verify-artlist-scale-live`,
-`verify-nlp-online-images-docs-live`, `test-intro-hook-stock-live`,
-`verify-stock-live`, `verify-stock-release`) invoked shell drivers that were
-deleted by commit `7e6965aab` ("purge 94% shell + 87% python dust"). The
-targets and their CI jobs were removed together:
-
-| Former surface | Retired driver (absent) | Removed from |
-|---|---|---|
-| `verify-images-live` | `tests/operational/test2_images.sh` | `make/live.mk`, `verify-live` |
-| `verify-script-live` | `tests/operational/generate/run.sh` | `make/live.mk`, `verify-live` |
-| `verify-vidrush-live` | `tests/operational/vidrush_script_generate_e2e.sh` | `make/live.mk`, `verify-live` |
-| `verify-vidrush-maya` | `tests/operational/maya_vidrush_e2e.sh` | `make/operations.smoke.mk` (deleted) |
-| `verify-artlist-live` + 9 granular gates | `tests/operational/artlist/0{1..9}_*.sh`, `run_all.sh` | `make/artlist.mk` (deleted) |
-| `verify-artlist-scale-live` | `tests/operational/artlist_scale_e2e.sh` | `make/live.mk` |
-| `verify-stock-live` / `verify-stock-release` | `tests/operational/stock_e2e_full_battery.sh`, `scripts/ci/verify-stock-{receipt,claim}.sh` | `make/youtube_stock.mk`, `ci.yml`, `nightly.yml`, `manual.yml` |
-| `verify-nlp-online-images-docs-live` | `scripts/verify_nlp_online_images_docs_certification.sh` | `make/live.mk` |
-| `test-intro-hook-stock-live` | `tests/operational/boxers-generate/run_intro_hook_stock.sh` | `make/live.mk` |
-
-Rationale: a target (or CI job) whose only possible outcome is
-"No such file or directory" is not a gate — it trains operators to ignore red
-output and it keeps stale certification claims alive in AGENTS.md and in this
-directory. The same reasoning retired the `certify-*` driver targets (see the
-retirement note at the bottom of `make/verify.mk`).
-
-**Current live/end-to-end coverage** is owned by tracked surfaces:
-
-- `tests/operational/pipeline_live_e2e.sh` — the 10-step live battery
-  (`make verify-pipeline-e2e-live`), the only live gate; see
-  [Current live gate](#current-live-gate-pipeline-e2e-10-steps).
-- `internal/platform/httpserver/server_pipeline_e2e_test.go` — the hermetic
-  twin of the same 10 steps (`make verify-pipeline-e2e`).
-- `internal/platform/httpserver/*_e2e_test.go` — in-process HTTP E2E over the
-  canonical routes (clips process/destination/idempotency, jobs polling).
-- `tests/e2e/**` — hermetic contract and replay/resume E2E tests.
-- `internal/platform/media/rustexec/*_test.go` — the L2 Go adapter → Rust
-  StockRust boundary (canonical `render_plan`, final audio copy, tamper
-  hash-drift).
-- Per-provider Go suites under `internal/capabilities/**` for the domains that
-  the shell batteries used to probe.
-
-Do not re-add a `*-live` target until its driver is a tracked, executable
-artifact in the repository.
+**Audience**: every operator running post-deploy or E2E certification.
 
 ---
 
@@ -154,6 +49,56 @@ The gate is registered in `config/verify-components.json`
 (`stock.live_tests`) and runs only when the component runner is invoked with
 live scope enabled — it is never part of the push/pre-push chain.
 
+### Other tracked end-to-end surfaces
+
+- `internal/platform/httpserver/*_e2e_test.go` — in-process HTTP E2E over the
+  canonical routes (clips process/destination/idempotency, jobs polling).
+- `tests/e2e/**` — hermetic contract and replay/resume E2E tests.
+- `internal/platform/media/rustexec/*_test.go` — the L2 Go adapter → Rust
+  StockRust boundary (canonical `render_plan`, final audio copy, tamper
+  hash-drift).
+- `make gate-core-ready-tail` → `tests/operational/measure_core_ready_tail.sh`
+  — CORE_READY tail invariants against recorded `script.generate` artifacts
+  (no auth, no live service).
+- Per-provider Go suites under `internal/capabilities/**` for the domains that
+  the shell batteries used to probe.
+
+Do not re-add a `*-live` target until its driver is a tracked, executable
+artifact in the repository.
+
+---
+
+## Retired: tier-4 live batteries
+
+`make verify-live` and every member battery it composed
+(`verify-images-live`, `verify-artlist-live`, `verify-script-live`,
+`verify-vidrush-live`, `verify-vidrush-maya`/`-dry`, `verify-artlist-scale-live`,
+`verify-nlp-online-images-docs-live`, `test-intro-hook-stock-live`,
+`verify-stock-live`, `verify-stock-release`) invoked shell drivers that were
+deleted by commit `7e6965aab` ("purge 94% shell + 87% python dust"). The
+targets and their CI jobs were removed together:
+
+| Former surface | Retired driver (absent) | Removed from |
+|---|---|---|
+| `verify-images-live` | `tests/operational/test2_images.sh` | `make/live.mk`, `verify-live` |
+| `verify-script-live` | `tests/operational/generate/run.sh` | `make/live.mk`, `verify-live` |
+| `verify-vidrush-live` | `tests/operational/vidrush_script_generate_e2e.sh` | `make/live.mk`, `verify-live` |
+| `verify-vidrush-maya` | `tests/operational/maya_vidrush_e2e.sh` | `make/operations.smoke.mk` (deleted) |
+| `verify-artlist-live` + 9 granular gates | `tests/operational/artlist/0{1..9}_*.sh`, `run_all.sh` | `make/artlist.mk` (deleted) |
+| `verify-artlist-scale-live` | `tests/operational/artlist_scale_e2e.sh` | `make/live.mk` |
+| `verify-stock-live` / `verify-stock-release` | `tests/operational/stock_e2e_full_battery.sh`, `scripts/ci/verify-stock-{receipt,claim}.sh` | `make/youtube_stock.mk`, `ci.yml`, `nightly.yml`, `manual.yml` |
+| `verify-nlp-online-images-docs-live` | `scripts/verify_nlp_online_images_docs_certification.sh` | `make/live.mk` |
+| `test-intro-hook-stock-live` | `tests/operational/boxers-generate/run_intro_hook_stock.sh` | `make/live.mk` |
+
+Rationale: a target (or CI job) whose only possible outcome is
+"No such file or directory" is not a gate — it trains operators to ignore red
+output and it keeps stale certification claims alive in AGENTS.md and in this
+directory. The same reasoning retired the `certify-*` driver targets (see the
+retirement note at the bottom of `make/verify.mk`).
+
+Their orphan scenario/fixture sets were removed on 2026-09-13
+(`tests/operational/{boxers-generate,generate,generate-certification,fixtures}`).
+
 ---
 
 ## Auth contract (mandatory for any authenticated HTTP surface)
@@ -171,8 +116,11 @@ live scope enabled — it is never part of the push/pre-push chain.
 
 ## SSOT cross-references
 
-- `docs/operations/verify-main-workflow.md` — tier 1 + 2 SSOT (complementary,
-  not duplicate).
+- [`verify-main-workflow.md`](verify-main-workflow.md) — headless gates
+  (tiers 1–3), dev loop, operator/credential boundaries.
+- [`component-verification.md`](component-verification.md) — component
+  registry, path ownership, invalidation set.
 - `AGENTS.md` — operational rules, gate hierarchy, pre-push contract.
-- `make/verify.mk`, `make/verify.components.mk` — executable source of truth.
+- `make/verify.mk`, `make/live.mk`, `make/verify.components.mk` — executable
+  source of truth.
 - `scripts/hooks/pre-push` — the pre-push wiring of `make verify-main`.

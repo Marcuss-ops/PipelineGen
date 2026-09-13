@@ -89,25 +89,21 @@ python3 scripts/ci/verify-changed-components.py --dry-run
 python3 scripts/ci/verify-changed-components.py --race --report /tmp/changed.json
 ```
 
-The aggregate gates are intentionally separate:
-
-| Gate | Composition | Use |
-|---|---|---|
-| `make verify-fast` | Foundation + static checks | Fast development loop |
-| `make verify-main` | Foundation + static + changed components + architecture | Normal fail-closed pre-push gate |
-| `make verify-race` | Foundation + all registered components in race mode | Explicit concurrency/race validation |
-| `make verify-full` | `verify-main` + `verify-race` | Complete headless verification |
-| `make verify-release` | `verify-full` + integration tests | Pre-deploy certification |
+The aggregate gates (`verify-fast`, `verify-main`, `verify-race`,
+`verify-full`, `verify-release`) compose the component targets; their contract
+and composition table are owned by
+[`verify-main-workflow.md`](verify-main-workflow.md#gate-family) — do not
+duplicate them here.
 
 Foundation and shared prerequisites are Make dependencies, not recipes copied
 into component targets. GNU Make executes a prerequisite once within an
 aggregate invocation; component targets never call `verify-fast`.
 
 Live operational batteries such as `make verify-live` and the individual
-`*-live` targets used to be separate from the headless component gates. They
-were **retired 2026-09-13** (their shell drivers were deleted by commit
-`7e6965aab`, see `verify-release-and-live.md`). End-to-end coverage today is
-carried by the Go suites; any future live gate must still use
+`*-live` targets were **retired 2026-09-13** (their shell drivers were deleted
+by commit `7e6965aab`); see
+[`verify-release-and-live.md`](verify-release-and-live.md). End-to-end coverage
+today is carried by the Go suites; any future live gate must still use
 `scripts/with-velox-auth` as the canonical token boundary and must never print,
 hard-code, or source the token from a repository-local file.
 
@@ -300,6 +296,7 @@ only the files belonging to the current task.
 
 For the canonical workflow rules and any conflict resolution, see
 [`AGENTS.md`](../../AGENTS.md) and [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
-For the detailed tier-1/tier-2 gate contract, see
-[`verify-main-workflow.md`](verify-main-workflow.md). For release and live
-batteries, see [`verify-release-and-live.md`](verify-release-and-live.md).
+For the headless gate family (tiers 1–3) and the dev loop, see
+[`verify-main-workflow.md`](verify-main-workflow.md). For the live/E2E layer
+and the tier-4 retirement record, see
+[`verify-release-and-live.md`](verify-release-and-live.md).
