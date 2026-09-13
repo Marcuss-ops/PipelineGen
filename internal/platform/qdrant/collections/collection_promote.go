@@ -40,8 +40,11 @@ func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate str
 // ReindexCandidate checks whether the candidate collection has points.
 // When PointTotal is zero the collection was created by PrepareCandidate
 // but never backfilled — returns transport.ErrReindexRequired to block promotion.
-// The operator must run `go run ./cmd/admin reindex-qdrant --apply` to
-// backfill data before the server can start with a ready Qdrant index.
+// The collection owner must backfill data before the server can start with a
+// ready Qdrant index. The media Qdrant rebuild command was retired with the
+// PostgreSQL media SSOT (media collections are rebuilt in pgvector via
+// `backfill-media-postgres`); only non-media collection owners can backfill a
+// Qdrant collection here.
 func (cm *CollectionManager) ReindexCandidate(ctx context.Context, candidate string) error {
 	info, err := cm.client.GetCollection(ctx, candidate)
 	if err != nil {

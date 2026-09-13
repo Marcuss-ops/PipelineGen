@@ -234,8 +234,13 @@ make certify-media-cutover
 ```
 
 `make verify-main` is the canonical fail-closed pre-push gate.
-`make certify-media-cutover` additionally pins the PostgreSQL media SSOT,
-pgvector search, canonical Postgres indexing worker, and demolition rules.
+`make certify-media-cutover` does **not** produce a verdict: its driver
+`scripts/ci/certify-media-cutover.sh` was deleted by commit `7e6965aab`, so the
+target fails closed with an explicit "NOTHING is certified" message. The live
+enforcement for the PostgreSQL media SSOT is `go run ./cmd/archcheck --strict`
+(`percheck_media_assets_writer_canonical`, `percheck_asset_committer_event_ssot`,
+`percheck_indexed_state_writer_ssot`, `percheck_upsert_points_sole_owner`) plus
+`TEST_POSTGRES_DSN=… go test ./internal/platform/postgres/media/ -count=1`.
 See [`docs/operations/verify-main-workflow.md`](docs/operations/verify-main-workflow.md)
 for the full workflow.
 

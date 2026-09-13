@@ -128,15 +128,12 @@ type JobsConfig struct {
 	// non-zero rate indicates a recurring bug).
 	DeletionReconcilerInterval       string `yaml:"deletion_reconciler_interval" env:"VELOX_DELETION_RECONCILER_INTERVAL" default:"15m"`
 	DeletionReconcilerStuckThreshold string `yaml:"deletion_reconciler_stuck_threshold" env:"VELOX_DELETION_RECONCILER_STUCK_THRESHOLD" default:"30m"`
-	// ProjectionReconcilerInterval is the periodic tick of the
-	// active-projection parity reconciler (plan item #15, August 2026):
-	// it compares the canonical eligible SQLite asset set against the
-	// ACTIVE Qdrant projection and emits projection_coverage_ratio /
-	// projection_orphan_count (plus supporting gauges). Default 15min
-	// balances drift-visibility against per-tick load (one full scroll
-	// of the active collection; at 500-1000 points this is a handful
-	// of pages). Set to 0/empty to disable the ticker at runtime.
-	ProjectionReconcilerInterval string `yaml:"projection_reconciler_interval" env:"VELOX_PROJECTION_RECONCILER_INTERVAL" default:"15m"`
+	// NOTE (POSTGRES-MEDIA-CUTOVER): projection_reconciler_interval was the tick
+	// of the SQLite→Qdrant media projection-reconciler, removed with the media
+	// cutover. The key is intentionally NOT declared any more: a leftover value
+	// in an operator config.yaml is ignored (media parity is transactional in
+	// PostgreSQL + pgvector), and re-declaring it would advertise a ticker that
+	// no longer exists.
 	// Entity image catalog recertification validates stale and retryable broken
 	// remote URLs without touching materialized Drive assets.
 	EntityImageRecertificationInterval  string `yaml:"entity_image_recertification_interval" env:"VELOX_ENTITY_IMAGE_RECERTIFICATION_INTERVAL" default:"24h"`

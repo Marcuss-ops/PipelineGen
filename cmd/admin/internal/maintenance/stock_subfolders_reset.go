@@ -13,6 +13,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
+// stockRootFolder is the canonical stock root folder ID on Drive. It moved
+// here from the retired stock_reset.go (stock-reset), which was the original
+// owner; this subfolder reset is now its only consumer.
+const stockRootFolder = "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+
 // foldersToReset maps folder name → its current Drive ID (to delete).
 var foldersToReset = map[string]string{
 	"HipHop":    "11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW",

@@ -239,16 +239,20 @@ func (e *ErrAliasSwitchNotReady) Error() string {
 func (e *ErrAliasSwitchNotReady) IsRetryable() bool { return true }
 
 // ErrReindexRequired is returned when a collection exists with matching
-// schema but has zero points. A backfill via the admin reindex command
-// is required before the collection can be promoted to the runtime alias.
-// This is a startup-level sentinel — the server should fail to start
-// until the operator runs `go run ./cmd/admin reindex-qdrant --apply`.
+// schema but has zero points. A backfill is required before the collection
+// can be promoted to the runtime alias. This is a startup-level sentinel —
+// the server should fail to start until the operator backfills the
+// collection. NOTE (media demolition, September 2026): the media Qdrant
+// reindex command (`go run ./cmd/admin reindex-qdrant --apply`) was retired —
+// media collections are rebuilt inside PostgreSQL + pgvector via
+// `backfill-media-postgres`, and only non-media collection owners
+// (mediamemory frame concepts) can still backfill a Qdrant collection.
 type ErrReindexRequired struct {
 	Collection string
 }
 
 func (e *ErrReindexRequired) Error() string {
-	return fmt.Sprintf("qdrant collection %q requires reindex: schema exists but point count is zero — run 'go run ./cmd/admin reindex-qdrant --apply'", e.Collection)
+	return fmt.Sprintf("qdrant collection %q requires reindex: schema exists but point count is zero — backfill it via its owning capability (media collections are rebuilt in PostgreSQL + pgvector via 'backfill-media-postgres'; the Qdrant media reindex command was retired)", e.Collection)
 }
 
 // ErrSparseRequired is returned when the schema has a sparse BM25 channel
