@@ -31,8 +31,10 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `sync-all-drive`, `sync-drive-folder`, `drive-create-folder`,
   `remove-drive-folder-recursive`, `trash-drive-files`, `upload-drive-file`
 - **Qdrant**: `qdrant-preflight`, `qdrant-readiness`, `qdrant-maintenance`,
-  `qdrant-bucket-report`, `qdrant-enrichment-recover`, `reconcile-qdrant`,
-  `reindex-qdrant`, `dr-qdrant`
+  `qdrant-bucket-report`, `qdrant-enrichment-recover`, `dr-qdrant`
+  (`reconcile-qdrant` and `reindex-qdrant` are still registered but RETIRED —
+  they fail closed with a typed retirement error because the Qdrant media
+  projection no longer exists)
 - **Cleanup**: `cleanup-orphans`, `cleanup-all-orphans`,
   `cleanup-artlist-empty-folders`, `cleanup-stock-orphans`,
   `zombie-sweep`, `delete-specific-folders`, `delete-drive-images`,

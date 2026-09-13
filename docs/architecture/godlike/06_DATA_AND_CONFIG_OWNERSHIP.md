@@ -18,7 +18,7 @@ Concrete owner-per-fact map. Canonical business state is SQLite; every other sto
 | Media PostgreSQL | canonical composition-root PostgreSQL DSN | **SSOT** — `media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings` | — |
 | acquisition.SourceStager | `internal/application/acquisition/port.go` | **SSOT** — canonical source staging port (Prepare/Release lifecycle). All consumers (YouTube, Artlist, Stock, Images, Jobs/assets) use this port. The legacy `assets.SourceStager` has been removed (CONTRACT completed 2026-08-22). | — |
 | Observability SQLite | `cfg.Storage.ObservabilityDBFullPath()` → `observability/api_requests.db.sqlite` | **SSOT for the observability axis** (run/attempt/stage/operation timing + API audit) | distinct concern; derived from job execution, not from business tables |
-| Qdrant | runtime alias per `ProjectionContract` | **Projection** — semantic/lexical retrieval | primary SQLite |
+| Qdrant | runtime alias per `ProjectionContract` | **NOT a media store.** Legacy projection surface retained ONLY for explicitly justified non-media consumers (mediamemory frame concepts, maintenance DR, admin audit). Media retrieval is **not** served here. | n/a for media — non-media consumers only |
 | Google Drive | remote | **Side-effect surface** — delivery location for bytes | SQLite metadata is authoritative; Drive is reconciled against it |
 | Local filesystem | `MediaDir`/`CacheDir`/`StagingDir`/`WorkspaceDir` | **Side-effect surface** — staging/cache blobs | redownloadable / regenerable |
 | Legacy catalog DBs | `data/stock/stock.db.sqlite`, `data/artlist/artlist.db.sqlite`, `data/artlist_videos.db`, `data/clips.db.sqlite` | **ELIMINATED** — merged into primary via `unify-catalogs` (run the tool, reconcile rows/hashes/locations, backup, then rm) | primary `media_assets` (source='stock'/'artlist') |
@@ -125,7 +125,13 @@ SSOT, plus the surviving SQLite primitive by explicit file. Package
 ownership is deliberate — the previous hand-maintained filename list drifted
 the moment a new canonical file landed (`delete_saga.go`, MEDIA-SSOT P0-2)
 and the gate then reported the SSOT owner itself as a violation. Cutover
-certification: `make certify-media-cutover` (POSTGRES_MEDIA_SSOT gate).
+certification: the historical driver `scripts/ci/certify-media-cutover.sh`
+was deleted by commit `7e6965aab`, so `make certify-media-cutover` fails
+closed and certifies NOTHING. The live enforcement is
+`go run ./cmd/archcheck --strict`
+(`percheck_media_assets_writer_canonical`, `percheck_asset_committer_event_ssot`,
+`percheck_indexed_state_writer_ssot`, `percheck_upsert_points_sole_owner`)
+plus `TEST_POSTGRES_DSN=… go test ./internal/platform/postgres/media/ -count=1`.
 
 ## Database rules
 
@@ -149,24 +155,32 @@ REMOVED (cutover demolition):
   `canonicalCommitterForRoot`), fail-closed on
   `cfg.MediaPostgreSQL.Enabled` + the open `root.MediaPostgres` handle.
 
-REPLACED (structural, gated by `make certify-media-cutover`):
+REPLACED (structural, gated by the Go gate suite):
 
 - The SQLite → outbox → Qdrant media projection chain is replaced by
   `pgmedia.PostgresIndexWorker`: claims `asset.index.requested` from the
   PG outbox, embeds the asset search_text, upserts the pgvector, flips
   `index_state=INDEXED` in the same transaction, and completes the event
   with lease fencing + retry/dead-letter semantics. In PG mode the
-  composition root registers NO Qdrant media indexing handler
-  (`QDRANT_MEDIA_WRITES=0`, `QDRANT_MEDIA_READS=0` — structural gates).
+  composition root registers NO Qdrant media indexing handler. The
+  remaining `client.UpsertPoints` call sites are pinned to the non-media
+  projection writers under `internal/platform/qdrant/indexing/` by
+  `percheck_upsert_points_sole_owner`, and the retired media path
+  (`asset.index.requested` → `jobs.IndexingHandler` → `clipindexer.IndexClip`)
+  has zero production callers: the `media.reindex` job binding and
+  `media.TypeReindex` were removed. The legacy
+  `SQLITE_MEDIA_WRITERS/READERS=0`, `QDRANT_MEDIA_WRITERS/READERS=0` and
+  `QDRANT_MEDIA_COMPATIBILITY=0` counters are NOT enforced anywhere: they
+  lived only in the deleted shell driver, so no gate asserts them.
 
 RETAINED (legitimate non-media Qdrant usage — demolition debt owner:
 non-media Qdrant retirement, NOT the media cutover):
 
 - `internal/platform/qdrant/indexing/mediamemory` (frame-concept
-  projections), `internal/capabilities/maintenance` DR adapter,
-  `cmd/admin/internal/audit` + `cmd/admin/reconcile` tooling, and the
-  SQLite media committer family (staged-migration adapter until
-  non-media SQLite retirement).
+  projections), `internal/capabilities/maintenance` DR adapter, and
+  `cmd/admin/internal/audit` + `cmd/admin/reconcile` tooling for the
+  NON-MEDIA collections (mediamemory frames). The media-plane admin paths
+  (`reindex-qdrant`, projection audit) are retired, not retained.
 
 ## Drive and filesystem
 

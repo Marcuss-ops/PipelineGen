@@ -328,65 +328,13 @@ func (cm *CollectionManager) RestoreSnapshot(ctx context.Context, collection, sn
 	return cm.client.RestoreSnapshot(ctx, collection, snapshotURL)
 }
 
-// PrepareProductionCollection resets the sole production projection in place.
-// It deliberately removes the runtime alias while the collection is rebuilt,
-// so runtime readers fail closed instead of observing a partial projection.
-// No candidate collection or blue-green promotion is involved.
-func (cm *CollectionManager) PrepareProductionCollection(ctx context.Context) error {
-	if err := schema.ValidateRuntimeCollection(cm.schema.PhysicalName); err != nil {
-		return fmt.Errorf("prepare production collection: %w", err)
-	}
-
-	current, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
-	if err != nil {
-		var notFound *transport.ErrCollectionNotFound
-		if !errors.As(err, &notFound) {
-			return fmt.Errorf("resolve production alias before rebuild: %w", err)
-		}
-		current = ""
-	}
-	if current != "" && current != schema.ProductionCollection {
-		return fmt.Errorf("prepare production collection: alias %q points to forbidden collection %q", cm.schema.RuntimeAlias, current)
-	}
-	if current != "" {
-		if err := cm.client.DeleteAlias(ctx, cm.schema.RuntimeAlias); err != nil {
-			return fmt.Errorf("remove production alias before rebuild: %w", err)
-		}
-	}
-	if err := cm.client.DeleteCollection(ctx, schema.ProductionCollection); err != nil {
-		return fmt.Errorf("reset production collection %q: %w", schema.ProductionCollection, err)
-	}
-	if err := cm.CreateCollection(ctx, schema.ProductionCollection); err != nil {
-		return fmt.Errorf("create production collection %q: %w", schema.ProductionCollection, err)
-	}
-	return nil
-}
-
-// ActivateProductionCollection recreates the canonical runtime alias after a
-// validated in-place rebuild. The alias can only point to media_assets.
-func (cm *CollectionManager) ActivateProductionCollection(ctx context.Context) error {
-	if err := schema.ValidateRuntimeCollection(cm.schema.PhysicalName); err != nil {
-		return fmt.Errorf("activate production collection: %w", err)
-	}
-	current, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
-	if err != nil {
-		var notFound *transport.ErrCollectionNotFound
-		if !errors.As(err, &notFound) {
-			return fmt.Errorf("resolve production alias after rebuild: %w", err)
-		}
-		current = ""
-	}
-	if current == schema.ProductionCollection {
-		return nil
-	}
-	if current != "" {
-		return fmt.Errorf("activate production collection: alias %q points to forbidden collection %q", cm.schema.RuntimeAlias, current)
-	}
-	if err := cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, schema.ProductionCollection); err != nil {
-		return fmt.Errorf("create production alias %q: %w", cm.schema.RuntimeAlias, err)
-	}
-	return nil
-}
+// NOTE (POSTGRES-MEDIA-CUTOVER, September 2026):
+// PrepareProductionCollection / ActivateProductionCollection were the in-place
+// rebuild pair for the Qdrant media projection. They were removed together
+// with the `reindex-qdrant` media command: the media index plane is
+// PostgreSQL + pgvector (rebuilt by pgmedia.PostgresIndexWorker), so no
+// Qdrant media collection is a rebuild target any more. Reintroducing a
+// media-plane reset here would re-create a forbidden Qdrant media writer.
 
 // ── Bootstrap / Create / Deprecated ───────────────────────────────────
 

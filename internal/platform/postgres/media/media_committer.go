@@ -455,96 +455,19 @@ func (c *PostgresMediaCommitter) commitPersistence(ctx context.Context, req pers
 	return mediaToPersistenceResult(result), nil
 }
 
-// CommitLegacy bridges a legacy persistence.CommitRequest onto the canonical
-// MediaCommitter so existing writers converge with a one-line change.
-func (c *PostgresMediaCommitter) CommitLegacy(ctx context.Context, req persistence.CommitRequest) (mediacommit.CommitMediaAssetResult, error) {
-	return c.CommitMediaAsset(ctx, legacyToMediaCommitRequest(req))
-}
+// PostgresMediaCommitter's narrow post-commit mutation delegates (CommitLegacy,
+// PersistEmbeddingJSON, UpdateAssetMetadata, SetIndexState/SetIndexed,
+// Patch/ReplaceMetadataJSON, UpdateFolderPath, UpdateLifecycle,
+// UpdateTaxonomy, LinkContent, UpdateSearchText, RefreshUpdatedAt,
+// UpdateOrphanMetadata, UpdateDriveDeliveryByLegacyHash) live in the sibling
+// media_committer_mutations.go so this file stays under the 600-LOC strict cap.
 
-// PersistEmbeddingJSON delegates post-commit embedding persistence to the
-// canonical PostgresAssetCommitter owned by this same aggregate committer.
-func (c *PostgresMediaCommitter) PersistEmbeddingJSON(ctx context.Context, assetID, channel string, embedding []float64, status string) error {
-	return c.assets.PersistEmbeddingJSON(ctx, assetID, channel, embedding, status)
-}
-
-// UpdateAssetMetadata is the canonical narrow mutation used by metadata
-// enrichment (idempotent, transactionally isolated).
-func (c *PostgresMediaCommitter) UpdateAssetMetadata(ctx context.Context, assetID, metadataJSON string) error {
-	if c == nil || c.assets == nil {
-		return errors.New("media committer: canonical asset committer is unavailable")
-	}
-	if assetID == "" {
-		return errors.New("media committer: asset id is required")
-	}
-	return c.assets.ReplaceMetadataJSON(ctx, assetID, metadataJSON, "")
-}
-
-// SetIndexState delegates the canonical index-state mutation.
-func (c *PostgresMediaCommitter) SetIndexState(ctx context.Context, assetID string, state asset.IndexState, lastError string) error {
-	return c.assets.SetIndexState(ctx, assetID, state, lastError)
-}
-
-// SetIndexed performs the compare-and-set terminal index transition.
-func (c *PostgresMediaCommitter) SetIndexed(ctx context.Context, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash string) (bool, error) {
-	return c.assets.SetIndexed(ctx, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash)
-}
-
-// PatchMetadataJSON applies a JSON patch through the canonical committer.
-func (c *PostgresMediaCommitter) PatchMetadataJSON(ctx context.Context, assetID, patchJSON, updatedAt string) error {
-	return c.assets.PatchMetadataJSON(ctx, assetID, patchJSON, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error {
-	return c.assets.PatchMetadataJSONTx(ctx, tx, assetID, patchJSON, updatedAt)
-}
-
-// ReplaceMetadataJSON replaces the metadata snapshot through the canonical
-// committer.
-func (c *PostgresMediaCommitter) ReplaceMetadataJSON(ctx context.Context, assetID, metadataJSON, updatedAt string) error {
-	return c.assets.ReplaceMetadataJSON(ctx, assetID, metadataJSON, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) UpdateFolderPath(ctx context.Context, assetID, folderID, folderPath, updatedAt string) error {
-	return c.assets.UpdateFolderPath(ctx, assetID, folderID, folderPath, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error {
-	return c.assets.UpdateFolderPathTx(ctx, tx, assetID, folderID, folderPath, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) UpdateLifecycle(ctx context.Context, assetID string, state, deletedAt, updatedAt string) error {
-	return c.assets.UpdateLifecycle(ctx, assetID, state, deletedAt, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) UpdateTaxonomy(ctx context.Context, taxonomy capregistry.AssetTaxonomy) error {
-	return c.assets.UpdateTaxonomy(ctx, taxonomy)
-}
-
-func (c *PostgresMediaCommitter) LinkContent(ctx context.Context, assetID, contentSHA256 string) error {
-	return c.assets.LinkContent(ctx, assetID, contentSHA256)
-}
-
-func (c *PostgresMediaCommitter) UpdateSearchText(ctx context.Context, assetID, searchText, updatedAt string) error {
-	return c.assets.UpdateSearchText(ctx, assetID, searchText, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) RefreshUpdatedAt(ctx context.Context, assetID, updatedAt string) error {
-	return c.assets.RefreshUpdatedAt(ctx, assetID, updatedAt)
-}
-
-func (c *PostgresMediaCommitter) UpdateOrphanMetadata(ctx context.Context, assetID string, detectedAt time.Time, kind string) error {
-	return c.assets.UpdateOrphanMetadata(ctx, assetID, detectedAt, kind)
-}
-
-func (c *PostgresMediaCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Context, hash string, mutation persistence.DriveDeliveryMutation) error {
-	return c.assets.UpdateDriveDeliveryByLegacyHash(ctx, hash, mutation)
-}
-
-// CommitDiscoveredAsset records discovery metadata and provenance in the
-// caller-owned transaction without scheduling semantic indexing.
-func (c *PostgresMediaCommitter) CommitDiscoveredAsset(ctx context.Context, tx *sql.Tx, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+// discoveryCommitRequest builds the canonical discovery commit request.
+// Single translation site shared by the caller-owned-tx and self-owned-tx
+// entry points so the two cannot drift.
+func (c *PostgresMediaCommitter) discoveryCommitRequest(clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) (mediacommit.CommitMediaAssetRequest, error) {
 	if clip == nil || clip.ID == "" {
-		return fmt.Errorf("media committer: discovered asset id is required")
+		return mediacommit.CommitMediaAssetRequest{}, fmt.Errorf("media committer: discovered asset id is required")
 	}
 	taxonomy, err := capregistry.ResolveTaxonomy(capregistry.TaxonomyInput{
 		AssetID:   clip.ID,
@@ -552,11 +475,11 @@ func (c *PostgresMediaCommitter) CommitDiscoveredAsset(ctx context.Context, tx *
 		MediaType: capregistry.MediaType(clip.MediaType),
 	})
 	if err != nil {
-		return fmt.Errorf("media committer: resolve discovery taxonomy: %w", err)
+		return mediacommit.CommitMediaAssetRequest{}, fmt.Errorf("media committer: resolve discovery taxonomy: %w", err)
 	}
 	ref := firstNonEmpty(clip.MetadataSourceVideoID(), firstNonEmpty(clip.SourceURL, clip.ID))
 	contentHash := clip.LegacyFileMD5()
-	request := mediacommit.CommitMediaAssetRequest{
+	return mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{
 			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name, Filename: clip.Filename,
 			MediaType: string(clip.MediaType), Category: clip.Category, DurationMs: clip.Duration.Milliseconds(),
@@ -568,7 +491,50 @@ func (c *PostgresMediaCommitter) CommitDiscoveredAsset(ctx context.Context, tx *
 		Content:     optionalContent(contentHash),
 		Taxonomy:    taxonomy,
 		IndexPolicy: mediacommit.IndexPolicy{Indexable: false}, Actor: "discovery-dispatcher",
+	}, nil
+}
+
+// CommitDiscoveredAsset records discovery metadata and provenance in the
+// caller-owned transaction without scheduling semantic indexing.
+func (c *PostgresMediaCommitter) CommitDiscoveredAsset(ctx context.Context, tx *sql.Tx, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+	request, err := c.discoveryCommitRequest(clip, lifecycle, idx)
+	if err != nil {
+		return err
 	}
 	_, err = c.commitTx(ctx, tx, request)
 	return err
+}
+
+// CommitDiscoveredAssetAndIndex is the self-owned-transaction counterpart of
+// CommitDiscoveredAsset. It exists because the outbox dispatcher's TxManager
+// is the SQLite outbox pool while this committer owns the PostgreSQL media
+// SSOT: the dispatcher cannot hand this adapter a SQLite *sql.Tx (its
+// PostgreSQL statements fail with `unrecognized token: ":"`). The dispatcher
+// therefore opts into outbox.PortableCommitPath and calls this method, which
+// opens its own PostgreSQL transaction and commits the discovered asset
+// atomically. Semantics (taxonomy, provenance, no index request) are
+// identical to CommitDiscoveredAsset.
+func (c *PostgresMediaCommitter) CommitDiscoveredAssetAndIndex(ctx context.Context, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+	request, err := c.discoveryCommitRequest(clip, lifecycle, idx)
+	if err != nil {
+		return err
+	}
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("media committer: begin discovery tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := c.commitTx(ctx, tx, request); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("media committer: commit discovery: %w", err)
+	}
+	committed = true
+	return nil
 }

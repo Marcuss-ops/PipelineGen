@@ -56,15 +56,30 @@ import (
 // mediaAssetsWriterScanRoots are the directory roots the gate walks.
 // Every Go file under these roots (except tests + canonical owners +
 // archcheck) is inspected for forbidden SQL patterns.
+//
+// cmd/ is included because the claim in godlike/06 + AGENTS.md is that NO
+// code path outside the canonical AssetCommitter writes media_assets. The
+// admin CLI (cmd/admin) is the historical exception surface: it used to hold
+// one-shot SQLite media writers. Leaving cmd/ unscanned made the documented
+// claim false, so the scan root was widened (POSTGRES-MEDIA-CUTOVER audit,
+// September 2026).
 var mediaAssetsWriterScanRoots = []string{
 	"internal",
+	"cmd",
 }
 
 // mediaAssetsWriterForbiddenRe matches a Go line that contains a
 // direct SQL write to media_assets (INSERT, UPDATE, DELETE, REPLACE).
 // Case-insensitive, substring match for forward-prevention.
+//
+// The INSERT/REPLACE/UPDATE branches require the `SET`/`(` trailer so a
+// column-list or SET clause is present; the DELETE branch does NOT, because a
+// legitimate `DELETE FROM media_assets` needs no trailer. Requiring the
+// trailer on DELETE (the pre-September-2026 shape) silently exempted every
+// row deletion outside the committer — a hole found by the media-cutover
+// audit and closed here.
 var mediaAssetsWriterForbiddenRe = regexp.MustCompile(
-	`(?is)\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+media_assets\b\s*(?:SET|\()`,
+	`(?is)\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|UPDATE)\s+media_assets\b\s*(?:SET|\()|\b(DELETE\s+FROM)\s+media_assets\b`,
 )
 
 // mediaAssetsWriterReferenceRe remains broad because it is used only for
@@ -186,12 +201,28 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 	maskedStr := string(masked)
 
 	// media_assets fence: repo-wide.
+	//
+	// The regex has two top-level alternatives (trailer-carrying
+	// INSERT/REPLACE/UPDATE, trailer-less DELETE), so the verb lives in a
+	// DIFFERENT capture group depending on which branch matched. Take the
+	// FIRST participating capture group instead of assuming group 1: Go
+	// reports unmatched groups as -1 and slicing on that panics.
 	matches := mediaAssetsWriterForbiddenRe.FindAllStringSubmatchIndex(maskedStr, -1)
 	for _, match := range matches {
 		if len(match) < 4 {
 			continue
 		}
-		reportMediaAssetsWriterViolation(r, relPath, maskedStr, match[0], maskedStr[match[2]:match[3]],
+		verb := ""
+		for group := 2; group+1 < len(match); group += 2 {
+			if match[group] >= 0 {
+				verb = maskedStr[match[group]:match[group+1]]
+				break
+			}
+		}
+		if verb == "" {
+			continue
+		}
+		reportMediaAssetsWriterViolation(r, relPath, maskedStr, match[0], verb,
 			"media_assets")
 	}
 

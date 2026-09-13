@@ -178,63 +178,18 @@ var (
 		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 	})
 
-	// ── Projection Reconciler Metrics (plan item #15, August 2026) ──
+	// ── Projection Reconciler Metrics REMOVED (POSTGRES-MEDIA-CUTOVER) ──
 	//
-	// The periodic projection-reconciler compares the canonical eligible
-	// SQLite asset set (SearchIndexEligibilitySQL SSOT) against the
-	// asset_ids present in the ACTIVE Qdrant projection and emits the
-	// parity below every tick. Target steady state:
-	//
-	//	projection_coverage_ratio == 1.0  (every eligible asset is in Qdrant)
-	//	projection_orphan_count     == 0   (no stale points)
-	//
-	// Alert on: projection_coverage_ratio < 1.0 sustained, or
-	// projection_orphan_count > 0 (reconcile-qdrant / reindex-qdrant
-	// repair needed), or rate(projection_reconcile_errors_total[15m]) > 0.
-	ProjectionCoverageRatio = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_coverage_ratio",
-		Help: "Fraction of eligible SQLite assets present in the active Qdrant projection (1.0 = full coverage; eligible-present / eligible)",
-	})
-
-	ProjectionOrphanCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_orphan_count",
-		Help: "Number of points in the active Qdrant projection whose asset_id has no eligible SQLite row (stale projection points)",
-	})
-
-	ProjectionMissingCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_missing_count",
-		Help: "Number of eligible SQLite assets absent from the active Qdrant projection (projection lag / missing points)",
-	})
-
-	ProjectionEligibleSQLite = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_eligible_sqlite",
-		Help: "Number of media_assets rows satisfying the canonical eligibility policy (SearchIndexEligibilitySQL SSOT)",
-	})
-
-	ProjectionQdrantPoints = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_qdrant_points",
-		Help: "Number of points in the active Qdrant projection carrying a payload asset_id",
-	})
-
-	ProjectionScanComplete = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_scan_complete",
-		Help: "1 when the last projection parity scan completed cleanly (every point scanned, zero errors), 0 otherwise",
-	})
-
-	ProjectionReconcileRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "projection_reconcile_runs_total",
-		Help: "Total number of successful projection-reconciler ticks (parity sampled)",
-	})
-
-	ProjectionReconcileErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "projection_reconcile_errors_total",
-		Help: "Total number of projection-reconciler tick failures (parity check errored)",
-	})
-
-	ProjectionReconcileLastSuccess = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "projection_reconcile_last_success_timestamp_seconds",
-		Help: "Unix timestamp of the most recent successful projection-reconciler tick",
-	})
+	// projection_coverage_ratio / projection_orphan_count /
+	// projection_missing_count / projection_eligible_sqlite /
+	// projection_qdrant_points / projection_scan_complete /
+	// projection_reconcile_{runs,errors}_total /
+	// projection_reconcile_last_success_timestamp_seconds were emitted only by
+	// the SQLite→Qdrant media projection-reconciler ticker. That ticker was
+	// removed with the media cutover (the Qdrant media collection is no longer
+	// a projection of SQLite; media parity is transactional inside PostgreSQL +
+	// pgvector), so the series no longer have a writer and were deleted rather
+	// than left permanently frozen.
 
 	// ── Finalizer Spine Metrics (PR-FINALIZER-METRICS, July 2026) ─
 	//
