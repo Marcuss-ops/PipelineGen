@@ -71,20 +71,28 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 			if durationUS > MaxEntityOverlayDurationUS {
 				durationUS = MaxEntityOverlayDurationUS
 			}
-			endUS := occurrence.AudioStartUS + durationUS
+			startMS := occurrence.AudioStartUS / 1000
+			// Overlay transport is millisecond-based. Quantize the optional
+			// microsecond projection to that same boundary so the exact
+			// five-second editorial window remains internally consistent.
+			startUS := startMS * 1000
 			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)
 			entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(string(kind))
 			if err != nil {
 				return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 			}
 			items = append(items, capabilityoverlay.OverlayItem{
-				ID:            overlayItemID(occurrence),
-				SceneID:       occurrence.SceneID,
-				EntityID:      occurrence.EntityID,
-				Kind:          string(kind),
-				StartMs:       occurrence.AudioStartUS / 1000,
-				EndMs:         (endUS + 999) / 1000,
-				StartUS:       occurrence.AudioStartUS,
+				ID:       overlayItemID(occurrence),
+				SceneID:  occurrence.SceneID,
+				EntityID: occurrence.EntityID,
+				Kind:     string(kind),
+				StartMs:  startMS,
+				// Entity image/card windows are an editorial five-second
+				// contract. Derive the millisecond end from the same floored
+				// start so sub-millisecond source timing cannot turn 5s into
+				// 5001ms on the wire.
+				EndMs:         startMS + durationUS/1000,
+				StartUS:       startUS,
 				DurationUS:    durationUS,
 				TemplateID:    entry.Template,
 				PresetID:      capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, overlayItemID(occurrence), occurrence.Type),

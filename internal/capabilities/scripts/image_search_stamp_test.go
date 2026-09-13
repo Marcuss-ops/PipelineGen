@@ -158,7 +158,8 @@ func TestImageCandidateCarriesSHA256(t *testing.T) {
 	assert.Equal(t, binding.SHA256, candidate.SHA256, "the verified content address must cross the bridge")
 	assert.Equal(t, "image", candidate.MediaType)
 	assert.Equal(t, int64(1300), candidate.StartMs)
-	assert.Equal(t, int64(1500), candidate.EndMs)
+	assert.Equal(t, int64(6300), candidate.EndMs)
+	assert.Equal(t, int64(5_000_000), candidate.DurationUS)
 }
 
 // TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem
