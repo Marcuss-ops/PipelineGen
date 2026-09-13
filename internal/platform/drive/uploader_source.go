@@ -75,6 +75,11 @@ func (s *httpObjectSource) ReadAt(p []byte, off int64) (int, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK && off > 0 {
+		if _, err := io.CopyN(io.Discard, resp.Body, off); err != nil {
+			return 0, fmt.Errorf("discard unhandled range prefix: %w", err)
+		}
+	}
 	n, err := io.ReadFull(resp.Body, p[:end-off+1])
 	if err == io.ErrUnexpectedEOF {
 		err = io.EOF

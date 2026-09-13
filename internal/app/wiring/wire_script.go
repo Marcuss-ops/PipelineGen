@@ -97,9 +97,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 				Publisher:  root.Drive.Publisher,
 				EventsRepo: root.Outbox.EventsRepo,
 			},
-			ImageSearcher:  vidrushInternetImageSearcher(root, log),
-			ImageGenerator: root.Domains.ImageService,
-			MediaExec:      root.MediaExec,
+			ImageSearcher: vidrushInternetImageSearcher(root, log),
+			MediaExec:     root.MediaExec,
 		}
 		// Artlist is optional for script generation. When its feature is
 		// disabled, keep the shared VidRush materialization wiring alive with

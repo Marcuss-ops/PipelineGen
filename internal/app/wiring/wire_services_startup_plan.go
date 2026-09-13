@@ -139,40 +139,11 @@ func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJob
 	// Falls into the canonical order:
 	//
 	//   drive-init → qdrant-collection → outbox-pool
-	//   → chrome-pool-prewarm    [OPTIONAL, only when ImagesEnabled]
 	//   → background services (scanner, monitor, sweepers)
 	//   → job runner (always last)
 	//
-	// Per-worker profile isolation is already enforced by session.py
-	// (MASTER_STORAGE.profile_<id> + PROFILE_DIR_<id>_<pid>); this
-	// step just guarantees those workers actually exist server-side
-	// before requests can reach them.
-	if root != nil && root.Domains != nil && root.Domains.ImageService != nil && cfg.Features.ImagesEnabled {
-		imgSvc := root.Domains.ImageService
-		poolSize := cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations
-		plan = append(plan, StartupStep{
-			Name: "chrome-pool-prewarm", Required: false,
-			Start: func(ctx context.Context) error {
-				log.Info("StartupStep: prewarming ChromeImageProviderPool", zap.Int("pool_size", poolSize))
-				imgSvc.TriggerPrewarm(ctx, "startup-prewarm", poolSize)
-
-				report := imgSvc.Diagnostics()
-				if !report.ImageGenWired {
-					return fmt.Errorf("chrome image provider pool is not wired")
-				}
-				if !report.ImageGenHealthy {
-					return fmt.Errorf("chrome image provider pool is unhealthy")
-				}
-				if report.ImageGenCooldownProfiles > 0 {
-					return fmt.Errorf("chrome image provider pool has %d unhealthy/cooldown profiles", report.ImageGenCooldownProfiles)
-				}
-				log.Info("StartupStep: ChromeImageProviderPool prewarmed successfully and healthy", zap.Int("pool_size", poolSize))
-				return nil
-			},
-			Stop: func(_ context.Context) error { return nil },
-		})
-	}
-
+	// Retrieved images do not require a browser worker. AI/Chrome image
+	// generation is deliberately not part of this startup plan.
 	// Append the background services plan (scanner, monitor, sweepers, etc.)
 	// followed by the job runner (always last, required). jobs.startupPlan
 	// is captured by startBackgroundJobs in wire_services_composition.go.

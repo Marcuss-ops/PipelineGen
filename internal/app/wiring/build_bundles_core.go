@@ -47,7 +47,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome"
 	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -364,12 +363,12 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
-			ImageGen: chromeimages.NewChromeImageProviderPoolFromProfile(
-				params.Cfg.Paths.PythonScriptsDir,
-				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
-				params.Cfg.Concurrency.GoogleSlidesProfileID,
-				params.Log,
-			),
+			// Image generation via Chrome/Google Slides is intentionally not
+			// wired. Scene/entity images come from the retrieved-image path
+			// (DuckDuckGo and the configured asset catalog), never from a
+			// Python worker. Keeping this nil also makes an accidental AI-image
+			// request fail closed instead of spawning an unrelated subprocess.
+			ImageGen: nil,
 		}, External: imgservice.ImagesExternalDeps{
 			IngestSvc:   params.IngestSvc,
 			RemoteFetch: httpclient.NewDefaultClient(10 * time.Minute),

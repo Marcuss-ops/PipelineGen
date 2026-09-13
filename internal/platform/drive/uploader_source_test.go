@@ -70,6 +70,29 @@ func TestHTTPObjectSource_RangeReadsAndSequentialRead(t *testing.T) {
 	}
 }
 
+// TestHTTPObjectSource_NonRangeServerFallback pins behavior when the remote
+// server ignores Range headers and returns 200 OK from byte 0.
+func TestHTTPObjectSource_NonRangeServerFallback(t *testing.T) {
+	payload := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	src := &httpObjectSource{ctx: context.Background(), url: server.URL, size: int64(len(payload))}
+	defer src.Close()
+
+	buf := make([]byte, 5)
+	n, err := src.ReadAt(buf, 10)
+	if err != nil || n != 5 {
+		t.Fatalf("ReadAt(10) = %d, %v; want 5, nil", n, err)
+	}
+	if string(buf) != "abcde" {
+		t.Fatalf("ReadAt(10) = %q, want %q", buf, "abcde")
+	}
+}
+
 // TestOpenUploadSource_FailClosed pins the source resolution rules: a local
 // path wins, a remote URL needs an expected size, and neither is a typed error.
 func TestOpenUploadSource_FailClosed(t *testing.T) {
