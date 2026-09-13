@@ -23,9 +23,8 @@ type refreshingTokenSource struct {
 // Token returns a valid token, refreshing if necessary, and saves to file
 func (r *refreshingTokenSource) Token() (*oauth2.Token, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	token, err := r.source.Token()
+	r.mu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
