@@ -48,36 +48,23 @@ benchmark-e2e: preflight-e2e
 	@test -n "$(BENCHMARK_COMMAND)" || { echo "❌ BENCHMARK_COMMAND is required" >&2; exit 2; }
 	@bash -lc '$(BENCHMARK_COMMAND)'
 
-# benchmark-generate — canonical video generation benchmark. Uses
-# scripts/bench/generate-video.sh which submits N jobs, polls for
-# completion, and emits a structured JSON timing report.
+# benchmark-generate / benchmark-ollama-models — RETIRED 2026-09-13:
+# benchmark-ollama-models' driver (scripts/bench/ollama-model-benchmark.sh) was
+# deleted by commit 7e6965aab ("purge 94% shell + 87% python dust") and has no
+# replacement. benchmark-generate's driver was repaired on the same date: the
+# purge had ALSO deleted the modules that scripts/bench/generate-video.sh
+# sources (lib/generate_video_stages.sh, report/generate_video_report*.py),
+# so the script aborted before submitting a job; both are restored and the
+# runner is reproducible again (invoke it directly, or via the documented
+# `./scripts/bench/generate-video.sh --clip-id ...` form). benchmark-generate
+# itself stays retired because it is a LIVE end-to-end measurement that needs a
+# running server + GPU, not a repository gate: a target whose outcome depends on
+# services being up is not a gate (see make/verify.mk). Surviving headless
+# benchmarks: `make bench`, `make bench-cliprender`.
 #
-# Modes:
-#   BENCH_TOPIC=X          Generate clips from topic (default: Matt Damon)
-#   BENCH_CLIP_ID=A,B,C    Render existing clip IDs
-#   BENCH_WATERMARK=X      Apply watermark asset ID
-#   BENCH_DRIVE_FOLDER=X   Upload to specific Drive folder
-#
-# Examples:
-#   make benchmark-generate BENCH_TOPIC="Dune" BENCH_CLIPS=3
-#   make benchmark-generate BENCH_CLIP_ID=asset_abc,asset_def
-#   make benchmark-generate BENCH_TOPIC="Interstellar" BENCH_WATERMARK=wm_xyz
-benchmark-ollama-models:
-	@bash scripts/bench/ollama-model-benchmark.sh
+# Reimplement benchmark-ollama-models as a Go benchmark (honouring the `bench`
+# target) before re-adding it.
 
-benchmark-generate: preflight-e2e
-	@_CLIP_ARGS=""; \
-	if [ -n "$(BENCH_CLIP_ID)" ]; then \
-		IFS=',' read -ra _IDS <<< "$(BENCH_CLIP_ID)"; \
-		for _id in "$${_IDS[@]}"; do _CLIP_ARGS="$${_CLIP_ARGS} --clip-id $${_id}"; done; \
-	fi; \
-	bash scripts/bench/generate-video.sh \
-		$${_CLIP_ARGS} \
-		$${BENCH_TOPIC:+--topic "$(BENCH_TOPIC)"} \
-		$${BENCH_TOPIC:+--clips "$(BENCH_CLIPS:-5)"} \
-		${BENCH_WATERMARK:+--watermark $(BENCH_WATERMARK)} \
-		${BENCH_DRIVE_FOLDER:+--drive-folder $(BENCH_DRIVE_FOLDER)} \
-		${BENCH_OUTPUT:+--output $(BENCH_OUTPUT)}
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
 

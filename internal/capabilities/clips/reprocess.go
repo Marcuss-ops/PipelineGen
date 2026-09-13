@@ -25,7 +25,7 @@ import (
 // asset row that would orphan Qdrant. See
 // internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
-	assetRepo     detail.Repository
+	assetRepo     AssetReader
 	processor     detail.Processor
 	dispatcher    mutations.AssetMutationDispatcher
 	clipsFolderID string
@@ -49,7 +49,7 @@ type RemoteAssetReader interface {
 // path. Composition-root pre-rejection lives in the wiring site
 // (internal/capabilities/assets/clips/handler.go NewHandler) which surfaces
 // a configure-time error if dispatcher is nil.
-func NewReprocessUseCase(repo detail.Repository, proc detail.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
+func NewReprocessUseCase(repo AssetReader, proc detail.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
 	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}
 }
 

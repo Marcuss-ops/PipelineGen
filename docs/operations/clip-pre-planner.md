@@ -7,8 +7,8 @@ binding-resolved scene before downstream rendering.
 | Field | Value |
 |---|---|
 | Pipeline scope | Clip pre-planning (asset selection + binding + redaction) |
-| Related conduct | `internal/capabilities/scripts/usecase/generate_one_usecase.go` |
-| Companion runtime docs | `docs/operations/capacity-sweep.md`, `docs/operations/youtube-live-testing-runbook.md` |
+| Related conduct | `internal/capabilities/scripts/usecase/gencore/generate_one_usecase.go` |
+| Companion runtime docs | `docs/operations/youtube-live-testing-runbook.md` (the former `docs/operations/capacity-sweep.md` was deleted by commit `a995baab2`) |
 | Godlike/05 SSOT pointer | `internal/capabilities/scripts/usecase` |
 | Godlike/06 SSOT pointer | one owner per stage (cited below) |
 | Godlike/07 NO-FAKE-AVAILABILITY | every stage failures closed; no silent no-op |
@@ -22,23 +22,23 @@ binding-resolved scene before downstream rendering.
 [1. Planner]      stockpipeline/planner.go              (deterministicPlanner)
    │
    ▼
-[2. Search]       scripts/usecase/source_resolver_search.go
+[2. Search]       internal/capabilities/scripts/usecase/source_resolver_search.go
    │              + assets/search/ports.go (SearchResult port)
    │
    ▼
-[3. Sampler]      scripts/usecase/clip_sampler_impl.go
+[3. Sampler]      internal/capabilities/scripts/usecase/clip_sampler_impl.go
    │              + providers/stock/fingerprint.go (Sampler)
    │
    ▼
 [4. View Redaction]  clipview/types.go (CandidateView allow-list)
-   │                  + scripts/usecase/output_sanitizer.go (artifact scrub)
+   │                  + internal/capabilities/scripts/usecase/gencore/output_sanitizer.go (artifact scrub)
    │
    ▼
-[5. Generator]    domain/generation/generator.go (Generator interface)
-   │              + ai/ollama/generate.go (Ollama-backed impl)
+[5. Generator]    internal/capabilities/scripts/ports/generation.go (Generator interface)
+   │              + internal/platform/ollama/generate.go (Ollama-backed impl)
    │
    ▼
-[6. Binding]      scripts/scene/binder.go (BindClipsFromManifest)
+[6. Binding]      internal/capabilities/scripts/scene/binder.go (BindClipsFromManifest)
 ```
 
 Each stage passes one typed envelope forward. The boundary contracts are
@@ -57,7 +57,7 @@ threads the typed struct through all downstream stages.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/capabilities/scripts/usecase/generate_one_usecase.go`, `internal/capabilities/scripts/usecase/engine_prompt.go` |
+| **Primary code paths** | `internal/capabilities/scripts/usecase/gencore/generate_one_usecase.go`, `internal/capabilities/scripts/usecase/gencore/engine_prompt.go` |
 | **Godlike contract** | godlike/07: payload validation is fail-closed — unknown fields, missing topic, or empty source text MUST abort the chain before stage 2. |
 | **Inputs** | typed payload with `Topic`, `SourceText`, `SlotHints`, target duration |
 | **Outputs** | hydrated request struct passed to stage 2 (`ClipPlanner.Plan`) |
@@ -125,7 +125,7 @@ compose the gate:
    projection. It is a STRICT allow-list: asset identifier fields like
    `AssetRef` and `SlotRef` are excluded by construction. Any candidate that
    would leak private taxonomy MUST be rejected at this boundary.
-2. **`output_sanitizer.go`** (under `scripts/usecase`) is the canonical
+2. **`output_sanitizer.go`** (under `internal/capabilities/scripts/usecase/gencore`) is the canonical
    scrubber of non-prose artifacts in generated text, providing an idempotent
    pass that strips cache-replay residue and other system-only tokens.
 
@@ -134,7 +134,7 @@ layer. Future consolidation is an open follow-up.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/capabilities/assets/providerassets/providerasset.go` (`CandidateView`), `internal/capabilities/scripts/usecase/output_sanitizer.go` |
+| **Primary code paths** | `internal/capabilities/assets/providerassets/providerasset.go` (`CandidateView`), `internal/capabilities/scripts/usecase/gencore/output_sanitizer.go` |
 | **Godlike contract** | godlike/06 SSOT: `clipview.CandidateView` is the SOLE owner of the model-facing projection; nowhere else in the codebase may emit a candidate-shaped struct that includes `AssetRef` / `SlotRef` / `DriveLink`. godlike/07: any unredacted projection reaching the Generator is a fail-closed event. |
 | **Inputs** | candidate projections from stage 4 + raw model text from stage 6 |
 | **Outputs** | cleaned candidate projections (no asset_id, no drive_link) + scrubbed text |
@@ -151,8 +151,8 @@ unit testing.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/capabilities/scripts/generation/generator.go` (`Generator` interface), `internal/platform/ollama/generate.go` (`Generator` Ollama impl), `internal/capabilities/scripts/usecase/generate_one_usecase.go` (orchestrator invocation) |
-| **Godlike contract** | godlike/06 SSOT: there is one Generator contract (`domain/generation/generator.go`); alternative generation backends MUST implement it. godlike/07: every Generator call MUST return a typed result; raw text without a typed envelope is reject. |
+| **Primary code paths** | `internal/capabilities/scripts/ports/generation.go` (`Generator` port), `internal/platform/ollama/generate.go` (`Generator` Ollama impl), `internal/capabilities/scripts/usecase/gencore/generate_one_usecase.go` (orchestrator invocation) |
+| **Godlike contract** | godlike/06 SSOT: there is one Generator contract (`internal/capabilities/scripts/ports/generation.go`); alternative generation backends MUST implement it. godlike/07: every Generator call MUST return a typed result; raw text without a typed envelope is reject. |
 | **Inputs** | redacted candidate projections from stage 5 |
 | **Outputs** | generated typed envelope (per the Generator contract) |
 | **Failure modes** | provider timeout → typed sentinel; malformed typed envelope → typed sentinel; non-prose artifacts → output_sanitizer re-pass |
@@ -213,12 +213,14 @@ When the pre-planner pipeline fails:
 
 ## Related Operational Docs
 
-- `docs/operations/stock-e2e-runbook.md` — end-to-end plan verification,
-  including pre-planner validation.
-- `docs/operations/inspect-media-asset.md` — adjudicate individual asset
-  metadata when stage 3 or stage 4 sentinel rates spike.
-- `docs/operations/capacity-sweep.md` — capacity-load diagnostics for
-  stages 3 (Search) and 6 (Generator).
+- `docs/operations/stock-e2e-runbook.md` — stock operational procedure:
+  HTTP entry points, headless Stock gates, StockRust boundary, `performance_runs` timing.
+- Asset inspection when stage 3 or stage 4 sentinel rates spike: there is no
+  canonical helper script (`scripts/operations/inspect_media_asset.sh` is not
+  in the tree); query the PostgreSQL media tables
+  (`media_assets`, `asset_locations`, `registry_events`) directly.
+- `docs/operations/capacity-sweep.md` (**deleted by commit `a995baab2`**) — was the capacity-load diagnostics doc for
+  stages 3 (Search) and 6 (Generator); no replacement owner today, use `make bench` for headless load measurements.
 - `docs/operations/worker-certification-checklist.md` — pre-planner is part of
   the certified pipeline; production rollout must pass the checklist.
 

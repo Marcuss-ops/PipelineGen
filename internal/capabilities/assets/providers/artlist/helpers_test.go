@@ -45,6 +45,16 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	if deps.ServiceDependencies.Repos.TextTrackRepo == nil {
 		deps.ServiceDependencies.Repos.TextTrackRepo = &stubTextTrackRepo{}
 	}
+	// MEDIA-SSOT P1-5 (September 2026): the PRODUCTION SQLite searcher bridge
+	// and its `NewSQLiteSearcher(s.assetStore)` fallback in buildSearcherChain
+	// were deleted, so the local Artlist catalog searcher is now an explicit
+	// injection point (composition wires the PostgreSQL-backed one). These
+	// fixture tests build a service around an in-memory SQLite AssetStore, so
+	// they must opt into the test-only searcher explicitly instead of relying
+	// on a production fallback that no longer exists.
+	if deps.ServicePorts.LocalSearcher == nil && deps.ServicePorts.AssetStore != nil {
+		deps.ServicePorts.LocalSearcher = NewDBSearcher(deps.ServicePorts.AssetStore)
+	}
 	if deps.ServiceDependencies.Infra.MainDB != nil {
 		box := outboxevents.NewRepository(deps.ServiceDependencies.Infra.MainDB)
 		assetCommitter := testsupport.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, box, deps.ServiceDependencies.Infra.Log)

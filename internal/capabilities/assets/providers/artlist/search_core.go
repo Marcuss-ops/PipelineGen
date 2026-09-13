@@ -374,14 +374,15 @@ func (ss *SearchService) buildSearcherChain(preferRemote bool, requestedMode ...
 	}
 	var searchers []Searcher
 	if !preferRemote {
-		localSearcher := s.localSearcher
-		// Compatibility for unit-level constructions that still provide only
-		// AssetStore. Production composition injects LocalSearcher explicitly.
-		if localSearcher == nil && s.assetStore != nil {
-			localSearcher = NewSQLiteSearcher(s.assetStore)
-		}
-		if localSearcher != nil {
-			searchers = append(searchers, localSearcher)
+		// MEDIA-SSOT P1-5 (September 2026): the local Artlist catalog searcher
+		// is injected by the composition root and reads the PostgreSQL media
+		// SSOT. The former `NewSQLiteSearcher(s.assetStore)` compatibility
+		// fallback is GONE: it served local hits from a retired SQLite media
+		// mirror that a PostgreSQL media write can never update. When no local
+		// searcher is injected the local stage is simply skipped (fail-closed)
+		// and the chain continues with the remote providers.
+		if s.localSearcher != nil {
+			searchers = append(searchers, s.localSearcher)
 		}
 	}
 

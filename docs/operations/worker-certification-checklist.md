@@ -79,7 +79,10 @@ Criteri:
 
 - **`200`** → il token è valido e il worker può procedere.
 - **`401`** → token assente/sbagliato: allineare il worker al valore corrente
-  del master (rigenerazione: `sudo scripts/rotate_token.sh --also-worker`).
+  del master. Non esiste uno script di rotazione nel repository
+  (`scripts/rotate_token.sh` è stato eliminato dal commit `7e6965aab`):
+  genera un 64-hex nuovo, sostituiscilo in
+  `/etc/pipelinegen/pipelinegen.env` e riavvia il servizio.
 - **`500`** → `VELOX_WORKER_TOKEN` non configurato sul master: completare la
   configurazione prima della certificazione.
 

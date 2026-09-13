@@ -99,12 +99,13 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 }
 
 // newClipRenderMediaResolver returns the asset read surface for clip.render and
-// localization. PostgreSQL is the media SSOT, so every media-enabled
-// deployment resolves asset_id there (MEDIA-SSOT P1-5: closes the read
-// split-brain where a PostgreSQL-committed asset was invisible to a SQLite
-// reader). The legacy SQLite detail.Service is retained ONLY for the
-// documented graceful-degrade path where the media plane is intentionally
-// disabled (root.MediaPostgres == nil).
+// localization. PostgreSQL is the media SSOT and is the ONLY read surface:
+// there is no second catalog, so a missing media PostgreSQL is a fail-closed
+// wiring error rather than a silent fallback to the legacy SQLite asset
+// registry (MEDIA-SSOT P1-5: closes the read split-brain where a
+// PostgreSQL-committed asset was invisible to a SQLite reader, and removes the
+// last branch in which clip.render could read a different catalog than the one
+// it writes).
 //
 // It lives in this file, not a sibling, because internal/app/wiring is a
 // registered hotspot whose debt is the FILE COUNT itself: a resolver for the
@@ -115,14 +116,8 @@ func newClipRenderMediaResolver(root *ComposeRoot, log *zap.Logger) (cliprender.
 	if root == nil {
 		return nil, errors.New("clip.render: composition root is nil")
 	}
-	if root.MediaPostgres != nil {
-		return clipadapters.NewClipRenderPGAssetResolver(pgmedia.NewMediaSearcher(root.MediaPostgres), log)
+	if root.MediaPostgres == nil {
+		return nil, errors.New("clip.render: media PostgreSQL SSOT is required (no second media catalog: the legacy SQLite asset registry is no longer a valid read surface)")
 	}
-	if root.Repos == nil || root.Repos.Assets == nil {
-		return nil, errors.New("clip.render: no media read surface (postgres media SSOT and legacy asset registry both unavailable)")
-	}
-	if log != nil {
-		log.Warn("clip.render: media PostgreSQL disabled — falling back to the legacy SQLite asset registry (graceful degrade; media features operate without the SSOT)")
-	}
-	return clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
+	return clipadapters.NewClipRenderPGAssetResolver(pgmedia.NewMediaSearcher(root.MediaPostgres), log)
 }

@@ -1,16 +1,23 @@
-// Package app — artlist_runs_adapter.go (PR-ARTLIST-PERSIST-FIX, 2026-07-04)
+// Package app — artlist_runs_adapter.go (PR-ARTLIST-PERSIST-FIX, 2026-07-04;
+// extended with the local-searcher adapter, MEDIA-SSOT P1-5, 2026-09-13).
 //
-// Composition-root adapter that bridges
+// Composition-root adapters that bridge artlist capability ports to their
+// concrete owners:
 //
 //	artlist.RunRepository (port in internal/capabilities/assets/providers/artlist/ports.go)
 //	sqlite/assets.RunRepository (infra side: internal/platform/sqlite/assets/artlist_runs_repository.go)
 //
-// Without this adapter, the import cycle would be: artlist pkg imports
+// and
+//
+//	artlist.Searcher (the local catalog search port)
+//	pgmedia.MediaSearcher (the PostgreSQL media read authority)
+//
+// Without the runs adapter, the import cycle would be: artlist pkg imports
 // sqlite/assets pkg (for ClipsRepository) AND sqlite/assets pkg's
 // artlist_runs_repository.go imports artlist pkg (for the port type).
-// The adapter lives here in composition-root because that's the only
+// The adapters live here in composition-root because that's the only
 // layer that's already authorised to import BOTH leaf dependencies
-// (artlist pkg + sqlite/assets pkg).
+// (artlist pkg + the concrete owner).
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - artlist.RunRepository — SOLE canonical port seen by NewService
@@ -21,17 +28,35 @@
 //     the two interface names (godlike/06 one-canonical-owner-per-fact)
 //     — future drift in any of the three surfaces surfaces as a
 //     build failure at the compile-time pin below.
+//   - *artlistLocalSearcher — the SINGLE local-catalog searcher; it reads
+//     the PostgreSQL media SSOT, never the operational SQLite store
+//     (MEDIA-SSOT P1-5).
+//   - *artlistMediaSSOTAssetStore — the SINGLE owner of the Artlist DB-only
+//     SearchClips/SearchByTerms reads; they resolve against
+//     media_assets.search_terms in PostgreSQL, never the operational
+//     clip_search_terms index (MEDIA-SSOT P2-9 unblock step 1).
 //
 // godlike/07 minimum-blast-radius: configuration-only changes (no
 // field renames; the field-to-field translation is the canonical
 // mapping per the schema-reconciliation review of 2026-07-04).
+//
+// HOTSPOT NOTE (2026-09-13): internal/app/wiring is a registered hotspot
+// capped at 150 production files (percheck_legacy_hotspot_growth). The
+// local-searcher adapter was deliberately merged into this existing file
+// rather than added as a new one, so carry-forward debt does not increase.
 package wiring
 
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 )
 
@@ -124,4 +149,213 @@ func (a *artlistRunsRepoAdapter) LatestRun(ctx context.Context) (*artlist.Latest
 		Error:     row.ErrorMessage,
 		CreatedAt: row.CreatedAt,
 	}, nil
+}
+
+// ── Artlist local catalog searcher (MEDIA-SSOT P1-5) ────────────────────────
+//
+// The Artlist local catalog searcher used to read SQLite media_assets
+// (platform/sqlite/assets/artlist). That is a read split-brain — Artlist media
+// rows are committed to PostgreSQL, so the SQLite read either returned nothing
+// (local hits never materialise, so `prefer_db`/catalog-only searches silently
+// fell through to the remote provider) or resurrected stale pre-cutover rows.
+// The adapter below reads the same media SSOT the Artlist finalizer writes.
+
+// artlistLocalSearchDefaultLimit mirrors the retired SQLite adapter's implicit
+// page size so callers that leave SearchRequest.Limit unset keep their result
+// cardinality.
+const artlistLocalSearchDefaultLimit = 50
+
+// artlistLocalMediaStore is the narrow PostgreSQL media read surface the
+// adapter consumes. *pgmedia.MediaSearcher implements it; the interface keeps
+// the adapter unit-testable without a live database.
+type artlistLocalMediaStore interface {
+	SearchLocal(ctx context.Context, req pgmedia.LocalMediaSearchRequest) ([]pgmedia.MediaAssetRecord, error)
+}
+
+// artlistLocalSearcher is the PostgreSQL-backed implementation of
+// artlist.Searcher. It is the ONLY local Artlist catalog searcher.
+type artlistLocalSearcher struct {
+	store artlistLocalMediaStore
+}
+
+var (
+	_ artlist.Searcher       = (*artlistLocalSearcher)(nil)
+	_ artlistLocalMediaStore = (*pgmedia.MediaSearcher)(nil)
+)
+
+// newArtlistLocalSearcher returns nil when the media SSOT store is absent so
+// the caller can leave the local searcher unwired (godlike/07 fail-closed)
+// instead of reading the operational SQLite store.
+func newArtlistLocalSearcher(store artlistLocalMediaStore) artlist.Searcher {
+	if store == nil {
+		return nil
+	}
+	return &artlistLocalSearcher{store: store}
+}
+
+func (s *artlistLocalSearcher) Search(ctx context.Context, req artlist.SearchRequest) ([]artlist.Candidate, error) {
+	if s == nil || s.store == nil {
+		return nil, nil
+	}
+	term := strings.TrimSpace(req.Term)
+	if term == "" {
+		return nil, nil
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = artlistLocalSearchDefaultLimit
+	}
+	records, err := s.store.SearchLocal(ctx, pgmedia.LocalMediaSearchRequest{
+		Text:                term,
+		Source:              "artlist",
+		Limit:               limit,
+		ExcludeUnclassified: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]artlist.Candidate, 0, len(records))
+	for i := range records {
+		out = append(out, artlistCandidateFromRecord(&records[i]))
+	}
+	return out, nil
+}
+
+// artlistCandidateFromRecord maps a canonical PostgreSQL media record onto the
+// provider-agnostic candidate the Artlist search chain consumes. Field
+// coverage mirrors the retired SQLite adapter so callers cannot observe a
+// behavioural regression beyond the engine change.
+func artlistCandidateFromRecord(rec *pgmedia.MediaAssetRecord) providerassets.ProviderAsset {
+	pageURL := strings.TrimSpace(rec.SourceURL)
+	previewURL := artlistFirstNonEmpty(rec.MetadataString("preview_url"), pageURL)
+	return providerassets.ProviderAsset{
+		Provider:     "artlist",
+		ExternalID:   rec.ID,
+		ID:           rec.ID,
+		Title:        rec.TitleOrName(),
+		Description:  rec.MetadataString("description"),
+		Creator:      rec.MetadataString("creator"),
+		PageURL:      pageURL,
+		PreviewURL:   previewURL,
+		ThumbnailURL: rec.ThumbnailURL,
+		SourceRef:    artlistFirstNonEmpty(pageURL, previewURL),
+		SourceName:   "database",
+		MediaType:    asset.MediaType(rec.MediaType),
+		Duration:     time.Duration(rec.DurationMS) * time.Millisecond,
+		DurationMs:   rec.DurationMS,
+		Keywords:     append([]string(nil), rec.Tags...),
+		Categories:   rec.MetadataStringSlice("provider_categories"),
+		RawMetadata:  rec.MetadataMap(),
+	}
+}
+
+// ── MEDIA-SSOT P2-9 unblock step 1: the Artlist DB-only search surface ──
+
+// artlistMediaSSOTAssetStore is the composition-root decorator that routes the
+// Artlist DB-only search surface to the PostgreSQL media read authority while
+// delegating every remaining AssetStore method to the operational store.
+//
+// WHY ONLY TWO METHODS ARE OVERRIDDEN. The Artlist capability's DB-only
+// endpoints (`/api/artlist/search` via SearchService.Search, SearchClips, and
+// the diagnostics term counters) reach the media catalog exclusively through
+// `AssetStore.SearchClips`, which the SQLite concrete implements as
+// "SearchByTerms + LIKE fallback". SearchByTerms resolves ids from the
+// `clip_search_terms` inverted index and then re-hydrates them from SQLite
+// `media_assets` — the exact Postgres-writer/SQLite-reader split-brain: an
+// asset committed by the canonical PG committer is invisible to it, and a
+// stale pre-cutover row can be resurrected. The remaining AssetStore methods
+// are operational (runs, counts, term bookkeeping) and stay where they are
+// until their own P2-9 step.
+//
+// The canonical replacement is not a second index: PostgreSQL already carries
+// the term corpus on media_assets.search_terms, and SearchLocal matches it.
+// `clip_search_terms` therefore has no PostgreSQL counterpart to create, which
+// is what makes P2-9 unblock step 3 (retire clip_search_terms as a media
+// index) reachable rather than a rewrite.
+//
+// Fail-closed: newArtlistMediaSSOTAssetStore returns the delegate unchanged
+// when the media SSOT store is absent, so the SQLite-only degrade mode keeps
+// its documented behaviour instead of silently returning no results.
+//
+// Ranking is preserved by reusing the same canonical scorer the SQLite path
+// used (detail.ScoreClips), so callers observe an engine change and not a
+// relevance change.
+type artlistMediaSSOTAssetStore struct {
+	artlist.AssetStore
+	store artlistLocalMediaStore
+}
+
+var _ artlist.AssetStore = (*artlistMediaSSOTAssetStore)(nil)
+
+// newArtlistMediaSSOTAssetStore wraps delegate so SearchClips/SearchByTerms
+// read the PostgreSQL media SSOT. It returns delegate untouched when either
+// handle is absent (SQLite-only degrade mode).
+func newArtlistMediaSSOTAssetStore(delegate artlist.AssetStore, store artlistLocalMediaStore) artlist.AssetStore {
+	if delegate == nil || store == nil {
+		return delegate
+	}
+	return &artlistMediaSSOTAssetStore{AssetStore: delegate, store: store}
+}
+
+// SearchClips mirrors the retired SQLite contract exactly: split the term into
+// keywords, require every keyword, then rank with the canonical scorer.
+func (s *artlistMediaSSOTAssetStore) SearchClips(ctx context.Context, source, term string) ([]*asset.Asset, error) {
+	if s == nil || s.store == nil {
+		return nil, nil
+	}
+	keywords := strings.Fields(term)
+	if len(keywords) == 0 {
+		keywords = []string{term}
+	}
+	return s.search(ctx, source, keywords, artlistLocalSearchDefaultLimit)
+}
+
+// SearchByTerms is the multi-keyword entry point. SQLite satisfied it from the
+// clip_search_terms inverted index; PostgreSQL answers it from
+// media_assets.search_terms with the same AND semantics.
+func (s *artlistMediaSSOTAssetStore) SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error) {
+	if s == nil || s.store == nil {
+		return nil, nil
+	}
+	return s.search(ctx, source, keywords, limit)
+}
+
+// search is the SINGLE query+rank site for both overridden methods.
+func (s *artlistMediaSSOTAssetStore) search(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error) {
+	terms := make([]string, 0, len(keywords))
+	for _, keyword := range keywords {
+		if trimmed := strings.TrimSpace(keyword); trimmed != "" {
+			terms = append(terms, trimmed)
+		}
+	}
+	if len(terms) == 0 {
+		return []*asset.Asset{}, nil
+	}
+	records, err := s.store.SearchLocal(ctx, pgmedia.LocalMediaSearchRequest{
+		AllTerms:            terms,
+		Source:              source,
+		Limit:               limit,
+		ExcludeUnclassified: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	clips := make([]*asset.Asset, 0, len(records))
+	for i := range records {
+		if hydrated := records[i].HydrateAsset(); hydrated != nil {
+			clips = append(clips, hydrated)
+		}
+	}
+	return detail.ScoreClips(clips, terms), nil
+}
+
+// artlistFirstNonEmpty returns the first non-empty candidate. It is a local
+// helper so this file does not depend on an unexported sibling package helper.
+func artlistFirstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

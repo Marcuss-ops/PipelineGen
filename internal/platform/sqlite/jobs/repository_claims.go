@@ -29,7 +29,6 @@ import (
 // initial SELECT.
 func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*job.Job, error) {
 	now := time.Now()
-	leaseExpiry := now.Add(leaseTTL)
 
 	// Find the best candidate (queued only — ClaimNext in the domain interface
 	// is the atomic claim + start, so we select from queued).
@@ -58,8 +57,88 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 		return nil, fmt.Errorf("ClaimNext: hydrate result: %w", err)
 	}
 
-	// Generate lease ID.
+	return r.claimCandidate(ctx, j, workerID, leaseTTL, now)
+}
+
+// claimPayloadMatchScan caps how many QUEUED candidates a payload-scoped claim
+// examines in one attempt. Non-matching jobs are drained by the UNFILTERED pool
+// (that is the point of a payload-scoped pool), and the actor polls again on an
+// empty result, so the window bounds per-attempt cost without starving a
+// matching job behind a bounded run of non-matching ones.
+const claimPayloadMatchScan = 64
+
+// ClaimNextMatching is the payload-scoped form of ClaimNext: it claims the
+// highest-priority QUEUED job of the requested types whose payload carries every
+// key=value pair in match.
+//
+// It exists so ONE job type can be split across independently budgeted pools
+// without a second job type (kernel/job.PayloadMatch). The payload is NOT part
+// of the jobs-table projection (jobColumns reads an empty payload and the
+// canonical bytes live in job_payloads with a legacy jobs.payload_json
+// fallback), so the predicate runs in Go after hydration instead of in SQL.
+//
+// Correctness is unchanged where it matters: the winning row is still claimed by
+// the same CAS Start() transition, so a racing unfiltered pool can only make
+// this call return ErrTransitionConflict (treated by every claim loop as an
+// empty poll), never a double claim.
+func (r *SQLiteStore) ClaimNextMatching(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match job.PayloadMatch) (*job.Job, error) {
+	if len(match) == 0 {
+		return r.ClaimNext(ctx, workerID, leaseTTL, types)
+	}
+	now := time.Now()
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE status = 'QUEUED'`
+	var args []any
+	if len(types) > 0 {
+		placeholders := make([]string, len(types))
+		for i, t := range types {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
+	}
+	query += ` ORDER BY priority DESC, created_at ASC, id ASC LIMIT ?`
+	args = append(args, claimPayloadMatchScan)
+
+	// Buffer the bounded candidate window and CLOSE the cursor BEFORE hydrating
+	// it: hydration issues its own queries, and a nested query inside an open
+	// rows cursor deadlocks under a single-connection pool (the same failure
+	// mode RequeueExpiredLeases documents).
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ClaimNextMatching: select: %w", err)
+	}
+	candidates := make([]*job.Job, 0, claimPayloadMatchScan)
+	for rows.Next() {
+		candidate := &job.Job{}
+		if scanErr := scanJobColumns(rows, candidate); scanErr != nil {
+			rows.Close()
+			return nil, fmt.Errorf("ClaimNextMatching: scan: %w", scanErr)
+		}
+		candidates = append(candidates, candidate)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		rows.Close()
+		return nil, fmt.Errorf("ClaimNextMatching: rows: %w", rowsErr)
+	}
+	rows.Close()
+
+	for _, candidate := range candidates {
+		if hydrateErr := r.hydrateLatestPayload(ctx, candidate); hydrateErr != nil {
+			return nil, fmt.Errorf("ClaimNextMatching: hydrate payload: %w", hydrateErr)
+		}
+		if !job.MatchesPayload(candidate.Payload, match) {
+			continue
+		}
+		return r.claimCandidate(ctx, candidate, workerID, leaseTTL, now)
+	}
+	return nil, nil
+}
+
+// claimCandidate performs the atomic claim (CAS Start) for one chosen candidate
+// and stamps the lease identity onto the returned snapshot.
+func (r *SQLiteStore) claimCandidate(ctx context.Context, j *job.Job, workerID string, leaseTTL time.Duration, now time.Time) (*job.Job, error) {
 	leaseID := fmt.Sprintf("lease_%d_%s", now.UnixNano(), hashutil.RandomString(8))
+	leaseExpiry := now.Add(leaseTTL)
 	startCmd := StartJob{
 		JobID:    j.ID,
 		WorkerID: workerID,

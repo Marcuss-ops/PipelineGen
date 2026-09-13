@@ -35,6 +35,7 @@ import (
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"go.uber.org/zap"
@@ -137,6 +138,22 @@ func (s *Service) Get(ctx context.Context, id string) (*asset.Details, error) {
 // List delegates to the wrapped Store.
 func (s *Service) List(ctx context.Context, filter asset.Filter) ([]*asset.Summary, error) {
 	return s.store.List(ctx, filter)
+}
+
+// Count returns the number of assets matching the filter through the
+// repository adapter bridge.
+//
+// It exists so a SINGLE narrow read contract (Get / List / Count) is
+// satisfiable by both engine implementations — the SQLite detail store and
+// the PostgreSQL media SSOT store — without forcing consumers to reach the
+// concrete Repository() accessor (which is a type-switch bridge and therefore
+// unavailable to non-SQLite stores).
+func (s *Service) Count(ctx context.Context, filter asset.Filter) (int64, error) {
+	repo := s.Repository()
+	if repo == nil {
+		return 0, errors.New("asset detail service: repository adapter unavailable")
+	}
+	return repo.Count(ctx, filter)
 }
 
 // Save delegates to the wrapped Store.

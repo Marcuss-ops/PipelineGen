@@ -68,7 +68,7 @@ func RunTrimSoundEffects(args []string) error {
 		if err := rows.Scan(&id); err != nil {
 			return fmt.Errorf("scan sound effect: %w", err)
 		}
-		clip, err := root.Repos.ClipsRepo.GetClip(ctx, id)
+		clip, err := root.GetMediaClip(ctx, id)
 		if err != nil || clip == nil {
 			return fmt.Errorf("load sound effect %s: %w", id, err)
 		}

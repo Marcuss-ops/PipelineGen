@@ -223,7 +223,7 @@ type durationBackfillOutcome struct {
 // explicit outcome (fail-closed), never a fabricated zero. A non-nil error is
 // reserved for hard failures (asset load/persist), not for "no source".
 func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, probe *rustexec.VideoProcessor, row durationBackfillRow, retainDir string) (durationBackfillOutcome, error) {
-	clip, err := root.Repos.ClipsRepo.GetClip(ctx, row.ID)
+	clip, err := root.GetMediaClip(ctx, row.ID)
 	if err != nil {
 		return durationBackfillOutcome{}, fmt.Errorf("load asset: %w", err)
 	}

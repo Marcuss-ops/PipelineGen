@@ -3,6 +3,25 @@
 Idempotent migration from unstable nohup/tmux-managed processes to
 **systemd-managed services** with auto-restart on crash.
 
+> ### Retired helper scripts (2026-09-13)
+>
+> Commit `7e6965aab` ("purge 94% shell + 87% python dust") deleted several
+> helpers this document used to reference. They are **not** in the tree:
+> `scripts/systemd/migrate_to_systemd.sh`, `scripts/systemd/sudoers/install_operator_access.sh`
+> (+ its `_test.sh`), `scripts/systemd/pipelinegenctl_test.sh`, `scripts/start_daemon.sh`
+> and `scripts/rotate_token.sh`. Any command below that names one of them must be
+> performed manually:
+>
+> | Former helper | Manual replacement |
+> |---|---|
+> | `install_operator_access.sh --install/--check` | edit + `sudo visudo -cf` the policy, then `sudo install -m 0440 -o root -g root scripts/systemd/sudoers/pipelinegen-operator /etc/sudoers.d/pipelinegen-operator` |
+> | `migrate_to_systemd.sh` | stop the manual processes, `sudo install` the unit files, `sudo systemctl daemon-reload`, `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
+> | `rotate_token.sh` | generate a fresh 64-hex value, replace `VELOX_ADMIN_TOKEN=` in `/etc/pipelinegen/pipelinegen.env`, `sudo systemctl restart pipelinegen`, verify the restarted PID environment and `make auth-check` |
+> | `pipelinegenctl_test.sh` | none — run `scripts/systemd/pipelinegenctl verify` on the host |
+>
+> `scripts/systemd/pipelinegenctl` (daily status/logs/restart surface) and the
+> unit files remain the current, tracked interface.
+
 PipelineGen server and worker are host-native services. Docker Compose is used
 only for supporting infrastructure (Qdrant and SearXNG), so application
 changes no longer require `docker compose build`.
@@ -12,13 +31,16 @@ changes no longer require `docker compose build`.
 The systemd unit files at `/etc/systemd/system/{pipelinegen,pipelinegen-worker}.service`
 are managed independently from the supporting Compose infrastructure.
 
-```bash
-# 1. Kill the manual processes + delegate the sudo commands to the operator
-bash scripts/systemd/migrate_to_systemd.sh
-# (the script prints the exact `sudo systemctl enable --now ...` commands
-#  because the host does not have NOPASSWD for systemctl)
+> `scripts/systemd/migrate_to_systemd.sh` no longer exists (deleted by commit
+> `7e6965aab`). Perform the migration manually, in this order.
 
-# 2. Operator runs (with password):
+```bash
+# 1. Stop the manual nohup/tmux processes for the server and worker
+#    (kill the PIDs you started by hand; do not touch unrelated processes).
+
+# 2. Ask the operator to install/refresh the unit files, with password:
+sudo install -m 0644 scripts/systemd/pipelinegen.service /etc/systemd/system/pipelinegen.service
+sudo install -m 0644 scripts/systemd/pipelinegen-worker.service /etc/systemd/system/pipelinegen-worker.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
 
@@ -68,17 +90,19 @@ password and should not be automated by pasting credentials into a shell:
 
 | Administrative task | Command or procedure |
 |---|---|
-| Install restricted daily access | `sudo scripts/systemd/sudoers/install_operator_access.sh --install` |
-| Validate policy without changing host | `scripts/systemd/sudoers/install_operator_access.sh --check` |
-| Migrate manually started services | `AUTO_YES=1 bash scripts/systemd/migrate_to_systemd.sh` |
+| Install restricted daily access | manually `sudo install -m 0440 -o root -g root scripts/systemd/sudoers/pipelinegen-operator /etc/sudoers.d/pipelinegen-operator` (the former `install_operator_access.sh` helper was deleted by commit `7e6965aab`) |
+| Validate policy without changing host | `sudo visudo -cf scripts/systemd/sudoers/pipelinegen-operator` (read-only check) |
+| Migrate manually started services | stop the hand-started PIDs, `sudo install` the unit files, `sudo systemctl daemon-reload`, `sudo systemctl enable --now ...` (the former `migrate_to_systemd.sh` was deleted by commit `7e6965aab`) |
 | Reload changed unit/drop-in files | `sudo systemctl daemon-reload` |
 | Enable/start services after migration | `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
-| Rotate credentials | `sudo scripts/rotate_token.sh` using the documented host process |
+| Rotate credentials | no rotation helper exists in the tree (`scripts/rotate_token.sh` was deleted by commit `7e6965aab`): generate a fresh 64-hex value, replace `VELOX_ADMIN_TOKEN=` in `/etc/pipelinegen/pipelinegen.env`, `sudo systemctl restart pipelinegen`, verify the restarted PID environment and `make auth-check` |
 | Repair secret-file ownership/mode | `sudo chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env` and `sudo chmod 0640 /etc/pipelinegen/pipelinegen.env` |
 
 Do not grant `NOPASSWD: ALL`, wildcard `systemctl` access, or access to other
-services. The installer does not invoke sudo itself: the caller must already
-have root authorization, and the policy is validated before installation.
+services. There is no installer helper in the tree any more: the caller must
+already have root authorization and must validate the policy before
+installation. (The former `install_operator_access.sh`, which rendered,
+validated and installed the policy, was deleted by commit `7e6965aab`.)
 
 ### Restricted operator policy
 
@@ -96,28 +120,27 @@ service names, or a root shell. The
 policy is intentionally separate from the one-time systemd migration, which
 may require broader administrative commands.
 
-Validate the checked-in policy without changing the host:
+Validate the checked-in policy without changing the host (read-only, no sudo
+needed for the parse):
 
 ```bash
-scripts/systemd/sudoers/install_operator_access.sh --check
+sudo visudo -cf scripts/systemd/sudoers/pipelinegen-operator
 ```
 
 Install it on the deployment host only after obtaining the host's normal root
-authorization through the operator's own process; the helper never invokes
-sudo, asks for a password, reads tokens, or prints credentials:
+authorization through the operator's own process. There is no helper script:
 
 ```bash
-sudo scripts/systemd/sudoers/install_operator_access.sh --install
+sudo install -m 0440 -o root -g root \
+  scripts/systemd/sudoers/pipelinegen-operator \
+  /etc/sudoers.d/pipelinegen-operator
 ```
 
-The installer renders and validates the policy with `visudo`, writes only
-`/etc/sudoers.d/pipelinegen-operator`, and enforces mode `0440`. It refuses
-unsafe paths, policy includes, wildcard commands, unrelated services, and any
-policy that is not exactly the three-command grant. Its isolated test is:
-
-```bash
-scripts/systemd/sudoers/install_operator_access_test.sh
-```
+The versioned policy grants **only** the three exact commands above; it must
+contain no includes, wildcard commands, or unrelated services. `visudo -cf`
+must exit 0 before the file is installed. (The former
+`install_operator_access.sh` and `install_operator_access_test.sh` were deleted
+by commit `7e6965aab`.)
 
 ## Safe local configuration flow
 
@@ -156,11 +179,9 @@ do not create a fallback token or downgrade permissions to `0644`.
 - `WITH_VELOX_AUTH_BIN` — auth wrapper override for isolated tests (default `scripts/with-velox-auth`)
 - `JQ_BIN` — jq command override for isolated tests (default `jq`)
 
-The isolated contract test is:
-
-```bash
-scripts/systemd/pipelinegenctl_test.sh
-```
+The former isolated contract test `scripts/systemd/pipelinegenctl_test.sh`
+was deleted by commit `7e6965aab`; exercise `scripts/systemd/pipelinegenctl`
+directly against a host (`status` / `verify`).
 
 ## Why this exists
 
@@ -177,8 +198,10 @@ that unit is no longer part of the repository. PipelineGen services are
 managed independently from external provider endpoints.
 
 **The fix has 2 layers**:
-1. **`migrate_to_systemd.sh`** (this directory) — stops the manual
-   processes, prints the operator commands, and verifies the post-state.
+1. **Manual systemd migration** (this directory) — stop the hand-started
+   processes, install the unit files, enable the services, and verify the
+   post-state. The former wrapper `migrate_to_systemd.sh` was deleted by
+   commit `7e6965aab`, so each step is performed by hand (see TL;DR above).
 2. **`PR-SYSTEMD-RESTART-SUDO-NOPASSDEP`** (architecture/current.yaml)
    — long-term fix: add a NOPASSWD sudoers entry so the operator does
    not need to type a password for routine restarts. This is a separate
@@ -192,7 +215,7 @@ managed independently from external provider endpoints.
 | `pipelinegen-worker.service` | `on-failure` | 10s | active |
 
 The existing drop-in files in `/etc/systemd/system/pipelinegen.service.d/`
-are **preserved** by the migration script:
+must be **preserved** during the manual migration (do not remove them):
 
 - `fase1_override.conf` — `VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true`
 - `stock_flag.conf` — stock pipeline feature flag
@@ -200,23 +223,20 @@ are **preserved** by the migration script:
 - `webhook.conf` — `VELOX_BASE_URL`
 - `worker-token.conf` — `VELOX_WORKER_TOKEN`
 
-## How the migration script works
+## Historical migration procedure (script retired)
 
-`migrate_to_systemd.sh` is **idempotent** — safe to re-run. Each step
-prints a clear marker so the operator can verify what happened.
+The former `migrate_to_systemd.sh` was **idempotent** and safe to re-run; it
+was deleted by commit `7e6965aab`. Its steps are retained here as the manual
+checklist:
 
 | Step | Action |
 |------|--------|
 | 0 | Pre-flight: project root, binary, `.env`, `systemctl` present |
 | 1 | Detect manual processes via `pgrep` + tmux sessions |
-| 2 | Ask operator confirmation (skippable with `AUTO_YES=1`) |
+| 2 | Operator confirmation |
 | 3 | Kill tmux sessions + send SIGTERM to manual PIDs (SIGKILL fallback) |
-| 4 | Print the `sudo systemctl ...` commands for the operator |
+| 4 | Run the `sudo systemctl ...` commands |
 | 5 | Post-condition: verify services active + ports bound + /ready 200 |
-
-By default `SKIP_SUDO=1` (host has no NOPASSWD); the script just prints
-the commands. Set `SKIP_SUDO=0` once NOPASSWD is configured and the
-script will execute the sudo commands itself.
 
 ## Alternatives considered (and why we did NOT pick them)
 
@@ -271,6 +291,6 @@ pgrep -f 'pipelinegen --mode all'         # expect: a new PID
   forward-pointer for the NOPASSWD sudoers entry
 - `AGENTS.md` § "Active Concerns" item 8 (heavy AI-generated codebase)
   — the operational context for this fix
-- `scripts/start_daemon.sh` — the original `nohup`-based launcher that
-  the migration replaces (kept as a fallback for environments without
-  systemd)
+- `scripts/start_daemon.sh` — the original `nohup`-based launcher that the
+  migration replaced; it was deleted by commit `7e6965aab`, so environments
+  without systemd must launch the binary manually under `scripts/with-velox-auth`

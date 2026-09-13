@@ -34,6 +34,18 @@ type stubImportantPhraseExtractor struct {
 	err     error
 }
 
+func TestNormalizeVisualPersonNameRemovesSentenceContext(t *testing.T) {
+	for input, want := range map[string]string{
+		"While Dolly Parton's": "Dolly Parton",
+		"Dolly Parton's":       "Dolly Parton",
+		"Michael Jordan":       "Michael Jordan",
+	} {
+		if got := normalizeVisualPersonName(input); got != want {
+			t.Fatalf("normalizeVisualPersonName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func (s stubImportantPhraseExtractor) ExtractImportantPhrases(_ context.Context, _ string, _ int, _, _ string) ([]string, error) {
 	if s.err != nil {
 		return nil, s.err

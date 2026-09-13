@@ -40,8 +40,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/scraper"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
-	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"go.uber.org/zap"
@@ -206,7 +206,27 @@ func WireArtlist(
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
 	// (PR-ARTLIST-SEARCHERS closed 2026-07-04: 3 searchers wired inline).
-	localSearcher := sqliteSearch.NewArtlistSQLiteSearcher(bundle.ClipsRepo)
+	//
+	// MEDIA-SSOT P1-5 (September 2026): the LOCAL Artlist catalog searcher reads
+	// the PostgreSQL media SSOT, never the operational SQLite store. When the
+	// media PostgreSQL handle is absent it stays nil so the search chain fails
+	// closed to the remote providers instead of serving a stale SQLite mirror.
+	var localSearcher artlist.Searcher
+	// MEDIA-SSOT P2-9 unblock step 1 (September 2026): the DB-only search
+	// surface (AssetStore.SearchClips / SearchByTerms) resolves against the
+	// PostgreSQL media SSOT too. The SQLite concrete answered it from the
+	// `clip_search_terms` inverted index and re-hydrated SQLite `media_assets`,
+	// so a clip committed by the canonical PG committer was invisible to
+	// /api/artlist/search. Without the PG handle the decorator is a no-op and
+	// the operational store keeps its documented SQLite-only degrade mode.
+	assetStore := artlist.AssetStore(bundle.ClipsRepo)
+	if bundle.MediaDB != nil {
+		mediaSearcher := pgmedia.NewMediaSearcher(bundle.MediaDB)
+		localSearcher = newArtlistLocalSearcher(mediaSearcher)
+		assetStore = newArtlistMediaSSOTAssetStore(assetStore, mediaSearcher)
+	} else {
+		log.Warn("WireArtlist: media PostgreSQL unavailable — local Artlist catalog searcher NOT wired (fail-closed, no SQLite media mirror)")
+	}
 
 	service, err := artlist.NewService(artlist.ServiceDeps{
 		ServicePorts: artlist.ServicePorts{
@@ -214,7 +234,7 @@ func WireArtlist(
 			// constructed inline from cfg + the canonical infra concretes; runtime
 			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
 			// degradation, instead of nil-tolerated 503 at the handler layer).
-			AssetStore:      bundle.ClipsRepo,
+			AssetStore:      assetStore,
 			LocalSearcher:   localSearcher,
 			Indexer:         bundle.ClipIndexerService,
 			MetadataWriter:  semanticEnricher,

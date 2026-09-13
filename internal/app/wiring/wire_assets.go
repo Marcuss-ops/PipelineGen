@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/register"
@@ -16,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/gin-gonic/gin"
@@ -58,8 +60,16 @@ func WireAssets(
 		}
 	}
 
-	var assetRepo detail.Repository
-	if deps.Core.Services.Assets != nil {
+	// Media SSOT read port for the clips capability. PostgreSQL wins whenever
+	// the media plane is open; the SQLite adapter is the documented
+	// media-disabled degrade fallback. The type is the clips capability's
+	// consumer-owned interface, so no caller depends on the SQLite-only
+	// detail.Repository type-switch bridge.
+	var assetRepo clipsapi.AssetReader
+	switch {
+	case deps.MediaPostgres != nil:
+		assetRepo = pgmedia.NewMediaClipAssetReader(pgmedia.NewMediaSearcher(deps.MediaPostgres))
+	case deps.Core.Services.Assets != nil:
 		assetRepo = deps.Core.Services.Assets.Repository()
 	}
 

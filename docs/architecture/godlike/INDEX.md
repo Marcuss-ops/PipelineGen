@@ -37,8 +37,8 @@ NOT be edited manually.
 | `architecture/ownership/modules.yaml` | Top-level modules (api, app, application, domain, infrastructure, ...) |
 | `architecture/ownership/jobs.yaml` | Job types + handler bindings |
 | `architecture/ownership/services.yaml` | Service-layer entries |
-| `architecture/ownership/application.yaml` | Application-layer owned surfaces |
-| `architecture/ownership/infrastructure.yaml` | Infrastructure adapters |
+| `architecture/ownership/app.yaml` | Application-layer owned surfaces |
+| `architecture/ownership/platform.yaml` | Infrastructure adapters |
 | `architecture/ownership/packages.yaml` | Package-level ownership |
 
 Regenerate the aggregate with `go run ./cmd/architecture-aggregate`. Validate
@@ -56,8 +56,10 @@ The on-disk enforcement lives in two places:
 
 1. `cmd/archcheck/main.go::scanCIGatesDoc` validates the 5 docs are
    present + contain the required H2 sections.
-2. `scripts/ci-architectural-checks.sh` is the legacy ratchet that
-   runs alongside `cmd/archcheck` per the Wave-22 hard-gate promotion.
+2. `scripts/ci-architectural-checks.sh` was the legacy ratchet that ran
+   alongside `cmd/archcheck` per the Wave-22 hard-gate promotion; it was
+   deleted by commit `7e6965aab`, so `cmd/archcheck --strict` is the sole
+   on-disk enforcement today.
 
 The `lint_gates` block in `policy.yaml` lists the canonical owner +
 allowlist for each script-side check, with the cross-reference to the
@@ -76,8 +78,8 @@ Phase 0 lets the table drift; Phase 1+ gates the binary enforcement per
 the 8-domain ownership is:
 
 - `architecture/ownership/modules.yaml` — top-level modules
-- `architecture/ownership/application.yaml` — application-layer owned surfaces
-- `architecture/ownership/infrastructure.yaml` — infrastructure adapters
+- `architecture/ownership/app.yaml` — application-layer owned surfaces
+- `architecture/ownership/platform.yaml` — infrastructure adapters
 
 Regenerate the aggregate via `go run ./cmd/architecture-aggregate`.
 

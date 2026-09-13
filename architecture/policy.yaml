@@ -381,6 +381,12 @@ hard_gates:
   # SQLite *sql.Tx reach the PostgreSQL media writer. Together they make the
   # old media path unrepresentable rather than merely discouraged.
   - percheck_media_txn_boundary
+  # Media READ side (added 2026-09-13): promotes the historical
+  # certify-media-cutover counter SQLITE_MEDIA_READERS=0 to enforcement. No
+  # NEW non-test reader of media_assets outside the PostgreSQL media SSOT and
+  # the explicitly grandfathered legacy read plane. The grandfather set is a
+  # debt register that ratchets to zero as the P2-9 Phase 2 consumers migrate.
+  - percheck_sqlite_media_reader_ban
   - percheck_asset_committer_event_ssot
   # Governance-artifact integrity (added 2026-09-12 with the governance
   # sweep): no orphan allowlist, no dangling allowlist reference, no ghost

@@ -59,7 +59,7 @@ func RunApplyAssetMetadataBatch(args []string) error {
 	go root.Outbox.EventsPool.Start(ctx, 1)
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 	for _, manifest := range manifests {
-		clip, err := root.Repos.ClipsRepo.GetClip(ctx, manifest.ClipID)
+		clip, err := root.GetMediaClip(ctx, manifest.ClipID)
 		if err != nil {
 			return fmt.Errorf("load clip %s: %w", manifest.ClipID, err)
 		}

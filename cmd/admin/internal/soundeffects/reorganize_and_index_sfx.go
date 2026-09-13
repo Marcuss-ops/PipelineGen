@@ -351,7 +351,7 @@ func RunReorganizeAndIndexSFX(args []string) error {
 		_ = root.Drive.Admin.MoveFile(ctx, item.DriveID, soundEffectsDriveFolderID, targetFolderID)
 
 		// 4. Index asset
-		clip, err := root.Repos.ClipsRepo.GetClip(ctx, item.DriveID)
+		clip, err := root.GetMediaClip(ctx, item.DriveID)
 		if err != nil {
 			return fmt.Errorf("get clip record: %w", err)
 		}

@@ -5,11 +5,14 @@ executable sources of truth are:
 
 - `config/verify-components.json` — component paths, Go packages,
   dependencies, timeout budgets, race policy, and optional test commands.
-- `config/verify-pipelines.json` — aggregate pipeline component sets and
-  optional operational commands.
+- `config/verify-pipelines.json` — **retired 2026-09-13**. It described
+  aggregate pipeline component sets, but its `operational_tests` named probes
+  that no longer exist and its only runner `scripts/ci/verify-pipeline.py` was
+  deleted by commit `7e6965aab` (2026-09-10). The file and the
+  `verify-pipeline-*` / `test-pipeline-*` Make targets were removed together;
+  nothing consumed those commands.
 - `scripts/ci/verify-component.py` — shared component runner.
 - `scripts/ci/verify-all-components.py` — fast/race all-component entry point.
-- `scripts/ci/verify-pipeline.py` — aggregate pipeline runner.
 - `scripts/ci/verify-changed-components.py` — changed-file ownership and
   impacted-component selection.
 - `make/verify.components.mk` — thin Make aliases.
@@ -56,15 +59,13 @@ make verify-race-components  # all registered components, race mode
 make verify-changed-components
 make verify-race-stock       # race for one component
 make verify-race-qdrant
-
-# aggregate pipelines
-make test-pipeline-stock-only
-make verify-pipeline-clip-only
-make verify-pipeline-research
-make verify-pipeline-document
-make verify-pipeline-voiceover
-make verify-pipeline-script
 ```
+
+The former aggregate pipeline targets (`test-pipeline-stock-only`,
+`verify-pipeline-clip-only|research|document|voiceover|script|vidrush`,
+`test-pipeline-youtube-stock`) were **retired 2026-09-13**: every one of them
+invoked `scripts/ci/verify-pipeline.py`, which was deleted by commit
+`7e6965aab`. Compose the equivalent coverage with the component targets above.
 
 `verify-changed-components` maps committed, staged, unstaged, and untracked
 non-ignored files to registry paths. Dependencies are added by the shared
@@ -95,7 +96,7 @@ The aggregate gates are intentionally separate:
 | `make verify-fast` | Foundation + static checks | Fast development loop |
 | `make verify-main` | Foundation + static + changed components + architecture | Normal fail-closed pre-push gate |
 | `make verify-race` | Foundation + all registered components in race mode | Explicit concurrency/race validation |
-| `make verify-full` | `verify-main` + `verify-race` + clean-checkout build | Complete headless verification |
+| `make verify-full` | `verify-main` + `verify-race` | Complete headless verification |
 | `make verify-release` | `verify-full` + integration tests | Pre-deploy certification |
 
 Foundation and shared prerequisites are Make dependencies, not recipes copied
@@ -103,10 +104,12 @@ into component targets. GNU Make executes a prerequisite once within an
 aggregate invocation; component targets never call `verify-fast`.
 
 Live operational batteries such as `make verify-live` and the individual
-`*-live` targets are separate from the headless component gates. They may
-require the server, Drive, Qdrant, Chrome, scraper, or authenticated
-credentials. Use `scripts/with-velox-auth` for the canonical token boundary;
-never print, hard-code, or source the token from a repository-local file.
+`*-live` targets used to be separate from the headless component gates. They
+were **retired 2026-09-13** (their shell drivers were deleted by commit
+`7e6965aab`, see `verify-release-and-live.md`). End-to-end coverage today is
+carried by the Go suites; any future live gate must still use
+`scripts/with-velox-auth` as the canonical token boundary and must never print,
+hard-code, or source the token from a repository-local file.
 
 ## Timeouts and failure behavior
 

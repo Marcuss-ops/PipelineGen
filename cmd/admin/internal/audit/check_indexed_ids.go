@@ -49,7 +49,7 @@ func RunCheckIndexedIds(args []string) error {
 
 	fmt.Println("Checking indexed status of the provided Drive IDs:")
 	for i, id := range ids {
-		asset, err := root.Repos.ClipsRepo.GetClip(ctx, id)
+		asset, err := root.GetMediaClip(ctx, id)
 		if err != nil {
 			fmt.Printf("[%d] Error checking ID %s: %v\n", i+1, id, err)
 			continue

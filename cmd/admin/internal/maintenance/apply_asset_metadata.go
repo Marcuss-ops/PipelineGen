@@ -74,7 +74,7 @@ func RunApplyAssetMetadata(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	clip, err := root.Repos.ClipsRepo.GetClip(ctx, manifest.ClipID)
+	clip, err := root.GetMediaClip(ctx, manifest.ClipID)
 	if err != nil {
 		return fmt.Errorf("load clip: %w", err)
 	}

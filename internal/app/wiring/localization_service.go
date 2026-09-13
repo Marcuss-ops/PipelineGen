@@ -225,11 +225,12 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	if root.Repos == nil {
 		return nil, fmt.Errorf("localization service: repo bundle is required")
 	}
-	// MEDIA-SSOT P1-5: the media read surface is the PostgreSQL SSOT whenever
-	// it is available; the legacy SQLite asset registry is only the
-	// graceful-degrade fallback when the media plane is intentionally off.
-	if root.MediaPostgres == nil && root.Repos.Assets == nil {
-		return nil, fmt.Errorf("localization service: media read surface is required (postgres media SSOT or legacy asset registry)")
+	// MEDIA-SSOT P1-5: the media read surface is the PostgreSQL SSOT, and only
+	// it. The legacy SQLite asset registry was removed as a valid read surface
+	// (there is no second media catalog), so localization fails closed when the
+	// media plane is absent instead of degrading onto a divergent reader.
+	if root.MediaPostgres == nil {
+		return nil, fmt.Errorf("localization service: media PostgreSQL SSOT is required (no second media catalog)")
 	}
 	if root.Drive == nil || root.Drive.Publisher == nil {
 		return nil, fmt.Errorf("localization service: Drive publisher is required")

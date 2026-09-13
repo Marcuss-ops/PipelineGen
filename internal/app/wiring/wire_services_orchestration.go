@@ -157,7 +157,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	assetSvc := jobsapi.NewAssetTransferService(
 		root.Search.AssetIndexService,
-		root.Repos.Assets,
+		root.MediaAssetDetailsLookup(),
 		root.Repos.ImageRepo,
 		root.Repos.VoiceoverRepo,
 		log,

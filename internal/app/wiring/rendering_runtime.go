@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
@@ -16,6 +18,23 @@ import (
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"go.uber.org/zap"
 )
+
+// gpuGateSlots reads the overlay GPU slot count. The default of 1 preserves
+// the historical host-wide serialization (one exclusive flock); a measured
+// value >1 admits that many concurrent overlay renders, each on its own lock
+// file. RENDERINGGEN_GPU_LOCK still names slot 0, and a peer process sharing the
+// GPU must be given the SAME RENDERINGGEN_GPU_SLOTS (see overlays.GPUGate).
+func gpuGateSlots() int {
+	raw := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
+}
 
 type RenderingRuntime struct {
 	Registry  *worker.Registry
@@ -51,7 +70,7 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	if lockPath == "" {
 		lockPath = filepath.Join(os.TempDir(), "pipelinegen", "gpu-0.lock")
 	}
-	gate, err := infraoverlays.NewGPUGate(lockPath)
+	gate, err := infraoverlays.NewGPUGateWithSlots(lockPath, gpuGateSlots())
 	if err != nil {
 		return nil, nil, err
 	}

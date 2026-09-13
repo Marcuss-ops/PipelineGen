@@ -22,9 +22,9 @@
 |---|---|---|---|---|
 | 8 | manual_touches_per_video counter | `apps/chronon3d_cli/utils/touchpoint/manual_touchpoint_log.{hpp,cpp}` + `--touchpoint <kind>` CLI flag + `~/.chronon3d/telemetry/touchpoints.jsonl` (nel core — il counter nasce lì, la metrica è consumata qui) | `chronon3d_cli telemetry query --metric manual_touches_per_video --last 1` exits 0 + counter non-null | DONE (counter wired nel core; consumo metrico qui) |
 | 9 | Pilota cliente reale (7gg) | `docs/product-validation/TEST-9-pilot-protocol.md` + `TEST-9-feedback-form.md` + `TEST-9-transcript-7gg.md` (harness da creare) | Transcript aggregate `transcripts/aggregate.md` con median Q1 ≥ +1 across ≥5 soggetti | HARNESS-MISSING → [TICKET-TEST-9-PILOT-7GG](TICKET-TEST-9-PILOT-7GG.md) |
-| 15 | Test del prodotto (non del motore) | `TEST-15-PRODUCT-VALIDATION.md` + `fixtures/test-15-feedback.schema.json` + `tools/product_validation.py` | validator exit 0: ≥5 soggetti, median Q1/Q2 ≥1, median Q3 ≥10 min, ≥3 Q1 positivi, nessun Q3=0 | READY (evidence input required) |
-| 17 | Confronto diretto (Chronon3D / pipeline precedente / Remotion v4) | `TEST-17-COMPARISON.md` + `fixtures/test-17-comparison.schema.json` + `tools/product_validation.py` | validator exit 0: 24 celle, tier validi, 2 `[RADICAL W]`, 1 `[HONEST L]` | READY (evidence input required) |
-| 18 | Weekly founder dashboard (8 metriche) | `scripts/run_weekly_scorecard.sh` + `TICKET-TEST-18-WEEKLY-DASHBOARD.md` | script exits 0 with tabella 8-row su telemetry SQLite/JSONL; rate costo esplicito via env | READY (live telemetry required) |
+| 15 | Test del prodotto (non del motore) | `TEST-15-PRODUCT-VALIDATION.md` + `fixtures/test-15-feedback.schema.json` + validator `tools/product_validation.py` (**tool absent from the tree** — the `tools/` directory was deleted by commit `7e6965aab`) | validator exit 0: ≥5 soggetti, median Q1/Q2 ≥1, median Q3 ≥10 min, ≥3 Q1 positivi, nessun Q3=0 | DOCS-READY, validator tool MISSING |
+| 17 | Confronto diretto (Chronon3D / pipeline precedente / Remotion v4) | `TEST-17-COMPARISON.md` + `fixtures/test-17-comparison.schema.json` + validator `tools/product_validation.py` (**tool absent from the tree**) | validator exit 0: 24 celle, tier validi, 2 `[RADICAL W]`, 1 `[HONEST L]` | DOCS-READY, validator tool MISSING |
+| 18 | Weekly founder dashboard (8 metriche) | `TICKET-TEST-18-WEEKLY-DASHBOARD.md` | script exits 0 with tabella 8-row su telemetry SQLite/JSONL; rate costo esplicito via env | **NOT IMPLEMENTED** — l'aggregator `scripts/run_weekly_scorecard.sh` non è nel repository (la riga 18 è una spec, non un gate) |
 
 # Ticket operativi
 
@@ -39,8 +39,11 @@
   counter). Questo repo consuma quelle superfici per metriche di business.
 - Il TICKET-125 core (ENGINE CERTIFICATION) non contiene righe di prodotto:
   punta a questo aggregator.
-- `tools/run_weekly_scorecard.sh` è stato spostato qui in `scripts/`
-  (2026-08-28) — il core non deve sapere cosa sia una founder dashboard.
+- Il core `tools/run_weekly_scorecard.sh` doveva essere spostato qui in
+  `scripts/` (2026-08-28), ma **nessuna delle due copie è nel tree oggi**:
+  `tools/` è stato eliminato dal commit `7e6965aab` e
+  `scripts/run_weekly_scorecard.sh` non è mai stato creato. La riga 18 resta
+  una spec (vedi [TICKET-TEST-18-WEEKLY-DASHBOARD](TICKET-TEST-18-WEEKLY-DASHBOARD.md)).
 
 # §honesty cert
 

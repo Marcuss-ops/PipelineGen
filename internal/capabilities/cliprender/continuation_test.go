@@ -243,3 +243,51 @@ func TestActiveKeyForIsStable(t *testing.T) {
 		t.Fatalf("active key shape changed: %q", a)
 	}
 }
+
+// TestSettleCorrelationIDIsScopedAwayFromParent pins the fix for the live
+// 2026-09-13 defect: the settle continuation is the same job type as the job
+// it resumes, so it MUST NOT carry the parent's correlation id — the broker's
+// (type, correlation_id) UNIQUE dedupe resolves that back to the still-RUNNING
+// parent and the settle job is never created.
+func TestSettleCorrelationIDIsScopedAwayFromParent(t *testing.T) {
+	const (
+		parentCorr = "req-abc-123"
+		renderID   = "clip-run-42"
+	)
+	got := SettleCorrelationID(parentCorr, renderID, 1)
+
+	if got == parentCorr {
+		t.Fatalf("settle correlation %q must not equal the parent's correlation %q", got, parentCorr)
+	}
+	if got != "req-abc-123:settle:clip-run-42:1" {
+		t.Fatalf("settle correlation shape changed: %q", got)
+	}
+	if !strings.HasPrefix(got, parentCorr) {
+		t.Fatalf("settle correlation %q must stay prefixed by the parent correlation for traceability", got)
+	}
+
+	// Deterministic for the same (parent, render, attempt): a redelivered
+	// submit must address the SAME child (the broker dedupes on it).
+	if again := SettleCorrelationID(parentCorr, renderID, 1); again != got {
+		t.Fatalf("settle correlation must be deterministic: %q vs %q", again, got)
+	}
+	// A new attempt is a NEW child, never a collapsed one.
+	if SettleCorrelationID(parentCorr, renderID, 2) == got {
+		t.Fatal("a new attempt must not reuse the previous settle correlation")
+	}
+	// Different renders never share a settle child.
+	if SettleCorrelationID(parentCorr, "clip-run-43", 1) == got {
+		t.Fatal("different remote renders must not share a settle correlation")
+	}
+
+	// A parent without a correlation id still yields a non-empty correlation:
+	// the derived id must ALWAYS participate in the (type, correlation_id)
+	// dedupe, otherwise a retried submit would fan out a duplicate settle job.
+	empty := SettleCorrelationID("   ", renderID, 1)
+	if empty == "" {
+		t.Fatal("settle correlation must never be empty")
+	}
+	if empty != "clip.render:settle:clip-run-42:1" {
+		t.Fatalf("empty-parent fallback shape changed: %q", empty)
+	}
+}

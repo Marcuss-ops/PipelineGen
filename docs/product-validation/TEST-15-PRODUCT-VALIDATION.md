@@ -32,6 +32,9 @@ no q3_minutes == 0
 Run:
 
 ```bash
+# NOTE: the validator is not in the tree — `tools/product_validation.py` was
+# deleted with the tools/ directory by commit `7e6965aab`.
+# Re-create it before this command is runnable.
 python3 tools/product_validation.py test-15 --input <feedback.json>
 ```
 

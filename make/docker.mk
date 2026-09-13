@@ -30,25 +30,21 @@ docker-run: docker-build
 	docker run -p $${VELOX_PORT:-8000}:8000 --env-file .env pipelinegen:latest
 # ─── Image certification (Barriera 2, June 2026) ──────────────────────
 
-# docker-sign: Build the worker image and sign it with Cosign.
+# ─── Image certification: partially RETIRED 2026-09-13 ───────────────
 #
-# Modes (COSIGN_MODE env):
-#   keyless (default) — OIDC-based keyless signing (GitHub Actions or browser flow)
-#   key               — use cosign.key / cosign.pub key pair
+# docker-sign, docker-verify-digest and docker-verify-ffmpeg invoked
+# scripts/{cosign-sign,verify-image-digest,verify-ffmpeg}.sh, all deleted by
+# commit 7e6965aab ("purge 94% shell + 87% python dust"). A target whose only
+# possible outcome is "No such file or directory" is not a gate. What survives
+# here is the part that still has a tracked implementation:
 #
-# Output: prints IMAGE_DIGEST=sha256:... for downstream pinning.
+#   docker-build / docker-build-worker  — real docker build
+#   docker-digest                       — real docker inspect (RepoDigests)
+#   docker-verify-whisper               — scripts/verify-whisper.sh (present)
 #
-# Prerequisites:
-#   - cosign v2.4+ installed (go install github.com/sigstore/cosign/v2/cmd/cosign@latest)
-#   - docker available
-#   - (key mode) cosign.key + cosign.pub in project root
-#
-# Usage:
-#   make docker-sign                                    # keyless
-#   make docker-sign COSIGN_MODE=key                    # key pair
-#   make docker-sign IMAGE=ghcr.io/org/worker:v1.0      # custom image ref
-docker-sign: docker-build-worker
-	@bash scripts/cosign-sign.sh $${IMAGE:-pipelinegen-worker:latest}
+# NOTE: docker-compose signing/digest pinning is therefore no longer
+# machine-verified. Reimplement the three probes in Go (or restore tracked
+# scripts) before re-adding them as targets.
 
 # docker-digest: Print the SHA256 digest of the worker image for pinning
 # in docker-compose.yml or deployment manifests.
@@ -71,18 +67,6 @@ docker-digest:
 		echo "  Do NOT use it as a docker-compose digest reference." >&2; \
 		exit 1; \
 	fi
-
-# docker-verify-digest: Verify the running container's image matches the
-# pinned SHA256 digest in docker-compose.yml. Fails on mismatch.
-# Usage: make docker-verify-digest CONTAINER=pipelinegen-worker
-docker-verify-digest:
-	@bash scripts/verify-image-digest.sh $${CONTAINER:-pipelinegen-worker} --strict
-
-# docker-verify-ffmpeg: Probe the worker image for engine binaries
-# (ffmpeg, ffprobe, yt-dlp, python3). Part of Barriera 2 image certification.
-# Usage: make docker-verify-ffmpeg IMAGE=pipelinegen-worker:latest
-docker-verify-ffmpeg:
-	@bash scripts/verify-ffmpeg.sh $${IMAGE:-pipelinegen-worker:latest}
 
 # docker-verify-whisper: Probe the worker image for the pinned Whisper
 # runtime without downloading a model or requiring a GPU.

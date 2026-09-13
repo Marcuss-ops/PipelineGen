@@ -10,6 +10,7 @@ cannot silently bypass the registry.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shlex
@@ -218,6 +219,38 @@ def validate_registry(root: Path, registry: Mapping[str, Mapping[str, Any]]) -> 
     return errors
 
 
+def validate_invalidation_set(root: Path) -> list[str]:
+    """Assert every ALL_COMPONENT_EXACT_FILES entry exists on disk.
+
+    A path that is absent (deleted by a purge, or gitignored) can never appear
+    in a git diff, so keeping it in the invalidation set is dead weight that
+    hides real drift.  The set is the single source of truth for which
+    non-component paths force a full verification.
+    """
+    source = root / "scripts" / "ci" / "verify-changed-components.py"
+    if not source.is_file():
+        return [f"invalidation set source missing: {source}"]
+    spec = importlib.util.spec_from_file_location("_verify_changed_components", source)
+    if spec is None or spec.loader is None:
+        return [f"cannot load invalidation set from {source}"]
+    module = importlib.util.module_from_spec(spec)
+    # dataclasses inspect sys.modules[cls.__module__] during decoration, so the
+    # module must be registered before exec_module just like a normal import.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 - surface any import failure as a config error
+        return [f"cannot import {source}: {exc}"]
+    entries = getattr(module, "ALL_COMPONENT_EXACT_FILES", None)
+    if not isinstance(entries, frozenset):
+        return [f"{source}: ALL_COMPONENT_EXACT_FILES is missing or not a frozenset"]
+    return sorted(
+        f"invalidation set entry missing on disk: {entry}"
+        for entry in entries
+        if not (root / entry).exists()
+    )
+
+
 def build_report(root: Path, registry_path: Path) -> dict[str, Any]:
     try:
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -256,7 +289,8 @@ def build_report(root: Path, registry_path: Path) -> dict[str, Any]:
     )
     checked = len(mapping)
     mapped = checked - len(unmapped)
-    all_errors = errors + command_errors
+    invalidation_errors = validate_invalidation_set(root)
+    all_errors = errors + command_errors + invalidation_errors
 
     return {
         "schema_version": 1,
@@ -271,6 +305,7 @@ def build_report(root: Path, registry_path: Path) -> dict[str, Any]:
         "mapping": mapping,
         "registry_errors": errors,
         "command_errors": command_errors,
+        "invalidation_set_errors": invalidation_errors,
         "coverage_domains": sorted({domain for _, domain in COVERAGE_FALLBACKS}),
         "final": "PASS" if not all_errors and not unmapped and not stale_registry_paths and not unexpected_overlaps else "FAIL",
     }
@@ -319,6 +354,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         f"verify-component-coverage scanned={report['scanned_files']} "
         f"unmapped={len(report['unmapped_files'])} "
         f"registry_errors={len(report['registry_errors']) + len(report['command_errors'])} "
+        f"invalidation_errors={len(report.get('invalidation_set_errors', []))} "
         f"final={report['final']}"
     )
     if report["unmapped_files"]:
@@ -326,6 +362,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     for error in report["registry_errors"]:
         print(error, file=sys.stderr)
     for error in report["command_errors"]:
+        print(error, file=sys.stderr)
+    for error in report.get("invalidation_set_errors", []):
         print(error, file=sys.stderr)
     return 0 if report["final"] == "PASS" else EXIT_FAILURE
 

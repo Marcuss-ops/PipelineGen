@@ -27,20 +27,28 @@ explicit heavier gates and are not implicit dependencies of `verify-main`.
   aggregate Make invocation. It intentionally excludes the complete race and
   Node suites so it remains suitable for routine pushes.
 - `make test-main-stock`: diagnostic foundation, static analysis, architecture,
-  and Stock unit-level checks. The authoritative Stock gates are the four
-  explicit levels `make verify-stock-unit`, `make verify-stock-integration`,
-  `make verify-stock-live`, and `make verify-stock-release`.
+  and Stock unit-level checks. The authoritative Stock gates are the two
+  headless levels `make verify-stock-unit` and `make verify-stock-integration`
+  (`verify-stock-live` / `verify-stock-release` were retired 2026-09-13 with
+  their shell drivers).
 - `make verify-main-clip`: foundation, static analysis, standard targeted
   tests for the canonical Clip domain/application/API packages, and architecture checks.
   Use it for Clip-focused changes without running the full project unit suite
   or depending on an unrelated in-progress adapter decomposition.
 - `make verify-race`: explicit race-tested Go packages plus all registered
   components through the shared component runner.
-- `make verify-full`: `verify-main` plus `verify-race` andthe full headless test suite. GNU Make deduplicates shared prerequisites such as foundation.
+- `make verify-full`: `verify-main` plus `verify-race`. GNU Make deduplicates
+  shared prerequisites such as foundation. (The former `verify-clean-checkout-build`
+  leg was retired 2026-09-13 with its deleted shell driver.)
 - `make verify-release`: `verify-full` plus the integration suite.
-- `make verify-artlist-live`, `make verify-images-live`,
-  `make verify-script-live`, and `make verify-vidrush-live`: authenticated
-  live batteries, each with its own operational script.
+- Live batteries (`make verify-live`, `verify-artlist-live`,
+  `verify-images-live`, `verify-script-live`, `verify-vidrush-live`,
+  `verify-stock-live`, …): **RETIRED 2026-09-13.** Their shell drivers were
+  deleted by commit `7e6965aab`; the targets and CI jobs were removed with
+  them. End-to-end coverage now lives in the Go suites
+  (`internal/platform/httpserver/*_e2e_test.go`, `tests/e2e/**`,
+  `internal/capabilities/**`). See
+  [`verify-release-and-live.md`](verify-release-and-live.md) for the record.
 
 The target definitions live in `make/*.mk`, included by the root
 `Makefile`. This document describes the contract; the Make fragments are the

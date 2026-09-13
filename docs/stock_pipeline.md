@@ -220,5 +220,5 @@ Required checks per clip:
 ## Related documentation
 
 - [`docs/operations/stock-e2e-runbook.md`](operations/stock-e2e-runbook.md) — operational E2E battery and diagnostics.
-- [`internal/api/assets/stock/handler.go`](../internal/api/assets/stock/handler.go) — HTTP handler and validation rules.
+- [`internal/capabilities/assets/stock/handler.go`](../internal/capabilities/assets/stock/handler.go) — HTTP handler and validation rules.
 - [`internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go`](../internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go) — Drive download and folder expansion logic.

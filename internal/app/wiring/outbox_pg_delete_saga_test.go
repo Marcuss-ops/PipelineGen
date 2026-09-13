@@ -124,9 +124,10 @@ func TestDeleteSagaEventsRegisteredOnPostgresWorker(t *testing.T) {
 	file, err := parser.ParseFile(fset, src, nil, 0)
 	if err != nil {
 		t.Fatalf("parse %s: %v", src, err)
-	}	want := map[string]bool{
-		"jobsoutbox.DriveDeleteEventType":             false,
-		"outboxevents.EventAssetIndexDeleteRequested": false,
+	}
+	want := map[string]bool{
+		"jobsoutbox.DriveDeleteEventType":              false,
+		"outboxevents.EventAssetIndexDeleteRequested":  false,
 		"outboxevents.EventAssetIndexRestoreRequested": false,
 	}
 	found := map[string][]string{}

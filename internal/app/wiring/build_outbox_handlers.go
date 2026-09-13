@@ -26,6 +26,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobindexrestore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/indexrestore"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
@@ -297,12 +298,13 @@ func registerPostgresMediaOutboxHandlers(
 	drivePublisher delivery.Publisher,
 	mutator assetspersistence.AssetMutator,
 	imageRepo *imagesrepo.ImagesRepository,
+	subtitles detail.SubtitleArtifactRepository,
 	log *zap.Logger,
 ) error {
 	if worker == nil {
 		return nil
 	}
-	clipHandler, clipErr := newClipRenderDriveDeliveryHandler(drivePublisher, mutator, log)
+	clipHandler, clipErr := newClipRenderDriveDeliveryHandler(drivePublisher, mutator, subtitles, log)
 	if clipErr != nil {
 		return fmt.Errorf("clip.render PostgreSQL Drive delivery handler: %w", clipErr)
 	}
@@ -471,7 +473,7 @@ func registerPostgresDeleteSagaHandlers(
 	// and documents "outbox handler re-indexes from scratch" — until this
 	// registration existed that event had no consumer on any engine, so every
 	// restore dead-lettered and the asset never returned to the index.
-	restoreHandler := jobsoutbox.NewIndexRestoreHandler(log, committer)
+	restoreHandler := jobindexrestore.NewIndexRestoreHandler(log, committer)
 	if err := worker.RegisterHandler(outboxevents.EventAssetIndexRestoreRequested, pgOutboxHandlerAdapter{handler: restoreHandler}); err != nil {
 		return fmt.Errorf("register PostgreSQL index-restore handler: %w", err)
 	}

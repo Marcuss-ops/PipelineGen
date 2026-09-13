@@ -4,7 +4,6 @@
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
       "scripts/with-velox-auth",
-      "scripts/with-velox-auth_test.sh",
       "scripts/lib/dotenv.sh",
       "start_server.sh",
       "tests/operational/worker-integration/",
@@ -75,7 +74,8 @@
       "internal/capabilities/assets/providers/artlist/",
       "internal/platform/artlist/",
       "tests/fixtures/stock/",
-      "ops/jobs/"
+      "ops/jobs/",
+      "tests/operational/pipeline_live_e2e.sh"
     ],
     "go_packages": [
       "./internal/capabilities/assets/providers/stock/...",
@@ -91,16 +91,15 @@
     "live_tests": [
       [
         "make",
-        "verify-stock-live"
+        "verify-pipeline-e2e-live"
       ]
     ],
     "cacheable": false,
-    "cache_scope": "live"
+    "cache_scope": "content"
   },
   "qdrant": {
     "paths": [
-      "internal/platform/qdrant/",
-      "scripts/operations/certify_media_registry_qdrant.sh"
+      "internal/platform/qdrant/"
     ],
     "go_packages": [
       "./internal/platform/qdrant/..."
@@ -121,9 +120,7 @@
     "paths": [
       "internal/capabilities/indexing/",
       "internal/platform/qdrant/indexing/",
-      "scripts/services/",
-      "scripts/start_embedding_server.sh",
-      "scripts/bridges/generate_embedding.py"
+      "scripts/services/"
     ],
     "go_packages": [
       "./internal/capabilities/indexing/...",
@@ -170,7 +167,8 @@
       "CONTRIBUTING.md",
       "CANONICAL.md",
       "scripts/README.md",
-      "ops/benchmarks/"
+      "ops/benchmarks/",
+      "testdata/workflows/"
     ],
     "go_packages": [],
     "node_tests": [],
@@ -213,8 +211,7 @@
   },
   "images": {
     "paths": [
-      "internal/capabilities/images/",
-      "scripts/verify_nlp_online_images_docs_certification.sh"
+      "internal/capabilities/images/"
     ],
     "go_packages": [
       "./internal/capabilities/images/..."
@@ -317,9 +314,7 @@
     "paths": [
       "internal/capabilities/jobs/",
       "internal/platform/jobs/",
-      "internal/platform/sqlite/jobs/",
-      "scripts/bridges/slide_worker_runtime/",
-      "scripts/velox_client.py"
+      "internal/platform/sqlite/jobs/"
     ],
     "go_packages": [
       "./internal/capabilities/jobs/...",
@@ -343,11 +338,13 @@
       "internal/capabilities/middleware/",
       "internal/platform/httpserver/middleware/",
       "internal/platform/httpserver/transport/",
+      "internal/platform/httpserver/server_pipeline_e2e_test.go",
       "scripts/admin/generate_routes_yaml.go",
       "cmd/archcheck/gates/"
     ],
     "go_packages": [
       "./internal/capabilities/middleware/...",
+      "./internal/platform/httpserver",
       "./internal/platform/httpserver/middleware/...",
       "./internal/platform/httpserver/transport/..."
     ],
@@ -387,7 +384,7 @@
       "internal/capabilities/assets/providers/youtube/",
       "internal/capabilities/assets/sourcing/youtube/",
       "internal/platform/youtube/",
-      "scripts/tools/transcribe_detect_lang.py",
+      "tests/operational/pipeline_live_e2e.sh",
       "scripts/bridges/whisper_transcriber.py",
       "scripts/requirements-whisper.txt",
       "requirements/whisper.lock.txt",
@@ -422,10 +419,6 @@
     "paths": [
       "internal/capabilities/assets/providers/artlist/",
       "internal/platform/artlist/",
-      "scripts/lib/artlist_pipeline_payload.sh",
-      "scripts/lib/artlist_pipeline_polling.sh",
-      "scripts/lib/artlist_pipeline_preflight.sh",
-      "scripts/lib/artlist_pipeline_report.sh",
       "config/artlist_presets.yaml"
     ],
     "go_packages": [

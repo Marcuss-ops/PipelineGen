@@ -1,5 +1,11 @@
 # clip.render demolition audit (2026-09-12)
 
+> **Dated snapshot — paths reflect the tree at time of writing (2026-09-12).**
+> This audit is retained as the reasoning layer for the clip-render tickets
+> (`docs/tickets/TICKET-CLIP-RENDER-*.md`); its file references are NOT
+> maintained against the current tree. Verify any path with `ls`/`git ls-files`
+> before acting on it (a later refactor may have moved or deleted it).
+
 **Obiettivo:** la fase "demolition" del percorso clip.render — togliere
 compatibilità, doppioni e meccanismi che non servono più.
 **Regola applicata (la tua):** *prima sostituiamo → testiamo → misuriamo → poi

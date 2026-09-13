@@ -16,8 +16,8 @@ of the file — debugging is observation, not mutation.
 
 - The job is in `RETRY_WAIT`, `FAILED`, or `CANCELLED`, and the HTTP
   admin probe (`GET /api/jobs/:id/full`) returns 401 or stale data
-  (token-rotation-in-flight, server binary not yet restarted — see
-  `docs/operations/stock-e2e-runbook.md#§11.2`).
+  (token-rotation-in-flight, server binary not yet restarted — see the
+  rotation procedure in `AGENTS.md`, § Authentication SSOT).
 - The error message of a media-pipeline job reads as opaque
   (`discovery failed`, `no candidates found`) and the in-process
   finalizer log is unavailable (`journalctl` rolled, or the server
@@ -223,11 +223,11 @@ diagnostic-only, not an action plan):
   `internal/capabilities/assets/providers/artlist/search_core.go::buildSearcherChain`;
   confirm the search term yields ≥1 candidate against the configured
   provider precedence.
-- Verify the live scraper reachability via the
-  `docs/operations/stock-e2e-runbook.md#§11` recipe (X-Velox-Admin-Token
-  pre-flight + `/api/artlist/search/live?term=...&limit=...` form per
-  `fix(tests): correct --data-urlencode curl invocations in artlist
-  live e2e` — commit `6c7fc1f85`).
+- Verify the live scraper reachability via `make auth-check` (the canonical
+  fail-closed credential probe, which already signs a live `/api/artlist/...`
+  request) and `make doctor`. The artlist-live recipe that used to live in
+  `docs/operations/stock-e2e-runbook.md` §11 was retired together with its
+  driver (commit `7e6965aab`); it is not documented anywhere today.
 - Verify the live scraper connects within `SCRAPER_CONNECT_TIMEOUT_SECONDS=5`
   AND responds within `SCROLL_TIMEOUT=120` (per the `fix(scraper)`
   series — commits `9b7a60ffa` / `ee97a769a` / `9646f1077` / `f5a3dc9c5`).

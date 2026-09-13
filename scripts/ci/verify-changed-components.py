@@ -33,14 +33,19 @@ EXIT_TIMEOUT = 124
 
 # Changes to the verification machinery or global build inputs can invalidate
 # every component, even when the changed file is outside a component path.
+# Every entry below must exist on disk (asserted by the coverage test in
+# scripts/ci/verify-component-coverage.py). Entries that named deleted or
+# gitignored paths (`config/verify-pipelines.json`, `scripts/ci/verify-pipeline.py`,
+# `scripts/verify-ffmpeg.sh`, `scripts/with-velox-auth_test.sh`,
+# `operator-console`, `regen-current-yaml`, `comic-video-maker`, `researchlive`)
+# were removed on 2026-09-13: a path that cannot appear in a diff can never
+# invalidate a component.
 ALL_COMPONENT_EXACT_FILES = frozenset(
     {
         "Makefile",
-		"ARCHITECTURE.md",
-		"docker-compose.test-postgres.yml",
+        "ARCHITECTURE.md",
+        "docker-compose.test-postgres.yml",
         ".gitignore",
-        "operator-console",
-        "regen-current-yaml",
         "go.mod",
         "go.sum",
         ".env.example",
@@ -48,19 +53,13 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "config.production.example.yaml",
         "config/multilingual.yaml",
         "config/verify-components.json",
-        "config/verify-pipelines.json",
         "scripts/ci/verify-component.py",
         "scripts/ci/verify-all-components.py",
-        "scripts/ci/verify-pipeline.py",
         "scripts/ci/verify-changed-components.py",
         "Dockerfile",
         ".dockerignore",
         ".github/dependabot.yml",
-        "scripts/verify-ffmpeg.sh",
         "scripts/with-velox-auth",
-        "scripts/with-velox-auth_test.sh",
-        "comic-video-maker",
-        "researchlive",
     }
 )
 ALL_COMPONENT_PREFIXES = (
@@ -72,6 +71,7 @@ ALL_COMPONENT_PREFIXES = (
     "tests/",
     "migrations/",
     "architecture/",
+    "config/",
     ".archcheck/",
     ".github/workflows/",
 )

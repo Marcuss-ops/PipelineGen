@@ -29,7 +29,8 @@ Recommended explicit form:
 - id: PRE-EXISTING-N-EXAMPLE
   status: in_progress
   implementation_ref: "<landed-or-active-commit-sha>"
-  evidence_filename: "tests/operational/example_evidence.md"
+  # must name a file that actually exists in the tree (illustrative placeholder below)
+  evidence_filename: "<path-to-evidence-file>"
 ```
 
 ## Failure output

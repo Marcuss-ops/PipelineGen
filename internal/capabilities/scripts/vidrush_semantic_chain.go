@@ -107,9 +107,17 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if err := validateVisualEntities(ir, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
+	entities = deduplicateVisualEntities(entities)
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	for _, ve := range entities {
+		if ve.Type == scriptpkg.EntityTypePerson {
+			// VisualNER can occasionally include a sentence connector and
+			// possessive in the PERSON span ("While Dolly Parton's"). The
+			// entity image contract needs the canonical identity for both
+			// provider queries and durable overlay IDs.
+			ve.Text = normalizeVisualPersonName(ve.Text)
+		}
 		entityType := ve.Type
 		if strings.TrimSpace(string(entityType)) == "" {
 			// Test/dry-run ports predating the typed contract are treated as
@@ -306,6 +314,47 @@ func imageSearchEntities(entities []VisualEntity) []VisualEntity {
 		return persons
 	}
 	return append([]VisualEntity(nil), entities...)
+}
+
+func normalizeVisualPersonName(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(value, "While "), "while "))
+	for _, suffix := range []string{"'s", "’s"} {
+		if len(value) > len(suffix) && strings.EqualFold(value[len(value)-len(suffix):], suffix) {
+			value = strings.TrimSpace(value[:len(value)-len(suffix)])
+			break
+		}
+	}
+	return value
+}
+
+// deduplicateVisualEntities collapses grammatical variants of one identity
+// before the entity/image fanout. VisualNER may return both a canonical name
+// and a sentence surface such as "While Dolly Parton's"; those are one
+// person, hence one image query and one overlay.
+func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
+	if len(entities) < 2 {
+		return entities
+	}
+	out := make([]VisualEntity, 0, len(entities))
+	seen := make(map[string]struct{}, len(entities))
+	for _, entity := range entities {
+		value := strings.TrimSpace(entity.Text)
+		if entity.Type == scriptpkg.EntityTypePerson {
+			value = normalizeVisualPersonName(value)
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(value), " "))
+		if key == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		entity.Text = value
+		out = append(out, entity)
+	}
+	return out
 }
 
 // visualImageAnchor extracts the subject phrase from the first source clause.

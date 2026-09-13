@@ -69,7 +69,18 @@ type RenderOutcome struct {
 	Height      uint32
 	FPSNum      uint32
 	FPSDen      uint32
-	Backend     RenderBackend
+	// Container, VideoCodec, VideoProfile, PixelFormat and AudioStreams are the
+	// structural facts RenderingGen certified on the artifact it produced. They
+	// are the certification owner for the dimensions the local Rust probe
+	// cannot report (codec profile above all) and the value the local probe is
+	// cross-checked against before publication. Empty/zero when the certified
+	// boundary did not report them (a legacy or test renderer).
+	Container    string
+	VideoCodec   string
+	VideoProfile string
+	PixelFormat  string
+	AudioStreams int
+	Backend      RenderBackend
 	// FFmpegMS is retained as a read-only compatibility projection of the
 	// canonical Metrics report; adapters must not calculate it independently.
 	FFmpegMS          int64
@@ -272,19 +283,56 @@ type RenderPublishResult struct {
 // the Drive location on the canonical asset row.
 const EventClipRenderDriveDeliveryRequested = "clip.render.drive_delivery.requested.v1"
 
+// ClipRenderDrivePolicyVersion is the logical-identity version of the
+// clip.render Drive publication. The upload idempotency key is derived from
+// (source asset, destination filename, this version) so a RERENDER of the same
+// clip replaces the SAME Drive file.
+//
+// It deliberately does NOT fold in the artifact digest: a valid rerender
+// produces different bytes — hence a different content hash and a different
+// derived asset id — and folding either into the key made the publisher's
+// idempotency-key lookup miss the previously published file, so
+// ConflictOverwrite was never reached and every rerender created a same-named
+// duplicate in the destination folder. Both the synchronous publisher and the
+// asynchronous outbox consumer derive the key from this ONE version literal.
+const ClipRenderDrivePolicyVersion = "clip-render-v1"
+
 // ClipRenderDriveDeliveryRequest is the durable outbox payload for a rendered
 // clip's external Drive projection. It contains no credentials and is
 // idempotent by AssetID + ContentHash + FolderID.
+//
+// Sidecar, when non-nil, carries the compiled ASS subtitle artifact that must
+// travel with the video: the delivery intent is a BUNDLE (video + optional
+// sidecar), so an explicit sidecar request no longer forces the synchronous
+// Drive path. The outbox consumer uploads the sidecar, upserts the canonical
+// subtitle artifact row and patches the asset metadata in the same delivery
+// that uploads the video, so the render job can complete without waiting for
+// Drive in every subtitle mode.
 type ClipRenderDriveDeliveryRequest struct {
-	SchemaVersion string `json:"schema_version"`
-	AssetID       string `json:"asset_id"`
-	RunID         string `json:"run_id"`
-	SourceAssetID string `json:"source_asset_id"`
-	LocalPath     string `json:"local_path"`
-	Filename      string `json:"filename"`
-	FolderID      string `json:"folder_id"`
-	ContentHash   string `json:"content_hash"`
-	SizeBytes     int64  `json:"size_bytes"`
+	SchemaVersion string                      `json:"schema_version"`
+	AssetID       string                      `json:"asset_id"`
+	RunID         string                      `json:"run_id"`
+	SourceAssetID string                      `json:"source_asset_id"`
+	LocalPath     string                      `json:"local_path"`
+	Filename      string                      `json:"filename"`
+	FolderID      string                      `json:"folder_id"`
+	ContentHash   string                      `json:"content_hash"`
+	SizeBytes     int64                       `json:"size_bytes"`
+	Sidecar       *ClipRenderSubtitleDelivery `json:"sidecar,omitempty"`
+}
+
+// ClipRenderSubtitleDelivery is the optional ASS sidecar half of an async
+// clip.render Drive delivery. LocalPath points at the durable staging copy (the
+// per-job workspace is deleted as soon as the job finishes); SourceAssetID is
+// implied by the parent payload because subtitles belong to the source clip.
+type ClipRenderSubtitleDelivery struct {
+	LocalPath    string `json:"local_path"`
+	Filename     string `json:"filename"`
+	SHA256       string `json:"sha256"`
+	SizeBytes    int64  `json:"size_bytes"`
+	LanguageCode string `json:"language_code,omitempty"`
+	TextHash     string `json:"text_hash,omitempty"`
+	StyleVersion string `json:"style_version,omitempty"`
 }
 
 // RenderPublisher publishes the validated output to Drive through the

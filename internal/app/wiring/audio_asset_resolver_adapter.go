@@ -27,8 +27,8 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -40,7 +40,7 @@ import (
 // Drive download into scratch. Delegates to the single
 // CanonicalAssetMaterializer — no second download path.
 type audioAssetSourceAdapter struct {
-	assets    *detail.Service
+	assets    mediasub.AssetDetailsLookup
 	canonical *drivepkg.CanonicalAssetMaterializer
 }
 

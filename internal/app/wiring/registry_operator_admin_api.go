@@ -16,8 +16,9 @@ import (
 // This module provides admin-facing read-only endpoints consumed by the
 // React admin UI under /admin/. Routes are mounted under /api/assets/operator/.
 func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
-	if root.Repos == nil || root.Repos.Assets == nil {
-		return fmt.Errorf("wire registry: operator-admin-api: asset service not available")
+	assetReader := root.MediaAssetReader()
+	if assetReader == nil {
+		return fmt.Errorf("wire registry: operator-admin-api: media asset reader not available")
 	}
 	if root.Jobs == nil || root.Jobs.Facade == nil {
 		return fmt.Errorf("wire registry: operator-admin-api: job service not available")
@@ -39,7 +40,7 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 	}
 
 	desc, err := operatorapi.Build(operatorapi.Dependencies{
-		AssetService:    root.Repos.Assets,
+		AssetService:    assetReader,
 		ReadModel:       readModel,
 		IndexVerifier:   verifier,
 		JobService:      root.Jobs.Facade,

@@ -110,7 +110,7 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 		"sha256:deadbeef", "https://thumb/1",
 		"https://src", "youtube", "vid-1", "vid-1",
 		int64(1000), int64(2000), "folder-1", "parent-1", "/a/b", "2026-09-13T10:00:00Z",
-		`{"clip_summary":"s"}`,
+		`{"clip_summary":"s"}`, `["k1","k2"]`, "approved",
 	}}
 	rec, err := scanMediaAssetRecord(row)
 	if err != nil {
@@ -132,6 +132,19 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 	}
 	if rec.CreatedAtTime().IsZero() {
 		t.Fatalf("created_at not parsed: %q", rec.CreatedAt)
+	}
+	if rec.SearchTerms != `["k1","k2"]` {
+		t.Fatalf("search_terms = %q", rec.SearchTerms)
+	}
+	if rec.ReviewStatus != "approved" {
+		t.Fatalf("review_status = %q", rec.ReviewStatus)
+	}
+	hydrated := rec.HydrateAsset()
+	if len(hydrated.SearchTerms) != 2 || hydrated.SearchTerms[0] != "k1" || hydrated.SearchTerms[1] != "k2" {
+		t.Fatalf("hydrated search_terms = %v", hydrated.SearchTerms)
+	}
+	if string(hydrated.ReviewStatus) != "approved" {
+		t.Fatalf("hydrated review_status = %q", hydrated.ReviewStatus)
 	}
 	meta := rec.MetadataMap()
 	meta["mutated"] = true

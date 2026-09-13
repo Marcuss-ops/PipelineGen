@@ -55,7 +55,6 @@ type MediaCurator struct {
 	// req.HintClipIDs. Set via SetClipSearchPort from the composition
 	// root when Qdrant is enabled.
 	serverURL   string
-	clipsRepo   any // *assets.ClipsRepository (avoid import cycle)
 	clipBuilder any
 	clipSearch  any
 	log         *zap.Logger
@@ -70,14 +69,17 @@ type MediaCurator struct {
 // `mediaCurator = scriptdto.NewMediaCurator(...)` call site, which is
 // gated on this symbol existing (the underlying struct fields are
 // unexported, so callers cannot construct an instance via `&MediaCurator{}`).
-// Field wiring matches the pre-drift shape exactly: serverURL,
-// clipsRepo, clipBuilder, log all set; clipSearch is
+// Field wiring: serverURL, clipBuilder, log are set here; clipSearch is
 // late-bound via SetGenerateOneUC / SetClipSearchPort setters (the
 // composition root stamps them when those bundles are available).
-func NewMediaCurator(serverURL string, clipsRepo any, clipBuilder any, log *zap.Logger) *MediaCurator {
+//
+// MEDIA-SSOT (September 2026): the historical `clipsRepo any` parameter was
+// removed. It held a *assets.ClipsRepository that no method ever read, so it
+// was a pure SQLite media reference in a production flow (godlike/07: zero
+// reader → delete). Media reads belong to the PostgreSQL media SSOT.
+func NewMediaCurator(serverURL string, clipBuilder any, log *zap.Logger) *MediaCurator {
 	return &MediaCurator{
 		serverURL:   serverURL,
-		clipsRepo:   clipsRepo,
 		clipBuilder: clipBuilder,
 		log:         log,
 	}

@@ -124,6 +124,8 @@ func (c *PostgresMediaCommitter) PatchAssetTx(ctx context.Context, tx persistenc
 	addString("folder_path", patch.FolderPath)
 	addString("deleted_at", patch.DeletedAt)
 	addString("search_text", patch.SearchText)
+	addString("search_terms", patch.SearchTerms)
+	addString("review_status", patch.ReviewStatus)
 	addString("lifecycle_state", patch.LifecycleState)
 	addString("enrich_state", patch.EnrichState)
 	addString("metadata_json", patch.MetadataJSON)
@@ -136,6 +138,13 @@ func (c *PostgresMediaCommitter) PatchAssetTx(ctx context.Context, tx persistenc
 	addString("last_used_at", patch.LastUsedAt)
 	addFloat("quality_score", patch.QualityScore)
 	addInt("reuse_count", patch.ReuseCount)
+	// tags + tags_norm are written together so the derived lexical projection
+	// cannot drift from the tag array (SQLite parity: media_asset_mutations).
+	if patch.Tags != nil {
+		tagsJSON := *patch.Tags
+		sets = append(sets, fmt.Sprintf("tags = $%d, tags_norm = $%d", len(args)+1, len(args)+2))
+		args = append(args, tagsJSON, tagsNormFromJSON(tagsJSON))
+	}
 	addString("drive_file_id", patch.DriveFileID)
 	addString("drive_link", patch.DriveLink)
 	addString("download_link", patch.DownloadLink)

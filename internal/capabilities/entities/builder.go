@@ -18,7 +18,11 @@ import (
 // set, the builder verifies the text at that span equals the name — a
 // mismatch fails closed instead of projecting a fabricated anchor.
 type EntitySource struct {
-	Name       string
+	Name string
+	// SpokenName is the verbatim phrase used by the voiceover timing lookup.
+	// It may carry grammatical surface detail (for example "Dolly Parton's")
+	// while Name remains the canonical identity ("Dolly Parton").
+	SpokenName string
 	Type       string
 	Confidence float64
 	TextStart  int
@@ -136,9 +140,13 @@ func projectSceneOccurrences(scene SceneInput) ([]EntityOccurrence, error) {
 
 		// WORD — the entity must occur verbatim in the ACTUAL voiceover word
 		// timing. No text-length estimate is ever accepted here.
-		located, err := capabilityaudio.LocatePhrase(scene.Timing, name)
+		spokenName := strings.TrimSpace(source.SpokenName)
+		if spokenName == "" {
+			spokenName = name
+		}
+		located, err := capabilityaudio.LocatePhrase(scene.Timing, spokenName)
 		if err != nil {
-			return nil, fmt.Errorf("%w: scene %q entity %q: %v", ErrEntityNotSpoken, scene.SceneID, name, err)
+			return nil, fmt.Errorf("%w: scene %q entity %q: phrase %q: %v", ErrEntityNotSpoken, scene.SceneID, name, spokenName, err)
 		}
 		first := located[0]
 		out = append(out, EntityOccurrence{

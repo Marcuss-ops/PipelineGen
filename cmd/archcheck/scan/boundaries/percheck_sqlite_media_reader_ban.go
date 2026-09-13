@@ -1,0 +1,424 @@
+// Package scan — percheck_sqlite_media_reader_ban promotes the historical
+// certificate counter `SQLITE_MEDIA_READERS=0` into an enforced hard gate.
+//
+// BACKGROUND. The September 2026 media cutover moved the media domain
+// authority to PostgreSQL + pgvector. The WRITE side is already enforced by
+// percheck_media_assets_writer_canonical (no direct SQL write to media_assets
+// outside the canonical AssetCommitter) and percheck_media_txn_boundary (no
+// SQLite *sql.Tx can reach the PostgreSQL media writer). The READ side was
+// never enforced: the only assertion that no production code read media_assets
+// from SQLite lived in scripts/ci/certify-media-cutover.sh, which was deleted
+// by commit 7e6965aab ("purge 94% shell"). architecture/catalog.yaml recorded
+// the consequence honestly — the three certificate counters became
+// UNVERIFIED, with the standing instruction "restore the driver or promote the
+// three counters into cmd/archcheck".
+//
+// This scanner is that promotion for the READ counter.
+//
+// WHAT IT BANS. A NEW non-test Go file under internal/ or cmd/ whose SQL reads
+// the `media_assets` table, outside the grandfathered read surfaces below.
+// New media reads MUST go through the PostgreSQL media read authority
+// (internal/platform/postgres/media.MediaSearcher) rather than a SQLite
+// mirror.
+//
+// WHY A GRANDFATHER LIST INSTEAD OF ZERO. The legacy operational SQLite read
+// plane still has live production consumers (the exact inventory is the
+// "REMAINING BLOCKER FOR P2-9 PHASE 2" list in architecture/catalog.yaml).
+// Failing the build on the existing set would be a red gate that cannot pass —
+// a target that cannot pass is not a gate. The list is therefore an explicit,
+// reviewable DEBT REGISTER that ratchets to zero as those consumers migrate;
+// what it buys today is forward prevention: no NEW SQLite media reader can
+// land unnoticed.
+//
+// godlike/06 SSOT: the exemption vocabulary (skip dirs, scanner-source prefix,
+// SQL-migration prefixes) comes from cmd/archcheck/policy/exempt.go — this
+// file declares no second copy.
+//
+// matched rule_id: `percheck_sqlite_media_reader_ban`.
+package boundaries
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+)
+
+// sqliteMediaReaderRule is the rule-family id the scanner emits.
+const sqliteMediaReaderRule = "percheck_sqlite_media_reader_ban"
+
+// sqliteMediaReaderScanRoots are the roots the gate walks. cmd/ is included
+// for the same reason the write gate widened to it: the documented claim is
+// repo-wide, and the admin CLI is the historical exception surface.
+var sqliteMediaReaderScanRoots = []string{
+	"internal",
+	"cmd",
+}
+
+// sqliteMediaReaderReadRe matches a SQL read of the media_assets table.
+//
+// Only read clauses (FROM / JOIN) are matched. Writes are owned by
+// percheck_media_assets_writer_canonical, so a write here would be a
+// duplicate report of the same fact.
+var sqliteMediaReaderReadRe = regexp.MustCompile(
+	`(?i)\b(?:FROM|JOIN)\s+media_assets\b`,
+)
+
+// sqliteMediaReaderDeleteRe matches the pure-write `DELETE FROM media_assets`
+// form, which the read regex would otherwise misclassify as a read (it
+// literally contains "FROM media_assets"). Those spans are blanked before the
+// read match so the DELETE stays owned solely by the writer gate.
+//
+// `INSERT INTO ... SELECT ... FROM media_assets` is deliberately NOT excluded:
+// that statement genuinely READS the table, so both gates reporting it is
+// correct rather than duplicated.
+var sqliteMediaReaderDeleteRe = regexp.MustCompile(
+	`(?i)\bDELETE\s+FROM\s+media_assets\b`,
+)
+
+// sqliteMediaReaderPGPlaceholderRe identifies a PostgreSQL positional bind
+// placeholder ($1, $2, …). It is the dialect discriminator: every PostgreSQL
+// SQL statement that binds a parameter uses it, while SQLite uses `?`.
+//
+// DIALECT PRECISION. The historical certificate counter was
+// SQLITE_MEDIA_READERS=0 — SQLite readers, not "any reads". A PostgreSQL read
+// of media_assets (internal/platform/postgres/media, or any composition-root
+// adapter that legitimately queries the media SSOT) is CORRECT by
+// construction and must never be reported as debt. Without this
+// discrimination the gate would both misstate the P2-9 Phase 2 inventory and
+// make a correct new PostgreSQL reader fail the build — a false positive that
+// would push contributors to add exemptions instead of reading the SSOT.
+var sqliteMediaReaderPGPlaceholderRe = regexp.MustCompile(`\$\d+`)
+
+type sqlMediaSpan struct {
+	start    int
+	end      int
+	postgres bool
+}
+
+// sqlMediaSpan is one SQL-bearing Go expression with the dialect its
+// placeholders imply.
+//
+// It is deliberately expression-shaped rather than literal-shaped: a long SQL
+// statement is routinely written as adjacent string literals
+// (`… FROM media_assets WHERE ` + filter + ` AND …`), so the `$N` may live in
+// a different piece than the FROM clause. Spans therefore cover whole
+// concatenation expressions, and the widest span containing a match wins.
+//
+// Fail-closed: a file that does not parse yields no spans, so every read in it
+// is reported. A SQL expression with no placeholder at all is classified
+// SQLite, which is the conservative direction (a parameterless full scan of
+// media_assets is a defect either way).
+func sqlMediaSpans(source []byte, positionFile *token.File, parsed *ast.File) []sqlMediaSpan {
+	var spans []sqlMediaSpan
+	add := func(node ast.Node) {
+		start := positionFile.Offset(node.Pos())
+		end := positionFile.Offset(node.End())
+		if start < 0 || end > len(source) || end <= start {
+			return
+		}
+		spans = append(spans, sqlMediaSpan{
+			start:    start,
+			end:      end,
+			postgres: sqliteMediaReaderPGPlaceholderRe.Match(source[start:end]),
+		})
+	}
+	ast.Inspect(parsed, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.BinaryExpr:
+			// A concatenation expression: covers `a + b + c` as one span so a
+			// placeholder in any piece marks the whole statement PostgreSQL.
+			if node.Op == token.ADD {
+				add(node)
+			}
+		case *ast.BasicLit:
+			if node.Kind == token.STRING {
+				add(node)
+			}
+		}
+		return true
+	})
+	// Widest first: an outer concatenation must win over one of its pieces.
+	sort.SliceStable(spans, func(i, j int) bool { return spans[i].end-spans[i].start > spans[j].end-spans[j].start })
+	return spans
+}
+
+// sqlMediaSpanContaining returns the widest SQL span containing offset.
+func sqlMediaSpanContaining(spans []sqlMediaSpan, offset int) (sqlMediaSpan, bool) {
+	for _, span := range spans {
+		if offset >= span.start && offset < span.end {
+			return span, true
+		}
+	}
+	return sqlMediaSpan{}, false
+}
+
+// blankSpans replaces the given byte spans with spaces, preserving newlines so
+// reported line numbers stay accurate.
+func blankSpans(s string, spans [][]int) string {
+	if len(spans) == 0 {
+		return s
+	}
+	b := []byte(s)
+	for _, span := range spans {
+		for i := span[0]; i < span[1] && i < len(b); i++ {
+			if b[i] != '\n' {
+				b[i] = ' '
+			}
+		}
+	}
+	return string(b)
+}
+
+// sqliteMediaReaderGrandfatheredZones are the path prefixes that ARE the
+// legacy SQLite media read plane being retired. Every file beneath them is
+// grandfathered by construction:
+//
+//   - internal/platform/sqlite/ — the operational SQLite state store (the
+//     non-media mutation primitives plus the legacy media read facade);
+//   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility
+//     seam and its local-catalog payload readers (retired with the Qdrant
+//     media projection);
+//   - cmd/admin/ — operator tooling that deliberately runs against the
+//     operational database.
+//
+// The zones are prefixes and NOT an exact-file list on purpose here (unlike
+// the writer gate's exemptions): these three packages are the whole legacy
+// read plane, and their internal file layout is expected to shrink, not to be
+// pinned. A NEW package reading media_assets is a violation because it lives
+// outside every zone.
+var sqliteMediaReaderGrandfatheredZones = []string{
+	"internal/platform/sqlite/",
+	"internal/platform/qdrant/indexing/",
+	"cmd/admin/",
+}
+
+// sqliteMediaReaderGrandfatheredFiles is the explicit DEBT REGISTER: the
+// non-zone production files that still read media_assets from SQLite today.
+// Each entry is a read split-brain site named in the P2-9 Phase 2 blocker
+// list (architecture/catalog.yaml); removing a consumer means deleting its
+// entry here in the same change.
+//
+// This is an exact-file list, not a directory prefix, so a new file dropped
+// into one of these packages is NOT auto-exempted.
+//
+// The register is SQLITE-only. Two entries that once appeared here were
+// removed on 2026-09-13 because they are PostgreSQL readers (they bind with
+// $N), so listing them misstated the debt and inflated the counter:
+// `internal/app/wiring/build_bundles_domain_media.go` (source_version read
+// inside the media-commit pg transaction) and
+// `internal/app/wiring/vidrush/vidrush_materialization.go` (index_state read
+// on the media SSOT). Their absence is load-bearing: if the dialect
+// discrimination in sqlMediaSpans regresses, they reappear as violations and
+// TestScanSQLiteMediaReaderBan_RepoTreeIsClean fails.
+//
+// Mixed files (a PostgreSQL path plus a SQLite degrade branch) live in
+// sqliteMediaReaderDegradeOnlyFiles instead, so this map stays the list of
+// things that are simply WRONG and must be migrated.
+var sqliteMediaReaderGrandfatheredFiles = map[string]bool{
+	"internal/app/wiring/assets/folders.go":                                         true,
+	"internal/app/wiring/lifecycle_sweepers.go":                                     true,
+	"internal/app/wiring/voiceover/adapters_voiceover_projection.go":                true,
+	"internal/app/wiring/voiceover/adapters_voiceover_repo.go":                      true,
+	"internal/capabilities/ai/autotag/process_by_enrich_candidates.go":              true,
+	"internal/capabilities/assets/ingest/adapter_clip.go":                           true,
+	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go": true,
+	"internal/capabilities/mediaregistry/index_eligibility_resolver.go":             true,
+	"internal/capabilities/scripts/usecase/clip_sampler_gates.go":                   true,
+}
+
+// sqliteMediaReaderDegradeOnlyFiles is the second, deliberately separate
+// register: files whose SQLite media read is only ever selected when the
+// PostgreSQL media plane is CLOSED. Each entry names its selector, and the
+// selector must short-circuit on the media SSOT handle — a legitimately
+// degrade-only path is not the same kind of thing as the production
+// split-brain debt above, and conflating them would make the debt list read as
+// larger (and less actionable) than it is.
+//
+// Adding an entry here is how a reviewable degrade path is acknowledged; a NEW
+// file reading media_assets still fails the gate until someone does so.
+// //   - internal/app/wiring/canonical_media_committer.go — sqliteMediaAssetStore,
+//
+//	  chosen by ComposeRoot.MediaAssetStore() only when r.MediaPostgres == nil.
+//	  (This is an exact path, not a package prefix, so the entry moved with the
+//	  type: the store briefly lived in media_asset_store.go until that file was
+//	  merged back here to stay under the internal/app/wiring hotspot cap. The
+//	  existence and staleness pins force this entry to follow such a move in
+//	  the same change.)
+//	- internal/capabilities/assets/artifacts/clips_adapter.go — the Sqlite
+//	  branch of ClipsRegistry, taken only when pgDB() reports no PostgreSQL
+//	  media committer.
+//	- internal/capabilities/youtube/adapters/youtube_adapters_store.go — the
+//	  legacy sourcing adapter retained for the documented graceful-degrade
+//	  path (see youtube_sourcing_pg_adapter.go).
+var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{
+	"internal/app/wiring/canonical_media_committer.go":                 true,
+	"internal/capabilities/assets/artifacts/clips_adapter.go":          true,
+	"internal/capabilities/youtube/adapters/youtube_adapters_store.go": true,
+}
+
+// sqliteMediaReaderNote is the violation Note string.
+const sqliteMediaReaderNote = "forbidden NEW SQLite reader of media_assets (MEDIA-SSOT read-side gate, September 2026): PostgreSQL + pgvector is the sole durable authority for the media domain, so media reads MUST go through internal/platform/postgres/media.MediaSearcher. Reading media_assets from the operational SQLite store reintroduces the Postgres-writer/SQLite-reader split-brain. Route this read through the PostgreSQL media read authority, or add an explicit, justified entry to sqliteMediaReaderGrandfatheredFiles in the same reviewed change. This gate promotes the historical certify-media-cutover counter SQLITE_MEDIA_READERS=0 to enforcement."
+
+// sqliteMediaReaderIsGrandfathered reports whether a repo-relative path is
+// exempt: inside a legacy read-plane zone, or an explicitly listed debt
+// register entry.
+func sqliteMediaReaderIsGrandfathered(relPath string) bool {
+	if sqliteMediaReaderGrandfatheredFiles[relPath] || sqliteMediaReaderDegradeOnlyFiles[relPath] {
+		return true
+	}
+	for _, zone := range sqliteMediaReaderGrandfatheredZones {
+		if strings.HasPrefix(relPath, zone) {
+			return true
+		}
+	}
+	return false
+}
+
+// sqliteMediaReaderRegisterEntryIsLive reports whether a debt-register entry
+// still has a SQLite-dialect read of media_assets to pardon.
+//
+// WHY THIS EXISTS. The register is the ratchet that drives the historical
+// SQLITE_MEDIA_READERS=0 counter to zero, and a ratchet only works in one
+// direction if a stale entry FAILS. An entry that survives after its consumer
+// migrated is the failure mode that makes such registers useless: it hides
+// real debt behind a permanently-growing allowlist people stop reading. An
+// entry is therefore live only when the file still contains at least one read
+// of media_assets that is not PostgreSQL-dialect — the same predicate
+// inspectSQLiteMediaReaderFile uses to report a violation. Anything else (read
+// gone, or every remaining read migrated to $N placeholders) must be deleted
+// from the register in the same change.
+func sqliteMediaReaderRegisterEntryIsLive(root, relPath string) (bool, error) {
+	absPath := filepath.Join(root, filepath.FromSlash(relPath))
+	source, err := os.ReadFile(absPath)
+	if err != nil {
+		return false, err
+	}
+	masked := source
+	fileSet := token.NewFileSet()
+	parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments)
+	var spans []sqlMediaSpan
+	if parseErr == nil && parsed != nil {
+		masked = maskGoComments(source, fileSet, parsed)
+		if positionFile := fileSet.File(parsed.Pos()); positionFile != nil {
+			spans = sqlMediaSpans(source, positionFile, parsed)
+		}
+	}
+	maskedStr := string(masked)
+	maskedStr = blankSpans(maskedStr, sqliteMediaReaderDeleteRe.FindAllStringIndex(maskedStr, -1))
+	for _, match := range sqliteMediaReaderReadRe.FindAllStringIndex(maskedStr, -1) {
+		if span, ok := sqlMediaSpanContaining(spans, match[0]); ok && span.postgres {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// ScanSQLiteMediaReaderBan walks internal/ and cmd/ and reports every
+// non-test Go file that reads media_assets without being a grandfathered
+// legacy reader, a canonical PostgreSQL reader, or the scanner itself.
+func ScanSQLiteMediaReaderBan(root string, _ *policy.Policy, r *report.Report) {
+	for _, scanRoot := range sqliteMediaReaderScanRoots {
+		absRoot := filepath.Join(root, scanRoot)
+		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				if policy.StandardSkipDirs[filepath.Base(path)] {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			inspectSQLiteMediaReaderFile(root, path, r)
+			return nil
+		})
+	}
+}
+
+// inspectSQLiteMediaReaderFile scans one production Go file for a
+// comment-masked SQL read of media_assets and reports it unless exempt.
+func inspectSQLiteMediaReaderFile(root, absPath string, r *report.Report) {
+	relPath, err := filepath.Rel(root, absPath)
+	if err != nil {
+		relPath = absPath
+	}
+	relPath = filepath.ToSlash(relPath)
+
+	// The PostgreSQL media SSOT readers are correct by construction.
+	if strings.HasPrefix(relPath, "internal/platform/postgres/") {
+		return
+	}
+	if strings.HasPrefix(relPath, policy.ScannerSourcePrefix) {
+		return
+	}
+	if hasAnyPathPrefix(relPath, policy.SQLMigrationPrefixes) || policy.IsTestOnlySupportFile(relPath) {
+		return
+	}
+	if sqliteMediaReaderIsGrandfathered(relPath) {
+		return
+	}
+
+	source, err := os.ReadFile(absPath)
+	if err != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        relPath,
+			Line:        0,
+			Rule:        sqliteMediaReaderRule,
+			Severity:    string(report.SeverityError),
+			MatchedRule: "file_unreadable",
+			Note:        sqliteMediaReaderNote + " | cannot open file: " + err.Error(),
+		})
+		return
+	}
+
+	// Comments are masked so a doc comment that merely NAMES the table (this
+	// scanner's own prose, architecture notes, pipeline diagrams) is never
+	// classified as a read. A file that cannot be parsed is scanned verbatim
+	// — fail-closed: a syntax error must not become an exemption.
+	masked := source
+	fileSet := token.NewFileSet()
+	parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments)
+	var spans []sqlMediaSpan
+	if parseErr == nil && parsed != nil {
+		masked = maskGoComments(source, fileSet, parsed)
+		if positionFile := fileSet.File(parsed.Pos()); positionFile != nil {
+			spans = sqlMediaSpans(source, positionFile, parsed)
+		}
+	}
+	maskedStr := string(masked)
+	// Blank the pure-write DELETE form first: it contains "FROM media_assets"
+	// but is a write, owned by percheck_media_assets_writer_canonical.
+	maskedStr = blankSpans(maskedStr, sqliteMediaReaderDeleteRe.FindAllStringIndex(maskedStr, -1))
+
+	for _, match := range sqliteMediaReaderReadRe.FindAllStringIndex(maskedStr, -1) {
+		// Dialect discrimination: a PostgreSQL read of media_assets is the
+		// correct read path, not debt. Only SQLite-dialect reads (no $N
+		// placeholder) count toward the SQLITE_MEDIA_READERS counter.
+		if span, ok := sqlMediaSpanContaining(spans, match[0]); ok && span.postgres {
+			continue
+		}
+		lineNo := 1 + strings.Count(maskedStr[:match[0]], "\n")
+		r.Violations = append(r.Violations, report.Violation{
+			File:        relPath,
+			Line:        lineNo,
+			Rule:        sqliteMediaReaderRule,
+			Severity:    string(report.SeverityError),
+			MatchedRule: "forbidden_sql_read_media_assets",
+			Note: sqliteMediaReaderNote +
+				" | file: " + relPath +
+				" | matched: " + strings.TrimSpace(maskedStr[match[0]:match[1]]),
+		})
+	}
+}

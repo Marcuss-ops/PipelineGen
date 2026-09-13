@@ -28,8 +28,12 @@ type ArtlistBundle struct {
 	// MediaDB is the PostgreSQL media SSOT handle (root.MediaPostgres). It is
 	// threaded into the Artlist finalizer so the persist transaction runs on
 	// the same engine as the canonical committer (MEDIA-SSOT P0-3).
-	MediaDB            *sql.DB
-	Assets             *detail.Service
+	MediaDB *sql.DB
+	// NOTE: the legacy `Assets *detail.Service` field was DELETED (zero
+	// production readers). The Artlist DB-only read surface runs on the
+	// PostgreSQL media SSOT via artlistMediaSSOTAssetStore, so keeping a
+	// second (SQLite) asset service in this bundle would only invite a
+	// split-brain read.
 	ClipsRepo          *assets.ClipsRepository
 	DriveClient        *gdrive.Service
 	DriveUploader      *driveup.Uploader

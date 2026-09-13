@@ -71,6 +71,12 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// the construct that let a SQLite *sql.Tx reach the PostgreSQL media
 		// writer. Together they make the old media path unrepresentable.
 		{"percheck_media_txn_boundary", boundaries.ScanMediaTxBoundary},
+		// MEDIA-SSOT read side (added 2026-09-13): the write gate above bans
+		// direct SQL writes; this companion bans NEW SQLite readers of
+		// media_assets. It is the promotion into cmd/archcheck of the historical
+		// certify-media-cutover counter SQLITE_MEDIA_READERS=0, which was
+		// UNVERIFIED after its driver was deleted.
+		{"percheck_sqlite_media_reader_ban", boundaries.ScanSQLiteMediaReaderBan},
 		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
 		{"percheck_rights_status_canonical_6", governance.ScanRightsStatusCanonical6},

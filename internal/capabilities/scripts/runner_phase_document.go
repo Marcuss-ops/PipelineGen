@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -338,6 +339,14 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 							Content:  job.rd.content,
 							FolderID: docsFolderID,
 						})
+						// Drive may have created/updated the document successfully
+						// while failing only the non-critical idempotency annotation.
+						// The reference is usable and must be checkpointed, exactly
+						// like the normal success path.
+						if errors.Is(upsertErr, ErrDocumentReferencePreserved) &&
+							strings.TrimSpace(docRef.ID) != "" && strings.TrimSpace(docRef.Link) != "" {
+							return nil
+						}
 						return upsertErr
 					}); measureErr != nil {
 						return fmt.Errorf("upsert document for language %s: %w", job.lang, measureErr)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -52,7 +51,7 @@ var ErrEnrichDispatcherRequired = fmt.Errorf("clips: EnrichUseCase requires the 
 // deployments fail closed with ErrEnrichDispatcherRequired rather than
 // silently losing enriched metadata through a bypass path.
 type EnrichUseCase struct {
-	assetRepo  detail.Repository
+	assetRepo  AssetReader
 	metaWriter semantic.MetadataWriterPort
 	dispatcher mutations.AssetMutationDispatcher
 	log        *zap.Logger
@@ -70,7 +69,7 @@ type EnrichUseCase struct {
 // canonical dispatcher; the composition root already does so via
 // buildClipsBundle.
 func NewEnrichUseCase(
-	repo detail.Repository,
+	repo AssetReader,
 	mw semantic.MetadataWriterPort,
 	dispatcher mutations.AssetMutationDispatcher,
 	log *zap.Logger,

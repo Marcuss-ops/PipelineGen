@@ -20,6 +20,7 @@
 package clips
 
 import (
+	"context"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strconv"
@@ -28,10 +29,22 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
+
+// AssetReader is the consumer-owned read contract for the clips API handlers:
+// asset by id, filtered listing and count.
+//
+// It is an interface rather than the concrete SQLite detail.Repository
+// type-switch bridge because PostgreSQL is the media SSOT: the production
+// concrete is the PostgreSQL media read store, and the SQLite adapter is
+// selected only in the documented media-disabled degrade mode.
+type AssetReader interface {
+	Get(ctx context.Context, id string) (*asset.Asset, error)
+	List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error)
+	Count(ctx context.Context, filter asset.Filter) (int64, error)
+}
 
 // SearchDeps is the constructor bag for SearchHandler. The 4 fields
 // below are exactly the deps the 3 routes touch — no more, no
@@ -39,7 +52,7 @@ import (
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
 	ClipsRepo     appclips.ClipRepositoryPort
-	AssetRepo     detail.Repository
+	AssetRepo     AssetReader
 	VoiceoverRepo appclips.VoiceoverRepositoryPort
 	ImagesRepo    appclips.ImageRepositoryPort
 }
@@ -49,7 +62,7 @@ type SearchDeps struct {
 // the orchestrator Deps.
 type SearchHandler struct {
 	clipsRepo     appclips.ClipRepositoryPort
-	assetRepo     detail.Repository
+	assetRepo     AssetReader
 	voiceoverRepo appclips.VoiceoverRepositoryPort
 	imagesRepo    appclips.ImageRepositoryPort
 }

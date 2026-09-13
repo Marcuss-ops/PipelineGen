@@ -83,15 +83,26 @@ func (w *Worker) completeRendered(
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
 		}
+		// Reconcile the local bytes probe with the facts RenderingGen
+		// certified on the artifact it produced. Fail-closed on disagreement;
+		// fills the dimensions the local probe cannot report (the codec
+		// profile above all) from the certified owner so they are actually
+		// validated instead of silently skipped.
+		probe, err = ReconcileCertifiedFacts(probe, outcome)
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: certified output facts: %w", err)
+		}
 		if err := ValidateContract(prepared.Contract, probe); err != nil {
 			return nil, fmt.Errorf("clip.render: rendered output violates contract: %w", err)
 		}
 		emit("clip.render.probe.certified", "rendered bytes certified exact", map[string]any{
-			"output_path": outcome.OutputPath,
-			"fps_num":     probe.FPSNum,
-			"fps_den":     probe.FPSDen,
-			"width":       probe.Width,
-			"height":      probe.Height,
+			"output_path":     outcome.OutputPath,
+			"fps_num":         probe.FPSNum,
+			"fps_den":         probe.FPSDen,
+			"width":           probe.Width,
+			"height":          probe.Height,
+			"video_profile":   probe.VideoProfile,
+			"certified_facts": outcome.VideoProfile != "" || outcome.Container != "",
 		})
 	}
 

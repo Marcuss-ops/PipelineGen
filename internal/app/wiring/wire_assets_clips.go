@@ -31,11 +31,18 @@ import (
 )
 
 // ClipsRepositoryDeps groups the repository ports consumed by clips.
+//
+// AssetRepo is the media read port: PostgreSQL is the media SSOT, so the
+// production concrete is the PostgreSQL media read store and the SQLite
+// adapter is selected only in the documented media-disabled degrade mode.
+// It is typed as the clips capability's consumer-owned interface, NOT the
+// detail.Repository type-switch bridge (which no non-SQLite store can
+// satisfy).
 type ClipsRepositoryDeps struct {
 	ClipsRepo     *sqassets.ClipsRepository
 	VoiceoverRepo *sqassets.VoiceoversRepository
 	ImageRepo     *imagesrepo.ImagesRepository
-	AssetRepo     detail.Repository
+	AssetRepo     clipsapi.AssetReader
 }
 
 // ClipsCapabilityDeps contains only the concrete ports consumed by the clips

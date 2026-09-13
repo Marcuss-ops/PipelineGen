@@ -51,10 +51,17 @@ test-youtube-stock-local: test-youtube-stock-fast test-stock-partial-download te
 
 test-youtube-stock-resilience: test-stock-recovery test-stock-concurrency
 
-test-youtube-stock-live:
-	@scripts/with-velox-auth bash tests/operational/youtube_stock_live_e2e.sh
+# test-youtube-stock-live — RETIRED 2026-09-13: its driver
+# tests/operational/youtube_stock_live_e2e.sh was deleted by commit 7e6965aab
+# ("purge 94% shell + 87% python dust"). A target whose only possible outcome is
+# "No such file or directory" is not a gate (see make/verify.mk for the
+# certification-driver rationale). The L1 → L3 StockRust boundary is currently
+# certified by the Go surfaces only: internal/platform/media/rustexec
+# (L2 adapter → Rust) and the Rust crate tests (L3 binary).
 
-test-youtube-stock-release: test-youtube-stock-local test-youtube-stock-resilience test-youtube-stock-live
+# test-youtube-stock-release — Go-only release gate. The live leg was pruned on
+# 2026-09-13 with the retirement of test-youtube-stock-live.
+test-youtube-stock-release: test-youtube-stock-local test-youtube-stock-resilience
 
 diagnose-youtube-stock:
 	@set -eu; \
@@ -85,18 +92,20 @@ verify-stock-unit: test-stock-component test-youtube-stock-fast
 verify-stock-integration: test-youtube-stock-local test-youtube-stock-resilience
 	@echo "✅ verify-stock-integration passed"
 
-# One run ID and one private key file are shared by battery, receipt, and claim.
-STOCK_E2E_RUN_ID := $(or $(STOCK_E2E_RUN_ID),stock-$(shell date +%s%N))
-STOCK_E2E_RECEIPT := $(or $(STOCK_E2E_RECEIPT),$(if $(TMPDIR),$(TMPDIR),/tmp)/pipelinegen-stock-e2e-receipt.$(STOCK_E2E_RUN_ID).log)
-STOCK_E2E_RECEIPT_KEY_FILE := $(STOCK_E2E_RECEIPT).key
-
-verify-stock-live: auth-check
-	@rm -f "$(STOCK_E2E_RECEIPT)" "$(STOCK_E2E_RECEIPT_KEY_FILE)"
-	@umask 077; openssl rand -hex 32 > "$(STOCK_E2E_RECEIPT_KEY_FILE)"
-	@STOCK_E2E_RUN_ID="$(STOCK_E2E_RUN_ID)" STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash -o pipefail -c 'scripts/with-velox-auth bash tests/operational/stock_e2e_full_battery.sh 2>&1 | tee "$$1"' -- "$(STOCK_E2E_RECEIPT)"
-	@echo "✅ verify-stock-live passed (receipt: $(STOCK_E2E_RECEIPT); run_id: $(STOCK_E2E_RUN_ID))"
-
-verify-stock-release: verify-stock-unit verify-stock-integration verify-stock-live
-	@STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash scripts/ci/verify-stock-receipt.sh "$(STOCK_E2E_RECEIPT)" "$(STOCK_E2E_RUN_ID)"
-	@STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash scripts/ci/verify-stock-claim.sh "$(STOCK_E2E_RECEIPT)" "verify-stock-release" "$(STOCK_E2E_RUN_ID)"
-	@echo "✅ verify-stock-release passed (canonical 14/14 receipt: $(STOCK_E2E_RECEIPT); run_id: $(STOCK_E2E_RUN_ID))"
+# ─── Stock live / release batteries: RETIRED 2026-09-13 ───────────────
+#
+# verify-stock-live drove tests/operational/stock_e2e_full_battery.sh (and the
+# 7 stock_e2e_*_smoke.sh probes it aggregated), all deleted by commit
+# 7e6965aab ("purge 94% shell + 87% python dust"). verify-stock-release also
+# depended on scripts/ci/verify-stock-{receipt,claim}.sh, deleted by the same
+# commit, so the receipt chain it certified no longer exists in any form.
+#
+# The STOCK_E2E_RUN_ID / STOCK_E2E_RECEIPT / STOCK_E2E_RECEIPT_KEY_FILE
+# variables and the openssl key-file dance were removed with them: they only
+# existed to feed the receipt verifier. A target whose only possible outcome is
+# "No such file or directory" is not a gate (see make/verify.mk).
+#
+# Stock live coverage is currently owned by the Go surfaces:
+#   go test ./internal/capabilities/assets/providers/stock/...   (unit/contract)
+#   go test ./internal/platform/media/rustexec/...         (L2 adapter → Rust)
+# Reintroduce verify-stock-live only with a tracked driver (Go preferred).

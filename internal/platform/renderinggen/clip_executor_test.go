@@ -92,6 +92,8 @@ func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 		ArtifactHash: artifactHash, ArtifactURL: server.URL + "/out.mp4", SizeBytes: int64(len(artifactBytes)),
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
 		Backend: "chronon_vulkan", CopyEligible: true,
+		Codec: "h264", CodecProfile: "High", Container: "mov,mp4,m4a,3gp,3g2,mj2",
+		PixelFormat: "yuv420p", AudioStreams: 1,
 	}}}
 	executor, err := NewClipRenderExecutor(q)
 	if err != nil {
@@ -147,6 +149,13 @@ func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 
 	if outcome.Backend != cliprender.BackendChrononVulkan || outcome.SizeBytes != 10 {
 		t.Fatalf("outcome = %+v", outcome)
+	}
+	// The certified structural facts must survive the adapter: they are the
+	// only source for contract dimensions the local Rust probe cannot report
+	// (codec profile above all).
+	if outcome.Container != "mov,mp4,m4a,3gp,3g2,mj2" || outcome.VideoCodec != "h264" ||
+		outcome.VideoProfile != "High" || outcome.PixelFormat != "yuv420p" || outcome.AudioStreams != 1 {
+		t.Fatalf("certified structural facts lost in outcome: %+v", outcome)
 	}
 }
 

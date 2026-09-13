@@ -1,95 +1,65 @@
 # Scripts — PipelineGen
 
-## Directory Structure (August 2026)
+## Directory Structure (verified 2026-09-13)
 
 ```
 scripts/
-├── core/                         # Shared libraries
-│   └── ollama_client.py           #  Ollama client: generate(), chat(), generate_json()
-├── bridges/                      # Go→Python bridges (called from Go via exec.Command)
-│   ├── argos_bridge/              #  Argos Translate bridge (core, server)
-│   ├── argos_server.py            #  Argos translation server entrypoint
-│   ├── argos_translator.py        #  Argos translation CLI
-│   ├── edge_tts_bridge/           #  Edge TTS bridge (boundaries, server, request, voice_resolver)
-│   ├── generate_embedding.py      #  One-shot E5 embedding
-│   ├── local_nlp_gpu.py           #  Local NLP GPU utilities
-│   ├── login.py                   #  Authentication bridge
-│   ├── semantic_tagger/           #  Semantic metadata via Ollama + taxonomy
-│   ├── slide_worker.py            #  Slide worker entry point
-│   ├── slide_worker_runtime/      #  Slide generation runtime (generation, extraction, dispatcher, etc.)
-│   ├── storage_utils.py           #  Storage utilities
-│   ├── tts_edge.py                #  Text-to-speech via Edge TTS (single call)
-│   ├── tts_edge_server.py         #  Persistent Edge TTS server
-│   └── whisper_transcriber.py     #  Whisper transcription bridge
-├── services/                     # Persistent ML servers (HTTP, called from Go)
-│   ├── embedding_server/          #  E5 embeddings + CLIP + CLAP (__main__, models, audio, text, visual)
-│   ├── reranker_server.py         #  CrossEncoder reranking
-│   ├── model_registry_generated.py #  Python mirror of internal/kernel/models (generated)
-│   └── device_policy.py           #  GPU/CPU device selection policy
-├── tools/                        # Manual CLI utilities (not called from Go)
-│   ├── argos_install_models.py    #  Install Argos Translate language models
-│   ├── generate_drive_token.py    #  OAuth2 token generation for Google Drive
-│   ├── model_downloader.py        #  Download + verify ML model weights (registry SSOT)
-│   ├── resolve_drive_ids.py       #  Resolve Drive file/folder IDs
-│   ├── sync_drive_qdrant.py       #  Sync Drive contents to Qdrant
-│   ├── transcribe_detect_lang.py  #  Transcription + language detection
-│   ├── whisper_preflight.py       #  Whisper preflight check
-│   └── whisper_runtime.py         #  Whisper runtime execution
-├── admin/                        # Administrative Go tooling
-│   ├── generate_routes_yaml.go    #  Route manifest generator
-│   ├── routes_yaml_ast.go
-│   ├── routes_yaml_dedup.go
-│   ├── routes_yaml_discovery.go
-│   └── routes_yaml_types.go
-├── archcheck/                    # Gate scaffolding + CI gates. The legacy burndown binary (root *.go + baseline/) was demolished 2026-09-12: no make target or workflow ever invoked it.
-│   ├── gate/                      #  Shared gate scaffolding, imported by internal/capabilities/*/gate_test.go
-│   └── gates/                     #  C2 gates (registry, route manifest, source catalog) — LIVE via `make verify-architecture`
-├── ci/                           # CI verification scripts
-│   ├── verify_*.py, verify-*.py    #  Component registry runners (canonical)
+├── ci/                           # CI verification
+│   ├── verify-component.py        #  Component runner (canonical)
+│   ├── verify_changed-components.py, verify-all-components.py
+│   ├── verify-component-coverage.py
+│   ├── verify_component_{cache,core,fingerprint,registry,runner}.py
+│   ├── verify_runtime.py
 │   ├── get-fingerprint.sh
 │   ├── ci-no-secrets-audit.sh
 │   ├── ci-submodule-integrity.sh
 │   └── check_clip_render_cutover.sh
-├── lib/                          # Shell libraries
-│   ├── dotenv.sh
-│   └── artlist_pipeline_*.sh      #  Artlist pipeline helpers
-├── systemd/                      # Systemd units and sudoers
-│   ├── pipelinegenctl
-│   ├── pipelinegen.service.d/     #  whisper.conf, youtube-dlp.conf
-│   ├── ollama.service.d/          #  gpu.conf
-│   ├── sudoers/                   #  Operator access installers
-│   └── README.md
 ├── hooks/                        # Git hooks
 │   ├── pre-commit
 │   └── pre-push
-├── operations/                   # Operational shell scripts
-│   ├── certify_media_registry_qdrant.sh
-│   └── inspect_media_asset.sh
-├── overlay-cert/                 # Overlay certification
-│   └── verify_overlay_prepare_live.py
-├── seed_fixture/                 # Fixture seeding tool
-│   └── main.go
-├── start_embedding_server.sh      #  Embedding sidecar launcher
-├── verify-ffmpeg.sh               #  FFmpeg verification
-├── verify-image-digest.sh         #  Image digest verification
-├── verify-whisper.sh              #  Whisper verification
-├── verify_nlp_online_images_docs_certification.sh
-├── batch_index_drive_clips.md     #  Batch indexing documentation
-├── ci-architectural-checks.sh     #  Architectural CI checks entrypoint
-├── ci-bypass-audit.sh            #  CI bypass audit
-├── cosign-sign.sh                 #  Cosign image signing
-├── regenerate_token.sh            #  Token regeneration
-├── rotate_token.sh                #  Token rotation
-├── velox_client.py                #  Velox broker client
-├── run_stock.py                   #  Stock pipeline runner
-├── youtube_boxer_stock_e2e.py     #  YouTube boxer stock E2E script
-├── yt-dlp-pipeline                #  yt-dlp pipeline wrapper
-├── with-velox-auth                #  Velox auth wrapper
-├── with-velox-auth_test.sh        #  Velox auth wrapper test
-├── generate_drive_token.py        #  Root-level token generation
-├── requirements-argos.txt         #  Argos Python dependencies
-└── requirements-whisper.txt       #  Whisper Python dependencies
+├── lib/                          # Shell libraries
+│   ├── dotenv.sh
+│   └── canonical_db_path.sh
+├── systemd/                      # Systemd units + operator sudoers
+│   ├── pipelinegenctl
+│   ├── pipelinegen.service, pipelinegen-worker.service, chronon3d.service
+│   ├── pipelinegen.service.d/     #  whisper.conf, youtube-dlp.conf, chronon-warm.conf
+│   ├── pipelinegen-embedding-server.service.d/  #  render-isolation.conf
+│   ├── ollama.service.d/          #  gpu.conf
+│   ├── sudoers/                   #  pipelinegen-operator(.template)
+│   └── README.md
+├── bridges/                      # Go→Python bridges (exec.Command)
+│   ├── edge_tts_bridge/           #  TTS bridge (boundaries, server, request, voice_resolver)
+│   ├── tts_edge.py, tts_edge_server.py
+│   └── whisper_transcriber.py
+├── services/                     # Persistent ML servers (HTTP, called from Go)
+│   ├── embedding_server/          #  E5 + CLIP + CLAP (__main__, models, audio, text, visual)
+│   ├── device_policy.py           #  GPU/CPU device selection policy
+│   └── model_registry_generated.py #  Python mirror of internal/kernel/models (generated)
+├── tools/                        # Manual CLI utilities (not called from Go)
+│   ├── whisper_preflight.py
+│   └── whisper_runtime.py
+├── admin/                        # Route-manifest generator (Go)
+├── bench/                        # Headless benchmark drivers (lib/ + report/)
+├── dev/                          #  e2e-up.sh
+├── operations/                   #  migrate-media-text-tracks-once.go
+├── seed_fixture/                 #  Fixture seeding tool (Go)
+├── os.sh, preflight-e2e.sh, regen_hotspots.py, regenerate_token.sh
+├── verify-whisper.sh, yt-dlp-pipeline, with-velox-auth
+├── requirements-argos.txt, requirements-whisper.txt
+├── batch_index_drive_clips.md
+└── README.md
 ```
+
+**Not in the tree** (deleted by commit `7e6965aab`, "purge 94% shell + 87%
+python dust"; do not cite them as present): `ci-architectural-checks.sh`,
+`rotate_token.sh`, `velox_client.py`, `verify-ffmpeg.sh`,
+`verify-image-digest.sh`, `cosign-sign.sh`, `start_embedding_server.sh`,
+`ci-bypass-audit.sh`, `run_stock.py`, `youtube_boxer_stock_e2e.py`,
+`with-velox-auth_test.sh`, `operations/inspect_media_asset.sh`,
+`operations/certify_media_registry_qdrant.sh`, `overlay-cert/`, `core/`, and
+the former `bridges/*` + `tools/*` families beyond the two listed above.
+Admin credential rotation is manual (see `AGENTS.md`, § Authentication SSOT).
 
 ## Architecture Note
 

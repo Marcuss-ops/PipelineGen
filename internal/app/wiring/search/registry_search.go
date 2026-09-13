@@ -10,7 +10,6 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
 )
 
@@ -34,7 +33,7 @@ func SelectMediaSearchStore(cfg *config.Config, pg *sql.DB, log *zap.Logger) (as
 // registerSearchBackend is called only after provider bootstrap and freeze.
 // There is intentionally no extra-provider parameter or late-registration
 // escape hatch.
-func Build(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
+func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -50,14 +49,14 @@ func Build(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets
 	}
 	// MEDIA-SSOT P1-6: when the canonical media read repository is the
 	// PostgreSQL MediaSearcher, the local/hash/keyword backend reads the same
-	// SSOT. The legacy SQLite ClipsRepo backend is only used when the media
-	// plane is intentionally disabled.
+	// SSOT. There is no SQLite fallback: a non-PostgreSQL local store simply
+	// leaves the local media capability unregistered (fail-closed).
 	var localStore PostgresLocalSearchPort
 	if ls, ok := mediaRepo.(PostgresLocalSearchPort); ok {
 		localStore = ls
 	}
 	fanOut, backends, aggregator, err := BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
-		Logger: log, ProviderReg: providerReg, ClipsRepo: clipsRepo,
+		Logger: log, ProviderReg: providerReg,
 		Embeddings: embeddings, VectorStore: vectorStore, MediaRepo: mediaRepo,
 		Delivery: delivery, Reranker: reranker, CanonicalResolver: resolver,
 		MediaLocalStore: localStore,

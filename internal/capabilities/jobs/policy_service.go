@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -20,9 +19,18 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
+// AssetDetailsLookup is the consumer-owned detail lookup for the asset transfer
+// service. It is an interface rather than the concrete SQLite *detail.Service
+// so the PostgreSQL media SSOT store can serve it: PostgreSQL is the media
+// SSOT, and the SQLite service is selected only in the documented
+// media-disabled degrade mode.
+type AssetDetailsLookup interface {
+	Get(ctx context.Context, id string) (*asset.Details, error)
+}
+
 type AssetTransferServiceImpl struct {
 	assetIndex    *assetindex.Service
-	querySvc      *detail.Service
+	querySvc      AssetDetailsLookup
 	imagesRepo    *imagesrepo.ImagesRepository
 	voiceoverRepo *sqliteassets.VoiceoversRepository
 	uploadRoot    string
@@ -50,11 +58,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewAssetTransferService(assetIndex *assetindex.Service, querySvc *detail.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
+func NewAssetTransferService(assetIndex *assetindex.Service, querySvc AssetDetailsLookup, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
 	return NewAssetTransferServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *detail.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
+func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc AssetDetailsLookup, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}

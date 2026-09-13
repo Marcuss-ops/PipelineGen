@@ -49,6 +49,12 @@ type MediaAssetRecord struct {
 	FolderPath     string
 	CreatedAt      string
 	MetadataJSON   string
+	// SearchTerms is the JSON-encoded keyword array (media_assets.search_terms)
+	// and ReviewStatus the governance column; both are part of the admin
+	// console's editable surface, so the canonical read model must carry them
+	// or a read-modify-write would silently drop them.
+	SearchTerms  string
+	ReviewStatus string
 
 	// metadata is the lazily-decoded metadata_json object. It backs the typed
 	// accessors so callers never re-implement key knowledge.
@@ -188,7 +194,8 @@ const mediaAssetReadColumns = `
 	COALESCE(NULLIF(binary_sha256, ''), NULLIF(content_sha256, ''), legacy_file_md5),
 	COALESCE(NULLIF(thumbnail_url, ''), thumb_url),
 	source_url, source_provider, source_video_id, youtube_video_id,
-	start_ms, end_ms, folder_id, parent_folder_id, folder_path, created_at, metadata_json
+	start_ms, end_ms, folder_id, parent_folder_id, folder_path, created_at, metadata_json,
+	search_terms, review_status
 `
 
 type mediaAssetScanner interface {
@@ -206,7 +213,7 @@ func scanMediaAssetRecord(row mediaAssetScanner) (*MediaAssetRecord, error) {
 		&rec.SHA256, &rec.ThumbnailURL,
 		&rec.SourceURL, &rec.SourceProvider, &rec.SourceVideoID, &rec.YouTubeVideoID,
 		&rec.StartMS, &rec.EndMS, &rec.FolderID, &rec.ParentFolderID, &rec.FolderPath, &rec.CreatedAt,
-		&rec.MetadataJSON,
+		&rec.MetadataJSON, &rec.SearchTerms, &rec.ReviewStatus,
 	); err != nil {
 		return nil, err
 	}

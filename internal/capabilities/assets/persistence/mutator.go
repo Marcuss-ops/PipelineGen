@@ -12,9 +12,19 @@ import (
 type AssetPatch struct {
 	AssetID string
 
-	Name                *string
-	Category            *string
-	Group               *string
+	Name     *string
+	Category *string
+	Group    *string
+
+	// Tags is the JSON-encoded canonical tag array (media_assets.tags). When
+	// set, the writer derives media_assets.tags_norm in the SAME statement so
+	// the lexical tag projection can never drift from the tag array.
+	Tags *string
+	// SearchTerms is the JSON-encoded keyword array (media_assets.search_terms)
+	// consumed by the local lexical search predicate.
+	SearchTerms *string
+	// ReviewStatus is the governance review state column.
+	ReviewStatus        *string
 	FolderID            *string
 	FolderPath          *string
 	DeletedAt           *string

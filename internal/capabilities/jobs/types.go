@@ -193,6 +193,13 @@ type RunnerConfig struct {
 	LeaseTTL  time.Duration
 	JobTypes  []string
 
+	// PayloadMatch optionally scopes every worker in this runner to the jobs of
+	// JobTypes whose payload carries the listed key=value pairs
+	// (kernel/job.PayloadMatch). Empty = the historical unscoped runner. It is
+	// how the in-process pool can ALSO be split by phase (e.g. only
+	// render_phase=settle) without a second job type.
+	PayloadMatch jobs.PayloadMatch
+
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): exponential-backoff
 	// subsumed into the config; null-valued here means the Worker
 	// uses the legacy fixed-poll behaviour (no backoff escalation).

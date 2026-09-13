@@ -77,7 +77,6 @@ func TestBuildSearchBackends_PrefersPostgresLocalStore(t *testing.T) {
 	reg, err := BuildSearchBackends(SearchBackendBuildOpts{
 		Logger:          zap.NewNop(),
 		MediaLocalStore: &fakeLocalStore{},
-		ClipsRepo:       nil,
 	})
 	if err != nil {
 		t.Fatalf("BuildSearchBackends: %v", err)
@@ -94,5 +93,23 @@ func TestBuildSearchBackends_PrefersPostgresLocalStore(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected a local backend to be registered")
+	}
+}
+
+// TestBuildSearchBackends_FailsClosedWithoutPostgresLocalStore pins MEDIA-SSOT
+// P1-6: when the PostgreSQL local media store is unavailable the local media
+// capability must NOT be registered from any other source. The retired legacy
+// SQLite backend (which read media_assets through sqassets.ClipsRepository)
+// would have answered local/hash/keyword queries from a mirror that a
+// PostgreSQL media write can never update — a read split-brain.
+func TestBuildSearchBackends_FailsClosedWithoutPostgresLocalStore(t *testing.T) {
+	reg, err := BuildSearchBackends(SearchBackendBuildOpts{Logger: zap.NewNop()})
+	if err != nil {
+		t.Fatalf("BuildSearchBackends: %v", err)
+	}
+	for _, b := range reg.All() {
+		if b.Name() == "local" {
+			t.Fatalf("local media backend %T must not be registered without the PostgreSQL local store", b)
+		}
 	}
 }

@@ -39,25 +39,35 @@ import (
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 
 	"go.uber.org/zap"
 )
 
-// assetServiceLookupAdapter wraps detail.Service to satisfy the
-// drive.AssetStoreLookup interface needed by LocationVerifier
-// for deep Drive+SQLite cross-reference.
-type assetServiceLookupAdapter struct {
-	svc *detail.Service
+// pgMediaAssetLookupAdapter satisfies drive.AssetStoreLookup against the
+// PostgreSQL media SSOT. It is the ONLY deep LocationVerifier cross-reference.
+//
+// A SQLite-backed sibling (assetServiceLookupAdapter, wrapping detail.Service)
+// was deleted on 2026-09-13: RequireMediaPostgres states that an enabled media
+// plane "means PostgreSQL is mandatory ... There is no SQLite/Qdrant
+// fallback", so a second deep verifier reading the SQLite mirror re-introduced
+// the split-brain this cutover removed — a PostgreSQL-committed asset looked
+// like an orphan to it. With a closed media plane the processor falls through
+// to the explicit Drive-only shallow verifier instead of a stale catalog.
+type pgMediaAssetLookupAdapter struct {
+	reader *pgmedia.MediaSearcher
 }
 
-func (a *assetServiceLookupAdapter) GetAsset(
+func (a *pgMediaAssetLookupAdapter) GetAsset(
 	ctx context.Context, assetID string,
 ) (*asset.Details, error) {
-	return a.svc.Get(ctx, assetID)
+	if a == nil || a.reader == nil {
+		return nil, fmt.Errorf("asset lookup: postgres media reader not wired")
+	}
+	return a.reader.GetAssetDetails(ctx, assetID)
 }
 
 // registerScriptPostProcessors initialises and registers every
@@ -224,20 +234,24 @@ func registerScriptPostProcessors(
 	// BestEffort policy: transport errors become warnings, link
 	// integrity is best-effort.
 	//
-	// When SQLite (detail.Service) is available, the processor uses
-	// the deep LocationVerifier which cross-references Drive API
-	// results against the asset store to detect ORPHAN_DRIVE_FILE,
+	// When the media SSOT is open, the processor uses the deep
+	// LocationVerifier, which cross-references Drive API results against
+	// PostgreSQL media_assets to detect ORPHAN_DRIVE_FILE,
 	// BROKEN_ASSET_LOCATION, and DUPLICATE states.
 	//
-	// When SQLite is unavailable, it falls back to the lighter
+	// When it is closed, it falls back to the lighter
 	// AssetLocationResolverAdapter (Drive-only: MISSING, TRASHED,
-	// INACCESSIBLE, VERIFIED, UPDATED).
+	// INACCESSIBLE, VERIFIED, UPDATED) — the ONLY second mode, because a
+	// SQLite-backed deep verifier would cross-reference a different catalog.
 	if root != nil && root.Drive != nil && root.Drive.Reader != nil {
 		var verifier scriptpkg.AssetLocationVerifier
-		if root.Repos != nil && root.Repos.Assets != nil {
-			adapter := &assetServiceLookupAdapter{svc: root.Repos.Assets}
+		if root.MediaPostgres != nil {
+			// MEDIA-SSOT: media facts live in PostgreSQL, so the deep verifier
+			// cross-references Drive against the media SSOT — never against the
+			// SQLite mirror (a PostgreSQL-committed asset looked like an orphan).
+			adapter := &pgMediaAssetLookupAdapter{reader: pgmedia.NewMediaSearcher(root.MediaPostgres)}
 			verifier = drive.NewLocationVerifier(root.Drive.Reader, adapter)
-			log.Info("AssetLocationReconciliationProcessor (BestEffort, deep: Drive+SQLite) successfully registered")
+			log.Info("AssetLocationReconciliationProcessor (BestEffort, deep: Drive+PostgreSQL) successfully registered")
 		} else {
 			verifier = drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
 			log.Info("AssetLocationReconciliationProcessor (BestEffort, shallow: Drive-only) successfully registered")

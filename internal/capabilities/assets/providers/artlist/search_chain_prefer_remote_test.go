@@ -398,11 +398,17 @@ func TestSearchLive_PreferRemoteTrue_InvokesScraper_EvenWithRealDBHits(t *testin
 			},
 		}
 
+		// MEDIA-SSOT P1-5 (September 2026): the production
+		// `NewSQLiteSearcher(s.assetStore)` fallback in buildSearcherChain was
+		// deleted, so the local catalog searcher is an explicit injection here
+		// exactly as the composition root does it (there it is the
+		// PostgreSQL-backed searcher; these fixtures are SQLite-backed).
 		svc, err := NewSearchService(
 			&Service{
 				cfg:             cfg,
 				log:             logger,
 				assetStore:      artlistRepo,
+				localSearcher:   NewDBSearcher(artlistRepo),
 				scraperSearcher: scraper,
 				liveCache:       newLiveSearchCache(),
 				searchStrategy:  StrategyArtlistOnly,
