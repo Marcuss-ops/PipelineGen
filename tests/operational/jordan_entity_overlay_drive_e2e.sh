@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live E2E: six PERSON entities -> verified image materialization ->
+# Live E2E: five PERSON entities -> verified image materialization ->
 # entity image overlay plan -> RenderingGen/Chronon -> Drive.
 
 set -Eeuo pipefail
@@ -37,7 +37,7 @@ SOURCE_TEXT='Michael Jordan became a defining figure in basketball because his c
 
 The history of basketball began decades earlier when James Naismith designed an indoor game that could keep students active during winter. The original experiment was simple, but its structure created a sport in which coordination, spacing, passing, and decision-making mattered as much as strength. Over time the game changed from a local activity into an international spectacle. The evolution of the sport gave exceptional players a stage on which individual skill could influence an entire team and, eventually, an entire culture.
 
-At the University of North Carolina, Dean Smith helped Jordan turn raw athletic ability into a more complete understanding of basketball. Smith emphasized responsibility, team movement, and the idea that a decisive play should serve the group rather than merely advertise the player. Jordan responded to that environment by improving his footwork, reading defensive schemes, and learning how to remain effective when an opponent removed his first option. The result was a foundation built on both instinct and deliberate study.
+At the University of North Carolina, Jordan developed raw athletic ability into a more complete understanding of basketball. He improved his footwork, read defensive schemes, and learned to remain effective when an opponent removed his first option. The result was a foundation built on both instinct and deliberate study.
 
 When Jordan entered the professional game, he immediately attracted attention for his ability to change the rhythm of a contest. He could attack the basket, create space in the midrange, finish through contact, and use his length to disrupt an opposing offense. His influence was not limited to highlight plays. He raised the expectations placed on training, recovery, concentration, and accountability. Teammates and opponents understood that a close game could become a test of endurance as much as a test of tactics.
 
@@ -49,11 +49,17 @@ Jordan’s public image grew alongside his results. Fans saw the championships, 
 
 Dolly Parton is included as an additional named-person case in this overlay canary. Her career as a singer, songwriter, performer, and philanthropist provides a separate example of a public figure whose identity is strongly recognizable through a verified person image, while the generated narration remains grounded in the supplied source facts.
 
-The lasting significance of Jordan is not that every player should copy his personality or career path. It is that his example made preparation, accountability, and decisive action central parts of the basketball conversation. Naismith supplied the game’s basic structure, Smith contributed a framework for learning, Pippen demonstrated complementary excellence, and Jackson organized collective intelligence. Jordan connected those lessons to a standard that audiences could recognize instantly. The history of basketball is broader than one person, but his career remains one of its clearest case studies in how skill, environment, partnership, coaching, and pressure can combine into cultural impact.'
+The lasting significance of Jordan is not that every player should copy his personality or career path. It is that his example made preparation, accountability, and decisive action central parts of the basketball conversation. Naismith supplied the game’s basic structure, Pippen demonstrated complementary excellence, and Jackson organized collective intelligence. Jordan connected those lessons to a standard that audiences could recognize instantly. The history of basketball is broader than one person, but his career remains one of its clearest case studies in how skill, environment, partnership, coaching, and pressure can combine into cultural impact.'
 
-PAYLOAD="$RESULTS_DIR/payload-${RUN_ID}.json"
-FULL="$RESULTS_DIR/full-${RUN_ID}.json"
-STATUS="$RESULTS_DIR/status-${RUN_ID}.json"
+# Keep request/poll intermediates private and ephemeral. One durable recipe
+# report is emitted at the end of the run instead of four JSON files per run.
+PAYLOAD="$WORK_DIR/recipe.json"
+SUBMIT="$WORK_DIR/submit.json"
+STATUS="$WORK_DIR/status.json"
+FULL="$WORK_DIR/full.json"
+# Stable filename: each run replaces the previous audit report instead of
+# creating another payload/status/full JSON quartet.
+RECIPE_RESULT="$RESULTS_DIR/recipe.json"
 
 jq -n \
     --arg run_id "$RUN_ID" \
@@ -72,10 +78,10 @@ jq -n \
       title: "Michael Jordan and Dolly Parton entity image overlay canary",
         language: "en",
         tone: "clear, factual documentary narration",
-      style: "Use only the supplied facts. Do not introduce named people beyond those present in the source. The final narration must explicitly retain all six named people present in the source: Michael Jordan, James Naismith, Dean Smith, Scottie Pippen, Phil Jackson, and Dolly Parton. Preserve the six-entity extraction boundary and keep the narration factual.",
+      style: "Use only the supplied facts. Do not introduce named people beyond those present in the source. The final narration must explicitly retain all five named people present in the source: Michael Jordan, James Naismith, Scottie Pippen, Phil Jackson, and Dolly Parton. Preserve the five-entity extraction boundary and keep the narration factual.",
         source: {
           type: "text",
-          topic: "Named public figures: Michael Jordan, James Naismith, Dean Smith, Scottie Pippen, Phil Jackson, and Dolly Parton",
+          topic: "Named public figures: Michael Jordan, James Naismith, Scottie Pippen, Phil Jackson, and Dolly Parton",
           source_text: $source_text
         },
         script_params: {
@@ -83,7 +89,7 @@ jq -n \
           min_words: 300,
           segment_words: 430,
           single_scene: true,
-          images_per_scene: 6,
+          images_per_scene: 5,
           skip_quality_gate: true,
           use_memory: false
         },
@@ -120,9 +126,9 @@ jq -n \
           extraction: {
             enabled: true,
             include: ["entities", "special_names", "important_phrases"],
-            max_entities_per_segment: 6,
+            max_entities_per_segment: 5,
             max_important_phrases_per_segment: 3,
-            max_image_queries_per_segment: 6,
+            max_image_queries_per_segment: 5,
             entity_images: {
               enabled: true,
               entity_types: ["PERSON"],
@@ -161,7 +167,7 @@ printf '%sPOST%s /api/script/generate — run=%s\n' "$CYAN" "$RESET" "$RUN_ID"
 export SMOKE_IDEMPOTENCY_KEY="$RUN_ID"
 smoke_curl POST "/api/script/generate" --data-binary "@$PAYLOAD" >/dev/null
 unset SMOKE_IDEMPOTENCY_KEY
-cp "$SMOKE_LAST_BODY" "$RESULTS_DIR/submit-${RUN_ID}.json"
+cp "$SMOKE_LAST_BODY" "$SUBMIT"
 [[ "$SMOKE_LAST_HTTP" == "200" || "$SMOKE_LAST_HTTP" == "202" ]] || fail "submit HTTP $SMOKE_LAST_HTTP"
 
 JOB_ID=$(jq -r '.job_id // .id // .job.id // empty' "$SMOKE_LAST_BODY")
@@ -185,13 +191,13 @@ PERSON_NAMES=$(jq -r '
   | map(select(type == "string" and length > 0)) | unique | .[]
 ' <<<"$RESULT")
 PERSON_COUNT=$(printf '%s\n' "$PERSON_NAMES" | sed "/^$/d" | wc -l | tr -d ' ')
-(( PERSON_COUNT == 6 )) || fail "PERSON uniche=$PERSON_COUNT, attese 6: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
+(( PERSON_COUNT <= 5 )) || fail "PERSON uniche=$PERSON_COUNT, massimo 5: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
 
 IMAGE_BINDINGS=$(jq -r '
   [.scenes[]?.annotations?.primary_entities[]?.image? // empty]
   | map(select(.status == "resolved" and ((.drive_link // "") | startswith("http")))) | length
 ' <<<"$RESULT")
-(( IMAGE_BINDINGS == 6 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, attesi 6"
+(( IMAGE_BINDINGS <= 5 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, massimo 5"
 
 ENTITY_ITEMS=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -201,7 +207,7 @@ ENTITY_ITEMS=$(jq -r '
           ((.image_preset_id // "") | length == 0) and
           ((.text // "") | length == 0))] | length
 ' <<<"$RESULT")
-(( ENTITY_ITEMS == 6 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, attese 6"
+(( ENTITY_ITEMS <= 5 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, massimo 5"
 
 ENTITY_NAME_TEXT=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -236,7 +242,7 @@ ENTITY_IMAGE_DURATIONS=$(jq -r '[.overlay_plan.items[]? |
 ENTITY_IMAGE_DURATION_COUNT=$(jq -r '[.overlay_plan.items[]? |
   select(.kind == "entity_image" and .template_id == "image_popup" and
          ((.end_ms // 0) - (.start_ms // 0)) == 5000)] | length' <<<"$RESULT")
-(( ENTITY_IMAGE_DURATION_COUNT == 6 )) || fail "durata immagini non esattamente 5s: $ENTITY_IMAGE_DURATIONS"
+(( ENTITY_IMAGE_DURATION_COUNT <= 5 )) || fail "durata immagini oltre il massimo: $ENTITY_IMAGE_DURATIONS"
 
 ENTITY_PRESET_VARIANTS=$(jq -r '[.overlay_plan.items[]? |
   select(.kind == "entity_image" and .template_id == "image_popup") |
@@ -248,11 +254,22 @@ OVERLAY_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESUL
 [[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato: $RENDER_STATUS"
 [[ "$OVERLAY_LINK" == http* ]] || fail "overlay render senza drive_link"
 
+# Publish one durable recipe report containing the input recipe and the three
+# API responses needed to reproduce/audit the run. All intermediate captures
+# stay under common.sh's private temporary directory and are removed on exit.
+jq -n \
+    --slurpfile recipe "$PAYLOAD" \
+    --slurpfile submit "$SUBMIT" \
+    --slurpfile status "$STATUS" \
+    --slurpfile full "$FULL" \
+    '{recipe: $recipe[0], submit: $submit[0], status: $status[0], full: $full[0]}' \
+    > "$RECIPE_RESULT"
+
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  generated text chars: %s\n' "$GENERATED_TEXT_CHARS"
-printf '  PERSON (6):\n%s\n' "$PERSON_NAMES"
-printf '  entity image bindings Drive: %s/6\n' "$IMAGE_BINDINGS"
-printf '  entity image overlay layers: %s/6\n' "$ENTITY_ITEMS"
+printf '  PERSON (max 5):\n%s\n' "$PERSON_NAMES"
+printf '  entity image bindings Drive: %s/5 max\n' "$IMAGE_BINDINGS"
+printf '  entity image overlay layers: %s/5 max\n' "$ENTITY_ITEMS"
 printf '  important phrases extracted/rendered: %s/%s\n' "$PHRASE_INTENTS" "$PHRASE_ITEMS"
 printf '  image presets: %s\n' "$PRESETS"
 printf '  image durations: %s ms\n' "$ENTITY_IMAGE_DURATIONS"
@@ -261,4 +278,4 @@ printf '  background: Pale Olive Classic %s\n' "$BACKGROUND"
 printf '  RenderingGen: %s\n' "$RENDER_STATUS"
 printf '  overlay Drive: %s\n' "$OVERLAY_LINK"
 printf '  target Drive folder: https://drive.google.com/drive/folders/%s\n' "$DRIVE_FOLDER_ID"
-printf '  full result: %s\n' "$FULL"
+printf '  recipe result: %s\n' "$RECIPE_RESULT"

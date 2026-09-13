@@ -21,6 +21,11 @@ import (
 	"strings"
 )
 
+// MaxEntityImageOverlaysPerRun is the hard run-level ceiling for identity
+// image overlays. Per-scene budgets are useful for local density, but they
+// must not allow a long script to expand into dozens of image renders.
+const MaxEntityImageOverlaysPerRun = 5
+
 // VisualBudget caps how many visual overlays a scene may carry. A cap of 0
 // means "unlimited" (no cap for that dimension); a positive cap is enforced.
 type VisualBudget struct {

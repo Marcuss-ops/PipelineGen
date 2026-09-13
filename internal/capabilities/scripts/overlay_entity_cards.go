@@ -175,6 +175,38 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	return item
 }
 
+// capEntityImageOverlays keeps at most max distinct identity-image overlays in
+// one run. Items are already in canonical timeline order, so retaining the
+// first occurrence is deterministic and preserves the earliest spoken
+// identities. Later occurrences of a retained identity do not consume a
+// second image slot.
+func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int) []capabilityoverlay.OverlayItem {
+	if max <= 0 || len(items) == 0 {
+		return items
+	}
+	seen := make(map[string]struct{}, max)
+	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	for _, item := range items {
+		if item.Kind != string(capabilityoverlay.KindEntityImage) {
+			out = append(out, item)
+			continue
+		}
+		identity := strings.TrimSpace(item.EntityID)
+		if identity == "" {
+			identity = strings.TrimSpace(item.ID)
+		}
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		if len(seen) >= max {
+			continue
+		}
+		seen[identity] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
 // imageCandidate projects an entity image binding onto the planner's
 // ImageCandidate, anchored at the certified occurrence start. Entity images
 // use the same fixed five-second display window as PERSON/ORG/GPE image cards;

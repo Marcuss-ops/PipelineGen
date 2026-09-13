@@ -316,6 +316,11 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 			items = append(items, item)
 		}
 	}
+	// The scene budget is intentionally local, so enforce the separate
+	// run-level identity-image ceiling before sealing the render plan. This
+	// prevents a long script with many scenes from producing one image render
+	// for every extracted person.
+	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
 	if len(items) == 0 {
 		return nil, nil
 	}
