@@ -29,6 +29,14 @@ type TimingSummary struct {
 	// measured by the runtime at claim. It is the canonical per-job answer to
 	// "how long did this clip sit in the queue before a worker picked it up".
 	QueueWaitMs int64 `json:"queue_wait_ms,omitempty"`
+	// CoreReadyMs is the wall offset at which the certified render, the
+	// published final audio and the canonical script row became durable — the
+	// CORE_READY boundary. It is projected here so that a STORED run is
+	// auditable without a log grep: WallMs - CoreReadyMs is the
+	// post-processing tail (Docs + artifact finalization) that the boundary
+	// exists to expose. Zero means the boundary was not reached (no deferred
+	// work, or the core contract did not hold).
+	CoreReadyMs int64 `json:"core_ready_ms,omitempty"`
 	// AttributedMs is the sum of top-level (exclusive/sequential) stage
 	// wall times.
 	AttributedMs int64 `json:"attributed_ms"`
@@ -105,6 +113,7 @@ func (r *RunReport) timingSummaryWithWall(wallMs int64) TimingSummary {
 		WallMs:              wallMs,
 		ExecutionWallMs:     wallMs,
 		QueueWaitMs:         nonNegative(r.QueueWaitMs),
+		CoreReadyMs:         nonNegative(r.KPIs.CoreReadyMs),
 		AttributedMs:        bd.AttributedStageMs,
 		UnattributedMs:      bd.UnattributedMs,
 		UnattributedPercent: bd.UnattributedPercent,

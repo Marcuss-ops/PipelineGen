@@ -14,7 +14,13 @@ func ResolveRenderPlan(req RenderRequest) (RenderRequest, error) {
 	resolved := req
 	resolved.Transitions = append([]RenderTransition(nil), req.Transitions...)
 	resolved.EffectPaths = append([]RenderEffectPath(nil), req.EffectPaths...)
-	if !req.NoTransitions && len(resolved.Transitions) == 0 && req.TransitionEvery > 0 {
+	// A transition is an effect at a boundary BETWEEN two clips. With fewer
+	// than two inputs there is no boundary, so auto-selecting one would
+	// manufacture a phantom transition the canonical render plan cannot
+	// express (Rust render_stock consumes a sealed render_plan and supports
+	// trim/scale/fps/concat only). The stock compose step renders one cut
+	// clip per call, so this keeps its default request plan-expressible.
+	if !req.NoTransitions && len(resolved.Transitions) == 0 && req.TransitionEvery > 0 && len(req.InputPaths) > 1 {
 		for index := range req.InputPaths {
 			if (index+1)%req.TransitionEvery == 0 {
 				resolved.Transitions = append(resolved.Transitions, RenderTransition{ClipIndex: index, Segment: "end", ID: stockTransitionIDs[((index+1)/req.TransitionEvery-1)%len(stockTransitionIDs)]})

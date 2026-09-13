@@ -4,7 +4,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -74,7 +74,7 @@ func RunSyncOutros(args []string) error {
 
 		// Sync this base folder to clip_folders
 		if *apply {
-			err := upsertFolderToDB(ctx, root.DB.DB, folder.ID, folder.Name, "outro", "outro", "")
+			err := upsertFolderToDB(ctx, root, folder.ID, folder.Name, "outro", "outro", "")
 			if err != nil {
 				log.Error("failed to upsert base folder to DB", zap.String("folder", folder.Name), zap.Error(err))
 			} else {
@@ -125,7 +125,7 @@ func RunSyncOutros(args []string) error {
 
 			// Sync language folder to DB
 			if *apply && langFolderID != "" {
-				err := upsertFolderToDB(ctx, root.DB.DB, langFolderID, folder.Name+"_"+lang, "outro", folder.Name, lang)
+				err := upsertFolderToDB(ctx, root, langFolderID, folder.Name+"_"+lang, "outro", folder.Name, lang)
 				if err != nil {
 					log.Error("failed to upsert language folder to DB", zap.String("lang", lang), zap.Error(err))
 				} else {
@@ -164,9 +164,20 @@ func RunSyncOutros(args []string) error {
 	return nil
 }
 
-func upsertFolderToDB(ctx context.Context, db *sql.DB, folderID, path, source, groupName, lang string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	id := "clipfolder_outro_" + folderID
+// upsertFolderToDB writes a clip folder through the canonical folder
+// repository. MEDIA-SSOT (POSTGRES-MEDIA-CUTOVER): the raw `clip_folders`
+// INSERT OR REPLACE is gone — the repository owns the operational row AND
+// mirrors it into the PostgreSQL folder projection, so the catalog-sync
+// folder list (which reads PostgreSQL) sees this folder.
+//
+// The canonical writer derives search_key from (group + folder_path) rather
+// than the ad-hoc `lang` value the legacy statement stored; the canonical
+// derivation is the SSOT and is shared with every other folder writer.
+func upsertFolderToDB(ctx context.Context, root *wiring.ComposeRoot, folderID, path, source, groupName, lang string) error {
+	if root == nil || root.Repos == nil || root.Repos.ClipsRepo == nil {
+		return fmt.Errorf("sync-outros: canonical clips repository is required")
+	}
+	now := time.Now().UTC()
 	meta := map[string]any{
 		"is_folder": true,
 	}
@@ -175,16 +186,16 @@ func upsertFolderToDB(ctx context.Context, db *sql.DB, folderID, path, source, g
 	}
 	metaJSON, _ := json.Marshal(meta)
 
-	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO clip_folders
-			(id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name,
-			 manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count,
-			 skipped_count, last_error, metadata, created_at, updated_at, search_key)
-		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, source, "", "", folderID, path, "", groupName, "", "", 0, 0, 0, 0, "", string(metaJSON), now, now, lang,
-	)
-	return err
+	return root.Repos.ClipsRepo.UpsertFolder(ctx, &detail.ClipFolder{
+		ID:         "clipfolder_outro_" + folderID,
+		Source:     source,
+		FolderID:   folderID,
+		FolderPath: path,
+		Group:      groupName,
+		Metadata:   string(metaJSON),
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
 }
 
 func upsertFileToDB(ctx context.Context, root *wiring.ComposeRoot, fileID, name, groupName, lang, driveLink, downloadLink string) error {

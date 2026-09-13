@@ -28,6 +28,52 @@ func TestResolveRenderPlanSelectsExplicitTransitionsAndEffectPaths(t *testing.T)
 	}
 }
 
+// TestResolveRenderPlanSingleInputHasNoAutoTransitions pins that a single
+// input clip never manufactures a transition: a transition is an effect at a
+// boundary BETWEEN two clips, and the canonical render_stock plan cannot
+// express one. The default stock compose call renders one cut clip, so this
+// keeps its request plan-expressible instead of failing closed in Rust.
+func TestResolveRenderPlanSingleInputHasNoAutoTransitions(t *testing.T) {
+	resolved, err := ResolveRenderPlan(RenderRequest{InputPaths: []string{"one.mp4"}, TransitionEvery: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Transitions) != 0 {
+		t.Fatalf("single input must not auto-select transitions: %+v", resolved.Transitions)
+	}
+	if !resolved.NoTransitions {
+		t.Fatal("single input must resolve to NoTransitions=true")
+	}
+}
+
+// TestResolveRenderPlanDefaultComposeIsPlanExpressible pins the stock compose
+// step's DEFAULT request (no operator no-effects/no-transitions override,
+// TransitionEvery=1, the canonical effects directory + effect interval) as
+// plan-expressible: one cut clip per call has no internal boundary, so the
+// resolver must produce zero transitions and zero effect paths. This is the
+// exact shape that previously failed with
+// "render_stock requires a canonical render_plan" / "unresolved render plan".
+func TestResolveRenderPlanDefaultComposeIsPlanExpressible(t *testing.T) {
+	canonical := DefaultPipelineConfig()
+	resolved, err := ResolveRenderPlan(RenderRequest{
+		InputPaths:      []string{"cut-0.mp4"},
+		OutputPath:      "/tmp/stock_composed_0.mp4",
+		TransitionEvery: 1,
+		EffectsDir:      canonical.EffectsDir,
+		EffectEvery:     canonical.EffectInterval,
+		EffectIndexHint: 0,
+	})
+	if err != nil {
+		t.Fatalf("default compose request must resolve without error: %v", err)
+	}
+	if len(resolved.Transitions) != 0 || len(resolved.EffectPaths) != 0 {
+		t.Fatalf("default compose request must resolve to zero transitions/effects: %+v", resolved)
+	}
+	if !resolved.NoTransitions || !resolved.NoEffects {
+		t.Fatalf("default compose request must resolve to NoTransitions+NoEffects: %+v", resolved)
+	}
+}
+
 func TestResolveRenderPlanRejectsUnreadableEffectDirectory(t *testing.T) {
 	_, err := ResolveRenderPlan(RenderRequest{InputPaths: []string{"one.mp4"}, EffectsDir: filepath.Join(t.TempDir(), "missing"), EffectEvery: 1})
 	if err == nil {

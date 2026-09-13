@@ -178,29 +178,6 @@ func TestMuxFinalAudioCopyRejectsIncompatibleAsset(t *testing.T) {
 	}
 }
 
-func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_stock"}`)}
-	client := NewClient("muscles", "ffmpeg", nil)
-	client.runner = runner
-	renderer := &StockRenderer{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	_, err := renderer.Render(context.Background(), stockpipeline.RenderRequest{
-		InputPaths: []string{"a.mp4", "b.mp4"}, OutputPath: "out.mp4",
-		Codec: "h264_nvenc", Preset: "p1", CRF: 23, Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-		Transitions: []stockpipeline.RenderTransition{{ClipIndex: 1, Segment: "end", ID: "fadeblack"}},
-		EffectPaths: []stockpipeline.RenderEffectPath{{ClipIndex: 1, Path: "/effects/a.mp4"}}, ClipDurationSec: 5,
-	})
-	if err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-	var sent request
-	if err := json.Unmarshal(runner.input, &sent); err != nil {
-		t.Fatalf("decode request: %v", err)
-	}
-	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Transitions) != 1 || sent.Transitions[0].ID != "fadeblack" || len(sent.EffectPaths) != 1 || sent.EffectPaths[0].Path != "/effects/a.mp4" {
-		t.Fatalf("unexpected render request: %+v", sent)
-	}
-}
-
 func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	out := t.TempDir() + "/clip.mp4"
 	if err := os.WriteFile(out, []byte("clip"), 0o600); err != nil {

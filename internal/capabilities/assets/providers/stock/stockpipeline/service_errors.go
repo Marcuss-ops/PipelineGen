@@ -41,8 +41,6 @@ var (
 	// methods) was dropped entirely (override brutal). Every Drive
 	// write from the stock pipeline now routes through
 	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
-	ErrStockPipelineNilClipsRepo     = errors.New("NewProductionStockPipeline: storage.ClipsRepo is required (production path)")
-	ErrStockPipelineNilAssetIndex    = errors.New("NewProductionStockPipeline: storage.AssetIndex is required (production path)")
 	ErrStockPipelineNilDispatcher    = errors.New("NewProductionStockPipeline: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
 	ErrStockPipelineNilCutter        = errors.New("NewProductionStockPipeline: media.Cutter is required (PR6 port)")
 	ErrStockPipelineNilRenderer      = errors.New("NewProductionStockPipeline: media.Renderer is required (PR6 port)")

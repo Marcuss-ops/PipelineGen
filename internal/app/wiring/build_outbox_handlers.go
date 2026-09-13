@@ -32,6 +32,7 @@ import (
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -322,6 +323,159 @@ func registerPostgresMediaOutboxHandlers(
 		}
 	}
 	log.Info("PostgreSQL media outbox Drive delivery handlers registered")
+	return nil
+}
+
+// sqliteOutboxHandler is the shared surface of the capability-owned outbox
+// handlers (declared here, Pattern 0 consumer side, so the composition root can
+// bridge any of them onto the PostgreSQL worker and the adapters stay
+// unit-testable without a live Drive stack). Production concretes:
+// *jobsoutbox.DriveDeleteHandler, *jobsoutbox.IndexDeleteHandler.
+type sqliteOutboxHandler interface {
+	Handle(ctx context.Context, evt outboxevents.Event) error
+}
+
+// pgOutboxHandlerAdapter bridges a capability-owned (SQLite-shaped)
+// outboxevents.Handler onto the PostgreSQL media outbox worker.
+//
+// MEDIA-SSOT (September 2026, audit finding #3): the deletion saga is a MEDIA
+// fact. Once PostgresMediaCommitter stamps a saga event into the PostgreSQL
+// outbox, the PostgreSQL worker is the agent that must drain it — the SQLite
+// registration can never see that row. Without this adapter every PG-emitted
+// saga event dead-letters with "no handler registered for event type".
+type pgOutboxHandlerAdapter struct {
+	handler sqliteOutboxHandler
+}
+
+// Handle maps the PostgreSQL claim envelope onto the canonical SQLite
+// outboxevents.Event shape the capability handler consumes. The two engines
+// share one event fact family, so the mapping is total and lossless for every
+// field the handler reads.
+func (h pgOutboxHandlerAdapter) Handle(ctx context.Context, claim *pgmedia.OutboxClaim) error {
+	if claim == nil {
+		return fmt.Errorf("postgres outbox handler adapter: nil outbox claim")
+	}
+	if h.handler == nil {
+		return fmt.Errorf("postgres outbox handler adapter: handler is not wired")
+	}
+	evt := claim.Event
+	return h.handler.Handle(ctx, outboxevents.Event{
+		ID:            evt.ID,
+		EventType:     evt.EventType,
+		AggregateID:   evt.AggregateID,
+		AggregateType: evt.AggregateType,
+		PayloadJSON:   evt.PayloadJSON,
+		Status:        evt.Status,
+		AttemptCount:  evt.AttemptCount,
+		MaxAttempts:   evt.MaxAttempts,
+		LastError:     evt.LastError,
+		EventKey:      evt.EventKey,
+		CreatedAt:     evt.CreatedAt,
+		UpdatedAt:     evt.UpdatedAt,
+		Priority:      evt.Priority,
+	})
+}
+
+// pgMediaAssetDeleter adapts the PostgreSQL media SSOT to the jobs.AssetDeleter
+// port consumed by the index-delete hop of the deletion saga. Binding the port
+// here (rather than letting the SQLite ClipsRepository serve the PostgreSQL
+// outbox) is what keeps the terminal lifecycle/index-state stamps on the media
+// SSOT instead of the quarantined SQLite mirror.
+type pgMediaAssetDeleter struct {
+	committer *pgmedia.PostgresMediaCommitter
+}
+
+var _ jobsoutbox.AssetDeleter = pgMediaAssetDeleter{}
+
+func (a pgMediaAssetDeleter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
+	return a.committer.GetClip(ctx, id)
+}
+
+func (a pgMediaAssetDeleter) SoftDelete(ctx context.Context, id string) error {
+	return a.committer.SoftDeleteAsset(ctx, id)
+}
+
+func (a pgMediaAssetDeleter) SetIndexState(ctx context.Context, id string, state asset.IndexState) error {
+	return a.committer.SetIndexState(ctx, id, state, "")
+}
+
+func (a pgMediaAssetDeleter) SetLifecycleState(ctx context.Context, id string, state asset.LifecycleState) error {
+	return a.committer.SetLifecycleState(ctx, id, state)
+}
+
+// pgMediaVectorPointDeleter adapts the pgvector media index surface to the
+// jobs.VectorPointDeleter port. The port name is legacy (Qdrant era); binding
+// it to the PostgreSQL media plane is precisely what keeps the media index
+// deletion OFF Qdrant in PostgreSQL mode (Qdrant media writes are forbidden).
+type pgMediaVectorPointDeleter struct {
+	committer *pgmedia.PostgresMediaCommitter
+}
+
+var _ jobsoutbox.VectorPointDeleter = pgMediaVectorPointDeleter{}
+
+// DeleteAssetPoints removes the assets' pgvector index rows. Idempotent: a
+// missing row is success, never a 404 analogue.
+func (d pgMediaVectorPointDeleter) DeleteAssetPoints(ctx context.Context, assetIDs []string) error {
+	return d.committer.DeleteAssetIndexPoints(ctx, assetIDs)
+}
+
+// registerPostgresDeleteSagaHandlers registers BOTH hops of the deletion saga
+// on the PostgreSQL media outbox worker. In PostgreSQL media mode the canonical
+// committer writes the saga events there, so the PG worker must drain them:
+//
+//	asset.drive.delete_requested → Drive Trash/Delete → AdvanceAndEmit
+//	asset.index.delete_requested → pgvector retire + lifecycle DELETED
+//
+// The second hop is emitted by the FIRST hop's AdvanceAndEmit into this same
+// outbox, so registering only the Drive hop left every asset stuck at
+// INDEX_DELETE_PENDING. The SQLite registrations (jobs.RegisterOptionalHandlers)
+// stay for the legacy/non-PG plane, which is the only producer there.
+func registerPostgresDeleteSagaHandlers(
+	worker *pgmedia.PostgresIndexWorker,
+	canonicalWriter assetspersistence.CanonicalAssetWriter,
+	deps jobsoutbox.DriveDeleteDeps,
+	log *zap.Logger,
+) error {
+	if worker == nil {
+		return nil
+	}
+	if deps.DriveDeleteHandler == nil || deps.DrivePatchLifecycle == nil ||
+		deps.DrivePatchLifecycleW == nil || deps.DrivePatchStateAdv == nil {
+		log.Warn("PostgreSQL delete-saga handler NOT wired (incomplete DriveDeleteDeps) — asset.drive.delete_requested events will dead-letter on the PostgreSQL outbox")
+		return nil
+	}
+	handler := jobsoutbox.NewDriveDeleteHandler(
+		log, deps.DriveDeleteHandler, deps.DrivePatchLifecycle, deps.DrivePatchLifecycleW, deps.DrivePatchStateAdv,
+	)
+	if err := worker.RegisterHandler(jobsoutbox.DriveDeleteEventType, pgOutboxHandlerAdapter{handler: handler}); err != nil {
+		return fmt.Errorf("register PostgreSQL drive-delete handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox delete-saga handler registered: asset.drive.delete_requested → Drive Trash/Delete → AdvanceAndEmit")
+
+	committer, _ := canonicalWriter.(*pgmedia.PostgresMediaCommitter)
+	if committer == nil {
+		log.Warn("PostgreSQL index-delete handler NOT wired (canonical media committer unavailable) — asset.index.delete_requested events will dead-letter on the PostgreSQL outbox")
+		return nil
+	}
+	indexHandler := jobsoutbox.NewIndexDeleteHandler(
+		log,
+		pgMediaVectorPointDeleter{committer: committer},
+		pgMediaAssetDeleter{committer: committer},
+	)
+	if err := worker.RegisterHandler(outboxevents.EventAssetIndexDeleteRequested, pgOutboxHandlerAdapter{handler: indexHandler}); err != nil {
+		return fmt.Errorf("register PostgreSQL index-delete handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox index-delete handler registered: asset.index.delete_requested → pgvector retire + lifecycle DELETED")
+
+	// Restore hop. The producer (EnqueueAndRestore) stamps index_state=DISCOVERED
+	// and documents "outbox handler re-indexes from scratch" — until this
+	// registration existed that event had no consumer on any engine, so every
+	// restore dead-lettered and the asset never returned to the index.
+	restoreHandler := jobsoutbox.NewIndexRestoreHandler(log, committer)
+	if err := worker.RegisterHandler(outboxevents.EventAssetIndexRestoreRequested, pgOutboxHandlerAdapter{handler: restoreHandler}); err != nil {
+		return fmt.Errorf("register PostgreSQL index-restore handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox index-restore handler registered: asset.index.restore_requested → re-emit asset.index.requested")
 	return nil
 }
 

@@ -478,7 +478,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		log.Warn("wireScriptFlow: localized render fan-out not wired (localization service unavailable)", zap.Error(err))
 		return
 	}
-	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, resolverErr := newClipRenderMediaResolver(root, log)
 	if resolverErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset resolver unavailable)", zap.Error(resolverErr))
 		return

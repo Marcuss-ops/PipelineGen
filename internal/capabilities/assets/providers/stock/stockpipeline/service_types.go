@@ -81,17 +81,21 @@ type RuntimeConfig struct {
 	PolicyVersion    string
 }
 
-// StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
+// StorageDeps groups the canonical media write surface.
 // P8 (July 2026): narrowed to narrow interfaces so service.go has zero
-// internal/infrastructure imports. Concrete types (*assets.ClipsRepository,
-// *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
-// structurally at the composition root.
+// internal/infrastructure imports. The concrete *outbox.Dispatcher satisfies
+// the port structurally at the composition root.
 //
 // BatchRepository is required by the production composition root so batch,
 // group and artifact state is durable.
+//
+// WAVE 6 + WAVE 9 (September 2026): ClipsRepo and AssetIndex are REMOVED. Both
+// were operational SQLite media mirrors (`assets.ClipsRepository` and the
+// `asset_index` mini-registry) that the media SSOT cutover superseded: the
+// canonical commit already persists media_assets.search_text and the index
+// intent travels in the media outbox. Requiring them forced the stock pipeline
+// to hold a second, dissenting view of the media domain.
 type StorageDeps struct {
-	ClipsRepo       stockClipsSearchTermUpdater
-	AssetIndex      stockAssetIndexUpserter
 	Dispatcher      stockChunkDispatcher
 	BatchRepository StockBatchRepository
 }

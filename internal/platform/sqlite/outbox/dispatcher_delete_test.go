@@ -134,7 +134,7 @@ func TestEnqueueDriveDelete_StampsDELETE_REQUESTEDAndEmitsV1Envelope(t *testing.
 	insertRow(t, db, "asset_xyz", "ACTIVE", originalUpdatedAt)
 
 	beforeCall := time.Now().UTC()
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	const assetID = "asset_xyz"
 	if err := d.EnqueueDriveDelete(context.Background(), assetID, false); err != nil {
 		t.Fatalf("EnqueueDriveDelete: %v", err)
@@ -217,7 +217,7 @@ func TestEnqueueDriveDelete_PermanentlyTrueVerifiesKeyDistinction(t *testing.T) 
 	minimalMediaAssetsFixture(t, db)
 	insertRow(t, db, "asset_perm", "ACTIVE", "2000-01-01T00:00:00Z")
 
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	if err := d.EnqueueDriveDelete(context.Background(), "asset_perm", true); err != nil {
 		t.Fatalf("EnqueueDriveDelete permanently=true: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestEnqueueDriveDelete_StampsUpdatedAtOnLifecycleFlip(t *testing.T) {
 	originalUpdatedAt := "2020-01-01T00:00:00Z"
 	insertRow(t, db, "asset_old", "ACTIVE", originalUpdatedAt)
 
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	if err := d.EnqueueDriveDelete(context.Background(), "asset_old", false); err != nil {
 		t.Fatalf("EnqueueDriveDelete: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestEnqueueDriveDelete_SkipsAlreadyInFlightRow(t *testing.T) {
 			originalUpdatedAt := "2024-01-01T00:00:00Z"
 			insertRow(t, db, "asset_inflight", preExisting, originalUpdatedAt)
 
-			d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+			d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 			if err := d.EnqueueDriveDelete(context.Background(), "asset_inflight", false); err != nil {
 				t.Fatalf("EnqueueDriveDelete on pre-existing %s row: %v", preExisting, err)
 			}
@@ -325,7 +325,7 @@ func TestEnqueueDriveDelete_StampsRowInActiveStateBumps(t *testing.T) {
 	originalUpdatedAt := "2024-01-01T00:00:00Z"
 	insertRow(t, db, "asset_active", "ACTIVE", originalUpdatedAt)
 
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	if err := d.EnqueueDriveDelete(context.Background(), "asset_active", false); err != nil {
 		t.Fatalf("EnqueueDriveDelete: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestEnqueueDriveDelete_NilPointerRejected(t *testing.T) {
 
 // TestEnqueueDriveDelete_NilTxMgrRejected.
 func TestEnqueueDriveDelete_NilTxMgrRejected(t *testing.T) {
-	d := &Dispatcher{clips: &fakeClips{}, stateWriter: &fakeClips{}, outboxEventsRepo: nil}
+	d := &Dispatcher{outboxEventsRepo: &noopOutboxEventsRepo{}}
 	if err := d.EnqueueDriveDelete(context.Background(), "x", false); err == nil {
 		t.Fatal("nil txmgr must return error before tx is opened")
 	}
@@ -362,7 +362,7 @@ func TestEnqueueDriveDelete_NilTxMgrRejected(t *testing.T) {
 
 // TestEnqueueDriveDelete_NilOutboxEventsRejected.
 func TestEnqueueDriveDelete_NilOutboxEventsRejected(t *testing.T) {
-	d := &Dispatcher{clips: &fakeClips{}, stateWriter: &fakeClips{}, txmgr: txMgrNoop{}, outboxEventsRepo: nil}
+	d := NewDispatcher(nil, txMgrNoop{}, zap.NewNop(), nil)
 	if err := d.EnqueueDriveDelete(context.Background(), "x", false); err == nil {
 		t.Fatal("nil outboxEventsRepo must return error before tx is opened")
 	}
@@ -370,7 +370,7 @@ func TestEnqueueDriveDelete_NilOutboxEventsRejected(t *testing.T) {
 
 // TestEnqueueDriveDelete_EmptyAssetIDRejected.
 func TestEnqueueDriveDelete_EmptyAssetIDRejected(t *testing.T) {
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, nil, txMgrNoop{}, zap.NewNop())
+	d := NewDispatcher(nil, txMgrNoop{}, zap.NewNop(), nil)
 	if err := d.EnqueueDriveDelete(context.Background(), "", false); err == nil {
 		t.Fatal("empty assetID must return error before tx is opened")
 	}
@@ -390,7 +390,7 @@ func TestEnqueueAndDelete_ShimIsTrashRoute(t *testing.T) {
 	minimalMediaAssetsFixture(t, db)
 	insertRow(t, db, "asset_shim", "ACTIVE", "2000-01-01T00:00:00Z")
 
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	if err := d.EnqueueAndDelete(context.Background(), "asset_shim"); err != nil {
 		t.Fatalf("EnqueueAndDelete: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestEnqueueIndexDelete_StampsUpdatedAtWithoutStateFlip(t *testing.T) {
 	insertRow(t, db, assetID, preExistingState, originalUpdatedAt)
 
 	beforeCall := time.Now().UTC()
-	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 	if err := d.EnqueueIndexDelete(context.Background(), assetID); err != nil {
 		t.Fatalf("EnqueueIndexDelete: %v", err)
 	}
@@ -554,7 +554,7 @@ func TestEnqueueIndexDelete_PreservesLifecycleStateAcrossAllMidChainStates(t *te
 			insertRow(t, db, "asset_inflight", preExisting, originalUpdatedAt)
 
 			beforeCall := time.Now().UTC()
-			d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+			d := NewDispatcher(outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop(), nil)
 			if err := d.EnqueueIndexDelete(context.Background(), "asset_inflight"); err != nil {
 				t.Fatalf("EnqueueIndexDelete on pre-existing %s row: %v", preExisting, err)
 			}

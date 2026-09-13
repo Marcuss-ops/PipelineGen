@@ -35,7 +35,11 @@ func loadMediaexecGolden(t *testing.T, name string) mediaexecGolden {
 }
 
 func TestMediaexecV1SharedGoldens(t *testing.T) {
-	for _, name := range []string{"probe", "cut_batch", "render_stock", "normalize"} {
+	// render_stock no longer has a golden here: the operation consumes a
+	// sealed render_plan (validated in stock_renderer_plan_test.go and the
+	// real Rust e2e suite), and the legacy transitions/effect_paths
+	// envelope it used to encode was deleted with the migration.
+	for _, name := range []string{"probe", "cut_batch", "normalize"} {
 		t.Run(name, func(t *testing.T) {
 			fixture := loadMediaexecGolden(t, name)
 			if fixture.Request.Version != ProtocolVersion {
@@ -67,15 +71,6 @@ func TestMediaexecV1SharedGoldens(t *testing.T) {
 				job, item := fixture.Request.Jobs[0], fixture.Response.Items[0]
 				if job.JobID != "clip-001" || item.JobID != job.JobID || job.OutputPath != item.OutputPath || item.Status != "validated" || item.SizeBytes != 123456 || item.DurationSec != 5 {
 					t.Fatalf("cut_batch fixture drift: job=%+v item=%+v", job, item)
-				}
-			case "render_stock":
-				if len(fixture.Request.InputPaths) != 2 || len(fixture.Request.Transitions) != 1 || len(fixture.Request.EffectPaths) != 1 {
-					t.Fatalf("render_stock fixture must contain two inputs, one transition, and one effect path")
-				}
-				transition := fixture.Request.Transitions[0]
-				effect := fixture.Request.EffectPaths[0]
-				if transition.ClipIndex != 1 || transition.Segment != "end" || transition.ID != "fadeblack" || effect.ClipIndex != 1 || effect.Path != "/fixtures/effect-001.mp4" {
-					t.Fatalf("render_stock fixture drift: inputs=%v transition=%+v effect=%+v", fixture.Request.InputPaths, transition, effect)
 				}
 			case "normalize":
 				if fixture.Request.SourcePath != "/fixtures/input.mp4" || fixture.Request.OutputPath != "/fixtures/normalized.mp4" || fixture.Request.Codec != "h264_nvenc" || fixture.Request.Preset != "p1" || fixture.Request.CRF != 23 || fixture.Request.Width != 1920 || fixture.Request.Height != 1080 || fixture.Request.FPSNum != 24 || fixture.Request.FPSDen != 1 || fixture.Request.KeyframeInterval != 48 || fixture.Request.AudioCodec != "aac" || fixture.Request.AudioBitrate != "128k" || fixture.Request.SampleRate != 48000 || fixture.Request.Channels != 2 || !fixture.Request.KeepAudio {

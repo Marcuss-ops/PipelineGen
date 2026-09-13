@@ -15,7 +15,6 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 )
 
 // chooseDriveReader adapts the canonical DriveReader field to the
@@ -62,23 +61,9 @@ func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string
 	return out, nil
 }
 
-// stockAssetIndexAdapter wraps *assetindex.Service and adapts its Upsert
-// method from *assetindex.AssetRecord to *stockpipeline.StockAssetUpsertRecord,
-// keeping the application layer free of internal/platform/sqlite/assetindex
-// imports (godlike/06 import-boundary discipline).
-type stockAssetIndexAdapter struct {
-	inner *assetindex.Service
-}
-
-func (a *stockAssetIndexAdapter) Upsert(ctx context.Context, rec *stockpipeline.StockAssetUpsertRecord) error {
-	if a == nil || a.inner == nil {
-		return fmt.Errorf("stock asset index: adapter is not wired")
-	}
-	if rec == nil {
-		return fmt.Errorf("stock asset index: record is nil")
-	}
-	return a.inner.Upsert(ctx, &assetindex.AssetRecord{AssetID: rec.AssetID})
-}
+// WAVE 6 + WAVE 9 (September 2026): the `asset_index` import-boundary shim is
+// DELETED with the rest of the asset-index media plane. Stock commits through
+// the canonical dispatcher, so there is no second registry to adapt.
 
 // stockAsyncProjectionAdapter represents the durable asynchronous
 // projection handoff. The publish writer has already committed each

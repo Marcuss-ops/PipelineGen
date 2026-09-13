@@ -10,10 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -274,9 +272,6 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 	if d.txmgr == nil {
 		return errors.New("Dispatcher: txmgr not configured")
 	}
-	if d.canonicalWriter == nil && d.stateWriter == nil {
-		return errors.New("Dispatcher: CanonicalAssetWriter is required for EnqueueAndRestore")
-	}
 	if d.outboxEventsRepo == nil {
 		return errors.New("Dispatcher: outbox events repo not configured")
 	}
@@ -284,50 +279,13 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 		return errors.New("Dispatcher.EnqueueAndRestore: assetID is required")
 	}
 
-	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if d.canonicalWriter != nil {
-			if err := d.canonicalWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
-				return fmt.Errorf("dispatcher restore: canonical SetIndexStateTx=DISCOVERED %s: %w", assetID, err)
-			}
-		} else if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
-			return fmt.Errorf("dispatcher restore: legacy SetIndexStateTx=DISCOVERED %s: %w", assetID, err)
-		}
-
-		eventID := uuid.NewString()
-		eventKey := fmt.Sprintf("restore:%s", assetID)
-		payload := restoreRequestV1{
-			SchemaVersion:  "asset.index.restore_requested.v1",
-			EventID:        eventID,
-			AssetID:        assetID,
-			Operation:      "RESTORE",
-			IdempotencyKey: eventKey,
-			RequestedAt:    timeutil.FormatRFC3339(time.Now()),
-		}
-		if payload.IdempotencyKey != eventKey {
-			return fmt.Errorf("dispatcher: restore payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
-		}
-		payloadJSON, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("dispatcher marshal v1 restore payload %s: %w", assetID, err)
-		}
-
-		if _, err := d.outboxEventsRepo.Enqueue(
-			ctx, tx,
-			outboxevents.EventAssetIndexRestoreRequested,
-			assetID,
-			"media_asset",
-			string(payloadJSON),
-			eventKey,
-		); err != nil {
-			return fmt.Errorf("dispatcher enqueue outbox restore event %s: %w", assetID, err)
-		}
-
-		if d.log != nil {
-			d.log.Debug("dispatcher enqueued asset for outbox_events restoration (v1 envelope)",
-				zap.String("asset_id", assetID),
-				zap.String("outbox_event_id", eventID),
-			)
-		}
-		return nil
-	})
+	// MEDIA-SSOT (September 2026): restoring a media asset is a MEDIA
+	// mutation. It must commit the index_state flip AND the
+	// `asset.index.restore_requested` event on the PostgreSQL media SSOT in
+	// one PostgreSQL transaction. The SQLite dispatcher no longer holds — and
+	// can no longer accept — a media writer that would let it stamp
+	// media_assets from a SQLite transaction. Producers reach the canonical
+	// saga through registry.NewPGMediaSagaDispatcher (see
+	// pgmedia.PostgresMediaCommitter.EnqueueAndRestore).
+	return ErrMediaRestoreRequiresPostgresSaga
 }

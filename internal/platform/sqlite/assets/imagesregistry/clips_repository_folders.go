@@ -130,7 +130,20 @@ func (r *ClipsRepository) UpsertDriveFolder(ctx context.Context, attrs DriveFold
 		attrs.FolderPath, attrs.GroupName, attrs.CreatedAt, attrs.UpdatedAt,
 		strings.ToLower(strings.ReplaceAll(attrs.Source+attrs.FolderPath, " ", "")),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	// MEDIA-SSOT: mirror the INSERT OR IGNORE into the PostgreSQL projection.
+	// InsertFolderIfAbsent preserves the ignore-on-conflict semantics so the
+	// resolver never clobbers the aggregate counters of a known folder.
+	return r.mirrorFolderInsertIfAbsent(ctx, &detail.ClipFolder{
+		ID:         attrs.FolderID,
+		Source:     attrs.Source,
+		SourceURL:  attrs.SourceURL,
+		FolderID:   attrs.FolderID,
+		FolderPath: attrs.FolderPath,
+		Group:      attrs.GroupName,
+	})
 }
 
 // StreamAssetIDs pages through `SELECT id FROM media_assets LIMIT ? OFFSET ?`

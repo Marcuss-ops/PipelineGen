@@ -2,6 +2,7 @@
 // path/dir exemptions shared by the asset-commit scanner family:
 //
 //   - percheck_media_assets_writer_canonical
+//   - percheck_clip_folders_writer_canonical
 //   - percheck_asset_committer_event_ssot
 //   - percheck_indexed_state_writer_ssot
 //
@@ -145,6 +146,38 @@ func IsCanonicalMediaWriter(relPath string) bool {
 		return true
 	}
 	for _, prefix := range CanonicalMediaWriterPackagePrefixes {
+		if strings.HasPrefix(relPath, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// CanonicalClipFolderWriterPackagePrefixes lists the packages that ARE the
+// clip_folders write SSOT (MEDIA-SSOT folder projection, September 2026).
+//
+// There are exactly two:
+//
+//   - internal/platform/postgres/media/ — the PostgreSQL projection owner
+//     (FolderRepository), the read source for catalog sync;
+//   - internal/platform/sqlite/assets/imagesregistry/ — the operational
+//     writer, which owns the local row and mirrors every mutation into the
+//     projection through the FolderProjection port.
+//
+// Ownership is by PACKAGE, not by filename, for the same reason as the
+// media_assets fence: a new file inside either package is a canonical writer
+// by construction, while a re-introduced raw `clip_folders` write anywhere
+// else (cmd/admin operator tools, ad-hoc repositories) is a violation.
+var CanonicalClipFolderWriterPackagePrefixes = []string{
+	"internal/platform/postgres/media/",
+	"internal/platform/sqlite/assets/imagesregistry/",
+}
+
+// IsCanonicalClipFolderWriter reports whether a repo-relative path is a
+// canonical clip_folders writer. SINGLE owner of that decision; the
+// percheck_clip_folders_writer_canonical scanner composes it.
+func IsCanonicalClipFolderWriter(relPath string) bool {
+	for _, prefix := range CanonicalClipFolderWriterPackagePrefixes {
 		if strings.HasPrefix(relPath, prefix) {
 			return true
 		}

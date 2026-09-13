@@ -22,21 +22,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// ── CanonicalAssetWriter: dispatcher-facing tx-bound mutations ──────────
+// ── Internal tx-bound helpers ───────────────────────────────────────────
+//
+// MEDIA-SSOT (September 2026): these helpers are package-private. They run on
+// a transaction THIS package opened on the media SSOT, so no cross-engine
+// caller can obtain them. That is what makes the
+// SQLite-transaction-into-PostgreSQL-writer defect unrepresentable instead of
+// merely discouraged: the canonical write boundary
+// (persistence.CanonicalAssetWriter) exposes self-owned entry points only.
 
-// UpsertClipTx is the canonical transaction-bound clip mutation. The caller
-// owns the transaction and remains responsible for emitting the matching
-// outbox event before committing it.
-func (c *PostgresMediaCommitter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
-	if c == nil {
-		return fmt.Errorf("canonical clip writer: media committer is unavailable")
-	}
-	return commitClipTxThroughCanonical(ctx, tx, clip, c)
-}
-
-// SetIndexStateTx is the canonical transaction-bound index-state mutation.
-// It deliberately uses the exact *sql.Tx supplied by the dispatcher.
-func (c *PostgresMediaCommitter) SetIndexStateTx(ctx context.Context, tx *sql.Tx, assetID string, state asset.IndexState) error {
+// setIndexStateTx is the transaction-bound index-state mutation used by the
+// delete/restore saga.
+func (c *PostgresMediaCommitter) setIndexStateTx(ctx context.Context, tx *sql.Tx, assetID string, state asset.IndexState) error {
 	if c == nil || c.assets == nil {
 		return fmt.Errorf("canonical clip writer: asset committer is unavailable")
 	}
@@ -435,108 +432,7 @@ func canonicalDrivePrimary(ctx context.Context, tx *sql.Tx, assetID string) (boo
 	return count == 0, nil
 }
 
-// ── Dispatcher clip mapping (SQLite mirror: clips_transactions.go) ──────
-
-// commitClipTxThroughCanonical maps the domain asset to the canonical
-// persistence request and routes it through the injected AssetCommitter.
-func commitClipTxThroughCanonical(ctx context.Context, tx *sql.Tx, clip *asset.Asset, committer persistence.AssetCommitter) error {
-	if clip == nil {
-		return fmt.Errorf("upsert clip: asset is required")
-	}
-	if tx == nil {
-		return fmt.Errorf("upsert clip: transaction is required")
-	}
-	if committer == nil {
-		return fmt.Errorf("upsert clip: canonical AssetCommitter is required")
-	}
-	req, err := canonicalClipCommitRequest(clip)
-	if err != nil {
-		return err
-	}
-	if _, err := committer.CommitTx(ctx, tx, req); err != nil {
-		return fmt.Errorf("upsert clip %s through canonical writer: %w", clip.ID, err)
-	}
-	return nil
-}
-
-func canonicalClipCommitRequest(clip *asset.Asset) (persistence.CommitRequest, error) {
-	if clip.SourceURL != "" && clip.MetadataSourceURL() == "" {
-		clip.SetMetadataSourceURL(clip.SourceURL)
-	}
-	taxonomy, err := resolveClipTaxonomy(clip)
-	if err != nil {
-		return persistence.CommitRequest{}, err
-	}
-	contentHash := clip.LegacyFileMD5()
-	if contentHash == "" {
-		contentHash = clip.ContentHash()
-	}
-	filename := clip.Filename
-	if filename == "" {
-		filename = clip.ID + ".asset"
-	}
-	name := clip.Name
-	if name == "" {
-		name = clip.ID
-	}
-	mediaType := string(clip.MediaType)
-	if mediaType == "" || mediaType == "clip" {
-		mediaType = "video"
-	}
-	lifecycle := string(clip.LifecycleState)
-	if lifecycle == "" {
-		lifecycle = string(asset.StateActive)
-	}
-	metadata := persistence.TypedMetadata{
-		Title: clip.Title(), Description: clip.Description(),
-		SourceVersion:  clip.GetMetadataString("source_version"),
-		SourceProvider: clip.MetadataSourceProvider(), SourceVideoID: clip.MetadataSourceVideoID(),
-		Tags: append([]string(nil), clip.Tags...), Category: clip.Category, Extra: clip.Metadata,
-	}
-	if metadata.Title == "" {
-		metadata.Title = name
-	}
-	if metadata.SourceVersion == "" {
-		metadata.SourceVersion = contentHash
-	}
-	return persistence.CommitRequest{
-		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
-		MediaType: mediaType, Category: clip.Category, GroupName: clip.Group,
-		DurationMs: clip.Duration.Milliseconds(), ContentHash: contentHash,
-		Description: clip.Description(), SearchText: clip.SearchText, LifecycleState: lifecycle,
-		IndexState: clip.GetMetadataString("index_state"), LocalPath: clip.LocalPath(),
-		FolderID: clip.FolderID(), FolderPath: clip.FolderPath(), ThumbnailURL: clip.ThumbnailURL,
-		SourceURL: clip.SourceURL, Title: metadata.Title,
-		SourceProvider: clip.MetadataSourceProvider(), SourceVideoID: clip.MetadataSourceVideoID(),
-		StartMs: int64(asset.MetadataFloat(clip.Metadata, "start_sec") * 1000),
-		EndMs:   int64(asset.MetadataFloat(clip.Metadata, "end_sec") * 1000), Metadata: metadata,
-		Taxonomy: taxonomy, Locations: clipLocationsForCanonicalCommit(clip, contentHash),
-		EmitIndexEvent: false,
-	}, nil
-}
-
-func clipLocationsForCanonicalCommit(clip *asset.Asset, contentHash string) []persistence.LocationCommit {
-	locations := make([]persistence.LocationCommit, 0, 2)
-	if localPath := clip.LocalPath(); localPath != "" {
-		locations = append(locations, persistence.LocationCommit{
-			Kind: "local", Provider: "local", URI: localPath,
-			MimeType: string(clip.MediaType), LegacyFileMD5: contentHash,
-		})
-	}
-	if fileID, link := clip.DriveFileID(), clip.DriveLink(); fileID != "" || link != "" {
-		uri := link
-		if fileID != "" {
-			uri = "drive://" + fileID
-		}
-		locations = append(locations, persistence.LocationCommit{
-			Kind: "drive", Provider: "drive", ExternalID: fileID,
-			URI: uri, WebViewLink: link, DownloadURL: clip.DownloadLink(),
-			MimeType: string(clip.MediaType), LegacyFileMD5: contentHash,
-			IsPrimary: true,
-		})
-	}
-	return locations
-}
+// ── Clip taxonomy resolution ────────────────────────────────────────────
 
 func resolveClipTaxonomy(clip *asset.Asset) (capregistry.AssetTaxonomy, error) {
 	mediaType := capregistry.MediaType(string(clip.MediaType))

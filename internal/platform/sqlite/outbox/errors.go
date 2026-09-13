@@ -1,9 +1,23 @@
 package outbox
 
 import (
+	"errors"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
+
+// ErrMediaRestoreRequiresPostgresSaga is the typed fail-closed sentinel
+// returned by Dispatcher.EnqueueAndRestore.
+//
+// MEDIA-SSOT (September 2026): a media restore is a MEDIA mutation and must
+// commit its index-state flip together with the
+// `asset.index.restore_requested` outbox event on the PostgreSQL media SSOT
+// in a single PostgreSQL transaction. The SQLite dispatcher holds no media
+// writer and must not fabricate the event on the operational outbox, so it
+// fails closed and points callers at the canonical
+// pgmedia.PostgresMediaCommitter saga.
+var ErrMediaRestoreRequiresPostgresSaga = errors.New("outbox.Dispatcher.EnqueueAndRestore: media restore is owned by the PostgreSQL media saga (pgmedia.PostgresMediaCommitter); the SQLite dispatcher cannot mutate the media SSOT")
 
 // ── Errors / Schema Constants ──────────────────────────────────────────
 

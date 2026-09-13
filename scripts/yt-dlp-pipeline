@@ -2,7 +2,7 @@
 # PipelineGen yt-dlp wrapper.
 #
 # This wrapper is the canonical YTDLP_PATH for the pipelinegen systemd
-# service. It fixes one runtime concern without owning YouTube policy:
+# service. It fixes two runtime concerns without owning YouTube policy:
 #
 #  JS runtime resolution: the systemd service runs with a restricted
 #     PATH that does not include the node/nvm binary dir. yt-dlp's
@@ -11,24 +11,49 @@
 #     prepends the node bin dir to PATH when node is not already resolvable,
 #     so the default --js-runtime node keeps working in the service context.
 #
+# Pin the runtime home before resolving anything. yt-dlp discovers BOTH its
+# user-site package (which carries the bgutil POT plugin) and the plugin
+# directory through $HOME. If the process is started with a different or empty
+# HOME (manual runs, cron, a future unit without User=-derived HOME), Python
+# silently falls back to the stale distro install under
+# /usr/local/lib/python3.10/dist-packages and reports
+# "PO Token Providers: none" — YouTube then answers 403 / "The page needs to
+# be reloaded" and every stock/YouTube download fails. Pin the known-good home
+# (override with PIPELINE_USER_HOME for non-default deployments).
+PIPELINE_USER_HOME="${PIPELINE_USER_HOME:-/home/pierone}"
+if [[ ! -d "$PIPELINE_USER_HOME" ]]; then
+  echo "yt-dlp-pipeline: PIPELINE_USER_HOME does not exist: $PIPELINE_USER_HOME" >&2
+  exit 127
+fi
+export HOME="$PIPELINE_USER_HOME"
+
 # Resolve the real yt-dlp binary. The pip user install
 # ($HOME/.local/bin/yt-dlp) carries the bgutil POT plugin and must win over
 # the distro /usr/local/bin/yt-dlp that the restricted systemd PATH would
 # otherwise resolve first.
 #   - YTDLP_REAL_BIN env override, if set
 #   - $HOME/.local/bin/yt-dlp (pip user install)
-#   - `command -v yt-dlp` (last resort)
+#   - `command -v yt-dlp` (last resort, refused below unless overridden)
 set -euo pipefail
 
+USER_BIN="$HOME/.local/bin/yt-dlp"
 REAL_BIN="${YTDLP_REAL_BIN:-}"
-if [[ -z "$REAL_BIN" && -x "$HOME/.local/bin/yt-dlp" ]]; then
-  REAL_BIN="$HOME/.local/bin/yt-dlp"
+if [[ -z "$REAL_BIN" && -x "$USER_BIN" ]]; then
+  REAL_BIN="$USER_BIN"
 fi
 if [[ -z "$REAL_BIN" ]]; then
   REAL_BIN="$(command -v yt-dlp 2>/dev/null || true)"
 fi
 if [[ -z "$REAL_BIN" || ! -x "$REAL_BIN" ]]; then
   echo "yt-dlp-pipeline: cannot locate the real yt-dlp binary" >&2
+  exit 127
+fi
+# Fail loud instead of silently running a yt-dlp that lacks the POT plugin:
+# the distro install has no plugin path, so downloads break in a way that is
+# only visible deep in a FAILED job. An explicit YTDLP_REAL_BIN override opts
+# out of this guard intentionally.
+if [[ -z "${YTDLP_REAL_BIN:-}" && "$REAL_BIN" != "$USER_BIN" ]]; then
+  echo "yt-dlp-pipeline: refusing silent fallback to '$REAL_BIN'; expected the pip user install at '$USER_BIN' (set YTDLP_REAL_BIN to override)" >&2
   exit 127
 fi
 

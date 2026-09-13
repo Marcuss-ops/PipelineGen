@@ -248,6 +248,13 @@ type PipelineKPIs struct {
 	// DocsPublishFinishedMs is the wall offset when the document publish
 	// phase completed.
 	DocsPublishFinishedMs int64 `json:"docs_publish_finished_ms"`
+	// CoreReadyMs is the wall offset when the certified render, the published
+	// final audio and the canonical script row became durable, leaving only
+	// the post-processing legs. It is the measured distance between "the
+	// rendering is usable" and "the job is terminal", which is exactly the
+	// tail the critical-path work is about. Zero means the boundary was not
+	// reached (no deferred work, or the core contract did not hold).
+	CoreReadyMs int64 `json:"core_ready_ms"`
 
 	// Invariants (computed at finish time)
 	InvariantRenderBeforeGenerateFinished bool `json:"invariant_render_before_generate_finished"`

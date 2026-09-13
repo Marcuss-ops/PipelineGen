@@ -191,6 +191,14 @@ type ScriptsConfig struct {
 	// over-schedules, it never oversubscribes the synthesizer.
 	TTSConcurrency int `yaml:"tts_concurrency" env:"VELOX_SCRIPTS_TTS_CONCURRENCY"`
 
+	// TranslationConcurrency bounds concurrent scene×language translation
+	// calls. It is the third pool of the SceneTextReady fan-out, independent
+	// from both script generation and TTS: a target language translates its
+	// own text and then synthesises, so translation has to be tunable on its
+	// own rather than living only in a Go constant. Default 4
+	// (scriptgeneration.DefaultTranslationConcurrency).
+	TranslationConcurrency int `yaml:"translation_concurrency" env:"VELOX_SCRIPTS_TRANSLATION_CONCURRENCY" default:"4"`
+
 	// SerialMode reproduces the pre-parallel "before" chain for controlled
 	// benchmarking: the VidRush/NLP branch completes blocking BEFORE TTS
 	// (entities → voiceover, never overlapping), and the NLP extraction + TTS
@@ -223,6 +231,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.ScriptGenerationConcurrency <= 0 {
 		s.ScriptGenerationConcurrency = 3
+	}
+	if s.TranslationConcurrency <= 0 {
+		s.TranslationConcurrency = 4
 	}
 	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
 	// the voiceover provider bound", resolved at the capability wiring

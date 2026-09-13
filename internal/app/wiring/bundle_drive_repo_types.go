@@ -3,13 +3,16 @@ package wiring
 import (
 	"database/sql"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -58,8 +61,19 @@ type RepoBundle struct {
 // MediaRepoBundle is the media SSOT bundle (PostgreSQL). It is the sole
 // owner of media-authoritative reads/writes (P1-7). Operational SQLite
 // surfaces stay in RepoBundle / other bundles.
+//
+// MEDIA-SSOT P1-7 (September 2026): the bundle exposes the canonical media
+// READER and IDENTITY resolver up front so consumers have a single, complete
+// place to look instead of reaching into the operational SQLite RepoBundle.
+// Writer is attached once the canonical committer exists (it is built by
+// BuildOutboxBundle, after this bundle).
 type MediaRepoBundle struct {
-	DB            *sql.DB
+	DB       *sql.DB
+	Reader   *pgmedia.MediaSearcher
+	Identity capregistry.CanonicalIdentityResolver
+	// Writer is the canonical media committer (pgmedia.PostgresMediaCommitter),
+	// attached after BuildOutboxBundle constructs it.
+	Writer        assetspersistence.CanonicalAssetWriter
 	TextTrackRepo detail.TextTrackRepository
 }
 
@@ -69,5 +83,12 @@ func NewMediaRepoBundle(pgDB *sql.DB, textTrackRepo detail.TextTrackRepository) 
 	if pgDB == nil {
 		return nil
 	}
-	return &MediaRepoBundle{DB: pgDB, TextTrackRepo: textTrackRepo}
+	bundle := &MediaRepoBundle{DB: pgDB, TextTrackRepo: textTrackRepo}
+	// The reader and identity resolver are derived from the same handle the
+	// committer writes, so reads and writes cannot drift onto two engines.
+	bundle.Reader = pgmedia.NewMediaSearcher(pgDB)
+	if identity, err := pgmedia.NewPostgresCanonicalIdentityResolver(pgDB); err == nil {
+		bundle.Identity = identity
+	}
+	return bundle
 }

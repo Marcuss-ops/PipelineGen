@@ -97,15 +97,21 @@ type WaitInfo struct {
 type OperationName string
 
 const (
-	OperationSearch      OperationName = "search"
-	OperationUpsert      OperationName = "upsert"
-	OperationUpload      OperationName = "upload"
-	OperationDownload    OperationName = "download"
-	OperationTranscode   OperationName = "transcode"
-	OperationCut         OperationName = "cut"
-	OperationNormalize   OperationName = "normalize"
-	OperationMerge       OperationName = "merge"
-	OperationGenerate    OperationName = "generate"
+	OperationSearch    OperationName = "search"
+	OperationUpsert    OperationName = "upsert"
+	OperationUpload    OperationName = "upload"
+	OperationDownload  OperationName = "download"
+	OperationTranscode OperationName = "transcode"
+	OperationCut       OperationName = "cut"
+	OperationNormalize OperationName = "normalize"
+	OperationMerge     OperationName = "merge"
+	OperationGenerate  OperationName = "generate"
+	// OperationWarm is the explicit model-residency warm-up probe. It is a
+	// distinct operation rather than a second OperationGenerate so the model
+	// load paid by the warm-up is visible as its own measured fact; folded
+	// into generate it became invisible stage-wall time that hid a cold start
+	// behind a warm-up which claimed to prevent one.
+	OperationWarm        OperationName = "warm"
 	OperationSynthesize  OperationName = "synthesize"
 	OperationTranscribe  OperationName = "transcribe"
 	OperationTransaction OperationName = "transaction"
@@ -166,7 +172,7 @@ func AllOperations() []OperationName {
 	return []OperationName{
 		OperationSearch, OperationUpsert, OperationUpload, OperationDownload,
 		OperationTranscode, OperationCut, OperationNormalize, OperationMerge,
-		OperationGenerate, OperationSynthesize, OperationTranscribe,
+		OperationGenerate, OperationWarm, OperationSynthesize, OperationTranscribe,
 		OperationTransaction, OperationIndex, OperationEmbed, OperationPublish,
 		OperationProbe, OperationFetch, OperationExtract, OperationResolve,
 		OperationEnrich, OperationVerify,

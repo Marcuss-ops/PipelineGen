@@ -35,8 +35,6 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 	sentinels := []error{
 		ErrStockPipelineNilCfg,
 		ErrStockPipelineNilLog,
-		ErrStockPipelineNilClipsRepo,
-		ErrStockPipelineNilAssetIndex,
 		ErrStockPipelineNilDispatcher,
 		ErrStockPipelineNilCutter,
 		ErrStockPipelineNilRenderer,
@@ -45,9 +43,12 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 		ErrStockPipelineNilLocalFS,
 		ErrStockPipelineNilFinalizer,
 	}
-	if got, want := len(sentinels), 11; got != want {
-		// 11 distinct sentinels today (ErrStockPipelineNilDB retired — DB no
-		// longer passed to NewProductionStockPipeline; step store is mandatory).
+	if got, want := len(sentinels), 9; got != want {
+		// 9 distinct sentinels today. Retired: ErrStockPipelineNilDB (DB is no
+		// longer passed) plus ErrStockPipelineNilClipsRepo and
+		// ErrStockPipelineNilAssetIndex (WAVE 6 + WAVE 9, September 2026 — the
+		// SQLite clips mirror and the asset_index mini-registry left the stock
+		// dependency surface; the canonical dispatcher is the only media dep).
 		t.Fatalf("sentinel count: got %d, want %d (a sentinel was accidentally added/removed; update this test byte-stable)", got, want)
 	}
 	for _, s := range sentinels {
@@ -114,7 +115,7 @@ func TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForMissingCfg(t *t
 // NewProductionStockPipeline MUST surface the EARLIEST missing dep as a typed
 // sentinel, NOT proceed past nil guards or fall through to a
 // downstream panic. The test populates only Cfg+Log so the
-// Storage.ClipsRepo check is the earliest that fires; a future
+// Storage.Dispatcher check is the earliest that fires; a future
 // "moved the Storage check below Media" regression would surface
 // here as either (a) a different sentinel (Media.Renderer or
 // Media.Cutter) or (b) a nil-pointer panic.
@@ -129,10 +130,10 @@ func TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForFirstMissingDep
 	}
 	_, err := NewProductionStockPipeline(deps)
 	if err == nil {
-		t.Fatalf("NewProductionStockPipeline(deps) with nil Storage.ClipsRepo: expected ErrStockPipelineNilClipsRepo, got nil")
+		t.Fatalf("NewProductionStockPipeline(deps) with nil Storage.Dispatcher: expected ErrStockPipelineNilDispatcher, got nil")
 	}
-	if !errors.Is(err, ErrStockPipelineNilClipsRepo) {
-		t.Errorf("NewProductionStockPipeline(deps) err = %v; want errors.Is(err, ErrStockPipelineNilClipsRepo) == true (validation ladder short-circuits at the earliest missing dep)", err)
+	if !errors.Is(err, ErrStockPipelineNilDispatcher) {
+		t.Errorf("NewProductionStockPipeline(deps) err = %v; want errors.Is(err, ErrStockPipelineNilDispatcher) == true (validation ladder short-circuits at the earliest missing dep)", err)
 	}
 }
 

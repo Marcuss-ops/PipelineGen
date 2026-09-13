@@ -142,11 +142,12 @@ func TestEnqueueAndDelete_EmitsV1Envelope(t *testing.T) {
 	db := memoryDB(t)
 	ensureOutboxSchema(t, db)
 
-	clips := &fakeClips{}
 	eventsRepo := outboxevents.NewRepository(db)
 	txMgr := &txMgrCapture{db: db}
 
-	d := NewDispatcher(clips, clips, eventsRepo, txMgr, zap.NewNop())
+	// The delete envelope path is operational (SQLite outbox + lifecycle
+	// stamp); it needs no media committer.
+	d := NewDispatcher(eventsRepo, txMgr, zap.NewNop(), nil)
 	const assetID = "asset_xyz"
 
 	// Seed a media_assets row — EnqueueDriveDelete UPDATEs an existing
@@ -242,12 +243,11 @@ func TestEnqueueAndDelete_AtomicWithSoftDelete(t *testing.T) {
 	// media_assets doesn't exist. The tx rolls back, so no durable
 	// write survives.
 
-	clips := &fakeClips{}
 	eventsRepo := outboxevents.NewRepository(db)
 	txMgr := &txMgrCapture{db: db}
 
 	const assetID = "asset_atomic_check"
-	d := NewDispatcher(clips, clips, eventsRepo, txMgr, zap.NewNop())
+	d := NewDispatcher(eventsRepo, txMgr, zap.NewNop(), nil)
 	err := d.EnqueueAndDelete(context.Background(), assetID)
 	if err == nil {
 		t.Fatal("expected EnqueueAndDelete to fail when media_assets table is missing")
@@ -284,31 +284,17 @@ func TestEnqueueAndDelete_AtomicWithSoftDelete(t *testing.T) {
 // TestEnqueueAndDelete_EmptyAssetIDRejected confirms the empty-assetID
 // guard runs BEFORE the tx is opened.
 func TestEnqueueAndDelete_EmptyAssetIDRejected(t *testing.T) {
-	clips := &fakeClips{}
-	d := NewDispatcher(clips, clips, nil, txMgrNoop{}, zap.NewNop())
+	d := NewDispatcher(nil, txMgrNoop{}, zap.NewNop(), nil)
 	err := d.EnqueueAndDelete(context.Background(), "")
 	if err == nil {
 		t.Fatal("empty assetID must return error before txmgr.InTransaction is reached")
-	}
-	if len(clips.stateLog) != 0 {
-		t.Errorf("empty assetID should NOT trigger SetIndexStateTx; got %d calls", len(clips.stateLog))
-	}
-}
-
-// TestEnqueueAndDelete_NilStateWriterRejected confirms the
-// ClipsStateWriter-nil guard runs BEFORE the tx is opened.
-func TestEnqueueAndDelete_NilStateWriterRejected(t *testing.T) {
-	d := NewDispatcher(&fakeClips{}, nil, nil, txMgrNoop{}, zap.NewNop())
-	err := d.EnqueueAndDelete(context.Background(), "asset_x")
-	if err == nil {
-		t.Fatal("nil state writer must return error before txmgr.InTransaction is reached")
 	}
 }
 
 // TestEnqueueAndDelete_NilOutboxEventsRejected confirms the
 // outbox-events-nil guard runs BEFORE the tx is opened.
 func TestEnqueueAndDelete_NilOutboxEventsRejected(t *testing.T) {
-	d := &Dispatcher{clips: &fakeClips{}, stateWriter: &fakeClips{}, txmgr: txMgrNoop{}, outboxEventsRepo: nil}
+	d := NewDispatcher(nil, txMgrNoop{}, zap.NewNop(), nil)
 	err := d.EnqueueAndDelete(context.Background(), "asset_y")
 	if err == nil {
 		t.Fatal("nil outboxEventsRepo must return error before tx is reached")
@@ -318,7 +304,7 @@ func TestEnqueueAndDelete_NilOutboxEventsRejected(t *testing.T) {
 // TestEnqueueAndDelete_NilTxMgrRejected confirms the txmgr-nil guard
 // runs BEFORE the column flip.
 func TestEnqueueAndDelete_NilTxMgrRejected(t *testing.T) {
-	d := &Dispatcher{clips: &fakeClips{}, stateWriter: &fakeClips{}, outboxEventsRepo: nil}
+	d := &Dispatcher{outboxEventsRepo: &noopOutboxEventsRepo{}}
 	err := d.EnqueueAndDelete(context.Background(), "asset_z")
 	if err == nil {
 		t.Fatal("nil txmgr must return error before any field access")

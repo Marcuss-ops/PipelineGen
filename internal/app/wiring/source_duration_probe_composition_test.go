@@ -115,7 +115,7 @@ func TestBuildStockBundle_WiresSourceDurationProbeIntoProductionService(t *testi
 			SourceProbe:     probe,
 			ClipsRepo:       clipsRepo,
 			AssetIndex:      assetIndexService,
-			Dispatcher:      outbox.NewDispatcher(nil, nil, nil, nil, log),
+			Dispatcher:      outbox.NewDispatcher(nil, nil, log, nil),
 			BatchRepository: batchRepo,
 		},
 		Media: StockMediaDeps{Cutter: compositionCutter{}, Renderer: compositionRenderer{}},

@@ -234,6 +234,10 @@ type Scene struct {
 	// verbatim in the document SpecScene; nil when no enrichment produced
 	// entities for this scene.
 	Annotations *scriptpkg.SceneAnnotations `json:"annotations,omitempty"`
+	// LocalizedAnnotations contains the same grounded semantic surface for
+	// each translated scene text. Annotations remains the source-language
+	// compatibility surface used by overlays and existing consumers.
+	LocalizedAnnotations map[Language]*scriptpkg.SceneAnnotations `json:"annotations_by_language,omitempty"`
 
 	// Entities is the canonical per-scene entity extraction result using the
 	// SAME EntityResult model as the document aggregate (persons / places /

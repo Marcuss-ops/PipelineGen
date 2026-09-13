@@ -1,11 +1,16 @@
 // Package stockpipeline — job_ports.go (PR-SPLIT-STOCK-PORTS, July 2026).
 //
 // Owns the job-side narrow infra ports used by the stock pipeline
-// (3 narrow Pattern 0 interfaces scoped to the methods the pipeline
+// (2 narrow Pattern 0 interfaces scoped to the methods the pipeline
 // actually invokes). Extracted from ports.go per godlike/06 SSOT
 // one-canonical-owner-per-fact: this file is the SOLE canonical owner
-// of stockAssetIndexUpserter + stockClipsSearchTermUpdater +
-// stockChunkDispatcher.
+// of stockChunkDispatcher.
+//
+// WAVE 9 (September 2026): the `clip_search_terms` updater port is GONE.
+// The canonical commit already persists `media_assets.search_text` (the
+// PostgreSQL search authority); a second inverted index maintained from
+// an operational SQLite table was a shadow media index and had to be
+// removed rather than synchronised.
 //
 // Each interface exposes only the methods the stock pipeline actually
 // calls, so test fakes satisfy them via Go's structural subtyping without
@@ -37,14 +42,6 @@ type StockAssetUpsertRecord struct {
 //nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type stockAssetIndexUpserter interface {
 	Upsert(ctx context.Context, rec *StockAssetUpsertRecord) error
-}
-
-// stockClipsSearchTermUpdater is the narrow surface the stock pipeline
-// uses from *assets.ClipsRepository. Only UpdateSearchTerms is invoked
-//
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-type stockClipsSearchTermUpdater interface {
-	UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error
 }
 
 // stockChunkDispatcher is the narrow surface the stock pipeline

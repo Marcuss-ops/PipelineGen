@@ -68,6 +68,11 @@ type SearchBackendBuildOpts struct {
 	Delivery    search.AssetDeliveryService
 	Reranker    RerankerClient
 
+	// MediaLocalStore is the PostgreSQL local/hash/keyword media surface
+	// (MEDIA-SSOT P1-6). When wired it REPLACES the legacy SQLite
+	// ClipsRepo local backend so local search cannot read a media mirror.
+	MediaLocalStore PostgresLocalSearchPort
+
 	// CanonicalResolver is the source→asset identity resolver consumed
 	// by providerSearchBackend. nil is fail-safe (identity unknown).
 	CanonicalResolver search.CanonicalIdentityResolver
@@ -104,7 +109,14 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			}
 		}
 	}
-	if opts.ClipsRepo != nil {
+	if opts.MediaLocalStore != nil {
+		if err := reg.Register(&pgLocalSearchBackend{store: opts.MediaLocalStore, log: log}); err != nil {
+			log.Error("BuildSearchBackends: postgres local backend register failed (fail-closed)", zap.Error(err))
+			return nil, fmt.Errorf("BuildSearchBackends: postgres local backend: %w", err)
+		}
+		log.Info("BuildSearchBackends: PostgreSQL local media backend registered (media_assets SSOT)")
+	} else if opts.ClipsRepo != nil {
+		log.Warn("BuildSearchBackends: media PostgreSQL local store unavailable — registering the legacy SQLite local backend (graceful degrade)")
 		if err := reg.Register(&localSearchBackend{repo: opts.ClipsRepo}); err != nil {
 			log.Error("BuildSearchBackends: local backend register failed (fail-closed)", zap.Error(err))
 			return nil, fmt.Errorf("BuildSearchBackends: local backend: %w", err)

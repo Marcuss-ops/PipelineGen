@@ -48,6 +48,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 			IdempotencyStore:        root.Repos.IdempotencyStore,
 			IdempotencyStoreHandler: crossStep.IdempotencyHandler,
 		},
+		MediaPostgres: root.MediaPostgres,
 	}
 
 	aw, err := WireAssets(

@@ -30,6 +30,7 @@ import (
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	processinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
+	ytdlpinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
@@ -80,6 +81,18 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
+	// MEDIA-SSOT folder projection (POSTGRES-MEDIA-CUTOVER): when the media
+	// PostgreSQL handle is present, mirror every clip_folders write into the
+	// PostgreSQL projection and replay the pre-cutover rows once (BACKFILL).
+	// Catalog sync then reads ListFolders from PostgreSQL while deletes still
+	// write through the operational table, which mirrors them.
+	if len(mediaPostgres) > 0 && mediaPostgres[0] != nil {
+		clipsRepo.SetFolderProjection(pgmedia.NewFolderRepository(mediaPostgres[0]))
+		if _, err := clipsRepo.BackfillFolderProjection(ctx); err != nil {
+			return nil, fmt.Errorf("backfill postgres clip folder projection: %w", err)
+		}
+	}
+
 	var textTrackRepo detail.TextTrackRepository
 	if len(mediaPostgres) > 0 && mediaPostgres[0] != nil {
 		var textTrackErr error
@@ -143,6 +156,26 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 		WithStoragePlanes(storagePlanes).
 		WithTools(processinfra.NewToolsChecker()).
 		WithClipsPath("data/media/clips")
+
+	// PR-YTDLP-HEALTH-GUARD: warn when the resolved yt-dlp is stale or has no
+	// PO Token provider (the usual cause of 403 / "The page needs to be
+	// reloaded" download failures). The full probe is warn-only on /ready and
+	// TTL-cached (the POT probe performs a `--simulate` extraction); the
+	// offline version check also runs once here so staleness is visible at
+	// startup without delaying boot on the network.
+	ytdlpPath := cfg.External.ResolvedYtdlpPath()
+	ytdlpGuard := systemhealth.NewYTDLPHealthChecker(
+		func(ctx context.Context) (string, error) { return ytdlpinfra.ProbeVersion(ctx, ytdlpPath) },
+		func(ctx context.Context) ([]string, error) {
+			return ytdlpinfra.ProbePOTProviders(ctx, ytdlpPath, ytdlpinfra.DefaultProbeURL)
+		},
+		ytdlpinfra.DefaultMaxVersionAgeDays,
+		log,
+	)
+	for _, warning := range ytdlpGuard.StartupWarnings(context.Background()) {
+		log.Warn("yt-dlp health guard (startup)", zap.String("warning", warning))
+	}
+	rc = rc.WithYTDLPHealth(ytdlpGuard)
 
 	// Step 4: Drive readiness checks (July 2026).
 	// Publisher non-nil check (always wired when publisher is available).

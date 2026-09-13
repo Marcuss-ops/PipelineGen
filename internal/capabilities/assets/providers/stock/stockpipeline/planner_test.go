@@ -128,6 +128,32 @@ func TestDeterministicPlanner_DistributesWindowsAcrossKnownSource(t *testing.T) 
 	}
 }
 
+// TestDeterministicPlanner_ShortSourceCapsClipCount pins the bare direct-URL
+// fix: when the REAL source is shorter than the requested output budget, the
+// planner emits only the clips that physically fit inside it instead of
+// spreading the budget-driven count past the end of the file (which
+// stock.extract_clips rejects with ErrStockClipsOutOfRange).
+func TestDeterministicPlanner_ShortSourceCapsClipCount(t *testing.T) {
+	p := NewDeterministicPlanner()
+	src := VideoSource{URL: "https://www.youtube.com/watch?v=jNQXAC9IVRw", DurationSec: 19.06}
+	plans, err := p.Plan(context.Background(), src, 300, 5, "policy-v1")
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	// horizon = int(19.06) - 2 = 17s → floor(17 / 5) = 3 clips that fit.
+	if len(plans) != 3 {
+		t.Fatalf("expected 3 clips that fit in the 19.06s source, got %d", len(plans))
+	}
+	for i, plan := range plans {
+		if plan.EndSec > src.DurationSec {
+			t.Errorf("plan[%d] EndSec=%.2f exceeds source duration %.2f", i, plan.EndSec, src.DurationSec)
+		}
+		if plan.StartSec < 0 || plan.EndSec <= plan.StartSec {
+			t.Errorf("plan[%d] invalid range [%.2f,%.2f]", i, plan.StartSec, plan.EndSec)
+		}
+	}
+}
+
 func TestDeterministicPlanner_OutputLogicalIDFormatSuffixIndex(t *testing.T) {
 	// Operators relying on Visual ID format for log greps will hit
 	// "planner:HEX:N" pattern. Lock the format string so a future

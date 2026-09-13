@@ -45,8 +45,13 @@ func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *detail.Clip
 		folder.LocalFolderPath, folder.Group, folder.ManifestTXTPath, folder.ManifestJSONPath,
 		folder.ClipCount, folder.ProcessedCount, folder.FailedCount, folder.SkippedCount, folder.LastError, folder.Metadata,
 		timeutil.FormatRFC3339(folder.CreatedAt), timeutil.FormatRFC3339(now), searchKey)
-
-	return err
+	if err != nil {
+		return err
+	}
+	// MEDIA-SSOT: mirror into the PostgreSQL clip_folders projection so the
+	// catalog-sync folder list reads one engine. Fail-closed: a projection
+	// failure surfaces rather than silently splitting the two stores.
+	return s.mirrorFolderUpsert(ctx, folder)
 }
 
 // DeleteFolder deletes a clip folder by its ID.
@@ -57,7 +62,11 @@ func (s *AssetStoreSQLite) DeleteFolder(ctx context.Context, id string) error {
 	}
 
 	_, err := s.db.ExecContext(ctx, "DELETE FROM clip_folders WHERE id = ?", id)
-	return err
+	if err != nil {
+		return err
+	}
+	// MEDIA-SSOT: mirror the delete into the PostgreSQL projection.
+	return s.mirrorFolderDelete(ctx, id)
 }
 
 // errClipFolderIDRequired is the canonical sentinel returned by

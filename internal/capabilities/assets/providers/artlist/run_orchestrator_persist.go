@@ -27,11 +27,16 @@ import (
 // failures. Per-item failures are recorded on the response
 // (item.Error + resp.Failed) and never abort the remaining items.
 func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) error {
-	if o.svc.assetFinalizer == nil || o.svc.mainDB == nil {
+	// MEDIA-SSOT P0-3 (September 2026): open the finalizer transaction on the
+	// SAME engine as the wired committer. The canonical committer is
+	// PostgreSQL while mainDB is operational SQLite, so a tx opened on mainDB
+	// would carry PostgreSQL SQL and fail with `unrecognized token: ":"`.
+	assetDB := o.svc.assetFinalizerDB()
+	if o.svc.assetFinalizer == nil || assetDB == nil {
 		// Fail closed: returning success without persisting would surface
 		// a run that claims completion for assets that were never
 		// committed (godlike/07 no-fake-availability).
-		return fmt.Errorf("stagePersistResults: asset finalizer or main DB not wired (cannot persist)")
+		return fmt.Errorf("stagePersistResults: asset finalizer or asset DB not wired (cannot persist)")
 	}
 
 	for i := range resp.Items {
@@ -79,7 +84,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 
 		artifact := o.buildPublishedArtifact(item)
 
-		tx, err := o.svc.mainDB.BeginTx(ctx, nil)
+		tx, err := assetDB.BeginTx(ctx, nil)
 		if err != nil {
 			o.svc.log.Warn("stagePersistResults: begin tx failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))

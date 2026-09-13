@@ -12,6 +12,13 @@ smoke_require curl jq
 # includes TTS plus a real GPU render, so its own default must cover the full
 # end-to-end path; callers can still shorten/extend it explicitly.
 SMOKE_POLL_TIMEOUT_SECONDS="${JORDAN_SMOKE_POLL_TIMEOUT_SECONDS:-900}"
+# Warm leg by default. These flags were hard-coded to true, so no recorded
+# canary could ever demonstrate a cross-run cache hit and every timing was
+# inflated by forced re-extraction/re-resolution. FORCE_REFRESH=true restores
+# the deliberate cold run; FORCE_REFRESH_MEDIA controls only the media_plan
+# sub-flags and defaults to the same value.
+FORCE_REFRESH="${FORCE_REFRESH:-false}"
+FORCE_REFRESH_MEDIA="${FORCE_REFRESH_MEDIA:-$FORCE_REFRESH}"
 
 if [[ "${HELP_REQUESTED:-0}" == "1" ]]; then
     sed -n '1,12p' "${BASH_SOURCE[0]}"
@@ -48,11 +55,13 @@ jq -n \
     --arg run_id "$RUN_ID" \
     --arg source_text "$SOURCE_TEXT" \
     --arg folder_id "$DRIVE_FOLDER_ID" \
+    --arg force_refresh "$FORCE_REFRESH" \
+    --arg force_refresh_media "$FORCE_REFRESH_MEDIA" \
     '{
       version: 2,
       preset: "custom",
       correlation_id: $run_id,
-      force_refresh: true,
+      force_refresh: ($force_refresh == "true"),
       items: [{
         id: $run_id,
         project: "jordan-entity-overlay-drive-e2e",
@@ -122,9 +131,9 @@ jq -n \
             upload_to_drive: true,
             wait_for_ready: true
           },
-          force_refresh_extraction: true,
-          force_refresh_assets: true,
-          force_refresh_bindings: true,
+          force_refresh_extraction: ($force_refresh_media == "true"),
+          force_refresh_assets: ($force_refresh_media == "true"),
+          force_refresh_bindings: ($force_refresh_media == "true"),
           planner: { candidate_limit: 5 },
           include_trace: true
         },
@@ -180,8 +189,22 @@ IMAGE_BINDINGS=$(jq -r '
 ' <<<"$RESULT")
 (( IMAGE_BINDINGS == 5 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, attesi 5"
 
-ENTITY_ITEMS=$(jq -r '[.overlay_plan?.items[]? | select(.kind == "entity_card" and (.asset_refs | length) > 0 and (.image_preset_id // "") != "")] | length' <<<"$RESULT")
-(( ENTITY_ITEMS == 5 )) || fail "layer entity immagine renderizzabili=$ENTITY_ITEMS, attesi 5"
+ENTITY_ITEMS=$(jq -r '
+  [.overlay_plan?.items[]? |
+   select(.kind == "entity_image" and .template_id == "image_popup" and
+          ((.asset_refs // []) | length) > 0 and
+          ((.preset_id // "") | length > 0) and
+          ((.image_preset_id // "") | length == 0) and
+          ((.text // "") | length == 0))] | length
+' <<<"$RESULT")
+(( ENTITY_ITEMS == 5 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, attese 5"
+
+ENTITY_NAME_TEXT=$(jq -r '
+  [.overlay_plan?.items[]? |
+   select((.kind == "entity_image" or .template_id == "image_popup") and
+          ((.text // "") | length > 0))] | length
+' <<<"$RESULT")
+(( ENTITY_NAME_TEXT == 0 )) || fail "entity image con testo/nome sotto l'immagine=$ENTITY_NAME_TEXT"
 
 GENERATED_TEXT_CHARS=$(jq -r '(.output?.text // "") | length' <<<"$RESULT")
 (( GENERATED_TEXT_CHARS > 0 )) || fail "testo generato assente"
@@ -200,8 +223,8 @@ EXPECTED_BACKGROUND='[0.9333333333333333,0.9450980392156862,0.9058823529411765,1
 [[ "$(jq -c '.kind' <<<"$BACKGROUND")" == '"color"' ]] || fail "background non color: $BACKGROUND"
 [[ "$(jq -c '.color' <<<"$BACKGROUND")" == "$EXPECTED_BACKGROUND" ]] || fail "background non Pale Olive Classic: $BACKGROUND"
 
-PRESETS=$(jq -r '[.overlay_plan.items[]? | select(.kind == "entity_card") | .image_preset_id] | join(", ")' <<<"$RESULT")
-[[ -n "$PRESETS" ]] || fail "image_preset_id mancanti"
+PRESETS=$(jq -r '[.overlay_plan.items[]? | select(.kind == "entity_image" and .template_id == "image_popup") | .preset_id] | join(", ")' <<<"$RESULT")
+[[ -n "$PRESETS" ]] || fail "preset animazione entity image mancanti"
 
 RENDER_STATUS=$(jq -r '.overlay_render?.status // empty' <<<"$RESULT")
 OVERLAY_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESULT")

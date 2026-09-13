@@ -63,11 +63,10 @@ func TestProcessSegmentUseCase_RemoteDriveOrphan_FinalizeRollbackPersistsCleanup
 		insertErr:  errors.New("sqlite: simulated constraint failure on voiceovers insert"),
 	}
 	outboxDispatcher := outboxdispatcher.NewDispatcher(
-		nil,
-		nil,
 		outboxevents.NewRepository(db),
 		nil,
 		zap.NewNop(),
+		nil,
 	)
 	finalizer := NewVoiceoverFinalizer(
 		repo,

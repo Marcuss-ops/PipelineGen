@@ -29,8 +29,9 @@ func entityCardTemplate(templateID string) bool {
 }
 
 // entityCardKind reports whether an overlay kind is an entity-card kind
-// (PERSON / ORGANIZATION / LOCATION / CONCEPT) — the kinds whose image is
-// carried BY the card instead of a generic IMAGE_OVERLAY.
+// (PERSON / ORGANIZATION / LOCATION / CONCEPT) — the kinds that resolve from
+// the EntityTimeline; a bound image is promoted to the image-only capability
+// later in the plan projection.
 func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
 	switch kind {
 	case capabilityoverlay.KindEntityCard, capabilityoverlay.KindOrganization, capabilityoverlay.KindLocation, capabilityoverlay.KindConcept:
@@ -136,11 +137,12 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 }
 
 // attachEntityCardAsset resolves the card's canonical_entity_id through the
-// EntityMediaResolver and attaches the best content-addressed asset to the
-// card item (AssetRefs) plus the canonical identity (EntityRef.CanonicalEntityID).
-// The input item is never mutated; an entity without an indexed asset, or
-// without a known canonical identity, is returned unchanged (text-only card).
-func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string) capabilityoverlay.OverlayItem {
+// EntityMediaResolver and promotes the item to the image-only entity
+// capability when a verified asset exists. The name remains available in the
+// identity/provenance fields, but it is no longer rendered as a second lower
+// third below the portrait. An entity without an indexed asset is returned
+// unchanged (text-only card).
+func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capabilityoverlay.OverlayItem {
 	canonical := canonicalByStable[item.EntityID]
 	if canonical == "" {
 		return item
@@ -159,6 +161,14 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
 		AssetID: ref.SHA256, URL: ref.URL, SHA256: ref.SHA256, MediaType: ref.MediaType,
 	}}
+	// A resolved portrait is a distinct visual capability: use the official
+	// image preset/motion path and do not compile the text-card layer as well.
+	item.Kind = string(capabilityoverlay.KindEntityImage)
+	item.TemplateID = "image_popup"
+	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
+	item.ImagePresetID = ""
+	item.Text = ""
+	item.Params = nil
 	if item.EntityRef != nil {
 		item.EntityRef.CanonicalEntityID = canonical
 	}

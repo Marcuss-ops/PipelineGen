@@ -31,14 +31,44 @@ var (
 
 	// ErrAssetNotFound is returned when the canonical media_assets
 	// lookup cannot resolve the asset ID.
-	ErrAssetNotFound = errors.New("delete asset: asset not found in canonical media_assets")
-
-	// ErrDeletionDispatcherUnavailable is returned when the deletion
+	ErrAssetNotFound = errors.New("delete asset: asset not found in canonical media_assets") // ErrDeletionDispatcherUnavailable is returned when the deletion
 	// dispatcher is not wired. It is surfaced BEFORE any mutation:
 	// without a dispatcher there is no outbox state machine to drive
 	// the Drive/Qdrant/SQLite chain.
 	ErrDeletionDispatcherUnavailable = errors.New("delete asset: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher")
 )
+
+// MediaAssetLookupPort is the application-layer port for resolving a
+// canonical media asset by primary key from the media SSOT.
+//
+// MEDIA-SSOT P0-2 read-side (September 2026): the producer is the
+// PostgreSQL media plane, so the deletion entry point MUST read from the
+// same plane. Production concrete (when the media plane is PostgreSQL):
+// *pgmedia.PostgresMediaCommitter, which already exposes
+// GetClip(ctx, id) (*asset.Asset, error). Nil means "media plane not on
+// PostgreSQL" and the legacy SQLite ClipsRepository is used.
+type MediaAssetLookupPort interface {
+	GetClip(ctx context.Context, id string) (*asset.Asset, error)
+}
+
+// MediaAssetDriveLookupPort is the application-layer port for resolving a
+// canonical media asset by its Google Drive file id from the media SSOT.
+//
+// MEDIA-SSOT read-side (September 2026): DeleteByDriveFile must not answer
+// from the SQLite mirror once PG is authoritative (the audit's split-brain
+// surface). Production concrete: *pgmedia.PostgresMediaCommitter via
+// GetClipByDriveFileID. Nil keeps the legacy SourceCatalog dispatch.
+type MediaAssetDriveLookupPort interface {
+	GetClipByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error)
+}
+
+// DeletionLookupDeps groups the MEDIA-SSOT read ports. Both are optional:
+// nil selects the legacy SQLite resolution so non-PostgreSQL deployments
+// keep their exact previous behaviour (godlike/07 graceful degrade).
+type DeletionLookupDeps struct {
+	ByID          MediaAssetLookupPort
+	ByDriveFileID MediaAssetDriveLookupPort
+}
 
 // DeleteAsset deletes a canonical media_assets asset by its ID.
 //
@@ -74,11 +104,11 @@ func (s *DeletionService) DeleteAsset(ctx context.Context, assetID string, perma
 		return ErrAssetIDRequired
 	}
 
-	if s.clipsRepo == nil {
+	if s.assetLookup == nil && s.clipsRepo == nil {
 		return ErrAssetRepositoryUnavailable
 	}
 
-	a, err := s.clipsRepo.Get(ctx, assetID)
+	a, err := s.lookupAsset(ctx, assetID)
 	if err != nil {
 		return fmt.Errorf("delete asset lookup %q: %w", assetID, err)
 	}
@@ -95,6 +125,17 @@ func (s *DeletionService) DeleteAsset(ctx context.Context, assetID string, perma
 		zap.Bool("permanently", permanently),
 	)
 	return s.dispatcher.EnqueueDriveDelete(ctx, assetID, permanently)
+}
+
+// lookupAsset resolves the canonical media_assets row from the media SSOT.
+// The PostgreSQL port wins whenever it is wired (media cutover); the legacy
+// SQLite *assets.ClipsRepository is the graceful-degrade fallback. Callers
+// must have established that at least one of the two is non-nil.
+func (s *DeletionService) lookupAsset(ctx context.Context, assetID string) (*asset.Asset, error) {
+	if s.assetLookup != nil {
+		return s.assetLookup.GetClip(ctx, assetID)
+	}
+	return s.clipsRepo.Get(ctx, assetID)
 }
 
 // DeleteClip is the legacy source-scoped deletion entry point.
@@ -138,6 +179,20 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 // SourceCatalog.Resolve→SourceRepo.GetByDriveFileID handles every
 // source uniformly with adapter-side shape conversion.
 func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*asset.Asset, string, error) {
+	// MEDIA-SSOT read-side (September 2026): once PostgreSQL owns the media
+	// plane, resolve the Drive identity there — the SQLite mirror is not
+	// authoritative and answers from stale rows.
+	if s.assetLookupByDrive != nil {
+		resolved, err := s.assetLookupByDrive.GetClipByDriveFileID(ctx, fileID)
+		if err != nil {
+			return nil, "", fmt.Errorf("deletion: media SSOT drive-file lookup %q: %w", fileID, err)
+		}
+		if resolved == nil {
+			return nil, "", nil
+		}
+		return resolved, string(resolved.Source), nil
+	}
+
 	if s.catalog == nil {
 		return nil, "", fmt.Errorf("deletion: source catalog is not configured")
 	}

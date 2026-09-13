@@ -119,15 +119,10 @@ func BuildStockBundle(deps StockBundleDeps) (*stockwiring.StockPipelineWiring, e
 		return nil, stockpipeline.ErrStockProductionBatchRepositoryMissing
 	}
 
-	// ── Gate 2: reject nil concrete adapters before wrapping them ───
-	// The stockAssetIndexAdapter itself is intentionally non-nil after
-	// construction; validate its concrete dependency first so a typed
-	// wrapper cannot mask an unavailable indexing capability.
-	if stockDependencyNil(deps.Acquisition.AssetIndex) {
-		return nil, fmt.Errorf("stock.BuildStockBundle: asset index service is nil: %w", stockpipeline.ErrStockPipelineNilAssetIndex)
-	}
-
 	// ── Gate 3: construct the canonical *stockpipeline.Service ───
+	// WAVE 6 + WAVE 9 (September 2026): the asset-index and SQLite clips
+	// mirror gates are GONE. Stock depends on the canonical dispatcher only;
+	// the media SSOT owns identity, search text and index intent.
 	svc, err := stockpipeline.NewProductionStockPipeline(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
 			Cfg:        stockRuntimeConfig(deps.Runtime.Cfg),
@@ -136,8 +131,6 @@ func BuildStockBundle(deps StockBundleDeps) (*stockwiring.StockPipelineWiring, e
 			StepStore:  deps.Runtime.StepStore,
 		},
 		Storage: stockpipeline.StorageDeps{
-			ClipsRepo:       deps.Acquisition.ClipsRepo,
-			AssetIndex:      &stockAssetIndexAdapter{inner: deps.Acquisition.AssetIndex},
 			Dispatcher:      deps.Acquisition.Dispatcher,
 			BatchRepository: deps.Acquisition.BatchRepository,
 		},

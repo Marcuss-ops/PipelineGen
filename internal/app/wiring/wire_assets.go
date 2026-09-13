@@ -277,7 +277,8 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.Repositories.ClipsRepo, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	sourcingClipStore := newSourcingClipStore(deps.MediaPostgres, deps.Core.Repositories.ClipsRepo)
+	registerSvc := newAssetRegisterService(cfg, log, sourcingClipStore, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	driveChecker := func() error {
 		if driveUploader == nil {

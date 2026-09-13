@@ -43,17 +43,13 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
-	// Direct single-repo dispatcher for the test — production wiring uses
-	// MultiClipsUpserter; single-repo is the simpler primitive that proves
-	// atomic upsert+enqueue without the routing layer in the way. The
-	// same *assets.ClipsRepository that implements ClipsUpserter also
-	// implements ClipsStateWriter (the two-method split is a Go-type
-	// partition, not a runtime one), so the production adapter idiom
-	// `outbox.ClipsStateWriter(repo)` works unchanged in test fixtures
-	// (closure of PR7 producer migration ticket item D).
-	stateWriter := outbox.ClipsStateWriter(repo)
+	// The dispatcher takes the canonical AssetCommitter directly. There is no
+	// tx-bound upserter/state-writer argument any more: the committer owns its
+	// own transaction on the media engine (MEDIA-SSOT, September 2026), so
+	// this fixture proves atomic upsert+enqueue through CommitAndIndex
+	// without a cross-engine seam.
 	canonicalCommitter := testsupport.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
-	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
+	dispatcher := outbox.NewDispatcher(outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	// PR-D: construct the service via Deps{} (no SetDispatcher setter
 	// exists post-2026-06). The dispatcher is captured at construction
@@ -122,12 +118,8 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
-	// Same dual-role adapter pattern as the dispatcher_path test:
-	// ClipsStateWriter + ClipsUpserter split is a Go-type partition,
-	// the same concrete *assets.ClipsRepository implements both.
-	stateWriter := outbox.ClipsStateWriter(repo)
 	canonicalCommitter := testsupport.NewSQLiteAssetCommitter(db, outboxEventsRepo, zap.NewNop())
-	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
+	dispatcher := outbox.NewDispatcher(outboxEventsRepo, txmgr, zap.NewNop(), canonicalCommitter)
 
 	svc, err := NewService(Deps{
 		Reader:     testSourceReader{},

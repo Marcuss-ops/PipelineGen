@@ -11,6 +11,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -29,12 +30,15 @@ import (
 // the dispatcher is captured at construction time. Composition-root
 // pre-rejection lives here so a nil outbox dispatcher fails the bundle
 // build with an explicit error instead of racing the late-bind sequence.
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
+func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle, mediaDB *sql.DB) (*SyncBundle, error) {
 	_ = ctx
-	_ = cfg
 	_ = dbs
-	_ = repos
-	syncTargets := BuildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
+	_ = process
+	// MEDIA-SSOT: GetClip/GetIndexState read the PostgreSQL media SSOT when
+	// available; folder reconciliation stays on SQLite until the clip_folders
+	// writers migrate.
+	catalogRepo, catalogIndexer := newCatalogSyncRepository(mediaDB, repos.ClipsRepo)
+	syncTargets := BuildSyncTargets(cfg, catalogRepo, catalogIndexer)
 
 	// PR-D composition-root pre-rejection is relaxed for the no-Drive
 	// test path: when Drive is disabled the sync bundle still builds

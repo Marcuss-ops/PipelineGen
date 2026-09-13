@@ -25,7 +25,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
-	if d.canonicalCommitter == nil {
+	if d.committer == nil {
 		return errors.New("outbox.Dispatcher: canonical AssetCommitter is required")
 	}
 	if clip == nil || clip.ID == "" {
@@ -34,37 +34,34 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 
 	// Folders are not vector-indexable, but their canonical media_assets row
 	// still must be committed through the canonical AssetCommitter. Never
-	// bypass the committer with a direct clips.UpsertClipTx fallback.
+	// bypass the committer with a direct clip-writer fallback.
 	if !clip.IsFolder() && contentHash == "" {
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
-	// Production uses the canonical tx-bound writer so the dispatcher keeps
-	// ownership of the transaction that also receives the outbox event. The
-	// fallback below is retained for legacy test doubles that implement only
-	// AssetCommitter.
-	if d.canonicalWriter != nil {
-		if d.txmgr == nil {
-			return errors.New("outbox.Dispatcher: txmgr not configured for canonical clip commit")
-		}
-		if d.outboxEventsRepo == nil {
-			return errors.New("outbox.Dispatcher: outbox events repo not configured for canonical clip commit")
-		}
-		if contentHash != "" {
-			clip.SetMetadataString("legacy_file_md5", contentHash)
-		}
-		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-			if err := d.canonicalWriter.UpsertClipTx(ctx, tx, clip); err != nil {
-				return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical UpsertClipTx: %w", err)
-			}
-			if clip.IsFolder() {
-				return nil
-			}
-			if err := d.EnqueueIndexEvent(ctx, tx, clip.ID, string(clip.Source), contentHash); err != nil {
-				return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical index event: %w", err)
-			}
-			return nil
-		})
+	// The dispatcher NEVER opens its own transaction for media: the canonical
+	// committer owns its engine-native transaction so media_assets and the
+	// media outbox event commit together on the media SSOT. Handing a SQLite
+	// `*sql.Tx` to the PostgreSQL writer (the former tx-bound branch) is no
+	// longer representable — see persistence.CanonicalAssetWriter.
+	commitResult, err := d.committer.CommitAndIndex(ctx, buildPortableCommitRequest(clip, contentHash, !clip.IsFolder()))
+	if err != nil {
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical AssetCommitter commit: %w", err)
 	}
+	if d.log != nil {
+		d.log.Debug("dispatcher committed asset through canonical AssetCommitter",
+			zap.String("asset_id", clip.ID),
+			zap.String("outbox_event_key", commitResult.OutboxEventKey),
+			zap.Bool("index_event_emitted", !clip.IsFolder()),
+		)
+	}
+	return nil
+}
+
+// buildPortableCommitRequest translates a clip into the engine-neutral
+// persistence.CommitRequest consumed by AssetCommitter.CommitAndIndex. It is
+// the single translation site for the portable path so EnqueueAndIndex and
+// the discovery branch cannot drift in field coverage.
+func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndexEvent bool) persistence.CommitRequest {
 	name := clip.Name
 	if name == "" {
 		name = clip.ID
@@ -94,7 +91,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			LegacyFileMD5: contentHash, IsPrimary: len(locations) == 0,
 		})
 	}
-	commitResult, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequest{
+	return persistence.CommitRequest{
 		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
 		MediaType: mediaType, Category: clip.Category, DurationMs: clip.Duration.Milliseconds(),
 		ContentHash: contentHash, Description: clip.Description(), SearchText: clip.SearchText,
@@ -102,19 +99,8 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
 		ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: name,
 		Metadata: persistence.TypedMetadata{Extra: clip.Metadata}, Locations: locations,
-		EmitIndexEvent: !clip.IsFolder(),
-	})
-	if err != nil {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical AssetCommitter commit: %w", err)
+		EmitIndexEvent: emitIndexEvent,
 	}
-	if d.log != nil {
-		d.log.Debug("dispatcher committed asset through canonical AssetCommitter",
-			zap.String("asset_id", clip.ID),
-			zap.String("outbox_event_key", commitResult.OutboxEventKey),
-			zap.Bool("index_event_emitted", !clip.IsFolder()),
-		)
-	}
-	return nil
 }
 
 // SaveDiscoveredAsset is the discovery-only upsert path. It writes the clip
@@ -125,11 +111,8 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
-	if d.discoveryCommitter == nil {
+	if d.committer == nil {
 		return errors.New("outbox.Dispatcher: canonical AssetCommitter is required for discovery commits")
-	}
-	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
 	}
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
@@ -150,19 +133,27 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	}
 	clip.SetMetadataString("job_key", jobKey)
 
-	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if err := d.discoveryCommitter.CommitDiscoveredAsset(ctx, tx, clip, lifecycle, idx); err != nil {
-			return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
-		}
-		if d.log != nil {
-			d.log.Debug("dispatcher saved discovered asset through canonical AssetCommitter",
-				zap.String("asset_id", clip.ID),
-				zap.String("lifecycle_state", string(lifecycle)),
-				zap.String("index_state", string(idx)),
-			)
-		}
-		return nil
-	})
+	// The discovery committer lives on another engine (PostgreSQL media
+	// SSOT), so the dispatcher must NOT hand it its own SQLite transaction.
+	// Delegate to the committer's self-owned transaction
+	// (CommitDiscoveredAssetAndIndex), which commits media_assets + the
+	// registry provenance atomically on that engine and deliberately emits no
+	// indexing request at discovery time.
+	committer, ok := d.committer.(DiscoveryCommitAndIndexCommitter)
+	if !ok {
+		return fmt.Errorf("dispatcher.SaveDiscoveredAsset(%q): discovery commit requires a self-owned-transaction discovery committer (got %T)", clip.ID, d.committer)
+	}
+	if err := committer.CommitDiscoveredAssetAndIndex(ctx, clip, lifecycle, idx); err != nil {
+		return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
+	}
+	if d.log != nil {
+		d.log.Debug("dispatcher saved discovered asset through canonical AssetCommitter (self-owned tx)",
+			zap.String("asset_id", clip.ID),
+			zap.String("lifecycle_state", string(lifecycle)),
+			zap.String("index_state", string(idx)),
+		)
+	}
+	return nil
 }
 
 // EnqueueIndexEvent delegates a tx-bound indexing request to the canonical

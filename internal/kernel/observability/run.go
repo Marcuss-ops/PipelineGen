@@ -403,6 +403,8 @@ func (r *Run) RecordKPIMilestone(field string, offsetMs int64) {
 		r.report.KPIs.DocsPublishStartedMs = offsetMs
 	case "docs_publish_finished_ms":
 		r.report.KPIs.DocsPublishFinishedMs = offsetMs
+	case "core_ready_ms":
+		r.report.KPIs.CoreReadyMs = offsetMs
 	}
 }
 

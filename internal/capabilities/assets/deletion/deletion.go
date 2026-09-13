@@ -148,7 +148,16 @@ type DeletionService struct {
 	// have been updated to drop the corresponding ctor argument.
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
-	dispatcher    DispatcherPort
+	// assetLookup / assetLookupByDrive are the MEDIA-SSOT read ports.
+	// MEDIA-SSOT P0-2 read-side (September 2026): when the media plane is
+	// PostgreSQL, the deletion entry point MUST resolve the asset there —
+	// a SQLite lookup can never see an asset committed after the cutover,
+	// so DeleteAsset would fail with ErrAssetNotFound for every new asset.
+	// Nil (legacy/non-PG deployments) falls back to clipsRepo / the
+	// SourceCatalog exactly as before.
+	assetLookup        MediaAssetLookupPort
+	assetLookupByDrive MediaAssetDriveLookupPort
+	dispatcher         DispatcherPort
 	// driveGoneChecker + completionTxRunner are the Blocco 3.1
 	// commit 3/3 close-out ports. driveGoneChecker is optional
 	// (nil = trust lifecycle_state proof); completionTxRunner is
@@ -194,6 +203,7 @@ type DeletionServiceDeps struct {
 	Catalog    *artifacts.SourceCatalog
 	Index      DeletionIndexDeps
 	Dispatcher DispatcherPort
+	Lookup     DeletionLookupDeps
 	Finalize   DeletionFinalizeDeps
 	Log        *zap.Logger
 }
@@ -248,17 +258,19 @@ type DeletionFinalizeDeps struct {
 // PR-DRIVE-CLEANUP).
 func NewDeletionService(deps DeletionServiceDeps) *DeletionService {
 	return &DeletionService{
-		artlistRepo:      deps.Repos.ArtlistRepo,
-		clipsRepo:        deps.Repos.ClipsRepo,
-		stockRepo:        deps.Repos.StockRepo,
-		voiceoverRepo:    deps.Repos.VoiceoverRepo,
-		imagesRepo:       deps.Repos.ImagesRepo,
-		catalog:          deps.Catalog,
-		assetTreeSvc:     deps.Index.AssetTreeSvc,
-		assetIndexSvc:    deps.Index.AssetIndexSvc,
-		dispatcher:       deps.Dispatcher,
-		driveGoneChecker: deps.Finalize.DriveGoneChecker,
-		completionTx:     deps.Finalize.CompletionTxRunner,
-		log:              deps.Log,
+		artlistRepo:        deps.Repos.ArtlistRepo,
+		clipsRepo:          deps.Repos.ClipsRepo,
+		stockRepo:          deps.Repos.StockRepo,
+		voiceoverRepo:      deps.Repos.VoiceoverRepo,
+		imagesRepo:         deps.Repos.ImagesRepo,
+		catalog:            deps.Catalog,
+		assetTreeSvc:       deps.Index.AssetTreeSvc,
+		assetIndexSvc:      deps.Index.AssetIndexSvc,
+		assetLookup:        deps.Lookup.ByID,
+		assetLookupByDrive: deps.Lookup.ByDriveFileID,
+		dispatcher:         deps.Dispatcher,
+		driveGoneChecker:   deps.Finalize.DriveGoneChecker,
+		completionTx:       deps.Finalize.CompletionTxRunner,
+		log:                deps.Log,
 	}
 }

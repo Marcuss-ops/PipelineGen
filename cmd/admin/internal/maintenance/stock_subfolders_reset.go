@@ -73,21 +73,31 @@ func RunResetStockSubfolders(args []string) error {
 		}
 	}
 
-	// 2. Clean database records for these specific folders
+	// 2. Clean database records for these specific folders.
+	//
+	// MEDIA-SSOT (POSTGRES-MEDIA-CUTOVER): the raw
+	// `DELETE FROM clip_folders WHERE source = 'stock' AND folder_path = ?`
+	// is gone. The canonical folder repository owns the delete AND mirrors it
+	// into the PostgreSQL folder projection, so the catalog-sync folder list
+	// (which reads PostgreSQL) cannot resurrect the removed rows.
 	fmt.Println("\n=== Cleaning database records ===")
-	mediaDB := root.DB.DB
-	if mediaDB != nil {
-		for name := range foldersToReset {
-			res, err := mediaDB.ExecContext(ctx,
-				"DELETE FROM clip_folders WHERE source = 'stock' AND folder_path = ?", name)
-			if err != nil {
-				fmt.Printf("  Failed to clean clip_folders for %s: %v\n", name, err)
-			} else {
-				n, _ := res.RowsAffected()
-				if n > 0 {
-					fmt.Printf("  Deleted %d clip_folders rows for %s\n", n, name)
-				}
+	if root.Repos == nil || root.Repos.ClipsRepo == nil {
+		return fmt.Errorf("reset-stock-subfolders: canonical clips repository is required")
+	}
+	stockFolders, err := root.Repos.ClipsRepo.ListFolders(ctx, "stock")
+	if err != nil {
+		return fmt.Errorf("reset-stock-subfolders: list stock folders: %w", err)
+	}
+	for name := range foldersToReset {
+		for _, folder := range stockFolders {
+			if folder == nil || folder.FolderPath != name {
+				continue
 			}
+			if err := root.Repos.ClipsRepo.DeleteFolder(ctx, folder.ID); err != nil {
+				fmt.Printf("  Failed to clean clip_folders for %s: %v\n", name, err)
+				continue
+			}
+			fmt.Printf("  Deleted clip_folders row for %s\n", name)
 		}
 	}
 

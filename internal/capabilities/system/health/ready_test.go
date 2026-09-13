@@ -20,8 +20,8 @@ func TestReadyChecker_RequiredSet(t *testing.T) {
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK)
-	require.Len(t, resp.Checks, 18, "ready should check 18: db, drive, qdrant, jobs + tools, clips_path, drive_canary, handlers + temp, tts, drive_root, ollama, outbox + drive_credentials, drive_folder, publisher, destination_clip + script_generate")
-	for _, name := range []string{"db", "drive", "qdrant", "jobs", "tools", "clips_path", "drive_canary", "handlers", "temp", "tts", "drive_root", "ollama", "outbox", "drive_credentials", "drive_folder", "publisher", "destination_clip", "script_generate"} {
+	require.Len(t, resp.Checks, 19, "ready should check 19: db, drive, qdrant, jobs + tools, clips_path, drive_canary, handlers + temp, tts, drive_root, ollama, outbox + drive_credentials, drive_folder, publisher, destination_clip + script_generate + ytdlp_health")
+	for _, name := range []string{"db", "drive", "qdrant", "jobs", "tools", "clips_path", "drive_canary", "handlers", "temp", "tts", "drive_root", "ollama", "outbox", "drive_credentials", "drive_folder", "publisher", "destination_clip", "script_generate", "ytdlp_health"} {
 		require.Contains(t, resp.Checks, name, "ready missing %s", name)
 	}
 }
@@ -60,7 +60,7 @@ func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK, "optional nil capabilities should not make ready unhealthy, got %v", resp)
-	require.Len(t, resp.Checks, 18)
+	require.Len(t, resp.Checks, 19)
 }
 
 func TestReadyChecker_ReportsIndependentStoragePlanes(t *testing.T) {

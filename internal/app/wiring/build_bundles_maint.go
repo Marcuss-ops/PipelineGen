@@ -22,6 +22,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+)
+
+// Compile-time cutover pins: the PostgreSQL media committer IS the
+// authoritative read surface and saga dispatcher for the deletion path once
+// the media plane is on PostgreSQL (MEDIA-SSOT read-side, September 2026).
+// A future signature drift fails here rather than silently degrading the
+// deletion entry point back to the SQLite mirror.
+var (
+	_ deletion.DispatcherPort            = (*pgmedia.PostgresMediaCommitter)(nil)
+	_ deletion.MediaAssetLookupPort      = (*pgmedia.PostgresMediaCommitter)(nil)
+	_ deletion.MediaAssetDriveLookupPort = (*pgmedia.PostgresMediaCommitter)(nil)
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
@@ -32,7 +44,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 	// from DeletionService (the value was unused by every service
 	// method; the canonical async Drive surface is the dispatcher
 	// outbox port per godlike/06 SSOT one-canonical-owner-per-fact).
-	deletionSvc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
+	deletionDeps := deletion.DeletionServiceDeps{
 		Repos: deletion.DeletionRepoDeps{
 			ArtlistRepo:   repos.ClipsRepo,
 			ClipsRepo:     repos.ClipsRepo,
@@ -47,7 +59,24 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 		},
 		Dispatcher: outboxBundle.Dispatcher,
 		Log:        log,
-	})
+	}
+	// MEDIA-SSOT read-side (September 2026): when the canonical media writer
+	// is the PostgreSQL committer, the media plane is authoritative for reads
+	// as well as writes. The deletion entry point must therefore resolve the
+	// asset from PostgreSQL (a SQLite lookup cannot see a post-cutover asset)
+	// and route the first saga hop — the DELETE_REQUESTED stamp plus the
+	// asset.drive.delete_requested emission — into the PostgreSQL media SSOT,
+	// where the PG outbox worker consumes it (see
+	// registerPostgresMediaOutboxHandlers / registerPostgresDeleteSagaHandlers).
+	// Non-PostgreSQL deployments keep the exact legacy SQLite wiring.
+	if pgCommitter, ok := outboxBundle.CanonicalWriter.(*pgmedia.PostgresMediaCommitter); ok && pgCommitter != nil {
+		deletionDeps.Dispatcher = pgCommitter
+		deletionDeps.Lookup = deletion.DeletionLookupDeps{
+			ByID:          pgCommitter,
+			ByDriveFileID: pgCommitter,
+		}
+	}
+	deletionSvc := deletion.NewDeletionService(deletionDeps)
 	maintRepo := imagesregistry.NewMaintenanceRepository(dbs.DualPool.Writer, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,

@@ -126,6 +126,15 @@ type ArtlistInfraDeps struct {
 	Cfg    *config.Config
 	Log    *zap.Logger
 	MainDB *sql.DB
+	// MediaDB is the PostgreSQL media SSOT handle. When set it MUST be the
+	// same engine as Finalizer.AssetFinalizerTx's committer, and
+	// stagePersistResults opens the finalizer transaction on it instead of
+	// MainDB. The media cutover (September 2026) makes the canonical committer
+	// PostgreSQL while MainDB stays the operational SQLite handle; a
+	// transaction opened on MainDB would carry PostgreSQL SQL to SQLite and
+	// fail with `unrecognized token: ":"`. Nil falls back to MainDB for
+	// legacy/test compositions whose committer is SQLite.
+	MediaDB *sql.DB
 }
 
 // ArtlistPortDeps groups the port-like dependencies.

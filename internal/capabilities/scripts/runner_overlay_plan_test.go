@@ -189,7 +189,7 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	}
 	for _, want := range []string{
 		"IMPORTANT_PHRASE", "IMPORTANT_WORD",
-		"person_default", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
+		"image_popup", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
 	} {
 		require.True(t, templates[want], "plan must carry template %q (got %v)", want, templates)
 	}
@@ -204,12 +204,15 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.Equal(t, "IMPORTANT_WORD", keyword.TemplateID)
 	require.Equal(t, int64(400), keyword.StartMs, "Apple is word 4")
 
-	// The chosen entity IS the card with its image asset: Tim Cook's photo
-	// renders on the person_default card (resolved via the canonical id →
-	// EntityMediaResolver path), never as a duplicate IMAGE_OVERLAY.
+	// The chosen entity IS the image overlay: Tim Cook's photo is resolved via
+	// the canonical id → EntityMediaResolver path and rendered without a
+	// duplicate name layer.
 	person := byID["overlay-scene-0-tim-cook"]
-	require.Equal(t, "person_default", person.TemplateID)
-	require.Equal(t, "Tim Cook", person.Text)
+	require.Equal(t, "entity_image", person.Kind)
+	require.Equal(t, "image_popup", person.TemplateID)
+	require.Empty(t, person.Text)
+	require.NotEmpty(t, person.PresetID)
+	require.Empty(t, person.ImagePresetID)
 	require.Equal(t, int64(0), person.StartMs)
 	// MinEntityOverlayDurationUS: the spoken anchor stays at 0ms, the card
 	// holds the minimum five-second preset duration.
@@ -218,7 +221,7 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", person.AssetRefs[0].AssetID)
 	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", person.AssetRefs[0].URL)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
-	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
+	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity images must not render twice")
 
 	location := byID["overlay-scene-0-cupertino"]
 	require.Equal(t, "gpe_default", location.TemplateID)
@@ -270,11 +273,11 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	}
 	phrasePresets := []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}
 	wordPresets := []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}
-	namePresets := []string{"name_glow_slide", "name_glow_pop"}
+	imagePresets := []string{"image_fast_fade", "image_slide_left", "image_slide_right", "modern_rounded_pop", "bottom_card_rise"}
 
 	require.Contains(t, phrasePresets, itemByID["scene-0-phrase-changed-everything"].PresetID)
 	require.Contains(t, wordPresets, itemByID["scene-0-keyword-apple"].PresetID)
-	require.Contains(t, namePresets, itemByID["overlay-scene-0-tim-cook"].PresetID)
+	require.Contains(t, imagePresets, itemByID["overlay-scene-0-tim-cook"].PresetID)
 	require.Contains(t, wordPresets, itemByID["scene-0-number-ten-million"].PresetID)
 	require.Contains(t, phrasePresets, itemByID["scene-0-quote-changed-everything"].PresetID)
 	require.NotEmpty(t, itemByID["overlay-scene-0-cupertino"].PresetID)
@@ -546,15 +549,14 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	require.Equal(t, int64(200), plan.Items[0].EndMs)
 }
 
-// TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset certifies the
+// TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset certifies the
 // canonical-id connection end-to-end: the chosen entity (the scene-relevant
-// one with a certified occurrence) BECOMES the entity card that carries its
+// one with a certified occurrence) BECOMES the image-only entity overlay that carries its
 // image asset — resolved through the canonical_entity_id → EntityMediaResolver
 // path and attached as AssetRefs + EntityRef.CanonicalEntityID. An off-scene
 // entity with a bound image ("Tesla" when the scene is about Tim Cook) is
-// skipped — no card, no image — and no generic IMAGE_OVERLAY is ever emitted
-// for an entity-card kind (the card replaces it).
-func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
+// skipped — no card, no image — and no generic duplicate image is emitted.
+func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) {
 	words := []capabilityaudio.SpeechWordTiming{
 		{Index: 0, Text: "Tim", StartUS: 0, EndUS: 100_000},
 		{Index: 1, Text: "Cook", StartUS: 100_000, EndUS: 200_000},
@@ -620,12 +622,16 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 	byID := map[string]capabilityoverlay.OverlayItem{}
 	for _, item := range plan.Items {
 		byID[item.ID] = item
-		require.NotEqual(t, "IMAGE_OVERLAY", item.TemplateID, "entity-card kinds must never emit a generic IMAGE_OVERLAY")
+		require.NotEqual(t, "person_default", item.TemplateID, "an entity with an image must not fall back to a text card")
 	}
 	card, ok := byID["overlay-scene-0-tim-cook"]
 	require.True(t, ok, "the chosen entity (Tim Cook) must become the entity card")
-	require.Equal(t, "person_default", card.TemplateID)
-	require.Len(t, card.AssetRefs, 1, "the chosen entity card must carry its resolved image asset")
+	require.Equal(t, "entity_image", card.Kind)
+	require.Equal(t, "image_popup", card.TemplateID)
+	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
+	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
+	require.Empty(t, card.ImagePresetID)
+	require.Len(t, card.AssetRefs, 1, "the chosen entity image must carry its resolved asset")
 	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", card.AssetRefs[0].AssetID)
 	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", card.AssetRefs[0].URL)
 	require.Equal(t, "person:tim-cook", card.EntityRef.CanonicalEntityID, "the card must join on the resolver's canonical id")

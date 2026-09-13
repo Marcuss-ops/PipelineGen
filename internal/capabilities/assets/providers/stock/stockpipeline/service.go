@@ -92,8 +92,6 @@ type Service struct {
 	cutter        VideoCutter
 	renderer      StockRenderer
 	jobsSvc       *appjobs.Service
-	assetIndex    stockAssetIndexUpserter
-	clipsRepo     stockClipsSearchTermUpdater
 	// batchRepo is the durable stock batch/group/artifact repository.
 	batchRepo StockBatchRepository
 	// dispatcher is the canonical media_index_outbox dispatcher,
@@ -190,12 +188,6 @@ func newService(deps Deps) (*Service, error) {
 	// F2.10: Drive validation dropped — see Deps doc-comment. The
 	// legacy DriveSvc plumbing (driveup.Admin.UploadFile + friend
 	// methods) is gone; Publisher is the only Drive-write canal.
-	if deps.Storage.ClipsRepo == nil {
-		return nil, ErrStockPipelineNilClipsRepo
-	}
-	if deps.Storage.AssetIndex == nil {
-		return nil, ErrStockPipelineNilAssetIndex
-	}
 	if deps.Storage.Dispatcher == nil {
 		return nil, ErrStockPipelineNilDispatcher
 	}
@@ -280,8 +272,6 @@ func serviceFromDeps(deps Deps) *Service {
 		cutter:            deps.Media.Cutter,
 		renderer:          deps.Media.Renderer,
 		jobsSvc:           deps.Execution.Jobs,
-		assetIndex:        deps.Storage.AssetIndex,
-		clipsRepo:         deps.Storage.ClipsRepo,
 		batchRepo:         deps.Storage.BatchRepository,
 		dispatcher:        deps.Storage.Dispatcher,
 		finalizer:         deps.Delivery.Finalizer,

@@ -42,6 +42,8 @@ import (
 	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stocksourcecache"
 )
@@ -199,7 +201,30 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			if root.TextTracks != nil {
 				assetTx.WithFanOut(root.TextTracks.FanOut)
 			}
-			stockFinalizer = jobsfinalizer.New(stockDB, root.Outbox.EventsRepo, assetTx, log)
+			// Mirror the canonical broker finalizer wiring
+			// (wire_services_composition.go): the job terminal state lives on the
+			// JOBS plane, not on the media SQLite file. Wiring the media DB here
+			// made the spine write fail with `select job: no such table: jobs`.
+			jobDB := root.DB.DB
+			if root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil {
+				jobDB = root.Jobs.DB.DB
+			}
+			jobOutbox := outboxevents.NewRepository(jobDB)
+			jobsFinalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
+			// MEDIA-SSOT P0-2 (September 2026): the canonical media writer is
+			// ALWAYS PostgreSQL (newCanonicalAssetCommitter returns non-nil only
+			// for a media PostgreSQL handle), while the job terminal state lives
+			// on the SQLite job plane. The two engines cannot share a transaction,
+			// so the two-phase split-plane boundary is unconditional here. Passing
+			// assetTx (a PostgreSQL committer) into jobsfinalizer.New alongside a
+			// SQLite job DB was the cross-engine branch: the job tx would have
+			// carried PostgreSQL SQL and failed with `unrecognized token: ":"`.
+			stockFinalizer = &splitPlaneFinalizer{
+				mediaDB:       root.MediaPostgres,
+				mediaOutbox:   pgmedia.NewOutboxRepository(root.MediaPostgres),
+				assetTx:       assetTx,
+				jobsFinalizer: jobsFinalizer,
+			}
 		}
 	} else {
 		log.Warn("WireStockPipeline: Finalizer not constructed (godlike/07: one or more required deps nil — root.Outbox or root.Outbox.EventsRepo). If Publisher is also non-nil, the symmetric gate will fire ErrStockProductionJobFinalizerMissing.",

@@ -87,6 +87,13 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		return nil, fmt.Errorf("Service.runOrchestratorResilient: %w", searchErr)
 	}
 
+	// Direct URLs arrive without provider duration metadata (unlike
+	// search-resolved sources). Resolve it before planning so the
+	// deterministic planner distributes clip windows inside the REAL source
+	// length instead of over-planning past the end of the file. Non-fatal:
+	// a failed probe leaves the planner's conservative fallback in place.
+	s.enrichDirectURLDurations(ctx, input)
+
 	cfg := OrchestratorConfig{
 		JobId:            jobID,
 		Lease:            input.FinalizationLease,
@@ -110,7 +117,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	stager := s.stagerForRun()
 	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {
-		writer = stockDispatcherWriter{dispatcher: s.dispatcher, termUpdater: s.clipsRepo}
+		writer = stockDispatcherWriter{dispatcher: s.dispatcher}
 	}
 	artifactPreparation := finalization.ArtifactPreparationService(nil)
 	if s.publisher != nil {

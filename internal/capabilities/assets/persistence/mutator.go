@@ -2,10 +2,7 @@ package persistence
 
 import (
 	"context"
-	"database/sql"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // AssetPatch is the typed partial-update contract for an existing canonical
@@ -71,12 +68,17 @@ type DriveLocationPatch struct {
 }
 
 // AssetMutator is the mutation half of the canonical asset writer. Production
-// composition supplies the SAME SQLiteMediaCommitter instance that implements
-// AssetCommitter; this split interface exists only to avoid forcing read-only
-// consumers and test fakes to implement mutation methods they never call.
+// composition supplies the SAME canonical committer instance
+// (pgmedia.PostgresMediaCommitter) that implements AssetCommitter; this split
+// interface exists only to avoid forcing read-only consumers and test fakes to
+// implement mutation methods they never call.
 //
-// Invariant: there is one concrete production writer, not one writer per
-// mutation type.
+// Invariant: there is one concrete production writer (PostgreSQL), not one
+// writer per mutation type. Every mutator method is SELF-OWNED: it opens its
+// own transaction on the media SSOT. There is deliberately no tx-scoped
+// variant on this boundary, because a caller-owned transaction could be a
+// SQLite one and would then run SQLite SQL against the PostgreSQL media
+// domain.
 type AssetMutator interface {
 	PatchAsset(ctx context.Context, patch AssetPatch) error
 	PatchAssetTx(ctx context.Context, tx Transaction, patch AssetPatch) error
@@ -87,16 +89,17 @@ type AssetMutator interface {
 // CanonicalAssetWriter is the complete production write surface. Composition
 // should construct one instance and pass the narrow AssetCommitter or
 // AssetMutator view to consumers as required.
+//
+// MEDIA-SSOT (September 2026, DEMOLITION COMPLETE): the interface is the
+// UNION of two self-owned contracts only. It deliberately exposes NO
+// transaction-bound method (`UpsertClipTx`, `SetIndexStateTx`), because such a
+// method is engine-agnostic by type (`*sql.Tx`) while the media domain is
+// owned by exactly one engine. That type was the single defect that let the
+// SQLite outbox dispatcher hand its own transaction to the PostgreSQL writer;
+// removing it makes the cross-database bug unrepresentable rather than merely
+// discouraged. Producers commit through CommitAndIndex / CommitAsset /
+// CommitDiscoveredAssetAndIndex instead.
 type CanonicalAssetWriter interface {
 	AssetCommitter
 	AssetMutator
-
-	// UpsertClipTx is the canonical dispatcher-facing clip mutation. The
-	// dispatcher owns tx and the outbox event; the writer only persists the
-	// asset projection inside that caller-owned transaction.
-	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error
-
-	// SetIndexStateTx is the canonical dispatcher-facing index-state mutation.
-	// It must use the exact transaction supplied by the dispatcher.
-	SetIndexStateTx(ctx context.Context, tx *sql.Tx, assetID string, state asset.IndexState) error
 }

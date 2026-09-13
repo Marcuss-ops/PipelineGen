@@ -265,6 +265,11 @@ func WireArtlist(
 				Cfg:    cfg,
 				Log:    log,
 				MainDB: bundle.DB.DB,
+				// MEDIA-SSOT P0-3 (September 2026): the canonical asset finalizer
+				// below is backed by the PostgreSQL committer, so the persist
+				// transaction must be opened on the media SSOT engine. bundle.DB.DB
+				// stays the operational SQLite handle for everything else.
+				MediaDB: bundle.MediaDB,
 			},
 			Ports: artlist.ArtlistPortDeps{
 				Dispatcher: dispatcher,

@@ -298,19 +298,29 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 	// URL runs may not have metadata yet, so use a conservative deterministic
 	// sampling horizon; extraction still fails closed if the source is shorter
 	// than the planned end offsets.
-	horizonSec := int(src.DurationSec)
+	// Known source length → distribute the windows across the REAL source.
+	// Unknown source length (bare direct URL with no metadata yet) → keep the
+	// conservative deterministic sampling horizon; extraction still fails
+	// closed if the source turns out to be shorter than the planned offsets.
+	horizonSec := budgetSec * 10
 	if src.DurationSec > 0 {
 		// Subtract the metadata rounding margin so the last clip window
 		// stays inside the REAL (probed) source length even when the
 		// provider-declared duration is a few tenths of a second longer
 		// than the downloaded file's measured duration.
-		horizonSec -= sourceDurationHorizonMarginSec
-	}
-	if horizonSec < budgetSec {
-		horizonSec = budgetSec
-	}
-	if src.DurationSec <= 0 {
-		horizonSec = budgetSec * 10
+		horizonSec = int(src.DurationSec) - sourceDurationHorizonMarginSec
+		if horizonSec < clipDur {
+			horizonSec = clipDur
+		}
+		// A source shorter than the requested output budget can only yield
+		// as many clips as physically fit inside it. Without this cap the
+		// planner kept the budget-driven count and spread the windows
+		// across `budgetSec` seconds — past the end of the file — which
+		// stock.extract_clips then rejects with ErrStockClipsOutOfRange
+		// instead of producing the clips that actually fit.
+		if fitting := horizonSec / clipDur; fitting >= 1 && fitting < count {
+			count = fitting
+		}
 	}
 	maxStart := horizonSec - clipDur
 	out := make([]ClipPlan, 0, count)

@@ -48,10 +48,19 @@ func Build(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets
 		log.Error(err.Error())
 		return nil, nil, nil, err
 	}
+	// MEDIA-SSOT P1-6: when the canonical media read repository is the
+	// PostgreSQL MediaSearcher, the local/hash/keyword backend reads the same
+	// SSOT. The legacy SQLite ClipsRepo backend is only used when the media
+	// plane is intentionally disabled.
+	var localStore PostgresLocalSearchPort
+	if ls, ok := mediaRepo.(PostgresLocalSearchPort); ok {
+		localStore = ls
+	}
 	fanOut, backends, aggregator, err := BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
 		Logger: log, ProviderReg: providerReg, ClipsRepo: clipsRepo,
 		Embeddings: embeddings, VectorStore: vectorStore, MediaRepo: mediaRepo,
 		Delivery: delivery, Reranker: reranker, CanonicalResolver: resolver,
+		MediaLocalStore: localStore,
 	})
 	if err != nil {
 		log.Error("search.Build: search graph build failed", zap.Error(err))

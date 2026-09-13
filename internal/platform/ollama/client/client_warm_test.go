@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -56,6 +57,74 @@ func TestWarmModelLoadsOnceAndVerifiesResidency(t *testing.T) {
 	options, _ := chatBody["options"].(map[string]any)
 	if got := options["num_ctx"]; got != float64(types.ProductionRunnerContext) {
 		t.Fatalf("options.num_ctx = %v, want %d resident runner", got, types.ProductionRunnerContext)
+	}
+}
+
+// TestWarmModelRecordsItsOwnMeasuredOperation pins the Pipeline Waste Audit
+// §2.3 acceptance criterion: the warm probe's model load must be attributable
+// as its OWN operation. When the probe was unmeasured, a warm-up that paid a
+// full model load landed inside the `generate` stage wall with no operation
+// behind it, so the stage looked slow while every operation inside it looked
+// fast — and the regression was invisible.
+func TestWarmModelRecordsItsOwnMeasuredOperation(t *testing.T) {
+	var psCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/ps":
+			if psCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"models":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"models":[{"name":"gemma4:e4b","context_length":8192}]}`))
+		case "/api/chat":
+			// A cold load (~45s) followed by a trivial probe inference.
+			_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":""},"done":true,"load_duration":45000000000,"prompt_eval_count":1,"prompt_eval_duration":1000000,"eval_count":1,"eval_duration":2000000,"total_duration":46000000000}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-warm", AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	c := NewClient(server.URL, "gemma4:e4b", 5)
+	if err := c.WarmModel(ctx, "gemma4:e4b"); err != nil {
+		t.Fatalf("WarmModel: %v", err)
+	}
+	run.Finish()
+
+	ops := run.Report().Operations
+	var warm *kernobs.OperationReport
+	for i := range ops {
+		if ops[i].Operation == string(kernobs.OperationWarm) {
+			warm = &ops[i]
+			break
+		}
+	}
+	if warm == nil {
+		t.Fatalf("warm probe operation not recorded; operations = %+v", ops)
+	}
+	if warm.Stage != string(kernobs.StageGenerate) || warm.Component != string(kernobs.ComponentOllama) {
+		t.Fatalf("warm operation attributed to stage=%q component=%q, want generate/ollama", warm.Stage, warm.Component)
+	}
+
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(warm.MetadataJSON), &meta); err != nil {
+		t.Fatalf("warm metadata %q: %v", warm.MetadataJSON, err)
+	}
+	if got := meta["model_load_ms"]; got != float64(45000) {
+		t.Fatalf("warm model_load_ms = %v, want 45000 (the load must be its own measured fact)", got)
+	}
+	if got := meta["cold_start"]; got != true {
+		t.Fatalf("warm cold_start = %v, want true", got)
+	}
+	if got := meta["inference_work_ms"]; got != float64(3) {
+		t.Fatalf("warm inference_work_ms = %v, want 3", got)
+	}
+	if got := meta["num_ctx"]; got != float64(types.ProductionRunnerContext) {
+		t.Fatalf("warm num_ctx = %v, want %d (resident runner bucket)", got, types.ProductionRunnerContext)
 	}
 }
 
