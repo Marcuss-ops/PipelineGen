@@ -56,8 +56,9 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	if p == nil || p.publisher == nil {
 		return fmt.Errorf("overlay Drive publisher is not configured")
 	}
-	if strings.TrimSpace(p.rootFolderID) == "" {
-		return fmt.Errorf("overlay Drive publisher requires configured root folder")
+	rootFolderID := firstNonEmpty(spec.DriveFolderID, p.rootFolderID)
+	if rootFolderID == "" {
+		return fmt.Errorf("overlay Drive publisher requires configured root folder or job drive folder")
 	}
 	if artifact == nil || strings.TrimSpace(artifact.URL) == "" || strings.TrimSpace(artifact.SHA256) == "" || artifact.SizeBytes <= 0 {
 		return fmt.Errorf("overlay artifact certification is incomplete")
@@ -119,7 +120,7 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	// The configured root is the parent selected by the operator. The
 	// canonical delivery publisher creates/reuses the deterministic `overlay`
 	// child below it. The same path is used for the JSON timing receipt.
-	verified.ResolvedFolderID = p.rootFolderID
+	verified.ResolvedFolderID = rootFolderID
 	verified.RootFolderResolved = true
 	verified.DriveSubpath = []string{finalization.OverlayChildFolder}
 	if p.scriptLanguageRouting {
@@ -140,7 +141,7 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	artifact.DriveLink = loc.WebViewLink
 	artifact.DriveFolderID = loc.FolderID
 
-	if err := p.publishReceipt(ctx, spec, artifact, scriptName, language, artifactID, filename, videoPublishMS); err != nil {
+	if err := p.publishReceipt(ctx, spec, artifact, rootFolderID, scriptName, language, artifactID, filename, videoPublishMS); err != nil {
 		return fmt.Errorf("publish overlay timing receipt: %w", err)
 	}
 	return nil

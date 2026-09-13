@@ -381,7 +381,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 // overlay plan for the run (plan id = run id, so the queue job id is the
 // run's idempotency key) and attaches it to the durable result. Nil when the
 // run carried no derivable overlay surface.
-func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID string, canvas OverlayCanvasSpec) error {
+func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) error {
 	if result == nil {
 		return nil
 	}
@@ -393,6 +393,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if plan == nil {
 		return nil
 	}
+	plan.DriveFolderID = strings.TrimSpace(driveFolderID)
 	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
 		// Once a render plan exists, the semantic bundle is part of the
 		// canonical contract, not optional telemetry. Never enqueue a render
@@ -430,9 +431,24 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 			if !matches {
 				continue
 			}
+			// The pre-timing intent is authored as an entity card because media
+			// resolution may still be in flight. Once the final plan has a
+			// verified image, the resolved intent must describe the exact layer
+			// that RenderingGen receives: image_popup/entity_image, with no
+			// display text. Keeping person_default/name here made the persisted
+			// intent disagree with the image-only render plan and allowed a
+			// downstream projection to recreate the old name-under-portrait card.
+			intent.Kind = item.Kind
+			intent.TemplateID = item.TemplateID
 			intent.PresetID = item.PresetID
 			intent.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
 			intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
+			if item.Kind == string(capabilityoverlay.KindEntityImage) {
+				intent.Payload.Name = ""
+				intent.Payload.Text = ""
+			} else if strings.TrimSpace(item.Text) != "" {
+				intent.Payload.Name = item.Text
+			}
 			intent.StartMs = item.StartMs
 			intent.EndMs = item.EndMs
 			intent.TimingState = capabilityoverlay.TimingStateFrozen
