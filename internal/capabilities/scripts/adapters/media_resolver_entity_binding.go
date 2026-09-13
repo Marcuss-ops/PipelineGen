@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -57,6 +58,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			}
 		}
 	}
+	resolvedEntityImages := make(map[string]struct{}, capabilityoverlay.MaxEntityImageOverlaysPerRun)
 	for i := range out.Scenes {
 		if out.Scenes[i].Annotations == nil {
 			continue
@@ -72,6 +74,15 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 				continue
 			}
 			if candidate, ok := findEntityImageCandidate(*entity, *seg); ok {
+				identity := entityImageIdentity(*entity)
+				if _, alreadyBound := resolvedEntityImages[identity]; !alreadyBound {
+					if len(resolvedEntityImages) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
+						// Keep the entity in the semantic result, but do not bind
+						// another image once the run-level render budget is full.
+						continue
+					}
+					resolvedEntityImages[identity] = struct{}{}
+				}
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,
 					DriveLink: candidate.DriveLink, Source: candidate.Provider,
@@ -88,6 +99,14 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 		}
 	}
 	return out
+}
+
+func entityImageIdentity(entity scriptpkg.AnnotatedEntity) string {
+	name := normalizeEntityMatch(entity.CanonicalName)
+	if name == "" {
+		name = normalizeEntityMatch(entity.Text)
+	}
+	return strings.ToUpper(strings.TrimSpace(entity.Type)) + "|" + name
 }
 
 // ProjectEntityImageBindings reapplies the canonical identity-image
