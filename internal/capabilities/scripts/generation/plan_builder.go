@@ -233,9 +233,9 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 		// orphaning provider candidates from the materialization stage.
 		processors = append(processors, adapters.ProcessorInternetImages, adapters.ProcessorVidRushMaterialization)
 	}
-	if output.GenerateSceneImages.AsBool() {
-		processors = append(processors, adapters.ProcessorImages)
-	}
+	// Scene/entity visuals are retrieved from the real-image pipeline above
+	// (DuckDuckGo/catalog) and animated later by Chronon. Do not append the
+	// legacy AI-image processor: it requires the retired Chrome/Python bridge.
 	if output.VoiceoverEnabled.AsBool() {
 		processors = append(processors, adapters.ProcessorVoiceover)
 	}

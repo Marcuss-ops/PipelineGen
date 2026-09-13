@@ -54,6 +54,9 @@ func (s *Service) GenerateArtifact(ctx context.Context, jobID, prompt, style str
 // TriggerPrewarm warms up the Chrome/Playwright worker subprocess
 // ahead of a batch generation run.
 func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	if s == nil || s.Gen == nil {
+		return
+	}
 	s.Gen.TriggerPrewarm(ctx, jobID, count)
 }
 

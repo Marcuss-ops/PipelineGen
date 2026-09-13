@@ -157,15 +157,6 @@ func registerScriptPostProcessors(
 	}
 	log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
 
-	// Inline Image generation processor (temporarily restored).
-	if root.Domains != nil && root.Domains.ImageService != nil {
-		imgGenSvc := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		if !ppReg.Register(processor.NewImageProcessor(imgGenSvc, log)) {
-			return fmt.Errorf("register image processor: composition bug or duplicate name")
-		}
-		log.Info("ImageProcessor (inline scene images) successfully registered")
-	}
-
 	// Fase 2 Spina Dorsale (July 2026) — re-enabled 2026-07-08:
 	// inline voiceover postprocessor coexists with the downstream
 	// voiceover.generate job.
