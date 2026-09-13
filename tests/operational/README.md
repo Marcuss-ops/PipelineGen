@@ -19,7 +19,8 @@ Headless verification lives elsewhere: `internal/**/*_test.go`, `tests/e2e/**`
 | `lib/common.sh` | Source-able bash helper library: `smoke_curl`, `smoke_poll_terminal`, `smoke_require`, token redaction, `--dry-run`, timeouts | sourced by the scripts above |
 | `results/` | Retained run artifacts (production-shaped timings). Output-only: never read by code, never a gate input. See AGENTS.md for the retention decision. |
 | `voiceover_*_test.go`, `voiceover_harness.go` | Go E2E harness for the voiceover vertical slice (`make smoke-voiceover`) | |
-| `worker-integration/`, `generate/`, `generate-certification/`, `boxers-generate/`, `vidrush/`, `fixtures/` | Scenario manifests, payload fixtures and result baselines consumed by the Go suites and by operators | |
+| `worker-integration/` | Go worker-integration harness (`go run ./tests/operational/worker-integration`) | |
+| `vidrush/scenarios/` | VidRush scenario manifests, kept as inputs for a future tracked driver (the former runner `vidrush/run_scenario.sh` was deleted by commit `7e6965aab`) | *no live driver today* |
 
 ## Pipeline E2E gate — two layers, one step map
 
@@ -88,6 +89,11 @@ The following operational batteries and their `make` targets were retired on
 `artlist_scale_e2e.sh`, `maya_vidrush_e2e.sh`,
 `boxers-generate/run_intro_hook_stock.sh`, `youtube_stock_live_e2e.sh`,
 `stockrust_live_e2e.sh`).
+
+The orphan scenario/fixture sets whose drivers disappeared with that commit
+were removed on 2026-09-13: `boxers-generate/`, `generate/`,
+`generate-certification/`, `fixtures/`, plus 11 stray one-off payloads/SQL
+files that had zero references in the tree. `vidrush/scenarios/` is retained.
 
 A target or CI job whose only possible outcome is "No such file or directory" is
 not a gate. Nothing may reference a path here that is not in the tree; do not

@@ -273,7 +273,7 @@ For the remaining operational procedures see:
 
 - [`docs/stock_pipeline.md` — Stock pipeline guide](docs/stock_pipeline.md) (source types, JSON payload examples, Google Drive auth, and output destination).
 - [`docs/operations/stock-e2e-runbook.md` — Stock operational procedure](docs/operations/stock-e2e-runbook.md) (HTTP entry points, headless Stock gates, StockRust certification boundary, `performance_runs` timing).
-- [`docs/operations/verify-release-and-live.md` — tier-3 pre-deploy gate](docs/operations/verify-release-and-live.md) (plus the tier-4 live-battery retirement record).
+- [`docs/operations/verify-release-and-live.md` — live / end-to-end verification](docs/operations/verify-release-and-live.md) (the 10-step pipeline E2E gate plus the tier-4 live-battery retirement record).
 
 ## Canonical documentation
 

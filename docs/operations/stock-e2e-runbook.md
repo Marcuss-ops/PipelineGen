@@ -152,7 +152,9 @@ Any future live battery must be:
 - `tests/operational/README.md` — the operational battery catalog and the
   exit-code/redaction discipline shared by every script there.
 - `AGENTS.md` — operational rules, media SSOT cutover, gate hierarchy.
-- `docs/operations/verify-release-and-live.md` — tier-3 pre-deploy gate, the
-  tier-4 retirement record and the current live gate.
+- `docs/operations/verify-main-workflow.md` — headless gate family (tiers 1–3)
+  and the development loop.
+- `docs/operations/verify-release-and-live.md` — live/E2E layer: the current
+  10-step live gate and the tier-4 retirement record.
 - `internal/platform/media/rustexec/` — L2 canonical tests and the
   `ffmpeg_ms` wire field.
