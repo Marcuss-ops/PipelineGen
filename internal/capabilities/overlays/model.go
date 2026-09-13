@@ -32,10 +32,15 @@ type OverlayPlan struct {
 	// composition root; these fields never cause a caller-side upload.
 	ScriptName string `json:"script_name,omitempty"`
 	Language   string `json:"language,omitempty"`
-	Width      int    `json:"width"`
-	Height     int    `json:"height"`
-	FPSNum     int    `json:"fps_num"`
-	FPSDen     int    `json:"fps_den"`
+	// DriveFolderID is the job-selected Drive parent for the overlay output.
+	// It is routing metadata, not render content: the publisher creates the
+	// deterministic overlay child below it and falls back to its configured
+	// root only when this value is empty.
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	FPSNum        int    `json:"fps_num"`
+	FPSDen        int    `json:"fps_den"`
 	// DurationMS is the canonical master-audio/timeline duration projected
 	// onto the overlay plan. It is a floor for the Chronon canvas duration:
 	// overlay items may extend it, but they can never truncate the master
@@ -337,6 +342,8 @@ func (p OverlayPlan) FingerprintValue() string {
 	copyPlan := p
 	copyPlan.Items = append([]OverlayItem(nil), p.Items...)
 	copyPlan.Fingerprint = ""
+	// Destination routing must not invalidate a content/render fingerprint.
+	copyPlan.DriveFolderID = ""
 	for i := range copyPlan.Items {
 		copyPlan.Items[i].RenderKey = ""
 	}

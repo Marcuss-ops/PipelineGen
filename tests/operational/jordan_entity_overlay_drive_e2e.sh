@@ -30,9 +30,10 @@ mkdir -p "$RESULTS_DIR"
 chmod 700 "$RESULTS_DIR"
 
 RUN_ID="jordan-entity-overlay-drive-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
-# Image root validated by the live Drive startup probe; the previous canary
-# folder was not visible to the configured service account and caused 404s.
-DRIVE_FOLDER_ID="1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+# The caller-selected Drive folder is part of the job contract. Production
+# code carries it through the frozen overlay plan and creates the overlay
+# child automatically; this canary only supplies the destination.
+DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS}"
 SOURCE_TEXT='Michael Jordan became a defining figure in basketball because his career combined elite scoring, defensive intensity, competitive focus, and a public standard of preparation. He was born in Brooklyn and grew up in Wilmington, where sport became a daily discipline rather than a shortcut to fame. His early development was shaped by repetition, physical conditioning, and the pressure of learning to compete against stronger opponents. Those lessons later became part of the story told about his professional career.
 
 The history of basketball began decades earlier when James Naismith designed an indoor game that could keep students active during winter. The original experiment was simple, but its structure created a sport in which coordination, spacing, passing, and decision-making mattered as much as strength. Over time the game changed from a local activity into an international spectacle. The evolution of the sport gave exceptional players a stage on which individual skill could influence an entire team and, eventually, an entire culture.
@@ -125,7 +126,7 @@ jq -n \
           },
           extraction: {
             enabled: true,
-            include: ["entities", "special_names", "important_phrases"],
+            include: ["entities", "special_names"],
             max_entities_per_segment: 5,
             max_important_phrases_per_segment: 3,
             max_image_queries_per_segment: 5,
@@ -191,13 +192,13 @@ PERSON_NAMES=$(jq -r '
   | map(select(type == "string" and length > 0)) | unique | .[]
 ' <<<"$RESULT")
 PERSON_COUNT=$(printf '%s\n' "$PERSON_NAMES" | sed "/^$/d" | wc -l | tr -d ' ')
-(( PERSON_COUNT <= 5 )) || fail "PERSON uniche=$PERSON_COUNT, massimo 5: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
+(( PERSON_COUNT == 5 )) || fail "PERSON uniche=$PERSON_COUNT, attese 5: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
 
 IMAGE_BINDINGS=$(jq -r '
   [.scenes[]?.annotations?.primary_entities[]?.image? // empty]
   | map(select(.status == "resolved" and ((.drive_link // "") | startswith("http")))) | length
 ' <<<"$RESULT")
-(( IMAGE_BINDINGS <= 5 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, massimo 5"
+(( IMAGE_BINDINGS == 5 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, attese 5"
 
 ENTITY_ITEMS=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -207,7 +208,7 @@ ENTITY_ITEMS=$(jq -r '
           ((.image_preset_id // "") | length == 0) and
           ((.text // "") | length == 0))] | length
 ' <<<"$RESULT")
-(( ENTITY_ITEMS <= 5 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, massimo 5"
+(( ENTITY_ITEMS == 5 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, attese 5"
 
 ENTITY_NAME_TEXT=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -219,14 +220,11 @@ ENTITY_NAME_TEXT=$(jq -r '
 GENERATED_TEXT_CHARS=$(jq -r '(.output?.text // "") | length' <<<"$RESULT")
 (( GENERATED_TEXT_CHARS > 0 )) || fail "testo generato assente"
 
-PHRASE_INTENTS=$(jq -r '[.overlay_intents[]? | select(.kind == "important_phrase" and (.payload.text // "") != "")] | length' <<<"$RESULT")
-(( PHRASE_INTENTS >= 1 )) || fail "frasi importanti estratte=$PHRASE_INTENTS, attesa almeno 1"
+PHRASE_INTENTS=$(jq -r '[.overlay_intents[]? | select(.kind == "important_phrase" or .kind == "important_word")] | length' <<<"$RESULT")
+(( PHRASE_INTENTS == 0 )) || fail "layer frasi/parole inattesi=$PHRASE_INTENTS"
 
-PHRASE_ITEMS=$(jq -r '[.overlay_plan?.items[]? | select(.kind == "text_phrase" and (.text // "") != "" and (.preset_id // "") != "")] | length' <<<"$RESULT")
-(( PHRASE_ITEMS >= 1 )) || fail "frasi importanti renderizzabili=$PHRASE_ITEMS, attesa almeno 1"
-
-PHRASE_ITEMS_TIMED=$(jq -r '[.overlay_plan?.items[]? | select(.kind == "text_phrase" and (.text // "") != "" and (.preset_id // "") != "" and (.start_ms? != null) and (.duration_ms? != null))] | length' <<<"$RESULT")
-(( PHRASE_ITEMS_TIMED == PHRASE_ITEMS )) || fail "frasi con timing=$PHRASE_ITEMS_TIMED/$PHRASE_ITEMS"
+PHRASE_ITEMS=$(jq -r '[.overlay_plan?.items[]? | select(.kind == "text_phrase" or .kind == "important_phrase" or .kind == "important_word")] | length' <<<"$RESULT")
+(( PHRASE_ITEMS == 0 )) || fail "layer testuali inattesi=$PHRASE_ITEMS"
 
 BACKGROUND=$(jq -c '.overlay_plan?.background // {}' <<<"$RESULT")
 EXPECTED_BACKGROUND='[0.9333333333333333,0.9450980392156862,0.9058823529411765,1]'

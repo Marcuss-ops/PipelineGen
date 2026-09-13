@@ -23,6 +23,40 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestFreezeOverlayIntentsPromotesVerifiedEntityImageToImageOnly(t *testing.T) {
+	asset := capabilityoverlay.OverlayAssetRef{
+		AssetID: "portrait-sha", URL: "https://images.example.test/jordan.jpg",
+		SHA256:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		MediaType: "image/jpeg",
+	}
+	intents := []capabilityoverlay.OverlayIntent{{
+		Version:  capabilityoverlay.OverlayIntentVersion,
+		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
+		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
+		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+	}}
+	items := []capabilityoverlay.OverlayItem{{
+		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: "ent-jordan",
+		Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
+		StartMs: 100, EndMs: 5100, StartUS: 100000, DurationUS: 5000000,
+		PresetID: "image_fast_fade", AssetRefs: []capabilityoverlay.OverlayAssetRef{asset},
+		EntityRef: &capabilityoverlay.OverlayEntityRef{Name: "Michael Jordan"},
+	}}
+
+	freezeOverlayIntents(intents, items)
+	got := intents[0]
+	if got.Kind != string(capabilityoverlay.KindEntityImage) || got.TemplateID != "image_popup" {
+		t.Fatalf("resolved intent kind/template = %q/%q, want entity_image/image_popup", got.Kind, got.TemplateID)
+	}
+	if got.Payload.Name != "" || got.Payload.Text != "" {
+		t.Fatalf("image-only intent retained display text: %#v", got.Payload)
+	}
+	if got.TimingState != capabilityoverlay.TimingStateFrozen || len(got.AssetRefs) != 1 {
+		t.Fatalf("resolved image intent lost timing/assets: %#v", got)
+	}
+}
+
 func TestOverlayCanvasDefaultsPreserveBackgroundAndStyle(t *testing.T) {
 	style := &scriptpkg.OverlayStyleSpec{Color: []float64{0.1, 0.2, 0.3, 1}}
 	background := &capabilityoverlay.OverlayBackground{Kind: "video", Fit: "cover", Loop: true}

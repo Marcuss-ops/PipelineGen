@@ -20,6 +20,17 @@ type fakeRenderQueueClient struct {
 	calls int
 }
 
+type captureOverlayPublication struct {
+	spec     OverlayPublicationSpec
+	artifact *RenderArtifact
+}
+
+func (p *captureOverlayPublication) PublishOverlay(_ context.Context, spec OverlayPublicationSpec, artifact *RenderArtifact) error {
+	p.spec = spec
+	p.artifact = artifact
+	return nil
+}
+
 func newFakeRenderQueueClient() *fakeRenderQueueClient {
 	return &fakeRenderQueueClient{jobs: make(map[string]RenderQueueJob)}
 }
@@ -312,7 +323,7 @@ type freshRenderClient struct {
 
 func (c *freshRenderClient) Submit(_ context.Context, job RenderQueueJob) error {
 	job.State = "completed"
-	job.Artifact = &RenderArtifact{SHA256: "fresh"}
+	job.Artifact = &RenderArtifact{SHA256: "fresh", SizeBytes: 1, URL: "https://store.invalid/fresh.mp4"}
 	c.job = job
 	return nil
 }
@@ -342,6 +353,35 @@ func TestQueueRenderEnqueuerFreshRenderUsesNewQueueIdentity(t *testing.T) {
 	}
 	if !strings.HasPrefix(client.job.ID, plan.PlanID+":render:") {
 		t.Fatalf("fresh render job id=%q does not carry plan identity", client.job.ID)
+	}
+}
+
+func TestQueueRenderEnqueuerCarriesJobDriveFolderToPublisherAndOmitsItFromWire(t *testing.T) {
+	client := &freshRenderClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.pollInterval = time.Millisecond
+	capture := &captureOverlayPublication{}
+	enqueuer.SetArtifactPublisher(capture)
+
+	plan := capoverlay.GoldenOverlayPlanV1()
+	plan.DriveFolderID = "job-selected-root"
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if capture.spec.DriveFolderID != "job-selected-root" {
+		t.Fatalf("publisher drive folder = %q, want job-selected-root", capture.spec.DriveFolderID)
+	}
+	var wire struct {
+		DriveFolderID string `json:"drive_folder_id,omitempty"`
+	}
+	if err := json.Unmarshal(client.job.OverlaySpec, &wire); err != nil {
+		t.Fatalf("decode submitted overlay spec: %v", err)
+	}
+	if wire.DriveFolderID != "" {
+		t.Fatalf("application-only drive folder leaked onto RenderingGen wire: %q", wire.DriveFolderID)
 	}
 }
 

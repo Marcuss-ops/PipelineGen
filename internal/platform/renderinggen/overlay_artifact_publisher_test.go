@@ -181,3 +181,42 @@ func TestDriveOverlayArtifactPublisherPinsConfiguredRootFolder(t *testing.T) {
 		t.Fatalf("overlay child path was not requested: %#v", capture.artifacts[0])
 	}
 }
+
+func TestDriveOverlayArtifactPublisherUsesJobSelectedRootBeforeConfiguredRoot(t *testing.T) {
+	payload := []byte("job-routed overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+
+	capture := &captureOverlayPublisher{}
+	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+	publisher.SetRootFolderID("configured-root")
+	artifact := &scriptgen.RenderArtifact{
+		ID: "render-job-root", URL: store.URL + "/objects/" + hash,
+		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
+	}
+	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+		ScriptName: "Michael Jordan", Language: "en", PlanID: "plan-job-root",
+		DriveFolderID: "job-selected-root",
+	}, artifact); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.artifacts) != 2 {
+		t.Fatalf("publication count = %d, want video + receipt", len(capture.artifacts))
+	}
+	for i, published := range capture.artifacts {
+		if published.ResolvedFolderID != "job-selected-root" {
+			t.Fatalf("publication %d used folder %q, want job-selected-root: %#v", i, published.ResolvedFolderID, published)
+		}
+		if strings.Join(published.DriveSubpath, "/") != finalization.OverlayChildFolder {
+			t.Fatalf("publication %d path = %#v, want overlay child", i, published.DriveSubpath)
+		}
+	}
+}

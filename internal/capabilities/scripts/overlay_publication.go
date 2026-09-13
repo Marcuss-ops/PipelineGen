@@ -13,6 +13,10 @@ type OverlayPublicationSpec struct {
 	Language   string
 	ProjectID  string
 	PlanID     string
+	// DriveFolderID is the job-selected Drive parent. The platform publisher
+	// creates/reuses its deterministic overlay child and only falls back to
+	// its configured root when this is empty.
+	DriveFolderID string
 
 	// Completion metrics are captured by PipelineGen while waiting for the
 	// RenderingGen queue. They are copied into the Drive receipt so the

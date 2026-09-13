@@ -74,7 +74,7 @@ type receiptTiming struct {
 	EndToEndObservedMS         int64 `json:"end_to_end_observed_ms"`
 }
 
-func (p *DriveOverlayArtifactPublisher) publishReceipt(ctx context.Context, spec scriptgen.OverlayPublicationSpec, artifact *scriptgen.RenderArtifact, scriptName, language, artifactID, videoFilename string, videoPublishMS int64) error {
+func (p *DriveOverlayArtifactPublisher) publishReceipt(ctx context.Context, spec scriptgen.OverlayPublicationSpec, artifact *scriptgen.RenderArtifact, rootFolderID, scriptName, language, artifactID, videoFilename string, videoPublishMS int64) error {
 	started := time.Now()
 	receipt := overlayTimingReceipt{
 		SchemaVersion: 1,
@@ -164,7 +164,7 @@ func (p *DriveOverlayArtifactPublisher) publishReceipt(ctx context.Context, spec
 		Source:             "chronon_receipt",
 		ProjectID:          scriptName,
 		Language:           language,
-		ResolvedFolderID:   p.rootFolderID,
+		ResolvedFolderID:   rootFolderID,
 		RootFolderResolved: true,
 		DriveSubpath:       []string{finalization.OverlayChildFolder},
 		ArtifactMetadata:   map[string]any{"script_name": scriptName, "language": language, "source": "chronon_receipt", "plan_id": spec.PlanID, "video_sha256": artifact.SHA256},

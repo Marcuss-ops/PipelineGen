@@ -193,11 +193,17 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
 	semanticPlan := plan
+	// Drive routing belongs to PipelineGen's publication boundary, not to
+	// RenderingGen's strict semantic overlay-plan wire contract. Keep it on
+	// the in-memory/persisted plan for the publisher, but omit it from the
+	// queue payload so the worker does not reject an application-only field.
+	wirePlan := semanticPlan
+	wirePlan.DriveFolderID = ""
 	// SSOT: backgrounds are declared only through the plan's first-class
 	// Background block. The legacy "item with template BACKGROUND" spelling
 	// was removed — producers must set Background explicitly; the enqueue
 	// boundary no longer rewrites the plan's items.
-	spec, err := json.Marshal(semanticPlan)
+	spec, err := json.Marshal(wirePlan)
 	if err != nil {
 		return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
 	}
@@ -294,6 +300,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			Language:        plan.Language,
 			ProjectID:       plan.ProjectID,
 			PlanID:          plan.PlanID,
+			DriveFolderID:   plan.DriveFolderID,
 			CompletionWait:  wait.CompletionWait,
 			PollingSleep:    wait.PollingSleep,
 			PollingInterval: wait.PollInterval,
