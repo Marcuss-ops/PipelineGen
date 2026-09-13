@@ -184,6 +184,43 @@ func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
 	}
 }
 
+func TestSeparateOverlayItemPlanUsesTTSWindowPlusPaddingAndFiveSecondCap(t *testing.T) {
+	parent := capoverlay.OverlayPlan{
+		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "dolly:overlay", VideoID: "dolly",
+		ScriptName: "Dolly", Language: "en", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Items: []capoverlay.OverlayItem{{
+			ID: "entity-dolly", EntityID: "person:dolly-parton", Kind: "entity_card", TemplateID: "person_default",
+			StartUS: 12_000_000, DurationUS: 1_500_000, StartMs: 12000, EndMs: 13500,
+			Text: "Dolly Parton", AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "dolly", SHA256: "abc"}},
+		}},
+	}
+	child, meta, err := separateOverlayItemPlan(parent, parent.Items[0], 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.DurationMS != 3500 || child.Items[0].StartUS != 0 || child.Items[0].DurationUS != 3_500_000 {
+		t.Fatalf("child timing = duration=%d item=%+v, want 3500ms local / 3500000us", child.DurationMS, child.Items[0])
+	}
+	if meta.SourceStartUS != 12_000_000 || meta.SourceEndUS != 13_500_000 || meta.TargetDurationUS != 3_500_000 {
+		t.Fatalf("source metadata = %+v", meta)
+	}
+
+	long := parent.Items[0]
+	long.ID = "phrase-long"
+	long.EntityID = ""
+	long.Kind = "text_phrase"
+	long.TemplateID = "IMPORTANT_PHRASE"
+	long.StartUS, long.DurationUS = 0, 4_500_000
+	long.StartMs, long.EndMs = 0, 4500
+	child, meta, err = separateOverlayItemPlan(parent, long, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.DurationMS != 5000 || child.Items[0].DurationUS != 5_000_000 || meta.TargetDurationUS != 5_000_000 {
+		t.Fatalf("five-second cap not applied: child=%+v meta=%+v", child, meta)
+	}
+}
+
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes
 // PipelineGen submit semantic visual instructions to RenderingGen. RenderingGen
 // owns the final semantic→Chronon v2 compilation and submits the certified

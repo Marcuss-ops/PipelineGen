@@ -1,6 +1,9 @@
 package scriptgeneration
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // OverlayPublicationSpec carries the stable logical identity used by Drive
 // routing. It deliberately contains no provider-specific fields: the
@@ -10,6 +13,25 @@ type OverlayPublicationSpec struct {
 	Language   string
 	ProjectID  string
 	PlanID     string
+
+	// Completion metrics are captured by PipelineGen while waiting for the
+	// RenderingGen queue. They are copied into the Drive receipt so the
+	// published overlay has an auditable timing record next to it.
+	CompletionWait  time.Duration
+	PollingSleep    time.Duration
+	PollingInterval time.Duration
+	PollCount       int
+
+	// OverlayItem* identify the single semantic item rendered into this
+	// artifact. They make every Drive video/receipt auditable without forcing
+	// downstream consumers to reconstruct the source plan.
+	OverlayItemID    string
+	OverlayItemKind  string
+	OverlayEntityID  string
+	OverlayText      string
+	SourceStartUS    int64
+	SourceEndUS      int64
+	TargetDurationUS int64
 }
 
 // OverlayArtifactPublisher publishes a certified RenderingGen artifact after
