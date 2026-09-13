@@ -99,6 +99,13 @@ type benchReport struct {
 	ParentFinalizeP50MS  int64 `json:"parent_finalize_p50_ms"`
 	ParentFinalizeP95MS  int64 `json:"parent_finalize_p95_ms"`
 
+	// ParentsFinalized is the number of clips whose remote-complete →
+	// parent-terminal latency was actually OBSERVED. The latency itself is
+	// millisecond-truncated, so a genuine event-driven finalisation is reported
+	// as 0 ms — indistinguishable, on its own, from "nothing was measured".
+	// Asserting this count is what keeps the event-driven scenarios honest.
+	ParentsFinalized int `json:"parents_finalized"`
+
 	GPULaneBusyMS    int64   `json:"gpu_lane_busy_ms"`
 	GPULaneUtilPct   float64 `json:"gpu_lane_utilization_pct"`
 	GPULaneIdlePct   float64 `json:"gpu_lane_idle_pct"`
@@ -179,11 +186,14 @@ func (r benchReport) markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "| %s | mode=%s workers=%d waiters=%d lanes=%d clips=%d event_driven=%v |\n",
 		r.Scenario, r.Mode, r.Workers, r.WaiterPool, r.GPULanes, r.Clips, r.EventDriven)
-	b.WriteString("| wall_ms | clips/min | p50 | p95 | submit_p50 | settle_p50 | render_p50 | queue_p95 | parent_p50 | gpu_util%% | gpu_idle%% |\n")
-	fmt.Fprintf(&b, "| %d | %.2f | %d | %d | %d | %d | %d | %d | %d | %.1f | %.1f |\n",
+	// parent_n is the sample count for parent_p50: an event-driven finalisation
+	// lands below 1 ms and is therefore reported as 0 ms, so the count is what
+	// tells "immediate" apart from "never finalised".
+	b.WriteString("| wall_ms | clips/min | p50 | p95 | submit_p50 | settle_p50 | render_p50 | queue_p95 | parent_p50 | parent_n | gpu_util%% | gpu_idle%% |\n")
+	fmt.Fprintf(&b, "| %d | %.2f | %d | %d | %d | %d | %d | %d | %d | %d | %.1f | %.1f |\n",
 		r.WallMS, r.ClipsPerMin, r.P50MS, r.P95MS,
 		r.SubmitOccupancyP50MS, r.SettleOccupancyP50MS, r.RemoteRenderP50MS, r.RemoteQueueP95MS,
-		r.ParentFinalizeP50MS, r.GPULaneUtilPct, r.GPULaneIdlePct)
+		r.ParentFinalizeP50MS, r.ParentsFinalized, r.GPULaneUtilPct, r.GPULaneIdlePct)
 	fmt.Fprintf(&b, "| hashes=%d downloads=%d disk_read=%d disk_write=%d net_tx=%d net_rx=%d fps=%.1f failures=%d |\n",
 		r.SourceFullHashes, r.SourceDownloads, r.DiskReadBytes, r.DiskWriteBytes,
 		r.NetworkTXBytes, r.NetworkRXBytes, r.AggregatedFPS, r.Failures)
@@ -753,7 +763,7 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 			if err != nil {
 				return "", err
 			}
-			return q.pushSettle(cont.Submission.RenderJobID, payload), nil
+			return q.stageSettle(cont.Submission.RenderJobID, payload), nil
 		}})
 	}
 
@@ -781,6 +791,7 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 		switch j.kind {
 		case benchJobSubmit:
 			if handleErr != nil {
+				q.dropSettle(j.jobID)
 				recordBenchFailure(&resultsMu, results, j.index, handleErr)
 				clipWG.Done()
 				return
@@ -797,6 +808,9 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 			parent := &job.Job{ID: j.jobID, Type: TypeClipRender, Result: raw, Revision: 1}
 			q.registerParent(j.jobID, j.index)
 			jobsSvc.Register(parent, childID)
+			// Only now is the child visible to a settle worker — mirroring the
+			// single commit that writes the parent and enqueues the child.
+			q.releaseSettle(j.jobID)
 			resultsMu.Lock()
 			results[j.index].Phases.PrepareMS = benchStageMS(report, kernobs.StageName(StageClipPrepare))
 			results[j.index].Phases.SubtitlesMS = benchStageMS(report, kernobs.StageName(StageClipSubtitles))
@@ -978,6 +992,7 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 	report.SettleOccupancyP95MS = benchPercentile(settleOccupancy, 95)
 	report.ParentFinalizeP50MS = benchPercentile(parentMS, 50)
 	report.ParentFinalizeP95MS = benchPercentile(parentMS, 95)
+	report.ParentsFinalized = len(parentMS)
 	if wall > 0 {
 		report.AggregatedFPS = frames / wall.Seconds()
 	}
@@ -1041,6 +1056,9 @@ type benchQueue struct {
 	parentsByRun map[string]string
 	runIndex     map[string]int
 	clipStart    map[string]time.Time
+	// staged holds settle jobs produced by the enqueuer but not yet published
+	// to the settle pool (see stageSettle/releaseSettle).
+	staged map[string][]*benchJob
 }
 
 func newBenchQueue(cfg benchConfig) *benchQueue {
@@ -1051,6 +1069,7 @@ func newBenchQueue(cfg benchConfig) *benchQueue {
 		parentsByRun: map[string]string{},
 		runIndex:     map[string]int{},
 		clipStart:    map[string]time.Time{},
+		staged:       map[string][]*benchJob{},
 	}
 	if q.separate {
 		q.settleCh = make(chan *benchJob, capN)
@@ -1069,23 +1088,54 @@ func (q *benchQueue) pushSubmit(index int, runID string, payload json.RawMessage
 	q.submitCh <- &benchJob{index: index, kind: benchJobSubmit, jobID: runID, payload: payload, enqueued: now}
 }
 
-// pushSettle is the enqueue side of the continuation contract: it returns the
-// child job id just like the real enqueuer and routes the settle job to the
-// dedicated pool when one exists.
-func (q *benchQueue) pushSettle(runID string, payload json.RawMessage) string {
+// stageSettle is the enqueue side of the continuation contract: it returns the
+// child job id just like the real enqueuer, but it does NOT make the settle job
+// visible to a settle worker yet.
+//
+// Ordering is the whole point. In production the parent row and the settle
+// child are written in ONE commit, so a settle worker that observes the child
+// always observes a fully-registered parent with a terminal-able child. If the
+// harness published the child at enqueue time (which happens inside
+// worker.Handle, i.e. before the caller registers the parent), a settle worker
+// could win the race and either find no parent (spurious failure) or find a
+// child whose status it had already set terminal and then had reset to RUNNING
+// by the late Register — a silent no-op that made the event-driven leg measure
+// nothing at all. stageSettle + releaseSettle reproduce the single-commit
+// ordering instead.
+func (q *benchQueue) stageSettle(runID string, payload json.RawMessage) string {
 	q.mu.Lock()
+	defer q.mu.Unlock()
 	q.seq++
 	childID := fmt.Sprintf("bench-settle-%d", q.seq)
 	index := q.runIndex[runID]
 	// The clip clock starts when the submit job was enqueued, so the settle
 	// phase can report the caller-visible end-to-end latency.
-	clipStart := q.clipStart[runID]
-	q.mu.Unlock()
-	q.settleCh <- &benchJob{
+	q.staged[runID] = append(q.staged[runID], &benchJob{
 		index: index, kind: benchJobSettle, jobID: childID, childID: childID,
-		runID: runID, payload: payload, enqueued: clipStart,
-	}
+		runID: runID, payload: payload, enqueued: q.clipStart[runID],
+	})
 	return childID
+}
+
+// releaseSettle publishes the settle job(s) staged for runID. It is called by
+// the submit handler immediately after the parent/child pair is registered, so
+// the settle workers can never observe a child before its parent exists.
+func (q *benchQueue) releaseSettle(runID string) {
+	q.mu.Lock()
+	staged := q.staged[runID]
+	delete(q.staged, runID)
+	q.mu.Unlock()
+	for _, j := range staged {
+		q.settleCh <- j
+	}
+}
+
+// dropSettle discards the settle job(s) staged for runID when the submit phase
+// failed: the child was never produced, so it must never be replayed.
+func (q *benchQueue) dropSettle(runID string) {
+	q.mu.Lock()
+	delete(q.staged, runID)
+	q.mu.Unlock()
 }
 
 func (q *benchQueue) registerParent(runID string, _ int) {

@@ -9,8 +9,10 @@
 //   - PostgresLocalSearchAdapter implements LocalSearchPort (vector ANN).
 //   - PostgresAssetHydrator implements AssetHydratorPort (label truth).
 //   - Both own the same single *MediaSearcher instance when wired from
-//     the composition root; that is the acceptance invariant proven by
-//     certify-media-cutover's QDRANT_MEDIA_*=0 + SQLITE_MEDIA_READERS=0.
+//     the composition root. That is the acceptance invariant, and it is
+//     pinned by the Go gate suite + `TEST_POSTGRES_DSN=… go test
+//     ./internal/platform/postgres/media/` — NOT by the retired
+//     certify-media-cutover counters (its driver was deleted).
 package stockintelligence
 
 import (

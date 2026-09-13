@@ -38,7 +38,9 @@
 -- For now this file is intentionally EMPTY so that:
 --   * embed_ddl.go does NOT embed it (no 005 DDL constant).
 --   * testmain_test.go and backfill.go do NOT apply it.
---   * make certify-media-cutover does NOT probe it.
+--   * no gate probes it (the historical certify-media-cutover driver was
+--     deleted and the make target retired; live enforcement is
+--     cmd/archcheck + the internal/platform/postgres/media tests).
 --
 -- An operator who explicitly runs `psql -f 005_media_booleans.sql` on a dev
 -- database would be a no-op (commented file). Promote to live DDL only when

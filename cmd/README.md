@@ -29,7 +29,10 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `backfill-source-url-metadata`, `backfill-missing`, `backfill-visual-embeddings`
 - **Drive operations**: `drive-reconcile`, `drive-doctor`, `drive-bootstrap`,
   `sync-all-drive`, `sync-drive-folder`, `drive-create-folder`,
-  `remove-drive-folder-recursive`, `trash-drive-files`, `upload-drive-file`
+  `trash-drive-files`, `upload-drive-file`
+  (`remove-drive-folder-recursive` is still registered but RETIRED — its
+  preflight and asset planning read the quarantined SQLite media catalog, so it
+  fails closed before touching Drive)
 - **Qdrant**: `qdrant-preflight`, `qdrant-readiness`, `qdrant-maintenance`,
   `qdrant-bucket-report`, `qdrant-enrichment-recover`, `dr-qdrant`
   (`reconcile-qdrant` and `reindex-qdrant` are still registered but RETIRED —
@@ -47,9 +50,12 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `broken-references`, `clip-drive-audit`, `clip-drive-orphan-cleanup`
 - **Performance**: `performance-backfill`, `performance-report`,
   `benchmark`, `multilingual-benchmark`
-- **Identity / stock / DB**: `identity-audit`, `stock-reset`,
-  `stock-subfolders-reset`, `sqlite-audit`, `db`, `verify-projection`,
-  `storage-snapshot`
+- **Identity / stock / DB**: `identity-audit`, `stock-subfolders-reset`,
+  `sqlite-audit`, `db`, `storage-snapshot`
+  (`stock-reset`, `verify-projection`, `unify-catalogs`, `reconcile-qdrant`
+  and `reindex-qdrant` are still registered but RETIRED — media_assets is
+  authoritative only in PostgreSQL, so they fail closed with a typed
+  retirement error instead of touching the quarantined SQLite media catalog)
 - **Misc**: `gen-api-docs`, `render-short`, `multilingual-render`,
   `reset-video-ai`, `reachability-graph`,
   `control-plane`, `migrate-legacy-cache`, `unify-catalogs`

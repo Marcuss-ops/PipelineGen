@@ -126,8 +126,9 @@ ownership is deliberate — the previous hand-maintained filename list drifted
 the moment a new canonical file landed (`delete_saga.go`, MEDIA-SSOT P0-2)
 and the gate then reported the SSOT owner itself as a violation. Cutover
 certification: the historical driver `scripts/ci/certify-media-cutover.sh`
-was deleted by commit `7e6965aab`, so `make certify-media-cutover` fails
-closed and certifies NOTHING. The live enforcement is
+was deleted by commit `7e6965aab`, and the `make certify-media-cutover` target
+was itself retired on 2026-09-13 (a target that can only fail closed is not a
+gate). The live enforcement is
 `go run ./cmd/archcheck --strict`
 (`percheck_media_assets_writer_canonical`, `percheck_asset_committer_event_ssot`,
 `percheck_indexed_state_writer_ssot`, `percheck_upsert_points_sole_owner`)

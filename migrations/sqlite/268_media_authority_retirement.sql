@@ -17,7 +17,12 @@
 --      tables (media_assets, asset_locations as media SSOT, asset_text_tracks
 --      as media SSOT). New media state belongs in PostgreSQL.
 --   3. A lightweight marker table lets runtime and CI gates assert that the
---      retirement has been applied (percheck_media_assets_writer_canonical).
+--      retirement has been applied. The runtime/Go assertion is
+--      internal/platform/sqlite/migrations_268_test.go
+--      (TestMigrations_268_MediaAuthorityRetirementMarkerIsApplied); the media
+--      WRITER side is asserted by percheck_media_assets_writer_canonical.
+--      Until 2026-09-13 the marker was written and never read, so this claim
+--      was true only on paper.
 --
 -- Historical tables are intentionally left in place under their original
 -- names on databases that already contain them; renaming them to

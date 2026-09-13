@@ -230,13 +230,16 @@ tests/                   automated and operational tests
 
 ```bash
 make verify-main
-make certify-media-cutover
+make archcheck-strict
 ```
 
 `make verify-main` is the canonical fail-closed pre-push gate.
-`make certify-media-cutover` does **not** produce a verdict: its driver
+`make certify-media-cutover` was **retired** on 2026-09-13: its driver
 `scripts/ci/certify-media-cutover.sh` was deleted by commit `7e6965aab`, so the
-target fails closed with an explicit "NOTHING is certified" message. The live
+target could only ever fail closed with an explicit "NOTHING is certified"
+message — a gate that cannot pass is not a gate. The same applies to
+`certify-storage`, `certify-data-layer`, their `-json` twins, and
+`certify-rust-migration`. The live
 enforcement for the PostgreSQL media SSOT is `go run ./cmd/archcheck --strict`
 (`percheck_media_assets_writer_canonical`, `percheck_asset_committer_event_ssot`,
 `percheck_indexed_state_writer_ssot`, `percheck_upsert_points_sole_owner`) plus

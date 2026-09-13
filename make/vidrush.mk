@@ -7,16 +7,10 @@ VIDRUSH_GO_PACKAGES := ./internal/capabilities/scripts ./internal/capabilities/s
 VIDRUSH_WORKER_PACKAGE := ./internal/capabilities/jobs/worker
 VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 
-# certify-rust-migration — practical local certification of the Rust
-# workspace, release binaries, semantic golden paths, determinism,
-# fail-closed media protocol, ownership boundaries, and legacy cleanup.
-#
-# FAIL-CLOSED availability guard: the driver was deleted by commit
-# 7e6965aab. Until it is restored this target refuses to pretend, and prints
-# the live substitute instead of a cryptic `No such file or directory`.
-certify-rust-migration:
-	@test -f scripts/ci/certify-rust-migration.sh || { echo "❌ certify-rust-migration: scripts/ci/certify-rust-migration.sh is ABSENT (deleted in commit 7e6965aab). NOTHING is certified. Live substitute: cargo test --workspace (rust/) + make verify-rust-muscles" >&2; exit 1; }
-	@bash scripts/ci/certify-rust-migration.sh
+# certify-rust-migration was RETIRED on 2026-09-13 (see make/verify.mk for the
+# rationale): its driver scripts/ci/certify-rust-migration.sh was deleted by
+# commit 7e6965aab, so the target could only ever fail closed. Live substitute:
+# cargo test --workspace (rust/) + make verify-rust-muscles.
 
 # verify-visualner — Fase-3 deterministic VisualEntity extractor (Rust).
 # Runs the visualner crate unit tests covering: NO EVIDENCE → NO ENTITY

@@ -190,56 +190,20 @@ regen-routes-yaml:
 archcheck-strict:
 	@$(GO) run ./cmd/archcheck --strict
 
-# ── Certification drivers: FAIL-CLOSED availability guard ───────────────
+# ── Certification drivers: RETIRED ─────────────────────────────────────
 #
-# Four certification drivers (storage, data-layer, media-cutover,
-# rust-migration) lived under scripts/ci/ and were deleted by commit
-# 7e6965aab ("purge 94% shell + 87% python dust"). The make targets that
-# invoked them survived, so every `make certify-*` died with a cryptic
-# `bash: ... No such file or directory` while AGENTS.md, CANONICAL.md,
-# architecture/current.yaml and docs/operations still presented those
-# targets as the authoritative POSTGRES_MEDIA_SSOT / FINAL_CERTIFIED
-# certificates. A certificate that cannot run must say so, loudly, and must
-# never look like a pass. The message lives here ONCE.
-CERTIFY_DRIVER_ABSENT = ❌ %s: the certification driver %s is ABSENT — deleted in commit 7e6965aab. NOTHING is certified. Live structural enforcement for this axis: %s
-
-# certify-storage — canonical storage certification (20 gate, binary PASS/FAIL).
-# Permanent regression gate for the double-DB / double-writer / Qdrant-as-second-DB invariant.
-# SQLite is the only truth (data/media/media.db.sqlite), Qdrant is a rebuildable projection (media_assets),
-# all asset commits route through persistence.AssetCommitter, producers never UpsertPoints directly.
-# Produces FINAL_CERTIFIED=true only when all gates pass. Use --json for machine-readable output.
-certify-storage:
-	@test -f scripts/ci/certify-storage.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-storage" "scripts/ci/certify-storage.sh" "go run ./cmd/archcheck --strict + internal/platform/postgres/media tests" >&2; exit 1; }
-	@bash scripts/ci/certify-storage.sh
-
-certify-storage-json:
-	@test -f scripts/ci/certify-storage.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-storage-json" "scripts/ci/certify-storage.sh" "go run ./cmd/archcheck --strict + internal/platform/postgres/media tests" >&2; exit 1; }
-	@bash scripts/ci/certify-storage.sh --json
-
-# certify-data-layer — stable four-plane data-layer contract. The detailed
-# SQLite/Qdrant/outbox rules remain owned by certify-storage.sh; this target
-# exposes the final verdict required by release certification.
-certify-data-layer:
-	@test -f scripts/ci/certify-data-layer.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-data-layer" "scripts/ci/certify-data-layer.sh" "internal/platform/sqlite migration tests + go run ./cmd/archcheck --strict" >&2; exit 1; }
-	@bash scripts/ci/certify-data-layer.sh
-
-certify-data-layer-json:
-	@test -f scripts/ci/certify-data-layer.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-data-layer-json" "scripts/ci/certify-data-layer.sh" "internal/platform/sqlite migration tests + go run ./cmd/archcheck --strict" >&2; exit 1; }
-	@bash scripts/ci/certify-data-layer.sh --json
-
-# certify-media-cutover — POSTGRES_MEDIA_CUTOVER gate (binary PASS/FAIL).
-# The PostgreSQL + pgvector media SSOT certificate: pgvector adapter is the
-# canonical VectorStorePort, one transaction commits asset+location+
-# features+embedding, rollback leaves zero partial state, filtered vector
-# search is correct, commits are idempotent, embedding model versions are
-# preserved, and the Qdrant media plane is bypassed in Postgres mode.
-# Prints POSTGRES_MEDIA_SSOT=TRUE only when every gate is green.
-# Requires docker for the ephemeral PostgreSQL 18 + pgvector container
-# (pgvector/pgvector:pg18) unless TEST_POSTGRES_DSN is already reachable.
-certify-media-cutover:
-	@test -f scripts/ci/certify-media-cutover.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-media-cutover" "scripts/ci/certify-media-cutover.sh" "TEST_POSTGRES_DSN=... go test ./internal/platform/postgres/media/ -count=1 + go run ./cmd/archcheck --strict (percheck_media_assets_writer_canonical, percheck_asset_committer_event_ssot)" >&2; exit 1; }
-	@bash scripts/ci/certify-media-cutover.sh
-
-certify-media-cutover-json:
-	@test -f scripts/ci/certify-media-cutover.sh || { printf '$(CERTIFY_DRIVER_ABSENT)\n' "certify-media-cutover-json" "scripts/ci/certify-media-cutover.sh" "TEST_POSTGRES_DSN=... go test ./internal/platform/postgres/media/ -count=1 + go run ./cmd/archcheck --strict" >&2; exit 1; }
-	@bash scripts/ci/certify-media-cutover.sh --json
+# The certify-storage / certify-data-layer / certify-media-cutover targets (and
+# their -json twins) invoked the scripts/ci/certify-*.sh drivers deleted by
+# commit 7e6965aab ("purge 94% shell + 87% python dust"). They were kept for a
+# while as fail-closed stubs, but a target whose only possible outcome is
+# "NOTHING is certified" is not a gate — it trains operators to ignore red
+# output and it kept stale certificate claims alive in AGENTS.md and
+# docs/operations. They were removed on 2026-09-13; see git history for the
+# fail-closed form. The live enforcement for those axes is:
+#
+#   make archcheck-strict                       (all structural hard gates)
+#   go test ./internal/platform/sqlite/...      (data-layer / migration path)
+#   TEST_POSTGRES_DSN=… \
+#     go test ./internal/platform/postgres/media/ -count=1
+#
+# certify-rust-migration is retired the same way (see make/vidrush.mk).

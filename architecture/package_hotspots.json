@@ -207,16 +207,16 @@
       "path": "internal/capabilities/images",
       "owner": "images capability (generation/search/validation pipeline)",
       "deadline": "2026-09-30",
-      "baseline_files": 98,
+      "baseline_files": 75,
       "baseline": {
-        "files": 98,
+        "files": 75,
         "max_loc": 0
       },
       "current": {
         "files": 75,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: image capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (generation/search/validation/persist).",
+      "note": "Registered 2026-08-29: image capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (generation/search/validation/persist). RE-RATCHETED 2026-09-13: baseline_files 98->75 locked to the measured production-file count — the ceiling had 23 files of slack, so the ratchet no longer bound. Owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/images/generation",
         "internal/capabilities/images/search",
@@ -227,16 +227,16 @@
       "path": "internal/capabilities/jobs",
       "owner": "jobs capability (queue/scheduling/finalize)",
       "deadline": "2026-09-30",
-      "baseline_files": 95,
+      "baseline_files": 77,
       "baseline": {
-        "files": 95,
+        "files": 77,
         "max_loc": 0
       },
       "current": {
         "files": 77,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). The preparation registry/planning/speculation family is now materialised under internal/capabilities/jobs/scheduling, which is the current owner of polling/backoff, retry timing, preparation planning, and resource speculation. Debt stays under the same owner/deadline; any further split must preserve scheduling as the policy owner and keep the root jobs package as a compatibility facade.",
+      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). The preparation registry/planning/speculation family is now materialised under internal/capabilities/jobs/scheduling, which is the current owner of polling/backoff, retry timing, preparation planning, and resource speculation. Debt stays under the same owner/deadline; any further split must preserve scheduling as the policy owner and keep the root jobs package as a compatibility facade. RE-RATCHETED 2026-09-13: baseline_files 95->77 locked to the measured production-file count — the scheduling/ extraction shrank the root by 18 files and the ceiling never followed, so 18 files of drift were unenforced. Owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/scheduling",
@@ -268,16 +268,16 @@
       "path": "internal/capabilities/scripts/adapters",
       "owner": "scripts capability adapters (processor/postprocessor/vidrush)",
       "deadline": "2026-12-31",
-      "baseline_files": 90,
+      "baseline_files": 56,
       "baseline": {
-        "files": 90,
+        "files": 56,
         "max_loc": 0
       },
       "current": {
         "files": 56,
         "max_loc": 0
       },
-      "note": "Registered 2026-09-12: adapters surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. Three families dominate: the generation processor pipeline (processor_*), the postprocessor fan-out (postprocessor_*) and the vidrush provider/fan-out plane (vidrush_*). Each family is a cohesive subpackage candidate; the adapters package must end up a re-export/compat surface only.",
+      "note": "Registered 2026-09-12: adapters surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. Three families dominate: the generation processor pipeline (processor_*), the postprocessor fan-out (postprocessor_*) and the vidrush provider/fan-out plane (vidrush_*). Each family is a cohesive subpackage candidate; the adapters package must end up a re-export/compat surface only. RE-RATCHETED 2026-09-13: baseline_files 90->56 locked to the measured production-file count (34 files of unenforced slack). Owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/scripts/adapters/processor",
         "internal/capabilities/scripts/adapters/postprocessor",

@@ -343,6 +343,18 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *trans
 	sqliteDB := dbSet.Primary
 
 	cm := collections.NewCollectionManager(client, schema, log)
+	// JUSTIFICATION (POSTGRES-MEDIA-CUTOVER audit, 2026-09-13): this SQLite
+	// media_assets read is DELIBERATE and scope-limited to disaster recovery.
+	// The restore verifier needs the eligible-ID set to prove a snapshot
+	// restored a complete projection; for the media plane that set no longer
+	// comes from SQLite (PostgreSQL + pgvector is the SSOT), so this adapter is
+	// only meaningful for a non-media collection whose owner still lives on
+	// SQLite. It is NOT a media read path: media restore evidence is produced
+	// by 'backfill-media-postgres --verify-only'. Keeping the SQLite store here
+	// is explicitly listed as out of scope in the DEMO-QDRANT-MEDIA-PROJECTION
+	// ticket (capabilities/maintenance DR adapter), and the media writer gate
+	// (percheck_media_assets_writer_canonical) does not flag it because it only
+	// SELECTs.
 	assetStore := indexing.NewSQLiteAssetStore(sqliteDB.DB)
 
 	svc := dr.NewRestoreServiceFromDeps(dr.RestoreServiceDeps{

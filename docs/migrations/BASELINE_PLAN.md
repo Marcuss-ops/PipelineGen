@@ -173,7 +173,7 @@ Proved structurally before this plan ships (see addendum § 10 of BASELINE_INVEN
 
 * `media_embedding_families` registry + `media_embeddings_validate_family()` trigger (from `002`) gate every `media_embeddings` write.
 * Production families `text/intfloat/multilingual-e5-base 768` and `visual/google/siglip-so400m-patch14-384 1152` carry distinct partial HNSW `USING hnsw ((embedding::vector(N)) vector_cosine_ops) WHERE ...`.
-* `PostgresIndexWorker` (`internal/platform/postgres/media/outbox_worker.go`) — `asset.index.requested` PG outbox → `media_embeddings` pgvector upsert → `INDEXED` — is the canonical post-cutover index plane; the Go gate suite (`percheck_upsert_points_sole_owner` + `percheck_media_assets_writer_canonical`) and the `internal/platform/postgres/media` tests pin it, not `make certify-media-cutover` (whose driver was deleted).
+* `PostgresIndexWorker` (`internal/platform/postgres/media/outbox_worker.go`) — `asset.index.requested` PG outbox → `media_embeddings` pgvector upsert → `INDEXED` — is the canonical post-cutover index plane; the Go gate suite (`percheck_upsert_points_sole_owner` + `percheck_media_assets_writer_canonical`) and the `internal/platform/postgres/media` tests pin it, not the retired `make certify-media-cutover` (its driver was deleted, and the target itself was removed on 2026-09-13).
 
 ## 9. Acceptance
 

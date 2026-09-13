@@ -53,6 +53,14 @@ jobs:
           go run ./cmd/admin/regen-current-yaml
           git diff --exit-code -- architecture/current.yaml architecture/issues.yaml
 
+      - name: Check package_hotspots.json current counts are fresh
+        # scripts/regen_hotspots.py --check existed but was invoked by nothing,
+        # so the registry's `current` counts had silently drifted for four
+        # hotspots (app/wiring, capabilities/jobs, capabilities/scripts,
+        # scripts/adapters). Freshness is asserted here, next to the other
+        # generated-artifact check, instead of relying on someone running it.
+        run: python3 scripts/regen_hotspots.py --check
+
       - name: Test governance schema and policy loading
         run: go test ./pkg/architecturecatalog ./cmd/archcheck/policy ./cmd/archcheck
 

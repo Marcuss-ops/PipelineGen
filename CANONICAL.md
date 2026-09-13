@@ -14,21 +14,20 @@ Only current, executable information belongs in the working tree. Historical pla
 | Capability ownership | `architecture/ownership.generated.yaml` |
 | Active exceptions only | `architecture/current.yaml` and `architecture/issues.yaml` |
 | Compatibility removals | `architecture/deprecations/` |
-| Qdrant schema | current adapter under migration-only `internal/platform/qdrant/schema`; target platform ownership is `internal/platform/qdrant`; machine-readable files under `architecture/qdrant` |
+| Qdrant schema | Go adapter under `internal/platform/qdrant/schema` (owned by `internal/platform/qdrant`). NOT a media source of truth: the media Qdrant projection is retired, the machine-readable `architecture/qdrant/v3-schema.json` was deleted with it, and only the non-media consumers (mediamemory frames/concepts, maintenance DR, admin audit) read this schema |
 | Operational procedures | current files under `docs/operations` |
 | Clip pre-planner pipeline (input → planner → search → sampler → view redaction → generator → binding) | `docs/operations/clip-pre-planner.md` |
 | CI exceptions | allowlists under `docs/migrations` |
 
 ## Conflict rule
 
-When documentation conflicts with code, generated routes, tests, or machine-readable policy, executable sources win. Correct or delete the stale prose immediately.
-
-For the internal tree, the binding decision is singular: `app`, `kernel`,
-`capabilities`, and `platform` are the only target roots. `application`, `api`,
-`infrastructure`, and `domain` are migration-only zones. They must not receive
-new capabilities, public contracts, providers, routes, files, or packages;
-legacy-zone changes require an existing migration record in
-`architecture/package_hotspots.json`.
+When documentation conflicts with code, generated routes, tests, or machine-readable policy, executable sources win. Correct or delete the stale prose immediately.For the internal tree, the binding decision is singular: `app`,
+`kernel`, `capabilities`, and `platform` are the only roots — and the only ones
+on disk. The former `application`, `api`, `infrastructure`, and `domain` roots
+are DELETED (verified absent 2026-09-13); `architecture/policy.yaml` declares
+`legacy_internal_roots` intentionally absent. Re-creating one of them is a
+violation enforced forward by `percheck_legacy_root_new_code`,
+`percheck_legacy_root_ban`, and `percheck_api_infrastructure_imports`.
 
 ## Documentation policy
 
