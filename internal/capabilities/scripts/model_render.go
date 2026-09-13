@@ -10,6 +10,8 @@
 // max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
 package scriptgeneration
 
+import "encoding/json"
+
 // RenderReference identifies a completed RenderingGen queue job (the future
 // Chronon overlay render path) and carries the certified artifact the
 // downstream document/assembly steps consume. It is retained for that path
@@ -48,13 +50,21 @@ type RenderArtifact struct {
 	// be dropped by this projection, which meant the clip.render contract gate
 	// could never check them (the local Rust probe reports no codec profile,
 	// and the certified boundary is the only owner of the container family).
-	Container          string `json:"container,omitempty"`
-	PixelFormat        string `json:"pixel_format,omitempty"`
-	AudioStreams       int    `json:"audio_streams,omitempty"`
-	ClosedGOP          bool   `json:"closed_gop,omitempty"`
-	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
-	Backend            string `json:"backend,omitempty"`
-	ChrononVersion     string `json:"chronon_version,omitempty"`
+	Container    string `json:"container,omitempty"`
+	PixelFormat  string `json:"pixel_format,omitempty"`
+	AudioStreams int    `json:"audio_streams,omitempty"`
+	// OutputFacts carries RenderingGen's COMPLETE structural certification of
+	// the artifact verbatim (the queue's output_facts object). It is kept as
+	// raw JSON on purpose: the fact set is owned by the rendering boundary, so
+	// this projection relays it without re-declaring (and drifting from) its
+	// shape. A consumer that needs typed access unmarshals it into its own
+	// capability-local struct. Nil when the worker certified only the flat
+	// summary.
+	OutputFacts        json.RawMessage `json:"output_facts,omitempty"`
+	ClosedGOP          bool            `json:"closed_gop,omitempty"`
+	FirstFrameKeyframe bool            `json:"first_frame_keyframe,omitempty"`
+	Backend            string          `json:"backend,omitempty"`
+	ChrononVersion     string          `json:"chronon_version,omitempty"`
 	// RenderMS and EncodeMS are the worker-measured wall durations of the
 	// Chronon render and encode phases (from the queue artifact's metrics
 	// map: render_ms / encode_ms). Zero means the worker did not report them.

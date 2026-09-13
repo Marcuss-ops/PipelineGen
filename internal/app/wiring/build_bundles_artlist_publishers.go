@@ -22,6 +22,7 @@ import (
 
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -89,7 +90,13 @@ func constructArtlistRepositories(
 	}
 
 	return artlistRepositories{
-		AssetProcRepo:        assetSQLiteStore.ProcessingRepository(),
+		// MEDIA-SSOT write-bridge: asset_processing is media-authoritative, so
+		// the port is resolved from the canonical committer (PostgreSQL media
+		// SSOT) instead of the operational SQLite AssetStoreSQLite. The
+		// canonical resolver is the single owner of that decision and returns
+		// nil when the media plane is closed; the artlist stage code already
+		// treats nil as "skip the step write" (best-effort observability).
+		AssetProcRepo:        persistence.CanonicalAssetProcessingWriter(bundle.Committer),
 		AssetVerRepo:         assetSQLiteStore.VersionRepository(),
 		RunsAdapter:          artlistRunsAdapter,
 		DownloadAuditAdapter: artlistDownloadAuditAdapter,

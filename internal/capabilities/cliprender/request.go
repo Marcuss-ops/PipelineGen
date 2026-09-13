@@ -45,10 +45,16 @@ const (
 	BackgroundModeBlurSource = "blur_source"
 	BackgroundModeAsset      = "asset"
 
-	// Transcript policies.
-	TranscriptModeReuse           = "reuse"
-	TranscriptModeGenerate        = "generate"
-	TranscriptModeReuseOrGenerate = "reuse_or_generate"
+	// Transcript policies. clip.render is a RENDER step: the canonical
+	// transcript must already exist, so `reuse` is the default and a missing
+	// READY track FAILS CLOSED. `generate` remains only as an explicit manual
+	// repair request; there is no implicit ASR inside a render.
+	//
+	// The legacy `reuse_or_generate` mode was DELETED in the 2026-09-13
+	// clip.render audit (P1): an ASR miss could silently turn a 5s render into
+	// a 20-40s one, which made the render path non-deterministic.
+	TranscriptModeReuse    = "reuse"
+	TranscriptModeGenerate = "generate"
 
 	// Subtitle modes.
 	SubtitlesModeBurn    = "burn"
@@ -152,18 +158,20 @@ func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// TranscriptSpec controls canonical transcript resolution. The worker
-// reuses the canonical text track when it already exists; generation
-// persists the transcript once into the DB (never a temp WAV).
+// TranscriptSpec controls canonical transcript resolution. clip.render is a
+// RENDER step, so the default is `reuse`: the canonical READY text track must
+// already exist and a miss FAILS CLOSED. `generate` remains only as an
+// explicit manual repair that runs ASR and persists the transcript once into
+// the DB (never a temp WAV).
 //
-// Persist defaults to TRUE (see Normalize). Without persistence a
-// reuse_or_generate/generate request has nothing to reuse: EVERY clip of a
-// batch over the same source re-runs speech recognition, which is the single
-// largest per-clip cost that is not the render itself. An EXPLICIT
-// `"persist": false` still opts out, which is why the presence of the key is
-// recorded separately (persistSet).
+// Persist defaults to TRUE (see Normalize). Without persistence an explicit
+// `generate` repair has nothing to reuse: EVERY clip of a batch over the same
+// source re-runs speech recognition, which is the single largest per-clip cost
+// that is not the render itself. An EXPLICIT `"persist": false` still opts
+// out, which is why the presence of the key is recorded separately
+// (persistSet).
 type TranscriptSpec struct {
-	Mode     string `json:"mode,omitempty"` // default reuse_or_generate
+	Mode     string `json:"mode,omitempty"` // default reuse
 	Language string `json:"language,omitempty"`
 	// Persist deliberately has NO omitempty: an explicit false must survive the
 	// persisted job payload, otherwise the worker's re-decode would see an
@@ -364,14 +372,14 @@ func (r *RenderRequest) Normalize() {
 		r.Transcript = &TranscriptSpec{}
 	}
 	if r.Transcript.Mode == "" {
-		r.Transcript.Mode = TranscriptModeReuseOrGenerate
+		r.Transcript.Mode = TranscriptModeReuse
 	}
 	if r.Transcript.Language == "" {
 		r.Transcript.Language = DefaultLanguage
 	}
-	// Persist defaults to TRUE: reuse_or_generate (and generate) without
+	// Persist defaults to TRUE: an explicit `generate` repair without
 	// persistence never populates the canonical text track, so every clip of a
-	// batch pays its own ASR pass for the same source. Only an explicit
+	// batch would pay its own ASR pass for the same source. Only an explicit
 	// `"persist": false` (a decoded key, or a Go literal that set persistSet)
 	// opts out. Setting persistSet here keeps Normalize idempotent.
 	if !r.Transcript.persistSet {
@@ -390,7 +398,10 @@ func (r *RenderRequest) Normalize() {
 	if r.Subtitles.Enabled && r.Subtitles.Style == nil {
 		// Do not leave the default white subtitle glyphs unoutlined: on bright
 		// source frames they become unreadable and the intended shadow is lost.
-		r.Subtitles.Style = defaultOverlayTextStyle(48, 5, 5)
+		// 58 px matches the shorts-v1 ASS preset (ResolveFontPreset) so the
+		// burned layer and the sidecar agree, and the keyline is ~5% of the em
+		// rather than a fixed 5 px that merged adjacent glyph contours.
+		r.Subtitles.Style = defaultOverlayTextStyle(58, 3, 6)
 	}
 	if r.Output == nil {
 		r.Output = &OutputSpec{}
@@ -495,9 +506,9 @@ func (r *RenderRequest) Validate() error {
 	}
 
 	switch r.Transcript.Mode {
-	case TranscriptModeReuse, TranscriptModeGenerate, TranscriptModeReuseOrGenerate:
+	case TranscriptModeReuse, TranscriptModeGenerate:
 	default:
-		return fmt.Errorf("%w: transcript.mode must be one of reuse, generate, reuse_or_generate (got %q)", ErrInvalidRequest, r.Transcript.Mode)
+		return fmt.Errorf("%w: transcript.mode must be one of reuse, generate (got %q)", ErrInvalidRequest, r.Transcript.Mode)
 	}
 	if r.Transcript.Language == "" {
 		return fmt.Errorf("%w: transcript.language is required (default en)", ErrInvalidRequest)

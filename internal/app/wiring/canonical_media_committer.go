@@ -15,11 +15,14 @@
 // ALWAYS a working PostgresMediaCommitter.
 //
 // The read half follows the same rule: PostgreSQL is the media SSOT, so
-// *pgmedia.PostgresAssetStore is the production concrete and the SQLite
-// *detail.Service satisfies the same narrow interface ONLY for the documented
-// media-PostgreSQL-disabled degrade mode. One port, one production
-// implementation, selected by composition — never a per-consumer repository
-// and never a silent second media registry.
+// *pgmedia.PostgresAssetStore is the ONLY concrete for the admin/operator read
+// port. Its SQLite counterpart (sqliteMediaAssetStore) was DELETED on
+// 2026-09-13 (MEDIA-SSOT P2-9): it read media_assets.admin_version from the
+// operational mirror and wrote media rows through the generic detail.Service
+// seam while the canonical committer wrote PostgreSQL, so the admin console
+// could read a stale version and patch a row on an engine nobody owns. With
+// the media plane closed the admin-console and operator modules are now simply
+// not registered — degraded is honest, a second media catalog is not.
 package wiring
 
 import (
@@ -35,8 +38,8 @@ import (
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/adminconsole"
 )
@@ -220,48 +223,9 @@ func (s *pgMediaAssetStore) Save(ctx context.Context, details *asset.Details) er
 	return s.mutator.PatchAsset(ctx, patch)
 }
 
-// sqliteMediaAssetStore is the media-PostgreSQL-disabled implementation. It
-// exists ONLY so the admin console/operator API keep working when the operator
-// runs the pipeline in the intentional no-media-plane mode; it is never
-// selected while the media SSOT is open.
-type sqliteMediaAssetStore struct {
-	service *detail.Service
-	db      *sql.DB
-}
-
-func (s *sqliteMediaAssetStore) Get(ctx context.Context, id string) (*asset.Details, error) {
-	return s.service.Get(ctx, id)
-}
-
-func (s *sqliteMediaAssetStore) List(ctx context.Context, filter asset.Filter) ([]*asset.Summary, error) {
-	return s.service.List(ctx, filter)
-}
-
-func (s *sqliteMediaAssetStore) Count(ctx context.Context, filter asset.Filter) (int64, error) {
-	return s.service.Count(ctx, filter)
-}
-
-func (s *sqliteMediaAssetStore) Save(ctx context.Context, details *asset.Details) error {
-	return s.service.Save(ctx, details)
-}
-
-func (s *sqliteMediaAssetStore) AdminVersion(ctx context.Context, id string) (int, error) {
-	if s.db == nil {
-		return 0, nil
-	}
-	var version int
-	err := s.db.QueryRowContext(ctx, "SELECT COALESCE(admin_version,0) FROM media_assets WHERE id = ?", id).Scan(&version)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("sqlite media asset store: read admin version: %w", err)
-	}
-	return version, nil
-}
-
-// MediaAssetReader resolves the read-only view (operator API). PostgreSQL wins
-// whenever the media SSOT is open; SQLite only in the media-disabled mode.
+// MediaAssetReader resolves the read-only view (operator API). It returns nil
+// when the media SSOT is closed, which leaves the operator module unregistered
+// instead of serving a divergent catalog.
 func (r *ComposeRoot) MediaAssetReader() MediaAssetReader {
 	store, err := r.MediaAssetStore()
 	if err != nil || store == nil {
@@ -270,31 +234,37 @@ func (r *ComposeRoot) MediaAssetReader() MediaAssetReader {
 	return store
 }
 
-// MediaAssetStore resolves the admin console store. It fails closed when no
-// media read store is wired at all (rather than returning a half-wired store).
+// MediaAssetStore resolves the admin console store from the PostgreSQL media
+// SSOT, and fails closed when that plane is closed.
+//
+// PostgreSQL is the ONLY media authority. RequireMediaPostgres is the single
+// engine decision point for the media plane and documents the invariant: an
+// enabled plane "means PostgreSQL is mandatory ... There is no SQLite/Qdrant
+// fallback". The SQLite-backed store (sqliteMediaAssetStore) was therefore
+// DELETED on 2026-09-13: behind the SAME interface it read
+// media_assets.admin_version from the operational mirror and wrote media rows
+// through detail.Service.Save, so the admin console could read a stale version
+// and patch a row on an engine the canonical committer does not own — the read
+// half of the split-brain plus a write seam whose engine was invisible to the
+// caller. With the plane closed the admin-console and operator modules are now
+// simply not registered, which is the fail-closed outcome the rules require
+// (never represent an unavailable backend as a working one).
 func (r *ComposeRoot) MediaAssetStore() (MediaAssetStore, error) {
 	if r == nil {
 		return nil, errors.New("media asset store: composition root is nil")
 	}
-	if r.MediaPostgres != nil {
-		reader := pgmedia.NewPostgresAssetStore(pgmedia.NewMediaSearcher(r.MediaPostgres))
-		if reader == nil {
-			return nil, errors.New("media asset store: postgres read store unavailable")
-		}
-		var mutator persistence.AssetMutator
-		if r.CanonicalAssetWriter != nil {
-			mutator = r.CanonicalAssetWriter
-		}
-		return &pgMediaAssetStore{reader: reader, mutator: mutator}, nil
+	if r.MediaPostgres == nil {
+		return nil, errors.New("media asset store: media PostgreSQL SSOT is required (no second media catalog)")
 	}
-	if r.Repos != nil && r.Repos.Assets != nil {
-		var db *sql.DB
-		if r.DB != nil {
-			db = r.DB.DB
-		}
-		return &sqliteMediaAssetStore{service: r.Repos.Assets, db: db}, nil
+	reader := pgmedia.NewPostgresAssetStore(pgmedia.NewMediaSearcher(r.MediaPostgres))
+	if reader == nil {
+		return nil, errors.New("media asset store: postgres read store unavailable")
 	}
-	return nil, errors.New("media asset store: no media read store wired (postgres media SSOT and legacy asset service both absent)")
+	var mutator persistence.AssetMutator
+	if r.CanonicalAssetWriter != nil {
+		mutator = r.CanonicalAssetWriter
+	}
+	return &pgMediaAssetStore{reader: reader, mutator: mutator}, nil
 }
 
 // AssetDetailsLookup is the narrow single-asset detail lookup consumed by
@@ -303,6 +273,37 @@ func (r *ComposeRoot) MediaAssetStore() (MediaAssetStore, error) {
 // serve the worker asset-transfer path.
 type AssetDetailsLookup interface {
 	Get(ctx context.Context, id string) (*asset.Details, error)
+}
+
+// mediaDetailsReaderFromCommitter resolves the media-details read the ingest
+// registries hydrate their media records from, using the engine of the
+// canonical committer.
+//
+// WHY THE COMMITTER AND NOT A SECOND HANDLE. The ingest lifecycle stores and
+// the ClipsRegistry hydrate a media record before staging/publishing it. When
+// they read that record from the operational SQLite mirror while the canonical
+// committer writes PostgreSQL, the two disagree: a clip committed by the
+// canonical writer looks absent to the ingest path, and a stale pre-cutover
+// row can be resurrected. Deriving the read from the committer's own engine
+// makes the read and the write structurally unable to drift onto two engines
+// (same invariant as MediaRepoBundle, which derives its Reader from the handle
+// its Writer uses).
+//
+// A nil result means the media plane is closed; the returned concrete type
+// fails closed with a typed error on use rather than falling back to SQLite.
+func mediaDetailsReaderFromCommitter(committer persistence.AssetCommitter) *pgmedia.AssetDetailsReader {
+	if committer == nil {
+		return nil
+	}
+	getter, ok := committer.(interface{ DB() *sql.DB })
+	if !ok || getter == nil {
+		return nil
+	}
+	db := getter.DB()
+	if db == nil {
+		return nil
+	}
+	return pgmedia.NewAssetDetailsReader(pgmedia.NewMediaSearcher(db))
 }
 
 // MediaAssetDetailsLookup resolves the single-asset detail lookup for the
@@ -345,6 +346,109 @@ func (r *ComposeRoot) MediaAssetVersionStore() appadminconsole.EntityVersionStor
 		return adminconsolesqlite.NewVersionStore(r.DB.DB)
 	}
 	return nil
+}
+
+// ── YouTube enrichment persistence ──────────────────────────────────────
+
+// youTubeAssetDispatcher is the narrow canonical-writer surface the YouTube
+// enrichment adapter consumes. *outbox.Dispatcher implements it.
+type youTubeAssetDispatcher interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
+	SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error
+}
+
+// youTubeAssetWriter routes YouTube enrichment persistence through the
+// canonical media writer.
+//
+// WHY THIS EXISTS. youtube/usecase used to hold a detail.Repository and call
+// Upsert. In the PostgreSQL media mode that repository is the SQLite media
+// adapter, so enrichment wrote media_assets on SQLite while the media SSOT was
+// PostgreSQL — a WRITE split-brain, invisible to
+// percheck_media_assets_writer_canonical because no SQL appears at the call
+// site (the split happens behind a method call).
+//
+// ROUTING RULE (fail-honest, never a fake success):
+//   - content hash known   -> dispatcher.EnqueueAndIndex: the canonical
+//     commit-and-index path (media_assets + the media index-request event in
+//     ONE media-SSOT transaction).
+//   - content hash missing -> dispatcher.SaveDiscoveredAsset: the asset is not
+//     indexable yet, so the row is persisted through the SAME canonical writer
+//     with its current lifecycle/index state and deliberately NO index request.
+//     This keeps the enrichment durable without fabricating an indexable asset.
+//
+// A content hash should be present for any clip downstream of extraction; the
+// second branch exists only to preserve the legacy tolerance for the
+// discovery-time enrichment path.
+type youTubeAssetWriter struct {
+	dispatcher youTubeAssetDispatcher
+}
+
+// Upsert implements youtube.AssetWriter.
+func (w *youTubeAssetWriter) Upsert(ctx context.Context, a *asset.Asset) error {
+	if w == nil || w.dispatcher == nil {
+		return errors.New("youtube asset writer: canonical dispatcher unavailable")
+	}
+	if a == nil || strings.TrimSpace(a.ID) == "" {
+		return errors.New("youtube asset writer: asset with non-empty id is required")
+	}
+	if hash := youTubeContentHash(a); hash != "" {
+		return w.dispatcher.EnqueueAndIndex(ctx, a, hash)
+	}
+	return w.dispatcher.SaveDiscoveredAsset(ctx, a, youTubeLifecycleState(a), youTubeIndexState(a))
+}
+
+// newYouTubeAssetWriter resolves the YouTube enrichment persistence port.
+// The canonical dispatcher + canonical committer exist exactly when the media
+// PostgreSQL SSOT is open; the SQLite repository is the documented
+// media-disabled degrade fallback (and the only path when the dispatcher has
+// no canonical committer to commit through).
+func newYouTubeAssetWriter(outboxBundle *OutboxBundle, repos *RepoBundle, committer persistence.AssetCommitter) youtube.AssetWriter {
+	if outboxBundle != nil && outboxBundle.Dispatcher != nil && committer != nil {
+		return &youTubeAssetWriter{dispatcher: outboxBundle.Dispatcher}
+	}
+	if repos != nil && repos.Assets != nil {
+		return repos.Assets.Repository()
+	}
+	return nil
+}
+
+// youTubeContentHash resolves the canonical content fingerprint for the
+// commit-and-index path. BinarySHA256 (content_sha256) is the canonical byte
+// identity; legacy_file_md5 is the compatibility fallback the commit request
+// field is named after.
+func youTubeContentHash(a *asset.Asset) string {
+	if a == nil {
+		return ""
+	}
+	if hash := strings.TrimSpace(a.BinarySHA256()); hash != "" {
+		return hash
+	}
+	return strings.TrimSpace(a.LegacyFileMD5())
+}
+
+// youTubeLifecycleState keeps the asset's canonical lifecycle state, defaulting
+// to ACTIVE when it is missing or invalid (SaveDiscoveredAsset validates it).
+func youTubeLifecycleState(a *asset.Asset) asset.LifecycleState {
+	if a == nil {
+		return asset.StateActive
+	}
+	if a.LifecycleState.Valid() {
+		return a.LifecycleState
+	}
+	return asset.StateActive
+}
+
+// youTubeIndexState keeps the asset's canonical index state, defaulting to
+// DISCOVERED when it is missing or invalid (SaveDiscoveredAsset validates it).
+func youTubeIndexState(a *asset.Asset) asset.IndexState {
+	if a == nil {
+		return asset.StateDiscovered
+	}
+	state := asset.IndexState(strings.TrimSpace(a.GetMetadataString("index_state")))
+	if state.Valid() {
+		return state
+	}
+	return asset.StateDiscovered
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────

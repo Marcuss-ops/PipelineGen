@@ -34,6 +34,7 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
@@ -71,8 +72,22 @@ type ServiceCoreDeps struct {
 // happens to a single asset row" surface — the YouTube orchestrator
 // delegates asset mutation through this cluster (no setters, no
 // fallback paths).
+// AssetWriter is the consumer-owned persistence port for the YouTube
+// enrichment paths (see metadata_enrich.go). Upsert persists the whole asset.
+//
+// It is an interface rather than the concrete SQLite detail.Repository because
+// PostgreSQL is the media SSOT: the production adapter commits through the
+// canonical media writer (media_assets + the index request in ONE media-SSOT
+// transaction). Wiring a detail.Repository here made the enrichment write
+// media_assets on SQLite while the SSOT was PostgreSQL — a write split-brain
+// that no SQL-level gate could see, because the split happens behind a method
+// call.
+type AssetWriter interface {
+	Upsert(ctx context.Context, asset *asset.Asset) error
+}
+
 type ServiceAssetDeps struct {
-	AssetRepo         detail.Repository
+	AssetRepo         AssetWriter
 	AssetDestResolver asset.Resolver
 	LifecycleService  *lifecycle.Service
 	MediaProcessor    detail.Processor
@@ -128,7 +143,7 @@ type Service struct {
 	videoPipeline     youtubeports.VideoPipelinePort
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
-	assetRepo         detail.Repository
+	assetRepo         AssetWriter
 
 	// Capability services (PR5 — June 2026; P0.3: MetadataService retired).
 	cache      youtubeports.CachePort

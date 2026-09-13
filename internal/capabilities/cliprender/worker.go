@@ -46,7 +46,6 @@ type Worker struct {
 	publisher            RenderPublisher           // optional in unit tests; required by production wiring
 	folderResolver       DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
 	overlayResolver      OverlaySegmentResolver    // required when a request declares an overlay
-	outputProber         OutputProber              // probes actual bytes for exact contract validation
 	log                  *zap.Logger
 }
 
@@ -205,59 +204,51 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
 	}
 	if phase == RenderPhaseSubmit {
-		asyncRenderer, asyncOK := w.renderer.(AsyncRenderExecutor)
-		if asyncOK {
-			if w.continuationStore == nil || w.continuationEnqueuer == nil {
-				return nil, fmt.Errorf("clip.render: asynchronous executor is wired but continuation store/enqueuer is missing")
-			}
-			doc := ResumeDocument{
-				Plan:            plan,
-				Request:         req,
-				PublishFolderID: publishFolderID,
-				SourceTitle:     prepared.Source.Title,
-				SourceSizeBytes: prepared.Source.SizeBytes,
-				Contract:        prepared.Contract,
-				Transcript:      prepared.Transcript,
-				Subtitles:       subtitleArtifact,
-			}
-			resumeRef, storeErr := w.continuationStore.PutResumeDocument(ctx, doc)
-			if storeErr != nil {
-				return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
-			}
-			submission := Submission{
-				RenderJobID:   plan.RunID,
-				PlanSHA256:    plan.PlanSHA256,
-				CorrelationID: j.CorrelationID,
-				State:         RemoteRenderSubmitted,
-				Attempt:       1,
-			}
-			if submitErr := asyncRenderer.Submit(ctx, plan); submitErr != nil {
-				return nil, fmt.Errorf("clip.render: submit remote render: %w", submitErr)
-			}
-			continuation := Continuation{Submission: submission, Resume: resumeRef}
-			childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
-				ParentJobID:  j.ID,
-				ParentRunID:  j.ID,
-				ActiveKey:    ActiveKeyFor(plan.RunID, submission.Attempt),
-				Continuation: continuation,
-			})
-			if enqueueErr != nil {
-				return nil, fmt.Errorf("clip.render: enqueue settle continuation: %w", enqueueErr)
-			}
-			result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
-			result["phase"] = "submitted"
-			result["parent_state"] = ParentStateWaitingChildren
-			result["child_job_id"] = childID
-			result["render_submission"] = submission
-			result["continuation"] = continuation
-			progress(100, "remote render submitted; Master slot released")
-			return result, nil
+		if w.continuationStore == nil || w.continuationEnqueuer == nil {
+			return nil, fmt.Errorf("clip.render: executor is wired but continuation store/enqueuer is missing")
 		}
-	}
-	if phase == RenderPhaseSettle {
-		if _, ok := w.renderer.(AsyncRenderExecutor); !ok {
-			return nil, fmt.Errorf("clip.render: settle phase requires an AsyncRenderExecutor")
+		doc := ResumeDocument{
+			Plan:            plan,
+			Request:         req,
+			PublishFolderID: publishFolderID,
+			SourceTitle:     prepared.Source.Title,
+			SourceSizeBytes: prepared.Source.SizeBytes,
+			Contract:        prepared.Contract,
+			Transcript:      prepared.Transcript,
+			Subtitles:       subtitleArtifact,
 		}
+		resumeRef, storeErr := w.continuationStore.PutResumeDocument(ctx, doc)
+		if storeErr != nil {
+			return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
+		}
+		submission := Submission{
+			RenderJobID:   plan.RunID,
+			PlanSHA256:    plan.PlanSHA256,
+			CorrelationID: j.CorrelationID,
+			State:         RemoteRenderSubmitted,
+			Attempt:       1,
+		}
+		if submitErr := w.renderer.Submit(ctx, plan); submitErr != nil {
+			return nil, fmt.Errorf("clip.render: submit remote render: %w", submitErr)
+		}
+		continuation := Continuation{Submission: submission, Resume: resumeRef}
+		childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
+			ParentJobID:  j.ID,
+			ParentRunID:  j.ID,
+			ActiveKey:    ActiveKeyFor(plan.RunID, submission.Attempt),
+			Continuation: continuation,
+		})
+		if enqueueErr != nil {
+			return nil, fmt.Errorf("clip.render: enqueue settle continuation: %w", enqueueErr)
+		}
+		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
+		result["phase"] = "submitted"
+		result["parent_state"] = ParentStateWaitingChildren
+		result["child_job_id"] = childID
+		result["render_submission"] = submission
+		result["continuation"] = continuation
+		progress(100, "remote render submitted; Master slot released")
+		return result, nil
 	}
 
 	progress(90, "plan sealed; rendering with Chronon")
@@ -285,12 +276,10 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			Component: kernobs.ComponentName("chronon"),
 			Operation: kernobs.OperationName("render_clip"),
 		}, func(opCtx context.Context) error {
+			// Submit returned above with its result, so the only phase that
+			// reaches the render boundary here is the settle continuation.
 			var rErr error
-			if phase == RenderPhaseSettle {
-				o, rErr = w.renderer.(AsyncRenderExecutor).Settle(opCtx, plan)
-			} else {
-				o, rErr = w.renderer.Render(opCtx, plan)
-			}
+			o, rErr = w.renderer.Settle(opCtx, plan)
 			return rErr
 		})
 		return o, e

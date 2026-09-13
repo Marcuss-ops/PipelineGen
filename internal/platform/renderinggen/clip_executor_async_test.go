@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -94,8 +95,25 @@ func TestClipRenderExecutorSubmitDoesNotWait(t *testing.T) {
 	if outcome.SHA256 != artifactHash || outcome.SizeBytes != int64(len(artifactBytes)) {
 		t.Fatalf("certified artifact = %s/%d, want %s/%d", outcome.SHA256, outcome.SizeBytes, artifactHash, len(artifactBytes))
 	}
-	if outcome.OutputPath != plan.OutputPath {
-		t.Fatalf("outcome path = %q, want the sealed plan output %q", outcome.OutputPath, plan.OutputPath)
+	// Locator-first: Settle must NOT download the artifact. It projects the
+	// durable locator and the completion path streams object-store → Drive.
+	if outcome.OutputPath != "" {
+		t.Fatalf("outcome path = %q, want empty (Settle must not materialize)", outcome.OutputPath)
+	}
+	if outcome.ArtifactURL != server.URL+"/out.mp4" || outcome.SizeBytes != int64(len(artifactBytes)) {
+		t.Fatalf("outcome locator = %q/%d, want %s/%d", outcome.ArtifactURL, outcome.SizeBytes, server.URL+"/out.mp4", len(artifactBytes))
+	}
+	// A consumer that genuinely needs bytes materializes on demand, verified
+	// against the certified size + digest while streaming.
+	materialized := t.TempDir() + "/materialized.mp4"
+	if _, err := executor.Materialize(context.Background(), outcome, materialized); err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	if got, err := os.ReadFile(materialized); err != nil || string(got) != string(artifactBytes) {
+		t.Fatalf("materialized bytes = %q/%v, want the certified artifact", got, err)
+	}
+	if outcome.OutputPath != materialized {
+		t.Fatalf("materialized outcome path = %q, want %q", outcome.OutputPath, materialized)
 	}
 	if outcome.Backend != cliprender.BackendChrononVulkan {
 		t.Fatalf("backend = %q, want %q", outcome.Backend, cliprender.BackendChrononVulkan)
@@ -115,42 +133,5 @@ func TestClipRenderExecutorSettleFailsClosedWithoutArtifact(t *testing.T) {
 
 	if _, err := executor.Settle(context.Background(), validClipPlan(t)); err == nil {
 		t.Fatal("Settle must fail closed when the remote job completed without a certified artifact")
-	}
-}
-
-// TestClipRenderExecutorRenderIsSubmitThenSettle pins the blocking form as a
-// pure composition of the two halves, so the historical caller keeps exactly
-// one submit and one wait.
-func TestClipRenderExecutorRenderIsSubmitThenSettle(t *testing.T) {
-	artifactBytes := []byte("blocking-form-artifact")
-	artifactHash := fmt.Sprintf("%x", sha256.Sum256(artifactBytes))
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(artifactBytes)
-	}))
-	defer server.Close()
-	q := &asyncProbeQueue{result: queueclient.Job{State: queueclient.StateCompleted, Artifact: &queueclient.Artifact{
-		ArtifactHash: artifactHash, ArtifactURL: server.URL + "/out.mp4", SizeBytes: int64(len(artifactBytes)),
-		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
-		Backend: "chronon_vulkan", CopyEligible: true,
-	}}}
-	executor, err := NewClipRenderExecutor(q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	executor.SetPollInterval(time.Millisecond)
-	plan := validClipPlan(t)
-
-	outcome, err := executor.Render(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	if q.submitted.ID != plan.RunID {
-		t.Fatalf("submit did not happen in the blocking form: %+v", q.submitted)
-	}
-	if q.getCalls == 0 {
-		t.Fatal("the blocking form must settle (observe the remote state)")
-	}
-	if outcome.SHA256 != artifactHash {
-		t.Fatalf("outcome digest = %q, want %q", outcome.SHA256, artifactHash)
 	}
 }

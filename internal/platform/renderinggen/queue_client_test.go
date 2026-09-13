@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
@@ -86,6 +87,20 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 	}
 	if got.Container != in.Container || got.PixelFormat != in.PixelFormat || got.AudioStreams != in.AudioStreams {
 		t.Fatalf("structural certification fields lost: container=%q pixel_format=%q audio_streams=%d", got.Container, got.PixelFormat, got.AudioStreams)
+	}
+	// The complete fact set is relayed verbatim as raw JSON (the shape is owned
+	// by the rendering boundary), and must round-trip into the capability struct.
+	in.OutputFacts = &queueclient.OutputFacts{VideoTimeBaseNum: 1, VideoTimeBaseDen: 12288, KeyframeInterval: 48}
+	got = toScriptArtifact(in)
+	if len(got.OutputFacts) == 0 {
+		t.Fatal("complete certified fact set was not relayed")
+	}
+	var facts cliprender.OutputFacts
+	if err := json.Unmarshal(got.OutputFacts, &facts); err != nil {
+		t.Fatalf("relayed facts are not decodable: %v", err)
+	}
+	if facts.KeyframeInterval != 48 || facts.VideoTimeBaseDen != 12288 {
+		t.Fatalf("relayed facts corrupted: %+v", facts)
 	}
 	if got.ID != in.ID || got.SHA256 != in.ArtifactHash || got.ProfileID != in.ProfileID ||
 		got.CopyEligible != in.CopyEligible || got.ClosedGOP != in.ClosedGOP ||

@@ -12,32 +12,41 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type clipStoreAdapter struct {
 	db *sql.DB
-	// repo was renamed from `assets` in Wave 12 follow-up
-	// Phase 2 PR-3 — the original name collided with the
-	// `internal/kernel/asset` package alias after the sed
-	// migration (sed's `\bassets\.` pattern matched the receiver
-	// field `a.ports.Upsert`, producing broken `a.asset.Upsert`
-	// references).
+	// retirer is the canonical media-retirement surface for
+	// DeleteAssetRecord. It replaced the generic `repo detail.Repository`
+	// field (Wave 12 follow-up Phase 2 PR-3 had renamed it from `assets`):
+	// that seam carried no information about which database owned the write,
+	// so in PostgreSQL mode the composition root could satisfy it with the
+	// operational SQLite facade and silently retire the row on the wrong
+	// engine. persistence.AssetSoftDeleter is the single owner of that port
+	// (satisfied by PostgresMediaCommitter.SoftDeleteAsset — the documented
+	// mirror of the SQLite ClipsRepository.SoftDelete) and
+	// persistence.CanonicalAssetSoftDeleter is the single resolution rule, so
+	// this capability names an engine for neither read nor write. A nil
+	// implementation fails closed rather than writing an unnamed database.
 	//
-	// repo is retained for the post-dispatch SoftDelete path
-	// (DeleteAssetRecord). The pre-dispatcher media_assets UPSERT
-	// (where `a.repo.Upsert(...)` was previously called) now routes
-	// through `dispatcher.EnqueueAndIndex` (PR 7, June 2026,
-	// codex/qdrant-app-writers-fail-closed).
-	//
-	// Pure-narrow write — the locations + processing writes below
-	// stay on their respective narrow typed ports (asset_locations +
-	// asset processing) and are NOT subject to the dispatcher SSOT.
-	repo       detail.Repository
-	querySvc   *detail.Service
-	locations  detail.LocationRepository
-	processing detail.ProcessingRepository
+	// MEDIA-SSOT write-bridge (September 2026): the locations + processing
+	// writes below no longer use the generic detail.LocationRepository /
+	// detail.ProcessingRepository seam. That seam named no engine, so the
+	// composition root satisfied it with the operational SQLite store while
+	// PostgreSQL held media_assets: a media row committed to the SSOT then had
+	// its location and its pipeline-step progress written to a second
+	// database. Both surfaces are now media-authoritative and reached through
+	// the narrow engine-named ports resolved from the canonical committer
+	// (persistence.CanonicalAssetLocationWriter /
+	// CanonicalAssetProcessingWriter), so this capability cannot name a
+	// database of its own. A nil port is a media-plane-closed signal and the
+	// write fails closed rather than landing on an unnamed engine.
+	retirer    persistence.AssetSoftDeleter
+	querySvc   AssetDetailsReader
+	locations  persistence.AssetLocationWriter
+	processing persistence.AssetProcessingWriter
 	dispatcher mutations.AssetMutationDispatcher
 }
 
@@ -50,17 +59,34 @@ type clipStoreAdapter struct {
 // surfaces a configure-time error if the dispatcher is nil. Rec == nil
 // returns a contract violation error at runtime (see Upsert method
 // godoc for the runtime contract).
+// AssetDetailsReader is the narrow media-details read the clip store hydrates a
+// MediaRecord from (Get). Declaring it here — instead of requiring the concrete
+// *detail.Service — is what lets the PostgreSQL media SSOT serve media
+// hydration (MEDIA-SSOT P2-9 step 2).
+//
+// This adapter previously had NO PostgreSQL hydration path at all: it read the
+// operational SQLite mirror unconditionally, so an asset committed by the
+// canonical PostgreSQL committer looked absent to the ingest lifecycle and a
+// stale pre-cutover row could be staged instead. *detail.Service (legacy
+// SQLite) and *pgmedia.AssetDetailsReader both satisfy the interface, so the
+// composition root picks the engine (derived from the canonical committer) and
+// this capability stops naming one. A nil implementation is a
+// media-plane-closed signal and Get fails closed.
+type AssetDetailsReader interface {
+	Get(ctx context.Context, id string) (*asset.Details, error)
+}
+
 func NewClipStoreAdapter(
 	db *sql.DB,
-	repo detail.Repository,
-	querySvc *detail.Service,
-	locations detail.LocationRepository,
-	processing detail.ProcessingRepository,
+	retirer persistence.AssetSoftDeleter,
+	querySvc AssetDetailsReader,
+	locations persistence.AssetLocationWriter,
+	processing persistence.AssetProcessingWriter,
 	dispatcher mutations.AssetMutationDispatcher,
 ) lifecycle.AssetRecordStore {
 	return &clipStoreAdapter{
 		db:         db,
-		repo:       repo,
+		retirer:    retirer,
 		querySvc:   querySvc,
 		locations:  locations,
 		processing: processing,
@@ -122,21 +148,22 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
-	// Write locations
+	// Write locations onto the media SSOT. The port is the narrow
+	// engine-named asset_locations writer, so it cannot be satisfied by a
+	// store that does not own the media database.
 	if rec.LocalPath != "" {
-		loc := &asset.Location{
+		if err := a.upsertLocation(ctx, &asset.Location{
 			AssetID:       rec.ID,
 			LocationKind:  asset.LocationKindLocal,
 			URI:           rec.LocalPath,
 			LegacyFileMD5: rec.LegacyFileMD5,
 			IsPrimary:     true,
-		}
-		if err := a.locations.Upsert(ctx, loc); err != nil {
+		}); err != nil {
 			return err
 		}
 	}
 	if rec.DriveLink != "" || rec.DriveFileID != "" {
-		loc := &asset.Location{
+		if err := a.upsertLocation(ctx, &asset.Location{
 			AssetID:      rec.ID,
 			LocationKind: asset.LocationKindDrive,
 			URI:          "drive://" + rec.DriveFileID,
@@ -144,15 +171,14 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 			AccessURL:    rec.DriveLink,
 			DownloadURL:  rec.DownloadLink,
 			IsPrimary:    rec.LocalPath == "",
-		}
-		if err := a.locations.Upsert(ctx, loc); err != nil {
+		}); err != nil {
 			return err
 		}
 	}
 
 	// Write status/processing step if present. Processing state is part of
 	// the lifecycle contract: an asset write must not report success when
-	// its corresponding transition was not persisted.
+	// its corresponding transition was not persisted on the media SSOT.
 	if rec.Status != "" {
 		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
@@ -166,20 +192,33 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	return nil
 }
 
-func persistProcessingState(ctx context.Context, processing detail.ProcessingRepository, rec *artifacts.MediaRecord, step string) error {
-	if processing == nil {
-		return fmt.Errorf("clip store adapter: processing repository not configured")
+// upsertLocation attaches one storage location through the narrow
+// engine-named asset_locations port. Nil means the media plane is closed, and
+// a location write is not recoverable by picking a second database.
+func (a *clipStoreAdapter) upsertLocation(ctx context.Context, loc *asset.Location) error {
+	if a.locations == nil {
+		return fmt.Errorf("clip store adapter: no asset_locations writer wired (media SSOT closed): %w", mutations.ErrDispatcherUnavailable)
 	}
-	if err := processing.Start(ctx, rec.ID, step); err != nil {
+	if err := a.locations.UpsertAssetLocation(ctx, loc); err != nil {
+		return fmt.Errorf("clip store adapter: upsert %s location %s: %w", loc.LocationKind, loc.AssetID, err)
+	}
+	return nil
+}
+
+func persistProcessingState(ctx context.Context, processing persistence.AssetProcessingWriter, rec *artifacts.MediaRecord, step string) error {
+	if processing == nil {
+		return fmt.Errorf("clip store adapter: no asset_processing writer wired (media SSOT closed): %w", mutations.ErrDispatcherUnavailable)
+	}
+	if err := processing.StartAssetProcessing(ctx, rec.ID, step); err != nil {
 		return fmt.Errorf("clip store adapter: start processing %s/%s: %w", rec.ID, step, err)
 	}
 	switch rec.Status {
 	case "failed":
-		if err := processing.Fail(ctx, rec.ID, step, rec.Error); err != nil {
+		if err := processing.FailAssetProcessing(ctx, rec.ID, step, rec.Error); err != nil {
 			return fmt.Errorf("clip store adapter: fail processing %s/%s: %w", rec.ID, step, err)
 		}
 	case "ACTIVE", "completed":
-		if err := processing.Complete(ctx, rec.ID, step); err != nil {
+		if err := processing.CompleteAssetProcessing(ctx, rec.ID, step); err != nil {
 			return fmt.Errorf("clip store adapter: complete processing %s/%s: %w", rec.ID, step, err)
 		}
 	}
@@ -187,6 +226,12 @@ func persistProcessingState(ctx context.Context, processing detail.ProcessingRep
 }
 
 func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
+	if a.querySvc == nil {
+		// Fail closed: reporting "not found" for an unreadable catalog would be
+		// a successful no-op, and the caller would then stage/publish a clip it
+		// never verified.
+		return nil, fmt.Errorf("clip store adapter: no media details reader wired (media SSOT closed)")
+	}
 	details, err := a.querySvc.Get(ctx, id)
 	if err != nil {
 		if err == asset.ErrNotFound {
@@ -293,8 +338,17 @@ func (a *clipStoreAdapter) MarkDriveMissing(ctx context.Context, id string) erro
 	return a.Upsert(ctx, rec)
 }
 
+// DeleteAssetRecord retires the media asset through the canonical retirement
+// port. See persistence.AssetSoftDeleter for why the generic detail.Repository
+// seam was removed here.
 func (a *clipStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) error {
-	return a.repo.SoftDelete(ctx, id)
+	if a.retirer == nil {
+		// Fail closed: an unwired retirement port must not be reported as a
+		// successful delete, and must never fall back to a database nobody
+		// named.
+		return fmt.Errorf("clip store adapter: no media retirement port wired (media SSOT closed): %w", mutations.ErrDispatcherUnavailable)
+	}
+	return a.retirer.SoftDeleteAsset(ctx, id)
 }
 
 func detailsToMediaRecord(details *asset.Details) *artifacts.MediaRecord {

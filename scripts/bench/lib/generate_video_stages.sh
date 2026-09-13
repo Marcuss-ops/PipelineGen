@@ -186,7 +186,7 @@ PY
   "source_asset_id": "${ASSET_ID}",
   "background": {"mode": "none"},
   "watermark": ${WM_BLOCK},
-  "transcript": {"mode": "reuse_or_generate", "language": "en"},
+  "transcript": {"mode": "reuse", "language": "en"},
   "subtitles": {"enabled": true, "mode": "burn"},
   "output": {"contract": "VELOX_ASSEMBLY_READY_V1", "width": 1920, "height": 1080, "fps_num": 24, "fps_den": 1},
   "audio": {"mode": "copy_if_compatible"},

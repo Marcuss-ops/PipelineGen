@@ -1,18 +1,23 @@
 package cliprender
 
 // bench_transcripts_test.go owns scenario 6 of the canonical clip.render
-// benchmark: ASR/transcript reuse.
+// benchmark: transcript reuse.
 //
-// The transcript policy is the single biggest per-clip lever that is NOT a
-// renderer change: transcript.mode=generate re-runs speech recognition for
-// EVERY clip even when all clips come from one source, while
-// reuse_or_generate + persist runs it ONCE per source and serves the rest from
-// the canonical text track. This is measured here with a counting ASR
-// resolver that persists like the real one, driving the real Preparer.
+// clip.render is a RENDER step: the default policy is `reuse`, so a batch over
+// one source runs ZERO ASR passes when the canonical READY text track exists,
+// and FAILS CLOSED when it does not. `generate` remains only as an explicit
+// manual repair and re-runs ASR per clip. This is measured here with a
+// counting ASR resolver that persists like the real one, driving the real
+// Preparer.
+//
+// The legacy `reuse_or_generate` implicit-ASR mode was DELETED in the
+// 2026-09-13 audit, so the scenarios that measured "one ASR pass per source on
+// a miss" no longer describe the system and were removed with it.
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -85,6 +90,18 @@ func (c *benchTranscriptCache) counts() (gen, lookups, hits int) {
 	return c.genCalls, c.lookupCalls, c.lookupHits
 }
 
+// seed installs an already-READY canonical track, which is what the clip
+// producers are required to supply before a render can run in `reuse` mode.
+func (c *benchTranscriptCache) seed(in TranscriptInput) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.byKey[benchTranscriptKey(in)] = &TranscriptResult{
+		AssetID: in.AssetID, Language: in.Language,
+		Text: "ready canonical track",
+		Cues: []Cue{{StartMs: 0, EndMs: 1000, Text: "ready"}},
+	}
+}
+
 // runTranscriptBatch prepares the same source `clips` times under one
 // transcript policy and returns the wall time plus the ASR resolution state.
 func runTranscriptBatch(t *testing.T, mode string, persist bool, clips int, asrMS time.Duration) (time.Duration, int, int, int) {
@@ -117,33 +134,46 @@ func runTranscriptBatch(t *testing.T, mode string, persist bool, clips int, asrM
 	return elapsed, gen, lookups, hits
 }
 
-// TestScenario6_TranscriptReuse proves the ASR call count and the wall-time
-// saving: generate = one ASR pass per clip; reuse_or_generate + persist = one
-// ASR pass per SOURCE.
-func TestScenario6_TranscriptReuse(t *testing.T) {
+// runSeededReuseBatch prepares the same source `clips` times under the
+// production default (`reuse`) against a pre-existing READY canonical track,
+// exactly like a certified producer supplies it.
+func runSeededReuseBatch(t *testing.T, clips int, asrMS time.Duration) (time.Duration, int, int, int) {
+	t.Helper()
+	cache := newBenchTranscriptCache(asrMS)
+	cache.seed(TranscriptInput{AssetID: "asset-source", Language: "en"})
+
+	assets := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
+	preparer, err := NewPreparer(assets, &fakeMaterializer{}, cache, NewContractResolver(), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	for i := 0; i < clips; i++ {
+		req := baseRenderRequest()
+		if _, err := preparer.Prepare(context.Background(), req, fmt.Sprintf("run-reuse-%d", i)); err != nil {
+			t.Fatalf("reuse clip %d: Prepare: %v", i, err)
+		}
+	}
+	elapsed := time.Since(started)
+	gen, lookups, hits := cache.counts()
+	return elapsed, gen, lookups, hits
+}
+
+// TestScenario6_ReuseServesWholeBatchFromCanonicalTrack proves the ASR call
+// count of the production default: with a READY canonical track, a batch of
+// clips over one source runs ZERO ASR passes and every clip is served from the
+// canonical text track.
+func TestScenario6_ReuseServesWholeBatchFromCanonicalTrack(t *testing.T) {
 	const (
 		clips = 10
 		asrMS = 20 * time.Millisecond
 	)
 
-	generateWall, generateCalls, _, _ := runTranscriptBatch(t, TranscriptModeGenerate, true, clips, asrMS)
-	reuseWall, reuseCalls, reuseLookups, reuseHits := runTranscriptBatch(t, TranscriptModeReuseOrGenerate, true, clips, asrMS)
-
-	generateReport := benchReport{
-		Scenario:    "scenario-06-transcript-generate",
-		Mode:        "transcript",
-		Clips:       clips,
-		WallMS:      generateWall.Milliseconds(),
-		ClipsPerMin: benchClipsPerMin(clips, generateWall),
-	}
-	// The ASR invocation count is the metric that matters; it rides in the
-	// download counter slot of the shared schema so a single report shape
-	// still carries it.
-	generateReport.SourceDownloads = int64(generateCalls)
-	writeBenchReport(t, generateReport)
+	reuseWall, reuseCalls, reuseLookups, reuseHits := runSeededReuseBatch(t, clips, asrMS)
 
 	reuseReport := benchReport{
-		Scenario:        "scenario-06-transcript-reuse-or-generate",
+		Scenario:        "scenario-06-transcript-reuse",
 		Mode:            "transcript",
 		Clips:           clips,
 		WallMS:          reuseWall.Milliseconds(),
@@ -152,116 +182,77 @@ func TestScenario6_TranscriptReuse(t *testing.T) {
 	}
 	writeBenchReport(t, reuseReport)
 
-	if generateCalls != clips {
-		t.Errorf("mode=generate: ASR calls = %d, want %d (one per clip)", generateCalls, clips)
-	}
-	if reuseCalls != 1 {
-		t.Errorf("mode=reuse_or_generate + persist: ASR calls = %d, want 1 (one per source)", reuseCalls)
+	if reuseCalls != 0 {
+		t.Errorf("mode=reuse with a READY track: ASR calls = %d, want 0 (the render must not run ASR)", reuseCalls)
 	}
 	if reuseLookups != clips {
-		t.Errorf("mode=reuse_or_generate: lookups = %d, want %d", reuseLookups, clips)
+		t.Errorf("mode=reuse: lookups = %d, want %d", reuseLookups, clips)
 	}
-	if reuseHits != clips-1 {
-		t.Errorf("mode=reuse_or_generate: cache hits = %d, want %d", reuseHits, clips-1)
+	if reuseHits != clips {
+		t.Errorf("mode=reuse: cache hits = %d, want %d", reuseHits, clips)
 	}
-	if reuseWall >= generateWall {
-		t.Errorf("reuse wall %v is not faster than generate wall %v", reuseWall, generateWall)
-	}
-	t.Logf("transcript reuse (%d clips, %v ASR each): generate = %d ASR call(s) in %v | reuse_or_generate+persist = %d ASR call(s) in %v (%d cache hit(s), saved %v)",
-		clips, asrMS, generateCalls, generateWall, reuseCalls, reuseWall, reuseHits, generateWall-reuseWall)
+	t.Logf("transcript reuse (%d clips, %v ASR each): %d ASR call(s) in %v (%d lookup(s), %d hit(s))—the render path never transcribes",
+		clips, asrMS, reuseCalls, reuseWall, reuseLookups, reuseHits)
 }
 
-// TestScenario6_ReuseWithoutPersistDoesNotCache pins the trap the spec warns
-// about: reuse_or_generate WITHOUT persist cannot reuse anything, because the
-// generated track is never written back — so every clip pays ASR anyway. A
-// caller that forgets persist gets the expensive mode while believing it asked
-// for the cheap one.
-func TestScenario6_ReuseWithoutPersistDoesNotCache(t *testing.T) {
-	const (
-		clips = 4
-		asrMS = 10 * time.Millisecond
-	)
-	_, calls, _, hits := runTranscriptBatch(t, TranscriptModeReuseOrGenerate, false, clips, asrMS)
-	if calls != clips {
-		t.Errorf("reuse_or_generate without persist: ASR calls = %d, want %d (nothing was persisted to reuse)", calls, clips)
-	}
-	if hits != 0 {
-		t.Errorf("reuse_or_generate without persist: cache hits = %d, want 0", hits)
-	}
-	t.Logf("reuse_or_generate without persist: %d ASR call(s) for %d clips — persist=true is what makes reuse real", calls, clips)
-}
-
-// TestTranscriptDefaultPersist_BatchFromSameSourceRunsSingleASRPass is the
-// regression test for the "testi" lever: a batch of clips over the SAME source
-// submitted WITHOUT declaring transcript.persist (exactly what
-// POST /api/clips/render carries) must run speech recognition ONCE and serve
-// every other clip from the canonical text track.
-//
-// Scenario 6 above measures persist as an EXPLICIT boolean; this test measures
-// the default the endpoint actually applies, so a future change that drops the
-// Normalize default (making every clip of one source pay its own ASR pass)
-// fails here with the per-clip ASR signature.
-func TestTranscriptDefaultPersist_BatchFromSameSourceRunsSingleASRPass(t *testing.T) {
-	const (
-		clips = 5
-		asrMS = 15 * time.Millisecond
-	)
-
-	// The payload is fetched straight from the wire: a request WITHOUT the
-	// persist key is what the endpoint decodes and what the job broker stores.
-	raw, err := json.Marshal(map[string]any{
-		"source_asset_id": "asset-source",
-		"transcript":      map[string]any{"mode": "reuse_or_generate", "language": "en"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cache := newBenchTranscriptCache(asrMS)
+// TestScenario6_ReuseMissingTrackFailsClosed pins the fail-closed half: a
+// render that asks for `reuse` against a source with no READY track must fail
+// with a typed error and NEVER silently run ASR inside the render.
+func TestScenario6_ReuseMissingTrackFailsClosed(t *testing.T) {
+	cache := newBenchTranscriptCache(10 * time.Millisecond)
 	assets := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
 	preparer, err := NewPreparer(assets, &fakeMaterializer{}, cache, NewContractResolver(), zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
+	req := baseRenderRequest() // mode=reuse default
+	if req.Transcript.Mode != TranscriptModeReuse {
+		t.Fatalf("default transcript mode = %q, want reuse", req.Transcript.Mode)
+	}
+	if _, err := preparer.Prepare(context.Background(), req, "run-miss"); !errors.Is(err, ErrTranscriptUnavailable) {
+		t.Fatalf("missing READY track must fail closed with ErrTranscriptUnavailable, got %v", err)
+	}
+	if gen, _, _ := cache.counts(); gen != 0 {
+		t.Fatalf("mode=reuse must never generate, got %d ASR call(s)", gen)
+	}
+}
 
-	for i := 0; i < clips; i++ {
-		var req RenderRequest
-		if err := json.Unmarshal(raw, &req); err != nil {
-			t.Fatalf("clip %d: decode payload: %v", i, err)
-		}
-		// Guard the fixture itself: the payload must NOT carry the persist key,
-		// otherwise the test would silently measure the explicit half again.
-		if req.Transcript == nil || req.Transcript.persistSet {
-			t.Fatalf("clip %d: fixture must exercise the ABSENT persist key", i)
-		}
-
-		prepared, err := preparer.Prepare(context.Background(), &req, fmt.Sprintf("run-default-%d", i))
-		if err != nil {
-			t.Fatalf("clip %d: Prepare: %v", i, err)
-		}
-		if !req.Transcript.Persist {
-			t.Fatalf("clip %d: transcript.persist = false, want the true default — without persistence every clip over this source re-runs ASR", i)
-		}
-		if prepared.Transcript == nil || !prepared.Transcript.HasText() {
-			t.Fatalf("clip %d: prepared transcript missing text", i)
-		}
-		if i > 0 && !prepared.Transcript.Reused {
-			t.Fatalf("clip %d: transcript was regenerated instead of reused from the canonical track", i)
-		}
+// TestTranscriptDefault_ReuseIsAppliedWithoutAnExplicitMode pins the default
+// the endpoint actually applies: a payload that declares NO transcript policy
+// (exactly what POST /api/clips/render carries when the caller does not care)
+// normalizes to `reuse`, and a render against a source with no READY track
+// therefore fails closed instead of silently transcribing.
+func TestTranscriptDefault_ReuseIsAppliedWithoutAnExplicitMode(t *testing.T) {
+	// The payload is fetched straight from the wire: a request WITHOUT the mode
+	// key is what the endpoint decodes and what the job broker stores.
+	raw, err := json.Marshal(map[string]any{"source_asset_id": "asset-source"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req RenderRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	req.Normalize()
+	if req.Transcript.Mode != TranscriptModeReuse {
+		t.Fatalf("default transcript mode = %q, want reuse", req.Transcript.Mode)
+	}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("defaulted request must validate: %v", err)
 	}
 
-	gen, lookups, hits := cache.counts()
-	if gen != 1 {
-		t.Errorf("ASR passes = %d, want 1 for %d clip(s) from one source (default persist=true)", gen, clips)
+	cache := newBenchTranscriptCache(15 * time.Millisecond)
+	assets := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
+	preparer, err := NewPreparer(assets, &fakeMaterializer{}, cache, NewContractResolver(), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if lookups != clips {
-		t.Errorf("transcript lookups = %d, want %d (one per clip)", lookups, clips)
+	if _, err := preparer.Prepare(context.Background(), &req, "run-default"); !errors.Is(err, ErrTranscriptUnavailable) {
+		t.Fatalf("default policy must fail closed on a missing READY track, got %v", err)
 	}
-	if hits != clips-1 {
-		t.Errorf("transcript cache hits = %d, want %d", hits, clips-1)
+	if gen, _, _ := cache.counts(); gen != 0 {
+		t.Fatalf("default policy must never run ASR inside a render, got %d call(s)", gen)
 	}
-	t.Logf("%d clips from one source with the DEFAULT transcript policy: %d ASR pass(es), %d lookup(s), %d hit(s)",
-		clips, gen, lookups, hits)
 }
 
 // TestScenario6_PreparerWiringIsUsed guards the harness itself: the ASR

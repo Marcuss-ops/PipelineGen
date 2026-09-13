@@ -77,6 +77,13 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// certify-media-cutover counter SQLITE_MEDIA_READERS=0, which was
 		// UNVERIFIED after its driver was deleted.
 		{"percheck_sqlite_media_reader_ban", boundaries.ScanSQLiteMediaReaderBan},
+		// MEDIA-SSOT write side (added 2026-09-13): the SQL-level writer gate
+		// above is blind to a write that goes through an interface, because no
+		// SQL appears at the call site. This companion bans the generic
+		// detail.Repository/detail.Service seam write — the construct that let
+		// YouTube enrichment write media_assets on the operational SQLite
+		// engine while PostgreSQL was the SSOT.
+		{"percheck_media_write_bridge_ban", boundaries.ScanMediaWriteBridgeBan},
 		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
 		{"percheck_rights_status_canonical_6", governance.ScanRightsStatusCanonical6},

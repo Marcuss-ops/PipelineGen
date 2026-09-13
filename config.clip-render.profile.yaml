@@ -21,9 +21,9 @@
 # CONTRACTS PRESERVED
 #   - HMAC, Drive, media PostgreSQL, RenderingGen queue and Chronon socket
 #     settings are inherited from the base config / service environment.
-#   - clip_async_drive_enabled: true is the canonical production mode: the
-#     rendered asset + Drive intent commit durably, the upload drains through
-#     the PostgreSQL media outbox worker.
+#   - clip.render Drive delivery is UNCONDITIONALLY asynchronous: the rendered
+#     asset + Drive intent commit durably and the upload drains through the
+#     PostgreSQL media outbox worker. There is no sync-Drive toggle.
 #   - linguistics.lexicon_root resolves relative to THIS file's directory
 #     when the anchored path exists (config.GetFromPath), so this profile
 #     boots from any cwd.
@@ -47,4 +47,3 @@ features:
   clip_render_enabled: true
   # Durable outbox-backed Drive delivery (job completes without waiting
   # for the upload; the PostgreSQL media outbox worker drains it).
-  clip_async_drive_enabled: true

@@ -49,6 +49,50 @@ func renderJobPayload(t *testing.T, req *RenderRequest) json.RawMessage {
 	return raw
 }
 
+// handleSubmitted drives ONLY the submit half of a clip.render job: it wires
+// the durable continuation ports, runs preparation + remote submit, and
+// returns the SUBMIT result alongside the enqueued continuation.
+//
+// It exists so tests can assert the submit-owned facts (the preparation
+// timings and materialization snapshot) on the job that actually produced
+// them, instead of looking for them on the settle continuation, which is a
+// pure resume and never re-runs preparation.
+func handleSubmitted(t *testing.T, ctx context.Context, w *Worker, jobID string, req *RenderRequest) (map[string]any, *fakeContinuationEnqueuer, error) {
+	t.Helper()
+	store := &fakeContinuationStore{}
+	enqueuer := &fakeContinuationEnqueuer{}
+	w.WithContinuationStore(store).WithContinuationEnqueuer(enqueuer)
+	result, err := w.Handle(ctx, &job.Job{ID: jobID, Payload: renderJobPayload(t, req)}, nil)
+	if err != nil {
+		return result, enqueuer, err
+	}
+	if enqueuer.calls == 0 {
+		return result, enqueuer, errors.New("submit phase did not enqueue a settle continuation")
+	}
+	return result, enqueuer, nil
+}
+
+// handleRendered drives one clip.render job through BOTH of its phases and
+// returns the SETTLE result — the rendered clip.
+//
+// The blocking Render form was deleted (2026-09-13 audit P2), so a rendered
+// clip is always two Handle calls: submit persists the durable continuation
+// and releases the slot, settle resumes it. Tests that used to reach the
+// blocking path now exercise exactly what production runs, instead of a
+// single-call shortcut that no longer exists.
+func handleRendered(t *testing.T, ctx context.Context, w *Worker, jobID string, req *RenderRequest) (map[string]any, error) {
+	t.Helper()
+	_, enqueuer, err := handleSubmitted(t, ctx, w, jobID, req)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := encodeContinuationPayload(enqueuer.req.Continuation)
+	if err != nil {
+		return nil, err
+	}
+	return w.Handle(ctx, &job.Job{ID: jobID + "-settle", Payload: payload}, nil)
+}
+
 type fakeRenderExecutor struct {
 	called  int
 	plan    ClipRenderPlanV1
@@ -68,11 +112,6 @@ type fakeAsyncRenderExecutor struct {
 	outcome     *RenderOutcome
 }
 
-func (f *fakeAsyncRenderExecutor) Render(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
-	f.plan = plan
-	return f.outcome, nil
-}
-
 func (f *fakeAsyncRenderExecutor) Submit(_ context.Context, plan ClipRenderPlanV1) error {
 	f.submitCalls++
 	f.plan = plan
@@ -82,7 +121,7 @@ func (f *fakeAsyncRenderExecutor) Submit(_ context.Context, plan ClipRenderPlanV
 func (f *fakeAsyncRenderExecutor) Settle(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
 	f.settleCalls++
 	f.plan = plan
-	return f.outcome, nil
+	return certifiedTestOutcome(f.outcome), nil
 }
 
 type fakeContinuationStore struct {
@@ -158,10 +197,15 @@ func TestWorker_AsyncSubmitReleasesRenderSlotAndSettleResumesFromCAS(t *testing.
 	}
 }
 
-func (f *fakeRenderExecutor) Render(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
+// Submit is the pre-render half. The fake records nothing there: `called` and
+// `plan` are the SETTLE observations, so every assertion of the form
+// "called == 1" keeps meaning "the render ran exactly once".
+func (f *fakeRenderExecutor) Submit(_ context.Context, _ ClipRenderPlanV1) error { return nil }
+
+func (f *fakeRenderExecutor) Settle(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
 	f.called++
 	f.plan = plan
-	return f.outcome, nil
+	return certifiedTestOutcome(f.outcome), nil
 }
 
 // fakeOverlayResolver returns a canned segment for the declared render_job_id.
@@ -179,24 +223,53 @@ func (f *fakeOverlayResolver) Resolve(_ context.Context, in OverlayResolveInput)
 	return f.segment, nil
 }
 
-// fakeOutputProber returns a canned probe for post-render certification.
-type fakeOutputProber struct {
-	probe *OutputProbe
-	err   error
-}
-
-func (f *fakeOutputProber) ProbeOutput(_ context.Context, _ string) (*OutputProbe, error) {
-	if f.err != nil {
-		return nil, f.err
+// certifiedTestOutcome returns the outcome a real RenderingGen boundary hands
+// back: it always carries the certified output FACTS, which is the single
+// certification owner of the render (the local OutputProber port was deleted in
+// the 2026-09-13 audit, so there is no second byte probe to wire).
+//
+// It fills the dimensions the contract gate checks UNCONDITIONALLY (container,
+// codec, pixel format, geometry, fps, audio block) from the outcome's own flat
+// summary, defaulting only what a fake outcome leaves blank. Dimensions the
+// contract treats as optional stay empty here exactly as the old canned probe
+// left them, so ValidateContract still skips what the boundary did not report.
+func certifiedTestOutcome(o *RenderOutcome) *RenderOutcome {
+	if o == nil || o.Facts != nil {
+		return o
 	}
-	return f.probe, nil
+	codec := o.VideoCodec
+	if codec == "" {
+		codec = "h264"
+	}
+	pixelFormat := o.PixelFormat
+	if pixelFormat == "" {
+		pixelFormat = "yuv420p"
+	}
+	o.Facts = &OutputFacts{
+		Container:    o.Container,
+		HasVideo:     true,
+		VideoStreams: 1,
+		VideoCodec:   codec,
+		VideoProfile: o.VideoProfile,
+		PixelFormat:  pixelFormat,
+		Width:        int(o.Width),
+		Height:       int(o.Height),
+		FPSNum:       int(o.FPSNum),
+		FPSDen:       int(o.FPSDen),
+		HasAudio:     true,
+		AudioStreams: 1,
+		AudioCodec:   "aac",
+		SampleRate:   48000,
+		Channels:     2,
+	}
+	return o
 }
 
 func TestRenderedResult_LegacyFieldsAreReadOnlyProjections(t *testing.T) {
 	outcome := &RenderOutcome{OutputPath: "/work/out.mp4", SizeBytes: 1, DurationSec: 1, FFmpegMS: 1234, SubtitleRasterCPU: boolPtr(true), Metrics: NewRenderMetricsV2()}
 	outcome.Metrics.CompositeMS = 1234
 	outcome.Metrics.SubtitleRasterCPU = true
-	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse_or_generate"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil)
+	result := renderedResult(&job.Job{ID: "job-projection"}, &RenderRequest{SourceAssetID: "asset-source", Transcript: &TranscriptSpec{Mode: "reuse"}}, &Prepared{Contract: &ResolvedContract{}, Source: &MaterializedAsset{}, Transcript: &TranscriptResult{}}, ClipRenderPlanV1{}, nil, outcome, nil)
 	render, ok := result["render"].(map[string]any)
 	if !ok {
 		t.Fatalf("render result = %v", result["render"])
@@ -230,7 +303,24 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	}}
 	w.WithRenderExecutor(renderer)
 
-	result, err := w.Handle(context.Background(), &job.Job{ID: "job-render", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	// Preparation belongs to the SUBMIT half, so the materialize wall is
+	// measured on the job that brought the assets to disk.
+	submitResult, _, err := handleSubmitted(t, context.Background(), w, "job-render", baseRenderRequest())
+	if err != nil {
+		t.Fatalf("submit Handle() error = %v", err)
+	}
+	if submitResult["phase"] != "submitted" {
+		t.Fatalf("submit phase = %v, want submitted", submitResult["phase"])
+	}
+	timings, ok := submitResult["timings"].(map[string]any)
+	if !ok {
+		t.Fatalf("submit timings = %v", submitResult["timings"])
+	}
+	if !hasMaterializePhase(timings["phases"]) {
+		t.Fatalf("submit timings must record a materialize_* phase, got %v", timings["phases"])
+	}
+
+	result, err := handleRendered(t, context.Background(), w, "job-render", baseRenderRequest())
 	if err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
@@ -263,19 +353,36 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 		t.Fatalf("subtitle_compile_ms = %d, want NOT_INSTRUMENTED (subtitles disabled)", int64(metrics.SubtitleCompileMS))
 	}
 	// asset_materialize_ms folds the preparer's materialize phase walls into
-	// the report (the real preparer records materialize_source even through
-	// the fake materializer), so the benchmark can attribute the "bring the
-	// assets to disk" cost instead of leaving it in the unaccounted gap.
-	if int64(metrics.AssetMaterializeMS) == NotInstrumented {
-		t.Fatalf("asset_materialize_ms = %d, want the measured materialize phase wall", int64(metrics.AssetMaterializeMS))
+	// the report. Since the async cutover preparation runs in the SUBMIT half,
+	// the settle continuation is a pure resume (preparedFromResume carries no
+	// timings), so the settle report must honestly leave the dimension
+	// NOT_INSTRUMENTED rather than fabricate a zero. The real materialize wall
+	// is asserted on the submit result above — exactly where it was measured.
+	if int64(metrics.AssetMaterializeMS) != NotInstrumented {
+		t.Fatalf("asset_materialize_ms = %d, want NOT_INSTRUMENTED on the settle resume", int64(metrics.AssetMaterializeMS))
 	}
+}
+
+// hasMaterializePhase reports whether the preparation phase list carries a
+// materialize_* wall (the "bring the assets to disk" cost).
+func hasMaterializePhase(phases any) bool {
+	list, ok := phases.([]PhaseTiming)
+	if !ok {
+		return false
+	}
+	for _, phase := range list {
+		if strings.HasPrefix(phase.Phase, "materialize_") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestWorker_NilRenderOutcomeFailsClosedWithoutPanic(t *testing.T) {
 	w, _, _ := newTestWorker(t)
 	w.WithRenderExecutor(&fakeRenderExecutor{})
 
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-nil-outcome", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-nil-outcome", baseRenderRequest())
 	if err == nil || !strings.Contains(err.Error(), "nil outcome") {
 		t.Fatalf("nil outcome error = %v, want a fail-closed nil outcome error", err)
 	}
@@ -286,7 +393,7 @@ func TestWorker_NilPublicationFailsClosedWithoutPanic(t *testing.T) {
 	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
 	w.WithRenderPublisher(nilRenderPublisher{})
 
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-nil-publication", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-nil-publication", baseRenderRequest())
 	if err == nil || !strings.Contains(err.Error(), "nil publication") {
 		t.Fatalf("nil publication error = %v, want a fail-closed nil publication error", err)
 	}
@@ -316,7 +423,7 @@ func TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend(t *testing.T) {
 	req := baseRenderRequest()
 	req.Execution.RequireZeroCopy = true
 
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-zero-copy", Payload: renderJobPayload(t, req)}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-zero-copy", req)
 	if err == nil {
 		t.Fatal("require_zero_copy=true must fail closed even with a certified Chronon outcome")
 	}
@@ -521,7 +628,7 @@ func TestWorker_SubtitlesInlineStyle_ReachesSealedPlan(t *testing.T) {
 			Stroke:     &scriptpkg.VideoStrokeSpec{Color: "#000000", Width: 3},
 		},
 	}
-	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-style", Payload: renderJobPayload(t, req)}, nil); err != nil {
+	if _, err := handleRendered(t, context.Background(), w, "job-style", req); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 	if renderer.plan.Subtitles == nil || renderer.plan.Subtitles.Style == nil {
@@ -584,7 +691,7 @@ func TestWorker_RecordsRunReportStages(t *testing.T) {
 	}})
 	w.WithRenderPublisher(&fakeRenderPublisher{})
 
-	if _, err := w.Handle(ctx, &job.Job{ID: "job-obs-1", Payload: renderJobPayload(t, baseRenderRequest())}, nil); err != nil {
+	if _, err := handleRendered(t, ctx, w, "job-obs-1", baseRenderRequest()); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 	run.Finish()
@@ -614,14 +721,16 @@ func TestWorker_RecordsRunReportStages(t *testing.T) {
 	}
 
 	// The stages are strictly sequential, so the run's critical path must be
-	// the ordered serial chain prepare → render → publish (each stage's wall
-	// is its critical-path contribution).
+	// the ordered serial chain prepare → render → probe → publish (each stage's
+	// wall is its critical-path contribution). clip.probe is the certified-facts
+	// projection the render boundary now owns; it is recorded unconditionally,
+	// with no local byte-probe port to wire.
 	cp := report.Breakdown().CriticalPath
 	names := make([]string, 0, len(cp))
 	for _, c := range cp {
 		names = append(names, c.Name)
 	}
-	want := []string{string(StageClipPrepare), string(StageClipRender), string(StageClipPublish)}
+	want := []string{string(StageClipPrepare), string(StageClipRender), string(StageClipProbe), string(StageClipPublish)}
 	if len(names) != len(want) {
 		t.Fatalf("critical path = %v, want %v", names, want)
 	}
@@ -649,7 +758,7 @@ func TestWorker_NoRunBoundRecordsNothing(t *testing.T) {
 	}})
 	w.WithRenderPublisher(&fakeRenderPublisher{})
 
-	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-obs-2", Payload: renderJobPayload(t, baseRenderRequest())}, nil); err != nil {
+	if _, err := handleRendered(t, context.Background(), w, "job-obs-2", baseRenderRequest()); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 }
@@ -736,7 +845,7 @@ func TestWorker_DestinationSubfolder_ResolvedOncePerJob(t *testing.T) {
 		DriveFolderID: "root-folder-abc",
 		SubfolderName: "Matt Damon 5 Clips Verification",
 	}
-	result, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-resolve", Payload: renderJobPayload(t, req)}, nil)
+	result, err := handleRendered(t, context.Background(), w, "job-folder-resolve", req)
 	if err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
@@ -768,7 +877,7 @@ func TestWorker_DestinationSubfolder_FailClosedWithoutResolver(t *testing.T) {
 
 	req := baseRenderRequest()
 	req.Destination = &DestinationSpec{DriveFolderID: "root-folder-abc", SubfolderName: "Some Script"}
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-nores", Payload: renderJobPayload(t, req)}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-folder-nores", req)
 	if err == nil {
 		t.Fatal("subfolder_name without a wired resolver must fail closed")
 	}
@@ -793,7 +902,7 @@ func TestWorker_DestinationLeafFolder_PassesThrough(t *testing.T) {
 	w.WithDestinationFolderResolver(resolver)
 
 	req := baseRenderRequest() // default destination = DefaultDriveRootFolderID
-	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-folder-passthrough", Payload: renderJobPayload(t, req)}, nil); err != nil {
+	if _, err := handleRendered(t, context.Background(), w, "job-folder-passthrough", req); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 	if resolver.calls != 0 {
@@ -825,7 +934,6 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	publisher := &fakeRenderPublisher{}
 	w.WithRenderExecutor(renderer)
 	w.WithRenderPublisher(publisher)
-
 	req := baseRenderRequest()
 	req.Overlay = &OverlayRefSpec{
 		RenderJobID:        "render-michael-jordan-overlay-001",
@@ -843,17 +951,10 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		SizeBytes:   4096,
 	}}
 	w.WithOverlaySegmentResolver(resolver)
-	// Post-render probe is mandatory when overlay is declared.
-	w.WithOutputProber(&fakeOutputProber{probe: &OutputProbe{
-		Container: "mp4", HasVideo: true, HasAudio: true,
-		VideoCodec: "h264", VideoProfile: "high", PixelFormat: "yuv420p",
-		Width: 1920, Height: 1080, FPS: 24.0, FPSNum: 24, FPSDen: 1,
-		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000, Channels: 2,
-		ChannelLayout: "stereo", AudioBitrate: "128k",
-		VideoStreams: 1, AudioStreams: 1, StartPTS: 0,
-	}})
+	// The render boundary certifies the output facts on the outcome; overlay
+	// presence does not add a second probe (the local prober was deleted).
 
-	result, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-lineage", Payload: renderJobPayload(t, req)}, nil)
+	result, err := handleRendered(t, context.Background(), w, "job-overlay-lineage", req)
 	if err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
@@ -972,7 +1073,7 @@ func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
 		StartUS:            50000,
 		EndUS:              950000,
 	}
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-fail", Payload: renderJobPayload(t, req)}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-overlay-fail", req)
 	if err == nil {
 		t.Fatal("overlay declared without a segment resolver must fail closed")
 	}
@@ -1003,7 +1104,7 @@ func TestWorker_RequireGPU_FailsClosedOnSoftwareBackend(t *testing.T) {
 
 	req := baseRenderRequest()
 	req.Execution = &ExecutionSpec{RequireGPU: true}
-	_, err := w.Handle(context.Background(), &job.Job{ID: "job-require-gpu", Payload: renderJobPayload(t, req)}, nil)
+	_, err := handleRendered(t, context.Background(), w, "job-require-gpu", req)
 	if err == nil {
 		t.Fatal("execution.require_gpu=true with a software backend must fail closed")
 	}
@@ -1024,7 +1125,7 @@ func TestWorker_RequireGPU_SucceedsOnGPUBackend(t *testing.T) {
 
 	req := baseRenderRequest()
 	req.Execution = &ExecutionSpec{RequireGPU: true}
-	result, err := w.Handle(context.Background(), &job.Job{ID: "job-require-gpu-ok", Payload: renderJobPayload(t, req)}, nil)
+	result, err := handleRendered(t, context.Background(), w, "job-require-gpu-ok", req)
 	if err != nil {
 		t.Fatalf("require_gpu=true on the GPU backend must succeed, got %v", err)
 	}
@@ -1070,7 +1171,7 @@ func TestWorker_OverlayCompositing_FailClosedOnResolutionError(t *testing.T) {
 				StartUS:            50000,
 				EndUS:              950000,
 			}
-			_, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-fail", Payload: renderJobPayload(t, req)}, nil)
+			_, err := handleRendered(t, context.Background(), w, "job-overlay-fail", req)
 			if err == nil {
 				t.Fatal("overlay compositing failure must fail the job")
 			}

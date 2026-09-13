@@ -122,10 +122,23 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
-		clipRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.ProcessingRepository(), bundle.Committer, log)
-		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
-		stockRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.ProcessingRepository(), bundle.Committer, log)
-		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		// MEDIA-SSOT P2-9 step 2: hydrate the media record from the canonical
+		// committer's engine, never from the operational SQLite mirror.
+		mediaDetails := mediaDetailsReaderFromCommitter(bundle.Committer)
+		// MEDIA-SSOT write-bridge: retirement resolves from the canonical
+		// committer's own engine (see build_bundles_ingest.go).
+		mediaRetirer := assetspersistence.CanonicalAssetSoftDeleter(bundle.Committer)
+		// MEDIA-SSOT write-bridge: asset_locations + asset_processing are
+		// media-authoritative, so both write ports resolve from the canonical
+		// committer's engine rather than the operational SQLite store. A nil
+		// port means the media plane is closed and the ingest write fails
+		// closed instead of landing on an unnamed database.
+		mediaLocations := assetspersistence.CanonicalAssetLocationWriter(bundle.Committer)
+		mediaProcessing := assetspersistence.CanonicalAssetProcessingWriter(bundle.Committer)
+		clipRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
+		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+		stockRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
+		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
 		var downloader assets.MediaDownloader = downloader.NewMediaDownloader(90 * time.Second)
 		// CAS-backed source-aware downloader (August 2026): optional
 		// enhancement over the plain HTTP downloader; fall back + log when

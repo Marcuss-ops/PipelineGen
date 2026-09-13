@@ -19,12 +19,11 @@ func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 // missing executor remains a typed failure; a sealed plan is never reported
 // as a rendered clip.
 //
-// Async enablement is NOT discovered here: the worker selects Submit/Settle
-// exactly when the renderer implements AsyncRenderExecutor AND both durable
-// continuation ports are attached (WithContinuationStore +
-// WithContinuationEnqueuer), and that single decision lives in Worker.Handle.
-// A second provider-based discovery path used to exist and could disagree with
-// it, which made the live mode impossible to read from the wiring.
+// The port is Submit + Settle only (the blocking Render form was deleted in
+// the 2026-09-13 audit). The submit phase requires both durable continuation
+// ports to be attached (WithContinuationStore + WithContinuationEnqueuer);
+// that single decision lives in Worker.Handle, so the live mode is readable
+// from the wiring rather than discovered through a second provider path.
 func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 	if w != nil {
 		w.renderer = r
@@ -82,16 +81,6 @@ func (w *Worker) WithDestinationFolderResolver(r DestinationFolderResolver) *Wor
 func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
 	if w != nil {
 		w.overlayResolver = r
-	}
-	return w
-}
-
-// WithOutputProber attaches the post-render byte probe. When wired, the worker
-// certifies actual bytes via ProbeOutput→ValidateContract before Publish.
-// Optional in tests; required in production.
-func (w *Worker) WithOutputProber(p OutputProber) *Worker {
-	if w != nil {
-		w.outputProber = p
 	}
 	return w
 }

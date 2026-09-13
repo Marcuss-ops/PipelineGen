@@ -27,8 +27,10 @@ package renderinggen
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -135,6 +137,46 @@ type transitionBlock struct {
 
 // marshalStyle projects the canonical kernel/script visual style into the
 // wire block. A nil style stays nil on the wire (no empty object emitted).
+// derivedKeylineWidth sizes the black contour the mapper derives when a caller
+// declares a shadow but no stroke. It scales with the font (about 4.5% of the
+// em) instead of the historical fixed 5 px: at caption line widths of ~40
+// runes, a 5 px keyline merges the contours of adjacent glyphs into a solid
+// black smear, which is what made burned captions unreadable. Explicit
+// strokes declared by the caller are never rescaled.
+func derivedKeylineWidth(in *scriptpkg.VideoVisualStyleSpec) float64 {
+	size := in.FontSizePX
+	if size <= 0 {
+		size = in.Size
+	}
+	if size <= 0 {
+		size = 54
+	}
+	w := math.Round(size * 0.045)
+	if w < 1.5 {
+		w = 1.5
+	}
+	if w > 3 {
+		w = 3
+	}
+	return w
+}
+
+// subtitleLineHeightFactor converts a font size into the line box used for
+// burned captions (Chronon centres the text inside this box).
+const subtitleLineHeightFactor = 1.25
+
+// subtitleBoxHeightPX derives the burned-caption box from the resolved font
+// size and the short-form line budget. The box is an input to the worker's
+// placement math (SubtitleStyleAsset), so a one-line box pushed multi-line
+// captions out of their safe area and made their keyline look inflated.
+func subtitleBoxHeightPX(fontSizePX float64) int {
+	if fontSizePX <= 0 {
+		fontSizePX = 54
+	}
+	lines := texttracks.DefaultShortFormPolicy().MaxLines
+	return int(math.Ceil(fontSizePX*subtitleLineHeightFactor)) * lines
+}
+
 func marshalStyle(in *scriptpkg.VideoVisualStyleSpec) *styleBlock {
 	if in == nil {
 		return nil
@@ -157,9 +199,7 @@ func marshalStyle(in *scriptpkg.VideoVisualStyleSpec) *styleBlock {
 	if in.Stroke != nil && strings.TrimSpace(in.Stroke.Color) != "" {
 		out.Stroke = &strokeBlock{Color: in.Stroke.Color, Width: in.Stroke.Width}
 	} else if in.Shadow != nil && strings.TrimSpace(in.Shadow.Color) != "" {
-		// The subtitle style is rendered at 1080p. 2 px is barely visible
-		// after video scaling; use a real broadcast-safe black keyline.
-		out.Stroke = &strokeBlock{Color: in.Shadow.Color, Width: 5.0}
+		out.Stroke = &strokeBlock{Color: in.Shadow.Color, Width: derivedKeylineWidth(in)}
 	}
 	if in.Shadow != nil {
 		out.Shadow = &shadowBlock{
@@ -360,6 +400,9 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		}
 		if subStyle.Position == "" {
 			subStyle.Position = "bottom_center"
+		}
+		if subStyle.HeightPX <= 0 {
+			subStyle.HeightPX = subtitleBoxHeightPX(subStyle.FontSizePX)
 		}
 		op.Subtitles = &overlaySubtitles{
 			Mode:    plan.Subtitles.Mode,

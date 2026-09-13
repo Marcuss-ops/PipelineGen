@@ -196,7 +196,7 @@ func TestPrepare_TranscriptReuse(t *testing.T) {
 	}
 	p := newTestPreparer(resolver, mat, tr)
 
-	req := baseRenderRequest() // reuse_or_generate default
+	req := baseRenderRequest() // reuse default
 	prepared, err := p.Prepare(context.Background(), req, "run-1")
 	if err != nil {
 		t.Fatalf("Prepare failed: %v", err)
@@ -223,7 +223,8 @@ func TestPrepare_TranscriptGenerateOnMiss(t *testing.T) {
 	}
 	p := newTestPreparer(resolver, mat, tr)
 
-	req := baseRenderRequest() // reuse_or_generate, lookup misses
+	req := baseRenderRequest() // explicit generate (the only mode that runs ASR)
+	req.Transcript.Mode = TranscriptModeGenerate
 	prepared, err := p.Prepare(context.Background(), req, "run-1")
 	if err != nil {
 		t.Fatalf("Prepare failed: %v", err)

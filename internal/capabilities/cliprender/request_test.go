@@ -24,8 +24,8 @@ func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {
 	if req.Watermark.Opacity != 1.0 {
 		t.Errorf("Watermark.Opacity default: got %v, want 1.0", req.Watermark.Opacity)
 	}
-	if req.Transcript.Mode != TranscriptModeReuseOrGenerate {
-		t.Errorf("Transcript.Mode default: got %q, want reuse_or_generate", req.Transcript.Mode)
+	if req.Transcript.Mode != TranscriptModeReuse {
+		t.Errorf("Transcript.Mode default: got %q, want reuse", req.Transcript.Mode)
 	}
 	if req.Transcript.Language != DefaultLanguage {
 		t.Errorf("Transcript.Language default: got %q, want en", req.Transcript.Language)
@@ -239,7 +239,7 @@ func TestValidate_AudioAndTranscriptEnums(t *testing.T) {
 	if err := req.Validate(); err == nil {
 		t.Error("unknown audio mode must fail")
 	}
-	for _, mode := range []string{TranscriptModeReuse, TranscriptModeGenerate, TranscriptModeReuseOrGenerate} {
+	for _, mode := range []string{TranscriptModeReuse, TranscriptModeGenerate, TranscriptModeReuse} {
 		req := &RenderRequest{SourceAssetID: "a", Transcript: &TranscriptSpec{Mode: mode}}
 		req.Normalize()
 		if err := req.Validate(); err != nil {
@@ -418,7 +418,7 @@ func TestExplicitZeroSurvivesJobPayloadRoundTrip(t *testing.T) {
 // persisted job payload round trip so the worker cannot silently re-enable it.
 func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
 	var omitted RenderRequest
-	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate"}}`), &omitted); err != nil {
+	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse"}}`), &omitted); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	omitted.Normalize()
@@ -427,7 +427,7 @@ func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
 	}
 
 	var explicit RenderRequest
-	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate","persist":false}}`), &explicit); err != nil {
+	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse","persist":false}}`), &explicit); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	explicit.Normalize()
@@ -453,7 +453,7 @@ func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
 // bypass (encoding/json hands the whole subtree to the method).
 func TestTranscriptUnknownFieldFailsClosed(t *testing.T) {
 	var req RenderRequest
-	err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate","persistt":true}}`), &req)
+	err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse","persistt":true}}`), &req)
 	if err == nil {
 		t.Fatal("an unknown field inside the transcript block must fail closed")
 	}

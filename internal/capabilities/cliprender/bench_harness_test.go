@@ -322,16 +322,6 @@ func (r *benchRemote) Settle(ctx context.Context, plan ClipRenderPlanV1) (*Rende
 	return benchOutcome(plan), nil
 }
 
-// Render is the blocking form (Submit + Settle). It exists so the same
-// simulator can drive the pre-split pipeline, which is what makes the
-// before/after comparison honest.
-func (r *benchRemote) Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
-	if err := r.Submit(ctx, plan); err != nil {
-		return nil, err
-	}
-	return r.Settle(ctx, plan)
-}
-
 // benchRemoteStats is a consistent snapshot of the lane telemetry.
 type benchRemoteStats struct {
 	Lanes         int
@@ -403,14 +393,6 @@ func (r *benchRemote) serviceP50() int64 {
 	return benchPercentile(vals, 50)
 }
 
-// benchBlockingRenderer exposes ONLY RenderExecutor, so the worker takes its
-// blocking path — the model of the pre-split pipeline.
-type benchBlockingRenderer struct{ remote *benchRemote }
-
-func (b *benchBlockingRenderer) Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
-	return b.remote.Render(ctx, plan)
-}
-
 // benchOutcome is a valid certified Chronon outcome for a sealed plan. The
 // digest is a fixed 64-hex string because the fake boundary does not re-hash;
 // the pipeline only requires a non-empty certified digest.
@@ -423,7 +405,7 @@ func benchOutcome(plan ClipRenderPlanV1) *RenderOutcome {
 	if fpsDen <= 0 {
 		fpsDen = 1
 	}
-	return &RenderOutcome{
+	return certifiedTestOutcome(&RenderOutcome{
 		OutputPath:  plan.OutputPath,
 		SizeBytes:   4096,
 		SHA256:      strings.Repeat("a", 64),
@@ -434,7 +416,7 @@ func benchOutcome(plan ClipRenderPlanV1) *RenderOutcome {
 		FPSDen:      uint32(fpsDen),
 		Backend:     BackendChrononVulkan,
 		FFmpegMS:    1,
-	}
+	})
 }
 
 // benchSleep is an interruption-aware delay.
@@ -536,35 +518,6 @@ func (p *benchPublisher) snapshot() (calls int, p50MS int64, bytes int64, networ
 		vals = append(vals, w.Milliseconds())
 	}
 	return p.calls, benchPercentile(vals, 50), p.bytes, p.networkTX
-}
-
-// benchProber is the post-render byte certification boundary with a
-// configurable probe wall. The probe values are exactly what the default
-// VELOX_ASSEMBLY_READY_V1 contract requires, so wiring it exercises the real
-// ValidateContract instead of skipping certification.
-type benchProber struct {
-	delay time.Duration
-
-	mu   sync.Mutex
-	wall []time.Duration
-}
-
-func (p *benchProber) ProbeOutput(_ context.Context, _ string) (*OutputProbe, error) {
-	start := time.Now()
-	if err := benchSleep(context.Background(), p.delay); err != nil {
-		return nil, err
-	}
-	p.mu.Lock()
-	p.wall = append(p.wall, time.Since(start))
-	p.mu.Unlock()
-	return &OutputProbe{
-		Container: "mp4", HasVideo: true, HasAudio: true,
-		VideoCodec: "h264", VideoProfile: "high", PixelFormat: "yuv420p",
-		Width: 1920, Height: 1080, FPS: 24.0, FPSNum: 24, FPSDen: 1,
-		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000, Channels: 2,
-		ChannelLayout: "stereo", AudioBitrate: "128k",
-		VideoStreams: 1, AudioStreams: 1, StartPTS: 0,
-	}, nil
 }
 
 // callCount reports how many times the materializer was invoked (one full
@@ -746,26 +699,24 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 		t.Fatalf("bench: NewWorker: %v", err)
 	}
 	worker.WithRenderPublisher(publisher)
-	// The prober is always wired: probe_ms must be a measurement, not a
-	// NOT_INSTRUMENTED gap, and the contract validation it triggers is part of
-	// the pipeline under test.
-	worker.WithOutputProber(&benchProber{delay: cfg.ProbeMS})
-	if cfg.Async {
-		worker.WithRenderExecutor(remote).WithContinuationStore(store)
-	} else {
-		worker.WithRenderExecutor(&benchBlockingRenderer{remote: remote})
-	}
+	// The render boundary certifies the output facts on the outcome itself; the
+	// local OutputProber port was deleted in the 2026-09-13 audit, so there is no
+	// separate probe boundary to wire. probe_ms still measures the
+	// certified-facts projection stage in the report.
+	// The worker has exactly ONE render shape now (submit + settle). The
+	// bench's "blocking" model is produced by running BOTH phases on the same
+	// worker in the same goroutine (see `handle`), not by a second executor:
+	// a blocking executor no longer exists to wire.
+	worker.WithRenderExecutor(remote).WithContinuationStore(store)
 
 	q := newBenchQueue(cfg)
-	if cfg.Async {
-		worker.WithContinuationEnqueuer(benchEnqueuer{fn: func(cont Continuation) (string, error) {
-			payload, err := encodeContinuationPayload(cont)
-			if err != nil {
-				return "", err
-			}
-			return q.stageSettle(cont.Submission.RenderJobID, payload), nil
-		}})
-	}
+	worker.WithContinuationEnqueuer(benchEnqueuer{fn: func(cont Continuation) (string, error) {
+		payload, err := encodeContinuationPayload(cont)
+		if err != nil {
+			return "", err
+		}
+		return q.stageSettle(cont.Submission.RenderJobID, payload), nil
+	}})
 
 	var resultsMu sync.Mutex
 	results := make([]benchClip, cfg.Clips)
@@ -785,6 +736,21 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 		started := time.Now()
 		res, handleErr := worker.Handle(jobCtx, &job.Job{ID: j.jobID, Payload: j.payload}, nil)
 		elapsed := time.Since(started)
+
+		// Blocking model (cfg.Async=false): the SAME worker runs the settle
+		// phase immediately, on the SAME run observer, so the clip holds one
+		// slot across submit + settle and every stage lands in one report. That
+		// is the pre-split shape, reproduced without a second executor.
+		var blockingErr error
+		if j.kind == benchJobSubmit && handleErr == nil && !cfg.Async {
+			staged, ok := q.takeStaged(j.jobID)
+			if !ok {
+				blockingErr = fmt.Errorf("blocking model: no staged settle job for %s", j.jobID)
+			} else if _, blockingErr = worker.Handle(jobCtx, &job.Job{ID: staged.childID, Payload: staged.payload}, nil); blockingErr == nil {
+				elapsed = time.Since(started)
+			}
+		}
+
 		run.Finish()
 		report := run.Report()
 
@@ -797,6 +763,11 @@ func benchPipeline(t *testing.T, cfg benchConfig) benchReport {
 				return
 			}
 			if !cfg.Async {
+				if blockingErr != nil {
+					recordBenchFailure(&resultsMu, results, j.index, blockingErr)
+					clipWG.Done()
+					return
+				}
 				finishBlockingClip(&resultsMu, results, j.index, elapsed, report, remote, j.jobID)
 				clipWG.Done()
 				return
@@ -1115,6 +1086,20 @@ func (q *benchQueue) stageSettle(runID string, payload json.RawMessage) string {
 		runID: runID, payload: payload, enqueued: q.clipStart[runID],
 	})
 	return childID
+}
+
+// takeStaged removes and returns the settle job staged for runID. It is the
+// blocking model's counterpart to releaseSettle: instead of publishing the
+// child to a settle pool, the submit handler runs it inline on the same worker.
+func (q *benchQueue) takeStaged(runID string) (*benchJob, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	staged := q.staged[runID]
+	delete(q.staged, runID)
+	if len(staged) == 0 {
+		return nil, false
+	}
+	return staged[0], true
 }
 
 // releaseSettle publishes the settle job(s) staged for runID. It is called by

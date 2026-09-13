@@ -18,7 +18,16 @@ import (
 func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	assetReader := root.MediaAssetReader()
 	if assetReader == nil {
-		return fmt.Errorf("wire registry: operator-admin-api: media asset reader not available")
+		// Skip, do not abort boot: the operator console is a media-read surface,
+		// and the SQLite-backed reader it used to fall back to was retired
+		// (MEDIA-SSOT P2-9 — serving media_assets from the operational mirror is
+		// the split-brain the cutover removed). With the media SSOT closed the
+		// module is simply not registered, which is the honest degraded outcome;
+		// returning an error here would make a media-disabled deployment
+		// unbootable, and returning the SQLite store would be a divergent
+		// catalog. Same shape as the MediaIngest skip below.
+		log.Warn("wire registry: operator-admin-api skipped — media asset reader unavailable (media PostgreSQL plane not deployed)")
+		return nil
 	}
 	if root.Jobs == nil || root.Jobs.Facade == nil {
 		return fmt.Errorf("wire registry: operator-admin-api: job service not available")

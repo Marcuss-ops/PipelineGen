@@ -68,7 +68,7 @@ var _ mutations.AssetMutationDispatcher = (*pr7StubDispatcher)(nil)
 func TestPR7_ClipStoreAdapter_Upsert_NilDispatcher_FailClosed(t *testing.T) {
 	a := NewClipStoreAdapter(
 		nil, // db
-		nil, // repo
+		nil, // retirer
 		nil, // querySvc
 		nil, // locations
 		nil, // processing

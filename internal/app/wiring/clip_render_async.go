@@ -8,11 +8,12 @@ package wiring
 // `clipRenderAsyncExecutor`) plus a capability-discovery interface
 // (`cliprender.AsyncCompletionProvider`). That machinery was DEAD: no
 // composition root ever called the wrapper, so the switch could not change the
-// runtime mode, while the live mode was decided inside Worker.Handle (the worker
-// selects Submit/Settle exactly when the renderer implements AsyncRenderExecutor
-// and both durable continuation ports are attached). Two authorities for "is
-// this render async?" is how the mode became impossible to read from the wiring;
-// the wrapper and the discovery interface are DELETED, and the decision now has
+// runtime mode, while the live mode was decided inside Worker.Handle. The port
+// is Submit/Settle only (the blocking form was deleted in the 2026-09-13
+// clip.render audit), so the worker renders asynchronously exactly when both
+// durable continuation ports are attached. Two authorities for "is this render
+// async?" is how the mode became impossible to read from the wiring; the
+// wrapper and the discovery interface are DELETED, and the decision now has
 // exactly one owner.
 //
 // What remains is the one thing composition genuinely owns: turning the

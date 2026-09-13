@@ -112,10 +112,28 @@ func buildIngestService(
 	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voservice.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
-	clipRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.ProcessingRepository(), canonicalCommitter, log)
-	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	stockRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.ProcessingRepository(), canonicalCommitter, log)
-	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	// MEDIA-SSOT P2-9 step 2: the media-hydration read for both clip registries
+	// and both clip stores comes from the canonical committer's engine, so the
+	// ingest path reads the same media SSOT the committer writes. Passing
+	// repos.Assets here made ingest hydrate from the operational SQLite mirror,
+	// where a PostgreSQL-committed clip looked absent.
+	mediaDetails := mediaDetailsReaderFromCommitter(canonicalCommitter)
+	// MEDIA-SSOT write-bridge: retirement resolves from the canonical
+	// committer's own engine. Neither the registry nor the store receives the
+	// generic detail.Repository seam, so neither can retire an asset in a
+	// database the canonical writer does not own.
+	mediaRetirer := persistence.CanonicalAssetSoftDeleter(canonicalCommitter)
+	// MEDIA-SSOT write-bridge: asset_locations + asset_processing are
+	// media-authoritative, so both write ports resolve from the canonical
+	// committer's engine rather than the operational SQLite store. A nil port
+	// means the media plane is closed and the ingest write fails closed
+	// instead of landing on an unnamed database.
+	mediaLocations := persistence.CanonicalAssetLocationWriter(canonicalCommitter)
+	mediaProcessing := persistence.CanonicalAssetProcessingWriter(canonicalCommitter)
+	clipRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
+	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+	stockRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
+	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
 	return ingest.NewService(cfg, log, downloader.NewMediaDownloader(10*time.Minute), map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

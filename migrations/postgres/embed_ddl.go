@@ -72,3 +72,14 @@ var MediaTimestampsTimestamptzDDL string
 //
 //go:embed 006_media_asset_versions.sql
 var MediaAssetVersionsDDL string
+
+// MediaAssetProcessingDDL is the verbatim DDL of
+// migrations/postgres/008_media_asset_processing.sql — the per-step
+// pipeline progress surface (asset_processing) written by the canonical
+// PostgresMediaCommitter through persistence.AssetProcessingWriter.
+// Mirrors SQLite migration 058_asset_processing.sql for SSOT parity; the
+// media-authoritative classification means this table belongs to the
+// PostgreSQL media database, not the operational mirror.
+//
+//go:embed 008_media_asset_processing.sql
+var MediaAssetProcessingDDL string

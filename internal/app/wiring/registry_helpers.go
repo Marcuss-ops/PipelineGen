@@ -78,11 +78,26 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 // bypass is closed. The driveup import is no longer needed in this
 // file (Wave A Item 15, June 2026) — the ensureStyleDriveFolders
 // helper that used it has been removed.
-func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *storage.SQLiteDB, assetsRepo detail.Repository, querySvc *detail.Service, locations detail.LocationRepository, processing detail.ProcessingRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, publisher delivery.Publisher, mediaConfig mediaexec.ExecutionConfig) detail.Processor {
+// The legacy `querySvc *detail.Service` parameter was REMOVED here on
+// 2026-09-13 (MEDIA-SSOT P2-9 step 2): the only MediaProcessor media read is
+// the ClipsRegistry's MediaRecord hydration, which now derives its reader from
+// the canonical committer's engine. Keeping the parameter would have let a
+// caller pass the SQLite service again, and an unused parameter is how that
+// drift starts.
+// MEDIA-SSOT write-bridge (September 2026): the legacy
+// `locations detail.LocationRepository` parameter was DELETED here. It was a
+// dead seam — no code path in this function ever read it — and an unused
+// generic repository parameter is how a media-plane split-brain starts (a
+// later edit reaches for the convenient unnamed engine). The processor's only
+// asset_processing write now resolves from the canonical committer, so the
+// location seam had no honest caller left.
+func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *storage.SQLiteDB, processing assetspersistence.AssetProcessingWriter, committer assetspersistence.AssetCommitter, log *zap.Logger, publisher delivery.Publisher, mediaConfig mediaexec.ExecutionConfig) detail.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
-	clipsRegistry := artifacts.NewClipsRegistryWithLogger(db.DB, assetsRepo, querySvc, processing, committer, log)
+	// MEDIA-SSOT P2-9 step 2: MediaProcessor hydrates clip records from the
+	// canonical committer's engine, so it cannot read a divergent media mirror.
+	clipsRegistry := artifacts.NewClipsRegistryWithLogger(db.DB, mediaDetailsReaderFromCommitter(committer), processing, committer, log)
 	profile := mediaConfig.Profile
 	policy := mediaConfig.Policy
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,

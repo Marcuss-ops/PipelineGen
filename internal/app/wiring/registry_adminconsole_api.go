@@ -27,7 +27,15 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	}
 	assetStore, err := root.MediaAssetStore()
 	if err != nil || assetStore == nil {
-		return fmt.Errorf("wire registry: adminconsole-api: media asset store not available: %w", err)
+		// Skip, do not abort boot: the admin console edits media_assets, and the
+		// SQLite-backed store it used to fall back to was retired (MEDIA-SSOT
+		// P2-9 — it read admin_version from the operational mirror and wrote
+		// media rows through the generic detail.Service seam while the canonical
+		// committer owned PostgreSQL). With the media SSOT closed the module is
+		// not registered, which is the honest degraded outcome; an error here
+		// would make a media-disabled deployment unbootable.
+		log.Warn("wire registry: adminconsole-api skipped — media asset store unavailable (media PostgreSQL plane not deployed)", zap.Error(err))
+		return nil
 	}
 
 	auditStore := adminconsolesqlite.NewAuditStore(root.DB.DB)

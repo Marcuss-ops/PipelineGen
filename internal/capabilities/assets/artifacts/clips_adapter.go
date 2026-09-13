@@ -12,29 +12,57 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type ClipsRegistry struct {
 	db  *sql.DB // operational-only: legacy reads scheduled for demolition (see MEDIA-SSOT items 6/7); never used for media writes
 	log *zap.Logger
-	// assets is retained for the post-dispatch SoftDelete path
-	// (DeleteMedia). The pre-dispatcher media_assets UPSERT
-	// (where `r.assets.Upsert(...)` was previously called) now routes
-	// through `dispatcher.EnqueueAndIndex` (PR 7, June 2026,
-	// codex/qdrant-app-writers-fail-closed).
+	// The generic `assets detail.Repository` seam was DELETED on 2026-09-13
+	// (MEDIA-SSOT write-bridge). It carried no information about which
+	// database owned the write, so in PostgreSQL mode the composition root
+	// could satisfy it with the operational SQLite facade while the canonical
+	// committer wrote PostgreSQL: the pre-dispatcher media_assets UPSERT was
+	// silently split, and DeleteMedia retired the row on the wrong engine.
+	// The UPSERT now routes through `dispatcher.EnqueueAndIndex` (PR 7, June
+	// 2026, codex/qdrant-app-writers-fail-closed) and the retirement resolves
+	// persistence.CanonicalAssetSoftDeleter from the canonical committer, so
+	// this capability names an engine for neither.
 	//
-	// Pure-narrow write — the locations + processing writes below
-	// stay on their respective narrow typed ports (asset_locations +
-	// asset processing) and are NOT subject to the dispatcher SSOT.
-	assets detail.Repository
+	// The locations + processing writes stay on their respective narrow typed
+	// ports (asset_locations + asset processing) and are NOT subject to the
+	// dispatcher SSOT.
+	//
 	// committer is the canonical persistence.AssetCommitter SSOT
 	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
-	committer  persistence.AssetCommitter
-	querySvc   *detail.Service
-	processing detail.ProcessingRepository
+	committer persistence.AssetCommitter
+	querySvc  AssetDetailsReader
+	// processing is the narrow engine-named asset_processing write port
+	// (persistence.AssetProcessingWriter). It replaced the generic
+	// detail.ProcessingRepository seam, which carried no information about
+	// which database owned the write — the composition root satisfied it with
+	// the operational SQLite store while PostgreSQL held media_assets, so
+	// pipeline-step progress diverged from the media SSOT. asset_processing is
+	// now media-authoritative (migrations/postgres/008) and the port is
+	// resolved from the canonical committer, so this capability names no
+	// engine of its own. Nil is a media-plane-closed signal: the write is
+	// skipped as best-effort observability rather than sent to a second
+	// database.
+	processing persistence.AssetProcessingWriter
+}
+
+// AssetDetailsReader is the narrow media-details read the registry hydrates a
+// MediaRecord from. Declaring it here — instead of requiring the concrete
+// *detail.Service — is what lets the PostgreSQL media SSOT serve media
+// hydration (MEDIA-SSOT P2-9 step 2).
+//
+// *detail.Service (legacy SQLite) and *pgmedia.AssetDetailsReader both satisfy
+// it, so the composition root picks the engine and this capability stops
+// naming one. A nil implementation is a media-plane-closed signal, and
+// GetMedia fails closed rather than silently reading a divergent catalog.
+type AssetDetailsReader interface {
+	Get(ctx context.Context, id string) (*asset.Details, error)
 }
 
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
@@ -43,14 +71,12 @@ type ClipsRegistry struct {
 // invariant).
 func NewClipsRegistry(
 	db *sql.DB,
-	assets detail.Repository,
-	querySvc *detail.Service,
-	processing detail.ProcessingRepository,
+	querySvc AssetDetailsReader,
+	processing persistence.AssetProcessingWriter,
 	committer persistence.AssetCommitter,
 ) *ClipsRegistry {
 	return &ClipsRegistry{
 		db:         db,
-		assets:     assets,
 		querySvc:   querySvc,
 		processing: processing,
 		committer:  committer,
@@ -63,13 +89,12 @@ func NewClipsRegistry(
 // observable.
 func NewClipsRegistryWithLogger(
 	db *sql.DB,
-	assets detail.Repository,
-	querySvc *detail.Service,
-	processing detail.ProcessingRepository,
+	querySvc AssetDetailsReader,
+	processing persistence.AssetProcessingWriter,
 	committer persistence.AssetCommitter,
 	log *zap.Logger,
 ) *ClipsRegistry {
-	r := NewClipsRegistry(db, assets, querySvc, processing, committer)
+	r := NewClipsRegistry(db, querySvc, processing, committer)
 	if log != nil {
 		r.log = log
 	}
@@ -144,13 +169,17 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		return fmt.Errorf("committer enqueue: %w", err)
 	}
 
-	// P1-5 (Sept 2026): asset_processing is operational / observability
-	// (SQLite) and MUST NOT make a durable PG media commit fail closed.
-	// The media row + locations + outbox are already durably committed in
-	// PG above; a SQLite processing write failure is best-effort and is
-	// logged but does not return an error (the caller already has a
-	// durable asset). This eliminates the PG COMMIT -> SQLite write ->
-	// return error partial-commit boundary.
+	// P1-5 (Sept 2026): this processing write MUST NOT make a durable PG
+	// media commit fail closed. The media row + locations + outbox are
+	// already durably committed in PG above; a processing write failure is
+	// best-effort and is logged but does not return an error (the caller
+	// already has a durable asset). This eliminates the PG COMMIT -> second
+	// write -> return error partial-commit boundary.
+	//
+	// MEDIA-SSOT write-bridge (Sept 2026): the write now targets the media
+	// SSOT through persistence.AssetProcessingWriter (resolved by the
+	// composition root from the canonical committer) instead of the
+	// operational SQLite mirror, so best-effort no longer means second-engine.
 	if rec.Status != "" && r.processing != nil {
 		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
@@ -185,20 +214,20 @@ func mediaIndexState(metadataJSON string) string {
 	return probe.IndexState
 }
 
-func persistMediaProcessingState(ctx context.Context, processing detail.ProcessingRepository, rec *MediaRecord, step string) error {
+func persistMediaProcessingState(ctx context.Context, processing persistence.AssetProcessingWriter, rec *MediaRecord, step string) error {
 	if processing == nil {
-		return fmt.Errorf("clips registry: processing repository not configured")
+		return fmt.Errorf("clips registry: processing writer not configured")
 	}
-	if err := processing.Start(ctx, rec.ID, step); err != nil {
+	if err := processing.StartAssetProcessing(ctx, rec.ID, step); err != nil {
 		return fmt.Errorf("clips registry: start processing %s/%s: %w", rec.ID, step, err)
 	}
 	switch rec.Status {
 	case "failed":
-		if err := processing.Fail(ctx, rec.ID, step, rec.Error); err != nil {
+		if err := processing.FailAssetProcessing(ctx, rec.ID, step, rec.Error); err != nil {
 			return fmt.Errorf("clips registry: fail processing %s/%s: %w", rec.ID, step, err)
 		}
 	case "ACTIVE", "completed":
-		if err := processing.Complete(ctx, rec.ID, step); err != nil {
+		if err := processing.CompleteAssetProcessing(ctx, rec.ID, step); err != nil {
 			return fmt.Errorf("clips registry: complete processing %s/%s: %w", rec.ID, step, err)
 		}
 	}
@@ -208,6 +237,11 @@ func persistMediaProcessingState(ctx context.Context, processing detail.Processi
 func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, error) {
 	if pgDB := r.pgDB(); pgDB != nil {
 		return r.getMediaPG(ctx, pgDB, id)
+	}
+	if r.querySvc == nil {
+		// Fail closed: no media read authority is wired, so reporting "not
+		// found" would be a successful no-op for an unreadable catalog.
+		return nil, fmt.Errorf("clips registry: no media details reader wired (media SSOT closed)")
 	}
 	details, err := r.querySvc.Get(ctx, id)
 	if err != nil {
@@ -219,15 +253,23 @@ func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, 
 	return detailsToMediaRecord(details), nil
 }
 
+// DeleteMedia retires the media asset through the canonical retirement port.
+//
+// It resolves persistence.CanonicalAssetSoftDeleter — the SINGLE owner of that
+// decision — and fails closed when the media plane is closed, exactly as
+// UpsertMedia already fails closed without a canonical committer. There is no
+// SQLite fallback: the previous degrade branch soft-deleted the media row on
+// the operational mirror while the SSOT was PostgreSQL, which is the
+// split-brain this removal closes (MEDIA-SSOT write-bridge, September 2026).
 func (r *ClipsRegistry) DeleteMedia(ctx context.Context, id string) error {
-	if mut := r.pgMutator(); mut != nil {
-		// MEDIA-SSOT P0-2/P1-6: lifecycle mutation via PG media SSOT.
-		if err := mut.UpdateLifecycle(ctx, id, string(asset.StateDeleted), "", ""); err != nil {
-			return fmt.Errorf("clips registry: pg delete %s: %w", id, err)
-		}
-		return nil
+	retirer := persistence.CanonicalAssetSoftDeleter(r.committer)
+	if retirer == nil {
+		return fmt.Errorf("clips registry: no canonical media retirement port wired (media SSOT closed): %w", mutations.ErrDispatcherUnavailable)
 	}
-	return r.assets.SoftDelete(ctx, id)
+	if err := retirer.SoftDeleteAsset(ctx, id); err != nil {
+		return fmt.Errorf("clips registry: retire %s: %w", id, err)
+	}
+	return nil
 }
 
 func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
@@ -305,16 +347,6 @@ func (r *ClipsRegistry) pgDB() *sql.DB {
 	type pgDBGetter interface{ DB() *sql.DB }
 	if g, ok := r.committer.(pgDBGetter); ok && g != nil {
 		return g.DB()
-	}
-	return nil
-}
-
-func (r *ClipsRegistry) pgMutator() persistence.AssetMutationCommitter {
-	if r == nil || r.committer == nil {
-		return nil
-	}
-	if m, ok := r.committer.(persistence.AssetMutationCommitter); ok {
-		return m
 	}
 	return nil
 }

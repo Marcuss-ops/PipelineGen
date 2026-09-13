@@ -118,7 +118,12 @@ type Worker struct {
 	// match optionally narrows this worker's claims to jobs whose payload
 	// carries the listed key=value pairs (kernel/job.PayloadMatch). Empty =
 	// the historical unscoped claim.
-	match    job.PayloadMatch
+	match job.PayloadMatch
+	// notMatch optionally EXCLUDES jobs whose payload carries any of the listed
+	// key=value pairs (kernel/job.PayloadNotMatch). It is how the default pool
+	// stops claiming a phase a dedicated pool owns (e.g. render_phase=settle).
+	// Empty = no exclusion.
+	notMatch job.PayloadNotMatch
 	notifier job.QueueNotifier
 	reg      *Registry
 	timeouts TimeoutMap
@@ -182,6 +187,9 @@ type WorkerDeps struct {
 	// PayloadMatch optionally scopes this worker to a phase inside one job
 	// type (kernel/job.PayloadMatch). Empty = unscoped.
 	PayloadMatch job.PayloadMatch
+	// PayloadNotMatch optionally excludes a phase from this worker
+	// (kernel/job.PayloadNotMatch). Empty = no exclusion.
+	PayloadNotMatch job.PayloadNotMatch
 }
 
 // NewWorker constructs a Worker.
@@ -217,6 +225,7 @@ func NewWorker(deps WorkerDeps) *Worker {
 		backoff:    deps.Backoff,
 		types:      deps.Types,
 		match:      deps.PayloadMatch,
+		notMatch:   deps.PayloadNotMatch,
 		notifier:   deps.Notifier,
 	}
 }
@@ -446,21 +455,7 @@ func (w *Worker) maxRetriesFor(jobType string) int {
 //     Workers resume polling at the BaseInterval (backoff is reset on
 //     the next successful claim).
 //
-// claimNext claims the next eligible job for this worker. An empty payload
-// match is the historical unscoped claim; a non-empty one requires the store to
-// implement kernel/job.PayloadScopedClaimer and fails closed otherwise, so a
-// dedicated phase pool can never silently widen into the jobs it exists to
-// avoid.
-func (w *Worker) claimNext(ctx context.Context) (*job.Job, error) {
-	if len(w.match) == 0 {
-		return w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
-	}
-	scoped, ok := w.repo.(job.PayloadScopedClaimer)
-	if !ok {
-		return nil, fmt.Errorf("worker %s: repository %T cannot honour payload_match %v", w.id, w.repo, w.match)
-	}
-	return scoped.ClaimNextMatching(ctx, w.id, w.leaseTTL, w.types, w.match)
-}
+// claimNext (payload-scoped claim dispatch) lives in worker_claim.go.
 
 func (w *Worker) Start(ctx context.Context) {
 	w.log.Info("worker started",

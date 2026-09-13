@@ -74,7 +74,7 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 		`TRUNCATE outbox_events`,
 		`TRUNCATE asset_renditions`,
 		`TRUNCATE media_embedding_families`,
-		`TRUNCATE asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
+		`TRUNCATE asset_processing, asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			t.Fatalf("reset %s: %v", firstToken(stmt), err)
@@ -90,7 +90,7 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 			`TRUNCATE outbox_events`,
 			`TRUNCATE asset_renditions`,
 			`TRUNCATE media_embedding_families`,
-			`TRUNCATE asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
+			`TRUNCATE asset_processing, asset_locations, media_asset_features, media_embeddings, media_assets CASCADE`,
 		} {
 			_, _ = db.ExecContext(ctx, stmt)
 		}
@@ -106,6 +106,7 @@ func applyMediaMigrations(db *sql.DB) error {
 		pgmigration.MediaHNSWIndexesDDL,
 		pgmigration.MediaTimestampsTimestamptzDDL,
 		pgmigration.MediaAssetVersionsDDL,
+		pgmigration.MediaAssetProcessingDDL,
 	}
 	for i, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

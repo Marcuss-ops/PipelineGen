@@ -64,23 +64,31 @@ func (h *clipRenderDriveDeliveryHandler) Handle(ctx context.Context, claim *pgme
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		return fmt.Errorf("%w: json: %v", errClipRenderDrivePayload, err)
 	}
+	// Locator-first: the intent is valid with EITHER a locally staged path OR a
+	// certified object-store locator. The canonical path carries no local file
+	// and the publisher streams object-store → Drive.
 	if req.SchemaVersion != "clip.render.drive_delivery.v1" ||
-		strings.TrimSpace(req.AssetID) == "" || strings.TrimSpace(req.LocalPath) == "" ||
+		strings.TrimSpace(req.AssetID) == "" ||
+		(strings.TrimSpace(req.LocalPath) == "" && strings.TrimSpace(req.ArtifactURL) == "") ||
 		strings.TrimSpace(req.Filename) == "" || strings.TrimSpace(req.FolderID) == "" ||
 		strings.TrimSpace(req.ContentHash) == "" || req.SizeBytes <= 0 {
-		return fmt.Errorf("%w: missing schema/asset/path/name/folder/hash/size", errClipRenderDrivePayload)
+		return fmt.Errorf("%w: missing schema/asset/path-or-url/name/folder/hash/size", errClipRenderDrivePayload)
 	}
-	info, err := os.Stat(req.LocalPath)
-	if err != nil {
-		return fmt.Errorf("clip.render Drive upload %s: staged artifact unavailable: %w", req.AssetID, err)
-	}
-	if info.Size() != req.SizeBytes {
-		return fmt.Errorf("clip.render Drive upload %s: local size=%d want=%d", req.AssetID, info.Size(), req.SizeBytes)
+	if localPath := strings.TrimSpace(req.LocalPath); localPath != "" {
+		info, statErr := os.Stat(localPath)
+		if statErr != nil {
+			return fmt.Errorf("clip.render Drive upload %s: staged artifact unavailable: %w", req.AssetID, statErr)
+		}
+		if info.Size() != req.SizeBytes {
+			return fmt.Errorf("clip.render Drive upload %s: local size=%d want=%d", req.AssetID, info.Size(), req.SizeBytes)
+		}
 	}
 	result, err := h.publisher.Publish(ctx, delivery.PublishRequest{
 		Destination:         delivery.DestinationClipMetadata,
 		DestinationFolderID: req.FolderID,
 		LocalPath:           req.LocalPath,
+		SourceURL:           req.ArtifactURL,
+		ContentType:         req.ContentType,
 		Filename:            req.Filename,
 		AssetID:             req.AssetID,
 		ProjectID:           req.RunID,

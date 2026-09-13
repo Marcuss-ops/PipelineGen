@@ -387,6 +387,14 @@ hard_gates:
   # the explicitly grandfathered legacy read plane. The grandfather set is a
   # debt register that ratchets to zero as the P2-9 Phase 2 consumers migrate.
   - percheck_sqlite_media_reader_ban
+  # Media WRITE-bridge side (added 2026-09-13): the SQL-level writer gate is
+  # blind to a write that goes through an interface, because no SQL appears at
+  # the call site. This companion bans a media-mutating call on the generic
+  # detail.Repository / detail.Service seam, which is the construct that let
+  # the YouTube enrichment path write media_assets on the operational SQLite
+  # engine while PostgreSQL was the SSOT. The register is a debt register that
+  # ratchets to zero (stale entries fail the build).
+  - percheck_media_write_bridge_ban
   - percheck_asset_committer_event_ssot
   # Governance-artifact integrity (added 2026-09-12 with the governance
   # sweep): no orphan allowlist, no dangling allowlist reference, no ghost

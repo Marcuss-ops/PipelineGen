@@ -32,8 +32,16 @@ func (w *Worker) completeRendered(
 	progress := safeProgress(tools)
 	emit := safeEvent(tools)
 
-	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
+	// Locator-first: the artifact is identified by its certified durable
+	// locator. A local path is optional and only present when a consumer
+	// materialized the bytes; at least one of the two must exist. (The
+	// certified digest is enforced by the publisher, which fails closed on an
+	// uncertified artifact.)
+	if outcome == nil || outcome.SizeBytes <= 0 {
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
+	}
+	if outcome.OutputPath == "" && outcome.ArtifactURL == "" {
+		return nil, fmt.Errorf("clip.render: renderer returned neither a local output nor an artifact locator")
 	}
 	if req == nil {
 		return nil, fmt.Errorf("clip.render: completion request is nil")
@@ -70,41 +78,37 @@ func (w *Worker) completeRendered(
 	}
 	projectRendererPhases(ctx, outcome.Backend, outcome.Metrics)
 
-	if w.outputProber != nil {
-		probeStart := time.Now()
-		probe, err := w.outputProber.ProbeOutput(ctx, outcome.OutputPath)
-		probeEnd := time.Now()
-		probeStatus := kernobs.StageStatusCompleted
-		if err != nil {
-			probeStatus = kernobs.StageStatusFailed
-		}
-		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, probeEnd, err)
-		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseHashProbe, probeStart, probeEnd, probeStatus, err)
-		if err != nil {
-			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
-		}
-		// Reconcile the local bytes probe with the facts RenderingGen
-		// certified on the artifact it produced. Fail-closed on disagreement;
-		// fills the dimensions the local probe cannot report (the codec
-		// profile above all) from the certified owner so they are actually
-		// validated instead of silently skipped.
-		probe, err = ReconcileCertifiedFacts(probe, outcome)
-		if err != nil {
-			return nil, fmt.Errorf("clip.render: certified output facts: %w", err)
-		}
-		if err := ValidateContract(prepared.Contract, probe); err != nil {
-			return nil, fmt.Errorf("clip.render: rendered output violates contract: %w", err)
-		}
-		emit("clip.render.probe.certified", "rendered bytes certified exact", map[string]any{
-			"output_path":     outcome.OutputPath,
-			"fps_num":         probe.FPSNum,
-			"fps_den":         probe.FPSDen,
-			"width":           probe.Width,
-			"height":          probe.Height,
-			"video_profile":   probe.VideoProfile,
-			"certified_facts": outcome.VideoProfile != "" || outcome.Container != "",
-		})
+	// Contract validation runs UNCONDITIONALLY against the facts RenderingGen
+	// certified on the artifact it produced. RenderingGen is the single
+	// certification owner of the output; the redundant local Rust probe (and
+	// the OutputProber port that existed only to feed it) was DELETED in the
+	// 2026-09-13 audit. The downloaded bytes are still verified: the async
+	// download hashes while streaming and checks the queue's certified digest,
+	// so a corrupt artifact fails before it can reach this gate.
+	probeStart := time.Now()
+	probe, probeErr := OutputProbeFromCertified(outcome)
+	probeEnd := time.Now()
+	probeStatus := kernobs.StageStatusCompleted
+	if probeErr != nil {
+		probeStatus = kernobs.StageStatusFailed
 	}
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipProbe}, probeStart, probeEnd, probeErr)
+	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseHashProbe, probeStart, probeEnd, probeStatus, probeErr)
+	if probeErr != nil {
+		return nil, fmt.Errorf("clip.render: certified output facts: %w", probeErr)
+	}
+	if err := ValidateContract(prepared.Contract, probe); err != nil {
+		return nil, fmt.Errorf("clip.render: rendered output violates contract: %w", err)
+	}
+	emit("clip.render.probe.certified", "rendered bytes certified exact", map[string]any{
+		"output_path":     outcome.OutputPath,
+		"fps_num":         probe.FPSNum,
+		"fps_den":         probe.FPSDen,
+		"width":           probe.Width,
+		"height":          probe.Height,
+		"video_profile":   probe.VideoProfile,
+		"certified_facts": true,
+	})
 
 	// The render job id is the sealed plan RunID. In async mode j is the
 	// settle child, so publication/result identity must stay attached to the
@@ -130,17 +134,20 @@ func (w *Worker) completeRendered(
 	uploadSlotStart := time.Now()
 	publishStart := uploadSlotStart
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
-		RunID:              resultJob.ID,
-		SourceAssetID:      req.SourceAssetID,
-		SourceTitle:        prepared.Source.Title,
-		OutputPath:         outcome.OutputPath,
-		Outcome:            outcome,
-		Contract:           prepared.Contract,
-		Transcript:         prepared.Transcript,
-		Subtitles:          subtitleArtifact,
-		DriveFolderID:      publishFolderID,
-		CertifiedSHA256:    outcome.SHA256,
-		CertifiedSizeBytes: outcome.SizeBytes,
+		RunID:               resultJob.ID,
+		SourceAssetID:       req.SourceAssetID,
+		SourceTitle:         prepared.Source.Title,
+		OutputPath:          outcome.OutputPath,
+		ArtifactStorageKey:  outcome.StorageKey,
+		ArtifactURL:         outcome.ArtifactURL,
+		ArtifactContentType: outcome.ContentType,
+		Outcome:             outcome,
+		Contract:            prepared.Contract,
+		Transcript:          prepared.Transcript,
+		Subtitles:           subtitleArtifact,
+		DriveFolderID:       publishFolderID,
+		CertifiedSHA256:     outcome.SHA256,
+		CertifiedSizeBytes:  outcome.SizeBytes,
 	})
 	publishEnd := time.Now()
 	publishStatus := kernobs.StageStatusCompleted

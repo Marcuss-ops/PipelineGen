@@ -106,7 +106,9 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 
 	watermarkEnabled := req.Watermark != nil && req.Watermark.Enabled
 	backgroundAsset := req.Background != nil && req.Background.Mode == BackgroundModeAsset
-	lookupTranscript := req.Transcript.Mode == TranscriptModeReuse || req.Transcript.Mode == TranscriptModeReuseOrGenerate
+	// Only `reuse` looks the track up. `generate` is an explicit manual repair
+	// that deliberately skips the lookup and re-runs ASR.
+	lookupTranscript := req.Transcript.Mode == TranscriptModeReuse
 
 	var wave1 errgroup.Group
 	wave1.Go(func() error {
@@ -300,9 +302,10 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	sourceReady := make(chan struct{})
 	var sourceErr error
 
-	generateTranscript := req.Transcript.Mode == TranscriptModeGenerate ||
-		(req.Transcript.Mode == TranscriptModeReuseOrGenerate && (!existingFound ||
-			(req.Subtitles.Enabled && existing != nil && len(existing.Cues) == 0)))
+	// ASR never runs implicitly inside a render: only the explicit `generate`
+	// repair request generates. (The legacy `reuse_or_generate` implicit-ASR
+	// branch was DELETED in the 2026-09-13 audit.)
+	generateTranscript := req.Transcript.Mode == TranscriptModeGenerate
 
 	var wave2 errgroup.Group
 	wave2.Go(func() error {

@@ -123,12 +123,20 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 
 	// MediaAssetStore / MediaAssetReader are the canonical admin+operator asset
 	// read surface. This fixture runs with the media PostgreSQL plane CLOSED, so
-	// it pins the documented degrade branch (the SQLite asset service); the
-	// PostgreSQL branch is pinned by the pgmedia + Save-mapping tests.
+	// it now pins FAIL-CLOSED: the SQLite-backed store (sqliteMediaAssetStore)
+	// was retired on 2026-09-13 (MEDIA-SSOT P2-9) because serving media_assets
+	// through the operational mirror is the read half of the split-brain the
+	// cutover removed, and its Save was a media write through the generic
+	// detail.Service seam. A closed plane must therefore leave the
+	// admin-console / operator modules unregistered, not serve a divergent
+	// catalog. The PostgreSQL branch is pinned by the pgmedia + Save-mapping
+	// tests.
 	mediaStore, mediaStoreErr := root.MediaAssetStore()
-	require.NoError(t, mediaStoreErr, "root.MediaAssetStore()")
-	require.NotNil(t, mediaStore, "root.MediaAssetStore() (degrade branch must still resolve a store)")
-	require.NotNil(t, root.MediaAssetReader(), "root.MediaAssetReader()")
+	require.Error(t, mediaStoreErr, "root.MediaAssetStore() must fail closed without the media SSOT")
+	require.Nil(t, mediaStore, "root.MediaAssetStore() must not resolve a store without the media SSOT")
+	require.Nil(t, root.MediaAssetReader(), "root.MediaAssetReader() must be nil without the media SSOT")
+	// MediaAssetVersionStore still resolves an operational SQLite store
+	// (admin_version optimistic concurrency); retiring it is a separate step.
 	require.NotNil(t, root.MediaAssetVersionStore(), "root.MediaAssetVersionStore()")
 
 	// SearchBundle canaries (4 fields).

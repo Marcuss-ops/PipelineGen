@@ -138,7 +138,18 @@ type PublishRequest struct {
 	Destination DestinationKey `json:"destination"`
 
 	// LocalPath is the absolute path to the file on the local filesystem.
-	LocalPath string `json:"local_path"`
+	// Empty when the bytes come from SourceURL (locator-first delivery).
+	LocalPath string `json:"local_path,omitempty"`
+
+	// SourceURL is the OPTIONAL remote source of the bytes. When set and
+	// LocalPath is empty, the publisher streams source → Drive without
+	// materializing the artifact on local disk. SizeBytes must be set so the
+	// uploader can drive the resumable path.
+	SourceURL string `json:"source_url,omitempty"`
+
+	// ContentType is the optional MIME type of a remote source, used as the
+	// multipart media type when the filename extension is ambiguous.
+	ContentType string `json:"content_type,omitempty"`
 
 	// Filename is the desired name on Drive (e.g. "clip_abc123.mp4").
 	Filename string `json:"filename"`

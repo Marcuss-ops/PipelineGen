@@ -154,55 +154,6 @@ func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	return out
 }
 
-func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
-	if in == nil {
-		return nil
-	}
-	return &scriptgen.RenderArtifact{
-		ID:                 in.ID,
-		Kind:               in.Kind,
-		StorageKey:         in.StorageKey,
-		URL:                in.ArtifactURL,
-		SHA256:             in.ArtifactHash,
-		MimeType:           in.ContentType,
-		SizeBytes:          in.SizeBytes,
-		Width:              in.Width,
-		Height:             in.Height,
-		FPSNum:             in.FPSNum,
-		FPSDen:             in.FPSDen,
-		FrameCount:         in.FrameCount,
-		DurationUS:         in.DurationUS,
-		ProfileID:          in.ProfileID,
-		CopyEligible:       in.CopyEligible,
-		Codec:              in.Codec,
-		CodecProfile:       in.CodecProfile,
-		Container:          in.Container,
-		PixelFormat:        in.PixelFormat,
-		AudioStreams:       in.AudioStreams,
-		ClosedGOP:          in.ClosedGOP,
-		FirstFrameKeyframe: in.FirstFrameKeyframe,
-		RenderMS:           metricMillis(in.Metrics, "render_ms"),
-		EncodeMS:           metricMillis(in.Metrics, "encode_ms"),
-		MaterializeMS:      metricMillisEither(in.Metrics, "materialize_ms", "materialize_us"),
-		PlanMS:             metricMillisEither(in.Metrics, "overlay_compile_ms", "overlay_compile_us"),
-		ProbeMS:            metricMillisEither(in.Metrics, "probe_ms", "probe_us"),
-		HashMS:             metricMillisEither(in.Metrics, "sha256_ms", "sha256_us"),
-		UploadMS:           metricMillisEither(in.Metrics, "objectstore_upload_ms", "objectstore_upload_us"),
-		DrivePublishMS:     metricMillisEither(in.Metrics, "drive_publish_ms", "drive_upload_us"),
-		Backend:            in.Backend,
-		ChrononVersion:     in.ChrononVersion,
-		DriveFileID:        in.DriveFileID,
-		DriveLink:          in.DriveLink,
-		Metrics:            in.Metrics,
-		// Raw deep-profile sidecar reference (content-addressed preservation).
-		ChrononTimingStorageKey:  in.ChrononTimingStorageKey,
-		ChrononTimingURL:         in.ChrononTimingURL,
-		ChrononTimingSHA256:      in.ChrononTimingSHA256,
-		ChrononTimingSizeBytes:   in.ChrononTimingSizeBytes,
-		ChrononTimingContentType: in.ChrononTimingContentType,
-	}
-}
-
 // metricMillis reads a millisecond metric from the worker's metrics map,
 // rounding down to whole milliseconds. Absent keys yield 0 (unreported).
 func metricMillis(m map[string]float64, key string) int64 {
@@ -257,17 +208,6 @@ func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRender
 		e.interval = interval
 	}
 	return e
-}
-
-// Render is the BLOCKING form of the render boundary: Submit followed by
-// Settle in one call. It is retained because the async split is opt-in per
-// worker; a boundary that is asked for the blocking form must keep behaving
-// exactly as before.
-func (e *ClipRenderExecutor) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
-	if err := e.Submit(ctx, plan); err != nil {
-		return nil, err
-	}
-	return e.Settle(ctx, plan)
 }
 
 // Submit is the PRE-RENDER half of the boundary (Wave B): validate the plan,
@@ -328,8 +268,16 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 }
 
 // Settle is the POST-SUBMIT half of the boundary: wait for the remote render's
-// terminal state, require the certified Chronon artifact, download it into the
-// plan's output path (hashing while streaming) and project the render outcome.
+// terminal state, require the certified Chronon artifact, and project the
+// render outcome carrying the DURABLE LOCATOR of the artifact (storage key,
+// URL, content type, certified digest, size and facts).
+//
+// It deliberately does NOT download the artifact: the object store is the
+// canonical durable home of the rendered bytes, and the clip.render completion
+// path commits that locator and lets the Drive outbox stream object-store →
+// Drive. A consumer that genuinely needs a local file (localization) calls
+// Materialize, which fetches and verifies on demand. This removes the eager
+// 500 MB download plus the workspace→staging copy that the audit flagged.
 //
 // It is the ONLY place that blocks on RenderingGen, which is why the async
 // boundary can hand it to a continuation job instead of holding the submission's
@@ -356,17 +304,25 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	if a.Backend != string(cliprender.BackendChrononVulkan) {
 		return nil, fmt.Errorf("renderinggen clip executor: job %s rendered with backend %q; clip.render requires Chronon (%s)", plan.RunID, a.Backend, cliprender.BackendChrononVulkan)
 	}
-	certifiedSHA, certifiedSize, err := materializeArtifact(ctx, a.URL, plan.OutputPath, a.SizeBytes, a.SHA256)
+	// The complete certified fact set is fail-closed: a malformed
+	// certification document is a render error, never a silently missing
+	// certification that would let the contract gate skip its dimensions.
+	facts, err := decodeCertifiedFacts(a.OutputFacts)
 	if err != nil {
-		return nil, fmt.Errorf("renderinggen clip executor: materialize certified artifact: %w", err)
+		return nil, fmt.Errorf("renderinggen clip executor: decode certified output facts: %w", err)
 	}
 	// The zero-copy certification surface was removed with the PATH B CUDA
 	// hybrid: RenderingGen/Chronon never certifies video_zero_copy over this
 	// transport, so a request that demands it fails closed in the worker.
 	return &cliprender.RenderOutcome{
-		OutputPath:  plan.OutputPath,
-		SizeBytes:   certifiedSize,
-		SHA256:      certifiedSHA,
+		// Locator-first: no local materialization. The certified bytes live in
+		// RenderingGen's object store under StorageKey / ArtifactURL.
+		OutputPath:  "",
+		SizeBytes:   a.SizeBytes,
+		SHA256:      strings.ToLower(strings.TrimSpace(a.SHA256)),
+		StorageKey:  a.StorageKey,
+		ArtifactURL: a.URL,
+		ContentType: a.MimeType,
 		DurationSec: float64(a.DurationUS) / 1e6,
 		Width:       uint32(a.Width),
 		Height:      uint32(a.Height),
@@ -380,6 +336,7 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 		VideoProfile:      a.CodecProfile,
 		PixelFormat:       a.PixelFormat,
 		AudioStreams:      a.AudioStreams,
+		Facts:             facts,
 		Backend:           cliprender.RenderBackend(a.Backend),
 		AudioCopyEligible: boolPtr(a.CopyEligible),
 		Metrics:           metricsFromChrononMetrics(a.Metrics, a.FrameCount, a.DurationUS),
@@ -393,12 +350,43 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	}, nil
 }
 
-// materializeArtifact turns the queue's certified object-store URL into the
-// local run artifact expected by the clip.render pipeline. OutputPath is a
-// filesystem path throughout that pipeline; leaking the queue URL past this
-// adapter makes probing and final publication try to open an HTTP URL as a
-// local file. Single-pass: hashes while streaming (network → disk + SHA-256
-// in one pass, no re-read).
+// Materialize is the LAZY half of the locator-first boundary: it downloads the
+// certified artifact located by outcome into destPath, verifying size + digest
+// while streaming. It is what a consumer that genuinely needs a local file
+// (localization today) calls; the canonical clip.render completion path never
+// does, because it commits the locator and the Drive outbox streams from the
+// object store. Fail-closed: an outcome with no locator, or a fetch that does
+// not match the certified size/digest, is a typed error.
+func (e *ClipRenderExecutor) Materialize(ctx context.Context, outcome *cliprender.RenderOutcome, destPath string) (string, error) {
+	if outcome == nil {
+		return "", fmt.Errorf("renderinggen clip executor: materialize: outcome is nil")
+	}
+	if strings.TrimSpace(outcome.ArtifactURL) == "" {
+		return "", fmt.Errorf("renderinggen clip executor: materialize: outcome carries no artifact URL")
+	}
+	if strings.TrimSpace(destPath) == "" {
+		return "", fmt.Errorf("renderinggen clip executor: materialize: destination path is required")
+	}
+	sha, size, err := materializeArtifact(ctx, outcome.ArtifactURL, destPath, outcome.SizeBytes, outcome.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("renderinggen clip executor: materialize certified artifact: %w", err)
+	}
+	outcome.OutputPath = destPath
+	if sha != "" {
+		outcome.SHA256 = sha
+	}
+	if size > 0 {
+		outcome.SizeBytes = size
+	}
+	return destPath, nil
+}
+
+var _ cliprender.RenderArtifactMaterializer = (*ClipRenderExecutor)(nil)
+
+// materializeArtifact fetches the certified object-store artifact into a local
+// file. It is the shared body of the lazy Materialize path (the eager Settle
+// download it used to serve is gone). Single-pass: hashes while streaming
+// (network → disk + SHA-256 in one pass, no re-read).
 //
 // It returns the CERTIFIED digest and byte count of the materialized file:
 // the digest is computed from the exact bytes written to disk in the same

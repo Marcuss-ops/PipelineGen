@@ -115,7 +115,7 @@ func TestRenderHandler_HappyPath_CanonicalWireShape(t *testing.T) {
 		"source_asset_id": "asset-123",
 		"background": {"mode": "blur_source", "asset_id": ""},
 		"watermark": {"enabled": true, "asset_id": "watermark-main", "position": "top_right", "opacity": 0.85, "margin_px": 40},
-		"transcript": {"mode": "reuse_or_generate", "language": "en", "persist": true},
+		"transcript": {"mode": "reuse", "language": "en", "persist": true},
 		"subtitles": {"enabled": true, "mode": "burn", "style_id": "shorts-v1"},
 		"output": {"contract": "VELOX_ASSEMBLY_READY_V1", "width": 1920, "height": 1080, "fps_num": 24, "fps_den": 1},
 		"audio": {"mode": "copy_if_compatible"},
@@ -148,7 +148,7 @@ func TestRenderHandler_HappyPath_CanonicalWireShape(t *testing.T) {
 		req.Watermark.Opacity != 0.85 || req.Watermark.MarginPX != 40 {
 		t.Errorf("Watermark: got %+v", req.Watermark)
 	}
-	if req.Transcript.Mode != TranscriptModeReuseOrGenerate ||
+	if req.Transcript.Mode != TranscriptModeReuse ||
 		req.Transcript.Language != "en" || !req.Transcript.Persist {
 		t.Errorf("Transcript: got %+v", req.Transcript)
 	}
@@ -198,7 +198,7 @@ func TestRenderHandler_MinimalRequest_AppliesDefaults(t *testing.T) {
 	if req.Watermark.Enabled {
 		t.Error("Watermark default: must be disabled")
 	}
-	if req.Transcript.Mode != TranscriptModeReuseOrGenerate ||
+	if req.Transcript.Mode != TranscriptModeReuse ||
 		req.Transcript.Language != "en" || !req.Transcript.Persist {
 		t.Errorf("Transcript defaults: got %+v (persist must default to true so a batch reuses one ASR pass per source)", req.Transcript)
 	}

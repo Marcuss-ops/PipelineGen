@@ -50,7 +50,7 @@ type Cue struct {
 }
 
 // TranscriptInput is the typed transcript-resolution request. Mode mirrors
-// the request's transcript.mode (reuse | generate | reuse_or_generate).
+// the request's transcript.mode (reuse | generate).
 type TranscriptInput struct {
 	AssetID      string
 	Language     string

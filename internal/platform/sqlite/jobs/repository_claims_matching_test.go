@@ -98,6 +98,75 @@ func TestClaimNextMatching_EmptyMatchIsUnscoped(t *testing.T) {
 	}
 }
 
+// TestClaimNextMatchingExcluding_SkipsExcludedPhase pins the P0.5 guardrail on
+// the DEFAULT pool: a general claim that excludes render_phase=settle must skip
+// a higher-priority settle continuation and take the submit behind it, leaving
+// the settle job for the dedicated pool.
+func TestClaimNextMatchingExcluding_SkipsExcludedPhase(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+	ctx := context.Background()
+
+	// settle is higher priority AND older: an unscoped claim takes it first.
+	seedClaimQueuedJob(t, db, "job-settle", "clip.render", 10, `{"render_phase":"settle"}`)
+	seedClaimQueuedJob(t, db, "job-submit", "clip.render", 1, `{"render_phase":"submit"}`)
+
+	claimed, err := store.ClaimNextMatchingExcluding(ctx, "general-worker", time.Minute,
+		nil, nil, job.PayloadNotMatch{"render_phase": "settle"})
+	if err != nil {
+		t.Fatalf("ClaimNextMatchingExcluding: %v", err)
+	}
+	if claimed == nil || claimed.ID != "job-submit" {
+		t.Fatalf("excluding claim = %+v, want job-submit (must skip the settle phase)", claimed)
+	}
+
+	settle, err := store.ClaimNextMatching(ctx, "settle-worker", time.Minute,
+		[]string{"clip.render"}, job.PayloadMatch{"render_phase": "settle"})
+	if err != nil {
+		t.Fatalf("ClaimNextMatching: %v", err)
+	}
+	if settle == nil || settle.ID != "job-settle" {
+		t.Fatalf("settle claim = %+v, want job-settle (the excluded job must remain claimable)", settle)
+	}
+}
+
+// TestClaimNextMatchingExcluding_OnlyExcludedJobsReturnsNil pins that the
+// excluding pool reports an empty poll rather than degrading to an unscoped
+// claim when every queued job is excluded.
+func TestClaimNextMatchingExcluding_OnlyExcludedJobsReturnsNil(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+
+	seedClaimQueuedJob(t, db, "job-settle", "clip.render", 10, `{"render_phase":"settle"}`)
+
+	claimed, err := store.ClaimNextMatchingExcluding(context.Background(), "general-worker", time.Minute,
+		nil, nil, job.PayloadNotMatch{"render_phase": "settle"})
+	if err != nil {
+		t.Fatalf("ClaimNextMatchingExcluding: %v", err)
+	}
+	if claimed != nil {
+		t.Fatalf("claimed %+v, want an empty poll", claimed)
+	}
+}
+
+// TestClaimNextMatchingExcluding_EmptyBothIsUnscoped pins that an empty match
+// AND empty exclusion is the historical unscoped ClaimNext (priority order).
+func TestClaimNextMatchingExcluding_EmptyBothIsUnscoped(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+
+	seedClaimQueuedJob(t, db, "job-low", "clip.render", 1, `{"render_phase":"settle"}`)
+	seedClaimQueuedJob(t, db, "job-high", "clip.render", 10, `{"render_phase":"submit"}`)
+
+	claimed, err := store.ClaimNextMatchingExcluding(context.Background(), "any-worker", time.Minute, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ClaimNextMatchingExcluding(nil, nil): %v", err)
+	}
+	if claimed == nil || claimed.ID != "job-high" {
+		t.Fatalf("unscoped claim = %+v, want job-high (priority order)", claimed)
+	}
+}
+
 // TestClaimNextMatching_RespectsTypeFilter pins that the payload scope is applied
 // on top of the job-type capability, not instead of it.
 func TestClaimNextMatching_RespectsTypeFilter(t *testing.T) {

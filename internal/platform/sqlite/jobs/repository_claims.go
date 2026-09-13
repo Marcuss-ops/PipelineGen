@@ -85,6 +85,29 @@ func (r *SQLiteStore) ClaimNextMatching(ctx context.Context, workerID string, le
 	if len(match) == 0 {
 		return r.ClaimNext(ctx, workerID, leaseTTL, types)
 	}
+	return r.claimNextScoped(ctx, workerID, leaseTTL, types, match, nil)
+}
+
+// ClaimNextMatchingExcluding is the scoped claim with a payload EXCLUSION. It
+// is what lets the DEFAULT pool stop claiming a phase that a dedicated pool
+// owns: the general runner claims every type but excludes
+// render_phase=settle, so a settle continuation can only be taken by the
+// clip.render settle pool. An empty match AND empty exclude is the historical
+// unscoped claim, so the method is a strict superset of ClaimNextMatching.
+func (r *SQLiteStore) ClaimNextMatchingExcluding(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match job.PayloadMatch, exclude job.PayloadNotMatch) (*job.Job, error) {
+	if len(match) == 0 && len(exclude) == 0 {
+		return r.ClaimNext(ctx, workerID, leaseTTL, types)
+	}
+	return r.claimNextScoped(ctx, workerID, leaseTTL, types, match, exclude)
+}
+
+// claimNextScoped is the shared body of the payload-scoped claims: it buffers a
+// bounded QUEUED candidate window, hydrates each payload (the payload is not
+// part of the jobs-table projection), and claims the first candidate that
+// satisfies the positive match AND is not excluded. The loser of a race is
+// surfaced by the CAS Start() as ErrTransitionConflict, exactly like
+// ClaimNext.
+func (r *SQLiteStore) claimNextScoped(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match job.PayloadMatch, exclude job.PayloadNotMatch) (*job.Job, error) {
 	now := time.Now()
 	query := `SELECT ` + jobColumns + ` FROM jobs WHERE status = 'QUEUED'`
 	var args []any
@@ -126,7 +149,10 @@ func (r *SQLiteStore) ClaimNextMatching(ctx context.Context, workerID string, le
 		if hydrateErr := r.hydrateLatestPayload(ctx, candidate); hydrateErr != nil {
 			return nil, fmt.Errorf("ClaimNextMatching: hydrate payload: %w", hydrateErr)
 		}
-		if !job.MatchesPayload(candidate.Payload, match) {
+		if len(match) > 0 && !job.MatchesPayload(candidate.Payload, match) {
+			continue
+		}
+		if !job.ExcludesPayload(candidate.Payload, exclude) {
 			continue
 		}
 		return r.claimCandidate(ctx, candidate, workerID, leaseTTL, now)

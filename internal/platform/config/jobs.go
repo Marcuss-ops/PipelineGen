@@ -2,12 +2,21 @@ package config
 
 // JobsConfig holds job-related configuration.
 type JobsConfig struct {
-	NewJobsPaused         bool   `yaml:"new_jobs_paused" default:"false"`
-	LeaseTTLSeconds       int    `yaml:"lease_ttl_seconds" default:"300"`
-	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"16"`
-	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
-	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
-	YouTubeExtractTimeout int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
+	NewJobsPaused         bool `yaml:"new_jobs_paused" default:"false"`
+	LeaseTTLSeconds       int  `yaml:"lease_ttl_seconds" default:"300"`
+	MaxParallelPerProject int  `yaml:"max_parallel_per_project" default:"16"`
+	// ClipRenderSettleWorkers is the DEDICATED budget for clip.render
+	// render_phase=settle continuations. A settle phase owns a worker slot for
+	// the whole remote RenderingGen render, so on the shared pool N clips in
+	// flight pin N general-purpose slots doing nothing but waiting. This pool
+	// claims ONLY clip.render settle jobs, and the general pool EXCLUDES them
+	// (see kernel/job.PayloadNotMatch), so a slow GPU backlog can no longer
+	// starve script/voiceover/upload jobs. 0 disables the split (everything
+	// returns to one unscoped pool, the pre-guardrail behaviour).
+	ClipRenderSettleWorkers int    `yaml:"clip_render_settle_workers" env:"VELOX_CLIP_RENDER_SETTLE_WORKERS" default:"16"`
+	AutoCleanupHours        int    `yaml:"auto_cleanup_hours" default:"24"`
+	CatalogSyncInterval     string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
+	YouTubeExtractTimeout   int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
 	// YoutubeMaxSegmentDurationSeconds caps the per-clip duration the
 	// YouTube segment pipeline accepts (SegmentPolicy.MaxDuration). The
 	// canonical default is 60s (DefaultSegmentPolicy); production may

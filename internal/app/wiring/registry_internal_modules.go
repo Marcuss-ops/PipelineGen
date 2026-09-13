@@ -458,16 +458,16 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
 	publisher.SetSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
+	// clip.render Drive delivery is UNCONDITIONALLY asynchronous, so the
+	// staging root is always required. The outbox consumer must exist or the
+	// committed delivery intent would never drain — fail the wiring closed
+	// instead of silently publishing into a void.
 	publisher.SetAsyncDriveStagingRoot(filepath.Join(cfg.Storage.TempPath(), "cliprender", "staging"))
-	publisher.SetAsyncDrive(cfg.Features.ClipAsyncDriveEnabled)
-	if root.Outbox != nil && root.Outbox.MediaIndexWorker != nil {
-		log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
-			zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested),
-			zap.Bool("async_drive_enabled", cfg.Features.ClipAsyncDriveEnabled))
-	} else {
-		log.Warn("registerClipRender: PostgreSQL media outbox worker unavailable; retaining configured Drive publication mode",
-			zap.Bool("async_drive_enabled", cfg.Features.ClipAsyncDriveEnabled))
+	if root.Outbox == nil || root.Outbox.MediaIndexWorker == nil {
+		return fmt.Errorf("registerClipRender: PostgreSQL media outbox worker is required for asynchronous clip.render Drive delivery")
 	}
+	log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
+		zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested))
 	worker.WithRenderPublisher(publisher)
 	// Script/batch leaf-folder resolution (create-or-reuse under the caller's
 	// root): routed through the SAME delivery.Publisher, so folder creation
