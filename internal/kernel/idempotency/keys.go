@@ -43,8 +43,11 @@
 // that legitimately contain ':' as a SCHEME PREFIX, not a
 // segment delimiter:
 //   - sourceVersion often carries a 'sha256:' prefix
-//     (e.g. "sha256:deadbeef..."), per the convention in
-//     tests/e2e/qdrant_e2e_youtube_test.go::testSourceVersionFor
+//     (e.g. "sha256:deadbeef..."). The canonical owner of that
+//     prefix convention is
+//     internal/kernel/assembly/contract.go::PreparationHash; readers
+//     that must tolerate both forms trim the prefix explicitly (see
+//     internal/platform/postgres/media/media_repository.go).
 //   - clipID for the stock pipeline is "planner:<hash>:<index>"
 //     (per internal/capabilities/assets/providers/stock/.../
 //     planner.go::buildClipPlan)

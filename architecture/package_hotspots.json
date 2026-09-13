@@ -2,67 +2,6 @@
   "version": 1,
   "hotspots": [
     {
-      "path": "cmd/admin",
-      "owner": "cmd/admin composition and command dispatch",
-      "deadline": "2026-09-30",
-      "baseline_files": 125,
-      "baseline": {
-        "files": 125,
-        "max_loc": 17092
-      },
-      "current": {
-        "files": 2,
-        "max_loc": 137
-      },
-      "target_packages": [
-        "cmd/admin/commands",
-        "cmd/admin/backfill",
-        "cmd/admin/diagnostics",
-        "cmd/admin/reconcile"
-      ]
-    },
-    {
-      "path": "cmd/archcheck/scan",
-      "owner": "cmd/archcheck architecture enforcement",
-      "deadline": "2026-09-30",
-      "baseline_files": 73,
-      "baseline": {
-        "files": 73,
-        "max_loc": 13718
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "target_packages": [
-        "cmd/archcheck/scan/structure",
-        "cmd/archcheck/scan/boundaries",
-        "cmd/archcheck/scan/governance",
-        "cmd/archcheck/scan/migrations"
-      ]
-    },
-    {
-      "path": "internal/app",
-      "owner": "internal/app composition root",
-      "deadline": "2026-09-30",
-      "baseline_files": 140,
-      "baseline": {
-        "files": 140,
-        "max_loc": 26637
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
-      "target_packages": [
-        "internal/app/workerruntime",
-        "internal/app/wiring",
-        "internal/app/lifecycle",
-        "internal/app/capabilities"
-      ]
-    },
-    {
       "path": "internal/capabilities/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
@@ -141,28 +80,6 @@
         "internal/platform/embeddings/http",
         "internal/platform/embeddings/ollama"
       ]
-    },
-    {
-      "path": "internal/platform/sqlite/assets",
-      "owner": "SQLite asset persistence (migrated from infrastructure)",
-      "deadline": "2026-09-30",
-      "baseline_files": 51,
-      "baseline": {
-        "files": 51,
-        "max_loc": 9659
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "target_packages": [
-        "internal/platform/sqlite/assets/artlist",
-        "internal/platform/sqlite/assets/channels",
-        "internal/platform/sqlite/assets/crypto",
-        "internal/platform/sqlite/assets/imagesregistry",
-        "internal/platform/sqlite/assets/txmutation"
-      ],
-      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
     },
     {
       "path": "internal/kernel/asset/detail",
