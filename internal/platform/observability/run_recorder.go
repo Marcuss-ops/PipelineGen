@@ -350,8 +350,23 @@ func upsertChildAndRefreshParent(ctx context.Context, tx *sql.Tx, child *kernobs
 	if child == nil || child.ParentRunID == "" || child.JobID == "" {
 		return nil
 	}
+	// Child telemetry is supplementary. A child can finish after its parent
+	// run was evicted, belongs to another recorder scope, or was never started
+	// because the parent was cancelled. Do not let that optional relation make
+	// the child's terminal report fail through the FK constraint: the report
+	// itself is authoritative and must still be persisted.
+	var parentExists int
+	err := tx.QueryRowContext(ctx,
+		`SELECT 1 FROM run_observability WHERE run_id=? LIMIT 1`, child.ParentRunID,
+	).Scan(&parentExists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
-	_, err := tx.ExecContext(ctx, `INSERT INTO run_child_observations (parent_run_id,child_job_id,child_run_id,status,wall_time_ms,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(parent_run_id,child_job_id) DO UPDATE SET child_run_id=excluded.child_run_id,status=excluded.status,wall_time_ms=excluded.wall_time_ms,updated_at=excluded.updated_at`, child.ParentRunID, child.JobID, child.RunID, child.Status, child.WallTimeMs, timeValue(now))
+	_, err = tx.ExecContext(ctx, `INSERT INTO run_child_observations (parent_run_id,child_job_id,child_run_id,status,wall_time_ms,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(parent_run_id,child_job_id) DO UPDATE SET child_run_id=excluded.child_run_id,status=excluded.status,wall_time_ms=excluded.wall_time_ms,updated_at=excluded.updated_at`, child.ParentRunID, child.JobID, child.RunID, child.Status, child.WallTimeMs, timeValue(now))
 	if err != nil {
 		return err
 	}

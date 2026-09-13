@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -94,6 +95,11 @@ func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string,
 	if httpClient == nil {
 		return nil, fmt.Errorf("failed to create google oauth client")
 	}
+	// The default http.Client has no overall deadline. A stalled Drive
+	// request could therefore hold a publish worker forever and amplify a
+	// single provider hiccup into the pipeline's p99 tail. Keep the request
+	// context authoritative while bounding context.Background() callers.
+	httpClient.Timeout = 90 * time.Second
 	return httpClient, nil
 }
 

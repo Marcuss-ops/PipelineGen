@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // EmbedAssetTextAdapter adapts the kernel asset.Embedder (HTTPTextEmbedder)
@@ -47,6 +48,11 @@ func (a *EmbedAssetTextAdapter) EmbedAssetText(ctx context.Context, assetID stri
 			return nil, fmt.Errorf("embed asset %q: asset not found in media SSOT", assetID)
 		}
 		return nil, fmt.Errorf("embed asset %q: read search_text: %w", assetID, err)
+	}
+	if strings.TrimSpace(text) == "" {
+		// Empty source data cannot be repaired by retrying the provider. Mark it
+		// terminal so the outbox does not burn exponential-backoff attempts.
+		return nil, event.NewTerminalError(fmt.Errorf("embed asset %q: search_text is empty", assetID))
 	}
 	res, err := a.embeder.Embed(ctx, text)
 	if err != nil {

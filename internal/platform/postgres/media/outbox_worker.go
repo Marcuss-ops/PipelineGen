@@ -250,7 +250,11 @@ func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *Outbo
 		vec = resolved
 	}
 	if len(vec) == 0 {
-		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: zero-length embedding for asset %q", assetID))
+		// A successful provider call that returns no vector is malformed input
+		// or a provider contract violation, not a transient database/network
+		// failure. Dead-letter immediately instead of retrying pointlessly.
+		return w.failOrFail(ctx, claim, event.NewTerminalError(
+			fmt.Errorf("media index worker: zero-length embedding for asset %q", assetID)))
 	}
 
 	// One transaction: vector upsert + index_state flip. Rollback leaves
