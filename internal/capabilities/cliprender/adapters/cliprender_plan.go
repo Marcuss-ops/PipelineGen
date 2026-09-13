@@ -86,6 +86,14 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	if len(cues) == 0 {
 		return nil, fmt.Errorf("%w: no cues remain inside clip duration for asset %q", cliprender.ErrSubtitleCompileUnavailable, in.AssetID)
 	}
+	// Canonical transcripts arrive with producer-dependent granularity (VTT
+	// chunks of 1-2s, Whisper segments up to 7.5s). Burned captions are
+	// normalized to the short-form reading contract BEFORE the ASS is compiled
+	// so the artifact and the burned Chronon layers share one cue timeline.
+	cues = mapTimedCues(texttracks.NormalizeShortFormCues(mapClipRenderCues(cues), texttracks.DefaultShortFormPolicy()))
+	if len(cues) == 0 {
+		return nil, fmt.Errorf("%w: no cues remain inside clip duration for asset %q", cliprender.ErrSubtitleCompileUnavailable, in.AssetID)
+	}
 	canonicalCues := mapClipRenderCues(cues)
 	key := digest.SHA256String(fmt.Sprintf("%s\x00%s\x00%v", in.Language, in.StyleID, canonicalCues))
 	var content string

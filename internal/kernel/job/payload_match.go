@@ -24,6 +24,19 @@ import (
 // is byte-identical to the historical claim behaviour.
 type PayloadMatch map[string]string
 
+// PayloadNotMatch is the EXCLUSION half of the payload-scoped claim contract:
+// it narrows a claim to the jobs whose payload carries NONE of the listed
+// key=value pairs. An empty (or nil) excluder means "no payload exclusion" and
+// is byte-identical to the historical claim behaviour.
+//
+// It exists because a positive matcher alone cannot protect the DEFAULT pool:
+// scoping the settle phase to its own budget works only if the general pool
+// also stops claiming settle jobs. "clip.render whose render_phase is not
+// settle" is not expressible as a PayloadMatch (an ABSENT render_phase is the
+// back-compatible submit phase, so a positive submit matcher would strand the
+// historical unscoped payloads), which is exactly what PayloadNotMatch adds.
+type PayloadNotMatch map[string]string
+
 // PayloadScopedClaimer is the OPTIONAL store capability a claim loop uses when a
 // PayloadMatch is configured. It is deliberately NOT part of the Store
 // interface: a store that cannot scope claims simply does not implement it, and
@@ -31,6 +44,15 @@ type PayloadMatch map[string]string
 // unscoped job).
 type PayloadScopedClaimer interface {
 	ClaimNextMatching(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match PayloadMatch) (*Job, error)
+}
+
+// PayloadExcludingClaimer is the OPTIONAL store capability a claim loop uses
+// when a PayloadNotMatch (or a match+exclude pair) is configured. It embeds
+// PayloadScopedClaimer because a pool that excludes one phase still needs the
+// positive scoping for its own phase.
+type PayloadExcludingClaimer interface {
+	PayloadScopedClaimer
+	ClaimNextMatchingExcluding(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match PayloadMatch, exclude PayloadNotMatch) (*Job, error)
 }
 
 // ValidatePayloadMatch fails closed on an unusable matcher: every key must be
@@ -64,6 +86,44 @@ func MatchesPayload(payload json.RawMessage, match PayloadMatch) bool {
 			return false
 		}
 		if payloadScalar(got) != want {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidatePayloadNotMatch fails closed on an unusable excluder: every key must
+// be non-empty. Values may be empty (they exclude an empty JSON string). An
+// empty excluder is valid.
+func ValidatePayloadNotMatch(notMatch PayloadNotMatch) error {
+	for key := range notMatch {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("payload not-match key must be non-empty")
+		}
+	}
+	return nil
+}
+
+// ExcludesPayload reports whether payload carries NONE of the key=value pairs
+// in notMatch. It is the exact complement of MatchesPayload over the same
+// scalar projection, with one deliberate difference: a malformed or empty
+// payload carries none of the excluded pairs, so it is NOT excluded (it stays
+// claimable by the default pool, which must never lose a job to a decode
+// failure). An empty excluder excludes nothing.
+func ExcludesPayload(payload json.RawMessage, notMatch PayloadNotMatch) bool {
+	if len(notMatch) == 0 {
+		return true
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return true
+	}
+	for key, want := range notMatch {
+		got, ok := fields[key]
+		if !ok {
+			continue
+		}
+		if payloadScalar(got) == want {
 			return false
 		}
 	}

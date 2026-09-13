@@ -39,6 +39,42 @@ func (f *fakeAssetCommitter) commitRequests() []persistence.AssetCommitRequest {
 	return append([]persistence.AssetCommitRequest(nil), f.requests...)
 }
 
+// newAsyncPublisher builds a publisher with the durable staging root every
+// production render now needs. clip.render Drive delivery is unconditionally
+// asynchronous, so there is no mode to select.
+func newAsyncPublisher(t *testing.T, drive *fakeDeliveryPublisher, committer *fakeAssetCommitter) *ClipRenderPublisher {
+	t.Helper()
+	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPublisher() error = %v", err)
+	}
+	p.SetAsyncDriveStagingRoot(filepath.Join(t.TempDir(), "cliprender-staging"))
+	return p
+}
+
+// deliveryIntent decodes the single durable Drive-delivery intent the publisher
+// committed. Its presence (and the ABSENCE of a synchronous Drive upload) is
+// the whole contract now.
+func deliveryIntent(t *testing.T, committer *fakeAssetCommitter) (cliprender.ClipRenderDriveDeliveryRequest, persistence.AssetCommitRequest) {
+	t.Helper()
+	commits := committer.commitRequests()
+	if len(commits) != 1 {
+		t.Fatalf("asset commits = %d, want 1", len(commits))
+	}
+	events := commits[0].AdditionalOutboxEvents
+	if len(events) != 1 {
+		t.Fatalf("additional outbox events = %d, want 1", len(events))
+	}
+	if events[0].EventType != cliprender.EventClipRenderDriveDeliveryRequested {
+		t.Fatalf("outbox event type = %q, want %q", events[0].EventType, cliprender.EventClipRenderDriveDeliveryRequested)
+	}
+	var payload cliprender.ClipRenderDriveDeliveryRequest
+	if err := json.Unmarshal([]byte(events[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode delivery payload: %v", err)
+	}
+	return payload, commits[0]
+}
+
 func writeFakeVideo(t *testing.T) string {
 	t.Helper()
 	content := []byte("fake-rendered-mp4-bytes-for-content-digest")
@@ -78,17 +114,73 @@ func publishInput(videoPath, title, mode, folderID string) cliprender.RenderPubl
 	return in
 }
 
+// TestClipRenderPublisher_LocatorOnly_StreamsFromObjectStore pins the
+// locator-first contract: when the render outcome carries a durable object-store
+// locator and no local file, the publisher stages NOTHING locally and emits a
+// delivery intent the outbox streams from the URL.
+func TestClipRenderPublisher_LocatorOnly_StreamsFromObjectStore(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p := newAsyncPublisher(t, drive, committer)
+
+	contentHash := strings.Repeat("ab", 32)
+	artifactURL := "http://objectstore:9000/objects/" + contentHash
+	in := cliprender.RenderPublishInput{
+		RunID: "run-locator", SourceAssetID: "source-asset-001", SourceTitle: "Locator Clip",
+		ArtifactStorageKey:  contentHash,
+		ArtifactURL:         artifactURL,
+		ArtifactContentType: "video/mp4",
+		Outcome: &cliprender.RenderOutcome{
+			SizeBytes: 4096, SHA256: contentHash, DurationSec: 3,
+			StorageKey: contentHash, ArtifactURL: artifactURL, ContentType: "video/mp4",
+		},
+		CertifiedSHA256: contentHash, CertifiedSizeBytes: 4096,
+		DriveFolderID: "folder-locator",
+	}
+	res, err := p.Publish(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if res == nil || !res.DrivePending || res.SizeBytes != 4096 {
+		t.Fatalf("result = %+v, want DrivePending with size 4096", res)
+	}
+	payload, commit := deliveryIntent(t, committer)
+	if payload.LocalPath != "" {
+		t.Errorf("intent LocalPath = %q, want empty (no local staging)", payload.LocalPath)
+	}
+	if payload.ArtifactURL != artifactURL || payload.StorageKey != contentHash || payload.ContentType != "video/mp4" {
+		t.Errorf("intent locator = %+v, want the certified object-store locator", payload)
+	}
+	if payload.Filename != "Locator Clip.mp4" {
+		t.Errorf("intent filename = %q, want the source title + .mp4 (extension from content type)", payload.Filename)
+	}
+	if commit.LocalPath != "" {
+		t.Errorf("committed LocalPath = %q, want empty", commit.LocalPath)
+	}
+}
+
+// TestClipRenderPublisher_RequiresOutputOrLocator pins the fail-closed rule:
+// neither a local path nor a locator is a typed error.
+func TestClipRenderPublisher_RequiresOutputOrLocator(t *testing.T) {
+	p := newAsyncPublisher(t, &fakeDeliveryPublisher{}, &fakeAssetCommitter{})
+	_, err := p.Publish(context.Background(), cliprender.RenderPublishInput{
+		RunID: "run-missing", DriveFolderID: "folder-1",
+		Outcome:            &cliprender.RenderOutcome{SizeBytes: 10, SHA256: strings.Repeat("cd", 32)},
+		CertifiedSHA256:    strings.Repeat("cd", 32),
+		CertifiedSizeBytes: 10,
+	})
+	if err == nil {
+		t.Fatal("Publish must fail closed without an output path or artifact locator")
+	}
+}
+
 // TestClipRenderPublisher_BurnMode_NeverUploadsAss pins the canonical rule:
 // burned subtitles are baked into the video frames and the .ass artifact is a
-// temporary render-internal file — the publisher uploads ONLY the MP4 and the
-// publication carries no sidecar identity.
+// temporary render-internal file — the delivery intent carries ONLY the MP4.
 func TestClipRenderPublisher_BurnMode_NeverUploadsAss(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 	title := "Kelly Clarkson Loses It After Spotting Meryl Streep"
 
@@ -96,48 +188,41 @@ func TestClipRenderPublisher_BurnMode_NeverUploadsAss(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	reqs := drive.publishRequests()
-	if len(reqs) != 1 {
-		t.Fatalf("Drive uploads = %d, want 1 (burn mode must never upload the .ass sidecar)", len(reqs))
+	if got := len(drive.publishRequests()); got != 0 {
+		t.Fatalf("Drive uploads = %d, want 0: the external round-trip must never sit on the render path", got)
 	}
-	if reqs[0].Filename != title+".mp4" {
-		t.Errorf("Drive filename = %q, want the human title + .mp4", reqs[0].Filename)
+	payload, commit := deliveryIntent(t, committer)
+	if payload.Sidecar != nil {
+		t.Errorf("burn mode must never carry a sidecar bundle, got %+v", payload.Sidecar)
 	}
-	if reqs[0].DestinationFolderID != "leaf-123" {
-		t.Errorf("destination folder = %q, want the resolved leaf verbatim", reqs[0].DestinationFolderID)
+	if payload.Filename != title+".mp4" {
+		t.Errorf("delivery filename = %q, want the human title + .mp4", payload.Filename)
 	}
-	if len(reqs[0].DestinationSubpath) != 0 {
-		t.Errorf("publisher must never create folders (subpath = %v)", reqs[0].DestinationSubpath)
+	if payload.FolderID != "leaf-123" {
+		t.Errorf("delivery folder = %q, want the resolved leaf verbatim", payload.FolderID)
+	}
+	if !res.DrivePending {
+		t.Fatal("async publication must report DrivePending")
 	}
 	if res.SidecarFileID != "" || res.SidecarLink != "" {
 		t.Errorf("burn-mode publication must carry no sidecar identity, got file=%q link=%q", res.SidecarFileID, res.SidecarLink)
 	}
-	commits := committer.commitRequests()
-	if len(commits) != 1 {
-		t.Fatalf("asset commits = %d, want 1", len(commits))
+	if commit.Name != title+".mp4" || commit.Filename != title+".mp4" {
+		t.Errorf("commit name/filename = %q/%q, want the human Drive filename", commit.Name, commit.Filename)
 	}
-	if commits[0].Name != title+".mp4" || commits[0].Filename != title+".mp4" {
-		t.Errorf("commit name/filename = %q/%q, want the human Drive filename", commits[0].Name, commits[0].Filename)
-	}
-	if commits[0].Title != title {
-		t.Errorf("commit title = %q, want the source title", commits[0].Title)
-	}
-	if commits[0].FolderID != "leaf-123" {
-		t.Errorf("commit folder = %q, want leaf-123", commits[0].FolderID)
+	if commit.FolderID != "leaf-123" {
+		t.Errorf("commit folder = %q, want leaf-123", commit.FolderID)
 	}
 }
 
 // TestClipRenderPublisher_FailsClosedWithoutCertifiedDigest pins item 8: the
 // publisher adopts the digest the producing boundary already certified and
 // never silently re-reads the artifact. An uncertified artifact is a typed
-// error before any Drive upload or asset commit.
+// error before any durable intent is committed.
 func TestClipRenderPublisher_FailsClosedWithoutCertifiedDigest(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 
 	in := publishInput(video, "Uncertified", cliprender.SubtitlesModeBurn, "leaf-uncertified")
@@ -154,18 +239,13 @@ func TestClipRenderPublisher_FailsClosedWithoutCertifiedDigest(t *testing.T) {
 	}
 }
 
-// TestClipRenderPublisher_AsyncDriveStagesBeforeCommit pins the durable
-// boundary: enabling async delivery must not call Drive and must move the
-// artifact out of the job workspace before the outbox payload is committed.
-func TestClipRenderPublisher_AsyncDriveStagesBeforeCommit(t *testing.T) {
+// TestClipRenderPublisher_StagesBeforeCommit pins the durable boundary: the
+// artifact must move out of the job workspace before the outbox payload is
+// committed, because the outbox consumer may run after the workspace cleanup.
+func TestClipRenderPublisher_StagesBeforeCommit(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
-	p.SetAsyncDrive(true)
-	p.SetAsyncDriveStagingRoot(filepath.Join(t.TempDir(), "cliprender-staging"))
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 
 	res, err := p.Publish(context.Background(), publishInput(video, "Async Clip", cliprender.SubtitlesModeBurn, "leaf-async"))
@@ -178,14 +258,7 @@ func TestClipRenderPublisher_AsyncDriveStagesBeforeCommit(t *testing.T) {
 	if got := len(drive.publishRequests()); got != 0 {
 		t.Fatalf("Drive uploads = %d, want 0 before outbox consumption", got)
 	}
-	commits := committer.commitRequests()
-	if len(commits) != 1 || len(commits[0].AdditionalOutboxEvents) != 1 {
-		t.Fatalf("commit additional outbox events = %d, want 1", len(commits[0].AdditionalOutboxEvents))
-	}
-	var payload cliprender.ClipRenderDriveDeliveryRequest
-	if err := json.Unmarshal([]byte(commits[0].AdditionalOutboxEvents[0].PayloadJSON), &payload); err != nil {
-		t.Fatalf("decode delivery payload: %v", err)
-	}
+	payload, _ := deliveryIntent(t, committer)
 	if payload.LocalPath == video {
 		t.Fatal("delivery payload still points into the job workspace")
 	}
@@ -197,20 +270,14 @@ func TestClipRenderPublisher_AsyncDriveStagesBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle pins the sidecar
-// bundle: with async delivery enabled a sidecar-mode request no longer takes the
-// synchronous Drive path. The ASS artifact is detached from the workspace and
-// travels INSIDE the same durable Drive intent as the video, so the render job
-// completes without waiting for Drive in either subtitle mode.
-func TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle(t *testing.T) {
+// TestClipRenderPublisher_CarriesSidecarBundle pins the sidecar bundle: a
+// sidecar-mode request carries the ASS artifact INSIDE the same durable Drive
+// intent as the video, so the render job completes without waiting for Drive in
+// either subtitle mode.
+func TestClipRenderPublisher_CarriesSidecarBundle(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
-	p.SetAsyncDrive(true)
-	p.SetAsyncDriveStagingRoot(filepath.Join(t.TempDir(), "cliprender-staging"))
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 
 	sidecarPath := filepath.Join(filepath.Dir(video), "subtitles.ass")
@@ -237,16 +304,9 @@ func TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle(t *testing.T) {
 	if got := len(drive.publishRequests()); got != 0 {
 		t.Fatalf("Drive uploads = %d, want 0 before outbox consumption", got)
 	}
-	commits := committer.commitRequests()
-	if len(commits) != 1 || len(commits[0].AdditionalOutboxEvents) != 1 {
-		t.Fatalf("commit additional outbox events = %d, want 1", len(commits[0].AdditionalOutboxEvents))
-	}
-	var payload cliprender.ClipRenderDriveDeliveryRequest
-	if err := json.Unmarshal([]byte(commits[0].AdditionalOutboxEvents[0].PayloadJSON), &payload); err != nil {
-		t.Fatalf("decode delivery payload: %v", err)
-	}
+	payload, _ := deliveryIntent(t, committer)
 	if payload.Sidecar == nil {
-		t.Fatal("async sidecar publication must carry the sidecar bundle in the delivery intent")
+		t.Fatal("sidecar publication must carry the sidecar bundle in the delivery intent")
 	}
 	if payload.Sidecar.LocalPath == sidecarPath {
 		t.Fatal("sidecar payload still points into the job workspace")
@@ -271,17 +331,13 @@ func TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle(t *testing.T) {
 	}
 }
 
-// TestClipRenderPublisher_SidecarMode_UploadsAssOnlyWhenExplicit pins the
-// explicit opt-in: subtitles.mode=sidecar IS the caller's sidecar-export
-// request — the .ass is uploaded next to the MP4 with the same human base
-// name, and the publication carries the sidecar Drive identity.
-func TestClipRenderPublisher_SidecarMode_UploadsAssOnlyWhenExplicit(t *testing.T) {
+// TestClipRenderPublisher_SidecarMode_CarriesAssName pins the explicit opt-in:
+// subtitles.mode=sidecar IS the caller's sidecar-export request, so the bundle
+// carries the .ass under the same sanitized human base name as the MP4.
+func TestClipRenderPublisher_SidecarMode_CarriesAssName(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 	title := "She Can't Stop Laughing During This Late-Night Interview"
 	safeTitle := textutil.SanitizeFilename(title) // apostrophe stripped by the canonical filename sanitizer
@@ -289,57 +345,51 @@ func TestClipRenderPublisher_SidecarMode_UploadsAssOnlyWhenExplicit(t *testing.T
 		t.Fatalf("test title must exercise sanitisation, got %q", title)
 	}
 
-	res, err := p.Publish(context.Background(), publishInput(video, title, cliprender.SubtitlesModeSidecar, "leaf-456"))
+	sidecarPath := filepath.Join(filepath.Dir(video), "subtitles.ass")
+	if err := os.WriteFile(sidecarPath, []byte("[Script Info]\nTitle: sidecar fixture\n"), 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	sidecarSHA, _, err := digest.SHA256File(sidecarPath)
 	if err != nil {
+		t.Fatalf("hash sidecar: %v", err)
+	}
+	in := publishInput(video, title, cliprender.SubtitlesModeSidecar, "leaf-456")
+	in.Subtitles.LocalPath = sidecarPath
+	in.Subtitles.SHA256 = sidecarSHA
+
+	if _, err := p.Publish(context.Background(), in); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	reqs := drive.publishRequests()
-	if len(reqs) != 2 {
-		t.Fatalf("Drive uploads = %d, want 2 (video + explicit sidecar)", len(reqs))
+	if got := len(drive.publishRequests()); got != 0 {
+		t.Fatalf("Drive uploads = %d, want 0 before outbox consumption", got)
 	}
-	var videoName, sidecarName string
-	for _, r := range reqs {
-		if r.DestinationFolderID != "leaf-456" {
-			t.Errorf("upload %q destination = %q, want the resolved leaf verbatim", r.Filename, r.DestinationFolderID)
-		}
-		switch {
-		case strings.HasSuffix(r.Filename, ".mp4"):
-			videoName = r.Filename
-		case strings.HasSuffix(r.Filename, ".ass"):
-			sidecarName = r.Filename
-		}
+	payload, _ := deliveryIntent(t, committer)
+	if payload.Sidecar == nil {
+		t.Fatal("sidecar mode must carry the sidecar bundle")
 	}
-	if videoName != safeTitle+".mp4" {
-		t.Errorf("video filename = %q, want the sanitized human title + .mp4", videoName)
+	if payload.Filename != safeTitle+".mp4" {
+		t.Errorf("video filename = %q, want the sanitized human title + .mp4", payload.Filename)
 	}
-	if sidecarName != safeTitle+".ass" {
-		t.Errorf("sidecar filename = %q, want the sanitized human title + .ass", sidecarName)
-	}
-	if res.SidecarFileID == "" || res.SidecarLink == "" {
-		t.Errorf("sidecar-mode publication must carry the sidecar Drive identity, got file=%q link=%q", res.SidecarFileID, res.SidecarLink)
-	}
-	if len(committer.commitRequests()) != 1 {
-		t.Fatalf("asset commits = %d, want 1 (the .ass sidecar is a Drive artifact, not a separate media asset)", len(committer.commitRequests()))
+	if payload.Sidecar.Filename != safeTitle+".ass" {
+		t.Errorf("sidecar filename = %q, want the sanitized human title + .ass", payload.Sidecar.Filename)
 	}
 }
 
-// TestClipRenderPublisher_NoSubtitles_UploadsOnlyMP4 verifies a render
-// without subtitles publishes exactly one artifact.
+// TestClipRenderPublisher_NoSubtitles_UploadsOnlyMP4 verifies a render without
+// subtitles carries exactly the video half of the bundle.
 func TestClipRenderPublisher_NoSubtitles_UploadsOnlyMP4(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 
 	res, err := p.Publish(context.Background(), publishInput(video, "Plain Clip", "", "leaf-789"))
 	if err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	if len(drive.publishRequests()) != 1 {
-		t.Fatalf("Drive uploads = %d, want 1", len(drive.publishRequests()))
+	payload, _ := deliveryIntent(t, committer)
+	if payload.Sidecar != nil {
+		t.Errorf("no-subtitle publication must carry no sidecar bundle, got %+v", payload.Sidecar)
 	}
 	if res.SidecarFileID != "" {
 		t.Errorf("no-subtitle publication must carry no sidecar identity, got %q", res.SidecarFileID)
@@ -347,29 +397,22 @@ func TestClipRenderPublisher_NoSubtitles_UploadsOnlyMP4(t *testing.T) {
 }
 
 // TestClipRenderPublisher_WithoutTitle_UsesAssetIDFilename pins the machine
-// fallback: when the source asset has no human title, the Drive filename is
-// the deterministic content-addressed asset ID (cliprender_<hash-prefix>),
-// keeping the human/machine naming split intact.
+// fallback: when the source asset has no human title, the Drive filename is the
+// deterministic content-addressed asset ID (cliprender_<hash-prefix>), keeping
+// the human/machine naming split intact.
 func TestClipRenderPublisher_WithoutTitle_UsesAssetIDFilename(t *testing.T) {
 	drive := &fakeDeliveryPublisher{}
 	committer := &fakeAssetCommitter{}
-	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
-	if err != nil {
-		t.Fatalf("NewClipRenderPublisher() error = %v", err)
-	}
+	p := newAsyncPublisher(t, drive, committer)
 	video := writeFakeVideo(t)
 
 	res, err := p.Publish(context.Background(), publishInput(video, "", cliprender.SubtitlesModeBurn, "leaf-000"))
 	if err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	reqs := drive.publishRequests()
-	if len(reqs) != 1 {
-		t.Fatalf("Drive uploads = %d, want 1", len(reqs))
-	}
-	name := reqs[0].Filename
-	if !strings.HasPrefix(name, "cliprender_") || !strings.HasSuffix(name, ".mp4") {
-		t.Errorf("fallback filename = %q, want cliprender_<hash>.mp4", name)
+	payload, _ := deliveryIntent(t, committer)
+	if !strings.HasPrefix(payload.Filename, "cliprender_") || !strings.HasSuffix(payload.Filename, ".mp4") {
+		t.Errorf("fallback filename = %q, want cliprender_<hash>.mp4", payload.Filename)
 	}
 	if res.AssetID == "" || !strings.HasPrefix(res.AssetID, "cliprender_") {
 		t.Errorf("asset id = %q, want cliprender_<hash-prefix>", res.AssetID)

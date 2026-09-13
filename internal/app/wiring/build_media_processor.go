@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
@@ -51,14 +52,15 @@ func wireMediaProcessor(
 		log.Warn("wireMediaProcessor: media PostgreSQL unavailable — MediaProcessor left nil (graceful degrade, godlike/07)")
 		return nil, nil
 	}
+	// MEDIA-SSOT write-bridge: the dead `locations` argument was deleted with
+	// the parameter (see InitMediaProcessor), and the processing port now
+	// resolves from the canonical committer so the processor writes
+	// asset_processing on the media SSOT rather than the operational mirror.
 	mp := InitMediaProcessor(
 		cfg,
 		dbs.Main,
 		dbs.Cache,
-		repos.Assets.Repository(),
-		repos.Assets,
-		repos.Assets.LocationRepository(),
-		repos.Assets.ProcessingRepository(),
+		assetspersistence.CanonicalAssetProcessingWriter(committer),
 		committer,
 		log,
 		publisher,

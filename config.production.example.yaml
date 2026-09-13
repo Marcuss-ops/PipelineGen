@@ -193,6 +193,11 @@ jobs:
   backup_interval: "6h"
   indexing_interval: "15m"
   youtube_max_segment_duration_seconds: 60
+  # Dedicated Master budget for clip.render settle continuations
+  # (render_phase=settle). The general pool EXCLUDES this phase, so a remote
+  # render waiting on RenderingGen cannot occupy general worker slots.
+  # 0 disables the split (single unscoped pool). Default 16.
+  clip_render_settle_workers: 16
 
 scripts:
   capability:
@@ -221,7 +226,6 @@ features:
   images_enabled: true
   stock_pipeline_enabled: true
   clip_render_enabled: false
-  clip_async_drive_enabled: true
   voiceover_enabled: false
 
 google_accounting:

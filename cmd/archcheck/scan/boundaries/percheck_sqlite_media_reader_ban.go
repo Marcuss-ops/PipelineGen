@@ -244,22 +244,21 @@ var sqliteMediaReaderGrandfatheredFiles = map[string]bool{
 //
 // Adding an entry here is how a reviewable degrade path is acknowledged; a NEW
 // file reading media_assets still fails the gate until someone does so.
-// //   - internal/app/wiring/canonical_media_committer.go — sqliteMediaAssetStore,
 //
-//	  chosen by ComposeRoot.MediaAssetStore() only when r.MediaPostgres == nil.
-//	  (This is an exact path, not a package prefix, so the entry moved with the
-//	  type: the store briefly lived in media_asset_store.go until that file was
-//	  merged back here to stay under the internal/app/wiring hotspot cap. The
-//	  existence and staleness pins force this entry to follow such a move in
-//	  the same change.)
-//	- internal/capabilities/assets/artifacts/clips_adapter.go — the Sqlite
-//	  branch of ClipsRegistry, taken only when pgDB() reports no PostgreSQL
-//	  media committer.
-//	- internal/capabilities/youtube/adapters/youtube_adapters_store.go — the
-//	  legacy sourcing adapter retained for the documented graceful-degrade
-//	  path (see youtube_sourcing_pg_adapter.go).
+// ENTRY RETIRED 2026-09-13: internal/app/wiring/canonical_media_committer.go
+// left this register together with the sqliteMediaAssetStore type it was
+// pardoning. ComposeRoot.MediaAssetStore() now fails closed when the media SSOT
+// is closed, so there is no SQLite reader of media_assets left in that file to
+// exempt — and deleting the entry in the same change is exactly what the
+// staleness pin (TestSQLiteMediaReaderRegisterHasNoStaleEntries) enforces.
+//
+//   - internal/capabilities/assets/artifacts/clips_adapter.go — the Sqlite
+//     branch of ClipsRegistry, taken only when pgDB() reports no PostgreSQL
+//     media committer.
+//   - internal/capabilities/youtube/adapters/youtube_adapters_store.go — the
+//     legacy sourcing adapter retained for the documented graceful-degrade
+//     path (see youtube_sourcing_pg_adapter.go).
 var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{
-	"internal/app/wiring/canonical_media_committer.go":                 true,
 	"internal/capabilities/assets/artifacts/clips_adapter.go":          true,
 	"internal/capabilities/youtube/adapters/youtube_adapters_store.go": true,
 }

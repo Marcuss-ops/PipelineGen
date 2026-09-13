@@ -10,10 +10,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -100,6 +102,82 @@ func TestSubtitleCompiler_SidecarSameBytesDifferentMode(t *testing.T) {
 	if sidecar.Mode != cliprender.SubtitlesModeSidecar {
 		t.Fatalf("expected sidecar mode tag, got %q", sidecar.Mode)
 	}
+}
+
+// TestSubtitleCompiler_NormalizesLongWhisperSegments locks the short-form
+// caption contract on the artifact the worker actually burns: a 7.44s Whisper
+// segment (the real defect) must not reach the renderer as one three-line wall.
+func TestSubtitleCompiler_NormalizesLongWhisperSegments(t *testing.T) {
+	compiler := &ClipRenderSubtitleCompiler{}
+	in := subtitleTestInput(t, cliprender.SubtitlesModeBurn)
+	in.Cues = []cliprender.Cue{
+		{StartMs: 0, EndMs: 5600, Text: "Yeah, I didn't know that I was afraid of heights till I mean I did these stunts like I jumped"},
+		{StartMs: 13040, EndMs: 20480, Text: "this is fine and I did it and but I was in Dubai in 2004 and went to the top of this building"},
+	}
+	in.ClipDurationMS = 20480
+	out, err := compiler.Compile(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	content, err := os.ReadFile(out.LocalPath)
+	if err != nil {
+		t.Fatalf("read artifact: %v", err)
+	}
+	policy := texttracks.DefaultShortFormPolicy()
+	dialogues := 0
+	longest := int64(0)
+	for _, line := range strings.Split(string(content), "\n") {
+		if !strings.HasPrefix(line, "Dialogue:") {
+			continue
+		}
+		dialogues++
+		fields := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(line, "Dialogue:")), ",", 10)
+		if len(fields) < 10 {
+			t.Fatalf("malformed dialogue line: %q", line)
+		}
+		body := fields[9]
+		if got := strings.Count(body, `\N`) + 1; got > policy.MaxLines {
+			t.Fatalf("dialogue wraps to %d lines, want <= %d: %q", got, policy.MaxLines, body)
+		}
+		if n := utf8.RuneCountInString(strings.ReplaceAll(body, `\N`, " ")); n > policy.MaxCharsPerCue() {
+			t.Fatalf("dialogue carries %d runes, want <= %d: %q", n, policy.MaxCharsPerCue(), body)
+		}
+		start, end := assTimestampMs(t, fields[1]), assTimestampMs(t, fields[2])
+		if end <= start {
+			t.Fatalf("dialogue has an empty window: %q", body)
+		}
+		if end-start > longest {
+			longest = end - start
+		}
+	}
+	if dialogues < 4 {
+		t.Fatalf("two long segments produced %d dialogues, want at least 4 readable captions:\n%s", dialogues, content)
+	}
+	// The 7.44s segment must no longer hold one caption for its whole window.
+	if longest > 3000 {
+		t.Fatalf("longest caption dwells %dms: the long segment was not refreshed\n%s", longest, content)
+	}
+	if err := texttracks.ValidateASSFile(out.LocalPath, in.ClipDurationMS); err != nil {
+		t.Fatalf("ValidateASSFile: %v", err)
+	}
+}
+
+func assTimestampMs(t *testing.T, raw string) int64 {
+	t.Helper()
+	parts := strings.Split(strings.TrimSpace(raw), ":")
+	if len(parts) != 3 {
+		t.Fatalf("bad ASS timestamp %q", raw)
+	}
+	sec := strings.Split(parts[2], ".")
+	if len(sec) != 2 {
+		t.Fatalf("bad ASS timestamp %q", raw)
+	}
+	var h, m, s, cs int64
+	fmt.Sscanf(parts[0], "%d", &h)
+	fmt.Sscanf(parts[1], "%d", &m)
+	fmt.Sscanf(sec[0], "%d", &s)
+	fmt.Sscanf(sec[1], "%d", &cs)
+	return ((h*60+m)*60+s)*1000 + cs*10
 }
 
 func TestSubtitleCompiler_Deterministic(t *testing.T) {

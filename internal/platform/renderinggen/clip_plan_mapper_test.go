@@ -4,9 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -102,5 +104,50 @@ func TestMapClipPlanToOverlayPlan_ShadowDerivedStrokeFallback(t *testing.T) {
 	}
 	if s.Stroke.Color != "#000000" || s.Stroke.Width <= 0 {
 		t.Fatalf("unexpected derived stroke: %+v", s.Stroke)
+	}
+	// The derived keyline scales with the em (~4.5%, capped at 3px). The
+	// historical fixed 5px at 58px merged adjacent glyph contours into a
+	// black smear on 40-rune caption lines.
+	if s.Stroke.Width >= 5 {
+		t.Fatalf("derived keyline is too heavy for a %gpx font: %+v", s.FontSizePX, s.Stroke)
+	}
+}
+
+// TestMapClipPlanToOverlayPlan_SubtitleBoxFitsCaptionLines locks the burned
+// caption box: RenderingGen centres the text inside the box declared here, so
+// a one-line box pushes the two-line captions the ASS contract produces out of
+// their safe area (and makes their keyline look inflated).
+func TestMapClipPlanToOverlayPlan_SubtitleBoxFitsCaptionLines(t *testing.T) {
+	plan := mapperPlan(t, &scriptpkg.VideoVisualStyleSpec{
+		Font: "Montserrat", Color: "#FFFFFF", FontSizePX: 58, Position: "bottom_center",
+		Shadow: &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.95, BlurPX: 6, OffsetX: 2, OffsetY: 3},
+	})
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map plan: %v", err)
+	}
+	s := decodeOverlaySubtitlesStyle(t, raw)
+	lines := texttracks.DefaultShortFormPolicy().MaxLines
+	want := int(math.Ceil(58*1.25)) * lines
+	if s.HeightPX != want {
+		t.Fatalf("subtitle box height = %d, want %d (font 58 x %d lines)", s.HeightPX, want, lines)
+	}
+}
+
+// TestMapClipPlanToOverlayPlan_ExplicitSubtitleBoxWins verifies a caller that
+// declares its own box keeps it verbatim.
+func TestMapClipPlanToOverlayPlan_ExplicitSubtitleBoxWins(t *testing.T) {
+	plan := mapperPlan(t, &scriptpkg.VideoVisualStyleSpec{
+		Font: "Montserrat", Color: "#FFFFFF", FontSizePX: 58, Position: "bottom_center",
+		HeightPX: 240, WidthPX: 1200,
+		Shadow: &scriptpkg.VideoShadowSpec{Color: "#000000", Opacity: 0.95, BlurPX: 6, OffsetX: 2, OffsetY: 3},
+	})
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map plan: %v", err)
+	}
+	s := decodeOverlaySubtitlesStyle(t, raw)
+	if s.HeightPX != 240 || s.WidthPX != 1200 {
+		t.Fatalf("explicit subtitle box not verbatim: %+v", s)
 	}
 }

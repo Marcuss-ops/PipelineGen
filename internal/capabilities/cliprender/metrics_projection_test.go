@@ -11,7 +11,6 @@ import (
 	"context"
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -142,7 +141,7 @@ func TestWorker_ProjectsRendererPhasesOntoRun(t *testing.T) {
 	}})
 	w.WithRenderPublisher(&fakeRenderPublisher{})
 
-	if _, err := w.Handle(ctx, &job.Job{ID: "job-obs-3", Payload: renderJobPayload(t, baseRenderRequest())}, nil); err != nil {
+	if _, err := handleRendered(t, ctx, w, "job-obs-3", baseRenderRequest()); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 	run.Finish()

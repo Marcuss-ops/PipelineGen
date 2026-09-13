@@ -237,6 +237,11 @@ jobs:
   # YouTube clip extraction policy: max per-clip duration in seconds.
   # Canonical default is 60; raise it (e.g. 120) for longer clips.
   youtube_max_segment_duration_seconds: 60
+  # Dedicated Master budget for clip.render settle continuations
+  # (render_phase=settle). The general pool EXCLUDES this phase, so a remote
+  # render waiting on RenderingGen cannot occupy general worker slots.
+  # 0 disables the split (single unscoped pool). Default 16.
+  clip_render_settle_workers: 16
 
 scripts:
   # ScriptFlow capability gate. In production a missing required
@@ -278,7 +283,6 @@ features:
   images_enabled: true
   stock_pipeline_enabled: true
   clip_render_enabled: false
-  clip_async_drive_enabled: true
   voiceover_enabled: false
 
 # NOTE (June 2026 drft-fix): the previous config.example.yaml featured

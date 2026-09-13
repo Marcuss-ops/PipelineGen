@@ -94,13 +94,23 @@ func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 		Backend: "chronon_vulkan", CopyEligible: true,
 		Codec: "h264", CodecProfile: "High", Container: "mov,mp4,m4a,3gp,3g2,mj2",
 		PixelFormat: "yuv420p", AudioStreams: 1,
+		OutputFacts: &queueclient.OutputFacts{
+			Container: "mov,mp4,m4a,3gp,3g2,mj2", VideoCodec: "h264", VideoProfile: "High",
+			PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+			VideoTimeBaseNum: 1, VideoTimeBaseDen: 12288, SARNum: 1, SARDen: 1,
+			ColorRange: "tv", ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709",
+			KeyframeInterval: 48, AudioStreams: 1, AudioCodec: "aac",
+		},
 	}}}
 	executor, err := NewClipRenderExecutor(q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	plan := validClipPlan(t)
-	outcome, err := executor.Render(context.Background(), plan)
+	if err := executor.Submit(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := executor.Settle(context.Background(), plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +166,15 @@ func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 	if outcome.Container != "mov,mp4,m4a,3gp,3g2,mj2" || outcome.VideoCodec != "h264" ||
 		outcome.VideoProfile != "High" || outcome.PixelFormat != "yuv420p" || outcome.AudioStreams != 1 {
 		t.Fatalf("certified structural facts lost in outcome: %+v", outcome)
+	}
+	// The complete fact set must survive the raw relay so the contract gate can
+	// validate the dimensions the local probe cannot observe.
+	if outcome.Facts == nil {
+		t.Fatal("complete certified fact set lost in outcome")
+	}
+	if outcome.Facts.KeyframeInterval != 48 || outcome.Facts.VideoTimeBaseDen != 12288 ||
+		outcome.Facts.SARNum != 1 || outcome.Facts.ColorSpace != "bt709" {
+		t.Fatalf("complete certified fact set corrupted: %+v", outcome.Facts)
 	}
 }
 
@@ -263,7 +282,11 @@ func TestOverlayPlanAssetsShipsFontForBurnSubtitles(t *testing.T) {
 func TestClipRenderExecutorRejectsMissingCertifiedArtifact(t *testing.T) {
 	q := &fakeClipQueue{result: queueclient.Job{State: queueclient.StateCompleted}}
 	executor, _ := NewClipRenderExecutor(q)
-	if _, err := executor.Render(context.Background(), validClipPlan(t)); err == nil {
+	plan := validClipPlan(t)
+	if err := executor.Submit(context.Background(), plan); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if _, err := executor.Settle(context.Background(), plan); err == nil {
 		t.Fatal("expected missing artifact to fail closed")
 	}
 }
@@ -277,7 +300,11 @@ func TestClipRenderExecutorRejectsNonChrononArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executor.Render(context.Background(), validClipPlan(t)); err == nil {
+	plan := validClipPlan(t)
+	if err := executor.Submit(context.Background(), plan); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if _, err := executor.Settle(context.Background(), plan); err == nil {
 		t.Fatal("expected non-Chronon artifact to fail closed")
 	}
 }
@@ -481,8 +508,8 @@ func TestClipRenderExecutorPropagatesRetryError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = executor.Render(context.Background(), validClipPlan(t))
-	if err == nil {
+	plan := validClipPlan(t)
+	if err = executor.Submit(context.Background(), plan); err == nil {
 		t.Fatal("expected the queue retry failure to propagate")
 	}
 	if !strings.Contains(err.Error(), "retry failed for clip-1") || !strings.Contains(err.Error(), "queue retry unavailable") {

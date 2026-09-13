@@ -202,6 +202,8 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	// rather than silently overwriting.
 	result, err := p.files.PutFile(ctx, PutFileRequest{
 		LocalPath:      req.LocalPath,
+		SourceURL:      req.SourceURL,
+		ContentType:    req.ContentType,
 		FolderID:       resolved.FolderID,
 		Filename:       filename,
 		Description:    req.Description,

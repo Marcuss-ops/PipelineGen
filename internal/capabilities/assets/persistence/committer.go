@@ -234,6 +234,48 @@ type AssetMutationCommitter interface {
 	UpdateDriveDeliveryByLegacyHash(ctx context.Context, hash string, mutation DriveDeliveryMutation) error
 }
 
+// AssetSoftDeleter is the narrow media-retirement port owned by the
+// canonical asset persistence boundary.
+//
+// WHY IT EXISTS SEPARATELY FROM AssetMutationCommitter. Retirement is the one
+// media mutation that capabilities apply directly (as opposed to through the
+// commit/dispatcher entry points), and reaching it through the generic
+// detail.Repository seam carried no information about which database owned the
+// write: in PostgreSQL mode the composition root could satisfy that seam with
+// the operational SQLite facade, so DeleteMedia/DeleteAssetRecord silently
+// retired the row on the wrong engine while every SQL-level gate stayed green.
+// Naming the retirement in the port package removes that ambiguity: the
+// PostgreSQL committer answers SoftDeleteAsset (the documented mirror of
+// imagesregistry.ClipsRepository.SoftDelete, same lifecycle_state + deleted_at
+// pair), and the production concrete is resolved by
+// CanonicalAssetSoftDeleter below.
+//
+// Narrowness is deliberate (Pattern 0): a caller that only retires an asset
+// cannot reach the other fifteen mutation methods by accident.
+type AssetSoftDeleter interface {
+	SoftDeleteAsset(ctx context.Context, assetID string) error
+}
+
+// CanonicalAssetSoftDeleter resolves the media-retirement surface behind a
+// committer. The PostgreSQL media engine is the ONLY implementation that
+// answers; nil means the media plane is closed and the caller MUST fail closed
+// rather than select an engine of its own.
+//
+// This is the single owner of that decision. Capabilities compose it instead
+// of type-asserting the committer themselves, so a second resolution rule
+// cannot drift into existence, and no capability can silently keep an
+// operational SQLite fallback alive for a write the canonical committer owns.
+func CanonicalAssetSoftDeleter(committer AssetCommitter) AssetSoftDeleter {
+	if committer == nil {
+		return nil
+	}
+	deleter, ok := committer.(AssetSoftDeleter)
+	if !ok {
+		return nil
+	}
+	return deleter
+}
+
 // DriveDeliveryMutation is the canonical post-commit Drive projection update.
 type DriveDeliveryMutation struct {
 	DriveFileID  string

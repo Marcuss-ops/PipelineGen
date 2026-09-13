@@ -66,10 +66,9 @@ var _ mutations.AssetMutationDispatcher = (*pr7StubDispatcher)(nil)
 func TestPR7_ClipsRegistry_UpsertMedia_NilDispatcher_FailClosed(t *testing.T) {
 	r := NewClipsRegistry(
 		nil, // db
-		nil, // assets.Repository
 		nil, // querySvc
 		nil, // processing
-		nil, // dispatcher nil → strict fail-closed
+		nil, // committer nil → strict fail-closed
 	)
 	require.NotNil(t, r)
 

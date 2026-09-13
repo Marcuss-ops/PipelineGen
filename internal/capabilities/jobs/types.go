@@ -200,6 +200,11 @@ type RunnerConfig struct {
 	// render_phase=settle) without a second job type.
 	PayloadMatch jobs.PayloadMatch
 
+	// PayloadNotMatch optionally EXCLUDES jobs from every worker in this
+	// runner (kernel/job.PayloadNotMatch): the default pool excludes the phase
+	// a dedicated pool owns (render_phase=settle). Empty = no exclusion.
+	PayloadNotMatch jobs.PayloadNotMatch
+
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): exponential-backoff
 	// subsumed into the config; null-valued here means the Worker
 	// uses the legacy fixed-poll behaviour (no backoff escalation).

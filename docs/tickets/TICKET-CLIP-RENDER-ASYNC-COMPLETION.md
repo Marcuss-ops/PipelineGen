@@ -204,9 +204,15 @@ async redesign.
       published artifact, no duplicate Drive object, no lost render.
 - [x] Before/after throughput report at fixed concurrency proving the slot is
       not occupied while Chronon renders. — `make bench-cliprender` (§8).
-- [ ] Guardrail (dedicated clip-render budget) landed and documented as
-      temporary. — the benchmark models it (`WaiterPool`); the configuration
-      change itself is deployment work.
+- [x] Guardrail (dedicated clip-render budget) landed and documented as
+      temporary. — `jobs.clip_render_settle_workers` (default 16, `0` disables)
+      builds a dedicated settle pool (JobTypes=[clip.render],
+      PayloadMatch{render_phase=settle}) and the general pool EXCLUDES
+      `render_phase=settle` via the new kernel/job `PayloadNotMatch` +
+      `ClaimNextMatchingExcluding`. Pinned by the kernel, SQLite, jobs-worker and
+      wiring tests. See
+      `docs/tickets/TICKET-CLIP-RENDER-CRITICAL-PATH-2026-09-13.md` §2. The
+      benchmark's `WaiterPool` remains the pre-production model.
 
 ## 6. LANDED — the render-boundary split + the continuation contract
 

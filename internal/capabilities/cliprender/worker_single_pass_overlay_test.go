@@ -12,17 +12,6 @@ import (
 // segment (the sealed plan validates it fail-closed).
 var singlePassSegmentSHA = strings.Repeat("b", 64)
 
-func singlePassOverlayProbe() *fakeOutputProber {
-	return &fakeOutputProber{probe: &OutputProbe{
-		Container: "mp4", HasVideo: true, HasAudio: true,
-		VideoCodec: "h264", VideoProfile: "high", PixelFormat: "yuv420p",
-		Width: 1920, Height: 1080, FPS: 24.0, FPSNum: 24, FPSDen: 1,
-		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000, Channels: 2,
-		ChannelLayout: "stereo", AudioBitrate: "128k",
-		VideoStreams: 1, AudioStreams: 1, StartPTS: 0,
-	}}
-}
-
 // TestWorker_OverlaySealsSegmentIntoPlan pins the single-encode contract: the
 // resolved overlay segment is part of the SEALED plan handed to the render
 // boundary, so the clip is encoded exactly once with the overlay composited
@@ -50,8 +39,7 @@ func TestWorker_OverlaySealsSegmentIntoPlan(t *testing.T) {
 	}}
 	w.WithRenderExecutor(renderer).
 		WithRenderPublisher(publisher).
-		WithOverlaySegmentResolver(resolver).
-		WithOutputProber(singlePassOverlayProbe())
+		WithOverlaySegmentResolver(resolver)
 
 	req := baseRenderRequest()
 	req.Overlay = &OverlayRefSpec{
@@ -63,7 +51,7 @@ func TestWorker_OverlaySealsSegmentIntoPlan(t *testing.T) {
 		EndUS:              950000,
 	}
 
-	if _, err := w.Handle(context.Background(), &job.Job{ID: "job-single-pass", Payload: renderJobPayload(t, req)}, nil); err != nil {
+	if _, err := handleRendered(t, context.Background(), w, "job-single-pass", req); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 

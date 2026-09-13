@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -174,6 +175,38 @@ func TestClipRenderDriveDeliveryHandler_DeliversSidecarBundle(t *testing.T) {
 	}
 	if _, err := os.Stat(sidecarPath); !os.IsNotExist(err) {
 		t.Errorf("staged sidecar still exists after delivery, err=%v", err)
+	}
+}
+
+// TestClipRenderDriveDeliveryHandler_LocatorOnlyStreamsFromObjectStore pins the
+// locator-first delivery: an intent with a certified object-store locator and NO
+// local path is valid, passes the URL to the publisher for streaming, and does
+// not require (or touch) a staged file.
+func TestClipRenderDriveDeliveryHandler_LocatorOnlyStreamsFromObjectStore(t *testing.T) {
+	sha := strings.Repeat("ab", 32)
+	artifactURL := "http://objectstore:9000/objects/" + sha
+	payload := cliprender.ClipRenderDriveDeliveryRequest{
+		SchemaVersion: "clip.render.drive_delivery.v1",
+		AssetID:       "cliprender_locator",
+		RunID:         "run-locator",
+		SourceAssetID: "asset-src-1",
+		ArtifactURL:   artifactURL,
+		StorageKey:    sha,
+		ContentType:   "video/mp4",
+		Filename:      "Clip.mp4",
+		FolderID:      "folder-leaf",
+		ContentHash:   sha,
+		SizeBytes:     4096,
+	}
+	req := handleVideoDelivery(t, payload)
+	if req.LocalPath != "" {
+		t.Errorf("publisher LocalPath = %q, want empty (no local staging)", req.LocalPath)
+	}
+	if req.SourceURL != artifactURL || req.ContentType != "video/mp4" {
+		t.Errorf("publisher source = %q/%q, want the certified object-store locator", req.SourceURL, req.ContentType)
+	}
+	if req.SizeBytes != payload.SizeBytes {
+		t.Errorf("publisher size = %d, want %d", req.SizeBytes, payload.SizeBytes)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
@@ -105,7 +106,13 @@ type Service struct {
 	jobsSvc           *appjobs.Service
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
-	assetProcessing detail.ProcessingRepository
+	//
+	// assetProcessing is the narrow engine-named asset_processing write port
+	// (persistence.AssetProcessingWriter), resolved by the composition root
+	// from the canonical committer. It replaced the generic
+	// detail.ProcessingRepository seam, which let pipeline-step progress land
+	// on the operational SQLite mirror while PostgreSQL owned media_assets.
+	assetProcessing persistence.AssetProcessingWriter
 	assetVersions   detail.VersionRepository
 
 	// assetFinalizer is the canonical transactional asset finalizer.
@@ -164,10 +171,6 @@ type Service struct {
 	// provide a real AdminSystemProber; the fallback exists only for
 	// test fixtures / unusual composition paths.
 	systemProber SystemProber
-
-	// locationRepo persists physical asset locations (Wave C / July 2026).
-	// Used by stagePersistResults to record rendition locations.
-	locationRepo detail.LocationRepository
 
 	// renditionRepo persists asset rendition metadata (July 2026).
 	// Used by stagePersistResults to record generated renditions.
@@ -254,7 +257,6 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		conceptRepo:       deps.MediaMemoryConceptRepo,
 		bindingRepo:       deps.MediaMemoryBindingRepo,
 		normalizer:        deps.MediaMemoryNormalizer,
-		locationRepo:      deps.Repos.LocationRepository,
 		renditionRepo:     deps.Repos.RenditionRepository,
 		transcriber:       deps.Transcriber,
 		textTrackRepo:     deps.Repos.TextTrackRepo,

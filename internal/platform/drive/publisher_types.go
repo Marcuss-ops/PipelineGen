@@ -50,7 +50,13 @@ const (
 // PutFileRequest is the single low-level op the Publisher must route
 // conflict-aware uploads through.
 type PutFileRequest struct {
-	LocalPath      string
+	LocalPath string
+	// SourceURL is the OPTIONAL remote source. When LocalPath is empty the
+	// uploader streams SourceURL → Drive (locator-first clip.render delivery),
+	// using ExpectedSize as the upload length.
+	SourceURL string
+	// ContentType, when set, overrides the extension-derived multipart type.
+	ContentType    string
 	FolderID       string
 	Filename       string
 	Description    string                  // optional; empty means "no description"

@@ -6,7 +6,9 @@ import (
 	"os"
 	"time"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
@@ -23,6 +25,21 @@ type jobRunnerDeps struct {
 	log  *zap.Logger
 }
 
+// renderPhasePayloadKey is the payload key that carries the clip.render
+// continuation phase. The settle budget below is keyed on this value; it is the
+// SAME literal the capability writes (cliprender.payloadKeyRenderPhase is
+// private), pinned by TestBuildClipRenderSettleRunnerClaimsSettlePhaseOnly.
+const renderPhasePayloadKey = "render_phase"
+
+// settleRenderPhase is the value that marks a clip.render continuation: the job
+// that waits for the remote RenderingGen render and publishes the artifact.
+const settleRenderPhase = "settle"
+
+const (
+	jobRunnerPoolGeneral = "general"
+	jobRunnerPoolSettle  = "clip-render-settle"
+)
+
 func workerDefault(cfg *config.Config) int {
 	if cfg == nil || cfg.Jobs.MaxParallelPerProject < 4 {
 		return 4
@@ -37,17 +54,23 @@ func leaseTTLDefault(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.Jobs.LeaseTTLSeconds) * time.Second
 }
 
-// buildJobRunner constructs the canonical runner. Registry, dispatcher and
-// service orchestration remain root-owned; persistence-specific completion
-// classification is injected at the platform boundary.
-func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
-	if deps.root == nil ||
-		deps.root.Jobs.Service == nil ||
-		deps.root.Jobs.Dispatcher == nil ||
-		deps.root.Jobs.Repo == nil {
-		return nil
+// settleWorkerBudget returns the dedicated clip.render settle budget, or 0 when
+// the split is disabled (feature off or budget <= 0 — the pre-guardrail
+// behaviour, deliberately reachable so an operator can roll the split back
+// without a code change).
+func settleWorkerBudget(cfg *config.Config) int {
+	if cfg == nil || !cfg.Features.ClipRenderEnabled {
+		return 0
 	}
+	if cfg.Jobs.ClipRenderSettleWorkers <= 0 {
+		return 0
+	}
+	return cfg.Jobs.ClipRenderSettleWorkers
+}
 
+// jobRunnerBaseConfig is the shared runner configuration (poll policy, backoff,
+// lease TTL, notifier) before the per-pool type/phase scoping is applied.
+func jobRunnerBaseConfig(deps jobRunnerDeps) appjobs.RunnerConfig {
 	pollMaxBackoff := 60 * time.Second
 	if deps.cfg.Jobs.PollMaxBackoff != "" {
 		if parsed, perr := time.ParseDuration(deps.cfg.Jobs.PollMaxBackoff); perr == nil && parsed > 0 {
@@ -68,7 +91,7 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		pollConsecutiveEmpty = 0
 	}
 
-	cfg := appjobs.RunnerConfig{
+	return appjobs.RunnerConfig{
 		Workers:   workerDefault(deps.cfg),
 		PollEvery: 2 * time.Second,
 		LeaseTTL:  leaseTTLDefault(deps.cfg),
@@ -80,18 +103,51 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		},
 		Notifier: deps.root.Jobs.Repo,
 	}
-	deps.log.Info("Job runner created",
-		zap.Int("workers", cfg.Workers),
-		zap.Duration("poll_max_backoff", cfg.Backoff.MaxBackoff),
-		zap.Float64("poll_jitter_fraction", cfg.Backoff.JitterFraction),
-		zap.Int("poll_consecutive_empty_threshold", cfg.Backoff.ConsecutiveEmptyThreshold))
+}
 
-	runner := appjobs.NewRunner(
-		deps.root.Jobs.Repo,
-		deps.root.Jobs.Dispatcher,
-		deps.log,
-		cfg,
-	)
+// buildJobRunnerObserver builds the RunObserver for one pool. It is built per
+// pool so each pool owns its recorder; abandoned-run recovery is idempotent, so
+// the second pool observing nothing to recover is a no-op.
+func buildJobRunnerObserver(deps jobRunnerDeps) *kernobs.RunObserver {
+	var recorder kernobs.Recorder
+	if deps.root.ObservabilityDB != nil && deps.root.ObservabilityDB.DB != nil {
+		recorder = obsmetrics.NewSQLiteRecorderWithLogger(deps.root.ObservabilityDB.DB, deps.log)
+		if reconciler, ok := recorder.(kernobs.AbandonedRunReconciler); ok {
+			if _, err := reconciler.RecoverAbandoned(context.Background(), time.Now().UTC()); err != nil {
+				deps.log.Warn("observability abandoned-run recovery failed", zap.Error(err))
+			}
+		}
+	} else {
+		deps.log.Warn("observability recorder unavailable; using metrics-only projection")
+	}
+	return kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector())
+}
+
+// buildJobRunnerResourceSampler builds the run resource sampler for one pool
+// (nil when unavailable), plus the host stamped on each observation.
+func buildJobRunnerResourceSampler(deps jobRunnerDeps) (kernobs.RunResourceSampler, string) {
+	if deps.root.DB == nil || deps.root.DB.DB == nil {
+		return nil, ""
+	}
+	store, err := perfstore.NewResourceStore(deps.root.DB.DB)
+	if err != nil {
+		deps.log.Warn("resource sampler store unavailable; run resource telemetry disabled", zap.Error(err))
+		return nil, ""
+	}
+	sampler, err := perfstore.NewSampler(procmetrics.New(procmetrics.Options{}), store)
+	if err != nil {
+		deps.log.Warn("resource sampler unavailable; run resource telemetry disabled", zap.Error(err))
+		return nil, ""
+	}
+	host, _ := os.Hostname()
+	return sampler, host
+}
+
+// newJobRunnerPool constructs one pool from an explicit config. Registry,
+// dispatcher and service orchestration remain root-owned; persistence-specific
+// completion classification is injected at the platform boundary.
+func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig) *appjobs.Runner {
+	runner := appjobs.NewRunner(deps.root.Jobs.Repo, deps.root.Jobs.Dispatcher, deps.log, cfg)
 	runner.WithRegistry(appjobs.Compose())
 	runner.WithClaimSnapshotter(deps.root.Jobs.Repo)
 	if deps.root.Jobs.Broker != nil {
@@ -104,60 +160,107 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 	if deps.root.Jobs.JobLedger != nil {
 		runner.WithJobRegistry(deps.root.Jobs.JobLedger)
 	}
-
-	var recorder kernobs.Recorder
-	if deps.root.ObservabilityDB != nil && deps.root.ObservabilityDB.DB != nil {
-		recorder = obsmetrics.NewSQLiteRecorderWithLogger(deps.root.ObservabilityDB.DB, deps.log)
-		if reconciler, ok := recorder.(kernobs.AbandonedRunReconciler); ok {
-			if _, err := reconciler.RecoverAbandoned(context.Background(), time.Now().UTC()); err != nil {
-				deps.log.Warn("observability abandoned-run recovery failed", zap.Error(err))
-			}
-		}
-	} else {
-		deps.log.Warn("observability recorder unavailable; using metrics-only projection")
+	runner.WithObserver(buildJobRunnerObserver(deps))
+	if sampler, host := buildJobRunnerResourceSampler(deps); sampler != nil {
+		runner.WithResourceSampler(sampler, host)
 	}
-	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
-
-	// Event-driven aggregate-parent finalisation: a child that commits terminal
-	// hands its parent straight to the clip.render aggregator, so a finished clip
-	// does not wait for the recovery sweeper. The adapter ignores every child
-	// type it does not own, so attaching it to all workers is safe.
 	if deps.cfg.Features.ClipRenderEnabled {
 		if clipAgg := clipRenderParentAggregator(deps.root, deps.log); clipAgg != nil {
 			runner.WithParentCompletionNotifier(&clipRenderParentNotifier{agg: clipAgg})
 		}
 	}
-
-	if deps.root.DB != nil && deps.root.DB.DB != nil {
-		store, err := perfstore.NewResourceStore(deps.root.DB.DB)
-		if err != nil {
-			deps.log.Warn("resource sampler store unavailable; run resource telemetry disabled", zap.Error(err))
-		} else {
-			sampler, err := perfstore.NewSampler(procmetrics.New(procmetrics.Options{}), store)
-			if err != nil {
-				deps.log.Warn("resource sampler unavailable; run resource telemetry disabled", zap.Error(err))
-			} else {
-				host, _ := os.Hostname()
-				runner.WithResourceSampler(sampler, host)
-			}
-		}
-	}
 	return runner
 }
 
-func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
-	runner := buildJobRunner(deps)
-	if runner == nil {
+func jobRunnerRootReady(deps jobRunnerDeps) bool {
+	return deps.root != nil &&
+		deps.root.Jobs.Service != nil &&
+		deps.root.Jobs.Dispatcher != nil &&
+		deps.root.Jobs.Repo != nil
+}
+
+// buildJobRunner constructs the GENERAL pool: every job type, but — when the
+// settle budget is enabled — NOT the clip.render settle phase. The exclusion is
+// the load-bearing half of the guardrail: without it the general pool would
+// still claim the settle continuations it exists to avoid and a slow GPU
+// backlog would keep starving unrelated jobs.
+func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
+	if !jobRunnerRootReady(deps) {
 		return nil
 	}
+	cfg := jobRunnerBaseConfig(deps)
+	deps.log.Info("Job runner created",
+		zap.String("pool", jobRunnerPoolGeneral),
+		zap.Int("workers", cfg.Workers),
+		zap.Duration("poll_max_backoff", cfg.Backoff.MaxBackoff),
+		zap.Float64("poll_jitter_fraction", cfg.Backoff.JitterFraction),
+		zap.Int("poll_consecutive_empty_threshold", cfg.Backoff.ConsecutiveEmptyThreshold))
+	if settleWorkerBudget(deps.cfg) > 0 {
+		cfg.PayloadNotMatch = job.PayloadNotMatch{renderPhasePayloadKey: settleRenderPhase}
+	}
+	return newJobRunnerPool(deps, jobRunnerPoolGeneral, cfg)
+}
+
+// buildClipRenderSettleRunner constructs the DEDICATED clip.render settle pool,
+// or nil when the split is disabled. It claims only clip.render jobs whose
+// payload carries render_phase=settle, so a remote render waiting on
+// RenderingGen can never occupy a general worker slot.
+func buildClipRenderSettleRunner(deps jobRunnerDeps) *appjobs.Runner {
+	if !jobRunnerRootReady(deps) {
+		return nil
+	}
+	budget := settleWorkerBudget(deps.cfg)
+	if budget <= 0 {
+		return nil
+	}
+	cfg := jobRunnerBaseConfig(deps)
+	cfg.Workers = budget
+	cfg.JobTypes = []string{cliprender.TypeClipRender}
+	cfg.PayloadMatch = job.PayloadMatch{renderPhasePayloadKey: settleRenderPhase}
+	deps.log.Info("clip.render settle pool created",
+		zap.String("pool", jobRunnerPoolSettle),
+		zap.Int("workers", budget),
+		zap.String("phase", settleRenderPhase),
+		zap.String("excluded_from", jobRunnerPoolGeneral))
+	return newJobRunnerPool(deps, jobRunnerPoolSettle, cfg)
+}
+
+type jobRunnerPool struct {
+	name    string
+	runner  *appjobs.Runner
+	workers int
+}
+
+func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
+	general := buildJobRunner(deps)
+	if general == nil {
+		return nil
+	}
+	pools := []jobRunnerPool{{
+		name:    jobRunnerPoolGeneral,
+		runner:  general,
+		workers: workerDefault(deps.cfg),
+	}}
+	if settle := buildClipRenderSettleRunner(deps); settle != nil {
+		pools = append(pools, jobRunnerPool{
+			name:    jobRunnerPoolSettle,
+			runner:  settle,
+			workers: settleWorkerBudget(deps.cfg),
+		})
+	}
 	disp := deps.root.Jobs.Dispatcher
-	workers := workerDefault(deps.cfg)
 	return &StartupStep{
 		Name: "job-runner", Required: true,
 		Start: func(startCtx context.Context) error {
 			disp.Freeze()
-			concurrent.SafeGo("job-runner", func() { runner.Start(startCtx) })
-			deps.log.Info("Job runner started after full wiring", zap.Int("workers", workers))
+			for _, pool := range pools {
+				pool := pool
+				concurrent.SafeGo("job-runner-"+pool.name, func() { pool.runner.Start(startCtx) })
+			}
+			for _, pool := range pools {
+				deps.log.Info("Job runner pool started after full wiring",
+					zap.String("pool", pool.name), zap.Int("workers", pool.workers))
+			}
 			return nil
 		},
 		Stop: func(_ context.Context) error { return nil },

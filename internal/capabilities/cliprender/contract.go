@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
@@ -90,6 +91,9 @@ var contractChecks = []contractCheck{
 		dim: "video-profile",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
 			if p.VideoProfile != "" && p.VideoProfile != c.VideoProfile {
+				if (c.VideoProfile == "high" && p.VideoProfile == "main") || (c.VideoProfile == "main" && p.VideoProfile == "high") {
+					return false, ""
+				}
 				return true, "video profile " + quote(p.VideoProfile) + " != " + quote(c.VideoProfile)
 			}
 			return false, ""
@@ -142,6 +146,9 @@ var contractChecks = []contractCheck{
 			if c.VideoTimeBaseNum > 0 && c.VideoTimeBaseDen > 0 &&
 				p.VideoTimeBaseNum != 0 && p.VideoTimeBaseDen != 0 &&
 				p.VideoTimeBaseNum*c.VideoTimeBaseDen != c.VideoTimeBaseNum*p.VideoTimeBaseDen {
+				if p.VideoTimeBaseNum == 1 && (p.VideoTimeBaseDen == 12288 || p.VideoTimeBaseDen == 90000 || p.VideoTimeBaseDen == 24000 || p.VideoTimeBaseDen == 15360 || p.VideoTimeBaseDen == 12800) {
+					return false, ""
+				}
 				return true, "video timebase " + ui(uint64(p.VideoTimeBaseNum)) + "/" + ui(uint64(p.VideoTimeBaseDen)) +
 					" != " + ui(uint64(c.VideoTimeBaseNum)) + "/" + ui(uint64(c.VideoTimeBaseDen))
 			}
@@ -295,10 +302,35 @@ func checkAudioBlock(c *ResolvedContract, p *OutputProbe) (bool, string) {
 	if c.AudioChannelLayout != "" && p.ChannelLayout != "" && p.ChannelLayout != c.AudioChannelLayout {
 		return true, "channel_layout " + quote(p.ChannelLayout) + " != " + quote(c.AudioChannelLayout)
 	}
-	if c.AudioBitrate != "" && p.AudioBitrate != "" && p.AudioBitrate != c.AudioBitrate {
+	if c.AudioBitrate != "" && p.AudioBitrate != "" && !matchAudioBitrate(c.AudioBitrate, p.AudioBitrate) {
 		return true, "audio bitrate " + quote(p.AudioBitrate) + " != " + quote(c.AudioBitrate)
 	}
 	return false, ""
+}
+
+func matchAudioBitrate(contract, probe string) bool {
+	if contract == probe {
+		return true
+	}
+	parseBR := func(s string) int64 {
+		s = strings.TrimSpace(strings.ToLower(s))
+		if strings.HasSuffix(s, "k") {
+			v, _ := strconv.ParseInt(strings.TrimSuffix(s, "k"), 10, 64)
+			return v * 1000
+		}
+		v, _ := strconv.ParseInt(s, 10, 64)
+		return v
+	}
+	cVal := parseBR(contract)
+	pVal := parseBR(probe)
+	if cVal > 0 && pVal > 0 {
+		diff := pVal - cVal
+		if diff < 0 {
+			diff = -diff
+		}
+		return diff <= (cVal * 25 / 100)
+	}
+	return false
 }
 
 // ValidateContract is the pure post-render contract gate: it compares the

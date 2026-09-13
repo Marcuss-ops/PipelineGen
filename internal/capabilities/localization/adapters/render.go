@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -230,18 +231,48 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	a.logPhase("render_start", plan.Revision,
 		zap.String("output_path", clipPlan.OutputPath),
 	)
-	outcome, err := a.renderer.Render(ctx, clipPlan)
+	// Drive the same Submit/Settle continuation every other caller uses. The
+	// blocking Render form was DELETED in the 2026-09-13 audit: localized
+	// renders are driven from the client-side scheduler, so the two halves are
+	// adjacent here, but there is now exactly ONE way to drive a render (and
+	// exactly one place that can release a worker slot while RenderingGen runs).
+	if submitErr := a.renderer.Submit(ctx, clipPlan); submitErr != nil {
+		submitMS := time.Since(renderStart).Milliseconds()
+		a.logPhaseFailure("render_submit_failed", plan.Revision, zap.Int64("duration_ms", submitMS), zap.Error(submitErr))
+		return localization.RenderFacts{}, fmt.Errorf("localization: submit clip render: %w", submitErr)
+	}
+	outcome, err := a.renderer.Settle(ctx, clipPlan)
 	renderMS := time.Since(renderStart).Milliseconds()
 	if err != nil {
 		a.logPhaseFailure("render_failed", plan.Revision, zap.Int64("duration_ms", renderMS), zap.Error(err))
 		return localization.RenderFacts{}, fmt.Errorf("localization: execute clip render: %w", err)
 	}
-	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
+	if outcome == nil || outcome.SizeBytes <= 0 {
 		a.logPhaseFailure("render_invalid_outcome", plan.Revision,
 			zap.Int64("duration_ms", renderMS),
 			zap.Any("outcome", outcome),
 		)
 		return localization.RenderFacts{}, fmt.Errorf("localization: clip render returned an invalid outcome")
+	}
+	// Locator-first boundary: Settle no longer writes the artifact locally, but
+	// localization genuinely needs the bytes (it publishes the localized file
+	// and hashes it). Materialize on demand through the boundary, which
+	// verifies size + certified digest while streaming. Fail-closed: a
+	// locator-only outcome from a renderer that cannot materialize is an error.
+	if strings.TrimSpace(outcome.OutputPath) == "" {
+		materializer, ok := a.renderer.(cliprender.RenderArtifactMaterializer)
+		if !ok {
+			a.logPhaseFailure("materialize_unavailable", plan.Revision, zap.String("reason", "locator_only_outcome"))
+			return localization.RenderFacts{}, fmt.Errorf("localization: render returned a locator-only outcome but the renderer cannot materialize it")
+		}
+		materializeStart := time.Now()
+		if _, mErr := materializer.Materialize(ctx, outcome, plan.OutputPath); mErr != nil {
+			a.logPhaseFailure("materialize_failed", plan.Revision, zap.Int64("duration_ms", time.Since(materializeStart).Milliseconds()), zap.Error(mErr))
+			return localization.RenderFacts{}, fmt.Errorf("localization: materialize rendered output: %w", mErr)
+		}
+		a.logPhase("materialize_done", plan.Revision,
+			zap.Int64("duration_ms", time.Since(materializeStart).Milliseconds()),
+			zap.String("output_path", outcome.OutputPath))
 	}
 	a.logPhase("render_done", plan.Revision,
 		zap.Int64("duration_ms", renderMS),

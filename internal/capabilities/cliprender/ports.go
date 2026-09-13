@@ -33,7 +33,7 @@ type AssetMaterializer interface {
 // TranscriptResolver owns the canonical transcript mechanics: reuse the
 // existing READY canonical text track (Lookup) or generate one from the
 // materialized source audio (Generate). The capability owns the policy
-// (reuse vs generate vs reuse_or_generate); the resolver owns the mechanics.
+// (reuse vs explicit generate); the resolver owns the mechanics.
 //
 // Lookup returns (result, true, nil) when a READY track exists, (nil, false,
 // nil) when none exists, and (nil, false, err) on a repository failure.
@@ -55,8 +55,20 @@ type ContractResolver interface {
 // geometry, copy policy, subtitle stage and encode timing) comes from the
 // certified Chronon artifact; the concrete adapter never re-derives them.
 type RenderOutcome struct {
+	// OutputPath is the OPTIONAL local materialization of the artifact. It is
+	// empty on the canonical path: the render boundary certifies the artifact
+	// and returns the durable locator below, and only a consumer that really
+	// needs bytes on disk materializes it (RenderArtifactMaterializer).
 	OutputPath string
 	SizeBytes  int64
+	// StorageKey, ArtifactURL and ContentType are the certified DURABLE LOCATOR
+	// of the rendered artifact in RenderingGen's object store. They are the
+	// canonical artifact identity: the render path stages no local copy and the
+	// Drive outbox streams object-store → Drive from this locator. Empty only
+	// for a legacy/test boundary that materialized OutputPath itself.
+	StorageKey  string
+	ArtifactURL string
+	ContentType string
 	// SHA256 is the CERTIFIED content digest of OutputPath. The rendering
 	// boundary already streams the artifact through SHA-256 while downloading
 	// it (verifying the queue's expected digest), so this is the certified
@@ -80,7 +92,14 @@ type RenderOutcome struct {
 	VideoProfile string
 	PixelFormat  string
 	AudioStreams int
-	Backend      RenderBackend
+	// Facts is the COMPLETE structural certification RenderingGen probed on
+	// the artifact it produced (see OutputFacts). It is the certification
+	// owner for every output-contract dimension the local Rust probe cannot
+	// observe — timebase, SAR, colour, field order, GOP interval, the full
+	// audio block. Nil when the boundary certified only the flat summary (a
+	// legacy worker); consumers then fall back to the flat fields above.
+	Facts   *OutputFacts
+	Backend RenderBackend
 	// FFmpegMS is retained as a read-only compatibility projection of the
 	// canonical Metrics report; adapters must not calculate it independently.
 	FFmpegMS          int64
@@ -128,42 +147,54 @@ type RenderOutcome struct {
 	ChrononTimingContentType string
 }
 
-// RenderExecutor executes the sealed ClipRenderPlanV1 in a single Chronon
-// render pass through RenderingGen. The plan is fully resolved before this port is
-// invoked — the executor makes zero business selections. Fail-closed: the
-// output must exist and be non-empty on success; a missing or drifted
-// artifact is a typed error, never a silent no-op.
-type RenderExecutor interface {
-	Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
-}
-
-// AsyncRenderExecutor is the SPLIT form of RenderExecutor: the same render
-// boundary exposed as its two halves so the Master slot is released while
-// RenderingGen renders (Wave B).
+// RenderExecutor is the canonical clip.render boundary, exposed as its TWO
+// HALVES so the caller's worker slot is released while RenderingGen renders.
+// The plan is fully resolved before this port is invoked — the executor makes
+// zero business selections.
 //
 //   - Submit performs everything up to and including the durable enqueue of
-//     the remote render (plan mapping, asset prefetch, submit). It must return
-//     as soon as the remote job is accepted — it must NOT wait for it.
+//     the remote render (plan mapping, asset prefetch, submit). It returns as
+//     soon as the remote job is accepted — it must NOT wait for it.
 //   - Settle performs the post-submit half: wait for the terminal state,
 //     require the certified Chronon artifact, download it (hashing in the same
-//     pass) and project the render outcome.
+//     pass) and project the render outcome. Fail-closed: the output must exist
+//     and be non-empty on success; a missing or drifted artifact is a typed
+//     error, never a silent no-op.
 //
 // The split is resumable by construction: the remote job id is the sealed
 // plan's deterministic RunID, so a Settle that runs after a process restart
 // addresses the same remote render without any process-local state.
 //
-// A boundary may implement BOTH RenderExecutor and AsyncRenderExecutor: the
-// worker uses the split form when it is available and the blocking Render when
-// it is not, so no existing deployment breaks on this cut.
-type AsyncRenderExecutor interface {
+// The historical BLOCKING `Render(ctx, plan)` form (Submit immediately
+// followed by Settle in one call) was DELETED in the 2026-09-13 clip.render
+// audit (P2). Its last production caller was the localization adapter, which
+// now drives the two halves explicitly, and keeping it let a boundary that
+// cannot release its slot stay wired by accident. There is exactly one way to
+// drive a render now.
+type RenderExecutor interface {
 	Submit(ctx context.Context, plan ClipRenderPlanV1) error
 	Settle(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
 }
 
+// RenderArtifactMaterializer is the OPTIONAL capability a render boundary
+// implements when it can fetch the certified artifact it locates in the object
+// store on demand. It exists because `Settle` is locator-first: the canonical
+// path never writes the video bytes to disk, and only a consumer that genuinely
+// needs a local file (localization, any future overlay that cannot be composed
+// remotely) materializes. Fail-closed: a materializer that cannot fetch the
+// exact certified bytes is a typed error, never a partial file.
+type RenderArtifactMaterializer interface {
+	// Materialize downloads the artifact located by outcome into destPath,
+	// verifies size + certified digest while streaming, and returns the
+	// verified local path.
+	Materialize(ctx context.Context, outcome *RenderOutcome, destPath string) (string, error)
+}
+
 // OutputProbe is the capability-owned projection of the rendered output's
-// media facts, collected by the OutputProber port AFTER render_clip. The
-// probe reads the actual bytes on disk — contract validation never trusts
-// what the render boundary claimed to encode. Every field is exact for
+// media facts, projected from the artifact RenderingGen CERTIFIED
+// (OutputProbeFromCertified). It is the contract gate's input; the render
+// boundary is the single certification owner, and the redundant local byte
+// probe was deleted in the 2026-09-13 audit. Every field is exact for the
 // assembly-ready gate.
 type OutputProbe struct {
 	Container        string
@@ -202,14 +233,6 @@ type OutputProbe struct {
 	StartPTS         int64
 }
 
-// OutputProber probes the rendered output file. The concrete adapter uses
-// the canonical Rust probe boundary; the capability owns the comparison
-// against the resolved contract (ValidateContract). Fail-closed: a missing
-// or unreadable output is a typed error, never a silent empty probe.
-type OutputProber interface {
-	ProbeOutput(ctx context.Context, path string) (*OutputProbe, error)
-}
-
 // RenderPublishInput is the fully-resolved input for the publish + commit
 // phase. Every value comes from the worker (sealed plan, render outcome,
 // resolved contract, transcript, sidecar artifact); the publisher never
@@ -218,10 +241,18 @@ type RenderPublishInput struct {
 	RunID         string
 	SourceAssetID string
 	SourceTitle   string
-	OutputPath    string
-	Outcome       *RenderOutcome
-	Contract      *ResolvedContract
-	Transcript    *TranscriptResult
+	// OutputPath is the OPTIONAL local materialization. Empty on the canonical
+	// locator-first path.
+	OutputPath string
+	// ArtifactStorageKey/ArtifactURL/ArtifactContentType are the certified
+	// durable locator committed with the asset and handed to the Drive outbox so
+	// delivery streams object-store → Drive without a local copy.
+	ArtifactStorageKey  string
+	ArtifactURL         string
+	ArtifactContentType string
+	Outcome             *RenderOutcome
+	Contract            *ResolvedContract
+	Transcript          *TranscriptResult
 	// Subtitles is the compiled ASS artifact. Drive publication is gated on
 	// its Mode: burned subtitles are baked into the video frames and are
 	// NEVER uploaded; only an explicitly sidecar-mode artifact is uploaded
@@ -309,16 +340,25 @@ const ClipRenderDrivePolicyVersion = "clip-render-v1"
 // that uploads the video, so the render job can complete without waiting for
 // Drive in every subtitle mode.
 type ClipRenderDriveDeliveryRequest struct {
-	SchemaVersion string                      `json:"schema_version"`
-	AssetID       string                      `json:"asset_id"`
-	RunID         string                      `json:"run_id"`
-	SourceAssetID string                      `json:"source_asset_id"`
-	LocalPath     string                      `json:"local_path"`
-	Filename      string                      `json:"filename"`
-	FolderID      string                      `json:"folder_id"`
-	ContentHash   string                      `json:"content_hash"`
-	SizeBytes     int64                       `json:"size_bytes"`
-	Sidecar       *ClipRenderSubtitleDelivery `json:"sidecar,omitempty"`
+	SchemaVersion string `json:"schema_version"`
+	AssetID       string `json:"asset_id"`
+	RunID         string `json:"run_id"`
+	SourceAssetID string `json:"source_asset_id"`
+	// LocalPath is the OPTIONAL locally staged copy. Empty on the canonical
+	// locator-first path: the consumer streams from ArtifactURL instead.
+	LocalPath string `json:"local_path,omitempty"`
+	// StorageKey/ArtifactURL/ContentType are the certified object-store locator
+	// the consumer streams from when LocalPath is empty.
+	StorageKey  string `json:"storage_key,omitempty"`
+	ArtifactURL string `json:"artifact_url,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	Filename    string `json:"filename"`
+	FolderID    string `json:"folder_id"`
+	ContentHash string `json:"content_hash"`
+	SizeBytes   int64  `json:"size_bytes"`
+	// Sidecar (when non-nil) is always a local compiled ASS artifact; the
+	// bundle contract is unchanged.
+	Sidecar *ClipRenderSubtitleDelivery `json:"sidecar,omitempty"`
 }
 
 // ClipRenderSubtitleDelivery is the optional ASS sidecar half of an async

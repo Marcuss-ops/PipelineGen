@@ -17,6 +17,7 @@
 package wiring
 
 import (
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -66,11 +67,14 @@ type artlistProviders struct {
 // constructArtlistRepositories (build_bundles_artlist_publishers.go).
 // All fields are canonical SQLite-backed repos + adapters wrapped
 // through the composition-root adapter layer (godlike/06 SSOT).
-// AssetProcRepo / AssetVerRepo are INTERFACES (the methods on
-// *assets.AssetStoreSQLite return detail.ProcessingRepository /
-// detail.VersionRepository respectively).
+// AssetProcRepo / AssetVerRepo are INTERFACES.
+// AssetProcRepo is the narrow engine-named asset_processing write port
+// (persistence.AssetProcessingWriter), resolved from the canonical committer
+// because asset_processing is media-authoritative; AssetVerRepo is the
+// operational detail.VersionRepository (the methods on
+// *assets.AssetStoreSQLite return it).
 type artlistRepositories struct {
-	AssetProcRepo detail.ProcessingRepository
+	AssetProcRepo persistence.AssetProcessingWriter
 	AssetVerRepo  detail.VersionRepository
 	// RunsAdapter holds the canonical composition-root runs adapter (single
 	// translation site between the artlist.RunRepository port and the

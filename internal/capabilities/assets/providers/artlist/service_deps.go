@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
@@ -150,10 +151,19 @@ type ArtlistDomainDeps struct {
 }
 
 // ArtlistRepoDeps groups the asset lifecycle repositories.
+//
+// MEDIA-SSOT write-bridge (September 2026): AssetProcRepo is the narrow
+// engine-named asset_processing write port (persistence.AssetProcessingWriter)
+// resolved from the canonical committer, not the generic
+// detail.ProcessingRepository seam. The seam named no engine, so the
+// composition root could satisfy it with the operational SQLite store while
+// PostgreSQL owned media_assets, and per-step pipeline progress diverged from
+// the media SSOT. The dead LocationRepository field was deleted outright: the
+// artlist persist path writes locations through the canonical asset finalizer
+// transaction, so the field had zero readers.
 type ArtlistRepoDeps struct {
-	AssetProcRepo       detail.ProcessingRepository
+	AssetProcRepo       persistence.AssetProcessingWriter
 	AssetVerRepo        detail.VersionRepository
-	LocationRepository  detail.LocationRepository
 	RenditionRepository detail.RenditionRepository
 	// TextTrackRepo persists audio transcripts for downloaded clips.
 	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,

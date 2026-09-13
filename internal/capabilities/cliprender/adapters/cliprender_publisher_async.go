@@ -12,6 +12,7 @@ package adapters
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,31 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// artifactExtension resolves the file extension for the published artifact. A
+// locally materialized path supplies it directly; a locator-only artifact
+// derives it from the certified content type, then from the URL path, and
+// falls back to ".mp4" (the only clip.render output contract today).
+func artifactExtension(localPath, contentType, artifactURL string) string {
+	if ext := filepath.Ext(localPath); ext != "" {
+		return ext
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	switch mediaType {
+	case "video/mp4":
+		return ".mp4"
+	case "video/x-matroska":
+		return ".mkv"
+	case "video/webm":
+		return ".webm"
+	}
+	if parsed, err := url.Parse(strings.TrimSpace(artifactURL)); err == nil {
+		if ext := filepath.Ext(parsed.Path); ext != "" {
+			return ext
+		}
+	}
+	return ".mp4"
+}
 
 // asyncStagingDirectory resolves and creates the durable root that detaches
 // rendered artifacts from the ephemeral per-job workspace. The outbox event may

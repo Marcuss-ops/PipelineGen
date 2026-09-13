@@ -207,7 +207,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			defer func() { <-arg.sem }()
 
 			if o.svc.assetProcessing != nil {
-				if err := o.svc.assetProcessing.Start(ctx, arg.w.item.ClipID, "download"); err != nil {
+				if err := o.svc.assetProcessing.StartAssetProcessing(ctx, arg.w.item.ClipID, "download"); err != nil {
 					o.svc.log.Warn("asset_processing.Start failed",
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))
@@ -229,7 +229,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						o.svc.log,
 						func(stage, msg string) error {
 							if o.svc.assetProcessing != nil {
-								return o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, stage, msg)
+								return o.svc.assetProcessing.FailAssetProcessing(ctx, arg.w.item.ClipID, stage, msg)
 							}
 							return nil
 						},
@@ -273,7 +273,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			result, procErr := o.svc.mediaProcessor.Process(ctx, arg.w.processInput)
 			if procErr != nil {
 				if o.svc.assetProcessing != nil {
-					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "download", procErr.Error()); err != nil {
+					if err := o.svc.assetProcessing.FailAssetProcessing(ctx, arg.w.item.ClipID, "download", procErr.Error()); err != nil {
 						o.svc.log.Warn("asset_processing.Fail failed",
 							zap.String("clip_id", arg.w.item.ClipID),
 							zap.Error(err))
@@ -300,7 +300,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						zap.String("local_path", result.LocalPath),
 						zap.Error(transcribeErr))
 					if o.svc.assetProcessing != nil {
-						if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", transcribeErr.Error()); err != nil {
+						if err := o.svc.assetProcessing.FailAssetProcessing(ctx, arg.w.item.ClipID, "transcription", transcribeErr.Error()); err != nil {
 							o.svc.log.Warn("asset_processing.Fail failed",
 								zap.String("clip_id", arg.w.item.ClipID),
 								zap.Error(err))
@@ -339,7 +339,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))
 					if o.svc.assetProcessing != nil {
-						if failErr := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", err.Error()); failErr != nil {
+						if failErr := o.svc.assetProcessing.FailAssetProcessing(ctx, arg.w.item.ClipID, "transcription", err.Error()); failErr != nil {
 							o.svc.log.Warn("asset_processing.Fail failed",
 								zap.String("clip_id", arg.w.item.ClipID),
 								zap.Error(failErr))
@@ -356,7 +356,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			}
 
 			if o.svc.assetProcessing != nil {
-				if err := o.svc.assetProcessing.Complete(ctx, arg.w.item.ClipID, "download"); err != nil {
+				if err := o.svc.assetProcessing.CompleteAssetProcessing(ctx, arg.w.item.ClipID, "download"); err != nil {
 					o.svc.log.Warn("asset_processing.Complete failed",
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))

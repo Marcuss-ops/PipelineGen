@@ -302,7 +302,6 @@ func WireArtlist(
 			Repos: artlist.ArtlistRepoDeps{
 				AssetProcRepo:       repos.AssetProcRepo,
 				AssetVerRepo:        repos.AssetVerRepo,
-				LocationRepository:  nil, // retired from artlist service wiring
 				RenditionRepository: repos.RenditionRepo,
 				TextTrackRepo:       bundle.TextTrackRepo,
 			},

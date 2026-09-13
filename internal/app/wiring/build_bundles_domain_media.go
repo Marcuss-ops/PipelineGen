@@ -418,14 +418,22 @@ func buildDomainMediaServices(
 		Log: log,
 	}
 	youtubeAsset := youtube.ServiceAssetDeps{
-		AssetRepo:         repos.Assets.Repository(),
+		// Media SSOT persistence port: the canonical dispatcher (media_assets +
+		// index request in one media-SSOT transaction) whenever the canonical
+		// writer is present; the SQLite repository is the media-disabled
+		// degrade fallback only.
+		AssetRepo:         newYouTubeAssetWriter(outbox, repos, committer),
 		AssetDestResolver: drive.DestResolver,
 		LifecycleService: NewLifecycleFromDeps(&AssetLifecycleDeps{
+			// MEDIA-SSOT P2-9 step 2: the registry hydrates from the canonical
+			// committer's engine rather than the operational SQLite mirror.
+			// MEDIA-SSOT write-bridge: asset_processing is media-authoritative,
+			// so the registry's step-progress port resolves from the canonical
+			// committer's engine rather than the operational SQLite store.
 			Registry: artifacts.NewClipsRegistryWithLogger(
 				dbs.DualPool.Writer,
-				repos.Assets.Repository(),
-				repos.Assets,
-				repos.Assets.ProcessingRepository(),
+				mediaDetailsReaderFromCommitter(committer),
+				persistence.CanonicalAssetProcessingWriter(committer),
 				committer,
 				log,
 			),

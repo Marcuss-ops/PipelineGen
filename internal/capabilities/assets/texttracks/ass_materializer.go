@@ -15,6 +15,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
+// assWrapChars is the single owner of the ASS line width. The short-form
+// caption normalizer budgets captions against the same width so a normalized
+// cue can never re-wrap into more lines than the policy allows.
+const assWrapChars = 40
+
 type SubtitleMaterializerInput struct {
 	AssetID string
 	// DriveFilename is the source clip filename when known. Keeping the
@@ -329,7 +334,7 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 		// Keep every rendered subtitle line within the short-form readability
 		// contract. ASS uses \\N for an explicit line break; the fixed style
 		// alignment/margin below keeps all lines anchored consistently.
-		text = wrapASSText(text, 40)
+		text = wrapASSText(text, assWrapChars)
 		sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startStr, endStr, styleID, text))
 		lastEndMs = endMs
 	}

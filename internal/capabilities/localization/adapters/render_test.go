@@ -25,18 +25,58 @@ import (
 )
 
 // fakeLocalizationRenderExecutor records the ClipRenderPlanV1 it was handed and
-// returns a fixed outcome (or error).
+// returns a fixed outcome (or error). It implements the two-half
+// cliprender.RenderExecutor port: Submit records the plan (and can fail), and
+// Settle returns the fixed outcome. submitErr lets the tests pin the
+// fail-closed submit half.
 type fakeLocalizationRenderExecutor struct {
-	outcome *cliprender.RenderOutcome
-	err     error
-	gotPlan cliprender.ClipRenderPlanV1
+	outcome        *cliprender.RenderOutcome
+	err            error
+	submitErr      error
+	materializeErr error
+	gotPlan        cliprender.ClipRenderPlanV1
+	submits        int
+	settles        int
+	materializes   int
+	materializedTo string
 }
 
-func (f *fakeLocalizationRenderExecutor) Render(_ context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+func (f *fakeLocalizationRenderExecutor) Submit(_ context.Context, plan cliprender.ClipRenderPlanV1) error {
 	f.gotPlan = plan
+	f.submits++
+	return f.submitErr
+}
+
+func (f *fakeLocalizationRenderExecutor) Settle(_ context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+	f.gotPlan = plan
+	f.settles++
 	if f.err != nil {
 		return nil, f.err
 	}
+	return f.outcome, nil
+}
+
+// Materialize makes the fake satisfy cliprender.RenderArtifactMaterializer, so
+// the locator-first path is exercised without touching the network.
+func (f *fakeLocalizationRenderExecutor) Materialize(_ context.Context, outcome *cliprender.RenderOutcome, destPath string) (string, error) {
+	f.materializes++
+	if f.materializeErr != nil {
+		return "", f.materializeErr
+	}
+	f.materializedTo = destPath
+	outcome.OutputPath = destPath
+	return destPath, nil
+}
+
+// fakeLocatorOnlyExecutor is a renderer WITHOUT Materialize, used to pin the
+// fail-closed branch for a locator-only outcome.
+type fakeLocatorOnlyExecutor struct{ outcome *cliprender.RenderOutcome }
+
+func (f *fakeLocatorOnlyExecutor) Submit(context.Context, cliprender.ClipRenderPlanV1) error {
+	return nil
+}
+
+func (f *fakeLocatorOnlyExecutor) Settle(context.Context, cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
 	return f.outcome, nil
 }
 
@@ -391,6 +431,49 @@ func TestLocalizationRenderPlanExecutor_FailsClosedOnUncertifiedOutcome(t *testi
 	}
 	if facts.SHA256 != realSHA {
 		t.Fatalf("facts.SHA256 = %q, want the real bytes digest %q", facts.SHA256, realSHA)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_MaterializesLocatorOnlyOutcome pins the
+// locator-first consumer contract: a Settle outcome with no local path is
+// materialized on demand through the boundary before it is hashed/published.
+func TestLocalizationRenderPlanExecutor_MaterializesLocatorOnlyOutcome(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	certified := strings.Repeat("a", 64)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		SizeBytes:   size,
+		SHA256:      certified,
+		DurationSec: 8.432,
+		ArtifactURL: "http://objectstore:9000/objects/" + certified,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+
+	facts, err := adapter.Execute(context.Background(), plan, nil)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if exec.materializes != 1 || exec.materializedTo != outPath {
+		t.Fatalf("materialize calls=%d dest=%q, want 1/%q", exec.materializes, exec.materializedTo, outPath)
+	}
+	if facts.LocalPath != outPath {
+		t.Fatalf("facts.LocalPath = %q, want the materialized path %q", facts.LocalPath, outPath)
+	}
+	if facts.SHA256 != certified {
+		t.Fatalf("facts.SHA256 = %q, want the certified digest %q", facts.SHA256, certified)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_LocatorOnlyWithoutMaterializerFailsClosed
+// pins that a locator-only outcome from a renderer that cannot materialize is a
+// typed error, never a silent skip.
+func TestLocalizationRenderPlanExecutor_LocatorOnlyWithoutMaterializerFailsClosed(t *testing.T) {
+	plan, _, _, size := localizedRenderFixture(t)
+	exec := &fakeLocatorOnlyExecutor{outcome: &cliprender.RenderOutcome{
+		SizeBytes: size, SHA256: strings.Repeat("a", 64), ArtifactURL: "http://store/object",
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+	if _, err := adapter.Execute(context.Background(), plan, nil); err == nil {
+		t.Fatal("Execute must fail closed when a locator-only outcome cannot be materialized")
 	}
 }
 

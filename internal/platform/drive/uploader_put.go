@@ -59,7 +59,6 @@ import (
 	"errors"
 	"fmt"
 	"mime"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -121,8 +120,8 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
 	}
-	if strings.TrimSpace(req.LocalPath) == "" {
-		return nil, fmt.Errorf("putFile: local path is required")
+	if strings.TrimSpace(req.LocalPath) == "" && strings.TrimSpace(req.SourceURL) == "" {
+		return nil, fmt.Errorf("putFile: local path or source url is required")
 	}
 	if strings.TrimSpace(req.FolderID) == "" {
 		return nil, fmt.Errorf("putFile: folder id is required")
@@ -354,16 +353,18 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			zap.String("folder_id", req.FolderID))
 	}
 
-	f, err := u.openReader(req.LocalPath)
+	// Source resolution: a local file, or a remote object-store stream. Both
+	// are fed to Drive as an io.Reader, so the locator-first path never writes
+	// the artifact to local disk.
+	source, size, err := u.openUploadSource(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("open local file: %w", err)
+		return nil, err
 	}
-	defer f.Close()
-	fileInfo, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat local file: %w", err)
-	}
+	defer source.Close()
 	mediaType := mime.TypeByExtension(filepath.Ext(req.Filename))
+	if req.ContentType != "" {
+		mediaType = req.ContentType
+	}
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
@@ -387,7 +388,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			}
 		}
 		updated, err := withUpdateMedia(u.Service.Files.Update(existing.FileID, updateFile).
-			Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
+			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.WrapTransient(err))
 		}
@@ -435,7 +436,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		file.Parents = []string{req.FolderID}
 		setAppProperties(file, req.IdempotencyKey)
 		created, err := withCreateMedia(u.Service.Files.Create(file).
-			Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
+			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.WrapTransient(err))
 		}
@@ -463,7 +464,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	file.Parents = []string{req.FolderID}
 	setAppProperties(file, req.IdempotencyKey)
 	created, err := withCreateMedia(u.Service.Files.Create(file).
-		Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
+		Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 	if err != nil {
 		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.WrapTransient(err))
 	}
@@ -479,18 +480,43 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 
 const resumableUploadThreshold = 16 * 1024 * 1024
 
-func withCreateMedia(call *driveapi.FilesCreateCall, ctx context.Context, f *os.File, size int64, mediaType string) *driveapi.FilesCreateCall {
-	if size >= resumableUploadThreshold {
-		return call.ResumableMedia(ctx, f, size, mediaType)
+// openUploadSource resolves the upload bytes and their length. A local path is
+// opened and stat'd; otherwise the remote SourceURL is streamed with the
+// caller's ExpectedSize (the resumable path needs a length).
+func (u *Uploader) openUploadSource(ctx context.Context, req PutFileRequest) (uploadSource, int64, error) {
+	if path := strings.TrimSpace(req.LocalPath); path != "" {
+		f, err := u.openReader(path)
+		if err != nil {
+			return nil, 0, fmt.Errorf("open local file: %w", err)
+		}
+		info, err := f.Stat()
+		if err != nil {
+			_ = f.Close()
+			return nil, 0, fmt.Errorf("stat local file: %w", err)
+		}
+		return f, info.Size(), nil
 	}
-	return call.Media(f).Context(ctx)
+	if strings.TrimSpace(req.SourceURL) == "" {
+		return nil, 0, fmt.Errorf("putFile: source url is required when no local path is set")
+	}
+	if req.ExpectedSize <= 0 {
+		return nil, 0, fmt.Errorf("putFile: a remote source requires the expected size")
+	}
+	return &httpObjectSource{ctx: ctx, url: req.SourceURL, size: req.ExpectedSize}, req.ExpectedSize, nil
 }
 
-func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, f *os.File, size int64, mediaType string) *driveapi.FilesUpdateCall {
+func withCreateMedia(call *driveapi.FilesCreateCall, ctx context.Context, src uploadSource, size int64, mediaType string) *driveapi.FilesCreateCall {
 	if size >= resumableUploadThreshold {
-		return call.ResumableMedia(ctx, f, size, mediaType)
+		return call.ResumableMedia(ctx, src, size, mediaType)
 	}
-	return call.Media(f).Context(ctx)
+	return call.Media(src).Context(ctx)
+}
+
+func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, src uploadSource, size int64, mediaType string) *driveapi.FilesUpdateCall {
+	if size >= resumableUploadThreshold {
+		return call.ResumableMedia(ctx, src, size, mediaType)
+	}
+	return call.Media(src).Context(ctx)
 }
 
 // renameWithTimestamp, setAppProperties, and truncate16 have moved
