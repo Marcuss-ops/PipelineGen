@@ -218,16 +218,24 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// overlay video gets a fresh queue identity so RenderingGen/Chronon is
 		// invoked for each new artifact, including repeated test runs.
 		renderEnqueuer.SetFreshRender(true)
-		overlayFolderID := cfg.Drive.OverlayRenderFolder()
-		if strings.TrimSpace(overlayFolderID) == "" {
+		renderEnqueuer.SetSeparateItemRenders(true)
+		// Overlay videos belong beside the generated language document:
+		// <scripts-generate>/<project>/<language>/overlay. The configured
+		// overlay root remains a compatibility fallback for old deployments.
+		overlayParentFolderID := cfg.Drive.ScriptsGenerateFolder
+		if strings.TrimSpace(overlayParentFolderID) == "" {
+			overlayParentFolderID = cfg.Drive.OverlayRenderFolder()
+		}
+		if strings.TrimSpace(overlayParentFolderID) == "" {
 			return nil, fmt.Errorf("build overlay render runtime: overlay_render_root_folder is required")
 		}
 		if root.Drive != nil && root.Drive.Publisher != nil {
 			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
 			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
-			overlayPublisher.SetRootFolderID(overlayFolderID)
+			overlayPublisher.SetRootFolderID(overlayParentFolderID)
+			overlayPublisher.SetScriptLanguageRouting(strings.TrimSpace(cfg.Drive.ScriptsGenerateFolder) != "")
 			renderEnqueuer.SetArtifactPublisher(overlayPublisher)
-			log.Info("overlay artifact Drive publisher wired", zap.String("root_folder_id", overlayFolderID))
+			log.Info("overlay artifact Drive publisher wired", zap.String("parent_folder_id", overlayParentFolderID), zap.String("child_folder", "overlay"))
 		} else {
 			return nil, fmt.Errorf("build overlay render runtime: automatic Drive publisher is required")
 		}
@@ -353,6 +361,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		ttsConcurrency = scriptgen.DefaultTTSConcurrency
 	}
 	runner.SetTTSConcurrency(ttsConcurrency)
+	translationConcurrency := cfg.Scripts.TranslationConcurrency
+	if translationConcurrency <= 0 {
+		translationConcurrency = scriptgen.DefaultTranslationConcurrency
+	}
+	runner.SetTranslationConcurrency(translationConcurrency)
 	if root.Domains != nil && root.Domains.VoiceoverPublishPool != nil {
 		runner.SetVoiceoverPublishDrainer(root.Domains.VoiceoverPublishPool)
 	}
@@ -361,6 +374,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		zap.Int("nlp_concurrency", nlpConcurrency),
 		zap.Int("script_generation_concurrency", scriptGenerationConcurrency),
 		zap.Int("tts_concurrency", ttsConcurrency),
+		zap.Int("translation_concurrency", translationConcurrency),
 		zap.Bool("serial_mode", cfg.Scripts.SerialMode))
 
 	return runner, nil

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -26,7 +27,8 @@ type DriveOverlayArtifactPublisher struct {
 	// rootFolderID is the explicit Drive folder selected by the composition
 	// root for generated overlay renders. Production requires it: uploads are
 	// pinned to this folder by code after render certification.
-	rootFolderID string
+	rootFolderID          string
+	scriptLanguageRouting bool
 }
 
 func NewDriveOverlayArtifactPublisher(pub finalization.PublisherPort) *DriveOverlayArtifactPublisher {
@@ -39,6 +41,14 @@ func NewDriveOverlayArtifactPublisher(pub finalization.PublisherPort) *DriveOver
 func (p *DriveOverlayArtifactPublisher) SetRootFolderID(folderID string) {
 	if p != nil {
 		p.rootFolderID = strings.TrimSpace(folderID)
+	}
+}
+
+// SetScriptLanguageRouting places overlays below the same project/language
+// tree used by generated Docs: <root>/<script>/<language>/overlay.
+func (p *DriveOverlayArtifactPublisher) SetScriptLanguageRouting(on bool) {
+	if p != nil {
+		p.scriptLanguageRouting = on
 	}
 }
 
@@ -106,20 +116,33 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		Language:         language,
 		ArtifactMetadata: map[string]any{"script_name": scriptName, "language": language, "source": "chronon", "plan_id": spec.PlanID},
 	}
-	// The configured root is already validated by the Drive startup gate.
-	// Mark it resolved so the delivery adapter pins the upload there and does
-	// not rebuild a different semantic path. There is deliberately no legacy
-	// subfolder fallback: every generated overlay follows the same rule.
+	// The configured root is the parent selected by the operator. The
+	// canonical delivery publisher creates/reuses the deterministic `overlay`
+	// child below it. The same path is used for the JSON timing receipt.
 	verified.ResolvedFolderID = p.rootFolderID
 	verified.RootFolderResolved = true
-	verified.DirectDriveRoot = true
+	verified.DriveSubpath = []string{finalization.OverlayChildFolder}
+	if p.scriptLanguageRouting {
+		verified.DriveSubpath = []string{scriptName, language, finalization.OverlayChildFolder}
+	}
+	verified.ArtifactMetadata["overlay_item_id"] = spec.OverlayItemID
+	verified.ArtifactMetadata["overlay_item_kind"] = spec.OverlayItemKind
+	verified.ArtifactMetadata["source_start_us"] = spec.SourceStartUS
+	verified.ArtifactMetadata["source_end_us"] = spec.SourceEndUS
+	verified.ArtifactMetadata["target_duration_us"] = spec.TargetDurationUS
+	videoPublishStarted := time.Now()
 	loc, err := p.publisher.Publish(ctx, verified)
+	videoPublishMS := time.Since(videoPublishStarted).Milliseconds()
 	if err != nil {
-		return err
+		return fmt.Errorf("publish overlay video: %w", err)
 	}
 	artifact.DriveFileID = loc.FileID
 	artifact.DriveLink = loc.WebViewLink
 	artifact.DriveFolderID = loc.FolderID
+
+	if err := p.publishReceipt(ctx, spec, artifact, scriptName, language, artifactID, filename, videoPublishMS); err != nil {
+		return fmt.Errorf("publish overlay timing receipt: %w", err)
+	}
 	return nil
 }
 
