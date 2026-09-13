@@ -1,7 +1,7 @@
 # Index Clip Manifest — Template
 
 Questo file `cmd/admin/manifests/_TEMPLATE.json` è un **placeholder conforme** al
-validatore strict di `cmd/admin/index_drive_clip.go`. NON va passato così com'è
+validatore strict di `cmd/admin/internal/drive/index_drive_clip.go`. NON va passato così com'è
 al comando: copia / rinomina, sostituisci OGNI valore `REPLACE_*`, poi lancia:
 
 ```bash

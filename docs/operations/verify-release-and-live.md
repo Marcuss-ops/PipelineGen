@@ -1,384 +1,178 @@
-# Verify-Release and Verify-Live Workflow
+# Verify-Release Workflow (tier 3)
 
-**Owner**: this doc is the operator-facing canonical reference for `make verify-release`
-(tier-3 pre-deploy gate) and `make verify-live` (tier-4 post-deploy gate).
+**Owner**: this doc is the operator-facing canonical reference for
+`make verify-release`, the tier-3 pre-deploy gate.
 
-**Lockstep surface**: complements `docs/operations/verify-main-workflow.md`
-(tier 1 + 2 — dev loop + pre-push headless). This doc covers **tier 3 + tier 4
-only**; do not duplicate the per-area Make-target reference or the
-recommended dev-loop workflow that already lives in
-`docs/operations/verify-main-workflow.md`.
+**Lockstep surface**: complements
+`docs/operations/verify-main-workflow.md` (tier 1 + 2 — dev loop + pre-push
+headless). Do not duplicate the per-area Make-target reference or the
+recommended dev-loop workflow that already lives there.
 
-**Audience**: every operator running pre-deploy certification or
-post-deploy validation.
+**Tier 4 (`make verify-live`) was retired on 2026-09-13.** See
+[Retired: tier-4 live batteries](#retired-tier-4-live-batteries) below. The
+single replacement live gate is the 10-step pipeline E2E battery — see
+[Current live gate](#current-live-gate-pipeline-e2e-10-steps).
+
+**Audience**: every operator running pre-deploy certification.
 
 ---
 
-## (a) When to run `make verify-release`
+## When to run `make verify-release`
 
 `make verify-release` is the **pre-deploy gate (tier 3)**.
 
 ### Composition (per Makefile)
 
-```
+```text
 verify-release  =  verify-full  +  verify-integration
                  =  (verify-main + verify-race)
                  with shared foundation prerequisites deduplicated by Make
-                 +  verify-integration   (= verify-go-tests = `go test -race ./tests/...`)
+                 +  verify-integration   (= verify-go-tests = the ./tests/... suite)
 ```
 
-Verify the live position with `grep -nE '^verify-release:' Makefile` —
-do not hardcode line numbers; the Makefile is the SSOT.
+Verify the live position with `grep -nE '^verify-release:' make/verify.mk` —
+do not hardcode line numbers; the Make fragments are the SSOT.
 
 ### When to run
 
 - **After every merge commit lands on `main`** (post-merge verification of
   the integration surface).
-- **Before triggering the deploy job** (final pre-deploy gate, last gate
-  before the live tier begins).
-- **On a fresh clone or after `git pull origin main`** — catches any drift
+- **Before triggering the deploy job** (final pre-deploy gate).
+- **On a fresh clone or after `git pull origin main`** — catches drift
   between the pushed state and the deployed branch.
 
 ### What it costs
 
-A few minutes for the inherited `verify-main` chain (headless tier 2),
-plus several minutes more for `verify-integration` (Go tests under
-`./tests/...` — some suites exercise cross-package integration surfaces
-and may depend on Drive / Qdrant / scraper fixtures). **Total budget:
-~5–15 min** depending on the `./tests/...` size at HEAD. These are
-**approximate budgets** — measure on the actual operational host before
-relying on these for scheduling.
+A few minutes for the inherited `verify-main` chain (headless tier 2), plus
+several minutes more for `verify-integration` (Go tests under `./tests/...` —
+some suites exercise cross-package integration surfaces and may depend on
+Drive / Qdrant / scraper fixtures). These are **approximate budgets**;
+measure on the actual operational host before relying on them for scheduling.
 
 ### What to do if RED (fail-closed)
 
-Per AGENTS.md fail-closed + "Never represent absence as success":
+Per AGENTS.md fail-closed + "never represent absence as success":
 
-- **DO NOT proceed to deploy**. Tier 4 (`verify-live`) cannot compensate
-  for a broken tier 3.
+- **DO NOT proceed to deploy.**
 - Identify the failing sub-gate. `verify-release` fails atomically — the
-  sub-gate that printed the first non-zero exit is the culprit.
-  Re-run each sub-gate individually:
-  - `make verify-main` → (foundation + static + unit-fast + changed-components + verify-architecture)
-  - `make verify-full` → (verify-main + verify-race + clean-checkout-build)
-  - `make verify-integration` → (verify-go-tests)
-- File a `fixup!: <subject>` commit + `git rebase --autosquash` once the
-  underlying red gate is fixed.
-- The pre-push hook (`scripts/hooks/pre-push`) does NOT run
-  `verify-release` — it is a manual operator gate, not on the
-  pre-push surface (per AGENTS.md "Run `make verify-main` before
-  pushing" — tier 2 only).
+  sub-gate that printed the first non-zero exit is the culprit. Re-run each
+  sub-gate individually:
+
+```bash
+make verify-main          # tier 2: foundation + static + changed components + architecture
+make verify-race          # explicit race gate
+make verify-integration   # ./tests/... suite
+```
+
+- Fix the failing gate and re-run the whole chain. There is no bypass flag.
 
 ---
 
-## (b) The 4 batteries of `make verify-live`
+## Retired: tier-4 live batteries
 
-`make verify-live` is the **post-deploy gate (tier 4)**.
+`make verify-live` and every member battery it composed
+(`verify-images-live`, `verify-artlist-live`, `verify-script-live`,
+`verify-vidrush-live`, `verify-vidrush-maya`/`-dry`, `verify-artlist-scale-live`,
+`verify-nlp-online-images-docs-live`, `test-intro-hook-stock-live`,
+`verify-stock-live`, `verify-stock-release`) invoked shell drivers that were
+deleted by commit `7e6965aab` ("purge 94% shell + 87% python dust"). The
+targets and their CI jobs were removed together:
 
-### Per-battery dependency matrix (NOT a uniform "all 4 require" profile)
+| Former surface | Retired driver (absent) | Removed from |
+|---|---|---|
+| `verify-images-live` | `tests/operational/test2_images.sh` | `make/live.mk`, `verify-live` |
+| `verify-script-live` | `tests/operational/generate/run.sh` | `make/live.mk`, `verify-live` |
+| `verify-vidrush-live` | `tests/operational/vidrush_script_generate_e2e.sh` | `make/live.mk`, `verify-live` |
+| `verify-vidrush-maya` | `tests/operational/maya_vidrush_e2e.sh` | `make/operations.smoke.mk` (deleted) |
+| `verify-artlist-live` + 9 granular gates | `tests/operational/artlist/0{1..9}_*.sh`, `run_all.sh` | `make/artlist.mk` (deleted) |
+| `verify-artlist-scale-live` | `tests/operational/artlist_scale_e2e.sh` | `make/live.mk` |
+| `verify-stock-live` / `verify-stock-release` | `tests/operational/stock_e2e_full_battery.sh`, `scripts/ci/verify-stock-{receipt,claim}.sh` | `make/youtube_stock.mk`, `ci.yml`, `nightly.yml`, `manual.yml` |
+| `verify-nlp-online-images-docs-live` | `scripts/verify_nlp_online_images_docs_certification.sh` | `make/live.mk` |
+| `test-intro-hook-stock-live` | `tests/operational/boxers-generate/run_intro_hook_stock.sh` | `make/live.mk` |
 
-The 4 batteries do NOT share a uniform dependency profile. The
-**truthful per-battery matrix**:
+Rationale: a target (or CI job) whose only possible outcome is
+"No such file or directory" is not a gate — it trains operators to ignore red
+output and it keeps stale certification claims alive in AGENTS.md and in this
+directory. The same reasoning retired the `certify-*` driver targets (see the
+retirement note at the bottom of `make/verify.mk`).
 
-| Battery | Chrome | scraper | Drive | Qdrant | Notable other |
-|---|---|---|---|---|---|
-| `make verify-images-live`   | yes¹ | — | yes | yes | (per `tests/operational/images_e2e.sh`¹) |
-| `make verify-artlist-live`  | yes  | yes | yes | yes | SQLite outbox; server-stateful |
-| `make verify-script-live`   | —    | —  | yes | yes | server-side dispatch only (no browser) |
-| `make verify-vidrush-live`  | yes  | yes | yes | yes | SQLite + FFmpeg; server-stateful |
+**Current live/end-to-end coverage** is owned by tracked surfaces:
 
-¹ `verify-images-live` is the only battery that depends on
-`tests/operational/images_e2e.sh`, which is **MISSING at HEAD** (see
-**Known gaps at HEAD** at the bottom of this doc). The Chrome + scraper
-profile for this battery is best-effort inference pending the script's
-existence.
+- `tests/operational/pipeline_live_e2e.sh` — the 10-step live battery
+  (`make verify-pipeline-e2e-live`), the only live gate; see
+  [Current live gate](#current-live-gate-pipeline-e2e-10-steps).
+- `internal/platform/httpserver/server_pipeline_e2e_test.go` — the hermetic
+  twin of the same 10 steps (`make verify-pipeline-e2e`).
+- `internal/platform/httpserver/*_e2e_test.go` — in-process HTTP E2E over the
+  canonical routes (clips process/destination/idempotency, jobs polling).
+- `tests/e2e/**` — hermetic contract and replay/resume E2E tests.
+- `internal/platform/media/rustexec/*_test.go` — the L2 Go adapter → Rust
+  StockRust boundary (canonical `render_plan`, final audio copy, tamper
+  hash-drift).
+- Per-provider Go suites under `internal/capabilities/**` for the domains that
+  the shell batteries used to probe.
 
-Notes:
-
-- **`verify-artlist-live`** exercises the full Artlist surface
-  including Chrome session cookies and the scraper handshake.
-- **`verify-script-live`** is server-side-only — **no Chrome hit, no
-  scraper session, no FFmpeg transcoding**. It asserts
-  `script.generate` dispatch + worker pull + finalizer end-to-end
-  against the Drive + Qdrant surfaces only.
-- **`verify-vidrush-live`** is the heaviest battery (FFmpeg, full
-  Drive upload, both SQLite and Qdrant state) and is **server-stateful**
-  — never run on dev workstations.
-
-Each battery is also gated upstream by `make auth-check` (operator
-pre-flight against `/api/artlist/job-consumer`) and routes through
-`scripts/with-velox-auth` (the canonical token loader per AGENTS.md
-"Authentication SSOT"). Per the Makefile suffix convention:
-**`verify-<area>-live` = operational battery (browser+drive+qdrant); NOT
-part of `verify-main` or `verify-release`**.
-
-### Battery 1 — `make verify-images-live`
-
-| | |
-|---|---|
-| **Script** | `tests/operational/images_e2e.sh` *(MISSING at HEAD — see Known gaps)* |
-| **Locate Makefile target** | `grep -nE '^verify-images-live:' Makefile` |
-| **Cost** | ~1–2 min (single-image ingest probe) |
-| **Surface** | image ingestion + Drive upload + Qdrant projection |
-| **Common trigger** | after a Drive-side or Qdrant-side change affecting image routes |
-
-### Battery 2 — `make verify-artlist-live`
-
-| | |
-|---|---|
-| **Script** | `tests/operational/artlist/run_all.sh` (composite of 9 granular sub-scripts) |
-| **Locate Makefile target** | `grep -nE '^verify-artlist-live:' Makefile` |
-| **Cost** | ~10–30 min (composite, server-stateful) |
-| **Surface** | search → detail → download → Drive upload → SQLite outbox → Qdrant projection, executed per Artlist sub-gate |
-| **Common trigger** | after a Stage 1/2/3 Artlist lib change, scraper update, or Drive folder-router change |
-
-### Battery 3 — `make verify-script-live`
-
-| | |
-|---|---|
-| **Script** | `tests/operational/generate/run.sh basic.json` |
-| **Locate Makefile target** | `grep -nE '^verify-script-live:' Makefile` |
-| **Cost** | ~3–5 min (text-only dispatch + worker pull + finalizer) |
-| **Surface** | `script.generate` dispatch + worker pull + finalizer **WITHOUT** the full Vid Rush media path — server-side only, no Chrome, no FFmpeg |
-| **Common trigger** | after a script-side or worker-side change that does not touch the media engine |
-
-### Battery 4 — `make verify-vidrush-live`
-
-| | |
-|---|---|
-| **Script** | `tests/operational/vidrush_script_generate_e2e.sh` |
-| **Locate Makefile target** | `grep -nE '^verify-vidrush-live:' Makefile` |
-| **Cost** | ~10–30 min (heavy, server-stateful, end-to-end) |
-| **Surface** | full Vid Rush battery — server + scraper + SQLite + FFmpeg + Drive + Qdrant, covering every stage from intake to projection |
-| **Common trigger** | after ANY pipelined-component change touching FFmpeg, scraper, Drive, Qdrant, SQLite migrations, or the session auth surface. **Server-stateful** — run on dedicated operational hosts, never on dev workstations |
-
-### Battery 5 — `make verify-vidrush-maya`
-
-| | |
-|---|---|
-| **Script** | `tests/operational/maya_vidrush_e2e.sh` |
-| **Locate Makefile target** | `grep -nE '^verify-vidrush-maya:' make/operations.smoke.mk` |
-| **Cost** | ~15–40 min (heavy, server-stateful, full Maya scenario) |
-| **Surface** | 7 smoke jobs: cold LLM analysis (Italian, 800 words), strict provider separation (images=internet_images, video=artlist, zero YouTube), SQLite persistence, binding verification, cache warm (HIT_EXACT), partial cache, provider miss (no YouTube fallback). Uses the `13_maya.json` scenario plus 6 additional programmatic assertions. |
-| **Common trigger** | after provider-policy changes, cache-layer refactors, Artlist/internet_images processor changes, or YouTube pipeline isolation work. Runs the full Maya civilization scenario in Italian. **Server-stateful** — requires Artlist scraper, internet_images provider, and SQLite. |
-
-### Composite — `make verify-live`
-
-Composition per Makefile (locate with `grep -nE '^verify-live:' Makefile`):
-
-```
-verify-live = auth-check
-            + verify-images-live
-            + verify-artlist-live
-            + verify-script-live
-            + verify-vidrush-live
-```
-
-**Fail-closed**: any single battery failure aborts the chain and
-`verify-live` exits non-zero.
+Do not re-add a `*-live` target until its driver is a tracked, executable
+artifact in the repository.
 
 ---
 
-## (c) Per-battery debug pattern
+## Current live gate: pipeline E2E (10 steps)
 
-During iteration, **surgically invoke ONE battery or ONE granular
-sub-gate**. Do not pay the full cost when you are debugging one
-surface. The same `SMOKE_DRY_RUN=1` short-circuit pattern applies to
-every sub-script in `tests/operational/`: emit `[DRY]` banners
-describing what the battery would probe; no fake server, no mocked
-probe, no test-server sidecar (per AGENTS.md Simplicity &
-Minimalism).
+The battery replaced the retired tier-4 matrix with one honest gate. It ships
+in two layers, and both are required before quoting PipelineGen E2E coverage:
 
-### Artlist — surgical sub-gate invocation
-
-The 9 granular sub-gates (each ~30 s – 2 min) are listed in
-`Makefile` — locate with `grep -nE '^verify-artlist-[a-z]+:' Makefile`.
-Sub-script inventory: `tests/operational/artlist/{01..09}_*.sh`.
-
-| Sub-gate | Script (under `tests/operational/artlist/`) | Cost | Surface |
+| Layer | Target | Driver | Needs |
 |---|---|---|---|
-| `verify-artlist-startup`  | `01_startup.sh`        | <30 s  | server / scraper / Chrome / SQLite / Qdrant / session auth |
-| `verify-artlist-search`   | `02_search_live.sh`    | ~30 s  | `/api/artlist/search/live` |
-| `verify-artlist-stream`   | `03_detail_stream.sh`  | ~30 s  | `/detail` happy + STREAM_NOT_FOUND |
-| `verify-artlist-download` | `04_download.sh`       | ~60 s  | `/download` + ffprobe DoD-exact |
-| `verify-artlist-pipeline` | `05_pipeline_fresh.sh` | ~3–5 min | Gates 4 + 5 + 6 + 7 + 8 fresh-run 3/3 |
-| `verify-artlist-drive`    | `06_drive.sh`          | ~30 s  | Drive resolve per clip |
-| `verify-artlist-index`    | `07_index.sh`          | ~30 s  | SQLite + Qdrant integrity per clip |
-| `verify-artlist-cache`    | `08_cache_replay.sh`   | ~60 s  | cache_hit=true replay |
-| `verify-artlist-errors`   | `09_failure_modes.sh`  | ~60 s  | SESSION_EXPIRED / STREAM_NOT_FOUND / SCRAPER_UNAVAILABLE |
+| Hermetic (always runnable) | `make verify-pipeline-e2e` | `internal/platform/httpserver/server_pipeline_e2e_test.go` (`TestPipelineE2E`) | nothing — in-process router, real handlers, stubbed external edges |
+| Live (asserts reality) | `make verify-pipeline-e2e-live` | `tests/operational/pipeline_live_e2e.sh` | running server + `VELOX_ADMIN_TOKEN` + `DRIVE_ROOT_FOLDER_ID` + `STOCK_DIRECT_URL`; depends on `auth-check` |
 
-**Canonical dev loop during iteration**:
+Ten steps, **10/10 PASS required**: YouTube keyword discovery → metadata →
+`clips/process` → Drive hierarchy → catalog retrieval; then Stock
+`/run` (direct URL) → `/search-and-run` → Drive artifact → catalog retrieval +
+real download (>100 KB, decodable video stream, duration > 0) → idempotent
+replay with no second canonical identity.
 
-```bash
-# 1. While iterating on a single gate (no live-service hits):
-SMOKE_DRY_RUN=1 make verify-artlist-stream     # describe probe surface; <1 s
-SMOKE_DRY_RUN=1 bash tests/operational/artlist/03_detail_stream.sh   # direct
+The live layer is the ONLY place that asserts a real Drive file, a decodable
+MP4, or a catalog hit; the hermetic layer pins the wire contracts, the
+destination normalization, the legacy-destination rejection and the
+idempotency replay, and step 8 of the hermetic battery pins the Drive-artifact
+CONTRACT SHAPE only — it never claims a file was produced.
 
-# 2. Then run for real (requires live stack + scripts/with-velox-auth-wrapped VELOX_ADMIN_TOKEN):
-make verify-artlist-stream
-
-# 3. After all 9 individual gates are green:
-make verify-artlist-live
-```
-
-After a fix, re-run the affected gate only (do NOT loop the full
-battery during iteration).
-
-### Images
+Plan a run without touching the stack:
 
 ```bash
-# During iteration (no live-service hits):
-SMOKE_DRY_RUN=1 bash tests/operational/images_e2e.sh
-
-# Real run after a Drive-side change affecting images:
-make verify-images-live
+export DRIVE_ROOT_FOLDER_ID=<drive folder id>
+export STOCK_DIRECT_URL=https://.../test-video.mp4
+bash tests/operational/pipeline_live_e2e.sh --dry
 ```
 
-> **Note**: `tests/operational/images_e2e.sh` is **MISSING at HEAD**
-> (see **Known gaps at HEAD** below). The dry-run pattern is correct
-> but the real run will fail until the script is restored.
+A green run retains its payloads, submissions, job/status snapshots and the
+downloaded MP4 under `tests/operational/results/pipeline-live/`.
 
-### Script
-
-```bash
-# During iteration (no live-service hits):
-SMOKE_DRY_RUN=1 bash tests/operational/generate/run.sh basic.json
-
-# Real run after a script.generate change:
-make verify-script-live
-```
-
-### Vid Rush
-
-```bash
-# Dry-run only — heavy battery:
-SMOKE_DRY_RUN=1 bash tests/operational/vidrush_script_generate_e2e.sh
-
-# Real run on operational host ONLY:
-make verify-vidrush-live
-```
-
-### Maya VidRush
-
-```bash
-# Dry-run — describes all 7 smoke jobs:
-make verify-vidrush-maya-dry
-
-# Real run on operational host ONLY:
-make verify-vidrush-maya
-```
+The gate is registered in `config/verify-components.json`
+(`stock.live_tests`) and runs only when the component runner is invoked with
+live scope enabled — it is never part of the push/pre-push chain.
 
 ---
 
-## (d) Auth contract (mandatory for ALL live batteries)
+## Auth contract (mandatory for any authenticated HTTP surface)
 
-Per AGENTS.md "Authentication SSOT (Velox admin token)" and the
-canonical loader contract:
-
-- The Makefile wraps each live target with the canonical loader:
-
-  ```makefile
-  verify-X-live: auth-check
-      @scripts/with-velox-auth bash tests/operational/X_e2e.sh
-  ```
-
-  This is the **only** allowed invocation pattern — never inline-bypass
-  with manual `cat /etc/pipelinegen/pipelinegen.env` or any per-script
-  token loader.
-
-- The canonical loader is `scripts/with-velox-auth`. **Canonical mode
-  is `0755`** (executable) so the Makefile's direct invocation
-  (`scripts/with-velox-auth bash …`) succeeds. **Current HEAD mode is
-  `0644` (no `+x` bit)**, which causes `Permission denied` at run
-  time — a separate `gitops(auth): chmod +x scripts/with-velox-auth`
-  microstep is the fix (tracked in **Known gaps at HEAD**). DO NOT
-  bundle into the docs commit per AGENTS.md "Keep commits focused".
-
-- Token hygiene (per AGENTS.md Hygiene rule): zero token values
-  emitted to stdout/stderr; `scripts/with-velox-auth` regex-validates
-  `^[a-fA-F0-9]{64}$` and exits 2 (non-zero, no fallback) on malformed
-  input.
-
-- `make auth-check` is the operator **pre-flight**. Run it FIRST
-  before any `*-live` target if you suspect the auth surface is broken
-  — it probes `/api/artlist/job-consumer` with
-  `Authorization: Bearer $VELOX_ADMIN_TOKEN` and exits 1 on any
-  non-200.
+- Canonical secret file: `/etc/pipelinegen/pipelinegen.env` (mode `0640`,
+  owner `root:pipelinegen-agents`), exported as `TOKEN_FILE`.
+- Canonical variable: `VELOX_ADMIN_TOKEN` (64-hex). No alternates.
+- Agents and operators never read the file directly: route through
+  `scripts/with-velox-auth`, which validates the shape, exports, and `exec`s.
+- `make auth-check` is the canonical fail-closed probe (non-200 on
+  `/api/artlist/job-consumer` fails the target). It never prints the token.
+- Redact token values as `REDACTED` or `<64-hex>` in every captured output.
 
 ---
 
-## (e) SSOT cross-references (no duplicates)
+## SSOT cross-references
 
-This doc intentionally does NOT repeat:
-
-- The per-area Make targets (`verify-go-core`, `verify-go-infrastructure`,
-  `verify-go-api`, `verify-go-commands`, `verify-base`, etc.) — see
-  `docs/operations/verify-main-workflow.md` (tier 1 + 2 SSOT).
-- The recommended dev-loop workflow — see
-  `docs/operations/verify-main-workflow.md` section 3.
-- The pre-push gate composition in detail — see
-  `docs/operations/verify-main-workflow.md` and `scripts/hooks/pre-push`
-  (canonical hook + HONOUR-RULE invariant).
-
-**Canonical sources for tier 3 + 4**:
-
-- AGENTS.md "Authentication SSOT (Velox admin token)" — canonical loader contract.
-- AGENTS.md "Run `make verify-main` before pushing" — tier 2 only; tier 3 + 4 are NOT in pre-push.
-- AGENTS.md git-workflow + HONOUR-RULE — never `--no-verify` to bypass.
-- `scripts/with-velox-auth` — canonical token loader (canonical mode `0755` with shebang `#!/usr/bin/env bash`; current HEAD is `0644` — see Known gaps).
-- `scripts/hooks/pre-push` — canonical pre-push hook (fail-closed; tier 2 only).
-- `docs/operations/verify-main-workflow.md` — tier 1 + 2 SSOT (complementary NOT duplicate).
-- `Makefile` — locate tier-3 + tier-4 targets via:
-  - `grep -nE '^verify-release:' Makefile`
-  - `grep -nE '^verify-live:' Makefile`
-  - `grep -nE '^verify-(images|artlist|script|vidrush)-live:' Makefile`
-  - `grep -nE '^verify-artlist-[a-z]+:' Makefile`
-- `tests/operational/{images_e2e.sh,artlist/run_all.sh,generate/run.sh,vidrush_script_generate_e2e.sh}` — canonical battery scripts.
-- `tests/operational/vidrush/scenarios/{00..13}_*.json` — VidRush scenario manifests (14 total, 13_maya is the Maya civilization scenario).
-- `tests/operational/maya_vidrush_e2e.sh` — Maya VidRush 7-job E2E battery.
-- `tests/operational/artlist/{01..09}_*.sh` — the 9 Artlist sub-gates.
-- `tests/operational/lib/{common,artlist,drive,sqlite,qdrant,velox_domain}.sh` — shared lib (curl/jq/sqlite dispatch).
-
----
-
-## Known gaps at HEAD (this doc reflects current state, not aspirational)
-
-These items are **documented as canonical references** but the
-underlying asset or invocation contract has a known gap as of HEAD.
-Operators should restore the missing piece in a **separate atomic
-microstep** before invoking the affected target. Per AGENTS.md
-fail-closed: "Never represent absence as a successful no-op" — do not
-ship this gap as if it were wired.
-
-### Gap 1 — `tests/operational/images_e2e.sh` MISSING
-
-- **Affects**: Battery 1 (`verify-images-live`).
-- **Symptom**: invoking `make verify-images-live` exits non-zero with
-  `bash: tests/operational/images_e2e.sh: No such file or directory`.
-- **Fix** (separate atomic commit): `test(operational): add images_e2e.sh
-  fixture` — restore the script. The reference path and surface in this
-  doc remain correct; the gap is in the asset, not in the SSOT.
-- **Tracking**: see this section under "Known gaps at HEAD"; remove
-  this entry once the script is restored.
-
-### Gap 2 — `scripts/with-velox-auth` mode `0644` (canonical mode `0755`)
-
-- **Affects**: All `verify-*-live` batteries + `make auth-check`.
-- **Symptom**: invoking `scripts/with-velox-auth bash …` directly (per
-  the Makefile recipe) exits `Permission denied`. The wrapper is never
-  executed; the live-tier gate fails before auth can be exercised.
-- **Fix** (separate atomic commit): `gitops(auth): chmod +x
-  scripts/with-velox-auth` — set the canonical `0755` mode so the
-  `#!/usr/bin/env bash` shebang is honoured and the direct file
-  system call succeeds. NO content change to the wrapper.
-- **Tracking**: see this section under "Known gaps at HEAD"; remove
-  once `stat -c '%a' scripts/with-velox-auth` reports `755`.
-
-### Reasons this doc does NOT also land the fix as a single commit
-
-- Per AGENTS.md "Keep commits focused and describe actual behavior" +
-  the user's recurring "non accumulare" directive: documentation
-  updates and executable-bit fixes are two separate concerns. Bundling
-  them would violate that discipline.
-- The doc's job is to reference the canonical surface. The fixes
-  are tracked here as known gaps so operators know what to expect
-  before invoking the affected target.
+- `docs/operations/verify-main-workflow.md` — tier 1 + 2 SSOT (complementary,
+  not duplicate).
+- `AGENTS.md` — operational rules, gate hierarchy, pre-push contract.
+- `make/verify.mk`, `make/verify.components.mk` — executable source of truth.
+- `scripts/hooks/pre-push` — the pre-push wiring of `make verify-main`.

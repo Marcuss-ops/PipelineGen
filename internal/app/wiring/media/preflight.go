@@ -5,14 +5,22 @@ import (
 	"fmt"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// AssetDetailsLookup is the narrow asset-details read surface shared by the
+// media preflight and the audio/overlay resolvers. *detail.Service (SQLite
+// degrade mode) and *pgmedia.AssetDetailsReader (media SSOT) both satisfy it,
+// so the readers cannot drift onto a different engine than the one they own.
+type AssetDetailsLookup interface {
+	Get(ctx context.Context, id string) (*asset.Details, error)
+}
 
 // NewPreflight binds the canonical asset registry and audio sources to the
 // script-generation MediaPreflight port. The policy remains owned by
 // capabilities/scripts; this package owns composition only.
-func NewPreflight(assets *detail.Service, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource) scriptgen.MediaPreflight {
+func NewPreflight(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource) scriptgen.MediaPreflight {
 	return &preflightAdapter{
 		clipProber:           &assetServiceClipProber{assets: assets},
 		audioAssetSource:     audioAssetSource,
@@ -107,7 +115,7 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 }
 
 type assetServiceClipProber struct {
-	assets *detail.Service
+	assets AssetDetailsLookup
 }
 
 var _ scriptgen.ClipPreflighter = (*assetServiceClipProber)(nil)

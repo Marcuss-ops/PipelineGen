@@ -53,7 +53,7 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 		if text == "" {
 			continue
 		}
-		sources := entitySourcesFromAnnotations(scene.Annotations)
+		sources := entitySourcesFromAnnotations(scene.Annotations, text)
 		if len(sources) == 0 {
 			continue
 		}
@@ -95,7 +95,7 @@ const entityRepeatPolicy = "once_per_scene"
 // verifies the exact text anchor instead of re-deriving it. Later mentions
 // of the same entity in the scene are intentionally NOT projected as
 // separate sources.
-func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations) []capabilityentities.EntitySource {
+func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText string) []capabilityentities.EntitySource {
 	if ann == nil {
 		return nil
 	}
@@ -107,6 +107,7 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations) []capabilitye
 		}
 		source := capabilityentities.EntitySource{
 			Name:       name,
+			SpokenName: annotationSpokenSurface(sceneText, name, entity.Mentions),
 			Type:       strings.TrimSpace(entity.Type),
 			Confidence: entity.Confidence,
 			TextStart:  -1,
@@ -125,4 +126,31 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations) []capabilitye
 		appendEntity(entity)
 	}
 	return out
+}
+
+// annotationSpokenSurface preserves a small grammatical suffix that is part
+// of the spoken phrase but not part of the canonical identity. This keeps the
+// entity timeline anchored to the real TTS words while the overlay identity
+// remains stable (e.g. "Dolly Parton" vs "Dolly Parton's").
+func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.AnnotationSpan) string {
+	if len(mentions) == 0 {
+		return canonical
+	}
+	mention := mentions[0]
+	runes := []rune(text)
+	if mention.StartRune < 0 || mention.EndRune <= mention.StartRune || mention.EndRune > len(runes) {
+		return canonical
+	}
+	if !strings.EqualFold(string(runes[mention.StartRune:mention.EndRune]), canonical) {
+		return canonical
+	}
+	end := mention.EndRune
+	if end < len(runes) && (runes[end] == '\'' || runes[end] == '’') {
+		end++
+		if end < len(runes) && (runes[end] == 's' || runes[end] == 'S') {
+			end++
+		}
+		return string(runes[mention.StartRune:end])
+	}
+	return canonical
 }

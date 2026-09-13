@@ -6,7 +6,6 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
@@ -14,12 +13,12 @@ import (
 // DownloadUseCase resolves where a clip's video file lives and returns
 // the location for the handler to stream.
 type DownloadUseCase struct {
-	assetRepo     detail.Repository
+	assetRepo     AssetReader
 	voiceoverRepo *assets.VoiceoversRepository
 }
 
 // NewDownloadUseCase constructs the use case.
-func NewDownloadUseCase(repo detail.Repository, voiceoverRepo *assets.VoiceoversRepository) *DownloadUseCase {
+func NewDownloadUseCase(repo AssetReader, voiceoverRepo *assets.VoiceoversRepository) *DownloadUseCase {
 	return &DownloadUseCase{assetRepo: repo, voiceoverRepo: voiceoverRepo}
 }
 

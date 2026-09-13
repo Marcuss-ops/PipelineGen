@@ -4,9 +4,13 @@ package adapters
 // parallel preparation phase. The capability (internal/capabilities/cliprender)
 // owns the ports; THIS file (composition root) owns the mechanics:
 //
-//   - AssetResolver     → canonical asset registry (detail.Service)
 //   - AssetMaterializer → local copy reuse + Drive download to scratch
 //
+// AssetResolver is NOT defined here: PostgreSQL is the media SSOT, so the only
+// resolver is ClipRenderPGAssetResolver (cliprender_pg_resolver.go). The legacy
+// SQLite `ClipRenderAssetResolver` was removed with the graceful-degrade
+// fallback — there is no second media catalog to read from.
+
 // Every adapter is fail-closed: a missing dependency surfaces a typed error
 // at call time, never a silent no-op path. Each call emits structured zap
 // logs so the upstream preparation timeline is reconstructible from the
@@ -15,92 +19,12 @@ package adapters
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"go.uber.org/zap"
 )
-
-// ── AssetResolver ────────────────────────────────────────────────────
-
-// ClipRenderAssetResolver maps a canonical asset_id to the capability's
-// AssetRef via the canonical asset registry.
-type ClipRenderAssetResolver struct {
-	assets *detail.Service
-	log    *zap.Logger
-}
-
-// NewClipRenderAssetResolver wires the resolver with the canonical asset
-// service. log is required so each resolve call is observable.
-func NewClipRenderAssetResolver(assets *detail.Service, log *zap.Logger) (*ClipRenderAssetResolver, error) {
-	if assets == nil {
-		return nil, errors.New("clip.render: asset registry not wired")
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &ClipRenderAssetResolver{assets: assets, log: log}, nil
-}
-
-func (r *ClipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID string) (*cliprender.AssetRef, error) {
-	if r == nil || r.assets == nil {
-		return nil, errors.New("clip.render: asset registry not wired")
-	}
-	t0 := time.Now()
-	r.log.Info("clip.render.asset_resolve.start",
-		zap.String("subsystem", "cliprender_asset_resolver"),
-		zap.String("asset_id", assetID),
-	)
-	details, err := r.assets.Get(ctx, assetID)
-	if err != nil {
-		r.log.Error("clip.render.asset_resolve.failed",
-			zap.String("subsystem", "cliprender_asset_resolver"),
-			zap.String("asset_id", assetID),
-			zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("load asset %q: %w", assetID, err)
-	}
-	if details == nil || details.Asset == nil {
-		r.log.Error("clip.render.asset_resolve.not_found",
-			zap.String("subsystem", "cliprender_asset_resolver"),
-			zap.String("asset_id", assetID),
-			zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
-		)
-		return nil, fmt.Errorf("asset %q not found", assetID)
-	}
-	a := details.Asset
-	title := ""
-	if a != nil {
-		title = a.Title()
-		if title == "" {
-			title = a.Name
-		}
-	}
-	ref := &cliprender.AssetRef{
-		AssetID:       a.ID,
-		Title:         title,
-		MediaType:     string(a.MediaType),
-		LocalPath:     a.LocalPath(),
-		DriveFileID:   a.DriveFileID(),
-		LegacyFileMD5: firstNonEmpty(a.Sha256(), a.LegacyFileMD5(), a.ContentHash()),
-		DurationMS:    a.Duration.Milliseconds(),
-	}
-	r.log.Info("clip.render.asset_resolve.done",
-		zap.String("subsystem", "cliprender_asset_resolver"),
-		zap.String("asset_id", assetID),
-		zap.String("title", ref.Title),
-		zap.String("media_type", ref.MediaType),
-		zap.String("local_path", ref.LocalPath),
-		zap.String("drive_file_id", ref.DriveFileID),
-		zap.String("file_hash", ref.LegacyFileMD5),
-		zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
-	)
-	return ref, nil
-}
 
 // ── AssetMaterializer ────────────────────────────────────────────────
 

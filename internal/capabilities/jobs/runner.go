@@ -112,15 +112,16 @@ func (r *Runner) buildWorkers() []*Worker {
 	for i := 0; i < r.cfg.Workers; i++ {
 		workerID := fmt.Sprintf("%s_%d", workerIDPrefix, i+1)
 		w := NewWorker(WorkerDeps{
-			ID:         workerID,
-			Repo:       r.repo,
-			Dispatcher: r.dispatcher,
-			Notifier:   r.cfg.Notifier,
-			Log:        r.log,
-			LeaseTTL:   r.cfg.LeaseTTL,
-			PollEvery:  r.cfg.PollEvery,
-			Backoff:    r.cfg.Backoff,
-			Types:      r.cfg.JobTypes,
+			ID:           workerID,
+			Repo:         r.repo,
+			Dispatcher:   r.dispatcher,
+			Notifier:     r.cfg.Notifier,
+			Log:          r.log,
+			LeaseTTL:     r.cfg.LeaseTTL,
+			PollEvery:    r.cfg.PollEvery,
+			Backoff:      r.cfg.Backoff,
+			Types:        r.cfg.JobTypes,
+			PayloadMatch: r.cfg.PayloadMatch,
 		})
 		if r.reg != nil {
 			w.WithRegistry(r.reg)

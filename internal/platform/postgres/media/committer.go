@@ -543,6 +543,17 @@ func clipTagsNorm(tags []string) string {
 	return b.String()
 }
 
+// tagsNormFromJSON decodes a JSON-encoded tag array and derives the canonical
+// tags_norm search string. Malformed input degrades to an empty norm rather
+// than failing the patch (a single legacy row must not block a mutation).
+func tagsNormFromJSON(raw string) string {
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return ""
+	}
+	return clipTagsNorm(tags)
+}
+
 // execAssetUpdate is the canonical rows-affected gate for single-asset
 // mutations (SQLite mirror: imagesregistry.execAssetUpdate).
 func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, operation, query string, args ...any) error {

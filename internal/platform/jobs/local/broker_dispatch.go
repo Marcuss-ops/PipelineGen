@@ -51,7 +51,10 @@ func (b *Broker) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 	}
 	wait := time.Duration(cmd.WaitSeconds) * time.Second
 	wait = jobqueue.NormalizeWait(wait, 20*time.Second)
-	claimed, err := jobqueue.ClaimUntil(ctx, b.jobs, cmd.WorkerID, wait, wait, cmd.Capabilities)
+	// PayloadMatch narrows the claim to a phase inside one job type (kernel/job
+	// PayloadMatch), so e.g. a dedicated clip.render settle pool cannot be
+	// handed submit jobs. An empty match is the historical unscoped claim.
+	claimed, err := jobqueue.ClaimUntilMatching(ctx, b.jobs, cmd.WorkerID, wait, wait, cmd.Capabilities, cmd.PayloadMatch)
 	if err != nil {
 		return nil, err
 	}

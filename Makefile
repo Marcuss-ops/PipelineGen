@@ -28,40 +28,38 @@
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
-	verify-rust-muscles verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
+	verify-rust-muscles verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
 	whisper-preflight \
-	test-pipeline-stock-only verify-pipeline-clip-only verify-pipeline-research verify-pipeline-document verify-pipeline-voiceover verify-pipeline-script test-pipeline-youtube-stock verify-pipeline-vidrush verify-component-coverage verify-reconciliation-contracts reconcile-pipeline verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
+	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
 	regen-routes-yaml archcheck-strict \
-	verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream \
-	verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index \
-	verify-artlist-cache verify-artlist-errors verify-artlist-live \
+	verify-artlist \
 	test-youtube-url test-youtube-metadata test-youtube-transcript test-highlight-selection \
-	verify-stock-unit verify-stock-integration verify-stock-live verify-stock-release \
+	verify-stock-unit verify-stock-integration \
 	test-stock-component test-stock-download test-stock-cut test-stock-cache test-stock-dedupe test-stock-index \
 	test-stock-recovery test-stock-youtube-e2e benchmark-stock-download \
-	test-stock-acquisition test-stock-indexing test-pipeline-youtube-stock \
+	test-stock-acquisition test-stock-indexing \
 	test-youtube-highlights test-stock-download-plan test-stock-partial-download test-stock-drive \
 	test-stock-concurrency test-race-youtube-stock test-youtube-stock-fast test-youtube-stock-local \
-	test-youtube-stock-resilience test-youtube-stock-live test-youtube-stock-release benchmark-youtube-stock \
+	test-youtube-stock-resilience test-youtube-stock-release benchmark-youtube-stock \
 	diagnose-youtube-stock \
-	verify-images-live verify-script-live test-intro-hook-stock-live verify-vidrush-live verify-artlist-scale-live verify-live \
 	verify-vidrush-contract verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-media-intelligence vidrush-pre-final verify-vidrush-extraction verify-vidrush-query-planning \
 	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
 	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \
 	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \
 	verify-vidrush-binding verify-vidrush-dedupe verify-vidrush-cache verify-vidrush-recovery verify-vidrush-concurrency \
 	verify-vidrush-fast verify-vidrush-local verify-vidrush-resilience verify-vidrush-release \
-	verify-vidrush-artlist-live verify-vidrush-images-live verify-vidrush-generation-live verify-vidrush-full-live benchmark-vidrush doctor-vidrush \
-	docker-build docker-build-worker docker-run docker-sign docker-digest \
-	docker-verify-digest docker-verify-ffmpeg docker-verify-whisper \
+	benchmark-vidrush doctor-vidrush \
+	docker-build docker-build-worker docker-run docker-digest \
+	docker-verify-whisper \
+	verify-pipeline-e2e verify-pipeline-e2e-live \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
 	doctor artlist auth-check regenerate-token \
-	smoke-pipeline smoke-run-all smoke-dry smoke-voiceover \
-	deps tidy-check vuln bench bench-cliprender benchmark-e2e benchmark-generate benchmark-ollama-models e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
+	smoke-voiceover \
+	deps tidy-check vuln bench bench-cliprender benchmark-e2e e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
 # the high-traffic targets; for the FULL ~90-target catalog see the
@@ -93,16 +91,13 @@ help:
 	@echo "VERIFY (registry-driven gate chain; foundation once per aggregate)"
 	@echo "  make verify-fast      Foundation (toolchain + secrets + repository integrity + format + tidy) + static (vet + build)"
 	@echo "  make verify-agent     Agent dev loop: foundation + static + only impacted component tests (1-3 min)"
-	@echo "  make verify-split     Certify the separation and reuse of all verification gates"
 	@echo "  make verify-repository-integrity  Validate tracked gitlinks against .gitmodules"
 	@echo "  make verify-main      Daily headless gate: foundation + static + changed components + architecture"
 	@echo "  make test-main-stock   Diagnostic Stock-focused gate (non-authoritative)"
 	@echo "  make verify-main-clip   Fast Clip gate: targeted tests + architecture"
 	@echo "  make verify-race      Explicit race gate: unit + all registered components"
-	@echo "  make verify-clean-checkout-build  Build frontend, vet, test, and binaries from a temporary checkout"
-	@echo "  make verify-full      Full headless gate: main + race + clean checkout"
+	@echo "  make verify-full      Full headless gate: main + race"
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
-	@echo "  make verify-live      Post-deploy operational battery (needs live external stack)"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
 	@echo "  make verify-components   All registered components (fast)"
 	@echo "  make verify-race-components  All registered components (race)"
@@ -118,22 +113,12 @@ help:
 	@echo "  make verify-database     Database component"
 	@echo "  make verify-jobs         Jobs component"
 	@echo "  make verify-component-coverage  Fail-closed registry coverage gate"
-	@echo "  make reconcile-pipeline  Run canonical Drive/Qdrant reconciliation (dry-run)"
-	@echo "  make verify-race-<component>  Race suite for one component"
-	@echo "  make test-pipeline-stock-only  Stock-only pipeline diagnostic"
-	@echo "  make verify-pipeline-clip-only   Clip-only pipeline"
-	@echo "  make verify-pipeline-research    Research pipeline"
-	@echo "  make verify-pipeline-document    Script-to-document pipeline"
-	@echo "  make verify-pipeline-voiceover   Script-to-voiceover pipeline"
-	@echo "  make test-pipeline-youtube-stock YouTube/stock pipeline diagnostic"
-	@echo "  make verify-pipeline-vidrush     Vidrush pipeline"
 	@echo ""
 	@echo "BENCHMARK"
 	@echo "  make bench-cliprender   Canonical clip.render benchmark (headless; no server/GPU needed)"
-	@echo "  make benchmark-generate  Video benchmark (BENCH_TOPIC=BENCH_CLIP_ID=)"
+	@echo "  make benchmark-e2e       Run BENCHMARK_COMMAND behind the live preflight"
 	@echo ""
 	@echo "BENCHMARK (require running server + /ready)"
-	@echo "  make benchmark-ollama-models  Cold/prewarmed/steady-state e4b/e2b comparison"
 	@echo "  make dev-up              Deterministic staged startup (Infrastructure→Server→Worker→Preflight)"
 	@echo "  make dev-down            Stop all services + remove orphans"
 	@echo "  make velox ARGS='doctor' Operations CLI (velox up|down|api|query|doctor|env)"
@@ -143,6 +128,8 @@ help:
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
+	@echo "  make verify-pipeline-e2e       Hermetic 10-step pipeline contract battery (no server needed)"
+	@echo "  make verify-pipeline-e2e-live  Live 10-step pipeline gate (server + token + Drive; 10/10 required)"
 	@echo "  make doctor           GET /api/system/doctor with admin token"
 	@echo "  make artlist          POST /api/artlist/run (TERM= LIMIT= STRATEGY=)"
 	@echo ""
@@ -151,17 +138,13 @@ help:
 include make/build.mk
 include make/test.mk
 include make/verify.mk
-include make/verify.policy.mk
 include make/verify.components.mk
-include make/verify.pipelines.mk
 include make/reconciliation.mk
 include make/youtube_stock.mk
-include make/artlist.mk
 include make/live.mk
 include make/vidrush.mk
 include make/docker.mk
 include make/operations.auth.mk
-include make/operations.smoke.mk
 include make/operations.smoke-voiceover.mk
 include make/operations.tidy.mk
 include make/audio.mk

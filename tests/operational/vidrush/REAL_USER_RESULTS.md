@@ -1,5 +1,11 @@
 # PipelineGen — real-user acceptance results
 
+> **Dated snapshot (2026-09-01, checkout `121ed61af`) — paths reflect the tree
+> at time of writing.** The referenced drivers (`run_scenario.sh`,
+> `scripts/bridges/login.py`, `make artlist`) were deleted by commit
+> `7e6965aab`; this log is retained as historical evidence, not as a runnable
+> procedure.
+
 This is the operator log for the live, user-visible checks. It records
 observed artifacts and failures; a green HTTP response alone is not an
 acceptance result.

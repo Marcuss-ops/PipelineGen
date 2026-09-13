@@ -326,6 +326,36 @@ func ActiveKeyFor(renderJobID string, attempt int) string {
 	return fmt.Sprintf("clip.render.settle:%s:%d", renderJobID, attempt)
 }
 
+// settleCorrelationScope is the phase marker that scopes the settle child's
+// correlation id away from its parent's. Mirrors the voiceover fan-out's
+// "<parent>:item:<idx>" shape (see voiceover/service/jobs/fanout.go).
+const settleCorrelationScope = "settle"
+
+// SettleCorrelationID derives the settle child's correlation id from the
+// parent's.
+//
+// The continuation is the SAME canonical job type as the job it resumes
+// (clip.render), and the broker dedupes on (type, correlation_id):
+// queue.Service.Enqueue pre-checks with repo.FindByTypeAndCorrelation and the
+// persistence layer enforces the conditional UNIQUE index
+// idx_jobs_type_correlation (migration 036). At submit time the parent is
+// still RUNNING, so a child that inherits the parent's correlation id is
+// resolved to the PARENT — EnqueueContinuation returns the parent's job id,
+// the settle job is never created, and the clip is never collected: the GPU
+// render finishes and nothing ever downloads, probes or publishes it.
+//
+// Scoping the correlation id to the DETERMINISTIC remote render id (the
+// sealed plan's RunID) plus the attempt makes the (type, correlation_id) key
+// distinct from the parent while keeping parent and child greppable together,
+// and makes a redelivered submit address the identical child.
+func SettleCorrelationID(parentCorrelationID, renderJobID string, attempt int) string {
+	base := strings.TrimSpace(parentCorrelationID)
+	if base == "" {
+		base = string(TypeClipRender)
+	}
+	return fmt.Sprintf("%s:%s:%s:%d", base, settleCorrelationScope, renderJobID, attempt)
+}
+
 // ContinuationRequest is the typed enqueue instruction for the settle phase.
 //
 // ParentJobID/ParentRunID are the ParentLink the broker persists on the child

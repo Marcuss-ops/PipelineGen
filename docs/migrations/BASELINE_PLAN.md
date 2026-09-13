@@ -11,8 +11,9 @@
   time of this plan (`267_observability_business_quarantine.sql`). The
   baseline captures the **post-`267` schema state** for every non-media table
   on the primary and observability SQLite planes.
-* **Postgres media SSOT is NOT frozen**: `migrations/postgres/001..003`
-  remain authoritative as-is (3 files, semantic names). This plan only adds
+* **Postgres media SSOT is NOT frozen**: `migrations/postgres/001_media_schema.sql`,
+  `002_media_vector_surfaces.sql`, and `003_media_hnsw_indexes.sql`
+  remain authoritative as-is. This plan only adds
   `004` and drafts `005` on that plane (see §§ 5–7).
 * **The `sqlite_jobs` plane (4 files) is NOT frozen** — it stays as-is
   (`jobs/jobs.db.sqlite` is self-contained and tiny).

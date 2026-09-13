@@ -375,6 +375,48 @@ func TestParseAndValidateCaps_MalformedJSON_ReturnsError(t *testing.T) {
 	}
 }
 
+// ── Payload scope (kernel/job.PayloadMatch) ─────────────────────────
+
+// TestParseAndValidateCaps_PreservesPayloadMatch pins K10: a phase-scoped
+// worker capability survives parsing, so operators can run a dedicated
+// clip.render settle pool from VELOX_WORKER_CAPABILITIES alone.
+func TestParseAndValidateCaps_PreservesPayloadMatch(t *testing.T) {
+	registered := []string{"clip.render"}
+	caps, err := ParseAndValidateCaps(`{"job_types":["clip.render"],"payload_match":{"render_phase":"settle"}}`, registered)
+	if err != nil {
+		t.Fatalf("ParseAndValidateCaps: %v", err)
+	}
+	if len(caps.PayloadMatch) != 1 || caps.PayloadMatch["render_phase"] != "settle" {
+		t.Fatalf("PayloadMatch = %v, want render_phase=settle", caps.PayloadMatch)
+	}
+}
+
+// TestParseAndValidateCaps_RejectsBlankPayloadMatchKey pins fail-closed: an
+// unusable matcher must abort startup instead of silently widening the pool.
+func TestParseAndValidateCaps_RejectsBlankPayloadMatchKey(t *testing.T) {
+	registered := []string{"clip.render"}
+	_, err := ParseAndValidateCaps(`{"job_types":["clip.render"],"payload_match":{"  ":"settle"}}`, registered)
+	if err == nil {
+		t.Fatal("expected error for a blank payload_match key")
+	}
+}
+
+// TestResolveCapabilities_PreservesPayloadMatch pins that the profile-gated
+// path does not drop the payload scope (it narrows WITHIN an allowed type, so it
+// is orthogonal to the profile ceiling).
+func TestResolveCapabilities_PreservesPayloadMatch(t *testing.T) {
+	profile := &WorkerProfile{Name: "renderer", AllowedJobTypes: []string{"clip.render"}}
+	caps, err := ResolveCapabilities(profile,
+		`{"job_types":["clip.render"],"payload_match":{"render_phase":"settle"}}`,
+		[]string{"clip.render"})
+	if err != nil {
+		t.Fatalf("ResolveCapabilities: %v", err)
+	}
+	if len(caps.PayloadMatch) != 1 || caps.PayloadMatch["render_phase"] != "settle" {
+		t.Fatalf("PayloadMatch = %v, want render_phase=settle", caps.PayloadMatch)
+	}
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 func stringSlicesEqual(a, b []string) bool {

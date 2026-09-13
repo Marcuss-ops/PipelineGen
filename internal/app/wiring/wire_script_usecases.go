@@ -170,8 +170,8 @@ func buildScriptUseCases(
 
 	// ── Media curator ───────────────────────────────────────
 	var mediaCurator *scriptdto.MediaCurator
-	if root.Repos.ClipsRepo != nil && engine != nil {
-		mediaCurator = scriptdto.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
+	if engine != nil {
+		mediaCurator = scriptdto.NewMediaCurator(cfg.ClipIndexer.ServerURL, clipSourceBuilder, log)
 		if clipSearchPort != nil {
 			mediaCurator.SetClipSearchPort(clipSearchPort)
 		}

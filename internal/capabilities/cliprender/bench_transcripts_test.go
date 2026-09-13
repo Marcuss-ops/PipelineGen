@@ -12,6 +12,7 @@ package cliprender
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -99,7 +100,10 @@ func runTranscriptBatch(t *testing.T, mode string, persist bool, clips int, asrM
 	started := time.Now()
 	for i := 0; i < clips; i++ {
 		req := baseRenderRequest()
-		req.Transcript = &TranscriptSpec{Mode: mode, Language: "en", Persist: persist}
+		// persistSet:true makes the boolean EXPLICIT: the scenario measures the
+		// difference between persisting and not persisting, so Normalize must not
+		// substitute its (now true) default for the persist=false half.
+		req.Transcript = &TranscriptSpec{Mode: mode, Language: "en", Persist: persist, persistSet: true}
 		prepared, err := preparer.Prepare(context.Background(), req, fmt.Sprintf("run-%d", i))
 		if err != nil {
 			t.Fatalf("mode=%s clip %d: Prepare: %v", mode, i, err)
@@ -185,6 +189,79 @@ func TestScenario6_ReuseWithoutPersistDoesNotCache(t *testing.T) {
 		t.Errorf("reuse_or_generate without persist: cache hits = %d, want 0", hits)
 	}
 	t.Logf("reuse_or_generate without persist: %d ASR call(s) for %d clips — persist=true is what makes reuse real", calls, clips)
+}
+
+// TestTranscriptDefaultPersist_BatchFromSameSourceRunsSingleASRPass is the
+// regression test for the "testi" lever: a batch of clips over the SAME source
+// submitted WITHOUT declaring transcript.persist (exactly what
+// POST /api/clips/render carries) must run speech recognition ONCE and serve
+// every other clip from the canonical text track.
+//
+// Scenario 6 above measures persist as an EXPLICIT boolean; this test measures
+// the default the endpoint actually applies, so a future change that drops the
+// Normalize default (making every clip of one source pay its own ASR pass)
+// fails here with the per-clip ASR signature.
+func TestTranscriptDefaultPersist_BatchFromSameSourceRunsSingleASRPass(t *testing.T) {
+	const (
+		clips = 5
+		asrMS = 15 * time.Millisecond
+	)
+
+	// The payload is fetched straight from the wire: a request WITHOUT the
+	// persist key is what the endpoint decodes and what the job broker stores.
+	raw, err := json.Marshal(map[string]any{
+		"source_asset_id": "asset-source",
+		"transcript":      map[string]any{"mode": "reuse_or_generate", "language": "en"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cache := newBenchTranscriptCache(asrMS)
+	assets := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
+	preparer, err := NewPreparer(assets, &fakeMaterializer{}, cache, NewContractResolver(), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < clips; i++ {
+		var req RenderRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Fatalf("clip %d: decode payload: %v", i, err)
+		}
+		// Guard the fixture itself: the payload must NOT carry the persist key,
+		// otherwise the test would silently measure the explicit half again.
+		if req.Transcript == nil || req.Transcript.persistSet {
+			t.Fatalf("clip %d: fixture must exercise the ABSENT persist key", i)
+		}
+
+		prepared, err := preparer.Prepare(context.Background(), &req, fmt.Sprintf("run-default-%d", i))
+		if err != nil {
+			t.Fatalf("clip %d: Prepare: %v", i, err)
+		}
+		if !req.Transcript.Persist {
+			t.Fatalf("clip %d: transcript.persist = false, want the true default — without persistence every clip over this source re-runs ASR", i)
+		}
+		if prepared.Transcript == nil || !prepared.Transcript.HasText() {
+			t.Fatalf("clip %d: prepared transcript missing text", i)
+		}
+		if i > 0 && !prepared.Transcript.Reused {
+			t.Fatalf("clip %d: transcript was regenerated instead of reused from the canonical track", i)
+		}
+	}
+
+	gen, lookups, hits := cache.counts()
+	if gen != 1 {
+		t.Errorf("ASR passes = %d, want 1 for %d clip(s) from one source (default persist=true)", gen, clips)
+	}
+	if lookups != clips {
+		t.Errorf("transcript lookups = %d, want %d (one per clip)", lookups, clips)
+	}
+	if hits != clips-1 {
+		t.Errorf("transcript cache hits = %d, want %d", hits, clips-1)
+	}
+	t.Logf("%d clips from one source with the DEFAULT transcript policy: %d ASR pass(es), %d lookup(s), %d hit(s)",
+		clips, gen, lookups, hits)
 }
 
 // TestScenario6_PreparerWiringIsUsed guards the harness itself: the ASR

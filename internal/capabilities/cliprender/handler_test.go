@@ -199,8 +199,8 @@ func TestRenderHandler_MinimalRequest_AppliesDefaults(t *testing.T) {
 		t.Error("Watermark default: must be disabled")
 	}
 	if req.Transcript.Mode != TranscriptModeReuseOrGenerate ||
-		req.Transcript.Language != "en" {
-		t.Errorf("Transcript defaults: got %+v", req.Transcript)
+		req.Transcript.Language != "en" || !req.Transcript.Persist {
+		t.Errorf("Transcript defaults: got %+v (persist must default to true so a batch reuses one ASR pass per source)", req.Transcript)
 	}
 	if req.Subtitles.Enabled {
 		t.Error("Subtitles default: must be disabled")

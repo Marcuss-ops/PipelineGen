@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # scripts/bench/generate-video.sh — canonical PipelineGen video benchmark runner.
 #
+# STATUS (2026-09-13): REPAIRED. This script sources
+# scripts/bench/lib/generate_video_stages.sh and, at the report stage,
+# scripts/bench/report/generate_video_report.py — both were deleted by commit
+# 7e6965aab ("purge 94% shell + 87% python dust") while this driver stayed
+# wired, so the runner died with "No such file or directory" before submitting
+# a single job. The two modules are restored verbatim, the script is executable
+# again, and the invocation below is reproducible. Only the report emitter is
+# invoked directly; nothing else about the runner changed.
+#
 # Full pipeline benchmark: generate → TTS/audio → render (watermark + subtitles + Chronon) → Docs/Drive
 # → Drive upload. Timing is read from the job SSOT reports; this script only
 # aggregates and derives batch-level values.

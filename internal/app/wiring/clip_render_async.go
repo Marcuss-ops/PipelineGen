@@ -63,12 +63,23 @@ func (e *clipRenderContinuationEnqueuer) EnqueueContinuation(ctx context.Context
 		return "", fmt.Errorf("clip render continuation enqueue: decode linked payload: %w", err)
 	}
 
+	// The settle child MUST NOT inherit the parent's correlation id: the
+	// parent is the same job type (clip.render) and is still RUNNING, so the
+	// broker's (type, correlation_id) dedupe would resolve this enqueue back to
+	// the PARENT. EnqueueContinuation would then hand the worker its own parent
+	// id as the "child", no settle job would ever be created, and the rendered
+	// artifact would never be collected or published (the live 2026-09-13
+	// defect: parent SUCCEEDED with child_job_id == its own id, zero
+	// parent_job_id children, no media_assets written).
+	submission := req.Continuation.Submission
 	child, err := e.jobs.Enqueue(ctx, &job.EnqueueRequest{
-		Type:          cliprender.TypeClipRender,
-		Payload:       payload,
-		CorrelationID: req.Continuation.Submission.CorrelationID,
-		MaxRetries:    3,
-		ActiveKey:     req.ActiveKey,
+		Type:    cliprender.TypeClipRender,
+		Payload: payload,
+		CorrelationID: cliprender.SettleCorrelationID(
+			submission.CorrelationID, submission.RenderJobID, submission.Attempt,
+		),
+		MaxRetries: 3,
+		ActiveKey:  req.ActiveKey,
 	})
 	if err != nil {
 		return "", err

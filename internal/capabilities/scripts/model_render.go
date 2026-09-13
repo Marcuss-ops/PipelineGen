@@ -26,23 +26,31 @@ type RenderReference struct {
 // copy-only certification) so the document renderer and Velox copy assembly
 // consume the same immutable reference without probing the file themselves.
 type RenderArtifact struct {
-	ID                 string `json:"id,omitempty"`
-	Kind               string `json:"kind,omitempty"`
-	StorageKey         string `json:"storage_key,omitempty"`
-	URL                string `json:"url,omitempty"`
-	SHA256             string `json:"sha256,omitempty"`
-	MimeType           string `json:"mime_type,omitempty"`
-	SizeBytes          int64  `json:"size_bytes,omitempty"`
-	Width              int    `json:"width,omitempty"`
-	Height             int    `json:"height,omitempty"`
-	FPSNum             int    `json:"fps_num,omitempty"`
-	FPSDen             int    `json:"fps_den,omitempty"`
-	FrameCount         int    `json:"frame_count,omitempty"`
-	DurationUS         int64  `json:"duration_us,omitempty"`
-	ProfileID          string `json:"profile_id,omitempty"`
-	CopyEligible       bool   `json:"copy_eligible,omitempty"`
-	Codec              string `json:"codec,omitempty"`
-	CodecProfile       string `json:"codec_profile,omitempty"`
+	ID           string `json:"id,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	StorageKey   string `json:"storage_key,omitempty"`
+	URL          string `json:"url,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
+	MimeType     string `json:"mime_type,omitempty"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
+	Width        int    `json:"width,omitempty"`
+	Height       int    `json:"height,omitempty"`
+	FPSNum       int    `json:"fps_num,omitempty"`
+	FPSDen       int    `json:"fps_den,omitempty"`
+	FrameCount   int    `json:"frame_count,omitempty"`
+	DurationUS   int64  `json:"duration_us,omitempty"`
+	ProfileID    string `json:"profile_id,omitempty"`
+	CopyEligible bool   `json:"copy_eligible,omitempty"`
+	Codec        string `json:"codec,omitempty"`
+	CodecProfile string `json:"codec_profile,omitempty"`
+	// Container, PixelFormat and AudioStreams are the remaining structural
+	// facts RenderingGen already certifies on its artifact wire. They used to
+	// be dropped by this projection, which meant the clip.render contract gate
+	// could never check them (the local Rust probe reports no codec profile,
+	// and the certified boundary is the only owner of the container family).
+	Container          string `json:"container,omitempty"`
+	PixelFormat        string `json:"pixel_format,omitempty"`
+	AudioStreams       int    `json:"audio_streams,omitempty"`
 	ClosedGOP          bool   `json:"closed_gop,omitempty"`
 	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
 	Backend            string `json:"backend,omitempty"`

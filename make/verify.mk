@@ -107,17 +107,17 @@ verify-main: verify-push verify-architecture
 verify-race: verify-foundation verify-unit-race verify-race-components
 	@echo "✅ verify-race passed"
 
-# verify-clean-checkout-build — reproducibility gate that materializes the
-# current HEAD in a temporary clone, then builds the embedded frontend,
-# vets/tests all Go packages, and builds the three entry-point binaries.
-# The script owns temporary-directory cleanup and never writes to the caller's
-# working copy, including when a command fails.
-verify-clean-checkout-build:
-	@GO="$(GO)" bash scripts/ci/ci-clean-checkout-build.sh
+# verify-clean-checkout-build — RETIRED 2026-09-13. Its driver
+# (scripts/ci/ci-clean-checkout-build.sh) was deleted by commit 7e6965aab
+# ("purge 94% shell + 87% python dust"), so the target could only ever fail
+# with "No such file or directory". A target that cannot pass is not a gate
+# (same rationale as the certification drivers at the bottom of this file).
+# Clean-checkout reproducibility is currently a manual operator step:
+#   git clone --depth 1 . /tmp/clean && cd /tmp/clean && make build
+# Reintroduce it as a Go program before it becomes a gate again.
 
-# verify-full — complete headless gate: verify-main, the explicit race gate,
-# and clean-checkout reproducibility.
-verify-full: verify-main verify-race verify-clean-checkout-build
+# verify-full — complete headless gate: verify-main + the explicit race gate.
+verify-full: verify-main verify-race
 	@echo "✅ verify-full passed"
 
 # verify-go-core — domain and application logic tests. Isolates failures
@@ -137,8 +137,9 @@ verify-architecture:
 	$(GO) run -tags=c2_route_manifest cmd/archcheck/gates/gate_c2_route_manifest_main.go --root=.
 	@echo "✅ Architecture verification passed"
 
-# test-main-stock — diagnostic Stock-focused gate. The authoritative Stock
-# levels are verify-stock-unit/integration/live/release in youtube_stock.mk.
+# test-main-stock — diagnostic Stock-focused gate. The remaining authoritative
+# Stock levels are verify-stock-unit/integration in youtube_stock.mk (the
+# live/release batteries were retired 2026-09-13 with their shell drivers).
 test-main-stock: verify-foundation verify-static verify-architecture verify-stock-unit
 	@echo "✅ test-main-stock passed"
 
@@ -166,11 +167,12 @@ whisper-preflight:
 verify-release: verify-full verify-integration
 	@echo "✅ Release verification passed"
 
-# verify-split — structural gate for the verification graph. This is
-# intentionally independent from application test results: it checks that
-# each cost tier keeps its contract and shared prerequisites are not repeated.
-verify-split:
-	@bash scripts/ci/verify-split-contract.sh
+# verify-split — RETIRED 2026-09-13. Its driver
+# (scripts/ci/verify-split-contract.sh) was deleted by commit 7e6965aab, so the
+# structural contract it certified no longer exists to be checked. The
+# registry-driven runner (make verify-changed-components) is the current owner
+# of tier/prerequisite separation; re-express the invariant as a Go gate there
+# before reintroducing a target.
 
 # regen-routes-yaml — refreshes the runtime-captured docs and the structured
 # manifest in one transaction. The old AST-only recipe could emit module-

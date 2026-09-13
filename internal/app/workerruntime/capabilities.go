@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ParseAndValidateCaps parses raw (the JSON body of
@@ -50,6 +51,11 @@ func ParseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerC
 	}
 	if len(caps.JobTypes) == 0 {
 		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES has empty job_types array")
+	}
+	// PayloadMatch is optional, but an unusable one must fail at startup rather
+	// than silently widening a dedicated pool into an unscoped claim.
+	if err := job.ValidatePayloadMatch(caps.PayloadMatch); err != nil {
+		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES payload_match: %w", err)
 	}
 
 	registered := make(map[string]struct{}, len(registeredTypes))

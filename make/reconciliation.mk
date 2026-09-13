@@ -1,10 +1,10 @@
 # Canonical PipelineGen reconciliation orchestration.
 # Existing Drive and Qdrant commands remain the sole repair owners.
 
-RECONCILE_PIPELINE_RUNNER ?= python3 scripts/ci/reconcile-pipeline.py
-
-reconcile-pipeline:
-	@$(RECONCILE_PIPELINE_RUNNER) $(if $(RECONCILE_APPLY),--apply,) --report artifacts/reconcile/pipeline.json
+# reconcile-pipeline — RETIRED 2026-09-13: its driver
+# scripts/ci/reconcile-pipeline.py does not exist (purged by commit 7e6965aab),
+# so the target could only ever fail with "No such file or directory". The
+# Go-native reconciliation gates below are the surviving surface.
 
 verify-reconciliation-contracts:
 	@$(GO) test ./internal/capabilities/reconciliation ./internal/capabilities/scripts/adapters ./internal/capabilities/assets/deletion/reconciler ./internal/capabilities/jobs ./internal/platform/drive ./internal/platform/sqlite/outboxevents ./internal/capabilities/assets/providers/stock/enrichment ./internal/capabilities/assets/providers/stock/stockpipeline ./internal/capabilities/jobs/completion ./internal/capabilities/outbox ./internal/platform/sqlite/outbox

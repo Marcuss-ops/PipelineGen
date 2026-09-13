@@ -1,5 +1,9 @@
 # TICKET — clip.render: async submission/completion boundary (Wave B)
 
+> **Dated artifact — paths reflect the tree at the time of writing.** Retained
+> while the ticket is open (see `AGENTS.md` § Documentation rule); verify any
+> referenced path against the current tree before acting.
+
 **Priority:** P0 — this is the throughput bottleneck, not RenderingGen/Chronon.
 **Status:** IN PROGRESS — the continuation primitive EXISTS (see §1.1) and the
 render boundary is now split into `Submit`/`Settle`. Remaining: the worker phase

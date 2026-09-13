@@ -30,6 +30,9 @@ func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {
 	if req.Transcript.Language != DefaultLanguage {
 		t.Errorf("Transcript.Language default: got %q, want en", req.Transcript.Language)
 	}
+	if !req.Transcript.Persist {
+		t.Error("Transcript.Persist default: got false, want true — without persistence a batch re-runs ASR for every clip")
+	}
 	if req.Subtitles.Enabled {
 		t.Error("Subtitles must default to disabled")
 	}
@@ -406,6 +409,53 @@ func TestExplicitZeroSurvivesJobPayloadRoundTrip(t *testing.T) {
 	if second.Watermark.Opacity != 0 || second.Watermark.MarginPX != 0 {
 		t.Errorf("explicit zeros lost across the payload round trip: opacity=%v margin=%d payload=%s",
 			second.Watermark.Opacity, second.Watermark.MarginPX, payload)
+	}
+}
+
+// TestTranscriptPersistDefaultAndExplicitOptOut pins the two halves of the
+// transcript-persistence contract: an omitted persist is defaulted to true (one
+// ASR pass per SOURCE, not per clip), while an explicit false survives the
+// persisted job payload round trip so the worker cannot silently re-enable it.
+func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
+	var omitted RenderRequest
+	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate"}}`), &omitted); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	omitted.Normalize()
+	if !omitted.Transcript.Persist {
+		t.Fatal("an absent persist must default to true")
+	}
+
+	var explicit RenderRequest
+	if err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate","persist":false}}`), &explicit); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	explicit.Normalize()
+	if explicit.Transcript.Persist {
+		t.Fatal("an explicit persist:false must not be overridden by Normalize")
+	}
+	payload, err := json.Marshal(&explicit)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var round RenderRequest
+	if err := json.Unmarshal(payload, &round); err != nil {
+		t.Fatalf("re-decode: %v", err)
+	}
+	round.Normalize()
+	if round.Transcript.Persist {
+		t.Fatalf("explicit persist:false lost across the job payload round trip: %s", payload)
+	}
+}
+
+// TestTranscriptUnknownFieldFailsClosed keeps the strict-decoder contract
+// INSIDE the transcript block, which a custom UnmarshalJSON would otherwise
+// bypass (encoding/json hands the whole subtree to the method).
+func TestTranscriptUnknownFieldFailsClosed(t *testing.T) {
+	var req RenderRequest
+	err := json.Unmarshal([]byte(`{"source_asset_id":"asset-1","transcript":{"mode":"reuse_or_generate","persistt":true}}`), &req)
+	if err == nil {
+		t.Fatal("an unknown field inside the transcript block must fail closed")
 	}
 }
 

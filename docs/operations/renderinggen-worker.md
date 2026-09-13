@@ -37,3 +37,42 @@ PipelineGen broker. `overlay.prepare` may warm assets and overlay outputs;
 cache. The renderer profile skips the creator-only `script_generate`
 readiness check and fails startup when `nvidia-smi -L` or `ffmpeg` is not
 available.
+
+## Chronon transport: keep the warm daemon (`chronon.mode: ipc`)
+
+The clip.render path (PipelineGen → RenderingGen queue → Chronon3d) must run
+Chronon as a **warm daemon over the IPC socket**, not as a CLI process spawned
+per render:
+
+```yaml
+# /etc/renderinggen/renderinggen.yaml
+chronon:
+  mode: ipc
+  socket_path: /run/chronon3d/chronon.sock
+  hardware_encoder: nvenc
+  encode_preset: p2
+  strict_native_backend: true
+```
+
+- `mode: cli` spawns and initializes a fresh `chronon3d_cli` per job. That cost
+  is not free: measured on the RTX A4000 host on 2026-09-13 it is **488–570 ms
+  of `chronon_job_backend_init_ms` on EVERY render** — ~2 s over a 4-clip batch,
+  about **7% of the render-plane wall**, spent re-opening device, pipelines and
+  the glyph atlas the daemon already holds.
+- `mode: ipc` reuses the warm daemon state and removes that cost entirely, with
+  no change to the sealed plan or to the rendered bytes.
+- An explicit `mode:` in the config always wins. The `gpu-vulkan-native`
+  profile now **defaults** to `ipc` (it IS the native hot path, and every shipped
+  GPU config already declares `ipc`); the global default stays `cli` for
+  software/no-profile deployments. A deployment that genuinely wants a cold
+  spawn must say `mode: cli`.
+
+Operational check — confirm the daemon is actually being used:
+
+```bash
+# the socket must exist and the worker must have opened it
+ls -l /run/chronon3d/chronon.sock
+journalctl -u renderinggen-worker.service | grep -i 'chronon report telemetry'
+# per-render backend init must NOT reappear in the metrics
+#   chronon_job_backend_init_ms ~ 0  (ipc)   vs   490-570 ms (cli)
+```

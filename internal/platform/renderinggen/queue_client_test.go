@@ -74,12 +74,18 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 		CopyEligible:       true,
 		Codec:              "h264",
 		CodecProfile:       "high",
+		Container:          "mov,mp4,m4a,3gp,3g2,mj2",
+		PixelFormat:        "yuv420p",
+		AudioStreams:       1,
 		ClosedGOP:          true,
 		FirstFrameKeyframe: true,
 	}
 	got := toScriptArtifact(in)
 	if got == nil {
 		t.Fatal("nil artifact")
+	}
+	if got.Container != in.Container || got.PixelFormat != in.PixelFormat || got.AudioStreams != in.AudioStreams {
+		t.Fatalf("structural certification fields lost: container=%q pixel_format=%q audio_streams=%d", got.Container, got.PixelFormat, got.AudioStreams)
 	}
 	if got.ID != in.ID || got.SHA256 != in.ArtifactHash || got.ProfileID != in.ProfileID ||
 		got.CopyEligible != in.CopyEligible || got.ClosedGOP != in.ClosedGOP ||

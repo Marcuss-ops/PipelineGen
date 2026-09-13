@@ -28,11 +28,17 @@ type WorkerSession struct {
 // reject incompatible claims before any work starts.
 type WorkerCapabilities struct {
 	JobTypes []string `json:"job_types,omitempty"`
-	CPUCores int      `json:"cpu_cores,omitempty"`
-	RAMMB    int      `json:"ram_mb,omitempty"`
-	GPU      bool     `json:"gpu,omitempty"`
-	FFmpeg   bool     `json:"ffmpeg,omitempty"`
-	Whisper  bool     `json:"whisper,omitempty"`
+	// PayloadMatch optionally narrows this worker to the jobs of JobTypes whose
+	// payload carries every listed key=value pair. It is how one job TYPE is
+	// given several independently budgeted pools without a second job type —
+	// e.g. a worker that claims only clip.render with render_phase=settle, so
+	// long remote waits cannot occupy the submit pool. Empty = no restriction.
+	PayloadMatch PayloadMatch `json:"payload_match,omitempty"`
+	CPUCores     int          `json:"cpu_cores,omitempty"`
+	RAMMB        int          `json:"ram_mb,omitempty"`
+	GPU          bool         `json:"gpu,omitempty"`
+	FFmpeg       bool         `json:"ffmpeg,omitempty"`
+	Whisper      bool         `json:"whisper,omitempty"`
 }
 
 // RegisterWorkerCommand is the payload a worker sends when (re)registering
@@ -50,14 +56,15 @@ type RegisterWorkerCommand struct {
 // ClaimCommand requests a job lease from the broker. JobID/LeaseID are
 // scope hints — empty means "any available eligible job".
 type ClaimCommand struct {
-	WorkerID         string   `json:"worker_id"`
-	WorkerSessionID  string   `json:"worker_session_id"`
-	JobID            string   `json:"job_id,omitempty"`
-	LeaseID          string   `json:"lease_id,omitempty"`
-	ExpectedRevision int      `json:"expected_revision,omitempty"`
-	CorrelationID    string   `json:"correlation_id,omitempty"`
-	Capabilities     []string `json:"capabilities,omitempty"`
-	WaitSeconds      int      `json:"wait_seconds,omitempty"`
+	WorkerID         string       `json:"worker_id"`
+	WorkerSessionID  string       `json:"worker_session_id"`
+	JobID            string       `json:"job_id,omitempty"`
+	LeaseID          string       `json:"lease_id,omitempty"`
+	ExpectedRevision int          `json:"expected_revision,omitempty"`
+	CorrelationID    string       `json:"correlation_id,omitempty"`
+	Capabilities     []string     `json:"capabilities,omitempty"`
+	PayloadMatch     PayloadMatch `json:"payload_match,omitempty"`
+	WaitSeconds      int          `json:"wait_seconds,omitempty"`
 }
 
 // HeartbeatCommand keeps a worker session alive and may extend SessionTTL.

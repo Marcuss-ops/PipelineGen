@@ -172,13 +172,13 @@ For audit-pin migration notes (e.g., test funcs renamed or moved across
 test-split boundaries): `grep -c <old-symbol> architecture/deprecations/records/<bucket>.yaml`
 MUST return ≥1 hit so the rename is grep-discoverable. The canonical
 retro-fix pattern appends a `← MIGRATED (PR-STEP-NN, commit <SHA>) →`
-annotation block in the relevant YAML field (see
-`architecture/deprecations/records/voiceover.yaml:52-55` — the (d) audit-pin block
-for `TestParentAggregator_TriggeredOnlyAfterWaitingChildren` (parent aggregator
-eligibility gate, 3 sub-cases: waiting_children → process / succeeded → no-op /
-cancelled → no-op) — for the canonical example spanning the
-voiceover/jobs/* Step 5 split migration of `TestAcceptance_CancelParent_AggregatorSkips`
-into `parent_aggregator_eligibility_test.go::TestParentEligibility_TriggeredOnlyAfterWaitingChildren::t.Run("C. cancelled → aggregator skips")`).
+annotation block in the relevant YAML field. The records are sharded by domain
+into `architecture/deprecations/records/{assets,misc,qdrant}.yaml`; the former
+`voiceover.yaml` bucket was folded into `misc.yaml` and the historical
+voiceover/jobs aggregator example it carried is no longer on disk. Find the
+current canonical annotation block with
+`grep -rn "MIGRATED" architecture/deprecations/records/`, and append the new
+one to the shard that owns the affected symbol's domain.
 
 ## When in doubt
 

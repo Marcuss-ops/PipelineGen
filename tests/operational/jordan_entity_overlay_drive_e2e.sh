@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live E2E: five PERSON entities -> verified image materialization ->
+# Live E2E: six PERSON entities -> verified image materialization ->
 # entity image overlay plan -> RenderingGen/Chronon -> Drive.
 
 set -Eeuo pipefail
@@ -30,7 +30,9 @@ mkdir -p "$RESULTS_DIR"
 chmod 700 "$RESULTS_DIR"
 
 RUN_ID="jordan-entity-overlay-drive-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
-DRIVE_FOLDER_ID="1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E"
+# Image root validated by the live Drive startup probe; the previous canary
+# folder was not visible to the configured service account and caused 404s.
+DRIVE_FOLDER_ID="1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
 SOURCE_TEXT='Michael Jordan became a defining figure in basketball because his career combined elite scoring, defensive intensity, competitive focus, and a public standard of preparation. He was born in Brooklyn and grew up in Wilmington, where sport became a daily discipline rather than a shortcut to fame. His early development was shaped by repetition, physical conditioning, and the pressure of learning to compete against stronger opponents. Those lessons later became part of the story told about his professional career.
 
 The history of basketball began decades earlier when James Naismith designed an indoor game that could keep students active during winter. The original experiment was simple, but its structure created a sport in which coordination, spacing, passing, and decision-making mattered as much as strength. Over time the game changed from a local activity into an international spectacle. The evolution of the sport gave exceptional players a stage on which individual skill could influence an entire team and, eventually, an entire culture.
@@ -44,6 +46,8 @@ The Chicago years also showed that a great scorer needed an equally strong struc
 Phil Jackson later guided the group through a system that used spacing, cutting, patience, and trust. His coaching asked players to recognize the whole floor and to make decisions before the defense could settle. Jackson did not remove Jordan’s individual authority; he placed it inside a larger pattern so that every possession could produce several threats. The approach helped transform talent into repeatable execution and allowed the team to handle long series, hostile arenas, injuries, and the mental strain of expectation.
 
 Jordan’s public image grew alongside his results. Fans saw the championships, the final shots, the defensive possessions, and the visible refusal to treat an important moment as ordinary. Critics also examined the commercial side of his fame, the pressure of constant comparison, and the cost of making excellence look effortless. His story therefore includes both performance and representation: he became an athlete, a symbol of competitive ambition, and a reference point for later generations trying to define what leadership in sport could mean.
+
+Dolly Parton is included as an additional named-person case in this overlay canary. Her career as a singer, songwriter, performer, and philanthropist provides a separate example of a public figure whose identity is strongly recognizable through a verified person image, while the generated narration remains grounded in the supplied source facts.
 
 The lasting significance of Jordan is not that every player should copy his personality or career path. It is that his example made preparation, accountability, and decisive action central parts of the basketball conversation. Naismith supplied the game’s basic structure, Smith contributed a framework for learning, Pippen demonstrated complementary excellence, and Jackson organized collective intelligence. Jordan connected those lessons to a standard that audiences could recognize instantly. The history of basketball is broader than one person, but his career remains one of its clearest case studies in how skill, environment, partnership, coaching, and pressure can combine into cultural impact.'
 
@@ -65,13 +69,13 @@ jq -n \
       items: [{
         id: $run_id,
         project: "jordan-entity-overlay-drive-e2e",
-        title: "Michael Jordan entity image overlay canary",
+      title: "Michael Jordan and Dolly Parton entity image overlay canary",
         language: "en",
         tone: "clear, factual documentary narration",
-        style: "Use only the supplied facts. Do not introduce named people beyond those present in the source. Preserve the five-entity extraction boundary and keep the narration factual.",
+      style: "Use only the supplied facts. Do not introduce named people beyond those present in the source. The final narration must explicitly retain all six named people present in the source: Michael Jordan, James Naismith, Dean Smith, Scottie Pippen, Phil Jackson, and Dolly Parton. Preserve the six-entity extraction boundary and keep the narration factual.",
         source: {
           type: "text",
-          topic: "Michael Jordan and the history of basketball",
+          topic: "Named public figures: Michael Jordan, James Naismith, Dean Smith, Scottie Pippen, Phil Jackson, and Dolly Parton",
           source_text: $source_text
         },
         script_params: {
@@ -79,7 +83,7 @@ jq -n \
           min_words: 300,
           segment_words: 430,
           single_scene: true,
-          images_per_scene: 5,
+          images_per_scene: 6,
           skip_quality_gate: true,
           use_memory: false
         },
@@ -116,9 +120,9 @@ jq -n \
           extraction: {
             enabled: true,
             include: ["entities", "special_names", "important_phrases"],
-            max_entities_per_segment: 5,
+            max_entities_per_segment: 6,
             max_important_phrases_per_segment: 3,
-            max_image_queries_per_segment: 5,
+            max_image_queries_per_segment: 6,
             entity_images: {
               enabled: true,
               entity_types: ["PERSON"],
@@ -181,13 +185,13 @@ PERSON_NAMES=$(jq -r '
   | map(select(type == "string" and length > 0)) | unique | .[]
 ' <<<"$RESULT")
 PERSON_COUNT=$(printf '%s\n' "$PERSON_NAMES" | sed "/^$/d" | wc -l | tr -d ' ')
-(( PERSON_COUNT == 5 )) || fail "PERSON uniche=$PERSON_COUNT, attese 5: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
+(( PERSON_COUNT == 6 )) || fail "PERSON uniche=$PERSON_COUNT, attese 6: $(tr '\n' ', ' <<<"$PERSON_NAMES")"
 
 IMAGE_BINDINGS=$(jq -r '
   [.scenes[]?.annotations?.primary_entities[]?.image? // empty]
   | map(select(.status == "resolved" and ((.drive_link // "") | startswith("http")))) | length
 ' <<<"$RESULT")
-(( IMAGE_BINDINGS == 5 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, attesi 5"
+(( IMAGE_BINDINGS == 6 )) || fail "binding immagine Drive risolti=$IMAGE_BINDINGS, attesi 6"
 
 ENTITY_ITEMS=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -197,7 +201,7 @@ ENTITY_ITEMS=$(jq -r '
           ((.image_preset_id // "") | length == 0) and
           ((.text // "") | length == 0))] | length
 ' <<<"$RESULT")
-(( ENTITY_ITEMS == 5 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, attese 5"
+(( ENTITY_ITEMS == 6 )) || fail "animazioni entity image renderizzabili=$ENTITY_ITEMS, attese 6"
 
 ENTITY_NAME_TEXT=$(jq -r '
   [.overlay_plan?.items[]? |
@@ -233,9 +237,9 @@ OVERLAY_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESUL
 
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  generated text chars: %s\n' "$GENERATED_TEXT_CHARS"
-printf '  PERSON (5):\n%s\n' "$PERSON_NAMES"
-printf '  entity image bindings Drive: %s/5\n' "$IMAGE_BINDINGS"
-printf '  entity image overlay layers: %s/5\n' "$ENTITY_ITEMS"
+printf '  PERSON (6):\n%s\n' "$PERSON_NAMES"
+printf '  entity image bindings Drive: %s/6\n' "$IMAGE_BINDINGS"
+printf '  entity image overlay layers: %s/6\n' "$ENTITY_ITEMS"
 printf '  important phrases extracted/rendered: %s/%s\n' "$PHRASE_INTENTS" "$PHRASE_ITEMS"
 printf '  image presets: %s\n' "$PRESETS"
 printf '  background: Pale Olive Classic %s\n' "$BACKGROUND"

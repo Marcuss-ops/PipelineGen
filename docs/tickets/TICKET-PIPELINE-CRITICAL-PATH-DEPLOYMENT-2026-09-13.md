@@ -1,5 +1,9 @@
 # TICKET — PipelineGen `script.generate` critical path: deployment-bound remainder
 
+> **Dated artifact — paths reflect the tree at the time of writing.** Retained
+> while the ticket is open (see `AGENTS.md` § Documentation rule); verify any
+> referenced path against the current tree before acting.
+
 **Date:** 2026-09-13
 **Status:** OPEN — blocked on a real GPU/Chronon/RenderingGen deployment
 **Parent audit:** `docs/PIPELINE-WASTE-AUDIT-2026-09-12.md`

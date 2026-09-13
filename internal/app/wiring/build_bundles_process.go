@@ -230,7 +230,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — canonical media writer degraded; media outbox events will dead-letter (graceful degrade, godlike/07)")
 	}
 	if pgIndexWorker != nil {
-		if err := registerPostgresMediaOutboxHandlers(pgIndexWorker, drivePublisher, canonicalCommitter, repos.ImageRepo, log); err != nil {
+		if err := registerPostgresMediaOutboxHandlers(pgIndexWorker, drivePublisher, canonicalCommitter, repos.ImageRepo, repos.SubtitleArtifactRepo, log); err != nil {
 			return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL media outbox handlers: %w", err)
 		}
 	}

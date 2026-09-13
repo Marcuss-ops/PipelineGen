@@ -1,5 +1,9 @@
 # TICKET — CORE_READY durable DAG: `CORE_READY → {Docs, finalization} → COMPLETED`
 
+> **Dated artifact — paths reflect the tree at the time of writing.** Retained
+> while the ticket is open (see `AGENTS.md` § Documentation rule); verify any
+> referenced path against the current tree before acting.
+
 **Date:** 2026-09-13
 **Status:** PARTIALLY LANDED — step 1 + the resume prerequisite are in; steps 2–5 are blocked on a
 central completion-contract change (see §3)

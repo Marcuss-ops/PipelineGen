@@ -1,4 +1,4 @@
-// Package jobs — index_restore.go: the consumer half of the restore saga.
+// Package indexrestore — the consumer half of the restore saga.
 //
 // The producer (mutations.AssetMutationDispatcher.EnqueueAndRestore →
 // pgmedia.PostgresMediaCommitter.EnqueueAndRestore) atomically stamps the row's
@@ -11,7 +11,11 @@
 // hop: strict envelope validation (terminal on anything retrying cannot fix),
 // then one call into the narrow restore port, which re-emits the canonical
 // asset.index.requested envelope so the index plane rebuilds the projection.
-package jobs
+//
+// It lives in its own subpackage (not the jobs root) because the jobs root is a
+// registered file-count hotspot whose debt must not grow; the restore consumer
+// is a self-contained outbox handler with no dependency on the root package.
+package indexrestore
 
 import (
 	"context"

@@ -160,10 +160,13 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		canonicalResolver = newCanonicalIdentityResolver(root.MediaPostgres, legacyDB)
 	}
 
+	// MEDIA-SSOT P1-6: the local media backend is derived from the canonical
+	// PostgreSQL media read repository (mediaRepo) inside Build. The legacy
+	// SQLite ClipsRepo is deliberately NOT passed — it must never back a
+	// media catalog search again.
 	searchFanOut, searchBackends, searchAgg, searchErr := searchwiring.Build(
 		log,
 		providerReg,
-		root.Repos.ClipsRepo,
 		embeddingReg,
 		vectorStoreForSearch,
 		mediaRepo,
@@ -250,7 +253,6 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 			Committer:          canonicalCommitterOrSkipped(root, log),
 			DB:                 root.DB,
 			MediaDB:            root.MediaPostgres,
-			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,
 			DriveClient:        nil,
 			DriveUploader:      root.Drive.DriveUploader,

@@ -44,7 +44,17 @@ func buildScriptSourceResolvers(
 	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
-			clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+			// MEDIA-SSOT: the script clip resolver reads the PostgreSQL media
+			// SSOT whenever it is open; the legacy SQLite ClipsRepository is the
+			// documented graceful-degrade fallback only when the media plane is
+			// intentionally disabled (root.MediaPostgres == nil). Reading a
+			// PostgreSQL-committed asset through SQLite produced not-found
+			// hydration for every post-cutover clip.
+			if root.MediaPostgres != nil {
+				clipSourceBuilder = usecase.NewClipSourceBuilder(pgmedia.NewMediaSearcher(root.MediaPostgres), ollamaClient, log)
+			} else {
+				clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+			}
 			if root.AI != nil && root.AI.Reranker != nil && root.AI.Reranker.IsEnabled() {
 				clipSourceBuilder.SetReranker(root.AI.Reranker)
 			}

@@ -210,29 +210,33 @@ VELOX_PORT=8000
 
 ### Come i worker lo usano
 
-I worker (Go `pkg/veloxclient`, Python `scripts/velox_client.py`, operatori)
-si autenticano con l'header `Authorization: Bearer <VELOX_WORKER_TOKEN>`.
-Il token worker è **distinto** da quello admin e serve per le superfici
-worker/server-to-server:
+I worker (client Go `pkg/veloxclient`, operatori) si autenticano con l'header
+`Authorization: Bearer <VELOX_WORKER_TOKEN>`. Il token worker è **distinto** da
+quello admin e serve per le superfici worker/server-to-server. (`scripts/velox_client.py`
+non è più nel repository — eliminato dal commit `7e6965aab`; il client Go
+`pkg/veloxclient` è l'unico client di riferimento rimasto.)
 
 | Superficie | Token accettato | Note |
 |---|---|---|
 | `/api/*` (admin, job, media) | `VELOX_ADMIN_TOKEN` | `RequireAdminToken` rifiuta il token worker |
 | `/internal/v1/jobs/claim` e altri `/internal/v1/*` | **solo** `VELOX_WORKER_TOKEN` | `WorkerAuth` rifiuta il token admin (difesa in profondità) |
 | `/internal/v1/media/search` | worker + workspace reale | i worker sono forzati a workspace `default` → servono principal tenant o admin (`X-Workspace-ID`) |
-| `/api/script/generate`, polling job | admin **o** worker | `velox_client.py` usa `VELOX_WORKER_TOKEN` per i worker non-admin |
+| `/api/script/generate`, polling job | admin **o** worker | i worker non-admin usano `VELOX_WORKER_TOKEN` |
 
-Il client di riferimento (`scripts/velox_client.py`) prende il token da
-`os.environ["VELOX_WORKER_TOKEN"]` e lo invia come Bearer; usa lo **stesso**
-valore configurato sul server.
+Il client di riferimento Go (`pkg/veloxclient`) prende il token da
+`VELOX_WORKER_TOKEN` e lo invia come Bearer; usa lo **stesso** valore
+configurato sul server.
 
 ### Propagazione a un worker
 
-1. Genera/ruota il token con lo script ufficiale:
+1. Genera/ruota il token a mano (nessuno script di rotazione è presente nel
+   repository: `scripts/rotate_token.sh` e `scripts/generate_worker_token.sh`
+   sono stati eliminati dal commit `7e6965aab`, e `scripts/regenerate_token.sh`
+   riguarda il token OAuth di Google Drive, non le credenziali admin/worker):
    ```bash
-   sudo scripts/rotate_token.sh --also-worker   # rigenera ADMIN + WORKER
-   # oppure, solo worker:
-   scripts/generate_worker_token.sh --env       # stampa VELOX_WORKER_TOKEN=...
+   openssl rand -hex 32                        # nuovo VELOX_WORKER_TOKEN (64-hex)
+   sudoedit /etc/pipelinegen/pipelinegen.env   # sostituisci il valore (0640 root:pipelinegen-agents)
+   sudo systemctl restart pipelinegen          # l'EnvironmentFile è letto solo all'avvio
    ```
 2. Distribuisci il valore al worker (env var / secret manager — mai nei log
    o nei commit).
@@ -246,9 +250,8 @@ valore configurato sul server.
      -H 'Content-Type: application/json' \
      -d '{"worker_id":"verify-probe","capabilities":["youtube_clip.extract"]}'
    ```
-4. **Il vecchio worker token viene invalidato solo se rigenerato**
-   (`rotate_token.sh --also-worker`): i worker devono ricevere il nuovo
-   valore prima del restart del server.
+4. **Il vecchio worker token viene invalidato solo se rigenerato**: i worker
+   devono ricevere il nuovo valore prima del restart del server.
 
 ### Sicurezza
 
@@ -258,8 +261,9 @@ valore configurato sul server.
   **non** autentica `/internal/v1/*`, un token worker **non** autentica gli
   endpoint admin (bloccato dai test `TestWorkerAuth_RejectsAdminToken` /
   `TestRequireAdminToken_RejectsWorkerToken`).
-- Rotazione: `sudo scripts/rotate_token.sh --also-worker` (rigenera
-  admin + worker; vedi lo `usage` nello script).
+- Rotazione admin/worker: procedura manuale (genera 64-hex, sostituisci nel
+  secret file, riavvia il servizio, verifica l'ambiente del PID riavviato e
+  `make auth-check`). Non esiste uno script di rotazione nel repository.
 
 ---
 

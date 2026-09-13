@@ -86,3 +86,72 @@ type fakeNeverClaimer struct{}
 func (fakeNeverClaimer) ClaimNext(context.Context, string, time.Duration, []string) (*job.Job, error) {
 	return nil, nil
 }
+
+// payloadScopedClaimer is a Claimer that ALSO implements
+// job.PayloadScopedClaimer. It records the matcher it was handed so the test can
+// prove the scope reaches the store instead of being dropped by the queue loop.
+type payloadScopedClaimer struct {
+	fakeClaimer
+	match job.PayloadMatch
+}
+
+func (p *payloadScopedClaimer) ClaimNextMatching(_ context.Context, _ string, _ time.Duration, _ []string, match job.PayloadMatch) (*job.Job, error) {
+	p.match = match
+	return p.result, nil
+}
+
+// TestClaimUntilMatchingRequiresScopedClaimer pins the fail-closed rule: a
+// payload scope against a Claimer that cannot honour it is an error, never a
+// silently widened unscoped claim (which would hand a dedicated phase pool the
+// jobs it exists to avoid).
+func TestClaimUntilMatchingRequiresScopedClaimer(t *testing.T) {
+	_, err := ClaimUntilMatching(context.Background(), &fakeClaimer{}, "worker-1",
+		time.Second, time.Second, []string{"clip.render"}, job.PayloadMatch{"render_phase": "settle"})
+	if err == nil {
+		t.Fatal("a payload scope against a non-scoped claimer must fail closed")
+	}
+}
+
+// TestClaimUntilMatchingRejectsBlankKey pins matcher validation at the claim
+// boundary.
+func TestClaimUntilMatchingRejectsBlankKey(t *testing.T) {
+	_, err := ClaimUntilMatching(context.Background(), &payloadScopedClaimer{}, "worker-1",
+		time.Second, time.Second, []string{"clip.render"}, job.PayloadMatch{"": "settle"})
+	if err == nil {
+		t.Fatal("a blank payload-match key must fail closed")
+	}
+}
+
+// TestClaimUntilMatchingRoutesMatchToStore pins that a scoped claim reaches the
+// store's ClaimNextMatching with the configured matcher.
+func TestClaimUntilMatchingRoutesMatchToStore(t *testing.T) {
+	want := &job.Job{ID: "job-settle"}
+	claimer := &payloadScopedClaimer{fakeClaimer: fakeClaimer{result: want}}
+	match := job.PayloadMatch{"render_phase": "settle"}
+	got, err := ClaimUntilMatching(context.Background(), claimer, "worker-1",
+		time.Second, time.Second, []string{"clip.render"}, match)
+	if err != nil {
+		t.Fatalf("ClaimUntilMatching: %v", err)
+	}
+	if got != want {
+		t.Fatalf("claimed job = %#v, want %#v", got, want)
+	}
+	if len(claimer.match) != 1 || claimer.match["render_phase"] != "settle" {
+		t.Fatalf("store matcher = %v, want the configured scope", claimer.match)
+	}
+}
+
+// TestClaimUntilUnscopedDoesNotCallMatching pins that the historical unscoped
+// path still uses ClaimNext, so a store without the optional capability keeps
+// working unchanged.
+func TestClaimUntilUnscopedDoesNotCallMatching(t *testing.T) {
+	want := &job.Job{ID: "job-any"}
+	claimer := &fakeClaimer{result: want}
+	got, err := ClaimUntil(context.Background(), claimer, "worker-1", time.Second, time.Second, []string{"clip.render"})
+	if err != nil {
+		t.Fatalf("ClaimUntil: %v", err)
+	}
+	if got != want {
+		t.Fatalf("claimed job = %#v, want %#v", got, want)
+	}
+}

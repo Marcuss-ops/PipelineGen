@@ -1,5 +1,9 @@
 # TICKET — clip.render: measured micro-optimisation (Wave E)
 
+> **Dated artifact — paths reflect the tree at the time of writing.** Retained
+> while the ticket is open (see `AGENTS.md` § Documentation rule); verify any
+> referenced path against the current tree before acting.
+
 **Priority:** P2 — do not optimise before measuring.
 **Status:** OPEN (blocked on a real GPU/Chronon/RenderingGen deployment).
 **Owner:** `internal/platform/renderinggen` + ops benchmark harness.

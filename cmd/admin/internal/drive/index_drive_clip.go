@@ -154,7 +154,7 @@ func RunIndexDriveClip(args []string) error {
 		return fmt.Errorf("hash clip: %w", err)
 	}
 
-	clip, err := root.Repos.ClipsRepo.GetClip(ctx, driveID)
+	clip, err := root.GetMediaClip(ctx, driveID)
 	if err != nil {
 		return fmt.Errorf("look up existing clip: %w", err)
 	}

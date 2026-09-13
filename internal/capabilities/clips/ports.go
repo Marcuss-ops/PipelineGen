@@ -128,6 +128,19 @@ type ClipVoiceoverRecordDTO struct {
 // use. The CI lint scripts/ci-architectural-checks.sh enforces this
 // boundary by failing on `UpsertClip\(` matches in
 // internal/application + internal/api production paths.
+// AssetReader is the consumer-owned read contract the clips use cases need:
+// the single-asset lookup, and nothing else.
+//
+// It is deliberately an interface rather than the concrete SQLite
+// *detail.Service / detail.Repository bridge. PostgreSQL is the media SSOT, so
+// the production concrete is the PostgreSQL media read store; the SQLite
+// adapter satisfies the same interface only in the documented media-disabled
+// degrade mode. Declaring exactly what these use cases consume is what keeps a
+// second media read registry from growing beside the SSOT.
+type AssetReader interface {
+	Get(ctx context.Context, id string) (*asset.Asset, error)
+}
+
 type ClipRepositoryPort interface {
 	Upsert(ctx context.Context, clip *asset.Asset) error
 	Get(ctx context.Context, id string) (*asset.Asset, error)

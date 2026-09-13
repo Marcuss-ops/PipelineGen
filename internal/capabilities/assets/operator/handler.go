@@ -53,21 +53,36 @@
 package operator
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+// AssetService is the consumer-owned asset read contract for the operator API.
+//
+// It is deliberately an interface rather than the concrete SQLite
+// *detail.Service: PostgreSQL is the media SSOT, so the production concrete is
+// the PostgreSQL asset store and SQLite only serves the documented
+// media-disabled degrade mode. Declaring what this package actually needs keeps
+// a second media read registry from growing beside the SSOT.
+type AssetService interface {
+	Get(ctx context.Context, id string) (*asset.Details, error)
+	List(ctx context.Context, filter asset.Filter) ([]*asset.Summary, error)
+	Count(ctx context.Context, filter asset.Filter) (int64, error)
+}
 
 // Handler is the thin HTTP transport for operator console API endpoints.
 // All HTTP methods hang off this struct; sub-router entry points are
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
-	assetService  *detail.Service
+	assetService  AssetService
 	readModel     AssetInventoryReader
 	indexVerifier IndexVerifier
 	jobService    job.Service
@@ -89,7 +104,7 @@ type OperatorOptions struct {
 // Dependencies holds the pre-built dependencies for the operator handler.
 type Dependencies struct {
 	*OperatorOptions
-	AssetService  *detail.Service
+	AssetService  AssetService
 	ReadModel     AssetInventoryReader
 	IndexVerifier IndexVerifier
 	JobService    job.Service

@@ -173,7 +173,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
-	if root.Repos != nil && root.Repos.Assets != nil {
+	// MEDIA-SSOT: the BGM/SFX/overlay resolver and the media preflight read the
+	// PostgreSQL media SSOT, and the engine selection is owned by the canonical
+	// selector. Repeating the branch here made a SECOND engine decision point —
+	// the thing RequireMediaPostgres exists to prevent — and kept the legacy
+	// SQLite detail.Service reachable as a media read, so a clip committed by
+	// the canonical committer could be reported as missing by the preflight
+	// while the worker asset-transfer path (which uses the same selector) saw it.
+	assetLookup := mediasub.AssetDetailsLookup(root.MediaAssetDetailsLookup())
+	if assetLookup != nil {
 		var driveReader drive.Reader
 		if root.Drive != nil {
 			driveReader = root.Drive.Reader
@@ -184,12 +192,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			return nil, fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
 		}
 		audioAdapter := &audioAssetSourceAdapter{
-			assets:    root.Repos.Assets,
+			assets:    assetLookup,
 			canonical: canonical,
 		}
 		runner.SetAudioAssetSource(audioAdapter)
 		runner.SetOverlayBackgroundSource(audioAdapter)
-		runner.SetMediaPreflight(mediasub.NewPreflight(root.Repos.Assets, audioAdapter, audioAdapter))
+		runner.SetMediaPreflight(mediasub.NewPreflight(assetLookup, audioAdapter, audioAdapter))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")

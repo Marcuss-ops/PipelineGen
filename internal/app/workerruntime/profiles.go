@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // WorkerProfile declares the ceiling of job types a worker is
@@ -150,6 +151,7 @@ func ResolveCapabilities(profile *WorkerProfile, envOverride string, registeredT
 	}
 
 	var requested []string
+	var payloadMatch job.PayloadMatch
 
 	if strings.TrimSpace(envOverride) == "" {
 		// No env override — use the profile's full allowed set.
@@ -163,6 +165,13 @@ func ResolveCapabilities(profile *WorkerProfile, envOverride string, registeredT
 		if len(caps.JobTypes) == 0 {
 			return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES has empty job_types array")
 		}
+		// A payload scope is orthogonal to the profile's job-type ceiling (it
+		// narrows WITHIN an allowed type) but an unusable one fails closed here,
+		// exactly as it does on the unprofiled path.
+		if err := job.ValidatePayloadMatch(caps.PayloadMatch); err != nil {
+			return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES payload_match: %w", err)
+		}
+		payloadMatch = caps.PayloadMatch
 
 		for _, jt := range caps.JobTypes {
 			jt = strings.TrimSpace(jt)
@@ -210,10 +219,13 @@ func ResolveCapabilities(profile *WorkerProfile, envOverride string, registeredT
 	sort.Strings(validated)
 	// Preserve hardware capability declarations from the profile. The old
 	// implementation returned only JobTypes, silently dropping GPU/FFmpeg
-	// facts before registration.
+	// facts before registration. The payload scope (when the env declared one)
+	// travels with the job types so a profile-gated pool can still be a
+	// phase-scoped pool.
 	return appjobs.WorkerCapabilities{
-		JobTypes: validated,
-		GPU:      profile.RequiresGPU,
-		FFmpeg:   profile.RequiresFFmpeg,
+		JobTypes:     validated,
+		PayloadMatch: payloadMatch,
+		GPU:          profile.RequiresGPU,
+		FFmpeg:       profile.RequiresFFmpeg,
 	}, nil
 }

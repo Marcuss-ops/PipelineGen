@@ -176,6 +176,9 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		CopyEligible:       in.CopyEligible,
 		Codec:              in.Codec,
 		CodecProfile:       in.CodecProfile,
+		Container:          in.Container,
+		PixelFormat:        in.PixelFormat,
+		AudioStreams:       in.AudioStreams,
 		ClosedGOP:          in.ClosedGOP,
 		FirstFrameKeyframe: in.FirstFrameKeyframe,
 		RenderMS:           metricMillis(in.Metrics, "render_ms"),
@@ -361,14 +364,22 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	// hybrid: RenderingGen/Chronon never certifies video_zero_copy over this
 	// transport, so a request that demands it fails closed in the worker.
 	return &cliprender.RenderOutcome{
-		OutputPath:        plan.OutputPath,
-		SizeBytes:         certifiedSize,
-		SHA256:            certifiedSHA,
-		DurationSec:       float64(a.DurationUS) / 1e6,
-		Width:             uint32(a.Width),
-		Height:            uint32(a.Height),
-		FPSNum:            uint32(a.FPSNum),
-		FPSDen:            uint32(a.FPSDen),
+		OutputPath:  plan.OutputPath,
+		SizeBytes:   certifiedSize,
+		SHA256:      certifiedSHA,
+		DurationSec: float64(a.DurationUS) / 1e6,
+		Width:       uint32(a.Width),
+		Height:      uint32(a.Height),
+		FPSNum:      uint32(a.FPSNum),
+		FPSDen:      uint32(a.FPSDen),
+		// Certified structural facts: the render boundary probed these on the
+		// exact bytes it uploaded, so downstream contract validation consumes
+		// them instead of guessing (the local Rust probe reports no profile).
+		Container:         a.Container,
+		VideoCodec:        a.Codec,
+		VideoProfile:      a.CodecProfile,
+		PixelFormat:       a.PixelFormat,
+		AudioStreams:      a.AudioStreams,
 		Backend:           cliprender.RenderBackend(a.Backend),
 		AudioCopyEligible: boolPtr(a.CopyEligible),
 		Metrics:           metricsFromChrononMetrics(a.Metrics, a.FrameCount, a.DurationUS),

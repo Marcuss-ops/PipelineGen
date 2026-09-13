@@ -1,5 +1,10 @@
 # Muda audit — codebase waste inventory (2026-09-12)
 
+> **Dated snapshot — paths reflect the tree at time of writing (2026-09-12).**
+> Retained as prior art for the open tickets that cite it; file:line references
+> are historical and NOT maintained. Verify any path with `ls`/`git ls-files`
+> before acting on it.
+
 > **Scope:** the whole `refactored/` module (`internal/`, `pkg/`, `cmd/`, `make/`,
 > `architecture/`, `docs/`), plus the three Rust crates under `rust/`.
 > **Method:** measured, not asserted. Every finding below carries a

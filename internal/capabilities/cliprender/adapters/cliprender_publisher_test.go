@@ -197,6 +197,80 @@ func TestClipRenderPublisher_AsyncDriveStagesBeforeCommit(t *testing.T) {
 	}
 }
 
+// TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle pins the sidecar
+// bundle: with async delivery enabled a sidecar-mode request no longer takes the
+// synchronous Drive path. The ASS artifact is detached from the workspace and
+// travels INSIDE the same durable Drive intent as the video, so the render job
+// completes without waiting for Drive in either subtitle mode.
+func TestClipRenderPublisher_AsyncDrive_CarriesSidecarBundle(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p, err := NewClipRenderPublisher(drive, committer, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPublisher() error = %v", err)
+	}
+	p.SetAsyncDrive(true)
+	p.SetAsyncDriveStagingRoot(filepath.Join(t.TempDir(), "cliprender-staging"))
+	video := writeFakeVideo(t)
+
+	sidecarPath := filepath.Join(filepath.Dir(video), "subtitles.ass")
+	if err := os.WriteFile(sidecarPath, []byte("[Script Info]\nTitle: bundle fixture\n"), 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	sidecarSHA, sidecarSize, err := digest.SHA256File(sidecarPath)
+	if err != nil {
+		t.Fatalf("hash sidecar: %v", err)
+	}
+
+	in := publishInput(video, "Bundle Clip", cliprender.SubtitlesModeSidecar, "leaf-bundle")
+	in.Subtitles.LocalPath = sidecarPath
+	in.Subtitles.SHA256 = sidecarSHA
+	in.Transcript = &cliprender.TranscriptResult{Language: "en", TextSHA256: strings.Repeat("cd", 32)}
+
+	res, err := p.Publish(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if !res.DrivePending {
+		t.Fatal("async sidecar publication must report DrivePending")
+	}
+	if got := len(drive.publishRequests()); got != 0 {
+		t.Fatalf("Drive uploads = %d, want 0 before outbox consumption", got)
+	}
+	commits := committer.commitRequests()
+	if len(commits) != 1 || len(commits[0].AdditionalOutboxEvents) != 1 {
+		t.Fatalf("commit additional outbox events = %d, want 1", len(commits[0].AdditionalOutboxEvents))
+	}
+	var payload cliprender.ClipRenderDriveDeliveryRequest
+	if err := json.Unmarshal([]byte(commits[0].AdditionalOutboxEvents[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode delivery payload: %v", err)
+	}
+	if payload.Sidecar == nil {
+		t.Fatal("async sidecar publication must carry the sidecar bundle in the delivery intent")
+	}
+	if payload.Sidecar.LocalPath == sidecarPath {
+		t.Fatal("sidecar payload still points into the job workspace")
+	}
+	if _, err := os.Stat(payload.Sidecar.LocalPath); err != nil {
+		t.Fatalf("staged sidecar is unavailable: %v", err)
+	}
+	if payload.Sidecar.SizeBytes != sidecarSize {
+		t.Errorf("sidecar size = %d, want %d", payload.Sidecar.SizeBytes, sidecarSize)
+	}
+	if payload.Sidecar.SHA256 != sidecarSHA {
+		t.Errorf("sidecar digest = %q, want %q", payload.Sidecar.SHA256, sidecarSHA)
+	}
+	if payload.Sidecar.LanguageCode != "en" {
+		t.Errorf("sidecar language = %q, want en", payload.Sidecar.LanguageCode)
+	}
+	if !strings.HasSuffix(payload.Sidecar.Filename, ".ass") {
+		t.Errorf("sidecar filename = %q, want *.ass", payload.Sidecar.Filename)
+	}
+	if _, err := os.Stat(sidecarPath); !os.IsNotExist(err) {
+		t.Fatalf("workspace sidecar still exists after staging, err=%v", err)
+	}
+}
+
 // TestClipRenderPublisher_SidecarMode_UploadsAssOnlyWhenExplicit pins the
 // explicit opt-in: subtitles.mode=sidecar IS the caller's sidecar-export
 // request — the .ass is uploaded next to the MP4 with the same human base

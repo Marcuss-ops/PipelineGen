@@ -2,7 +2,6 @@ package wiring
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -23,12 +22,16 @@ import (
 // It registers entities backed by the existing application services
 // without duplicating business logic.
 func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
-	if root == nil || root.Repos == nil || root.Repos.Assets == nil {
-		return fmt.Errorf("wire registry: adminconsole-api: asset service not available")
+	if root == nil {
+		return fmt.Errorf("wire registry: adminconsole-api: composition root is nil")
+	}
+	assetStore, err := root.MediaAssetStore()
+	if err != nil || assetStore == nil {
+		return fmt.Errorf("wire registry: adminconsole-api: media asset store not available: %w", err)
 	}
 
 	auditStore := adminconsolesqlite.NewAuditStore(root.DB.DB)
-	versionStore := adminconsolesqlite.NewVersionStore(root.DB.DB)
+	versionStore := root.MediaAssetVersionStore()
 
 	reg := adminconsole.NewRegistry()
 
@@ -80,7 +83,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		Repository: &adminconsole.Adapter{
 			ListFn: func(ctx context.Context, opts adminconsole.ListOptions) (adminconsole.ListResult, error) {
 				filter := assetFilterFromOptions(opts)
-				assets, err := root.Repos.Assets.List(ctx, filter)
+				assets, err := assetStore.List(ctx, filter)
 				if err != nil {
 					return adminconsole.ListResult{}, err
 				}
@@ -91,18 +94,19 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 				return adminconsole.ListResult{Items: items, Total: len(items)}, nil
 			},
 			GetFn: func(ctx context.Context, id string) (map[string]any, error) {
-				details, err := root.Repos.Assets.Get(ctx, id)
+				details, err := assetStore.Get(ctx, id)
 				if err != nil {
 					return nil, err
 				}
 				item := structToMap(details)
-				item["_version"] = assetAdminVersion(ctx, root.DB.DB, id)
+				version, _ := assetStore.AdminVersion(ctx, id)
+				item["_version"] = version
 				return item, nil
 			},
 		},
 		Mutator: &adminconsole.Adapter{
 			PatchFn: func(ctx context.Context, id string, changes map[string]any, expectedVersion int) (map[string]any, error) {
-				details, err := root.Repos.Assets.Get(ctx, id)
+				details, err := assetStore.Get(ctx, id)
 				if err != nil {
 					return nil, err
 				}
@@ -124,7 +128,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 				}
 
 				applyAssetChanges(details.Asset, changes)
-				if err := root.Repos.Assets.Save(ctx, details); err != nil {
+				if err := assetStore.Save(ctx, details); err != nil {
 					logAudit(ctx, auditStore, "assets", id, "patch", previousJSON, "", changedFields, false, err.Error())
 					return nil, err
 				}
@@ -274,16 +278,6 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		return fmt.Errorf("wire registry: adminconsole-api module: %w", err)
 	}
 	return nil
-}
-
-// assetAdminVersion reads the current admin_version for an asset.
-func assetAdminVersion(ctx context.Context, db *sql.DB, id string) int {
-	var v int
-	row := db.QueryRowContext(ctx, "SELECT COALESCE(admin_version,0) FROM media_assets WHERE id = ?", id)
-	if err := row.Scan(&v); err != nil {
-		return 0
-	}
-	return v
 }
 
 // snapshotAsset returns a JSON snapshot of the asset before and after

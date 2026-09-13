@@ -115,9 +115,13 @@ type Worker struct {
 	pollEvery  time.Duration
 	backoff    BackoffConfig
 	types      []string
-	notifier   job.QueueNotifier
-	reg        *Registry
-	timeouts   TimeoutMap
+	// match optionally narrows this worker's claims to jobs whose payload
+	// carries the listed key=value pairs (kernel/job.PayloadMatch). Empty =
+	// the historical unscoped claim.
+	match    job.PayloadMatch
+	notifier job.QueueNotifier
+	reg      *Registry
+	timeouts TimeoutMap
 
 	// broker is the typed narrow port (CompletionPort) consumed by
 	// the Worker for artifact-producing job finalization. nil = legacy
@@ -175,6 +179,9 @@ type WorkerDeps struct {
 	PollEvery  time.Duration
 	Backoff    BackoffConfig
 	Types      []string
+	// PayloadMatch optionally scopes this worker to a phase inside one job
+	// type (kernel/job.PayloadMatch). Empty = unscoped.
+	PayloadMatch job.PayloadMatch
 }
 
 // NewWorker constructs a Worker.
@@ -209,6 +216,7 @@ func NewWorker(deps WorkerDeps) *Worker {
 		pollEvery:  deps.PollEvery,
 		backoff:    deps.Backoff,
 		types:      deps.Types,
+		match:      deps.PayloadMatch,
 		notifier:   deps.Notifier,
 	}
 }
@@ -437,6 +445,23 @@ func (w *Worker) maxRetriesFor(jobType string) int {
 //     concrete notifier; the sleeping select wakes immediately and
 //     Workers resume polling at the BaseInterval (backoff is reset on
 //     the next successful claim).
+//
+// claimNext claims the next eligible job for this worker. An empty payload
+// match is the historical unscoped claim; a non-empty one requires the store to
+// implement kernel/job.PayloadScopedClaimer and fails closed otherwise, so a
+// dedicated phase pool can never silently widen into the jobs it exists to
+// avoid.
+func (w *Worker) claimNext(ctx context.Context) (*job.Job, error) {
+	if len(w.match) == 0 {
+		return w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
+	}
+	scoped, ok := w.repo.(job.PayloadScopedClaimer)
+	if !ok {
+		return nil, fmt.Errorf("worker %s: repository %T cannot honour payload_match %v", w.id, w.repo, w.match)
+	}
+	return scoped.ClaimNextMatching(ctx, w.id, w.leaseTTL, w.types, w.match)
+}
+
 func (w *Worker) Start(ctx context.Context) {
 	w.log.Info("worker started",
 		zap.String("worker_id", w.id),
@@ -468,7 +493,7 @@ func (w *Worker) Start(ctx context.Context) {
 
 		w.requeueDueRetries(ctx)
 
-		j, err := w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
+		j, err := w.claimNext(ctx)
 		if err != nil {
 			if errors.Is(err, job.ErrTransitionConflict) {
 				// Expected under concurrent polling: another worker won the

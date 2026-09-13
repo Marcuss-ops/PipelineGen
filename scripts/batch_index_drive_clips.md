@@ -1,19 +1,26 @@
 # Batch Drive Clip Indexer — Runbook operativo
 
+> **Stato (2026-09-13)**: il wrapper bash `scripts/batch_index_drive_clips.sh`
+> **non è nel repository** (eliminato dal commit `7e6965aab`). La superficie
+> canonica oggi è il comando Go `cmd/admin/index-drive-clip`, invocato una volta
+> per manifest; le sezioni che descrivono il wrapper vanno lette come
+> procedura manuale (pre-build del binario + loop per clip).
+
 End-to-end: nuovi clip su Google Drive → indicizzati in `refactored`'s `media_assets` via
 manifest JSON strict-validated. Nessun nuovo codice Go viene scritto: si riusa
-esattamente `cmd/admin/index-drive-clip` per ogni manifest. Il wrapper bash fa
-pre-build del binario per evitare recompile per ogni singolo clip.
+esattamente `cmd/admin/index-drive-clip` per ogni manifest. Il vecchio wrapper
+bash faceva pre-build del binario per evitare recompile per ogni singolo clip;
+qui quel loop viene mostrato esplicitamente.
 
 > Vincoli del codice che guidano il design:
-> - `cmd/admin/manifest.go` usa `disallowUnknownFields` → qualunque campo extra
+> - `cmd/admin/internal/drive/manifest.go` usa `disallowUnknownFields` → qualunque campo extra
 >   nel manifest viene rifiutato dal decoder.
-> - `cmd/admin/manifest.go::Validate()` fallisce chiuso su qualunque campo
+> - `cmd/admin/internal/drive/manifest.go::Validate()` fallisce chiuso su qualunque campo
 >   richiesto mancante (`drive_file_id`, `name`, `description`, `tags`,
 >   `source`, `category|local_subdir`, `group`).
-> - `cmd/admin/index_drive_clip.go::resolveClipDuration` fallisce chiuso se
+> - `cmd/admin/internal/drive/index_drive_clip.go::resolveClipDuration` fallisce chiuso se
 >   `ffprobe` fallisce E non hai passato `--allow-declared-duration`.
-> - `cmd/admin/drive_reconcile.go` è l'unico writer canonico per
+> - `cmd/admin/internal/drive/drive_reconcile.go` è l'unico writer canonico per
 >   `drive_folder_catalog` con `source='discovered'`.
 > - `cmd/admin/index-drive-clip` è idempotente su `asset_id = drive_file_id`:
 >   rilanciare dopo un successo parziale è sicuro.
@@ -84,80 +91,71 @@ Per uno schema canonico osserverai questo formato (uguale a `beluga.json` e
 | `duration_fallback_seconds` | no     | `> 0` richiede `--allow-declared-duration` su index-drive-clip |
 | `metadata`                | no       | mappa `string→string`, valori `content_type`, `subject`, `visual_summary`, `timeline_json`, `hook`, `audio_policy`, `sound_design_plan` |
 
-## 4. Step 2 — dry-run del batch
+## 4. Step 2 — validazione batch (pre-flight)
+
+Non esiste più un `--dry-run` di wrapper: il comando Go non ha una modalità
+dry-run (qualsiasi invocazione reale contatta Drive). Il pre-flight canonico è
+la validazione JSON + del manifest loader, fatta su ogni file PRIMA del run:
 
 ```bash
 cd refactored
-./scripts/batch_index_drive_clips.sh \
-    --manifests-dir cmd/admin/manifests \
-    --pattern "*.json" \
-    --build                # forza una rebuild fresca del binario ./bin/admin
+for f in cmd/admin/manifests/*.json; do
+    jq -e . "$f" >/dev/null || { echo "INVALID JSON: $f"; exit 1; }
+done
+# Validazione semanticamente completa (senza toccare Drive): il loader rifiuta
+# campi sconosciuti e campi obbligatori mancanti.
+go build -o ./bin/admin ./cmd/admin
 ```
 
-> `--build` **ricompila sempre**; senza `--build` il wrapper riusa il
-> `./bin/admin` cachato (che deve esistere già). Il wrapper NON fa
-> staleness check sui sorgenti Go: se modifichi `cmd/admin/*.go`, devi
-> passare `--build` per vederle applicate.
-
-Output atteso (DRY-RUN, exit 0):
-
-```
-=== Batch Drive Indexer ===
-  manifests_dir    : cmd/admin/manifests
-  pattern          : *.json
-  mode             : DRY-RUN
-  ...
-— [cmd/admin/manifests/beluga.json]
-   would run: './bin/admin index-drive-clip --manifest cmd/admin/manifests/beluga.json'
-— [cmd/admin/manifests/<slug>.json]
-   would run: ...
-```
+Output atteso: `jq` exit 0 su tutti i file e una `./bin/admin` aggiornata.
+Se hai modificato `cmd/admin/**/*.go`, il rebuild esplicito qui sopra è ciò che
+applica le modifiche (non c'è più un `--build` del wrapper).
 
 ## 5. Step 3 — esecuzione reale
 
-Modalità **continue-on-error** (default): anche se un manifest fallisce, il
-wrapper tenta gli altri. Consigliata per run iniziali dove potresti avere
-qualche metadata sbagliata.
+Un manifest alla volta. Modalità **continue-on-error**: anche se un manifest
+fallisce, il loop tenta gli altri. Consigliata per run iniziali dove potresti
+avere qualche metadata sbagliata.
 
 ```bash
-./scripts/batch_index_drive_clips.sh --apply --build
+cd refactored
+failed=0
+for f in cmd/admin/manifests/*.json; do
+    echo "— [$f]"
+    ./bin/admin index-drive-clip --manifest "$f" || failed=$((failed+1))
+done
+echo "failed: $failed"
 ```
 
 Modalità **strict**: ferma tutto al primo errore. Consigliata quando sei
-sicuro di voler fall-closed su qualunque problem (es. CI).
+sicuro di voler fall-closed su qualunque problema (es. CI).
 
 ```bash
-./scripts/batch_index_drive_clips.sh --apply --strict --build
+cd refactored
+set -e
+for f in cmd/admin/manifests/*.json; do ./bin/admin index-drive-clip --manifest "$f"; done
 ```
 
 Per manifest con `duration_fallback_seconds > 0` (es. beluga.json ha 9s):
 
 ```bash
-./scripts/batch_index_drive_clips.sh --apply --allow-declared-duration --build
+./bin/admin index-drive-clip \
+    --manifest cmd/admin/manifests/beluga.json \
+    --allow-declared-duration
 ```
 
 Per re-usare lo stesso manifest contro un Drive ID nuovo (es. hai rifatto
 l'upload):
 
 ```bash
-./scripts/batch_index_drive_clips.sh \
-    --apply \
-    --drive-file-id "<NUOVO_DRIVE_ID>" \
-    --manifests-dir cmd/admin/manifests/<slug>.json
+./bin/admin index-drive-clip \
+    --manifest cmd/admin/manifests/<slug>.json \
+    --drive-file-id "<NUOVO_DRIVE_ID>"
 ```
 
-Output finale:
-
-```
-=== Summary ===
-  manifests : 3
-  indexed   : 2
-  failed    : 1
-  elapsed   : 12.456s
-  next steps: fix the failing manifest(s) above and re-run with --apply.
-```
-
-(Rilanciare è sicuro: `index-drive-clip` è idempotente su `asset_id = drive_file_id`.)
+Output atteso: una riga di summary per manifest (`indexed` / `failed`) e, a
+fine loop, il conteggio dei fallimenti. Rilanciare è sicuro:
+`index-drive-clip` è idempotente su `asset_id = drive_file_id`.
 
 ## 6. Step 4 (opzionale) — re-embedding di massa
 
@@ -172,8 +170,9 @@ cd refactored
 # che accoda asset.index.requested nel PG outbox; il drain è di PostgresIndexWorker.
 curl -sS -X POST "$VELOX_URL/api/assets/operator/assets/<asset_id>/reindex" \
   -H "Authorization: Bearer $VELOX_ADMIN_TOKEN"
-# oppure programmaticamente via il job handler in
-# internal/infrastructure/indexing/clipindexer/batch.go::HandleJob.
+# oppure programmaticamente via il package canonico
+# internal/platform/qdrant/indexing/clipindexer (il vecchio
+# batch.go::HandleJob non esiste più: vedi wire_envelope.go per la nota storica).
 ```
 
 ## 7. Note operative
@@ -191,17 +190,19 @@ curl -sS -X POST "$VELOX_URL/api/assets/operator/assets/<asset_id>/reindex" \
   da `EnqueueAndIndex` ma possono produrre log rumoreggi. Evita di lanciare il
   wrapper in parallelo.
 - **Cleanup**: i clip locali vengono salvati in
-  `cfg.Storage.MediaDir/<local_subdir|category>`. Per liberare lo spazio,
-  vedi gli eventuali job in `cmd/admin/cleanup_*` (non documentati in questo
-  runbook per non fare overlap con procedure di storage esistenti).
+  `cfg.Storage.MediaDir/<local_subdir|category>`. Per liberare lo spazio usa i
+  sottocomandi admin sotto `cmd/admin/internal/cleanup/` (es.
+  `go run ./cmd/admin cleanup-all-orphans`, `cleanup-stock-orphans`), non
+  documentati in questo runbook per non fare overlap con procedure di storage
+  esistenti.
 
 ## 8. Troubleshooting
 
 | errore                                     | causa                                           | rimedio                                                      |
 | ------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------ |
-| `--manifest is required`                   | hai invocato `index-drive-clip` senza `--manifest` | usa `scripts/batch_index_drive_clips.sh` che lo passa sempre |
+| `--manifest is required`                   | hai invocato `index-drive-clip` senza `--manifest` | passa `--manifest <path>` (il wrapper bash che lo faceva non esiste più) |
 | `disallowUnknownFields: ...`               | hai aggiunto un campo custom al manifest        | rimuovilo: lo strict decoder rifiuta qualunque chiave extra  |
 | `manifest: name is required`              | placeholder `REPLACE_*` non sostituito          | modifica il manifest                                         |
-| `Drive file is missing or trashed`         | ID Drive sbagliato o file eliminato              | verifica con `scripts/list-drive-folder.ts`                  |
+| `Drive file is missing or trashed`         | ID Drive sbagliato o file eliminato              | verifica con `go run ./cmd/admin list-drive-folder`          |
 | `probe clip duration failed`               | `ffprobe` non disponibile o clip corrotto        | aggiungi `--allow-declared-duration` (solo se manifest ha `duration_fallback_seconds > 0`) |
 | `outbox baseline read failed`              | DB locked / permessi                            | rilancia dopo qualche secondo                                |

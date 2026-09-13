@@ -6,8 +6,6 @@ import (
 
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -77,13 +75,19 @@ func NewClipRenderPublisher(drive delivery.Publisher, committer persistence.Asse
 	return &ClipRenderPublisher{drive: drive, committer: committer, log: log}, nil
 }
 
+// publishPhase is a per-boundary-step diagnostic trace (hash, video upload,
+// sidecar upload, taxonomy, commit) emitted at Debug. The canonical operator
+// events for a published clip are the single `clip.render.publish.completed`
+// line below plus the worker's `clip.render.job.completed`; at Info this
+// helper cost ~6 lines of log per clip for facts the publication metrics and
+// RunReport already own.
 func (p *ClipRenderPublisher) publishPhase(phase, runID string, fields ...zap.Field) {
 	all := append([]zap.Field{
 		zap.String("subsystem", "clip_render_publish"),
 		zap.String("phase", phase),
 		zap.String("run_id", runID),
 	}, fields...)
-	p.log.Info("clip.render.publish.phase", all...)
+	p.log.Debug("clip.render.publish.phase", all...)
 }
 
 // publishMetrics tracks the wall-clock duration of each publish phase.
@@ -165,8 +169,11 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.Bool("has_subtitle_sidecar", hasSubtitleSidecar),
 		zap.Int64("duration_ms", metrics.HashMS),
 	)
-	if p.asyncDrive && !hasSubtitleSidecar {
-		return p.publishAsyncDrive(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename)
+	// Both subtitle modes use the durable async path: the delivery intent
+	// carries an optional ASS sidecar bundle, so sidecar mode no longer forces
+	// a synchronous Drive round-trip before the render job can complete.
+	if p.asyncDrive {
+		return p.publishAsyncDrive(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename, hasSubtitleSidecar)
 	}
 
 	// ── Phase 2: upload video + subtitle sidecar concurrently ────────
@@ -203,7 +210,7 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 			// Logical clip identity is stable across re-encoding. Do not include
 			// the output hash here: a valid rerender must update the same Drive
 			// filename rather than create a new file/folder for new bytes.
-			IdempotencyKey: delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, in.SourceAssetID+":"+driveFilename, "clip-render-v1", 1),
+			IdempotencyKey: delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, in.SourceAssetID+":"+driveFilename, cliprender.ClipRenderDrivePolicyVersion, 1),
 			// clip.render is a regenerable projection: the canonical filename
 			// identifies the logical clip, while the encoded byte hash may change
 			// between valid rerenders. Replace that file instead of creating a
@@ -239,22 +246,16 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	if hasSubtitleSidecar {
 		g.Go(func() error {
 			uploadStart := time.Now()
-			sidecarFilename := assetID + ".ass"
-			if strings.TrimSpace(in.SourceTitle) != "" {
-				safeTitle := textutil.SanitizeFilename(in.SourceTitle)
-				if safeTitle != "" && safeTitle != "unnamed" {
-					sidecarFilename = safeTitle + ".ass"
-				}
-			}
+			sidecarName := sidecarFilename(assetID, in.SourceTitle)
 			p.publishPhase("sidecar_upload_start", runID,
-				zap.String("filename", sidecarFilename),
+				zap.String("filename", sidecarName),
 				zap.String("local_path", in.Subtitles.LocalPath),
 			)
 			result, publishErr := p.drive.Publish(gctx, delivery.PublishRequest{
 				Destination:         delivery.DestinationClipMetadata,
 				DestinationFolderID: in.DriveFolderID,
 				LocalPath:           in.Subtitles.LocalPath,
-				Filename:            sidecarFilename,
+				Filename:            sidecarName,
 				AssetID:             assetID,
 				SourceVersion:       1,
 				ContentHash:         in.Subtitles.SHA256,
@@ -402,10 +403,11 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 }
 
 // publishAsyncDrive completes the local, durable half of publication and
-// emits a transactionally-persisted Drive intent. It deliberately supports
-// burned subtitles (the normal clip-render mode); sidecar mode stays on the
-// synchronous path until its subtitle-artifact mutation is included in the
-// same delivery contract.
+// emits a transactionally-persisted Drive intent. The intent is a BUNDLE: the
+// rendered video plus, when the request selected sidecar subtitles, the
+// compiled ASS artifact. Both artifacts are detached from the per-job
+// workspace before the commit, so the outbox consumer can drain long after the
+// workspace has been cleaned.
 func (p *ClipRenderPublisher) publishAsyncDrive(
 	ctx context.Context,
 	in cliprender.RenderPublishInput,
@@ -414,10 +416,15 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 	contentHash string,
 	size int64,
 	assetID, driveFilename string,
+	hasSubtitleSidecar bool,
 ) (*cliprender.RenderPublishResult, error) {
 	stagedPath, err := p.stageAsyncArtifact(in.OutputPath, assetID, size)
 	if err != nil {
 		return nil, fmt.Errorf("stage rendered artifact for asynchronous Drive delivery: %w", err)
+	}
+	sidecar, err := p.stageAsyncSubtitle(in, assetID, hasSubtitleSidecar)
+	if err != nil {
+		return nil, err
 	}
 	taxonomyStart := time.Now()
 	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
@@ -434,6 +441,7 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 		AssetID:       assetID, RunID: in.RunID, SourceAssetID: in.SourceAssetID,
 		LocalPath: stagedPath, Filename: driveFilename,
 		FolderID: in.DriveFolderID, ContentHash: contentHash, SizeBytes: size,
+		Sidecar: sidecar,
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -478,93 +486,4 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 	return &cliprender.RenderPublishResult{
 		AssetID: assetID, DrivePending: true, SizeBytes: size, Publish: metrics,
 	}, nil
-}
-
-// stageAsyncArtifact atomically detaches a rendered file from the ephemeral
-// job workspace. The outbox event may be processed after the job runner has
-// cleaned that workspace, so the payload must reference this durable staging
-// copy instead of the renderer's run directory.
-func (p *ClipRenderPublisher) stageAsyncArtifact(source, assetID string, size int64) (string, error) {
-	root := strings.TrimSpace(p.asyncStagingRoot)
-	if root == "" {
-		root = filepath.Join(os.TempDir(), "pipelinegen", "cliprender", "staging")
-	}
-	if !filepath.IsAbs(root) {
-		absolute, err := filepath.Abs(root)
-		if err != nil {
-			return "", fmt.Errorf("resolve staging root %q: %w", root, err)
-		}
-		root = absolute
-	}
-	if err := os.MkdirAll(root, 0o750); err != nil {
-		return "", fmt.Errorf("create staging root %q: %w", root, err)
-	}
-	ext := filepath.Ext(source)
-	if ext == "" {
-		ext = ".mp4"
-	}
-	destination := filepath.Join(root, assetID+ext)
-	if source == destination {
-		return destination, nil
-	}
-
-	if _, err := os.Stat(destination); err == nil {
-		return p.reuseStagedArtifact(source, destination, assetID, size)
-	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("inspect staged artifact %q: %w", destination, err)
-	}
-	if err := os.Rename(source, destination); err == nil {
-		return destination, nil
-	}
-
-	// The workspace and configured staging root may be on different mounts;
-	// fall back to a verified copy when atomic rename is unavailable.
-	inFile, err := os.Open(source)
-	if err != nil {
-		return "", fmt.Errorf("open source artifact %q: %w", source, err)
-	}
-	outFile, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
-	if err != nil {
-		_ = inFile.Close()
-		if os.IsExist(err) {
-			return p.reuseStagedArtifact(source, destination, assetID, size)
-		}
-		return "", fmt.Errorf("create staged artifact %q: %w", destination, err)
-	}
-	_, copyErr := io.Copy(outFile, inFile)
-	if copyErr == nil {
-		copyErr = outFile.Sync()
-	}
-	closeOutErr := outFile.Close()
-	closeInErr := inFile.Close()
-	if copyErr != nil {
-		_ = os.Remove(destination)
-		return "", fmt.Errorf("copy artifact to staging: %w", copyErr)
-	}
-	if closeOutErr != nil {
-		_ = os.Remove(destination)
-		return "", fmt.Errorf("close staged artifact: %w", closeOutErr)
-	}
-	if closeInErr != nil {
-		return "", fmt.Errorf("close source artifact: %w", closeInErr)
-	}
-	if err := os.Remove(source); err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("remove workspace artifact after staging: %w", err)
-	}
-	return destination, nil
-}
-
-func (p *ClipRenderPublisher) reuseStagedArtifact(source, destination, assetID string, size int64) (string, error) {
-	stagedHash, stagedSize, err := digest.SHA256File(destination)
-	if err != nil {
-		return "", fmt.Errorf("verify existing staged artifact: %w", err)
-	}
-	prefixLen := len(assetID) - len("cliprender_")
-	if prefixLen <= 0 || len(stagedHash) < prefixLen || stagedSize != size || !strings.HasPrefix(assetID, "cliprender_") || !strings.HasPrefix(assetID[len("cliprender_"):], stagedHash[:prefixLen]) {
-		return "", fmt.Errorf("existing staged artifact %q does not match asset %q", destination, assetID)
-	}
-	if err := os.Remove(source); err != nil && !os.IsNotExist(err) && source != destination {
-		return "", fmt.Errorf("remove duplicate workspace artifact: %w", err)
-	}
-	return destination, nil
 }

@@ -1,5 +1,10 @@
 # PipelineGen — Orchestration consolidation audit (fase 2)
 
+> **Dated snapshot — paths reflect the tree at time of writing (2026-09-12).**
+> Retained as the reasoning layer for the open tickets that cite it; section and
+> path references are historical and NOT maintained. Verify any path with
+> `ls`/`git ls-files` before acting on it.
+
 **Data:** 2026-09-12
 **Scope:** verifica del piano "togliere infrastruttura" (scheduler unico, un solo
 execution graph, checkpoint, barriera translation→TTS, cutover Chronon daemon,

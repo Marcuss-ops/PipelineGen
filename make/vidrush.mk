@@ -82,8 +82,11 @@ verify-media-architecture:
 	@test "$$(rg -n 'NewVidRushProviderFanoutWithResolver\(' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n 'NewInternetImagesProcessor' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
 	@test "$$(rg -n '^type InternetImagesProcessor |NewInternetImagesProcessor' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
-	@test "$$(rg -n 'candidate_ok|Artlist query contamination detected|Artlist asset winner/candidate is reused' tests/operational/vidrush/lib/assertions.sh | wc -l | tr -d ' ')" = 0
-	@test "$$(rg -n 'verify-operational|MediaCert ownership certification' tests/operational/vidrush/lib/assertions.sh | wc -l | tr -d ' ')" -ge 2
+	# The two legacy assertions that grepped the vidrush shell assertions helper
+	# were removed on 2026-09-13: that helper was deleted by commit 7e6965aab, so
+	# the first assertion was vacuously true (0 matches in a missing file) and the
+	# second could never pass. The surviving statements above are pure Go-tree
+	# guards and remain fail-closed.
 	@echo "MEDIA INTELLIGENCE ARCHITECTURE"
 	@echo "SceneIR canonical profile owner    PASS"
 	@echo "EntityExtractor port owner         PASS"
@@ -150,9 +153,11 @@ verify-vidrush-semantic:
 	@$(MEDIACERT_BIN) verify $(VIDRUSH_SEMANTIC_FIXTURE) $(VIDRUSH_SEMANTIC_SPEC)
 	@echo "✅ verify-vidrush-semantic passed"
 
+# verify-vidrush-contract — the second leg (tests/operational/vidrush/
+# test_contract.sh) was retired on 2026-09-13 with commit 7e6965aab; the Go
+# suite below is the surviving contract gate.
 verify-vidrush-contract:
 	@$(GO) test -count=1 $(VIDRUSH_GO_PACKAGES) -run 'VidRush|CanonicalProcessorNames'
-	@bash tests/operational/vidrush/test_contract.sh
 
 verify-vidrush-extraction:
 	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'Entities|Segment|Extraction'
@@ -198,26 +203,14 @@ verify-vidrush-resilience:
 	@$(MAKE) verify-vidrush-recovery
 	@$(MAKE) verify-vidrush-concurrency
 
+# verify-vidrush-release — Go-only release gate (local + resilience).
+# The live leg (verify-vidrush-full-live) was RETIRED 2026-09-13: its drivers
+# tests/operational/vidrush/run_scenario.sh and full_battery.sh dependencies
+# (test_contract.sh, lib/assertions.sh, scenarios runner) were deleted by
+# commit 7e6965aab, leaving only a battery that failed at "missing runner".
 verify-vidrush-release:
 	@$(MAKE) verify-vidrush-local
 	@$(MAKE) verify-vidrush-resilience
-	@$(MAKE) verify-vidrush-full-live
-
-verify-vidrush-artlist-live:
-	@$(MAKE) auth-check
-	@scripts/with-velox-auth bash tests/operational/vidrush/run_scenario.sh tests/operational/vidrush/scenarios/07_artlist_live.json
-
-verify-vidrush-images-live:
-	@$(MAKE) auth-check
-	@scripts/with-velox-auth bash tests/operational/vidrush/run_scenario.sh tests/operational/vidrush/scenarios/08_images_live.json
-
-verify-vidrush-generation-live:
-	@$(MAKE) auth-check
-	@scripts/with-velox-auth bash tests/operational/vidrush/run_scenario.sh tests/operational/vidrush/scenarios/14_generation_live.json
-
-verify-vidrush-full-live:
-	@$(MAKE) auth-check
-	@scripts/with-velox-auth bash tests/operational/vidrush/full_battery.sh
 
 benchmark-vidrush:
 	@$(GO) test -run '^$$' -bench 'VidRush' ./internal/capabilities/scripts/adapters

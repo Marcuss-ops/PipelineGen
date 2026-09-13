@@ -155,10 +155,54 @@ func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
 // TranscriptSpec controls canonical transcript resolution. The worker
 // reuses the canonical text track when it already exists; generation
 // persists the transcript once into the DB (never a temp WAV).
+//
+// Persist defaults to TRUE (see Normalize). Without persistence a
+// reuse_or_generate/generate request has nothing to reuse: EVERY clip of a
+// batch over the same source re-runs speech recognition, which is the single
+// largest per-clip cost that is not the render itself. An EXPLICIT
+// `"persist": false` still opts out, which is why the presence of the key is
+// recorded separately (persistSet).
 type TranscriptSpec struct {
 	Mode     string `json:"mode,omitempty"` // default reuse_or_generate
 	Language string `json:"language,omitempty"`
-	Persist  bool   `json:"persist,omitempty"`
+	// Persist deliberately has NO omitempty: an explicit false must survive the
+	// persisted job payload, otherwise the worker's re-decode would see an
+	// absent key and re-apply the true default (the same trap the watermark
+	// opacity/margin_px contract documents).
+	Persist bool `json:"persist"`
+
+	// persistSet records whether the decoded JSON document carried the persist
+	// key at all. "Absent" (apply the true default) and "explicit false" (opt
+	// out) are different contracts and Normalize must tell them apart.
+	// Unexported so the wire shape stays unchanged.
+	persistSet bool
+}
+
+// UnmarshalJSON records the presence of persist AND preserves the endpoint's
+// strict-decoding contract: encoding/json hands a type with a custom
+// UnmarshalJSON its WHOLE subtree, so DisallowUnknownFields on the outer
+// decoder no longer reaches inside it. The explicit key check below
+// re-establishes that gate.
+func (t *TranscriptSpec) UnmarshalJSON(data []byte) error {
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(data, &present); err != nil {
+		return err
+	}
+	for key := range present {
+		switch key {
+		case "mode", "language", "persist":
+		default:
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+	type transcriptAlias TranscriptSpec
+	var decoded transcriptAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*t = TranscriptSpec(decoded)
+	_, t.persistSet = present["persist"]
+	return nil
 }
 
 // SubtitlesSpec compiles a deterministic .ass from the canonical
@@ -324,6 +368,15 @@ func (r *RenderRequest) Normalize() {
 	}
 	if r.Transcript.Language == "" {
 		r.Transcript.Language = DefaultLanguage
+	}
+	// Persist defaults to TRUE: reuse_or_generate (and generate) without
+	// persistence never populates the canonical text track, so every clip of a
+	// batch pays its own ASR pass for the same source. Only an explicit
+	// `"persist": false` (a decoded key, or a Go literal that set persistSet)
+	// opts out. Setting persistSet here keeps Normalize idempotent.
+	if !r.Transcript.persistSet {
+		r.Transcript.Persist = true
+		r.Transcript.persistSet = true
 	}
 	if r.Subtitles == nil {
 		r.Subtitles = &SubtitlesSpec{}

@@ -98,7 +98,7 @@ func RunDownloadSoundEffects(args []string) error {
 			continue
 		}
 
-		clip, err := root.Repos.ClipsRepo.GetClip(ctx, id)
+		clip, err := root.GetMediaClip(ctx, id)
 		if err != nil || clip == nil {
 			failed++
 			log.Warn("downloaded sound effect but asset row is unavailable", zap.String("asset_id", id), zap.Error(err))
@@ -229,7 +229,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 				return fmt.Errorf("rename Drive file %s: %w", driveID, err)
 			}
 		}
-		clip, err := root.Repos.ClipsRepo.GetClip(ctx, id)
+		clip, err := root.GetMediaClip(ctx, id)
 		if err != nil || clip == nil {
 			return fmt.Errorf("load asset %s: %w", id, err)
 		}

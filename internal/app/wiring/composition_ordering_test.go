@@ -120,7 +120,16 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.Repos.MonitorsRepo, "root.Repos.MonitorsRepo")
 	require.NotNil(t, root.Repos.VoiceoverRepo, "root.Repos.VoiceoverRepo")
 	require.NotNil(t, root.Repos.CatalogRepo, "root.Repos.CatalogRepo")
-	require.NotNil(t, root.Repos.SQRepo, "root.Repos.SQRepo")
+
+	// MediaAssetStore / MediaAssetReader are the canonical admin+operator asset
+	// read surface. This fixture runs with the media PostgreSQL plane CLOSED, so
+	// it pins the documented degrade branch (the SQLite asset service); the
+	// PostgreSQL branch is pinned by the pgmedia + Save-mapping tests.
+	mediaStore, mediaStoreErr := root.MediaAssetStore()
+	require.NoError(t, mediaStoreErr, "root.MediaAssetStore()")
+	require.NotNil(t, mediaStore, "root.MediaAssetStore() (degrade branch must still resolve a store)")
+	require.NotNil(t, root.MediaAssetReader(), "root.MediaAssetReader()")
+	require.NotNil(t, root.MediaAssetVersionStore(), "root.MediaAssetVersionStore()")
 
 	// SearchBundle canaries (4 fields).
 	require.NotNil(t, root.Search.AssetIndexService, "root.Search.AssetIndexService")
@@ -188,7 +197,6 @@ func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	require.NotNil(t, bundle.MonitorsRepo)
 	require.NotNil(t, bundle.VoiceoverRepo)
 	require.NotNil(t, bundle.CatalogRepo)
-	require.NotNil(t, bundle.SQRepo)
 }
 
 // TestComposition_NilObligatory_BuildSearchBundle tests BuildSearchBundle

@@ -1,5 +1,9 @@
 # TICKET — clip.render: one compositor (Chronon single pass) (Wave C)
 
+> **Dated artifact — paths reflect the tree at the time of writing.** Retained
+> while the ticket is open (see `AGENTS.md` § Documentation rule); verify any
+> referenced path against the current tree before acting.
+
 **Priority:** P1.
 **Status:** DONE — single-pass is the ONLY path. The legacy FFmpeg overlay
 compositor, its port API, worker options, composition-root wiring and env

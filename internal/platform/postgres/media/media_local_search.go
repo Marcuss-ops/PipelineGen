@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -13,7 +14,15 @@ import (
 // SQLite media_assets. All filters are optional; Text is matched against the
 // name, search_text and search_terms columns.
 type LocalMediaSearchRequest struct {
-	Text                string
+	Text string
+	// AllTerms is the multi-keyword form: every term must match, which is the
+	// exact AND semantics of the retired SQLite `clip_search_terms` inverted
+	// index lookup (HAVING COUNT(DISTINCT term) = N). It is the PostgreSQL
+	// replacement for that index: the canonical term corpus now lives on the
+	// media_assets.search_terms column, so no secondary term table is needed.
+	// A term only needs to appear (substring) in name, search_text or
+	// search_terms; Text and AllTerms compose (both must hold).
+	AllTerms            []string
 	Source              string // empty or "all" means every source
 	Category            string
 	MediaType           string
@@ -50,13 +59,23 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 		  AND ($4 = '' OR category = $4)
 		  AND ($5 = '' OR media_type = $5)`
 	args := []any{text, pattern, source, strings.TrimSpace(req.Category), strings.TrimSpace(req.MediaType)}
+	// One AND clause per term: the caller asked for every keyword to match.
+	for _, term := range req.AllTerms {
+		trimmed := strings.ToLower(strings.TrimSpace(term))
+		if trimmed == "" {
+			continue
+		}
+		args = append(args, "%"+trimmed+"%")
+		index := len(args)
+		query += fmt.Sprintf("\n\t\t  AND (LOWER(name) LIKE $%d OR LOWER(search_text) LIKE $%d OR LOWER(search_terms) LIKE $%d)", index, index, index)
+	}
 	if req.ExcludeUnclassified {
 		query += " AND asset_kind <> ''"
 	}
 	query += `
 		  AND lifecycle_state IN ('ACTIVE', 'INDEXED', 'READY', 'PUBLISHED')
 		ORDER BY updated_at DESC, id ASC
-		LIMIT $6`
+		LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

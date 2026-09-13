@@ -52,7 +52,6 @@ type RepoBundle struct {
 	VoiceoverRepo        *assets.VoiceoversRepository
 	CatalogRepo          *catalog.Repository
 	EntityImageCatalog   entitycatalog.Repository
-	SQRepo               *imagesregistry.SearchQueriesRepository
 	IdempotencyStore     mwidem.IdempotencyStore
 	TextTrackRepo        detail.TextTrackRepository
 	SubtitleArtifactRepo detail.SubtitleArtifactRepository

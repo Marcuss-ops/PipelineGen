@@ -61,7 +61,7 @@ func (h *Handler) handleSummary(c *gin.Context) {
 		if src != "" {
 			filter.Source = src
 		}
-		count, err := h.assetService.Repository().Count(ctx, filter)
+		count, err := h.assetService.Count(ctx, filter)
 		if err != nil {
 			h.log.Warn("failed to count assets by source", zap.String("source", src), zap.Error(err))
 			continue
@@ -80,7 +80,7 @@ func (h *Handler) handleSummary(c *gin.Context) {
 		if mt != "" {
 			filter.MediaType = mt
 		}
-		count, err := h.assetService.Repository().Count(ctx, filter)
+		count, err := h.assetService.Count(ctx, filter)
 		if err != nil {
 			h.log.Warn("failed to count assets by media type", zap.String("media_type", mt), zap.Error(err))
 			continue

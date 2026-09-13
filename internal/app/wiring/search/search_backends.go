@@ -8,6 +8,14 @@
 // platform/postgres/media.MediaSearcher. This prevents accidental
 // recomposition of pgvector or Qdrant retrieval with legacy media hydration.
 //
+// MEDIA-SSOT P1-6 (September 2026): the local/hash/keyword media backend is
+// PostgreSQL-only as well. The legacy SQLite `localSearchBackend` (which read
+// media_assets through sqassets.ClipsRepository) was REMOVED: it let one
+// catalog answer the same query differently depending on the plane (pgvector
+// for semantic, SQLite for local/hash), and a media write to PostgreSQL was
+// invisible to it. When the PostgreSQL local store is unavailable the local
+// capability is simply NOT registered — never a SQLite media mirror.
+//
 // Wave 19 cross-capability rule: this file IS the ONLY place in
 
 // internal/app/ where multiple internal/capabilities/* domains are imported
@@ -27,7 +35,6 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 type RerankerClient interface {
@@ -50,7 +57,7 @@ type canonicalMediaSearchStore interface {
 // ── Composition bridge ─────────────────────────────────────────────────
 //
 // SearchBackendBuildOpts groups the inputs BuildSearchBackends needs.
-// ProviderRegistry and ClipsRepository feed discovery/local backends.
+// ProviderRegistry feeds the discovery backends.
 // Embeddings + VectorStore + Delivery feed semantic catalog search.
 //
 // MediaRepo remains in the shape temporarily for source compatibility with
@@ -60,7 +67,6 @@ type canonicalMediaSearchStore interface {
 type SearchBackendBuildOpts struct {
 	Logger      *zap.Logger
 	ProviderReg *providers.Registry
-	ClipsRepo   *sqassets.ClipsRepository
 
 	Embeddings  search.EmbeddingChannelRegistry
 	VectorStore assetsearch.VectorStorePort
@@ -69,8 +75,9 @@ type SearchBackendBuildOpts struct {
 	Reranker    RerankerClient
 
 	// MediaLocalStore is the PostgreSQL local/hash/keyword media surface
-	// (MEDIA-SSOT P1-6). When wired it REPLACES the legacy SQLite
-	// ClipsRepo local backend so local search cannot read a media mirror.
+	// (MEDIA-SSOT P1-6). It is the ONLY local media backend: when it is
+	// absent no local backend is registered (fail closed), because a
+	// SQLite media read would be a mirror of the PostgreSQL SSOT.
 	MediaLocalStore PostgresLocalSearchPort
 
 	// CanonicalResolver is the source→asset identity resolver consumed
@@ -115,12 +122,15 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			return nil, fmt.Errorf("BuildSearchBackends: postgres local backend: %w", err)
 		}
 		log.Info("BuildSearchBackends: PostgreSQL local media backend registered (media_assets SSOT)")
-	} else if opts.ClipsRepo != nil {
-		log.Warn("BuildSearchBackends: media PostgreSQL local store unavailable — registering the legacy SQLite local backend (graceful degrade)")
-		if err := reg.Register(&localSearchBackend{repo: opts.ClipsRepo}); err != nil {
-			log.Error("BuildSearchBackends: local backend register failed (fail-closed)", zap.Error(err))
-			return nil, fmt.Errorf("BuildSearchBackends: local backend: %w", err)
-		}
+	} else {
+		// Fail closed (godlike/07 + MEDIA-SSOT P1-6): the local media
+		// capability is NOT registered rather than served from the legacy
+		// SQLite catalog. Registering it would answer local/hash/keyword
+		// queries from a mirror that a PostgreSQL media write can never
+		// update. The semantic backend below is likewise gated on the
+		// canonical PostgreSQL store, so a PG-unavailable deployment simply
+		// has no catalog media search instead of a stale one.
+		log.Warn("BuildSearchBackends: PostgreSQL local media store unavailable — local media backend NOT registered (fail-closed, no SQLite media mirror)")
 	}
 
 	// POSTGRES-MEDIA-CUTOVER: semantic search requires one concrete adapter

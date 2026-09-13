@@ -1,5 +1,21 @@
 package artlist
 
+// searcher_local_testhelper_test.go — TEST-ONLY replacement for the retired
+// production bridge `searcher_sqlite.go`.
+//
+// MEDIA-SSOT P1-5 (September 2026): the production SQLite searcher bridge
+// (SQLiteSearcher / NewSQLiteSearcher / NewDBSearcher) was DELETED, together
+// with its only production call site — the `NewSQLiteSearcher(s.assetStore)`
+// compatibility fallback in SearchService.buildSearcherChain, which served
+// local hits from a retired SQLite media mirror.
+//
+// The gate scenario tests in this package build a service around an in-memory
+// SQLite AssetStore and need a local searcher over that store. They exercise
+// the SQLite fixture directly, so the helper stays available to THEM while
+// being unreachable from production code (a `_test.go` file is not compiled
+// into the package binary). The import-cycle rule is unchanged: this file
+// lives in the artlist package and consumes only the AssetStore port.
+
 import (
 	"context"
 	"strings"
@@ -7,23 +23,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// SQLiteSearcher is a compatibility bridge for existing application-level
-// tests and callers that provide only the AssetStore port. Production wiring
-// uses platform/sqlite.NewArtlistSQLiteSearcher instead.
+// SQLiteSearcher is the test-only compatibility bridge over an AssetStore.
 type SQLiteSearcher struct {
 	store AssetStore
 }
 
-// NewSQLiteSearcher creates the compatibility bridge. New composition code
-// should construct the infrastructure adapter instead.
+// NewSQLiteSearcher creates the test-only compatibility bridge.
 func NewSQLiteSearcher(store AssetStore) *SQLiteSearcher {
 	return &SQLiteSearcher{store: store}
 }
 
-// DBSearcher is retained as a source-compatible alias for existing callers.
+// DBSearcher is retained as a source-compatible test alias.
 type DBSearcher = SQLiteSearcher
 
-// NewDBSearcher is retained as a source-compatible constructor alias.
+// NewDBSearcher is retained as a source-compatible test constructor alias.
 func NewDBSearcher(store AssetStore) *SQLiteSearcher {
 	return NewSQLiteSearcher(store)
 }

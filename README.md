@@ -86,11 +86,17 @@ Per ricreare una clip già registrata nell’asset registry usando esclusivament
 PipelineGen → RenderingGen → Chronon3d:
 
 ```bash
-RENDERINGGEN_QUEUE_URL=http://127.0.0.1:8081 \
-  scripts/recreate_clip_chronon.sh SOURCE_ASSET_ID
+curl -fsS -X POST "$BASE_URL/api/clips/render" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" \
+  -d '{"asset_id":"SOURCE_ASSET_ID"}'
 ```
 
-Lo script invoca `POST /api/clips/render`, attende il job Master e verifica che
+> Il vecchio helper shell `scripts/recreate_clip_chronon.sh` è stato eliminato dal
+> commit `7e6965aab` ("purge 94% shell"); l'endpoint HTTP `POST /api/clips/render`
+> resta l'unico entry point canonico e viene invocato direttamente.
+
+L'endpoint invia il job a RenderingGen e il worker verifica che
 il risultato dichiari `backend=chronon_vulkan`. Un fallback Rust, FFmpeg o CUDA
 non viene accettato per questo percorso. Il feature flag deve essere attivo e
 il worker PipelineGen deve essere configurato con `RENDERINGGEN_QUEUE_URL`.
@@ -174,23 +180,29 @@ command -v systemctl
 ```
 
 The path in the sudoers policy must match that result. If it is not
-`/usr/bin/systemctl`, pass the verified absolute path through
-`PIPELINEGEN_SYSTEMCTL_PATH` when installing the policy. Because `sudo` may
-filter environment variables, use the explicit form when needed:
+`/usr/bin/systemctl`, edit `scripts/systemd/sudoers/pipelinegen-operator` (or
+its `.template`) so the policy matches, then install it manually — the helper
+`scripts/systemd/sudoers/install_operator_access.sh` does not exist in the tree
+and was deleted by commit `7e6965aab`:
 
 ```bash
-sudo env PIPELINEGEN_SYSTEMCTL_PATH=/absolute/path/systemctl \
-  scripts/systemd/sudoers/install_operator_access.sh --install
+sudo visudo -cf scripts/systemd/sudoers/pipelinegen-operator
+sudo install -m 0440 -o root -g root \
+  scripts/systemd/sudoers/pipelinegen-operator /etc/sudoers.d/pipelinegen-operator
 ```
 
 Administrative tasks include:
 
 - install or change `/etc/sudoers.d/pipelinegen-operator`;
-- run `migrate_to_systemd.sh`, `systemctl daemon-reload`, or enable/disable
-  services;
+- run `systemctl daemon-reload`, or enable/disable services (the historical
+  `scripts/systemd/migrate_to_systemd.sh` helper was deleted by
+  commit `7e6965aab`; the unit files and `pipelinegenctl` are the current
+  surface);
 - change the ownership or mode of `/etc/pipelinegen/pipelinegen.env`;
-- rotate the admin/worker credentials with `scripts/rotate_token.sh` during an
-  administrative change window only;
+- rotate the admin/worker credentials during an administrative change window
+  only. There is no rotator script: generate a fresh 64-hex value, replace it
+  in the secret file, restart the service, then confirm the restarted PID
+  environment and `make auth-check`;
 - modify unit files, drop-ins, system packages, or service ownership.
 
 See [`scripts/systemd/README.md`](scripts/systemd/README.md) for the complete
@@ -249,14 +261,19 @@ for the full workflow.
 
 ## Operational testing
 
-For the Stock 9-phase battery, the Artlist clean test battery (`tests/operational/artlist/run_all.sh`), and the **RETRY_WAIT / `CANCELLED` per-job diagnostic recipe** (API + SQLite fallback), see:
+Live shell batteries are no longer part of this repository: the Stock 9-phase
+battery, the Artlist clean-test battery, the VidRush battery and the black-box
+smoke suite were retired on 2026-09-13 after their drivers were deleted by
+commit `7e6965aab`. Headless coverage lives in the Go suites
+(`internal/platform/httpserver/*_e2e_test.go`, `tests/e2e/**`, the per-provider
+`internal/capabilities/**` packages) and in the registry-driven `make verify-*`
+gates.
+
+For the remaining operational procedures see:
 
 - [`docs/stock_pipeline.md` — Stock pipeline guide](docs/stock_pipeline.md) (source types, JSON payload examples, Google Drive auth, and output destination).
-- [`docs/operations/stock-e2e-runbook.md#§10` — Stock pipeline live battery](docs/operations/stock-e2e-runbook.md) (12-step single-script layer; `workflow_dispatch`-only).
-- [`docs/operations/stock-e2e-runbook.md#§11` — Diagnostica RETRY_WAIT](docs/operations/stock-e2e-runbook.md).
-- [`docs/operations/stock-e2e-runbook.md#§11.0` — Operator env contract](docs/operations/stock-e2e-runbook.md) (`VELOX_ADMIN_TOKEN`, `VELOX_PORT`, `VELOX_DRIVE_ARTLIST_ROOT`, `SCROLL_TIMEOUT=120`, `SKIP_HERMETICS=1` minimum set for the Artlist clean test).
-
-Per godlike/06 SSOT: the runbook is the canonical owner of env-var contracts; README merely links to it.
+- [`docs/operations/stock-e2e-runbook.md` — Stock operational procedure](docs/operations/stock-e2e-runbook.md) (HTTP entry points, headless Stock gates, StockRust certification boundary, `performance_runs` timing).
+- [`docs/operations/verify-release-and-live.md` — tier-3 pre-deploy gate](docs/operations/verify-release-and-live.md) (plus the tier-4 live-battery retirement record).
 
 ## Canonical documentation
 

@@ -66,7 +66,6 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
 	entityImageCatalogRepo := sqentity.NewSQLiteEntityImageCatalogAdapter(dbs.DualPool.Writer)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.DualPool.Writer)
-	sqRepo := imagesregistry.NewSearchQueriesRepository(dbs.DualPool.Writer)
 	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.DualPool.Writer)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
 	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
@@ -116,8 +115,8 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, AssetsStore: assetsStore, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, EntityImageCatalog: entityImageCatalogRepo,
-		SQRepo: sqRepo, IdempotencyStore: idempotencyStore,
-		TextTrackRepo: textTrackRepo, SubtitleArtifactRepo: subArtRepo,
+		IdempotencyStore: idempotencyStore,
+		TextTrackRepo:    textTrackRepo, SubtitleArtifactRepo: subArtRepo,
 	}, nil
 }
 
