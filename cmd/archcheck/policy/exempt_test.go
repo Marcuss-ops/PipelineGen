@@ -40,6 +40,25 @@ func TestCanonicalMediaWriterPrimaryIsShared(t *testing.T) {
 	}
 }
 
+// TestTestOnlySupportIsExactFileNotDirectoryPrefix pins the hardening: the
+// media-writer gate must NOT auto-exempt a file that appears later inside the
+// test-only support directory. A prefix exemption would let a re-created SQLite
+// media writer hide behind the directory with every gate green.
+func TestTestOnlySupportIsExactFileNotDirectoryPrefix(t *testing.T) {
+	const double = "internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_testdouble.go"
+	if !IsTestOnlySupportFile(double) {
+		t.Fatalf("the known committer double %q must stay exempt", double)
+	}
+	for _, newlyMaterialised := range []string{
+		"internal/platform/sqlite/assets/imagesregistry/testsupport/brand_new_media_writer.go",
+		"internal/platform/sqlite/assets/imagesregistry/testsupport/asset_committer_v2.go",
+	} {
+		if IsTestOnlySupportFile(newlyMaterialised) {
+			t.Fatalf("newly materialised file %q must NOT be exempt by directory", newlyMaterialised)
+		}
+	}
+}
+
 // TestSkipDirsDoesNotMutateStandardSet verifies SkipDirs clones the shared
 // set instead of aliasing it, so one scanner cannot widen another's surface.
 func TestSkipDirsDoesNotMutateStandardSet(t *testing.T) {

@@ -167,6 +167,19 @@ func TestScenario3_ParentCompletionLatency(t *testing.T) {
 		t.Fatalf("failures: tick=%d event=%d", ticked.Failures, event.Failures)
 	}
 
+	// Every clip's parent must have been OBSERVED terminal. This is not
+	// redundant with the latency bounds below: the latency is
+	// millisecond-truncated, and a genuinely event-driven finalisation lands
+	// below 1 ms, so it is reported as 0 ms — a value that also means "no
+	// measurement at all". Asserting the sample count is what separates the two:
+	// without it this scenario silently passed while finalising nothing (the
+	// harness published the settle child before its parent was registered).
+	for name, rep := range map[string]benchReport{"ticked": ticked, "event": event} {
+		if rep.ParentsFinalized != clips {
+			t.Fatalf("%s run: parents finalised=%d, want %d — the event path did not reach every parent", name, rep.ParentsFinalized, clips)
+		}
+	}
+
 	// The ticked run must have actually finalised the parents, with a latency
 	// bounded by the configured cadence.
 	if ticked.ParentFinalizeP95MS <= 0 {
@@ -204,6 +217,9 @@ func TestScenario3_ParentCompletionLatency(t *testing.T) {
 	writeBenchReport(t, slow)
 	if slow.Failures != 0 {
 		t.Fatalf("slow-recovery run: %d failures", slow.Failures)
+	}
+	if slow.ParentsFinalized != clips {
+		t.Fatalf("slow-recovery run: parents finalised=%d, want %d — the 30s cadence must not be load-bearing", slow.ParentsFinalized, clips)
 	}
 	if slow.ParentFinalizeP95MS >= 150 {
 		t.Errorf("with a 30s recovery cadence the event path must still finalise immediately, got p95=%dms", slow.ParentFinalizeP95MS)

@@ -30,7 +30,7 @@
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-rust-muscles verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
 	verify-integration verify-architecture \
-	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release certify-storage certify-storage-json certify-data-layer certify-data-layer-json certify-media-cutover certify-media-cutover-json \
+	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
 	whisper-preflight \
 	test-pipeline-stock-only verify-pipeline-clip-only verify-pipeline-research verify-pipeline-document verify-pipeline-voiceover verify-pipeline-script test-pipeline-youtube-stock verify-pipeline-vidrush verify-component-coverage verify-reconciliation-contracts reconcile-pipeline verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
@@ -48,7 +48,7 @@
 	test-youtube-stock-resilience test-youtube-stock-live test-youtube-stock-release benchmark-youtube-stock \
 	diagnose-youtube-stock \
 	verify-images-live verify-script-live test-intro-hook-stock-live verify-vidrush-live verify-artlist-scale-live verify-live \
-	verify-vidrush-contract verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-media-intelligence certify-rust-migration vidrush-pre-final verify-vidrush-extraction verify-vidrush-query-planning \
+	verify-vidrush-contract verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-media-intelligence vidrush-pre-final verify-vidrush-extraction verify-vidrush-query-planning \
 	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
 	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \
 	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \

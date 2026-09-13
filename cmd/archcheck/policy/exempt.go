@@ -65,13 +65,35 @@ func Prefixes(groups ...[]string) []string {
 // so they must never be flagged as violations.
 const ScannerSourcePrefix = "cmd/archcheck/scan"
 
-// TestOnlySupportPrefixes exempts the hermetic, test-only SQLite
-// AssetCommitter double. It is never imported by production code, and the
-// certify-media-cutover SQLITE_MEDIA_WRITERS=0 gate likewise excludes it.
-var TestOnlySupportPrefixes = []string{
-	"internal/platform/sqlite/assets/imagesregistry/testsupport",
-	"internal/platform/sqlite/assets/imagesregistry/testsupport/",
+// TestOnlySupportFiles is the CLOSED, exact set of test-only support files:
+// the hermetic SQLite AssetCommitter double family. It is never imported by
+// production code (only _test.go files reference it).
+//
+// This is an exact-file list and NOT a directory prefix on purpose. A prefix
+// exemption auto-exempts any file dropped into the directory, so a re-created
+// SQLite media writer could hide behind it without a single gate firing.
+// Adding a file here is an explicit, reviewable act.
+//
+// The historical `certify-media-cutover` driver that used to cosign this
+// exemption no longer exists, so the exemption is justified ONLY by the
+// test-only import discipline — no counter asserts it.
+var TestOnlySupportFiles = map[string]bool{
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/asset_commit_fields.go":               true,
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/asset_committer_renditions.go":        true,
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/clip_writer_helpers.go":               true,
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/index_request_committer.go":           true,
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_testdouble.go": true,
 }
+
+// IsTestOnlySupportFile reports whether a repo-relative path is exactly one of
+// the closed test-only support files. It is the single owner of that decision.
+func IsTestOnlySupportFile(relPath string) bool { return TestOnlySupportFiles[relPath] }
+
+// TestOnlySupportDirPrefix is the DIRECTORY prefix form, used only by scanners
+// whose skip parameter is prefix-based (ssot_registry). It is deliberately
+// separate from the exact-file exemption so the forward-prevention media-writer
+// gate cannot be widened by materialising a new file in that directory.
+const TestOnlySupportDirPrefix = "internal/platform/sqlite/assets/imagesregistry/testsupport"
 
 // SQLMigrationPrefixes exempts the canonical schema migration files of both
 // engines — migration DDL/DML legitimately contains the forbidden literals.

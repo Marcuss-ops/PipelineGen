@@ -132,7 +132,7 @@ var ssotRules = []ssotRule{
 		MatchedRule:      "indexed_state_writer_ssot",
 		Scope:            []string{"internal/"},
 		SkipDirs:         policy.SkipDirs(),
-		SkipPathPrefixes: policy.Prefixes([]string{policy.ScannerSourcePrefix}, policy.TestOnlySupportPrefixes),
+		SkipPathPrefixes: policy.Prefixes([]string{policy.ScannerSourcePrefix, policy.TestOnlySupportDirPrefix}),
 		Owners:           indexedStateWriterSSOTCanonicalPaths,
 		ScanFile:         scanIndexedStateWriterRuleFile,
 	},

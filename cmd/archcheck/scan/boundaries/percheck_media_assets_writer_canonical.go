@@ -170,7 +170,11 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 	if strings.HasPrefix(relPath, policy.ScannerSourcePrefix) {
 		return
 	}
-	if hasAnyPathPrefix(relPath, policy.SQLMigrationPrefixes) || hasAnyPathPrefix(relPath, policy.TestOnlySupportPrefixes) {
+	// Test-only support is an EXACT-file exemption (policy.IsTestOnlySupportFile),
+	// not a directory prefix: a file newly materialised under
+	// .../imagesregistry/testsupport/ is a violation until it is explicitly added
+	// to the closed list. A prefix would auto-exempt a re-created media writer.
+	if hasAnyPathPrefix(relPath, policy.SQLMigrationPrefixes) || policy.IsTestOnlySupportFile(relPath) {
 		return
 	}
 
