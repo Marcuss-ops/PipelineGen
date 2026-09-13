@@ -230,6 +230,19 @@ EXPECTED_BACKGROUND='[0.9333333333333333,0.9450980392156862,0.9058823529411765,1
 PRESETS=$(jq -r '[.overlay_plan.items[]? | select(.kind == "entity_image" and .template_id == "image_popup") | .preset_id] | join(", ")' <<<"$RESULT")
 [[ -n "$PRESETS" ]] || fail "preset animazione entity image mancanti"
 
+ENTITY_IMAGE_DURATIONS=$(jq -r '[.overlay_plan.items[]? |
+  select(.kind == "entity_image" and .template_id == "image_popup") |
+  ((.end_ms // 0) - (.start_ms // 0))] | join(", ")' <<<"$RESULT")
+ENTITY_IMAGE_DURATION_COUNT=$(jq -r '[.overlay_plan.items[]? |
+  select(.kind == "entity_image" and .template_id == "image_popup" and
+         ((.end_ms // 0) - (.start_ms // 0)) == 5000)] | length' <<<"$RESULT")
+(( ENTITY_IMAGE_DURATION_COUNT == 6 )) || fail "durata immagini non esattamente 5s: $ENTITY_IMAGE_DURATIONS"
+
+ENTITY_PRESET_VARIANTS=$(jq -r '[.overlay_plan.items[]? |
+  select(.kind == "entity_image" and .template_id == "image_popup") |
+  .preset_id] | unique | length' <<<"$RESULT")
+(( ENTITY_PRESET_VARIANTS >= 2 )) || fail "animazioni entity image non variate: $PRESETS"
+
 RENDER_STATUS=$(jq -r '.overlay_render?.status // empty' <<<"$RESULT")
 OVERLAY_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESULT")
 [[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato: $RENDER_STATUS"
@@ -242,6 +255,8 @@ printf '  entity image bindings Drive: %s/6\n' "$IMAGE_BINDINGS"
 printf '  entity image overlay layers: %s/6\n' "$ENTITY_ITEMS"
 printf '  important phrases extracted/rendered: %s/%s\n' "$PHRASE_INTENTS" "$PHRASE_ITEMS"
 printf '  image presets: %s\n' "$PRESETS"
+printf '  image durations: %s ms\n' "$ENTITY_IMAGE_DURATIONS"
+printf '  animation variants: %s\n' "$ENTITY_PRESET_VARIANTS"
 printf '  background: Pale Olive Classic %s\n' "$BACKGROUND"
 printf '  RenderingGen: %s\n' "$RENDER_STATUS"
 printf '  overlay Drive: %s\n' "$OVERLAY_LINK"

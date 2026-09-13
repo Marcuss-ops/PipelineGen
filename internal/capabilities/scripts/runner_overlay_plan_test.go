@@ -243,14 +243,16 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	product := byID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"]
 	require.Equal(t, "PRODUCT", product.TemplateID)
 	require.Equal(t, int64(1300), product.StartMs)
-	require.Equal(t, int64(1500), product.EndMs)
+	require.Equal(t, int64(6300), product.EndMs)
+	require.Equal(t, int64(5_000_000), product.DurationUS)
 	require.Len(t, product.AssetRefs, 1)
 	require.Equal(t, "ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122", product.AssetRefs[0].AssetID)
 
 	logo := byID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"]
 	require.Equal(t, "LOGO", logo.TemplateID)
 	require.Equal(t, int64(400), logo.StartMs)
-	require.Equal(t, int64(500), logo.EndMs)
+	require.Equal(t, int64(5400), logo.EndMs)
+	require.Equal(t, int64(5_000_000), logo.DurationUS)
 	require.Len(t, logo.AssetRefs, 1)
 	require.Equal(t, "dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00", logo.AssetRefs[0].AssetID)
 

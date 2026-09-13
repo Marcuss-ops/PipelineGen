@@ -176,22 +176,28 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 }
 
 // imageCandidate projects an entity image binding onto the planner's
-// ImageCandidate, timed by the certified occurrence window. The direct
+// ImageCandidate, anchored at the certified occurrence start. Entity images
+// use the same fixed five-second display window as PERSON/ORG/GPE image cards;
+// the spoken occurrence remains the timing authority for when the animation
+// enters, but a short spoken name must not collapse the image to a sub-second
+// flash. The direct
 // PreviewURL (when present) is preferred over the Drive view-page link so
 // the compiled layer references a fetchable image. The binding's verified
 // content address (SHA256) is carried through so the planner's asset ref and
 // the queue manifest stay content-addressed (a missing hash would silently
 // drop the asset from the render manifest).
 func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentities.EntityOccurrence, score float64) capabilityoverlay.ImageCandidate {
+	startUS := (occ.AudioStartUS / 1000) * 1000
+	durationUS := capabilityentities.MinEntityOverlayDurationUS
 	return capabilityoverlay.ImageCandidate{
 		AssetID:    binding.SHA256,
 		URL:        entityImageURL(binding),
 		SHA256:     binding.SHA256,
 		MediaType:  "image",
-		StartMs:    occ.AudioStartUS / 1000,
-		EndMs:      (occ.AudioEndUS + 999) / 1000,
-		StartUS:    occ.AudioStartUS,
-		DurationUS: occ.AudioEndUS - occ.AudioStartUS,
+		StartMs:    startUS / 1000,
+		EndMs:      startUS/1000 + durationUS/1000,
+		StartUS:    startUS,
+		DurationUS: durationUS,
 		Score:      score,
 	}
 }

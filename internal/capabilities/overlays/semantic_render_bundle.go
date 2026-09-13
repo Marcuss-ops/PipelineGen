@@ -258,6 +258,7 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.Kind = string(KindEntityImage)
 			item.TemplateID = "image_popup"
 			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
+			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			item.Text = ""
 			item.Params = map[string]any{"animation": map[string]any{"preset": SelectEntityImageAnimation(b.RunID, b.Scene.SegmentID, e.EntityID)}}
 			item.AssetRefs = []OverlayAssetRef{{AssetID: a.AssetID, URL: a.SourceURL, SHA256: a.ContentHash, MediaType: "image/jpeg"}}
