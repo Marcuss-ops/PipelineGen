@@ -1,16 +1,19 @@
 package wiring
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	infraartifacts "github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	"go.uber.org/zap"
 )
@@ -93,4 +96,33 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	runtime := &ClipRenderRuntime{RenderingGenExecutor: executor, ContinuationStore: continuationStore}
 	root.ClipRenderRuntime = runtime
 	return runtime, nil
+}
+
+// newClipRenderMediaResolver returns the asset read surface for clip.render and
+// localization. PostgreSQL is the media SSOT, so every media-enabled
+// deployment resolves asset_id there (MEDIA-SSOT P1-5: closes the read
+// split-brain where a PostgreSQL-committed asset was invisible to a SQLite
+// reader). The legacy SQLite detail.Service is retained ONLY for the
+// documented graceful-degrade path where the media plane is intentionally
+// disabled (root.MediaPostgres == nil).
+//
+// It lives in this file, not a sibling, because internal/app/wiring is a
+// registered hotspot whose debt is the FILE COUNT itself: a resolver for the
+// clip.render runtime graph belongs with the rest of that graph, and adding a
+// 151st production file to the package for 33 LOC is exactly the growth the
+// ratchet forbids.
+func newClipRenderMediaResolver(root *ComposeRoot, log *zap.Logger) (cliprender.AssetResolver, error) {
+	if root == nil {
+		return nil, errors.New("clip.render: composition root is nil")
+	}
+	if root.MediaPostgres != nil {
+		return clipadapters.NewClipRenderPGAssetResolver(pgmedia.NewMediaSearcher(root.MediaPostgres), log)
+	}
+	if root.Repos == nil || root.Repos.Assets == nil {
+		return nil, errors.New("clip.render: no media read surface (postgres media SSOT and legacy asset registry both unavailable)")
+	}
+	if log != nil {
+		log.Warn("clip.render: media PostgreSQL disabled — falling back to the legacy SQLite asset registry (graceful degrade; media features operate without the SSOT)")
+	}
+	return clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 }

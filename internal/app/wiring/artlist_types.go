@@ -1,6 +1,8 @@
 package wiring
 
 import (
+	"database/sql"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
@@ -20,9 +22,13 @@ import (
 
 // ArtlistBundle is the typed composition input for the Artlist module.
 type ArtlistBundle struct {
-	Committer          assetspersistence.AssetCommitter
-	MediaExec          mediaexec.ExecutionConfig
-	DB                 *storage.SQLiteDB
+	Committer assetspersistence.AssetCommitter
+	MediaExec mediaexec.ExecutionConfig
+	DB        *storage.SQLiteDB
+	// MediaDB is the PostgreSQL media SSOT handle (root.MediaPostgres). It is
+	// threaded into the Artlist finalizer so the persist transaction runs on
+	// the same engine as the canonical committer (MEDIA-SSOT P0-3).
+	MediaDB            *sql.DB
 	Assets             *detail.Service
 	ClipsRepo          *assets.ClipsRepository
 	DriveClient        *gdrive.Service
