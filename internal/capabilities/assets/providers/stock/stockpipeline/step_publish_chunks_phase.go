@@ -250,11 +250,14 @@ func publishChunkPhase(
 		cs.DrivePath = published.Location.WebViewLink
 		cs.RemoteDownloadLink = published.Location.DownloadLink
 
-		if !explicitTimestamps {
+		if !explicitTimestamps && (in == nil || !in.SkipMetadataUpload) {
 			// Legacy non-timestamp runs retain the per-chunk metadata
 			// envelope behavior. Explicit timestamp runs now publish one
 			// metadata.json per parent timestamp folder from the extract
 			// step, so this branch is skipped for the 5-second child clips.
+			// RuntimeConfig.SkipMetadataUpload suppresses the Drive
+			// publication entirely, so the operator's clips folder holds
+			// only the produced videos.
 			clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp, runner.LocalFS())
 			if clipMetaErr != nil {
 				return nil, fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %w",

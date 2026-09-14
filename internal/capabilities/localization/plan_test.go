@@ -2,7 +2,10 @@ package localization
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
+
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
 // TestLocalizedClipPlanVersion pins the canonical contract version literal.
@@ -35,6 +38,12 @@ func TestLocalizedClipPlan_JSONRoundTrip(t *testing.T) {
 		RendererVersion:   "renderer-v1",
 		Priority:          1,
 		Fingerprint:       "fp",
+		// Two reused overlays: a scene composites one overlay per semantic
+		// item, and the wire shape must carry all of them.
+		Overlays: []cliprender.OverlayRefSpec{
+			{RenderJobID: "overlay-job-1", PlanFingerprint: "fp-1", RenderKey: "rk-1", SourceVideoAssetID: "source-asset-1", StartUS: 2_000_000, EndUS: 5_500_000},
+			{RenderJobID: "overlay-job-2", PlanFingerprint: "fp-1", RenderKey: "rk-2", SourceVideoAssetID: "source-asset-1", StartUS: 6_000_000, EndUS: 8_000_000},
+		},
 	}
 
 	out, err := json.Marshal(plan)
@@ -56,7 +65,7 @@ func TestLocalizedClipPlan_JSONRoundTrip(t *testing.T) {
 		"subtitle_style_hash",
 		"duration_ms",
 		"output_profile_hash", "renderer_version",
-		"priority", "fingerprint",
+		"priority", "fingerprint", "overlays",
 	}
 	for _, k := range wantKeys {
 		if _, ok := wire[k]; !ok {
@@ -72,7 +81,7 @@ func TestLocalizedClipPlan_JSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(out, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back != plan {
+	if !reflect.DeepEqual(back, plan) {
 		t.Fatalf("round-trip mismatch:\n got %+v\nwant %+v", back, plan)
 	}
 }

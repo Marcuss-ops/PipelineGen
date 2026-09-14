@@ -148,6 +148,17 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 				}
 				input.SourceDurations[url] = src.DurationSec
 			}
+			// Carry the provider-known source title so the planned clips
+			// inherit a searchable title instead of staying anonymous
+			// clip_### rows. resolveQuery already resolved the real
+			// YouTube title; dropping it here made a query such as
+			// "mike tyson" unable to find its own clips.
+			if title := strings.TrimSpace(src.Title); title != "" {
+				if input.SourceTitles == nil {
+					input.SourceTitles = make(map[string]string)
+				}
+				input.SourceTitles[url] = title
+			}
 		}
 		if s.log != nil {
 			if len(result.sources) > 0 {
@@ -240,10 +251,20 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 			continue
 		}
 		duration := 0.0
+		probedTitle := ""
 		for _, video := range videos {
 			if video.Duration > duration {
 				duration = video.Duration
 			}
+			if probedTitle == "" {
+				probedTitle = strings.TrimSpace(video.Title)
+			}
+		}
+		if probedTitle != "" {
+			if input.SourceTitles == nil {
+				input.SourceTitles = make(map[string]string)
+			}
+			input.SourceTitles[url] = probedTitle
 		}
 		if duration <= 0 {
 			if s.log != nil {

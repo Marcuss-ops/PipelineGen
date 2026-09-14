@@ -132,6 +132,12 @@ type LocalizeInput struct {
 	BackgroundMode         string
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	ForegroundScalePercent int
+	// Overlays carries the certified, LANGUAGE-INDEPENDENT entity overlay
+	// lineages every language plan of this source reuses, one per semantic
+	// overlay item. Empty means the source carries no overlay (or it is not
+	// certified yet); a partial lineage is rejected by the plan contract rather
+	// than silently dropped.
+	Overlays               []cliprender.OverlayRefSpec
 	Request                localization.LocalizationRequest
 	FolderID               string
 	SubtitleFolderID       string
@@ -179,6 +185,7 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		BackgroundMode:         in.BackgroundMode,
 		ForegroundScalePercent: in.ForegroundScalePercent,
 		SubtitlesStyle:         in.SubtitlesStyle,
+		Overlays:               in.Overlays,
 	}
 
 	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)

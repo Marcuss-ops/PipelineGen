@@ -139,6 +139,13 @@ func (s *BackfillService) Run(
 		report.SkippedLangTotal += len(res.SkippedLangs)
 		report.RetranslatedTotal += len(res.Retranslated)
 		report.FailedLangTotal += len(res.FailedLangs)
+		if res.IndexRepaired {
+			report.IndexRepairedTotal++
+		}
+		if res.ReindexRequested {
+			report.ReindexRequestedTotal++
+		}
+		report.SubtitlesDeliveredTotal += res.SubtitlesDelivered
 
 		if (i+1)%50 == 0 {
 			s.log.Info("backfill progress",
@@ -150,6 +157,8 @@ func (s *BackfillService) Run(
 				zap.Int("created_total", report.CreatedTotal),
 				zap.Int("retranslated_total", report.RetranslatedTotal),
 				zap.Int("failed_lang_total", report.FailedLangTotal),
+				zap.Int("index_repaired_total", report.IndexRepairedTotal),
+				zap.Int("reindex_requested_total", report.ReindexRequestedTotal),
 				zap.Int("remaining", len(candidates)-i-1))
 		}
 	}

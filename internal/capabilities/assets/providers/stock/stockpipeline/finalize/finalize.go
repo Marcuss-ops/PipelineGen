@@ -49,12 +49,20 @@ type Artifact struct {
 }
 
 // Metadata is the neutral published metadata.json projection.
+//
+// DriveUploadSkipped records that the run deliberately did not publish the
+// metadata.json to Drive (RuntimeConfig.SkipMetadataUpload): the content is
+// still composed + hashed, but it has no Drive location by design. The field
+// is part of the neutral contract so the flag survives the adapter round-trip
+// (finalize.Request -> MetadataState) that the finalization gate runs through;
+// without it the fail-closed gate would reject a legitimate run.
 type Metadata struct {
-	LocalPath         string
-	SHA256            string
-	SizeBytes         int64
-	RemoteFileID      string
-	RemoteWebViewLink string
+	LocalPath          string
+	SHA256             string
+	SizeBytes          int64
+	RemoteFileID       string
+	RemoteWebViewLink  string
+	DriveUploadSkipped bool
 }
 
 // Request is the neutral input to the stock finalization boundary.

@@ -5,13 +5,22 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // DefaultToolsChecker probes required CLI tools through the platform PATH.
 // The application layer owns only the ToolsChecker contract; this concrete
 // implementation belongs to infrastructure because it performs OS lookup.
+//
+// ToolPaths carries the operator-configured executable for a tool name (for
+// example the canonical `scripts/yt-dlp-pipeline` wrapper behind YTDLP_PATH).
+// A configured path wins over the platform PATH: the runtime resolves its
+// external tools through configuration, and the pip user install of yt-dlp
+// deliberately lives OUTSIDE the restricted service PATH. Probing the bare
+// tool name there reports a false negative on a healthy deployment.
 type DefaultToolsChecker struct {
 	RequiredTools []string
+	ToolPaths     map[string]string
 }
 
 func (c *DefaultToolsChecker) CheckTools(_ context.Context) []string {
@@ -24,7 +33,11 @@ func (c *DefaultToolsChecker) CheckTools(_ context.Context) []string {
 	}
 	var missing []string
 	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err != nil {
+		name := tool
+		if configured := strings.TrimSpace(c.ToolPaths[tool]); configured != "" {
+			name = configured
+		}
+		if _, err := exec.LookPath(name); err != nil {
 			missing = append(missing, tool)
 		}
 	}
@@ -44,6 +57,18 @@ type TTSChecker interface {
 // NewToolsChecker constructs the production PATH-backed readiness adapter.
 func NewToolsChecker() ToolsChecker {
 	return &DefaultToolsChecker{RequiredTools: []string{"yt-dlp", "ffmpeg", "ffprobe"}}
+}
+
+// NewToolsCheckerWithPaths constructs the production readiness adapter with
+// the configured executable per tool name. Keys are the canonical tool names
+// ("yt-dlp", "ffmpeg", "ffprobe"); an empty value falls back to the platform
+// PATH lookup for that tool. This keeps /ready consistent with the runtime
+// resolution instead of reporting a configured-but-off-PATH tool as missing.
+func NewToolsCheckerWithPaths(paths map[string]string) ToolsChecker {
+	return &DefaultToolsChecker{
+		RequiredTools: []string{"yt-dlp", "ffmpeg", "ffprobe"},
+		ToolPaths:     paths,
+	}
 }
 
 // CommandTTSChecker probes the Python TTS bridge through the platform

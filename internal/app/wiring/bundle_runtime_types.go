@@ -7,6 +7,7 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
@@ -26,6 +27,18 @@ type OutboxBundle struct {
 	MediaIndexWorker *pgmedia.PostgresIndexWorker
 	Publisher        outboxevents.Handler
 	DriveUploader    outboxevents.Handler
+
+	// MediaIndexRequester is the canonical PostgreSQL media index-plane
+	// request port. The TextTrackMaterializer emits its post-translation
+	// reindex through it (asset.index.requested into the PostgreSQL outbox)
+	// instead of the operational SQLite outbox, which has no media handler
+	// in any mode. nil when the PostgreSQL media plane is not deployed.
+	MediaIndexRequester texttracks.IndexRequester
+	// MediaSearchTextRebuilder recomposes media_assets.search_text from the
+	// asset metadata + READY transcripts (original + translations) before
+	// the reindex is requested, so the translations enter the E5 embedding.
+	// nil when the PostgreSQL media plane is not deployed.
+	MediaSearchTextRebuilder texttracks.SearchTextRebuilder
 }
 
 // SyncBundle owns only catalog-to-Drive synchronization.

@@ -245,4 +245,11 @@ type MetadataState struct {
 	SizeBytes         int64
 	RemoteFileID      string
 	RemoteWebViewLink string
+	// DriveUploadSkipped records that the operator opted out of publishing
+	// the metadata.json to Drive (RuntimeConfig.SkipMetadataUpload). The
+	// VerifyMetadata gate treats RemoteFileID as optional in that mode:
+	// the metadata content is still composed + hashed, but it has no Drive
+	// location by design, so requiring one would fail-closed on a
+	// legitimate run.
+	DriveUploadSkipped bool
 }

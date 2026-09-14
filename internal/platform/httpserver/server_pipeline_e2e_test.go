@@ -31,7 +31,7 @@
 //	07 stock-pipeline/      — search-and-run takes `queries:[{q,limit}]`
 //	   search-and-run         (`search_queries` is the legacy `/run` shape)
 //	08 Drive artifact       — ExtractItem can carry the Drive identity triple
-//	09 clip download route  — POST /api/media/:source/clips/:id/download wired
+//	09 clip download route  — POST /api/media/clips/:source/clips/:id/download wired
 //	10 idempotency replay   — same key + same body → no second enqueue
 package httpserver_test
 
@@ -322,7 +322,10 @@ func newPipelineE2EHarness(t *testing.T) *pipelineE2EHarness {
 	require.NoError(t, registry.Register(httpserver.NewRouteModule("clips", enabled, "/clips", ytHandler, zap.NewNop())))
 	require.NoError(t, registry.Register(httpserver.NewRouteModule("stock-pipeline", enabled, "/stock-pipeline", stockHandler, zap.NewNop())))
 	require.NoError(t, registry.Register(httpserver.NewRouteModule("media-search", enabled, "/media", searchHandler, zap.NewNop())))
-	require.NoError(t, registry.Register(httpserver.NewRouteModule("clips-publication", enabled, "/media", publication, zap.NewNop())))
+	// The clips capability mounts under the canonical /api/media/clips wire
+	// prefix (transport/wire.go), NOT directly under /api/media. Mounting it at
+	// "/media" here certified a route shape production does not serve.
+	require.NoError(t, registry.Register(httpserver.NewRouteModule("clips-publication", enabled, "/media/clips", publication, zap.NewNop())))
 
 	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{Config: cfg, Registry: registry})
 	return &pipelineE2EHarness{
@@ -600,10 +603,10 @@ func TestPipelineE2E(t *testing.T) {
 	})
 
 	t.Run("09_clip_download_route_is_wired", func(t *testing.T) {
-		// The route is POST /api/media/:source/clips/:id/download. It exists
-		// and is owned by the real publication handler, which fails closed
-		// because this harness wires no download use case.
-		rec := h.do(t, http.MethodPost, "/api/media/stock/clips/e2e-clip-id/download", nil,
+		// The route is POST /api/media/clips/:source/clips/:id/download. It
+		// exists and is owned by the real publication handler, which fails
+		// closed because this harness wires no download use case.
+		rec := h.do(t, http.MethodPost, "/api/media/clips/stock/clips/e2e-clip-id/download", nil,
 			map[string]string{"Idempotency-Key": "e2e-download"})
 		require.NotEqual(t, http.StatusNotFound, rec.Code,
 			"the canonical download route must be registered")
@@ -612,7 +615,7 @@ func TestPipelineE2E(t *testing.T) {
 			"an unwired backend must fail closed, never fake a file")
 
 		// The route is a write: GET must not resolve it.
-		get := h.do(t, http.MethodGet, "/api/media/stock/clips/e2e-clip-id/download", nil, nil)
+		get := h.do(t, http.MethodGet, "/api/media/clips/stock/clips/e2e-clip-id/download", nil, nil)
 		require.Equal(t, http.StatusNotFound, get.Code)
 	})
 

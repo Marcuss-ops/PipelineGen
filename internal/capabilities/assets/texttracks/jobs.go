@@ -175,6 +175,14 @@ func (h *MaterializeJobHandler) HandleJob(
 		"languages_failed":       aggregateFailedLanguages(reports),
 	}
 
+	// The tracks are durable; deliver the per-language subtitle artifacts too.
+	// This path carries a committed source hash, so it never re-enters
+	// ProcessAsset — without this call a freshly extracted clip would get its
+	// language rows and none of the subtitle files. nil when not applicable.
+	if subtitles := h.deliverSubtitleArtifacts(ctx, cmd); subtitles != nil {
+		result["subtitles"] = subtitles
+	}
+
 	h.log.Info("texttracks.materialize.job.done",
 		zap.String("job_id", j.ID),
 		zap.String("asset_id", cmd.AssetID),

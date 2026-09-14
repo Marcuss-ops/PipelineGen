@@ -115,6 +115,12 @@ func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *
 		FolderID:                       payload.FolderID,
 		FinalizationLease:              extractLease(queuedJob),
 	}
+	// Runtime-level opt-out: the production wiring suppresses the Drive
+	// publication of metadata.json so an operator's clips folder holds only
+	// the produced videos. Zero value keeps the legacy publish behaviour.
+	if s.runtime != nil {
+		input.SkipMetadataUpload = s.runtime.SkipMetadataUpload
+	}
 	if payload.Metadata != nil {
 		input.Metadata = &ChunkMetadataInput{
 			Title:            payload.Metadata.Title,

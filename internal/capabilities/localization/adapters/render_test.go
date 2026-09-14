@@ -498,3 +498,256 @@ func TestLocalizationRenderPlanExecutor_RehashesOnCertifiedSizeMismatch(t *testi
 		t.Fatalf("facts.SHA256 = %q, want the re-hashed real digest %q", facts.SHA256, realSHA)
 	}
 }
+
+// ── Reused overlay: resolution, sealing and fail-closed gates ────────────────
+
+// fakeOverlaySegmentResolver counts resolutions and returns the cached segment
+// for a render_key. It stands in for the content-addressed overlays cache: the
+// same render_keys are handed in by every language variant, so the real resolver
+// hashes each segment once and every variant reuses those bytes.
+type fakeOverlaySegmentResolver struct {
+	segment *cliprender.OverlaySegment
+	byKey   map[string]*cliprender.OverlaySegment
+	err     error
+	calls   int
+	last    cliprender.OverlayResolveInput
+	inputs  []cliprender.OverlayResolveInput
+}
+
+func (f *fakeOverlaySegmentResolver) Resolve(_ context.Context, in cliprender.OverlayResolveInput) (*cliprender.OverlaySegment, error) {
+	f.calls++
+	f.last = in
+	f.inputs = append(f.inputs, in)
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.byKey != nil {
+		return f.byKey[in.RenderKey], nil
+	}
+	return f.segment, nil
+}
+
+// reusedOverlayLineages returns the TWO overlays one scene composites: a reused
+// overlay is one certified render per semantic item, and a single-slot model
+// would silently drop the second.
+func reusedOverlayLineages() []cliprender.OverlayRefSpec {
+	return []cliprender.OverlayRefSpec{
+		{
+			RenderJobID:        "overlay-job-1",
+			PlanFingerprint:    strings.Repeat("c", 64),
+			RenderKey:          strings.Repeat("e", 64),
+			SourceVideoAssetID: "source-1",
+			StartUS:            2_000_000,
+			EndUS:              5_500_000,
+		},
+		{
+			RenderJobID:        "overlay-job-2",
+			PlanFingerprint:    strings.Repeat("c", 64),
+			RenderKey:          strings.Repeat("d", 64),
+			SourceVideoAssetID: "source-1",
+			StartUS:            6_000_000,
+			EndUS:              8_000_000,
+		},
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_SealsReusedOverlay pins that a declared
+// overlay reaches the sealed ClipRenderPlanV1 with the resolved segment and the
+// declared window in milliseconds — the overlay is composited in the SAME render
+// pass instead of being dropped.
+func TestLocalizationRenderPlanExecutor_SealsReusedOverlay(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	segment := &cliprender.OverlaySegment{
+		RenderJobID: "overlay-job-1",
+		RenderKey:   strings.Repeat("e", 64),
+		LocalPath:   filepath.Join(t.TempDir(), "overlay.mov"),
+		SHA256:      strings.Repeat("f", 64),
+		SizeBytes:   4096,
+	}
+	resolver := &fakeOverlaySegmentResolver{segment: segment}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop()).WithOverlayResolver(resolver)
+
+	if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+		Overlays: reusedOverlayLineages()[:1],
+	}); err != nil {
+		t.Fatalf("ExecuteExtended: %v", err)
+	}
+
+	if resolver.calls != 1 {
+		t.Fatalf("resolver calls: got %d, want 1", resolver.calls)
+	}
+	if resolver.last.RenderJobID != "overlay-job-1" || resolver.last.RenderKey != strings.Repeat("e", 64) {
+		t.Fatalf("resolver input: %+v", resolver.last)
+	}
+	if exec.gotPlan.Overlay == nil || len(exec.gotPlan.Overlay.Segments) != 1 {
+		t.Fatalf("the sealed clip plan must carry the reused overlay, got %+v", exec.gotPlan.Overlay)
+	}
+	got := exec.gotPlan.Overlay.Segments[0]
+	if got.Path != segment.LocalPath || got.SHA256 != segment.SHA256 || got.RenderKey != segment.RenderKey {
+		t.Fatalf("sealed segment: %+v", got)
+	}
+	if got.StartMS != 2000 || got.EndMS != 5500 {
+		t.Fatalf("sealed window: got [%d,%d) ms, want [2000,5500)", got.StartMS, got.EndMS)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_SealsEveryReusedOverlay pins the
+// multi-item contract at the adapter boundary: a plan declaring N overlays
+// resolves ALL N and seals ALL N with their own windows, so a final clip never
+// ships with only its first overlay.
+func TestLocalizationRenderPlanExecutor_SealsEveryReusedOverlay(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	segmentPath := func(name string) string { return filepath.Join(t.TempDir(), name) }
+	resolver := &fakeOverlaySegmentResolver{byKey: map[string]*cliprender.OverlaySegment{
+		strings.Repeat("e", 64): {RenderJobID: "overlay-job-1", RenderKey: strings.Repeat("e", 64), LocalPath: segmentPath("one.mov"), SHA256: strings.Repeat("1", 64), SizeBytes: 4096},
+		strings.Repeat("d", 64): {RenderJobID: "overlay-job-2", RenderKey: strings.Repeat("d", 64), LocalPath: segmentPath("two.mov"), SHA256: strings.Repeat("2", 64), SizeBytes: 2048},
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop()).WithOverlayResolver(resolver)
+
+	if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+		Overlays: reusedOverlayLineages(),
+	}); err != nil {
+		t.Fatalf("ExecuteExtended: %v", err)
+	}
+	if resolver.calls != 2 {
+		t.Fatalf("resolver calls: got %d, want one per declared overlay", resolver.calls)
+	}
+	overlay := exec.gotPlan.Overlay
+	if overlay == nil || len(overlay.Segments) != 2 {
+		t.Fatalf("sealed plan must carry both reused overlays, got %+v", overlay)
+	}
+	for i, want := range []struct {
+		key            string
+		sha            string
+		startMS, endMS int64
+	}{
+		{strings.Repeat("e", 64), strings.Repeat("1", 64), 2000, 5500},
+		{strings.Repeat("d", 64), strings.Repeat("2", 64), 6000, 8000},
+	} {
+		got := overlay.Segments[i]
+		if got.RenderKey != want.key || got.SHA256 != want.sha || got.StartMS != want.startMS || got.EndMS != want.endMS {
+			t.Fatalf("sealed segment %d = %+v, want key=%s window=[%d,%d)", i, got, want.key[:8], want.startMS, want.endMS)
+		}
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_SharedOverlayAcrossLanguages pins the reuse
+// at the render boundary: N language variants of one source hand the SAME
+// render_key to the resolver, so the overlay is never re-rendered or re-hashed
+// per language.
+func TestLocalizationRenderPlanExecutor_SharedOverlayAcrossLanguages(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	resolver := &fakeOverlaySegmentResolver{segment: &cliprender.OverlaySegment{
+		RenderJobID: "overlay-job-1", RenderKey: strings.Repeat("e", 64),
+		LocalPath: filepath.Join(t.TempDir(), "overlay.mov"), SHA256: strings.Repeat("f", 64), SizeBytes: 4096,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop()).WithOverlayResolver(resolver)
+
+	for i := 0; i < 3; i++ {
+		if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+			Overlays: reusedOverlayLineages(),
+		}); err != nil {
+			t.Fatalf("variant %d: ExecuteExtended: %v", i, err)
+		}
+	}
+	// Two declared overlays × three language variants: the resolver is called
+	// once per (variant, overlay), and every variant hands in the SAME
+	// render_keys — which is what lets the memoizing resolver hash each segment
+	// once for the whole fan-out.
+	if resolver.calls != 6 {
+		t.Fatalf("resolver calls: got %d, want 2 overlays × 3 variants", resolver.calls)
+	}
+	seen := map[string]int{}
+	for _, in := range resolver.inputs {
+		seen[in.RenderKey]++
+	}
+	if seen[strings.Repeat("e", 64)] != 3 || seen[strings.Repeat("d", 64)] != 3 {
+		t.Fatalf("every variant must resolve the same reused segments, got %+v", seen)
+	}
+	if exec.gotPlan.Overlay == nil || len(exec.gotPlan.Overlay.Segments) != 2 {
+		t.Fatalf("every variant must seal both reused overlays, got %+v", exec.gotPlan.Overlay)
+	}
+	for i, seg := range exec.gotPlan.Overlay.Segments {
+		if seg.Path == "" || seg.SHA256 == "" {
+			t.Fatalf("sealed segment %d is incomplete: %+v", i, seg)
+		}
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_OverlayFailsClosedWithoutResolver pins the
+// fail-closed gate: an overlay that cannot be resolved is a typed error, never a
+// clip that silently ships without it.
+func TestLocalizationRenderPlanExecutor_OverlayFailsClosedWithoutResolver(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
+
+	if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+		Overlays: reusedOverlayLineages(),
+	}); err == nil {
+		t.Fatal("an overlay without a wired resolver must fail closed")
+	}
+	if exec.submits != 0 {
+		t.Fatalf("no render may be submitted, got %d submits", exec.submits)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_OverlayResolveFailureFailsClosed pins that
+// an unresolvable segment (unknown render_key / unreadable artifact) aborts
+// before any work reaches the renderer.
+func TestLocalizationRenderPlanExecutor_OverlayResolveFailureFailsClosed(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	resolver := &fakeOverlaySegmentResolver{err: errors.New("no cached artifact for render_key")}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop()).WithOverlayResolver(resolver)
+
+	if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+		Overlays: reusedOverlayLineages(),
+	}); err == nil {
+		t.Fatal("an unresolvable overlay must fail closed")
+	}
+	if exec.submits != 0 {
+		t.Fatalf("no render may be submitted, got %d submits", exec.submits)
+	}
+}
+
+// TestLocalizationRenderPlanExecutor_IncompleteOverlayLineageFailsClosed pins the
+// all-or-nothing lineage gate at the adapter boundary too.
+func TestLocalizationRenderPlanExecutor_IncompleteOverlayLineageFailsClosed(t *testing.T) {
+	plan, outPath, _, size := localizedRenderFixture(t)
+	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{
+		OutputPath: outPath, SizeBytes: size, DurationSec: 8.432,
+	}}
+	resolver := &fakeOverlaySegmentResolver{segment: &cliprender.OverlaySegment{
+		RenderJobID: "overlay-job-1", RenderKey: strings.Repeat("e", 64),
+		LocalPath: "/tmp/overlay.mov", SHA256: strings.Repeat("f", 64), SizeBytes: 4096,
+	}}
+	adapter := NewRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop()).WithOverlayResolver(resolver)
+
+	partial := reusedOverlayLineages()
+	partial[0].RenderKey = ""
+	if _, err := adapter.ExecuteExtended(context.Background(), plan, appTestSubtitle(t), localization.RenderOptions{
+		Overlays: partial,
+	}); err == nil {
+		t.Fatal("a partial overlay lineage must fail closed")
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("the resolver must not be called for a partial lineage, got %d", resolver.calls)
+	}
+	if exec.submits != 0 {
+		t.Fatalf("no render may be submitted, got %d submits", exec.submits)
+	}
+}

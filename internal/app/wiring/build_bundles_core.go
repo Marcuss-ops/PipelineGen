@@ -152,7 +152,15 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	svc := buildHealthService(cfg, db, jobsDB)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithStoragePlanes(storagePlanes).
-		WithTools(processinfra.NewToolsChecker()).
+		// The tools probe must resolve the CONFIGURED executables, not the
+		// bare tool names: YTDLP_PATH canonically points at
+		// scripts/yt-dlp-pipeline (the pip user install lives outside the
+		// restricted service PATH), so a bare `yt-dlp` LookPath reports a
+		// false negative on a healthy deployment.
+		WithTools(processinfra.NewToolsCheckerWithPaths(map[string]string{
+			"yt-dlp": cfg.External.ResolvedYtdlpPath(),
+			"ffmpeg": cfg.External.FfmpegPath,
+		})).
 		WithClipsPath("data/media/clips")
 
 	// PR-YTDLP-HEALTH-GUARD: warn when the resolved yt-dlp is stale or has no
@@ -203,11 +211,15 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	}
 	if driveReader != nil {
 		rc = rc.WithDriveRootFolder(cfg.Drive.ClipsFolder()).
-			WithDriveRootChecker(systemhealth.NewDriveRootChecker(
+			WithDriveRootChecker(systemhealth.NewDriveRootCheckerWithTrashProbe(
 				func(ctx context.Context, folderID string) error {
 					_, err := driveReader.ListFiles(ctx, folderID)
 					return err
 				},
+				// A trashed root still lists its children, so the reachability
+				// probe alone reported a green root while every artifact written
+				// there was invisible in Drive. Probe the trashed state too.
+				driveReader.FileIsNotTrashed,
 			))
 	}
 	if jobsSvc != nil {

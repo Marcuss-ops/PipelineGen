@@ -86,9 +86,20 @@ type RunInput struct {
 	// shorter than the assumed horizon. Missing entries are treated
 	// as unknown duration (planner fallback applies).
 	SourceDurations map[string]float64
-	DriveURLs       []string
-	Clips           []ClipSpec
-	TotalMinutes    int
+	// SourceTitles maps a resolved DirectURL to the source video's real
+	// title (when known from the search provider's metadata). Populated
+	// by Service.resolveInputQueries / enrichDirectURLDurations so the
+	// planned clips inherit a human-readable title instead of staying
+	// anonymous "clip_###" rows. Without it a stock clip acquired from a
+	// query such as "mike tyson" is never returned by a search for
+	// "mike tyson": plan.Title stays empty, and the finalizer falls back
+	// to the artifact filename as the committed search_text. Missing
+	// entries are treated as an unknown title (operator metadata and the
+	// planner fallback still apply).
+	SourceTitles map[string]string
+	DriveURLs    []string
+	Clips        []ClipSpec
+	TotalMinutes int
 	// Explicit stock contract. These fields are the source of truth for
 	// bounded stock runs; TotalMinutes remains only for legacy callers.
 	TargetTotalDurationSeconds     int
@@ -103,13 +114,21 @@ type RunInput struct {
 	NoAudio                        bool
 	NoEffects                      bool
 	NoTransitions                  bool
-	Subfolder                      string
-	FolderName                     string
-	DriveFolderID                  string
-	FolderID                       string
-	DriveFolderResolved            bool
-	Metadata                       *ChunkMetadataInput
-	Progress                       func(percent int, message string)
+	// SkipMetadataUpload suppresses the Drive publication of the run-level
+	// metadata.json (and of the per-timestamp-group metadata.json). The
+	// files are still composed + hashed so the finalization contract keeps
+	// its content identity, but they never land in the operator's Drive
+	// folder: a Stock clips folder must contain only the videos. Sourced
+	// from RuntimeConfig.SkipMetadataUpload, which the production wiring
+	// sets from the operator's stock configuration.
+	SkipMetadataUpload  bool
+	Subfolder           string
+	FolderName          string
+	DriveFolderID       string
+	FolderID            string
+	DriveFolderResolved bool
+	Metadata            *ChunkMetadataInput
+	Progress            func(percent int, message string)
 
 	// §12-7 (July 2026).
 	FinalizationLease finalization.Lease // broker lease for StockFinalizeStep spine write

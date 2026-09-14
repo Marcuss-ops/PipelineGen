@@ -245,6 +245,16 @@ func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundl
 	if textTracks.FanOut != nil {
 		textTracks.FanOut.SetDefaultSourceLanguage(ActiveMultilingualConfig(cfg).SourceLanguage)
 	}
+	// POSTGRES-MEDIA-CUTOVER follow-up (September 2026): give the direct
+	// YouTube extraction path the canonical post-commit fan-out. The Artlist /
+	// Stock / generic paths reach it through their finalizers; YouTube commits
+	// through LocalizedWriter directly, so without this late binding a freshly
+	// extracted clip produced only the languages the acquisition chain
+	// happened to find. nil-guarded: no broker → no fan-out → unchanged
+	// behaviour.
+	if textTracks.FanOut != nil && domains.YoutubeClipService != nil {
+		domains.YoutubeClipService.WithMaterializeFanOut(textTracks.FanOut)
+	}
 	return nil
 }
 

@@ -36,7 +36,9 @@
 #     clips_per_source, clip_duration_seconds (per_source must equal
 #     clips_per_source x clip_duration_seconds, total a multiple of
 #     per_source) and download_mode="sections_only".
-#   - The clip download route is POST /api/media/:source/clips/:id/download.
+#   - The clip download route is POST /api/media/clips/:source/clips/:id/download
+#     (the clips capability mounts under the /api/media/clips wire prefix, NOT
+#     directly under /api/media; the bare /api/media/:source/... shape 404s).
 #
 # Usage:
 #   export DRIVE_ROOT_FOLDER_ID=<drive folder id>
@@ -506,7 +508,7 @@ step_9_stock_indexed_download() {
     local saved_timeout="$SMOKE_HTTP_TIMEOUT_SECONDS"
     SMOKE_HTTP_TIMEOUT_SECONDS=120
     export SMOKE_IDEMPOTENCY_KEY="$RUN_TAG-stock-download"
-    smoke_curl POST "/api/media/stock/clips/${STOCK_ASSET_ID}/download" >/dev/null
+    smoke_curl POST "/api/media/clips/stock/clips/${STOCK_ASSET_ID}/download" >/dev/null
     unset SMOKE_IDEMPOTENCY_KEY
     SMOKE_HTTP_TIMEOUT_SECONDS="$saved_timeout"
     if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then

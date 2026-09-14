@@ -209,5 +209,11 @@ func stockRuntimeConfig(cfg *config.Config) *stockpipeline.RuntimeConfig {
 		WorkDir: cfg.Storage.TempPath(), ClipDurationSec: v.ClipDuration,
 		ChunkDurationSec: v.ChunkDuration, MaxResults: v.MaxClipsPerSource,
 		PolicyVersion: "v1",
+		// Operator requirement: a Stock clips folder must contain only the
+		// produced videos. The metadata.json is still composed + hashed and
+		// recorded in the media SSOT, but it is never uploaded to Drive
+		// (previously every run left one metadata.json per timestamp group
+		// plus one run-level copy, i.e. duplicate files in the folder).
+		SkipMetadataUpload: true,
 	}
 }

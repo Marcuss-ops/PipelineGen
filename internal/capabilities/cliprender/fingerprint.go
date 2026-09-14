@@ -44,15 +44,15 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	// is still one render (the Drive outbox handles fan-out). Queue
 	// correlation IDs are also excluded.
 	type fp struct {
-		SourceAssetID string          `json:"source_asset_id"`
-		Background    *BackgroundSpec `json:"background"`
-		Watermark     *WatermarkSpec  `json:"watermark"`
-		Transcript    *TranscriptSpec `json:"transcript"`
-		Subtitles     *SubtitlesSpec  `json:"subtitles"`
-		Output        *OutputSpec     `json:"output"`
-		Audio         *AudioSpec      `json:"audio"`
-		Overlay       *OverlayRefSpec `json:"overlay,omitempty"`
-		Execution     *ExecutionSpec  `json:"execution,omitempty"`
+		SourceAssetID string           `json:"source_asset_id"`
+		Background    *BackgroundSpec  `json:"background"`
+		Watermark     *WatermarkSpec   `json:"watermark"`
+		Transcript    *TranscriptSpec  `json:"transcript"`
+		Subtitles     *SubtitlesSpec   `json:"subtitles"`
+		Output        *OutputSpec      `json:"output"`
+		Audio         *AudioSpec       `json:"audio"`
+		Overlays      []OverlayRefSpec `json:"overlays,omitempty"`
+		Execution     *ExecutionSpec   `json:"execution,omitempty"`
 	}
 	canonical := fp{
 		SourceAssetID: cp.SourceAssetID,
@@ -62,7 +62,7 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 		Subtitles:     cp.Subtitles,
 		Output:        cp.Output,
 		Audio:         cp.Audio,
-		Overlay:       cp.Overlay,
+		Overlays:      cp.Overlays,
 		Execution:     cp.Execution,
 	}
 	b, err := json.Marshal(canonical)

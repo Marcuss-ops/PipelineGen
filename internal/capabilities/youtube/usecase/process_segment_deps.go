@@ -7,7 +7,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - ProcessSegmentPolicyVersion const                       → THIS file (canonical SSOT)
 //   - ProcessSegmentCoreDeps{7 fields}                        → THIS file (canonical runtime + required ports)
-//   - ProcessSegmentMediaDeps{5 fields}                       → THIS file (canonical external I/O surface)
+//   - ProcessSegmentMediaDeps{7 fields}                       → THIS file (canonical external I/O surface)
 //   - ProcessSegmentMetadataDeps{3 fields}                    → THIS file (canonical metadata-enrichment surface)
 //   - ProcessSegmentObservabilityDeps{2 fields}               → THIS file (canonical metrics + policy surface)
 //   - NewProcessYouTubeSegmentFromSubBundles                   → THIS file (canonical ctor)
@@ -47,6 +47,8 @@
 package usecase
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
@@ -55,6 +57,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ProcessSegmentPolicyVersion is the canonical "v1" policy version
@@ -108,8 +111,36 @@ type ProcessSegmentCoreDeps struct {
 	Log *zap.Logger
 }
 
+// MaterializeFanOutPort is the narrow post-commit seam that schedules the
+// canonical multilingual text materialization for a freshly committed clip.
+//
+// POSTGRES-MEDIA-CUTOVER follow-up (September 2026): the direct YouTube
+// extraction path committed clip + transcript but never enqueued
+// `asset.text.materialize`, so a new clip produced exactly ONE language
+// (whatever the payload/subtitle chain supplied) and the other nine
+// configured languages were never generated. The Artlist/Stock/generic
+// paths reach the fan-out through their finalizers; YouTube commits through
+// LocalizedWriter directly, so it needs this explicit seam.
+//
+// The production concrete is *texttracks.MaterializeFanOut (satisfied
+// structurally — this package does NOT import the materializer).
+type MaterializeFanOutPort interface {
+	// EnqueueMaterializeOne schedules translation of an already persisted
+	// source track. sourceTextHash MUST be the persisted READY track's
+	// TextHash (the materializer re-reads the row and fails closed on a
+	// mismatch).
+	EnqueueMaterializeOne(ctx context.Context, assetID, sourceLanguage, sourceTextHash string, kinds []detail.TextTrackKind) error
+	// EnqueueAcquireOne schedules the canonical acquisition chain
+	// (payload → DB → YouTube manual → YouTube auto → Whisper) followed by
+	// materialization, for clips committed without a source transcript.
+	EnqueueAcquireOne(ctx context.Context, assetID, sourceLanguage string, kinds []detail.TextTrackKind) error
+	// DefaultSourceLanguage is the configured translation source language,
+	// used when the committed clip carries no resolvable language code.
+	DefaultSourceLanguage() string
+}
+
 // ProcessSegmentMediaDeps bundles the external I/O + stager ports.
-// 6 fields, all optional (nil-port safe at runtime — no
+// 7 fields, all optional (nil-port safe at runtime — no
 // fail-closed panic, no Validate() check).
 //
 // godlike/06 SSOT: this sub-bundle owns the optional external
@@ -142,6 +173,12 @@ type ProcessSegmentMediaDeps struct {
 	// resolver. When zero AND the source facts are present, the
 	// resolver's WithDefaults() still yields a deterministic decision.
 	CutProfile mediaexec.VideoProfile
+	// MaterializeFanOut is the OPTIONAL post-commit multilingual fan-out.
+	// nil → the clip commits exactly as before and no translation job is
+	// scheduled (back-compatible: every pre-existing test and minimal
+	// composition keeps working). Production wires it late, from
+	// wireLateBindings, once the jobs broker exists.
+	MaterializeFanOut MaterializeFanOutPort
 }
 
 // ProcessSegmentMetadataDeps bundles the metadata-enrichment ports.

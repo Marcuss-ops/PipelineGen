@@ -17,6 +17,56 @@ import (
 	"go.uber.org/zap"
 )
 
+// resolveOverlays seals a plan's REUSED overlay lineages into the compile
+// input, one per certified overlay.render artifact.
+//
+// The lineages are language-independent, so every variant of a source passes
+// the same render_keys here and the resolver returns the same cached segments —
+// one overlay render per item serves the whole multi-language fan-out. The
+// resolver memoizes the segment digest, so N languages hash each overlay byte
+// once instead of once per language.
+//
+// Fail-closed: an incomplete lineage, an unwired resolver, or an unresolvable
+// segment (unknown render_key, unreadable artifact) is a typed error, so a
+// render never ships a clip that silently lost an overlay it declared. Every
+// declared lineage is resolved or the render does not start.
+func (a *RenderPlanExecutor) resolveOverlays(ctx context.Context, lineages []cliprender.OverlayRefSpec) (*cliprender.PlanOverlayInput, error) {
+	if len(lineages) == 0 {
+		return nil, nil
+	}
+	segments := make([]cliprender.PlanOverlayInputSegment, 0, len(lineages))
+	for i, lineage := range lineages {
+		if strings.TrimSpace(lineage.RenderJobID) == "" ||
+			strings.TrimSpace(lineage.PlanFingerprint) == "" ||
+			strings.TrimSpace(lineage.RenderKey) == "" ||
+			strings.TrimSpace(lineage.SourceVideoAssetID) == "" {
+			return nil, fmt.Errorf("localization: overlay %d lineage is incomplete (render_job_id, plan_fingerprint, render_key and source_video_asset_id are required)", i)
+		}
+		if lineage.StartUS < 0 || lineage.EndUS <= lineage.StartUS {
+			return nil, fmt.Errorf("localization: overlay %d window is invalid (end_us %d must be > start_us %d >= 0)", i, lineage.EndUS, lineage.StartUS)
+		}
+		if a.overlayResolver == nil {
+			return nil, fmt.Errorf("localization: overlay %q requested but no overlay segment resolver is wired", lineage.RenderKey)
+		}
+		segment, err := a.overlayResolver.Resolve(ctx, cliprender.OverlayResolveInput{
+			RenderJobID: lineage.RenderJobID,
+			RenderKey:   lineage.RenderKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("localization: resolve reused overlay %q: %w", lineage.RenderKey, err)
+		}
+		if segment == nil || strings.TrimSpace(segment.LocalPath) == "" || strings.TrimSpace(segment.SHA256) == "" {
+			return nil, fmt.Errorf("localization: resolved overlay %q is incomplete", lineage.RenderKey)
+		}
+		segments = append(segments, cliprender.PlanOverlayInputSegment{
+			Segment: segment,
+			StartMS: lineage.StartUS / 1000,
+			EndMS:   lineage.EndUS / 1000,
+		})
+	}
+	return &cliprender.PlanOverlayInput{Segments: segments}, nil
+}
+
 // certifiedOutputDigest resolves the content address of a rendered localized
 // clip WITHOUT re-reading bytes the render boundary already certified.
 //
@@ -60,6 +110,14 @@ type RenderPlanExecutor struct {
 	renderer cliprender.RenderExecutor
 	profile  mediaexec.VideoProfile
 	log      *zap.Logger
+	// overlayResolver resolves the certified rendered overlay segments named by
+	// a plan's overlay lineages, one per semantic overlay item. It is the
+	// content-addressed hop that makes the reuse real: every language variant of
+	// a source resolves the SAME render_keys, and the resolver memoizes each
+	// segment digest, so N languages hash each overlay's bytes once and none of
+	// them re-renders an overlay. Nil is allowed only while no plan carries an
+	// overlay — a plan that does is a typed error, never a silent drop.
+	overlayResolver cliprender.OverlaySegmentResolver
 }
 
 // NewRenderPlanExecutor builds the bridge. profile is normalized to defaults
@@ -80,6 +138,16 @@ var _ localization.RenderPlanExecutor = (*RenderPlanExecutor)(nil)
 // ten-ish per-phase lines this executor used to emit for EVERY localized clip
 // were diagnostics, not operator events — the same facts already live on the
 // RunReport stages and the render metrics.
+// WithOverlayResolver wires the overlay-segment resolver used to seal a plan's
+// reused overlay into the clip render plan. Required as soon as any plan
+// declares an overlay; returns the receiver so composition roots can chain it.
+func (a *RenderPlanExecutor) WithOverlayResolver(resolver cliprender.OverlaySegmentResolver) *RenderPlanExecutor {
+	if a != nil {
+		a.overlayResolver = resolver
+	}
+	return a
+}
+
 func (a *RenderPlanExecutor) logPhase(phase, planID string, fields ...zap.Field) {
 	all := append([]zap.Field{
 		zap.String("subsystem", "localization_render"),
@@ -179,6 +247,12 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		Channels:     a.profile.Channels,
 	}
 
+	overlay, err := a.resolveOverlays(ctx, opts.Overlays)
+	if err != nil {
+		a.logPhaseFailure("overlay_resolve_failed", plan.Revision, zap.Error(err))
+		return localization.RenderFacts{}, err
+	}
+
 	a.logPhase("compile_start", plan.Revision,
 		zap.String("source_asset_id", src.AssetID),
 		zap.String("source_path", src.Path),
@@ -192,6 +266,14 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 			return opts.WatermarkSpec.Text
 		}()),
 		zap.String("background_mode", opts.BackgroundMode),
+		zap.Bool("has_overlay", overlay != nil),
+		zap.Int("overlay_segments_resolved", func() int {
+			if overlay == nil {
+				return 0
+			}
+			return len(overlay.Segments)
+		}()),
+		zap.Int("overlay_segments_declared", len(opts.Overlays)),
 		zap.Bool("has_subtitle_style", opts.SubtitlesStyle != nil),
 		zap.Int("width", contract.Width),
 		zap.Int("height", contract.Height),
@@ -214,6 +296,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		SubtitlesStyle:         opts.SubtitlesStyle,
 		Contract:               contract,
 		AudioMode:              cliprender.AudioModeCopyIfCompatible,
+		Overlay:                overlay,
 		OutputPath:             plan.OutputPath,
 	})
 	compileMS := time.Since(compileStart).Milliseconds()

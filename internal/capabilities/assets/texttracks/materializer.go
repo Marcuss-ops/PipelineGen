@@ -21,7 +21,6 @@ package texttracks
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -54,6 +53,23 @@ type MaterializationReport struct {
 	RetranslatedLanguages []string             `json:"retranslated_languages"`
 	FailedLanguages       map[string]string    `json:"failed_languages"`
 	Duration              time.Duration        `json:"duration"`
+
+	// IndexInputRebuilt reports that the multilingual search_text repair
+	// ran for this asset. It is set whenever a SearchTextRebuilder is
+	// wired, INCLUDING runs that created no translation: the operator
+	// backfill over the pre-existing catalog always finds the language
+	// rows already READY, and repairing their index input is the whole
+	// point of re-running it.
+	IndexInputRebuilt bool `json:"index_input_rebuilt"`
+	// ReindexRequested reports that a reindex was actually asked for, on
+	// whichever plane owns media indexing. A run whose rebuild left the
+	// document byte-identical asks for nothing, so a repeated backfill
+	// over an unchanged asset does not re-embed the same text.
+	ReindexRequested bool `json:"reindex_requested"`
+	// ReindexSkippedReason is set when the repair ran but no reindex was
+	// requested, and names why. It exists so an operator can tell
+	// "nothing to repair" apart from "the repair silently did nothing".
+	ReindexSkippedReason string `json:"reindex_skipped_reason,omitempty"`
 }
 
 func (r *MaterializationReport) HasFailures() bool {
@@ -72,6 +88,20 @@ type Materializer struct {
 	outbox      OutboxEnqueuer
 	resolverCfg ResolverConfig
 	log         *zap.Logger
+
+	// reindex is the canonical media index-plane request port. When set
+	// (production: always, whenever the PostgreSQL media plane is enabled)
+	// it REPLACES the legacy SQLite outbox emission entirely — the SQLite
+	// operational outbox has no media handler in any mode, so an
+	// asset.index.requested row written there can only dead-letter.
+	reindex IndexRequester
+
+	// searchText recomposes media_assets.search_text from the asset's
+	// canonical metadata plus every READY transcript track (original +
+	// translations) BEFORE the reindex is requested, so the translations
+	// this run just persisted actually enter the E5 embedding. nil keeps
+	// the legacy behaviour (rebuild not wired).
+	searchText SearchTextRebuilder
 
 	// mu guards the MaterializationReport mutations that concurrent
 	// materializeOne goroutines share (CreatedLanguages, SkippedLanguages,
@@ -130,6 +160,10 @@ func (m *Materializer) SetConcurrency(n int) {
 	}
 	m.concurrency = n
 }
+
+// SetIndexRequester / SetSearchTextRebuilder and the post-translation index
+// seam they feed live in materializer_index_seam.go (godlike/08 file-size
+// split, September 2026).
 
 // Materialize runs the (a-f) pipeline for a single (asset, kind) pair.
 //
@@ -258,12 +292,23 @@ func (m *Materializer) Materialize(
 		}
 	}
 
-	// (e) Emit asset.index.requested outbox event.
-	if len(report.CreatedLanguages)+len(report.RetranslatedLanguages) > 0 {
-		if err := m.emitAssetIndexRequested(ctx, assetID, kind); err != nil {
-			report.Duration = time.Since(start)
-			return report, fmt.Errorf("texttracks.materialize: outbox enqueue: %w", err)
-		}
+	// (e) Make the translations indexable, then request the reindex.
+	//
+	// This runs even when the invocation created nothing. A backfill over
+	// the pre-existing catalog always finds every target language already
+	// READY (the July-2026 wiring bug left the rows in asset_text_tracks
+	// while asset.index.requested went to the operational SQLite outbox,
+	// which owns no media handler and dead-lettered it), so a create-only
+	// trigger left those assets with a media_assets.search_text that never
+	// contained their translations — unrepairable no matter how often the
+	// operator re-ran the backfill. The rebuild is cheap and idempotent;
+	// the reindex is still requested only when something really changed
+	// (this run mutated tracks, or the rebuild changed the document), so a
+	// no-op re-run never re-embeds an unchanged asset.
+	tracksChanged := len(report.CreatedLanguages)+len(report.RetranslatedLanguages) > 0
+	if err := m.refreshIndexInput(ctx, assetID, kind, tracksChanged, report); err != nil {
+		report.Duration = time.Since(start)
+		return report, err
 	}
 
 	report.Duration = time.Since(start)
@@ -479,29 +524,5 @@ func (m *Materializer) materializeOne(
 	return nil
 }
 
-// emitAssetIndexRequested enqueues the canonical
-// asset.index.requested event so the Qdrant reindex pipeline
-// picks up the new READY tracks.
-func (m *Materializer) emitAssetIndexRequested(
-	ctx context.Context,
-	assetID string,
-	kind detail.TextTrackKind,
-) error {
-	payload, err := json.Marshal(map[string]string{
-		"asset_id": assetID,
-		"kind":     string(kind),
-		"reason":   "asset.text.materialize complete",
-	})
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
-	}
-	_, err = m.outbox.Enqueue(
-		ctx, nil,
-		outboxevents.EventAssetIndexRequested,
-		assetID,
-		"asset",
-		string(payload),
-		"",
-	)
-	return err
-}
+// refreshIndexInput and emitAssetIndexRequested live in
+// materializer_index_seam.go.

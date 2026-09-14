@@ -239,6 +239,46 @@ func NewDriveRootChecker(probe func(ctx context.Context, folderID string) error)
 	return &driveRootAdapter{probe: probe}
 }
 
+// driveRootTrashAdapter composes the reachability probe with a
+// trashed-state probe.
+//
+// Rationale (fail-closed): a TRASHED folder still lists its children
+// successfully through the Drive API, so a ListFiles-only probe reports a
+// green root while every artifact published under it is invisible in Drive.
+// That is the "unavailable backend represented as a successful no-op" class
+// this repository bans, so the trashed state must be probed explicitly.
+type driveRootTrashAdapter struct {
+	reach      func(ctx context.Context, folderID string) error
+	notTrashed func(ctx context.Context, folderID string) (bool, error)
+}
+
+// CheckDriveRoot fails closed when the configured root is trashed.
+func (a *driveRootTrashAdapter) CheckDriveRoot(ctx context.Context, folderID string) error {
+	if a.reach == nil {
+		return fmt.Errorf("Drive reader not wired")
+	}
+	if a.notTrashed != nil {
+		notTrashed, err := a.notTrashed(ctx, folderID)
+		if err != nil {
+			return fmt.Errorf("Drive root trashed-state probe: %w", err)
+		}
+		if !notTrashed {
+			return fmt.Errorf("Drive root folder %s is TRASHED: published artifacts would be invisible in Drive (repoint the configured Drive root at a live folder)", folderID)
+		}
+	}
+	return a.reach(ctx, folderID)
+}
+
+// NewDriveRootCheckerWithTrashProbe composes the reachability probe with a
+// trashed-state probe (normally drive.Reader.FileIsNotTrashed). A nil
+// notTrashed closure degrades to the reachability-only behaviour.
+func NewDriveRootCheckerWithTrashProbe(
+	reach func(ctx context.Context, folderID string) error,
+	notTrashed func(ctx context.Context, folderID string) (bool, error),
+) DriveRootChecker {
+	return &driveRootTrashAdapter{reach: reach, notTrashed: notTrashed}
+}
+
 // OllamaChecker verifies the Ollama inference server is
 // reachable and returns a valid response. nil-safe.
 type OllamaChecker interface {

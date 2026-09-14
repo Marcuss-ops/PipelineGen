@@ -162,6 +162,49 @@ func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 	require.True(t, rt.Caps.FFmpeg, "renderer profile requires FFmpeg")
 }
 
+// ── 2b. overlay GPU slot contract ─────────────────────────────
+
+// TestResolveGPUGateSlots_DefaultAndEnv pins the overlay GPU admission
+// contract: an unset/invalid RENDERINGGEN_GPU_SLOTS resolves to the single-slot
+// default (the historical host-wide serialization) and is reported as NOT
+// explicit, while a configured value is honored and reported as explicit.
+func TestResolveGPUGateSlots_DefaultAndEnv(t *testing.T) {
+	cases := []struct {
+		raw      string
+		slots    int
+		explicit bool
+	}{
+		{"", DefaultGPUGateSlots, false},
+		{"   ", DefaultGPUGateSlots, false},
+		{"0", DefaultGPUGateSlots, false},
+		{"-2", DefaultGPUGateSlots, false},
+		{"abc", DefaultGPUGateSlots, false},
+		{"1", 1, true},
+		{"2", 2, true},
+		{" 3 ", 3, true},
+	}
+	for _, tc := range cases {
+		slots, explicit := resolveGPUGateSlots(tc.raw)
+		require.Equal(t, tc.slots, slots, "RENDERINGGEN_GPU_SLOTS=%q", tc.raw)
+		require.Equal(t, tc.explicit, explicit, "explicit flag for RENDERINGGEN_GPU_SLOTS=%q", tc.raw)
+	}
+}
+
+// TestGPUGateSlots_UnsetEnvIsNotExplicit proves the env read path reports the
+// default as implicit, which is what makes the peer-mismatch warning fire in
+// BuildRenderingRuntime.
+func TestGPUGateSlots_UnsetEnvIsNotExplicit(t *testing.T) {
+	t.Setenv("RENDERINGGEN_GPU_SLOTS", "")
+	slots, explicit := gpuGateSlots()
+	require.Equal(t, DefaultGPUGateSlots, slots)
+	require.False(t, explicit)
+
+	t.Setenv("RENDERINGGEN_GPU_SLOTS", "2")
+	slots, explicit = gpuGateSlots()
+	require.Equal(t, 2, slots)
+	require.True(t, explicit)
+}
+
 // ── 3. fail-closed constructor smoke tests ────────────────────
 
 func TestBuildRenderingRuntime_NilConfig_FailsClosed(t *testing.T) {

@@ -19,21 +19,43 @@ import (
 	"go.uber.org/zap"
 )
 
-// gpuGateSlots reads the overlay GPU slot count. The default of 1 preserves
-// the historical host-wide serialization (one exclusive flock); a measured
-// value >1 admits that many concurrent overlay renders, each on its own lock
-// file. RENDERINGGEN_GPU_LOCK still names slot 0, and a peer process sharing the
-// GPU must be given the SAME RENDERINGGEN_GPU_SLOTS (see overlays.GPUGate).
-func gpuGateSlots() int {
-	raw := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
-	if raw == "" {
-		return 1
+// DefaultGPUGateSlots is the conservative overlay GPU concurrency: one
+// exclusive flock, i.e. the historical host-wide serialization.
+//
+// Raising it is only defensible together with the GPU peers:
+//
+//   - RenderingGen's worker `gpu_lanes` is the measured ceiling (2 on the
+//     reference host — see RenderingGen/renderinggen/config.yaml and
+//     RenderingGen/infra/native/renderinggen-native.yaml, which records that
+//     extra lanes add queue wait, VRAM pressure and text-path lock contention
+//     without increasing the render-loop rate);
+//   - a Chronon video job is itself mutex-serialized by the daemon
+//     execution-domain contract
+//     (Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp).
+//
+// Every process sharing the GPU must therefore be given the SAME
+// RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate).
+const DefaultGPUGateSlots = 1
+
+// resolveGPUGateSlots parses RENDERINGGEN_GPU_SLOTS. `explicit` reports whether
+// an operator actually configured a value, so the caller can distinguish "the
+// default applied" from "the operator chose one slot"; an unparsable or
+// out-of-range value falls back to the default and is reported as not explicit.
+func resolveGPUGateSlots(raw string) (slots int, explicit bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return DefaultGPUGateSlots, false
 	}
-	n, err := strconv.Atoi(raw)
+	n, err := strconv.Atoi(trimmed)
 	if err != nil || n < 1 {
-		return 1
+		return DefaultGPUGateSlots, false
 	}
-	return n
+	return n, true
+}
+
+// gpuGateSlots reads the overlay GPU slot count from the environment.
+func gpuGateSlots() (slots int, explicit bool) {
+	return resolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
 }
 
 type RenderingRuntime struct {
@@ -70,9 +92,20 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	if lockPath == "" {
 		lockPath = filepath.Join(os.TempDir(), "pipelinegen", "gpu-0.lock")
 	}
-	gate, err := infraoverlays.NewGPUGateWithSlots(lockPath, gpuGateSlots())
+	slots, explicitSlots := gpuGateSlots()
+	gate, err := infraoverlays.NewGPUGateWithSlots(lockPath, slots)
 	if err != nil {
 		return nil, nil, err
+	}
+	if explicitSlots {
+		log.Info("overlay GPU gate slots resolved",
+			zap.Int("slots", slots), zap.String("gpu_lock", lockPath))
+	} else {
+		// Not a failure: the default is the historical serialization. It must be
+		// visible, though, because a peer process given a different value does not
+		// share this GPU admission contract.
+		log.Warn("RENDERINGGEN_GPU_SLOTS is unset: overlay renders serialize on one GPU slot; set it to RenderingGen's worker.gpu_lanes so every process sharing the GPU uses the same admission contract",
+			zap.Int("slots", slots), zap.String("gpu_lock", lockPath))
 	}
 	// The media prober certifies every rendered overlay via the canonical
 	// probe port (rustexec.VideoProcessor.Probe → ffprobe) + content hash.

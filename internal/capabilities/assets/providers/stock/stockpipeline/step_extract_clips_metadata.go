@@ -37,6 +37,15 @@ func writeTimestampGroups(
 	groupBuckets map[string]*timestampGroupBuffer,
 	artifactPrep finalization.ArtifactPreparationService,
 ) error {
+	if in != nil && in.SkipMetadataUpload {
+		// Operator opt-out (RuntimeConfig.SkipMetadataUpload): no
+		// per-timestamp-group metadata.json is published. Historically
+		// this upload duplicated the run-level metadata.json that
+		// stock.publish already puts on Drive, leaving two identical
+		// files in the operator's clips folder.
+		return nil
+	}
+
 	type orderedGroup struct {
 		leafName   string
 		firstIndex int
