@@ -144,11 +144,27 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	}
 	utility := BuildUtilityBundle(cfg, dbs.Main, dbs.Jobs, storagePlanes, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
+	// ACQUISITION SOURCE (Sept 2026): the same policy the per-segment
+	// resolver applies — when YouTube subtitles are disabled the backfill
+	// acquirer must not re-acquire them either, or a repair pass would
+	// resurrect a YouTube transcript over the locally transcribed one.
+	acquireSubtitles := domains.SubtitleFetcher
+	if ActiveMultilingualConfig(cfg).YouTubeSubtitlesDisabled {
+		acquireSubtitles = nil
+	}
 	acquirePorts := &AcquirePorts{
-		Subtitles: domains.SubtitleFetcher,
+		Subtitles: acquireSubtitles,
 		Whisper:   ai.WhisperTranscriber,
 		Drive:     driveBundle.Reader,
 		CueWriter: domains.CueWriter,
+		// POSTGRES-MEDIA-CUTOVER: the backfill/materialize asset reader
+		// reads the PostgreSQL media SSOT, never the legacy SQLite
+		// catalog (which does not contain a just-committed PG clip).
+		MediaAssets: newPostgresMediaAssetLister(mediaPG),
+		// Single owner of the subtitle artifact Drive folder: the
+		// configured subtitle root under the source video id, the same
+		// folder the extraction uploaded the .txt sidecar into.
+		SubtitleFolders: NewSubtitleRootLayoutResolver(cfg.Drive.YouTubeSubtitlesFolder()),
 	}
 	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, driveBundle.Publisher, log)
 	if err != nil {

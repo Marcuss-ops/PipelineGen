@@ -334,7 +334,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			AssetIndex:      root.Search.AssetIndexService,
 			Dispatcher:      root.Outbox.Dispatcher,
 			BatchRepository: stockBatchRepo,
-			DriveReader:     root.Drive.Reader,
+			// PR-STOCK-DESTINATION-RECONCILE: the stock acquisition Drive port
+			// needs the ownership-aware listing (ListFilesWithAppProperties)
+			// and TrashFile, which live on the concrete *drive.Uploader and
+			// not on the canonical drive.Reader port. Passing the concrete
+			// uploader here lets the adapter stamp PipelineOwned and drive the
+			// destination GC without widening drive.Reader for every consumer.
+			DriveReader: root.Drive.DriveUploader,
 		},
 		Media: StockMediaDeps{
 			Cutter:   stockCutter,

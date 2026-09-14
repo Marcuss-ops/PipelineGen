@@ -313,7 +313,14 @@ type ProcessSegmentResult struct {
 	DriveFileID      string
 	DriveLink        string
 	IndexedRequestID string
-	// Status is "processed" | "processed_but_index_blocked" | "failed".
+	// Status is "processed" | "processed_but_index_blocked" |
+	// "processed_but_text_missing" | "failed".
+	//
+	// "processed_but_text_missing" means the clip, its Drive artifact and its
+	// index event are durable, but the transcript acquisition chain exhausted
+	// every priority — so the clip has no transcript, no translations and no
+	// subtitle artifacts. It is deliberately NOT reported as a bare success:
+	// that state used to be indistinguishable from a complete run.
 	// PR-CACHE-HIT-FINALIZATION: the legacy "skipped" cache-hit status
 	// is RETIRED for this use case — a binary cache hit skips only
 	// acquisition/cut and still passes through the enrichment/

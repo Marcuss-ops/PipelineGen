@@ -133,6 +133,13 @@ type StockDeliveryDeps struct {
 type stockConcreteDriveReader interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
 	ListFiles(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+	// ListFilesWithAppProperties is the ownership-aware listing the destination
+	// reconciler needs (PR-STOCK-DESTINATION-RECONCILE): the P0.6
+	// pipelinegen_idempotency_key appProperty is what distinguishes pipeline
+	// artifacts from operator uploads.
+	ListFilesWithAppProperties(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+	// TrashFile removes one file (destination reconciler GC pass).
+	TrashFile(ctx context.Context, fileID string) error
 }
 
 // StockAcquisitionDeps groups the storage + dispatch layer the stock

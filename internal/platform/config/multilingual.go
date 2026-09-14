@@ -90,6 +90,22 @@ type MultilingualConfig struct {
 	// fallback to "auto").
 	TranslationPolicy string `yaml:"translation_policy" default:"auto"`
 
+	// YouTubeSubtitlesDisabled, when true, removes the YouTube
+	// subtitle levels (3+4) from the acquisition chain so the local
+	// Whisper transcriber becomes the transcript source. Default
+	// false keeps the canonical priority (payload -> DB -> YT manual
+	// -> YT auto -> Whisper).
+	//
+	// MOTIVATION (Sept 2026): YouTube now auto-generates captions for
+	// essentially every public video, so priorities 3+4 win for
+	// virtually every clip and the local Whisper transcriber never
+	// runs. Operators who require a locally generated transcript — no
+	// dependency on YouTube captions, deterministic input for the
+	// Argos translation fan-out — set this to true. It is also the
+	// switch the Whisper -> Argos -> subtitle-artifact certificate
+	// uses to bypass captions on a video that HAS them.
+	YouTubeSubtitlesDisabled bool `yaml:"youtube_subtitles_disabled" env:"VELOX_MEDIA_YOUTUBE_SUBTITLES_DISABLED" default:"false"`
+
 	// TranslationProvider selects the translation provider strategy
 	// for the TextTrackMaterializer (PR-ARGOS-TRANSLATION, Aug 2026):
 	//   - "argos"  → Argos Translate primary + Ollama fallback (default)

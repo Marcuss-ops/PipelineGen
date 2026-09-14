@@ -177,7 +177,13 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// never a silent placeholder transcript (godlike/07 no-fake-
 	// availability: nil port = capability absent, not fake data).
 	var whisperAdapter ytinfra.WhisperTranscriber
-	whisperConcrete, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{}, log)
+	// The Whisper bridge requires the .venv-whisper interpreter: the system
+	// python3 has no faster-whisper/ctranslate2, so an empty interpreter here
+	// silently disabled local transcription entirely. An empty configured
+	// value keeps the documented "resolve python3 from PATH" degrade.
+	whisperConcrete, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{
+		PythonBin: cfg.Paths.WhisperPythonBin,
+	}, log)
 	if wErr != nil {
 		log.Warn("WhisperTranscriber adapter unavailable; the acquisition chain will skip the Whisper fallback",
 			zap.Error(wErr))

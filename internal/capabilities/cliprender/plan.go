@@ -15,9 +15,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"strings"
 )
 
 // PlanVersion is the canonical version of the clip render plan contract.
@@ -44,12 +45,29 @@ type PlanSource struct {
 // blur_source, asset. Path/SHA256 are populated ONLY for mode=asset — the
 // render worker derives the blurred background from the source itself for
 // blur_source.
+//
+// Kind is the media family of the resolved asset (image | video) and is the
+// reason an image plate is now expressible at all: before this field the
+// render worker received ONE anonymous "background asset" and every producer
+// hardcoded a video plate, so an image background was silently rendered as a
+// video source (or rejected downstream). The kind is resolved ONCE, before the
+// plan is sealed, from the resolved asset's canonical MediaType — the renderer
+// never guesses it from a filename extension.
+//
+// Kind is populated ONLY for mode=asset and is REQUIRED there: a sealed plan
+// that cannot say whether the plate is an image or a video is exactly the
+// ambiguity this field removes.
 type PlanBackground struct {
 	Mode    string `json:"mode"`
+	Kind    string `json:"kind,omitempty"`
 	AssetID string `json:"asset_id,omitempty"`
 	Path    string `json:"path,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
 }
+
+// The background media-family vocabulary (kinds, IsBackgroundKind,
+// BackgroundKindFromMediaType, resolveBackgroundKind) is owned by
+// background.go — one file, one owner for "which plate family is this".
 
 // PlanWatermark is the resolved watermark overlay. Position/opacity/margin
 // are business selections resolved here — the render worker applies them
@@ -196,7 +214,13 @@ type CompileInput struct {
 	WatermarkSpec  *WatermarkSpec     // normalized request watermark block; the SINGLE owner of watermark text/position/opacity/margin/style. A text-only watermark is WatermarkSpec.Text with Watermark == nil.
 	Background     *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
 	BackgroundMode string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
-	Subtitles      *SubtitleArtifact  // nil when disabled
+	// BackgroundKind is the resolved media family of Background
+	// (image | video). REQUIRED for mode=asset; ignored for the asset-less
+	// modes. It is resolved by the preparer from the asset's canonical
+	// MediaType (or the caller's explicit background.kind), never guessed by
+	// the render worker.
+	BackgroundKind string
+	Subtitles      *SubtitleArtifact // nil when disabled
 	// SubtitlesStyle is the caller's subtitle visual override block (canonical
 	// kernel/script shape). Nil means the compiled ASS style applies verbatim.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
@@ -276,6 +300,13 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			backgroundMode = BackgroundModeAsset
 		}
 	}
+	// A media family is only meaningful for a mode that carries a plate: a
+	// kind on an asset-less mode is a contradiction (the mode says there is no
+	// background) and is refused rather than dropped, so the caller learns the
+	// two inputs disagreed.
+	if in.BackgroundKind != "" && backgroundMode != BackgroundModeAsset {
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: background_kind must be empty for mode=%s (got %q)", ErrInvalidClipPlan, backgroundMode, in.BackgroundKind)
+	}
 	switch backgroundMode {
 	case BackgroundModeNone:
 		if in.Background != nil {
@@ -291,8 +322,17 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		if in.Background == nil || in.Background.LocalPath == "" || !isSHA256Hex(in.Background.SHA256) {
 			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=asset requires the materialized asset with path + sha256", ErrInvalidClipPlan)
 		}
+		// The media family is REQUIRED and validated here: the renderer samples
+		// an image plate and a video plate through two different layers, so a
+		// plan that cannot name the family is not renderable. It is never
+		// guessed from the file extension — the preparer resolves it from the
+		// asset's canonical MediaType before the plan is sealed.
+		if !IsBackgroundKind(in.BackgroundKind) {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=asset requires background_kind to be one of %s, %s (got %q)", ErrInvalidClipPlan, BackgroundKindImage, BackgroundKindVideo, in.BackgroundKind)
+		}
 		plan.Background = &PlanBackground{
 			Mode:    BackgroundModeAsset,
+			Kind:    in.BackgroundKind,
 			AssetID: in.Background.AssetID,
 			Path:    in.Background.LocalPath,
 			SHA256:  in.Background.SHA256,
@@ -469,10 +509,17 @@ func (p ClipRenderPlanV1) Validate() error {
 	if p.Background != nil {
 		switch p.Background.Mode {
 		case BackgroundModeNone, BackgroundModeBlurSource:
-			// No asset required.
+			// No asset (and therefore no media family) is required — and a
+			// declared kind is a contradiction, not extra information.
+			if p.Background.Kind != "" {
+				return fmt.Errorf("%w: background mode=%s must not carry a kind (got %q)", ErrInvalidClipPlan, p.Background.Mode, p.Background.Kind)
+			}
 		case BackgroundModeAsset:
 			if p.Background.AssetID == "" || p.Background.Path == "" || !isSHA256Hex(p.Background.SHA256) {
 				return fmt.Errorf("%w: background mode=asset requires asset_id, path, and sha256", ErrInvalidClipPlan)
+			}
+			if !IsBackgroundKind(p.Background.Kind) {
+				return fmt.Errorf("%w: background mode=asset requires kind to be one of %s, %s (got %q)", ErrInvalidClipPlan, BackgroundKindImage, BackgroundKindVideo, p.Background.Kind)
 			}
 		default:
 			return fmt.Errorf("%w: invalid background mode %q", ErrInvalidClipPlan, p.Background.Mode)

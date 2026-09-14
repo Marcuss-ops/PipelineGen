@@ -242,6 +242,7 @@ func TestLocalizedClipRenderer_ExtendedExecutorReceivesAllVisualLayers(t *testin
 		SHA256:    strings.Repeat("f", 64),
 	}
 	plan.BackgroundMode = cliprender.BackgroundModeAsset
+	plan.BackgroundKind = cliprender.BackgroundKindVideo
 	plan.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{
 		Color:      "#FFFFFF",
 		FontSizePX: 54,
@@ -254,6 +255,9 @@ func TestLocalizedClipRenderer_ExtendedExecutorReceivesAllVisualLayers(t *testin
 	}
 	if executor.gotOpts.Background != plan.Background || executor.gotOpts.BackgroundMode != cliprender.BackgroundModeAsset {
 		t.Fatalf("background not passed: %+v", executor.gotOpts)
+	}
+	if executor.gotOpts.BackgroundKind != cliprender.BackgroundKindVideo {
+		t.Fatalf("background kind not passed: %q", executor.gotOpts.BackgroundKind)
 	}
 	if executor.gotOpts.SubtitlesStyle == nil || executor.gotOpts.SubtitlesStyle.Color != "#FFFFFF" || executor.gotOpts.SubtitlesStyle.FontSizePX != 54 {
 		t.Fatalf("subtitle style not passed: %+v", executor.gotOpts.SubtitlesStyle)

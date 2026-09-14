@@ -11,11 +11,15 @@ package texttracks
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -27,6 +31,10 @@ import (
 type subtitleTrackRepoStub struct {
 	detail.TextTrackRepository
 	ready map[string][]detail.TimedCue
+	// text holds the per-language transcript TEXT. A translated track is
+	// written with text and no timing, which is the real production state
+	// the delivery step has to repair.
+	text map[string]string
 }
 
 func (r *subtitleTrackRepoStub) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
@@ -48,9 +56,37 @@ func (r *subtitleTrackRepoStub) FindReady(_ context.Context, _, lang string, _ d
 		ID:           7,
 		LanguageCode: lang,
 		TextKind:     detail.TextTrackTranscript,
+		TextContent:  r.text[lang],
 		Status:       detail.TextTrackReady,
 		IsCurrent:    true,
 	}, cues, nil
+}
+
+// subtitleCueWriterRecorder captures ReplaceTranscriptCues writes and applies
+// them to the stub, mirroring the canonical writer's replace semantics so the
+// delivery loop observes the timing it just persisted.
+type subtitleCueWriterRecorder struct {
+	repo  *subtitleTrackRepoStub
+	calls []map[string][]detail.TimedCue
+}
+
+func (w *subtitleCueWriterRecorder) ReplaceTranscriptCues(_ context.Context, _ string, byLang map[string][]detail.TimedCue) error {
+	cp := make(map[string][]detail.TimedCue, len(byLang))
+	for lang, cues := range byLang {
+		cp[lang] = append([]detail.TimedCue(nil), cues...)
+		if w.repo != nil {
+			w.repo.ready[lang] = cp[lang]
+		}
+	}
+	w.calls = append(w.calls, cp)
+	return nil
+}
+
+// subtitleLayoutStub is a fixed SubtitleFolderResolver.
+type subtitleLayoutStub struct{ loc SubtitleLocation }
+
+func (s subtitleLayoutStub) ResolveSubtitleLocation(context.Context, string, string) (SubtitleLocation, error) {
+	return s.loc, nil
 }
 
 func newSubtitleDeliveryService(t *testing.T, ready map[string][]detail.TimedCue) (*BackfillService, *subtitlePublisherRecorder) {
@@ -195,6 +231,271 @@ func TestMaterializeSubtitleArtifacts_NilMaterializerIsSkippedNotPanicked(t *tes
 	}
 	if !rep.Skipped || rep.SkipReason != "no_subtitle_materializer" {
 		t.Fatalf("skipped=%v reason=%q, want the explicit no_subtitle_materializer skip", rep.Skipped, rep.SkipReason)
+	}
+}
+
+// TestMaterializeSubtitleArtifacts_AlignsTranslatedCuesOntoSourceTiming pins
+// the delivery step's subtitle-readiness repair.
+//
+// The materializer writes each translated language as TEXT WITHOUT TIMING, so
+// a clip could hold ten READY transcript rows and still produce a single .ass:
+// the delivery loop silently skipped every language whose track had no cues.
+// The fix projects the translated full text onto the SOURCE timing (the
+// canonical CuesWithText invariant) and PERSISTS it through the canonical cue
+// writer, so every other consumer sees the same timing.
+func TestMaterializeSubtitleArtifacts_AlignsTranslatedCuesOntoSourceTiming(t *testing.T) {
+	src := []detail.TimedCue{
+		{StartMs: 0, EndMs: 1000, Text: "hello world"},
+		{StartMs: 1000, EndMs: 2000, Text: "how are you"},
+	}
+	ready := map[string][]detail.TimedCue{
+		"en": src,
+		"it": nil, // translated: text present, timing absent
+	}
+	svc, pub := newSubtitleDeliveryService(t, ready)
+	stub := &subtitleTrackRepoStub{ready: ready, text: map[string]string{"it": "ciao mondo come stai"}}
+	svc.repo = stub
+	rec := &subtitleCueWriterRecorder{repo: stub}
+	svc.cues = rec
+
+	rep, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-1"), "en", []string{"it"}, detail.TextTrackTranscript,
+	)
+	if err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("cue alignment writes = %d, want exactly 1 batch", len(rec.calls))
+	}
+	batch := rec.calls[0]
+	// ReplaceTranscriptCues rewrites the WHOLE asset, so the source language
+	// MUST ride along or aligning the translation would delete the source cues.
+	if len(batch["en"]) != len(src) {
+		t.Fatalf("source cues must be re-sent in the same batch; got %d, want %d", len(batch["en"]), len(src))
+	}
+	aligned, ok := batch["it"]
+	if !ok {
+		t.Fatal("the translated language must be aligned, not left text-only")
+	}
+	if len(aligned) != len(src) {
+		t.Fatalf("aligned cues = %d, want one per source window (%d)", len(aligned), len(src))
+	}
+	if aligned[0].StartMs != src[0].StartMs || aligned[0].EndMs != src[0].EndMs {
+		t.Fatalf("aligned cue 0 window = %d..%d, want the SOURCE window %d..%d — timing must not drift",
+			aligned[0].StartMs, aligned[0].EndMs, src[0].StartMs, src[0].EndMs)
+	}
+	if aligned[0].Text == "" {
+		t.Fatal("aligned cue must carry the translated text")
+	}
+	// And now that timing exists, the artifact reaches Drive for that language.
+	if rep.Delivered != 2 {
+		t.Fatalf("delivered = %d, want 2 (source + aligned translation)", rep.Delivered)
+	}
+	if len(rep.UnTimed) != 0 {
+		t.Fatalf("a repaired language must not be reported as untimed: %v", rep.UnTimed)
+	}
+	if _, ok := pub.byAsset["clip-1"]; !ok {
+		t.Fatal("the clip must have been published after alignment")
+	}
+}
+
+// TestMaterializeSubtitleArtifacts_ReportsUntimedLanguagesInsteadOfSkippingSilently
+// is the regression for the SECOND half of the ten-assets-one-file bug.
+//
+// The first half was the missing projection (pinned above). The second half
+// was that a language WITH text and WITHOUT cues was skipped by a bare
+// `continue`: no failure entry, no counter, nothing for an operator to see.
+// Nine languages could be missing their artifact while every report said the
+// clip was fully delivered. This test pins the fail-honest replacement: the
+// language is NAMED in UnTimed, with a reason, and it is NOT confused with a
+// language that was never materialized at all.
+func TestMaterializeSubtitleArtifacts_ReportsUntimedLanguagesInsteadOfSkippingSilently(t *testing.T) {
+	src := []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hello world"}}
+	ready := map[string][]detail.TimedCue{
+		"en": src,
+		"it": nil, // translated text present, timing absent
+	}
+	svc, pub := newSubtitleDeliveryService(t, ready)
+	stub := &subtitleTrackRepoStub{ready: ready, text: map[string]string{"it": "ciao mondo"}}
+	svc.repo = stub
+	// No cue writer wired: the alignment pass cannot run, which is exactly the
+	// degraded composition whose silence hid the bug.
+	svc.cues = nil
+
+	rep, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-1"), "en", []string{"it", "es"}, detail.TextTrackTranscript,
+	)
+	if err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+	if rep.Delivered != 1 {
+		t.Fatalf("delivered = %d, want 1 (only the source language has timing)", rep.Delivered)
+	}
+	if len(rep.Failed) != 0 {
+		t.Fatalf("an untimed translation is not an upload failure; got %v", rep.Failed)
+	}
+	reason, ok := rep.UnTimed["it"]
+	if !ok {
+		t.Fatalf("the untimed language MUST be reported; got %v", rep.UnTimed)
+	}
+	if reason == "" {
+		t.Fatal("the untimed report must carry a reason")
+	}
+	if _, ok := rep.UnTimed["es"]; ok {
+		t.Fatalf("a language with no track at all must not be reported as untimed: %v", rep.UnTimed)
+	}
+	if len(pub.requests) != 1 {
+		t.Fatalf("publishes = %d, want 1 (no artifact may be uploaded without cues)", len(pub.requests))
+	}
+}
+
+// cueTranslatorStub is a translation.TranslationPort that records every cue
+// text it was asked to translate and answers deterministically.
+type cueTranslatorStub struct {
+	mu      sync.Mutex
+	seen    []string
+	targets map[string]bool
+	err     error
+}
+
+func (s *cueTranslatorStub) Translate(_ context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen = append(s.seen, cmd.Text)
+	if s.targets == nil {
+		s.targets = map[string]bool{}
+	}
+	s.targets[cmd.TargetLang] = true
+	if s.err != nil {
+		return translation.TranslationResult{}, s.err
+	}
+	return translation.TranslationResult{TranslatedText: cmd.TargetLang + ":" + cmd.Text}, nil
+}
+
+func (s *cueTranslatorStub) translatedTexts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.seen...)
+}
+
+// TestMaterializeSubtitleArtifacts_PrefersTimingFaithfulCueTranslation pins
+// the quality path: when a CueTranslator is wired, a translated language gets
+// cue-per-cue translation with the SOURCE windows, instead of the whole
+// translated text being sliced across those windows by word count (which can
+// split a sentence mid-phrase).
+func TestMaterializeSubtitleArtifacts_PrefersTimingFaithfulCueTranslation(t *testing.T) {
+	src := []detail.TimedCue{
+		{StartMs: 0, EndMs: 1000, Text: "hello world"},
+		{StartMs: 1000, EndMs: 2000, Text: "how are you"},
+	}
+	ready := map[string][]detail.TimedCue{"en": src, "it": nil}
+	svc, _ := newSubtitleDeliveryService(t, ready)
+	stub := &subtitleTrackRepoStub{ready: ready, text: map[string]string{"it": "ciao mondo come stai"}}
+	svc.repo = stub
+	rec := &subtitleCueWriterRecorder{repo: stub}
+	svc.cues = rec
+
+	port := &cueTranslatorStub{}
+	svc.cueTranslator = NewCueTranslator(port, "en", "", 2, zap.NewNop())
+
+	if _, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-1"), "en", []string{"it"}, detail.TextTrackTranscript,
+	); err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+
+	seen := port.translatedTexts()
+	if len(seen) != len(src) {
+		t.Fatalf("per-cue translation calls = %d, want one per SOURCE cue (%d); got %v", len(seen), len(src), seen)
+	}
+	if seen[0] != "hello world" || seen[1] != "how are you" {
+		t.Fatalf("the translator must receive the SOURCE cue texts, got %v", seen)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("cue writes = %d, want 1 batch", len(rec.calls))
+	}
+	aligned := rec.calls[0]["it"]
+	if len(aligned) != len(src) {
+		t.Fatalf("aligned cues = %d, want %d (1:1 with the source)", len(aligned), len(src))
+	}
+	if aligned[1].Text != "it:how are you" {
+		t.Fatalf("cue 1 text = %q, want the per-cue translation (not a word-count slice)", aligned[1].Text)
+	}
+	if aligned[1].StartMs != src[1].StartMs || aligned[1].EndMs != src[1].EndMs {
+		t.Fatalf("cue 1 window = %d..%d, want the SOURCE window %d..%d",
+			aligned[1].StartMs, aligned[1].EndMs, src[1].StartMs, src[1].EndMs)
+	}
+}
+
+// TestMaterializeSubtitleArtifacts_FallsBackWhenCueTranslationFails pins the
+// degrade path: a failing per-cue translator must NOT leave the language
+// without timing. The whole-text distribution still runs.
+func TestMaterializeSubtitleArtifacts_FallsBackWhenCueTranslationFails(t *testing.T) {
+	src := []detail.TimedCue{
+		{StartMs: 0, EndMs: 1000, Text: "hello world"},
+		{StartMs: 1000, EndMs: 2000, Text: "how are you"},
+	}
+	ready := map[string][]detail.TimedCue{"en": src, "it": nil}
+	svc, _ := newSubtitleDeliveryService(t, ready)
+	stub := &subtitleTrackRepoStub{ready: ready, text: map[string]string{"it": "ciao mondo come stai"}}
+	svc.repo = stub
+	rec := &subtitleCueWriterRecorder{repo: stub}
+	svc.cues = rec
+
+	port := &cueTranslatorStub{err: errors.New("argos sidecar down")}
+	svc.cueTranslator = NewCueTranslator(port, "en", "", 2, zap.NewNop())
+
+	if _, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-1"), "en", []string{"it"}, detail.TextTrackTranscript,
+	); err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+	aligned := rec.calls[0]["it"]
+	if len(aligned) != len(src) {
+		t.Fatalf("aligned cues = %d, want %d via the whole-text fallback", len(aligned), len(src))
+	}
+	if aligned[0].Text == "" {
+		t.Fatal("the fallback must still fill the cue text")
+	}
+	if strings.HasPrefix(aligned[0].Text, "it:") {
+		t.Fatalf("the failing per-cue path must not be used: %q", aligned[0].Text)
+	}
+}
+
+// TestMaterializeSubtitleArtifacts_PublishesIntoTheResolvedSubtitleLayout pins
+// the single-owner Drive layout: the artifacts go to the ROOT+SUBPATH the
+// resolver returns (the folder that also holds the .txt sidecar), instead of
+// the legacy <asset folder>/Ass Sub/ tree.
+func TestMaterializeSubtitleArtifacts_PublishesIntoTheResolvedSubtitleLayout(t *testing.T) {
+	ready := map[string][]detail.TimedCue{
+		"en": {{StartMs: 0, EndMs: 1000, Text: "hello"}},
+	}
+	svc, pub := newSubtitleDeliveryService(t, ready)
+	svc.subtitleFolders = subtitleLayoutStub{loc: SubtitleLocation{
+		FolderID: "subtitle-root",
+		Subpath:  []string{"youtube_subtitles", "VID"},
+	}}
+
+	if _, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-1"), "en", nil, detail.TextTrackTranscript,
+	); err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+	if len(pub.requests) != 1 {
+		t.Fatalf("publishes = %d, want 1", len(pub.requests))
+	}
+	req := pub.requests[0]
+	if req.DestinationFolderID != "subtitle-root" {
+		t.Fatalf("DestinationFolderID = %q, want the resolved subtitle root", req.DestinationFolderID)
+	}
+	want := []string{"youtube_subtitles", "VID"}
+	if len(req.DestinationSubpath) != len(want) {
+		t.Fatalf("DestinationSubpath = %v, want %v (the .txt sidecar's folder)", req.DestinationSubpath, want)
+	}
+	for i := range want {
+		if req.DestinationSubpath[i] != want[i] {
+			t.Fatalf("DestinationSubpath = %v, want %v", req.DestinationSubpath, want)
+		}
 	}
 }
 

@@ -73,7 +73,21 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 		{"background mode=asset without asset", func(p *LocalizedClipPlan) { p.BackgroundMode = cliprender.BackgroundModeAsset }},
 		{"background asset incomplete", func(p *LocalizedClipPlan) {
 			p.BackgroundMode = cliprender.BackgroundModeAsset
+			p.BackgroundKind = cliprender.BackgroundKindVideo
 			p.Background = &cliprender.MaterializedAsset{AssetID: "bg"}
+		}},
+		// The media family is part of the sealed plan: a plate without it would
+		// force the renderer to infer image vs video, and a family on an
+		// asset-less mode is a contradiction.
+		{"background mode=asset without kind", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeAsset
+			p.Background = &cliprender.MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
+		}},
+		{"background kind without mode=asset", func(p *LocalizedClipPlan) { p.BackgroundKind = cliprender.BackgroundKindVideo }},
+		{"background kind unknown", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeAsset
+			p.BackgroundKind = "png"
+			p.Background = &cliprender.MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
 		}},
 	}
 	for _, tc := range cases {
@@ -98,16 +112,22 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 // TestValidate_AcceptsBackgroundAsset verifies a fully-resolved background
 // (mode=asset + complete materialized asset) validates like the watermark.
 func TestValidate_AcceptsBackgroundAsset(t *testing.T) {
-	p := validPlan()
-	p.BackgroundMode = cliprender.BackgroundModeAsset
-	p.Background = &cliprender.MaterializedAsset{
-		AssetID:   "asset-bg",
-		LocalPath: "/scratch/asset-bg.mp4",
-		SHA256:    strings.Repeat("f", 64),
+	for _, kind := range []string{cliprender.BackgroundKindVideo, cliprender.BackgroundKindImage} {
+		p := validPlan()
+		p.BackgroundMode = cliprender.BackgroundModeAsset
+		p.BackgroundKind = kind
+		p.Background = &cliprender.MaterializedAsset{
+			AssetID:   "asset-bg",
+			LocalPath: "/scratch/asset-bg.mp4",
+			SHA256:    strings.Repeat("f", 64),
+		}
+		p.Fingerprint = Fingerprint(p)
+		if err := p.Validate(); err != nil {
+			t.Fatalf("background asset plan (kind=%s) must validate: %v", kind, err)
+		}
 	}
-	p.Fingerprint = Fingerprint(p)
-	if err := p.Validate(); err != nil {
-		t.Fatalf("background asset plan must validate: %v", err)
+	if err := validPlan().Validate(); err != nil {
+		t.Fatalf("background-less plan must validate: %v", err)
 	}
 }
 

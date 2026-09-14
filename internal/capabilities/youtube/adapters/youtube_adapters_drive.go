@@ -95,6 +95,13 @@ func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, log *zap.Logger) *Y
 	return &YouTubePublisherDriveAdapter{publisher: pub, log: log}
 }
 
+// SubtitleDriveGroup is the canonical Drive namespace for YouTube transcript
+// sidecars: the extraction creates <subtitle root>/<SubtitleDriveGroup>/<videoID>/.
+// Exported because the subtitle-artifact delivery owns the SIBLING .ass files
+// and must target that same folder — a second literal would let the two writers
+// drift apart again.
+const SubtitleDriveGroup = "youtube_subtitles"
+
 // Compile-time assertion: adapter satisfies DriveFolderManagerPort.
 var _ youtubeports.DriveFolderManagerPort = (*YouTubePublisherDriveAdapter)(nil)
 
@@ -115,7 +122,7 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 		// ResolveFolder requires both logical path segments when a parent
 		// override is supplied. Keep subtitle artifacts in a dedicated
 		// namespace, with one leaf folder per clip.
-		Group:          "youtube_subtitles",
+		Group:          SubtitleDriveGroup,
 		Subject:        channelName,
 		ParentFolderID: rootOverride,
 	})

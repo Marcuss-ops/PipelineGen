@@ -1,0 +1,117 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "matt-damon-intro-mike-tyson-stock-v1",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "matt-damon-intro-mike-tyson-stock",
+      "project": "matt-damon-intro-mike-tyson-stock",
+      "title": "Dal cinema al ring: Mike Tyson",
+      "language": "it",
+      "tone": "documentario sportivo, intenso e cinematografico",
+      "style": "Scrivi una narrazione breve e coinvolgente in italiano. Usa la clip di Matt Damon soltanto come cold open visivo: non attribuirgli fatti su Mike Tyson e non inventare dialoghi. Dopo l'apertura, passa chiaramente a Mike Tyson. Mantieni il testo ancorato ai brief dei segmenti e allo stock associato; niente statistiche non fornite, niente citazioni inventate.",
+      "model": "auto",
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Il passaggio da un cold open cinematografico alla potenza e alla complessità di Mike Tyson",
+        "source_text": "Aprire con una riflessione sul modo in cui il cinema porta lo spettatore dentro mondi diversi, usando Matt Damon come immagine iniziale. Poi introdurre Mike Tyson come figura della boxe dei pesi massimi: velocità, pressione, potenza e il contrasto tra il personaggio pubblico e la persona dietro il mito.",
+        "force_refresh": true
+      },
+      "intro": {
+        "clip_ids": [
+          "yt_0ElQTzSx3ec_72_91_v1"
+        ],
+        "title": "Cold open Matt Damon",
+        "display_text": "Dal cinema a un altro mondo.",
+        "playback": {
+          "audio_mode": "original_clip"
+        }
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80,
+        "segment_words": 120,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "mike-tyson",
+            "kind": "stock",
+            "topic": "Mike Tyson: velocità, pressione e mito",
+            "source_text": "Presenta Mike Tyson come una presenza capace di trasformare pochi secondi sul ring in una dichiarazione di potenza. Descrivi l'impatto visivo dello stock senza inventare avversari, risultati o date. Chiudi con il contrasto tra la forza del personaggio pubblico e la complessità della persona dietro il mito.",
+            "target_words": 95
+          }
+        ]
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_ONLY",
+        "background_music": [
+          {
+            "asset_id": "bgm3",
+            "start_ms": 0,
+            "end": "video_end",
+            "loop": true,
+            "gain_db": -28,
+            "fade_in_ms": 500,
+            "fade_out_ms": 700,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -32,
+            "duck_attack_ms": 120,
+            "duck_release_ms": 350
+          }
+        ],
+        "sound_effects": [
+          {
+            "asset_id": "whop1",
+            "scene_id": "scene-0",
+            "anchor": "start",
+            "offset_ms": 0,
+            "duration_ms": 700,
+            "gain_db": -12
+          },
+          {
+            "asset_id": "whop2",
+            "scene_id": "scene-0",
+            "anchor": "end",
+            "offset_ms": -650,
+            "duration_ms": 650,
+            "gain_db": -12
+          }
+        ],
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "stock_enabled": "enabled",
+        "voiceover_enabled": "enabled",
+        "voiceover_group": "Velox Max",
+        "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "mike-tyson",
+            "folder_id": "15S-Puz9H4xONNa8P-uOEHy9qk7-UFwRL",
+            "folder_link": "https://drive.google.com/drive/folders/15S-Puz9H4xONNa8P-uOEHy9qk7-UFwRL",
+            "name": "Mike Tyson stock",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5022
+          }
+        ]
+      }
+    }
+  ]
+}

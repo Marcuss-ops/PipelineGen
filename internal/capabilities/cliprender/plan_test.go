@@ -257,6 +257,7 @@ func TestCompile_ResolvedWatermarkBackgroundSubtitles(t *testing.T) {
 		LocalPath: "/scratch/asset-bg.mp4",
 		SHA256:    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 	}
+	in.BackgroundKind = BackgroundKindVideo
 	in.Subtitles = &SubtitleArtifact{
 		LocalPath: "/scratch/run-1/subtitles.ass",
 		SHA256:    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -275,7 +276,7 @@ func TestCompile_ResolvedWatermarkBackgroundSubtitles(t *testing.T) {
 		t.Errorf("watermark: got %+v", plan.Watermark)
 	}
 	if plan.Background == nil || plan.Background.Mode != BackgroundModeAsset ||
-		plan.Background.AssetID != "asset-bg" {
+		plan.Background.AssetID != "asset-bg" || plan.Background.Kind != BackgroundKindVideo {
 		t.Errorf("background: got %+v", plan.Background)
 	}
 	if plan.Subtitles == nil || plan.Subtitles.Mode != SubtitlesModeBurn ||

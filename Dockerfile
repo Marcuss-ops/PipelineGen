@@ -108,10 +108,13 @@ RUN python3 -m venv /opt/whisper-venv \
  && ln -s "$site_packages/nvidia/cublas/lib" /opt/whisper-venv/cublas-lib \
  && ln -s "$site_packages/nvidia/cuda_nvrtc/lib" /opt/whisper-venv/cuda-nvrtc-lib \
  && ln -s "$site_packages/nvidia/cudnn/lib" /opt/whisper-venv/cudnn-lib
+# VELOX_WHISPER_MODEL is deliberately left unset so the canonical registry
+# default (openai/whisper-large-v3-turbo -> CTranslate2 "large-v3-turbo")
+# applies. Pinning a size alias here would ship the smallest model to every
+# deployment and bypass the canonical id -> CT2 map in transcribe_detect_lang.py.
 ENV PATH="/opt/whisper-venv/bin:${PATH}" \
     LD_LIBRARY_PATH="/opt/whisper-venv/cublas-lib:/opt/whisper-venv/cuda-nvrtc-lib:/opt/whisper-venv/cudnn-lib" \
     VELOX_WHISPER_DEVICE="auto" \
-    VELOX_WHISPER_MODEL="base" \
     VELOX_WHISPER_CUDA_LIB_DIR="/opt/whisper-venv/cublas-lib"
 
 # yt-dlp pinned to the official stable release. Use the generic Python

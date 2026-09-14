@@ -64,6 +64,7 @@ type RenderOptions struct {
 	WatermarkSpec          *cliprender.WatermarkSpec
 	Background             *cliprender.MaterializedAsset
 	BackgroundMode         string
+	BackgroundKind         string
 	ForegroundScalePercent int
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	// Overlays carries the reused entity overlay lineages this variant
@@ -151,6 +152,7 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		WatermarkSpec:          plan.WatermarkSpec,
 		Background:             plan.Background,
 		BackgroundMode:         plan.BackgroundMode,
+		BackgroundKind:         plan.BackgroundKind,
 		ForegroundScalePercent: plan.ForegroundScalePercent,
 		SubtitlesStyle:         plan.SubtitlesStyle,
 		Overlays:               plan.Overlays,

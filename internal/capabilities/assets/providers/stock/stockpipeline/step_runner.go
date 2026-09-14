@@ -44,6 +44,11 @@ type StepRunner interface {
 	JobFinalizer() finalization.JobFinalizer
 	RunFingerprint() string
 
+	// DestinationReconciler returns the post-publish hygiene pass that removes
+	// stale artifacts left by earlier plans in the destination folder. Nil is
+	// the supported "not wired" value (test fixtures, un-wired roots).
+	DestinationReconciler() DestinationReconciler
+
 	Log() *zap.Logger
 	State() *RunState
 }
@@ -68,14 +73,15 @@ type RunState struct {
 
 // orchestratorRunner is the canonical StepRunner implementation.
 type orchestratorRunner struct {
-	orch                *Orchestrator
-	in                  *RunInput
-	state               *RunState
-	log                 *zap.Logger
-	artifactPreparation finalization.ArtifactPreparationService
-	jobFinalizer        finalization.JobFinalizer
-	fingerprintOnce     sync.Once
-	cachedFingerprint   string
+	orch                  *Orchestrator
+	in                    *RunInput
+	state                 *RunState
+	log                   *zap.Logger
+	artifactPreparation   finalization.ArtifactPreparationService
+	jobFinalizer          finalization.JobFinalizer
+	destinationReconciler DestinationReconciler
+	fingerprintOnce       sync.Once
+	cachedFingerprint     string
 }
 
 // BatchRepository returns the durable stock batch repository
@@ -114,6 +120,10 @@ func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparat
 }
 func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
 	return a.jobFinalizer
+}
+
+func (a *orchestratorRunner) DestinationReconciler() DestinationReconciler {
+	return a.destinationReconciler
 }
 
 func (a *orchestratorRunner) Log() *zap.Logger { return a.log }

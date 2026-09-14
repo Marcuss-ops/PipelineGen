@@ -311,7 +311,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			// the same vector space as the indexed document vectors. Ollama
 			// is a chat/legacy embedder and must not silently create a second
 			// vector space.
-			embedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
+			embedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()))
 		}
 		qdrantEndpointPort := searchwiring.NewQdrantEndpointAdapter(
 			root.Process.QdrantHealthProbe,

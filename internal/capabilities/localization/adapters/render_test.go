@@ -252,6 +252,7 @@ func TestLocalizationRenderPlanExecutor_ExecuteExtendedPropagatesVisualLayers(t 
 		WatermarkSpec:  &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: cliprender.PositionTopRight, Opacity: 0.9, MarginPX: 24, Style: wmStyle},
 		Background:     bgAsset,
 		BackgroundMode: cliprender.BackgroundModeAsset,
+		BackgroundKind: cliprender.BackgroundKindVideo,
 		SubtitlesStyle: subStyle,
 	})
 	if err != nil {
@@ -265,8 +266,8 @@ func TestLocalizationRenderPlanExecutor_ExecuteExtendedPropagatesVisualLayers(t 
 	if got.Watermark == nil || got.Watermark.Style == nil || got.Watermark.Style.WidthPX != 180 || got.Watermark.Style.Shadow == nil || got.Watermark.Style.Shadow.Opacity != 0.55 || got.Watermark.Style.TransitionIn == nil || got.Watermark.Style.TransitionIn.DurationMS != 250 {
 		t.Fatalf("watermark style lost in sealed plan: %+v", got.Watermark)
 	}
-	if got.Background == nil || got.Background.Mode != cliprender.BackgroundModeAsset || got.Background.AssetID != "asset-bg" || got.Background.Path != "/scratch/asset-bg.mp4" || got.Background.SHA256 != bgAsset.SHA256 {
-		t.Fatalf("background lost in sealed plan: %+v", got.Background)
+	if got.Background == nil || got.Background.Mode != cliprender.BackgroundModeAsset || got.Background.Kind != cliprender.BackgroundKindVideo || got.Background.AssetID != "asset-bg" || got.Background.Path != "/scratch/asset-bg.mp4" || got.Background.SHA256 != bgAsset.SHA256 {
+		t.Fatalf("background (incl. its media family) lost in sealed plan: %+v", got.Background)
 	}
 	if got.Subtitles == nil || got.Subtitles.Style == nil || got.Subtitles.Style.Color != "#FFFFFF" || got.Subtitles.Style.FontSizePX != 54 || got.Subtitles.Style.Shadow == nil || got.Subtitles.Style.Shadow.BlurPX != 10 {
 		t.Fatalf("subtitle style lost in sealed plan: %+v", got.Subtitles)

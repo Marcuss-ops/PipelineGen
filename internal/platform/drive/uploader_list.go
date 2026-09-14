@@ -16,6 +16,11 @@ type DriveFileInfo struct {
 	WebViewLink    string
 	WebContentLink string
 	Parents        []string
+	// AppProperties carries the file's Drive appProperties when the listing
+	// requested them (ListFilesWithAppProperties). It is the ownership evidence
+	// the Stock destination reconciler needs: pipeline publications stamp
+	// pipelinegen_idempotency_key (P0.6), operator uploads do not.
+	AppProperties map[string]string
 }
 
 // ListFiles lists all non-trashed files in a Drive folder.
@@ -58,6 +63,46 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 			WebViewLink:    f.WebViewLink,
 			WebContentLink: f.WebContentLink,
 			Parents:        f.Parents,
+		})
+	}
+	return result, nil
+}
+
+// ListFilesWithAppProperties lists a folder's non-trashed files INCLUDING their
+// appProperties. Kept separate from ListFiles (which has a long-standing field
+// projection) so the extra Drive payload is only paid by callers that need the
+// ownership marker — today the Stock destination reconciler.
+func (u *Uploader) ListFilesWithAppProperties(ctx context.Context, parentID string) ([]DriveFileInfo, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive service not configured")
+	}
+	query := fmt.Sprintf("'%s' in parents and trashed=false", parentID)
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	list, err := u.Service.Files.List().
+		Q(query).
+		Fields("nextPageToken, files(id, name, mimeType, size, md5Checksum, webViewLink, webContentLink, parents, appProperties)").
+		PageSize(1000).
+		Context(requestCtx).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("list Drive children for %s: %w", parentID, err)
+	}
+	if list == nil {
+		return nil, fmt.Errorf("ListFilesWithAppProperties: %w", ErrDriveListNil)
+	}
+	result := make([]DriveFileInfo, 0, len(list.Files))
+	for _, f := range list.Files {
+		result = append(result, DriveFileInfo{
+			ID:             f.Id,
+			Name:           f.Name,
+			MimeType:       f.MimeType,
+			Size:           f.Size,
+			MD5Checksum:    f.Md5Checksum,
+			WebViewLink:    f.WebViewLink,
+			WebContentLink: f.WebContentLink,
+			Parents:        f.Parents,
+			AppProperties:  f.AppProperties,
 		})
 	}
 	return result, nil

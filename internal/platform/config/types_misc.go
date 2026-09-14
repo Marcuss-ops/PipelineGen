@@ -91,6 +91,14 @@ type PathsConfig struct {
 	// separate from python_scripts_dir because Argos lives in its own venv
 	// (.venv-argos) distinct from the Whisper runtime (.venv-whisper).
 	ArgosPythonBin string `yaml:"argos_python_bin" env:"VELOX_ARGOS_PYTHON" default:""`
+	// WhisperPythonBin is the interpreter that hosts the local Whisper ASR
+	// bridge (scripts/bridges/whisper_transcriber.py). It MUST be the
+	// .venv-whisper interpreter: faster-whisper + ctranslate2 are installed
+	// there and are absent from the system python3, so the default "python3"
+	// silently degrades priority 5 of the acquisition chain to
+	// ErrWhisperBridgeUnavailable. Empty falls back to the PATH-resolved
+	// python3.
+	WhisperPythonBin string `yaml:"whisper_python_bin" env:"VELOX_WHISPER_PYTHON" default:""`
 }
 
 type WorkersConfig struct {

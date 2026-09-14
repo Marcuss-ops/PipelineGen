@@ -104,6 +104,15 @@ func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestr
 	return o
 }
 
+// WithDestinationReconciler threads the post-publish destination hygiene pass
+// (see destination_reconcile.go) to the orchestrator's StockPublishStep. Same
+// §12-7 fluent-setter rationale as WithJobFinalizer; nil pass-through keeps
+// fixtures compiling unchanged. Returns the receiver for fluent chaining.
+func (o *Orchestrator) WithDestinationReconciler(svc DestinationReconciler) *Orchestrator {
+	o.destinationReconciler = svc
+	return o
+}
+
 // WithLocalFS (PR-REFACTOR-P0-IO-BINDER, July 2026) threads the
 // canonical LocalFSPort into the Orchestrator so steps can
 // perform filesystem I/O through the typed port instead of

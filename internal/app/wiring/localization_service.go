@@ -130,6 +130,7 @@ type LocalizeInput struct {
 	WatermarkSpec          *cliprender.WatermarkSpec
 	Background             *cliprender.MaterializedAsset
 	BackgroundMode         string
+	BackgroundKind         string
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	ForegroundScalePercent int
 	// Overlays carries the certified, LANGUAGE-INDEPENDENT entity overlay
@@ -183,6 +184,7 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		WatermarkSpec:          in.WatermarkSpec,
 		Background:             in.Background,
 		BackgroundMode:         in.BackgroundMode,
+		BackgroundKind:         in.BackgroundKind,
 		ForegroundScalePercent: in.ForegroundScalePercent,
 		SubtitlesStyle:         in.SubtitlesStyle,
 		Overlays:               in.Overlays,

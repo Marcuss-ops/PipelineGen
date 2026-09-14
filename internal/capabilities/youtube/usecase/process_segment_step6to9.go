@@ -419,6 +419,19 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			zap.String("clip_id", clipID),
 			zap.Int("text_tracks", len(tracks)),
 			zap.Int("timed_tracks", len(timedTracks)))
+		// STATE SEMANTICS (Sept 2026): a clip committed with ZERO text tracks
+		// is NOT a completed subtitle pipeline. The acquisition chain exhausted
+		// every priority (payload → DB → YouTube subtitles → Whisper), so the
+		// clip has no transcript, no translations and no subtitle artifacts.
+		// Reporting a bare "processed" hid exactly that state behind a
+		// SUCCEEDED job. The clip itself is durable, so this is a distinct,
+		// explicit outcome rather than a failure.
+		if len(tracks) == 0 {
+			out.Item.Status = "processed_but_text_missing"
+			out.Status = "processed_but_text_missing"
+			u.core.Log.Warn("clip committed with NO text track: transcript acquisition exhausted; translations and subtitle artifacts are NOT produced",
+				zap.String("clip_id", clipID), zap.String("video_id", cmd.VideoID))
+		}
 		// NOTE (Sept 2026): there is NO legacy CommitClipAndIndexEvent
 		// downgrade branch anymore — LocalizedWriter is required at
 		// composition time (ValidateProcessSegmentSubBundles), so the

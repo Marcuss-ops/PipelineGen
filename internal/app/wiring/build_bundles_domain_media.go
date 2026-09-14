@@ -22,7 +22,6 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
@@ -123,12 +122,14 @@ func buildDomainMediaServices(
 	// fan-out order and as the SubtitleFetcherAdapter --sub-langs CSV
 	// (yt-dlp probes them top-to-bottom).
 	mlCfg := ActiveMultilingualConfig(cfg)
-	subtitleLanguagesCSV, err := BuildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
-		return spec.TranslateClips
-	})
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("compose domains: subtitle languages: %w", err)
-	}
+	// ACQUISITION vs MATERIALIZATION (Sept 2026): the subtitle fetcher resolves
+	// ONE source-language track — never the configured translation set. Wiring
+	// every target language here (it,en,pl,ru,de,es,pt-BR,fr,tr,id) made yt-dlp
+	// request all ten subtitle tracks in a single call, hit HTTP 429 on the
+	// first one and abort the entire fetch, so the clip ended up with NO
+	// transcript; the nine translations are produced later in the materializer
+	// by Argos/Ollama and must not be requested from YouTube.
+	subtitleLanguagesCSV := SubtitleAcquisitionLanguages(mlCfg)
 	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
 		ytinfra.SubtitleCacheConfig{
 			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
@@ -260,9 +261,20 @@ func buildDomainMediaServices(
 	// texttracks.SubtitlesPort interface is a structural
 	// subset of the full youtubeports.SubtitleFetcherPort.
 	bundle.SubtitleFetcher = subtitleFetcherAdapter
+	// ACQUISITION SOURCE (Sept 2026): multilingual.youtube_subtitles_disabled
+	// lets an operator source the transcript from the LOCAL Whisper
+	// transcriber instead of YouTube captions. A nil Subtitles port makes
+	// AcquireSegmentText skip priorities 3+4 and fall straight through to
+	// priority 5. The DEFAULT (false) keeps the canonical priority chain, so
+	// a deployment that does not set the flag is unaffected.
+	var subtitlePort youtubeports.SubtitleFetcherPort = subtitleFetcherAdapter
+	if mlCfg.YouTubeSubtitlesDisabled {
+		subtitlePort = nil
+		log.Info("multilingual.youtube_subtitles_disabled=true: acquisition sources the transcript from the local Whisper transcriber (YouTube subtitle levels 3+4 skipped)")
+	}
 	textTrackResolver := &youtube.TextTrackResolver{
 		Repo:        repos.TextTrackRepo,
-		Subtitles:   subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
+		Subtitles:   subtitlePort, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
 		Transcriber: ai.WhisperTranscriber,
 		Log:         log,
 		// The certainty gate stays config-driven; Whisper is the

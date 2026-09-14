@@ -23,6 +23,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// DefaultCueTranslationConcurrency is the bounded parallelism of the per-cue
+// fan-out. Single owner of the bound so the runtime bundle and the operator
+// CLIs cannot disagree about how hard the translator is hammered.
+const DefaultCueTranslationConcurrency = 4
+
 // CueTranslator fans out per-cue translation with a bounded concurrency so a
 // language's cues are translated in parallel without saturating the upstream
 // translator (Ollama's own parallelism is the real bound).

@@ -229,8 +229,13 @@ func RunTextTracksBackfill(args []string) error {
 	if root.TextTracks == nil || root.TextTracks.Materializer == nil {
 		return fmt.Errorf("text-tracks-backfill: TextTracks.Materializer is nil — verify build_bundles_texttracks.go wires the bundle")
 	}
-	if root.Repos == nil || root.Repos.ClipsRepo == nil {
-		return fmt.Errorf("text-tracks-backfill: Repos.ClipsRepo is nil — verify build_bundles_* wires the clips repository")
+	// POSTGRES-MEDIA-CUTOVER: the candidate reader MUST be the media SSOT.
+	// Reading the legacy SQLite facade here made the repair pass walk a
+	// catalog that does not contain the clips committed to PostgreSQL — the
+	// exact state the operator runs this command to fix.
+	clipsLister := root.MediaAssetLister()
+	if clipsLister == nil {
+		return fmt.Errorf("text-tracks-backfill: no media asset reader (PostgreSQL media SSOT and legacy clips repository both absent)")
 	}
 
 	// Build the canonical BackfillService. godlike/06 SSOT:
@@ -241,7 +246,7 @@ func RunTextTracksBackfill(args []string) error {
 	// (used by tryAcquire to save acquired source tracks).
 	svc, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
 		Data: texttracks.BackfillDataDeps{
-			Clips:      root.Repos.ClipsRepo,
+			Clips:      clipsLister,
 			Repo:       root.Repos.TextTrackRepo,
 			Cues:       root.Domains.CueWriter,
 			SubArtRepo: root.Repos.SubtitleArtifactRepo,
@@ -253,6 +258,18 @@ func RunTextTracksBackfill(args []string) error {
 		Delivery: texttracks.BackfillDeliveryDeps{
 			Publisher:     root.Drive.Publisher,
 			DriveFolderID: cfg.Drive.ClipsFolder(),
+			// Same Drive layout as the runtime bundle: <subtitle root>/<videoID>/,
+			// co-located with the .txt sidecar. Omitting this seam made the
+			// operator path deliver every .ass into <clips root>/Ass Sub/ while
+			// the automatic path was already co-located.
+			SubtitleFolders: wiring.NewSubtitleRootLayoutResolver(cfg.Drive.YouTubeSubtitlesFolder()),
+			// Same timing-faithful alignment as the runtime bundle, through the
+			// SAME provider chain the bundle exposes (TextTrackBundle.Translator),
+			// so an operator repair does not silently produce lower-quality
+			// cue timing than the automatic path.
+			CueTranslator: texttracks.NewCueTranslator(
+				root.TextTracks.Translator, sourceLang, wiring.ResolveTranslationModel(cfg),
+				texttracks.DefaultCueTranslationConcurrency, log),
 		},
 		Log: log,
 	})

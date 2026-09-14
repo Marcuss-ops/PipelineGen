@@ -170,6 +170,13 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 	runner.State().MetadataPublished = metadataState
 
+	// Phase 3: destination hygiene (PR-STOCK-DESTINATION-RECONCILE). The plan
+	// that was just published is the only one allowed to live in the folder: any
+	// pipeline-owned artifact from an earlier plan (different content, so never
+	// reused, so never renamed) is removed here. Non-fatal by design — the
+	// artifacts are already durable when this runs.
+	reconcilePublishedDestination(ctx, runner, in, chunks)
+
 	if runner.Log() != nil {
 		runner.Log().Info("orchestrator: stock.publish: SUCCEEDED",
 			zap.Int("chunk_count", len(chunks)),

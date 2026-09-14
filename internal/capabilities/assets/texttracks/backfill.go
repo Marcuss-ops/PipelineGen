@@ -61,6 +61,36 @@ import (
 // of the candidate-listing contract — the file system MUST
 // traverse this interface for any "give me candidate clips"
 // query. Inline List() calls are forbidden.
+// SubtitleFolderResolver resolves the Drive DESTINATION that the per-language
+// subtitle artifacts of an asset must be delivered into.
+//
+// It exists because a subtitle artifact is the SIBLING of the transcript
+// sidecar the extraction already uploaded — the configured subtitle root under
+// the source video id — and NOT a file of the clip's media folder. Before this
+// seam the .txt landed in <subtitle root>/<videoID>/ while the .ass landed in
+// <clips root>/Ass Sub/, so a single clip's subtitles were split across two
+// Drive trees with no single owner of the layout. nil keeps the legacy
+// behaviour (asset folder + "Ass Sub").
+//
+// It returns the ROOT plus the per-video CHILD path rather than an
+// already-created folder id: creating the child needs a Drive folder-admin
+// port that not every composition wires (the operator backfill CLI composes the
+// publisher, not the folder admin), whereas the publisher get-or-creates the
+// child path itself. Resolution therefore cannot silently degrade just because
+// the folder admin is absent.
+type SubtitleFolderResolver interface {
+	ResolveSubtitleLocation(ctx context.Context, assetID, sourceVideoID string) (SubtitleLocation, error)
+}
+
+// SubtitleLocation is the publisher destination for subtitle artifacts.
+type SubtitleLocation struct {
+	// FolderID is the root the artifacts are published under.
+	FolderID string
+	// Subpath is the child path created/reused under FolderID. An empty
+	// (non-nil) slice publishes directly into FolderID.
+	Subpath []string
+}
+
 type MediaAssetLister interface {
 	List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error)
 }
@@ -84,7 +114,15 @@ type BackfillService struct {
 	acquirer        *AcquireService // Fase 5: optional source-text acquisition
 	publisher       delivery.Publisher
 	driveFolderID   string
-	log             *zap.Logger
+	subtitleFolders SubtitleFolderResolver // nil → asset folder + "Ass Sub"
+	// cueTranslator, when wired, is the PREFERRED way to give a translated
+	// language its timing: each source cue is translated individually so the
+	// translated segment carries its source cue's exact window (1:1). nil
+	// (or a per-language failure) falls back to CuesWithText, which
+	// distributes the whole translated text across the source windows by
+	// word count and can split a sentence mid-phrase.
+	cueTranslator *CueTranslator
+	log           *zap.Logger
 }
 
 // BackfillServiceDeps groups constructor dependencies by real
@@ -117,6 +155,14 @@ type BackfillPipelineDeps struct {
 type BackfillDeliveryDeps struct {
 	Publisher     delivery.Publisher
 	DriveFolderID string
+	// SubtitleFolders, when wired, is the single owner of the subtitle
+	// artifact FOLDER (so .ass and .txt share one per-video destination).
+	SubtitleFolders SubtitleFolderResolver
+	// CueTranslator, when wired, produces the timing-faithful alignment for
+	// a translated language (cue-per-cue translation, 1:1 windows) instead
+	// of the word-count distribution fallback. Optional: nil keeps
+	// CuesWithText as the only alignment path (godlike/07 degrade).
+	CueTranslator *CueTranslator
 }
 
 // NewBackfillService constructs the canonical orchestrator.
@@ -157,8 +203,10 @@ func NewBackfillService(deps BackfillServiceDeps) (*BackfillService, error) {
 		subMaterializer: NewSubtitleArtifactMaterializer(deps.Data.SubArtRepo, "data/media/subtitles", deps.Delivery.Publisher),
 		materializer:    deps.Pipeline.Materializer,
 		acquirer:        deps.Pipeline.Acquirer,
+		cueTranslator:   deps.Delivery.CueTranslator,
 		publisher:       deps.Delivery.Publisher,
 		driveFolderID:   deps.Delivery.DriveFolderID,
+		subtitleFolders: deps.Delivery.SubtitleFolders,
 		log:             deps.Log,
 	}, nil
 }

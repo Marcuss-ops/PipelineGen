@@ -349,7 +349,7 @@ func TestPrepare_ContractResolved(t *testing.T) {
 func TestPrepare_BackgroundAsset(t *testing.T) {
 	resolver := newFakeAssetResolver(map[string]AssetRef{
 		"asset-source": {AssetID: "asset-source"},
-		"asset-bg":     {AssetID: "asset-bg"},
+		"asset-bg":     {AssetID: "asset-bg", MediaType: "clip"},
 	})
 	mat := &fakeMaterializer{}
 	tr := &fakeTranscriptResolver{existing: &TranscriptResult{Text: "x"}, existingOK: true}
@@ -364,6 +364,12 @@ func TestPrepare_BackgroundAsset(t *testing.T) {
 	}
 	if prepared.Background == nil || prepared.Background.AssetID != "asset-bg" {
 		t.Fatalf("expected background materialized, got %+v", prepared.Background)
+	}
+	// The media family must be resolved from the asset's canonical MediaType
+	// before the plan is sealed: the renderer samples an image plate and a
+	// video plate through two different layers and never inspects a filename.
+	if prepared.BackgroundKind != BackgroundKindVideo {
+		t.Fatalf("background kind = %q, want %q", prepared.BackgroundKind, BackgroundKindVideo)
 	}
 	if prepared.Watermark != nil {
 		t.Fatalf("expected no watermark (disabled), got %+v", prepared.Watermark)

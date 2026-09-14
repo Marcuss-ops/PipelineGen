@@ -121,6 +121,11 @@ type LocalizedClipPlan struct {
 	// shape CompileInput expects, so the localized fan-out loses nothing.
 	BackgroundMode string                        `json:"background_mode,omitempty"`
 	Background     *cliprender.MaterializedAsset `json:"background,omitempty"`
+	// BackgroundKind is the media family of Background (image | video),
+	// resolved once from the asset's canonical MediaType. It is a sealed-plan
+	// input, so it travels with the localized plan exactly like BackgroundMode;
+	// empty for the asset-less modes.
+	BackgroundKind string `json:"background_kind,omitempty"`
 
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
@@ -238,6 +243,19 @@ func (p LocalizedClipPlan) Validate() error {
 	}
 	if p.BackgroundMode == cliprender.BackgroundModeAsset && p.Background == nil {
 		return fmt.Errorf("%w: background mode=asset requires the materialized asset", ErrInvalidLocalizedClipPlan)
+	}
+	// Family and mode are one decision: a kind without a plate is a
+	// contradiction, and a plate without its family would be re-derived
+	// downstream (or guessed) — both fail closed here.
+	if p.BackgroundKind != "" {
+		if p.BackgroundMode != cliprender.BackgroundModeAsset {
+			return fmt.Errorf("%w: background_kind requires mode=asset (got %q)", ErrInvalidLocalizedClipPlan, p.BackgroundMode)
+		}
+		if !cliprender.IsBackgroundKind(p.BackgroundKind) {
+			return fmt.Errorf("%w: background_kind must be one of %s, %s (got %q)", ErrInvalidLocalizedClipPlan, cliprender.BackgroundKindImage, cliprender.BackgroundKindVideo, p.BackgroundKind)
+		}
+	} else if p.BackgroundMode == cliprender.BackgroundModeAsset {
+		return fmt.Errorf("%w: background mode=asset requires background_kind (image | video)", ErrInvalidLocalizedClipPlan)
 	}
 	// Overlay lineages are all-or-nothing, EACH of them: a variant that
 	// composites reused overlays must carry the complete chain (render job id +
