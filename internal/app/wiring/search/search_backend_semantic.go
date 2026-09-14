@@ -339,13 +339,13 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			AssetID:   a.ID,
 			Source:    "semantic",
 			SourceRef: a.ID,
-			MediaType: a.MediaType,			// The semantic leg now shows the same label as the lexical leg:
+			MediaType: a.MediaType, // The semantic leg now shows the same label as the lexical leg:
 			// media_assets.title when the catalog has one (e.g. a Stock clip's
 			// source video title), else the canonical name. Without this the two
 			// legs disagreed — one returned "IRON MIKE TYSON IN ACTION" and the
 			// other "clip_010.mp4" for the same asset.
-			Title:     semanticDisplayTitle(a.Title, a.Name),
-			Name:      a.Name,
+			Title: semanticDisplayTitle(a.Title, a.Name),
+			Name:  a.Name,
 			// Raw Drive links are intentionally not copied into public
 			// semantic-search candidates. SQLite is canonical, but this
 			// adapter has no per-request Drive verification capability;
