@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 1454141,
-    "sha256": "c2f2bd882858d4f4a64ea8bf6ccc0a145c8329b02c1ee14937e5f1ed7f86058b"
+    "bytes": 1431924,
+    "sha256": "2341da1c4985bc8802f3dc7cdccce790bd59222c6bd52321825f0f7b81f1cadd"
   },
   "render": {
     "backend": "vulkan",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 280.705625,
-    "sha256_ms": 9.976238,
-    "total_ms": 290.9227
+    "probe_ms": 243.132159,
+    "sha256_ms": 5.660466,
+    "total_ms": 249.000406
   },
   "verification": {
     "audio": "skip",

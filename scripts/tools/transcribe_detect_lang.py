@@ -175,23 +175,67 @@ def detect_language(audio_path: str, model_size: str = "tiny", language: Optiona
     }
 
 
+# Cue windows are clamped to the MEDIA duration. faster-whisper models (the
+# canonical large-v3-turbo included) keep emitting segments past the end of the
+# audio on trailing silence/noise — a 60 s clip produced cues ending at 77-87 s
+# of hallucinated text. That is not a cosmetic problem: the canonical ASS
+# validator (texttracks.validateASSFile) rejects "last cue end exceeds clip
+# duration", so EVERY subtitle artifact for a Whisper-sourced clip would be
+# persisted as FAILED. Clamping here — the single projection point shared by
+# transcribe() and transcribe_pcm_stream() — keeps the source timing inside the
+# media, which is the only honest owner of "this segment exists".
+
+def _clamp_cues(segments, duration_seconds: float) -> tuple[list, int, int]:
+    """Project whisper segments into in-range cues.
+
+    Returns (cues, dropped, trimmed):
+      dropped — segments starting at/after the media end (hallucinated tail);
+      trimmed — segments whose end was clamped to the media end.
+    """
+    duration_ms = int(round(duration_seconds * 1000)) if duration_seconds else 0
+    cues = []
+    dropped = 0
+    trimmed = 0
+    for seg in segments:
+        text = seg.text.strip()
+        if not text:
+            # An empty cue would serialize as an empty ASS Dialogue line,
+            # which the canonical validator rejects as invalid.
+            continue
+        start_ms = int(seg.start * 1000)
+        end_ms = int(seg.end * 1000)
+        if duration_ms > 0 and start_ms >= duration_ms:
+            dropped += 1
+            continue
+        if duration_ms > 0 and end_ms > duration_ms:
+            end_ms = duration_ms
+            trimmed += 1
+        if end_ms <= start_ms:
+            continue
+        cues.append({
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "text": text,
+        })
+    return cues, dropped, trimmed
+
+
 def _segments_to_result(segments, info, elapsed: float) -> dict:
     """Project materialized whisper segments + info into the canonical JSON
     result shape shared by transcribe() and transcribe_pcm_stream()."""
-    transcript = " ".join(seg.text.strip() for seg in segments)
-    cues = []
-    for seg in segments:
-        cues.append({
-            "start_ms": int(seg.start * 1000),
-            "end_ms": int(seg.end * 1000),
-            "text": seg.text.strip()
-        })
+    cues, dropped, trimmed = _clamp_cues(segments, getattr(info, "duration", 0.0))
+    # The transcript is the text of the cues that were emitted, so the text and
+    # the timing always describe the same content (a transcript holding text the
+    # cue list dropped would be text no artifact can ever render).
+    transcript = " ".join(cue["text"] for cue in cues)
     return {
         "language": info.language,
         "probability": round(info.language_probability, 4),
         "duration_seconds": round(info.duration, 1),
         "transcription_time_seconds": round(elapsed, 1),
-        "num_segments": len(segments),
+        "num_segments": len(cues),
+        "cues_dropped_beyond_duration": dropped,
+        "cues_trimmed_to_duration": trimmed,
         "transcript_length": len(transcript),
         "transcript_preview": transcript[:500],
         "transcript_full": transcript,

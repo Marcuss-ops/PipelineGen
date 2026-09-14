@@ -244,6 +244,12 @@ func newDriveTarget(t *testing.T, log *zap.Logger, videoID string) driveTarget {
 		}
 	}
 
+	// The service loads .env as its last-resort dotenv (start_server.sh
+	// load_dotenv_missing); config validation fail-closes on the admin token,
+	// which lives only there. Explicit environment still wins: only keys that
+	// are absent from the environment are filled in.
+	loadDotEnvMissing(t, liveEnv("VELOX_E2E_DOTENV", filepath.Join("..", "..", ".env")))
+
 	cfgPath := liveEnv("VELOX_E2E_CONFIG", filepath.Join("..", "..", "config.yaml"))
 	resolved, err := config.GetResolvedFromPath(cfgPath)
 	require.NoErrorf(t, err, "VELOX_E2E_REAL_DRIVE=1 needs the production config at %s", cfgPath)
@@ -251,6 +257,14 @@ func newDriveTarget(t *testing.T, log *zap.Logger, videoID string) driveTarget {
 	require.NotNil(t, cfg)
 	require.NotEmpty(t, cfg.Drive.YouTubeSubtitlesFolder(),
 		"the production subtitle root must be configured for the real-Drive certificate")
+
+	// The service runs with WorkingDirectory=refactored, where config.yaml's
+	// relative paths ("credentials.json", "token.json") resolve. This test runs
+	// from tests/e2e, so anchor them to the CONFIG FILE's directory: the same
+	// credential files the service uses, not a second copy.
+	cfgBase := filepath.Dir(cfgPath)
+	cfg.Paths.CredentialsFile = anchorToConfig(cfgBase, cfg.Paths.CredentialsFile)
+	cfg.Paths.TokenFile = anchorToConfig(cfgBase, cfg.Paths.TokenFile)
 
 	client, err := drive.NewDriveServiceFromFiles(context.Background(), cfg)
 	require.NoError(t, err, "VELOX_E2E_REAL_DRIVE=1 needs usable Drive credentials")
@@ -280,10 +294,58 @@ func newDriveTarget(t *testing.T, log *zap.Logger, videoID string) driveTarget {
 	}
 }
 
+// anchorToConfig resolves a config-relative path against the config file's
+// directory, leaving absolute paths untouched.
+func anchorToConfig(base, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(base, path)
+}
+
+// loadDotEnvMissing mirrors start_server.sh's load_dotenv_missing: every key
+// defined in <repo>/.env that is NOT already present in the environment is
+// exported, so an explicit override always wins. Values are never logged.
+func loadDotEnvMissing(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Logf("no .env at %s (%v); relying on the ambient environment", path, err)
+		return
+	}
+	filled := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		eq := strings.Index(line, "=")
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.Trim(strings.TrimSpace(line[eq+1:]), `"'`)
+		if key == "" || os.Getenv(key) != "" {
+			continue
+		}
+		require.NoErrorf(t, os.Setenv(key, val), "set %s from .env", key)
+		filled++
+	}
+	t.Logf("loaded %d missing keys from %s", filled, path)
+}
+
 // newSQLiteSubtitleRepo opens the REAL asset_subtitle_artifacts repository (the
 // canonical SQLite implementation the server wires) over a temp database, so
 // the "registry holds a current READY row with a Drive reference" check runs
 // against production code instead of a map.
+//
+// The schema comes from the CONSOLIDATED BASELINE, not from the historical
+// incremental migration 175_asset_subtitle_artifacts.sql: that file predates
+// drive_url/legacy_file_md5 and is skipped on a fresh database (the runner
+// applies the baseline and marks the covered historical window), so using it
+// here would test against a schema production never has. Reading the baseline
+// keeps this fixture honest by construction.
 func newSQLiteSubtitleRepo(t *testing.T, log *zap.Logger) detail.SubtitleArtifactRepository {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "subtitle-artifacts.sqlite")
@@ -291,14 +353,36 @@ func newSQLiteSubtitleRepo(t *testing.T, log *zap.Logger) detail.SubtitleArtifac
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	ddl, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "175_asset_subtitle_artifacts.sql"))
-	require.NoError(t, err, "read the canonical subtitle-artifact DDL")
-	_, err = db.Exec(string(ddl))
-	require.NoError(t, err, "apply the canonical subtitle-artifact DDL")
+	baseline, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000_baseline_267.sql"))
+	require.NoError(t, err, "read the consolidated SQLite baseline")
+	stmts := statementsForTable(string(baseline), "asset_subtitle_artifacts")
+	require.NotEmpty(t, stmts, "the baseline must define asset_subtitle_artifacts")
+	for _, stmt := range stmts {
+		_, err = db.Exec(stmt)
+		require.NoErrorf(t, err, "apply baseline statement: %.80s", stmt)
+	}
 
 	repo, err := sqlitetexttracks.NewSubtitleArtifactRepository(db, log)
 	require.NoError(t, err)
 	return repo
+}
+
+// statementsForTable extracts the baseline statements that create/alter the
+// named table, excluding look-alike tables (the baseline also carries
+// legacy_observability_<table>).
+func statementsForTable(sqlText, table string) []string {
+	var out []string
+	for _, stmt := range strings.Split(sqlText, ";") {
+		trimmed := strings.TrimSpace(stmt)
+		if !strings.Contains(trimmed, table) {
+			continue
+		}
+		if strings.Contains(trimmed, "legacy_observability_"+table) {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 // ── in-memory subtitle artifact registry ────────────────────────────────────
@@ -479,8 +563,13 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		require.GreaterOrEqualf(t, cue.StartMs, lastEnd-250, "cue %d is not monotonic", i)
 		lastEnd = cue.EndMs
 	}
-	require.LessOrEqual(t, whisper.Cues[len(whisper.Cues)-1].EndMs, int64(liveSegmentEnd)*1000+5000,
-		"the last Whisper cue must fall inside the downloaded segment")
+	// The last cue must be inside the CLIP, with the same tolerance the canonical
+	// ASS validator enforces (clip duration + 250 ms). The canonical model
+	// hallucinates a tail beyond the audio (a 60 s clip produced cues ending at
+	// 77-87 s); transcribe_detect_lang.py clamps those to the media duration,
+	// and without that clamp every artifact would be persisted as FAILED.
+	require.LessOrEqual(t, whisper.Cues[len(whisper.Cues)-1].EndMs, int64(liveSegmentEnd)*1000+250,
+		"the last Whisper cue must fall inside the clip (the ASS validator rejects anything past clip duration + 250ms)")
 
 	title, channel := sourceVideoIdentity(t, url)
 
