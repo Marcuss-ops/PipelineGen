@@ -129,12 +129,17 @@ type VectorSearchRequest struct {
 // clients that need a signed URL for an asset should go through
 // the delivery service (delivery.Signer.BuildAuthorizedURL).
 type VectorSearchResult struct {
-	AssetID        string   `json:"asset_id"`
-	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
-	Score          float64  `json:"score"`
-	Reason         string   `json:"reason,omitempty"`
-	Source         string   `json:"source"`
-	Name           string   `json:"name"`
+	AssetID       string  `json:"asset_id"`
+	QdrantPointID string  `json:"qdrant_point_id,omitempty"`
+	Score         float64 `json:"score"`
+	Reason        string  `json:"reason,omitempty"`
+	Source        string  `json:"source"`
+	Name          string  `json:"name"`
+	// Title is the human-readable asset title. It is distinct from Name (the
+	// canonical filename-derived name): the semantic backend prefers Title for
+	// display and falls back to Name when the SSOT has no title, so a clip hit
+	// reads "IRON MIKE TYSON IN ACTION" instead of "clip_010.mp4".
+	Title          string   `json:"title,omitempty"`
 	Category       string   `json:"category,omitempty"`
 	MediaType      string   `json:"media_type,omitempty"`
 	Style          string   `json:"style,omitempty"`

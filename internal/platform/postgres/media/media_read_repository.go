@@ -47,6 +47,7 @@ func (s *MediaSearcher) GetMany(
 		out = append(out, appsearch.MediaAsset{
 			ID:             row.ID,
 			Name:           row.Name,
+			Title:          row.Title,
 			Source:         row.Source,
 			MediaType:      row.MediaType,
 			Category:       row.Category,
@@ -66,7 +67,7 @@ func (s *MediaSearcher) GetMany(
 // user searches always carry the authenticated workspace.
 func (s *MediaSearcher) fetchAssetForWorkspace(ctx context.Context, assetID, workspaceID string) (*assetRow, error) {
 	query := `
-		SELECT id, name, source, media_type, category, language,
+		SELECT id, name, title, source, media_type, category, language,
 		       tags, search_text, duration_ms, lifecycle_state,
 		       youtube_video_id, youtube_url, start_time, end_time, style
 		FROM media_assets
@@ -80,7 +81,7 @@ func (s *MediaSearcher) fetchAssetForWorkspace(ctx context.Context, assetID, wor
 
 	row := s.db.QueryRowContext(ctx, query, args...)
 	var a assetRow
-	if err := row.Scan(&a.ID, &a.Name, &a.Source, &a.MediaType, &a.Category, &a.Language,
+	if err := row.Scan(&a.ID, &a.Name, &a.Title, &a.Source, &a.MediaType, &a.Category, &a.Language,
 		&a.Tags, &a.SearchText, &a.DurationMs, &a.LifecycleState,
 		&a.YouTubeVideoID, &a.YouTubeURL, &a.StartTime, &a.EndTime, &a.Style); err != nil {
 		return nil, err

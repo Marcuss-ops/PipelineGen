@@ -300,14 +300,14 @@ func (s *MediaSearcher) queryResults(ctx context.Context, minScore float64, quer
 // fetchAsset hydrates one asset from media_assets inside the same SSOT.
 func (s *MediaSearcher) fetchAsset(ctx context.Context, assetID string) (*assetRow, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, source, media_type, category, language,
+		SELECT id, name, title, source, media_type, category, language,
 		       tags, search_text, duration_ms, lifecycle_state,
 		       youtube_video_id, youtube_url, start_time, end_time, style
 		FROM media_assets
 		WHERE id = $1
 	`, assetID)
 	var a assetRow
-	if err := row.Scan(&a.ID, &a.Name, &a.Source, &a.MediaType, &a.Category, &a.Language,
+	if err := row.Scan(&a.ID, &a.Name, &a.Title, &a.Source, &a.MediaType, &a.Category, &a.Language,
 		&a.Tags, &a.SearchText, &a.DurationMs, &a.LifecycleState,
 		&a.YouTubeVideoID, &a.YouTubeURL, &a.StartTime, &a.EndTime, &a.Style); err != nil {
 		return nil, err
@@ -319,6 +319,7 @@ func (s *MediaSearcher) fetchAsset(ctx context.Context, assetID string) (*assetR
 type assetRow struct {
 	ID             string
 	Name           string
+	Title          string
 	Source         string
 	MediaType      string
 	Category       string
@@ -347,6 +348,7 @@ func assetToVectorSearchResult(a *assetRow) appsearch.VectorSearchResult {
 		Score:          0,
 		Source:         a.Source,
 		Name:           a.Name,
+		Title:          a.Title,
 		Category:       a.Category,
 		MediaType:      a.MediaType,
 		Style:          a.Style,
