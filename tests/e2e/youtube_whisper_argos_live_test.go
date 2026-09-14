@@ -37,9 +37,14 @@
 //	VELOX_E2E_WORKDIR            download cache directory
 //	VELOX_E2E_WHISPER_PYTHON     default ../../.venv-whisper/bin/python3
 //	VELOX_E2E_WHISPER_SCRIPT     default ../../scripts/bridges/whisper_transcriber.py
-//	VELOX_E2E_WHISPER_MODEL      default base (faster-whisper size alias)
+//	VELOX_E2E_WHISPER_MODEL      default: the CANONICAL registry model
+//	                             (openai/whisper-large-v3-turbo -> faster-whisper
+//	                             "large-v3-turbo"). Set only to test an override:
+//	                             certifying "base" does not certify production.
+//	VELOX_E2E_HF_HOME            model root for the CTranslate2 weights
 //	VELOX_E2E_ARGOS_PYTHON       default ../../.venv-argos/bin/python3
 //	VELOX_E2E_ARGOS_SCRIPTS_DIR  default ../../scripts
+//	VELOX_E2E_REAL_DRIVE         set to upload the artifacts to the REAL Drive
 package e2e
 
 import (
@@ -71,6 +76,7 @@ import (
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -419,11 +425,28 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	require.FileExists(t, mp4)
 
 	// ── 2. LOCAL WHISPER is the transcript source. ────────────────────
-	whisperModel := liveEnv("VELOX_E2E_WHISPER_MODEL", "base")
-	require.NoError(t, os.Setenv("VELOX_WHISPER_MODEL", whisperModel))
+	//
+	// The model is the CANONICAL registry default unless explicitly
+	// overridden: certifying a different model than production runs would
+	// certify a different pipeline. Production pins no
+	// VELOX_WHISPER_MODEL (the systemd drop-in documents why), so neither
+	// does this test; whisperModel is recorded as the track's provenance.
+	whisperModel := strings.TrimSpace(os.Getenv("VELOX_E2E_WHISPER_MODEL"))
+	if whisperModel != "" {
+		require.NoError(t, os.Setenv("VELOX_WHISPER_MODEL", whisperModel))
+	} else {
+		require.NoError(t, os.Unsetenv("VELOX_WHISPER_MODEL"))
+		whisperModel = models.Whisper.ID
+	}
 	if os.Getenv("VELOX_WHISPER_DEVICE") == "" {
 		require.NoError(t, os.Setenv("VELOX_WHISPER_DEVICE", "auto"))
 	}
+	// The CTranslate2 weights live under the configured models root; without
+	// it HuggingFace would look in $HOME/.cache and try to download ~1.6 GB.
+	if hfHome := strings.TrimSpace(os.Getenv("VELOX_E2E_HF_HOME")); hfHome != "" {
+		require.NoError(t, os.Setenv("HF_HOME", hfHome))
+	}
+	t.Logf("whisper model=%s HF_HOME=%s", whisperModel, os.Getenv("HF_HOME"))
 
 	adapter, err := ytwhisper.NewWhisperTranscriberAdapter(ytwhisper.WhisperTranscriberConfig{
 		PythonBin:      liveEnv("VELOX_E2E_WHISPER_PYTHON", filepath.Join("..", "..", ".venv-whisper", "bin", "python3")),

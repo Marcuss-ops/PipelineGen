@@ -200,6 +200,74 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 	}
 }
 
+// ── Probe 1b: the ACQUIRE path has its OWN active_key ────────────────
+//
+// EnqueueAcquireOne is the repair path: it re-runs source acquisition and the
+// multilingual materialization for a clip whose source transcript is missing.
+// It carries `asset.text.acquire:<asset>:<lang>` — DELIBERATELY different from
+// the `asset.text.materialize:<asset>:<hash>` key of the normal fan-out.
+//
+// Why this matters: jobs.active_key deduplicates repeated enqueues, so an
+// identical second run of the normal fan-out collapses into the first job.
+// Without a distinct key a repair could never start from the automatic path
+// (it needed the manual `text-tracks-backfill` CLI instead). This probe pins
+// that the two keys cannot collapse into one another.
+func TestFanOut_EnqueueAcquireOne_HasItsOwnActiveKey(t *testing.T) {
+	stub := &stubEnqueuer{}
+	f := NewMaterializeFanOut(stub, nil)
+
+	const (
+		assetID = "asset-yt-002"
+		lang    = "it"
+		hashVal = "deadbeefcafe"
+	)
+	kinds := []detail.TextTrackKind{detail.TextTrackTranscript}
+
+	if err := f.EnqueueMaterializeOne(context.Background(), assetID, lang, hashVal, kinds); err != nil {
+		t.Fatalf("EnqueueMaterializeOne: %v", err)
+	}
+	if err := f.EnqueueAcquireOne(context.Background(), assetID, lang, kinds); err != nil {
+		t.Fatalf("EnqueueAcquireOne: %v", err)
+	}
+	if stub.calls != 2 {
+		t.Fatalf("expected 2 Enqueue calls, got %d", stub.calls)
+	}
+
+	materializeKey := stub.recorded[0].ActiveKey
+	acquireKey := stub.recorded[1].ActiveKey
+
+	wantAcquire := "asset.text.acquire:" + assetID + ":" + lang
+	if acquireKey != wantAcquire {
+		t.Fatalf("acquire ActiveKey = %q, want %q (shape drift)", acquireKey, wantAcquire)
+	}
+	if acquireKey == materializeKey {
+		t.Fatalf("the repair key must NOT collapse into the fan-out key: both are %q", acquireKey)
+	}
+
+	// The repair must target the SAME job type and payload contract, so the
+	// worker's materialize handler runs it identically.
+	acquire := stub.recorded[1]
+	if acquire.Type != job.TypeAssetTextMaterialize {
+		t.Fatalf("acquire Type = %q, want %q", acquire.Type, job.TypeAssetTextMaterialize)
+	}
+	ps, ok := acquire.Payload.(MaterializeJobPayload)
+	if !ok {
+		t.Fatalf("acquire Payload type = %T, want MaterializeJobPayload", acquire.Payload)
+	}
+	if ps.SourceTextHash != "" {
+		t.Fatalf("the acquire path carries no source hash yet, got %q", ps.SourceTextHash)
+	}
+
+	// Re-enqueueing the SAME repair collapses onto the same key (the broker's
+	// dedup still protects against a repair storm).
+	if err := f.EnqueueAcquireOne(context.Background(), assetID, lang, kinds); err != nil {
+		t.Fatalf("second EnqueueAcquireOne: %v", err)
+	}
+	if stub.recorded[2].ActiveKey != wantAcquire {
+		t.Fatalf("a repeated repair must reuse the same key, got %q", stub.recorded[2].ActiveKey)
+	}
+}
+
 // ── Probe 2: empty args surface typed ErrInvalidMaterializeRequest ────
 
 func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
