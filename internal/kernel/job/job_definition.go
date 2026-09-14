@@ -254,8 +254,18 @@ type JobDefinition struct {
 	// is terminal".
 	RetryPolicyKey string
 
-	// ConcurrencyKey names the per-key concurrency cap. Empty
-	// defaults to "single_global" at compute time.
+	// ConcurrencyKey is a RESERVED, declared-but-not-enforced field.
+	//
+	// It names the intended per-key concurrency cap (empty = the prospective
+	// "single_global" bucket). Nothing reads it today: no queue, runner or
+	// store path consults it, so it bounds nothing. The cap actually in force
+	// is the worker capability / pool budget, and the clip.render settle pool
+	// is scoped by PayloadMatch instead (see
+	// refactored/docs/tickets/TICKET-CLIP-RENDER-ASYNC-COMPLETION.md §5-6).
+	//
+	// Do NOT rely on it to limit concurrency. Either keep the populated values
+	// for the day a keyed-cap authority lands, or delete the field together
+	// with its canonical definitions when that design is abandoned.
 	ConcurrencyKey string
 
 	// RequiredCapabilities is the set of capabilities an executor

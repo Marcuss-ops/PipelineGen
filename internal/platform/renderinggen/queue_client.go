@@ -121,6 +121,11 @@ func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 		State:       string(job.State),
 		FailReason:  job.FailReason,
 		Artifact:    toScriptArtifact(job.Artifact),
+		// Queue-owned lifecycle timestamps: the admission/service split the
+		// producer cannot observe from the artifact alone.
+		QueuedAt:    job.QueuedAt,
+		StartedAt:   job.StartedAt,
+		CompletedAt: job.CompletedAt,
 	}
 }
 
@@ -311,6 +316,25 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	if err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: decode certified output facts: %w", err)
 	}
+	metrics := metricsFromChrononMetrics(a.Metrics, a.FrameCount, a.DurationUS)
+	// Complete the render-admission wait. metricsFromChrononMetrics already
+	// projected the wait the RENDERER measured (a fully prepared job with no
+	// free GPU lane); what only the producer can see is the earlier half: the
+	// queue held the job with no free worker at all (queued → claimed). The two
+	// intervals are consecutive, so the field is their sum — "how long this
+	// render waited before it started rendering", which is exactly the time a
+	// settle wall spends without making progress.
+	if !completed.QueuedAt.IsZero() && !completed.StartedAt.IsZero() {
+		wait := completed.StartedAt.Sub(completed.QueuedAt)
+		if wait < 0 {
+			wait = 0
+		}
+		if int64(metrics.ChrononQueueWaitMS) == cliprender.NotInstrumented {
+			metrics.ChrononQueueWaitMS = cliprender.Metric(wait.Milliseconds())
+		} else {
+			metrics.ChrononQueueWaitMS += cliprender.Metric(wait.Milliseconds())
+		}
+	}
 	// The zero-copy certification surface was removed with the PATH B CUDA
 	// hybrid: RenderingGen/Chronon never certifies video_zero_copy over this
 	// transport, so a request that demands it fails closed in the worker.
@@ -339,7 +363,7 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 		Facts:             facts,
 		Backend:           cliprender.RenderBackend(a.Backend),
 		AudioCopyEligible: boolPtr(a.CopyEligible),
-		Metrics:           metricsFromChrononMetrics(a.Metrics, a.FrameCount, a.DurationUS),
+		Metrics:           metrics,
 		// Raw deep-profile sidecar reference preserved by RenderingGen
 		// (content-addressed; the per-frame array is never inlined).
 		ChrononTimingStorageKey:  a.ChrononTimingStorageKey,

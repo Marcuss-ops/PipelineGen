@@ -57,21 +57,37 @@ func preparedFromResume(doc ResumeDocument) *Prepared {
 		RunID:      doc.Plan.RunID,
 		Contract:   doc.Contract,
 		Transcript: doc.Transcript,
-		Timings:    PreparationTimings{},
+		// The submit half's measured preparation phases ride the resume, so the
+		// settle report can attribute the materialize/other phase walls instead
+		// of reporting NOT_INSTRUMENTED for work that actually happened. The
+		// phases were measured by the same owner on the same bytes, so this is
+		// the same measurement, not a second one.
+		Timings: doc.PreparationTimings,
 		Source: &MaterializedAsset{
-			AssetID:    doc.Plan.Source.AssetID,
-			Title:      doc.SourceTitle,
+			AssetID: doc.Plan.Source.AssetID,
+			Title:   doc.SourceTitle,
+			// FromCache is TRUE by construction: the resume does not materialize
+			// anything. The bytes were staged by the submit half and are still on
+			// disk at LocalPath. Reporting this as a cache hit is what keeps
+			// `materialization.download_bytes` honest — the historical zero-value
+			// struct made the result claim a full re-download of the source
+			// (e.g. "download_bytes": 26085444) that never happened, which is a
+			// fabricated measurement, not a rounding difference.
+			FromCache:  true,
 			LocalPath:  doc.Plan.Source.Path,
 			SHA256:     doc.Plan.Source.SHA256,
 			SizeBytes:  doc.SourceSizeBytes,
 			DurationMS: doc.Plan.DurationMS,
 		},
 	}
+	// Same reuse fact for the optional assets: the resume stages nothing, so
+	// each one is an already-materialized file (FromCache), never a download.
 	if doc.Plan.Watermark != nil {
 		prepared.Watermark = &MaterializedAsset{
 			AssetID:   doc.Plan.Watermark.AssetID,
 			LocalPath: doc.Plan.Watermark.Path,
 			SHA256:    doc.Plan.Watermark.SHA256,
+			FromCache: true,
 		}
 	}
 	if doc.Plan.Background != nil && doc.Plan.Background.Mode == BackgroundModeAsset {
@@ -79,6 +95,7 @@ func preparedFromResume(doc ResumeDocument) *Prepared {
 			AssetID:   doc.Plan.Background.AssetID,
 			LocalPath: doc.Plan.Background.Path,
 			SHA256:    doc.Plan.Background.SHA256,
+			FromCache: true,
 		}
 	}
 	return prepared

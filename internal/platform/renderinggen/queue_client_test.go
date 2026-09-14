@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -287,5 +288,32 @@ func TestQueueAssetMappingPreservesSourceURL(t *testing.T) {
 	roundTrip := fromQueueAssets(wire)
 	if len(roundTrip) != 1 || roundTrip[0].SourceURL != input[0].SourceURL {
 		t.Fatalf("round-trip asset = %+v, source URL was not preserved", roundTrip)
+	}
+}
+
+// TestToScriptJobCarriesQueueLifecycleTimestamps pins the wire projection the
+// settle phase needs to attribute a remote render's wall: the queue owns
+// queued/started/completed, and dropping them (as the projection used to) made
+// "the job waited 4 s for a free worker" indistinguishable from render work.
+func TestToScriptJobCarriesQueueLifecycleTimestamps(t *testing.T) {
+	queuedAt := time.Date(2026, 9, 13, 19, 59, 28, 342_453_000, time.UTC)
+	startedAt := queuedAt.Add(4 * time.Second)
+	completedAt := startedAt.Add(37 * time.Second)
+	got := toScriptJob(queueclient.Job{
+		ID:          "clip-1",
+		State:       queueclient.StateCompleted,
+		QueuedAt:    queuedAt,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+	})
+	if !got.QueuedAt.Equal(queuedAt) || !got.StartedAt.Equal(startedAt) || !got.CompletedAt.Equal(completedAt) {
+		t.Fatalf("queue lifecycle timestamps lost: queued=%v started=%v completed=%v",
+			got.QueuedAt, got.StartedAt, got.CompletedAt)
+	}
+	// A queue that reports nothing must stay zero-valued — never a synthesized
+	// timestamp, which would fabricate a measurement out of thin air.
+	blank := toScriptJob(queueclient.Job{ID: "clip-2", State: queueclient.StatePending})
+	if !blank.QueuedAt.IsZero() || !blank.StartedAt.IsZero() || !blank.CompletedAt.IsZero() {
+		t.Fatalf("absent timestamps became %v/%v/%v", blank.QueuedAt, blank.StartedAt, blank.CompletedAt)
 	}
 }
