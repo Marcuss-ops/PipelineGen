@@ -339,8 +339,12 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			AssetID:   a.ID,
 			Source:    "semantic",
 			SourceRef: a.ID,
-			MediaType: a.MediaType,
-			Title:     a.Name,
+			MediaType: a.MediaType,			// The semantic leg now shows the same label as the lexical leg:
+			// media_assets.title when the catalog has one (e.g. a Stock clip's
+			// source video title), else the canonical name. Without this the two
+			// legs disagreed — one returned "IRON MIKE TYSON IN ACTION" and the
+			// other "clip_010.mp4" for the same asset.
+			Title:     semanticDisplayTitle(a.Title, a.Name),
 			Name:      a.Name,
 			// Raw Drive links are intentionally not copied into public
 			// semantic-search candidates. SQLite is canonical, but this
@@ -384,6 +388,15 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 //
 // The Qdrant adapter (platform/qdrant/search_adapter.go)
 // internally calls CompileQdrantFilter with these values.
+// semanticDisplayTitle picks the operator-facing label for a semantic hit: the
+// SSOT title when present, else the canonical asset name.
+func semanticDisplayTitle(title, name string) string {
+	if strings.TrimSpace(title) != "" {
+		return title
+	}
+	return name
+}
+
 func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
 	category := strings.TrimSpace(q.Filters.Category)
 	if category == "" {

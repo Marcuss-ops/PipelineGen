@@ -256,6 +256,12 @@ func TestMaterialize_RebuildFailureAbortsBeforeReindex(t *testing.T) {
 	if len(requester.calls) != 0 {
 		t.Fatalf("a failed rebuild MUST NOT be followed by a reindex request; got %v", requester.calls)
 	}
+	// Fail-closed means it fails CLOSED: a rebuild error must not fall back to
+	// the operational SQLite outbox, which owns no media handler in any mode
+	// and would dead-letter the event while looking like a successful emit.
+	if got := atomic.LoadInt32(&ob.enqueueCalls); got != 0 {
+		t.Fatalf("a failed rebuild MUST NOT fall back to the operational SQLite outbox; enqueue calls = %d", got)
+	}
 }
 
 // TestMaterialize_LegacyOutboxFallbackWithoutReindexPort pins the

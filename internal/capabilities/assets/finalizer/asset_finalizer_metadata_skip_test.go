@@ -2,6 +2,7 @@ package finalizer
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
@@ -107,6 +108,12 @@ func TestFinalizeAsset_UnpublishedMetadataWritesNothing(t *testing.T) {
 	}
 	if assets != 0 {
 		t.Fatalf("media_assets rows = %d, want 0", assets)
+	}
+	// Release the connection before the control case: the harness uses an
+	// in-memory SQLite database, so holding this tx open would send the next
+	// BeginTx to a different (schema-less) connection.
+	if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+		t.Fatalf("rollback tx: %v", err)
 	}
 
 	// Control: a published video artifact still commits normally.

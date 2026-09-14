@@ -36,11 +36,14 @@ import (
 // the artifact IS committed); `drive_upload_skipped` is the explicit opt-out
 // signal consumed by the finalizer's catalog-commit gate.
 func stockMetadataArtifactMetadata(jobID string, driveUploadSkipped bool) map[string]any {
-	meta := map[string]any{"job_id": jobID}
-	if driveUploadSkipped {
-		meta["drive_upload_skipped"] = true
+	if !driveUploadSkipped {
+		// Published metadata keeps its historical envelope: nil map, no fields.
+		return nil
 	}
-	return meta
+	return map[string]any{
+		"job_id":               jobID,
+		"drive_upload_skipped": true,
+	}
 }
 
 func BuildFinalizationRequest(

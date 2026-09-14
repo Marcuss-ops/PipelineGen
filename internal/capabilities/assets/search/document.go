@@ -136,8 +136,14 @@ func (d SearchDocument) AsPayloadMap() map[string]any {
 // it is by definition searchable. The post-query guard layers
 // defence-in-depth on top of the SQL allowStates filter.
 type MediaAsset struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Title is the human-readable asset title carried by media_assets.title
+	// (e.g. the source video title of a Stock clip). It is NOT the same fact as
+	// Name (the canonical filename-derived name), and the search result mapper
+	// prefers it for display so a clip never shows up as "clip_010.mp4" when the
+	// catalog knows its real title.
+	Title          string   `json:"title,omitempty"`
 	Source         string   `json:"source"`
 	MediaType      string   `json:"media_type"`
 	Category       string   `json:"category"`
