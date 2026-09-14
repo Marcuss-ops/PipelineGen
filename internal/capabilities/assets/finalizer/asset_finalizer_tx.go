@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	"go.uber.org/zap"
 )
 
 // AssetTxFinalizer implements finalization.AssetFinalizerTx without owning the
@@ -54,8 +55,43 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: AssetCommitter is required")
 	}
 
+	if skipCatalogCommit(artifact) {
+		// PR-STOCK-METADATA-LOCAL-ONLY (Sept 2026): a metadata artifact that
+		// was deliberately never published (Stock SkipMetadataUpload) has no
+		// Drive location and must not produce a media_assets row / asset_versions
+		// row / index event. Returning a zero ArtifactRef (nil error) is the
+		// "nothing durable was written" signal: artifact_writer drops zero refs
+		// so the finalization result lists only artifacts that really exist.
+		s.log.Debug("asset finalizer: unpublished metadata artifact skipped (no catalog row)",
+			zap.String("artifact_id", artifact.ArtifactID))
+		return finalization.ArtifactRef{}, nil, nil
+	}
+
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	return s.finalizeWithCommitter(ctx, tx, artifact, nowStr)
+}
+
+// skipCatalogCommit reports whether the artifact must stay out of the media
+// catalog even though the run still declares it.
+//
+// Contract (exactly three conditions, all required):
+//   - KindMetadata: only the run envelope is eligible today; a video/audio/
+//     document artifact without a location is a publish FAILURE and must keep
+//     failing loudly through the normal commit path.
+//   - no remote location: an artifact with a FileID/WebViewLink is a real
+//     remote asset and is always committed.
+//   - drive_upload_skipped: the producer explicitly declared the omission
+//     (Stock sets it when RuntimeConfig.SkipMetadataUpload is on), so the
+//     absence of a location is a decision, not an accident.
+func skipCatalogCommit(artifact finalization.PublishedArtifact) bool {
+	if artifact.Kind != finalization.KindMetadata {
+		return false
+	}
+	if artifact.Location.FileID != "" || artifact.Location.WebViewLink != "" {
+		return false
+	}
+	skipped, ok := artifact.ArtifactMetadata["drive_upload_skipped"].(bool)
+	return ok && skipped
 }
 
 // kindToMediaType maps the domain artifact kind to media_assets.media_type.

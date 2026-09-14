@@ -55,3 +55,116 @@ The following endpoints were tested and behave as expected:
 - `GET /api/clips/diagnostics` — returns `ok: true` with `ytdlp`, `ffmpeg`, and `node` checks passing.
 - `GET /api/clips/info?url=...` — correctly resolves both `https://www.youtube.com/watch?v=...` and `https://youtu.be/...` URLs and returns full metadata including `id`, `title`, `duration`, `uploader`, `view_count`, `thumbnail`, `thumbnails`, `chapters`, `categories`, and `tags`.
 
+## Live end-to-end certificate: YouTube → 10 languages → PostgreSQL → pgvector
+
+`tests/e2e/youtube_multilingual_live_test.go` is the real (non-hermetic) certificate for the
+whole chain: download a real YouTube clip, acquire its real subtitle transcript, commit it to the
+PostgreSQL media SSOT, translate it into every configured language, rebuild the multilingual
+`search_text`, and index it into pgvector. It is hard-gated behind `VELOX_E2E_LIVE=1` so
+`go test ./...` stays hermetic — a live test that silently degrades to a mock is worse than no test.
+
+The test calls **no** fakes on the critical path: `yt-dlp` for the download and the subtitles, the
+canonical VTT parser, `PostgresMediaCommitter.CommitClipTextAndIndexEvent`, the real
+`TextTrackMaterializer` with the real Ollama translator, the real `PostgresIndexWorker` and the real
+E5 embedding sidecar.
+
+### Prerequisites
+
+- PostgreSQL + pgvector test instance (`docker compose -f docker-compose.test-postgres.yml up -d`),
+  with `TEST_POSTGRES_DSN` pointing at it.
+- A reachable Ollama with the configured model (default `gemma4:e2b`).
+- The E5 embedding sidecar (default `http://127.0.0.1:8001`).
+- `yt-dlp` on `PATH`, or `VELOX_E2E_YTDLP` set to the command.
+
+### Run
+
+```bash
+TEST_POSTGRES_DSN='postgres://pipelinegen:pipelinegen@localhost:16432/pipelinegen_media_test?sslmode=disable' \
+VELOX_E2E_LIVE=1 \
+VELOX_E2E_YOUTUBE_URL='https://www.youtube.com/watch?v=iHaK0M-207o' \
+go test ./tests/e2e/ -run TestLiveYouTube_TranscriptTranslatedInTenLanguagesAndIndexed -count=1 -v
+```
+
+### What it asserts
+
+1. Download-once: ONE `yt-dlp` invocation fetches only the configured section; the artifact is
+   cached in `VELOX_E2E_WORKDIR` and reused on the next run.
+2. The real English subtitle track parses through the canonical VTT parser and yields cues; the
+   empty-text cues YouTube auto-captions emit are dropped (the committer rejects them).
+3. The clip, the READY transcript, the timed cues and the index request land in **one PostgreSQL
+   transaction** — no SQLite media write is involved.
+4. The materializer creates READY transcripts for all 10 configured languages (`it`, `en`, `pl`,
+   `ru`, `de`, `es`, `pt-BR`, `fr`, `tr`, `id`) with `source_type=translation`, the source language,
+   provider and a `translation_key`.
+5. A second identical run **skips** every target (`created=0`, `skipped=9`): the `translation_key`
+   gate prevents retranslation. The same run still **rebuilds** `search_text` — the repair is not
+   conditional on something being created, or a clip whose translations are already present could
+   never be re-indexed — and reports `changed=false`, so it requests **no** reindex
+   (`texttracks.materialize.reindex_skipped`). That pair is the idempotence contract: a repeated run
+   over a correct asset costs one `SELECT` and one string compare, not an embedding.
+6. `media_assets.search_text` is rebuilt from all current transcript tracks, so the Italian
+   translation is present in the document that is about to be embedded.
+7. The reindex request appears in the **PostgreSQL** `outbox_events`. A stub wired as the SQLite
+   outbox fails the test if the materializer ever falls back to it.
+8. The `PostgresIndexWorker` drains the event, the E5 sidecar embeds the **new** document (the test
+   records the embedded text and asserts it contains the translated phrase), `index_state` reaches
+   `INDEXED` and `media_embeddings` holds a 768-dim vector for `intfloat/multilingual-e5-base`.
+
+### Environment knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VELOX_E2E_LIVE` | unset | Gate: must be set to run this test |
+| `TEST_POSTGRES_DSN` | unset | Live PostgreSQL + pgvector DSN |
+| `VELOX_E2E_YOUTUBE_URL` | `https://www.youtube.com/watch?v=iHaK0M-207o` | Source video |
+| `VELOX_E2E_YTDLP` | `yt-dlp` | May be a multi-word command |
+| `VELOX_E2E_WORKDIR` | `.tmp/e2e-youtube-live` | Download cache directory |
+| `VELOX_E2E_OLLAMA_URL` | `http://localhost:11434` | Translator endpoint |
+| `VELOX_E2E_OLLAMA_MODEL` | `gemma4:e2b` | Translator model |
+| `VELOX_E2E_EMBED_SERVER_URL` | `http://127.0.0.1:8001` | E5 sidecar endpoint |
+| `VELOX_E2E_FORCE_DOWNLOAD` | unset | Re-download even when the cache is warm |
+
+### Troubleshooting
+
+- `ModuleNotFoundError: No module named 'yt_dlp'` — `yt-dlp` is installed with `pip install --user`
+  and its `site-packages` is not on the Python path of the test process. Prefix the run with
+  `PYTHONPATH="$HOME/.local/lib/python3.X/site-packages"` (matching the Python that `yt-dlp`'s
+  shebang uses).
+- `invalid cue (... text_len=0)` — the video's captions carry empty cues; the test filters them.
+  If it recurs, the caption track changed shape and the filter needs revisiting.
+
+### Repairing clips that were translated but never re-indexed
+
+Every clip committed before the September 2026 fix has its language rows in `asset_text_tracks`
+while its `asset.index.requested` went to the operational SQLite outbox and dead-lettered, so
+`media_assets.search_text` never contained the translations. Those clips are invisible to
+multilingual search until the index input is repaired:
+
+```bash
+go run ./cmd/admin text-tracks-backfill \
+    --source youtube \
+    --languages en,it,de,es,pt-BR,fr,pl,ru,tr,id \
+    --all --apply --json
+```
+
+`--all` (not `--only-missing`) is required: `--only-missing` skips a clip as soon as all target
+languages are READY, which is exactly the state of a clip that needs repairing, so the repair would
+never run. The command is safe to repeat — a clip whose `search_text` is already correct is rebuilt
+but not reindexed. Read the two counters that answer "did this run change what search can see":
+`index_repaired_total` (assets whose index input was recomposed) and `reindex_requested_total`
+(assets actually sent to the index plane). The human output warns when `--only-missing` suppressed
+the repair for every clip.
+
+### Subtitles on Drive
+
+Per-language subtitle artifacts (`.ass`) are delivered by one canonical owner,
+`BackfillService.MaterializeSubtitleArtifacts`. Both the operator backfill and the
+`asset.text.materialize` job handler call it — the job handler's fast path (the one a freshly
+extracted YouTube clip takes when the acquisition chain found subtitles) previously ran the
+translator only, which is why such a clip got its language rows and no subtitle files. The delivery
+is idempotent: an unchanged artifact reuses its recorded Drive reference instead of re-uploading.
+
+This test still does **not** drive the job handler (it calls the materializer directly), so the
+Drive delivery is pinned by `internal/capabilities/assets/texttracks/backfill_subtitles_test.go`
+rather than here.
+

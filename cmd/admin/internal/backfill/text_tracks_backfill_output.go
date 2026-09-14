@@ -40,7 +40,13 @@ func printHumanTextTracksBackfill(r textTracksBackfillReport) {
 	fmt.Printf("  Languages skipped: %d\n", r.SkippedLangTotal)
 	fmt.Printf("  Languages re-tr:   %d\n", r.RetranslatedTotal)
 	fmt.Printf("  Languages failed:  %d\n", r.FailedLangTotal)
+	fmt.Printf("  Index repaired:    %d\n", r.IndexRepairedTotal)
+	fmt.Printf("  Reindex requested: %d\n", r.ReindexRequestedTotal)
 	fmt.Printf("  Duration:          %dms\n", r.DurationMs)
+	if r.OnlyMissing && r.IndexRepairedTotal == 0 && r.Processed == 0 && r.SkippedOnlyMissing > 0 {
+		fmt.Println("  NOTE: --only-missing skipped every clip, so no search_text repair ran.")
+		fmt.Println("        Re-run without --only-missing to repair the index of already-translated clips.")
+	}
 	if r.Checkpoint != "" {
 		fmt.Printf("  Checkpoint:        %s\n", r.Checkpoint)
 	}

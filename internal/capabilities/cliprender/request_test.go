@@ -285,7 +285,7 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 		EndUS:              950000,
 	}
 
-	req := &RenderRequest{SourceAssetID: "a", Overlay: &full}
+	req := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{full}}
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		t.Fatalf("complete overlay ref must validate: %v", err)
@@ -303,7 +303,7 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 	} {
 		partial := full
 		missing(&partial)
-		req := &RenderRequest{SourceAssetID: "a", Overlay: &partial}
+		req := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{partial}}
 		req.Normalize()
 		if err := req.Validate(); err == nil {
 			t.Errorf("overlay ref missing %s must fail", name)
@@ -312,12 +312,23 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 		}
 	}
 
+	// A partial ref ANYWHERE in the declared set rejects the whole request: a
+	// clip that would composite the good ones and drop the bad one is exactly
+	// the silent loss the list contract exists to stop.
+	partialAmongComplete := full
+	partialAmongComplete.RenderKey = ""
+	mixed := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{full, partialAmongComplete}}
+	mixed.Normalize()
+	if err := mixed.Validate(); err == nil {
+		t.Error("a partial overlay among complete ones must fail the whole request")
+	}
+
 	// An invalid window (end <= start) is rejected: an untimed blend is
 	// never composited.
 	badWindow := full
 	badWindow.StartUS = 950000
 	badWindow.EndUS = 50000
-	reqBad := &RenderRequest{SourceAssetID: "a", Overlay: &badWindow}
+	reqBad := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{badWindow}}
 	reqBad.Normalize()
 	if err := reqBad.Validate(); err == nil {
 		t.Error("overlay ref with end_us <= start_us must fail")
@@ -326,10 +337,22 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 	// A negative start is rejected: compositing windows start at t>=0.
 	negStart := full
 	negStart.StartUS = -1
-	reqNeg := &RenderRequest{SourceAssetID: "a", Overlay: &negStart}
+	reqNeg := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{negStart}}
 	reqNeg.Normalize()
 	if err := reqNeg.Validate(); err == nil {
 		t.Error("overlay ref with negative start_us must fail")
+	}
+
+	// N complete lineages are accepted: one per certified overlay artifact.
+	second := full
+	second.RenderJobID = "render-job-002"
+	second.RenderKey = "key-002"
+	second.StartUS = 1_000_000
+	second.EndUS = 2_000_000
+	multi := &RenderRequest{SourceAssetID: "a", Overlays: []OverlayRefSpec{full, second}}
+	multi.Normalize()
+	if err := multi.Validate(); err != nil {
+		t.Fatalf("two complete overlay refs must validate: %v", err)
 	}
 
 	// A nil overlay (plain subtitles/watermark clip) remains valid.

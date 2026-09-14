@@ -146,22 +146,31 @@ func (w *Worker) preparePlan(ctx context.Context, req *RenderRequest, runID stri
 	}
 
 	var overlayInput *PlanOverlayInput
-	if req.Overlay != nil {
+	if len(req.Overlays) > 0 {
 		if w.overlayResolver == nil {
 			return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired")
 		}
-		segment, resolveErr := w.overlayResolver.Resolve(ctx, OverlayResolveInput{RenderJobID: req.Overlay.RenderJobID, RenderKey: req.Overlay.RenderKey})
-		if resolveErr != nil {
-			return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: resolve overlay segment: %w", resolveErr)
+		// EVERY declared lineage is resolved and sealed, or the render fails
+		// closed: compositing a subset would ship a clip that silently lost an
+		// overlay the caller declared. Lineages of one fan-out share a
+		// render_key, so the resolver memoizes and the segment is hashed once.
+		segments := make([]PlanOverlayInputSegment, 0, len(req.Overlays))
+		for i, lineage := range req.Overlays {
+			segment, resolveErr := w.overlayResolver.Resolve(ctx, OverlayResolveInput{RenderJobID: lineage.RenderJobID, RenderKey: lineage.RenderKey})
+			if resolveErr != nil {
+				return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: resolve overlay segment %d: %w", i, resolveErr)
+			}
+			if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
+				return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: overlay resolver returned an invalid segment %d", i)
+			}
+			startMS, endMS := (lineage.StartUS+500)/1000, (lineage.EndUS+500)/1000
+			segments = append(segments, PlanOverlayInputSegment{Segment: segment, StartMS: startMS, EndMS: endMS})
+			emit("clip.render.overlay.single_pass", "overlay composited inside the Chronon render pass (single encode)", map[string]any{
+				"render_job_id": lineage.RenderJobID, "render_key": lineage.RenderKey,
+				"sha256": segment.SHA256, "start_ms": startMS, "end_ms": endMS,
+			})
 		}
-		if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
-			return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: overlay resolver returned an invalid segment")
-		}
-		overlayInput = &PlanOverlayInput{Segment: segment, StartMS: (req.Overlay.StartUS + 500) / 1000, EndMS: (req.Overlay.EndUS + 500) / 1000}
-		emit("clip.render.overlay.single_pass", "overlay composited inside the Chronon render pass (single encode)", map[string]any{
-			"render_job_id": req.Overlay.RenderJobID, "render_key": req.Overlay.RenderKey,
-			"sha256": segment.SHA256, "start_ms": overlayInput.StartMS, "end_ms": overlayInput.EndMS,
-		})
+		overlayInput = &PlanOverlayInput{Segments: segments}
 	}
 
 	var watermarkSpec *WatermarkSpec

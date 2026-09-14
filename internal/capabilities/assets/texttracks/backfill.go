@@ -224,8 +224,20 @@ type BackfillAssetResult struct {
 	SkippedLangs   []string `json:"skipped_languages,omitempty"`
 	Retranslated   []string `json:"retranslated_languages,omitempty"`
 	FailedLangs    []string `json:"failed_languages,omitempty"`
-	DurationMs     int64    `json:"duration_ms"`
-	Err            string   `json:"error,omitempty"`
+	// IndexRepaired reports that the multilingual search_text repair ran
+	// for this asset. It is true even when nothing was translated: an
+	// asset whose translations were written before the July-2026 fix is
+	// exactly the asset a repair run exists to re-index.
+	IndexRepaired bool `json:"index_repaired"` // ReindexRequested reports that a reindex was actually asked for.
+	// False on a repair run over an already-correct asset, which is what
+	// makes the command safe to repeat.
+	ReindexRequested bool `json:"reindex_requested"`
+	// SubtitlesDelivered counts the per-language .ass artifacts that
+	// reached the subtitle_artifacts registry (and Drive, when a publisher
+	// is wired) for this asset.
+	SubtitlesDelivered int    `json:"subtitles_delivered"`
+	DurationMs         int64  `json:"duration_ms"`
+	Err                string `json:"error,omitempty"`
 }
 
 // BackfillReport is the aggregate return value. Carries the
@@ -236,22 +248,31 @@ type BackfillAssetResult struct {
 // for the aggregate report; the CLI's textTracksBackfillReport
 // mirrors the same fields.
 type BackfillReport struct {
-	Source              string                `json:"source"`
-	SourceLanguage      string                `json:"source_language"`
-	TargetLanguages     []string              `json:"target_languages"`
-	TextKind            string                `json:"text_kind"`
-	TotalCandidates     int                   `json:"total_candidates"`
-	Processed           int                   `json:"processed"`
-	SourceReadyCount    int                   `json:"source_ready_count"`
-	SourceMissingCount  int                   `json:"source_missing_count"`
-	SourceAcquiredCount int                   `json:"source_acquired_count"` // Fase 5
-	SkippedOnlyMissing  int                   `json:"skipped_only_missing"`
-	CreatedTotal        int                   `json:"created_total"`
-	SkippedLangTotal    int                   `json:"skipped_lang_total"`
-	RetranslatedTotal   int                   `json:"retranslated_total"`
-	FailedLangTotal     int                   `json:"failed_lang_total"`
-	FailedAssetIDs      []string              `json:"failed_asset_ids,omitempty"`
-	SkippedAssetIDs     []string              `json:"skipped_asset_ids,omitempty"`
-	DurationMs          int64                 `json:"duration_ms"`
-	PerAsset            []BackfillAssetResult `json:"per_asset,omitempty"`
+	Source              string   `json:"source"`
+	SourceLanguage      string   `json:"source_language"`
+	TargetLanguages     []string `json:"target_languages"`
+	TextKind            string   `json:"text_kind"`
+	TotalCandidates     int      `json:"total_candidates"`
+	Processed           int      `json:"processed"`
+	SourceReadyCount    int      `json:"source_ready_count"`
+	SourceMissingCount  int      `json:"source_missing_count"`
+	SourceAcquiredCount int      `json:"source_acquired_count"` // Fase 5
+	SkippedOnlyMissing  int      `json:"skipped_only_missing"`
+	CreatedTotal        int      `json:"created_total"`
+	SkippedLangTotal    int      `json:"skipped_lang_total"`
+	RetranslatedTotal   int      `json:"retranslated_total"`
+	FailedLangTotal     int      `json:"failed_lang_total"`
+	// IndexRepairedTotal counts assets whose multilingual search_text was
+	// recomposed, including assets that needed no translation.
+	IndexRepairedTotal int `json:"index_repaired_total"` // ReindexRequestedTotal counts the assets that were actually sent to
+	// the media index plane. It is the honest denominator for "did this
+	// run change what search can see".
+	ReindexRequestedTotal int `json:"reindex_requested_total"`
+	// SubtitlesDeliveredTotal counts the per-language subtitle artifacts
+	// delivered to the registry (and Drive) across the whole run.
+	SubtitlesDeliveredTotal int                   `json:"subtitles_delivered_total"`
+	FailedAssetIDs          []string              `json:"failed_asset_ids,omitempty"`
+	SkippedAssetIDs         []string              `json:"skipped_asset_ids,omitempty"`
+	DurationMs              int64                 `json:"duration_ms"`
+	PerAsset                []BackfillAssetResult `json:"per_asset,omitempty"`
 }

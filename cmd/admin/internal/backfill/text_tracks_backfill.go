@@ -35,6 +35,24 @@
 // TextHash is part of the UNIQUE constraint, so a second run
 // finds the track in priority 1 and skips acquisition.
 //
+// Repair run (POSTGRES-MEDIA-CUTOVER, September 2026): because
+// Materialize now repairs the index input even when it creates no
+// translation, the same command doubles as the repair tool for the
+// clips the July-2026 wiring bug left behind — the ones whose 10
+// language rows sit in asset_text_tracks while their
+// asset.index.requested went to the operational SQLite outbox and
+// dead-lettered, so media_assets.search_text never contained their
+// translations. Use --all (not --only-missing): the repair needs every
+// candidate PROCESSED, including the fully-translated ones that
+// --only-missing skips before the repair can run. The run is cheap and
+// repeatable — assets whose search_text is already correct are rebuilt
+// but NOT reindexed (see index_repaired_total vs reindex_requested_total
+// in the report).
+//
+//	go run ./cmd/admin text-tracks-backfill \
+//	    --source youtube --languages en,it,de,es,pt-BR,fr,pl,ru,tr,id \
+//	    --all --apply --json
+//
 // Flags:
 //
 //	--source <name>         Filter by media_assets.source (required)
@@ -45,7 +63,11 @@
 //	                        title | keywords
 //	--only-missing          Skip clips that have ALL target
 //	                        languages READY (uses
-//	                        ListReadyLanguages)
+//	                        ListReadyLanguages). Do NOT use
+//	                        this for a repair run: a clip that
+//	                        is complete is exactly the clip
+//	                        whose index input still needs
+//	                        repairing
 //	--asset-ids             CSV of canonical media_assets.id values
 //	                        to process instead of scanning the
 //	                        whole source catalog
@@ -102,30 +124,33 @@ type textTracksBackfillDeps struct {
 
 // textTracksBackfillReport is the JSON-serialisable report.
 type textTracksBackfillReport struct {
-	Mode               string   `json:"mode"`
-	Source             string   `json:"source"`
-	SourceLanguage     string   `json:"source_language"`
-	TargetLanguages    []string `json:"target_languages"`
-	TextKind           string   `json:"text_kind"`
-	OnlyMissing        bool     `json:"only_missing"`
-	Limit              int      `json:"limit,omitempty"`
-	AssetIDs           []string `json:"asset_ids,omitempty"`
-	TotalCandidates    int      `json:"total_candidates"`
-	Processed          int      `json:"processed"`
-	SourceReady        int      `json:"source_ready_count"`
-	SourceAcquired     int      `json:"source_acquired_count"`
-	SourceMissing      int      `json:"source_missing_count"`
-	SkippedOnlyMissing int      `json:"skipped_only_missing"`
-	CreatedTotal       int      `json:"created_total"`
-	SkippedLangTotal   int      `json:"skipped_lang_total"`
-	RetranslatedTotal  int      `json:"retranslated_total"`
-	FailedLangTotal    int      `json:"failed_lang_total"`
-	FailedAssetIDs     []string `json:"failed_asset_ids,omitempty"`
-	SkippedAssetIDs    []string `json:"skipped_asset_ids,omitempty"`
-	Checkpoint         string   `json:"checkpoint,omitempty"`
-	DurationMs         int64    `json:"duration_ms"`
-	FailedReasonNoSrc  int      `json:"failed_reason_no_source"`
-	FailedReasonOther  int      `json:"failed_reason_other"`
+	Mode                    string   `json:"mode"`
+	Source                  string   `json:"source"`
+	SourceLanguage          string   `json:"source_language"`
+	TargetLanguages         []string `json:"target_languages"`
+	TextKind                string   `json:"text_kind"`
+	OnlyMissing             bool     `json:"only_missing"`
+	Limit                   int      `json:"limit,omitempty"`
+	AssetIDs                []string `json:"asset_ids,omitempty"`
+	TotalCandidates         int      `json:"total_candidates"`
+	Processed               int      `json:"processed"`
+	SourceReady             int      `json:"source_ready_count"`
+	SourceAcquired          int      `json:"source_acquired_count"`
+	SourceMissing           int      `json:"source_missing_count"`
+	SkippedOnlyMissing      int      `json:"skipped_only_missing"`
+	CreatedTotal            int      `json:"created_total"`
+	IndexRepairedTotal      int      `json:"index_repaired_total"`
+	ReindexRequestedTotal   int      `json:"reindex_requested_total"`
+	SubtitlesDeliveredTotal int      `json:"subtitles_delivered_total"`
+	SkippedLangTotal        int      `json:"skipped_lang_total"`
+	RetranslatedTotal       int      `json:"retranslated_total"`
+	FailedLangTotal         int      `json:"failed_lang_total"`
+	FailedAssetIDs          []string `json:"failed_asset_ids,omitempty"`
+	SkippedAssetIDs         []string `json:"skipped_asset_ids,omitempty"`
+	Checkpoint              string   `json:"checkpoint,omitempty"`
+	DurationMs              int64    `json:"duration_ms"`
+	FailedReasonNoSrc       int      `json:"failed_reason_no_source"`
+	FailedReasonOther       int      `json:"failed_reason_other"`
 }
 
 // textTracksCheckpoint is the on-disk resume state.
@@ -311,27 +336,30 @@ func RunTextTracksBackfill(args []string) error {
 	}
 
 	out := textTracksBackfillReport{
-		Mode:               "apply",
-		Source:             deps.Source,
-		SourceLanguage:     sourceLang,
-		TargetLanguages:    targetLangs,
-		TextKind:           string(textKind),
-		OnlyMissing:        deps.OnlyMissing,
-		Limit:              deps.Limit,
-		TotalCandidates:    report.TotalCandidates,
-		Processed:          report.Processed,
-		SourceReady:        report.SourceReadyCount,
-		SourceAcquired:     report.SourceAcquiredCount,
-		SourceMissing:      report.SourceMissingCount,
-		SkippedOnlyMissing: report.SkippedOnlyMissing,
-		CreatedTotal:       report.CreatedTotal,
-		SkippedLangTotal:   report.SkippedLangTotal,
-		RetranslatedTotal:  report.RetranslatedTotal,
-		FailedLangTotal:    report.FailedLangTotal,
-		FailedAssetIDs:     report.FailedAssetIDs,
-		SkippedAssetIDs:    report.SkippedAssetIDs,
-		Checkpoint:         deps.Checkpoint,
-		DurationMs:         report.DurationMs,
+		Mode:                    "apply",
+		Source:                  deps.Source,
+		SourceLanguage:          sourceLang,
+		TargetLanguages:         targetLangs,
+		TextKind:                string(textKind),
+		OnlyMissing:             deps.OnlyMissing,
+		Limit:                   deps.Limit,
+		TotalCandidates:         report.TotalCandidates,
+		Processed:               report.Processed,
+		SourceReady:             report.SourceReadyCount,
+		SourceAcquired:          report.SourceAcquiredCount,
+		SourceMissing:           report.SourceMissingCount,
+		SkippedOnlyMissing:      report.SkippedOnlyMissing,
+		CreatedTotal:            report.CreatedTotal,
+		IndexRepairedTotal:      report.IndexRepairedTotal,
+		ReindexRequestedTotal:   report.ReindexRequestedTotal,
+		SubtitlesDeliveredTotal: report.SubtitlesDeliveredTotal,
+		SkippedLangTotal:        report.SkippedLangTotal,
+		RetranslatedTotal:       report.RetranslatedTotal,
+		FailedLangTotal:         report.FailedLangTotal,
+		FailedAssetIDs:          report.FailedAssetIDs,
+		SkippedAssetIDs:         report.SkippedAssetIDs,
+		Checkpoint:              deps.Checkpoint,
+		DurationMs:              report.DurationMs,
 	}
 	for _, p := range report.PerAsset {
 		if p.Err == "no_source_track" || p.Err == "source_track_not_ready" || p.Err == "acquired_but_save_failed" {

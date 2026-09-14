@@ -22,7 +22,7 @@ index → search → download`).
 | Search and run | `POST /api/stock-pipeline/search-and-run` | `queries: [{q, limit}]` — **not** `search_queries` — plus the same run contract. `search_queries` is the legacy `/run` shape: sent here it is ignored by the binding and the request then fails the source-presence gate with 400 |
 | Job state | `GET /api/jobs/{job_id}/full` | poll until terminal: `SUCCEEDED` / `INDEX_PENDING` / `FAILED` / `CANCELLED` / `DEAD_LETTER` |
 | Unified search | `POST /api/media/search` | `query`, `sources:["stock"]`, `mode:"hybrid"`, `universe:"catalog"`, `filters` |
-| Download | `POST /api/media/:source/clips/:id/download` | `source=stock` → the produced MP4 (non-zero size, video stream, duration > 0) |
+| Download | `POST /api/media/clips/:source/clips/:id/download` | `source=stock` → the produced MP4 (non-zero size, video stream, duration > 0) |
 
 **Explicit duration contract**: `target_total_duration_seconds`,
 `target_duration_per_source_seconds`, `clips_per_source` and
@@ -55,7 +55,7 @@ is no Stock-only live target any more.
 The Stock legs are steps 6–8 plus the stock half of step 9: `/run` with a
 direct URL → `/search-and-run` with `queries` → Drive artifact present in the
 job result → asset retrievable via `/api/media/search` and downloadable
-through `/api/media/stock/clips/{id}/download` (>100 KB, decodable video
+through `/api/media/clips/stock/clips/{id}/download` (>100 KB, decodable video
 stream). Steps 3/4/5/10 cover the YouTube path and the idempotent replay.
 
 Required environment: `DRIVE_ROOT_FOLDER_ID`, `STOCK_DIRECT_URL`, plus

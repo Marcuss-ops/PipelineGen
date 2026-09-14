@@ -171,6 +171,26 @@ func BuildTextTrackBundle(
 	// never saturates the LLM/GPU.
 	materializer.SetConcurrency(4)
 
+	// POSTGRES-MEDIA-CUTOVER (September 2026): route the post-translation
+	// reindex through the PostgreSQL media index plane and recompose
+	// media_assets.search_text before requesting it.
+	//
+	// BEFORE this wiring the materializer emitted asset.index.requested into
+	// the operational SQLite outbox. The SQLite outbox has NO media handler
+	// in any mode (assertSingleMediaIndexOwner fails boot closed on one), so
+	// every post-translation reindex silently dead-lettered and the nine
+	// translated transcripts never reached pgvector — even though their rows
+	// were durably present in asset_text_tracks.
+	if outbox.MediaIndexRequester != nil {
+		materializer.SetIndexRequester(outbox.MediaIndexRequester)
+	}
+	if outbox.MediaSearchTextRebuilder != nil {
+		materializer.SetSearchTextRebuilder(outbox.MediaSearchTextRebuilder)
+	}
+	if outbox.MediaIndexRequester == nil {
+		log.Warn("POSTGRES-MEDIA-CUTOVER: no PostgreSQL media index requester wired — asset.text.materialize reindex requests fall back to the operational SQLite outbox, which owns no media index handler (graceful degrade, godlike/07)")
+	}
+
 	handler := texttracks.NewMaterializeJobHandler(materializer, log)
 
 	// AcquireService (Fase 5): wraps the SubtitleFetcherPort

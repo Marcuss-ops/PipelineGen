@@ -52,6 +52,7 @@ import (
 	"go.uber.org/zap"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -187,6 +188,12 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// URL in PG mode aborts composition (no embedder → no vectors → no
 	// fake availability).
 	var pgIndexWorker *pgmedia.PostgresIndexWorker
+	// POSTGRES-MEDIA-CUTOVER: the two ports the TextTrackMaterializer needs
+	// AFTER translation — the canonical PG reindex requester and the
+	// multilingual search_text rebuilder. Both are nil in the degraded
+	// (PG-disabled) mode; BuildTextTrackBundle then keeps the legacy path.
+	var mediaIndexRequester texttracks.IndexRequester
+	var mediaSearchTextRebuilder texttracks.SearchTextRebuilder
 	if cfg.MediaPostgreSQL.Enabled {
 		if mediaPostgres == nil {
 			return nil, nil, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but mediaPostgres handle is nil (composition must call RequireMediaPostgres first)")
@@ -202,6 +209,23 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 			return nil, nil, fmt.Errorf("BuildOutboxBundle: pgvector embedding family bootstrap: %w", err)
 		}
 		pgIndexWorker = pgmedia.NewPostgresIndexWorker(pgOutboxRepo, pgVectors, embedder, cfg.MediaPostgreSQL.EmbeddingModel)
+
+		// The materializer's post-translation reindex must land on this same
+		// PostgreSQL outbox (the ONLY media index owner). ReindexRequester
+		// owns the canonical envelope + terminal-conflict handling.
+		mediaIndexRequester = pgmedia.NewReindexRequester(mediaPostgres)
+
+		// Rebuild media_assets.search_text from the metadata + READY
+		// transcripts before that reindex, so the translations enter the E5
+		// embedding. The configured multilingual set filters the transcript
+		// tracks exactly as the indexing path does.
+		langsCSV, csvErr := BuildMultilingualLanguageCSV(ActiveMultilingualConfig(cfg), nil)
+		if csvErr != nil {
+			log.Warn("BuildOutboxBundle: multilingual index languages unavailable; search_text rebuild runs without a language filter",
+				zap.Error(csvErr))
+			langsCSV = ""
+		}
+		mediaSearchTextRebuilder = pgmedia.NewSearchTextRebuilder(mediaPostgres, langsCSV).WithLogger(log)
 	}
 
 	// Deps + handler registration sub-blocks (extracted July 2026 to
@@ -372,6 +396,9 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		MediaIndexWorker: pgIndexWorker,
 		Publisher:        publisherHandler,
 		DriveUploader:    driveUploadHandler,
+
+		MediaIndexRequester:      mediaIndexRequester,
+		MediaSearchTextRebuilder: mediaSearchTextRebuilder,
 	}, startClosure, nil
 }
 

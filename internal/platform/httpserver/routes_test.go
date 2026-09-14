@@ -66,7 +66,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 
 	// Media routes should be under /api/media/
 	assert.True(t, routeMap["POST /api/media/search"], "POST /api/media/search should be registered")
-	assert.True(t, routeMap["POST /api/media/:source/clips/:id/download"], "POST /api/media/:source/clips/:id/download should be registered")
+	assert.True(t, routeMap["POST /api/media/clips/:source/clips/:id/download"], "POST /api/media/clips/:source/clips/:id/download should be registered")
 
 	// Stock routes must be published through the public /api registry.
 	assert.True(t, routeMap["POST /api/stock-pipeline/run"], "POST /api/stock-pipeline/run should be registered")
@@ -208,7 +208,10 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/:id", func(c *gin.Context) {})
 	case "media":
 		group.POST("/search", func(c *gin.Context) {})
-		group.POST("/:source/clips/:id/download", func(c *gin.Context) {})
+		// Canonical wire prefix for the clips capability is /api/media/clips
+		// (transport/wire.go), so the publication download route lives one
+		// segment deeper than the bare /api/media group.
+		group.POST("/clips/:source/clips/:id/download", func(c *gin.Context) {})
 	case "stock-pipeline":
 		group.POST("/run", func(c *gin.Context) {})
 		group.POST("/search-and-run", func(c *gin.Context) {})

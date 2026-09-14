@@ -138,7 +138,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.Bool("subtitles_enabled", req.Subtitles.Enabled),
 		zap.Bool("watermark_requested", req.Watermark != nil),
 		zap.Bool("background_mode", req.Background.Mode != ""),
-		zap.Bool("overlay_requested", req.Overlay != nil),
+		zap.Int("overlay_segments_requested", len(req.Overlays)),
 		zap.Bool("require_gpu", req.Execution.RequireGPU),
 		zap.Bool("require_zero_copy", req.Execution.RequireZeroCopy),
 	)

@@ -24,12 +24,16 @@ import (
 type fakeTextTrackRepo struct {
 	mu          sync.Mutex
 	tracks      map[string]*detail.TextTrack
+	cues        map[string][]detail.TimedCue
 	upsertCalls int32
 	findCalls   int32
 }
 
 func newFakeRepo() *fakeTextTrackRepo {
-	return &fakeTextTrackRepo{tracks: map[string]*detail.TextTrack{}}
+	return &fakeTextTrackRepo{
+		tracks: map[string]*detail.TextTrack{},
+		cues:   map[string][]detail.TimedCue{},
+	}
 }
 
 func key(assetID, lang string, kind detail.TextTrackKind) string {
@@ -83,7 +87,11 @@ func (f *fakeTextTrackRepo) FindReady(_ context.Context, assetID, lang string, k
 		return nil, nil, nil
 	}
 	clone := *t
-	return &clone, nil, nil
+	// cues is opt-in: tests that never set it keep the historical nil,
+	// while tests that need timed cues (the subtitle-artifact delivery
+	// step treats text readiness without cues as NOT subtitle readiness)
+	// seed them per (asset, lang, kind).
+	return &clone, f.cues[key(assetID, lang, kind)], nil
 }
 
 func (f *fakeTextTrackRepo) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {

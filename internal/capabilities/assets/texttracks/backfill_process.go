@@ -204,6 +204,8 @@ func (s *BackfillService) ProcessAsset(
 			for k := range report.FailedLanguages {
 				res.FailedLangs = append(res.FailedLangs, k)
 			}
+			res.IndexRepaired = report.IndexInputRebuilt
+			res.ReindexRequested = report.ReindexRequested
 		}
 		return res, fmt.Errorf("texttracks.BackfillService.ProcessAsset: materialize: %w", err)
 	}
@@ -214,69 +216,25 @@ func (s *BackfillService) ProcessAsset(
 	for k := range report.FailedLanguages {
 		res.FailedLangs = append(res.FailedLangs, k)
 	}
+	// The repair is reported even on an all-skipped run, which is the
+	// normal shape of a re-index pass over the pre-existing catalog.
+	res.IndexRepaired = report.IndexInputRebuilt
+	res.ReindexRequested = report.ReindexRequested
 
 	// Step 5: generate ASS subtitle artifacts if this asset requires subtitles.
 	// Skip when the caller materializes subtitles itself (SkipSubtitleMaterialization)
 	// so the same ASS is never generated twice in one pipeline run.
-	if detail.RequiresSubtitles(string(assetItem.Source)) && opts.TextKind == detail.TextTrackTranscript && !opts.SkipSubtitleMaterialization {
-		languages := append([]string{opts.SourceLanguage}, opts.TargetLanguages...)
-		// Acquisition may resolve to a different language than the
-		// requested one (for example, the first available YouTube/Whisper
-		// track). Include every READY language so the clip still receives
-		// its ASS artifact when that track has timed cues.
-		readyLanguages, langErr := s.repo.ListReadyLanguages(ctx, assetItem.ID, opts.TextKind)
-		if langErr != nil {
-			s.log.Warn("backfill: list ready languages for ASS generation failed",
-				zap.String("asset_id", assetItem.ID), zap.Error(langErr))
-		} else {
-			languages = append(languages, readyLanguages...)
+	//
+	// The delivery loop itself is owned by MaterializeSubtitleArtifacts: the
+	// `asset.text.materialize` job handler calls the same method on the
+	// direct YouTube path, and the two callers must not drift.
+	if !opts.SkipSubtitleMaterialization {
+		delivery, dErr := s.MaterializeSubtitleArtifacts(ctx, assetItem, opts.SourceLanguage, opts.TargetLanguages, opts.TextKind)
+		if dErr != nil {
+			s.log.Warn("backfill: subtitle artifact delivery failed",
+				zap.String("asset_id", assetItem.ID), zap.Error(dErr))
 		}
-		uniqueLangs := make(map[string]bool)
-		for _, l := range languages {
-			if l != "" {
-				uniqueLangs[l] = true
-			}
-		}
-
-		clipContentHash := assetContentHash(assetItem)
-		if clipContentHash == "" {
-			clipContentHash = assetItem.ID
-		}
-
-		driveFolderID := assetItem.FolderID()
-		if driveFolderID == "" {
-			driveFolderID = s.driveFolderID
-		}
-		for lang := range uniqueLangs {
-			track, cues, err := s.repo.FindReady(ctx, assetItem.ID, lang, opts.TextKind)
-			if err != nil {
-				s.log.Warn("backfill: find ready track for ASS generation failed",
-					zap.String("asset_id", assetItem.ID),
-					zap.String("lang", lang),
-					zap.Error(err))
-				continue
-			}
-			if track == nil || len(cues) == 0 {
-				continue
-			}
-			_, mErr := s.subMaterializer.Materialize(ctx, SubtitleMaterializerInput{
-				AssetID:         assetItem.ID,
-				DriveFilename:   assetItem.Filename,
-				LanguageCode:    lang,
-				TextTrackID:     track.ID,
-				ClipDurationMs:  assetItem.Duration.Milliseconds(),
-				TimedCues:       cues,
-				SubtitleStyleID: "vidrush-default",
-				ClipContentHash: clipContentHash,
-				DriveFolderID:   driveFolderID,
-			})
-			if mErr != nil {
-				s.log.Warn("backfill: ASS materialization failed",
-					zap.String("asset_id", assetItem.ID),
-					zap.String("lang", lang),
-					zap.Error(mErr))
-			}
-		}
+		res.SubtitlesDelivered = delivery.Delivered
 	}
 
 	res.DurationMs = time.Since(start).Milliseconds()

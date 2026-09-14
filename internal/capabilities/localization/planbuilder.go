@@ -62,6 +62,13 @@ type SourceInput struct {
 
 	// SubtitlesStyle is the caller's subtitle visual override block.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
+
+	// Overlays carries the certified lineage of every rendered entity overlay
+	// that the language variants of this source composite inside the same
+	// render pass (one per semantic overlay item). They are resolved ONCE for
+	// the whole fan-out (the caller passes the certified overlay render
+	// references), never re-resolved or re-rendered per language.
+	Overlays []cliprender.OverlayRefSpec
 }
 
 // TrackRef is a referenced text track: its canonical ID + content hash. The
@@ -176,6 +183,10 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			BackgroundMode:         source.BackgroundMode,
 			ForegroundScalePercent: source.ForegroundScalePercent,
 			SubtitlesStyle:         source.SubtitlesStyle,
+			// Language-independent reuse: the SAME overlay identities land on
+			// every plan, so one certified overlay render per item serves all N
+			// languages.
+			Overlays: source.Overlays,
 		}
 		plan.Fingerprint = Fingerprint(plan)
 		if err := plan.Validate(); err != nil {

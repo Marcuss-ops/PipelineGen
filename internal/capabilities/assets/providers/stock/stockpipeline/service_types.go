@@ -79,6 +79,14 @@ type RuntimeConfig struct {
 	ChunkDurationSec int
 	MaxResults       int
 	PolicyVersion    string
+	// SkipMetadataUpload suppresses publishing the Stock metadata.json to
+	// Drive (both the run-level and the per-timestamp-group one). When set,
+	// the clips folder on Drive contains only the produced videos; the
+	// metadata content is still composed + hashed and the finalizer still
+	// records the metadata asset row. Zero value (false) preserves the
+	// legacy publish-to-Drive behaviour, which is what the unit fixtures
+	// exercise.
+	SkipMetadataUpload bool
 }
 
 // StorageDeps groups the canonical media write surface.

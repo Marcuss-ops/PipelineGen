@@ -209,16 +209,27 @@ func (f *fakeRenderExecutor) Settle(_ context.Context, plan ClipRenderPlanV1) (*
 }
 
 // fakeOverlayResolver returns a canned segment for the declared render_job_id.
+// byKey, when set, returns a segment per render_key (a multi-item clip resolves
+// several distinct artifacts); calls/inputs record every resolution so the
+// "resolve all N, or fail closed" contract is provable.
 type fakeOverlayResolver struct {
 	segment *OverlaySegment
+	byKey   map[string]*OverlaySegment
 	err     error
 	got     OverlayResolveInput
+	calls   int
+	inputs  []OverlayResolveInput
 }
 
 func (f *fakeOverlayResolver) Resolve(_ context.Context, in OverlayResolveInput) (*OverlaySegment, error) {
 	f.got = in
+	f.calls++
+	f.inputs = append(f.inputs, in)
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.byKey != nil {
+		return f.byKey[in.RenderKey], nil
 	}
 	return f.segment, nil
 }
@@ -935,14 +946,14 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	w.WithRenderExecutor(renderer)
 	w.WithRenderPublisher(publisher)
 	req := baseRenderRequest()
-	req.Overlay = &OverlayRefSpec{
+	req.Overlays = []OverlayRefSpec{{
 		RenderJobID:        "render-michael-jordan-overlay-001",
 		PlanFingerprint:    "fp-michael-jordan",
 		RenderKey:          "rk-michael-jordan",
 		SourceVideoAssetID: "source-video-asset-001",
 		StartUS:            50000,
 		EndUS:              950000,
-	}
+	}}
 	resolver := &fakeOverlayResolver{segment: &OverlaySegment{
 		RenderJobID: "render-michael-jordan-overlay-001",
 		RenderKey:   "rk-michael-jordan",
@@ -963,20 +974,28 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	if !ok {
 		t.Fatalf("result must carry an overlay block, got %+v", result)
 	}
-	if overlay["render_job_id"] != "render-michael-jordan-overlay-001" {
-		t.Errorf("overlay render_job_id = %v", overlay["render_job_id"])
+	if overlay["single_pass"] != true {
+		t.Errorf("overlay single_pass = %v, want true", overlay["single_pass"])
 	}
-	if overlay["plan_fingerprint"] != "fp-michael-jordan" {
-		t.Errorf("overlay plan_fingerprint = %v", overlay["plan_fingerprint"])
+	segments, ok := overlay["segments"].([]map[string]any)
+	if !ok || len(segments) != 1 {
+		t.Fatalf("overlay provenance = %+v, want one entry for the one declared lineage", overlay["segments"])
 	}
-	if overlay["render_key"] != "rk-michael-jordan" {
-		t.Errorf("overlay render_key = %v", overlay["render_key"])
+	entry := segments[0]
+	if entry["render_job_id"] != "render-michael-jordan-overlay-001" {
+		t.Errorf("overlay render_job_id = %v", entry["render_job_id"])
 	}
-	if overlay["source_video_asset_id"] != "source-video-asset-001" {
-		t.Errorf("overlay source_video_asset_id = %v", overlay["source_video_asset_id"])
+	if entry["plan_fingerprint"] != "fp-michael-jordan" {
+		t.Errorf("overlay plan_fingerprint = %v", entry["plan_fingerprint"])
 	}
-	if overlay["start_us"] != int64(50000) || overlay["end_us"] != int64(950000) {
-		t.Errorf("overlay window = %v..%v, want 50000..950000", overlay["start_us"], overlay["end_us"])
+	if entry["render_key"] != "rk-michael-jordan" {
+		t.Errorf("overlay render_key = %v", entry["render_key"])
+	}
+	if entry["source_video_asset_id"] != "source-video-asset-001" {
+		t.Errorf("overlay source_video_asset_id = %v", entry["source_video_asset_id"])
+	}
+	if entry["start_us"] != int64(50000) || entry["end_us"] != int64(950000) {
+		t.Errorf("overlay window = %v..%v, want 50000..950000", entry["start_us"], entry["end_us"])
 	}
 
 	// The resolver must have been invoked with the exact declared lineage.
@@ -987,20 +1006,21 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 		t.Errorf("overlay resolver input = %+v", resolver.got)
 	}
 	sealed := renderer.plan.Overlay
-	if sealed == nil {
-		t.Fatal("sealed plan must carry the declared overlay segment")
+	if sealed == nil || len(sealed.Segments) != 1 {
+		t.Fatalf("sealed plan must carry the declared overlay segment, got %+v", sealed)
 	}
-	if sealed.RenderJobID != "render-michael-jordan-overlay-001" || sealed.RenderKey != "rk-michael-jordan" {
-		t.Errorf("sealed overlay lineage = %+v", sealed)
+	seg := sealed.Segments[0]
+	if seg.RenderJobID != "render-michael-jordan-overlay-001" || seg.RenderKey != "rk-michael-jordan" {
+		t.Errorf("sealed overlay lineage = %+v", seg)
 	}
-	if sealed.SHA256 != strings.Repeat("e", 64) || sealed.Path != "/work/overlay-segment.mp4" {
-		t.Errorf("sealed overlay segment = %+v", sealed)
+	if seg.SHA256 != strings.Repeat("e", 64) || seg.Path != "/work/overlay-segment.mp4" {
+		t.Errorf("sealed overlay segment = %+v", seg)
 	}
-	if sealed.StartMS != 50 || sealed.EndMS != 950 {
-		t.Errorf("sealed overlay window = [%d, %d)ms, want [50, 950)", sealed.StartMS, sealed.EndMS)
+	if seg.StartMS != 50 || seg.EndMS != 950 {
+		t.Errorf("sealed overlay window = [%d, %d)ms, want [50, 950)", seg.StartMS, seg.EndMS)
 	}
-	if overlay["single_pass"] != true || overlay["segment_sha256"] != strings.Repeat("e", 64) {
-		t.Errorf("overlay single-pass facts = %v", overlay)
+	if entry["segment_sha256"] != strings.Repeat("e", 64) {
+		t.Errorf("overlay single-pass facts = %v", entry)
 	}
 
 	// The final video asset block carries the Drive identity of the derived
@@ -1065,14 +1085,14 @@ func TestWorker_OverlayCompositing_FailClosedWithoutWiring(t *testing.T) {
 	w.WithRenderExecutor(renderer)
 
 	req := baseRenderRequest()
-	req.Overlay = &OverlayRefSpec{
+	req.Overlays = []OverlayRefSpec{{
 		RenderJobID:        "render-job-001",
 		PlanFingerprint:    "fp-001",
 		RenderKey:          "key-001",
 		SourceVideoAssetID: "source-video-001",
 		StartUS:            50000,
 		EndUS:              950000,
-	}
+	}}
 	_, err := handleRendered(t, context.Background(), w, "job-overlay-fail", req)
 	if err == nil {
 		t.Fatal("overlay declared without a segment resolver must fail closed")
@@ -1163,14 +1183,14 @@ func TestWorker_OverlayCompositing_FailClosedOnResolutionError(t *testing.T) {
 			w.WithOverlaySegmentResolver(&fakeOverlayResolver{segment: segment, err: resolverErr})
 
 			req := baseRenderRequest()
-			req.Overlay = &OverlayRefSpec{
+			req.Overlays = []OverlayRefSpec{{
 				RenderJobID:        "render-job-001",
 				PlanFingerprint:    "fp-001",
 				RenderKey:          "key-001",
 				SourceVideoAssetID: "source-video-001",
 				StartUS:            50000,
 				EndUS:              950000,
-			}
+			}}
 			_, err := handleRendered(t, context.Background(), w, "job-overlay-fail", req)
 			if err == nil {
 				t.Fatal("overlay compositing failure must fail the job")

@@ -82,7 +82,12 @@ func VerifyMetadata(m MetadataState) error {
 		return fmt.Errorf("%w: LocalPath empty",
 			ErrStockMetadataNotPublished)
 	}
-	if m.RemoteFileID == "" {
+	// RemoteFileID is required only when the metadata.json is actually
+	// published to Drive. RuntimeConfig.SkipMetadataUpload opts the run out
+	// of that publication by design (the clips folder must hold only the
+	// videos), so the gate must not fail-closed on the absence of a
+	// location it deliberately never created.
+	if m.RemoteFileID == "" && !m.DriveUploadSkipped {
 		return fmt.Errorf("%w: RemoteFileID empty (publish failed or missing)",
 			ErrStockMetadataNotPublished)
 	}

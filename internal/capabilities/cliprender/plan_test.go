@@ -89,31 +89,34 @@ func TestCompile_SealsSinglePassOverlay(t *testing.T) {
 	in := baseCompileInput()
 	in.DurationMS = 4000
 	in.Overlay = &PlanOverlayInput{
-		Segment: &OverlaySegment{
-			RenderJobID: "render-overlay-001",
-			RenderKey:   "rk-overlay-001",
-			LocalPath:   "/scratch/overlay-segment.mp4",
-			SHA256:      strings.Repeat("b", 64),
-			SizeBytes:   2048,
-		},
-		StartMS: 1000,
-		EndMS:   3000,
+		Segments: []PlanOverlayInputSegment{{
+			Segment: &OverlaySegment{
+				RenderJobID: "render-overlay-001",
+				RenderKey:   "rk-overlay-001",
+				LocalPath:   "/scratch/overlay-segment.mp4",
+				SHA256:      strings.Repeat("b", 64),
+				SizeBytes:   2048,
+			},
+			StartMS: 1000,
+			EndMS:   3000,
+		}},
 	}
 	plan, err := Compile(in)
 	if err != nil {
 		t.Fatalf("Compile failed: %v", err)
 	}
-	if plan.Overlay == nil {
-		t.Fatal("sealed plan must carry the overlay")
+	if plan.Overlay == nil || len(plan.Overlay.Segments) != 1 {
+		t.Fatalf("sealed plan must carry exactly the declared overlay segment, got %+v", plan.Overlay)
 	}
-	if plan.Overlay.RenderJobID != "render-overlay-001" || plan.Overlay.RenderKey != "rk-overlay-001" {
-		t.Fatalf("overlay lineage = %+v", plan.Overlay)
+	seg := plan.Overlay.Segments[0]
+	if seg.RenderJobID != "render-overlay-001" || seg.RenderKey != "rk-overlay-001" {
+		t.Fatalf("overlay lineage = %+v", seg)
 	}
-	if plan.Overlay.Path != "/scratch/overlay-segment.mp4" || plan.Overlay.SHA256 != strings.Repeat("b", 64) {
-		t.Fatalf("overlay segment = %+v", plan.Overlay)
+	if seg.Path != "/scratch/overlay-segment.mp4" || seg.SHA256 != strings.Repeat("b", 64) {
+		t.Fatalf("overlay segment = %+v", seg)
 	}
-	if plan.Overlay.StartMS != 1000 || plan.Overlay.EndMS != 3000 {
-		t.Fatalf("overlay window = [%d, %d)ms, want [1000, 3000)", plan.Overlay.StartMS, plan.Overlay.EndMS)
+	if seg.StartMS != 1000 || seg.EndMS != 3000 {
+		t.Fatalf("overlay window = [%d, %d)ms, want [1000, 3000)", seg.StartMS, seg.EndMS)
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("Validate failed on a sealed overlay plan: %v", err)
@@ -122,7 +125,9 @@ func TestCompile_SealsSinglePassOverlay(t *testing.T) {
 	// the plan digest (a rerun can never silently reuse a stale plan).
 	other := baseCompileInput()
 	other.DurationMS = 4000
-	other.Overlay = &PlanOverlayInput{Segment: in.Overlay.Segment, StartMS: 1000, EndMS: 2500}
+	other.Overlay = &PlanOverlayInput{
+		Segments: []PlanOverlayInputSegment{{Segment: in.Overlay.Segments[0].Segment, StartMS: 1000, EndMS: 2500}},
+	}
 	otherPlan, err := Compile(other)
 	if err != nil {
 		t.Fatalf("Compile(other) failed: %v", err)
@@ -132,17 +137,92 @@ func TestCompile_SealsSinglePassOverlay(t *testing.T) {
 	}
 }
 
+// TestCompile_SealsEveryOverlaySegment pins the contract that makes a
+// multi-item scene expressible: a clip that composites N certified overlay
+// artifacts seals ALL N segments with their own lineage and window. Modelled as
+// a single slot this silently dropped every item after the first.
+func TestCompile_SealsEveryOverlaySegment(t *testing.T) {
+	segment := func(job, key, sha string) *OverlaySegment {
+		return &OverlaySegment{RenderJobID: job, RenderKey: key, LocalPath: "/scratch/" + key + ".mp4", SHA256: sha}
+	}
+	in := baseCompileInput()
+	in.DurationMS = 8000
+	in.Overlay = &PlanOverlayInput{Segments: []PlanOverlayInputSegment{
+		{Segment: segment("job-phrase", "rk-phrase", strings.Repeat("b", 64)), StartMS: 500, EndMS: 2500},
+		{Segment: segment("job-entity", "rk-entity", strings.Repeat("c", 64)), StartMS: 3000, EndMS: 6000},
+		{Segment: segment("job-keyword", "rk-keyword", strings.Repeat("d", 64)), StartMS: 6500, EndMS: 7800},
+	}}
+	plan, err := Compile(in)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if plan.Overlay == nil || len(plan.Overlay.Segments) != 3 {
+		t.Fatalf("sealed plan must carry all 3 declared segments, got %+v", plan.Overlay)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("Validate failed on a multi-segment overlay plan: %v", err)
+	}
+	for i, want := range []struct {
+		key            string
+		sha            string
+		startMS, endMS int64
+	}{
+		{"rk-phrase", strings.Repeat("b", 64), 500, 2500},
+		{"rk-entity", strings.Repeat("c", 64), 3000, 6000},
+		{"rk-keyword", strings.Repeat("d", 64), 6500, 7800},
+	} {
+		got := plan.Overlay.Segments[i]
+		if got.RenderKey != want.key || got.SHA256 != want.sha || got.StartMS != want.startMS || got.EndMS != want.endMS {
+			t.Fatalf("segment %d = %+v, want key=%s sha=%s window=[%d,%d)", i, got, want.key, want.sha[:8], want.startMS, want.endMS)
+		}
+	}
+
+	// Dropping one segment must change the sealed digest: a plan that lost an
+	// item can never be mistaken for the cached full-overlay plan.
+	partial := baseCompileInput()
+	partial.DurationMS = 8000
+	partial.Overlay = &PlanOverlayInput{Segments: in.Overlay.Segments[:2]}
+	partialPlan, err := Compile(partial)
+	if err != nil {
+		t.Fatalf("Compile(partial) failed: %v", err)
+	}
+	if partialPlan.PlanSHA256 == plan.PlanSHA256 {
+		t.Fatal("a plan missing a declared overlay segment must not share the full plan digest")
+	}
+
+	// The last declared segment is still exactly where the caller put it: the
+	// sealed order is the declared order (so provenance is positional).
+	if plan.Overlay.Segments[2].RenderKey != in.Overlay.Segments[2].Segment.RenderKey {
+		t.Fatal("declared segment order must be preserved")
+	}
+}
+
 // TestCompile_OverlayFailClosed pins the overlay validation rules.
 func TestCompile_OverlayFailClosed(t *testing.T) {
+	seg := func() *OverlaySegment {
+		return &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}
+	}
+	segment := func(startMS, endMS int64) []PlanOverlayInputSegment {
+		return []PlanOverlayInputSegment{{Segment: seg(), StartMS: startMS, EndMS: endMS}}
+	}
 	cases := []struct {
 		name    string
 		overlay *PlanOverlayInput
 	}{
-		{"missing segment", &PlanOverlayInput{StartMS: 0, EndMS: 1000}},
-		{"segment without sha256", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4"}, EndMS: 1000}},
-		{"empty window", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: 1000, EndMS: 1000}},
-		{"negative start", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: -1, EndMS: 1000}},
-		{"window past clip duration", &PlanOverlayInput{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4", SHA256: strings.Repeat("b", 64)}, StartMS: 0, EndMS: 9000}},
+		// A declared overlay with no segment composites nothing: the single
+		// worst outcome, so it is rejected before any process starts.
+		{"no segments", &PlanOverlayInput{}},
+		{"missing segment", &PlanOverlayInput{Segments: []PlanOverlayInputSegment{{StartMS: 0, EndMS: 1000}}}},
+		{"segment without sha256", &PlanOverlayInput{Segments: []PlanOverlayInputSegment{{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4"}, EndMS: 1000}}}},
+		{"empty window", &PlanOverlayInput{Segments: segment(1000, 1000)}},
+		{"negative start", &PlanOverlayInput{Segments: segment(-1, 1000)}},
+		{"window past clip duration", &PlanOverlayInput{Segments: segment(0, 9000)}},
+		// One bad segment among good ones rejects the whole plan: the clip is
+		// never composited with a partial overlay set.
+		{"one bad segment among good ones", &PlanOverlayInput{Segments: []PlanOverlayInputSegment{
+			{Segment: seg(), StartMS: 0, EndMS: 1000},
+			{Segment: &OverlaySegment{LocalPath: "/scratch/x.mp4"}, StartMS: 1000, EndMS: 2000},
+		}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

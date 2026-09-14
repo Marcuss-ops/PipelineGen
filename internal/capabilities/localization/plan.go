@@ -125,6 +125,25 @@ type LocalizedClipPlan struct {
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
 
+	// ── Reused entity overlays ───────────────────────────────────
+	// Overlays carries one certified lineage per rendered overlay segment the
+	// final clip composites INSIDE the same Chronon render pass. A scene
+	// carries several: production renders one short video per semantic overlay
+	// item, so a scene with a phrase, an entity card and a keyword declares
+	// three lineages.
+	//
+	// They are deliberately LANGUAGE-INDEPENDENT: the same overlay renders are
+	// reused by every language variant of the scene, and only the
+	// subtitle/transcript tracks differ between plans. Each segment is
+	// content-addressed (the render_key identifies the cached artifact), so the
+	// fan-out resolves and hashes each ONE time and every language reuses those
+	// bytes — an overlay is never re-rendered per language.
+	//
+	// Empty means the clip carries no entity overlay. When present EVERY
+	// lineage is required (all-or-nothing), exactly as the clip.render request
+	// contract requires it.
+	Overlays []cliprender.OverlayRefSpec `json:"overlays,omitempty"`
+
 	// ── Subtitle visual overrides ────────────────────────────────
 	// SubtitlesStyle carries the caller's explicit subtitle visual block
 	// (color, size, shadow, transition). It rides alongside the compiled
@@ -219,6 +238,23 @@ func (p LocalizedClipPlan) Validate() error {
 	}
 	if p.BackgroundMode == cliprender.BackgroundModeAsset && p.Background == nil {
 		return fmt.Errorf("%w: background mode=asset requires the materialized asset", ErrInvalidLocalizedClipPlan)
+	}
+	// Overlay lineages are all-or-nothing, EACH of them: a variant that
+	// composites reused overlays must carry the complete chain (render job id +
+	// plan fingerprint + render key + source video asset id + the declared
+	// window) for every one, so the reuse is provable — never "an overlay was
+	// here somewhere", and never a variant carrying three of the four declared
+	// overlays.
+	for i, overlay := range p.Overlays {
+		if strings.TrimSpace(overlay.RenderJobID) == "" ||
+			strings.TrimSpace(overlay.PlanFingerprint) == "" ||
+			strings.TrimSpace(overlay.RenderKey) == "" ||
+			strings.TrimSpace(overlay.SourceVideoAssetID) == "" {
+			return fmt.Errorf("%w: overlay %d requires render_job_id, plan_fingerprint, render_key and source_video_asset_id", ErrInvalidLocalizedClipPlan, i)
+		}
+		if overlay.StartUS < 0 || overlay.EndUS <= overlay.StartUS {
+			return fmt.Errorf("%w: overlay %d requires a valid compositing window (end_us > start_us >= 0)", ErrInvalidLocalizedClipPlan, i)
+		}
 	}
 	if strings.TrimSpace(p.RendererVersion) == "" {
 		return fmt.Errorf("%w: renderer_version is required", ErrInvalidLocalizedClipPlan)

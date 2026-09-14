@@ -52,9 +52,39 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		watermarkFingerprint(plan),
 		backgroundFingerprint(plan),
 		subtitleStyleFingerprint(plan),
+		overlayFingerprint(plan),
 		strings.TrimSpace(plan.Version),
 	}
 	return digest.Fingerprint(parts...)
+}
+
+// overlayFingerprint folds every reused entity overlay's content identity (its
+// render key + the frozen plan fingerprint + the declared window), in declared
+// order.
+//
+// It is part of the variant digest even though the overlays are shared by every
+// language: a variant whose overlays changed composites different bytes, so it
+// must not be mistaken for the previously cached artifact — and a variant that
+// lost one of N declared overlays is a different artifact, not a cache hit.
+// Because the value is identical across languages, it does NOT make the
+// variants distinct from each other — the language, subtitle track and style
+// remain the inputs that separate them.
+func overlayFingerprint(plan LocalizedClipPlan) string {
+	if len(plan.Overlays) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(plan.Overlays)*6)
+	for _, overlay := range plan.Overlays {
+		parts = append(parts,
+			strings.TrimSpace(overlay.RenderJobID),
+			strings.TrimSpace(overlay.PlanFingerprint),
+			strings.TrimSpace(overlay.RenderKey),
+			strings.TrimSpace(overlay.SourceVideoAssetID),
+			fmt.Sprintf("%d", overlay.StartUS),
+			fmt.Sprintf("%d", overlay.EndUS),
+		)
+	}
+	return strings.Join(parts, "\x1f")
 }
 
 func watermarkFingerprint(plan LocalizedClipPlan) string {

@@ -32,17 +32,27 @@ const (
 // youtubeStrategy builds the canonical YouTube clip search text from
 // the full set of available SearchTextInput fields:
 //
-//	title + transcript + channel + description + tags + detected_entities +
-//	hook + speakers + mentioned_people
+//	title + summary + transcript(s) + channel + description + tags +
+//	detected_entities + hook + speakers + mentioned_people + topics +
+//	source_url
 //
 // Fields that are not applicable (zero-value) are silently dropped.
 // The strategy reads Additional keys for YouTube-specific metadata_json
 // fields that don't have a dedicated SearchTextInput slot:
 //
-//	hook, speakers, mentioned_people
+//	hook, speakers, mentioned_people, summary, topics, source_url
 //
 // godlike/06 SSOT: this function is the SOLE canonical owner of the
-// YouTube search_text format for the Qdrant BM25 indexing path.
+// YouTube search_text format for the media search_text surface (both the
+// Qdrant BM25 path and the PostgreSQL media SSOT rebuild path).
+//
+// SUPERSET CONTRACT (September 2026): the output MUST be a superset of
+// the historical YouTube Step-9 commit-time envelope (title + summary +
+// hook + topics + source_url + speakers + mentioned_people), which is why
+// summary / topics / source_url are read here: the PostgreSQL
+// SearchTextRebuilder composes media_assets.search_text through THIS
+// function, and a rebuild that silently dropped those fields would
+// regress the committed search surface.
 func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 	add := input.Additional
 
@@ -50,6 +60,9 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 	hook := strings.TrimSpace(add["hook"])
 	speakers := strings.TrimSpace(add["speakers"])
 	mentionedPeople := strings.TrimSpace(add["mentioned_people"])
+	summary := strings.TrimSpace(add["summary"])
+	topics := strings.TrimSpace(add["topics"])
+	sourceURL := strings.TrimSpace(add["source_url"])
 
 	// Multilingual transcripts: append translations from TextTracks.
 	// The original transcript is always included first; translations
@@ -75,6 +88,7 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 
 	return joinNonEmpty(" ",
 		input.Title,
+		summary,
 		joinNonEmpty(" ", transcriptParts...),
 		input.Channel,
 		truncate(input.Description, maxDescriptionChars),
@@ -83,6 +97,8 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 		hook,
 		speakers,
 		mentionedPeople,
+		topics,
+		sourceURL,
 	)
 }
 

@@ -31,6 +31,18 @@ import (
 // IdempotencyKey per artifact = "stock:" + sha256[:16] — same content
 // → same key → publisher.Publish returns PublishSkipped on retry, and
 // the AssetTxFinalizer.OperationResult is invariant across replays.
+// stockMetadataArtifactMetadata builds the run-level metadata artifact's
+// metadata map. `job_id` is always carried (provenance for the catalog when
+// the artifact IS committed); `drive_upload_skipped` is the explicit opt-out
+// signal consumed by the finalizer's catalog-commit gate.
+func stockMetadataArtifactMetadata(jobID string, driveUploadSkipped bool) map[string]any {
+	meta := map[string]any{"job_id": jobID}
+	if driveUploadSkipped {
+		meta["drive_upload_skipped"] = true
+	}
+	return meta
+}
+
 func BuildFinalizationRequest(
 	jobID string,
 	lease finalization.Lease,
@@ -77,6 +89,14 @@ func BuildFinalizationRequest(
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: metaIdemKey,
+		// PR-STOCK-METADATA-LOCAL-ONLY (Sept 2026): the artifact stays
+		// declared (the manifest contract requires it) but with
+		// RuntimeConfig.SkipMetadataUpload it has no Drive location, so it
+		// MUST NOT become a media_assets row — an asset with no home is
+		// noise the operator cannot act on (and it made every run leave a
+		// DISCOVERED "metadata.json" row behind). The finalizer reads this
+		// flag and skips the catalog commit.
+		ArtifactMetadata: stockMetadataArtifactMetadata(jobID, metadata.DriveUploadSkipped),
 		Location: finalization.AssetLocation{
 			Provider:     "drive",
 			FileID:       metadata.RemoteFileID,

@@ -157,6 +157,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 		allPlans = append(allPlans, plans...)
 	}
 	applyRunMetadataToPlans(allPlans, in.Metadata)
+	// Operator metadata wins; only plans still carrying an empty title
+	// inherit the resolved source video title, so a query-acquired clip
+	// is searchable ("mike tyson" finds mike tyson clips) instead of
+	// landing as an anonymous clip_### row.
+	applySourceTitlesToPlans(allPlans, in.SourceTitles)
 	if in.DownloadMode == "sections_only" {
 		for i := range allPlans {
 			allPlans[i].StageKey = allPlans[i].OutputLogicalID
@@ -211,6 +216,30 @@ func applyRunMetadataToPlans(plans []ClipPlan, metadata *ChunkMetadataInput) {
 		}
 		if strings.TrimSpace(plans[i].Category) == "" {
 			plans[i].Category = metadata.Category
+		}
+	}
+}
+
+// applySourceTitlesToPlans fills the still-empty plan titles from the
+// resolved source titles carried in RunInput.SourceTitles. It runs AFTER
+// applyRunMetadataToPlans so operator-supplied metadata keeps precedence:
+// only plans whose title is still empty inherit the source video title.
+//
+// godlike/06 SSOT: the deterministic planner (buildClipPlan) deliberately
+// leaves ClipPlan.Title at the zero value, so without this fill a Stock
+// run resolved from a search query publishes anonymous clip_### rows that
+// no term search can ever match. SourceID is the resolved DirectURL, which
+// is the key resolveInputQueries/enrichDirectURLDurations use.
+func applySourceTitlesToPlans(plans []ClipPlan, titles map[string]string) {
+	if len(plans) == 0 || len(titles) == 0 {
+		return
+	}
+	for i := range plans {
+		if strings.TrimSpace(plans[i].Title) != "" {
+			continue
+		}
+		if title := strings.TrimSpace(titles[plans[i].SourceID]); title != "" {
+			plans[i].Title = title
 		}
 	}
 }

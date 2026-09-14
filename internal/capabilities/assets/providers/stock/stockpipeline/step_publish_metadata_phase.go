@@ -140,6 +140,20 @@ func publishMetadataPhase(
 		RootFolderResolved: in != nil && in.DriveFolderResolved,
 		PathLeafName:       metaLeafName,
 	}
+	if in != nil && in.SkipMetadataUpload {
+		// Operator opt-out (RuntimeConfig.SkipMetadataUpload): the run-level
+		// metadata.json is composed + hashed above for the finalization
+		// contract, but it is NOT uploaded, so the clips folder keeps only
+		// the videos. The TimestampDriveFolderLink backfill below is
+		// intentionally skipped too (there is no metadata Drive location).
+		return MetadataState{
+			LocalPath:          metaVA.LocalPath,
+			SHA256:             metaVA.SHA256,
+			SizeBytes:          metaVA.SizeBytes,
+			DriveUploadSkipped: true,
+		}, nil
+	}
+
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
 	if metaPrepErr != nil {
 		return MetadataState{}, fmt.Errorf("%w: metadata.json upload: %v",

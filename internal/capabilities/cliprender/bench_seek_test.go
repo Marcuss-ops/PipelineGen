@@ -41,14 +41,14 @@ func benchLongSource(t *testing.T, segmentStartUS, segmentEndUS int64) ClipRende
 	const durationMS = 30 * 60 * 1000 // 30 minutes
 
 	req := baseRenderRequest()
-	req.Overlay = &OverlayRefSpec{
+	req.Overlays = []OverlayRefSpec{{
 		RenderJobID:        "overlay-render-001",
 		PlanFingerprint:    "fp-001",
 		RenderKey:          "rk-001",
 		SourceVideoAssetID: "long-source",
 		StartUS:            segmentStartUS,
 		EndUS:              segmentEndUS,
-	}
+	}}
 	req.Normalize()
 	contract, err := NewContractResolver().Resolve(context.Background(), req)
 	if err != nil {
@@ -64,11 +64,11 @@ func benchLongSource(t *testing.T, segmentStartUS, segmentEndUS int64) ClipRende
 		AudioMode:      AudioModeCopyIfCompatible,
 		BackgroundMode: BackgroundModeNone,
 		OutputPath:     "/scratch/out/segment.mp4",
-		Overlay: &PlanOverlayInput{
+		Overlay: &PlanOverlayInput{Segments: []PlanOverlayInputSegment{{
 			Segment: &OverlaySegment{RenderJobID: "overlay-render-001", RenderKey: "rk-001", LocalPath: "/scratch/overlay.mp4", SHA256: segmentSHA, SizeBytes: 4096},
 			StartMS: (segmentStartUS + 500) / 1000,
 			EndMS:   (segmentEndUS + 500) / 1000,
-		},
+		}}},
 	})
 	if err != nil {
 		t.Fatalf("compile long-source plan: %v", err)
@@ -104,11 +104,13 @@ func TestScenario7_SourceSeekPlanEvidence(t *testing.T) {
 			t.Errorf("%s: duration_ms = %d, want the full 30-minute source duration", pos.name, plan.DurationMS)
 		}
 		wantStartMS := (pos.start + 500) / 1000
-		if plan.Overlay == nil || plan.Overlay.StartMS != wantStartMS {
-			t.Fatalf("%s: window start = %v, want %d ms", pos.name, plan.Overlay, wantStartMS)
+		if plan.Overlay == nil || len(plan.Overlay.Segments) != 1 {
+			t.Fatalf("%s: sealed segments = %+v, want exactly one", pos.name, plan.Overlay)
 		}
-		if plan.Overlay.EndMS != wantStartMS+20_000 {
-			t.Errorf("%s: window end = %d ms, want %d ms", pos.name, plan.Overlay.EndMS, wantStartMS+20_000)
+		if seg := plan.Overlay.Segments[0]; seg.StartMS != wantStartMS {
+			t.Fatalf("%s: window start = %v, want %d ms", pos.name, seg, wantStartMS)
+		} else if seg.EndMS != wantStartMS+20_000 {
+			t.Errorf("%s: window end = %d ms, want %d ms", pos.name, seg.EndMS, wantStartMS+20_000)
 		}
 
 		// The source block must be exactly {asset_id, path, sha256}: no hidden
@@ -152,11 +154,11 @@ func TestScenario7_SourceSeekPlanEvidence(t *testing.T) {
 		AudioMode:      AudioModeCopyIfCompatible,
 		BackgroundMode: BackgroundModeNone,
 		OutputPath:     "/scratch/out/oob.mp4",
-		Overlay: &PlanOverlayInput{
+		Overlay: &PlanOverlayInput{Segments: []PlanOverlayInputSegment{{
 			Segment: &OverlaySegment{RenderJobID: "r", RenderKey: "k", LocalPath: "/scratch/o.mp4", SHA256: digest.SHA256Bytes([]byte("seg")), SizeBytes: 1},
 			StartMS: 29 * 60 * 1000,
 			EndMS:   31 * 60 * 1000,
-		},
+		}}},
 	}); err == nil {
 		t.Error("a segment window past the source duration must fail closed")
 	}

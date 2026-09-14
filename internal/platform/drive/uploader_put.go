@@ -324,6 +324,31 @@ func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult
 	return nil
 }
 
+// renameExistingFile converges the Drive display name of an already
+// published file onto the canonical filename the current run declares.
+//
+// Name-only Files.Update (no Media attached): the byte-identical payload is
+// never re-uploaded, so the P0.6 content-idempotency contract is preserved
+// while the folder stays honest about what each file contains.
+//
+// Fail-closed: a rename that cannot be applied means the operator-visible
+// folder no longer matches the manifest, so the error is surfaced (wrapped
+// with the same classification the upload paths use) rather than silently
+// returning a name the file does not have.
+func (u *Uploader) renameExistingFile(ctx context.Context, fileID, filename string) (*driveapi.File, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive not configured")
+	}
+	updated, err := u.Service.Files.Update(fileID, &driveapi.File{Name: filename}).
+		Fields("id,name,webViewLink,md5Checksum").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("drive put (rename reused file to %q): %w", filename, classifyDriveUploadError(err))
+	}
+	return updated, nil
+}
+
 // doPutFile performs the actual Files.Create / Files.Update / skip
 // branch based on ConflictPolicy + lookup match. Split out from PutFile
 // so the retry wrapper can re-invoke it (FindFileByName is re-run on
@@ -335,14 +360,52 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	// is NOT opened.
 	//
 	if req.ConflictPolicy == delivery.ConflictSkip && existing != nil && existing.FileID != "" {
-		return &PutFileResult{
+		// PR-STOCK-NAME-COHERENCE (Sept 2026): the idempotency key is
+		// CONTENT identity (dest:artifactID:sha256:version), so a re-run
+		// legitimately reuses the file created by an earlier run instead of
+		// re-uploading identical bytes. The Drive display name, however, is a
+		// per-run ordinal (Stock: clip_%03d by preparation order), so the
+		// reused file can carry a name that has nothing to do with the
+		// current run's manifest — an operator scanning the folder then reads
+		// clip_003 and downloads the content the manifest calls clip_008.
+		// Converge the display name onto the requested filename with a
+		// name-only Files.Update (no media attached → byte-identical asset is
+		// never re-uploaded) so the folder can never lie about its content.
+		result := &PutFileResult{
 			FileID:       existing.FileID,
 			Filename:     existing.Name,
 			WebViewLink:  existing.WebViewLink,
 			DownloadLink: "https://drive.google.com/uc?id=" + existing.FileID,
 			MD5Checksum:  existing.MD5Checksum,
 			Action:       PutActionSkipped,
-		}, nil
+		}
+		if req.Filename != "" && existing.Name != req.Filename {
+			renamed, renameErr := u.renameExistingFile(ctx, existing.FileID, req.Filename)
+			if renameErr != nil {
+				return nil, renameErr
+			}
+			result.Filename = req.Filename
+			result.Action = PutActionUpdated
+			if renamed != nil {
+				if renamed.Name != "" {
+					result.Filename = renamed.Name
+				}
+				if renamed.WebViewLink != "" {
+					result.WebViewLink = renamed.WebViewLink
+				}
+				if renamed.Md5Checksum != "" {
+					result.MD5Checksum = renamed.Md5Checksum
+				}
+			}
+			if u.Log != nil {
+				u.Log.Info("putFile: reused file renamed to the run's canonical filename",
+					zap.String("file_id", existing.FileID),
+					zap.String("previous_name", existing.Name),
+					zap.String("canonical_name", result.Filename),
+				)
+			}
+		}
+		return result, nil
 	}
 
 	// ConflictSkip without existing match: log explicit so callers

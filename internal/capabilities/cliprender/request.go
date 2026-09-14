@@ -324,9 +324,12 @@ type RenderRequest struct {
 	Audio         *AudioSpec       `json:"audio,omitempty"`
 	Destination   *DestinationSpec `json:"destination,omitempty"`
 	Execution     *ExecutionSpec   `json:"execution,omitempty"`
-	// Overlay is the optional entity-overlay lineage this final video
-	// composites. Nil for subtitles/watermark-only clips.
-	Overlay *OverlayRefSpec `json:"overlay,omitempty"`
+	// Overlays is the set of entity-overlay lineages this final video
+	// composites: ONE lineage per certified overlay.render artifact. Empty for
+	// subtitles/watermark-only clips. Production renders one short video per
+	// semantic overlay item, so a clip compositing a phrase AND an entity card
+	// declares two lineages (a single slot silently dropped the rest).
+	Overlays []OverlayRefSpec `json:"overlays,omitempty"`
 }
 
 // Normalize applies the canonical defaults. It is idempotent and
@@ -555,20 +558,22 @@ func (r *RenderRequest) Validate() error {
 		return fmt.Errorf("%w: destination.drive_folder_id is required (default DefaultDriveRootFolderID)", ErrInvalidRequest)
 	}
 
-	// Overlay lineage is all-or-nothing: a final video that declares an
-	// overlay must carry the complete chain (render job id + plan
+	// Overlay lineages are all-or-nothing, EACH of them: a final video that
+	// declares overlays must carry the complete chain (render job id + plan
 	// fingerprint + render key + source video asset id + the declared
-	// compositing window) so the composition is provable, never a bare "an
-	// overlay was here" and never an untimed blend.
-	if r.Overlay != nil {
-		if strings.TrimSpace(r.Overlay.RenderJobID) == "" ||
-			strings.TrimSpace(r.Overlay.PlanFingerprint) == "" ||
-			strings.TrimSpace(r.Overlay.RenderKey) == "" ||
-			strings.TrimSpace(r.Overlay.SourceVideoAssetID) == "" {
-			return fmt.Errorf("%w: overlay requires render_job_id, plan_fingerprint, render_key and source_video_asset_id", ErrInvalidRequest)
+	// compositing window) for every one, so the composition is provable, never
+	// a bare "an overlay was here" and never an untimed blend. A partial
+	// lineage is rejected rather than dropped: silently compositing three of
+	// four declared overlays is the failure this list contract exists to stop.
+	for i, overlay := range r.Overlays {
+		if strings.TrimSpace(overlay.RenderJobID) == "" ||
+			strings.TrimSpace(overlay.PlanFingerprint) == "" ||
+			strings.TrimSpace(overlay.RenderKey) == "" ||
+			strings.TrimSpace(overlay.SourceVideoAssetID) == "" {
+			return fmt.Errorf("%w: overlay %d requires render_job_id, plan_fingerprint, render_key and source_video_asset_id", ErrInvalidRequest, i)
 		}
-		if r.Overlay.StartUS < 0 || r.Overlay.EndUS <= r.Overlay.StartUS {
-			return fmt.Errorf("%w: overlay requires a valid compositing window (end_us > start_us >= 0)", ErrInvalidRequest)
+		if overlay.StartUS < 0 || overlay.EndUS <= overlay.StartUS {
+			return fmt.Errorf("%w: overlay %d requires a valid compositing window (end_us > start_us >= 0)", ErrInvalidRequest, i)
 		}
 	}
 

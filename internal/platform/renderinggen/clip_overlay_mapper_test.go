@@ -37,7 +37,7 @@ func mapperOverlayPlan(t *testing.T) (cliprender.ClipRenderPlanV1, string) {
 		Output:     cliprender.PlanOutput{ContractID: "VELOX_ASSEMBLY_READY_V1", Container: "mp4", VideoCodec: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1},
 		Audio:      cliprender.PlanAudio{Mode: cliprender.AudioModeCopyIfCompatible, Codec: "aac", SampleRate: 48000, Channels: 2},
 		OutputPath: t.TempDir() + "/out.mp4",
-		Overlay: &cliprender.PlanOverlay{
+		Overlay: &cliprender.PlanOverlay{Segments: []cliprender.PlanOverlaySegment{{
 			RenderJobID: "render-overlay-001",
 			RenderKey:   "rk-overlay-001",
 			Path:        segmentPath,
@@ -45,7 +45,7 @@ func mapperOverlayPlan(t *testing.T) (cliprender.ClipRenderPlanV1, string) {
 			SizeBytes:   2048,
 			StartMS:     1000,
 			EndMS:       3000,
-		},
+		}}},
 	}
 	if err := plan.Seal(); err != nil {
 		t.Fatal(err)
@@ -82,6 +82,57 @@ func TestMapClipPlanToOverlayPlan_EmitsSinglePassVideoOverlay(t *testing.T) {
 	if len(item.Assets) != 1 {
 		t.Fatalf("item asset_refs = %+v, want the overlay segment", item.Assets)
 	}
+	// A second segment in the same plan must produce a SECOND item with a
+	// distinct (layer-safe) id and its own window, so a scene compositing a
+	// phrase AND an entity card keeps both.
+	multiPlan, _ := mapperOverlayPlan(t)
+	multiPlan.Overlay.Segments = append(multiPlan.Overlay.Segments, cliprender.PlanOverlaySegment{
+		RenderJobID: "render-overlay-002",
+		RenderKey:   "rk-overlay-002",
+		Path:        "/scratch/second-segment.mp4",
+		SHA256:      strings.Repeat("d", 64),
+		SizeBytes:   1024,
+		StartMS:     3000,
+		EndMS:       3900,
+	})
+	if err := multiPlan.Seal(); err != nil {
+		t.Fatalf("seal multi-segment plan: %v", err)
+	}
+	multiRaw, err := MapClipPlanToOverlayPlan(multiPlan)
+	if err != nil {
+		t.Fatalf("map multi-segment plan: %v", err)
+	}
+	var multiDoc struct {
+		Items []overlayItem `json:"items"`
+	}
+	if err := json.Unmarshal(multiRaw, &multiDoc); err != nil {
+		t.Fatalf("decode multi-segment items: %v", err)
+	}
+	if len(multiDoc.Items) != 2 {
+		t.Fatalf("multi-segment items = %d, want one semantic item per declared segment", len(multiDoc.Items))
+	}
+	if multiDoc.Items[0].ID == multiDoc.Items[1].ID {
+		t.Fatalf("segment items must have distinct layer ids, both were %q", multiDoc.Items[0].ID)
+	}
+	if multiDoc.Items[1].StartMS != 3000 || multiDoc.Items[1].EndMS != 3900 {
+		t.Fatalf("second item window = [%d, %d)ms, want [3000, 3900)", multiDoc.Items[1].StartMS, multiDoc.Items[1].EndMS)
+	}
+	if multiDoc.Items[1].Assets[0].SHA256 != strings.Repeat("d", 64) {
+		t.Fatalf("second item asset = %+v", multiDoc.Items[1].Assets[0])
+	}
+	// Both segments must be staged for the prefetch, not just the first.
+	multiRefs, err := overlayPlanAssets(multiPlan)
+	if err != nil {
+		t.Fatalf("multi asset refs: %v", err)
+	}
+	staged := map[string]string{}
+	for _, ref := range multiRefs {
+		staged[ref.Hash] = ref.LocalPath
+	}
+	if staged[strings.Repeat("d", 64)] != "/scratch/second-segment.mp4" {
+		t.Fatalf("second segment not staged with its local path: %+v", multiRefs)
+	}
+
 	// overlay-plan.v1 declares preset_id/motion_id with minLength 1, so an
 	// empty value must be OMITTED rather than sent as "". RenderingGen's
 	// cross-repo contract test validates this exact shape against the schema.

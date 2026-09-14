@@ -21,6 +21,7 @@ type localizedRenderRequest struct {
 	watermarkSpec      *cliprender.WatermarkSpec
 	background         *cliprender.MaterializedAsset
 	backgroundMode     string
+	overlays           []cliprender.OverlayRefSpec
 	destinationFolder  string
 	subtitleFolder     string
 }
@@ -42,6 +43,10 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
+	overlays, err := a.resolveOverlays(in)
+	if err != nil {
+		return localizedRenderRequest{}, err
+	}
 	destination, subtitle, err := a.resolveRenderFolders(ctx, in, identity.clipID)
 	if err != nil {
 		return localizedRenderRequest{}, err
@@ -51,8 +56,51 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	return localizedRenderRequest{
 		identity: identity, request: request, generatedSubtitles: generated,
 		watermark: watermark, watermarkSpec: watermarkSpec, background: background,
-		backgroundMode: backgroundMode, destinationFolder: destination, subtitleFolder: subtitle,
+		backgroundMode: backgroundMode, overlays: overlays,
+		destinationFolder: destination, subtitleFolder: subtitle,
 	}, nil
+}
+
+// resolveOverlays carries the run's certified, LANGUAGE-INDEPENDENT entity
+// overlays into the render request, one per semantic overlay item. It performs
+// no resolution of its own: each lineage IS the certified overlay render
+// reference, and every segment is content-addressed, so every language variant
+// passes the same render_keys and the fan-out reuses one overlay render per item
+// instead of re-rendering them per language.
+//
+// Fail-closed: a partial lineage (the clip.render contract is all-or-nothing)
+// or an invalid window is a typed error, never a half-declared overlay that
+// silently composites nothing — and never a variant that carries three of the
+// four declared overlays.
+func (a *localizedRenderEnqueuerAdapter) resolveOverlays(in scriptgeneration.LocalizedRenderInput) ([]cliprender.OverlayRefSpec, error) {
+	lineages := in.Overlays
+	if len(lineages) == 0 {
+		return nil, nil
+	}
+	out := make([]cliprender.OverlayRefSpec, 0, len(lineages))
+	for i, lineage := range lineages {
+		if strings.TrimSpace(lineage.RenderJobID) == "" ||
+			strings.TrimSpace(lineage.PlanFingerprint) == "" ||
+			strings.TrimSpace(lineage.RenderKey) == "" ||
+			strings.TrimSpace(lineage.SourceVideoAssetID) == "" {
+			return nil, fmt.Errorf("localized render: overlay %d lineage is incomplete (render_job_id, plan_fingerprint, render_key and source_video_asset_id are required)", i)
+		}
+		if lineage.StartUS < 0 || lineage.EndUS <= lineage.StartUS {
+			return nil, fmt.Errorf("localized render: overlay %d window is invalid (end_us %d must be > start_us %d >= 0)", i, lineage.EndUS, lineage.StartUS)
+		}
+		// The scripts domain mirror carries the identical identity: the mapping
+		// is field-for-field, so every language variant keeps passing the same
+		// render_keys and each overlay render is reused instead of re-rendered.
+		out = append(out, cliprender.OverlayRefSpec{
+			RenderJobID:        lineage.RenderJobID,
+			PlanFingerprint:    lineage.PlanFingerprint,
+			RenderKey:          lineage.RenderKey,
+			SourceVideoAssetID: lineage.SourceVideoAssetID,
+			StartUS:            lineage.StartUS,
+			EndUS:              lineage.EndUS,
+		})
+	}
+	return out, nil
 }
 
 func (a *localizedRenderEnqueuerAdapter) resolveWatermark(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (*cliprender.MaterializedAsset, *cliprender.WatermarkSpec, error) {
@@ -157,6 +205,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
 		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
 		Background: built.background, BackgroundMode: built.backgroundMode,
+		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SubtitlesStyle:         subtitleStyle(in),
 		OnRendered: func(artifact localization.LocalizedClipArtifact) error {

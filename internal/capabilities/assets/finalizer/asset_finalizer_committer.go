@@ -151,8 +151,14 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		}
 	}
 
-	locations := []persistence.LocationCommit{
-		{
+	// An artifact that carries a real remote location contributes one
+	// asset_locations row. An artifact deliberately kept local (for example
+	// the Stock metadata.json when RuntimeConfig.SkipMetadataUpload is set)
+	// has an empty FileID/WebViewLink and MUST NOT insert an empty location
+	// row: media_assets would end up pointing at a non-existent remote file.
+	var locations []persistence.LocationCommit
+	if artifact.Location.FileID != "" || artifact.Location.WebViewLink != "" {
+		locations = append(locations, persistence.LocationCommit{
 			Kind:          artifact.Location.Provider,
 			Provider:      artifact.Location.Provider,
 			ExternalID:    artifact.Location.FileID,
@@ -163,7 +169,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 			FileSizeBytes: artifact.SizeBytes,
 			LegacyFileMD5: artifact.SHA256,
 			IsPrimary:     true,
-		},
+		})
 	}
 
 	var durationMs int64
@@ -201,7 +207,15 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	}
 	metadata.SourceVersion = sourceVersion
 	metadata.SourceProvider = sourceProvider
-	searchText := strings.TrimSpace(artifact.Description)
+	// The artifact's own searchable surface: title, description, tags,
+	// source URL and category. Falling back straight to the filename
+	// (the pre-fix behaviour) published anonymous rows — a Stock clip
+	// acquired from a query such as "mike tyson" committed
+	// search_text="clip_001.mp4", so no term search could ever return
+	// it even though the clip was fully indexed. The filename stays as
+	// the last-resort fallback when every metadata field is empty.
+	title := artifactMetadataString(artifact.ArtifactMetadata, "title")
+	searchText := composeArtifactSearchText(title, artifact.Description, artifact.ArtifactMetadata)
 	if searchText == "" {
 		searchText = strings.TrimSpace(artifact.Filename)
 	}
@@ -227,6 +241,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		Category:            metadata.Category,
 		ContentHash:         artifact.SHA256,
 		Description:         artifact.Description,
+		Title:               title,
 		SearchText:          searchText,
 		DurationMs:          durationMs,
 		LifecycleState:      lifecycleState,
@@ -245,6 +260,71 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		RequestedAt:         time.Now(),
 		IndexPriority:       indexPriority,
 		IndexEventKeySuffix: ":search:" + searchRevision[:16],
+	}
+}
+
+// composeArtifactSearchText builds the committed media_assets.search_text
+// from the artifact's searchable metadata, de-duplicating repeated values
+// while preserving the canonical order (title, description, tags, source
+// URL, category). Returns "" when nothing searchable is present so the
+// caller can fall back to the filename.
+func composeArtifactSearchText(title, description string, metadata map[string]any) string {
+	parts := make([]string, 0, 5+4)
+	seen := make(map[string]struct{}, 8)
+	appendPart := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		parts = append(parts, value)
+	}
+	appendPart(title)
+	appendPart(description)
+	for _, tag := range artifactMetadataTags(metadata) {
+		appendPart(tag)
+	}
+	appendPart(artifactMetadataString(metadata, "source_url"))
+	appendPart(artifactMetadataString(metadata, "category"))
+	return strings.Join(parts, " ")
+}
+
+// artifactMetadataString reads a trimmed string from an artifact metadata
+// map, tolerating the non-string values a JSON round-trip can produce.
+func artifactMetadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+// artifactMetadataTags reads the "tags" list from an artifact metadata map,
+// accepting the []string and []any shapes produced by in-process and
+// JSON round-tripped artifacts respectively.
+func artifactMetadataTags(metadata map[string]any) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	switch value := metadata["tags"].(type) {
+	case []string:
+		return value
+	case []any:
+		tags := make([]string, 0, len(value))
+		for _, raw := range value {
+			if tag, ok := raw.(string); ok && strings.TrimSpace(tag) != "" {
+				tags = append(tags, tag)
+			}
+		}
+		return tags
+	default:
+		return nil
 	}
 }
 

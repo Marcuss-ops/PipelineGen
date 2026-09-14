@@ -96,11 +96,14 @@ type Dependencies struct {
 	// `internal/capabilities/assets/clips/` (routes `GET /:source/clips`,
 	// `GET /:source/clips/:id`, `POST /:source/clips/:id/status`,
 	// `POST /:source/clips/:id/verify`, `POST /:source/clips/:id/fix-hash`,
-	// `DELETE /:source/clips/:id`) and is mounted on the parent
-	// `/api/media` group via the `Clips api.Descriptor` wire below.
-	// The full mount path is `/api/media/:source/clips/*` — there is
-	// no separate `/api/clips` or `/api/media/clips` prefix; the
-	// source segment is the dynamic part. godlike/06 SSOT: this
+	// `DELETE /:source/clips/:id`) and is mounted via the
+	// `Clips api.Descriptor` wire below on the canonical clips prefix
+	// `/api/media/clips` declared by
+	// `internal/platform/httpserver/transport/wire.go`.
+	// The full mount path is `/api/media/clips/:source/clips/*`; the
+	// source segment is the dynamic part and the extra `clips` segment
+	// comes from that wire prefix (a bare `/api/media/:source/clips/*`
+	// path is not registered and 404s). godlike/06 SSOT: this
 	// field is the SOLE canonical owner of the clips HTTP surface
 	// wire (composition root constructs the *clips.ClipsDescriptor
 	// in `internal/app/wire_assets_clips.go::buildClipsBundle` and

@@ -288,11 +288,12 @@ func newStockFinalizeRequest(jobID string, lease capfinalization.Lease, resultDa
 		Fingerprint: fingerprint,
 		Artifacts:   fromLegacyChunks(chunks),
 		Metadata: finalize.Metadata{
-			LocalPath:         metadata.LocalPath,
-			SHA256:            metadata.SHA256,
-			SizeBytes:         metadata.SizeBytes,
-			RemoteFileID:      metadata.RemoteFileID,
-			RemoteWebViewLink: metadata.RemoteWebViewLink,
+			LocalPath:          metadata.LocalPath,
+			SHA256:             metadata.SHA256,
+			SizeBytes:          metadata.SizeBytes,
+			RemoteFileID:       metadata.RemoteFileID,
+			RemoteWebViewLink:  metadata.RemoteWebViewLink,
+			DriveUploadSkipped: metadata.DriveUploadSkipped,
 		},
 	}
 }
@@ -387,11 +388,12 @@ func toLegacyChunks(artifacts []finalize.Artifact) []ChunkState {
 
 func toLegacyMetadata(metadata finalize.Metadata) MetadataState {
 	return MetadataState{
-		LocalPath:         metadata.LocalPath,
-		SHA256:            metadata.SHA256,
-		SizeBytes:         metadata.SizeBytes,
-		RemoteFileID:      metadata.RemoteFileID,
-		RemoteWebViewLink: metadata.RemoteWebViewLink,
+		LocalPath:          metadata.LocalPath,
+		SHA256:             metadata.SHA256,
+		SizeBytes:          metadata.SizeBytes,
+		RemoteFileID:       metadata.RemoteFileID,
+		RemoteWebViewLink:  metadata.RemoteWebViewLink,
+		DriveUploadSkipped: metadata.DriveUploadSkipped,
 	}
 }
 

@@ -263,8 +263,8 @@ type overlayItem struct {
 // content-addressed asset identity. The mapper (plan emission) and the asset
 // prefetch (object-store staging) both derive the logical path from it, so the
 // URL the plan references is exactly the object the queue materializes.
-func overlaySegmentAssetID(overlay *cliprender.PlanOverlay) string {
-	short := strings.ToLower(strings.TrimSpace(overlay.SHA256))
+func overlaySegmentAssetID(segment *cliprender.PlanOverlaySegment) string {
+	short := strings.ToLower(strings.TrimSpace(segment.SHA256))
 	if len(short) > 16 {
 		short = short[:16]
 	}
@@ -274,6 +274,14 @@ func overlaySegmentAssetID(overlay *cliprender.PlanOverlay) string {
 		short = "segment"
 	}
 	return "overlay-" + short
+}
+
+// overlaySegmentItemID makes a semantic ITEM identity unique per declared
+// segment. Two segments can legitimately share content (the same item rendered
+// once, composited on two windows), so the content-addressed asset id alone
+// would collide: item ids are the Chronon layer ids, which must be unique.
+func overlaySegmentItemID(assetID string, index int) string {
+	return fmt.Sprintf("%s-%d", assetID, index)
 }
 
 // overlayAssetRef references a content-addressed asset. The LogicalPath is
@@ -473,32 +481,37 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		Channels:   plan.Audio.Channels,
 	}
 
-	// Entity overlay — a pre-rendered segment composited INSIDE the same
-	// Chronon render pass. Emitting it as a semantic item is what removes the
-	// second full transcode: the clip is encoded once, with the overlay timed
-	// on the timeline (Chronon samples the segment at frame - layer_start).
+	// Entity overlays — one pre-rendered segment PER certified overlay.render
+	// artifact, each composited INSIDE the same Chronon render pass. Emitting
+	// every segment as its own semantic item is what removes the second full
+	// transcode: the clip is encoded once, with each overlay timed on the
+	// timeline (Chronon samples a segment at frame - layer_start). Dropping all
+	// but one segment here is what used to silently lose a scene's second and
+	// third overlay.
 	if plan.Overlay != nil {
-		assetID := overlaySegmentAssetID(plan.Overlay)
-		item := overlayItem{
-			ID:           assetID,
-			Kind:         SemanticKindVideoOverlay,
-			TemplateID:   SemanticTemplateVideoOverlay,
-			MotionParams: map[string]any{},
-			Params:       map[string]any{"fit": "cover"},
-			StartMS:      plan.Overlay.StartMS,
-			EndMS:        plan.Overlay.EndMS,
-			Assets: []overlayAssetRef{{
-				AssetID:   assetID,
-				SHA256:    plan.Overlay.SHA256,
-				URL:       hashAddressedPath(assetID, "overlay.mp4"),
-				MediaType: "video/mp4",
-			}},
+		for index, segment := range plan.Overlay.Segments {
+			assetID := overlaySegmentAssetID(&segment)
+			item := overlayItem{
+				ID:           overlaySegmentItemID(assetID, index),
+				Kind:         SemanticKindVideoOverlay,
+				TemplateID:   SemanticTemplateVideoOverlay,
+				MotionParams: map[string]any{},
+				Params:       map[string]any{"fit": "cover"},
+				StartMS:      segment.StartMS,
+				EndMS:        segment.EndMS,
+				Assets: []overlayAssetRef{{
+					AssetID:   assetID,
+					SHA256:    segment.SHA256,
+					URL:       hashAddressedPath(assetID, "overlay.mp4"),
+					MediaType: "video/mp4",
+				}},
+			}
+			rawItem, err := json.Marshal(item)
+			if err != nil {
+				return nil, fmt.Errorf("clip plan mapper: marshal overlay item: %w", err)
+			}
+			op.Items = append(op.Items, json.RawMessage(rawItem))
 		}
-		rawItem, err := json.Marshal(item)
-		if err != nil {
-			return nil, fmt.Errorf("clip plan mapper: marshal overlay item: %w", err)
-		}
-		op.Items = append(op.Items, json.RawMessage(rawItem))
 	}
 
 	raw, err := json.Marshal(op)
@@ -556,12 +569,15 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 		})
 	}
 	if plan.Overlay != nil {
-		assetID := overlaySegmentAssetID(plan.Overlay)
-		refs = append(refs, assetRef{
-			Hash:        plan.Overlay.SHA256,
-			LogicalPath: hashAddressedPath(assetID, "overlay.mp4"),
-			LocalPath:   plan.Overlay.Path,
-		})
+		// Every declared segment must be staged, not just the first: a segment
+		// the worker cannot materialize fails the render after compilation.
+		for _, segment := range plan.Overlay.Segments {
+			refs = append(refs, assetRef{
+				Hash:        segment.SHA256,
+				LogicalPath: hashAddressedPath(overlaySegmentAssetID(&segment), "overlay.mp4"),
+				LocalPath:   segment.Path,
+			})
+		}
 	}
 	if plan.Watermark != nil && plan.Watermark.Text != "" && plan.Watermark.SHA256 == "" {
 		font, err := watermarkFontAssetForStyle(plan.Watermark.Style)

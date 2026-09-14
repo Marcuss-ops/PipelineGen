@@ -81,6 +81,22 @@ type LocalizedRenderInput struct {
 	// choices to the single Rust clip-render pass.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
 
+	// Overlays carries the certified lineage of EVERY rendered entity overlay
+	// this clip composites INSIDE the same render pass: production renders one
+	// short video per semantic overlay item, so a scene with a phrase, an entity
+	// card and a keyword carries three lineages. They are LANGUAGE-INDEPENDENT:
+	// every language variant of the same (run, scene) carries the identical
+	// lineages, so one certified overlay render per item is reused by the whole
+	// fan-out and no overlay is ever re-rendered per language — each segment is
+	// content addressed (render_key), so the resolver hashes it once and every
+	// variant reuses those bytes.
+	//
+	// Empty means "this clip carries no overlay" for callers that can prove it
+	// (a scene with no overlay item) AND for callers whose run has not certified
+	// the overlays yet. It is in-process only: the lineages are resolved at
+	// render time, never persisted on the job payload.
+	Overlays []LocalizedOverlayLineage `json:"-"`
+
 	// OnRendered, when non-nil, is invoked once per certified produced video
 	// of the fan-out (render + upload completed) with that video's identity.
 	// The runner records each produced localized clip (asset id, sha256,
@@ -94,6 +110,29 @@ type LocalizedRenderInput struct {
 	// restored from a partial result. The adapter may publish it directly.
 	ResumeFrom *LocalizedRenderResult             `json:"-"`
 	OnFailed   func(LocalizedRenderFailure) error `json:"-"`
+}
+
+// LocalizedOverlayLineage is the domain mirror of ONE clip.render overlay
+// lineage (cliprender.OverlayRefSpec) this package's ports carry. The scripts
+// capability owns the orchestration seam, not the clip.render wire contract, so
+// the port stays free of the cliprender dependency (Verdetto invariant:
+// ports return domain types from this package). The composition root maps each
+// lineage to the cliprender type at the boundary.
+type LocalizedOverlayLineage struct {
+	// RenderJobID is the overlay.render queue job id that produced the
+	// composited overlay artifact.
+	RenderJobID string `json:"render_job_id"`
+	// PlanFingerprint is the frozen OverlayPlan fingerprint the render was
+	// validated against.
+	PlanFingerprint string `json:"plan_fingerprint"`
+	// RenderKey is the content-addressed render key of the plan item.
+	RenderKey string `json:"render_key"`
+	// SourceVideoAssetID is the video asset the overlay is composited over.
+	SourceVideoAssetID string `json:"source_video_asset_id"`
+	// StartUS / EndUS are the declared compositing window on the final
+	// timeline (integer microseconds).
+	StartUS int64 `json:"start_us"`
+	EndUS   int64 `json:"end_us"`
 }
 
 // LocalizedRenderResult is the certified outcome of one localized render

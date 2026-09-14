@@ -386,6 +386,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				u.core.Log.Warn("clip + tracks + cues committed but index blocked by terminal outbox row (BLOCKER #4)",
 					zap.String("clip_id", clipID),
 					zap.Error(wErr))
+				// The clip + tracks ARE durable, so the multilingual fan-out is
+				// still owed (see materialize_fanout.go).
+				u.enqueueMaterializeFanOut(ctx, clipID, bundle)
 				return bundle, nil
 			}
 			// godlike/07 typed-error contract: a policy violation
@@ -420,6 +423,13 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		// downgrade branch anymore — LocalizedWriter is required at
 		// composition time (ValidateProcessSegmentSubBundles), so the
 		// per-segment pipeline has exactly ONE commit contract.
+
+		// POSTGRES-MEDIA-CUTOVER follow-up (September 2026): schedule the
+		// canonical multilingual materialization for the clip we just
+		// committed. Without this the direct YouTube path produced only the
+		// languages the acquisition chain happened to find — every other
+		// configured target language was never generated.
+		u.enqueueMaterializeFanOut(ctx, clipID, bundle)
 	}
 
 	return bundle, nil

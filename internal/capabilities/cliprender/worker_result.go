@@ -151,25 +151,36 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		}
 		result["render"] = renderBlock
 	}
-	if req.Overlay != nil {
-		overlayBlock := map[string]any{
-			"render_job_id":         req.Overlay.RenderJobID,
-			"plan_fingerprint":      req.Overlay.PlanFingerprint,
-			"render_key":            req.Overlay.RenderKey,
-			"source_video_asset_id": req.Overlay.SourceVideoAssetID,
-			"start_us":              req.Overlay.StartUS,
-			"end_us":                req.Overlay.EndUS,
-		}
+	if len(req.Overlays) > 0 {
 		// The overlay is composited inside the render, so the plan is the
-		// authority for WHERE it landed (the window is part of the plan digest)
-		// and the render block is the authority for the output bytes.
-		if plan.Overlay != nil {
-			overlayBlock["single_pass"] = true
-			overlayBlock["start_ms"] = plan.Overlay.StartMS
-			overlayBlock["end_ms"] = plan.Overlay.EndMS
-			overlayBlock["segment_sha256"] = plan.Overlay.SHA256
+		// authority for WHERE every segment landed (each window is part of the
+		// plan digest) and the render block is the authority for the output
+		// bytes. One entry per declared lineage keeps the provenance of a
+		// multi-item clip auditable instead of collapsing it to the first.
+		provenance := make([]map[string]any, 0, len(req.Overlays))
+		for i, lineage := range req.Overlays {
+			entry := map[string]any{
+				"render_job_id":         lineage.RenderJobID,
+				"plan_fingerprint":      lineage.PlanFingerprint,
+				"render_key":            lineage.RenderKey,
+				"source_video_asset_id": lineage.SourceVideoAssetID,
+				"start_us":              lineage.StartUS,
+				"end_us":                lineage.EndUS,
+			}
+			if plan.Overlay != nil && i < len(plan.Overlay.Segments) {
+				seg := plan.Overlay.Segments[i]
+				entry["start_ms"] = seg.StartMS
+				entry["end_ms"] = seg.EndMS
+				entry["segment_sha256"] = seg.SHA256
+			}
+			provenance = append(provenance, entry)
 		}
-		result["overlay"] = overlayBlock
+		// single_pass is a property of the composition, not of one segment: the
+		// clip is encoded once with every declared overlay inside it.
+		result["overlay"] = map[string]any{
+			"single_pass": true,
+			"segments":    provenance,
+		}
 	}
 	if published != nil {
 		result["asset"] = map[string]any{

@@ -66,6 +66,13 @@ type RenderOptions struct {
 	BackgroundMode         string
 	ForegroundScalePercent int
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
+	// Overlays carries the reused entity overlay lineages this variant
+	// composites in the SAME render pass, one per certified overlay.render
+	// artifact (a scene's phrase, entity card and keyword are three segments).
+	// They are shared by every language variant of a source
+	// (language-independent), so each segment is resolved/hashed once and every
+	// language reuses those bytes instead of re-rendering the overlay.
+	Overlays []cliprender.OverlayRefSpec
 }
 
 // ExtendedRenderPlanExecutor is the full-fidelity executor implemented by
@@ -146,10 +153,15 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		BackgroundMode:         plan.BackgroundMode,
 		ForegroundScalePercent: plan.ForegroundScalePercent,
 		SubtitlesStyle:         plan.SubtitlesStyle,
+		Overlays:               plan.Overlays,
 	}
+	// hasVisual selects the full-fidelity executor. The overlays belong in this
+	// set: an overlay-only clip (no watermark, no background) would otherwise
+	// take the plain Execute branch and drop the reused overlays silently.
 	hasVisual := plan.Watermark != nil ||
 		(plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "") ||
-		plan.Background != nil || plan.BackgroundMode != "" || plan.ForegroundScalePercent > 0
+		plan.Background != nil || plan.BackgroundMode != "" || plan.ForegroundScalePercent > 0 ||
+		len(plan.Overlays) > 0
 	if extended, ok := r.executor.(ExtendedRenderPlanExecutor); ok && hasVisual {
 		// Full fidelity: background + subtitle style ride the same sealed
 		// render_clip invocation as the watermark (no second pass).

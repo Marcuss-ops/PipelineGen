@@ -79,7 +79,14 @@ func (f *Finalizer) writeArtifacts(
 			return nil, nil, fmt.Errorf("finalizer: artifact[%d] (%s): %w", i, a.ArtifactID, err)
 		}
 		metrics.FinalizerWriteArtifactsIterTotal.WithLabelValues("ok").Inc()
-		refs = append(refs, ref)
+		// PR-STOCK-METADATA-LOCAL-ONLY (Sept 2026): a zero ArtifactID means the
+		// finalizer deliberately wrote NO durable row for this artifact (e.g. the
+		// Stock metadata.json under SkipMetadataUpload). Appending the zero value
+		// would put a ref to a non-existent asset into the finalization result —
+		// the "fake availability" class the spine is built to prevent.
+		if ref.ArtifactID != "" {
+			refs = append(refs, ref)
+		}
 		artifactEvents = append(artifactEvents, events...)
 		if f.log != nil {
 			f.log.Debug("finalizer: writeArtifacts iter ok",
