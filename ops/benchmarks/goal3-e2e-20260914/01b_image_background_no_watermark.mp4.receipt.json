@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 1389835,
-    "sha256": "91e63f0fad6506e9102066002395659c3d611cf1810013f245e90dc340a5ee02"
+    "bytes": 1388275,
+    "sha256": "8a3bd467db58a49d36f334e9a4cdab11e21bff8ea1ea0ea6cafc1187ef7aefa8"
   },
   "render": {
     "backend": "vulkan",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 249.866163,
-    "sha256_ms": 6.148076,
-    "total_ms": 256.278669
+    "probe_ms": 232.363239,
+    "sha256_ms": 5.566291,
+    "total_ms": 238.20319
   },
   "verification": {
     "audio": "skip",

@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 293.653723,
-    "sha256_ms": 12.640068,
-    "total_ms": 306.523003
+    "probe_ms": 286.586052,
+    "sha256_ms": 13.985288,
+    "total_ms": 300.785856
   },
   "verification": {
     "audio": "skip",
