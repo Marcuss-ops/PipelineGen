@@ -46,6 +46,7 @@ type Worker struct {
 	publisher            RenderPublisher           // optional in unit tests; required by production wiring
 	folderResolver       DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
 	overlayResolver      OverlaySegmentResolver    // required when a request declares an overlay
+	renderCache          RenderCache               // optional: deterministic fingerprint → certified locator
 	log                  *zap.Logger
 }
 
