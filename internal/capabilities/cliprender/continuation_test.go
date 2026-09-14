@@ -291,3 +291,74 @@ func TestSettleCorrelationIDIsScopedAwayFromParent(t *testing.T) {
 		t.Fatalf("empty-parent fallback shape changed: %q", empty)
 	}
 }
+
+// TestResumeDocumentCarriesPreparationMeasurements pins the hand-off that keeps
+// the settle report honest. Preparation runs in the SUBMIT half, so the settle
+// continuation cannot re-measure it: if the measurements do not ride the resume
+// document, the settle report answers asset_materialize_ms = NOT_INSTRUMENTED
+// (or, worse, a fabricated zero) for work that really happened.
+func TestResumeDocumentCarriesPreparationMeasurements(t *testing.T) {
+	plan := sealedPlanFixture(t, "clip-resume-metrics")
+	compileMS := int64(37)
+	doc := ResumeDocument{
+		Plan:            plan,
+		Request:         RenderRequest{SourceAssetID: "source-asset-001"},
+		PublishFolderID: "folder-1",
+		PreparationTimings: PreparationTimings{
+			TotalWallMS: 12,
+			TotalWorkMS: 12,
+			Phases: []PhaseTiming{
+				{Phase: "resolve_contract", WallMS: 0, WorkMS: 0},
+				{Phase: "materialize_source", WallMS: 9, WorkMS: 9},
+				{Phase: "materialize_watermark", WallMS: 3, WorkMS: 3},
+			},
+		},
+		SubtitleCompileMS: &compileMS,
+	}
+	if err := doc.Validate(); err != nil {
+		t.Fatalf("valid resume document rejected: %v", err)
+	}
+
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal resume document: %v", err)
+	}
+	var decoded ResumeDocument
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode resume document: %v", err)
+	}
+	if got := materializeWallMS(decoded.PreparationTimings); got != 12 {
+		t.Errorf("materialize wall after round-trip = %d, want 12", got)
+	}
+	if decoded.SubtitleCompileMS == nil || *decoded.SubtitleCompileMS != 37 {
+		t.Errorf("subtitle_compile_ms after round-trip = %v, want 37", decoded.SubtitleCompileMS)
+	}
+
+	// A measured zero is NOT the same thing as "not measured": the pointer is
+	// what keeps those two distinguishable on the wire.
+	zero := int64(0)
+	measuredZero, err := json.Marshal(ResumeDocument{SubtitleCompileMS: &zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmeasured, err := json.Marshal(ResumeDocument{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(measuredZero), `"subtitle_compile_ms":0`) {
+		t.Errorf("a measured 0 ms compile wall was serialized as %s", measuredZero)
+	}
+	if strings.Contains(string(unmeasured), "subtitle_compile_ms") {
+		t.Errorf("an unmeasured compile wall was serialized as a measurement: %s", unmeasured)
+	}
+
+	// The resume is a pure reuse: nothing is downloaded, and the phase list
+	// stays empty when the submit half recorded none (never a fake zero).
+	prepared := preparedFromResume(decoded)
+	if prepared.Source == nil || !prepared.Source.FromCache {
+		t.Errorf("resume source must be a cache reuse (no download), got %+v", prepared.Source)
+	}
+	if got := materializeWallMS(preparedFromResume(ResumeDocument{Plan: plan}).Timings); got != -1 {
+		t.Errorf("a resume without preparation timings must stay NOT_INSTRUMENTED, got %d", got)
+	}
+}

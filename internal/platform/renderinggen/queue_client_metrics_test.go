@@ -99,3 +99,52 @@ func TestMetricsFromChrononArtifactKeepsUnknownFieldsUninstrumented(t *testing.T
 		t.Fatalf("missing summary became fabricated values: %+v", m)
 	}
 }
+
+// TestMetricsFromChrononArtifactProjectsRendererMeasuredPhases pins the
+// projection of the phases RenderingGen measures and the adapter used to drop:
+// the renderer's own output probe and output finalize, the Chronon process
+// service wall, and the worker's prep->GPU lane rendezvous wait. Those are the
+// buckets that explain a 36.7 s worker wall around an 8.2 s engine render.
+func TestMetricsFromChrononArtifactProjectsRendererMeasuredPhases(t *testing.T) {
+	m := metricsFromChrononMetrics(map[string]float64{
+		"probe_ms":                1120.99,
+		"publish_ms":              160.533,
+		"chronon_job_job_wall_ms": 8201.392,
+		"gpu_lane_wait_ms":        27000.0,
+	}, 1176, 0)
+	if m.ProbeMS != 1121 {
+		t.Errorf("probe_ms = %v, want 1121 (renderer output probe)", int64(m.ProbeMS))
+	}
+	if m.RendererOutputFinalizeMS != 161 {
+		t.Errorf("renderer_finalize_ms = %v, want 161 (renderer output finalize)", int64(m.RendererOutputFinalizeMS))
+	}
+	if m.ChrononServiceMS != 8201 {
+		t.Errorf("chronon_service_ms = %v, want 8201 (Chronon job wall)", int64(m.ChrononServiceMS))
+	}
+	if m.ChrononQueueWaitMS != 27000 {
+		t.Errorf("chronon_queue_wait_ms = %v, want 27000 (GPU lane rendezvous)", int64(m.ChrononQueueWaitMS))
+	}
+}
+
+// TestMetricsFromChrononArtifactDoesNotDoubleCountRendererInternalPhases pins
+// the deliberate NON-mapping: RenderingGen's asset_materialize_ms and
+// subtitle_burn_ms are phases of the renderer, i.e. they already live inside
+// the worker-owned render wall. Projecting them onto AssetMaterializeMS /
+// SubtitleCompileMS would count them twice, because those two fields are
+// accounted as PipelineGen's own upstream work.
+func TestMetricsFromChrononArtifactDoesNotDoubleCountRendererInternalPhases(t *testing.T) {
+	m := metricsFromChrononMetrics(map[string]float64{
+		"asset_materialize_ms":  0.989,
+		"subtitle_burn_ms":      0.286,
+		"overlay_compile_ms":    0.259,
+		"plan_ms":               0.206,
+		"sha256_ms":             0.14,
+		"objectstore_upload_ms": 82.606,
+	}, 1, 0)
+	if m.AssetMaterializeMS != cliprender.Metric(cliprender.NotInstrumented) {
+		t.Errorf("asset_materialize_ms = %v, want NOT_INSTRUMENTED (renderer-internal phase, carried from the resume instead)", int64(m.AssetMaterializeMS))
+	}
+	if m.SubtitleCompileMS != cliprender.Metric(cliprender.NotInstrumented) {
+		t.Errorf("subtitle_compile_ms = %v, want NOT_INSTRUMENTED (renderer-internal phase)", int64(m.SubtitleCompileMS))
+	}
+}

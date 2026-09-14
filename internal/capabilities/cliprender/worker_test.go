@@ -353,13 +353,13 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 		t.Fatalf("subtitle_compile_ms = %d, want NOT_INSTRUMENTED (subtitles disabled)", int64(metrics.SubtitleCompileMS))
 	}
 	// asset_materialize_ms folds the preparer's materialize phase walls into
-	// the report. Since the async cutover preparation runs in the SUBMIT half,
-	// the settle continuation is a pure resume (preparedFromResume carries no
-	// timings), so the settle report must honestly leave the dimension
-	// NOT_INSTRUMENTED rather than fabricate a zero. The real materialize wall
-	// is asserted on the submit result above — exactly where it was measured.
-	if int64(metrics.AssetMaterializeMS) != NotInstrumented {
-		t.Fatalf("asset_materialize_ms = %d, want NOT_INSTRUMENTED on the settle resume", int64(metrics.AssetMaterializeMS))
+	// the report. Preparation runs in the SUBMIT half, so the measurement rides
+	// the resume document and the settle report must surface the SAME measured
+	// wall. Degrading to NOT_INSTRUMENTED would hide work that really happened;
+	// fabricating a zero would invent a measurement. The submit result above
+	// asserts the phase list, so this asserts the projection.
+	if int64(metrics.AssetMaterializeMS) == NotInstrumented {
+		t.Fatal("asset_materialize_ms = NOT_INSTRUMENTED, want the submit-measured materialize wall carried through the resume document")
 	}
 }
 

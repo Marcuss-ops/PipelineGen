@@ -37,7 +37,30 @@ func metricsFromChrononMetrics(n map[string]float64, frameCount int, durationUS 
 	// nested RenderLoopMS diagnostic instead, so the two never conflate a
 	// remote queue round-trip with the engine loop.
 	set(&m.RendererStartupMS, "chronon_exclusive_wall_timeline_startup_ms")
-	set(&m.ProbeMS, "chronon_exclusive_wall_timeline_ffprobe_ms")
+	// The renderer's own output probe. RenderingGen probes the bytes it just
+	// wrote (container/codec/profile/pixel format/timebase/SAR/colour/GOP/audio
+	// block) before certifying them; that pass costs ~1 s per clip and used to
+	// be dropped on the floor, so the report could not answer "what did the
+	// post-render probe cost". `chronon_job_ffprobe_ms` is the fallback: the
+	// source probe the engine performs inside the render.
+	set(&m.ProbeMS, "probe_ms", "chronon_exclusive_wall_timeline_ffprobe_ms", "chronon_job_ffprobe_ms")
+	// The renderer-side output finalize (hash + object-store upload + artifact
+	// ledger). Deliberately NOT mapped from RenderingGen's asset_materialize_ms
+	// or subtitle_burn_ms: those are phases of the RENDERINGGEN worker, i.e.
+	// they already live inside the worker-owned render wall, whereas
+	// AssetMaterializeMS/SubtitleCompileMS are counted as PipelineGen's own
+	// upstream work and would be double counted. Their PipelineGen values are
+	// carried on the resume document instead.
+	set(&m.RendererOutputFinalizeMS, "publish_ms")
+	// The Chronon process service wall: what the engine itself measured for
+	// this render (render_loop + encode drain + mux + validation), excluding
+	// the RenderingGen worker's own prepare/probe/publish around it.
+	set(&m.ChrononServiceMS, "chronon_job_job_wall_ms")
+	// The worker's GPU admission wait: how long a fully prepared job blocked in
+	// the prep→GPU rendezvous. On a real 5-clip batch this was ~27 s of one
+	// clip's 36.7 s worker wall — the single largest unmeasured bucket — and it
+	// is the number that decides whether more GPU lanes can help at all.
+	set(&m.ChrononQueueWaitMS, "gpu_lane_wait_ms", "chronon_gpu_lane_wait_ms")
 	set(&m.DecodeMS, "chronon_job_gpu_video_decode_wall_ms", "chronon_job_gpu_decode_submit_ms")
 	set(&m.CompositeMS, "chronon_job_gpu_cuda_composite_wall_us")
 	if int64(m.CompositeMS) != cliprender.NotInstrumented {

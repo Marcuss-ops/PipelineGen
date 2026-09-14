@@ -269,6 +269,19 @@ type ResumeDocument struct {
 	Contract        *ResolvedContract `json:"contract,omitempty"`
 	Transcript      *TranscriptResult `json:"transcript,omitempty"`
 	Subtitles       *SubtitleArtifact `json:"subtitles,omitempty"`
+
+	// PreparationTimings is what the SUBMIT half measured while staging the
+	// clip's assets (materialize_source/watermark/background and the other
+	// phase walls). The settle continuation deliberately does NOT re-run
+	// preparation, so without carrying this the settle report would answer
+	// `asset_materialize_ms = NOT_INSTRUMENTED` for work that WAS measured and
+	// the job wall could not be reconciled against its own phases. An empty
+	// slice stays NOT_INSTRUMENTED — never a fabricated zero.
+	PreparationTimings PreparationTimings `json:"preparation_timings,omitempty"`
+	// SubtitleCompileMS is the ASS compile wall measured before Submit. It is a
+	// pointer so "subtitles were disabled / not measured" (absent) is
+	// distinguishable from "compiled in 0 ms" (present and zero).
+	SubtitleCompileMS *int64 `json:"subtitle_compile_ms,omitempty"`
 }
 
 // Validate fails closed on a document that cannot drive the post-submit half.

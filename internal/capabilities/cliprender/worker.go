@@ -111,6 +111,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		plan = doc.Plan
 		subtitleArtifact = doc.Subtitles
 		publishFolderID = doc.PublishFolderID
+		// Reuse the preparation measurements the submit half took. The settle
+		// phase does not prepare anything, so these are the phase walls that
+		// explain the submit side of the job wall; leaving them unset would
+		// report measured work as NOT_INSTRUMENTED.
+		if doc.SubtitleCompileMS != nil {
+			subtitleCompileMS = *doc.SubtitleCompileMS
+		}
 		prepared = preparedFromResume(doc)
 	} else {
 		if err := json.Unmarshal(j.Payload, &req); err != nil {
@@ -208,14 +215,19 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			return nil, fmt.Errorf("clip.render: executor is wired but continuation store/enqueuer is missing")
 		}
 		doc := ResumeDocument{
-			Plan:            plan,
-			Request:         req,
-			PublishFolderID: publishFolderID,
-			SourceTitle:     prepared.Source.Title,
-			SourceSizeBytes: prepared.Source.SizeBytes,
-			Contract:        prepared.Contract,
-			Transcript:      prepared.Transcript,
-			Subtitles:       subtitleArtifact,
+			Plan:               plan,
+			Request:            req,
+			PublishFolderID:    publishFolderID,
+			SourceTitle:        prepared.Source.Title,
+			SourceSizeBytes:    prepared.Source.SizeBytes,
+			Contract:           prepared.Contract,
+			Transcript:         prepared.Transcript,
+			Subtitles:          subtitleArtifact,
+			PreparationTimings: prepared.Timings,
+		}
+		if subtitleCompileMS >= 0 {
+			compileMS := subtitleCompileMS
+			doc.SubtitleCompileMS = &compileMS
 		}
 		resumeRef, storeErr := w.continuationStore.PutResumeDocument(ctx, doc)
 		if storeErr != nil {

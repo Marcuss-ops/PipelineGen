@@ -52,6 +52,16 @@ type RenderQueueJob struct {
 	State       string             `json:"state"`
 	FailReason  string             `json:"fail_reason,omitempty"`
 	Artifact    *RenderArtifact    `json:"artifact,omitempty"`
+
+	// Queue-owned lifecycle timestamps (GET /jobs/{id}). They are the ONLY
+	// measurement of where a remote render's wall went BEFORE the renderer
+	// touched it: QueuedAt→StartedAt is the admission wait (the queue had no
+	// worker capacity yet) and StartedAt→CompletedAt is the worker's service
+	// wall. A zero value means the queue did not report the timestamp; it is
+	// never fabricated into a measurement.
+	QueuedAt    time.Time `json:"queued_at,omitempty"`
+	StartedAt   time.Time `json:"started_at,omitempty"`
+	CompletedAt time.Time `json:"completed_at,omitempty"`
 }
 
 // RenderQueueClient is the narrow port for the central RenderingGen queue.

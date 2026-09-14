@@ -63,10 +63,18 @@ type RenderMetricsV2 struct {
 	// RendererStartupMS (which excludes it), so the report can attribute the
 	// probe instead of burying it inside startup.
 	ProbeMS Metric `json:"probe_ms"`
-	// ChrononQueueWaitMS is time waiting for PipelineGen's bounded GPU
-	// admission permit. ChrononServiceMS is only the Chronon process service
-	// wall while that permit is held. Both are diagnostics nested inside the
-	// worker-owned RenderWallMS and are never added on top of it.
+	// ChrononQueueWaitMS is the COMPLETE render-admission wait: how long the
+	// submitted render waited before it started rendering. It sums the two
+	// consecutive waits that are otherwise buried in the settle wall — the
+	// queue holding the job with no free RenderingGen worker (queued→claimed,
+	// measured by the producer from the queue's own timestamps) and the worker
+	// holding a fully prepared job with no free GPU lane (measured by
+	// RenderingGen as `gpu_lane_wait_ms`). ChrononServiceMS is the Chronon
+	// process service wall the engine itself measured for the render
+	// (`chronon_job_job_wall_ms`). Both are diagnostics nested inside the
+	// worker-owned RenderWallMS and are never added on top of it; they are what
+	// turns "the render wall was 40 s" into "4.2 s of admission wait + 8.2 s of
+	// engine service + the renderer's own pipeline".
 	ChrononQueueWaitMS Metric `json:"chronon_queue_wait_ms"`
 	ChrononServiceMS   Metric `json:"chronon_service_ms"`
 	DecodeMS           Metric `json:"decode_ms"`
@@ -316,11 +324,16 @@ func (m *RenderMetricsV2) exclusiveAccountedMS() int64 {
 	// nested diagnostics of CompositeMS and are never added separately.
 	if !add(m.RenderWallMS) {
 		add(m.RendererStartupMS)
-		add(m.ProbeMS)
-		add(m.ChrononQueueWaitMS)
+		// ProbeMS is a diagnostic INSIDE whichever render-service wall is
+		// available below: adding it next to a measured service wall would
+		// count the renderer's output probe twice. It is only additive when
+		// the service wall itself is unavailable.
 		if _, serviceMeasured := measured(m.ChrononServiceMS); serviceMeasured {
+			add(m.ChrononQueueWaitMS)
 			add(m.ChrononServiceMS)
 		} else {
+			add(m.ProbeMS)
+			add(m.ChrononQueueWaitMS)
 			add(m.DecodeMS)
 			add(m.CompositeMS)
 			add(m.FrameConversionMS)

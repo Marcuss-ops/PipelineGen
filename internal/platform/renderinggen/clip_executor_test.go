@@ -41,7 +41,13 @@ func (f *fakeClipQueue) Submit(_ context.Context, job scriptgen.RenderQueueJob) 
 }
 
 func (f *fakeClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJob, error) {
-	return scriptgen.RenderQueueJob{State: string(f.result.State), Artifact: toScriptArtifact(f.result.Artifact)}, nil
+	return scriptgen.RenderQueueJob{
+		State:       string(f.result.State),
+		Artifact:    toScriptArtifact(f.result.Artifact),
+		QueuedAt:    f.result.QueuedAt,
+		StartedAt:   f.result.StartedAt,
+		CompletedAt: f.result.CompletedAt,
+	}, nil
 }
 
 func (f *fakeClipQueue) Retry(_ context.Context, _ string) error {
@@ -517,5 +523,103 @@ func TestClipRenderExecutorPropagatesRetryError(t *testing.T) {
 	}
 	if q.retries != 1 {
 		t.Fatalf("Retry calls = %d, want 1", q.retries)
+	}
+}
+
+// TestClipRenderExecutorSettleSplitsAdmissionWaitFromEngineService pins the
+// attribution the clip.render report needed most: a settle wall that takes 40 s
+// for a clip whose engine render is 8 s must be explainable. Two waits are
+// summed into chronon_queue_wait_ms (the queue held the job with no free
+// worker, plus the renderer's own prep->GPU lane rendezvous), and the engine
+// service wall is projected from Chronon's own measurement.
+func TestClipRenderExecutorSettleSplitsAdmissionWaitFromEngineService(t *testing.T) {
+	queuedAt := time.Date(2026, 9, 13, 19, 59, 28, 342_453_000, time.UTC)
+	startedAt := queuedAt.Add(4_247 * time.Millisecond)     // no free worker:  4.2 s
+	completedAt := startedAt.Add(36_710 * time.Millisecond) // renderer service: 36.7 s
+	q := &fakeClipQueue{result: queueclient.Job{
+		State:       queueclient.StateCompleted,
+		QueuedAt:    queuedAt,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+		Artifact: &queueclient.Artifact{
+			ArtifactHash: strings.Repeat("a", 64), ArtifactURL: "https://store/out.mp4",
+			SizeBytes: 1024, Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
+			Backend: "chronon_vulkan", CopyEligible: true, Codec: "h264", CodecProfile: "High",
+			Container: "mov,mp4,m4a,3gp,3g2,mj2", PixelFormat: "yuv420p", AudioStreams: 1,
+			OutputFacts: &queueclient.OutputFacts{
+				Container: "mov,mp4,m4a,3gp,3g2,mj2", VideoCodec: "h264", VideoProfile: "High",
+				PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+				VideoTimeBaseNum: 1, VideoTimeBaseDen: 12288, SARNum: 1, SARDen: 1,
+				ColorRange: "tv", ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709",
+				KeyframeInterval: 48, AudioStreams: 1, AudioCodec: "aac",
+			},
+			// The renderer's own measurements: the GPU admission wait is the
+			// bucket that explains the difference between the renderer's
+			// service wall and the daemon's measured render.
+			Metrics: map[string]float64{
+				"gpu_lane_wait_ms":        27_000,
+				"chronon_job_job_wall_ms": 8_201,
+				"probe_ms":                1_121,
+				"publish_ms":              160,
+			},
+		},
+	}}
+	executor, err := NewClipRenderExecutor(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := executor.Settle(context.Background(), validClipPlan(t))
+	if err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if outcome.Metrics == nil {
+		t.Fatal("Settle() returned no metrics")
+	}
+	// 4_247 ms queue admission + 27_000 ms GPU lane rendezvous.
+	if got := int64(outcome.Metrics.ChrononQueueWaitMS); got != 31_247 {
+		t.Errorf("chronon_queue_wait_ms = %d, want 31247 (queue wait + lane wait)", got)
+	}
+	if got := int64(outcome.Metrics.ChrononServiceMS); got != 8_201 {
+		t.Errorf("chronon_service_ms = %d, want 8201 (Chronon job wall)", got)
+	}
+	if got := int64(outcome.Metrics.ProbeMS); got != 1_121 {
+		t.Errorf("probe_ms = %d, want 1121 (renderer output probe)", got)
+	}
+	if got := int64(outcome.Metrics.RendererOutputFinalizeMS); got != 160 {
+		t.Errorf("renderer_finalize_ms = %d, want 160 (renderer output finalize)", got)
+	}
+}
+
+// TestClipRenderExecutorSettleLeavesAdmissionWaitUninstrumentedWithoutTimestamps
+// pins the no-fake-availability rule: a queue that does not report lifecycle
+// timestamps must leave the admission wait NOT_INSTRUMENTED rather than
+// reporting a fabricated 0 ms of waiting.
+func TestClipRenderExecutorSettleLeavesAdmissionWaitUninstrumentedWithoutTimestamps(t *testing.T) {
+	q := &fakeClipQueue{result: queueclient.Job{
+		State: queueclient.StateCompleted,
+		Artifact: &queueclient.Artifact{
+			ArtifactHash: strings.Repeat("a", 64), ArtifactURL: "https://store/out.mp4",
+			SizeBytes: 1024, Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationUS: 1_000_000,
+			Backend: "chronon_vulkan", CopyEligible: true, Codec: "h264", CodecProfile: "High",
+			Container: "mov,mp4,m4a,3gp,3g2,mj2", PixelFormat: "yuv420p", AudioStreams: 1,
+			OutputFacts: &queueclient.OutputFacts{
+				Container: "mov,mp4,m4a,3gp,3g2,mj2", VideoCodec: "h264", VideoProfile: "High",
+				PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+				VideoTimeBaseNum: 1, VideoTimeBaseDen: 12288, SARNum: 1, SARDen: 1,
+				ColorRange: "tv", ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709",
+				KeyframeInterval: 48, AudioStreams: 1, AudioCodec: "aac",
+			},
+		},
+	}}
+	executor, err := NewClipRenderExecutor(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := executor.Settle(context.Background(), validClipPlan(t))
+	if err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if got := int64(outcome.Metrics.ChrononQueueWaitMS); got != cliprender.NotInstrumented {
+		t.Errorf("chronon_queue_wait_ms = %d, want NOT_INSTRUMENTED when the queue reports no timestamps", got)
 	}
 }
