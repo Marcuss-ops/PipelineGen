@@ -21,6 +21,7 @@ type localizedRenderRequest struct {
 	watermarkSpec      *cliprender.WatermarkSpec
 	background         *cliprender.MaterializedAsset
 	backgroundMode     string
+	backgroundKind     string
 	overlays           []cliprender.OverlayRefSpec
 	destinationFolder  string
 	subtitleFolder     string
@@ -39,7 +40,7 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
-	background, backgroundMode, err := a.resolveBackground(ctx, in)
+	background, backgroundMode, backgroundKind, err := a.resolveBackground(ctx, in)
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
@@ -56,7 +57,7 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	return localizedRenderRequest{
 		identity: identity, request: request, generatedSubtitles: generated,
 		watermark: watermark, watermarkSpec: watermarkSpec, background: background,
-		backgroundMode: backgroundMode, overlays: overlays,
+		backgroundMode: backgroundMode, backgroundKind: backgroundKind, overlays: overlays,
 		destinationFolder: destination, subtitleFolder: subtitle,
 	}, nil
 }
@@ -125,30 +126,39 @@ func (a *localizedRenderEnqueuerAdapter) resolveWatermark(ctx context.Context, i
 	return materialized, &cliprender.WatermarkSpec{Enabled: true, AssetID: watermark.AssetID, Text: watermark.Text, Position: watermark.Position, Opacity: watermark.Opacity, MarginPX: watermark.MarginPX, Style: watermark.Style}, nil
 }
 
-func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (*cliprender.MaterializedAsset, string, error) {
+// resolveBackground resolves the background selection for the localized
+// fan-out AND its media family. The family is a sealed-plan input (an image
+// plate and a video plate are different render layers), so it is resolved once
+// here from the asset's canonical MediaType; a plate that cannot be classified
+// fails closed instead of reaching a renderer that would have to guess.
+func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (*cliprender.MaterializedAsset, string, string, error) {
 	background := in.Render.Background
 	if background == nil {
-		return nil, "", nil
+		return nil, "", "", nil
 	}
 	mode := background.Mode
 	if mode == "" {
 		mode = cliprender.BackgroundModeNone
 	}
 	if mode != cliprender.BackgroundModeAsset {
-		return nil, mode, nil
+		return nil, mode, "", nil
 	}
 	if strings.TrimSpace(background.AssetID) == "" || a.assets == nil || a.material == nil {
-		return nil, "", fmt.Errorf("localized render: background requested but its asset resolver is not wired")
+		return nil, "", "", fmt.Errorf("localized render: background requested but its asset resolver is not wired")
 	}
 	ref, err := a.assets.ResolveAsset(ctx, background.AssetID)
 	if err != nil {
-		return nil, "", fmt.Errorf("localized render: resolve background %q: %w", background.AssetID, err)
+		return nil, "", "", fmt.Errorf("localized render: resolve background %q: %w", background.AssetID, err)
+	}
+	kind, ok := cliprender.BackgroundKindFromMediaType(ref.MediaType)
+	if !ok {
+		return nil, "", "", fmt.Errorf("localized render: background asset %q has media_type %q, which is not a renderable background plate (need %s or %s)", background.AssetID, ref.MediaType, cliprender.BackgroundKindImage, cliprender.BackgroundKindVideo)
 	}
 	materialized, err := a.material.Materialize(ctx, *ref)
 	if err != nil {
-		return nil, "", fmt.Errorf("localized render: materialize background %q: %w", background.AssetID, err)
+		return nil, "", "", fmt.Errorf("localized render: materialize background %q: %w", background.AssetID, err)
 	}
-	return materialized, mode, nil
+	return materialized, mode, kind, nil
 }
 
 func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Context, in scriptgeneration.LocalizedRenderInput, clipID string) (string, string, error) {
@@ -204,7 +214,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		DocTitle:               fmt.Sprintf("Localized — %s (%s)", built.identity.clipID, built.identity.targetLang),
 		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
 		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
-		Background: built.background, BackgroundMode: built.backgroundMode,
+		Background: built.background, BackgroundMode: built.backgroundMode, BackgroundKind: built.backgroundKind,
 		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SubtitlesStyle:         subtitleStyle(in),

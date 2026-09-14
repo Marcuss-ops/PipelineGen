@@ -169,12 +169,13 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 
 	state := &RunState{}
 	runner := &orchestratorRunner{
-		orch:                o,
-		in:                  input,
-		state:               state,
-		log:                 o.executorLogOrNop(),
-		artifactPreparation: o.artifactPreparation,
-		jobFinalizer:        o.jobFinalizer,
+		orch:                  o,
+		in:                    input,
+		state:                 state,
+		log:                   o.executorLogOrNop(),
+		artifactPreparation:   o.artifactPreparation,
+		jobFinalizer:          o.jobFinalizer,
+		destinationReconciler: o.destinationReconciler,
 	}
 
 	// Phase 1 (July 2026): orchestrator-level cleanup of staged

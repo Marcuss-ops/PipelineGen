@@ -182,6 +182,8 @@ type Orchestrator struct {
 	// no-op behavior.
 	artifactPreparation finalization.ArtifactPreparationService // nil ⇒ StockPublishStep logs+skips upload
 	jobFinalizer        finalization.JobFinalizer               // nil ⇒ StockFinalizeStep logs+skips spine write
+	// destinationReconciler is the post-publish hygiene pass (nil ⇒ no GC).
+	destinationReconciler DestinationReconciler
 
 	// sourceProbe is the required production port used to validate
 	// ClipPlan.EndSec against source duration before cutting.

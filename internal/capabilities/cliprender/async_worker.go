@@ -180,7 +180,8 @@ func (w *Worker) preparePlan(ctx context.Context, req *RenderRequest, runID stri
 	plan, err := Compile(CompileInput{
 		RunID: runID, Source: prepared.Source, DurationMS: prepared.Source.DurationMS,
 		Watermark: prepared.Watermark, WatermarkSpec: watermarkSpec, Background: prepared.Background,
-		BackgroundMode: req.Background.Mode, Subtitles: subtitleArtifact, SubtitlesStyle: req.Subtitles.Style,
+		BackgroundMode: req.Background.Mode, BackgroundKind: prepared.BackgroundKind,
+		Subtitles: subtitleArtifact, SubtitlesStyle: req.Subtitles.Style,
 		Cues: prepared.Transcript.Cues, Contract: prepared.Contract, AudioMode: req.Audio.Mode,
 		Overlay: overlayInput, OutputPath: filepath.Join(runDir, "rendered-clip.mp4"),
 		ForegroundScalePercent: req.Output.ForegroundScalePercent,

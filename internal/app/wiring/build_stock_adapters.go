@@ -47,7 +47,7 @@ func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string
 	if a == nil || stockDependencyNil(a.inner) {
 		return nil, fmt.Errorf("stock drive reader: adapter is not wired")
 	}
-	raw, err := a.inner.ListFiles(ctx, parentID)
+	raw, err := a.inner.ListFilesWithAppProperties(ctx, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +56,26 @@ func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string
 		out[i] = stockpipeline.DriveFileInfo{
 			ID:       f.ID,
 			MimeType: f.MimeType,
+			Name:     f.Name,
+			// Ownership marker: only files this pipeline published carry the
+			// P0.6 idempotency-key appProperty.
+			PipelineOwned: f.AppProperties[pipelinegenIdempotencyKeyAppProperty] != "",
 		}
 	}
 	return out, nil
 }
+
+// TrashFile implements the destination reconciler's removal half.
+func (a *stockDriveReaderAdapter) TrashFile(ctx context.Context, fileID string) error {
+	if a == nil || stockDependencyNil(a.inner) {
+		return fmt.Errorf("stock drive reader: adapter is not wired")
+	}
+	return a.inner.TrashFile(ctx, fileID)
+}
+
+// pipelinegenIdempotencyKeyAppProperty mirrors the Drive-side constant: the
+// appProperty every pipeline publication stamps (P0.6).
+const pipelinegenIdempotencyKeyAppProperty = "pipelinegen_idempotency_key"
 
 // WAVE 6 + WAVE 9 (September 2026): the `asset_index` import-boundary shim is
 // DELETED with the rest of the asset-index media plane. Stock commits through

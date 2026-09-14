@@ -66,7 +66,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		// Catalog query vectors must come from the same E5 sidecar contract
 		// as indexed document vectors. Ollama is a chat/legacy embedder and
 		// must not silently create a second vector space.
-		textEmb := embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL)
+		textEmb := embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout())
 		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(textEmb), nil)
 	}
 

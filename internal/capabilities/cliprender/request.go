@@ -45,6 +45,9 @@ const (
 	BackgroundModeBlurSource = "blur_source"
 	BackgroundModeAsset      = "asset"
 
+	// Background asset KINDS live in background.go — the single owner of the
+	// media-family decision.
+
 	// Transcript policies. clip.render is a RENDER step: the canonical
 	// transcript must already exist, so `reuse` is the default and a missing
 	// READY track FAILS CLOSED. `generate` remains only as an explicit manual
@@ -105,9 +108,18 @@ var ErrInvalidRequest = errors.New("invalid clip.render request")
 
 // BackgroundSpec selects the rendered background. mode "" (omitted) is
 // normalised to BackgroundModeNone.
+//
+// Kind is the media family of the background ASSET (see background.go). It is
+// optional: empty means "derive it from the resolved asset's canonical
+// MediaType"; an explicit value wins. Kind is rejected for mode=none/
+// blur_source: those modes carry no asset, so a declared kind is a
+// contradiction.
 type BackgroundSpec struct {
 	Mode    string `json:"mode,omitempty"`
 	AssetID string `json:"asset_id,omitempty"` // required when mode == "asset"
+	// Kind is one of image|video (BackgroundKindImage / BackgroundKindVideo);
+	// empty means "derive from the resolved asset media type".
+	Kind string `json:"kind,omitempty"`
 }
 
 // WatermarkSpec overlays a canonical watermark asset. When disabled the
@@ -482,10 +494,17 @@ func (r *RenderRequest) Validate() error {
 
 	switch r.Background.Mode {
 	case BackgroundModeNone, BackgroundModeBlurSource:
-		// no asset required
+		// No asset and therefore no media family: a declared kind would be an
+		// unresolved contradiction (which plate? the mode says there is none).
+		if r.Background.Kind != "" {
+			return fmt.Errorf("%w: background.kind must be empty for mode=%s (the mode carries no asset)", ErrInvalidRequest, r.Background.Mode)
+		}
 	case BackgroundModeAsset:
 		if r.Background.AssetID == "" {
 			return fmt.Errorf("%w: background.mode=asset requires background.asset_id", ErrInvalidRequest)
+		}
+		if r.Background.Kind != "" && !IsBackgroundKind(r.Background.Kind) {
+			return fmt.Errorf("%w: background.kind must be one of %s, %s (got %q)", ErrInvalidRequest, BackgroundKindImage, BackgroundKindVideo, r.Background.Kind)
 		}
 	default:
 		return fmt.Errorf("%w: background.mode must be one of none, blur_source, asset (got %q)", ErrInvalidRequest, r.Background.Mode)

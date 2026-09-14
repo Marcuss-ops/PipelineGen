@@ -218,6 +218,14 @@ type DeliveryDeps struct {
 type DriveFileInfo struct {
 	ID       string
 	MimeType string
+	// Name is the file's display name (used by the destination reconciler for
+	// its removal audit trail).
+	Name string
+	// PipelineOwned reports that the file was written by this pipeline (the
+	// Drive adapter decides it from the P0.6 idempotency-key appProperty).
+	// Operator uploads are never flagged, so the reconciler can never delete a
+	// human's file.
+	PipelineOwned bool
 }
 
 // DriveReaderPort is the Google Drive read-side port used by the
@@ -228,6 +236,10 @@ type DriveFileInfo struct {
 type DriveReaderPort interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
 	ListFiles(ctx context.Context, parentID string) ([]DriveFileInfo, error)
+	// TrashFile moves one file to the Drive trash. Used exclusively by the
+	// post-publish destination reconciler (destination_reconcile.go) to remove
+	// stale artifacts of earlier plans.
+	TrashFile(ctx context.Context, fileID string) error
 }
 
 type Deps struct {

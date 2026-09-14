@@ -148,7 +148,7 @@ func buildScriptSourceResolvers(
 	var textEmbedder coreasset.Embedder
 	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" {
 		mediaSearcher = pgmedia.NewMediaSearcher(root.MediaPostgres)
-		textEmbedder = embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL)
+		textEmbedder = embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout())
 	}
 
 	if mediaSearcher != nil && textEmbedder != nil && clipSourceBuilder != nil {

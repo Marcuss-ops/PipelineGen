@@ -27,7 +27,15 @@ type ProductionPersistenceDeps struct {
 	StepStore           steps.Store
 	ArtifactPreparation finalization.ArtifactPreparationService
 	JobFinalizer        finalization.JobFinalizer
-	BatchRepository     StockBatchRepository
+
+	// DestinationReconciler is the OPTIONAL post-publish hygiene pass that
+	// removes stale pipeline-owned artifacts left by earlier plans in the
+	// destination folder (see destination_reconcile.go). Optional by design:
+	// nil keeps the publish path exactly as it was before, so this port can be
+	// rolled out without a flag day.
+	DestinationReconciler DestinationReconciler
+
+	BatchRepository StockBatchRepository
 }
 
 // ProductionRuntimeDeps groups probing, filesystem, and observability ports.
@@ -103,22 +111,23 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 	}
 	cfg.StrictDurationValidation = true
 	return &Orchestrator{
-		cfg:                 cfg,
-		planner:             deps.Pipeline.Planner,
-		stager:              deps.Pipeline.Stager,
-		cutter:              deps.Pipeline.Cutter,
-		renderer:            deps.Pipeline.Renderer,
-		builder:             deps.Pipeline.Builder,
-		writer:              deps.Persistence.Writer,
-		projection:          deps.Persistence.Projection,
-		stepStore:           deps.Persistence.StepStore,
-		dispatchSteps:       DefaultStockSteps(),
-		artifactPreparation: deps.Persistence.ArtifactPreparation,
-		jobFinalizer:        deps.Persistence.JobFinalizer,
-		sourceProbe:         deps.Runtime.SourceProbe,
-		batchRepository:     deps.Persistence.BatchRepository,
-		localFS:             deps.Runtime.LocalFS,
-		executorLog:         deps.Runtime.Logger,
+		cfg:                   cfg,
+		planner:               deps.Pipeline.Planner,
+		stager:                deps.Pipeline.Stager,
+		cutter:                deps.Pipeline.Cutter,
+		renderer:              deps.Pipeline.Renderer,
+		builder:               deps.Pipeline.Builder,
+		writer:                deps.Persistence.Writer,
+		projection:            deps.Persistence.Projection,
+		stepStore:             deps.Persistence.StepStore,
+		dispatchSteps:         DefaultStockSteps(),
+		artifactPreparation:   deps.Persistence.ArtifactPreparation,
+		jobFinalizer:          deps.Persistence.JobFinalizer,
+		destinationReconciler: deps.Persistence.DestinationReconciler,
+		sourceProbe:           deps.Runtime.SourceProbe,
+		batchRepository:       deps.Persistence.BatchRepository,
+		localFS:               deps.Runtime.LocalFS,
+		executorLog:           deps.Runtime.Logger,
 	}, nil
 }
 

@@ -165,6 +165,17 @@ translator only, which is why such a clip got its language rows and no subtitle 
 is idempotent: an unchanged artifact reuses its recorded Drive reference instead of re-uploading.
 
 This test still does **not** drive the job handler (it calls the materializer directly), so the
-Drive delivery is pinned by `internal/capabilities/assets/texttracks/backfill_subtitles_test.go`
-rather than here.
+Drive delivery is pinned hermetically instead: `backfill_subtitles_test.go` covers the delivery step
+itself, and `jobs_subtitles_test.go` drives the REAL `MaterializeJobHandler` (with the real
+materializer and the real `BackfillService`) to prove the fast path actually calls it — the
+regression was a missing call, and a test of the step alone would not have caught it.
+
+The other two chain rules are also hermetic, not live:
+
+- **Priority 1** (`backfill_process_test.go`): a READY transcript with timed cues never triggers
+  YouTube subtitles or Whisper, so re-running a repair over the catalog stays cheap; a READY
+transcript *without* cues does re-acquire, and that re-acquire is deliberately fail-soft.
+- **Download-once** (`extraction_staging_test.go` — previously untested): a multi-segment batch
+  stages the full source exactly once and falls back to per-segment `yt-dlp` whenever the
+  optimization cannot hold.
 

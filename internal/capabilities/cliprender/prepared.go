@@ -164,8 +164,14 @@ type Prepared struct {
 	Source     *MaterializedAsset `json:"source"`
 	Watermark  *MaterializedAsset `json:"watermark,omitempty"`
 	Background *MaterializedAsset `json:"background,omitempty"`
-	Transcript *TranscriptResult  `json:"transcript,omitempty"`
-	Contract   *ResolvedContract  `json:"contract"`
+	// BackgroundKind is the resolved media family of Background
+	// (image | video), empty when no background asset was resolved. It is
+	// derived from the asset's canonical MediaType (or an explicit
+	// background.kind) so the sealed plan can name it without the render
+	// worker inspecting the bytes.
+	BackgroundKind string            `json:"background_kind,omitempty"`
+	Transcript     *TranscriptResult `json:"transcript,omitempty"`
+	Contract       *ResolvedContract `json:"contract"`
 
 	Timings PreparationTimings `json:"timings"`
 }

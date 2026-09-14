@@ -42,14 +42,33 @@ type HTTPTextEmbedder struct {
 	httpClient *http.Client
 }
 
-// NewHTTPTextEmbedder creates an Embedder pointing at the given sidecar
-// URL. The default 10-second timeout is appropriate for E5 inference
-// (typically 50–200ms per query); tune in production if Qdrant-backed
-// batch jobs need longer deadlines.
+// DefaultEmbedTimeout is the out-of-the-box deadline for one /embed call.
+//
+// It is deliberately conservative for a single document (E5 inference is
+// typically 50-200 ms) and callers that share the sidecar should pass a bound
+// sized for their queue depth via NewHTTPTextEmbedderWithTimeout: the sidecar
+// serialises a bounded queue per inference slot on a shared CPU, so a request
+// can wait behind several inferences and exceed this without any individual
+// embedding being slow.
+const DefaultEmbedTimeout = 10 * time.Second
+
+// NewHTTPTextEmbedder creates an Embedder pointing at the given sidecar URL
+// with DefaultEmbedTimeout.
 func NewHTTPTextEmbedder(serverURL string) coreasset.Embedder {
+	return NewHTTPTextEmbedderWithTimeout(serverURL, DefaultEmbedTimeout)
+}
+
+// NewHTTPTextEmbedderWithTimeout is the canonical constructor for callers that
+// need an explicit deadline (see DefaultEmbedTimeout for why one is needed).
+// A non-positive timeout falls back to DefaultEmbedTimeout so a zero value can
+// never disable the deadline entirely.
+func NewHTTPTextEmbedderWithTimeout(serverURL string, timeout time.Duration) coreasset.Embedder {
+	if timeout <= 0 {
+		timeout = DefaultEmbedTimeout
+	}
 	return &HTTPTextEmbedder{
 		serverURL:  serverURL,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 

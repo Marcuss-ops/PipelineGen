@@ -204,7 +204,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		}
 		pgOutboxRepo := pgmedia.NewOutboxRepository(mediaPostgres)
 		pgVectors := pgmedia.NewVectorSurfaceWriter(mediaPostgres)
-		embedder := pgmedia.NewEmbedAssetTextAdapter(mediaPostgres, embeddings.NewHTTPTextEmbedder(sidecarURL))
+		embedder := pgmedia.NewEmbedAssetTextAdapter(mediaPostgres, embeddings.NewHTTPTextEmbedderWithTimeout(sidecarURL, cfg.ClipIndexer.EmbedTimeout()))
 		if err := pgVectors.EnsureEmbeddingFamily(ctx, "text", cfg.MediaPostgreSQL.EmbeddingModel, 768); err != nil {
 			return nil, nil, fmt.Errorf("BuildOutboxBundle: pgvector embedding family bootstrap: %w", err)
 		}

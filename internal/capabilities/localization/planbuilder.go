@@ -53,9 +53,11 @@ type SourceInput struct {
 	WatermarkSpec     *cliprender.WatermarkSpec
 
 	// Background / BackgroundMode are the resolved background selection
-	// (materialized asset only for mode=asset).
+	// (materialized asset only for mode=asset). BackgroundKind is the resolved
+	// media family of that asset (image | video).
 	Background     *cliprender.MaterializedAsset
 	BackgroundMode string
+	BackgroundKind string
 
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int
@@ -181,6 +183,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			WatermarkSpec:          source.WatermarkSpec,
 			Background:             source.Background,
 			BackgroundMode:         source.BackgroundMode,
+			BackgroundKind:         source.BackgroundKind,
 			ForegroundScalePercent: source.ForegroundScalePercent,
 			SubtitlesStyle:         source.SubtitlesStyle,
 			// Language-independent reuse: the SAME overlay identities land on

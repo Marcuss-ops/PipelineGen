@@ -11,7 +11,16 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BASE_URL="${VELOX_BASE_URL:-http://127.0.0.1:8000}"
-TOKEN="${VELOX_ADMIN_TOKEN:-e4f82d7e411dccd5da3e7029d877055eaa4d2110c9f19293741eef7e1ded1f15}"
+# The admin credential MUST come from the environment: AGENTS.md fixes the
+# canonical variable name (VELOX_ADMIN_TOKEN) and forbids hard-coded literals.
+# Fail closed rather than silently authenticating with a baked-in fallback — a
+# committed credential is a leaked credential, and a silent fallback hides the
+# misconfiguration until someone reads the script.
+TOKEN="${VELOX_ADMIN_TOKEN:-}"
+if [ -z "$TOKEN" ]; then
+  echo "VELOX_ADMIN_TOKEN is not set. Export it (see AGENTS.md) before running this benchmark." >&2
+  exit 1
+fi
 
 CLIPS=(
   "yt_0ElQTzSx3ec_72_91_v1"

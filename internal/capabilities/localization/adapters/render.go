@@ -291,6 +291,7 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		WatermarkSpec:          opts.WatermarkSpec,
 		Background:             opts.Background,
 		BackgroundMode:         opts.BackgroundMode,
+		BackgroundKind:         opts.BackgroundKind,
 		ForegroundScalePercent: opts.ForegroundScalePercent,
 		Subtitles:              sub,
 		SubtitlesStyle:         opts.SubtitlesStyle,

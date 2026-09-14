@@ -33,6 +33,11 @@ type SubtitleMaterializerInput struct {
 	SubtitleStyleID string
 	ClipContentHash string
 	DriveFolderID   string
+	// DriveSubpath is the child path appended under DriveFolderID. nil keeps
+	// the canonical "Ass Sub" child; an empty (non-nil) slice publishes the
+	// artifact directly into DriveFolderID, which is how a subtitle artifact
+	// is co-located with the transcript sidecar in the same per-video folder.
+	DriveSubpath []string
 }
 
 type SubtitleMaterializerOutput struct {
@@ -212,13 +217,17 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 			filename = fmt.Sprintf("%s.%s.ass", base, in.LanguageCode)
 		}
 	}
+	subpath := in.DriveSubpath
+	if subpath == nil {
+		subpath = []string{"Ass Sub"}
+	}
 	result, err := m.publisher.Publish(ctx, delivery.PublishRequest{
 		Destination:         delivery.DestinationClipMetadata,
 		DestinationFolderID: in.DriveFolderID,
 		LocalPath:           localPath,
 		Filename:            filename,
 		AssetID:             in.AssetID,
-		DestinationSubpath:  []string{"Ass Sub"},
+		DestinationSubpath:  subpath,
 		ContentHash:         fileHash,
 		IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, in.AssetID+":"+in.LanguageCode, fileHash, in.TextTrackID),
 		ConflictPolicy:      delivery.ConflictOverwrite,

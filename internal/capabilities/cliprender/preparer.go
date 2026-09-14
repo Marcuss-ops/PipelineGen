@@ -289,6 +289,20 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 		return nil, err
 	}
 
+	// Resolve the background media family ONCE, before any byte is materialized:
+	// it is a sealed-plan input (image vs video selects a different render
+	// layer), so it is decided here and never inferred by the render worker from
+	// a filename. resolveBackgroundKind owns the rule; a plate we cannot
+	// classify fails closed.
+	backgroundKind := ""
+	if backgroundRef != nil {
+		resolved, err := resolveBackgroundKind(req.Background.Kind, backgroundRef.AssetID, backgroundRef.MediaType)
+		if err != nil {
+			return nil, err
+		}
+		backgroundKind = resolved
+	}
+
 	// ── Wave 2: materialize + generate (parallel, channel-gated) ───────
 	var (
 		sourceMat     *MaterializedAsset
@@ -529,13 +543,14 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	p.log.Debug("clip.render.prepare.done", phaseFields...)
 
 	return &Prepared{
-		RunID:      runID,
-		Source:     sourceMat,
-		Watermark:  watermarkMat,
-		Background: backgroundMat,
-		Transcript: transcript,
-		Contract:   contract,
-		Timings:    timings,
+		RunID:          runID,
+		Source:         sourceMat,
+		Watermark:      watermarkMat,
+		Background:     backgroundMat,
+		BackgroundKind: backgroundKind,
+		Transcript:     transcript,
+		Contract:       contract,
+		Timings:        timings,
 	}, nil
 }
 

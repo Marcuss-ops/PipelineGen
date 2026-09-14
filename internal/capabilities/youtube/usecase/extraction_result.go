@@ -45,7 +45,7 @@ func aggregateFanOutStats(items []youtubetypes.ExtractItem) youtubetypes.Extract
 	stats := youtubetypes.ExtractStats{Requested: len(items)}
 	for _, item := range items {
 		switch item.Status {
-		case "processed", "processed_but_index_blocked":
+		case "processed", "processed_but_index_blocked", "processed_but_text_missing":
 			stats.Processed++
 		case "skipped":
 			stats.Skipped++

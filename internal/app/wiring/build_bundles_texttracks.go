@@ -10,19 +10,107 @@
 package wiring
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// newPostgresMediaAssetLister returns the canonical PostgreSQL media SSOT clip
+// reader for the batch/fan-out asset lookups (BackfillService + the
+// `asset.text.materialize` handler). A closed media plane returns nil — the
+// documented degraded signal, never a panicking searcher.
+func newPostgresMediaAssetLister(mediaPG *sql.DB) texttracks.MediaAssetLister {
+	if mediaPG == nil {
+		return nil
+	}
+	return pgmedia.NewMediaClipAssetReader(pgmedia.NewMediaSearcher(mediaPG))
+}
+
+// subtitleRootLayoutResolver is the single owner of the subtitle-artifact
+// Drive LAYOUT: <configured subtitle root>/<source video id>/ — exactly the
+// folder the extraction pipeline uploaded the .txt transcript sidecar into — so
+// the per-language .ass artifacts are co-located with it instead of being
+// nested under the clips/media tree.
+//
+// It returns the ROOT plus the per-video child PATH and leaves the get-or-create
+// to the publisher, which is the surface every composition that can publish
+// subtitle artifacts already wires. Resolving the child id here instead would
+// need the Drive folder-admin port, and that port is NOT present in every
+// composition: the operator text-tracks backfill CLI publishes correctly while
+// its folder admin is nil, so an admin-dependent resolver silently degraded to
+// <clips root>/Ass Sub/ — splitting one clip's subtitles across two trees.
+type subtitleRootLayoutResolver struct{ rootID string }
+
+// NewSubtitleRootLayoutResolver returns nil when no subtitle root is
+// configured: the BackfillService then keeps its documented legacy layout
+// instead of failing the composition.
+//
+// Exported because there is more than one BackfillService construction site
+// (the runtime bundle here and the operator CLI in cmd/admin) and the Drive
+// layout MUST be identical for both: when the CLI omitted this seam every .ass
+// it delivered landed in <clips root>/Ass Sub/ while the .txt sidecar sat in
+// <subtitle root>/<videoID>/ — the split this resolver exists to remove.
+func NewSubtitleRootLayoutResolver(rootID string) texttracks.SubtitleFolderResolver {
+	if strings.TrimSpace(rootID) == "" {
+		return nil
+	}
+	return &subtitleRootLayoutResolver{rootID: rootID}
+}
+
+func (r *subtitleRootLayoutResolver) ResolveSubtitleLocation(_ context.Context, assetID, sourceVideoID string) (texttracks.SubtitleLocation, error) {
+	if r == nil || strings.TrimSpace(r.rootID) == "" {
+		return texttracks.SubtitleLocation{}, nil
+	}
+	name := strings.TrimSpace(sourceVideoID)
+	if name == "" {
+		name = strings.TrimSpace(assetID)
+	}
+	if name == "" {
+		return texttracks.SubtitleLocation{FolderID: r.rootID}, nil
+	}
+	// Mirror the extraction's own layout EXACTLY:
+	// <subtitle root>/<SubtitleDriveGroup>/<videoID>/. The namespace segment is
+	// the youtube drive adapter's constant, not a second literal, so the .txt
+	// sidecar and the per-language .ass files can never drift into two trees.
+	return texttracks.SubtitleLocation{
+		FolderID: r.rootID,
+		Subpath:  []string{ytadapters.SubtitleDriveGroup, name},
+	}, nil
+}
+
+// MediaAssetLister resolves the canonical BATCH media-clip reader for a
+// composition root — the `List(ctx, asset.Filter)` shape the backfill pipeline
+// and the `asset.text.materialize` handler consume. PostgreSQL is the media
+// SSOT; the legacy SQLite *assets.ClipsRepository satisfies the same interface
+// only for the media-PostgreSQL-disabled degrade mode.
+//
+// godlike/06 SSOT: mirror of ComposeRoot.MediaClipReader (single-id reads) so
+// the batch path cannot silently keep reading a second catalog.
+func (r *ComposeRoot) MediaAssetLister() texttracks.MediaAssetLister {
+	if r == nil {
+		return nil
+	}
+	if lister := newPostgresMediaAssetLister(r.MediaPostgres); lister != nil {
+		return lister
+	}
+	if r.Repos != nil && r.Repos.ClipsRepo != nil {
+		return r.Repos.ClipsRepo
+	}
+	return nil
+}
 
 // TextTrackBundle groups the materializer + the broker-facing
 // job handler + the acquire service (Fase 5) + the post-publish
@@ -67,6 +155,21 @@ type AcquirePorts struct {
 	Whisper   youtubeports.WhisperTranscriberPort
 	Drive     drivepkg.Reader
 	CueWriter texttracks.TimedCueWriter
+
+	// MediaAssets is the canonical PostgreSQL media SSOT reader used by
+	// the BackfillService to load the asset behind an
+	// `asset.text.materialize` job. It is SEPARATE from repos.ClipsRepo
+	// on purpose: that facade is the legacy operational SQLite store, so
+	// a clip the YouTube pipeline committed to PostgreSQL was invisible
+	// to the fan-out and the job dead-lettered with "asset not found for
+	// acquisition" (no translations, no subtitle artifacts). Optional:
+	// nil keeps the legacy facade as the documented degraded path.
+	MediaAssets texttracks.MediaAssetLister
+
+	// SubtitleFolders is the single owner of the subtitle artifact Drive
+	// FOLDER, so .ass and .txt share one per-video destination. Optional:
+	// nil keeps the legacy asset-folder + "Ass Sub" layout.
+	SubtitleFolders texttracks.SubtitleFolderResolver
 }
 
 // BuildTextTrackBundle constructs the canonical bundle.
@@ -243,9 +346,22 @@ func BuildTextTrackBundle(
 	if acquirePorts == nil || acquirePorts.CueWriter == nil {
 		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — automatic text-track backfill NOT registered (cues writer is the canonical media writer; graceful degrade, godlike/07)")
 	} else {
+		// POSTGRES-MEDIA-CUTOVER: the backfill's asset reader MUST be the
+		// PostgreSQL media SSOT. Wiring the legacy SQLite facade here made
+		// the direct YouTube fan-out read a catalog that does not contain
+		// the clip it had just committed to PostgreSQL, so
+		// `asset.text.materialize` dead-lettered with "asset not found for
+		// acquisition" and the clip received no translations and no
+		// subtitle artifacts.
+		clipsLister := texttracks.MediaAssetLister(repos.ClipsRepo)
+		if acquirePorts.MediaAssets != nil {
+			clipsLister = acquirePorts.MediaAssets
+		} else {
+			log.Warn("POSTGRES-MEDIA-CUTOVER: backfill asset reader is the LEGACY SQLite facade (PostgreSQL media reader not wired) — a clip committed to the media SSOT will not be found by asset.text.materialize (graceful degrade, godlike/07)")
+		}
 		backfill, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
 			Data: texttracks.BackfillDataDeps{
-				Clips:      repos.ClipsRepo,
+				Clips:      clipsLister,
 				Repo:       repos.TextTrackRepo,
 				Cues:       acquirePorts.CueWriter,
 				SubArtRepo: repos.SubtitleArtifactRepo,
@@ -255,8 +371,16 @@ func BuildTextTrackBundle(
 				Acquirer:     acquireService,
 			},
 			Delivery: texttracks.BackfillDeliveryDeps{
-				Publisher:     publisher,
-				DriveFolderID: cfg.Drive.ClipsFolder(),
+				Publisher:       publisher,
+				DriveFolderID:   cfg.Drive.ClipsFolder(),
+				SubtitleFolders: acquirePorts.SubtitleFolders,
+				// Timing-faithful alignment: each source cue is translated
+				// individually so a translated segment keeps its source cue's
+				// exact window (1:1). It goes through the SAME clipTranslator
+				// every other consumer uses (Argos primary + Ollama fallback),
+				// and a per-language failure degrades to CuesWithText instead
+				// of leaving the language without an artifact.
+				CueTranslator: texttracks.NewCueTranslator(clipTranslator, mlCfg.SourceLanguage, ollamaModel, texttracks.DefaultCueTranslationConcurrency, log),
 			},
 			Log: log,
 		})
@@ -368,6 +492,24 @@ func BuildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry
 	return asset.EmptyLanguageRegistry(), nil
 }
 
+// SubtitleAcquisitionLanguages resolves the ACQUISITION language set for the
+// subtitle fetcher: exactly ONE source-language track, never the configured
+// translation set.
+//
+// ACQUISITION vs MATERIALIZATION (Sept 2026): wiring the whole registry here
+// (it,en,pl,ru,de,es,pt-BR,fr,tr,id) made yt-dlp ask YouTube for ten subtitle
+// tracks in a single call, get HTTP 429 on the first and abort, leaving the
+// clip with no transcript at all. The nine translations are the
+// MATERIALIZATION stage's output (Argos/Ollama) and are never requested from
+// YouTube. godlike/06 SSOT: this helper is the sole owner of that rule.
+func SubtitleAcquisitionLanguages(ml config.MultilingualConfig) string {
+	lang := strings.TrimSpace(ml.SourceLanguage)
+	if lang == "" {
+		return "en"
+	}
+	return lang
+}
+
 // BuildMultilingualLanguageCSV projects the canonical registry onto a
 // deterministic comma-separated language list. Callers can filter the
 // enabled set when a specific capability is needed (e.g. subtitle
@@ -439,6 +581,14 @@ func resolveTranslationProvider(provider string) string {
 //
 // A future PR adds cfg.AI.TranslationModel so operators can
 // override the concrete model without editing the Go struct.
+// ResolveTranslationModel exposes the canonical policy → model mapping
+// (resolveTranslationModel) to the operator CLIs, so the CueTranslator they
+// build routes the Ollama fallback to the same model the runtime uses
+// (godlike/06: one owner of the policy → model decision).
+func ResolveTranslationModel(cfg *config.Config) string {
+	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
+}
+
 func resolveTranslationModel(policy string) string {
 	switch policy {
 	case "fast":

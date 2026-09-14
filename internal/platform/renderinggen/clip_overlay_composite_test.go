@@ -46,6 +46,7 @@ func compositeFinalClipPlan(t *testing.T) (cliprender.ClipRenderPlanV1, string) 
 			SHA256:    digest.SHA256Bytes([]byte(bgBody)),
 		},
 		BackgroundMode: cliprender.BackgroundModeAsset,
+		BackgroundKind: cliprender.BackgroundKindVideo,
 		WatermarkSpec: &cliprender.WatermarkSpec{
 			Enabled:  true,
 			Text:     "VeloxEditing",

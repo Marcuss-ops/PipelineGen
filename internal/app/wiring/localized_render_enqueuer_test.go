@@ -13,6 +13,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -452,8 +453,8 @@ func TestLocalizedRenderEnqueuer_PropagatesBackgroundAndStyles(t *testing.T) {
 	tr := &recordingTrackRepo{}
 	cw := &recordingCueWriter{}
 	resolver := &fakeClipAssets{resolved: map[string]cliprender.AssetRef{
-		"asset-bg": {AssetID: "asset-bg", LocalPath: "/local/bg.mp4"},
-		"logo":     {AssetID: "logo", LocalPath: "/local/logo.png"},
+		"asset-bg": {AssetID: "asset-bg", MediaType: string(asset.MediaTypeClip), LocalPath: "/local/bg.mp4"},
+		"logo":     {AssetID: "logo", MediaType: string(asset.MediaTypeImage), LocalPath: "/local/logo.png"},
 	}}
 	materializer := &fakeClipMaterializer{}
 	a := newTestEnqueuerAdapter(l, tr, cw)

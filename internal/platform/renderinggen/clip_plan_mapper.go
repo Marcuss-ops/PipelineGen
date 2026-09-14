@@ -259,31 +259,6 @@ type overlayItem struct {
 	Assets       []overlayAssetRef `json:"asset_refs"`
 }
 
-// overlaySegmentAssetID is the SINGLE owner of the overlay segment's
-// content-addressed asset identity. The mapper (plan emission) and the asset
-// prefetch (object-store staging) both derive the logical path from it, so the
-// URL the plan references is exactly the object the queue materializes.
-func overlaySegmentAssetID(segment *cliprender.PlanOverlaySegment) string {
-	short := strings.ToLower(strings.TrimSpace(segment.SHA256))
-	if len(short) > 16 {
-		short = short[:16]
-	}
-	if short == "" {
-		// Fail-safe: the plan validator requires a sha256, so this is only
-		// reachable from a hand-built plan; keep the id content-independent.
-		short = "segment"
-	}
-	return "overlay-" + short
-}
-
-// overlaySegmentItemID makes a semantic ITEM identity unique per declared
-// segment. Two segments can legitimately share content (the same item rendered
-// once, composited on two windows), so the content-addressed asset id alone
-// would collide: item ids are the Chronon layer ids, which must be unique.
-func overlaySegmentItemID(assetID string, index int) string {
-	return fmt.Sprintf("%s-%d", assetID, index)
-}
-
 // overlayAssetRef references a content-addressed asset. The LogicalPath is
 // the hash-addressed key used by the RenderingGen object store materialiser
 // (format: "sha256/<hex>/<filename>"), NOT a local VPS path.
@@ -355,40 +330,12 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 	}
 	op.DurationMS = plan.DurationMS
 
-	// Background
-	if plan.Background != nil {
-		switch plan.Background.Mode {
-		case cliprender.BackgroundModeNone:
-			// no background layer emitted
-		case cliprender.BackgroundModeBlurSource:
-			// blur_source is not a first-class overlay-plan primitive; it is
-			// expressed as a "video" background referencing the source asset
-			// with a blur fit hint so RenderingGen can apply the effect.
-			op.Background = &overlayBackground{
-				Kind: "video",
-				AssetRefs: []overlayAssetRef{{
-					AssetID: plan.Source.AssetID,
-					SHA256:  plan.Source.SHA256,
-					URL:     hashAddressedPath(plan.Source.AssetID, "source.mp4"),
-				}},
-				Fit:  "blur_cover",
-				Loop: true,
-			}
-		case cliprender.BackgroundModeAsset:
-			op.Background = &overlayBackground{
-				Kind: "video",
-				AssetRefs: []overlayAssetRef{{
-					AssetID: plan.Background.AssetID,
-					SHA256:  plan.Background.SHA256,
-					URL:     hashAddressedPath(plan.Background.AssetID, "background.mp4"),
-				}},
-				Fit:  "cover",
-				Loop: true,
-			}
-		default:
-			return nil, fmt.Errorf("clip plan mapper: unsupported background mode %q", plan.Background.Mode)
-		}
+	// Background (its own file: the block IS a renderer-shape decision).
+	background, err := mapBackground(plan)
+	if err != nil {
+		return nil, err
 	}
+	op.Background = background
 
 	// Subtitles
 	if plan.Subtitles != nil {
@@ -519,81 +466,6 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		return nil, fmt.Errorf("clip plan mapper: marshal overlay plan: %w", err)
 	}
 	return raw, nil
-}
-
-// overlayPlanAssets returns the content-addressed AssetRef list corresponding
-// to a ClipRenderPlanV1. These refs use the same hash-addressed logical paths
-// as the serialised overlay plan so the worker can materialise each asset from
-// the object store.
-func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
-	refs := []assetRef{{
-		Hash:        plan.Source.SHA256,
-		LogicalPath: hashAddressedPath(plan.Source.AssetID, "source.mp4"),
-	}}
-	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {
-		refs = append(refs, assetRef{
-			Hash:        plan.Background.SHA256,
-			LogicalPath: hashAddressedPath(plan.Background.AssetID, "background.mp4"),
-		})
-	}
-	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeBlurSource {
-		// blur_source reuses the source asset — already registered above.
-	}
-	if plan.Subtitles != nil {
-		refs = append(refs, assetRef{
-			Hash:        plan.Subtitles.SHA256,
-			LogicalPath: hashAddressedPath(plan.Subtitles.SHA256, "subtitles.ass"),
-		})
-		// A burn-in subtitle plan must ship a materialised font. RenderingGen
-		// resolves the subtitle glyphs from the first .ttf/.otf in the job's
-		// asset list; previously only Poppins was added here, while the
-		// production default style is Montserrat, causing the worker to fail
-		// after compilation with "requires a materialized font".
-		if plan.Subtitles.Mode == cliprender.SubtitlesModeBurn {
-			fontLoader := watermarkFontAsset
-			if plan.Subtitles.Style != nil &&
-				strings.Contains(strings.ToLower(strings.TrimSpace(plan.Subtitles.Style.Font)), "poppins") {
-				fontLoader = poppinsFontAsset
-			}
-			font, err := fontLoader()
-			if err != nil {
-				return nil, fmt.Errorf("clip plan mapper: subtitle font: %w", err)
-			}
-			refs = append(refs, font)
-		}
-	}
-	if plan.Watermark != nil && plan.Watermark.SHA256 != "" {
-		refs = append(refs, assetRef{
-			Hash:        plan.Watermark.SHA256,
-			LogicalPath: hashAddressedPath(plan.Watermark.AssetID, "watermark.png"),
-		})
-	}
-	if plan.Overlay != nil {
-		// Every declared segment must be staged, not just the first: a segment
-		// the worker cannot materialize fails the render after compilation.
-		for _, segment := range plan.Overlay.Segments {
-			refs = append(refs, assetRef{
-				Hash:        segment.SHA256,
-				LogicalPath: hashAddressedPath(overlaySegmentAssetID(&segment), "overlay.mp4"),
-				LocalPath:   segment.Path,
-			})
-		}
-	}
-	if plan.Watermark != nil && plan.Watermark.Text != "" && plan.Watermark.SHA256 == "" {
-		font, err := watermarkFontAssetForStyle(plan.Watermark.Style)
-		if err != nil {
-			return nil, fmt.Errorf("watermark font: %w", err)
-		}
-		refs = append(refs, font)
-	}
-	return refs, nil
-}
-
-// assetRef is a hash-addressed asset pointer used internally by this package.
-type assetRef struct {
-	Hash        string
-	LogicalPath string
-	LocalPath   string
 }
 
 func watermarkFontAsset() (assetRef, error) {

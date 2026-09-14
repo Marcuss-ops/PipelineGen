@@ -141,6 +141,13 @@ type Service struct {
 	// PR-REFACTOR-P0-IO-BINDER keeps os.* calls out of this package;
 	// REQUIRED at ctor time (audit P0: no implicit fallback to real FS).
 	localFS LocalFSPort
+
+	// destinationReconciler is the post-publish hygiene pass: after a
+	// successful publication it compares the destination folder against
+	// the current run's manifest and removes files produced by earlier
+	// plans that are no longer referenced. nil ⇒ no GC (pre-existing
+	// behaviour); wired only when a Drive read port is available.
+	destinationReconciler DestinationReconciler
 }
 
 // SourceDurationProbe returns the probe wired into the service's production
@@ -264,26 +271,30 @@ func serviceFromDeps(deps Deps) *Service {
 		v.MaxResults = DefaultPipelineConfig().MaxResults
 	}
 	return &Service{
-		runtime:           v,
-		log:               deps.Runtime.Log,
-		publisher:         deps.Delivery.Publisher,
-		publisherPort:     deps.Delivery.PublisherPort,
-		folderCreator:     deps.Delivery.FolderCreator,
-		cutter:            deps.Media.Cutter,
-		renderer:          deps.Media.Renderer,
-		jobsSvc:           deps.Execution.Jobs,
-		batchRepo:         deps.Storage.BatchRepository,
-		dispatcher:        deps.Storage.Dispatcher,
-		finalizer:         deps.Delivery.Finalizer,
-		projection:        deps.Delivery.Projection,
-		sourceProbe:       deps.Execution.SourceProbe,
-		sourceStager:      deps.Execution.SourceStager,
-		channelLister:     deps.Execution.ChannelLister,
-		driveReader:       deps.Delivery.DriveReader,
-		jobCreator:        deps.Runtime.JobCreator,
-		stepStore:         deps.Runtime.StepStore,
-		sourceCacheReader: deps.SourceCache.Reader,
-		sourceCacheWriter: deps.SourceCache.Writer,
-		localFS:           deps.SourceCache.LocalFS,
+		runtime:       v,
+		log:           deps.Runtime.Log,
+		publisher:     deps.Delivery.Publisher,
+		publisherPort: deps.Delivery.PublisherPort,
+		folderCreator: deps.Delivery.FolderCreator,
+		cutter:        deps.Media.Cutter,
+		renderer:      deps.Media.Renderer,
+		jobsSvc:       deps.Execution.Jobs,
+		batchRepo:     deps.Storage.BatchRepository,
+		dispatcher:    deps.Storage.Dispatcher,
+		finalizer:     deps.Delivery.Finalizer,
+		// PR-STOCK-DESTINATION-RECONCILE: the post-publish hygiene pass is
+		// attached whenever a Drive read port is wired. Nil port ⇒ nil
+		// reconciler ⇒ the publish step skips the GC (pre-existing behaviour).
+		destinationReconciler: portDestinationReconciler(deps.Delivery.DriveReader),
+		projection:            deps.Delivery.Projection,
+		sourceProbe:           deps.Execution.SourceProbe,
+		sourceStager:          deps.Execution.SourceStager,
+		channelLister:         deps.Execution.ChannelLister,
+		driveReader:           deps.Delivery.DriveReader,
+		jobCreator:            deps.Runtime.JobCreator,
+		stepStore:             deps.Runtime.StepStore,
+		sourceCacheReader:     deps.SourceCache.Reader,
+		sourceCacheWriter:     deps.SourceCache.Writer,
+		localFS:               deps.SourceCache.LocalFS,
 	}
 }

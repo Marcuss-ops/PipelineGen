@@ -317,40 +317,120 @@ func findAllEntitySpans(text, value string) []scriptpkg.AnnotationSpan {
 	return spans
 }
 
+// maxPersonNameRunTokens bounds how many adjacent capitalized tokens a single
+// run may join. Four covers the longest realistic multi-part name this
+// expansion must reconstruct ("Dwayne The Rock Johnson") while refusing to
+// swallow a whole headline of capitalized words into one identity.
+const maxPersonNameRunTokens = 4
+
 // expandPersonName expands a surname-only entity value to the full capitalized
-// name present in the text (e.g. "Johnson" → "Dwayne Johnson").
+// name present in the text (e.g. "Johnson" → "Dwayne Johnson", "Musk" →
+// "Elon Musk"). A multi-token value is already a full name and is returned
+// unchanged.
+//
+// The expansion is deliberately conservative and fail-safe:
+//
+//   - only ADJACENT name tokens (capitalized letter runs, with apostrophes,
+//     hyphens and periods allowed inside) are joined; the scan never crosses a
+//     lowercase word, so "Elon Musk founded Tesla" yields the run
+//     [Elon Musk] and not [Elon Musk founded];
+//   - a run longer than maxPersonNameRunTokens is ignored entirely rather than
+//     truncated;
+//   - the reconstructed candidate is accepted ONLY when it occurs verbatim in
+//     the text, so the returned canonical name is always grounded. When no
+//     multi-token run contains the value (a mononym, a name followed by
+//     lowercase text, a quoted construction, ...) the original value is
+//     returned unchanged — a canonical identity is never invented.
+//
+// This is what keeps a repeated entity from being split into several identities
+// ("Elon Musk" vs "Musk"): every partial mention that can be resolved to the
+// same grounded full name collapses onto the same canonical (type, name) key
+// and therefore onto the same StableEntityID.
 func expandPersonName(text, value string) string {
 	value = strings.TrimSpace(value)
-	if len(strings.Fields(value)) > 1 {
+	if value == "" || len(strings.Fields(value)) > 1 {
 		return value
 	}
-	var candidates []string
-	var current strings.Builder
-	runes := []rune(text)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if unicode.IsUpper(r) || r == '\'' || r == '’' || r == '-' || (unicode.IsLetter(r) && current.Len() > 0) {
-			current.WriteRune(r)
-		} else if current.Len() > 0 {
-			candidates = append(candidates, strings.TrimSpace(current.String()))
-			current.Reset()
-		}
+	target := normalizePersonToken(value)
+	if target == "" {
+		return value
 	}
-	if current.Len() > 0 {
-		candidates = append(candidates, strings.TrimSpace(current.String()))
-	}
-	for _, candidate := range candidates {
-		fields := strings.Fields(candidate)
-		if len(fields) < 2 {
+	for _, run := range personNameRuns(text) {
+		if len(run) < 2 || len(run) > maxPersonNameRunTokens {
 			continue
 		}
-		for _, field := range fields {
-			if strings.EqualFold(field, value) {
-				return candidate
+		matches := false
+		for _, token := range run {
+			if normalizePersonToken(token) == target {
+				matches = true
+				break
 			}
+		}
+		if !matches {
+			continue
+		}
+		candidate := strings.Join(run, " ")
+		if _, ok := findEntitySpan(text, candidate); ok {
+			return candidate
 		}
 	}
 	return value
+}
+
+// personNameRuns splits text into maximal runs of adjacent name-like tokens.
+// A word is name-like when, after stripping surrounding punctuation, it is a
+// capitalized run of letters, apostrophes, hyphens and periods. Any word that
+// is not name-like terminates the current run.
+func personNameRuns(text string) [][]string {
+	var runs [][]string
+	current := []string{}
+	flush := func() {
+		if len(current) > 0 {
+			runs = append(runs, current)
+			current = []string{}
+		}
+	}
+	for _, word := range strings.Fields(text) {
+		token := strings.Trim(word, ".,;:!?()[]{}\"“”'’")
+		if isNameToken(token) {
+			current = append(current, token)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return runs
+}
+
+// isNameToken reports whether token looks like a proper-name token: it must
+// start with an uppercase letter and contain only letters plus the internal
+// separators a real name uses (O'Brien, Anne-Marie, Jr.).
+func isNameToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	for i, r := range token {
+		switch {
+		case unicode.IsLetter(r):
+			if i == 0 && !unicode.IsUpper(r) {
+				return false
+			}
+		case r == '\'' || r == '’' || r == '-' || r == '.':
+			// internal separator: allowed
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// normalizePersonToken is the comparison form of one name token: lowercased,
+// with a possessive suffix and surrounding separators removed ("Musk", "Musk's"
+// and "MUSK" all compare equal).
+func normalizePersonToken(token string) string {
+	token = strings.ToLower(strings.TrimSpace(token))
+	token = strings.TrimSuffix(strings.TrimSuffix(token, "'s"), "’s")
+	return strings.Trim(token, "'’-.")
 }
 
 // applySegmentEntityAnnotations projects each segment's grounded entities onto

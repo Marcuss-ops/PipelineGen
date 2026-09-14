@@ -321,7 +321,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" && vidRushProviders != nil {
 		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
 		embedder := stockintelligence.NewHTTPTextEmbedderAdapter(func(ctx context.Context, text string) ([]float32, error) {
-			res, err := embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL).Embed(ctx, text)
+			res, err := embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).Embed(ctx, text)
 			if err != nil {
 				return nil, err
 			}

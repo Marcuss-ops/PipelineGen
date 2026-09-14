@@ -71,6 +71,10 @@ func (h *MaterializeJobHandler) deliverSubtitleArtifacts(
 		zap.String("asset_id", cmd.AssetID),
 		zap.Int("delivered", rep.Delivered),
 		zap.Int("failed", len(rep.Failed)),
+		// A language with text but no timing produces no artifact; it is
+		// reported (not silently skipped) so "nine of ten files missing" is
+		// visible in the job log.
+		zap.Int("untimed", len(rep.UnTimed)),
 		zap.Bool("skipped", rep.Skipped),
 		zap.String("skip_reason", rep.SkipReason),
 	)
