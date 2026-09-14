@@ -385,3 +385,5 @@ ops/benchmarks/cliprender/
 # Golden fixtures live in testdata/golden (versioned); per-run output in artifacts/verify is gitignored
 artifacts/verify/
 !testdata/golden/*.json
+
+token.json.backup-*
