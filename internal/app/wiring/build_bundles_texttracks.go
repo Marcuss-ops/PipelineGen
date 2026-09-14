@@ -91,27 +91,6 @@ func (r *subtitleRootLayoutResolver) ResolveSubtitleLocation(_ context.Context, 
 	}, nil
 }
 
-// MediaAssetLister resolves the canonical BATCH media-clip reader for a
-// composition root — the `List(ctx, asset.Filter)` shape the backfill pipeline
-// and the `asset.text.materialize` handler consume. PostgreSQL is the media
-// SSOT; the legacy SQLite *assets.ClipsRepository satisfies the same interface
-// only for the media-PostgreSQL-disabled degrade mode.
-//
-// godlike/06 SSOT: mirror of ComposeRoot.MediaClipReader (single-id reads) so
-// the batch path cannot silently keep reading a second catalog.
-func (r *ComposeRoot) MediaAssetLister() texttracks.MediaAssetLister {
-	if r == nil {
-		return nil
-	}
-	if lister := newPostgresMediaAssetLister(r.MediaPostgres); lister != nil {
-		return lister
-	}
-	if r.Repos != nil && r.Repos.ClipsRepo != nil {
-		return r.Repos.ClipsRepo
-	}
-	return nil
-}
-
 // TextTrackBundle groups the materializer + the broker-facing
 // job handler + the acquire service (Fase 5) + the post-publish
 // fan-out helper (Fase 4).
@@ -581,14 +560,6 @@ func resolveTranslationProvider(provider string) string {
 //
 // A future PR adds cfg.AI.TranslationModel so operators can
 // override the concrete model without editing the Go struct.
-// ResolveTranslationModel exposes the canonical policy → model mapping
-// (resolveTranslationModel) to the operator CLIs, so the CueTranslator they
-// build routes the Ollama fallback to the same model the runtime uses
-// (godlike/06: one owner of the policy → model decision).
-func ResolveTranslationModel(cfg *config.Config) string {
-	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
-}
-
 func resolveTranslationModel(policy string) string {
 	switch policy {
 	case "fast":
@@ -599,6 +570,18 @@ func resolveTranslationModel(policy string) string {
 		return ""
 	}
 }
+
+// ResolveTranslationModel exposes the canonical policy → model mapping to the
+// operator CLIs, so the CueTranslator they build routes the Ollama fallback to
+// the same model the runtime bundle uses (godlike/06: one owner of the
+// policy → model decision, never two).
+func ResolveTranslationModel(cfg *config.Config) string {
+	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
+}
+
+// buildBcp47CSV normalizes language codes into the canonical CSV form the
+// yt-dlp subtitle flags expect, dropping anything that normalizes to "und"
+// (undetermined) instead of emitting an invalid tag.
 func buildBcp47CSV(codes []string) string {
 	var out []string
 	for _, raw := range codes {
