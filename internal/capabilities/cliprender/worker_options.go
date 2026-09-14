@@ -85,4 +85,15 @@ func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
 	return w
 }
 
+// WithRenderCache attaches the deterministic render cache (fingerprint →
+// certified artifact locator). When wired, a submit-phase cache hit
+// short-circuits Chronon entirely (zero GPU) and a successful render
+// populates the cache for the next identical POST.
+func (w *Worker) WithRenderCache(c RenderCache) *Worker {
+	if w != nil {
+		w.renderCache = c
+	}
+	return w
+}
+
 // Handle is the job.Handler-shaped entry point bound to the Master.
