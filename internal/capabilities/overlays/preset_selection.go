@@ -26,7 +26,11 @@ var (
 	}
 	imagePresetCandidates = []string{
 		"image_fast_fade", "image_slide_left", "image_slide_right",
-		"modern_rounded_pop", "bottom_card_rise",
+		// modern_rounded_pop adds rounded-corner masking. The current strict
+		// Vulkan/NVENC image path rejects that mask and has no legacy fallback;
+		// keep the preset available for explicit certification plans, but never
+		// select it for generated overlays until the native mask path lands.
+		"bottom_card_rise",
 	}
 	imageAnimationCandidates = []string{
 		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
