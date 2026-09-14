@@ -19,6 +19,8 @@ SMOKE_POLL_TIMEOUT_SECONDS="${JORDAN_SMOKE_POLL_TIMEOUT_SECONDS:-900}"
 # sub-flags and defaults to the same value.
 FORCE_REFRESH="${FORCE_REFRESH:-false}"
 FORCE_REFRESH_MEDIA="${FORCE_REFRESH_MEDIA:-$FORCE_REFRESH}"
+RENDER_ENABLED="${RENDER_ENABLED:-true}"
+SCRIPT_MODEL="${SCRIPT_MODEL:-}"
 
 if [[ "${HELP_REQUESTED:-0}" == "1" ]]; then
     sed -n '1,12p' "${BASH_SOURCE[0]}"
@@ -68,6 +70,8 @@ jq -n \
     --arg folder_id "$DRIVE_FOLDER_ID" \
     --arg force_refresh "$FORCE_REFRESH" \
     --arg force_refresh_media "$FORCE_REFRESH_MEDIA" \
+    --arg render_enabled "$RENDER_ENABLED" \
+    --arg script_model "$SCRIPT_MODEL" \
     '{
       version: 2,
       preset: "custom",
@@ -101,7 +105,7 @@ jq -n \
           generate_scene_images: false,
           generate_timeline: true,
           voiceover_enabled: true,
-          render: { enabled: true, drive_folder_id: $folder_id },
+          render: { enabled: ($render_enabled == "true"), drive_folder_id: $folder_id },
           drive_folder_id: $folder_id
         },
         overlay_background: {
@@ -149,7 +153,7 @@ jq -n \
           include_trace: true
         },
         docs: { enabled: true, languages: ["en"], folder_id: $folder_id }
-      }]
+      } + (if $script_model == "" then {} else {model: $script_model} end)]
     }' > "$PAYLOAD"
 
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -249,8 +253,12 @@ ENTITY_PRESET_VARIANTS=$(jq -r '[.overlay_plan.items[]? |
 
 RENDER_STATUS=$(jq -r '.overlay_render?.status // empty' <<<"$RESULT")
 OVERLAY_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESULT")
-[[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato: $RENDER_STATUS"
-[[ "$OVERLAY_LINK" == http* ]] || fail "overlay render senza drive_link"
+if [[ "$RENDER_ENABLED" == "true" ]]; then
+    [[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato: $RENDER_STATUS"
+    [[ "$OVERLAY_LINK" == http* ]] || fail "overlay render senza drive_link"
+else
+    [[ -z "$RENDER_STATUS" && -z "$OVERLAY_LINK" ]] || fail "render disabilitato ma overlay_render presente"
+fi
 
 # Publish one durable recipe report containing the input recipe and the three
 # API responses needed to reproduce/audit the run. All intermediate captures
@@ -273,7 +281,9 @@ printf '  image presets: %s\n' "$PRESETS"
 printf '  image durations: %s ms\n' "$ENTITY_IMAGE_DURATIONS"
 printf '  animation variants: %s\n' "$ENTITY_PRESET_VARIANTS"
 printf '  background: Pale Olive Classic %s\n' "$BACKGROUND"
-printf '  RenderingGen: %s\n' "$RENDER_STATUS"
-printf '  overlay Drive: %s\n' "$OVERLAY_LINK"
+printf '  RenderingGen: %s (enabled=%s)\n' "${RENDER_STATUS:-skipped}" "$RENDER_ENABLED"
+if [[ "$RENDER_ENABLED" == "true" ]]; then
+    printf '  overlay Drive: %s\n' "$OVERLAY_LINK"
+fi
 printf '  target Drive folder: https://drive.google.com/drive/folders/%s\n' "$DRIVE_FOLDER_ID"
 printf '  recipe result: %s\n' "$RECIPE_RESULT"

@@ -1,0 +1,1 @@
+{"error":"search: all eligible backends failed — check ProviderErrors for per-backend diagnostics: 1 backend(s) failed","ok":false,"provider_errors":{"semantic":"semantic backend: vector search: pgvector search: query: ERROR: missing FROM-clause entry for table \"e\" (SQLSTATE 42P01)"}}

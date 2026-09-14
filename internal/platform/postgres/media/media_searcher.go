@@ -93,11 +93,11 @@ func (s *MediaSearcher) resolveFamily(ctx context.Context, channel string) (embe
 // the WHERE fragment with them. The family placeholders occupy the NEXT
 // two positions after the base scope args (len(args)+1 / len(args)+2);
 // every later placeholder must be computed AFTER this call.
-func appendFamilyScope(where string, args []any, f embeddingFamily) (string, []any) {
+func appendFamilyScope(where string, args []any, f embeddingFamily, tableAlias string) (string, []any) {
 	args = append(args, f.embeddingType)
 	args = append(args, f.modelID)
-	where = fmt.Sprintf("%s\n\t\t  AND e.embedding_type = $%d\n\t\t  AND e.model_id = $%d",
-		where, len(args)-1, len(args))
+	where = fmt.Sprintf("%s\n\t\t  AND %s.embedding_type = $%d\n\t\t  AND %s.model_id = $%d",
+		where, tableAlias, len(args)-1, tableAlias, len(args))
 	return where, args
 }
 
@@ -138,7 +138,7 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 
 	// Family scope FIRST: its two placeholders precede the vector/limit
 	// bindings, and the WHERE fragment gains the family predicate.
-	where, args = appendFamilyScope(where, args, family)
+	where, args = appendFamilyScope(where, args, family, "e")
 	// The vector literal is bound ONCE and referenced by both the
 	// similarity projection and the ORDER BY (same placeholder index).
 	vecPlaceholder := len(args) + 1
@@ -203,7 +203,7 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 
 	// Placeholder map (computed in binding order): base scope args, then
 	// family type/model, then dense vector, limit, sparse text.
-	where, args = appendFamilyScope(where, args, family)
+	denseWhere, args := appendFamilyScope(where, args, family, "e")
 	vecPh := len(args) + 1
 	limitPh := vecPh + 1
 	sparsePh := vecPh + 2
@@ -228,7 +228,7 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		           row_number() OVER (ORDER BY ts_rank(to_tsvector('english', a.search_text),
 		               to_tsquery('english', websearch_to_tsquery('english', $%[5]d)::text)) DESC) AS rank
 		    FROM media_assets a
-		    %[2]s
+		    %[7]s
 		      AND to_tsvector('english', a.search_text) @@ websearch_to_tsquery('english', $%[5]d)
 		    LIMIT $%[3]d
 		),
@@ -242,7 +242,7 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		GROUP BY f.asset_id
 		ORDER BY similarity DESC
 		LIMIT $%[3]d
-	`, vecPh, where, limitPh, sparsePh, sparsePh, family.dim)
+	`, vecPh, denseWhere, limitPh, sparsePh, sparsePh, family.dim, where)
 	args = append(args, vec, limit, req.SparseText)
 
 	return s.queryResults(ctx, req.MinScore, query, args...)

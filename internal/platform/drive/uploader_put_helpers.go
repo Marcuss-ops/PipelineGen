@@ -11,7 +11,17 @@ import (
 	"strings"
 
 	driveapi "google.golang.org/api/drive/v3"
+
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
+
+// classifyDriveUploadError preserves Google's typed status and Retry-After
+// header before adding the transient carrier consumed by the retry loop.
+// Keeping both envelopes is intentional: IsTransient sees the carrier while
+// DoWithValue can still discover RetryAfterError through errors.As.
+func classifyDriveUploadError(err error) error {
+	return retry.WrapTransient(retry.ClassifyGoogleAPIError(err))
+}
 
 // renameWithTimestamp inserts a UnixNano suffix into the filename
 // preserving the extension. Example:

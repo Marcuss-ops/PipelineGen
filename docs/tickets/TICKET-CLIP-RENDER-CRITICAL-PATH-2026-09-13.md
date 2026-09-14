@@ -429,3 +429,67 @@ claim under ~30 % should be repeated.
   (`render_job_slots = 1U`), not a tuning knob.
 - The live 1/10/50 Chronon IPC cold+warm certification and the ≥50-clip
   settle-pool batch-under-load run remain deployment-bound (unchanged).
+
+## 7. Batch fuso + cache deterministica a costo marginale zero (2026-09-14, ottava)
+
+### 7.1 Perché serve un fingerprint
+
+La domanda 100× è: *se domani arrivano 500 clip invece di 5, cosa collassa?* La coda Chronon, non la GPU. L'unico 10× è non-renderizzare. §6.7 aveva misurato che lo stesso body con chiave idempotency nuova ri-renderizza e paga il wall: l'idempotenza è request-scoped (24 h replay), non c'è riuso content-addressed. Il fingerprint rompe il presupposto: **identica semantica → stessi bytes → stesso locator, senza GPU.**
+
+`fingerprint.go` è l'unica authority: `(*RenderRequest).Fingerprint()` normalizza (idempotente, strict-decode già prima), valida, poi SHA-256 sul JSON canonico `{source_asset_id, background, watermark, transcript, subtitles, output, audio, overlay, execution}`. `Destination` (cartella Drive), header idempotency e correlation sono volutamente esclusi: stesso render su due folder = 1 render (fan-out nell'outbox). `BatchFingerprint` = SHA-256 di `fp0|fp1|…` ordinato.
+
+### 7.2 Cache `fingerprint → locator certificato`
+
+`render_cache.go`: `RenderCache` (Get/Put), `pgRenderCache` su `clip_render_cache` (PK `fingerprint`, indice `asset_id`, DDL idempotente). Chiamata una volta al boot dal composition root (`EnsureRenderCacheTable` su `root.MediaPostgres`, lo stesso DSN di `MediaSearcher`), quindi nessun fallback SQLite silenzioso. Put dopo `publish` riuscita (`worker_completion.go`), Get nel worker prima di Chronon e nell'handler (singolo + batch) prima di enqueue. Tabella live `pipelinegen_media.clip_render_cache`: 5 righe al 2026-09-14 (cache attiva).
+
+### 7.3 `POST /api/clips/render/batch` — fusione vera
+
+`handler_batch.go` monta `POST /api/clips/render/batch` sotto `/clips` (`module.go`, `MaxClipRenderBatchItems=50`, `MaxClipRenderBatchBytes=5MiB`, middleware idempotency già presente su `/render`):
+
+- `Normalize+Validate+Fingerprint` per-item, fail-fast sul primo invalido; `batchID = BatchFingerprint(perItemFP)`.
+- `firstPos[fingerprint] = prima occorrenza` → N identici collassano su 1 enqueue; duplicati riusano lo stesso `job_id` in risposta.
+- fast path cache per ogni fingerprint unico: su hit → `status=CACHED`, `job_id=cache:<fp[:16]>`, nessun job Master creato.
+- **fix dedup queue:** ogni item enqueued con `CorrelationID = batchID + ":" + fp[:16]`. Prima tutti ereditavano lo stesso `X-Request-ID` (`corid` in context) e la coda deduplicava su `(type, correlation_id)`, così 3 clip distinti collassavano su 1 job (bug misurato 06:27:20/40 su `job_…_e7043302`). Ora correlation distinta per fingerprint ma stabile per retry (stesso batch ordinato → stesso batchID/fp → stessa correlation → idempotente).
+
+Wiring: `Handler.renderCache` + `Worker.renderCache` via `WithRenderCache`, iniettati dal root con `NewPostgresRenderCache(root.MediaPostgres)`.
+
+### 7.4 Prove
+
+**Unit (7 casi, handler_batch con stub `job.Service`):**
+
+- `TestFingerprint_DeterministicAndNormalized` — stesso request → stesso digest, length 64, sorgente diversa → digest diverso.
+- `TestFingerprint_ExcludesDestination` — folder diversa → stesso fingerprint.
+- `TestBatchFingerprint_Deterministic` — order-sensitive, deterministic.
+- `TestRenderBatch_DedupIdenticalCollapsesToOne` — 3 identici → `accepted=1`, 1 `Enqueue`, stesso `job_id`×3.
+- `TestRenderBatch_DistinctItemsGetDistinctJobs` — 3 distinti → 3 job distinti (regressione della dedup).
+- `TestRenderBatch_CacheHitReturnsCached` — fingerprint in cache → `CACHED` senza enqueue.
+
+**Live (con `scripts/with-velox-auth`, `VELOX_ADMIN_TOKEN=e4f82d7e…`, `pipelinegen.service` active pid 1343283, DSN `pipelinegen_media@16432`):**
+
+```
+3× identici  {00b0df958cb61473}             → batch 030f080b… accepted=1  job_1789368792620382503_6ccf891c ×3  QUEUED
+3× distinti  {00b0df9, 011eed3d, 014d263f}  → batch 12b4d53c… accepted=3  3 job_id distinti
+```
+
+Log:
+
+```
+clip.render batch enqueued  batch_id=030f… position=0 fingerprint=be77ed395197d95b job_id=6ccf891c
+clip.render batch accepted  items=3 unique=1 accepted=1
+clip.render batch enqueued  batch_id=12b4… position=0/1/2 → 3 fingerprint distinti
+clip.render batch accepted  items=3 unique=3 accepted=3
+```
+
+Fingerprint `be77ed…` identico nei due batch (stesso item normalizzato) — stabilità canonica confermata. Il cache-hit live end-to-end (secondo POST identico → `CACHED` senza GPU) è provato unitariamente; la tabella è attiva ma il Put è post-publish async e richiede un settle reale per popolarsi, quindi la misura ms vs 10 s è deployment-bound.
+
+### 7.5 Gate
+
+`go build ./...` ✔, `go vet` (cliprender + wiring) ✔, `check_clip_render_cutover.sh` → `CLIP_RENDER_CUTOVER=PASS` ✔, `go test -run TestFingerprint|TestRenderBatch|TestBatchFingerprint` ✔.
+
+### 7.6 Cosa resta deployment-bound
+
+- Cache end-to-end: un settle completo + secondo POST identico → `CACHED` senza Chronon/probe (ms vs ~5–10 s). Manca solo la run GPU che popoli la riga.
+- Wall fuso vs 5 singoli sotto carico: il batch rimuove N HTTP RTT + dedup + cache, ma Chronon resta `render_job_slots=1U` (protezione VRAM, §6.3) — il wall batch resta serializzato finché quel lock non è deauthorato con budget VRAM.
+- Live 1/10/50 Chronon IPC cold+warm e ≥50 clip con settle pool dedicato — invariati.
+
+Nessun commit (richiesta esplicita necessaria).

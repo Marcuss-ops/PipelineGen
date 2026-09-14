@@ -32,10 +32,38 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
+
+func TestClassifyDriveUploadError_PreservesRetryAfterAndRetryability(t *testing.T) {
+	raw := &googleapi.Error{
+		Code:    http.StatusBadGateway,
+		Message: "Please try again in 30 seconds",
+		Header:  http.Header{"Retry-After": []string{"30"}},
+	}
+	got := classifyDriveUploadError(raw)
+	if !retry.IsTransient(got) {
+		t.Fatal("classified 502 must remain retryable")
+	}
+	var classified *retry.GoogleAPIError
+	if !errors.As(got, &classified) {
+		t.Fatalf("classified error does not preserve GoogleAPIError envelope: %T", got)
+	}
+	if classified.StatusCode != http.StatusBadGateway {
+		t.Fatalf("StatusCode = %d, want 502", classified.StatusCode)
+	}
+	if classified.RetryAfter != 30*time.Second {
+		t.Fatalf("RetryAfter = %v, want 30s", classified.RetryAfter)
+	}
+	var hint retry.RetryAfterError
+	if !errors.As(got, &hint) || hint.RetryAfterDuration() != 30*time.Second {
+		t.Fatal("Retry-After hint must survive the transient wrapper")
+	}
+}
 
 // newFakeDriveService constructs a *driveapi.Service that is NEVER
 // exercised (PutFile's lookup-fail tests short-circuit before any

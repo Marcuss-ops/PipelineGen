@@ -245,7 +245,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		MinWordFloor:               200,
 		DefaultSentencesPerImage:   10,
 		DefaultImagesPerScene:      2,
-		MaxBatchWorkers:            4,
+		MaxBatchWorkers:            cfg.Scripts.MaxBatchWorkers,
 		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
 		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
 		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
@@ -254,6 +254,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	sourceReg := processor.NewSourceRegistry(log)
 	generateOne := gencore.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	generateMany := usecase.NewGenerateManyUseCase(log)
+	generateMany.SetConcurrency(normCfg.MaxBatchWorkers)
 	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, log)
 
 	// Build dispatcher + registry ───────────────────

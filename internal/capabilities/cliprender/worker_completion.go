@@ -209,6 +209,32 @@ func (w *Worker) completeRendered(
 		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
 		zap.Int64("size_bytes", outcome.SizeBytes),
 	)
+	// Populate deterministic cache for future identical POSTs. Best-effort:
+	// a cache put failure must never fail the render that already succeeded.
+	if w.renderCache != nil && req != nil {
+		if fp, fpErr := req.Fingerprint(); fpErr == nil {
+			rec := &RenderCacheRecord{
+				Fingerprint: fp,
+				AssetID:     publication.AssetID,
+				StorageKey:  outcome.StorageKey,
+				ArtifactURL: outcome.ArtifactURL,
+				ContentType: outcome.ContentType,
+				SHA256:      outcome.SHA256,
+				SizeBytes:   outcome.SizeBytes,
+				DurationSec: outcome.DurationSec,
+				Width:       outcome.Width,
+				Height:      outcome.Height,
+				FPSNum:      outcome.FPSNum,
+				FPSDen:      outcome.FPSDen,
+				Backend:     outcome.Backend,
+			}
+			if err := w.renderCache.Put(ctx, rec); err != nil {
+				w.log.Warn("clip.render cache put failed",
+					zap.String("fingerprint", fp[:16]),
+					zap.Error(err))
+			}
+		}
+	}
 	progress(100, "clip.render completed")
 	return renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication), nil
 }

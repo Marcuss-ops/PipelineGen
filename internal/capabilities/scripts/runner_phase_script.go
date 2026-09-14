@@ -233,18 +233,15 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		if req.Intro != nil || req.Outro != nil {
 			streamable = false
 		}
-		// A declared segment budget requires whole-prose materialization before
-		// SceneCommitted; streaming a model's provisional single scene would
-		// permanently launch VidRush enrichment with the wrong topology.
+		// A declared segment budget without explicit segments requires
+		// whole-prose materialization before SceneCommitted; streaming a
+		// model's provisional single scene would permanently launch VidRush
+		// enrichment with the wrong topology.
 		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
-		// An explicit segment plan is also authoritative. Streaming a model
-		// response here can emit one opaque scene before the batch path has a
-		// chance to materialize the declared topology, which would collapse
-		// every downstream VidRush commit onto scene-0. Commit only the
-		// materialized scenes for explicit segment plans.
-		if len(req.ScriptParams.Segments) > 0 {
-			segmentTopologyNeedsMaterialization = true
-		}
+		// Explicit segment plans are already authoritative and the production
+		// SceneTextGenerator streams one isolated model call per segment with a
+		// stable ID/index. Keep them streamable so SceneTextReady can start
+		// NLP/TTS for segment N while segment N+1 is still generating.
 		if req.Intro != nil || req.Outro != nil {
 			segmentTopologyNeedsMaterialization = true
 		}

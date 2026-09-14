@@ -389,7 +389,7 @@ step_6_stock_run() {
         --arg name "$STOCK_FOLDER_NAME" \
         '{
           direct_urls: [$url],
-          target_total_duration_seconds: 10,
+          target_total_duration_seconds: 5,
           target_duration_per_source_seconds: 5,
           clips_per_source: 1,
           clip_duration_seconds: 5,

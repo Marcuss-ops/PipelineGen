@@ -26,8 +26,8 @@
 // Publisher.Step0 in publisher.go for the registry-default path).
 //
 // Retries on transient Drive errors (429, 503, timeouts, network blips)
-// via pkg/retry — same exponential backoff policy (3 attempts, 2s → 4s)
-// as the legacy UploadFileWithDescription path.
+// via pkg/retry — three bounded attempts with 5s → 15s → 30s backoff,
+// while honoring a larger Retry-After value supplied by Google.
 //
 // Lookup step (FindFileByName) follows TWO fail-closed rules applied
 // in order (Wave B1 + Wave B2, June 2026):
@@ -182,7 +182,9 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		return u.doPutFile(ctx, req, existing)
 	}, retry.Options{
 		MaxAttempts:    3,
-		InitialBackoff: 2 * time.Second,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  3.0,
 		// P1.5 (July 2026): jitter audit found uploader_put.go was
 		// the only Drive-side retry site without JitterFraction.
 		// ±30% matches the canonical folderLookupJitterFraction
@@ -390,7 +392,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		updated, err := withUpdateMedia(u.Service.Files.Update(existing.FileID, updateFile).
 			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.WrapTransient(err))
+			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, classifyDriveUploadError(err))
 		}
 		return &PutFileResult{
 			FileID:       updated.Id,
@@ -438,7 +440,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		created, err := withCreateMedia(u.Service.Files.Create(file).
 			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.WrapTransient(err))
+			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, classifyDriveUploadError(err))
 		}
 		u.Log.Info("putFile: renamed to avoid collision",
 			zap.String("original", req.Filename),
@@ -466,7 +468,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	created, err := withCreateMedia(u.Service.Files.Create(file).
 		Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 	if err != nil {
-		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.WrapTransient(err))
+		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, classifyDriveUploadError(err))
 	}
 	return &PutFileResult{
 		FileID:       created.Id,
@@ -478,7 +480,12 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	}, nil
 }
 
-const resumableUploadThreshold = 16 * 1024 * 1024
+// Files above 5 MiB use Drive's resumable protocol. The previous 16 MiB
+// threshold sent typical 6–7 MiB final-audio artifacts through multipart;
+// every retry then restarted the entire upload from byte zero. Resumable
+// uploads preserve the session and let Drive continue from the acknowledged
+// offset after a transient 502/timeout.
+const resumableUploadThreshold = 5 * 1024 * 1024
 
 // openUploadSource resolves the upload bytes and their length. A local path is
 // opened and stat'd; otherwise the remote SourceURL is streamed with the
