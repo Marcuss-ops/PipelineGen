@@ -12,6 +12,7 @@ package texttracks
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -408,8 +409,12 @@ func TestMaterializeSubtitleArtifacts_PrefersTimingFaithfulCueTranslation(t *tes
 	if len(seen) != len(src) {
 		t.Fatalf("per-cue translation calls = %d, want one per SOURCE cue (%d); got %v", len(seen), len(src), seen)
 	}
-	if seen[0] != "hello world" || seen[1] != "how are you" {
-		t.Fatalf("the translator must receive the SOURCE cue texts, got %v", seen)
+	// The fan-out is concurrent, so the CALL order is not part of the contract;
+	// the translated WINDOWS are (asserted by index below).
+	sorted := append([]string(nil), seen...)
+	sort.Strings(sorted)
+	if sorted[0] != "hello world" || sorted[1] != "how are you" {
+		t.Fatalf("the translator must receive the SOURCE cue texts, got %v", sorted)
 	}
 	if len(rec.calls) != 1 {
 		t.Fatalf("cue writes = %d, want 1 batch", len(rec.calls))
