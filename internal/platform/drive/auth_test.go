@@ -2,7 +2,9 @@ package drive
 
 import (
 	"errors"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"golang.org/x/oauth2"
@@ -117,5 +119,33 @@ func TestFallbackTokenSource_ReturnsPrimaryTokenOnSuccess(t *testing.T) {
 	}
 	if got == nil || got.AccessToken != "primary-token" {
 		t.Fatalf("expected primary token, got %#v", got)
+	}
+}
+
+func TestNewGoogleTransport_UsesPhaseTimeoutsWithoutWholeRequestDeadline(t *testing.T) {
+	transport := newGoogleTransport()
+	if transport == nil {
+		t.Fatal("newGoogleTransport returned nil")
+	}
+	if transport.ResponseHeaderTimeout != 30*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 30s", transport.ResponseHeaderTimeout)
+	}
+	if transport.TLSHandshakeTimeout != 10*time.Second {
+		t.Fatalf("TLSHandshakeTimeout = %v, want 10s", transport.TLSHandshakeTimeout)
+	}
+	if transport.ExpectContinueTimeout != time.Second {
+		t.Fatalf("ExpectContinueTimeout = %v, want 1s", transport.ExpectContinueTimeout)
+	}
+	if transport.IdleConnTimeout != 90*time.Second {
+		t.Fatalf("IdleConnTimeout = %v, want 90s", transport.IdleConnTimeout)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("DialContext must be configured")
+	}
+	// Keep this assertion next to the transport contract: the old 90s
+	// http.Client.Timeout was the source of the size-independent upload cap.
+	client := &http.Client{Transport: transport}
+	if client.Timeout != 0 {
+		t.Fatalf("transport test client Timeout = %v, want 0", client.Timeout)
 	}
 }

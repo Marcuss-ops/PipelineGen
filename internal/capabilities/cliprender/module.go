@@ -50,6 +50,10 @@ type Dependencies struct {
 	// to POST /clips/render. Optional (nil disables).
 	Idempotency gin.HandlerFunc
 
+	// RenderCache is the optional deterministic render cache for the
+	// handler-level hit path (fingerprint → certified locator).
+	RenderCache RenderCache
+
 	// Logger is the structured logger. Optional (nil → zap.NewNop()).
 	Logger *zap.Logger
 
@@ -98,7 +102,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	handler := NewHandler(deps.Jobs, log)
+	handler := NewHandler(deps.Jobs, log).WithRenderCache(deps.RenderCache)
 	handler.Idempotency = deps.Idempotency
 
 	mod := api.NewRouteModule(

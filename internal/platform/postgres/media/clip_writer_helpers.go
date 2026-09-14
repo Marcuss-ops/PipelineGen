@@ -482,7 +482,15 @@ func filepathBase(p string) string {
 // clipAssetToDomainAsset bridges the YouTube DTO to the domain asset shape
 // expected by resolveClipTaxonomy (media type/provider only).
 func clipAssetToDomainAsset(clipID string, clipAsset youtubetypes.ClipAsset) *asset.Asset {
-	_ = clipID
-	_ = clipAsset
-	return nil
+	return &asset.Asset{
+		ID:         clipID,
+		Source:     asset.Source("youtube"),
+		MediaType:  asset.MediaType("video"),
+		Category:   clipAsset.Metadata.Category,
+		SearchText: clipAsset.SearchText,
+		Metadata: map[string]any{
+			"source_url": clipAsset.Metadata.SourceURL,
+			"asset_kind": "clip",
+		},
+	}
 }

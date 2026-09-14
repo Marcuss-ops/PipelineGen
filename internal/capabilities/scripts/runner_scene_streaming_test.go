@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,6 +81,59 @@ func TestSceneTextStreaming_DownstreamStartsBeforeNextSceneReady(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("streaming run did not complete")
+	}
+	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
+}
+
+// TestSceneTextStreaming_ExplicitSegmentsUseProductionPath guards the runner
+// branch used by the real SceneTextGenerator: explicit segment plans already
+// have stable topology, so they must not be forced through the all-at-once
+// materialization path.
+func TestSceneTextStreaming_ExplicitSegmentsUseProductionPath(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
+	translator := &readyProbeTranslator{started: make(chan struct{})}
+	voiceover := &readyProbeVoiceover{started: make(chan struct{})}
+	runner.textGen = streamer
+	runner.translator = translator
+	runner.voiceoverGen = voiceover
+
+	req := defaultTestRequest()
+	req.ScriptParams.Segments = []scriptpkg.ScriptSegment{
+		{ID: "scene-0", Topic: "first"},
+		{ID: "scene-1", Topic: "second"},
+		{ID: "scene-2", Topic: "third"},
+	}
+	req.ScriptParams.SingleScene = false
+	runID := "run-stream-explicit-segments-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	done := make(chan struct{})
+	go func() { defer close(done); runner.Execute(context.Background(), runID, req) }()
+
+	select {
+	case <-streamer.emitted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 was not emitted")
+	}
+	select {
+	case <-translator.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 translation did not start while scene 1 was still generating")
+	}
+	select {
+	case <-voiceover.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 TTS did not start while scene 1 was still generating")
+	}
+
+	close(streamer.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("explicit-segment streaming run did not complete")
 	}
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
 }

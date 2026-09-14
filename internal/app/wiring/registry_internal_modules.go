@@ -497,6 +497,26 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
 	}
 	worker.WithOverlaySegmentResolver(clipadapters.NewOverlaySegmentResolver(overlayCache))
+
+	// Deterministic render cache (fingerprint → certified locator): reuses
+	// the same media PostgreSQL that backs the catalog. A repeated POST
+	// with identical semantics returns in milliseconds without touching the
+	// GPU; a batch collapses identical items to one slot.
+	var renderCache cliprender.RenderCache
+	if root.MediaPostgres != nil {
+		if err := cliprender.EnsureRenderCacheTable(context.Background(), root.MediaPostgres); err != nil {
+			log.Warn("registerClipRender: ensure render cache table failed; cache disabled",
+				zap.Error(err))
+		} else {
+			renderCache = cliprender.NewPostgresRenderCache(root.MediaPostgres)
+			log.Info("registerClipRender: deterministic render cache wired",
+				zap.String("table", "clip_render_cache"))
+		}
+	} else {
+		log.Info("registerClipRender: media PostgreSQL unavailable; deterministic render cache disabled")
+	}
+	worker.WithRenderCache(renderCache)
+
 	log.Info("registerClipRender: clip render boundary wired (RenderingGen queue → Chronon certified artifact)",
 		zap.String("renderinggen_queue", cfg.External.RenderingGenQueueURL),
 		zap.String("overlay_compositing", "single-pass (sealed into the Chronon plan)"),
@@ -513,6 +533,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		Jobs:        root.Jobs.Facade,
 		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
 		Idempotency: idempotencyHandler,
+		RenderCache: renderCache,
 		Logger:      log,
 		ModuleOpts:  nil,
 	})

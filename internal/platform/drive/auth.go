@@ -3,6 +3,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -95,12 +96,38 @@ func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string,
 	if httpClient == nil {
 		return nil, fmt.Errorf("failed to create google oauth client")
 	}
-	// The default http.Client has no overall deadline. A stalled Drive
-	// request could therefore hold a publish worker forever and amplify a
-	// single provider hiccup into the pipeline's p99 tail. Keep the request
-	// context authoritative while bounding context.Background() callers.
-	httpClient.Timeout = 90 * time.Second
+	// Do not set http.Client.Timeout here: it is an end-to-end deadline that
+	// also includes uploading the request body. On a healthy but slower Drive
+	// connection it can abort a valid upload, while on a stalled response it
+	// burns the whole deadline before the retry loop can react. Configure the
+	// underlying transport instead: connection setup and response headers fail
+	// fast, while the caller's context remains the authoritative upload
+	// deadline. This is especially important for resumable uploads, where each
+	// chunk gets its own response-header budget.
+	if oauthTransport, ok := httpClient.Transport.(*oauth2.Transport); ok {
+		oauthTransport.Base = newGoogleTransport()
+	}
 	return httpClient, nil
+}
+
+// newGoogleTransport returns the tuned transport shared by Drive and Docs.
+// ResponseHeaderTimeout bounds a provider stall after the request has been
+// sent without imposing a size-independent deadline on the upload body.
+func newGoogleTransport() *http.Transport {
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	transport := base.Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.TLSHandshakeTimeout = 10 * time.Second
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport.ExpectContinueTimeout = 1 * time.Second
+	transport.IdleConnTimeout = 90 * time.Second
+	return transport
 }
 
 // NewDriveServiceFromFiles creates a Google Drive service using credentials and token files from config.

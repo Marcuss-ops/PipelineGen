@@ -185,6 +185,63 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			)
 		}
 	}
+	// Deterministic cache fast path (worker-level): identical semantics →
+	// same bytes without touching the GPU. The handler already probes the
+	// same cache, but the worker owns the authoritative hit: a completed
+	// render that committed its artifact may still race the handler's view.
+	if phase != RenderPhaseSettle && w.renderCache != nil {
+		if fp, fpErr := req.Fingerprint(); fpErr == nil {
+			if rec, gErr := w.renderCache.Get(ctx, fp); gErr == nil && rec != nil {
+				w.log.Info("clip.render cache hit (worker)",
+					zap.String("job_id", j.ID),
+					zap.String("fingerprint", fp[:16]),
+					zap.String("asset_id", rec.AssetID),
+				)
+				// Synthesize a cached completion without touching Chronon.
+				cached := &RenderOutcome{
+					StorageKey:  rec.StorageKey,
+					ArtifactURL: rec.ArtifactURL,
+					ContentType: rec.ContentType,
+					SHA256:      rec.SHA256,
+					SizeBytes:   rec.SizeBytes,
+					DurationSec: rec.DurationSec,
+					Width:       rec.Width,
+					Height:      rec.Height,
+					FPSNum:      rec.FPSNum,
+					FPSDen:      rec.FPSDen,
+					Backend:     rec.Backend,
+					Metrics:     NewRenderMetricsV2(),
+				}
+				if cached.Metrics != nil {
+					cached.Metrics.BackendSelected = rec.Backend
+				}
+				// Fabricate a minimal Prepared for result projection.
+				synthPrepared := &Prepared{
+					RunID:      j.ID,
+					Source:     &MaterializedAsset{AssetID: req.SourceAssetID, Title: "cached"},
+					Contract:   &ResolvedContract{ContractID: string(rec.Backend)},
+					Transcript: &TranscriptResult{},
+				}
+				// Produce a sealed-like plan shell for the result shape.
+				synthPlan := ClipRenderPlanV1{
+					Version:    PlanVersion,
+					RunID:      j.ID,
+					OutputPath: "",
+					PlanSHA256: fp,
+				}
+				res := renderedResult(j, &req, synthPrepared, synthPlan, nil, cached, &RenderPublishResult{
+					AssetID:      rec.AssetID,
+					DrivePending: true,
+					SizeBytes:    rec.SizeBytes,
+				})
+				res["cache_hit"] = true
+				res["fingerprint"] = fp
+				res["phase"] = "cached"
+				progress(100, "clip.render cache hit")
+				return res, nil
+			}
+		}
+	}
 	if phase == RenderPhaseSettle {
 		progress(90, "remote render submitted; settling certified artifact")
 	} else {

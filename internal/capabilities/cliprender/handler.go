@@ -25,8 +25,9 @@ const MaxClipRenderRequestBytes int64 = 1 << 20 // 1 MiB
 // logic lives in the cliprender capability (and, in the follow-up
 // steps, its worker).
 type Handler struct {
-	jobsSvc job.Service
-	log     *zap.Logger
+	jobsSvc     job.Service
+	renderCache RenderCache
+	log         *zap.Logger
 
 	// Idempotency is the reusable Gin idempotency middleware applied
 	// to POST /clips/render. nil disables (test fixtures).
@@ -41,6 +42,16 @@ func NewHandler(jobsSvc job.Service, log *zap.Logger) *Handler {
 	return &Handler{jobsSvc: jobsSvc, log: log}
 }
 
+// WithRenderCache attaches the deterministic render cache for the
+// synchronous hit path (fingerprint → certified locator). When wired,
+// an identical POST returns in milliseconds without enqueuing a GPU job.
+func (h *Handler) WithRenderCache(c RenderCache) *Handler {
+	if h != nil {
+		h.renderCache = c
+	}
+	return h
+}
+
 // RegisterRoutes mounts the clip.render surface under the /clips
 // router group (production path /api/clips/render).
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -49,6 +60,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		idem = func(c *gin.Context) { c.Next() }
 	}
 	r.POST("/render", idem, h.Render)
+	r.POST("/render/batch", idem, h.RenderBatch)
 }
 
 // Render handles POST /api/clips/render.
@@ -115,6 +127,31 @@ func (h *Handler) Render(c *gin.Context) {
 			ErrorCode: ErrCodeJobsUnavailable,
 		})
 		return
+	}
+
+	// Deterministic cache fast path: identical semantics → same bytes
+	// without touching the GPU. Served synchronously in milliseconds.
+	if h.renderCache != nil {
+		if fp, fpErr := req.Fingerprint(); fpErr == nil {
+			if rec, err := h.renderCache.Get(c.Request.Context(), fp); err == nil && rec != nil {
+				h.log.Info("clip.render cache hit (handler)",
+					zap.String("fingerprint", fp[:16]),
+					zap.String("asset_id", rec.AssetID),
+				)
+				c.JSON(http.StatusOK, gin.H{
+					"status":      "CACHED",
+					"fingerprint": fp,
+					"asset_id":    rec.AssetID,
+					"artifact": gin.H{
+						"storage_key":  rec.StorageKey,
+						"artifact_url": rec.ArtifactURL,
+						"sha256":       rec.SHA256,
+						"size_bytes":   rec.SizeBytes,
+					},
+				})
+				return
+			}
+		}
 	}
 
 	enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{

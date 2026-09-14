@@ -167,6 +167,7 @@ func buildScriptUseCases(
 
 	// ── GenerateManyUseCase (multi-item fanout) ─────────────────
 	manyUC := usecase.NewGenerateManyUseCase(log)
+	manyUC.SetConcurrency(normCfg.MaxBatchWorkers)
 
 	// ── Media curator ───────────────────────────────────────
 	var mediaCurator *scriptdto.MediaCurator

@@ -8,6 +8,10 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 # shellcheck source=scripts/lib/dotenv.sh
 source "$DIR/scripts/lib/dotenv.sh"
 load_dotenv_missing "$DIR/.env"
+# Provider policy: YouTube is the only external acquisition provider.
+# Keep this explicit so a stale systemd Environment override cannot remount
+# Artlist after a restart; the canonical setting also lives in config.yaml.
+export VELOX_FEATURE_ARTLIST_ENABLED=false
 # Keep the repository lexicon as the operational default when an inherited
 # environment exports an empty override. An empty env value must not erase
 # the config.yaml path during a systemd restart.

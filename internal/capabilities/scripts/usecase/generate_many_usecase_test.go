@@ -5,7 +5,11 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -16,14 +20,44 @@ import (
 // ── Stub broker ────────────────────────────────────────────────────
 
 type stubBroker struct {
+	mu          sync.Mutex
 	enqueueFunc func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error)
 }
 
 func (s *stubBroker) EnqueueScriptItem(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.enqueueFunc(ctx, parentJobID, itemIndex, item, preset)
 }
 
 var _ scripts.FanoutItemBroker = (*stubBroker)(nil)
+
+type blockingFanoutBroker struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	active  atomic.Int32
+	max     atomic.Int32
+}
+
+func (b *blockingFanoutBroker) EnqueueScriptItem(ctx context.Context, _ string, itemIndex int, _ scriptpkg.GenerationItemV2, _ scriptpkg.Preset) (string, error) {
+	active := b.active.Add(1)
+	for {
+		max := b.max.Load()
+		if active <= max || b.max.CompareAndSwap(max, active) {
+			break
+		}
+	}
+	b.once.Do(func() { close(b.started) })
+	select {
+	case <-b.release:
+		b.active.Add(-1)
+		return fmt.Sprintf("child-%d", itemIndex), nil
+	case <-ctx.Done():
+		b.active.Add(-1)
+		return "", ctx.Err()
+	}
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -128,6 +162,56 @@ func TestExecuteFanout_AllSucceed(t *testing.T) {
 	for i, id := range result.ChildJobIDs {
 		if id == "" {
 			t.Errorf("ChildJobIDs[%d] is empty", i)
+		}
+	}
+}
+
+func TestExecuteFanout_EnqueueIsBoundedAndParallel(t *testing.T) {
+	t.Parallel()
+	broker := &blockingFanoutBroker{started: make(chan struct{}), release: make(chan struct{})}
+	uc := newWiredUC(broker)
+	uc.SetConcurrency(2)
+
+	done := make(chan struct{})
+	var result *scripts.FanoutResult
+	var err error
+	go func() {
+		result, err = uc.ExecuteFanout(context.Background(), "parent-1",
+			makeManyEnv(makeItem("a"), makeItem("b"), makeItem("c"), makeItem("d")))
+		close(done)
+	}()
+
+	select {
+	case <-broker.started:
+	case <-time.After(time.Second):
+		t.Fatal("bounded fanout did not start an enqueue")
+	}
+	deadline := time.Now().Add(time.Second)
+	for broker.active.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := broker.active.Load(); got != 2 {
+		t.Fatalf("active enqueues = %d, want configured parallelism 2", got)
+	}
+	if got := broker.max.Load(); got > 2 {
+		t.Fatalf("active enqueues exceeded configured parallelism: %d", got)
+	}
+
+	close(broker.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("fanout did not finish after releasing broker")
+	}
+	if err != nil {
+		t.Fatalf("ExecuteFanout: %v", err)
+	}
+	if result == nil || result.TotalEnqueued != 4 {
+		t.Fatalf("fanout result = %+v, want four enqueued children", result)
+	}
+	for i, want := range []string{"child-0", "child-1", "child-2", "child-3"} {
+		if result.ChildJobIDs[i] != want {
+			t.Fatalf("ChildJobIDs[%d] = %q, want deterministic input order %q", i, result.ChildJobIDs[i], want)
 		}
 	}
 }
