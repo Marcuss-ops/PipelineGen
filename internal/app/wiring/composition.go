@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -270,6 +271,30 @@ func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundl
 	// behaviour.
 	if textTracks.FanOut != nil && domains.YoutubeClipService != nil {
 		domains.YoutubeClipService.WithMaterializeFanOut(textTracks.FanOut)
+	}
+	return nil
+}
+
+// MediaAssetLister resolves the canonical BATCH media-clip reader for a
+// composition root — the `List(ctx, asset.Filter)` shape the backfill pipeline
+// and the `asset.text.materialize` handler consume. PostgreSQL is the media
+// SSOT; the legacy SQLite *assets.ClipsRepository satisfies the same interface
+// only for the media-PostgreSQL-disabled degrade mode.
+//
+// godlike/06 SSOT: mirror of ComposeRoot.MediaClipReader (single-id reads) so
+// the batch path cannot silently keep reading a second catalog.
+//
+// Lives next to the ComposeRoot type it hangs off (Pattern 5 split, keeping
+// build_bundles_texttracks.go inside the 600-line gate).
+func (r *ComposeRoot) MediaAssetLister() texttracks.MediaAssetLister {
+	if r == nil {
+		return nil
+	}
+	if lister := newPostgresMediaAssetLister(r.MediaPostgres); lister != nil {
+		return lister
+	}
+	if r.Repos != nil && r.Repos.ClipsRepo != nil {
+		return r.Repos.ClipsRepo
 	}
 	return nil
 }
