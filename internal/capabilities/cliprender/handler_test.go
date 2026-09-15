@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -354,6 +355,180 @@ func TestRenderHandler_RegistersOnlyRenderRoute(t *testing.T) {
 	}
 	if !hasRender {
 		t.Fatal("expected POST /render to be registered")
+	}
+}
+
+// TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark verifies the
+// canonical "classic pale olive" use case:
+//
+//   - background mode=asset pointing at the pale-olive image plate
+//   - subtitles enabled (burn mode, default style)
+//   - watermark TEXT in top_right (no asset_id — text watermark path)
+//
+// This is the day-1 benchmark scenario: the handler must accept the
+// payload, normalise it, and enqueue without touching the GPU. The
+// wall-clock budget at the HTTP transport layer (stub jobs service, no
+// DB) is < 5 ms for a single request; repeated calls must be stable.
+func TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark(t *testing.T) {
+	jobsSvc := &stubJobsSvc{
+		returnJob: &job.Job{ID: "job-pale-olive-1"},
+	}
+	r := newTestRouter(jobsSvc)
+
+	// "classic pale olive" is the canonical asset ID for the pale-olive
+	// background plate registered in the media DB. In the unit test we
+	// use the stable identifier directly; the worker resolves it at
+	// render time via the PreparedAssetResolver.
+	const paleOliveAssetID = "bg-classic-pale-olive"
+	const watermarkText = "VeloxEditing"
+
+	body := `{
+		"source_asset_id": "asset-clip-001",
+		"background": {
+			"mode": "asset",
+			"asset_id": "` + paleOliveAssetID + `",
+			"kind": "image"
+		},
+		"subtitles": {
+			"enabled": true,
+			"mode": "burn"
+		},
+		"watermark": {
+			"enabled": true,
+			"text": "` + watermarkText + `",
+			"position": "top_right"
+		}
+	}`
+
+	start := time.Now()
+	rec := doRender(r, body)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202; body=%s", rec.Code, rec.Body.String())
+	}
+
+	// ── timing gate ────────────────────────────────────────────────────
+	// The handler has zero I/O (stub jobs, no DB, no GPU): wall clock
+	// must be well under 5 ms even on a loaded CI host.
+	const maxHandlerLatency = 5 * time.Millisecond
+	if elapsed > maxHandlerLatency {
+		t.Errorf("handler latency %v exceeds budget %v (check for unexpected I/O or lock)", elapsed, maxHandlerLatency)
+	}
+	t.Logf("handler latency: %v", elapsed)
+
+	// ── payload assertions ─────────────────────────────────────────────
+	if jobsSvc.enqueued == nil {
+		t.Fatal("expected Enqueue to be called")
+	}
+	req, ok := jobsSvc.enqueued.Payload.(*RenderRequest)
+	if !ok {
+		t.Fatalf("Payload type: got %T, want *RenderRequest", jobsSvc.enqueued.Payload)
+	}
+
+	// Background: classic pale olive image plate.
+	if req.Background.Mode != BackgroundModeAsset {
+		t.Errorf("Background.Mode: got %q, want %q", req.Background.Mode, BackgroundModeAsset)
+	}
+	if req.Background.AssetID != paleOliveAssetID {
+		t.Errorf("Background.AssetID: got %q, want %q", req.Background.AssetID, paleOliveAssetID)
+	}
+	if req.Background.Kind != BackgroundKindImage {
+		t.Errorf("Background.Kind: got %q, want %q (pale olive is a static image plate)", req.Background.Kind, BackgroundKindImage)
+	}
+
+	// Subtitles: burned into the video.
+	if !req.Subtitles.Enabled {
+		t.Error("Subtitles.Enabled: must be true")
+	}
+	if req.Subtitles.Mode != SubtitlesModeBurn {
+		t.Errorf("Subtitles.Mode: got %q, want %q", req.Subtitles.Mode, SubtitlesModeBurn)
+	}
+	// Normalize() must have injected the default subtitle style (58px).
+	if req.Subtitles.Style == nil {
+		t.Error("Subtitles.Style: Normalize() must inject default style when enabled and style is nil")
+	} else if req.Subtitles.Style.FontSizePX != 58 {
+		t.Errorf("Subtitles.Style.FontSizePX: got %v, want 58 (shorts-v1 preset)", req.Subtitles.Style.FontSizePX)
+	}
+
+	// Watermark: text overlay in top_right.
+	if !req.Watermark.Enabled {
+		t.Error("Watermark.Enabled: must be true")
+	}
+	if req.Watermark.Text != watermarkText {
+		t.Errorf("Watermark.Text: got %q, want %q", req.Watermark.Text, watermarkText)
+	}
+	if req.Watermark.Position != PositionTopRight {
+		t.Errorf("Watermark.Position: got %q, want %q", req.Watermark.Position, PositionTopRight)
+	}
+	// Normalize() defaults text-watermark margin to 100 px.
+	if req.Watermark.MarginPX != 100 {
+		t.Errorf("Watermark.MarginPX: got %d, want 100 (text-watermark default)", req.Watermark.MarginPX)
+	}
+	// Normalize() must inject the default text-watermark style (34px).
+	if req.Watermark.Style == nil {
+		t.Error("Watermark.Style: Normalize() must inject default text style when text is non-empty")
+	} else if req.Watermark.Style.FontSizePX != 34 {
+		t.Errorf("Watermark.Style.FontSizePX: got %v, want 34 (text watermark default)", req.Watermark.Style.FontSizePX)
+	}
+	if req.Watermark.AssetID != "" {
+		t.Errorf("Watermark.AssetID: expected empty for text watermark, got %q", req.Watermark.AssetID)
+	}
+
+	// Defaults that must still be applied.
+	if req.Output.Contract != OutputContractVeloxAssemblyReadyV1 {
+		t.Errorf("Output.Contract default: got %q", req.Output.Contract)
+	}
+	if req.Output.Width != 1920 || req.Output.Height != 1080 {
+		t.Errorf("Output resolution defaults: got %dx%d, want 1920x1080", req.Output.Width, req.Output.Height)
+	}
+	if req.Transcript.Mode != TranscriptModeReuse || !req.Transcript.Persist {
+		t.Errorf("Transcript defaults: got %+v", req.Transcript)
+	}
+
+	// Response envelope.
+	var resp renderResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("resp unmarshal: %v body=%s", err, rec.Body.String())
+	}
+	if resp.JobID != "job-pale-olive-1" {
+		t.Errorf("resp.job_id: got %q, want job-pale-olive-1", resp.JobID)
+	}
+	if resp.Status != StatusQueued {
+		t.Errorf("resp.status: got %q, want QUEUED", resp.Status)
+	}
+}
+
+// TestRenderHandler_ClassicPaleOliveBackground_RepeatedCallsStable stress-tests
+// the handler for the pale-olive+subs+watermark combination over 100 repeated
+// calls and verifies the AVERAGE latency stays under 2 ms (stub jobs service,
+// zero I/O, measures the pure Go hot-path).
+func TestRenderHandler_ClassicPaleOliveBackground_RepeatedCallsStable(t *testing.T) {
+	jobsSvc := &stubJobsSvc{returnJob: &job.Job{ID: "job-repeat"}}
+	r := newTestRouter(jobsSvc)
+
+	body := `{
+		"source_asset_id": "asset-clip-stress",
+		"background": {"mode": "asset", "asset_id": "bg-classic-pale-olive", "kind": "image"},
+		"subtitles": {"enabled": true, "mode": "burn"},
+		"watermark": {"enabled": true, "text": "VeloxEditing", "position": "top_right"}
+	}`
+
+	const N = 100
+	var total time.Duration
+	for i := 0; i < N; i++ {
+		start := time.Now()
+		rec := doRender(r, body)
+		total += time.Since(start)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("iteration %d: status %d, want 202; body=%s", i, rec.Code, rec.Body.String())
+		}
+	}
+	avg := total / N
+	t.Logf("avg latency over %d calls: %v (total %v)", N, avg, total)
+	const maxAvg = 2 * time.Millisecond
+	if avg > maxAvg {
+		t.Errorf("avg latency %v exceeds %v budget; check for unexpected allocation or lock", avg, maxAvg)
 	}
 }
 
