@@ -195,7 +195,7 @@ func RunTextTracksBackfill(args []string) error {
 	}
 
 	textKind := detail.TextTrackKind(deps.TextKind)
-	if !isKnownTextTrackKind(textKind) {
+	if !texttracks.IsKnownTextTrackKind(textKind) {
 		return fmt.Errorf("text-tracks-backfill: unknown --text-kind %q (allowed: transcript, description, summary, title, keywords)", deps.TextKind)
 	}
 

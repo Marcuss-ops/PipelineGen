@@ -158,9 +158,15 @@ func TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic(t *testing.T)
 }
 
 func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
+	// The render-safe name candidate set collapsed to the one canonical Chronon
+	// text preset (name_glow_slide/name_glow_pop are retired, and the runtime
+	// registry no longer resolves them), so the entity type still selects the
+	// name family through overlays.SelectEntityNamePreset but every family now
+	// resolves to the same id. The expectation is read from the single owner of
+	// that id (overlays.PresetModernName) instead of a copy of it.
 	for _, entityType := range []string{"PERSON", "ORGANIZATION", "LOCATION", "UNKNOWN"} {
 		got := capabilityoverlay.SelectEntityNamePreset("test-job", "scene", "entity-"+entityType, entityType)
-		require.Contains(t, []string{"name_glow_slide", "name_glow_pop"}, got, entityType)
+		require.Equal(t, string(capabilityoverlay.PresetModernName), got, entityType)
 	}
 }
 

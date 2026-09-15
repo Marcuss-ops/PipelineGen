@@ -249,6 +249,16 @@ var canonicalSubtitlePresets = map[string]VideoVisualStyleSpec{
 	"roboto_bold":     {Font: "Roboto", FontSizePX: 52},
 	"montserrat":      {Font: "Montserrat", FontSizePX: 54},
 	"montserrat_bold": {Font: "Montserrat", FontSizePX: 54},
+	// "Young" family — short-form subtitle presets for the younger-audience
+	// clip line. These entries are the generate-time projection of the ASS
+	// typography owned by
+	// assets/texttracks/ass_materializer.go::ResolveFontPreset, which matches
+	// the same style ids by substring; the font size here is the Chronon
+	// overlay size that must agree with the burnt ASS preset.
+	"subs-young":        {Font: "Poppins", FontSizePX: 60},
+	"subs-young-pop":    {Font: "Poppins", FontSizePX: 64},
+	"subs-young-clean":  {Font: "Montserrat", FontSizePX: 56},
+	"subs-young-center": {Font: "Poppins", FontSizePX: 60, Position: "middle_center"},
 }
 
 // Normalize preserves the caller's explicit choices and enables the video

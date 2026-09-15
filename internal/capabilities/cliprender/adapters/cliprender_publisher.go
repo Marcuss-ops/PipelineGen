@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -141,13 +142,25 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	assetID := "cliprender_" + contentHash[:24]
 
 	ext := artifactExtension(in.OutputPath, in.ArtifactContentType, in.ArtifactURL)
-	driveFilename := assetID + ext
+	base := assetID
 	if strings.TrimSpace(in.SourceTitle) != "" {
 		safeTitle := textutil.SanitizeFilename(in.SourceTitle)
 		if safeTitle != "" && safeTitle != "unnamed" {
-			driveFilename = safeTitle + ext
+			base = safeTitle
 		}
 	}
+	// Multilingual fan-out discriminator. The SAME source clip is rendered once
+	// per language and every variant shares the source title, so without a
+	// language suffix all variants resolve to ONE Drive filename and each
+	// upload overwrites the previous one — only the last language survived the
+	// publication. The suffix mirrors the canonical voiceover
+	// "{slug}_{lang}" filename convention and keeps one distinct artifact per
+	// (clip, language). A non-localized render carries no language and keeps its
+	// historical filename verbatim.
+	if tag := languageFilenameTag(in.Transcript); tag != "" {
+		base += "_" + tag
+	}
+	driveFilename := base + ext
 
 	// Subtitle sidecars are uploaded ONLY when explicitly in sidecar mode.
 	// Burned subtitles are already baked into video frames and must never be uploaded as .ass files to Drive.
@@ -168,6 +181,49 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	// critical path, and there is deliberately no synchronous fallback left to
 	// select by accident.
 	return p.publishAsyncDrive(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename, hasSubtitleSidecar)
+}
+
+// languageFilenameTag returns the filename discriminator for a render's
+// language track. It returns "" when the render carries no language (or an
+// undetermined one), so a plain single-language render keeps the filename it
+// has always published.
+func languageFilenameTag(transcript *cliprender.TranscriptResult) string {
+	if transcript == nil {
+		return ""
+	}
+	tag := textutil.SanitizeFilename(strings.TrimSpace(transcript.Language))
+	if tag == "" || tag == "unnamed" || tag == "und" {
+		return ""
+	}
+	return tag
+}
+
+// clipSearchText composes the lexical/semantic search_text for a derived clip
+// render. It is the value the media SSOT stores and the index worker embeds, so
+// an empty result is a fail-closed dead-letter rather than a silent miss. The
+// clip's own spoken content is the strongest searchable signal, so the human
+// source title, the language and the (translated) transcript text are all
+// included, in that order.
+func clipSearchText(sourceTitle string, transcript *cliprender.TranscriptResult) string {
+	lang, body := "", ""
+	if transcript != nil {
+		lang = strings.TrimSpace(transcript.Language)
+		body = transcript.Text
+	}
+	parts := make([]string, 0, 3)
+	for _, p := range []string{sourceTitle, lang, body} {
+		if p = strings.Join(strings.Fields(p), " "); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	text := strings.Join(parts, " ")
+	// search_text is an index input, not a document store: bound it so a long
+	// transcript cannot bloat every media_assets row.
+	const maxSearchTextRunes = 2000
+	if utf8.RuneCountInString(text) > maxSearchTextRunes {
+		text = string([]rune(text)[:maxSearchTextRunes])
+	}
+	return text
 }
 
 // publishAsyncDrive completes the local, durable half of publication and
@@ -226,7 +282,12 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 	keyDigest := digest.SHA256Bytes([]byte(assetID + "|" + contentHash + "|" + in.DriveFolderID))
 	commitRequest := persistence.AssetCommitRequest{
 		AssetID: assetID, Source: "clip.render", Name: driveFilename,
-		Filename: driveFilename, MediaType: "video", Category: "clip-render",
+		// The derived asset MUST carry a search_text: the index worker reads it
+		// back to embed the asset, and an empty value makes the embedder fail
+		// closed, so every render dead-lettered asset.index.requested (delivered
+		// to Drive but never searchable). See clipSearchText.
+		SearchText: clipSearchText(in.SourceTitle, in.Transcript),
+		Filename:   driveFilename, MediaType: "video", Category: "clip-render",
 		DurationMs: int64(in.Outcome.DurationSec * 1000), ContentHash: contentHash,
 		LifecycleState: "ACTIVE", IndexState: "DISCOVERED", LocalPath: stagedPath,
 		FolderID: in.DriveFolderID, SourceURL: in.SourceAssetID,

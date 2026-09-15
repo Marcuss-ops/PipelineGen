@@ -2,7 +2,6 @@ package assetindex
 
 import (
 	"context"
-	"time"
 )
 
 type Service struct {
@@ -43,46 +42,6 @@ func (s *Service) Delete(ctx context.Context, assetID string) error {
 
 func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 	return s.repo.GetStats(ctx)
-}
-
-func (s *Service) MarkAsReady(ctx context.Context, assetID string) error {
-	return s.repo.UpdateStatus(ctx, assetID, "ready")
-}
-
-func (s *Service) CreateOrUpdateFromFinalize(ctx context.Context, assetID, assetType, source, sourceID string, opts CreateOrUpdateOptions) error {
-	now := time.Now().UTC()
-
-	rec := &AssetRecord{
-		AssetID:       assetID,
-		AssetType:     assetType,
-		Source:        source,
-		SourceID:      sourceID,
-		GroupName:     opts.GroupName,
-		Subfolder:     opts.Subfolder,
-		LocalPath:     opts.LocalPath,
-		DriveLink:     opts.DriveLink,
-		DownloadLink:  opts.DownloadLink,
-		LegacyFileMD5: opts.LegacyFileMD5,
-		ContentHash:   opts.ContentHash,
-		Status:        opts.Status,
-		Metadata:      opts.Metadata,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-	}
-
-	return s.repo.Upsert(ctx, rec)
-}
-
-type CreateOrUpdateOptions struct {
-	GroupName     string
-	Subfolder     string
-	LocalPath     string
-	DriveLink     string
-	DownloadLink  string
-	LegacyFileMD5 string
-	ContentHash   string
-	Status        string
-	Metadata      string
 }
 
 func (s *Service) ListAll(ctx context.Context) ([]*AssetRecord, error) {

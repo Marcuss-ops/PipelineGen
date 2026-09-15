@@ -418,3 +418,112 @@ func TestClipRenderPublisher_WithoutTitle_UsesAssetIDFilename(t *testing.T) {
 		t.Errorf("asset id = %q, want cliprender_<hash-prefix>", res.AssetID)
 	}
 }
+
+// TestClipRenderPublisher_CommitCarriesSearchText pins the index contract: the
+// derived clip asset MUST be committed with a non-empty search_text, otherwise
+// the media index worker's embedder fails closed ("search_text is empty") and
+// every render dead-letters asset.index.requested — delivered to Drive but
+// never searchable or embedded.
+func TestClipRenderPublisher_CommitCarriesSearchText(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p := newAsyncPublisher(t, drive, committer)
+	video := writeFakeVideo(t)
+
+	title := "Matt Damon Height Stunt"
+	in := publishInput(video, title, cliprender.SubtitlesModeBurn, "leaf-index")
+	in.Transcript = &cliprender.TranscriptResult{
+		Language: "it",
+		Text:     "Non sapevo di soffrire di vertigini.",
+	}
+	if _, err := p.Publish(context.Background(), in); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	_, commit := deliveryIntent(t, committer)
+	if strings.TrimSpace(commit.SearchText) == "" {
+		t.Fatal("commit SearchText is empty: the index worker would dead-letter asset.index.requested")
+	}
+	for _, want := range []string{title, "it", "vertigini"} {
+		if !strings.Contains(commit.SearchText, want) {
+			t.Errorf("commit SearchText = %q, want it to contain %q", commit.SearchText, want)
+		}
+	}
+}
+
+// TestClipRenderPublisher_SearchTextWithoutTranscript pins the degraded case: a
+// render carrying no transcript still commits a usable search_text (the human
+// title) instead of an empty one that would dead-letter the index event.
+func TestClipRenderPublisher_SearchTextWithoutTranscript(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p := newAsyncPublisher(t, drive, committer)
+	video := writeFakeVideo(t)
+	title := "Titled Clip Without Transcript"
+
+	in := publishInput(video, title, cliprender.SubtitlesModeBurn, "leaf-nt")
+	if _, err := p.Publish(context.Background(), in); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	_, commit := deliveryIntent(t, committer)
+	if commit.SearchText != title {
+		t.Errorf("commit SearchText = %q, want the title %q", commit.SearchText, title)
+	}
+}
+
+// TestClipRenderPublisher_MultilingualLanguagesGetDistinctFilenames pins the
+// multilingual fan-out naming contract. Every language variant of one source
+// clip carries the SAME source title, so before the language discriminator all
+// variants resolved to a single Drive filename and each upload silently
+// overwrote the previous language (50 renders collapsed onto 5 Drive files).
+// Each language must publish a distinct artifact name instead.
+func TestClipRenderPublisher_MultilingualLanguagesGetDistinctFilenames(t *testing.T) {
+	title := "Kelly Clarkson Loses It After Spotting Meryl Streep"
+	filenames := make(map[string]string)
+	for _, lang := range []string{"it", "pt-BR", "de", "en"} {
+		drive := &fakeDeliveryPublisher{}
+		committer := &fakeAssetCommitter{}
+		p := newAsyncPublisher(t, drive, committer)
+		video := writeFakeVideo(t)
+
+		in := publishInput(video, title, cliprender.SubtitlesModeBurn, "leaf-ml")
+		in.Transcript = &cliprender.TranscriptResult{Language: lang}
+		if _, err := p.Publish(context.Background(), in); err != nil {
+			t.Fatalf("Publish(%s) error = %v", lang, err)
+		}
+		payload, commit := deliveryIntent(t, committer)
+		want := title + "_" + lang + ".mp4"
+		if payload.Filename != want {
+			t.Errorf("lang %s: delivery filename = %q, want %q", lang, payload.Filename, want)
+		}
+		if commit.Filename != want {
+			t.Errorf("lang %s: committed filename = %q, want %q", lang, commit.Filename, want)
+		}
+		if prev, dup := filenames[payload.Filename]; dup {
+			t.Errorf("filename collision: %q already used by language %q", payload.Filename, prev)
+		}
+		filenames[payload.Filename] = lang
+	}
+}
+
+// TestClipRenderPublisher_UnlocalizedRenderKeepsTitleFilename pins the
+// regression guard for the discriminator: a render whose transcript carries no
+// language (or an undetermined one) must keep the historical <title>.mp4 name.
+func TestClipRenderPublisher_UnlocalizedRenderKeepsTitleFilename(t *testing.T) {
+	title := "Plain Unlocalized Clip"
+	for _, transcript := range []*cliprender.TranscriptResult{nil, {Language: "und"}, {Language: ""}} {
+		drive := &fakeDeliveryPublisher{}
+		committer := &fakeAssetCommitter{}
+		p := newAsyncPublisher(t, drive, committer)
+		video := writeFakeVideo(t)
+
+		in := publishInput(video, title, cliprender.SubtitlesModeBurn, "leaf-plain")
+		in.Transcript = transcript
+		if _, err := p.Publish(context.Background(), in); err != nil {
+			t.Fatalf("Publish() error = %v", err)
+		}
+		payload, _ := deliveryIntent(t, committer)
+		if payload.Filename != title+".mp4" {
+			t.Errorf("unlocalized filename = %q, want %q", payload.Filename, title+".mp4")
+		}
+	}
+}

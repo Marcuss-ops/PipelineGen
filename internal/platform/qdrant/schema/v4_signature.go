@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
@@ -136,9 +136,11 @@ func ParseV4Signature(name string) (V4Signature, bool) {
 }
 
 // isSHA256Hex reports whether s is a 64-character lowercase hex digest.
-// Delegates to the canonical kernel/asset.ValidateSHA256 (godlike/06 SSOT)
-// instead of a local copy so the v4 signature keeps one canonical digest shape.
+// Delegates to the digest SSOT (kernel/digest.IsCanonicalSHA256) instead of a
+// local copy, so the v4 signature keeps one canonical digest shape. It used to
+// route through the asset domain's validator, which meant the projection's
+// identity rule answered to another domain's facade rather than to the digest
+// owner itself.
 func isSHA256Hex(s string) bool {
-	_, err := asset.ValidateSHA256(s)
-	return err == nil
+	return digest.IsCanonicalSHA256(s)
 }

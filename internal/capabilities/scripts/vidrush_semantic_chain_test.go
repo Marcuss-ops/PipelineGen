@@ -268,6 +268,23 @@ func TestSceneIRSegmentEnricherSeparatesImportantPhrasesFromEntities(t *testing.
 	}
 }
 
+func TestSceneIRSegmentEnricherGroundsExplicitImportantPhraseHint(t *testing.T) {
+	source := "Mike Tyson unisce velocità e pressione. Potenza e disciplina."
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
+	require.NoError(t, err)
+	enricher.SetImportantPhraseExtractor(stubImportantPhraseExtractor{})
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		Extraction: mediadomain.MediaExtractionPolicy{
+			Include:                       []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeImportantPhrases},
+			MaxImportantPhrasesPerSegment: 1,
+			ImportantPhrases:              []string{"Potenza e disciplina"},
+		},
+	}}
+	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: "mike-tyson", Text: source})
+	require.NoError(t, err)
+	require.Equal(t, []string{"Potenza e disciplina"}, result.Insights.ImportantPhrases)
+}
+
 func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testing.T) {
 	segments := []scriptpkg.VidRushSegmentResult{{
 		Insights: scriptpkg.SegmentInsights{

@@ -188,36 +188,6 @@ func (r *VoiceoversRepository) MarkStatus(ctx context.Context, id, status, errMs
 	return err
 }
 
-func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID string) ([]*Record, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
-			duration_seconds, COALESCE(status, ''),
-			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
-		FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var records []*Record
-	for rows.Next() {
-		var rec Record
-		var createdAt, updatedAt string
-		err := rows.Scan(
-			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-			&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-			&rec.Metadata, &createdAt, &updatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		rec.CreatedAt = timeutil.ParseRFC3339(createdAt)
-		rec.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-		records = append(records, &rec)
-	}
-	return records, rows.Err()
-}
-
 // Deprecated (PR-VO-ASSET-ID, August 2026): voiceovers.folder_id is
 // being dropped by migration 232. Callers must list by media_assets +
 // asset_locations projection instead.

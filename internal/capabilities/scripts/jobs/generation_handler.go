@@ -92,6 +92,31 @@ func (h *GenerateJobHandler) SetDurableRunner(runner *scriptgen.Runner) {
 	}
 }
 
+// noteRunLedgerFailure surfaces a failed run-ledger operation instead of
+// discarding it.
+//
+// The run ledger is what an operator and GET /full read, so a silently dropped
+// write leaves the run described by a stage it has already left — worst of all
+// a run the caller was told COMPLETED while the persisted row still says
+// RUNNING. These writes are deliberately NOT promoted to job failures (the work
+// is done and durable, and the broker's result is authoritative); the point is
+// that the inconsistency is visible in the logs rather than invisible in the
+// database.
+//
+// It lives at package scope because both run-ledger owners in this package (the
+// script.generate job handler and the batch ParentAggregator that finalises the
+// parent run) must answer a dropped write the same way; a per-handler copy of
+// the rule is how one of them ends up quietly dropping it again.
+func noteRunLedgerFailure(log *zap.Logger, op, runID string, err error) {
+	if err == nil || log == nil {
+		return
+	}
+	log.Error("script: run ledger operation failed",
+		zap.String("operation", op),
+		zap.String("run_id", runID),
+		zap.Error(err))
+}
+
 // checkPipelineCtx returns a typed cancel-error when the pipeline
 // ctx has been cancelled. The label is logged via Warn so operators
 // can audit which phase the cancel was observed at. The underlying
@@ -126,7 +151,9 @@ func (h *GenerateJobHandler) Handle(
 	}
 	var run *scriptgen.GenerationRun
 	if h.runRepo != nil {
-		run, _ = h.runRepo.GetByJobID(ctx, j.ID)
+		var lookupErr error
+		run, lookupErr = h.runRepo.GetByJobID(ctx, j.ID)
+		noteRunLedgerFailure(h.log, "get_by_job_id", j.ID, lookupErr)
 		// The submission transaction commits the job before the HTTP handler
 		// can persist the canonical run job_id. A fast worker may therefore claim
 		// this job in the small correlation window. The submission service
@@ -137,15 +164,19 @@ func (h *GenerateJobHandler) Handle(
 			if finder, ok := h.runRepo.(interface {
 				GetByIdempotencyKey(context.Context, string) (*scriptgen.GenerationRun, error)
 			}); ok {
-				run, _ = finder.GetByIdempotencyKey(ctx, j.CorrelationID)
+				var idemErr error
+				run, idemErr = finder.GetByIdempotencyKey(ctx, j.CorrelationID)
+				noteRunLedgerFailure(h.log, "get_by_idempotency_key", j.CorrelationID, idemErr)
 				if run != nil && run.JobID == "" {
 					if setter, ok := h.runRepo.(interface {
 						SetJobID(context.Context, string, string) error
 					}); ok {
 						// Best-effort self-healing: the worker already has the
 						// authoritative job ID, so close the race for retries and
-						// GET /full without changing execution semantics.
-						_ = setter.SetJobID(ctx, run.ID, j.ID)
+						// GET /full without changing execution semantics. The write is
+						// still surfaced when it fails: a lost correlation is a
+						// searchable defect, not an unknown one.
+						noteRunLedgerFailure(h.log, "set_job_id", run.ID, setter.SetJobID(ctx, run.ID, j.ID))
 						run.JobID = j.ID
 					}
 				}
@@ -154,19 +185,20 @@ func (h *GenerateJobHandler) Handle(
 		if run != nil {
 			// The HTTP starter creates the run before the job is committed;
 			// the worker is the owner of the execution lifecycle thereafter.
-			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText)
+			noteRunLedgerFailure(h.log, "stage_running", run.ID,
+				h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText))
 		}
 	}
 
 	env, err := domainScript.DecodeEnvelopeV2(j.Payload)
 	if err != nil {
 		if run != nil {
-			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
+			noteRunLedgerFailure(h.log, "fail_run", run.ID, h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
 				RunID:        run.ID,
 				FailedStage:  scriptgen.StageFailed,
 				ErrorCode:    "INVALID_GENERATION_PAYLOAD",
 				ErrorMessage: err.Error(),
-			})
+			}))
 		}
 		return nil, fmt.Errorf("generate job handler: decode envelope: %w", err)
 	}
@@ -185,7 +217,7 @@ func (h *GenerateJobHandler) Handle(
 	if h.durableRunner != nil && len(env.Items) == 1 && run != nil {
 		runRequest, buildErr := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
 		if buildErr != nil {
-			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageCompilingAudio, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()})
+			noteRunLedgerFailure(h.log, "fail_run", run.ID, h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageCompilingAudio, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()}))
 			return nil, fmt.Errorf("generate job handler: build durable request: %w", buildErr)
 		}
 		parentLink := job.ParentLinkFromPayload(j.Payload)
@@ -231,19 +263,23 @@ func (h *GenerateJobHandler) Handle(
 	result, dispatchErr := h.dispatcher.Dispatch(ctx, j, env, tools)
 	if run != nil {
 		if dispatchErr != nil {
-			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
+			noteRunLedgerFailure(h.log, "fail_run", run.ID, h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
 				RunID:        run.ID,
 				FailedStage:  scriptgen.StageFailed,
 				ErrorCode:    "SCRIPT_GENERATION_FAILED",
 				ErrorMessage: dispatchErr.Error(),
-			})
+			}))
 		} else if parentState, _ := result["parent_state"].(string); parentState == "waiting_children" {
 			// The parent aggregator owns terminal completion for batches. The
 			// run stays RUNNING in the scene-generation phase while children
 			// produce their per-item text.
-			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText)
+			noteRunLedgerFailure(h.log, "stage_waiting_children", run.ID,
+				h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText))
 		} else {
-			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted)
+			// The terminal projection: a dropped write here leaves a run the
+			// caller was told COMPLETED still persisted as RUNNING.
+			noteRunLedgerFailure(h.log, "stage_completed", run.ID,
+				h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted))
 		}
 	}
 	return result, dispatchErr

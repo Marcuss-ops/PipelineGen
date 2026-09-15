@@ -172,6 +172,43 @@ func TestNormalizeShortFormCues_MergesSubSecondCaption(t *testing.T) {
 	}
 }
 
+// TestNormalizeShortFormCues_MergedCaptionsStayBounded pins the invariant that
+// survives the readability merges. A merged (or gap-extended) caption absorbs
+// only ADJACENT windows, so captions never overlap, never run past the next
+// caption's start, and no text or time outside the source span is ever
+// invented. This is the guarantee downstream consumers may rely on; the
+// stronger "never leaves its own source segment window" claim does NOT hold
+// by design (see TestNormalizeShortFormCues_MergesSubSecondCaption).
+func TestNormalizeShortFormCues_MergedCaptionsStayBounded(t *testing.T) {
+	source := []detail.TimedCue{
+		{StartMs: 0, EndMs: 1000, Text: "first"},
+		{StartMs: 1100, EndMs: 1300, Text: "flash"},
+		{StartMs: 1300, EndMs: 9000, Text: "a much longer utterance that definitely splits into several captions because it keeps going"},
+		{StartMs: 9100, EndMs: 9200, Text: "tiny"},
+		{StartMs: 10000, EndMs: 15000, Text: "and then a closing line that also needs a couple of captions"},
+	}
+	policy := DefaultShortFormPolicy()
+	out := NormalizeShortFormCues(source, policy)
+	if len(out) == 0 {
+		t.Fatal("no captions produced")
+	}
+	if out[0].StartMs != source[0].StartMs {
+		t.Errorf("first caption starts at %d, want %d (no time invented before the source)", out[0].StartMs, source[0].StartMs)
+	}
+	if last := out[len(out)-1].EndMs; last > source[len(source)-1].EndMs {
+		t.Errorf("last caption ends at %d, want <= %d (no time invented after the source)", last, source[len(source)-1].EndMs)
+	}
+	for i := 1; i < len(out); i++ {
+		if out[i].StartMs < out[i-1].EndMs {
+			t.Fatalf("captions %d/%d overlap: %+v", i-1, i, out)
+		}
+	}
+	if got, want := strings.Join(wordsOf(out), " "), strings.Join(wordsOf(source), " "); got != want {
+		t.Fatalf("text changed:\n got %q\nwant %q", got, want)
+	}
+	assertReadable(t, policy, out)
+}
+
 func TestNormalizeShortFormCues_EmptyInput(t *testing.T) {
 	if out := NormalizeShortFormCues(nil, ShortFormPolicy{}); out != nil {
 		t.Fatalf("nil input produced %+v", out)

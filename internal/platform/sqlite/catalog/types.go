@@ -1,7 +1,5 @@
 package catalog
 
-import "strings"
-
 // CatalogRecord represents a generic record from any of the media databases.
 type CatalogRecord struct {
 	ID        string   `json:"id"`
@@ -45,23 +43,4 @@ func (c StockClipRef) StockPath() string {
 		return c.FullPath
 	}
 	return c.FolderPath
-}
-
-func (c StockClipRef) PickLink() string {
-	// Use FolderID to build a folder link, NOT DriveLink (which is a file link).
-	// DriveLink points to the individual clip file, not the containing folder.
-	folderID := strings.TrimSpace(c.FolderID)
-	if folderID != "" {
-		return "https://drive.google.com/drive/folders/" + folderID
-	}
-	// Fallback: if we have a full_path that looks like a Drive link, use it.
-	fullPath := strings.TrimSpace(c.FullPath)
-	if strings.HasPrefix(fullPath, "https://drive.google.com/") {
-		return fullPath
-	}
-	link := strings.TrimSpace(c.DriveLink)
-	if link != "" {
-		return link
-	}
-	return ""
 }

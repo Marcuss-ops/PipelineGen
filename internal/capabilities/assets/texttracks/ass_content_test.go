@@ -84,6 +84,69 @@ func TestResolveFontPreset_PoppinsHasStrongerShadowThanMontserrat(t *testing.T) 
 	}
 }
 
+func TestResolveFontPreset_YoungFamilyIsDistinct(t *testing.T) {
+	base := ResolveFontPreset("subs-young")
+	if base.FontName != "Poppins" || base.FontSize != 60 {
+		t.Fatalf("subs-young preset = %+v; want Poppins @ 60", base)
+	}
+
+	pop := ResolveFontPreset("subs-young-pop")
+	if pop.FontName != "Poppins" || pop.FontSize <= base.FontSize || pop.Shadow <= base.Shadow {
+		t.Errorf("subs-young-pop = %+v; want a bolder/larger Poppins variant than %+v", pop, base)
+	}
+
+	clean := ResolveFontPreset("subs-young-clean")
+	if clean.FontName != "Montserrat" || clean.Shadow >= base.Shadow {
+		t.Errorf("subs-young-clean = %+v; want the lighter Montserrat variant", clean)
+	}
+
+	// Centring is an alignment axis owned by CompileASSContent, not a
+	// typography change: the center variant keeps the base preset.
+	if center := ResolveFontPreset("subs-young-center"); center != base {
+		t.Errorf("subs-young-center = %+v; want the base young typography %+v", center, base)
+	}
+
+	// No young id may silently fall back to the montserrat default just
+	// because the substring order changed.
+	fallback := ResolveFontPreset("shorts-v1")
+	for _, id := range []string{"subs-young", "subs-young-pop", "subs-young-clean", "subs-young-center"} {
+		if got := ResolveFontPreset(id); got == fallback {
+			t.Errorf("ResolveFontPreset(%q) fell back to the default preset %+v", id, got)
+		}
+	}
+}
+
+func TestCompileASSContent_YoungVariantsDifferAndCenterAligns(t *testing.T) {
+	base, err := CompileASSContent(testCues(), "subs-young")
+	if err != nil {
+		t.Fatalf("CompileASSContent(subs-young): %v", err)
+	}
+	if !strings.Contains(base, "Style: subs-young,Poppins,60,") {
+		t.Fatalf("expected the young style row, got:\n%s", base)
+	}
+	// Bold, outline 4.0, shadow 5, alignment 2 (bottom-center), marginV 40.
+	if !strings.Contains(base, ",1,4.0,5,2,10,10,40,1") {
+		t.Fatalf("expected bottom-center alignment for the base young preset, got:\n%s", base)
+	}
+
+	center, err := CompileASSContent(testCues(), "subs-young-center")
+	if err != nil {
+		t.Fatalf("CompileASSContent(subs-young-center): %v", err)
+	}
+	// Alignment 5 (true screen center) is derived from the "center" token.
+	if !strings.Contains(center, ",1,4.0,5,5,10,10,40,1") {
+		t.Fatalf("expected centered alignment for subs-young-center, got:\n%s", center)
+	}
+
+	clean, err := CompileASSContent(testCues(), "subs-young-clean")
+	if err != nil {
+		t.Fatalf("CompileASSContent(subs-young-clean): %v", err)
+	}
+	if clean == base || clean == center {
+		t.Fatalf("young variants must produce distinct ASS bytes")
+	}
+}
+
 func TestCompileASSContent_ValidatesThroughValidateASSFile(t *testing.T) {
 	content, err := CompileASSContent(testCues(), "")
 	if err != nil {

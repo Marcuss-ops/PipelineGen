@@ -16,106 +16,14 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-// ErrJobExists is returned by RenderQueueClient.Submit when a job with the
-// same ID was already enqueued. The queue enqueuer treats this as success and
-// proceeds to wait on the existing job, making retries idempotent.
-var ErrJobExists = errors.New("render job already exists")
-
-// defaultQueuePollInterval is how long the queue enqueuer waits between
-// status polls while the render is in flight. It is only exercised by the
-// polling fallback: the primary path is the queue's job-status long poll
-// (RenderQueueWaiter), which observes a terminal job at the transition. The
-// fallback cadence is kept short so an older queue deployment without the
-// wait route does not reintroduce multi-second tail latency.
-const defaultQueuePollInterval = 250 * time.Millisecond
-
-// RenderQueueAsset points at an input asset the central queue worker must
-// fetch. Hash is the object-store lookup key (the SHA-256 of the file).
-type RenderQueueAsset struct {
-	Hash      string `json:"hash"`
-	URL       string `json:"url,omitempty"`
-	SourceURL string `json:"source_url,omitempty"`
-	// LocalPath is producer-side only. The adapter stages it into the object
-	// store and omits it from the RenderingGen wire asset reference.
-	LocalPath string `json:"-"`
-}
-
-// RenderQueueJob is the queue-side view of a submitted render job. It is the
-// wire contract with the central RenderingGen queue (POST /jobs and
-// GET /jobs/{id}). JobType is the canonical overlay job type
-// (overlay.prepare / overlay.render) the queue worker dispatches on.
-type RenderQueueJob struct {
-	ID          string             `json:"id"`
-	JobType     string             `json:"job_type,omitempty"`
-	OverlaySpec json.RawMessage    `json:"overlay_spec"`
-	Assets      []RenderQueueAsset `json:"assets"`
-	State       string             `json:"state"`
-	FailReason  string             `json:"fail_reason,omitempty"`
-	Artifact    *RenderArtifact    `json:"artifact,omitempty"`
-
-	// Queue-owned lifecycle timestamps (GET /jobs/{id}). They are the ONLY
-	// measurement of where a remote render's wall went BEFORE the renderer
-	// touched it: QueuedAt→StartedAt is the admission wait (the queue had no
-	// worker capacity yet) and StartedAt→CompletedAt is the worker's service
-	// wall. A zero value means the queue did not report the timestamp; it is
-	// never fabricated into a measurement.
-	QueuedAt    time.Time `json:"queued_at,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
-}
-
-// RenderQueueClient is the narrow port for the central RenderingGen queue.
-// The capability stays independent of HTTP; the concrete client lives in
-// internal/platform/renderinggen.
-type RenderQueueClient interface {
-	// Submit enqueues a job. It returns ErrJobExists when a job with the
-	// same ID is already present (idempotent replay).
-	Submit(ctx context.Context, job RenderQueueJob) error
-	// Get returns the current state of a job, including its artifact once
-	// the job completes.
-	Get(ctx context.Context, id string) (RenderQueueJob, error)
-}
-
-// RenderQueueWaiter is the optional event-driven completion capability. A
-// queue client that implements it lets the enqueuer observe a terminal render
-// at the state transition instead of sampling the job on a cadence: the
-// RenderingGen queue exposes GET /jobs/{id}/wait and the adapter blocks on it.
-// Clients that do not implement it (older deployments, test doubles) keep the
-// polling loop, so the capability is additive and never required.
-type RenderQueueWaiter interface {
-	// WaitTerminal blocks until the job reaches a terminal state (completed,
-	// failed or cancelled) or ctx ends, and returns the last observed job.
-	WaitTerminal(ctx context.Context, id string) (RenderQueueJob, error)
-}
-
-// RenderQueueRetrier is the optional reset-to-pending capability. It exists for
-// ONE decision: a submission that collides with an existing job in FAILED state
-// (idempotent replay of a failed render) must be re-armed, never silently
-// treated as an idempotent success — the caller would otherwise wait on a job
-// that can never produce an artifact. Declaring this port here (instead of an
-// anonymous interface at the call site, as it was) keeps the capability shape
-// next to the two it belongs with and makes it injectable by test doubles.
-type RenderQueueRetrier interface {
-	// Retry resets a failed job to pending so the queue re-runs it.
-	Retry(ctx context.Context, id string) error
-}
-
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
 // overlay render path. It submits the SEMANTIC OverlayPlan; RenderingGen is the
 // sole owner of the semantic→chronon.render-plan.v2 lowering, and blocks until
 // the render completes, returning the certified artifact reference. The
 // removed video render enqueue path is no longer part of PipelineGen.
-// RenderCompletionMetrics separates the worker-reported Chronon duration from
-// the client-side wait used to observe the queue. PollingSleep is the time
-// deliberately spent sleeping between status requests, so it is the direct
-// measurable impact of the polling cadence (and not Chronon work).
-type RenderCompletionMetrics struct {
-	CompletionWait time.Duration
-	PollingSleep   time.Duration
-	PollInterval   time.Duration
-	PollCount      int
-}
-
+//
+// The wire contract it speaks (RenderQueueJob and the client capabilities) lives
+// in render_queue_contract.go, so this file describes only the adapter.
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
 	pollInterval time.Duration

@@ -62,29 +62,6 @@ func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *asset.Mon
 	return err
 }
 
-func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, externalURL string) (*asset.MonitoredSource, error) {
-	var row MonitoredSourceRow
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id, source, external_id, external_url, title, channel_id, channel_url,
-			keyword, group_name, category, status, last_seen_at, last_checked_at,
-			processed_count, metadata_json, created_at, updated_at
-		FROM monitored_sources
-		WHERE source = ? AND external_url = ?
-	`, sourceType, externalURL).Scan(
-		&row.ID, &row.Source, &row.ExternalID, &row.ExternalURL, &row.Title,
-		&row.ChannelID, &row.ChannelURL, &row.Keyword, &row.GroupName, &row.Category,
-		&row.Status, &row.LastSeenAt, &row.LastCheckedAt, &row.ProcessedCount,
-		&row.MetadataJSON, &row.CreatedAt, &row.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return row.ToDomain(), nil
-}
-
 func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, limit int) ([]*asset.MonitoredSource, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, source, external_id, external_url, title, channel_id, channel_url,

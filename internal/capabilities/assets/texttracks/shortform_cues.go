@@ -16,8 +16,22 @@ package texttracks
 //     (split at word boundaries, never mid-word),
 //   - at least MinCueMs on screen unless the source segment is shorter,
 //   - no caption flicker for sub-MaxGapMergeMs silences,
-//   - text never leaves its source segment's window (a split only
-//     redistributes that window), so captions stay in sync with the audio.
+//   - a SPLIT only redistributes its own source segment's window, so the
+//     pieces of one segment always partition that window exactly.
+//
+// The per-segment window invariant is deliberately relaxed in exactly two
+// readability cases, both pinned by the contract tests below:
+//
+//   - a sub-MinCueMs caption is merged into an adjacent one when the joined
+//     text still fits the budget (a 200ms flash is worse than a short
+//     caption that starts early);
+//   - a sub-MaxGapMergeMs silence between adjacent captions is closed so the
+//     caption does not blink off and back on.
+//
+// Both cases produce a caption whose window is the UNION of the windows it
+// absorbed. The invariant that always holds is therefore: captions never
+// overlap, never run past the next caption's start, never invent text and
+// never invent time outside [first source start, last source end].
 //
 // It is deterministic and pure: identical cues + policy always produce
 // identical output.

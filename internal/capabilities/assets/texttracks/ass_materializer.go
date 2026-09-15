@@ -263,11 +263,38 @@ var defaultFontPresets = map[string]FontPreset{
 	"anton":      {FontName: "Anton", FontSize: 60, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"bebas":      {FontName: "Bebas Neue", FontSize: 64, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"roboto":     {FontName: "Roboto", FontSize: 56, Bold: 1, Outline: 3.5, Shadow: 3, MarginV: 36},
+	// "Young" family — short-form subtitle typography aimed at the
+	// younger-audience clip line (the Matt Damon clip jobs select it). It is
+	// deliberately distinct from the plain font presets above: rounder
+	// typefaces, a heavier keyline and a rounder drop so the captions stay
+	// legible over the busy, fast-cut source frames. Variant ids are matched by
+	// substring, most specific first (see ResolveFontPreset).
+	"young":        {FontName: "Poppins", FontSize: 60, Bold: 1, Outline: 4.0, Shadow: 5, MarginV: 40},
+	"young-pop":    {FontName: "Poppins", FontSize: 64, Bold: 1, Outline: 5.0, Shadow: 7, MarginV: 44},
+	"young-clean":  {FontName: "Montserrat", FontSize: 56, Bold: 1, Outline: 3.0, Shadow: 2, MarginV: 40},
+	"young-center": {FontName: "Poppins", FontSize: 60, Bold: 1, Outline: 4.0, Shadow: 5, MarginV: 40},
 }
 
 // ResolveFontPreset maps a style ID or preset name to standard typography parameters.
 func ResolveFontPreset(styleID string) FontPreset {
 	norm := strings.ToLower(strings.TrimSpace(styleID))
+	// The "Young" family is checked before the plain font presets and
+	// most-specific-first, so `subs-young-pop` can never silently fall back to
+	// the base `subs-young` typography. `subs-young-center` intentionally maps
+	// to the base preset: its centring is a separate axis handled by the
+	// alignment rule in CompileASSContent (style id contains "center").
+	if strings.Contains(norm, "young-pop") {
+		return defaultFontPresets["young-pop"]
+	}
+	if strings.Contains(norm, "young-clean") {
+		return defaultFontPresets["young-clean"]
+	}
+	if strings.Contains(norm, "young-center") {
+		return defaultFontPresets["young-center"]
+	}
+	if strings.Contains(norm, "young") {
+		return defaultFontPresets["young"]
+	}
 	if strings.Contains(norm, "impact") {
 		return defaultFontPresets["impact"]
 	}

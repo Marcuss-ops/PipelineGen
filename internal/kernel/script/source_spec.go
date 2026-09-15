@@ -134,13 +134,15 @@ type SourceSpec struct {
 	Research    ResearchPolicy    `json:"research,omitempty"`
 }
 
-func (s *SourceSpec) IsText() bool     { return s.Type == SourceText }
-func (s *SourceSpec) IsClips() bool    { return s.Type == SourceClips }
-func (s *SourceSpec) IsCatalog() bool  { return s.Type == SourceCatalog }
-func (s *SourceSpec) IsSearch() bool   { return s.Type == SourceSearch }
-func (s *SourceSpec) IsCurate() bool   { return s.Type == SourceCurate }
-func (s *SourceSpec) IsResearch() bool { return s.Type == SourceResearch }
-func (s *SourceSpec) HasClipIDs() bool { return len(s.ClipIDs) > 0 }
+// Only the predicates with a live caller exist. IsCatalog / IsSearch /
+// IsResearch / HasClipIDs had none (no caller in the tree, tests included), so
+// they were removed rather than kept as the shape of a routing decision nobody
+// makes. A predicate is one line to add back when a consumer appears.
+func (s *SourceSpec) IsText() bool  { return s.Type == SourceText }
+func (s *SourceSpec) IsClips() bool { return s.Type == SourceClips }
+func (s *SourceSpec) IsCurate() bool {
+	return s.Type == SourceCurate
+}
 
 // NarrativeClipView is the slot-aware model-facing projection.
 type NarrativeClipView struct {
