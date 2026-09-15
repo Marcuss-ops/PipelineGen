@@ -5,7 +5,7 @@
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
     "content_digest": "ef04dbe56e77023e6784d17d3895fcb5f4298c811772c4d93cecc333e9adee9e",
-    "git_sha": "0ea6eeb4b",
+    "git_sha": "2f3b1dafc",
     "job_id": "goal3-image-bg-nowm",
     "render_plan_schema": "chronon.render-plan.v2",
     "request_digest": "7f9282c5d33bd89a6bc9454d5c2074d40b8dde06ade7b789e0f7991accc94c99"
@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 1388275,
-    "sha256": "8a3bd467db58a49d36f334e9a4cdab11e21bff8ea1ea0ea6cafc1187ef7aefa8"
+    "bytes": 2953320,
+    "sha256": "7cd2a78d691fdf14ccd1dc22e4299fdddfa903bd14e7905b7576fd2e00f43fc0"
   },
   "render": {
     "backend": "vulkan",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 232.363239,
-    "sha256_ms": 5.566291,
-    "total_ms": 238.20319
+    "probe_ms": 277.839408,
+    "sha256_ms": 20.369797,
+    "total_ms": 299.371939
   },
   "verification": {
     "audio": "skip",
