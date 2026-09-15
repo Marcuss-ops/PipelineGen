@@ -105,7 +105,8 @@ func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestr
 }
 
 // WithDestinationReconciler threads the post-publish destination hygiene pass
-// (see destination_reconcile.go) to the orchestrator's StockPublishStep. Same
+// (see step_publish.go, destination-hygiene section) to the orchestrator's
+// StockPublishStep. Same
 // §12-7 fluent-setter rationale as WithJobFinalizer; nil pass-through keeps
 // fixtures compiling unchanged. Returns the receiver for fluent chaining.
 func (o *Orchestrator) WithDestinationReconciler(svc DestinationReconciler) *Orchestrator {

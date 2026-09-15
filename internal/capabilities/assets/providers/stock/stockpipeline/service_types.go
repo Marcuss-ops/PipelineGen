@@ -237,7 +237,7 @@ type DriveReaderPort interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
 	ListFiles(ctx context.Context, parentID string) ([]DriveFileInfo, error)
 	// TrashFile moves one file to the Drive trash. Used exclusively by the
-	// post-publish destination reconciler (destination_reconcile.go) to remove
+	// post-publish destination reconciler (step_publish.go) to remove
 	// stale artifacts of earlier plans.
 	TrashFile(ctx context.Context, fileID string) error
 }

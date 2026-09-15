@@ -30,7 +30,8 @@ type ProductionPersistenceDeps struct {
 
 	// DestinationReconciler is the OPTIONAL post-publish hygiene pass that
 	// removes stale pipeline-owned artifacts left by earlier plans in the
-	// destination folder (see destination_reconcile.go). Optional by design:
+	// destination folder (see step_publish.go, destination-hygiene section).
+	// Optional by design:
 	// nil keeps the publish path exactly as it was before, so this port can be
 	// rolled out without a flag day.
 	DestinationReconciler DestinationReconciler
