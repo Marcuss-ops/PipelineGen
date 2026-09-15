@@ -400,6 +400,12 @@ const DefaultPollInterval = 2 * time.Second
 // reclaimable (attempt_count already incremented — no infinite loop).
 const DefaultLeaseTTL = 5 * time.Minute
 
+// DefaultReclaimInterval is how often the drain loop returns orphaned
+// `processing` rows with an expired lease back to `pending`. It must be well
+// under DefaultLeaseTTL so a crash is recovered promptly, and it is
+// independent of the claim poll cadence so an idle outbox still heals.
+const DefaultReclaimInterval = 30 * time.Second
+
 // Run drains asset.index.requested events until ctx is cancelled: claim a
 // batch → process → repeat, sleeping pollInterval whenever the outbox is
 // empty. A batch shares one lease token and, when the wired embedder exposes
@@ -424,6 +430,8 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 	// only once it is empty.
 	metricsTicker := time.NewTicker(pollInterval)
 	defer metricsTicker.Stop()
+	reclaimTicker := time.NewTicker(DefaultReclaimInterval)
+	defer reclaimTicker.Stop()
 
 	workerID := "pg-media-index-worker:" + w.ModelID
 	if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
@@ -435,6 +443,18 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 		case <-metricsTicker.C:
 			if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
 				w.logf(log, "media outbox: status metrics refresh failed", err)
+			}
+		default:
+		}
+		// Reclaim orphaned leases: a consumer that died mid-event (or a
+		// server restart mid-batch) leaves rows `processing` that no claim
+		// predicate will ever revisit. Cheap, idempotent, self-healing.
+		select {
+		case <-reclaimTicker.C:
+			if n, err := w.repo.RequeueExpiredLeases(ctx, outboxReclaimBatchSize); err != nil {
+				w.logf(log, "media outbox: reclaim expired leases failed", err)
+			} else if n > 0 {
+				w.infof(log, "media outbox: reclaimed expired leases", n)
 			}
 		default:
 		}
@@ -485,4 +505,11 @@ func (w *PostgresIndexWorker) logf(log Logger, msg string, err error) {
 		return
 	}
 	log.Error(msg, map[string]any{"error": err.Error()})
+}
+
+func (w *PostgresIndexWorker) infof(log Logger, msg string, reclaimed int) {
+	if log == nil {
+		return
+	}
+	log.Info(msg, map[string]any{"reclaimed": reclaimed})
 }

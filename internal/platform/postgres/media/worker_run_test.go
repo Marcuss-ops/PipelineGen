@@ -252,6 +252,87 @@ func TestRepository_ClaimBatch(t *testing.T) {
 	}
 }
 
+// TestRepository_RequeueExpiredLeases_ReclaimsOnlyOrphans pins the
+// self-healing contract the drain loop now relies on: a consumer that died
+// mid-event (or a server restart mid-batch) leaves rows `processing` that no
+// claim predicate will ever revisit, so the reaper must return EXACTLY the
+// rows whose lease has expired to `pending` — never a live lease, and never
+// a row whose lease was never set.
+func TestRepository_RequeueExpiredLeases_ReclaimsOnlyOrphans(t *testing.T) {
+	db := newMediaTestDB(t)
+	ctx := context.Background()
+	repo := pgmedia.NewOutboxRepository(db)
+
+	const eventType = "clip.render.drive_delivery.requested.v1"
+	insert := func(key, status, leaseExpiry string) {
+		t.Helper()
+		if _, err := db.Exec(`
+			INSERT INTO outbox_events
+			(event_type, aggregate_id, aggregate_type, payload_json, event_key,
+			 status, attempt_count, max_attempts, worker_id, lease_id, lease_expiry,
+			 created_at, updated_at, created_at_ts, updated_at_ts)
+			VALUES ($1, $2, 'asset', '{}', $2, $3, 1, 3, 'dead-worker', 'lease-x', $4,
+			 now(), now(), now(), now())
+		`, eventType, key, status, leaseExpiry); err != nil {
+			t.Fatalf("insert %s: %v", key, err)
+		}
+	}
+
+	// A lease that expired long ago is the orphan the reaper must recover.
+	insert("orphan-expired", "processing", "2020-01-01T00:00:00Z")
+	// A lease still in force belongs to a live consumer: never touch it.
+	insert("orphan-live", "processing", "2999-01-01T00:00:00Z")
+	// No lease recorded: mirrors the SQLite predicate, which requires a
+	// non-NULL expiry. A NULL lease is NOT assumed expired.
+	insert("orphan-null-lease", "processing", "")
+	if _, err := db.Exec(`UPDATE outbox_events SET lease_expiry=NULL WHERE event_key='orphan-null-lease'`); err != nil {
+		t.Fatalf("null lease: %v", err)
+	}
+	insert("already-pending", "pending", "")
+	if _, err := db.Exec(`UPDATE outbox_events SET lease_expiry=NULL WHERE event_key='already-pending'`); err != nil {
+		t.Fatalf("null lease pending: %v", err)
+	}
+
+	n, err := repo.RequeueExpiredLeases(ctx, 100)
+	if err != nil {
+		t.Fatalf("RequeueExpiredLeases: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("reclaimed = %d, want 1 (only the expired lease)", n)
+	}
+
+	want := map[string]string{
+		"orphan-expired":    "pending",
+		"orphan-live":       "processing",
+		"orphan-null-lease": "processing",
+		"already-pending":   "pending",
+	}
+	for key, wantStatus := range want {
+		var status, workerID, leaseID string
+		var leaseExpiry *string
+		if err := db.QueryRow(`
+			SELECT status, worker_id, lease_id, lease_expiry FROM outbox_events WHERE event_key=$1
+		`, key).Scan(&status, &workerID, &leaseID, &leaseExpiry); err != nil {
+			t.Fatalf("read %s: %v", key, err)
+		}
+		if status != wantStatus {
+			t.Fatalf("%s status = %q, want %q", key, status, wantStatus)
+		}
+		if key == "orphan-expired" {
+			if workerID != "" || leaseID != "" || leaseExpiry != nil {
+				t.Fatalf("reclaimed row kept stale lease identity: worker=%q lease=%q expiry=%v", workerID, leaseID, leaseExpiry)
+			}
+		}
+	}
+
+	// Idempotent: a second tick reclaims nothing.
+	if n, err := repo.RequeueExpiredLeases(ctx, 100); err != nil {
+		t.Fatalf("second RequeueExpiredLeases: %v", err)
+	} else if n != 0 {
+		t.Fatalf("second reclaim = %d, want 0 (idempotent)", n)
+	}
+}
+
 // TestWorker_Run_SurvivesPerEventFailures pins that a poison event does
 // not kill the loop: the failing event retries/dead-letters while later
 // healthy events still complete.

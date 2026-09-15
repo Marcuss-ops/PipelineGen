@@ -262,3 +262,84 @@ func TestSubtitleCompiler_RegeneratesWhenCurrentStyleDiffers(t *testing.T) {
 		t.Fatalf("regenerated ASS does not contain requested style:\n%s", content)
 	}
 }
+
+// TestSubtitleCompiler_PreservesFullTextAcrossSegmentBoundaries is the
+// permanent, in-repo counterpart of the ad-hoc 50-render server check. It
+// pins the invariant that actually matters for the multilingual deliverable:
+// whatever the readability normalization does to ONE segment's window — split
+// a long Whisper segment, let a sub-MinCueMs caption absorb its neighbour —
+// the ASS the renderer burns must carry EVERY word of the canonical transcript
+// exactly once and in order.
+//
+// A per-segment "cue text == that segment's text" invariant is deliberately
+// NOT the contract: a merged caption spans two adjacent segments by design (see
+// texttracks.TestNormalizeShortFormCues_MergedCaptionsStayBounded), which is
+// exactly the whole-track-preserving behaviour asserted here.
+func TestSubtitleCompiler_PreservesFullTextAcrossSegmentBoundaries(t *testing.T) {
+	compiler := &ClipRenderSubtitleCompiler{}
+	in := subtitleTestInput(t, cliprender.SubtitlesModeBurn)
+	// Contiguous boundaries force a readability merge across segments (the
+	// 200ms "tiny" is absorbed by its neighbour); the long segment must split.
+	in.Cues = []cliprender.Cue{
+		{StartMs: 0, EndMs: 3000, Text: "hello there my friend how are you doing today"},
+		{StartMs: 3000, EndMs: 3200, Text: "tiny"},
+		{StartMs: 3200, EndMs: 11000, Text: "this is a much longer utterance that must be split into several readable captions because it keeps going and going and then it finally stops"},
+		{StartMs: 11000, EndMs: 11800, Text: "and the closing line"},
+	}
+	in.ClipDurationMS = 11800
+
+	out, err := compiler.Compile(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := texttracks.ValidateASSFile(out.LocalPath, in.ClipDurationMS); err != nil {
+		t.Fatalf("ValidateASSFile: %v", err)
+	}
+	content, err := os.ReadFile(out.LocalPath)
+	if err != nil {
+		t.Fatalf("read artifact: %v", err)
+	}
+
+	policy := texttracks.DefaultShortFormPolicy()
+	var gotWords []string
+	dialogues := 0
+	var prevEnd int64 = -1
+	for _, line := range strings.Split(string(content), "\n") {
+		if !strings.HasPrefix(line, "Dialogue:") {
+			continue
+		}
+		fields := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(line, "Dialogue:")), ",", 10)
+		if len(fields) < 10 {
+			t.Fatalf("malformed dialogue line: %q", line)
+		}
+		dialogues++
+		start, end := assTimestampMs(t, fields[1]), assTimestampMs(t, fields[2])
+		if end <= start {
+			t.Fatalf("caption has an empty window: %q", fields[9])
+		}
+		if prevEnd >= 0 && start < prevEnd {
+			t.Fatalf("captions overlap (previous end %d > start %d): %q", prevEnd, start, line)
+		}
+		prevEnd = end
+		body := fields[9]
+		if got := strings.Count(body, "\\N") + 1; got > policy.MaxLines {
+			t.Fatalf("caption wraps to %d lines, want <= %d: %q", got, policy.MaxLines, body)
+		}
+		text := strings.ReplaceAll(strings.ReplaceAll(body, "\\N", " "), "\\n", " ")
+		if n := utf8.RuneCountInString(text); n > policy.MaxCharsPerCue() {
+			t.Fatalf("caption carries %d runes, want <= %d: %q", n, policy.MaxCharsPerCue(), text)
+		}
+		gotWords = append(gotWords, strings.Fields(text)...)
+	}
+	if dialogues < 2 {
+		t.Fatalf("produced %d captions from %d segments: normalization did not split the long segment", dialogues, len(in.Cues))
+	}
+
+	var wantWords []string
+	for _, cue := range in.Cues {
+		wantWords = append(wantWords, strings.Fields(cue.Text)...)
+	}
+	if got, want := strings.Join(gotWords, " "), strings.Join(wantWords, " "); got != want {
+		t.Fatalf("burned subtitle text is not the canonical transcript (lost/duplicated/invented words):\n got %q\nwant %q", got, want)
+	}
+}
