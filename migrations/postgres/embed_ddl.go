@@ -73,6 +73,14 @@ var MediaTimestampsTimestamptzDDL string
 //go:embed 006_media_asset_versions.sql
 var MediaAssetVersionsDDL string
 
+// MediaClipFoldersDDL is the verbatim DDL of
+// migrations/postgres/007_media_clip_folders.sql — the PostgreSQL projection
+// required by catalog synchronization before the composition root wires the
+// folder repository.
+//
+//go:embed 007_media_clip_folders.sql
+var MediaClipFoldersDDL string
+
 // MediaAssetProcessingDDL is the verbatim DDL of
 // migrations/postgres/008_media_asset_processing.sql — the per-step
 // pipeline progress surface (asset_processing) written by the canonical

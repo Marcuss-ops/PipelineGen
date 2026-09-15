@@ -307,11 +307,12 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if len(phrases) > config.MaxPhrases {
 			phrases = phrases[:config.MaxPhrases]
 		}
-		for _, candidate := range phrases {
+		for ordinal, candidate := range phrases {
 			id := itemID(scene.ID, "phrase", candidate.Text)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
-				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
+				MotionID: selectPhraseMotion(input.PlanID, scene.ID, ordinal),
+				Kind:     "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
