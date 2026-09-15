@@ -5,7 +5,7 @@
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
     "content_digest": "53c4b0a600e74d2903ca316f3b39fd7589d8f60748df9cf5e9b959b155fd2c36",
-    "git_sha": "0ea6eeb4b",
+    "git_sha": "2f3b1dafc",
     "job_id": "goal3-source-wm",
     "render_plan_schema": "chronon.render-plan.v2",
     "request_digest": "ec08e4b051e197f9d7d39d33062bdaf990a94572e23bbccea87926555e0bb5b7"
@@ -22,10 +22,10 @@
     "closed_gop": true,
     "codec": "h264",
     "codec_profile": "High",
-    "color_primaries": "",
-    "color_range": "",
-    "color_space": "",
-    "color_transfer": "",
+    "color_primaries": "bt709",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
     "container": "mov,mp4,m4a,3gp,3g2,mj2",
     "duration_ms": 4959.0,
     "duration_us": 4959000,
@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 5780553,
-    "sha256": "655abe0226992dc21af70b0a76c2d3c1e01395605ecbaf3dafaff27d41860062"
+    "bytes": 4818184,
+    "sha256": "d2542ec2ee38d4fcbcdf1f5ae82c6ac9c8ea9355c236db287a9b0922a7e27678"
   },
   "render": {
     "backend": "software",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 262.466456,
-    "sha256_ms": 21.102606,
-    "total_ms": 283.747129
+    "probe_ms": 261.50035,
+    "sha256_ms": 25.607996,
+    "total_ms": 287.998226
   },
   "verification": {
     "audio": "skip",

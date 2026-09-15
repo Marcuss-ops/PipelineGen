@@ -5,7 +5,7 @@
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
     "content_digest": "53c4b0a600e74d2903ca316f3b39fd7589d8f60748df9cf5e9b959b155fd2c36",
-    "git_sha": "0ea6eeb4b",
+    "git_sha": "2f3b1dafc",
     "job_id": "goal3-source-wm",
     "render_plan_schema": "chronon.render-plan.v2",
     "request_digest": "ec08e4b051e197f9d7d39d33062bdaf990a94572e23bbccea87926555e0bb5b7"
@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 1431924,
-    "sha256": "2341da1c4985bc8802f3dc7cdccce790bd59222c6bd52321825f0f7b81f1cadd"
+    "bytes": 5407500,
+    "sha256": "e0872991c94e0201c6b5aea88118d08bd2bc68390b0b156897ab8f6f4cfffc67"
   },
   "render": {
     "backend": "vulkan",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 243.132159,
-    "sha256_ms": 5.660466,
-    "total_ms": 249.000406
+    "probe_ms": 294.423539,
+    "sha256_ms": 29.797171,
+    "total_ms": 325.361365
   },
   "verification": {
     "audio": "skip",
