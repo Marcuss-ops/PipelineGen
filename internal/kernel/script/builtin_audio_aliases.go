@@ -59,6 +59,13 @@ var builtInCanonicalAliases = map[string]BuiltInAudioKind{
 	"whop4": BuiltInAudioSoundEffect,
 	"whop5": BuiltInAudioSoundEffect,
 	"whop6": BuiltInAudioSoundEffect,
+
+	// whoosh1..whoosh3 are bound by the catalog to a Drive identity, which is
+	// what makes the random_whoosh directive resolvable end to end. The rest
+	// of the family stays compatibility vocabulary only (below).
+	"whoosh1": BuiltInAudioSoundEffect,
+	"whoosh2": BuiltInAudioSoundEffect,
+	"whoosh3": BuiltInAudioSoundEffect,
 }
 
 // builtInCompatAliases are historical aliases that are deliberately NOT in the
@@ -68,8 +75,12 @@ var builtInCanonicalAliases = map[string]BuiltInAudioKind{
 //
 //   - whoop1..whoop4 were ambiguous: the same Drive identity was addressable as
 //     a BGM and as a "whoop", so the canonical catalog retired them.
-//   - whoosh1..whoosh9 are the family the random_whoosh directive selects from
-//     and remain resolvable through the media registry.
+//   - whoosh1..whoosh3 are now CANONICAL (above): the catalog binds them to a
+//     Drive identity, so a selected whoosh resolves through the media registry.
+//   - whoosh4..whoosh9 have no recorded Drive identity. They stay declared so
+//     the built-in attenuation of an existing payload does not change, but the
+//     random_whoosh family deliberately EXCLUDES them (BuiltInWhooshAliases),
+//     because selecting one would emit an id nothing can resolve.
 //   - random_whoosh is a resolver directive, not an asset id: it is expanded to
 //     one of the whoosh aliases before resolution.
 //   - whop/whoop/whoosh (bare) are the family names the retired prefix rule
@@ -86,9 +97,6 @@ var builtInCompatAliases = map[string]BuiltInAudioKind{
 	"whoop":  BuiltInAudioSoundEffect,
 	"whoosh": BuiltInAudioSoundEffect,
 
-	"whoosh1": BuiltInAudioSoundEffect,
-	"whoosh2": BuiltInAudioSoundEffect,
-	"whoosh3": BuiltInAudioSoundEffect,
 	"whoosh4": BuiltInAudioSoundEffect,
 	"whoosh5": BuiltInAudioSoundEffect,
 	"whoosh6": BuiltInAudioSoundEffect,
@@ -129,13 +137,17 @@ func BuiltInAudioCanonicalAliases() []string {
 	return out
 }
 
-// BuiltInWhooshAliases returns the whoosh family in index order. The
+// BuiltInWhooshAliases returns the BOUND whoosh family in index order. The
 // random_whoosh selection uses it, so the size of the family is declared once
 // here instead of being re-typed as a modulo operand next to the hash that
 // consumes it.
+//
+// Only aliases the editorial catalog binds to a Drive identity may appear here:
+// random_whoosh must never emit an id that the media registry cannot resolve.
+// whoosh4..whoosh9 stay declared compatibility aliases but are excluded, and
+// the catalog-side regression test
+// (mediaregistry.TestEveryWhooshFamilyAliasIsBoundByTheCatalog) fails the build
+// if the two lists ever diverge again.
 func BuiltInWhooshAliases() []string {
-	return []string{
-		"whoosh1", "whoosh2", "whoosh3", "whoosh4", "whoosh5",
-		"whoosh6", "whoosh7", "whoosh8", "whoosh9",
-	}
+	return []string{"whoosh1", "whoosh2", "whoosh3"}
 }

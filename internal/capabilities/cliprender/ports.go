@@ -297,11 +297,24 @@ type RenderPublishResult struct {
 	AssetID     string
 	DriveFileID string
 	DriveLink   string
+
 	// DrivePending means the artifact is committed and the Drive upload was
 	// durably handed to the outbox. It is intentionally distinct from an
 	// upload failure: the render job may complete while the external delivery
 	// continues in the background.
-	DrivePending  bool
+	DrivePending bool
+
+	// Reused means this job performed NO publication: the asset identity below
+	// belongs to a render that already completed and published, and the
+	// deterministic render cache handed back its certified locator.
+	//
+	// It is deliberately distinct from BOTH publication states. The original
+	// render either published synchronously or handed delivery to the outbox, and
+	// this job cannot know which, so claiming PUBLISHED would assert a fact it
+	// never observed and claiming PENDING (the historical fabrication) would
+	// announce a delivery nobody owes. DriveFileID/DriveLink are empty in this
+	// case; the result projects publication_status=REUSED.
+	Reused        bool
 	SizeBytes     int64
 	SidecarFileID string
 	SidecarLink   string

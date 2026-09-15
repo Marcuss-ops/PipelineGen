@@ -17,7 +17,6 @@ package replay
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -173,10 +172,8 @@ type AssetSource interface {
 	Materialize(ctx context.Context, asset ReplayAsset) (MaterializedAsset, error)
 }
 
+// isSHA256 is the digest-shape gate for the bundle's recorded hashes. The rule
+// is owned by kernel/digest (the digest SSOT).
 func isSHA256(value string) bool {
-	if len(value) != digest.SHA256HexLength {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil && value == strings.ToLower(value)
+	return digest.IsCanonicalSHA256(value)
 }

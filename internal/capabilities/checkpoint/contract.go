@@ -24,7 +24,6 @@ package checkpoint
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -111,10 +110,9 @@ type Store interface {
 	Invalidate(ctx context.Context, jobID, stage, unitID string) error
 }
 
+// isSHA256 is the digest-shape gate for recorded artifact hashes. The rule is
+// owned by kernel/digest (the digest SSOT) so this contract and every other
+// sealed contract answer the same question the same way.
 func isSHA256(value string) bool {
-	if len(value) != digest.SHA256HexLength {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil && value == strings.ToLower(value)
+	return digest.IsCanonicalSHA256(value)
 }

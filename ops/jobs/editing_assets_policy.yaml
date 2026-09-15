@@ -1,0 +1,48 @@
+# Editing-asset selection policy — PROJECTION, NOT A CATALOG.
+#
+# The canonical policy is `mediaregistry.DefaultEditingAssetsPolicy()` in
+# internal/capabilities/mediaregistry/editing_assets_policy.go; the pools are
+# derived from the editorial catalogs
+# (internal/capabilities/mediaregistry/editorial_catalog.go and
+# editorial_backgrounds.go). This file is a human-readable projection and is
+# checked against the Go value by
+# mediaregistry/editorial_projection_test.go, so it cannot drift or become a
+# second source of truth.
+#
+# Use it to answer "which asset does a job pick when it does not name one?"
+# — not to add assets. Add an asset in the catalog.
+editing_assets:
+  backgrounds:
+    pool:
+      - drive-background-01
+      - drive-background-02
+      - drive-background-03
+      - drive-background-04
+      - drive-background-05
+      - drive-background-06
+
+  bgm:
+    pool:
+      - bgm1
+      - bgm2
+      - bgm3
+      - bgm4
+      - bgm5
+      - bgm6
+    gain_db: -28
+    loop: true
+    duck_under_voiceover: true
+    duck_gain_db: -32
+
+  sfx:
+    transition_pool:
+      - whop1
+      - whop2
+      - whop3
+      - whop4
+      - whop5
+      - whop6
+      - whoosh1
+      - whoosh2
+      - whoosh3
+    gain_db: -12

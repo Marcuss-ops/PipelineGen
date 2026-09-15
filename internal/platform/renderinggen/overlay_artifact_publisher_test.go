@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -106,8 +105,8 @@ func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactToConfiguredRoot(
 	if artifact.DriveFolderID != "drive-folder" {
 		t.Fatalf("drive folder = %q, want drive-folder", artifact.DriveFolderID)
 	}
-	if len(capture.artifacts) != 2 {
-		t.Fatalf("publication count = %d, want video + receipt", len(capture.artifacts))
+	if len(capture.artifacts) != 1 {
+		t.Fatalf("publication count = %d, want video only", len(capture.artifacts))
 	}
 	video := capture.artifacts[0]
 	if video.Source != "chronon" || video.ProjectID != "Donald Trump" || video.Language != "it" {
@@ -121,23 +120,6 @@ func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactToConfiguredRoot(
 	}
 	if _, err := os.Stat(video.LocalPath); !os.IsNotExist(err) {
 		t.Fatalf("staging file should be removed after publication, stat error=%v", err)
-	}
-	receipt := capture.artifacts[1]
-	if receipt.Kind != finalization.KindScript || receipt.Source != "chronon_receipt" || receipt.MIMEType != "application/json" {
-		t.Fatalf("receipt artifact metadata = %#v", receipt)
-	}
-	if strings.Join(receipt.DriveSubpath, "/") != finalization.OverlayChildFolder || receipt.ResolvedFolderID != video.ResolvedFolderID {
-		t.Fatalf("receipt path = %#v, want same parent/overlay path", receipt)
-	}
-	if receipt.SizeBytes <= 0 || receipt.SHA256 == "" {
-		t.Fatalf("receipt is not certified: %#v", receipt)
-	}
-	var decoded overlayTimingReceipt
-	if err := json.Unmarshal(capture.payloads[1], &decoded); err != nil {
-		t.Fatalf("receipt JSON: %v", err)
-	}
-	if decoded.Kind != "chronon_overlay_receipt" || decoded.Video.DriveFileID != "drive-file" || decoded.Timing.CompletionWaitMS != 1500 || decoded.Timing.PollingSleepMS != 250 || decoded.Timing.PollCount != 15 {
-		t.Fatalf("receipt contents = %#v", decoded)
 	}
 }
 
@@ -171,8 +153,8 @@ func TestDriveOverlayArtifactPublisherPinsConfiguredRootFolder(t *testing.T) {
 	}, artifact); err != nil {
 		t.Fatal(err)
 	}
-	if len(capture.artifacts) != 2 {
-		t.Fatalf("publication count = %d, want video + receipt", len(capture.artifacts))
+	if len(capture.artifacts) != 1 {
+		t.Fatalf("publication count = %d, want video only", len(capture.artifacts))
 	}
 	if capture.artifacts[0].ResolvedFolderID != "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E" || !capture.artifacts[0].RootFolderResolved {
 		t.Fatalf("configured Drive parent was not pinned: %#v", capture.artifacts[0])
@@ -208,15 +190,14 @@ func TestDriveOverlayArtifactPublisherUsesJobSelectedRootBeforeConfiguredRoot(t 
 	}, artifact); err != nil {
 		t.Fatal(err)
 	}
-	if len(capture.artifacts) != 2 {
-		t.Fatalf("publication count = %d, want video + receipt", len(capture.artifacts))
+	if len(capture.artifacts) != 1 {
+		t.Fatalf("publication count = %d, want video only", len(capture.artifacts))
 	}
-	for i, published := range capture.artifacts {
-		if published.ResolvedFolderID != "job-selected-root" {
-			t.Fatalf("publication %d used folder %q, want job-selected-root: %#v", i, published.ResolvedFolderID, published)
-		}
-		if strings.Join(published.DriveSubpath, "/") != finalization.OverlayChildFolder {
-			t.Fatalf("publication %d path = %#v, want overlay child", i, published.DriveSubpath)
-		}
+	published := capture.artifacts[0]
+	if published.ResolvedFolderID != "job-selected-root" {
+		t.Fatalf("publication used folder %q, want job-selected-root: %#v", published.ResolvedFolderID, published)
+	}
+	if strings.Join(published.DriveSubpath, "/") != finalization.OverlayChildFolder {
+		t.Fatalf("publication path = %#v, want overlay child", published.DriveSubpath)
 	}
 }

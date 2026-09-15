@@ -222,10 +222,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if cfg.External.RenderingGenPollIntervalMS > 0 {
 			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 		}
-		// Reuse only input assets (entity images, backgrounds and fonts). Every
-		// overlay video gets a fresh queue identity so RenderingGen/Chronon is
-		// invoked for each new artifact, including repeated test runs.
-		renderEnqueuer.SetFreshRender(true)
+		// Reuse the canonical queue identity for retries/replays. A new render is
+		// requested explicitly by a new plan/force-refresh request; making every
+		// submission fresh here caused identical overlays to be rendered and
+		// published repeatedly.
+		renderEnqueuer.SetFreshRender(false)
 		renderEnqueuer.SetSeparateItemRenders(true)
 		// Overlay videos belong beside the generated language document:
 		// <scripts-generate>/<project>/<language>/overlay. The configured

@@ -191,7 +191,23 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int) []ca
 			out = append(out, item)
 			continue
 		}
-		identity := strings.TrimSpace(item.EntityID)
+		// EntityID is occurrence-scoped in some planner paths. For the
+		// run-level image budget the identity must be semantic, otherwise the
+		// same person mentioned in multiple scenes consumes multiple image
+		// slots and the same portrait is rendered repeatedly.
+		identity := ""
+		if item.EntityRef != nil {
+			identity = strings.TrimSpace(item.EntityRef.CanonicalEntityID)
+			if identity == "" {
+				identity = strings.TrimSpace(item.EntityRef.EntityID)
+			}
+		}
+		if identity == "" && len(item.AssetRefs) > 0 {
+			identity = strings.TrimSpace(item.AssetRefs[0].SHA256)
+		}
+		if identity == "" {
+			identity = strings.TrimSpace(item.EntityID)
+		}
 		if identity == "" {
 			identity = strings.TrimSpace(item.ID)
 		}

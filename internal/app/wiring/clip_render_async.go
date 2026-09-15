@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -72,6 +73,14 @@ func (e *clipRenderContinuationEnqueuer) EnqueueContinuation(ctx context.Context
 	// artifact would never be collected or published (the live 2026-09-13
 	// defect: parent SUCCEEDED with child_job_id == its own id, zero
 	// parent_job_id children, no media_assets written).
+	// The settle child is the SAME job type as the submit parent, so its retry
+	// budget is the DECLARED policy for that type (jobs.Registry, seeded by
+	// registry_media.go) rather than a literal owned by this adapter. The
+	// historical literal was hardcoded to 3 while the registered policy for the
+	// same job type is 2 — two answers for one fact, with the submit and settle
+	// halves of a single render not derivable from the registry. Mirrors the
+	// registry-sourcing pattern in
+	// capabilities/scripts/jobs/generation_enqueue.go.
 	submission := req.Continuation.Submission
 	child, err := e.jobs.Enqueue(ctx, &job.EnqueueRequest{
 		Type:    cliprender.TypeClipRender,
@@ -79,7 +88,7 @@ func (e *clipRenderContinuationEnqueuer) EnqueueContinuation(ctx context.Context
 		CorrelationID: cliprender.SettleCorrelationID(
 			submission.CorrelationID, submission.RenderJobID, submission.Attempt,
 		),
-		MaxRetries: 3,
+		MaxRetries: appjobs.Compose().DefaultMaxRetries(cliprender.TypeClipRender),
 		ActiveKey:  req.ActiveKey,
 	})
 	if err != nil {

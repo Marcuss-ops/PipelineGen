@@ -33,6 +33,19 @@ var ErrRenderPhaseNotImplemented = errors.New("clip.render: render executor is n
 // Terminal: retrying the same payload can never succeed.
 var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 
+// ErrRenderPublisherNotWired is the typed sentinel for a render that produced
+// certified bytes but has no publication boundary attached.
+//
+// A clip.render job's deliverable IS the published, committed derived asset:
+// the worker header and WithRenderPublisher both declare publication mandatory,
+// and the registered policy classifies clip.render as
+// ArtifactOwnershipApplication. A composition root that exposes the job without
+// the publisher therefore has a configuration fault, not a render that is
+// "done enough" — reporting it as a completed clip would hand the operator a
+// SUCCEEDED job whose artifact was never uploaded or committed. Terminal by
+// construction: no retry can attach the missing port.
+var ErrRenderPublisherNotWired = errors.New("clip.render: render publisher is not wired")
+
 // Worker is the canonical clip.render job handler. It is constructed with
 // the Preparer and bound to the Master via
 // job.Service.RegisterHandler(TypeClipRender, job.HandlerFunc(worker.Handle)).
@@ -229,14 +242,25 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 					OutputPath: "",
 					PlanSHA256: fp,
 				}
+				// Reused, NOT republished: the record is written only after a
+				// publication validated its AssetID, so a record existing IS the
+				// proof that the render completed and was published. This job
+				// performs no upload and owes no delivery, so the projection must
+				// claim neither PUBLISHED (a fact this job never observed) nor
+				// PENDING (the historical fabrication, which announced a Drive
+				// delivery that nobody would ever perform).
 				res := renderedResult(j, &req, synthPrepared, synthPlan, nil, cached, &RenderPublishResult{
-					AssetID:      rec.AssetID,
-					DrivePending: true,
-					SizeBytes:    rec.SizeBytes,
+					AssetID:   rec.AssetID,
+					Reused:    true,
+					SizeBytes: rec.SizeBytes,
 				})
 				res["cache_hit"] = true
 				res["fingerprint"] = fp
 				res["phase"] = "cached"
+				// The job wall IS measured even on a cache hit, so it is reported;
+				// the render phases stay NotInstrumented because no render ran, and
+				// Compute() never derives a value from an uninstrumented input.
+				finalizeMetrics(cached.Metrics, time.Since(jobStart).Milliseconds(), cached.DurationSec)
 				progress(100, "clip.render cache hit")
 				return res, nil
 			}
@@ -246,6 +270,20 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		progress(90, "remote render submitted; settling certified artifact")
 	} else {
 		progress(10, "request validated; running parallel preparation")
+		// A broker RETRY of this job re-enters here and re-runs preparation,
+		// because a retry re-executes the whole payload from the top.
+		//
+		// That is a deliberate, bounded cost, not an oversight. The remote job id
+		// IS derivable before preparation (plan.RunID == j.ID), but the resume
+		// document's ADDRESS is its own content digest, so "has this job already
+		// submitted?" cannot be asked without a durable index from job id to
+		// resume digest — a second owner for a fact the continuation payload
+		// already carries. Until such an index is justified, a retry re-does
+		// LOCAL work only: every durable step is idempotent (Prepare re-resolves
+		// the same assets, the content-addressed resume document re-puts under
+		// the same digest, Submit re-addresses the same remote job and answers
+		// ErrJobExists, the settle enqueue dedupes on ActiveKey), so a retry can
+		// never duplicate a render, an artifact or a delivery.
 		prepared, plan, subtitleArtifact, subtitleCompileMS, err = w.preparePlan(ctx, &req, j.ID, emit)
 		if err != nil {
 			return nil, err
@@ -376,9 +414,10 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if outcome == nil {
 		return nil, fmt.Errorf("clip.render: renderer returned a nil outcome")
 	}
-	// Keep all post-render validation, probing, publication, metrics, and
-	// result projection in the single completion implementation shared with
-	// async settle. The historical inline block below is retained only as a
-	// source-compatible migration tail and is unreachable after this return.
+	// All post-render validation, probing, publication, metrics, and result
+	// projection live in the ONE completion implementation shared with async
+	// settle (worker_completion.go::completeRendered). There is no second,
+	// inline completion body in this file: its removal is what keeps the submit
+	// and settle halves from drifting apart.
 	return w.completeRendered(ctx, j, tools, jobStart, &req, prepared, plan, subtitleArtifact, publishFolderID, subtitleCompileMS, outcome, renderMS)
 }

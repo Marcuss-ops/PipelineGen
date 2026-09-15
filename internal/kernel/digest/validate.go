@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrInvalidSHA256 is returned by ValidateSHA256 when a non-empty digest is
@@ -19,6 +20,30 @@ func IsSHA256(s string) bool {
 	}
 	_, err := hex.DecodeString(s)
 	return err == nil
+}
+
+// IsCanonicalSHA256 reports whether s is a digest in the CANONICAL WIRE FORM:
+// a SHA256HexLength-character SHA-256 that is also all-lowercase hex.
+//
+// It is the rule every sealed plan, checkpoint, replay bundle and resume
+// document depends on, and it is deliberately NOT the same question as
+// IsSHA256: a digest that differs only in case names the same bytes but is not
+// the byte string this tree writes, compares and content-addresses. Accepting
+// "AB12…" at a boundary therefore does not normalise it — it lets two spellings
+// of one artifact travel, and any consumer that keys on the literal string
+// (CAS address, job dedup key, plan digest) then sees two identities for one
+// artifact. Boundaries reject the non-canonical spelling instead of rewriting
+// it.
+//
+// This is the single owner of that rule. It was previously re-implemented in
+// checkpoint, replay, cliprender and localization — four hand-rolled copies of
+// one comparison, kept aligned by a comment, one of them describing itself as
+// a "mirror" of another.
+func IsCanonicalSHA256(s string) bool {
+	if !IsSHA256(s) {
+		return false
+	}
+	return strings.ToLower(s) == s
 }
 
 // ValidateSHA256 fails closed on the SHA-256 contract: an empty string is

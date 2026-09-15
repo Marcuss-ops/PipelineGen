@@ -454,46 +454,12 @@ func TestPrefetchClipAssetsDeduplicatesByContentAddress(t *testing.T) {
 	}
 }
 
-// eventDrivenClipQueue implements scriptgen.RenderQueueWaiter, so the clip
-// wait must observe completion at the transition instead of polling. Get fails
-// on purpose: using it would prove the polling path ran.
-type eventDrivenClipQueue struct {
-	waits int
-	job   scriptgen.RenderQueueJob
-}
-
-func (q *eventDrivenClipQueue) Submit(context.Context, scriptgen.RenderQueueJob) error { return nil }
-func (q *eventDrivenClipQueue) Get(context.Context, string) (scriptgen.RenderQueueJob, error) {
-	return scriptgen.RenderQueueJob{}, errors.New("Get must not be used on the event-driven path")
-}
-func (q *eventDrivenClipQueue) Retry(context.Context, string) error { return nil }
-func (q *eventDrivenClipQueue) WaitTerminal(context.Context, string) (scriptgen.RenderQueueJob, error) {
-	q.waits++
-	return q.job, nil
-}
-
-// TestWaitClipQueueUsesEventDrivenWait pins that a queue client exposing the
-// wait capability removes the polling cadence from the clip path: the hour-long
-// interval would have stalled a polling loop, but the event-driven branch
-// returns immediately.
-func TestWaitClipQueueUsesEventDrivenWait(t *testing.T) {
-	q := &eventDrivenClipQueue{job: scriptgen.RenderQueueJob{State: "completed"}}
-
-	start := time.Now()
-	got, err := waitClipQueue(context.Background(), q, "clip-1", time.Hour)
-	if err != nil {
-		t.Fatalf("event-driven wait: %v", err)
-	}
-	if q.waits != 1 {
-		t.Fatalf("WaitTerminal calls = %d, want 1", q.waits)
-	}
-	if got.State != "completed" {
-		t.Fatalf("state = %q, want completed", got.State)
-	}
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("event-driven wait took %v; polling cadence leaked into the path", elapsed)
-	}
-}
+// The event-driven wait used to be pinned here by a local test and a local
+// fake queue. Both are DELETED with the local wait they exercised: the wait and
+// its coverage now live with the port they belong to
+// (scripts.TestQueueRenderEnqueuerUsesEventDrivenWait, which asserts the same
+// properties — one WaitTerminal, zero Get probes, zero polling sleep — plus the
+// absence of recorded polling).
 
 // TestClipRenderExecutorPropagatesRetryError pins the retry-error contract:
 // when a replayed job sits in FAILED and the queue rejects the Retry, the

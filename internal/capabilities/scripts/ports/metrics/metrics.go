@@ -133,16 +133,18 @@ type TranslationMetricsRecorder interface {
 	IncTranslationWarning(targetLang string, reason TranslationWarningReason)
 }
 
-// VidRushMetrics records bounded per-segment pipeline events. Dynamic
+// VidRushMetrics records bounded per-asset pipeline events. Dynamic
 // identifiers belong in structured logs, not metric labels.
+//
+// Every method here has a LIVE caller. Events the pipeline stopped emitting
+// (segment totals, extraction-cache hits/misses, bindings, unresolved segments)
+// were removed with their collectors: a port method nothing calls is a metric
+// that registers as a zero-valued series and asserts a measurement nobody
+// makes.
 type VidRushMetrics interface {
-	IncSegments()
-	IncExtractionCache(hit bool)
 	IncAssetCache(provider string, hit bool)
 	IncProviderRequest(provider string)
 	IncProviderFailure(provider string)
-	IncBinding()
-	IncUnresolvedSegment()
 }
 
 // EntityImageCatalogMetrics is the optional observability extension for the

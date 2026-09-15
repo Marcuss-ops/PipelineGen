@@ -2,6 +2,7 @@ package mediaregistry
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	scriptkernel "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -71,11 +72,55 @@ func TestEditorialCatalogKindMatchesTheBuiltInAudioKind(t *testing.T) {
 // BGM and as a whoop), which is why the catalog retired it.
 func TestEditorialCatalogDeclaresNoCompatOnlyAlias(t *testing.T) {
 	catalog := EditorialAudioAliases()
-	retired := []string{"whoop1", "whoop2", "whoop3", "whoop4", "whoosh1", "whoosh2", "random_whoosh"}
+	// whoosh1..whoosh3 are BOUND (canonical) so random_whoosh resolves; the
+	// unbound rest of the family and the directive itself stay compat-only.
+	retired := []string{"whoop1", "whoop2", "whoop3", "whoop4", "whoosh4", "whoosh9", "random_whoosh"}
 	sort.Strings(retired)
 	for _, alias := range retired {
 		if _, ok := catalog[alias]; ok {
 			t.Errorf("retired alias %q must not be canonical editorial content", alias)
+		}
+	}
+}
+
+// TestEveryWhooshFamilyAliasIsBoundByTheCatalog is the regression test for the
+// random_whoosh dead path: the kernel declares the family the directive selects
+// from, but only the catalog can bind an alias to a resolvable Drive identity.
+// If a family member is not bound, random_whoosh can emit an asset id that the
+// media registry cannot resolve — which is exactly the bug this pins shut.
+//
+// It fails in BOTH directions: an unbound family member, and a bound whoosh the
+// family omits (which would make a resolvable alias unreachable via the
+// directive).
+func TestEveryWhooshFamilyAliasIsBoundByTheCatalog(t *testing.T) {
+	catalog := EditorialAudioAliases()
+	family := scriptkernel.BuiltInWhooshAliases()
+	if len(family) == 0 {
+		t.Fatal("the whoosh family is empty; random_whoosh cannot expand")
+	}
+	inFamily := make(map[string]struct{}, len(family))
+	for _, alias := range family {
+		inFamily[alias] = struct{}{}
+		identity, bound := catalog[alias]
+		if !bound {
+			t.Errorf("random_whoosh can select %q, but the catalog binds no identity for it (the directive would emit a dead asset id)", alias)
+		} else if strings.TrimSpace(identity) == "" {
+			// Presence alone is not resolvability: an alias declared with an
+			// empty identity still resolves to a dead asset id, which is the
+			// exact failure the directive expansion is supposed to prevent.
+			t.Errorf("random_whoosh can select %q, but its catalog identity is empty — the alias is declared without a Drive binding, so it is still not resolvable", alias)
+		}
+		asset, ok := lookupEditorialAudioAsset(alias)
+		if ok && asset.Subtype != "whoosh" {
+			t.Errorf("whoosh family member %q has subtype %q, want whoosh", alias, asset.Subtype)
+		}
+	}
+	for alias := range catalog {
+		asset, _ := lookupEditorialAudioAsset(alias)
+		if asset.Subtype == "whoosh" {
+			if _, ok := inFamily[alias]; !ok {
+				t.Errorf("bound whoosh alias %q is missing from the random_whoosh family, so the directive can never select it", alias)
+			}
 		}
 	}
 }

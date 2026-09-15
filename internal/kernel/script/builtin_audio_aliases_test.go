@@ -2,6 +2,7 @@ package script
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +15,8 @@ import (
 var canonicalAudioAliasesForTest = []string{
 	"bgm1", "bgm2", "bgm3", "bgm4", "bgm5", "bgm6",
 	"whop1", "whop2", "whop3", "whop4", "whop5", "whop6",
+	// The bound members of the whoosh family: bound so random_whoosh resolves.
+	"whoosh1", "whoosh2", "whoosh3",
 }
 
 func TestBuiltInAudioCanonicalAliasesMatchTheEditorialCatalog(t *testing.T) {
@@ -41,6 +44,9 @@ func TestBuiltInAudioCanonicalAliasesMatchTheEditorialCatalog(t *testing.T) {
 		}
 		if alias[:4] == "whop" && kind != BuiltInAudioSoundEffect {
 			t.Errorf("alias %q classified %q, want %q", alias, kind, BuiltInAudioSoundEffect)
+		}
+		if strings.HasPrefix(alias, "whoosh") && kind != BuiltInAudioSoundEffect {
+			t.Errorf("whoosh alias %q classified %q, want %q", alias, kind, BuiltInAudioSoundEffect)
 		}
 	}
 }

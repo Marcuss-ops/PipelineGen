@@ -21,10 +21,12 @@
 package scriptgeneration
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -128,6 +130,14 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	docsEnabled := item.Docs.Enabled
 	docsLanguages := item.Docs.Languages
 	docsFolderID := item.Docs.FolderID
+	// output.drive_folder_id is the job's explicit artifact root. Keep it
+	// connected to the render contract as well: the existing publisher then
+	// creates/reuses its deterministic <script>/<language>/overlay child.
+	// Docs.folder_id remains the canonical Docs destination when supplied.
+	artifactFolderID := firstNonEmpty(item.Output.DriveFolderID, docsFolderID)
+	if strings.TrimSpace(item.Output.Render.DriveFolderID) == "" {
+		item.Output.Render.DriveFolderID = artifactFolderID
+	}
 
 	// generate_timeline is the explicit opt-in for the canonical timeline
 	// metadata artifact. Video rendering is no longer part of PipelineGen; the
@@ -206,7 +216,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 			FolderID:  docsFolderID,
 		},
 		DocsEnabled:   docsEnabled,
-		DriveFolderID: docsFolderID,
+		DriveFolderID: artifactFolderID,
 		SaveToDB:      item.Output.SaveToDB,
 		Title:         item.Title,
 		Intro:         scriptpkg.CloneFixedSection(item.Intro),
@@ -266,4 +276,98 @@ func cloneInt(src *int) *int {
 	}
 	value := *src
 	return &value
+}
+
+// ── Editorial asset SELECTION policy application ──────────────────────────
+//
+// The catalogs own WHICH editorial assets exist
+// (internal/capabilities/mediaregistry); the policy owns WHICH of them a job
+// picks when it does not name one. ApplyEditingAssetPolicy is the integration
+// seam between the two: the pipeline decides WHEN to opt in, the policy decides
+// WHAT is selected.
+//
+// This lives beside the builder because it is the same pure, zero-I/O request
+// transformation surface: it mutates only the in-memory GenerateRequest.
+
+// videoBackgroundModeAsset is the canonical clip-background mode literal owned
+// by the cliprender capability (none | blur_source | asset).
+const videoBackgroundModeAsset = "asset"
+
+// ApplyEditingAssetPolicy fills the editorial assets a request left blank,
+// using the canonical selection policy. It is OPT-IN: nothing calls it
+// implicitly, and it NEVER overrides a caller-provided selection.
+//
+// Scope and rules:
+//
+//   - the clip background is filled only when the request left it blank (a
+//     nil block, or an empty mode AND an empty asset_id). An explicit mode —
+//     including "none" — is caller intent and is preserved.
+//   - background music is filled only when the request declared no BGM AND the
+//     request is in the COMBINED_TIMELINE audio mode. Injecting a BGM layer
+//     into a job that never builds an audio plan would be a silent no-op.
+//   - a transition SFX is NOT auto-placed: its position depends on the scene
+//     timeline, which does not exist at request-build time. Callers that do
+//     have scene context use policy.SelectTransitionSFX directly.
+//
+// Determinism: the seed is the request's idempotency key, so retrying the same
+// job selects the same plate/track and the resulting plan stays byte-identical.
+func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy) error {
+	if req == nil {
+		return errors.New("apply editing asset policy: request is required")
+	}
+	if err := policy.Validate(); err != nil {
+		return fmt.Errorf("apply editing asset policy: %w", err)
+	}
+	seed := strings.TrimSpace(req.IdempotencyKey)
+	if err := applyBackgroundSelection(req, policy, seed); err != nil {
+		return err
+	}
+	return applyBackgroundMusicSelection(req, policy, seed)
+}
+
+func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+	if !backgroundSelectionIsBlank(req.Render.Background) {
+		return nil
+	}
+	plate, err := policy.SelectBackground(seed)
+	if err != nil {
+		return fmt.Errorf("apply editing asset policy: background: %w", err)
+	}
+	if req.Render.Background == nil {
+		req.Render.Background = &scriptpkg.VideoBackgroundSpec{}
+	}
+	req.Render.Background.Mode = videoBackgroundModeAsset
+	req.Render.Background.AssetID = plate.ID
+	return nil
+}
+
+func applyBackgroundMusicSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+	if len(req.BackgroundMusic) > 0 {
+		return nil
+	}
+	if req.Audio != audiocap.AudioModeCombinedTimeline {
+		return nil
+	}
+	track, err := policy.SelectBGM(seed)
+	if err != nil {
+		return fmt.Errorf("apply editing asset policy: background music: %w", err)
+	}
+	req.BackgroundMusic = []scriptpkg.BackgroundMusicIntent{{
+		AssetID:            track.Alias,
+		Loop:               policy.BGM.Loop,
+		GainDB:             policy.BGM.GainDB,
+		DuckUnderVoiceover: policy.BGM.DuckUnderVoiceover,
+		DuckGainDB:         policy.BGM.DuckGainDB,
+	}}
+	return nil
+}
+
+// backgroundSelectionIsBlank reports whether the caller left the clip
+// background unspecified. An explicit mode is caller intent and is preserved;
+// notably mode=none (or blur_source) must not be replaced by a plate.
+func backgroundSelectionIsBlank(spec *scriptpkg.VideoBackgroundSpec) bool {
+	if spec == nil {
+		return true
+	}
+	return strings.TrimSpace(spec.Mode) == "" && strings.TrimSpace(spec.AssetID) == ""
 }

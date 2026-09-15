@@ -1,5 +1,25 @@
 package soundeffects
 
+// ── The "additional sound effects" metadata library ────────────────────────
+//
+// This is NOT the editorial alias catalog, and it must not be treated as a
+// competing source of truth for it.
+//
+//   - The EDITORIAL catalog is
+//     internal/capabilities/mediaregistry (editorial_catalog.go): it owns the
+//     stable aliases a manifest may select (bgm1..bgm6, whop1..whop6) and
+//     binds each one to a Drive identity. bgm_catalog.json / sfx_catalog.json
+//     and the remote payload catalogs are projections of it.
+//   - THIS library is the filename-normalization + semantic-taxonomy table for
+//     the large supplied effects drop: an original Drive filename maps to a
+//     normalized filename, a category and a description/tag set. It is
+//     consumed by the admin indexing/maintenance commands
+//     (index-provided-sound-effects, classify-sound-effects, ...) and is
+//     addressed by registry asset id, never by an editorial alias.
+//
+// Adding an effect here does not make it selectable by an editorial alias; add
+// the alias in the mediaregistry catalog instead.
+
 // additionalSoundEffect is the shared catalog record used by all semantic sections.
 type additionalSoundEffect struct {
 	OldName, NewName, Category, Description string

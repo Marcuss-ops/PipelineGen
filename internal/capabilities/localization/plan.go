@@ -22,7 +22,6 @@
 package localization
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -304,12 +303,9 @@ func validateBCP47(code string) error {
 }
 
 // isSHA256Hex reports whether value is a 64-character lowercase hex string
-// (the canonical SHA-256 digest shape). Mirrors the cliprender gate so the
-// two render contracts share one digest-shape rule.
+// (the canonical SHA-256 digest shape). The rule is owned by kernel/digest (the
+// digest SSOT) and shared with the cliprender plan: the two contracts used to
+// mirror each other's copy, which is exactly the drift this removes.
 func isSHA256Hex(value string) bool {
-	if len(value) != digest.SHA256HexLength {
-		return false
-	}
-	decoded, err := hex.DecodeString(value)
-	return err == nil && strings.ToLower(value) == value && len(decoded) == digest.SHA256HexLength/2
+	return digest.IsCanonicalSHA256(value)
 }

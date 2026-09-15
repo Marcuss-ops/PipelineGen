@@ -5,7 +5,6 @@ package adapters
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -195,12 +194,10 @@ func optionalImageContent(hash string) *mediacommit.ContentIdentity {
 	return &mediacommit.ContentIdentity{ContentSHA256: hash}
 }
 
+// isSHA256 is the digest-shape gate for an image content hash. The rule is
+// owned by kernel/digest (the digest SSOT).
 func isSHA256(value string) bool {
-	if len(value) != digest.SHA256HexLength {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
+	return digest.IsSHA256(value)
 }
 
 func firstImageRef(values ...string) string {
