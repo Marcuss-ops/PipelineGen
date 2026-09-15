@@ -324,6 +324,115 @@ func TestAcquireSegmentText_SubtitlesWinAndWhisperNotCalled(t *testing.T) {
 	}
 }
 
+// ── AcquireSegmentText: WhisperFirst order (source_priority) ────────────
+//
+// multilingual.source_priority=whisper_first reorders the last two levels so
+// the local Whisper transcriber leads and YouTube captions back it up. These
+// probes pin BOTH halves of that: Whisper really goes first, and a Whisper
+// failure still produces a transcript instead of an empty clip.
+
+func TestAcquireSegmentText_WhisperFirst_WinsAndSubtitlesNotCalled(t *testing.T) {
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "es",
+		PlainText:    "Hola mundo",
+		SourceType:   detail.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	trans := &stubTranscriber{det: &detail.TranscriptResult{Text: "Whisper text", DetectedLanguage: "en"}}
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+	resolver.WhisperFirst = true
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:             "yt_whisper_first_001",
+		VideoID:            "v100",
+		LocalPath:          "/tmp/x.mp4",
+		PreferredLanguages: []string{"en", "it"},
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || bundle.SourceType != detail.TextSourceWhisper {
+		t.Fatalf("Whisper must be the primary source; got %+v", bundle)
+	}
+	if bundle.LanguageCode != "en" {
+		t.Fatalf("LanguageCode = %q, want the detected en", bundle.LanguageCode)
+	}
+	if subs.calls != 0 {
+		t.Fatalf("the subtitle levels must NOT be probed when Whisper already produced a transcript; got %d calls", subs.calls)
+	}
+}
+
+func TestAcquireSegmentText_WhisperFirst_FallsBackToSubtitlesWhenWhisperEmpty(t *testing.T) {
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "en",
+		PlainText:    "caption text",
+		SourceType:   detail.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	trans := &stubTranscriber{text: ""} // Whisper produced nothing
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+	resolver.WhisperFirst = true
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_whisper_first_002",
+		VideoID:   "v101",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || bundle.SourceType != detail.TextSourceYouTubeSubtitle {
+		t.Fatalf("captions are the resilience fallback; got %+v", bundle)
+	}
+	if trans.calls != 1 || subs.calls != 1 {
+		t.Fatalf("Whisper then captions must each run exactly once; whisper=%d subtitles=%d", trans.calls, subs.calls)
+	}
+}
+
+func TestAcquireSegmentText_WhisperFirst_WhisperErrorFallsBackToSubtitles(t *testing.T) {
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "it",
+		PlainText:    "testo",
+		SourceType:   detail.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	trans := &stubTranscriber{err: errors.New("cuda out of memory")}
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+	resolver.WhisperFirst = true
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_whisper_first_003",
+		VideoID:   "v102",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err != nil {
+		t.Fatalf("a broken transcriber must not fail the clip while captions exist; err: %v", err)
+	}
+	if bundle == nil || bundle.LanguageCode != "it" {
+		t.Fatalf("expected the caption fallback, got %+v", bundle)
+	}
+}
+
+func TestAcquireSegmentText_WhisperFirst_CertaintyErrorOnlyAfterBothLevelsFail(t *testing.T) {
+	trans := &stubTranscriber{err: errors.New("model weights missing")}
+	resolver := newTestResolver(&stubRepo{}, &stubSubtitles{bundle: nil}, trans)
+	resolver.WhisperFirst = true
+	resolver.RequireLanguageCertainty = true
+
+	_, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_whisper_first_004",
+		VideoID:   "v103",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err == nil {
+		t.Fatal("with both levels exhausted and certainty required, an error must surface")
+	}
+	var undet *asset.ErrLanguageUndeterminable
+	if !errors.As(err, &undet) {
+		t.Fatalf("err = %T (%v), want *asset.ErrLanguageUndeterminable", err, err)
+	}
+}
+
 func TestAcquireSegmentText_WhisperFallbackWhenOthersEmpty(t *testing.T) {
 	// Fase 1.b: stubTranscriber uses TranscribeAudioWithDetection
 	// internally (the resolver calls the typed method on priority

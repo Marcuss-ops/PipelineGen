@@ -86,6 +86,32 @@ func TestNewSubtitleRootLayoutResolver_NoIdentityPublishesAtRoot(t *testing.T) {
 	}
 }
 
+// TestResolveSourcePriority pins the third acquisition rule: only the exact
+// "whisper_first" token reorders the chain. It is the composition-level guard
+// for media.multilingual.source_priority — a typo ("whisper-first",
+// "Whisper_First ", "", unknown) MUST keep the canonical captions-first order
+// rather than silently making Whisper the source.
+func TestResolveSourcePriority(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{value: "whisper_first", want: true},
+		{value: "  Whisper_First  ", want: true},
+		{value: "WHISPER_FIRST", want: true},
+		{value: "captions_first", want: false},
+		{value: "whisper-first", want: false},
+		{value: "whisper", want: false},
+		{value: "", want: false},
+		{value: "   ", want: false},
+	}
+	for _, tc := range cases {
+		if got := resolveSourcePriority(tc.value); got != tc.want {
+			t.Errorf("resolveSourcePriority(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestSubtitleAcquisitionLanguages_OnlyTheSourceLanguage(t *testing.T) {
 	cases := []struct {
 		name string

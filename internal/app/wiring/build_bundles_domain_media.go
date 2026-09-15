@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
@@ -272,13 +273,25 @@ func buildDomainMediaServices(
 		subtitlePort = nil
 		log.Info("multilingual.youtube_subtitles_disabled=true: acquisition sources the transcript from the local Whisper transcriber (YouTube subtitle levels 3+4 skipped)")
 	}
+	// ACQUISITION ORDER (Sept 2026): multilingual.source_priority=whisper_first
+	// makes the local Whisper transcriber the PRIMARY transcript source and keeps
+	// the YouTube subtitle levels as the fallback. Anything else (the default
+	// "captions_first" included) keeps the canonical captions-then-Whisper
+	// chain, so an unset or misspelled value can never silently reorder
+	// acquisition (godlike/07: fail-safe, not fail-open).
+	whisperFirst := resolveSourcePriority(mlCfg.SourcePriority)
+	if whisperFirst {
+		log.Info("multilingual.source_priority=whisper_first: local Whisper transcriber is the primary transcript source (YouTube captions kept as fallback)")
+	}
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo:        repos.TextTrackRepo,
-		Subtitles:   subtitlePort, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
-		Transcriber: ai.WhisperTranscriber,
-		Log:         log,
-		// The certainty gate stays config-driven; Whisper is the
-		// fallback when subtitles are unavailable or unusable.
+		Repo:         repos.TextTrackRepo,
+		Subtitles:    subtitlePort, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
+		Transcriber:  ai.WhisperTranscriber,
+		WhisperFirst: whisperFirst,
+		Log:          log,
+		// The certainty gate stays config-driven; with the canonical order
+		// Whisper is the fallback when subtitles are unavailable or unusable,
+		// with whisper_first the subtitles are the fallback for Whisper.
 		RequireLanguageCertainty: mlCfg.RequireLanguageCertainty,
 	}
 
@@ -550,6 +563,15 @@ func (a *folderPathWriterAdapter) UpdateFolderPath(ctx context.Context, assetID,
 	}
 	committed = true
 	return nil
+}
+
+// resolveSourcePriority maps media.multilingual.source_priority to the resolver
+// order token. ONLY the explicit "whisper_first" token reorders the chain;
+// every other value (including the default "captions_first" and any typo)
+// keeps the canonical captions-first order (godlike/07: an unrecognised value
+// must not silently change which source produces the transcript).
+func resolveSourcePriority(sourcePriority string) bool {
+	return strings.EqualFold(strings.TrimSpace(sourcePriority), "whisper_first")
 }
 
 // buildBcp47CSV was removed: unused after the SubtitleFetcherAdapter wiring
