@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -31,6 +32,14 @@ func OpenMediaPostgres(ctx context.Context, cfg *config.Config) (*sql.DB, error)
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("media PostgreSQL: health check failed: %w", err)
+	}
+	// The folder projection is required by BuildRepoBundle before the first
+	// catalog read/write. Keep this idempotent bootstrap at the single media
+	// connection boundary so a deployment that missed migration 007 cannot
+	// enter a restart loop with "relation clip_folders does not exist".
+	if _, err := db.ExecContext(ctx, pgmigration.MediaClipFoldersDDL); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("media PostgreSQL: ensure clip_folders schema: %w", err)
 	}
 	return db, nil
 }

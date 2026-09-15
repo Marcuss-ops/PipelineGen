@@ -27,6 +27,14 @@ var (
 	imageAnimationCandidates = []string{
 		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
 	}
+	// These are text-native phrase motions. They animate selector/text
+	// properties only (no layer scale/rotation and no glyph scale/blur), which
+	// keeps REQUIRE_GPU_NATIVE on Chronon's zero-readback path. The planner
+	// assigns them by deterministic phrase order so the first three phrases in
+	// a scene cannot collapse to the same animation.
+	phraseMotionCandidates = []string{
+		"word_reveal", "character_cascade", "char_wave",
+	}
 )
 
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
@@ -48,6 +56,33 @@ func SelectEntityNamePreset(jobID, sceneID, itemID, entityType string) string {
 
 func selectPhrasePreset(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "important_phrase", phrasePresetCandidates)
+}
+
+func selectPhraseMotion(jobID, sceneID string, ordinal int) string {
+	if len(phraseMotionCandidates) == 0 {
+		return ""
+	}
+	// The ordinal is part of the stable semantic identity for this bounded
+	// three-phrase surface. Hash selection still varies the starting point per
+	// render, while the rotation guarantees distinct motions within a scene.
+	seeded := DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
+		JobFingerprint: jobID,
+		SceneID:        sceneID,
+		// Use the scene as the stable rotation seed. Including itemID here would
+		// choose a different starting point per phrase and could reintroduce a
+		// collision after the ordinal is applied.
+		SemanticID:   sceneID,
+		PresetFamily: "important_phrase_motion",
+		Presets:      phraseMotionCandidates,
+	}).Preset
+	start := 0
+	for i, candidate := range phraseMotionCandidates {
+		if candidate == seeded {
+			start = i
+			break
+		}
+	}
+	return phraseMotionCandidates[(start+ordinal)%len(phraseMotionCandidates)]
 }
 
 func selectWordPreset(jobID, sceneID, itemID string) string {

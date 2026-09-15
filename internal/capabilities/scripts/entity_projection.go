@@ -20,7 +20,29 @@ import (
 // block instead of exposing an empty aggregate.
 func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
 	agg := &scriptpkg.EntityResult{}
+	seenPhrases := make(map[string]struct{})
+	seenWords := make(map[string]struct{})
 	for _, seg := range segments {
+		for _, phrase := range seg.Insights.ImportantPhrases {
+			phrase = strings.TrimSpace(phrase)
+			key := strings.ToLower(phrase)
+			if phrase != "" {
+				if _, exists := seenPhrases[key]; !exists {
+					seenPhrases[key] = struct{}{}
+					agg.ImportantPhrases = append(agg.ImportantPhrases, phrase)
+				}
+			}
+		}
+		for _, word := range seg.Insights.ImportantWords {
+			word = strings.TrimSpace(word)
+			key := strings.ToLower(word)
+			if word != "" {
+				if _, exists := seenWords[key]; !exists {
+					seenWords[key] = struct{}{}
+					agg.ImportantWords = append(agg.ImportantWords, word)
+				}
+			}
+		}
 		for _, ent := range seg.Insights.Entities {
 			value := strings.TrimSpace(ent.Value)
 			if value == "" {
@@ -37,7 +59,8 @@ func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg
 			}
 		}
 	}
-	if len(agg.Persons)+len(agg.Places)+len(agg.Concepts) == 0 {
+	if len(agg.Persons)+len(agg.Places)+len(agg.Concepts)+
+		len(agg.ImportantPhrases)+len(agg.ImportantWords) == 0 {
 		return nil
 	}
 	return agg

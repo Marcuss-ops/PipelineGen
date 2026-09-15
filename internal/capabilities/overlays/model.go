@@ -111,6 +111,14 @@ type OverlayItem struct {
 	// ImagePresetID is the independent image treatment for entity cards. The
 	// name preset belongs to the text layer; PipelineGen selects both values.
 	ImagePresetID string `json:"image_preset_id,omitempty"`
+	// MotionID is the optional Chronon-owned text/image motion selected for
+	// this semantic item. It is intentionally separate from PresetID: several
+	// phrases can use the same apple_v2 preset while carrying different
+	// motions.
+	MotionID string `json:"motion_id,omitempty"`
+	// MotionParams carries optional parameters for MotionID. PipelineGen keeps
+	// these opaque and RenderingGen validates them against Chronon's catalog.
+	MotionParams map[string]any `json:"motion_params,omitempty"`
 	// EntityRef carries the content-addressed entity identity this item was
 	// resolved from (entity_id + type + canonical name + surface text). It is
 	// PipelineGen-INTERNAL identity only: the worker renders from
@@ -327,7 +335,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -371,13 +379,23 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		StartUS, DurationUS              int64
 		PresetID                         string `json:"preset_id,omitempty"`
 		ImagePresetID                    string `json:"image_preset_id,omitempty"`
+		MotionID                         string `json:"motion_id,omitempty"`
+		MotionParams                     string `json:"motion_params,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID,
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams),
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)
 	return h
+}
+
+func motionParamsJSON(params map[string]any) string {
+	if len(params) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(params)
+	return string(b)
 }
 
 // RenderKey is kept as the concise public spelling used by planners.

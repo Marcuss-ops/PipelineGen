@@ -101,6 +101,70 @@ func nonEmptyParagraphs(source string) []string {
 	return out
 }
 
+// ensureRequestedImportantPhrases makes explicit editorial phrase hints
+// renderable in the final source-language narration.  A model may follow the
+// meaning of a brief while omitting its literal phrase; the hint is still a
+// caller-owned, source-grounded overlay requirement, so append it to the
+// first eligible scene when no generated scene contains it.
+func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
+	hints := req.MediaPlan.Extraction.ImportantPhrases
+	if len(hints) == 0 || len(scenes) == 0 {
+		return scenes
+	}
+
+	eligible := make([]int, 0, len(scenes))
+	for i := range scenes {
+		if !scenes[i].ExecutionMode.IsFixedMedia() {
+			eligible = append(eligible, i)
+		}
+	}
+	if len(eligible) == 0 {
+		return scenes
+	}
+
+	for _, rawHint := range hints {
+		hint := strings.TrimSpace(rawHint)
+		if hint == "" {
+			continue
+		}
+		found := false
+		for _, index := range eligible {
+			if strings.Contains(strings.ToLower(scenes[index].Text[req.SourceLanguage]), strings.ToLower(hint)) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		index := eligible[0]
+		for i, segment := range req.ScriptParams.Segments {
+			if i >= len(eligible) {
+				break
+			}
+			if strings.Contains(strings.ToLower(segment.SourceText), strings.ToLower(hint)) ||
+				strings.Contains(strings.ToLower(segment.Topic), strings.ToLower(hint)) {
+				index = eligible[i]
+				break
+			}
+		}
+		text := strings.TrimSpace(scenes[index].Text[req.SourceLanguage])
+		if text != "" {
+			text += " "
+		}
+		text += hint
+		if !strings.HasSuffix(text, ".") && !strings.HasSuffix(text, "!") && !strings.HasSuffix(text, "?") {
+			text += "."
+		}
+		if scenes[index].Text == nil {
+			scenes[index].Text = make(map[Language]string)
+		}
+		scenes[index].Text[req.SourceLanguage] = text
+	}
+	return scenes
+}
+
 // applyFixedSections injects protected fixed-media intro/outro sections.
 // Fixed sections carry optional display text only; their authoritative output
 // is the bound clip media and original clip audio.

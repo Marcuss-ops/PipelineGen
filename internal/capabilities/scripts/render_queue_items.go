@@ -14,6 +14,7 @@ import (
 // application-owned publisher and receives its own receipt.
 func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
 	var first RenderReference
+	items := make([]OverlayItemRenderReference, 0, len(plan.Items))
 	produced := 0
 	for index, source := range plan.Items {
 		// A background is a canvas primitive, not a user-facing overlay. It is
@@ -34,11 +35,15 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		if produced == 0 {
 			first = ref
 		}
+		items = append(items, OverlayItemRenderReference{
+			ItemID: source.ID, JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
+		})
 		produced++
 	}
 	if produced == 0 {
 		return RenderReference{}, nil
 	}
+	first.Items = items
 	return first, nil
 }
 

@@ -103,6 +103,33 @@ func TestBuildPlanClampsImageDurationAndSelectsAnimation(t *testing.T) {
 	}
 }
 
+func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "mike-tyson-3-phrases", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
+			{Text: "La velocità apre la distanza", StartMs: 100, EndMs: 900, Score: 1},
+			{Text: "La pressione mantiene il controllo", StartMs: 1000, EndMs: 1800, Score: 0.9},
+			{Text: "La disciplina trasforma la potenza", StartMs: 1900, EndMs: 2700, Score: 0.8},
+		}}},
+	}, PlannerConfig{MaxPhrases: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		if item.MotionID == "" || seen[item.MotionID] {
+			t.Fatalf("phrase motion must be non-empty and distinct: %+v", plan.Items)
+		}
+		seen[item.MotionID] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("got %d distinct phrase motions, want 3: %+v", len(seen), plan.Items)
+	}
+}
+
 // TestBuildPlanExtendedEntities pins the NUMBER / QUOTE / PRODUCT / LOGO
 // planner path: certified timing only, ranked by score, capped per scene, and
 // each item terminating in its canonical template id (the kind→template

@@ -268,6 +268,20 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 
 	overlays := make([]EditingOverlaySpan, 0, len(plan.Items))
 	for _, item := range plan.Items {
+		itemDriveLink, itemSHA256, itemRenderJobID := driveLink, sha256, renderJobID
+		if result.OverlayRender != nil {
+			for _, itemRef := range result.OverlayRender.Items {
+				if itemRef.ItemID != item.ID {
+					continue
+				}
+				itemRenderJobID = itemRef.JobID
+				if itemRef.Artifact != nil {
+					itemDriveLink = itemRef.Artifact.DriveLink
+					itemSHA256 = itemRef.Artifact.SHA256
+				}
+				break
+			}
+		}
 		// Canonical integer-microsecond timing travels on the item; fall back
 		// to the millisecond projection for legacy (golden) plans.
 		startUS := item.StartUSValue()
@@ -303,10 +317,10 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 			TemplateID:         item.TemplateID,
 			StartUS:            startUS,
 			EndUS:              endUS,
-			DriveLink:          driveLink,
-			SHA256:             sha256,
+			DriveLink:          itemDriveLink,
+			SHA256:             itemSHA256,
 			MediaContract:      plan.MediaContract,
-			RenderJobID:        renderJobID,
+			RenderJobID:        itemRenderJobID,
 			PlanFingerprint:    plan.Fingerprint,
 			RenderKey:          item.RenderKey,
 			SourceVideoAssetID: plan.VideoID,

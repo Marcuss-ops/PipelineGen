@@ -106,6 +106,7 @@ func applyMediaMigrations(db *sql.DB) error {
 		pgmigration.MediaHNSWIndexesDDL,
 		pgmigration.MediaTimestampsTimestamptzDDL,
 		pgmigration.MediaAssetVersionsDDL,
+		pgmigration.MediaClipFoldersDDL,
 		pgmigration.MediaAssetProcessingDDL,
 	}
 	for i, s := range stmts {

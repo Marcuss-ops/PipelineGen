@@ -226,6 +226,13 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// per-request: clips with no SCENE N: markers in source text
 		// are streamable (no post-gen rebinding).
 		streamable := SceneStreamingEligibility(req)
+		// Explicit important-phrase hints are part of the final overlay
+		// contract. They must be applied before any SceneTextReady consumer
+		// (NLP/TTS/render) observes the scene, so keep this narrow path batch-
+		// materialized and let ensureRequestedImportantPhrases run first.
+		if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 {
+			streamable = false
+		}
 		// Literal intro/outro must not be streamed scene-by-scene: they are
 		// injected verbatim post-LLM and never rewritten from source_text.
 		// Force batch when a fixed section is present so SceneTextReady
@@ -310,6 +317,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
+		// Caller-provided important phrases are an explicit overlay contract.
+		// Keep them grounded in the final narration text even when a small/local
+		// model paraphrases the brief and drops the requested literal surface.
+		scenes = ensureRequestedImportantPhrases(req, scenes)
 		output := outputFromScenes(scenes, req.SourceLanguage)
 		if output.SourceLanguageFallbackUsed {
 			// A masked translation bug must be observable: the body is in the

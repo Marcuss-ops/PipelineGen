@@ -33,6 +33,19 @@ type RenderReference struct {
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
+	// Items carries the per-overlay render lineage when production renders
+	// each semantic item as its own short video. Artifact remains the first
+	// item for backward-compatible document/publication consumers.
+	Items []OverlayItemRenderReference `json:"items,omitempty"`
+}
+
+// OverlayItemRenderReference binds one semantic overlay item to the queue job
+// and certified artifact that rendered it.
+type OverlayItemRenderReference struct {
+	ItemID   string          `json:"item_id"`
+	JobID    string          `json:"job_id"`
+	Status   string          `json:"status"`
+	Artifact *RenderArtifact `json:"artifact,omitempty"`
 }
 
 // RenderArtifact is the certified artifact produced by the central
