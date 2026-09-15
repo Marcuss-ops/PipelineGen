@@ -87,6 +87,7 @@ func (*boundaryRunner) LocalFS() LocalFSPort                                    
 func (*boundaryRunner) ArtifactPreparation() finalization.ArtifactPreparationService { return nil }
 func (*boundaryRunner) JobFinalizer() finalization.JobFinalizer                      { return nil }
 func (*boundaryRunner) RunFingerprint() string                                       { return "" }
+func (*boundaryRunner) DestinationReconciler() DestinationReconciler                 { return nil }
 func (*boundaryRunner) Log() *zap.Logger                                             { return zap.NewNop() }
 func (*boundaryRunner) State() *RunState                                             { return nil }
 

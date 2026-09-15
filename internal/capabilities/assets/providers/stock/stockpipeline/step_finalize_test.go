@@ -65,12 +65,13 @@ func (f *finalizeFakeRunner) SourceDurationProbe() SourceDurationProbe {
 func (f *finalizeFakeRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return nil
 }
-func (f *finalizeFakeRunner) JobFinalizer() finalization.JobFinalizer { return f.jobFinalizer }
-func (f *finalizeFakeRunner) RunFingerprint() string                  { return "test-finalize-fingerprint" }
-func (f *finalizeFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (f *finalizeFakeRunner) LocalFS() LocalFSPort                    { return newRealishFakeLocalFS() }
-func (f *finalizeFakeRunner) State() *RunState                        { return f.state }
-func (f *finalizeFakeRunner) BatchRepository() StockBatchRepository   { return nil }
+func (f *finalizeFakeRunner) JobFinalizer() finalization.JobFinalizer      { return f.jobFinalizer }
+func (f *finalizeFakeRunner) RunFingerprint() string                       { return "test-finalize-fingerprint" }
+func (f *finalizeFakeRunner) DestinationReconciler() DestinationReconciler { return nil }
+func (f *finalizeFakeRunner) Log() *zap.Logger                             { return zap.NewNop() }
+func (f *finalizeFakeRunner) LocalFS() LocalFSPort                         { return newRealishFakeLocalFS() }
+func (f *finalizeFakeRunner) State() *RunState                             { return f.state }
+func (f *finalizeFakeRunner) BatchRepository() StockBatchRepository        { return nil }
 
 // Compile-time assertion: *finalizeFakeRunner satisfies StepRunner.
 var _ StepRunner = (*finalizeFakeRunner)(nil)

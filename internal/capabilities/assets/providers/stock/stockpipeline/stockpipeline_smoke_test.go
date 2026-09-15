@@ -55,12 +55,13 @@ func (r *stageURLRecordingRunner) SourceDurationProbe() SourceDurationProbe { re
 func (r *stageURLRecordingRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return nil
 }
-func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer { return nil }
-func (r *stageURLRecordingRunner) RunFingerprint() string                  { return "stage-url-test" }
-func (r *stageURLRecordingRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (f *stageURLRecordingRunner) LocalFS() LocalFSPort                    { return newRealishFakeLocalFS() }
-func (r *stageURLRecordingRunner) State() *RunState                        { return r.state }
-func (r *stageURLRecordingRunner) BatchRepository() StockBatchRepository   { return nil }
+func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer      { return nil }
+func (r *stageURLRecordingRunner) RunFingerprint() string                       { return "stage-url-test" }
+func (r *stageURLRecordingRunner) DestinationReconciler() DestinationReconciler { return nil }
+func (r *stageURLRecordingRunner) Log() *zap.Logger                             { return zap.NewNop() }
+func (f *stageURLRecordingRunner) LocalFS() LocalFSPort                         { return newRealishFakeLocalFS() }
+func (r *stageURLRecordingRunner) State() *RunState                             { return r.state }
+func (r *stageURLRecordingRunner) BatchRepository() StockBatchRepository        { return nil }
 
 var _ StepRunner = (*stageURLRecordingRunner)(nil)
 

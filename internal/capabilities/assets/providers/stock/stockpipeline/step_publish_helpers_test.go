@@ -51,12 +51,13 @@ func (f *publishFakeRunner) SourceDurationProbe() SourceDurationProbe {
 func (f *publishFakeRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return f.artifactPrep
 }
-func (f *publishFakeRunner) JobFinalizer() finalization.JobFinalizer { return nil }
-func (f *publishFakeRunner) RunFingerprint() string                  { return "run-fingerprint-123" }
-func (f *publishFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (f *publishFakeRunner) LocalFS() LocalFSPort                    { return newRealishFakeLocalFS() }
-func (f *publishFakeRunner) State() *RunState                        { return f.state }
-func (f *publishFakeRunner) BatchRepository() StockBatchRepository   { return nil }
+func (f *publishFakeRunner) JobFinalizer() finalization.JobFinalizer      { return nil }
+func (f *publishFakeRunner) RunFingerprint() string                       { return "run-fingerprint-123" }
+func (f *publishFakeRunner) DestinationReconciler() DestinationReconciler { return nil }
+func (f *publishFakeRunner) Log() *zap.Logger                             { return zap.NewNop() }
+func (f *publishFakeRunner) LocalFS() LocalFSPort                         { return newRealishFakeLocalFS() }
+func (f *publishFakeRunner) State() *RunState                             { return f.state }
+func (f *publishFakeRunner) BatchRepository() StockBatchRepository        { return nil }
 
 var _ StepRunner = (*publishFakeRunner)(nil)
 

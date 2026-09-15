@@ -53,6 +53,7 @@ func (f *fakeStepRunner) SourceDurationProbe() SourceDurationProbe              
 func (f *fakeStepRunner) ArtifactPreparation() finalization.ArtifactPreparationService { return nil }
 func (f *fakeStepRunner) JobFinalizer() finalization.JobFinalizer                      { return nil }
 func (f *fakeStepRunner) RunFingerprint() string                                       { return "test-fingerprint" }
+func (f *fakeStepRunner) DestinationReconciler() DestinationReconciler                 { return nil }
 func (f *fakeStepRunner) Log() *zap.Logger                                             { return zap.NewNop() }
 func (f *fakeStepRunner) LocalFS() LocalFSPort                                         { return newRealishFakeLocalFS() }
 func (f *fakeStepRunner) State() *RunState                                             { return f.state }
