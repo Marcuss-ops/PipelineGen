@@ -8,13 +8,19 @@ import (
 	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 const (
 	ContractVersion = "pipelinegen.assembly.v1"
 	PrepareJobType  = "assembly.prepare"
 	FinalizeJobType = "assembly.finalize"
-	OutputContract  = "VELOX_ASSEMBLY_READY_V1"
+
+	// OutputContract is the assembly output contract id. The identity is
+	// OWNED by internal/kernel/media (AssemblyMediaContractID); this constant
+	// only re-exports it so the assembly wire contract and the media stream
+	// contract cannot drift apart by being edited separately.
+	OutputContract = media.AssemblyMediaContractID
 )
 
 type DispatchMode string

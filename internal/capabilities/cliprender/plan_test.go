@@ -454,3 +454,74 @@ func TestCompile_BlurSourceBackground(t *testing.T) {
 		t.Fatal("none with an asset must fail closed")
 	}
 }
+
+// TestCompile_ForegroundScaleGatesBackgroundVisibility pins the ONE knob that
+// decides whether an asset background is actually VISIBLE: foreground_scale_percent.
+//
+// ClipRenderPlanV1 treats 0 and 100 identically ("full canvas"), so a request
+// that asks for background.mode=asset and leaves output.foreground_scale_percent
+// unset normalises to 100, and the source covers the entire canvas: the plate is
+// materialised, hashed, sealed into the plan and composited UNDER an opaque
+// foreground — paid for and invisible. It is a silent no-op exactly where the
+// caller asked for a background, which is why every canonical fixture
+// (ops/jobs/*.generate.json, ops/benchmarks/clip-render-background-payload.json)
+// sets 80. This test makes the requirement executable instead of a convention.
+func TestCompile_ForegroundScaleGatesBackgroundVisibility(t *testing.T) {
+	// Unset and an explicit 100 are the same contract: the plate is sealed but
+	// can never be seen. Both must be reported honestly as 100 on the plan so a
+	// post-mortem can tell "hidden by construction" from "not resolved".
+	for _, scale := range []int{0, 100} {
+		in := baseCompileInput()
+		in.Background = backgroundMat()
+		in.BackgroundMode = BackgroundModeAsset
+		in.BackgroundKind = BackgroundKindVideo
+		in.ForegroundScalePercent = scale
+
+		plan, err := Compile(in)
+		if err != nil {
+			t.Fatalf("Compile(scale=%d): %v", scale, err)
+		}
+		if got := plan.Output.ForegroundScalePercent; got != 100 {
+			t.Fatalf("scale=%d sealed as %d, want 100 (full canvas hides the plate)", scale, got)
+		}
+		if plan.Background == nil || plan.Background.Mode != BackgroundModeAsset || plan.Background.AssetID != "asset-bg" {
+			t.Fatalf("scale=%d must still seal the resolved background: %+v", scale, plan.Background)
+		}
+	}
+
+	// A real scale-down keeps the plate visible and survives sealing verbatim.
+	visible := baseCompileInput()
+	visible.Background = backgroundMat()
+	visible.BackgroundMode = BackgroundModeAsset
+	visible.BackgroundKind = BackgroundKindVideo
+	visible.ForegroundScalePercent = 80
+	plan, err := Compile(visible)
+	if err != nil {
+		t.Fatalf("Compile(scale=80): %v", err)
+	}
+	if plan.Output.ForegroundScalePercent != 80 {
+		t.Fatalf("scale 80 must survive sealing, got %d", plan.Output.ForegroundScalePercent)
+	}
+
+	// The request boundary rejects an out-of-range scale rather than clamping it
+	// into a different render than the caller asked for.
+	req := baseRenderRequest()
+	req.Output.ForegroundScalePercent = 101
+	if err := req.Validate(); err == nil {
+		t.Fatal("output.foreground_scale_percent=101 must fail validation")
+	} else if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("error %v is not ErrInvalidRequest", err)
+	}
+
+	// ...and Compile itself fails closed on an out-of-range scale, so no plan
+	// carrying one can ever reach a renderer (no silent clamp to a different
+	// composition than the caller asked for).
+	over := baseCompileInput()
+	over.Background = backgroundMat()
+	over.BackgroundMode = BackgroundModeAsset
+	over.BackgroundKind = BackgroundKindVideo
+	over.ForegroundScalePercent = 101
+	if _, err := Compile(over); !errors.Is(err, ErrInvalidClipPlan) {
+		t.Fatalf("Compile(scale=101) must fail closed with ErrInvalidClipPlan, got %v", err)
+	}
+}

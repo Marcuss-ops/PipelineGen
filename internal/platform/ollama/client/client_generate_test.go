@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
 func TestGenerateDetailedPropagatesKeepAliveAndTiming(t *testing.T) {
@@ -41,6 +43,50 @@ func TestGenerateDetailedPropagatesKeepAliveAndTiming(t *testing.T) {
 	}
 	if options["keep_alive"] != "45m" || options["think"] != false {
 		t.Fatalf("caller options mutated: %#v", options)
+	}
+}
+
+// TestGenerateDetailedPinsSingleResidentRunnerContext pins the single-runner
+// invariant on the legacy /api/generate surface. A request without num_ctx made
+// Ollama fall back to its own default and rebuild the model the warm-up had
+// just paid for, so entity/phrase extraction re-loaded it inside the run.
+func TestGenerateDetailedPinsSingleResidentRunnerContext(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"response":"ok","done":true}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "gemma4:e4b", 5)
+
+	// Caller omits num_ctx (the entity/phrase extraction shape): pinned.
+	callerOptions := map[string]any{"num_predict": 256, "temperature": 0}
+	if _, err := c.GenerateDetailed(t.Context(), "gemma4:e4b", "hello", callerOptions); err != nil {
+		t.Fatalf("GenerateDetailed: %v", err)
+	}
+	if got := body["options"].(map[string]any)["num_ctx"]; got != float64(types.ProductionRunnerContext) {
+		t.Fatalf("num_ctx = %#v, want %d (single resident runner)", got, types.ProductionRunnerContext)
+	}
+	if _, mutated := callerOptions["num_ctx"]; mutated {
+		t.Fatalf("caller options mutated: %#v", callerOptions)
+	}
+
+	// Nil options: still pinned, never the Ollama default.
+	if _, err := c.GenerateDetailed(t.Context(), "gemma4:e4b", "hello", nil); err != nil {
+		t.Fatalf("GenerateDetailed(nil): %v", err)
+	}
+	if got := body["options"].(map[string]any)["num_ctx"]; got != float64(types.ProductionRunnerContext) {
+		t.Fatalf("nil-options num_ctx = %#v, want %d", got, types.ProductionRunnerContext)
+	}
+
+	// An explicit context stays authoritative (intentional opt-out).
+	if _, err := c.GenerateDetailed(t.Context(), "gemma4:e4b", "hello", map[string]any{"num_ctx": 2048}); err != nil {
+		t.Fatalf("GenerateDetailed(explicit): %v", err)
+	}
+	if got := body["options"].(map[string]any)["num_ctx"]; got != float64(2048) {
+		t.Fatalf("explicit num_ctx = %#v, want 2048", got)
 	}
 }
 

@@ -59,7 +59,7 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 		if assetID == "" {
 			return nil, fmt.Errorf("resolve sound effects: sfx %d requires an asset_id", i)
 		}
-		if strings.EqualFold(assetID, "random_whoosh") {
+		if strings.EqualFold(assetID, scriptpkg.RandomWhooshDirective) {
 			assetID = randomWhooshID(timeline, i, intent)
 		}
 		startUS, err := resolveSFXStartUS(timeline.DurationUS, scenes, intent)
@@ -88,14 +88,18 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 	return out, nil
 }
 
-// randomWhooshID selects from the nine local whoosh assets without involving
+// randomWhooshID selects one of the built-in whoosh aliases without involving
 // the renderer or filesystem. The selection is deterministic for a timeline
 // and event position, so retries remain idempotent while different events
 // normally receive different cues.
 func randomWhooshID(timeline audio.CanonicalTimeline, index int, intent scriptpkg.SoundEffectIntent) string {
 	seed := fmt.Sprintf("%d:%d:%d:%s:%d:%d", timeline.DurationUS, index, intent.AtMS, intent.SceneID, intent.OffsetMS, intent.SourceInMS)
 	digest := digest.SHA256Bytes([]byte(seed))
-	return fmt.Sprintf("whoosh%d", int(digest[0])%9+1)
+	// The size of the family comes from the wire vocabulary
+	// (kernel/script.BuiltInWhooshAliases) instead of being re-typed here as a
+	// modulo operand that could fall out of step with the alias set.
+	aliases := scriptpkg.BuiltInWhooshAliases()
+	return aliases[int(digest[0])%len(aliases)]
 }
 
 // resolveSFXStartUS collapses one intent's placement command into an

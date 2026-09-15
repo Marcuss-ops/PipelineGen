@@ -61,6 +61,151 @@ func TestFingerprint_ExcludesDestination(t *testing.T) {
 	}
 }
 
+// classicPaleOliveRequest builds the canonical day-1 benchmark request: the
+// Pale Olive Classic (`classic1`) video plate behind a burned subtitle track
+// and a top-right text watermark, rendered under a full-GPU execution demand.
+func classicPaleOliveRequest() *RenderRequest {
+	return &RenderRequest{
+		SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1",
+		Background:    &BackgroundSpec{Mode: BackgroundModeAsset, AssetID: "classic1", Kind: BackgroundKindVideo},
+		Subtitles:     &SubtitlesSpec{Enabled: true, Mode: SubtitlesModeBurn},
+		Watermark:     &WatermarkSpec{Enabled: true, Text: "VeloxEditing", Position: PositionTopRight},
+		Execution:     &ExecutionSpec{RequireGPU: true},
+	}
+}
+
+// TestFingerprint_IncludesExecutionGPURequirement certifies that
+// execution.require_gpu lives INSIDE the canonical digest. This is a
+// cache-safety property, not a formality: the deterministic render cache and
+// the batch dedup map both return a previously certified artifact without
+// touching the GPU, keyed on this fingerprint. If Execution were dropped from
+// the projection the way Destination deliberately is, a request demanding GPU
+// could be served the artifact of a request that never demanded one — exactly
+// the silent downgrade ExecutionSpec.RequireGPU exists to prevent.
+func TestFingerprint_IncludesExecutionGPURequirement(t *testing.T) {
+	plain := classicPaleOliveRequest()
+	plain.Execution = &ExecutionSpec{}
+	plain.Normalize()
+	fpPlain, err := plain.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint plain: %v", err)
+	}
+
+	gpu := classicPaleOliveRequest()
+	gpu.Normalize()
+	fpGPU, err := gpu.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint gpu: %v", err)
+	}
+	if fpPlain == fpGPU {
+		t.Fatalf("execution.require_gpu must be part of the fingerprint, got the same digest %q", fpPlain)
+	}
+
+	// require_zero_copy is fail-closed by construction (no backend certifies
+	// video_zero_copy), so it must address a distinct byte-identity too rather
+	// than aliasing onto the request it would otherwise be indistinguishable
+	// from.
+	zeroCopy := classicPaleOliveRequest()
+	zeroCopy.Execution = &ExecutionSpec{RequireZeroCopy: true}
+	zeroCopy.Normalize()
+	fpZeroCopy, err := zeroCopy.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint zero-copy: %v", err)
+	}
+	if fpZeroCopy == fpPlain {
+		t.Fatalf("execution.require_zero_copy must be part of the fingerprint, got the same digest %q", fpPlain)
+	}
+}
+
+// TestFingerprint_ClassicPaleOliveScenarioStable pins the exact benchmark
+// scenario (classic1 Pale Olive video plate + burned subtitles + top-right
+// text watermark + full GPU) to one stable digest. Two independent
+// derivations are compared: a Go literal and a JSON document whose keys are
+// reordered. Key order on the wire is not semantic, so both must address the
+// same bytes — and the digest must survive a full decode→encode→decode round
+// trip, which is what lets the handler and the worker agree on a cache key
+// after the payload has been persisted and re-read from the queue.
+func TestFingerprint_ClassicPaleOliveScenarioStable(t *testing.T) {
+	// Deliberately reordered keys, and margin_px/opacity omitted so Normalize
+	// has to apply the same non-zero defaults the Go literal gets.
+	const body = `{
+		"watermark": {"position": "top_right", "text": "VeloxEditing", "enabled": true},
+		"subtitles": {"mode": "burn", "enabled": true},
+		"execution": {"require_gpu": true},
+		"background": {"kind": "video", "asset_id": "classic1", "mode": "asset"},
+		"source_asset_id": "yt_0ElQTzSx3ec_72_91_v1"
+	}`
+	var decoded RenderRequest
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("decode scenario body: %v", err)
+	}
+	decoded.Normalize()
+	if err := decoded.Validate(); err != nil {
+		t.Fatalf("decoded scenario must validate: %v", err)
+	}
+
+	literal := classicPaleOliveRequest()
+	literal.Normalize()
+
+	fpDecoded, err := decoded.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint decoded: %v", err)
+	}
+	fpLiteral, err := literal.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint literal: %v", err)
+	}
+	if fpDecoded != fpLiteral {
+		t.Fatalf("wire key order must not change the fingerprint: decoded %q vs literal %q", fpDecoded, fpLiteral)
+	}
+	if len(fpDecoded) != 64 {
+		t.Fatalf("fingerprint length: got %d, want 64", len(fpDecoded))
+	}
+
+	// Persisted-payload round trip must be a fixed point: the worker re-decodes
+	// the same RenderRequest from the queue and probes the same cache key.
+	raw, err := json.Marshal(&decoded)
+	if err != nil {
+		t.Fatalf("re-encode scenario: %v", err)
+	}
+	var reDecoded RenderRequest
+	if err := json.Unmarshal(raw, &reDecoded); err != nil {
+		t.Fatalf("re-decode scenario: %v", err)
+	}
+	reDecoded.Normalize()
+	fpRoundTrip, err := reDecoded.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint round trip: %v", err)
+	}
+	if fpRoundTrip != fpDecoded {
+		t.Fatalf("fingerprint must survive a wire round trip: %q vs %q", fpRoundTrip, fpDecoded)
+	}
+
+	// A drifted plate must NOT reuse the certified bytes of another plate.
+	drifted := classicPaleOliveRequest()
+	drifted.Background = &BackgroundSpec{Mode: BackgroundModeAsset, AssetID: "classic2", Kind: BackgroundKindVideo}
+	drifted.Normalize()
+	fpDrifted, err := drifted.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint drifted: %v", err)
+	}
+	if fpDrifted == fpDecoded {
+		t.Fatal("a different background plate must not reuse the same fingerprint")
+	}
+
+	// And the watermark side is part of the identity too.
+	movedWatermark := classicPaleOliveRequest()
+	movedWatermark.Watermark = &WatermarkSpec{Enabled: true, Text: "VeloxEditing", Position: PositionTopLeft}
+	movedWatermark.Normalize()
+	fpMoved, err := movedWatermark.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint moved watermark: %v", err)
+	}
+	if fpMoved == fpDecoded {
+		t.Fatal("moving the watermark from top_right must not reuse the same fingerprint")
+	}
+}
+
 // TestBatchFingerprint_Deterministic verifies ordered clips → same batch id.
 func TestBatchFingerprint_Deterministic(t *testing.T) {
 	perClip := []string{"a", "b", "c"}

@@ -1,6 +1,7 @@
 {
   "version": 1,
-  "canonical": true,
+  "canonical": false,
+  "projection_of": "internal/capabilities/mediaregistry/editorial_catalog.go",
   "description": "Canonical short sound-effects catalog. Use the alias as asset_id in sound_effects.",
   "assets": {
     "whop1": {

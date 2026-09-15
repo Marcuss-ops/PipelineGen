@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -75,12 +75,12 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 }
 
 func remoteBackgroundMusicCatalog() map[string]map[string]string {
-	ids := []string{"1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX", "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D", "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq", "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke", "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2", "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C"}
-	out := make(map[string]map[string]string, len(ids))
-	for i, id := range ids {
-		alias := "bgm" + strconv.Itoa(i+1)
-		names := []string{"type beat", "Type Beat Rap 2", "HipHopSlowed", "Chilll Beat", "Type Beat Rap 3", "Chill Beat 2"}
-		out[alias] = map[string]string{"asset_id": alias, "name": names[i], "drive_file_id": id, "url": "velox-drive://" + id, "drive_link": "https://drive.google.com/file/d/" + id + "/view?usp=drive_link"}
+	out := make(map[string]map[string]string)
+	for _, asset := range mediaregistry.EditorialAudioAssets() {
+		if asset.Family != "music" {
+			continue
+		}
+		out[asset.Alias] = map[string]string{"asset_id": asset.Alias, "name": asset.Name, "drive_file_id": asset.DriveFileID, "url": "velox-drive://" + asset.DriveFileID, "drive_link": "https://drive.google.com/file/d/" + asset.DriveFileID + "/view?usp=drive_link"}
 	}
 	return out
 }
@@ -91,21 +91,16 @@ func remoteBackgroundMusicCatalog() map[string]map[string]string {
 // selected in the request.
 func remoteSoundEffectCatalog() map[string]map[string]string {
 	const driveBase = "https://drive.google.com/file/d/"
-	ids := map[string]string{
-		"whop1": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
-		"whop2": "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
-		"whop3": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
-		"whop4": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
-		"whop5": "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
-		"whop6": "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
-	}
-	catalog := make(map[string]map[string]string, len(ids))
-	for alias, id := range ids {
-		catalog[alias] = map[string]string{
-			"asset_id":      alias,
-			"drive_file_id": id,
-			"url":           "velox-drive://" + id,
-			"drive_link":    driveBase + id + "/view?usp=drive_link",
+	catalog := make(map[string]map[string]string)
+	for _, asset := range mediaregistry.EditorialAudioAssets() {
+		if asset.Family != "transition" || asset.Subtype != "whop" {
+			continue
+		}
+		catalog[asset.Alias] = map[string]string{
+			"asset_id":      asset.Alias,
+			"drive_file_id": asset.DriveFileID,
+			"url":           "velox-drive://" + asset.DriveFileID,
+			"drive_link":    driveBase + asset.DriveFileID + "/view?usp=drive_link",
 		}
 	}
 	return catalog

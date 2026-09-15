@@ -17,7 +17,11 @@ import (
 // much larger generation budget used by script generation.
 const entityExtractionNumPredict = 256
 
-const entityExtractionBatchSize = 5
+// EntityExtractionBatchLimit is the maximum number of segments one batched
+// entity / important-phrase extraction request accepts. It is exported because
+// the capability adapter chunks its scene fan-out count by exactly this bound:
+// the limit and the batching implementation have to be one fact, not two.
+const EntityExtractionBatchLimit = 5
 
 // entityExtractionJSONSchema is sent as Ollama's top-level structured-output
 // format for the single-segment path. The parser still accepts the historical
@@ -99,8 +103,8 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req de
 // ExtractEntitiesFromBatchWithModel performs one bounded generation for up to
 // five scenes and returns one typed result per input scene.
 func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*detail.EntityExtractionResult, error) {
-	if len(segments) == 0 || len(segments) > entityExtractionBatchSize {
-		return nil, fmt.Errorf("entity batch size must be between 1 and %d", entityExtractionBatchSize)
+	if len(segments) == 0 || len(segments) > EntityExtractionBatchLimit {
+		return nil, fmt.Errorf("entity batch size must be between 1 and %d", EntityExtractionBatchLimit)
 	}
 	if entityCount <= 0 {
 		entityCount = 2

@@ -93,19 +93,24 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// isBuiltInBGM reports whether the id is a built-in background-music alias.
+// The vocabulary is declared once in builtin_audio_aliases.go; this predicate
+// must not re-derive it from the shape of the string.
 func isBuiltInBGM(id string) bool {
-	id = strings.ToLower(strings.TrimSpace(id))
-	return strings.HasPrefix(id, "bgm") && len(id) == 4 && id[3] >= '1' && id[3] <= '6'
+	kind, ok := BuiltInAudioAliasKind(id)
+	return ok && kind == BuiltInAudioBackgroundMusic
 }
 
-func isBuiltInWhoop(id string) bool {
-	id = strings.ToLower(strings.TrimSpace(id))
-	return strings.HasPrefix(id, "whop") || strings.HasPrefix(id, "whoop")
-}
-
-func isBuiltInWhoosh(id string) bool {
-	id = strings.ToLower(strings.TrimSpace(id))
-	return strings.HasPrefix(id, "whoosh") || id == "random_whoosh"
+// isBuiltInOneShotSFX reports whether the id is a built-in one-shot effect or
+// the random_whoosh directive.
+//
+// It replaces the separate isBuiltInWhoop/isBuiltInWhoosh predicates, which
+// together accepted every `whop*`, `whoop*` and `whoosh*` string regardless of
+// whether the catalog actually bound it — which is how the built-in gain
+// default kept being applied to aliases the canonical catalog had retired.
+func isBuiltInOneShotSFX(id string) bool {
+	kind, ok := BuiltInAudioAliasKind(id)
+	return ok && kind == BuiltInAudioSoundEffect
 }
 
 // BackgroundMusicIntent is the caller's intent for one background-music
@@ -181,7 +186,7 @@ func (s *SoundEffectIntent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
-	if _, present := raw["gain_db"]; !present && (isBuiltInWhoop(tmp.AssetID) || isBuiltInWhoosh(tmp.AssetID)) {
+	if _, present := raw["gain_db"]; !present && isBuiltInOneShotSFX(tmp.AssetID) {
 		tmp.GainDB = -30
 	}
 	*s = SoundEffectIntent(tmp)

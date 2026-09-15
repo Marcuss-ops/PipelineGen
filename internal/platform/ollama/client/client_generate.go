@@ -140,7 +140,7 @@ func (c *Client) GenerateDetailed(ctx context.Context, model, prompt string, opt
 // Ollama API ignores format when it is nested inside options.
 func extractGenerateControls(options map[string]any) (any, *bool, string, map[string]any) {
 	if len(options) == 0 {
-		return nil, nil, "30m", nil
+		return nil, nil, "30m", residentRunnerOptions(nil)
 	}
 	copyOptions := make(map[string]any, len(options))
 	var format any
@@ -165,10 +165,10 @@ func extractGenerateControls(options map[string]any) (any, *bool, string, map[st
 		}
 		copyOptions[key] = value
 	}
-	if len(copyOptions) == 0 {
-		copyOptions = nil
-	}
-	return format, think, keepAlive, copyOptions
+	// Every legacy /api/generate request (entity extraction, important phrases,
+	// batch extraction, suggestions) inherits the resident runner bucket here,
+	// so no helper can silently invalidate the warm model.
+	return format, think, keepAlive, residentRunnerOptions(copyOptions)
 }
 
 // SimpleGenerate is a convenience wrapper for the common pattern of calling

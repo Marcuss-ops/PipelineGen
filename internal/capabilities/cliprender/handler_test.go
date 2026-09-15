@@ -361,7 +361,7 @@ func TestRenderHandler_RegistersOnlyRenderRoute(t *testing.T) {
 // TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark verifies the
 // canonical "classic pale olive" use case:
 //
-//   - background mode=asset pointing at the pale-olive image plate
+//   - background mode=asset pointing at the Pale Olive Classic plate
 //   - subtitles enabled (burn mode, default style)
 //   - watermark TEXT in top_right (no asset_id — text watermark path)
 //
@@ -375,19 +375,31 @@ func TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark(t *testing.T) {
 	}
 	r := newTestRouter(jobsSvc)
 
-	// "classic pale olive" is the canonical asset ID for the pale-olive
-	// background plate registered in the media DB. In the unit test we
-	// use the stable identifier directly; the worker resolves it at
-	// render time via the PreparedAssetResolver.
-	const paleOliveAssetID = "bg-classic-pale-olive"
+	// "classic pale olive" IS the canonical asset id `classic1`: the Pale Olive
+	// Classic plate registered in the media DB (`media_assets.id='classic1'`,
+	// `media_type='video'`) and stored at data/backgrounds/classic1.mp4. It is
+	// a VIDEO plate, so the declared kind must be video — declaring `image`
+	// would sample the wrong render layer. The id is the stable catalog
+	// identifier; the worker resolves the bytes at render time via the
+	// PreparedAssetResolver.
+	const paleOliveAssetID = "classic1"
+	const paleOliveMediaType = "video"
 	const watermarkText = "VeloxEditing"
+
+	// Guard the pair: the kind this test declares must be exactly what the
+	// canonical taxonomy derives from the plate's media type. Without this the
+	// test could pin a family the catalog disagrees with (which is how the
+	// original `bg-classic-pale-olive` + `image` payload shipped).
+	if kind, ok := BackgroundKindFromMediaType(paleOliveMediaType); !ok || kind != BackgroundKindVideo {
+		t.Fatalf("BackgroundKindFromMediaType(%q) = (%q, %v), want (%q, true)", paleOliveMediaType, kind, ok, BackgroundKindVideo)
+	}
 
 	body := `{
 		"source_asset_id": "asset-clip-001",
 		"background": {
 			"mode": "asset",
 			"asset_id": "` + paleOliveAssetID + `",
-			"kind": "image"
+			"kind": "` + BackgroundKindVideo + `"
 		},
 		"subtitles": {
 			"enabled": true,
@@ -426,15 +438,15 @@ func TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark(t *testing.T) {
 		t.Fatalf("Payload type: got %T, want *RenderRequest", jobsSvc.enqueued.Payload)
 	}
 
-	// Background: classic pale olive image plate.
+	// Background: Pale Olive Classic video plate.
 	if req.Background.Mode != BackgroundModeAsset {
 		t.Errorf("Background.Mode: got %q, want %q", req.Background.Mode, BackgroundModeAsset)
 	}
 	if req.Background.AssetID != paleOliveAssetID {
 		t.Errorf("Background.AssetID: got %q, want %q", req.Background.AssetID, paleOliveAssetID)
 	}
-	if req.Background.Kind != BackgroundKindImage {
-		t.Errorf("Background.Kind: got %q, want %q (pale olive is a static image plate)", req.Background.Kind, BackgroundKindImage)
+	if req.Background.Kind != BackgroundKindVideo {
+		t.Errorf("Background.Kind: got %q, want %q (classic1 Pale Olive is a video plate)", req.Background.Kind, BackgroundKindVideo)
 	}
 
 	// Subtitles: burned into the video.
@@ -509,7 +521,7 @@ func TestRenderHandler_ClassicPaleOliveBackground_RepeatedCallsStable(t *testing
 
 	body := `{
 		"source_asset_id": "asset-clip-stress",
-		"background": {"mode": "asset", "asset_id": "bg-classic-pale-olive", "kind": "image"},
+		"background": {"mode": "asset", "asset_id": "classic1", "kind": "video"},
 		"subtitles": {"enabled": true, "mode": "burn"},
 		"watermark": {"enabled": true, "text": "VeloxEditing", "position": "top_right"}
 	}`

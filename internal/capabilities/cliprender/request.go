@@ -67,11 +67,8 @@ const (
 	AudioModeCopyIfCompatible = "copy_if_compatible"
 	AudioModeTranscode        = "transcode"
 
-	// Output media contracts are owned by kernel/media; these aliases keep the
-	// capability wire surface source-compatible.
-	OutputContractVeloxAssemblyReadyV1 = "VELOX_ASSEMBLY_READY_V1"
-	OutputContractVeloxAssemblyReadyV2 = "VELOX_ASSEMBLY_READY_V2"
-	OutputContractVeloxEditingClipV1   = "velox-editing-clip-v1"
+	// The output media contract identities live in output_contracts.go (they
+	// re-export kernel/media and stay out of this file's line budget).
 
 	// Deprecated compatibility aliases; defaults are sourced from the kernel
 	// contract by the resolver and normalization paths.
@@ -450,25 +447,6 @@ func (r *RenderRequest) Normalize() {
 	}
 	if r.Execution == nil {
 		r.Execution = &ExecutionSpec{}
-	}
-}
-
-func defaultOverlayTextStyle(fontSize, strokeWidth, shadowBlur float64) *scriptpkg.VideoVisualStyleSpec {
-	return &scriptpkg.VideoVisualStyleSpec{
-		Font:       "Montserrat",
-		FontSizePX: fontSize,
-		Color:      "#FFFFFF",
-		Stroke: &scriptpkg.VideoStrokeSpec{
-			Color: "#000000",
-			Width: strokeWidth,
-		},
-		Shadow: &scriptpkg.VideoShadowSpec{
-			Color:   "#000000",
-			Opacity: 0.95,
-			BlurPX:  shadowBlur,
-			OffsetX: 2,
-			OffsetY: 3,
-		},
 	}
 }
 
