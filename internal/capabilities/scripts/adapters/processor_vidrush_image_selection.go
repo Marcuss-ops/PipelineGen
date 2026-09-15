@@ -25,6 +25,51 @@ func vidRushImageTarget(plan *scriptpkg.ResolvedGenerationPlan) int {
 	return 0
 }
 
+// vidRushImageTargetForSegment raises the generic scene-image target to the
+// number of distinct imageable entities requested by the NLP surface. Entity
+// overlays are an explicit per-entity contract: the scene default of two
+// images must not silently truncate a 3-person (or 5-person) extraction.
+func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) int {
+	target := vidRushImageTarget(plan)
+	if plan == nil || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return target
+	}
+	maxPerEntity := plan.MediaPlan.Extraction.EntityImages.MaxPerEntity
+	if maxPerEntity <= 0 {
+		maxPerEntity = 1
+	}
+	allowed := map[string]struct{}{"PERSON": {}}
+	if len(plan.MediaPlan.Extraction.EntityImages.EntityTypes) > 0 {
+		allowed = make(map[string]struct{}, len(plan.MediaPlan.Extraction.EntityImages.EntityTypes))
+		for _, raw := range plan.MediaPlan.Extraction.EntityImages.EntityTypes {
+			allowed[strings.ToUpper(strings.TrimSpace(raw))] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{})
+	for _, entity := range segment.Insights.Entities {
+		kind := strings.ToUpper(strings.TrimSpace(entity.Type))
+		if _, ok := allowed[kind]; !ok {
+			continue
+		}
+		name := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(entity.Value)), " "))
+		if name != "" {
+			seen[name] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		for name, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") && strings.TrimSpace(name) != "" {
+				seen[strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))] = struct{}{}
+			}
+		}
+	}
+	entityTarget := len(seen) * maxPerEntity
+	if entityTarget > target {
+		return entityTarget
+	}
+	return target
+}
+
 func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {

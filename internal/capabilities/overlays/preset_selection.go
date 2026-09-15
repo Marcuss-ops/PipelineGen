@@ -33,7 +33,7 @@ var (
 	// assigns them by deterministic phrase order so the first three phrases in
 	// a scene cannot collapse to the same animation.
 	phraseMotionCandidates = []string{
-		"word_reveal", "character_cascade", "char_wave",
+		"word_reveal", "character_cascade", "char_wave", "opacity_wave", "center_expansion",
 	}
 )
 
@@ -63,7 +63,7 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int) string {
 		return ""
 	}
 	// The ordinal is part of the stable semantic identity for this bounded
-	// three-phrase surface. Hash selection still varies the starting point per
+	// phrase surface. Hash selection still varies the starting point per
 	// render, while the rotation guarantees distinct motions within a scene.
 	seeded := DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
 		JobFingerprint: jobID,

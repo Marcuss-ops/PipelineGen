@@ -46,6 +46,7 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 		images        int
 		phraseRenders int
 		subfolder     string
+		docLanguages  []string
 	}{
 		{
 			name:    "1 persona + 1 frase",
@@ -67,6 +68,21 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 			images: 3, phraseRenders: 3,
 			subfolder: mikeTysonLongSubfolder,
 		},
+		{
+			name:    "5 entità + 5 frasi",
+			fixture: "mike_tyson_five_generate_request.json",
+			people:  []string{"Mike Tyson", "Cus D'Amato", "Muhammad Ali", "Sugar Ray Robinson", "Joe Frazier"},
+			phrases: []string{
+				"La velocità apre la distanza.",
+				"La pressione mantiene il controllo.",
+				"La disciplina trasforma la potenza.",
+				"Il ritmo costruisce il vantaggio.",
+				"La tecnica sostiene il coraggio.",
+			},
+			images: 5, phraseRenders: 5,
+			subfolder:    "Mike Tyson — 5 entità 5 frasi",
+			docLanguages: []string{"it", "en"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -78,7 +94,7 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 			if result == nil {
 				t.Fatalf("job %s completed without job.result.result", jobID)
 			}
-			verifyMikeTysonRuntimeResult(t, result, tc.people, tc.phrases, tc.images, tc.phraseRenders, tc.subfolder)
+			verifyMikeTysonRuntimeResult(t, result, tc.people, tc.phrases, tc.images, tc.phraseRenders, tc.subfolder, tc.docLanguages)
 			t.Logf("runtime PASS: job=%s people=%d phrases=%d image_renders=%d phrase_renders=%d", jobID, len(tc.people), len(tc.phrases), tc.images, tc.phraseRenders)
 		}) {
 			t.Fatalf("stopping Mike Tyson runtime matrix after failed case %q", tc.name)
@@ -223,7 +239,7 @@ func getMikeTysonJob(t *testing.T, ctx context.Context, client *http.Client, bas
 	return full, status, nil
 }
 
-func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeople, wantPhrases []string, wantImages, wantPhraseRenders int, wantSubfolder string) {
+func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeople, wantPhrases []string, wantImages, wantPhraseRenders int, wantSubfolder string, wantDocLanguages []string) {
 	t.Helper()
 	gotPeople := stringValues(valueAt(mapAt(result, "entities"), "persons"), "value")
 	assertExactStrings(t, "persons", gotPeople, wantPeople)
@@ -256,7 +272,7 @@ func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeopl
 		}
 	}
 	if imageCount != wantImages {
-		t.Fatalf("image overlay count=%d, want=%d", imageCount, wantImages)
+		t.Fatalf("image overlay count=%d, want=%d items=%s", imageCount, wantImages, compactJSON(items))
 	}
 	if phraseCount != len(wantPhrases) {
 		t.Fatalf("phrase overlay count=%d, want=%d", phraseCount, len(wantPhrases))
@@ -292,6 +308,14 @@ func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeopl
 	doc := mapAt(mapAt(result, "documents"), "it")
 	if stringAt(doc, "link") == "" {
 		t.Fatal("Italian Google Doc link is missing")
+	}
+	for _, language := range wantDocLanguages {
+		if published := mapAt(mapAt(result, "documents"), language); stringAt(published, "link") == "" {
+			t.Fatalf("%s Google Doc link is missing", language)
+		}
+	}
+	if len(wantDocLanguages) > 1 && integerAt(mapAt(result, "translation_metrics"), "calls") < int64(len(wantDocLanguages)-1) {
+		t.Fatalf("translation metrics=%s, want at least %d target call(s)", compactJSON(mapAt(result, "translation_metrics")), len(wantDocLanguages)-1)
 	}
 	renderConfig := mapAt(result, "render")
 	if stringAt(renderConfig, "drive_folder_id") != mikeTysonDriveRoot || stringAt(renderConfig, "drive_subfolder_name") != wantSubfolder {
