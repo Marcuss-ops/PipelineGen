@@ -238,7 +238,15 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 
 		res, err := h.submitter.Submit(submitCtx, submitReq)
 		if err != nil {
-			_ = h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err)
+			// Fail is the only writer that can move the run off RUNNING. A failure
+			// HERE would leave the run stuck forever with nobody to notice, so it
+			// is logged alongside the submit error the caller receives. The job is
+			// never submitted at this point, so there is no broker result to
+			// contradict; the ledger must not lie about it either.
+			if failErr := h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err); failErr != nil {
+				h.log.Error("script.generate: failed to record the run failure after a submit error",
+					zap.String("run_id", run.ID), zap.Error(err), zap.Error(failErr))
+			}
 			writeGenerateSubmitError(c, err)
 			return
 		}
@@ -247,7 +255,14 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 		// Set the JobID on the run for GET /full correlation.
 		run.JobID = jobID
 		if err := h.scriptgenSvc.SetJobID(c.Request.Context(), run.ID, jobID); err != nil {
-			_ = h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err)
+			// The job WAS submitted: the run ledger could not record its id. The
+			// run is marked failed (the caller gets an error and no usable
+			// correlation) and a failure of THAT write is surfaced, because the
+			// alternative is a run stuck in RUNNING with no trace of why.
+			if failErr := h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err); failErr != nil {
+				h.log.Error("script.generate: failed to record the run failure after a job-id correlation error",
+					zap.String("run_id", run.ID), zap.String("job_id", jobID), zap.Error(err), zap.Error(failErr))
+			}
 			writeGenerateSubmitError(c, err)
 			return
 		}

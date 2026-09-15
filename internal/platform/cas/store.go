@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -221,12 +220,12 @@ func shardPath(root, sha256 string) (string, error) {
 }
 
 // isValidSHA256 reports whether s is exactly 64 lowercase hex characters.
-// Delegates to the canonical kernel/asset.ValidateSHA256 (godlike/06 SSOT for
-// the 64-lowercase-hex SHA-256 shape) so the CAS shard layout cannot drift
-// from the canonical digest contract.
+// Delegates to the digest SSOT (kernel/digest.IsCanonicalSHA256) so the CAS
+// shard layout cannot drift from the canonical digest contract. The CAS owns
+// content addresses, so it asks the digest owner directly instead of routing
+// through the asset domain's validator.
 func isValidSHA256(s string) bool {
-	_, err := asset.ValidateSHA256(s)
-	return err == nil
+	return digest.IsCanonicalSHA256(s)
 }
 
 // newStagingID generates a unique workspace staging ID in the canonical

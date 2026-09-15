@@ -49,14 +49,12 @@ func (m *Asset) BinarySHA256() string {
 	// a 64-hex SHA-256 when known.
 	return m.ContentHash()
 }
-func (m *Asset) SetBinarySHA256(v string) { m.SetMetadataString("binary_sha256", v) }
 
 // DriveMD5 returns the Google Drive provider MD5 checksum (key
 // "google_drive_md5"). This is a provider receipt ONLY — never used for
 // identity or deduplication. Empty when the asset was not uploaded via
 // Google Drive or when the receipt was not recorded.
-func (m *Asset) DriveMD5() string     { return m.GetMetadataString("google_drive_md5") }
-func (m *Asset) SetDriveMD5(v string) { m.SetMetadataString("google_drive_md5", v) }
+func (m *Asset) DriveMD5() string { return m.GetMetadataString("google_drive_md5") }
 
 // LegacyFileMD5 returns the legacy MD5 hash (key "legacy_file_md5") from
 // pre-SHA-256 code paths (e.g. old YouTube extractions). This exists for
@@ -92,7 +90,6 @@ func (m *Asset) SetIsFolder(v bool) {
 }
 
 func (m *Asset) ChildCount() int       { return m.GetMetadataInt("child_count") }
-func (m *Asset) SetChildCount(v int)   { m.SetMetadataInt("child_count", v) }
 func (m *Asset) SceneType() string     { return m.GetMetadataString("scene_type") }
 func (m *Asset) SetSceneType(v string) { m.SetMetadataString("scene_type", v) }
 
@@ -127,66 +124,6 @@ func (m *Asset) SetReuseCount(v int)    { m.SetMetadataInt("reuse_count", v) }
 func (m *Asset) LastUsedAt() string     { return m.GetMetadataString("last_used_at") }
 func (m *Asset) SetLastUsedAt(v string) { m.SetMetadataString("last_used_at", v) }
 
-func (m *Asset) UsableFor() []string {
-	if m.Metadata == nil {
-		return nil
-	}
-	v, ok := m.Metadata["usable_for"]
-	if !ok {
-		return nil
-	}
-	switch arr := v.(type) {
-	case []string:
-		return arr
-	case []any:
-		result := make([]string, len(arr))
-		for i, item := range arr {
-			if s, ok := item.(string); ok {
-				result[i] = s
-			}
-		}
-		return result
-	}
-	return nil
-}
-
-func (m *Asset) SetUsableFor(v []string) {
-	if m.Metadata == nil {
-		m.Metadata = make(map[string]any)
-	}
-	m.Metadata["usable_for"] = v
-}
-
-func (m *Asset) AvoidFor() []string {
-	if m.Metadata == nil {
-		return nil
-	}
-	v, ok := m.Metadata["avoid_for"]
-	if !ok {
-		return nil
-	}
-	switch arr := v.(type) {
-	case []string:
-		return arr
-	case []any:
-		result := make([]string, len(arr))
-		for i, item := range arr {
-			if s, ok := item.(string); ok {
-				result[i] = s
-			}
-		}
-		return result
-	}
-	return nil
-}
-
-func (m *Asset) SetAvoidFor(v []string) {
-	if m.Metadata == nil {
-		m.Metadata = make(map[string]any)
-	}
-	m.Metadata["avoid_for"] = v
-}
-
 func (m *Asset) PHash() string                   { return m.GetMetadataString("phash") }
 func (m *Asset) SetPHash(v string)               { m.SetMetadataString("phash", v) }
 func (m *Asset) EmbeddingJSON() string           { return m.GetMetadataString("embedding_json") }
@@ -196,19 +133,7 @@ func (m *Asset) SetVisualEmbedding(v string)     { m.SetMetadataString("visual_e
 func (m *Asset) TranscriptEmbedding() string     { return m.GetMetadataString("transcript_embedding") }
 func (m *Asset) SetTranscriptEmbedding(v string) { m.SetMetadataString("transcript_embedding", v) }
 func (m *Asset) VisualEmbeddingJSON() string     { return m.GetMetadataString("visual_embedding_json") }
-func (m *Asset) SetVisualEmbeddingJSON(v string) { m.SetMetadataString("visual_embedding_json", v) } // Source-specific tag accessors.
-// These read from and write to the typed struct fields. The fields are
-// mirrored to metadata_json by SyncTagFieldsToMetadata before persistence.
-func (m *Asset) GetProviderTags() []string    { return m.ProviderTags }
-func (m *Asset) SetProviderTags(v []string)   { m.ProviderTags = v }
-func (m *Asset) GetVLMTags() []string         { return m.VLMTags }
-func (m *Asset) SetVLMTags(v []string)        { m.VLMTags = v }
-func (m *Asset) GetManualTags() []string      { return m.ManualTags }
-func (m *Asset) SetManualTags(v []string)     { m.ManualTags = v }
-func (m *Asset) GetTranscriptTags() []string  { return m.TranscriptTags }
-func (m *Asset) SetTranscriptTags(v []string) { m.TranscriptTags = v }
-
-// setMetadataSlice/setMetadataBool/setMetadataFloat are nil-safe
+func (m *Asset) SetVisualEmbeddingJSON(v string) { m.SetMetadataString("visual_embedding_json", v) } // setMetadataSlice/setMetadataBool/setMetadataFloat are nil-safe
 // setters shared by the typed accessors below. Setters assign the raw
 // typed value so the storage key alphabet is unchanged (godlike/07
 // migration-window discipline: no data backfill required).

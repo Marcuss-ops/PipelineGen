@@ -137,7 +137,7 @@ func (h *MaterializeJobHandler) HandleJob(
 
 	for i, kindStr := range cmd.TextKinds {
 		kind := detail.TextTrackKind(kindStr)
-		if !isKnownTextTrackKind(kind) {
+		if !IsKnownTextTrackKind(kind) {
 			return nil, h.classifyError(&ErrInvalidMaterializeRequest{
 				Field:  "text_kinds",
 				Reason: fmt.Sprintf("unknown text_kind %q at index %d", kindStr, i),
@@ -266,7 +266,21 @@ func (h *MaterializeJobHandler) classifyError(err error) error {
 	}
 }
 
-func isKnownTextTrackKind(k detail.TextTrackKind) bool {
+// IsKnownTextTrackKind reports whether k is a kind the materialize pipeline can
+// produce. It is the SINGLE owner of that set.
+//
+// It is exported because the kind list is enforced in two places that cannot
+// see each other's copy: this handler (a job payload's text_kinds) and the
+// text-tracks-backfill CLI (an operator-typed kind). The CLI used to carry a
+// self-confessed duplicate — its comment read "MUST match the canonical list in
+// jobs.go" — which is a rule whose only enforcement is a human remembering. An
+// added kind now reaches both callers or neither.
+//
+// The set is deliberately NARROWER than detail.TextTrackKind: visual_summary and
+// search_text exist as artifacts (built by enrichment/projection, see
+// detail/text_track.go) but are not materializable from a request, so accepting
+// them here would route an unsupported kind into the materializer.
+func IsKnownTextTrackKind(k detail.TextTrackKind) bool {
 	switch k {
 	case detail.TextTrackTranscript,
 		detail.TextTrackDescription,

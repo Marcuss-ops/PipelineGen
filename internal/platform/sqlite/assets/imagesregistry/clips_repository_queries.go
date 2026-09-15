@@ -54,28 +54,6 @@ func (r *ClipsRepository) CountDeadLetter(ctx context.Context) (int64, error) {
 	return n, err
 }
 
-func (r *ClipsRepository) ListIndexedIDs(ctx context.Context, limit int) ([]string, error) {
-	if limit <= 0 {
-		return []string{}, nil
-	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id FROM media_assets WHERE `+r.SoftDeleteFilter()+`
-		   AND embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]string, 0, limit)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out = append(out, id)
-	}
-	return out, rows.Err()
-}
-
 func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error) {
 	args := []any{}
 	conds := []string{"1=1"}

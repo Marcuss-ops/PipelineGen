@@ -134,10 +134,10 @@
           "subtitles": {
             "enabled": true,
             "mode": "burn",
-            "style_id": "shorts-v1-40-shadow",
+            "style_id": "subs-young",
             "style": {
-      "font": "Montserrat",
-              "font_size_px": 52,
+      "font": "Poppins",
+              "font_size_px": 60,
               "width_px": 1600,
               "position": "bottom_center",
                 "shadow": {"color": "#000000", "opacity": 0.22, "blur_px": 4, "offset_x": 0, "offset_y": 2}

@@ -76,11 +76,6 @@ func (r *MaterializationReport) HasFailures() bool {
 	return len(r.FailedLanguages) > 0
 }
 
-func (r *MaterializationReport) TotalProcessed() int {
-	return len(r.CreatedLanguages) + len(r.SkippedLanguages) +
-		len(r.RetranslatedLanguages) + len(r.FailedLanguages)
-}
-
 // Materializer is the canonical application-layer service.
 type Materializer struct {
 	repo        detail.TextTrackRepository

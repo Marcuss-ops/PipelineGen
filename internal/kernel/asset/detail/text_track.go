@@ -11,6 +11,13 @@ package detail
 import "time"
 
 // TextTrackKind classifies the type of text content stored in a track.
+//
+// This enum is the full vocabulary of kinds that can EXIST. Which of them a
+// caller may request is a separate, narrower fact owned by
+// texttracks.IsKnownTextTrackKind (the materialize pipeline's policy):
+// VisualSummary and SearchText are produced by enrichment and the projection
+// rebuild, never materialized from a request. Adding a kind here does not make
+// it materializable — the policy owner decides that.
 type TextTrackKind string
 
 const (

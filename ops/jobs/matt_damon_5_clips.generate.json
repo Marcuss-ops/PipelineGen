@@ -120,7 +120,7 @@
           "subtitles": {
             "enabled": true,
             "mode": "burn",
-            "preset": "impact",
+            "preset": "subs-young",
             "style": {
               "color": "#FFFFFF",
               "position": "bottom_center",

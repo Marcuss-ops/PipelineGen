@@ -489,18 +489,28 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		zap.Int("revision", agg.ParentRevision))
 	if a.deps.RunRepo != nil {
 		if targetStatus == job.StatusFailed {
-			_ = a.deps.RunRepo.FailRun(ctx, scriptgen.FailRunInput{
-				RunID:        runIDForJob(ctx, a.deps.RunRepo, parentJobID),
+			runID := runIDForJob(ctx, a.deps.RunRepo, parentJobID)
+			noteRunLedgerFailure(a.deps.Logger, "fail_run", runID, a.deps.RunRepo.FailRun(ctx, scriptgen.FailRunInput{
+				RunID:        runID,
 				FailedStage:  scriptgen.StageFailed,
 				ErrorCode:    "SCRIPT_BATCH_FAILED",
 				ErrorMessage: errMsg,
-			})
+			}))
 		} else if run, lookupErr := a.deps.RunRepo.GetByJobID(ctx, parentJobID); lookupErr == nil && run != nil {
-			_ = a.deps.RunRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted)
+			// The terminal projection for a batch parent. A dropped write here
+			// leaves the run the aggregator just declared COMPLETED persisted as
+			// RUNNING, so it is surfaced instead of discarded.
+			noteRunLedgerFailure(a.deps.Logger, "stage_completed", run.ID,
+				a.deps.RunRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted))
 		}
 	}
 }
 
+// runIDForJob resolves the run a job produced. An empty result is returned for
+// BOTH "no run" and "the lookup itself failed", which is why the caller passes
+// it to noteRunLedgerFailure: a terminal stage write addressed to "" cannot
+// land, and the dropped write must not be mistaken for a run that needed no
+// update.
 func runIDForJob(ctx context.Context, repo scriptgen.RunRepository, jobID string) string {
 	if run, err := repo.GetByJobID(ctx, jobID); err == nil && run != nil {
 		return run.ID

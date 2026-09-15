@@ -159,7 +159,12 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		if phraseErr != nil {
 			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("important phrase extract: %w", phraseErr)
 		}
-		entityResult.ImportantPhrases = groundImportantPhrases(ir.SourceText, entities, phrases, extraction.MaxImportantPhrasesPerSegment)
+		// Explicit editorial hints are still passed through the same grounding
+		// gate as model output. This makes a requested phrase deterministic for
+		// a render while preserving the no-invention contract.
+		phraseCandidates := append([]string(nil), extraction.ImportantPhrases...)
+		phraseCandidates = append(phraseCandidates, phrases...)
+		entityResult.ImportantPhrases = groundImportantPhrases(ir.SourceText, entities, phraseCandidates, extraction.MaxImportantPhrasesPerSegment)
 	}
 	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
 	if err != nil {

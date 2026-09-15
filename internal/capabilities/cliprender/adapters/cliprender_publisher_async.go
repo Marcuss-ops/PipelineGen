@@ -210,7 +210,7 @@ func (p *ClipRenderPublisher) stageAsyncSubtitle(in cliprender.RenderPublishInpu
 	}
 	return &cliprender.ClipRenderSubtitleDelivery{
 		LocalPath:    staged,
-		Filename:     sidecarFilename(assetID, in.SourceTitle),
+		Filename:     sidecarFilename(assetID, in.SourceTitle, languageFilenameTag(in.Transcript)),
 		SHA256:       strings.ToLower(strings.TrimSpace(in.Subtitles.SHA256)),
 		SizeBytes:    info.Size(),
 		LanguageCode: language,
@@ -220,15 +220,21 @@ func (p *ClipRenderPublisher) stageAsyncSubtitle(in cliprender.RenderPublishInpu
 }
 
 // sidecarFilename mirrors the video filename convention: the human source
-// title when available, otherwise the content-addressed asset id.
-func sidecarFilename(assetID, sourceTitle string) string {
+// title when available, otherwise the content-addressed asset id. The language
+// tag keeps the per-language sidecars distinct for the same reason the video
+// filename carries it.
+func sidecarFilename(assetID, sourceTitle, languageTag string) string {
+	base := assetID
 	if strings.TrimSpace(sourceTitle) != "" {
 		safe := textutil.SanitizeFilename(sourceTitle)
 		if safe != "" && safe != "unnamed" {
-			return safe + ".ass"
+			base = safe
 		}
 	}
-	return assetID + ".ass"
+	if languageTag != "" {
+		base += "_" + languageTag
+	}
+	return base + ".ass"
 }
 
 func (p *ClipRenderPublisher) reuseStagedArtifact(source, destination, assetID string, size int64) (string, error) {

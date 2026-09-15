@@ -162,14 +162,18 @@ type MediaExtractionPolicy struct {
 	Include []string `json:"include,omitempty"`
 	// Device selects local semantic extraction hardware: auto, cpu, or gpu.
 	// Auto falls back to CPU only when the optional GPU backend is unavailable.
-	Device                        string            `json:"device,omitempty"`
-	MaxEntitiesPerSegment         int               `json:"max_entities_per_segment,omitempty"`
-	MaxImportantPhrasesPerSegment int               `json:"max_important_phrases_per_segment,omitempty"`
-	MaxImportantWordsPerSegment   int               `json:"max_important_words_per_segment,omitempty"`
-	MaxArtlistQueriesPerSegment   int               `json:"max_artlist_queries_per_segment,omitempty"`
-	MaxImageQueriesPerSegment     int               `json:"max_image_queries_per_segment,omitempty"`
-	Strategy                      string            `json:"strategy,omitempty"`
-	EntityImages                  EntityImagePolicy `json:"entity_images,omitempty"`
+	Device                        string `json:"device,omitempty"`
+	MaxEntitiesPerSegment         int    `json:"max_entities_per_segment,omitempty"`
+	MaxImportantPhrasesPerSegment int    `json:"max_important_phrases_per_segment,omitempty"`
+	// ImportantPhrases are optional caller-supplied editorial hints. They are
+	// accepted only when they are exact, source-grounded spans and do not
+	// overlap a named entity; model extraction remains the default path.
+	ImportantPhrases            []string          `json:"important_phrases,omitempty"`
+	MaxImportantWordsPerSegment int               `json:"max_important_words_per_segment,omitempty"`
+	MaxArtlistQueriesPerSegment int               `json:"max_artlist_queries_per_segment,omitempty"`
+	MaxImageQueriesPerSegment   int               `json:"max_image_queries_per_segment,omitempty"`
+	Strategy                    string            `json:"strategy,omitempty"`
+	EntityImages                EntityImagePolicy `json:"entity_images,omitempty"`
 }
 
 const (
@@ -279,6 +283,7 @@ func (m MediaPlanSpec) Clone() MediaPlanSpec {
 	m.Searches = append([]SegmentMediaSearch(nil), m.Searches...)
 	m.PostSegments = append([]PostSegmentVisualPlan(nil), m.PostSegments...)
 	m.Extraction.Include = append([]string(nil), m.Extraction.Include...)
+	m.Extraction.ImportantPhrases = append([]string(nil), m.Extraction.ImportantPhrases...)
 	m.Extraction.EntityImages.EntityTypes = append([]string(nil), m.Extraction.EntityImages.EntityTypes...)
 	if m.Intro != nil {
 		intro := m.Intro.Clone()

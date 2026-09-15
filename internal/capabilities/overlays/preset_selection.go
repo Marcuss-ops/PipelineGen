@@ -10,21 +10,13 @@ var (
 	// selector on the native path. name_glow_typewriter is retired from this
 	// candidate set for the same reason: there is no second name-candidate
 	// list, so the render-safe set is the ONLY owner of the name surface.
-	namePresetRenderSafeCandidates = []string{
-		"name_glow_slide", "name_glow_pop",
-	}
-	phrasePresetCandidates = []string{
-		// These are the automatic GPU-native phrase choices. undertext_pop
-		// uses a lower-third line animation that Chronon cannot prepare in
-		// the strict fused-text path, so it remains available only to
-		// explicit compatibility plans, never to generated overlays.
-		"fast_fade_through", "clean_slide_up", "slide_lateral",
-		"phrase_word_reveal",
-	}
-	wordPresetCandidates = []string{
-		"snap_scale", "fast_fade_through", "phrase_word_reveal",
-	}
-	imagePresetCandidates = []string{
+	// The installed RenderingGen release exposes only apple_v2 for the text
+	// family. Keep generated plans inside that runtime registry; the
+	// typewriter motion is selected by the preset itself (apple_phrase_v2).
+	namePresetRenderSafeCandidates = []string{"apple_v2"}
+	phrasePresetCandidates         = []string{"apple_v2"}
+	wordPresetCandidates           = []string{"apple_v2"}
+	imagePresetCandidates          = []string{
 		"image_fast_fade", "image_slide_left", "image_slide_right",
 		// modern_rounded_pop adds rounded-corner masking. The current strict
 		// Vulkan/NVENC image path rejects that mask and has no legacy fallback;

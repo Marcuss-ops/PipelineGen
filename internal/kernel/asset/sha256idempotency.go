@@ -11,12 +11,17 @@
 //
 // godlike/06 SSOT — one canonical owner per fact:
 //
-//	"Validate canonical SHA-256 hex digest (exactly 64 lowercase
-//	hex chars)" lives at internal/kernel/asset/sha256idempotency.go
-//	and is exposed as the ValidateSHA256 typed helper. The two
-//	derivative facts — (a) normalisation to lowercase hex, (b)
-//	first-16-hex-chars prefix for idempotency-key composition —
-//	live next to the validator in this same file.
+//	The digest SHAPE rule (64 lowercase hex chars) is owned by
+//	internal/kernel/digest (IsSHA256 / IsCanonicalSHA256) and is the
+//	rule every contract in the tree consults. This file owns the
+//	ASSET-DOMAIN FACADE around it: the typed ErrSHA256Invalid
+//	sentinel, the per-byte explanation an operator gets on
+//	rejection, and the two derivative facts — (a) the canonical echo,
+//	(b) first-16-hex-chars prefix for idempotency-key composition.
+//	It used to re-implement the rule (and a private sha256HexLen)
+//	while claiming SSOT for it, which is exactly the drift this
+//	delegation removes: two owners of one fact can disagree, an owner
+//	and a facade cannot.
 //
 // godlike/07 typed-error contract: ErrSHA256Invalid is the single
 // sentinel (errors.New) wrapping every rejection (empty /
@@ -27,12 +32,9 @@ package asset
 import (
 	"errors"
 	"fmt"
-)
 
-// sha256HexLen is the canonical lowercase-hex length of a
-// SHA-256 digest. Bumping it (e.g. to SHA-384 / SHA-512) would
-// require a coordinated deprecation record per godlike/07.
-const sha256HexLen = 64
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+)
 
 // sha256IdempPrefix is the number of hex chars (8 bytes / 64 bits)
 // consumed by SHA256IdempotencyKey. 16 hex chars → 64 bits →
@@ -65,12 +67,28 @@ var ErrSHA256Invalid = errors.New("asset.SHA256: invalid hex-encoded SHA-256 dig
 //
 // Per godlike/07 typed-error contract: wrapped with %w so callers
 // can errors.Is(err, asset.ErrSHA256Invalid).
+//
+// The ACCEPT/REJECT decision is delegated to the digest SSOT
+// (digest.IsCanonicalSHA256); the local code below only EXPLAINS a rejection so
+// the log line still names the byte that broke the contract. A facade that
+// decides for itself would be a second owner of the shape rule.
 func ValidateSHA256(value string) (canonical string, err error) {
-	if value == "" {
-		return "", fmt.Errorf("%w: empty value", ErrSHA256Invalid)
+	if digest.IsCanonicalSHA256(value) {
+		return value, nil
 	}
-	if len(value) != sha256HexLen {
-		return "", fmt.Errorf("%w: len=%d (want %d)", ErrSHA256Invalid, len(value), sha256HexLen)
+	return "", fmt.Errorf("%w: %s", ErrSHA256Invalid, sha256Violation(value))
+}
+
+// sha256Violation describes WHY value is not a canonical digest, in the order an
+// operator reads it: empty, then wrong length, then the first offending byte.
+// It is reached only after digest.IsCanonicalSHA256 has already rejected the
+// value, so it never decides anything — it only makes the rejection diagnosable.
+func sha256Violation(value string) string {
+	if value == "" {
+		return "empty value"
+	}
+	if len(value) != digest.SHA256HexLength {
+		return fmt.Sprintf("len=%d (want %d)", len(value), digest.SHA256HexLength)
 	}
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -81,10 +99,12 @@ func ValidateSHA256(value string) (canonical string, err error) {
 			// Both uppercase (A-F) and non-hex (g-z, symbols, etc.) land here.
 			// The message names byte index + offending char so operators can
 			// trace producer-side non-canonicalisation points in logs.
-			return "", fmt.Errorf("%w: character at byte %d (%q) is not lowercase hex", ErrSHA256Invalid, i, string(c))
+			return fmt.Sprintf("character at byte %d (%q) is not lowercase hex", i, string(c))
 		}
 	}
-	return value, nil
+	// Unreachable while the predicate and the explainer agree; named rather than
+	// silently returned as "valid" so a future divergence is visible in the log.
+	return "digest is not canonical"
 }
 
 // SHA256IdempotencyKey returns the canonical idempotency-key string

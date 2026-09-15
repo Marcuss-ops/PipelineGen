@@ -7,9 +7,9 @@
 // PipelineGen decides COSA mostrare (semantic_role) and QUANDO (timing);
 // Chronon decides COME renderizzarlo. This resolver is the whole bridge:
 //
-//	IMPORTANT_PHRASE/QUOTE/CLAIM → fast_fade_through
-//	IMPORTANT_WORD/NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → phrase_word_reveal
-//	PERSON/ORGANIZATION/LOCATION/DATE/TITLE/EVENT → name_glow_slide
+//	IMPORTANT_PHRASE/QUOTE/CLAIM → apple_v2
+//	IMPORTANT_WORD/NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → apple_v2
+//	PERSON/ORGANIZATION/LOCATION/DATE/TITLE/EVENT → apple_v2
 //	IMAGE_ENTITY → image_fast_fade
 //
 // The preset ids are owned by Chronon3d's VisualPresetRegistry; this package
@@ -25,9 +25,9 @@ type SemanticPreset string
 // The canonical Chronon preset ids (mirror of Chronon3d's VisualPresetRegistry
 // seeds). These are the only presets a semantic role may resolve to.
 const (
-	PresetModernPhrase SemanticPreset = "fast_fade_through"
-	PresetModernWord   SemanticPreset = "phrase_word_reveal"
-	PresetModernName   SemanticPreset = "name_glow_slide"
+	PresetModernPhrase SemanticPreset = "apple_v2"
+	PresetModernWord   SemanticPreset = "apple_v2"
+	PresetModernName   SemanticPreset = "apple_v2"
 	PresetModernImage  SemanticPreset = "image_fast_fade"
 )
 

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // parseTextTracksBackfillArgs is the pure, testable flag parser.
@@ -115,18 +114,8 @@ func splitLanguages(csv string) (string, []string, error) {
 	return source, targets, nil
 }
 
-// isKnownTextTrackKind is duplicated from jobs.go to keep the
-// CLI self-contained (the application-layer
-// texttracks.isKnownTextTrackKind is unexported). The set
-// MUST match the canonical list in jobs.go::isKnownTextTrackKind.
-func isKnownTextTrackKind(k detail.TextTrackKind) bool {
-	switch k {
-	case detail.TextTrackTranscript,
-		detail.TextTrackDescription,
-		detail.TextTrackSummary,
-		detail.TextTrackTitle,
-		detail.TextTrackKeywords:
-		return true
-	}
-	return false
-}
+// The text-kind allow-list lives in the materialize pipeline
+// (texttracks.IsKnownTextTrackKind). This CLI used to carry a copy that its own
+// comment required to stay aligned with jobs.go by hand; the caller now consults
+// the owner directly, so an added kind cannot reach one of them and not the
+// other.

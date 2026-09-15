@@ -82,36 +82,6 @@ type LocalizedRenderEnqueuerConfig struct {
 	GlobalConcurrency int
 }
 
-type inlineRenderChild struct {
-	broker   job.JobBroker
-	id       string
-	worker   string
-	lease    string
-	revision int
-}
-
-func (a *localizedRenderEnqueuerAdapter) beginChild(ctx context.Context, in scriptgeneration.LocalizedRenderInput, clipID string) (*inlineRenderChild, error) {
-	// The production worker claims queued jobs globally, even when a caller
-	// supplies a narrow type filter. Creating an inline child here therefore
-	// races with the worker (or reaches a worker with no child handler) and
-	// causes a CAS-fence failure. Keep child-job persistence disabled until the
-	// broker exposes an atomic claim-by-ID operation; the parent run already
-	// records each certified render and its timing.
-	return nil, nil
-}
-
-func (c *inlineRenderChild) finish(ctx context.Context, result any, renderErr error) {
-	if c == nil || c.broker == nil {
-		return
-	}
-	if renderErr != nil {
-		_ = c.broker.Fail(ctx, c.id, c.worker, c.lease, c.revision, renderErr.Error())
-		return
-	}
-	data, _ := json.Marshal(result)
-	_ = c.broker.Complete(ctx, c.id, c.worker, c.lease, c.revision, data)
-}
-
 // localizedRenderEnqueuerAdapter implements scriptgeneration.LocalizedRenderEnqueuer
 // over the canonical LocalizationService. It is safe for concurrent
 // EnqueueLocalizedRender calls (the fan-out fires per language in parallel).
@@ -200,11 +170,15 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if clipIDForChild == "" {
 		clipIDForChild = assetID
 	}
-	child, childErr := a.beginChild(ctx, in, clipIDForChild)
-	if childErr != nil {
-		return childErr
-	}
-	defer func() { child.finish(ctx, map[string]any{"scene_id": in.SceneID, "clip_id": clipIDForChild}, err) }()
+	// No child JOB is created here. The production worker claims queued jobs
+	// globally, even when a caller supplies a narrow type filter, so an inline
+	// child would race it (or reach a worker with no child handler) and fail its
+	// CAS fence. Until the broker exposes an atomic claim-by-ID operation the
+	// parent run's own record of each certified render and its timing is the
+	// authority. The previous `beginChild`/`inlineRenderChild.finish` pair was
+	// unreachable by construction (it always returned nil) and carried two
+	// discarded broker state transitions; it was deleted rather than kept as a
+	// disabled feature nobody could exercise.
 	if assetID == "" {
 		// Audio-only scene: no source clip to burn subtitles onto.
 		return nil

@@ -65,36 +65,6 @@ func (g *Generator) resolveModel(model string) string {
 	return g.metadataModel
 }
 
-func (g *Generator) GenerateDescription(ctx context.Context, mediaType, prompt, style string) (string, error) {
-	if g.client == nil {
-		return "", fmt.Errorf("ollama client not initialized")
-	}
-
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderDescription(mediaType, prompt, style)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a helpful assistant that writes concise, 2-line human-like semantic descriptions for AI generated media assets."
-		userPrompt = fmt.Sprintf("Write a 2-line semantic description for a generated %s.\nPROMPT: %s\nSTYLE: %s\n\nRULES:\n1. Be descriptive and natural.\n2. Do NOT use technical terms like 'AI generated' or model names.\n3. Focus on what is seen and the mood.\n4. Return ONLY the 2 lines of description.", mediaType, prompt, style)
-	}
-
-	messages := []types.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	result, err := g.client.Chat(ctx, messages, nil, nil)
-	if err != nil {
-		return "", fmt.Errorf("description generation failed: %w", err)
-	}
-
-	return strings.TrimSpace(result), nil
-}
-
 // GenerateVisualPrompt takes a narrative block and turns it into a concise visual prompt for image generation models.
 func (g *Generator) GenerateVisualPrompt(ctx context.Context, text, topic, style string) (string, error) {
 	if g.client == nil {
@@ -296,25 +266,5 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		Model:            req.Model,
 		Prompt:           prompts.BuildTextPrompt(&req),
 		GenerationSource: "ollama",
-	}, nil
-}
-
-func (g *Generator) RegenerateScript(ctx context.Context, req types.RegenerationRequest) (*types.GenerationResult, error) {
-	if g.client == nil {
-		return nil, fmt.Errorf("ollama client not initialized")
-	}
-	types.ApplyDefaultsToRegeneration(&req)
-	messages := prompts.BuildRegenerationChatMessages(&req)
-	result, err := g.client.Chat(ctx, messages, req.Options, nil)
-	if err != nil {
-		return nil, fmt.Errorf("script regeneration failed: %w", err)
-	}
-	wordCount := len(strings.Fields(result))
-	return &types.GenerationResult{
-		Script:      result,
-		WordCount:   wordCount,
-		EstDuration: estimateDurationSecondsWithWPM(wordCount, 0),
-		Model:       req.Model,
-		Prompt:      req.OriginalScript,
 	}, nil
 }

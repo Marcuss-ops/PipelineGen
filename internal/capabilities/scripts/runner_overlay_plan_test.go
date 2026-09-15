@@ -307,9 +307,20 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	for _, item := range res.OverlayPlan.Items {
 		itemByID[item.ID] = item
 	}
-	phrasePresets := []string{"fast_fade_through", "clean_slide_up", "slide_lateral", "phrase_word_reveal", "undertext_pop"}
-	wordPresets := []string{"snap_scale", "fast_fade_through", "phrase_word_reveal"}
-	imagePresets := []string{"image_fast_fade", "image_slide_left", "image_slide_right", "modern_rounded_pop", "bottom_card_rise"}
+	// The expected ids come from the single owner of the semantic→preset
+	// mapping (overlays.semantic_resolver.go) rather than a copy of it. The
+	// runtime catalog publishes exactly one text-family style, so the retired
+	// line-level ids this test used to list — fast_fade_through,
+	// clean_slide_up, slide_lateral, phrase_word_reveal, snap_scale,
+	// undertext_pop, name_glow_* — no longer resolve downstream and a generated
+	// plan that carries one cannot render. Motion stays a separate concern and
+	// travels as motion_id, not as a second preset.
+	phrasePresets := []string{string(capabilityoverlay.PresetModernPhrase)}
+	wordPresets := []string{string(capabilityoverlay.PresetModernWord)}
+	// Image presets keep their own catalog: the runtime image family was not
+	// collapsed with the text family, so the generated plan may name any of its
+	// registered members.
+	imagePresets := []string{string(capabilityoverlay.PresetModernImage), "image_slide_left", "image_slide_right", "modern_rounded_pop", "bottom_card_rise"}
 
 	require.Contains(t, phrasePresets, itemByID["scene-0-phrase-changed-everything"].PresetID)
 	require.Contains(t, wordPresets, itemByID["scene-0-keyword-apple"].PresetID)

@@ -7,6 +7,31 @@
 // adapters) still exercise the AssetCommitter CONTRACT against a hermetic
 // SQLite engine. This package provides that test double, clearly marked
 // test-only: it is NEVER imported by production code.
+//
+// KNOWN DEBT — a second owner of commit-normalisation semantics (reviewed
+// 2026-09-15, deliberately NOT refactored). Nine helpers here are byte-identical
+// mirrors of their production counterparts in `internal/platform/postgres/media`:
+//
+//	normalizeAssetCommitFields   (asset_commit_fields.go ↔ committer.go)
+//	normalizeIndexTaxonomy       (sqlite_asset_committer_testdouble.go ↔ committer.go)
+//	execAssetUpdate              (sqlite_asset_committer_testdouble.go ↔ committer.go)
+//	primaryDriveFileID           (sqlite_asset_committer_testdouble.go ↔ committer.go)
+//	primaryWebViewLink           (sqlite_asset_committer_testdouble.go ↔ committer.go)
+//	primaryDownloadURL           (sqlite_asset_committer_testdouble.go ↔ committer.go)
+//	clipTagsNorm                 (clip_writer_helpers.go ↔ committer.go)
+//	derivePolicyVersion          (clip_writer_helpers.go ↔ clip_writer_helpers.go)
+//	localizedClipTextsToTextTracks (clip_writer_helpers.go ↔ clip_writer_helpers.go)
+//
+// Why it is not fixed here: the production helpers are unexported, so sharing
+// them means either exporting canonical-writer internals (a production API
+// widened for a test's convenience) or extracting the pure normalisation into a
+// package both sides import — an architecture decision, not a cleanup.
+//
+// The rule that keeps this honest until that decision is made: when a
+// normalisation rule changes in `internal/platform/postgres/media`, the mirror
+// in this package changes in the SAME commit. A test that only passes after
+// editing one side is the signal that the other side is now stale, and a test
+// suite passing here proves the CONTRACT shape, never the production rule.
 package testsupport
 
 import (
@@ -26,16 +51,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
-
-// Package testsupport — TEST-ONLY SQLite AssetCommitter.
-//
-// POSTGRES-MEDIA-CUTOVER demolition note: the production SQLite media
-// writer family was REMOVED (the canonical media writer is
-// PostgresMediaCommitter over PostgreSQL + pgvector). Legacy engine-level
-// test suites (finalizer, catalogsync, artlist integration, jobs, youtube
-// adapters) still exercise the AssetCommitter CONTRACT against a hermetic
-// SQLite engine. This package provides that test double, clearly marked
-// test-only: it is NEVER imported by production code.
 
 // SQLiteAssetCommitter is the canonical adapter for
 // persistence.AssetCommitter.
