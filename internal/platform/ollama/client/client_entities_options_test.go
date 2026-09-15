@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,6 +39,9 @@ func TestExtractEntitiesFromSegment_UsesBoundedOperationBudget(t *testing.T) {
 	require.NotNil(t, request.Think)
 	require.False(t, *request.Think)
 	require.Equal(t, float64(entityExtractionNumPredict), request.Options["num_predict"])
+	// Entity/phrase extraction is the workload that used to omit num_ctx and
+	// therefore tore down the warmed 8192 runner on every call.
+	require.Equal(t, float64(types.ProductionRunnerContext), request.Options["num_ctx"])
 }
 
 func TestParseEntityExtractionResult_AcceptsGroupedSpecialNames(t *testing.T) {
@@ -68,6 +72,7 @@ func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	require.Equal(t, "Ada Lovelace", strings.TrimPrefix(results[0].NomiSpeciali[0], "PERSON: "))
 	require.Equal(t, "PLACE: London", results[1].NomiSpeciali[0])
 	require.Equal(t, float64(entityExtractionNumPredict*2), request.Options["num_predict"])
+	require.Equal(t, float64(types.ProductionRunnerContext), request.Options["num_ctx"])
 	require.Contains(t, request.Prompt, "SEGMENT_INPUT_0")
 	require.Contains(t, request.Prompt, "SEGMENT_INPUT_1")
 	require.NotContains(t, request.Prompt, "Subject: precise visual search description")

@@ -47,6 +47,26 @@ type ImportantPhraseExtractor interface {
 	ExtractImportantPhrases(ctx context.Context, sourceText string, limit int, language, model string) ([]string, error)
 }
 
+// BatchImportantPhraseExtractor is the optional batched variant of
+// ImportantPhraseExtractor, satisfied by the language-model adapter.
+//
+// The per-scene shape costs one model call per (scene, language): a 10-scene
+// three-language run paid 30 calls for hints ("key_statement" annotations and
+// Artlist phrases) that never gate the run. The batched shape collapses that to
+// one call per chunk of scenes per language, which is the same structured NLP
+// response the single-scene path already asks for — it is a request-batching
+// change, not a semantic one.
+//
+// Contract: the returned slice has exactly len(sourceTexts) entries, aligned by
+// input position; a segment with no extractable phrase yields an empty (nil is
+// accepted) entry. Callers MUST fall back to ExtractImportantPhrases when this
+// interface is not implemented, and MUST treat an error as "use the per-scene
+// path", never as "no phrases".
+type BatchImportantPhraseExtractor interface {
+	ImportantPhraseExtractor
+	ExtractImportantPhrasesBatch(ctx context.Context, sourceTexts []string, limit int, language, model string) ([][]string, error)
+}
+
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
 // stockintelligence.Service is the production implementation; it consults the
 // local Qdrant search + SQLite hydrate first and falls back to the provider

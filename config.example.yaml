@@ -3,13 +3,12 @@ server:
   # Use this only on a trusted private network; for public exposure always
   # prefer a reverse-proxy with HTTPS and leave the bind on 127.0.0.1.
   host: "0.0.0.0"
-  # Canonical port is 8000 (chosen in the Operational Readiness PR — June 2026
   # Canonical port 8000 (Operational Readiness PR, June 2026).
-  # Override at runtime via VELOX_PORT; see `internal/platform/config/types.go::ServerConfig` for single source of truth.). Override at runtime via
-  # VELOX_PORT; SeeServerConfig in internal/platform/config/types.go
-  # is the single source of truth. Makefile `doctor`/`artlist` targets and
-  # scripts/velox_client.py read $VELOX_PORT with a 8000 fallback so the
-  # whole stack stays consistent without editing every recipe.
+  # Override at runtime via VELOX_PORT; `ServerConfig` in
+  # internal/platform/config/types.go is the single source of truth. Makefile
+  # `doctor`/`artlist` targets and scripts/velox_client.py read $VELOX_PORT
+  # with a 8000 fallback so the whole stack stays consistent without editing
+  # every recipe.
   port: 8000
   gin_mode: "release"
 

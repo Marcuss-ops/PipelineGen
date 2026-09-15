@@ -34,4 +34,34 @@ func TestChatKeepAliveIsTopLevel(t *testing.T) {
 	if got := options["keep_alive"]; got != "5m" {
 		t.Fatalf("caller options mutated: keep_alive=%v", got)
 	}
+	if got := body["options"].(map[string]any)["num_ctx"]; got != float64(2048) {
+		t.Fatalf("explicit num_ctx = %#v, want 2048 (caller stays authoritative)", got)
+	}
+}
+
+// TestChatPinsResidentRunnerContextWhenOmitted is the chat half of the
+// single-runner invariant: a chat request that does not name a context window
+// inherits the resident bucket instead of forcing Ollama to rebuild the model.
+func TestChatPinsResidentRunnerContextWhenOmitted(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"content":"ok"},"done":true}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "gemma4:e4b", 5)
+	callerOptions := map[string]any{"num_predict": 128}
+	if _, err := c.Chat(t.Context(), []types.Message{{Role: "user", Content: "hello"}}, callerOptions, nil); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if got := body["options"].(map[string]any)["num_ctx"]; got != float64(types.ProductionRunnerContext) {
+		t.Fatalf("num_ctx = %#v, want %d (single resident runner)", got, types.ProductionRunnerContext)
+	}
+	if _, mutated := callerOptions["num_ctx"]; mutated {
+		t.Fatalf("caller options mutated: %#v", callerOptions)
+	}
 }

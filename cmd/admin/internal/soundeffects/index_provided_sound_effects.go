@@ -29,7 +29,7 @@ type providedSoundEffect struct {
 	tags     []string
 }
 
-var providedSoundEffects = []providedSoundEffect{
+var providedSoundEffects = canonicalProvidedSoundEffects([]providedSoundEffect{
 	{"1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX", "bgm1.mp3", "Background Music 1", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm1", "bgm", "background_music"}},
 	{"1riijLdDzpL9yXhT-RX-OrRVD67jagq8D", "bgm2.mp3", "Background Music 2", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm2", "bgm", "background_music"}},
 	{"1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq", "bgm3.mp3", "Background Music 3", "music", "background_music", "neutral", "medium", []string{"background", "music", "loop"}, []string{"bgm3", "bgm", "background_music"}},
@@ -160,7 +160,7 @@ var providedSoundEffects = []providedSoundEffect{
 	{"1RXDgVSq4wvM8qC6dk_cFjAYqzaT6nLQE", "sfx_music_bernyanyi_bernyayi_01.mp3", "Bernyanyi Bernyayi", "music", "meme_theme", "playful", "medium", []string{"background", "montage", "comedy"}, []string{"bernyanyi", "bernyayi", "singing", "music", "meme"}},
 	{"1UDKT3YjwjUYMluFMSHxAO1py4cLYnI1U", "sfx_music_spongebob_sad_song_01.mp3", "SpongeBob Sad Song", "music", "sad_theme", "sad", "low", []string{"background", "mood", "failure"}, []string{"spongebob", "sad", "song", "music", "cartoon"}},
 	{"1oCpcAA8Qha_Mgx4pz27LZyAGq2agJBPo", "sfx_music_naruto_sad_music_01.mp3", "Naruto Sad Music", "music", "anime_theme", "sad", "low", []string{"background", "mood", "failure"}, []string{"naruto", "sad", "anime", "music", "theme"}},
-}
+})
 
 func RunIndexProvidedSoundEffects(args []string) error {
 	// Operators may narrow this repair/index pass to aliases or filenames;

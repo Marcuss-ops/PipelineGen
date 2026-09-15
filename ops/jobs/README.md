@@ -19,8 +19,9 @@ The contract is permanent:
 
 ## Sound effects
 
-The permanent catalog is `sfx_catalog.json`. Select an effect by alias in the
-manifest payload, for example:
+The canonical catalog is `internal/capabilities/mediaregistry/editorial_catalog.go`.
+`sfx_catalog.json` and `bgm_catalog.json` are human-readable projections. Select
+an effect by canonical alias in the manifest payload, for example:
 
 ```json
 {
@@ -35,8 +36,8 @@ manifest payload, for example:
 with their Drive ID and `velox-drive://` URL. The catalog is only metadata;
 an effect is mixed when it is explicitly present in `audio.sound_effects`.
 
-Background music uses `audio.background_music` and the canonical names in
-`bgm_catalog.json`, for example `asset_id: "bgm1"` or `asset_id: "bgm3"`.
+Background music uses `audio.background_music` and the canonical names in the
+shared registry, for example `asset_id: "bgm1"` or `asset_id: "bgm3"`.
 The six BGM links are permanently classified as `bgm1`–`bgm6`. The separate
 six Whoop links are permanently classified as `whop1`–`whop6`; the two groups
 must not be mixed when selecting assets.

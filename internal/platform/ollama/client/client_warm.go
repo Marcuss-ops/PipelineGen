@@ -10,6 +10,34 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
+// residentRunnerOptions pins an inference request to the single resident
+// Ollama runner configuration.
+//
+// Ollama reconfigures (unload + reload) a resident model whenever the request
+// asks for a different context window, so ONE option tuple has to hold across
+// every producer in this client: the warm probe, script generation, entity /
+// important-phrase extraction and the legacy /api/generate helpers. When a
+// call omitted num_ctx, Ollama fell back to its own default (4096) and tore
+// down the 8192 runner the warm-up had just paid for — every phrase-extraction
+// call then re-loaded the model inside the run it was supposed to accelerate
+// (measured: `ollama/warm` 32.4 s of model_load followed by `ollama/generate`
+// still reporting cold_start=1, and a single `nlp.extract` at 58.4 s).
+//
+// An explicit num_ctx stays authoritative: callers that intentionally opt out
+// of the resident bucket keep their value, and the caller's map is never
+// mutated.
+func residentRunnerOptions(options map[string]any) map[string]any {
+	if _, ok := options["num_ctx"]; ok {
+		return options
+	}
+	pinned := make(map[string]any, len(options)+1)
+	for key, value := range options {
+		pinned[key] = value
+	}
+	pinned["num_ctx"] = types.ProductionRunnerContext
+	return pinned
+}
+
 // WarmModel makes model residency an explicit, singleflight operation. The
 // first caller pays the load; concurrent scene callers wait for that same
 // load instead of independently entering Ollama's cold-start window.

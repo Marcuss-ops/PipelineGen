@@ -221,6 +221,9 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	if value, ok := options["keep_alive"].(string); ok && strings.TrimSpace(value) != "" {
 		keepAlive = value
 	}
+	// Single resident runner: a chat request without num_ctx would otherwise
+	// make Ollama rebuild the model the warm-up just loaded.
+	requestOptions = residentRunnerOptions(requestOptions)
 
 	req := types.ChatRequest{
 		Model:     model,

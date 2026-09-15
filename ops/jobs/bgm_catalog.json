@@ -1,6 +1,7 @@
 {
   "version": 1,
-  "canonical": true,
+  "canonical": false,
+  "projection_of": "internal/capabilities/mediaregistry/editorial_catalog.go",
   "description": "Canonical names for the supplied background-audio files.",
   "assets": {
     "bgm1": {
@@ -44,28 +45,6 @@
       "drive_file_id": "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
       "url": "velox-drive://1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
       "drive_link": "https://drive.google.com/file/d/1OmVstjygP2SsX7748ylyzGDdmYxcrE8C/view?usp=drive_link"
-    }
-  },
-  "also_supplied_in_links": {
-    "whoop1": {
-      "name": "Whoop 1",
-      "filename": "whoop1.mp3",
-      "drive_file_id": "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX"
-    },
-    "whoop2": {
-      "name": "Whoop 2",
-      "filename": "whoop2.mp3",
-      "drive_file_id": "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq"
-    },
-    "whoop3": {
-      "name": "Whoop 3",
-      "filename": "whoop3.mp3",
-      "drive_file_id": "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D"
-    },
-    "whoop4": {
-      "name": "Whoop 4",
-      "filename": "whoop4.mp3",
-      "drive_file_id": "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke"
     }
   }
 }

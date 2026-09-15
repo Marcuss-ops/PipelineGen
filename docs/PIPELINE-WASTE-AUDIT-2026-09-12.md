@@ -671,3 +671,78 @@ run or a preserved benchmark artifact. They are tracked in
 - **The results corpus is still a flat directory** and `status-*.json` files have been deleted
   by hand before (see §14). Preserve them; they are the only record of production-shaped
   timings.
+
+---
+
+## 18. Status update — 2026-09-15
+
+§17 closed the warm probe's own bucket, but §2.2 ("per-call `num_ctx` is itself a thrash
+source") and §6's phrase-extraction fan-out were **still open**: the probe pinned the
+resident bucket while every *other* producer kept emitting requests with no `num_ctx` at
+all, which is a different bucket from Ollama's point of view. This section records the pass
+that closed those two, plus the one item that is **not** a latency fix.
+
+### Closed in code
+
+| item | status | evidence |
+|---|---|---|
+| §2.2 every non-probe call path omitted `num_ctx` and rebuilt the warmed runner | **FIXED** | One resident-option rule, `residentRunnerOptions` (`platform/ollama/client/client_warm.go`), now pins `types.ProductionRunnerContext` on **both** request choke points: `/api/generate` (`client_generate.go::extractGenerateControls`, covering entity, important-phrase, batch and suggestion helpers) and `/api/chat` (`client_core.go::doChatRequest`). The caller's map is never mutated and an **explicit** `num_ctx` stays authoritative, so an intentional opt-out is preserved rather than silently overridden. Pinned by `TestGenerateDetailedPinsSingleResidentRunnerContext` (omitted / `nil` options / explicit opt-out), `TestChatPinsResidentRunnerContextWhenOmitted`, `TestExtractEntitiesFromSegment_UsesBoundedOperationBudget` and `TestExtractEntitiesFromBatch_PreservesEverySegment`. |
+| §6 phrase extraction cost N scenes × L languages model calls | **FIXED** | New optional port `scriptgen.BatchImportantPhraseExtractor` (`capabilities/scripts/vidrush_semantic_ports.go`) and its adapter `OllamaImportantPhraseExtractor.ExtractImportantPhrasesBatch` (`platform/ollama/adapters/important_phrase_extractor.go`, chunking by the exported `client.EntityExtractionBatchLimit`). `runTranslatedNLP` now issues **one request per chunk of scenes per language**, with a second resolution phase so phrases are attached after the batch returns. Entities stay per scene (VisualNER is a deterministic per-text extractor with a source-span contract). Batching is an optimization and never a new failure mode: a batched error degrades to the per-scene call, and an extractor that does not implement the interface keeps exactly one call per (scene, language). Pinned by `TestRunTranslatedNLPBatchesPhrasesPerLanguage` (0 per-scene calls, 1 request per language, per-scene phrase alignment intact), `TestRunTranslatedNLPUsesPerSceneCallsWithoutBatchCapability` (6 calls for 3 scenes × 2 languages) and `TestOllamaImportantPhraseExtractorBatch` (12 segments → chunk sizes 5/5/2, positional alignment across chunk boundaries). |
+| §6.2 gate capacities implicit | **ALREADY CLOSED in §17** | unchanged by this pass (`nlp_concurrency` / `script_generation_concurrency` / `tts_concurrency` / `translation_concurrency` remain the operator surface; the phrase fan-out is bounded by the same `DefaultNLPConcurrency` / `ExtractionLimit` pair). |
+
+Cost shape after the two fixes (no change to generated content): the phrase fan-out drops
+from `scenes × languages` model calls to `ceil(scenes / 5) × languages`, and none of those
+calls — nor the entity calls — can unload the resident model. Both are pure
+request-shaping changes; no scene, annotation or artifact changes shape.
+
+### Superseded — §11b was already fixed before this pass
+
+The Drive-tail mechanisms §11b blames are **not open**; they were closed on 2026-09-13/14
+(`f9bb83c28 perf: remove pipeline tail retries and drive stalls`,
+`979cfc2a0 optimize pipeline generation and Drive uploads`). Verified against `HEAD`:
+
+| §11b claim | state at `HEAD` |
+|---|---|
+| `uploader_put.go:480` keeps everything under 16 MiB on the non-resumable single-shot `Media()` path | **fixed** — `resumableUploadThreshold = 5 MiB`, with the 16 MiB threshold and its "every retry restarted the entire upload from byte zero" effect called out in the source comment. |
+| `auth.go:93` sets no `http.Client.Timeout` | **intentional, not a defect** — the source documents why: a client timeout is a size-independent deadline that also covers the body, so it aborts valid uploads and burns the deadline before the retry loop can react. The replacement is `newGoogleTransport()` (dial 10 s, TLS 10 s, `ResponseHeaderTimeout` 30 s, `ExpectContinueTimeout` 1 s, idle 90 s), pinned by `TestNewGoogleTransport_UsesPhaseTimeoutsWithoutWholeRequestDeadline`. |
+| `token.go:24` holds a process-wide mutex across the refresh **and** the `SaveToken` disk write | **fixed** — the mutex is released before `SaveToken`, not held across it. |
+
+A different, smaller defect in the same file did remain and is closed by this pass:
+`SaveToken` ran on **every** `Token()` call (oauth2 reuses the cached token until expiry,
+so a run cost one disk write per Drive API request) and it used a truncate-first
+`os.WriteFile`, so a crash or a concurrent request could observe an unparseable token file
+and lose authentication. `refreshingTokenSource` now persists **only when the access token
+changed**, and only after a *successful* write so a transient failure is retried rather
+than recorded as done; `SaveToken` writes a sibling temp file and renames it into place.
+Pinned by `internal/platform/drive/token_test.go`: sentinel-based no-op-call proof,
+write-on-change, retry-after-failed-write, atomic replacement, and 16×8 concurrent calls
+with no truncated read. `-race` clean.
+
+### Classified as design, not waste
+
+| item | verdict |
+|---|---|
+| §10 render `wall > work` (~5 s "queue wait", 11 160 ms wall vs 6 227 ms work) | **by design.** `platform/overlays/gpu_gate.go` bounds GPU ownership host-wide with an `flock` (default 1 slot; path and slot count are operator-tunable). The wait is that guard doing its job on a CPU-first pipeline where GPU is opt-in — not render waste. No code change. |
+| §17 "two Ollama warm call sites" | **not a subtraction.** Both call `WarmModel`, which is singleflight and resident-bucket pinned. The coordinator's queue-time warmer is deliberately off the critical path, and the engine's pre-fan-out warmer is the **safety net for callers that bypass the coordinator** (including the batch path). Deleting it would *reduce* warming, not remove redundancy. |
+| batch path (`generate_many` → `gencore.GenerateOneUseCase`) has no streaming / incremental coordinator / `CORE_READY` / `prepare_join` | **architectural ticket, not a fix.** Batch items are independent and already overlap at the fan-out level; the missing overlap is *intra-item*, i.e. exactly the streaming item below. Porting the durable-runner DAG is a refactor with its own design, so it is recorded, not smuggled in. |
+
+### Open — not a latency fix, needs a product decision
+
+| item | why it is not closed |
+|---|---|
+| §5 / streaming: `POST /api/script/generate` on the **segment-budget** shape (`script_params.segment_words` set, no explicit `segments`) still serializes generation → downstream | `runner_phase_script.go` sets `segmentTopologyNeedsMaterialization` for exactly this shape and disables the per-scene `SceneTextReady` fan-out. The flag is **correct as written**: with no explicit plan the model returns provisional prose and `materializeGeneratedScenes` splits it afterwards, so a streamed scene would launch VidRush/TTS/render on the wrong topology. Making this shape streamable requires deriving `script_params.segments` **before** generation, which routes each segment through `GenerateSceneTextStreamWithTrace`'s isolated one-call-per-segment path — i.e. it **changes the generated text and the segment boundaries**, not just the schedule. That is a content/product-contract change, so it was deliberately left alone rather than shipped as an "optimization". The streaming path already applies to requests that *do* carry explicit `segments`; the gap is only the derived-plan shape. |
+
+### Gate state for this pass
+
+- `go test ./internal/platform/ollama/... ./internal/capabilities/scripts/ ./internal/platform/drive/ -count=1` — green.
+- `make verify-agent` — **PASS** (foundation + static + impacted components; the `ollama`,
+  `script`, `translation` and `drive` legs all executed and passed).
+- `go run ./cmd/archcheck --strict` — **green** (`passed: true`, `has_hard_gate_hits: false`,
+  zero violations). It was red when this pass started: `max_lines_per_file_strict` on
+  `internal/capabilities/cliprender/request.go` (606 lines against a strict cap of 600;
+  `HEAD` sits exactly at 600). The overflow was removed by splitting the self-contained
+  `defaultOverlayTextStyle` helper into the sibling file
+  `internal/capabilities/cliprender/request_overlay_text_style.go` — same package, no
+  behaviour change, the documented pattern for this gate (cf. `materializer_index_seam.go`
+  and the concurrent `output_contracts.go`). `request.go` is now 578 lines.
+- `make verify-main` — run once, immediately before push (see the Git workflow rule).
