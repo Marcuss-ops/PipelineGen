@@ -226,6 +226,53 @@ func (r *Repository) MarkDeadLetter(ctx context.Context, eventID int64, leaseID,
 	return nil
 }
 
+// outboxReclaimBatchSize bounds how many orphaned events one reclaim tick
+// returns to pending, so a pathological backlog cannot make the tick
+// arbitrarily expensive.
+const outboxReclaimBatchSize = 256
+
+// RequeueExpiredLeases returns orphaned `processing` events whose lease has
+// expired to `pending`, so a consumer that died mid-event (or a server restart
+// mid-batch) can never strand them.
+//
+// The SQLite outbox reaper (internal/platform/sqlite/outboxevents) has always
+// done this by lease expiry. The PostgreSQL media outbox is drained by
+// PostgresIndexWorker, which had NO reaper for expired leases: a process that
+// died holding a claim left the row `processing` forever, invisible to
+// ClaimBatch/ClaimNext (their predicate is status='pending'). An observed
+// symptom was a multilingual clip.render Drive re-delivery where 18 rows sat
+// `processing` with an expired lease and were never reclaimed until an
+// operator reset them by hand.
+//
+// Ordered by the expiring lease then id so the oldest orphan recovers first,
+// matching the claim ordering. Idempotent and safe to run on every tick.
+func (r *Repository) RequeueExpiredLeases(ctx context.Context, limit int) (int, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	now := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		WITH expired AS (
+			SELECT id FROM outbox_events
+			WHERE status = 'processing'
+			  AND lease_expiry IS NOT NULL
+			  AND lease_expiry < $1
+			ORDER BY lease_expiry ASC, id ASC
+			LIMIT $2
+		)
+		UPDATE outbox_events
+		SET status = 'pending', worker_id = '', lease_id = '',
+		    lease_expiry = NULL, lease_expiry_ts = NULL, updated_at = $1
+		WHERE id IN (SELECT id FROM expired)
+		  AND status = 'processing'
+	`, now, limit)
+	if err != nil {
+		return 0, fmt.Errorf("media outbox RequeueExpiredLeases: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
 // MarkFailed records a failed attempt. Attempts remaining → back to
 // pending with exponential backoff; exhausted → dead_letter.
 func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error {
