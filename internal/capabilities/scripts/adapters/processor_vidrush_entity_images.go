@@ -115,7 +115,7 @@ func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg
 	if plan == nil || !providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
 		return nil, "BYPASSED"
 	}
-	targetImages := vidRushImageTarget(plan)
+	targetImages := vidRushImageTargetForSegment(plan, segment)
 	verified := 0
 	for _, candidate := range segment.Assets.Candidates {
 		if (candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration) && readyVidRushCandidate(candidate) {

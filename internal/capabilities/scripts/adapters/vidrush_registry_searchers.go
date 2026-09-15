@@ -222,7 +222,6 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	artlistQueries := fanoutPlan.artlistQueries
 	imageQueries := fanoutPlan.imageQueries
 	youtubeSources := fanoutPlan.youtubeSources
-	firstEntity := fanoutPlan.firstEntity
 	// Keep the complete canonical identity when converting Artlist matches.
 	// Using only SegmentID would silently reset Position/TextHash and make a
 	// valid candidate indistinguishable from a foreign-segment binding.
@@ -459,7 +458,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						f.metrics.IncProviderRequest("internet_images")
 					}
 					searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
-						SegmentID: segmentID, Position: updated.Position, Query: query, Entity: firstEntity,
+						// The query is the identity surface for entity-image
+						// searches; preserve it through provider normalization.
+						SegmentID: segmentID, Position: updated.Position, Query: query, Entity: query,
 						TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 						Provider: "internet_images",
 					})

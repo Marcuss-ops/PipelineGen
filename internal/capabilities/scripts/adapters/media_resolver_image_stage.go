@@ -223,10 +223,6 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 
 		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, perQueryLimit*len(imageQueries))
 		seen := make(map[string]struct{}, cap(candidates))
-		firstEntity := ""
-		if len(updated.Insights.Entities) > 0 {
-			firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
-		}
 		type queryResult struct {
 			candidates []scriptpkg.SegmentAssetCandidate
 			query      string
@@ -346,7 +342,10 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "search", Provider: "internet_images",
 			}, func(callCtx context.Context) error {
 				var searchErr error
-				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: firstEntity,
+				// The query is the identity surface for entity-image searches.
+				// Labelling every result with the first entity in a multi-person
+				// segment makes the semantic catalog gate discard later people.
+				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: query,
 					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
 					Provider: "internet_images",
 				})

@@ -386,7 +386,14 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
-			if attempts[providerName] >= vidRushAcquireBudget(plan, providerName) {
+			acquireBudget := vidRushAcquireBudget(plan, providerName)
+			if providerName == scriptpkg.VidRushProviderInternetImages || providerName == scriptpkg.VidRushProviderImageGeneration {
+				segmentTarget := vidRushImageTargetForSegment(plan, segment)
+				if segmentTarget > vidRushImageTarget(plan) {
+					acquireBudget = segmentTarget + vidRushImageAcquireSlack
+				}
+			}
+			if attempts[providerName] >= acquireBudget {
 				// Preserve the discovered candidate for diagnostics and a future
 				// retry, but do not turn every remote search hit into a download.
 				materialized = append(materialized, candidate)
@@ -491,7 +498,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// many generated images are actually missing. This keeps generation a
 	// true fallback instead of a parallel source that duplicates valid web
 	// assets.
-	imageTarget := vidRushImageTarget(plan)
+	imageTarget := vidRushImageTargetForSegment(plan, segment)
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
 	var materializeErr error
 	updated.Assets.Candidates, materializeErr = materialize(discoveredCandidates, imageTarget)
