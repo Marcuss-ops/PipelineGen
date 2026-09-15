@@ -173,6 +173,9 @@ func (h *MaterializeJobHandler) HandleJob(
 		"languages_materialized": aggregateLanguages(reports, true),
 		"languages_skipped":      aggregateLanguages(reports, false),
 		"languages_failed":       aggregateFailedLanguages(reports),
+		// Always present (empty when the subtitle delivery did not run) so the
+		// job-done log below can read it unconditionally.
+		"languages_untimed": map[string]string{},
 	}
 
 	// The tracks are durable; deliver the per-language subtitle artifacts too.
@@ -181,6 +184,13 @@ func (h *MaterializeJobHandler) HandleJob(
 	// language rows and none of the subtitle files. nil when not applicable.
 	if subtitles := h.deliverSubtitleArtifacts(ctx, cmd); subtitles != nil {
 		result["subtitles"] = subtitles
+		result["subtitles_delivered"] = subtitles.Delivered
+		// STATE SURFACE (Sept 2026): a language that has TEXT but no TIMED
+		// CUES produces no artifact at all. Recording it at the top level of
+		// the job result — not only inside the nested report — is what makes
+		// "nine of ten subtitle files missing" visible to an operator or an
+		// API consumer instead of buried in a log line.
+		result["languages_untimed"] = cloneUntimedLanguages(subtitles.UnTimed)
 	}
 
 	h.log.Info("texttracks.materialize.job.done",
@@ -190,6 +200,7 @@ func (h *MaterializeJobHandler) HandleJob(
 		zap.Int("languages_materialized", len(result["languages_materialized"].([]string))),
 		zap.Int("languages_skipped", len(result["languages_skipped"].([]string))),
 		zap.Int("languages_failed", len(result["languages_failed"].(map[string]string))),
+		zap.Int("languages_untimed", len(result["languages_untimed"].(map[string]string))),
 		zap.Int64("total_duration_ms", result["total_duration_ms"].(int64)),
 	)
 	return result, nil
@@ -287,6 +298,17 @@ func aggregateLanguages(reports map[string]*MaterializationReport, materialized 
 				out = append(out, lang)
 			}
 		}
+	}
+	return out
+}
+
+// cloneUntimedLanguages copies the untimed map so the job result cannot be
+// mutated later through the report reference. Always returns a non-nil map so
+// the job-result consumers can read the key unconditionally.
+func cloneUntimedLanguages(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for lang, reason := range in {
+		out[lang] = reason
 	}
 	return out
 }

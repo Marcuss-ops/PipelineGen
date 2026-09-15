@@ -8,6 +8,8 @@ media:
   multilingual:
     enabled: true
     source_language: "en"
+    # source_priority: "captions_first" (default) or "whisper_first"
+    # (local Whisper leads, YouTube captions fall back).
     languages:
       - code: it
         enabled: true

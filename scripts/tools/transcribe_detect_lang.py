@@ -101,6 +101,25 @@ def _resolve_device() -> tuple:
     return "cpu", "int8"
 
 
+# Voice-activity filtering. ON by default (VELOX_WHISPER_VAD_FILTER=0 disables):
+# without it the canonical large-v3-turbo model keeps generating segments over
+# trailing silence and noise — a 60 s clip produced cue text like "Stay in a
+# way. / Stay in a way. / Good bye." extending past 77-87 s, i.e. text that is
+# not in the media at all. The clamp below still bounds the windows (the
+# validator rejects anything past the clip), but VAD removes the invented text
+# instead of merely trimming it. Measured on the 60 s reference clip: 18 real
+# cues ending at 59.53 s, and FASTER than the unfiltered run because the
+# silence is never decoded.
+_VAD_DEFAULT = True
+
+
+def _vad_enabled() -> bool:
+    raw = os.environ.get("VELOX_WHISPER_VAD_FILTER", "").strip().lower()
+    if raw == "":
+        return _VAD_DEFAULT
+    return raw not in ("0", "false", "no", "off")
+
+
 def _get_model(model_size: str = "tiny") -> "WhisperModel":
     """Get or create a cached whisper model."""
     global _MODEL_CACHE
@@ -234,6 +253,7 @@ def _segments_to_result(segments, info, elapsed: float) -> dict:
         "duration_seconds": round(info.duration, 1),
         "transcription_time_seconds": round(elapsed, 1),
         "num_segments": len(cues),
+        "vad_filter": _vad_enabled(),
         "cues_dropped_beyond_duration": dropped,
         "cues_trimmed_to_duration": trimmed,
         "transcript_length": len(transcript),
@@ -256,7 +276,9 @@ def transcribe(audio_path: str, model_size: str = WHISPER_MODEL_NAME, language: 
 
     model = _get_model(model_size)
     start = time.time()
-    segments, info = model.transcribe(audio_path, beam_size=5, language=language)
+    segments, info = model.transcribe(
+        audio_path, beam_size=5, language=language, vad_filter=_vad_enabled()
+    )
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
     return _segments_to_result(segments, info, elapsed)
@@ -282,7 +304,9 @@ def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = WHISPER_MODEL_NAME
 
     model = _get_model(model_size)
     start = time.time()
-    segments, info = model.transcribe(audio, beam_size=5, language=language)
+    segments, info = model.transcribe(
+        audio, beam_size=5, language=language, vad_filter=_vad_enabled()
+    )
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
     return _segments_to_result(segments, info, elapsed)

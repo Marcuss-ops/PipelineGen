@@ -111,4 +111,23 @@ type MultilingualConfig struct {
 	//   - "argos"  → Argos Translate primary + Ollama fallback (default)
 	//   - "ollama" → Ollama-only
 	TranslationProvider string `yaml:"translation_provider" default:"argos"`
+
+	// SourcePriority selects the ACQUISITION ORDER of the last two levels
+	// of the YouTube text-track chain:
+	//
+	//   - "captions_first" (default, and anything unrecognised) — the
+	//     canonical chain: YouTube subtitles (manual then auto), then the
+	//     local Whisper transcriber;
+	//   - "whisper_first" — the local Whisper transcriber runs FIRST and the
+	//     YouTube subtitle levels stay as the fallback, so the transcript is
+	//     locally generated (the "audio -> Whisper -> timed transcript"
+	//     contract) while a broken transcription stack still yields a
+	//     transcript instead of a clip with no text.
+	//
+	// This is a REORDER, not a removal: youtube_subtitles_disabled remains the
+	// switch for "never use YouTube captions" (it removes levels 3+4
+	// entirely). Levels 1 and 2 (payload text, durable DB transcript) always
+	// run first, so a clip that already has a transcript is never
+	// re-transcribed.
+	SourcePriority string `yaml:"source_priority" env:"VELOX_MEDIA_SOURCE_PRIORITY" default:"captions_first"`
 }

@@ -6,7 +6,8 @@
 //     Provider, ModelName, ModelVersion, Confidence,
 //     SourceLanguageCode).
 //  3. The 5-level acquisition chain (payload → DB → YouTube
-//     subtitles manual → YouTube subtitles auto → Whisper).
+//     subtitles manual → YouTube subtitles auto → Whisper; whisper_first
+//     swaps the last two levels so Whisper leads and captions back it up).
 //  4. The RequireLanguageCertainty policy gate
 //     (asset.ErrLanguageUndeterminable pre-Step-9 when the chain
 //     exhausts without surfacing a real BCP-47 language).
@@ -94,6 +95,19 @@ type TextTrackResolver struct {
 	// nil -> priority skipped; AcquireSegmentText falls through to
 	// Whisper directly. Set at composition in build_bundles_domain_media.go.
 	Subtitles youtubeports.SubtitleFetcherPort
+	// WhisperFirst selects the ORDER of the last two acquisition levels:
+	//
+	//   false (canonical default) — priorities 3+4 (YouTube subtitles, manual
+	//     then auto) run first, then priority 5 (local Whisper);
+	//   true — priority 5 (local Whisper) runs FIRST and the subtitle levels
+	//     remain as the fallback. This is the "audio -> Whisper -> timed
+	//     transcript" product contract without giving up resilience when the
+	//     transcription stack is unavailable.
+	//
+	// Wired from media.multilingual.source_priority (see
+	// build_bundles_domain_media.go). Independent of Subtitles=nil, which
+	// disables the subtitle levels instead of reordering them.
+	WhisperFirst bool
 	// Transcriber is the OPTIONAL Whisper port (priority 5). nil ->
 	// priority skipped; AcquireSegmentText returns (nil, nil) when no
 	// other level produced content. The orchestrator calls
@@ -313,6 +327,12 @@ func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID str
 //  5. Whisper fallback via Transcriber.TranscribeAudioWithDetection
 //     (with DetectedLanguage + Confidence)
 //
+// Levels 3+4 and 5 run in the order selected by WhisperFirst: false keeps the
+// list above, true makes the local Whisper transcription the PRIMARY source
+// and keeps the subtitle levels as the fallback (see the field doc). Levels 1
+// and 2 are always first: a transcript that is already durable is never
+// re-transcribed.
+//
 // Returns (nil, nil) when every priority level fails to produce a
 // transcript AND the policy does NOT require certainty. Returns
 // (nil, &asset.ErrLanguageUndeterminable{...}) when the chain
@@ -348,122 +368,166 @@ func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrac
 		return cdbRowToBundle(*row), nil
 	}
 
-	// Priority 3 + 4: YouTube subtitle manual + auto. The
-	// SubtitleFetcherPort.FetchSegmentSubtitles adapter probes
-	// both (manual first then auto fallback) and returns ONE
-	// typed bundle. The orchestrator filters the returned
-	// LanguageCode against PreferredLanguages before accepting
-	// (Fase 1.b: the port surfaces any language it found; the
-	// orchestrator's policy is to discard the bundle when its
-	// LanguageCode is NOT in PreferredLanguages and fall through
-	// to Whisper).
-	if r.Subtitles != nil && req.VideoID != "" {
-		sub, subErr := r.Subtitles.FetchSegmentSubtitles(ctx, req.VideoID, req.StartSec, req.EndSec)
-		if subErr != nil {
-			if r.Log != nil {
-				r.Log.Warn("subtitle acquisition failed; falling through to Whisper",
-					zap.String("clip_id", req.ClipID),
-					zap.String("video_id", req.VideoID),
-					zap.Error(subErr))
-			}
-			// Non-fatal: continue to Whisper.
-		} else if sub != nil && !sub.IsEmpty() {
-			// Filter against PreferredLanguages. If the resolved
-			// language is NOT in the caller's list (and the list
-			// is non-empty), fall through to Whisper. godlike/07:
-			// empty/unparseable LanguageCode on the bundle is
-			// treated as "und" and is NOT a match for any
-			// non-empty list.
-			if len(req.PreferredLanguages) > 0 && !languageInList(sub.LanguageCode, req.PreferredLanguages) {
-				if r.Log != nil {
-					r.Log.Info("subtitle language not in PreferredLanguages; falling through to Whisper",
-						zap.String("clip_id", req.ClipID),
-						zap.String("subtitle_language", sub.LanguageCode),
-						zap.Strings("preferred", req.PreferredLanguages))
-				}
-				// Skip; fall through to priority 5.
-			} else {
-				if r.Log != nil {
-					r.Log.Info("text track acquired from YouTube subtitles",
-						zap.String("clip_id", req.ClipID),
-						zap.String("video_id", req.VideoID),
-						zap.String("language", sub.LanguageCode))
-				}
-				return sub, nil
-			}
+	// Priorities 3+4 (YouTube subtitles) and 5 (Whisper) run in the ORDER
+	// selected by WhisperFirst. The two levels are otherwise untouched, so
+	// the canonical captions-first chain is preserved when the flag is off.
+	if r.WhisperFirst {
+		// Whisper is the PRIMARY source: the product contract is
+		// audio -> local Whisper -> timed transcript. Captions stay the
+		// resilience fallback, so a transcription failure (GPU busy,
+		// weights missing, broken bridge) still yields a transcript
+		// instead of a clip with no text at all.
+		bundle, whisperErr := r.acquireFromWhisper(ctx, req)
+		if bundle != nil {
+			return bundle, nil
 		}
+		if sub := r.acquireFromSubtitles(ctx, req); sub != nil {
+			return sub, nil
+		}
+		if whisperErr != nil {
+			return nil, r.whisperError(req, whisperErr)
+		}
+		return nil, r.exhaustedChainError(req)
 	}
 
-	// Priority 5: Whisper fallback via TranscribeAudioWithDetection
-	// (Fase 1.b). The orchestrator calls fetchWhisperTranscriptRaw
-	// (text_track_whisper.go) so it can apply the
-	// RequireLanguageCertainty policy gate and normalize the
-	// detected language. The legacy TranscribeAudio plain-string
-	// method is RETAINED on the port for back-compat with the
-	// Step 10 metadata path; the chain uses the typed method.
-	if r.Transcriber != nil && req.LocalPath != "" {
-		det, wErr := fetchWhisperTranscriptRaw(ctx, r.Transcriber, req.LocalPath)
-		if wErr != nil {
-			// Apply policy gate: if the policy requires
-			// certainty, surface ErrLanguageUndeterminable
-			// (Whisper returned a typed error before the chain
-			// could surface a language).
-			if r.RequireLanguageCertainty {
-				if r.Log != nil {
-					r.Log.Warn("Whisper returned a typed error and the policy requires language certainty",
-						zap.String("clip_id", req.ClipID),
-						zap.String("local_path", req.LocalPath),
-						zap.Error(wErr))
-				}
-				return nil, &asset.ErrLanguageUndeterminable{
-					AssetID: req.ClipID,
-					Reason:  "Whisper returned a typed error before the chain could surface a language; policy requires language certainty",
-				}
-			}
-			return nil, wErr
-		}
-		if det.Text != "" {
-			// Normalize the detected language. The concrete
-			// adapter MUST already have done this (per the port
-			// contract), but we double-normalize here for
-			// defence-in-depth (godlike/07 honest lock).
-			lang, nErr := asset.Normalize(det.DetectedLanguage)
-			if nErr != nil {
-				lang = "und"
-			}
-			if r.Log != nil {
-				r.Log.Info("text track acquired from Whisper (Fase 1.b typed port)",
-					zap.String("clip_id", req.ClipID),
-					zap.String("local_path", req.LocalPath),
-					zap.String("language", lang))
-			}
-			return &detail.ResolvedTextBundle{
-				LanguageCode:       lang,
-				SourceLanguageCode: lang,
-				PlainText:          det.Text,
-				Cues:               det.Cues,
-				SourceType:         detail.TextSourceWhisper,
-				IsOriginal:         true,
-				Provider:           "whisper",
-				ModelName:          "",
-				ModelVersion:       "",
-				Confidence:         det.Confidence,
-			}, nil
-		}
+	if sub := r.acquireFromSubtitles(ctx, req); sub != nil {
+		return sub, nil
 	}
+	if bundle, whisperErr := r.acquireFromWhisper(ctx, req); whisperErr != nil {
+		return nil, r.whisperError(req, whisperErr)
+	} else if bundle != nil {
+		return bundle, nil
+	}
+	return nil, r.exhaustedChainError(req)
+}
 
-	// Chain exhausted without surfacing a transcript.
+// acquireFromSubtitles runs priorities 3+4: YouTube subtitle manual + auto. The
+// SubtitleFetcherPort.FetchSegmentSubtitles adapter probes both (manual first
+// then auto fallback) and returns ONE typed bundle. The orchestrator filters the
+// returned LanguageCode against PreferredLanguages before accepting (Fase 1.b:
+// the port surfaces any language it found; the orchestrator's policy is to
+// discard the bundle when its LanguageCode is NOT in PreferredLanguages and let
+// the next acquisition level run).
+//
+// Never returns an error: a subtitle failure is non-fatal by contract, so the
+// caller can simply continue with the next level.
+func (r *TextTrackResolver) acquireFromSubtitles(ctx context.Context, req TextTrackAcquireRequest) *detail.ResolvedTextBundle {
+	if r.Subtitles == nil || req.VideoID == "" {
+		return nil
+	}
+	sub, subErr := r.Subtitles.FetchSegmentSubtitles(ctx, req.VideoID, req.StartSec, req.EndSec)
+	if subErr != nil {
+		if r.Log != nil {
+			r.Log.Warn("subtitle acquisition failed; falling through to the next acquisition level",
+				zap.String("clip_id", req.ClipID),
+				zap.String("video_id", req.VideoID),
+				zap.Error(subErr))
+		}
+		return nil
+	}
+	if sub == nil || sub.IsEmpty() {
+		return nil
+	}
+	// Filter against PreferredLanguages. If the resolved language is NOT in the
+	// caller's list (and the list is non-empty), let the next level run.
+	// godlike/07: an empty/unparseable LanguageCode on the bundle is treated as
+	// "und" and is NOT a match for any non-empty list.
+	if len(req.PreferredLanguages) > 0 && !languageInList(sub.LanguageCode, req.PreferredLanguages) {
+		if r.Log != nil {
+			r.Log.Info("subtitle language not in PreferredLanguages; falling through to the next acquisition level",
+				zap.String("clip_id", req.ClipID),
+				zap.String("subtitle_language", sub.LanguageCode),
+				zap.Strings("preferred", req.PreferredLanguages))
+		}
+		return nil
+	}
+	if r.Log != nil {
+		r.Log.Info("text track acquired from YouTube subtitles",
+			zap.String("clip_id", req.ClipID),
+			zap.String("video_id", req.VideoID),
+			zap.String("language", sub.LanguageCode))
+	}
+	return sub
+}
+
+// acquireFromWhisper runs priority 5 via TranscribeAudioWithDetection
+// (Fase 1.b). The orchestrator calls fetchWhisperTranscriptRaw
+// (text_track_whisper.go) so it can normalize the detected language. The
+// RequireLanguageCertainty policy gate is applied by whisperError, so the
+// ORDER of the levels does not change how a Whisper failure is reported. The
+// legacy TranscribeAudio plain-string method is RETAINED on the port for
+// back-compat with the Step 10 metadata path; the chain uses the typed method.
+func (r *TextTrackResolver) acquireFromWhisper(ctx context.Context, req TextTrackAcquireRequest) (*detail.ResolvedTextBundle, error) {
+	if r.Transcriber == nil || req.LocalPath == "" {
+		return nil, nil
+	}
+	det, wErr := fetchWhisperTranscriptRaw(ctx, r.Transcriber, req.LocalPath)
+	if wErr != nil {
+		return nil, wErr
+	}
+	if det.Text == "" {
+		return nil, nil
+	}
+	// Normalize the detected language. The concrete adapter MUST already have
+	// done this (per the port contract), but we double-normalize here for
+	// defence-in-depth (godlike/07 honest lock).
+	lang, nErr := asset.Normalize(det.DetectedLanguage)
+	if nErr != nil {
+		lang = "und"
+	}
+	if r.Log != nil {
+		r.Log.Info("text track acquired from Whisper (Fase 1.b typed port)",
+			zap.String("clip_id", req.ClipID),
+			zap.String("local_path", req.LocalPath),
+			zap.String("language", lang))
+	}
+	return &detail.ResolvedTextBundle{
+		LanguageCode:       lang,
+		SourceLanguageCode: lang,
+		PlainText:          det.Text,
+		Cues:               det.Cues,
+		SourceType:         detail.TextSourceWhisper,
+		IsOriginal:         true,
+		Provider:           "whisper",
+		ModelName:          "",
+		ModelVersion:       "",
+		Confidence:         det.Confidence,
+	}, nil
+}
+
+// whisperError applies the RequireLanguageCertainty policy gate to a Whisper
+// failure: with the gate on, an un-transcribable clip surfaces
+// ErrLanguageUndeterminable instead of a bare adapter error.
+func (r *TextTrackResolver) whisperError(req TextTrackAcquireRequest, wErr error) error {
+	if !r.RequireLanguageCertainty {
+		return wErr
+	}
+	if r.Log != nil {
+		r.Log.Warn("Whisper returned a typed error and the policy requires language certainty",
+			zap.String("clip_id", req.ClipID),
+			zap.String("local_path", req.LocalPath),
+			zap.Error(wErr))
+	}
+	return &asset.ErrLanguageUndeterminable{
+		AssetID: req.ClipID,
+		Reason:  "Whisper returned a typed error before the chain could surface a language; policy requires language certainty",
+	}
+}
+
+// exhaustedChainError reports that every acquisition level failed to surface a
+// transcript, applying the RequireLanguageCertainty policy gate.
+func (r *TextTrackResolver) exhaustedChainError(req TextTrackAcquireRequest) error {
 	if r.Log != nil {
 		r.Log.Info("text track acquisition exhausted all 5 priorities without finding usable content",
 			zap.String("clip_id", req.ClipID))
 	}
 	if r.RequireLanguageCertainty {
-		return nil, &asset.ErrLanguageUndeterminable{
+		return &asset.ErrLanguageUndeterminable{
 			AssetID: req.ClipID,
 			Reason:  "all 5 chain levels exhausted without surfacing a real BCP-47 language; policy requires language certainty",
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // languageInList reports whether lang is in the preferred list.
