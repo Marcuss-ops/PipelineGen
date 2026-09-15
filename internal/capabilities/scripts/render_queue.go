@@ -88,6 +88,18 @@ type RenderQueueWaiter interface {
 	WaitTerminal(ctx context.Context, id string) (RenderQueueJob, error)
 }
 
+// RenderQueueRetrier is the optional reset-to-pending capability. It exists for
+// ONE decision: a submission that collides with an existing job in FAILED state
+// (idempotent replay of a failed render) must be re-armed, never silently
+// treated as an idempotent success — the caller would otherwise wait on a job
+// that can never produce an artifact. Declaring this port here (instead of an
+// anonymous interface at the call site, as it was) keeps the capability shape
+// next to the two it belongs with and makes it injectable by test doubles.
+type RenderQueueRetrier interface {
+	// Retry resets a failed job to pending so the queue re-runs it.
+	Retry(ctx context.Context, id string) error
+}
+
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
 // overlay render path. It submits the SEMANTIC OverlayPlan; RenderingGen is the
 // sole owner of the semantic→chronon.render-plan.v2 lowering, and blocks until
@@ -285,12 +297,11 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			return RenderReference{}, fmt.Errorf("chronon queue fresh render submit failed: %w", err)
 		}
 		if errors.Is(err, ErrJobExists) {
-			if existing, getErr := e.client.Get(ctx, plan.PlanID); getErr == nil && existing.State == "failed" {
-				if retrier, ok := e.client.(interface {
-					Retry(context.Context, string) error
-				}); ok {
-					_ = retrier.Retry(ctx, plan.PlanID)
-				}
+			// The re-arm decision is owned by RearmFailedRenderJob (the same
+			// helper the clip.render executor uses), and it fails closed when the
+			// job is FAILED and cannot be re-armed.
+			if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
+				return RenderReference{}, fmt.Errorf("chronon queue render: %w", rearmErr)
 			}
 		} else {
 			return RenderReference{}, fmt.Errorf("chronon queue render submit failed: %w", err)
@@ -347,13 +358,32 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }
 
+// RenderingGen queue job states (the `state` field of GET /jobs/{id}).
+//
+// The vocabulary is a WIRE FACT owned by the queue, so it is declared once here
+// and every decision in this file derives from these constants. It used to be
+// four raw literals across three functions (`terminalRenderState`,
+// `terminalRenderResult` twice, `RearmFailedRenderJob`), kept aligned by a
+// comment: a rename on the queue side would have silently stopped matching —
+// the poll loop would never see terminal and the re-arm would never fire.
+const (
+	// RenderQueueStateCompleted — terminal success; the only state that yields
+	// a render result.
+	RenderQueueStateCompleted = "completed"
+	// RenderQueueStateFailed — terminal failure carrying FailReason.
+	RenderQueueStateFailed = "failed"
+	// RenderQueueStateCancelled — terminal cancellation, reported as a failure
+	// with its own reason (never as a completed render).
+	RenderQueueStateCancelled = "cancelled"
+)
+
 // terminalRenderState reports whether state is a terminal render state. The
 // canonical terminal set is completed | failed | cancelled and MUST stay
 // aligned with the RenderQueueWaiter contract above; a terminal state that is
 // not recognised here would either be treated as success or poll forever.
 func terminalRenderState(state string) bool {
 	switch state {
-	case "completed", "failed", "cancelled":
+	case RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled:
 		return true
 	default:
 		return false
@@ -365,23 +395,72 @@ func terminalRenderState(state string) bool {
 // cancelled job fails closed with its own reason rather than being reported as
 // a completed render (which would surface downstream as the misleading
 // "completed without certified artifact" error).
+//
+// An UNRECOGNISED terminal state fails closed. The previous default branch
+// returned a nil error, so any terminal state added by a newer queue (a
+// timeout, a preemption, a partial) would have been reported to the caller as a
+// successful render with no artifact — the flow declaring success without
+// having completed. The caller responds to a terminal state by fetching the
+// certified artifact, so "I do not know this state" must never be the answer
+// that skips that step.
 func terminalRenderResult(job RenderQueueJob, id string, metrics RenderCompletionMetrics) (RenderQueueJob, RenderCompletionMetrics, error) {
 	switch job.State {
-	case "failed":
+	case RenderQueueStateCompleted:
+		return job, metrics, nil
+	case RenderQueueStateFailed:
 		reason := job.FailReason
 		if reason == "" {
 			reason = "unknown failure"
 		}
 		return job, metrics, fmt.Errorf("render job %s failed: %s", id, reason)
-	case "cancelled":
+	case RenderQueueStateCancelled:
 		reason := job.FailReason
 		if reason == "" {
 			reason = "unknown reason"
 		}
 		return job, metrics, fmt.Errorf("render job %s cancelled: %s", id, reason)
 	default:
-		return job, metrics, nil
+		return job, metrics, fmt.Errorf("render job %s reached unrecognised terminal state %q", id, job.State)
 	}
+}
+
+// RearmFailedRenderJob re-arms the render job that a submission COLLIDED with
+// (Submit answered ErrJobExists) when that job is already in FAILED state.
+//
+// It owns ONE decision, shared by the two callers that can collide with a
+// pre-existing job — the overlay enqueuer (QueueRenderEnqueuer) and the
+// clip.render executor (renderinggen.ClipRenderExecutor.Submit). An ErrJobExists
+// replay of a FAILED job is NOT an idempotent success: the job can never produce
+// an artifact, so a caller that moves on waits for something that cannot happen
+// and finally reports an unexplained render failure. Before this helper existed,
+// each caller carried its own copy of the rule — one swallowed the retry error,
+// one used an anonymous interface — so the same fact had three answers.
+//
+// Semantics:
+//   - the job is not in FAILED state, or cannot be read: no-op, nil. Waiting on
+//     an existing job stays the right move here; the recovery is deliberately
+//     best-effort and must not turn a transient read error into a submit failure.
+//   - the job is FAILED and the client exposes RenderQueueRetrier: the retry
+//     error is returned, never swallowed.
+//   - the job is FAILED and the client has no retrier capability: fail closed
+//     with an error naming the missing capability (the caller has no other way
+//     to make progress, and pretending otherwise only hides the fault).
+func RearmFailedRenderJob(ctx context.Context, client RenderQueueClient, id string) error {
+	if client == nil {
+		return fmt.Errorf("render queue re-arm: client is not configured")
+	}
+	existing, getErr := client.Get(ctx, id)
+	if getErr != nil || existing.State != RenderQueueStateFailed {
+		return nil
+	}
+	retrier, ok := client.(RenderQueueRetrier)
+	if !ok {
+		return fmt.Errorf("render queue job %s exists in failed state but the queue client cannot retry it (RenderQueueRetrier is not implemented)", id)
+	}
+	if retryErr := retrier.Retry(ctx, id); retryErr != nil {
+		return fmt.Errorf("render queue retry failed for %s: %w", id, retryErr)
+	}
+	return nil
 }
 
 var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -455,17 +534,15 @@ func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 	}
 }
 
-// waitForCompletion polls the queue until the job reaches a terminal state.
-// The whole blocked interval is recorded as a completion wait on the bound
-// run (RunReport.Waits), never as a stage: it is time spent waiting on the
-// render queue, not pipeline CPU work.
+// waitForCompletion parks until the queue reports the job terminal, and records
+// the whole blocked interval as a completion wait on the bound run
+// (RunReport.Waits), never as a stage: it is time spent waiting on the render
+// queue, not pipeline CPU work.
+//
+// The wait itself is owned by WaitRenderQueueTerminal, so this path and the
+// clip.render settle continuation cannot drift apart.
 func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, RenderCompletionMetrics, error) {
 	waitStarted := time.Now()
-	interval := e.pollInterval
-	if interval <= 0 {
-		interval = defaultQueuePollInterval
-	}
-	metrics := RenderCompletionMetrics{PollInterval: interval}
 	defer func() {
 		kernobs.RecordWait(ctx, kernobs.WaitInfo{
 			Kind:       kernobs.WaitCompletion,
@@ -474,12 +551,42 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 			FinishedAt: time.Now(),
 		})
 	}()
+	return WaitRenderQueueTerminal(ctx, e.client, id, e.pollInterval)
+}
+
+// WaitRenderQueueTerminal blocks until the queue reports a TERMINAL state for id
+// and returns the terminal job together with the wait it cost.
+//
+// It is the ONE implementation of "wait for a RenderingGen job to finish": the
+// overlay enqueue path (QueueRenderEnqueuer.waitForCompletion) and the
+// clip.render settle continuation (renderinggen.ClipRenderExecutor.Settle) both
+// call it, so the two can neither disagree about what terminal means nor about
+// which states count as success — terminalRenderResult is the single classifier.
+// Before this function existed, the platform layer carried its own copy of the
+// loop with its own jitter and its own clamps, so the same question had two
+// answers that could drift independently.
+//
+// A client exposing RenderQueueWaiter parks server-side on the state transition
+// (the queue's GET /jobs/{id}/wait) and spends no client-side polling sleep; a
+// client without it (older deployment, test double) falls back to the bounded
+// poll loop, whose sleeps and poll count are measured rather than guessed.
+// interval <= 0 selects defaultQueuePollInterval, and only the fallback loop
+// uses it.
+func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
+	if client == nil {
+		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
+	}
+	if interval <= 0 {
+		interval = defaultQueuePollInterval
+	}
+	waitStarted := time.Now()
+	metrics := RenderCompletionMetrics{PollInterval: interval}
 
 	// Event-driven completion: the wait parks server-side on the terminal
 	// state transition, so the observed completion latency is the transition
 	// itself rather than up to one poll interval. No client-side polling sleep
 	// is recorded because none is spent.
-	if waiter, ok := e.client.(RenderQueueWaiter); ok {
+	if waiter, ok := client.(RenderQueueWaiter); ok {
 		job, err := waiter.WaitTerminal(ctx, id)
 		metrics.CompletionWait = time.Since(waitStarted)
 		if err != nil {
@@ -490,7 +597,7 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 
 	// Polling fallback for queue clients without the wait capability.
 	for {
-		job, err := e.client.Get(ctx, id)
+		job, err := client.Get(ctx, id)
 		metrics.PollCount++
 		if err != nil {
 			return RenderQueueJob{}, metrics, err

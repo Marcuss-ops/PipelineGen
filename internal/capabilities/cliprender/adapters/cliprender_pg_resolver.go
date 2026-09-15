@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
@@ -73,6 +75,19 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("load asset %q: %w", assetID, err)
+	}
+	// A curated background plate must be registered with the certified
+	// NORMALIZED bytes. The original supplied Drive file carries an audio
+	// stream, so resolving it under a plate id would add a second audio source
+	// beneath the master voiceover/BGM. Fail closed at the read boundary rather
+	// than rendering the wrong artifact. Non-plate assets are unaffected.
+	if err := mediaregistry.ValidateEditorialBackgroundIdentity(rec.ID, rec.SHA256); err != nil {
+		r.log.Error("clip.render.asset_resolve.background_identity_mismatch",
+			zap.String("subsystem", "cliprender_pg_asset_resolver"),
+			zap.String("asset_id", assetID),
+			zap.Error(err),
+		)
+		return nil, err
 	}
 	ref := &cliprender.AssetRef{
 		AssetID:       rec.ID,

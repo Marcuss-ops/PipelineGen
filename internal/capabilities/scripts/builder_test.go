@@ -602,6 +602,38 @@ func TestBuildGenerateRequest_FinalPayloadEnablesNLPAndVeloxRender(t *testing.T)
 	}
 }
 
+func TestBuildGenerateRequest_ConnectsOutputDriveFolderToRender(t *testing.T) {
+	const raw = `{
+		"version": 2,
+		"items": [{
+			"title": "Mike Tyson overlay",
+			"language": "it",
+			"source": {"type": "text", "topic": "Mike Tyson"},
+			"output": {
+				"drive_folder_id": "drive-root",
+				"render": {"enabled": true}
+			}
+		}]
+	}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "drive-routing-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DriveFolderID != "drive-root" {
+		t.Fatalf("request drive folder = %q, want drive-root", got.DriveFolderID)
+	}
+	if got.Render.DriveFolderID != "drive-root" {
+		t.Fatalf("render drive folder = %q, want drive-root", got.Render.DriveFolderID)
+	}
+	if got.Render.DriveSubfolderName != "Mike Tyson overlay" {
+		t.Fatalf("render subfolder = %q, want title-derived folder", got.Render.DriveSubfolderName)
+	}
+}
+
 func TestBuildGenerateRequest_OneSourceFansOutLanguages(t *testing.T) {
 	const raw = `{
 		"version": 2,

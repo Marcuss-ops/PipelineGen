@@ -118,17 +118,16 @@ func (w *Worker) completeRendered(
 		resultJob.ID = j.ID
 	}
 
+	// Fail closed: the publication boundary is mandatory at execution time. A
+	// render that produced certified bytes but was never published or committed
+	// is NOT a completed clip — the deliverable of this job type is the derived
+	// media asset plus its Drive location. Returning success here (the historical
+	// behaviour) reported a SUCCEEDED clip with no artifact for any composition
+	// root that exposed the job without WithRenderPublisher.
 	if w.publisher == nil {
-		emit("clip.render.completed", "Chronon render completed without publication", map[string]any{
-			"output_path":  outcome.OutputPath,
-			"size_bytes":   outcome.SizeBytes,
-			"duration_sec": outcome.DurationSec,
-			"ffmpeg_ms":    outcome.FFmpegMS,
-			"backend":      outcome.Backend,
-		})
-		progress(100, "clip.render completed")
-		finalizeMetrics(outcome.Metrics, time.Since(jobStart).Milliseconds(), outcome.DurationSec)
-		return renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, nil), nil
+		return nil, fmt.Errorf(
+			"%w: render_job_id=%s source_asset_id=%s output_path=%s size_bytes=%d",
+			ErrRenderPublisherNotWired, resultJob.ID, req.SourceAssetID, outcome.OutputPath, outcome.SizeBytes)
 	}
 
 	uploadSlotStart := time.Now()

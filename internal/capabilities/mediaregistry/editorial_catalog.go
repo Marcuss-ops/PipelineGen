@@ -34,6 +34,15 @@ var editorialAudioAssets = []EditorialAudioAsset{
 	{Alias: "whop4", DriveFileID: "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L", Name: "Whop 4", Filename: "whop4.mp3", Family: "transition", Subtype: "whop", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whop"}, Tags: []string{"whop4", "whop", "transition"}},
 	{Alias: "whop5", DriveFileID: "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY", Name: "Whop 5", Filename: "whop5.mp3", Family: "transition", Subtype: "whop", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whop"}, Tags: []string{"whop5", "whop", "transition"}},
 	{Alias: "whop6", DriveFileID: "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK", Name: "Whop 6", Filename: "whop6.mp3", Family: "transition", Subtype: "whop", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whop"}, Tags: []string{"whop6", "whop", "transition"}},
+	// whoosh1..whoosh3 are the BOUND members of the whoosh family. Binding
+	// them here is what makes the `random_whoosh` directive resolvable: the
+	// resolver expands the directive to a family alias, the alias maps to this
+	// Drive identity, and the media registry holds the asset under that id.
+	// whoosh4..whoosh9 have no recorded Drive identity and stay compatibility
+	// vocabulary only (see kernel/script/builtin_audio_aliases.go).
+	{Alias: "whoosh1", DriveFileID: "1T7TJuqrwtvR3se1nlvY2k19lA5zAOODs", Name: "Whoosh 1", Filename: "whoosh1.mp3", Family: "transition", Subtype: "whoosh", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whoosh"}, Tags: []string{"whoosh1", "whoosh", "transition"}},
+	{Alias: "whoosh2", DriveFileID: "1NQyz3d5JPcLrA6NtM2TMIKdmlTKqepNg", Name: "Whoosh 2", Filename: "whoosh2.mp3", Family: "transition", Subtype: "whoosh", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whoosh"}, Tags: []string{"whoosh2", "whoosh", "transition"}},
+	{Alias: "whoosh3", DriveFileID: "1rNnmb3if98M3aSpj2O9EtuvSNJ4AdSen", Name: "Whoosh 3", Filename: "whoosh3.mp3", Family: "transition", Subtype: "whoosh", Mood: "neutral", Energy: "medium", BestFor: []string{"transition", "motion", "whoosh"}, Tags: []string{"whoosh3", "whoosh", "transition"}},
 }
 
 // EditorialAudioAssets returns a defensive copy. Callers may adapt metadata
@@ -44,6 +53,19 @@ func EditorialAudioAssets() []EditorialAudioAsset {
 		out[i] = asset
 		out[i].BestFor = append([]string(nil), asset.BestFor...)
 		out[i].Tags = append([]string(nil), asset.Tags...)
+	}
+	return out
+}
+
+// EditorialTransitionAliases returns the canonical short transition-effect
+// aliases (subtype whop and whoosh) in declaration order. It is the single
+// definition of "which editorial SFX a manifest may select as a transition".
+func EditorialTransitionAliases() []string {
+	out := make([]string, 0, len(editorialAudioAssets))
+	for _, asset := range editorialAudioAssets {
+		if asset.Family == "transition" {
+			out = append(out, asset.Alias)
+		}
 	}
 	return out
 }

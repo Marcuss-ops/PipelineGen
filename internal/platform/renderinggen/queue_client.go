@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -185,23 +184,25 @@ func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
 	return 0
 }
 
-// ClipRenderQueue is the minimal public queue seam used by clip rendering.
-type ClipRenderQueue interface {
-	Submit(context.Context, scriptgen.RenderQueueJob) error
-	Get(context.Context, string) (scriptgen.RenderQueueJob, error)
-	Retry(context.Context, string) error
-}
+// The queue seam for clip rendering is the CANONICAL capability port
+// (scriptgen.RenderQueueClient, with scriptgen.RenderQueueWaiter and
+// scriptgen.RenderQueueRetrier as its optional capabilities). This file used to
+// declare a second, narrower port (ClipRenderQueue: Submit + Get + Retry) for
+// the same remote service — one fact with two owners, so "what the queue can
+// do" had two answers that could drift, and the retry-recovery rule had a third
+// copy at each call site. The port is owned by the capability that consumes it;
+// this package only implements it (*Client satisfies all three).
 
 // ClipRenderExecutor submits one complete clip segment to RenderingGen. The
 // RenderingGen worker is the sole clip-rendering boundary; it lowers the
 // semantic plan and executes it with Chronon. This client never invokes a
 // local renderer and fails closed on missing or non-Chronon artifacts.
 type ClipRenderExecutor struct {
-	queue    ClipRenderQueue
+	queue    scriptgen.RenderQueueClient
 	interval time.Duration
 }
 
-func NewClipRenderExecutor(queue ClipRenderQueue) (*ClipRenderExecutor, error) {
+func NewClipRenderExecutor(queue scriptgen.RenderQueueClient) (*ClipRenderExecutor, error) {
 	if queue == nil {
 		return nil, fmt.Errorf("renderinggen clip executor: queue client is required")
 	}
@@ -259,14 +260,12 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		return fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
 	}
 	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrJobExists) {
-		if existing, getErr := e.queue.Get(ctx, plan.RunID); getErr == nil && existing.State == string(queueclient.StateFailed) {
-			// A failed re-run of the same clip must not leave the job stuck in
-			// FAILED while the caller believes a render is underway: surface a
-			// retry failure instead of degrading into the generic
-			// "completed without certified artifact" wait timeout.
-			if retryErr := e.queue.Retry(ctx, plan.RunID); retryErr != nil {
-				return fmt.Errorf("renderinggen clip executor: retry failed for %s: %w", plan.RunID, retryErr)
-			}
+		// A failed re-run of the same clip must not leave the job stuck in
+		// FAILED while the caller believes a render is underway. The rule is
+		// owned by the capability (scriptgen.RearmFailedRenderJob), so the
+		// overlay enqueuer and this executor cannot answer it differently.
+		if rearmErr := scriptgen.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
+			return fmt.Errorf("renderinggen clip executor: %w", rearmErr)
 		}
 	}
 	return nil
@@ -295,7 +294,10 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
-	completed, err := waitClipQueue(ctx, e.queue, plan.RunID, e.interval)
+	// The wait is the canonical capability wait (scriptgen.
+	// WaitRenderQueueTerminal), not a local copy: the settle continuation and
+	// the overlay enqueue path must agree on what "terminal" means.
+	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, e.queue, plan.RunID, e.interval)
 	if err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)
 	}
@@ -548,46 +550,14 @@ func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	return out
 }
 
-func waitClipQueue(ctx context.Context, q ClipRenderQueue, id string, interval time.Duration) (scriptgen.RenderQueueJob, error) {
-	// Event-driven completion: the queue's job-status long poll returns the
-	// instant the job reaches a terminal state, removing the tail latency of
-	// the polling cadence. Queues without the wait capability (older servers,
-	// test doubles) keep the polling loop below.
-	if waiter, ok := q.(scriptgen.RenderQueueWaiter); ok {
-		return waiter.WaitTerminal(ctx, id)
-	}
-	if interval <= 0 {
-		interval = 500 * time.Millisecond
-	}
-	if interval > 500*time.Millisecond {
-		interval = 500 * time.Millisecond
-	}
-	for {
-		job, err := q.Get(ctx, id)
-		if err != nil {
-			return scriptgen.RenderQueueJob{}, err
-		}
-		if job.State == string(queueclient.StateCompleted) || job.State == string(queueclient.StateFailed) {
-			return job, nil
-		}
-		// Adaptive poll with jitter: reduces pure dead time (old 2s ticker)
-		// without busy-looping. The upstream PipelineGen slot stays held
-		// while awaiting the downstream RenderingGen job (documented
-		// synchronous barrier) — callers should consider event-driven
-		// completion to free the slot on long renders.
-		jitter := time.Duration(rand.Int63n(int64(interval) / 5))
-		wait := interval + jitter - interval/10
-		if wait < 100*time.Millisecond {
-			wait = 100 * time.Millisecond
-		}
-		select {
-		case <-ctx.Done():
-			return scriptgen.RenderQueueJob{}, ctx.Err()
-		case <-time.After(wait):
-		}
-	}
-}
+// waitClipQueue used to live here: a second implementation of "wait for the
+// remote render to reach a terminal state", with its own jitter, its own
+// interval clamps and no wait metrics. It is DELETED — the canonical wait is
+// scriptgen.WaitRenderQueueTerminal, called from ClipRenderExecutor.Settle.
 
-var _ scriptgen.RenderQueueClient = (*Client)(nil)
-var _ scriptgen.RenderQueueWaiter = (*Client)(nil)
-var _ cliprender.RenderExecutor = (*ClipRenderExecutor)(nil)
+var (
+	_ scriptgen.RenderQueueClient  = (*Client)(nil)
+	_ scriptgen.RenderQueueWaiter  = (*Client)(nil)
+	_ scriptgen.RenderQueueRetrier = (*Client)(nil)
+	_ cliprender.RenderExecutor    = (*ClipRenderExecutor)(nil)
+)

@@ -2,9 +2,10 @@ package sqlite
 
 import (
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ensureMigrationLedger creates the canonical ledger and expands the legacy
@@ -99,15 +100,13 @@ func ensureMigrationLedgerTx(db ledgerQueryable) error {
 	return nil
 }
 
+// isSHA256Hex is the digest-shape gate for the ledger's recorded checksums.
+// The rule is owned by kernel/digest (the digest SSOT); the local
+// sha256HexLength constant it used to carry was a second declaration of the
+// same length, free to drift from digest.SHA256HexLength.
 func isSHA256Hex(value string) bool {
-	if len(value) != sha256HexLength {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
+	return digest.IsSHA256(value)
 }
-
-const sha256HexLength = 64
 
 type ledgerQueryable interface {
 	Exec(query string, args ...any) (sql.Result, error)

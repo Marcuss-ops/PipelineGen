@@ -52,24 +52,24 @@ func TestParseRenderPhase(t *testing.T) {
 		}
 	})
 	t.Run("empty value is submit", func(t *testing.T) {
-		phase, err := ParseRenderPhase(map[string]any{payloadKeyRenderPhase: "  "})
+		phase, err := ParseRenderPhase(map[string]any{PayloadKeyRenderPhase: "  "})
 		if err != nil || phase != RenderPhaseSubmit {
 			t.Fatalf("phase=%q err=%v, want submit/nil", phase, err)
 		}
 	})
 	t.Run("settle parses", func(t *testing.T) {
-		phase, err := ParseRenderPhase(map[string]any{payloadKeyRenderPhase: "settle"})
+		phase, err := ParseRenderPhase(map[string]any{PayloadKeyRenderPhase: "settle"})
 		if err != nil || phase != RenderPhaseSettle {
 			t.Fatalf("phase=%q err=%v, want settle/nil", phase, err)
 		}
 	})
 	t.Run("unknown value fails closed", func(t *testing.T) {
-		if _, err := ParseRenderPhase(map[string]any{payloadKeyRenderPhase: "settle-now"}); err == nil {
+		if _, err := ParseRenderPhase(map[string]any{PayloadKeyRenderPhase: "settle-now"}); err == nil {
 			t.Fatal("an unknown phase must be rejected, not defaulted to submit")
 		}
 	})
 	t.Run("case is significant", func(t *testing.T) {
-		if _, err := ParseRenderPhase(map[string]any{payloadKeyRenderPhase: "Settle"}); err == nil {
+		if _, err := ParseRenderPhase(map[string]any{PayloadKeyRenderPhase: "Settle"}); err == nil {
 			t.Fatal("the phase vocabulary is lowercase; uppercase must not be accepted silently")
 		}
 	})
@@ -113,27 +113,34 @@ func TestContinuationRefValidate(t *testing.T) {
 	}
 }
 
-// TestRemoteRenderStateTerminal pins the state vocabulary and its terminal set.
-func TestRemoteRenderStateTerminal(t *testing.T) {
-	terminal := []RemoteRenderState{RemoteRenderCompleted, RemoteRenderFailed}
-	nonTerminal := []RemoteRenderState{RemoteRenderPreparing, RemoteRenderSubmitted, RemoteRenderRendering, RemoteRenderArtifactReady, RemoteRenderPublishing}
-	for _, s := range append(append([]RemoteRenderState{}, terminal...), nonTerminal...) {
-		if !s.IsValid() {
-			t.Errorf("%q must be a canonical state", s)
+// TestRemoteRenderStateIsTheSingleDrivenState pins the submission-state
+// contract after the dead vocabulary was removed: the submit phase writes
+// exactly one state, and validation accepts exactly that one, so a payload
+// claiming an intermediate state NO code path produces fails closed.
+//
+// The removed values (PREPARING, REMOTE_RENDERING, ARTIFACT_READY, PUBLISHING,
+// COMPLETED, FAILED) were never written by the runtime and never read by any
+// caller; this test is what stops them from creeping back as an unused enum.
+func TestRemoteRenderStateIsTheSingleDrivenState(t *testing.T) {
+	if !RemoteRenderSubmitted.IsValid() {
+		t.Errorf("%q must be a canonical state", RemoteRenderSubmitted)
+	}
+	for _, s := range []RemoteRenderState{
+		"PREPARING", "REMOTE_RENDERING", "ARTIFACT_READY", "PUBLISHING", "COMPLETED", "FAILED", "", "NOPE",
+	} {
+		if s.IsValid() {
+			t.Errorf("%q must not validate: no code path writes or reads it", s)
 		}
 	}
-	for _, s := range terminal {
-		if !s.IsTerminal() {
-			t.Errorf("%q must be terminal", s)
-		}
+	// The submit phase is the only writer, and the value it writes must be the
+	// one validation accepts.
+	sub := Submission{RenderJobID: "clip-1", PlanSHA256: strings.Repeat("a", 64), State: RemoteRenderSubmitted, Attempt: 1}
+	if err := sub.Validate(); err != nil {
+		t.Fatalf("the state the submit phase writes must validate: %v", err)
 	}
-	for _, s := range nonTerminal {
-		if s.IsTerminal() {
-			t.Errorf("%q must NOT be terminal", s)
-		}
-	}
-	if RemoteRenderState("NOPE").IsValid() {
-		t.Error("unknown state must not validate")
+	sub.State = "REMOTE_RENDERING"
+	if err := sub.Validate(); err == nil {
+		t.Fatal("a submission claiming an undriven state must fail closed")
 	}
 }
 

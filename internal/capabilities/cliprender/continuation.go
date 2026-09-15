@@ -9,14 +9,21 @@ import (
 
 // ── Async submission/completion boundary (Wave B) ──────────────────────
 //
-// Today clip.render is ONE blocking handler: prepare → seal → submit to
-// RenderingGen → WAIT for the render → download → probe → publish. The Master
-// worker slot is held for the whole remote render, which is exactly where the
-// clip.render throughput collapses: with N Master slots, N slow renders pin
-// every slot even though the local process is doing nothing but waiting on a
-// remote GPU.
+// LIVE mode (2026-09-13 onward): clip.render is TWO phases of one job type.
+// The submit phase prepares, seals and hands the render to RenderingGen, then
+// releases its Master slot; the settle phase is a continuation job that waits
+// for the remote render, then probes, publishes and commits. The runtime mode
+// is decided in exactly one place — Worker.Handle dispatches on the payload
+// phase — and the composition root enables it by attaching BOTH durable
+// continuation ports (WithContinuationStore + WithContinuationEnqueuer).
 //
-// Wave B splits that single call at the point the plan is SEALED:
+// Historically (pre-Wave-B) clip.render was ONE blocking handler: prepare →
+// seal → submit to RenderingGen → WAIT for the render → download → probe →
+// publish. The Master worker slot was held for the whole remote render, which
+// is where the clip.render throughput collapsed: with N Master slots, N slow
+// renders pinned every slot even though the local process was doing nothing
+// but waiting on a remote GPU. Wave B split that single call at the point the
+// plan is SEALED, which is what the phases below describe:
 //
 //	clip.render (phase=submit)
 //	    prepare + compile        (unchanged, local work)
@@ -37,7 +44,7 @@ import (
 // treats the resubmission as idempotent (409 → ErrJobExists, already handled
 // by the executor).
 //
-// The phase travels in the job payload under payloadKeyRenderPhase, so the
+// The phase travels in the job payload under PayloadKeyRenderPhase, so the
 // continuation is the SAME canonical job type (no new ownership registration:
 // architecture/ownership/jobs.yaml still declares exactly one clip.render job
 // with one RegisterHandler binding). A payload without the key is the submit
@@ -61,9 +68,17 @@ import (
 //     or drifted document is detected rather than silently acted on;
 //   - a redelivered continuation addresses the same bytes (idempotent).
 
-// payloadKeyRenderPhase is the job-payload key carrying the continuation
+// PayloadKeyRenderPhase is the job-payload key carrying the continuation
 // phase. Absent → RenderPhaseSubmit (back-compatible).
-const payloadKeyRenderPhase = "render_phase"
+//
+// It is EXPORTED because the composition root needs it to build the worker-pool
+// scope (kernel/job.PayloadMatch / PayloadNotMatch) that routes settle
+// continuations to their dedicated pool. The key is a wire fact owned HERE, so
+// the routing decision derives from this constant rather than re-declaring the
+// literal: a second declaration would silently stop matching — voiding the
+// dedicated-pool guardrail with no error and no log — the moment the key is
+// renamed in this file.
+const PayloadKeyRenderPhase = "render_phase"
 
 // RenderPhase is the continuation phase of a clip.render job.
 type RenderPhase string
@@ -90,7 +105,7 @@ func ParseRenderPhase(payload map[string]any) (RenderPhase, error) {
 	if payload == nil {
 		return RenderPhaseSubmit, nil
 	}
-	raw, ok := payload[payloadKeyRenderPhase]
+	raw, ok := payload[PayloadKeyRenderPhase]
 	if !ok {
 		return RenderPhaseSubmit, nil
 	}
@@ -101,49 +116,48 @@ func ParseRenderPhase(payload map[string]any) (RenderPhase, error) {
 	phase := RenderPhase(s)
 	if !phase.IsValid() {
 		return "", fmt.Errorf("%w: unknown %s=%q (want %q or %q)",
-			ErrInvalidJobPayload, payloadKeyRenderPhase, s, RenderPhaseSubmit, RenderPhaseSettle)
+			ErrInvalidJobPayload, PayloadKeyRenderPhase, s, RenderPhaseSubmit, RenderPhaseSettle)
 	}
 	return phase, nil
 }
 
-// RemoteRenderState is the explicit state of a clip whose render is owned by
-// RenderingGen. It replaces the implicit "the handler is blocked, therefore a
-// render is in flight" state, so an operator (or a restart) can always tell
-// where a submission is:
+// RemoteRenderState is the explicit state a submission records when the remote
+// render is handed to RenderingGen.
 //
-//	PREPARING        local preparation/sealing is running (no remote job yet)
-//	SUBMITTED        the remote job was accepted; the local slot is released
-//	REMOTE_RENDERING the settle phase is waiting on RenderingGen
-//	ARTIFACT_READY   the certified artifact is on local disk
-//	PUBLISHING       the artifact is being certified/published
-//	COMPLETED        terminal success
-//	FAILED           terminal failure (retryable via the broker)
+// There is exactly ONE state, and that is a fact about the boundary rather than
+// an unfinished state machine: the submit phase is the only writer (SUBMITTED —
+// the remote job was accepted and the local worker slot is released), and the
+// settle continuation resumes from the immutable, content-addressed
+// ResumeDocument instead of from a mutable state row.
+//
+// The former PREPARING / REMOTE_RENDERING / ARTIFACT_READY / PUBLISHING /
+// COMPLETED / FAILED vocabulary was never written by any code path and never
+// read by any caller. It was removed rather than kept as documentation of
+// behavior that does not exist: no durable sink for intermediate states exists
+// by design (the resume document is addressed by its digest, and the broker
+// writes the job result once, at the end), so a state machine nothing can
+// advance is a lie about the runtime an operator would have to unlearn. When a
+// real need for resumable intermediate state appears, it comes with the store
+// that can hold it — not with constants.
+//
+// The type and its validation stay because they ARE load-bearing: the value
+// travels on the continuation payload and the job result, and Validate rejects
+// anything that is not a canonical state, so a drifted or hand-edited payload
+// fails closed instead of being acted on.
 type RemoteRenderState string
 
 const (
-	RemoteRenderPreparing     RemoteRenderState = "PREPARING"
-	RemoteRenderSubmitted     RemoteRenderState = "SUBMITTED"
-	RemoteRenderRendering     RemoteRenderState = "REMOTE_RENDERING"
-	RemoteRenderArtifactReady RemoteRenderState = "ARTIFACT_READY"
-	RemoteRenderPublishing    RemoteRenderState = "PUBLISHING"
-	RemoteRenderCompleted     RemoteRenderState = "COMPLETED"
-	RemoteRenderFailed        RemoteRenderState = "FAILED"
+	// RemoteRenderSubmitted is the state the submit phase records: RenderingGen
+	// accepted the remote job and the local worker slot is released.
+	RemoteRenderSubmitted RemoteRenderState = "SUBMITTED"
 )
 
-// IsValid reports whether s is one of the canonical states.
+// IsValid reports whether s is the canonical submission state.
+//
+// The narrowness is the point: it is what makes a payload claiming an
+// intermediate state that nothing produces fail closed instead of validating.
 func (s RemoteRenderState) IsValid() bool {
-	switch s {
-	case RemoteRenderPreparing, RemoteRenderSubmitted, RemoteRenderRendering,
-		RemoteRenderArtifactReady, RemoteRenderPublishing, RemoteRenderCompleted,
-		RemoteRenderFailed:
-		return true
-	}
-	return false
-}
-
-// IsTerminal reports whether no further local action follows.
-func (s RemoteRenderState) IsTerminal() bool {
-	return s == RemoteRenderCompleted || s == RemoteRenderFailed
+	return s == RemoteRenderSubmitted
 }
 
 // ParentStateWaitingChildren is the application-level parent_state the submit

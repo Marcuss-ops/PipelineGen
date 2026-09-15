@@ -50,9 +50,14 @@ func (w *Worker) WithContinuationEnqueuer(e ContinuationEnqueuer) *Worker {
 	return w
 }
 
-// WithRenderPublisher attaches the canonical Drive publication + SQLite
-// commit boundary. Production composition must wire it before exposing the
-// route; tests may omit it when exercising preparation only.
+// WithRenderPublisher attaches the canonical Drive publication + asset commit
+// boundary. Production composition must wire it before exposing the route;
+// tests may omit it when exercising preparation only.
+//
+// Omitting it is NOT a degraded success: a completion that reaches the
+// publication boundary without it fails closed with ErrRenderPublisherNotWired
+// (see worker_completion.go). Preparation-only and submit-phase tests never
+// reach that boundary, which is why they can leave it unattached.
 func (w *Worker) WithRenderPublisher(p RenderPublisher) *Worker {
 	if w != nil {
 		w.publisher = p

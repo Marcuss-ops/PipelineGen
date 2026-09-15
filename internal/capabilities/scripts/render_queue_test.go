@@ -108,14 +108,17 @@ func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
 }
 
 // eventDrivenRenderClient implements RenderQueueWaiter: it reports a terminal
-// job immediately, so the enqueuer must complete without any polling sleep.
+// job immediately, so the enqueuer must complete without any polling sleep and
+// WITHOUT touching Get.
 type eventDrivenRenderClient struct {
 	waits int
+	gets  int
 	job   RenderQueueJob
 }
 
 func (c *eventDrivenRenderClient) Submit(_ context.Context, job RenderQueueJob) error { return nil }
 func (c *eventDrivenRenderClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	c.gets++
 	return RenderQueueJob{ID: id, State: "queued"}, nil
 }
 func (c *eventDrivenRenderClient) WaitTerminal(_ context.Context, _ string) (RenderQueueJob, error) {
@@ -147,6 +150,9 @@ func TestQueueRenderEnqueuerUsesEventDrivenWait(t *testing.T) {
 	if client.waits != 1 {
 		t.Fatalf("WaitTerminal calls = %d, want 1", client.waits)
 	}
+	if client.gets != 0 {
+		t.Fatalf("event-driven wait must not probe the job with Get: gets=%d", client.gets)
+	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("event-driven enqueue took %v; polling cadence leaked into the path", elapsed)
 	}
@@ -177,6 +183,141 @@ func TestQueueRenderEnqueuerEventDrivenPropagatesFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "chronon exploded") {
 		t.Fatalf("failure reason lost: %v", err)
 	}
+}
+
+// TestRenderQueueStateVocabulary pins both halves of the queue's state
+// vocabulary: the literals the RenderingGen queue actually sends, and the
+// classifier that reads them. The literals are asserted directly because a
+// constant holding a value the queue never sends is exactly the drift the raw
+// literals used to hide — every decision in render_queue.go would stop matching
+// with no error and no log.
+func TestRenderQueueStateVocabulary(t *testing.T) {
+	if RenderQueueStateCompleted != "completed" || RenderQueueStateFailed != "failed" || RenderQueueStateCancelled != "cancelled" {
+		t.Fatalf("wire vocabulary drifted: completed=%q failed=%q cancelled=%q",
+			RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled)
+	}
+	for _, state := range []string{RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled} {
+		if !terminalRenderState(state) {
+			t.Fatalf("terminalRenderState(%q) = false, want true", state)
+		}
+	}
+	for _, state := range []string{"", "queued", "running", "rendered"} {
+		if terminalRenderState(state) {
+			t.Fatalf("terminalRenderState(%q) = true, want false", state)
+		}
+	}
+}
+
+// TestTerminalRenderResultFailsClosedOnUnknownState pins the classifier that
+// decides whether a terminal job is the caller's success. An unrecognised
+// terminal state must NEVER come back as a completed render: the caller's next
+// step is to fetch the certified artifact, so a state this build does not know
+// has to stop it rather than send it looking for bytes no one produced.
+func TestTerminalRenderResultFailsClosedOnUnknownState(t *testing.T) {
+	metrics := RenderCompletionMetrics{}
+	if _, _, err := terminalRenderResult(RenderQueueJob{ID: "job-1", State: RenderQueueStateCompleted}, "job-1", metrics); err != nil {
+		t.Fatalf("completed must be a success, got %v", err)
+	}
+	if _, _, err := terminalRenderResult(RenderQueueJob{ID: "job-1", State: "failed", FailReason: "chronon exploded"}, "job-1", metrics); err == nil {
+		t.Fatal("failed must surface an error")
+	}
+	if _, _, err := terminalRenderResult(RenderQueueJob{ID: "job-1", State: "canceled"}, "job-1", metrics); err == nil {
+		t.Fatal("an unrecognised terminal state must fail closed, not report a completed render")
+	}
+}
+
+// retryingRenderQueueClient is fakeRenderQueueClient PLUS the optional
+// RenderQueueRetrier capability, so a test can drive the "the job I collided
+// with is already FAILED" recovery path that a plain replay skips.
+type retryingRenderQueueClient struct {
+	fakeRenderQueueClient
+	retries    int
+	retryErr   error
+	retriedJob *RenderQueueJob
+}
+
+func newRetryingRenderQueueClient(job RenderQueueJob) *retryingRenderQueueClient {
+	return &retryingRenderQueueClient{
+		fakeRenderQueueClient: fakeRenderQueueClient{jobs: map[string]RenderQueueJob{job.ID: job}},
+	}
+}
+
+func (c *retryingRenderQueueClient) Retry(_ context.Context, id string) error {
+	c.retries++
+	if c.retryErr != nil {
+		return c.retryErr
+	}
+	if c.retriedJob != nil {
+		job := *c.retriedJob
+		job.ID = id
+		c.jobs[id] = job
+	}
+	return nil
+}
+
+// TestQueueRenderEnqueuerFailedJobRecovery pins the ONE decision this recovery
+// path exists for: a submission that collides with an existing job in FAILED
+// state must RE-ARM it, and a re-arm that cannot happen must fail closed.
+//
+// Swallowing the retry error (the historical `_ = retrier.Retry(...)`, whose
+// capability was an anonymous interface at the call site) let the enqueuer walk
+// into waitForCompletion on a job that was already terminally failed: the caller
+// paid the whole wait and then read an unexplained render failure instead of
+// "the queue could not be re-armed".
+func TestQueueRenderEnqueuerFailedJobRecovery(t *testing.T) {
+	plan := capoverlay.GoldenOverlayPlanV1()
+	failedJob := RenderQueueJob{ID: plan.PlanID, State: "failed", FailReason: "chronon exploded"}
+
+	t.Run("a re-arm that fails is surfaced", func(t *testing.T) {
+		client := newRetryingRenderQueueClient(failedJob)
+		client.retryErr = errors.New("queue refused the reset")
+		enqueuer, err := NewQueueRenderEnqueuer(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err == nil {
+			t.Fatal("expected the failed re-arm to propagate")
+		} else if !strings.Contains(err.Error(), "retry failed") {
+			t.Fatalf("error must name the failed re-arm, got %v", err)
+		}
+		if client.retries != 1 {
+			t.Fatalf("retries = %d, want 1", client.retries)
+		}
+	})
+
+	t.Run("a client that cannot re-arm fails closed", func(t *testing.T) {
+		client := newFakeRenderQueueClient()
+		client.jobs[failedJob.ID] = failedJob
+		enqueuer, err := NewQueueRenderEnqueuer(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err == nil {
+			t.Fatal("expected a client without the retrier capability to fail closed")
+		} else if !strings.Contains(err.Error(), "cannot retry it") {
+			t.Fatalf("error must name the missing retrier capability, got %v", err)
+		}
+	})
+
+	t.Run("a re-armed job is awaited and returned", func(t *testing.T) {
+		completed := RenderQueueJob{State: "completed", Artifact: &RenderArtifact{RenderMS: 800, EncodeMS: 200}}
+		client := newRetryingRenderQueueClient(failedJob)
+		client.retriedJob = &completed
+		enqueuer, err := NewQueueRenderEnqueuer(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+		if err != nil {
+			t.Fatalf("a re-armed job must be awaited, got %v", err)
+		}
+		if client.retries != 1 {
+			t.Fatalf("retries = %d, want 1", client.retries)
+		}
+		if ref.JobID != plan.PlanID {
+			t.Fatalf("job id = %q, want %q", ref.JobID, plan.PlanID)
+		}
+	})
 }
 
 func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {

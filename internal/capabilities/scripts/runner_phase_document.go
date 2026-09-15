@@ -35,10 +35,12 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 		"audio_mode":               "FINAL_AUDIO_COPY",
 		"audio_source":             "certified_final_audio",
 		"scenes":                   remoteClipTimingScenes(result),
+		"background_catalog":       remoteBackgroundCatalog(),
 		"background_music":         req.BackgroundMusic,
 		"background_music_catalog": remoteBackgroundMusicCatalog(),
 		"sound_effects":            req.SoundEffects,
 		"sound_effect_catalog":     remoteSoundEffectCatalog(),
+		"editing_assets_policy":    remoteEditingAssetsPolicy(),
 	}
 	if result != nil && result.FinalAudio != nil {
 		remote["final_audio"] = map[string]any{
@@ -74,6 +76,56 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 	return out
 }
 
+// remoteEditingAssetsPolicy projects the canonical editorial-asset selection
+// policy into the payload's late-bound assembly contract.
+//
+// The remote assembler is the component that legitimately selects an asset
+// when a job did not name one, so it is the right place for the policy to be
+// CONSUMABLE. Publishing it is purely additive: it changes no generated
+// selection and therefore no rendered output, unlike applying the policy
+// implicitly at request-build time.
+func remoteEditingAssetsPolicy() map[string]any {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	return map[string]any{
+		"backgrounds": map[string]any{
+			"pool": policy.Backgrounds.Pool,
+		},
+		"bgm": map[string]any{
+			"pool":                 policy.BGM.Pool,
+			"gain_db":              policy.BGM.GainDB,
+			"loop":                 policy.BGM.Loop,
+			"duck_under_voiceover": policy.BGM.DuckUnderVoiceover,
+			"duck_gain_db":         policy.BGM.DuckGainDB,
+		},
+		"sfx": map[string]any{
+			"transition_pool": policy.SFX.TransitionPool,
+			"gain_db":         policy.SFX.GainDB,
+		},
+	}
+}
+
+// remoteBackgroundCatalog is the stable alias-to-Drive mapping for the six
+// curated video background plates, exposed next to the BGM and SFX catalogs so
+// the remote assembler selects every editorial asset from the SAME registry
+// (mediaregistry). It is a projection of the registry, never a second catalog.
+func remoteBackgroundCatalog() map[string]map[string]string {
+	const driveBase = "https://drive.google.com/file/d/"
+	catalog := make(map[string]map[string]string)
+	for _, asset := range mediaregistry.EditorialBackgroundAssets() {
+		catalog[asset.ID] = map[string]string{
+			"asset_id":      asset.ID,
+			"filename":      asset.Filename,
+			"drive_file_id": asset.DriveFileID,
+			"sha256":        asset.SHA256,
+			"media_type":    asset.MediaType,
+			"role":          asset.Role,
+			"url":           "velox-drive://" + asset.DriveFileID,
+			"drive_link":    driveBase + asset.DriveFileID + "/view?usp=drive_link",
+		}
+	}
+	return catalog
+}
+
 func remoteBackgroundMusicCatalog() map[string]map[string]string {
 	out := make(map[string]map[string]string)
 	for _, asset := range mediaregistry.EditorialAudioAssets() {
@@ -86,14 +138,15 @@ func remoteBackgroundMusicCatalog() map[string]map[string]string {
 }
 
 // remoteSoundEffectCatalog is the stable alias-to-Drive mapping exposed in
-// the final payload. The remote assembler may select whop1..whop6 directly;
-// the generation job keeps the list empty unless an effect is explicitly
-// selected in the request.
+// the final payload. The remote assembler may select any canonical transition
+// effect directly (whop1..whop6 and the bound whoosh1..whoosh3); the generation
+// job keeps the list empty unless an effect is explicitly selected in the
+// request.
 func remoteSoundEffectCatalog() map[string]map[string]string {
 	const driveBase = "https://drive.google.com/file/d/"
 	catalog := make(map[string]map[string]string)
 	for _, asset := range mediaregistry.EditorialAudioAssets() {
-		if asset.Family != "transition" || asset.Subtype != "whop" {
+		if asset.Family != "transition" {
 			continue
 		}
 		catalog[asset.Alias] = map[string]string{

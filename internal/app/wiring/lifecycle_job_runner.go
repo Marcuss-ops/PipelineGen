@@ -25,15 +25,23 @@ type jobRunnerDeps struct {
 	log  *zap.Logger
 }
 
-// renderPhasePayloadKey is the payload key that carries the clip.render
-// continuation phase. The settle budget below is keyed on this value; it is the
-// SAME literal the capability writes (cliprender.payloadKeyRenderPhase is
-// private), pinned by TestBuildClipRenderSettleRunnerClaimsSettlePhaseOnly.
-const renderPhasePayloadKey = "render_phase"
-
-// settleRenderPhase is the value that marks a clip.render continuation: the job
-// that waits for the remote RenderingGen render and publishes the artifact.
-const settleRenderPhase = "settle"
+// clipRenderPhaseScope derives the payload scope that SPLITS the general pool
+// from the dedicated clip.render settle pool: the general pool excludes
+// render_phase=settle, the settle pool claims nothing else.
+//
+// ONE owner for the derivation — both pools build from this function, so they
+// cannot disagree about which phase they own. The key and the value are read
+// from the capability that WRITES the payload (cliprender.PayloadKeyRenderPhase
+// and cliprender.RenderPhaseSettle). A literal here would be a second
+// declaration of the same wire fact, and renaming the key in the capability
+// would then silently void the guardrail (every settle continuation claimed by
+// the general pool, no error, no log). Pinned by
+// TestClipRenderPhaseScopeMatchesCapabilityContract.
+func clipRenderPhaseScope() (job.PayloadMatch, job.PayloadNotMatch) {
+	match := job.PayloadMatch{cliprender.PayloadKeyRenderPhase: string(cliprender.RenderPhaseSettle)}
+	exclude := job.PayloadNotMatch{cliprender.PayloadKeyRenderPhase: string(cliprender.RenderPhaseSettle)}
+	return match, exclude
+}
 
 const (
 	jobRunnerPoolGeneral = "general"
@@ -196,7 +204,8 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		zap.Float64("poll_jitter_fraction", cfg.Backoff.JitterFraction),
 		zap.Int("poll_consecutive_empty_threshold", cfg.Backoff.ConsecutiveEmptyThreshold))
 	if settleWorkerBudget(deps.cfg) > 0 {
-		cfg.PayloadNotMatch = job.PayloadNotMatch{renderPhasePayloadKey: settleRenderPhase}
+		_, exclude := clipRenderPhaseScope()
+		cfg.PayloadNotMatch = exclude
 	}
 	return newJobRunnerPool(deps, jobRunnerPoolGeneral, cfg)
 }
@@ -216,11 +225,12 @@ func buildClipRenderSettleRunner(deps jobRunnerDeps) *appjobs.Runner {
 	cfg := jobRunnerBaseConfig(deps)
 	cfg.Workers = budget
 	cfg.JobTypes = []string{cliprender.TypeClipRender}
-	cfg.PayloadMatch = job.PayloadMatch{renderPhasePayloadKey: settleRenderPhase}
+	match, _ := clipRenderPhaseScope()
+	cfg.PayloadMatch = match
 	deps.log.Info("clip.render settle pool created",
 		zap.String("pool", jobRunnerPoolSettle),
 		zap.Int("workers", budget),
-		zap.String("phase", settleRenderPhase),
+		zap.String("phase", string(cliprender.RenderPhaseSettle)),
 		zap.String("excluded_from", jobRunnerPoolGeneral))
 	return newJobRunnerPool(deps, jobRunnerPoolSettle, cfg)
 }

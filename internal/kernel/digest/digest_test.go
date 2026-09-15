@@ -92,6 +92,34 @@ func TestIsSHA256(t *testing.T) {
 	}
 }
 
+func TestIsCanonicalSHA256(t *testing.T) {
+	if !IsCanonicalSHA256(goldenHello) {
+		t.Fatalf("IsCanonicalSHA256(%q) = false, want true", goldenHello)
+	}
+	// The one difference from IsSHA256: the same bytes spelled in uppercase are
+	// NOT the canonical wire form, so a boundary that gates on it must reject
+	// the uppercase spelling rather than let two identities travel.
+	upper := strings.ToUpper(goldenHello)
+	if !IsSHA256(upper) {
+		t.Fatalf("IsSHA256(%q) = false, want true (shape is case-insensitive)", upper)
+	}
+	if IsCanonicalSHA256(upper) {
+		t.Fatalf("IsCanonicalSHA256(%q) = true, want false", upper)
+	}
+	if IsCanonicalSHA256(goldenHello[:63]) {
+		t.Fatal("truncated digest must not be canonical")
+	}
+	if IsCanonicalSHA256("d41d8cd98f00b204e9800998ecf8427e") {
+		t.Fatal("32-char MD5 must not be canonical")
+	}
+	if IsCanonicalSHA256("zz" + goldenHello[2:]) {
+		t.Fatal("non-hex characters must not be canonical")
+	}
+	if IsCanonicalSHA256("") {
+		t.Fatal("empty string must not be canonical")
+	}
+}
+
 func TestValidateSHA256(t *testing.T) {
 	if err := ValidateSHA256(""); err != nil {
 		t.Fatalf("ValidateSHA256(empty) = %v, want nil", err)

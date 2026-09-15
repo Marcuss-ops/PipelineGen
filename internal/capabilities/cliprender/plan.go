@@ -11,7 +11,6 @@ package cliprender
 // path, or an unresolved block rejects the plan before any process starts.
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -583,10 +582,9 @@ func (p ClipRenderPlanV1) Validate() error {
 	return nil
 }
 
+// isSHA256Hex is the digest-shape gate for the sealed plan's resolved inputs.
+// The rule is owned by kernel/digest (the digest SSOT), which this contract and
+// the localization plan both consult instead of each carrying a copy.
 func isSHA256Hex(value string) bool {
-	if len(value) != digest.SHA256HexLength {
-		return false
-	}
-	decoded, err := hex.DecodeString(value)
-	return err == nil && strings.ToLower(value) == value && len(decoded) == digest.SHA256HexLength/2
+	return digest.IsCanonicalSHA256(value)
 }

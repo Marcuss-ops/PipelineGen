@@ -12,6 +12,27 @@
 // byte-identical across handler and worker (both Normalize before
 // hashing). Unknown fields are rejected before hashing (strict decode),
 // so the fingerprint is never taken over drifted input.
+//
+// ── Cache-bypass controls are NOT part of the identity ────────────────
+//
+// RenderRequest deliberately carries no force_refresh field, and the
+// generation-level force_refresh (kernel/script GenerationEnvelopeV2, which
+// bypasses the script idempotency store, the active key and the source/asset
+// refresh) governs GENERATION identity, not RENDER identity — the same rule
+// kernel/script/cache_key.go states for the script cache key ("ForceRefresh:
+// cache-bypass control, not identity").
+//
+// Two consequences follow, and both are intended:
+//
+//   - the same visual contract is ONE render however many times it is
+//     requested, which is exactly what makes this digest usable as a cache and
+//     batch-dedup key;
+//   - force_refresh does NOT bypass the render cache. An operator who wants
+//     different bytes must change what is rendered — a new request semantics is
+//     a new fingerprint by construction. A bypass flag inside the identity would
+//     make the identity depend on how the render was requested rather than on
+//     what it produces, and two jobs asking for the same bytes would then
+//     address two cache entries.
 package cliprender
 
 import (

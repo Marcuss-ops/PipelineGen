@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 )
@@ -78,6 +79,58 @@ func TestClipRenderPGAssetResolver_TitleWins(t *testing.T) {
 	}
 	if ref.Title != "t" {
 		t.Fatalf("Title = %q, want t", ref.Title)
+	}
+}
+
+// TestClipRenderPGAssetResolver_RejectsUncertifiedPlateBytes pins the plate
+// registration contract at the read boundary: a curated background plate must
+// be registered with the certified NORMALIZED bytes, so resolving it with any
+// other content hash fails closed instead of silently rendering the original
+// (audio-bearing) Drive file.
+func TestClipRenderPGAssetResolver_RejectsUncertifiedPlateBytes(t *testing.T) {
+	plate, ok := mediaregistry.LookupEditorialBackground("drive-background-03")
+	if !ok {
+		t.Fatal("drive-background-03 is missing from the registry")
+	}
+
+	// Certified bytes resolve.
+	okReader := &fakePGMediaReader{rec: &pgmedia.MediaAssetRecord{
+		ID: "drive-background-03", MediaType: "video", SHA256: plate.SHA256,
+	}}
+	resolver, err := NewClipRenderPGAssetResolver(okReader, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPGAssetResolver: %v", err)
+	}
+	if _, err := resolver.ResolveAsset(context.Background(), "drive-background-03"); err != nil {
+		t.Fatalf("certified plate bytes rejected: %v", err)
+	}
+
+	// Uncertified bytes (e.g. the original Drive file) fail closed.
+	badReader := &fakePGMediaReader{rec: &pgmedia.MediaAssetRecord{
+		ID: "drive-background-03", MediaType: "video", SHA256: "0badc0ffee",
+	}}
+	badResolver, err := NewClipRenderPGAssetResolver(badReader, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPGAssetResolver: %v", err)
+	}
+	if _, err := badResolver.ResolveAsset(context.Background(), "drive-background-03"); err == nil {
+		t.Fatal("uncertified plate bytes must fail closed")
+	}
+}
+
+// TestClipRenderPGAssetResolver_LeavesNonPlateAssetsAlone guards the blast
+// radius of the plate check: an ordinary asset (or the legacy classic1 plate,
+// which is deliberately outside the curated set) is not subject to it.
+func TestClipRenderPGAssetResolver_LeavesNonPlateAssetsAlone(t *testing.T) {
+	reader := &fakePGMediaReader{rec: &pgmedia.MediaAssetRecord{
+		ID: "classic1", MediaType: "video", SHA256: "legacy-hash",
+	}}
+	resolver, err := NewClipRenderPGAssetResolver(reader, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPGAssetResolver: %v", err)
+	}
+	if _, err := resolver.ResolveAsset(context.Background(), "classic1"); err != nil {
+		t.Fatalf("non-plate asset rejected: %v", err)
 	}
 }
 

@@ -1,8 +1,10 @@
 package wiring
 
 import (
+	"fmt"
 	"testing"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -28,6 +30,56 @@ func TestSettleWorkerBudget(t *testing.T) {
 				t.Fatalf("settleWorkerBudget = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestClipRenderPhaseScopeMatchesCapabilityContract pins the pool split against
+// the capability-owned wire contract. This scope is what routes a settle
+// continuation to the dedicated pool AND keeps it out of the general pool: if
+// it stopped matching the key/value cliprender actually writes, every settle job
+// would silently fall back into the general pool — no error, no log, guardrail
+// gone.
+//
+// The probe payload is built from the CAPABILITY's contract
+// (cliprender.PayloadKeyRenderPhase + ParseRenderPhase) rather than restating
+// the literals, so a reintroduced local literal fails here.
+func TestClipRenderPhaseScopeMatchesCapabilityContract(t *testing.T) {
+	match, exclude := clipRenderPhaseScope()
+	if len(match) != 1 || len(exclude) != 1 {
+		t.Fatalf("scope must name exactly one phase key: match=%v exclude=%v", match, exclude)
+	}
+
+	settlePayload := map[string]any{cliprender.PayloadKeyRenderPhase: string(cliprender.RenderPhaseSettle)}
+	phase, err := cliprender.ParseRenderPhase(settlePayload)
+	if err != nil {
+		t.Fatalf("capability must parse its own settle payload: %v", err)
+	}
+	if phase != cliprender.RenderPhaseSettle {
+		t.Fatalf("ParseRenderPhase = %q, want %q", phase, cliprender.RenderPhaseSettle)
+	}
+	for _, scope := range []map[string]string{match, exclude} {
+		for k, v := range scope {
+			raw, ok := settlePayload[k]
+			if !ok {
+				t.Fatalf("scope key %q is not the key the capability writes (%v)", k, settlePayload)
+			}
+			if fmt.Sprintf("%v", raw) != v {
+				t.Fatalf("scope value %q for key %q does not match the capability's %v", v, k, raw)
+			}
+		}
+	}
+
+	// The submit phase carries NO render_phase (absent key = submit), so the
+	// exclusion must not key on anything a submit payload carries — otherwise the
+	// general pool would refuse the jobs it is the only owner of.
+	submitPayload := map[string]any{}
+	if _, err := cliprender.ParseRenderPhase(submitPayload); err != nil {
+		t.Fatalf("an absent phase must be the submit phase: %v", err)
+	}
+	for k := range exclude {
+		if _, ok := submitPayload[k]; ok {
+			t.Fatalf("the exclusion must not key on anything a submit payload carries (%q)", k)
+		}
 	}
 }
 

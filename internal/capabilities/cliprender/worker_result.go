@@ -189,10 +189,17 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"drive_link":    published.DriveLink,
 			"drive_pending": published.DrivePending,
 			"publication_status": func() string {
-				if published.DrivePending {
+				switch {
+				case published.Reused:
+					// A deterministic cache hit: another render published this
+					// asset and this job reused its certified locator, so it has
+					// no delivery outcome of its own to report.
+					return "REUSED"
+				case published.DrivePending:
 					return "PENDING"
+				default:
+					return "PUBLISHED"
 				}
-				return "PUBLISHED"
 			}(),
 			"size_bytes":   published.SizeBytes,
 			"sidecar_link": published.SidecarLink,

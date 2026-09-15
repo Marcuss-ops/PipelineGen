@@ -16,6 +16,12 @@ import (
 	"testing"
 )
 
+// newTestWorker builds the canonical test worker: preparation fakes + the
+// publication boundary. The publisher is attached HERE because a worker that
+// reaches the completion boundary without one fails closed
+// (ErrRenderPublisherNotWired) — a clip.render job's deliverable is the
+// published, committed derived asset. Tests that assert that fail-closed
+// contract construct a bare worker with NewWorker instead.
 func newTestWorker(t *testing.T) (*Worker, *fakeMaterializer, *fakeTranscriptResolver) {
 	t.Helper()
 	resolver := newFakeAssetResolver(map[string]AssetRef{
@@ -37,6 +43,7 @@ func newTestWorker(t *testing.T) (*Worker, *fakeMaterializer, *fakeTranscriptRes
 	if err != nil {
 		panic(err)
 	}
+	w.WithRenderPublisher(&fakeRenderPublisher{})
 	return w, mat, tr
 }
 
@@ -1225,5 +1232,107 @@ func TestWorker_PrepareFailure_Wrapped(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "resolve source") {
 		t.Fatalf("expected the wrapped resolution failure, got %v", err)
+	}
+}
+
+// TestWorker_CacheHitReusesCertifiedRenderWithoutPublishing pins the
+// truthfulness of the deterministic fast path: a fingerprint hit returns the
+// certified locator of a render that ALREADY published, performs no render and
+// no publication, and says exactly that.
+//
+// The projected publication_status must be REUSED. The historical code
+// fabricated DrivePending:true, which announced a Drive delivery that no code
+// path would ever perform — the Drive outbox is fed by the publish call this
+// path never makes.
+func TestWorker_CacheHitReusesCertifiedRenderWithoutPublishing(t *testing.T) {
+	ctx := context.Background()
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeAsyncRenderExecutor{outcome: fullRenderOutcome()}
+	w.WithRenderExecutor(renderer)
+
+	payload := renderJobPayload(t, baseRenderRequest())
+	var restored RenderRequest
+	if err := json.Unmarshal(payload, &restored); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	fp, err := restored.Fingerprint()
+	if err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+	cache := newMemoryRenderCache()
+	if err := cache.Put(ctx, &RenderCacheRecord{
+		Fingerprint: fp,
+		AssetID:     "reused-asset-001",
+		StorageKey:  "derived/reused.mp4",
+		ArtifactURL: "https://store/derived/reused.mp4",
+		ContentType: "video/mp4",
+		SHA256:      strings.Repeat("b", 64),
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Backend:     BackendChrononVulkan,
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	w.WithRenderCache(cache)
+
+	result, err := w.Handle(ctx, &job.Job{ID: "job-cache", Payload: payload}, nil)
+	if err != nil {
+		t.Fatalf("cache hit must succeed: %v", err)
+	}
+	if result["phase"] != "cached" || result["cache_hit"] != true {
+		t.Fatalf("cache result = %v, want phase=cached cache_hit=true", result)
+	}
+	if renderer.submitCalls != 0 || renderer.settleCalls != 0 {
+		t.Fatalf("cache hit must not touch RenderingGen: submit=%d settle=%d", renderer.submitCalls, renderer.settleCalls)
+	}
+
+	renderBlock, ok := result["render"].(map[string]any)
+	if !ok {
+		t.Fatalf("render block = %v", result["render"])
+	}
+	if m, ok := renderBlock["metrics_v2"].(*RenderMetricsV2); !ok || int64(m.TotalMS) < 0 {
+		t.Fatalf("cache hit must still report its measured job wall: %v", renderBlock["metrics_v2"])
+	}
+
+	assetBlock, ok := result["asset"].(map[string]any)
+	if !ok {
+		t.Fatal("a cache hit must project the reused asset: result has no asset block")
+	}
+	if assetBlock["asset_id"] != "reused-asset-001" {
+		t.Fatalf("asset_id = %v, want reused-asset-001", assetBlock["asset_id"])
+	}
+	if assetBlock["publication_status"] != "REUSED" {
+		t.Fatalf("publication_status = %v, want REUSED", assetBlock["publication_status"])
+	}
+	if assetBlock["drive_pending"] != false {
+		t.Fatalf("drive_pending = %v, want false (this job owes no Drive delivery)", assetBlock["drive_pending"])
+	}
+}
+
+// TestWorker_CompletionWithoutPublisherFailsClosed pins the one rule that keeps
+// a clip.render job truthful: a render that produced certified bytes but has no
+// publication boundary attached is a CONFIGURATION FAULT, never a completed
+// clip. The worker header and WithRenderPublisher both declare publication
+// mandatory, and the deliverable of this job type is the published, committed
+// derived asset — so the historical branch that emitted
+// "clip.render.completed" and returned a success result with a nil publication
+// handed the operator a SUCCEEDED clip with no artifact.
+//
+// The settle phase is the one that publishes, so the error must surface there
+// and no result may be returned alongside it.
+func TestWorker_CompletionWithoutPublisherFailsClosed(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	w.WithRenderPublisher(nil) // detach the boundary newTestWorker attaches
+	w.WithRenderExecutor(&fakeRenderExecutor{outcome: fullRenderOutcome()})
+
+	result, err := handleRendered(t, context.Background(), w, "job-no-publisher", baseRenderRequest())
+	if err == nil {
+		t.Fatal("a completion without a publication boundary must fail closed, got a success result")
+	}
+	if !errors.Is(err, ErrRenderPublisherNotWired) {
+		t.Fatalf("error = %v, want ErrRenderPublisherNotWired", err)
+	}
+	if result != nil {
+		t.Fatalf("fail-closed completion must not project a result, got %v", result)
 	}
 }

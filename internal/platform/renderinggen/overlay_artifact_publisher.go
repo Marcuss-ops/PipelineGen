@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -98,7 +97,14 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		pathutil.SafeFolderName(scriptName),
 		pathutil.SafeFolderName(language),
 		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
-	artifactID := firstNonEmpty(spec.PlanID, artifact.ID, artifact.SHA256)
+	// Drive identity is content-based for overlays. A PlanID is run-scoped;
+	// using it here made a retry/new job upload the same MP4 again under a new
+	// idempotency key. Keep script and language in the logical identity so the
+	// same bytes are reused for the same destination while distinct scripts do
+	// not collide when they share the overlay root.
+	artifactID := strings.Join([]string{
+		scriptName, language, strings.ToLower(artifact.SHA256),
+	}, ":")
 	verified := finalization.VerifiedArtifact{
 		ArtifactID:       "overlay:" + artifactID,
 		Kind:             finalization.KindVideo,
@@ -119,7 +125,8 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	}
 	// The configured root is the parent selected by the operator. The
 	// canonical delivery publisher creates/reuses the deterministic `overlay`
-	// child below it. The same path is used for the JSON timing receipt.
+	// child below it. Drive stores the rendered video only; timing telemetry
+	// remains in the job/render metrics and is not uploaded as a sidecar file.
 	verified.ResolvedFolderID = rootFolderID
 	verified.RootFolderResolved = true
 	verified.DriveSubpath = []string{finalization.OverlayChildFolder}
@@ -131,19 +138,13 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	verified.ArtifactMetadata["source_start_us"] = spec.SourceStartUS
 	verified.ArtifactMetadata["source_end_us"] = spec.SourceEndUS
 	verified.ArtifactMetadata["target_duration_us"] = spec.TargetDurationUS
-	videoPublishStarted := time.Now()
 	loc, err := p.publisher.Publish(ctx, verified)
-	videoPublishMS := time.Since(videoPublishStarted).Milliseconds()
 	if err != nil {
 		return fmt.Errorf("publish overlay video: %w", err)
 	}
 	artifact.DriveFileID = loc.FileID
 	artifact.DriveLink = loc.WebViewLink
 	artifact.DriveFolderID = loc.FolderID
-
-	if err := p.publishReceipt(ctx, spec, artifact, rootFolderID, scriptName, language, artifactID, filename, videoPublishMS); err != nil {
-		return fmt.Errorf("publish overlay timing receipt: %w", err)
-	}
 	return nil
 }
 

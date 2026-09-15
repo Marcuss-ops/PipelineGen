@@ -155,6 +155,7 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		writeDocumentFinalAudioJSON(&after, opts)
 		writeDocumentOverlayPlanJSON(&after, opts)
 		writeDocumentOverlayJSON(&after, opts)
+		writeDocumentEditingAssetsPolicyJSON(&after)
 	}
 
 	// Single-pass splice. The legacy implementation ran one
@@ -450,6 +451,24 @@ func writeDocumentOverlayJSON(b *strings.Builder, opts DocumentRenderOptions) {
 		b.WriteString(html.EscapeString(string(raw)))
 		b.WriteString("</code></pre>")
 	}
+}
+
+// writeDocumentEditingAssetsPolicyJSON projects the canonical editing-asset
+// selection policy into the human document surface.
+//
+// Build parity is the point: the document and the sealed remote payload are
+// built from the SAME builder (remoteEditingAssetsPolicy), so the operator
+// reading the doc and the assembler consuming the payload can never disagree
+// about which editorial assets a job may select. The document block is a
+// projection, never a second policy.
+func writeDocumentEditingAssetsPolicyJSON(b *strings.Builder) {
+	raw, err := json.MarshalIndent(remoteEditingAssetsPolicy(), "", "  ")
+	if err != nil {
+		return
+	}
+	b.WriteString("<h2>Editing Assets Policy JSON</h2><pre><code>")
+	b.WriteString(html.EscapeString(string(raw)))
+	b.WriteString("</code></pre>")
 }
 
 // writeDocumentSemanticOverlay renders the exact semantic items that were

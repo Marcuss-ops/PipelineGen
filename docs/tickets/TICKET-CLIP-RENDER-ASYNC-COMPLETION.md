@@ -5,9 +5,11 @@
 > referenced path against the current tree before acting.
 
 **Priority:** P0 — this is the throughput bottleneck, not RenderingGen/Chronon.
-**Status:** IN PROGRESS — the continuation primitive EXISTS (see §1.1) and the
-render boundary is now split into `Submit`/`Settle`. Remaining: the worker phase
-dispatch + composition-root wiring (§7).
+**Status:** DONE except one live-only acceptance criterion. The continuation
+primitive EXISTS (§1.1), the render boundary is split into `Submit`/`Settle`,
+and the worker phase dispatch + composition-root wiring landed (§9, 2026-09-15 —
+§7's "remaining" list is complete; §3 is superseded by §1.1 and retained only as
+history). Open: the restart-mid-render criterion needs a live RenderingGen.
 **Owner:** `internal/capabilities/cliprender` (worker) + `internal/kernel/job` (continuation) + `internal/app/wiring`.
 
 ## 1. Problem
@@ -444,3 +446,71 @@ Waste elimination — scenarios 4/5/6/8, one source, 10–20 clips:
 Real-stack runs reuse the same report schema: `VELOX_BENCH_WRITE_REPORT=1`
 persists the JSON artifacts under `tests/operational/results/cliprender-bench/`
 (off by default so a normal run never dirties the working tree).
+
+## 9. STATUS — 2026-09-15 audit (async boundary is the LIVE mode)
+
+§7's remaining change set is complete and §3 is void (it describes the state
+before the continuation primitive was found; §1.1 supersedes it and is retained
+only so the reasoning trail stays readable). What is live today:
+
+- `Worker.Handle` dispatches on the payload phase
+  (`cliprender.PayloadKeyRenderPhase`, absent → submit), and the mode is decided
+  in exactly ONE place: the composition root attaching BOTH continuation ports
+  (`registry_internal_modules.go`).
+- The settle continuation is a normal `clip.render` job (`TypeClipRender`, no
+  second job type, `architecture/ownership/jobs.yaml` unchanged) and is claimed
+  by the dedicated pool, which the general pool excludes.
+- Publication, certifying probe and result projection run in the settle half
+  through the single completion implementation (`worker_completion.go`), shared
+  with the historical blocking call path.
+
+Corrections from the audit (all on the submit/settle boundary):
+
+1. **A completion without a publication boundary is now a typed failure**, not
+   a success: `ErrRenderPublisherNotWired`. The worker header and
+   `WithRenderPublisher` both declared publication mandatory while the code
+   emitted `clip.render.completed` and returned a success result with a nil
+   publication — a SUCCEEDED clip with no artifact for any composition root that
+   exposed the job without the publisher.
+2. **The phase wire key has one owner.** The composition root used to re-declare
+   `render_phase`/`settle` as local literals under a comment citing a test
+   (`TestBuildClipRenderSettleRunnerClaimsSettlePhaseOnly`) that does not exist
+   anywhere in the repository. Renaming the key in the capability would have
+   silently voided the dedicated-pool guardrail — no error, no log. The key is
+   now `cliprender.PayloadKeyRenderPhase`, both pools derive from one helper, and
+   `TestClipRenderPhaseScopeMatchesCapabilityContract` is the real pin.
+3. **One queue seam, one wait, one recovery rule.** `renderinggen.ClipRenderQueue`
+   (a second port for the same remote service) and `waitClipQueue` (a second
+   "wait until terminal" loop) are deleted: the port is
+   `scriptgen.RenderQueueClient` (+ its `Waiter`/`Retrier` capabilities), the wait
+   is `scriptgen.WaitRenderQueueTerminal`, and the "collided with a FAILED job →
+   re-arm" decision is `scriptgen.RearmFailedRenderJob`, called by both callers
+   instead of existing once per call site.
+4. **The settle child's retry budget comes from the job policy registry**
+   instead of a local literal: the adapter was hardcoded to 3 while the
+   registered policy for the same job type is 2.
+5. **Dead state vocabulary removed.** `RemoteRenderState` kept six values
+   (`PREPARING`, `REMOTE_RENDERING`, `ARTIFACT_READY`, `PUBLISHING`, `COMPLETED`,
+   `FAILED`) that no code path wrote and no caller read — there is deliberately no
+   durable sink for intermediate states (the resume document is
+   content-addressed and immutable; the broker writes the job result once, at the
+   end). Only `SUBMITTED`, which the submit phase really writes, is left, and it
+   is still validated so a drifted payload fails closed.
+6. **The deterministic cache hit no longer fabricates a delivery.** It reported
+   `drive_pending: true` for a render that performed no publication; the
+   projection now says `publication_status: REUSED` (`RenderPublishResult.Reused`)
+   and the job wall is reported instead of leaving the run report blank.
+
+Still open (NOT reachable in this repository — needs the live stack):
+
+- **AC 2 of §5 — restart mid-render.** The resume contract is in place and
+  idempotent by construction, but proving "a restarted process resumes
+  completion and never re-submits" requires a live RenderingGen to kill. No
+  hermetic test can substitute for it, and the coverage matrix in `AGENTS.md`
+  (StockRust L1/L3 shellless) shows the same class of gap elsewhere.
+- **Cost, not correctness:** a broker retry of the submit half re-runs local
+  preparation. The remote job id is derivable before preparation
+  (`plan.RunID == job.ID`), but the resume address is a content digest, so
+  skipping it would need a durable job-id → resume-digest index — a second owner
+  for a fact the continuation payload already carries. Documented at the call
+  site (`worker.go`, submit phase).
