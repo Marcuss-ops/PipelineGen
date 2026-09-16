@@ -103,6 +103,112 @@ func TestExtract_CreateSubfolder_ResolvesChildFolderNotRoot(t *testing.T) {
 		"folder_path must match the real Drive parent (the subfolder)")
 }
 
+// TestValidateDriveDestination_FailsClosedOnUnresolvedRoot pins the rule that a
+// Drive destination is a CONTRACT, not a hint.
+//
+// Observed live (2026-09-16): a request carrying `destination.group` +
+// `create_subfolder:true` but no `folder_id` resolved to FolderID == "". The
+// subfolder block in Extract is gated on FolderID != "", so no folder was
+// materialised; Step 8's own gate (`cmd.DriveFolderID != ""`) then skipped the
+// upload; and the job still returned ok / processed with an item carrying no
+// drive_file_id — a false success for a caller who asked for Drive delivery.
+//
+// Non-vacuity: deleting the guard in Extract/validateDriveDestination makes the
+// two `require.Error` cases below pass silently, which is the regression.
+func TestValidateDriveDestination_FailsClosedOnUnresolvedRoot(t *testing.T) {
+	cases := []struct {
+		name    string
+		dest    Destination
+		req     *youtubetypes.ExtractRequest
+		wantErr bool
+	}{
+		{
+			name: "group intent without a resolved root is refused",
+			dest: Destination{},
+			req:  &youtubetypes.ExtractRequest{Destination: &youtubetypes.DestinationRequest{Group: "clip-index-verify"}},
+
+			wantErr: true,
+		},
+		{
+			name:    "subfolder intent without a resolved root is refused",
+			dest:    Destination{},
+			req:     &youtubetypes.ExtractRequest{Destination: &youtubetypes.DestinationRequest{SubfolderName: "child"}},
+			wantErr: true,
+		},
+		{
+			name:    "folder_path intent without a resolved root is refused",
+			dest:    Destination{FolderPath: "Group/Child"},
+			req:     &youtubetypes.ExtractRequest{Destination: &youtubetypes.DestinationRequest{FolderPath: "Group/Child"}},
+			wantErr: true,
+		},
+		{
+			name:    "a resolved root is honoured whatever else is present",
+			dest:    Destination{FolderID: "root-folder-id"},
+			req:     &youtubetypes.ExtractRequest{Destination: &youtubetypes.DestinationRequest{FolderID: "root-folder-id"}},
+			wantErr: false,
+		},
+		{
+			name:    "no destination at all stays a legitimate local-only extraction",
+			dest:    Destination{},
+			req:     &youtubetypes.ExtractRequest{},
+			wantErr: false,
+		},
+		{
+			name:    "a zero-value destination expresses no Drive intent",
+			dest:    Destination{},
+			req:     &youtubetypes.ExtractRequest{Destination: &youtubetypes.DestinationRequest{}},
+			wantErr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateDriveDestination(tc.dest, tc.req)
+			if tc.wantErr {
+				require.Error(t, err, "a Drive destination that did not resolve must be refused, never silently downgraded to a local-only extraction")
+				require.Contains(t, err.Error(), "Drive destination requested",
+					"the refusal must name the cause so the operator sees the missing root, not a generic failure")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestExtract_FailsClosedWhenRequestedDriveDestinationDoesNotResolve pins the
+// same rule at the real entry point: Extract must return an error (and no
+// response) instead of running a job that would upload nothing and report ok.
+func TestExtract_FailsClosedWhenRequestedDriveDestinationDoesNotResolve(t *testing.T) {
+	security.AddAllowedHost("www.youtube.com")
+
+	tmp := t.TempDir()
+	pipeline := &fakeVideoPipeline{err: errYtDlpFailed}
+
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Cfg: testConfig(tmp), Log: zap.NewNop()},
+		ServiceAssetDeps{MediaProcessor: nil, LifecycleService: nil},
+		ServiceVideoDeps{
+			VideoPipeline: pipeline,
+			ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), pipeline),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{},
+	)
+
+	resp, err := svc.Extract(context.Background(), &youtubetypes.ExtractRequest{
+		URL:      "https://www.youtube.com/watch?v=abc123",
+		Segments: []youtubetypes.Segment{{Name: "clip", Start: "0", End: "10"}},
+		// Exactly the live shape: a group + create_subfolder, no folder_id.
+		Destination: &youtubetypes.DestinationRequest{
+			Group:           "clip-index-verify",
+			CreateSubfolder: true,
+		},
+	})
+
+	require.Error(t, err, "Extract must refuse a Drive destination it cannot resolve instead of returning a success that uploaded nothing")
+	require.Nil(t, resp, "no response may be produced for a refused destination")
+	require.Contains(t, err.Error(), "Drive destination requested")
+}
+
 // TestBuildSegmentCommand_CarriesResolvedChildFolder pins the Step 8 handoff:
 // the resolved child folder id + path must be threaded into the
 // ProcessSegmentCommand the per-segment pipeline (Step 8 upload) consumes.

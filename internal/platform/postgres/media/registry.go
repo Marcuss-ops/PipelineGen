@@ -81,7 +81,7 @@ func (r *Tx) LinkContentTx(ctx context.Context, tx *sql.Tx, assetID, contentSHA2
 		return fmt.Errorf("%w: asset_id and content_sha256 are required", capregistry.ErrAssetSourceInvalid)
 	}
 	result, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET content_sha256 = $1, updated_at = $2 WHERE id = $3`,
+		`UPDATE media_assets SET content_sha256 = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`,
 		contentSHA256, time.Now().UTC().Format(time.RFC3339), assetID)
 	if err != nil {
 		return fmt.Errorf("asset committer: content link: %w", err)
@@ -107,7 +107,7 @@ func (r *Tx) UpsertTaxonomyTx(ctx context.Context, tx *sql.Tx, t capregistry.Ass
 		return fmt.Errorf("asset committer: taxonomy update: %w", err)
 	}
 	result, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET namespace = $1, asset_kind = $2, source_type = $3, semantic_role = $4, updated_at = $5 WHERE id = $6`,
+		`UPDATE media_assets SET namespace = $1, asset_kind = $2, source_type = $3, semantic_role = $4, updated_at = $5, updated_at_ts = NULLIF($5, '')::timestamptz WHERE id = $6`,
 		t.Namespace, t.AssetKind, t.SourceType, t.SemanticRole, time.Now().UTC().Format(time.RFC3339), t.AssetID)
 	if err != nil {
 		return fmt.Errorf("asset committer: taxonomy update: %w", err)

@@ -387,6 +387,17 @@ hard_gates:
   # the explicitly grandfathered legacy read plane. The grandfather set is a
   # debt register that ratchets to zero as the P2-9 Phase 2 consumers migrate.
   - percheck_sqlite_media_reader_ban
+  # Media dual-write side (added 2026-09-16): migration 004 adds a TIMESTAMPTZ
+  # mirror beside every legacy TEXT timestamp on the media hot-path tables
+  # (media_assets, asset_locations, outbox_events) and delegates the dual-write
+  # to the WRITER, not the migration. Those two columns are two representations
+  # of ONE fact, so this gate fails closed when a PostgreSQL statement writes one
+  # half without the other, or writes both from different binds. It is the
+  # forward-prevention companion to dual_write_timestamps_test.go, which proves
+  # the current paths agree. The pair list is transcribed from migration 004, and
+  # the gate is deleted together with the legacy TEXT columns in the contract
+  # phase — it must not become permanent compatibility.
+  - percheck_pg_dual_write_contract
   # Media WRITE-bridge side (added 2026-09-13): the SQL-level writer gate is
   # blind to a write that goes through an interface, because no SQL appears at
   # the call site. This companion bans a media-mutating call on the generic

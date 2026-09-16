@@ -199,7 +199,7 @@ func buildReindexEnvelopeV1(assetID, targetSchemaVersion, sourceVersion string, 
 		// above is retained as the legacy alias carrying the same value.
 		"index_revision":       sourceVersion,
 		"target_index_version": targetSchemaVersion,
-		"requested_vectors":    []string{"text", "transcript"},
+		"requested_vectors":    event.AssetIndexRequestedVectorChannels(),
 		"requested_at":         requestedAt.UTC().Format(time.RFC3339Nano),
 		"idempotency_key":      eventKey,
 		"force":                force,

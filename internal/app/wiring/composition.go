@@ -108,6 +108,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// vector authority here.
 	if mediaPG != nil && process.ClipIndexerService != nil {
 		process.ClipIndexerService.SetCanonicalIndexRequester(pgmedia.NewReindexRequester(mediaPG))
+		// MEDIA-SSOT P2-9 Phase 2: the eligibility gate reads media_assets, so it
+		// must read the media SSOT. ClipIndexerService's own db is the
+		// operational SQLite store, which holds no committed media rows — leaving
+		// the gate on that handle made the taxonomy decision engine-blind. Both
+		// seams are set from the same mediaPG handle so the requester and the
+		// eligibility reader cannot drift onto different engines.
+		process.ClipIndexerService.SetMediaEligibilityReader(pgmedia.NewMediaEligibilityReader(mediaPG))
 	}
 
 	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig)

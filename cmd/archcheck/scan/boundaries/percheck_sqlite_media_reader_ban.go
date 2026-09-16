@@ -222,16 +222,54 @@ var sqliteMediaReaderGrandfatheredZones = []string{
 // Mixed files (a PostgreSQL path plus a SQLite degrade branch) live in
 // sqliteMediaReaderDegradeOnlyFiles instead, so this map stays the list of
 // things that are simply WRONG and must be migrated.
+//
+// ENTRY RETIRED 2026-09-16: internal/capabilities/assets/ingest/adapter_clip.go
+// left this register in the same change that replaced its
+// `SELECT id FROM media_assets WHERE drive_file_id ...` statement with the
+// engine-named ingest.MediaDriveFileIDLister port (resolved from the canonical
+// media committer by wiring.mediaDriveFileListerFromCommitter). The SQLite read
+// was not merely misplaced — the operational mirror holds no committed media
+// rows, so the listing could only ever answer "empty" while PostgreSQL held the
+// assets. A nil port now fails the listing closed instead of degrading onto a
+// second engine, which is why this file must NOT reappear here: if it does, the
+// port was bypassed rather than the dialect discriminating.
+//
+//   - internal/capabilities/assets/providers/stock/enrichment/handler_repository.go
+//     was retired the same way on the same day (SQLiteAssetRepository →
+//     PostgresAssetRepository over the media SSOT handle).
+//   - internal/app/wiring/assets/folders.go was DELETED (not migrated) on
+//     2026-09-16: its parent-video folder read moved to
+//     pgmedia.MediaFolderResolver over root.MediaPostgres, and its
+//     `COALESCE(folder_id, drive_folder_id)` fallback was removed rather than
+//     ported (the SSOT has no drive_folder_id column and 0 rows depended on it).
+//     A deleted file cannot reappear here — the gate would report an unmapped
+//     file if a new SQLite media reader were added to this package.
+//   - internal/capabilities/scripts/usecase/clip_sampler_gates.go was retired
+//     on 2026-09-16: its subtitle_ready gate read media_assets.source inside a
+//     package-global *sql.DB (usecase.SetSamplerDB, wired from root.DB.DB)
+//     while ALSO joining asset_subtitle_artifacts, which exists only on SQLite.
+//     The two facts now have separate engine-named ports —
+//     SamplerGateDeps.AssetSource (pgmedia.MediaAssetSourceReader over the media
+//     SSOT) and SamplerGateDeps.ReadyASSArtifacts (operational, because that
+//     table has no PostgreSQL home) — so this file can no longer read
+//     media_assets from either engine. The package-global was itself the reason
+//     the engine was invisible, which is why it was removed rather than
+//     re-typed.
+//   - internal/capabilities/mediaregistry/index_eligibility_resolver.go was
+//     retired the same day with the narrow AssetEligibilityReader port. Its
+//     `SELECT ... FROM media_assets WHERE id = ?` ran on whatever handle the
+//     caller held, and the single production caller
+//     (clipindexer.Service.Eligibility) held the operational SQLite handle while
+//     PostgreSQL owned media_assets — so the taxonomy gate graded a database
+//     that holds no committed rows. The read now resolves from the media SSOT
+//     via wiring composition (SetMediaEligibilityReader ← same mediaPG handle as
+//     the canonical reindex requester), and a nil reader fails closed instead
+//     of degrading onto a second engine.
 var sqliteMediaReaderGrandfatheredFiles = map[string]bool{
-	"internal/app/wiring/assets/folders.go":                                         true,
-	"internal/app/wiring/lifecycle_sweepers.go":                                     true,
-	"internal/app/wiring/voiceover/adapters_voiceover_projection.go":                true,
-	"internal/app/wiring/voiceover/adapters_voiceover_repo.go":                      true,
-	"internal/capabilities/ai/autotag/process_by_enrich_candidates.go":              true,
-	"internal/capabilities/assets/ingest/adapter_clip.go":                           true,
-	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go": true,
-	"internal/capabilities/mediaregistry/index_eligibility_resolver.go":             true,
-	"internal/capabilities/scripts/usecase/clip_sampler_gates.go":                   true,
+	"internal/app/wiring/lifecycle_sweepers.go":                        true,
+	"internal/app/wiring/voiceover/adapters_voiceover_projection.go":   true,
+	"internal/app/wiring/voiceover/adapters_voiceover_repo.go":         true,
+	"internal/capabilities/ai/autotag/process_by_enrich_candidates.go": true,
 }
 
 // sqliteMediaReaderDegradeOnlyFiles is the second, deliberately separate

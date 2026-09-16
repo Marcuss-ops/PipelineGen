@@ -48,6 +48,27 @@ type clipStoreAdapter struct {
 	locations  persistence.AssetLocationWriter
 	processing persistence.AssetProcessingWriter
 	dispatcher mutations.AssetMutationDispatcher
+	// driveFileIDs is the narrow media-SSOT read that ListWithDriveFileID
+	// needs: the ids of assets still carrying a Drive file id. Before
+	// MEDIA-SSOT P2-9 Phase 2 this listing ran the raw
+	// `SELECT id FROM media_assets WHERE drive_file_id ...` statement against
+	// the operational SQLite handle above, so an asset committed by the
+	// canonical PostgreSQL committer was invisible to it and the Drive sweep
+	// silently saw an empty catalog. The engine-named port replaces that
+	// unnamed read; nil means the media plane is closed and the listing
+	// fails closed instead of degrading onto a second engine.
+	driveFileIDs MediaDriveFileIDLister
+}
+
+// MediaDriveFileIDLister is the narrow media-SSOT read that answers "which
+// assets still have a Drive file id". Declaring it here — rather than reaching
+// for a *sql.DB — is what keeps this capability from naming an engine: the
+// composition root resolves it from the canonical media committer
+// (mediaDriveFileListerFromCommitter) and PostgreSQL is the only
+// implementation. A nil implementation is a media-plane-closed signal and
+// ListWithDriveFileID fails closed.
+type MediaDriveFileIDLister interface {
+	ListAssetIDsWithDriveFileID(ctx context.Context) ([]string, error)
 }
 
 // NewClipStoreAdapter is the canonical AssetRecordStore ctor. PR 7
@@ -83,14 +104,16 @@ func NewClipStoreAdapter(
 	locations persistence.AssetLocationWriter,
 	processing persistence.AssetProcessingWriter,
 	dispatcher mutations.AssetMutationDispatcher,
+	driveFileIDs MediaDriveFileIDLister,
 ) lifecycle.AssetRecordStore {
 	return &clipStoreAdapter{
-		db:         db,
-		retirer:    retirer,
-		querySvc:   querySvc,
-		locations:  locations,
-		processing: processing,
-		dispatcher: dispatcher,
+		db:           db,
+		retirer:      retirer,
+		querySvc:     querySvc,
+		locations:    locations,
+		processing:   processing,
+		dispatcher:   dispatcher,
+		driveFileIDs: driveFileIDs,
 	}
 }
 
@@ -290,24 +313,23 @@ func (a *clipStoreAdapter) FindExisting(ctx context.Context, query assetop.Exist
 	return nil, nil
 }
 
+// ListWithDriveFileID lists the media assets that have a Drive file id, hydrating
+// each one through Get (so the read model stays single-sourced) and optionally
+// filtering by source.
+//
+// MEDIA-SSOT P2-9 Phase 2: the id listing comes from the media-SSOT port. It no
+// longer issues raw SQL against the operational SQLite handle, because that
+// handle and the PostgreSQL media SSOT are different databases — the SQLite
+// mirror is empty in production while PostgreSQL holds the rows, so the legacy
+// statement could only ever return nothing. A nil port is a media-plane-closed
+// signal and this method fails closed rather than reading a second engine.
 func (a *clipStoreAdapter) ListWithDriveFileID(ctx context.Context, source string) ([]*assetop.AssetRecord, error) {
-	rows, err := a.db.QueryContext(ctx, `
-		SELECT id FROM media_assets 
-		WHERE drive_file_id IS NOT NULL AND drive_file_id != '' 
-		  AND lifecycle_state != 'DELETED'
-	`)
-	if err != nil {
-		return nil, err
+	if a == nil || a.driveFileIDs == nil {
+		return nil, fmt.Errorf("clip store adapter: no media drive-file-id lister wired (media SSOT closed)")
 	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
+	ids, err := a.driveFileIDs.ListAssetIDsWithDriveFileID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("clip store adapter: list drive file ids: %w", err)
 	}
 
 	var out []*assetop.AssetRecord

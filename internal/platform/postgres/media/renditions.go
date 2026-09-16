@@ -38,8 +38,10 @@ func (c *PostgresAssetCommitter) CommitRenditionTx(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11)
+			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at,
+			 created_at_ts, updated_at_ts)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11,
+		        NULLIF($10, '')::timestamptz, NULLIF($11, '')::timestamptz)
 		ON CONFLICT (asset_id, location_kind) DO UPDATE SET
 			uri = excluded.uri,
 			external_id = excluded.external_id,
@@ -48,8 +50,17 @@ func (c *PostgresAssetCommitter) CommitRenditionTx(
 			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
 			legacy_file_md5 = excluded.legacy_file_md5,
-			is_primary = excluded.is_primary,
-			updated_at = excluded.updated_at
+			-- A rendition NEVER redefines which location is primary. The INSERT
+			-- hardcodes is_primary = 0, so copying excluded.is_primary here
+			-- DEMOTED the asset's existing primary locator whenever a rendition
+			-- shared its location_kind: registering the master rendition of a
+			-- Drive-backed clip cleared is_primary on the very row a reader
+			-- trusts to resolve the Drive object. Preserve the flag on
+			-- conflict; the primary locator is decided by the asset commit, not
+			-- by a rendition write.
+			is_primary = asset_locations.is_primary,
+			updated_at = excluded.updated_at,
+			updated_at_ts = excluded.updated_at_ts
 	`, assetID, locationKind, r.URI, r.FileID, r.WebViewLink, r.DownloadURL,
 		r.MimeType, r.SizeBytes, r.SHA256, nowStr, nowStr); err != nil {
 		return fmt.Errorf("asset committer: upsert rendition location %s/%s: %w", assetID, r.Kind, err)

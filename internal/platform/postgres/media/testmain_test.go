@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -48,6 +49,7 @@ func requirePostgresDSN(t *testing.T) (string, bool) {
 func newMediaTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn, _ := requirePostgresDSN(t)
+	requireDestructiveTestDatabase(t)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -97,6 +99,55 @@ func newMediaTestDB(t *testing.T) *sql.DB {
 	})
 
 	return db
+}
+
+// requireDestructiveTestDatabase fails closed unless TEST_POSTGRES_DSN points
+// at a database that is unambiguously a TEST database.
+//
+// Why this exists: docker-compose.test-postgres.yml documents its container as
+// "the durable local media database used by the native PipelineGen service",
+// so that single server hosts the operational `pipelinegen_media` database
+// next to `pipelinegen_media_test`. The truncating fixtures below had no
+// protection at all against a DSN aimed at production, so one
+//
+//	TEST_POSTGRES_DSN=.../pipelinegen_media go test ./internal/platform/postgres/media/
+//
+// TRUNCATEd the live media_assets, asset_locations and asset_text_tracks —
+// destroying committed assets and their Drive locations — while every
+// assertion still passed. `make test-postgres` always used the right database,
+// but a destructive fixture that trusts its input is a loaded gun.
+//
+// Read-only suites are unaffected: they call requirePostgresDSN directly and
+// never reach this guard.
+func requireDestructiveTestDatabase(t *testing.T) {
+	t.Helper()
+	name := databaseNameFromDSN(strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN")))
+	if name == "" {
+		t.Fatalf("TEST_POSTGRES_DSN has no resolvable database name; refusing to truncate an unidentified database (fail closed)")
+	}
+	if !strings.HasSuffix(name, "_test") {
+		t.Fatalf("refusing to truncate database %q: this fixture resets media_assets, asset_locations and asset_text_tracks, so it may only run against a *_test database (make test-postgres uses pipelinegen_media_test)", name)
+	}
+}
+
+// databaseNameFromDSN extracts the database component from a libpq-style DSN in
+// either the URL form (postgres://user:pw@host:port/dbname?params) or the
+// keyword form (host=... dbname=...).
+func databaseNameFromDSN(dsn string) string {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return ""
+		}
+		return strings.Trim(parsed.Path, "/")
+	}
+	for _, field := range strings.Fields(dsn) {
+		key, value, ok := strings.Cut(field, "=")
+		if ok && strings.EqualFold(key, "dbname") {
+			return value
+		}
+	}
+	return ""
 }
 
 func applyMediaMigrations(db *sql.DB) error {

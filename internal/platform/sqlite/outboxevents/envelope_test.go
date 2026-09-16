@@ -15,9 +15,12 @@ package outboxevents
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 )
 
 // TestBuildReindexEnvelopeV1_Deterministic — Identical inputs over
@@ -172,6 +175,54 @@ func TestBuildReindexEnvelopeV1_PayloadMirrorsKey(t *testing.T) {
 	}
 	if evID, _ := payload["event_id"].(string); evID == "" {
 		t.Fatalf("payload.event_id is empty (audit token must be set so logs distinguish two re-emitted events)")
+	}
+}
+
+// TestBuildReindexEnvelopeV1_DeclaresOnlyProducedVectorChannels pins the
+// `requested_vectors` declaration on the SQLite emitter against the same
+// canonical source the PostgreSQL emitter reads.
+//
+// Why this is a gate and not a formality (September 2026 audit): the two
+// emitters MUST produce byte-identical envelopes so the outbox consumer cannot
+// tell which engine wrote the row, and the declaration used to be a literal
+// list per emitter — it drifted to ["text","transcript"] while the
+// PostgreSQL media plane writes exactly one channel (embedding_type='text').
+// "transcript" belonged to the RETIRED SQLite → Qdrant media projection, so
+// declaring it requested vectors no producer creates (phantom availability,
+// godlike/07).
+//
+// Non-vacuity: restoring the literal two-channel list fails here.
+func TestBuildReindexEnvelopeV1_DeclaresOnlyProducedVectorChannels(t *testing.T) {
+	_, pJSON, err := BuildReindexEnvelopeV1("asset-1", "media_assets_v3", "hash-aaaa", time.Now())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	var payload map[string]any
+	if jerr := json.Unmarshal([]byte(pJSON), &payload); jerr != nil {
+		t.Fatalf("payload unmarshal: %v", jerr)
+	}
+
+	raw, ok := payload["requested_vectors"]
+	if !ok {
+		t.Fatal("payload has no requested_vectors: the consumer cannot know which channels to expect")
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		t.Fatalf("requested_vectors has type %T, want a JSON array", raw)
+	}
+	got := make([]string, 0, len(items))
+	for _, item := range items {
+		got = append(got, item.(string))
+	}
+
+	want := event.AssetIndexRequestedVectorChannels()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("requested_vectors = %v, want the canonical event.AssetIndexRequestedVectorChannels() = %v (both emitters MUST agree — the consumer cannot tell which engine wrote the row)", got, want)
+	}
+	for _, channel := range got {
+		if channel == "transcript" {
+			t.Error("requested_vectors declares the RETIRED \"transcript\" channel: no PostgreSQL media code writes or searches it")
+		}
 	}
 }
 

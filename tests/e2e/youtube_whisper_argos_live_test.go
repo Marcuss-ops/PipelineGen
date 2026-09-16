@@ -38,8 +38,8 @@
 //	VELOX_E2E_WHISPER_PYTHON     default ../../.venv-whisper/bin/python3
 //	VELOX_E2E_WHISPER_SCRIPT     default ../../scripts/bridges/whisper_transcriber.py
 //	VELOX_E2E_WHISPER_MODEL      default: the CANONICAL registry model
-//	                             (openai/whisper-large-v3-turbo -> faster-whisper
-//	                             "large-v3-turbo"). Set only to test an override:
+//	                             (openai/whisper-small -> faster-whisper
+//	                             "small"). Set only to test an override:
 //	                             certifying "base" does not certify production.
 //	VELOX_E2E_HF_HOME            model root for the CTranslate2 weights
 //	VELOX_E2E_ARGOS_PYTHON       default ../../.venv-argos/bin/python3
@@ -266,6 +266,15 @@ func newDriveTarget(t *testing.T, log *zap.Logger, videoID string) driveTarget {
 	cfg.Paths.CredentialsFile = anchorToConfig(cfgBase, cfg.Paths.CredentialsFile)
 	cfg.Paths.TokenFile = anchorToConfig(cfgBase, cfg.Paths.TokenFile)
 
+	// The operational primary store the SERVICE reads. DataDir is relative in
+	// config.yaml ("./data") and the service runs with WorkingDirectory=refactored,
+	// so anchor it to the config file's directory exactly like the Drive
+	// credentials above; otherwise this resolves to tests/e2e/data and the
+	// certificate would register the artifacts in a database nobody queries.
+	cfg.Storage.DataDir = anchorToConfig(cfgBase, cfg.Storage.DataDir)
+	primaryDB := cfg.Storage.PrimaryDBFullPath()
+	require.FileExistsf(t, primaryDB, "the operational primary store must exist at %s", primaryDB)
+
 	client, err := drive.NewDriveServiceFromFiles(context.Background(), cfg)
 	require.NoError(t, err, "VELOX_E2E_REAL_DRIVE=1 needs usable Drive credentials")
 	require.NotNil(t, client)
@@ -280,12 +289,12 @@ func newDriveTarget(t *testing.T, log *zap.Logger, videoID string) driveTarget {
 	)
 	require.NoError(t, err, "canonical Drive publisher construction must succeed")
 
-	t.Logf("REAL Drive mode: subtitle root=%s clips root=%s",
-		cfg.Drive.YouTubeSubtitlesFolder(), cfg.Drive.ClipsFolder())
+	t.Logf("REAL Drive mode: subtitle root=%s clips root=%s registry=%s",
+		cfg.Drive.YouTubeSubtitlesFolder(), cfg.Drive.ClipsFolder(), primaryDB)
 
 	return driveTarget{
 		probe:           &publisherProbe{inner: pub},
-		subRepo:         newSQLiteSubtitleRepo(t, log),
+		subRepo:         openSQLiteSubtitleRepo(t, log, primaryDB),
 		subtitleFolders: wiring.NewSubtitleRootLayoutResolver(cfg.Drive.YouTubeSubtitlesFolder()),
 		clipsRoot:       cfg.Drive.ClipsFolder(),
 		subtitleRoot:    cfg.Drive.YouTubeSubtitlesFolder(),
@@ -335,31 +344,44 @@ func loadDotEnvMissing(t *testing.T, path string) {
 	t.Logf("loaded %d missing keys from %s", filled, path)
 }
 
-// newSQLiteSubtitleRepo opens the REAL asset_subtitle_artifacts repository (the
-// canonical SQLite implementation the server wires) over a temp database, so
-// the "registry holds a current READY row with a Drive reference" check runs
-// against production code instead of a map.
+// openSQLiteSubtitleRepo opens the REAL asset_subtitle_artifacts repository
+// (the canonical SQLite implementation the server wires), so the "registry
+// holds a current READY row with a Drive reference" check runs against
+// production code instead of a map.
 //
-// The schema comes from the CONSOLIDATED BASELINE, not from the historical
-// incremental migration 175_asset_subtitle_artifacts.sql: that file predates
-// drive_url/legacy_file_md5 and is skipped on a fresh database (the runner
-// applies the baseline and marks the covered historical window), so using it
-// here would test against a schema production never has. Reading the baseline
-// keeps this fixture honest by construction.
-func newSQLiteSubtitleRepo(t *testing.T, log *zap.Logger) detail.SubtitleArtifactRepository {
+// dbPath selects the STORE, and the choice is the whole point of this
+// parameter. An empty path opens a throwaway temp database seeded from the
+// consolidated baseline — the recorded-contract seam, where nothing may leak
+// into the operational store. A non-empty path opens THAT database, i.e. the
+// primary store the running service reads, so the certificate proves the
+// delivered .ass files are actually REGISTERED in the database an operator
+// queries. Certifying the registration against a temp database proves only
+// that the writer works, never that the run was persisted.
+//
+// The baseline schema is applied only for the temp database. The operational
+// store already carries it (the migration runner owns it), and re-applying
+// CREATE TABLE IF NOT EXISTS there would mask a missing migration.
+func openSQLiteSubtitleRepo(t *testing.T, log *zap.Logger, dbPath string) detail.SubtitleArtifactRepository {
 	t.Helper()
-	dsn := filepath.Join(t.TempDir(), "subtitle-artifacts.sqlite")
+
+	dsn := strings.TrimSpace(dbPath)
+	temp := dsn == ""
+	if temp {
+		dsn = filepath.Join(t.TempDir(), "subtitle-artifacts.sqlite")
+	}
 	db, err := sql.Open("sqlite3", dsn+"?_journal_mode=WAL&_busy_timeout=5000")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	baseline, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000_baseline_267.sql"))
-	require.NoError(t, err, "read the consolidated SQLite baseline")
-	stmts := statementsForTable(string(baseline), "asset_subtitle_artifacts")
-	require.NotEmpty(t, stmts, "the baseline must define asset_subtitle_artifacts")
-	for _, stmt := range stmts {
-		_, err = db.Exec(stmt)
-		require.NoErrorf(t, err, "apply baseline statement: %.80s", stmt)
+	if temp {
+		baseline, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000_baseline_267.sql"))
+		require.NoError(t, err, "read the consolidated SQLite baseline")
+		stmts := statementsForTable(string(baseline), "asset_subtitle_artifacts")
+		require.NotEmpty(t, stmts, "the baseline must define asset_subtitle_artifacts")
+		for _, stmt := range stmts {
+			_, err = db.Exec(stmt)
+			require.NoErrorf(t, err, "apply baseline statement: %.80s", stmt)
+		}
 	}
 
 	repo, err := sqlitetexttracks.NewSubtitleArtifactRepository(db, log)
@@ -493,7 +515,6 @@ func parseASSTimestamp(v string) (int64, bool) {
 
 func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *testing.T) {
 	workdir := requireLiveE2E(t)
-	db := openLiveDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
@@ -501,8 +522,10 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	videoID := videoIDFromURL(url)
 	require.NotEmpty(t, videoID, "could not resolve a YouTube video id from %q", url)
 
-	log := zaptest.NewLogger(t, zaptest.Level(zapcore.InfoLevel))
 	clipID := fmt.Sprintf("yt_%s_%d_%d_whisper_v1", videoID, liveSegmentStart, liveSegmentEnd)
+	db := openLiveDB(t, clipID)
+
+	log := zaptest.NewLogger(t, zaptest.Level(zapcore.InfoLevel))
 
 	// ── 1. Real download of the ~60s section. ──────────────────────────
 	mp4 := downloadOneMinute(t, workdir, url, videoID)
@@ -757,7 +780,16 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		"one ASS artifact must reach the registry for each configured language")
 
 	uploads := driveTarget.probe.recorded()
-	require.Len(t, uploads, len(liveLanguages), "one Drive publication per language")
+	// The delivery is IDEMPOTENT and the registry is the PERSISTENT operational
+	// store, so a re-certification run over an already-delivered clip is a
+	// REUSE: each language keeps its recorded Drive reference and nothing is
+	// re-uploaded. Exactly one publication per language (a first delivery) or
+	// none (all ten reused) is correct; a count in between is a partial fan-out
+	// and fails here. Sections 7a/7b are the authority on the delivered state in
+	// BOTH cases, which is why they read the registry rather than this process.
+	require.Containsf(t, []int{0, len(liveLanguages)}, len(uploads),
+		"a delivery is either one publication per language (%d) or a full reuse (0), got %d",
+		len(liveLanguages), len(uploads))
 
 	seenFiles := map[string]bool{}
 	for _, up := range uploads {
@@ -769,7 +801,7 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		seenFiles[up.Filename] = true
 		validateASSArtifact(t, up.LocalPath, int64(liveSegmentEnd)*1000)
 	}
-	require.Len(t, seenFiles, len(liveLanguages))
+	require.Len(t, seenFiles, len(uploads), "every publication must target a distinct .ass name")
 
 	// ── 7a. The registry must hold a current READY ASS per language. ────
 	for _, lang := range liveLanguages {
@@ -788,23 +820,55 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	// files there: every recorded file id is re-read from the Drive API, all ten
 	// must share ONE parent folder, and that folder must be <root>/<group>/<video>.
 	if driveTarget.real {
-		results := driveTarget.probe.published()
-		require.Len(t, results, len(liveLanguages),
-			"every language must come back with a Drive publication result")
+		// The verified set is THIS run's publications when it made any (a first
+		// delivery), and otherwise the REGISTRY (a reuse: nothing was published in
+		// this process, and the Drive identity that matters is the one the
+		// database recorded). Both paths end in the same proof — every language
+		// resolves to a readable, non-trashed .ass living in ONE shared folder.
+		published := driveTarget.probe.published()
+		fresh := len(published) == len(liveLanguages)
+
+		type artifactRef struct {
+			filename string
+			fileID   string
+			link     string
+			exact    bool // filename came from the publisher, so Drive must return it verbatim
+		}
+		refs := make([]artifactRef, 0, len(liveLanguages))
+		for _, res := range published {
+			refs = append(refs, artifactRef{filename: res.Filename, fileID: res.FileID, link: res.WebViewLink, exact: true})
+		}
+		if !fresh {
+			require.Emptyf(t, published,
+				"a delivery that did not publish every language must not have published a partial set")
+			for _, lang := range liveLanguages {
+				art, fErr := driveTarget.subRepo.FindCurrent(ctx, clipID, lang, detail.SubtitleFormatASS)
+				require.NoErrorf(t, fErr, "FindCurrent(%s)", lang)
+				require.NotNilf(t, art, "missing ASS artifact row for %s", lang)
+				refs = append(refs, artifactRef{filename: lang + ".ass", fileID: art.DriveFileID, link: art.DriveURL})
+			}
+		}
+		require.Lenf(t, refs, len(liveLanguages),
+			"every language must be verifiable in Drive (published now or reused from the registry)")
 
 		parentIDs := map[string]bool{}
-		for _, res := range results {
-			require.NotEmptyf(t, res.FileID, "Drive must return a file id for %s", res.Filename)
-			require.NotContainsf(t, res.FileID, "e2e-drive-file-",
-				"a REAL upload must return a Drive-issued id for %s", res.Filename)
-			require.Containsf(t, res.WebViewLink, "drive.google.com",
-				"Drive must return a real webViewLink for %s", res.Filename)
+		for _, res := range refs {
+			require.NotEmptyf(t, res.fileID, "Drive must return a file id for %s", res.filename)
+			require.NotContainsf(t, res.fileID, "e2e-drive-file-",
+				"a REAL upload must return a Drive-issued id for %s", res.filename)
+			require.Containsf(t, res.link, "drive.google.com",
+				"Drive must return a real webViewLink for %s", res.filename)
 
-			file, gErr := driveTarget.client.Files.Get(res.FileID).
+			file, gErr := driveTarget.client.Files.Get(res.fileID).
 				Fields("id,name,parents,trashed").Context(ctx).Do()
-			require.NoErrorf(t, gErr, "the uploaded artifact must be readable back from Drive: %s (%s)",
-				res.Filename, res.FileID)
-			require.Equal(t, res.Filename, file.Name)
+			require.NoErrorf(t, gErr, "the artifact must be readable back from Drive: %s (%s)",
+				res.filename, res.fileID)
+			if res.exact {
+				require.Equal(t, res.filename, file.Name)
+			} else {
+				require.Truef(t, strings.HasSuffix(file.Name, ".ass"),
+					"a reused registry entry must point at a .ass in Drive, got %q", file.Name)
+			}
 			require.False(t, file.Trashed)
 			for _, parent := range file.Parents {
 				parentIDs[parent] = true
@@ -831,8 +895,8 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		require.Contains(t, group.Parents, driveTarget.subtitleRoot,
 			"the artifact tree must hang off the configured subtitle root, not a second tree")
 
-		t.Logf("REAL Drive verified: %d artifacts under %s/%s/%s",
-			len(results), driveTarget.subtitleRoot, group.Name, perVideo.Name)
+		t.Logf("REAL Drive verified: %d artifacts under %s/%s/%s (published_this_run=%t)",
+			len(refs), driveTarget.subtitleRoot, group.Name, perVideo.Name, fresh)
 	}
 
 	// ── 7c. TIMED CUES for translation needs the projection step. ─────
@@ -855,7 +919,10 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	)
 	require.NoError(t, err)
 	require.Equal(t, len(liveLanguages), secondReport.Delivered, "a rerun reuses the recorded artifacts")
-	require.Len(t, driveTarget.probe.recorded(), len(liveLanguages),
+	// Compared against the FIRST delivery's count, not against the language
+	// count: on a reuse path the first delivery already published nothing, and
+	// what must hold is that the second one adds nothing either.
+	require.Len(t, driveTarget.probe.recorded(), len(uploads),
 		"a second delivery must NOT upload duplicates to Drive")
 
 	// ── 9. Multilingual search_text, PostgreSQL outbox, then INDEXED. ──
@@ -898,8 +965,18 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		require.Contains(t, strings.Join(embedder.embeddedTexts(), "\n"), firstWords(italianText, 40),
 			"the embedded document must contain the Argos translation")
 	} else {
-		require.Positive(t, foreign,
-			"the index events were neither drained by this worker nor claimed by a concurrent one")
+		// No event was left for this worker. That is NOT a failure and must not
+		// be asserted as one: this suite deliberately shares its DSN with a
+		// running `pipelinegen`, whose canonical worker claims
+		// `asset.index.requested` before this process can — leaving drained=0
+		// while `foreign` also counts 0, because the consumed event belonged to
+		// THIS clip. Requiring `foreign > 0` therefore failed a healthy chain.
+		//
+		// The authority is the END STATE, exactly as the block above says: the
+		// INDEXED assertion and the embedding-row assertion immediately below
+		// fail closed if the event was neither drained here nor consumed by the
+		// concurrent worker, and they pass only when the chain really ran.
+		t.Logf("index event consumed by a concurrent canonical worker (drained=0, foreign=%d); the INDEXED + embedding assertions below are the authority", foreign)
 	}
 
 	var state string
@@ -913,6 +990,17 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	`, clipID, coreembedding.ModelIDMultilingualE5).Scan(&dims))
 	require.Equal(t, liveEmbeddingDims, dims)
 
-	t.Logf("WHISPER E2E OK: clip=%s source=%s languages=%d ass=%d drive_targets=%d INDEXED=%s dims=%d",
-		clipID, storedSource, len(liveLanguages), len(seenFiles), len(uploads), state, dims)
+	// The registry is the authority, so report ITS per-language row count next
+	// to the publications of this run: on a reuse path the second number is
+	// legitimately zero while all ten artifacts remain delivered and verified.
+	registered := 0
+	for _, lang := range liveLanguages {
+		if art, fErr := driveTarget.subRepo.FindCurrent(ctx, clipID, lang, detail.SubtitleFormatASS); fErr == nil && art != nil && art.Status == detail.SubtitleStatusReady {
+			registered++
+		}
+	}
+	require.Equal(t, len(liveLanguages), registered, "every language must hold a current READY ASS artifact")
+
+	t.Logf("WHISPER E2E OK: clip=%s source=%s languages=%d registered_ass=%d published_this_run=%d INDEXED=%s dims=%d",
+		clipID, storedSource, len(liveLanguages), registered, len(uploads), state, dims)
 }

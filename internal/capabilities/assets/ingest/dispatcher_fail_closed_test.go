@@ -73,6 +73,7 @@ func TestPR7_ClipStoreAdapter_Upsert_NilDispatcher_FailClosed(t *testing.T) {
 		nil, // locations
 		nil, // processing
 		nil, // dispatcher nil → strict fail-closed
+		nil, // driveFileIDs
 	)
 	require.NotNil(t, a)
 

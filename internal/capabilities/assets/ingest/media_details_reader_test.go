@@ -16,7 +16,7 @@ import (
 // fail closed — the caller would otherwise stage and publish a clip it never
 // verified.
 func TestClipStoreGet_FailsClosedWithoutMediaDetailsReader(t *testing.T) {
-	adapter := NewClipStoreAdapter(nil, nil, nil, nil, nil, nil)
+	adapter := NewClipStoreAdapter(nil, nil, nil, nil, nil, nil, nil)
 	rec, err := adapter.Get(context.Background(), "clip-1")
 	if err == nil {
 		t.Fatal("expected a typed fail-closed error when no media details reader is wired")
@@ -32,7 +32,7 @@ func TestClipStoreGet_FailsClosedWithoutMediaDetailsReader(t *testing.T) {
 // media engine. A stub with the right method set is accepted directly.
 func TestClipStore_SatisfiesAssetDetailsReaderPort(t *testing.T) {
 	var _ AssetDetailsReader = (*stubDetailsReader)(nil)
-	if adapter := NewClipStoreAdapter(nil, nil, &stubDetailsReader{}, nil, nil, nil); adapter == nil {
+	if adapter := NewClipStoreAdapter(nil, nil, &stubDetailsReader{}, nil, nil, nil, nil); adapter == nil {
 		t.Fatal("expected an adapter for a wired details reader")
 	}
 }

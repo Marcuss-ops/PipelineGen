@@ -4,7 +4,85 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
+
+// TestClipDriveLocationsDropsPhantomDriveRow pins the clip-commit invariant that
+// a clip with no Drive identity contributes NO asset_locations row.
+//
+// The canonical committer upserts on (asset_id, location_kind), so emitting a
+// 'drive' location unconditionally wrote a PHANTOM primary location — empty
+// external_id, empty uri — for every YouTube-sourced clip that was never
+// published to Drive (observed live on yt_nYRefC7E9gU_0_60_whisper_v1, whose
+// only drive row pointed at nothing). A reader that trusts the primary location
+// then resolves an empty Drive id and fails far away from the cause.
+func TestClipDriveLocationsDropsPhantomDriveRow(t *testing.T) {
+	if got := clipDriveLocations(youtubetypes.ClipAsset{}); len(got) != 0 {
+		t.Fatalf("a clip without a Drive file id must contribute no location, got %+v", got)
+	}
+	if got := clipDriveLocations(youtubetypes.ClipAsset{Drive: youtubetypes.ClipAssetDrive{FileID: "   "}}); len(got) != 0 {
+		t.Fatalf("a whitespace-only Drive file id must contribute no location, got %+v", got)
+	}
+
+	locs := clipDriveLocations(youtubetypes.ClipAsset{Drive: youtubetypes.ClipAssetDrive{
+		FileID:      "drive-1",
+		WebViewLink: "https://drive.example/drive-1",
+	}})
+	if len(locs) != 1 {
+		t.Fatalf("a Drive-backed clip must contribute exactly one location, got %d", len(locs))
+	}
+	loc := locs[0]
+	if loc.Kind != "drive" || loc.ExternalID != "drive-1" || loc.URI != "drive://drive-1" || !loc.IsPrimary {
+		t.Fatalf("unexpected location %+v", loc)
+	}
+	if loc.WebViewLink != "https://drive.example/drive-1" {
+		t.Fatalf("WebViewLink = %q, want the clip's Drive link", loc.WebViewLink)
+	}
+}
+
+// TestClipDriveLocationsCarriesRealDriveArtifactIdentity pins that the canonical
+// Drive location declares the artifact's REAL size and type instead of the
+// 0 / ” placeholders.
+//
+// Observed live (2026-09-16) on yt_gT0amKtXWdU_0_10_v1: the Drive object was
+// 11,078,716 bytes (verified against the API) while asset_locations recorded
+// file_size_bytes=0 and mime_type=” — the row could not be told apart from one
+// whose Drive artifact was never measured. The bytes are already verified at
+// upload time (the artifact SHA-256 is the asset's content identity), so a
+// reader must never have to re-probe Drive for a fact the commit already knew.
+//
+// Non-vacuity: the pre-fix literal 0 / ” fails this test.
+func TestClipDriveLocationsCarriesRealDriveArtifactIdentity(t *testing.T) {
+	const artifactSize = int64(11078716)
+	locs := clipDriveLocations(youtubetypes.ClipAsset{Drive: youtubetypes.ClipAssetDrive{
+		FileID:      "drive-1",
+		WebViewLink: "https://drive.example/drive-1",
+		SizeBytes:   artifactSize,
+	}})
+	if len(locs) != 1 {
+		t.Fatalf("a Drive-backed clip must contribute exactly one location, got %d", len(locs))
+	}
+	loc := locs[0]
+	if loc.FileSizeBytes != artifactSize {
+		t.Errorf("FileSizeBytes = %d, want the measured artifact size %d (the 0 placeholder makes a known size look unmeasured)",
+			loc.FileSizeBytes, artifactSize)
+	}
+	if loc.MimeType != clipDriveMimeType {
+		t.Errorf("MimeType = %q, want %q (the empty string cannot be interpreted by a reader)",
+			loc.MimeType, clipDriveMimeType)
+	}
+
+	// Fail-closed on an unmeasured size: an absent measurement must stay 0
+	// rather than being invented, so "unknown" remains representable.
+	unmeasured := clipDriveLocations(youtubetypes.ClipAsset{Drive: youtubetypes.ClipAssetDrive{FileID: "drive-2"}})
+	if len(unmeasured) != 1 {
+		t.Fatalf("a Drive-backed clip must contribute exactly one location, got %d", len(unmeasured))
+	}
+	if unmeasured[0].FileSizeBytes != 0 {
+		t.Errorf("unmeasured FileSizeBytes = %d, want 0 (no invented size)", unmeasured[0].FileSizeBytes)
+	}
+}
 
 func TestMediaAssetRecord_TitleOrName(t *testing.T) {
 	if got := (&MediaAssetRecord{Name: "n", Title: "t"}).TitleOrName(); got != "t" {

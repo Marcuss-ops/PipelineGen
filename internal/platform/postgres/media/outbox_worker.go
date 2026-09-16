@@ -181,13 +181,18 @@ func (w *PostgresIndexWorker) handlerFor(eventType string) OutboxHandler {
 
 // Handle processes one claimed asset.index.requested event:
 //
-//	embed(search_text) → upsert media_embeddings → index_state=INDEXED
-//	  (same tx) → outbox completed.
+//	embed(search_text) → FENCED index_state=INDEXED + upsert
+//	media_embeddings → INDEXED (same tx) → outbox completed.
+//
+// The terminal transition is fenced (see outbox_index_fence.go): an asset
+// whose index_state is retired (DELETE_PENDING / DELETED) terminates the event
+// as SUPERSEDED instead of resurrecting the row as INDEXED, and an asset the
+// SSOT no longer knows fails closed without writing an orphan vector.
 //
 // Idempotent by construction: the embedding upsert is keyed on
-// (asset_id, embedding_type, model_id) and SetIndexed is a no-op when the
-// state/content already match — a redelivered event converges to the same
-// terminal state.
+// (asset_id, embedding_type, model_id) and the fenced flip is a no-op when the
+// state already matches — a redelivered event converges to the same terminal
+// state.
 func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) error {
 	if claim == nil {
 		return nil
@@ -204,6 +209,7 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 		if err := w.repo.MarkCompleted(ctx, evt.ID, claim.LeaseID); err != nil {
 			return fmt.Errorf("media outbox worker: complete event %d: %w", evt.ID, err)
 		}
+		w.observeProcessed(evt.EventType)
 		return nil
 	}
 
@@ -217,10 +223,22 @@ func (w *PostgresIndexWorker) Handle(ctx context.Context, claim *OutboxClaim) er
 // asset.index.requested claim. A non-empty vec (prefetched by the batch
 // leg) skips the per-asset embed; nil falls back to the single-asset path.
 //
+// The transition is FENCED (outbox_index_fence.go). The fence is the first
+// statement of the transaction, so it is also the authority that decides
+// whether the vector may be written at all:
+//
+//   - applied  → write the vector, commit, complete the event.
+//   - missing  → roll back and fail closed (retryable), preserving the
+//     long-standing "never write an orphan vector" contract.
+//   - retired  → roll back and terminate the event as SUPERSEDED. This is the
+//     fix for the resurrection race: an index request that is claimed AFTER
+//     the deletion saga retired the asset must never flip it back to INDEXED
+//     or re-publish it in semantic search.
+//
 // Idempotent by construction: the embedding upsert is keyed on
-// (asset_id, embedding_type, model_id) and the index_state flip is a no-op
-// when the state/content already match — a redelivered event converges to
-// the same terminal state.
+// (asset_id, embedding_type, model_id) and the fenced flip is a no-op when the
+// state already matches — a redelivered event converges to the same terminal
+// state.
 func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *OutboxClaim, vec []float32) error {
 	evt := claim.Event
 	var payload IndexEventPayload
@@ -257,23 +275,34 @@ func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *Outbo
 			fmt.Errorf("media index worker: zero-length embedding for asset %q", assetID)))
 	}
 
-	// One transaction: vector upsert + index_state flip. Rollback leaves
-	// the event processing (lease will expire) and zero partial state.
+	// One transaction: FENCED index_state flip + vector upsert. The fence runs
+	// FIRST so a retirement that wins the race rolls the whole tx back and the
+	// vector is never written for a rejected asset.
 	tx, err := w.repo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("media index worker: begin tx: %w", err)
 	}
+	outcome, err := applyIndexedFenceTx(ctx, tx, assetID, nowRFC3339())
+	if err != nil {
+		_ = tx.Rollback()
+		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: index fence asset %q: %w", assetID, err))
+	}
+	switch outcome.Kind {
+	case indexFenceAssetMissing:
+		// Fail closed exactly as before this fence existed: a referenced but
+		// absent asset must never produce an orphan vector, and the retry /
+		// dead-letter lifecycle stays the operator signal.
+		_ = tx.Rollback()
+		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: asset %q is absent from the media SSOT", assetID))
+	case indexFenceAssetRetired:
+		// Terminal: the asset is retiring or retired, so this request can
+		// never become applicable again. Retire it without retry.
+		_ = tx.Rollback()
+		return w.supersede(ctx, claim, outcome.Reason)
+	}
 	if err := w.vectors.UpsertEmbeddingTx(ctx, tx, assetID, w.EmbeddingType, w.ModelID, vec); err != nil {
 		_ = tx.Rollback()
 		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: embedding upsert asset %q: %w", assetID, err))
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE media_assets
-		SET index_state = 'INDEXED', index_state_updated_at = $1
-		WHERE id = $2
-	`, nowRFC3339(), assetID); err != nil {
-		_ = tx.Rollback()
-		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: index_state flip asset %q: %w", assetID, err))
 	}
 	if err := tx.Commit(); err != nil {
 		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: commit asset %q: %w", assetID, err))
@@ -282,7 +311,32 @@ func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *Outbo
 	if err := w.repo.MarkCompleted(ctx, evt.ID, claim.LeaseID); err != nil {
 		return fmt.Errorf("media index worker: complete event %d: %w", evt.ID, err)
 	}
+	w.observeProcessed(evt.EventType)
 	return nil
+}
+
+// supersede terminates a claimed event as SUPERSEDED (terminal, lease-fenced)
+// and projects the dedicated counter. The event's work can never become
+// applicable again, so returning nil is the SUCCESS of handling it: the row is
+// durably retired, the reason is recorded on the event, and the drain loop
+// must not retry it.
+func (w *PostgresIndexWorker) supersede(ctx context.Context, claim *OutboxClaim, reason string) error {
+	if err := w.repo.MarkSuperseded(ctx, claim.Event.ID, claim.LeaseID, reason); err != nil {
+		return errors.Join(err, fmt.Errorf("media index worker: supersede event %d (%s)", claim.Event.ID, reason))
+	}
+	if w.metrics != nil {
+		w.metrics.ObserveOutboxSuperseded(claim.Event.EventType)
+	}
+	return nil
+}
+
+// observeProcessed projects one terminally-drained event onto the
+// processing-rate counter. It is a method (not an inline call) so the counter
+// is incremented from exactly the two success paths and never for a supersede.
+func (w *PostgresIndexWorker) observeProcessed(eventType string) {
+	if w.metrics != nil {
+		w.metrics.ObserveOutboxProcessed(eventType)
+	}
 }
 
 // indexAssetID resolves the asset identity an asset.index.requested event
@@ -361,9 +415,6 @@ func (w *PostgresIndexWorker) processClaims(ctx context.Context, claims []*Outbo
 		if err != nil {
 			w.logf(log, "media index worker: event "+fmt.Sprint(claim.Event.ID)+" failed", err)
 			continue
-		}
-		if w.metrics != nil {
-			w.metrics.ObserveOutboxProcessed(claim.Event.EventType)
 		}
 	}
 }

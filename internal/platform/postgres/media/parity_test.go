@@ -272,7 +272,7 @@ func TestParity_CommitAndIndex_LocationsUpgradedAndIdempotent(t *testing.T) {
 		{Kind: "local", Provider: "local", URI: "/data/clips/a.mp4", MimeType: "video", LegacyFileMD5: "sha256:loc"},
 		{Kind: "drive", Provider: "drive", ExternalID: "drive-123", URI: "drive://drive-123",
 			WebViewLink: "https://drive.example/123", DownloadURL: "https://dl.example/123",
-			MimeType: "video", LegacyFileMD5: "sha256:loc", IsPrimary: true},
+			MimeType: "video/mp4", FileSizeBytes: 11078716, LegacyFileMD5: "sha256:loc", IsPrimary: true},
 	}
 	req := persistence.CommitRequest{
 		AssetID: "loc_asset_1", Source: "youtube", Name: "Located", Filename: "located.mp4",
@@ -304,18 +304,43 @@ func TestParity_CommitAndIndex_LocationsUpgradedAndIdempotent(t *testing.T) {
 		t.Fatalf("primary drive projection mismatch: %q / %q", driveFileID, driveLink)
 	}
 
-	// Re-commit with a moved drive file: location upsert refreshes in place.
+	// The Drive location must carry the artifact's REAL size and type.
+	//
+	// Observed live (2026-09-16) on yt_gT0amKtXWdU_0_10_v1: the Drive object
+	// measured 11,078,716 bytes while asset_locations recorded
+	// file_size_bytes=0 and mime_type='' — a row indistinguishable from one
+	// whose Drive artifact was never measured. The YouTube clip writer now
+	// threads the Step 5 stat through ClipAssetDrive, so this assertion is the
+	// end-to-end proof that the fact reaches the table.
+	var locationSize int64
+	var locationMime string
+	if err := db.QueryRow(`SELECT file_size_bytes, mime_type FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.AssetID).Scan(&locationSize, &locationMime); err != nil {
+		t.Fatal(err)
+	}
+	if locationSize != 11078716 {
+		t.Errorf("asset_locations.file_size_bytes = %d, want the real artifact size 11078716 (0 makes a known size look unmeasured)", locationSize)
+	}
+	if locationMime != "video/mp4" {
+		t.Errorf("asset_locations.mime_type = %q, want \"video/mp4\"", locationMime)
+	}
+
+	// Re-commit with a moved drive file AND a new size: the upsert must refresh
+	// the identity columns in place, not only uri/external_id.
 	req.Locations[1].ExternalID = "drive-456"
 	req.Locations[1].URI = "drive://drive-456"
+	req.Locations[1].FileSizeBytes = 22222222
 	if _, err := c.CommitAndIndex(context.Background(), req); err != nil {
 		t.Fatalf("re-commit: %v", err)
 	}
 	var uri string
-	if err := db.QueryRow(`SELECT uri FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.AssetID).Scan(&uri); err != nil {
+	if err := db.QueryRow(`SELECT uri, file_size_bytes FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.AssetID).Scan(&uri, &locationSize); err != nil {
 		t.Fatal(err)
 	}
 	if uri != "drive://drive-456" {
 		t.Fatalf("drive location not upgraded: %q", uri)
+	}
+	if locationSize != 22222222 {
+		t.Errorf("file_size_bytes after re-commit = %d, want the refreshed 22222222 (the ON CONFLICT clause must carry the identity columns, not only uri)", locationSize)
 	}
 	if got := countWhere(t, db, "asset_locations", "asset_id", req.AssetID); got != 2 {
 		t.Fatalf("asset_locations rows after re-commit = %d, want 2 (idempotent upsert)", got)
@@ -580,6 +605,80 @@ func TestParity_CommitRenditionTx(t *testing.T) {
 	}
 	if locationKind != "local" {
 		t.Fatalf("rendition location kind = %q, want local", locationKind)
+	}
+}
+
+// TestParity_CommitRenditionTx_PreservesPrimaryLocationFlag pins that a
+// rendition write never DEMOTES the asset's primary locator.
+//
+// CommitRenditionTx upserts asset_locations on (asset_id, location_kind) and
+// the INSERT hardcodes is_primary = 0. With `is_primary = excluded.is_primary`
+// in the ON CONFLICT clause, registering a rendition that shares the primary
+// location's kind cleared the flag on the exact row a reader trusts to resolve
+// the Drive object — so the asset's Drive locator stayed present but stopped
+// being primary. The primary locator is decided by the ASSET commit; a
+// rendition only adds technical metadata about bytes that already have a home.
+//
+// Non-vacuity: restoring `is_primary = excluded.is_primary` fails this test.
+func TestParity_CommitRenditionTx_PreservesPrimaryLocationFlag(t *testing.T) {
+	c, db := newPostgresCommitter(t)
+	ctx := context.Background()
+
+	req := persistence.CommitRequest{
+		AssetID: "rend_primary_1", Source: "youtube", Name: "R", Filename: "r.mp4",
+		MediaType: "video", ContentHash: "sha256:rend-primary", LifecycleState: "ACTIVE",
+		SearchText: "r", EmitIndexEvent: false,
+		Locations: []persistence.LocationCommit{{
+			Kind: "drive", Provider: "drive", URI: "drive://primary-file",
+			ExternalID: "primary-file", WebViewLink: "https://drive.example/primary-file",
+			MimeType: "video/mp4", FileSizeBytes: 4096, IsPrimary: true,
+		}},
+	}
+	if _, err := c.CommitAndIndex(ctx, req); err != nil {
+		t.Fatalf("CommitAndIndex: %v", err)
+	}
+
+	var primaryBefore int
+	if err := db.QueryRow(`SELECT is_primary FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.AssetID).Scan(&primaryBefore); err != nil {
+		t.Fatalf("primary before: %v", err)
+	}
+	if primaryBefore != 1 {
+		t.Fatalf("primary flag before the rendition write = %d, want 1", primaryBefore)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same location_kind as the primary locator: this is the collision case.
+	if err := c.CommitRenditionTx(ctx, tx, req.AssetID, persistence.RenditionCommit{
+		Kind: "master", Provider: "drive", FileID: "primary-file", URI: "drive://primary-file",
+		MimeType: "video/mp4", SizeBytes: 4096, SHA256: "sha256:rend-primary",
+		Container: "mp4", Codec: "h264", Width: 1920, Height: 1080, FPS: 24,
+	}, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("CommitRenditionTx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var primaryAfter int
+	if err := db.QueryRow(`SELECT is_primary FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.AssetID).Scan(&primaryAfter); err != nil {
+		t.Fatalf("primary after: %v", err)
+	}
+	if primaryAfter != 1 {
+		t.Errorf("is_primary after committing a rendition sharing the location kind = %d, want 1 (a rendition must not demote the asset's primary locator)", primaryAfter)
+	}
+
+	// The rendition row itself must exist and point at that location.
+	var kind, container string
+	var locationID int64
+	if err := db.QueryRow(`SELECT kind, container, location_id FROM asset_renditions WHERE asset_id = $1 AND kind = 'master'`, req.AssetID).Scan(&kind, &container, &locationID); err != nil {
+		t.Fatalf("master rendition row: %v", err)
+	}
+	if container != "mp4" || locationID == 0 {
+		t.Fatalf("master rendition mismatch: container=%q location_id=%d", container, locationID)
 	}
 }
 

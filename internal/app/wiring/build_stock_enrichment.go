@@ -80,10 +80,18 @@ func wireStockEnrichment(deps StockBundleDeps) error {
 
 		if llmClient == nil {
 			deps.Runtime.Log.Warn("stock.BuildStockBundle: enrichment enabled but no LLM client resolved (set EnrichmentLLMClient or configure ParseArenaLLM/OllamaModel)")
+		} else if deps.Runtime.MediaDB == nil {
+			// Media-SSOT read gate. Enrichment reads media_assets, so it is only
+			// registered when the PostgreSQL media plane is wired; the previous
+			// SQLite read was the writer/reader split-brain and could report a
+			// committed asset as WrapChunkNotFound. There is deliberately no
+			// SQLite fallback (persistence.RequireMediaPostgres), and an
+			// unregistered job handler is the fail-closed signal.
+			deps.Runtime.Log.Warn("stock.BuildStockBundle: enrichment enabled but the PostgreSQL media SSOT is not wired (PIPELINEGEN_MEDIA_POSTGRES_*); handler not registered (no SQLite media fallback)")
 		} else {
-			assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.Runtime.DB)
+			assetRepo, repoErr := stockenrich.NewPostgresAssetRepository(deps.Runtime.MediaDB)
 			if repoErr != nil {
-				return fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
+				return fmt.Errorf("stock.BuildStockBundle: enrichment.NewPostgresAssetRepository: %w", repoErr)
 			}
 			assetRepo.SetMetadataUpdater(deps.Enrichment.AssetMetadataUpdater)
 

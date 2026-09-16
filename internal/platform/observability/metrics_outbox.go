@@ -202,6 +202,18 @@ func (m *MediaOutboxStatusCountAdapter) ObserveOutboxProcessed(eventType string)
 	MediaOutboxProcessedTotal.WithLabelValues(eventType).Inc()
 }
 
+// ObserveOutboxSuperseded projects one terminally-superseded event onto the
+// supersede counter. A supersede is a terminal NON-success: the aggregate was
+// retired or absent, so the work can never become applicable again. It is
+// deliberately NOT folded into media_outbox_processed_total, otherwise deleted
+// assets would be reported as indexed work.
+func (m *MediaOutboxStatusCountAdapter) ObserveOutboxSuperseded(eventType string) {
+	if m == nil || eventType == "" {
+		return
+	}
+	MediaIndexSupersededTotal.WithLabelValues(eventType).Inc()
+}
+
 // MediaOutboxStatusCountAdapter adapts the canonical media worker status
 // observer to Prometheus collectors.
 type MediaOutboxStatusCountAdapter struct{}

@@ -101,18 +101,53 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 		StartMs:        int64(clipAsset.Metadata.ClipStartSec * 1000),
 		EndMs:          int64(clipAsset.Metadata.ClipEndSec * 1000),
 		Title:          clipAsset.Metadata.Title,
-		Locations: []persistence.LocationCommit{
-			{
-				Kind:        "drive",
-				Provider:    "drive",
-				ExternalID:  clipAsset.Drive.FileID,
-				WebViewLink: clipAsset.Drive.WebViewLink,
-				IsPrimary:   true,
-			},
-		},
+		Locations:      clipDriveLocations(clipAsset),
 		EmitIndexEvent: true,
 		RequestedAt:    time.Now(),
 	}, nil
+}
+
+// clipDriveLocations projects a clip's Drive identity into asset_locations.
+//
+// A 'drive' location is emitted ONLY when the clip actually carries a Drive
+// file id. The canonical committer upserts on (asset_id, location_kind), so the
+// previous unconditional row created a PHANTOM location — is_primary=true with
+// an empty external_id and an empty uri — for every YouTube-sourced clip that
+// was never published to Drive. A reader that trusts the primary location then
+// resolves an empty Drive id and fails far away from the cause.
+//
+// The ABSENCE of the row is the honest representation of "no Drive identity
+// yet": a later delivery writes it through the same upsert, and no code has to
+// distinguish "no row" from "row with nothing in it".
+// clipDriveMimeType is the canonical media type of the artifact a YouTube clip
+// commit describes: the segment cut always muxes to an MP4 container, and the
+// canonical committer writes this column into asset_locations.
+const clipDriveMimeType = "video/mp4"
+
+func clipDriveLocations(clipAsset youtubetypes.ClipAsset) []persistence.LocationCommit {
+	fileID := strings.TrimSpace(clipAsset.Drive.FileID)
+	if fileID == "" {
+		return nil
+	}
+	return []persistence.LocationCommit{
+		{
+			Kind:        "drive",
+			Provider:    "drive",
+			URI:         "drive://" + fileID,
+			ExternalID:  fileID,
+			WebViewLink: clipAsset.Drive.WebViewLink,
+			// The Drive object's REAL size + type, both threaded from the bytes
+			// Step 8 uploaded. The previous shape left file_size_bytes at its
+			// 0 default and mime_type at '', so a Drive location was
+			// indistinguishable from an unmeasured one (observed live on
+			// yt_gT0amKtXWdU_0_10_v1: size 0 against an 11,078,716-byte Drive
+			// object). The byte stream is already verified at upload time; a
+			// reader must not have to re-probe Drive to learn a known fact.
+			FileSizeBytes: clipAsset.Drive.SizeBytes,
+			MimeType:      clipDriveMimeType,
+			IsPrimary:     true,
+		},
+	}
 }
 
 // validateLocalizedClipPolicy checks the Require* flags WITHOUT opening

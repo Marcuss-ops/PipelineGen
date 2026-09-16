@@ -147,6 +147,13 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// drive.NewTestDBWithSchema) into the typed handle. The body uses
 	// method promotion transparently.
 	svc := NewService(cfg, &drive.SQLiteDB{DB: db}, ":memory:", zap.NewNop())
+	// MEDIA-SSOT P2-9 Phase 2: the taxonomy gate reads media_assets through the
+	// media-SSOT port, not through the operational handle above. Injecting the
+	// fixture's reader keeps this test on the taxonomy-gate path the comment
+	// above describes; without it Eligibility fails closed with
+	// ErrTaxonomySchemaUnavailable and IndexAsset would take the compatibility
+	// window instead, silently exercising a different branch than intended.
+	svc.SetMediaEligibilityReader(sqliteTaxonomyReader{db: db})
 	svc.SetAssetMutationCommitter(newTestAssetMutationCommitter(db))
 	vs := &mockVectorStoreIndexer{}
 	svc.vectorStore = vs

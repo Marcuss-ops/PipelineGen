@@ -72,6 +72,13 @@ type OutboxStatusMetrics interface {
 	// rate(media_outbox_processed_total[5m]) per event type, so a flat rate
 	// against a rising backlog is the unambiguous "drain is stuck" signal.
 	ObserveOutboxProcessed(eventType string)
+	// ObserveOutboxSuperseded records one claimed event that was retired
+	// WITHOUT retry because its work can never become applicable again (the
+	// aggregate is absent or already retired). It is deliberately distinct
+	// from ObserveOutboxProcessed: a supersede is a terminal NON-success, so
+	// folding it into the processing-rate panel would report deleted assets
+	// as indexed work.
+	ObserveOutboxSuperseded(eventType string)
 }
 
 // ClaimNext claims the oldest pending event atomically (CTE claim with
@@ -95,9 +102,9 @@ func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL ti
 		)
 		UPDATE outbox_events
 		SET status = 'processing',
-		    attempt_count = attempt_count + 1,
-		    worker_id = $2, lease_id = $3, lease_expiry = $4,
-		    updated_at = $1
+		    attempt_count = attempt_count + 1,			worker_id = $2, lease_id = $3,
+			lease_expiry = $4, lease_expiry_ts = NULLIF($4, '')::timestamptz,
+			updated_at = $1, updated_at_ts = NULLIF($1, '')::timestamptz
 		WHERE id = (SELECT id FROM candidate)
 		  AND status = 'pending'
 		RETURNING id
@@ -156,8 +163,9 @@ func (r *Repository) ClaimBatch(ctx context.Context, workerID string, leaseTTL t
 		UPDATE outbox_events
 		SET status = 'processing',
 		    attempt_count = attempt_count + 1,
-		    worker_id = $3, lease_id = $4, lease_expiry = $5,
-		    updated_at = $1
+		    worker_id = $3, lease_id = $4,
+		    lease_expiry = $5, lease_expiry_ts = NULLIF($5, '')::timestamptz,
+		    updated_at = $1, updated_at_ts = NULLIF($1, '')::timestamptz
 		WHERE id IN (SELECT id FROM candidate)
 		  AND status = 'pending'
 		RETURNING id, event_type, aggregate_id, aggregate_type, payload_json,
@@ -190,7 +198,9 @@ func (r *Repository) MarkCompleted(ctx context.Context, eventID int64, leaseID s
 	now := timeutil.FormatRFC3339(time.Now())
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE outbox_events
-		SET status = 'completed', completed_at = $1, updated_at = $1
+		SET status = 'completed',
+		    completed_at = $1, completed_at_ts = NULLIF($1, '')::timestamptz,
+		    updated_at = $1, updated_at_ts = NULLIF($1, '')::timestamptz
 		WHERE id = $2 AND status = 'processing' AND lease_id = $3
 	`, now, eventID, leaseID)
 	if err != nil {
@@ -198,6 +208,38 @@ func (r *Repository) MarkCompleted(ctx context.Context, eventID int64, leaseID s
 	}
 	if n, _ := result.RowsAffected(); n == 0 {
 		return fmt.Errorf("media outbox MarkCompleted(%d): %w", eventID, ErrLeaseLost)
+	}
+	return nil
+}
+
+// MarkSuperseded moves a claimed event to the terminal `superseded` state
+// (lease-fenced).
+//
+// Use it when the work an event describes can never become applicable again —
+// the aggregate it addresses was retired (media_assets.index_state='DELETED')
+// or is being retired. Retrying such an event cannot change the outcome, so
+// burning the backoff budget would only delay the operator signal; the event
+// terminates immediately with the reason recorded in `last_error`.
+//
+// Mirrors internal/platform/sqlite/outboxevents.Repository.MarkSuperseded
+// statement-for-statement (one outbox fact family, two engine adapters) and,
+// like MarkCompleted / MarkDeadLetter / MarkFailed, clears the
+// worker/lease identity so a stale consumer cannot resurrect the row once it
+// is retired. Status is taken from the canonical SupersedeStatus constant.
+func (r *Repository) MarkSuperseded(ctx context.Context, eventID int64, leaseID, errMsg string) error {
+	now := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET status = $1, last_error = $2,
+		    updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz,
+		    worker_id = '', lease_id = '', lease_expiry = NULL, lease_expiry_ts = NULL
+		WHERE id = $4 AND lease_id = $5 AND status = 'processing'
+	`, SupersedeStatus, errMsg, now, eventID, leaseID)
+	if err != nil {
+		return fmt.Errorf("media outbox MarkSuperseded(%d): %w", eventID, err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return fmt.Errorf("media outbox MarkSuperseded(%d): %w", eventID, ErrLeaseLost)
 	}
 	return nil
 }
@@ -213,8 +255,9 @@ func (r *Repository) MarkDeadLetter(ctx context.Context, eventID int64, leaseID,
 	now := timeutil.FormatRFC3339(time.Now())
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE outbox_events
-		SET status = 'dead_letter', last_error = $1, updated_at = $2,
-		    worker_id = '', lease_id = '', lease_expiry = NULL
+		SET status = 'dead_letter', last_error = $1,
+		    updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz,
+		    worker_id = '', lease_id = '', lease_expiry = NULL, lease_expiry_ts = NULL
 		WHERE id = $3 AND lease_id = $4 AND status = 'processing'
 	`, errMsg, now, eventID, leaseID)
 	if err != nil {
@@ -262,7 +305,8 @@ func (r *Repository) RequeueExpiredLeases(ctx context.Context, limit int) (int, 
 		)
 		UPDATE outbox_events
 		SET status = 'pending', worker_id = '', lease_id = '',
-		    lease_expiry = NULL, lease_expiry_ts = NULL, updated_at = $1
+		    lease_expiry = NULL, lease_expiry_ts = NULL,
+		    updated_at = $1, updated_at_ts = NULLIF($1, '')::timestamptz
 		WHERE id IN (SELECT id FROM expired)
 		  AND status = 'processing'
 	`, now, limit)
@@ -287,8 +331,9 @@ func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID, err
 	if attemptCount >= maxAttempts {
 		result, err := r.db.ExecContext(ctx, `
 			UPDATE outbox_events
-			SET status = 'dead_letter', last_error = $1, updated_at = $2,
-			    worker_id = '', lease_id = '', lease_expiry = NULL
+			SET status = 'dead_letter', last_error = $1,
+			    updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz,
+			    worker_id = '', lease_id = '', lease_expiry = NULL, lease_expiry_ts = NULL
 			WHERE id = $3 AND lease_id = $4 AND status = 'processing'
 		`, errMsg, now, eventID, leaseID)
 		if err != nil {
@@ -302,8 +347,10 @@ func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID, err
 
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE outbox_events
-		SET status = 'pending', last_error = $1, next_attempt_at = $2,
-		    updated_at = $3, worker_id = '', lease_id = '', lease_expiry = NULL
+		SET status = 'pending', last_error = $1,
+		    next_attempt_at = $2, next_attempt_at_ts = NULLIF($2, '')::timestamptz,
+		    updated_at = $3, updated_at_ts = NULLIF($3, '')::timestamptz,
+		    worker_id = '', lease_id = '', lease_expiry = NULL, lease_expiry_ts = NULL
 		WHERE id = $4 AND lease_id = $5 AND status = 'processing'
 	`, errMsg, timeutil.FormatRFC3339(nextAttemptAt), now, eventID, leaseID)
 	if err != nil {

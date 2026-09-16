@@ -130,10 +130,17 @@ func buildIngestService(
 	// instead of landing on an unnamed database.
 	mediaLocations := persistence.CanonicalAssetLocationWriter(canonicalCommitter)
 	mediaProcessing := persistence.CanonicalAssetProcessingWriter(canonicalCommitter)
+	// MEDIA-SSOT P2-9 Phase 2: the drive-file-id listing is a MEDIA read, so it
+	// resolves from the canonical committer's engine too. It used to run inside
+	// the clip store as raw SQL against dbs.Main (operational SQLite), a
+	// database that holds no committed media rows, so the listing was blind to
+	// the SSOT. nil means the media plane is closed and the listing fails
+	// closed — never dbs.Main.
+	mediaDriveFileIDs := mediaDriveFileListerFromCommitter(canonicalCommitter)
 	clipRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
-	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 	stockRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
-	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 	return ingest.NewService(cfg, log, downloader.NewMediaDownloader(10*time.Minute), map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

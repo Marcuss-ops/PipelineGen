@@ -49,10 +49,11 @@ func (noopLogger) Info(string, ...any)  {}
 func (noopLogger) Error(string, ...any) {}
 
 type recordingOutboxStatusMetrics struct {
-	values    map[string]int64
-	backlog   map[string]int64
-	oldest    map[string]float64
-	processed map[string]int64
+	values     map[string]int64
+	backlog    map[string]int64
+	oldest     map[string]float64
+	processed  map[string]int64
+	superseded map[string]int64
 }
 
 func (m *recordingOutboxStatusMetrics) ObserveOutboxProcessed(eventType string) {
@@ -60,6 +61,13 @@ func (m *recordingOutboxStatusMetrics) ObserveOutboxProcessed(eventType string) 
 		m.processed = make(map[string]int64)
 	}
 	m.processed[eventType]++
+}
+
+func (m *recordingOutboxStatusMetrics) ObserveOutboxSuperseded(eventType string) {
+	if m.superseded == nil {
+		m.superseded = make(map[string]int64)
+	}
+	m.superseded[eventType]++
 }
 
 func (m *recordingOutboxStatusMetrics) ObserveOutboxStatus(eventType, status string, count int64) {

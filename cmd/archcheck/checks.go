@@ -77,6 +77,13 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// certify-media-cutover counter SQLITE_MEDIA_READERS=0, which was
 		// UNVERIFIED after its driver was deleted.
 		{"percheck_sqlite_media_reader_ban", boundaries.ScanSQLiteMediaReaderBan},
+		// MEDIA-SSOT dual-write side (added 2026-09-16): migration 004 adds a
+		// TIMESTAMPTZ mirror beside every legacy TEXT timestamp on the media
+		// hot-path tables and delegates the dual-write to the writer. This gate
+		// enforces that delegation structurally, so a new mutation cannot write
+		// one half of a pair without the other (or from a different bind). It is
+		// the forward-prevention companion to the live dual_write_timestamps_test.
+		{"percheck_pg_dual_write_contract", boundaries.ScanPGDualWriteContract},
 		// MEDIA-SSOT write side (added 2026-09-13): the SQL-level writer gate
 		// above is blind to a write that goes through an interface, because no
 		// SQL appears at the call site. This companion bans the generic

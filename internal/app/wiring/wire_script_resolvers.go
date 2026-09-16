@@ -1,6 +1,8 @@
 package wiring
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +22,43 @@ import (
 	"go.uber.org/zap"
 )
 
+// readyASSArtifactCounter is the operational half of the sampler's
+// subtitle_ready gate: it counts the READY ASS subtitle artifacts of one asset.
+//
+// It reads asset_subtitle_artifacts, which exists ONLY on the operational SQLite
+// store (measured: 0 PostgreSQL tables, no PostgreSQL writer), so it is
+// deliberately NOT a media read and must not be re-pointed at the media SSOT
+// until that table has a canonical PostgreSQL home. Keeping it a separate port —
+// rather than one joined statement — is what let the media half move to
+// PostgreSQL without touching this read.
+type readyASSArtifactCounter struct {
+	db *sql.DB
+}
+
+// CountReadyASSArtifacts mirrors the retired correlated subquery exactly:
+// format='ass', status='READY', non-empty drive_file_id and drive_url, and
+// is_current=1 (an INTEGER flag on SQLite).
+func (c readyASSArtifactCounter) CountReadyASSArtifacts(ctx context.Context, assetID string) (int, error) {
+	if c.db == nil {
+		return 0, fmt.Errorf("ready ASS artifact counter: operational handle is not configured")
+	}
+	var count int
+	err := c.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM asset_subtitle_artifacts
+		 WHERE asset_id = ?
+		   AND format = 'ass'
+		   AND status = 'READY'
+		   AND drive_file_id <> ''
+		   AND drive_url <> ''
+		   AND is_current = 1`, assetID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("ready ASS artifact counter: count for %q: %w", assetID, err)
+	}
+	return count, nil
+}
+
+var _ usecase.ReadyASSArtifactCounter = readyASSArtifactCounter{}
+
 // buildScriptSourceResolvers constructs the canonical source-resolution
 // cluster. PostgreSQL + pgvector owns semantic media reads; Qdrant and SQLite
 // media mirrors are intentionally not consulted by SourceSearch or Curate.
@@ -36,10 +75,27 @@ func buildScriptSourceResolvers(
 	gen := root.AI.ScriptGen
 
 	// One sampler implementation is shared by search/catalog/curate.
-	samplerReg := usecase.NewClipSamplerRegistry()
-	if root != nil && root.DB != nil {
-		usecase.SetSamplerDB(root.DB.DB)
+	//
+	// MEDIA-SSOT P2-9 Phase 2: the sampler's subtitle_ready gate reads two
+	// facts that live on different engines, so both surfaces are named here
+	// instead of being hidden behind one package-global *sql.DB:
+	//
+	//	media_assets.source            → PostgreSQL media SSOT
+	//	asset_subtitle_artifacts       → SQLite (operational only: no PG table)
+	//
+	// The previous SetSamplerDB(root.DB.DB) handed the gate ONE operational
+	// handle for a statement that also read media_assets, so the media half was
+	// graded in a database that holds no committed media rows. A closed media
+	// plane leaves AssetSource nil and the gate vacuous — the same behaviour the
+	// retired nil-SamplerDB check produced.
+	samplerDeps := usecase.SamplerGateDeps{}
+	if root != nil && root.MediaPostgres != nil {
+		samplerDeps.AssetSource = pgmedia.NewMediaAssetSourceReader(root.MediaPostgres)
 	}
+	if root != nil && root.DB != nil {
+		samplerDeps.ReadyASSArtifacts = readyASSArtifactCounter{db: root.DB.DB}
+	}
+	samplerReg := usecase.NewClipSamplerRegistryWithDeps(samplerDeps)
 
 	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if gen != nil {

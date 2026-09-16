@@ -37,6 +37,18 @@
 //	VELOX_EDITORIAL_BACKGROUNDS_DIR      certified plate fixtures directory
 //	VELOX_E2E_RENDER_TIMEOUT             per-clip render budget (default 4m)
 //	VELOX_E2E_REAL_DRIVE=1               assert Drive-issued ids (real upload)
+//	VELOX_E2E_LANGUAGES                  narrow the language set (staged
+//	                                     rollout: five first, then ten)
+//	VELOX_E2E_RESET_RENDER_STATE=1       delete the PREVIOUS certificate's
+//	                                     derived assets + cache rows first, so
+//	                                     this run must actually render
+//
+// The reset flag is test-harness state management, NOT a render behaviour
+// switch: production keeps exactly ONE render path, and the fresh-render
+// certificate exists precisely so that "ten QUEUED" and "ten CACHED" are two
+// separately proven facts (a clean state must render; the identical payload
+// must then cost zero GPU) instead of one ambiguous run that may have served
+// ten hits from a previous session.
 //
 // Run the acquisition certificate first: this test fails closed when the source
 // asset carries fewer than ten READY transcript languages, because a render
@@ -48,6 +60,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,6 +71,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -65,6 +79,8 @@ import (
 	wiringmedia "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 )
 
@@ -124,9 +140,130 @@ func openLiveMediaDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// editorialPlatesDir resolves the certified plate fixtures directory. When it
-// cannot be found the caller registers the plates without a local copy and the
-// canonical materializer fetches them from Drive.
+// liveCertificateConfig loads the production config the live certificate runs
+// against. The certificate must use the SAME credential files and data root the
+// server uses, so they are anchored to the config file's directory.
+func liveCertificateConfig(t *testing.T) *config.Config {
+	t.Helper()
+	loadDotEnvMissing(t, liveEnv("VELOX_E2E_DOTENV", filepath.Join("..", "..", ".env")))
+	cfgPath := liveEnv("VELOX_E2E_CONFIG", filepath.Join("..", "..", "config.yaml"))
+	resolved, err := config.GetResolvedFromPath(cfgPath)
+	require.NoErrorf(t, err, "the live certificate needs the production config at %s", cfgPath)
+	cfg := resolved.View()
+	require.NotNil(t, cfg)
+	cfgBase := filepath.Dir(cfgPath)
+	cfg.Paths.CredentialsFile = anchorToConfig(cfgBase, cfg.Paths.CredentialsFile)
+	cfg.Paths.TokenFile = anchorToConfig(cfgBase, cfg.Paths.TokenFile)
+	// The data root is config-relative too, and the JOBS STORE lives under it
+	// (<data_dir>/jobs/jobs.db.sqlite). Left relative, this test's process (cwd
+	// `tests/e2e`) resolves it to a different — empty — directory than the
+	// server, which registers the certificate's own render jobs. Anchoring it
+	// makes "the jobs store" mean the same file in both processes.
+	cfg.Storage.DataDir = anchorToConfig(cfgBase, cfg.Storage.DataDir)
+	return cfg
+}
+
+// resetRenderCertificateJobs removes the FAILED clip.render jobs a PREVIOUS
+// attempt of this exact batch left behind.
+//
+// Why this is necessary, and why it is not a cache bypass: the queue dedupes an
+// enqueue on (type, correlation_id) and returns the existing job whenever one
+// matches — including a job that already FAILED. The batch correlation is
+// `batch_fingerprint + ":" + fingerprint[:16]`, and the batch fingerprint is
+// derived purely from the render inputs, so after ONE failed attempt an
+// identical, now-correct payload can never be rendered again: the submit is
+// answered with the corpse of the previous run. That is a genuine operational
+// trap (a transient GPU/path failure poisons the request forever), and it is
+// precisely what the fresh-render certificate has to be able to step out of.
+//
+// Every clip.render job of THIS batch is removed, terminal ones included,
+// because this function is only ever called together with the derived-asset
+// reset: once the asset a SUCCEEDED job produced is gone, keeping the row does
+// not preserve idempotency evidence — it makes the batch deduplicate onto a job
+// whose output no longer exists, which is the opposite of a fresh render. The
+// idempotency certificate does NOT depend on these rows: it re-submits the
+// identical payload and is served by the deterministic render cache, whose rows
+// the same reset clears.
+func resetRenderCertificateJobs(t *testing.T, cfg *config.Config, fingerprints []string) int {
+	t.Helper()
+	require.NotNil(t, cfg, "config is required to locate the jobs store")
+	jobsPath := cfg.Storage.JobsDBFullPath()
+	require.FileExistsf(t, jobsPath, "the jobs store must exist to clear certificate job state (%s)", jobsPath)
+
+	db, err := sql.Open("sqlite3", jobsPath+"?_busy_timeout=5000")
+	require.NoErrorf(t, err, "open jobs store %s", jobsPath)
+	defer func() { _ = db.Close() }()
+
+	batchID := cliprender.BatchFingerprint(fingerprints)
+	// EVERY clip.render job of these fingerprints is cleared, SUCCEEDED ones
+	// included. Deleting only the non-succeeded rows was internally
+	// inconsistent with the state reset next to it: that reset deletes the
+	// derived assets these jobs produced, so a SUCCEEDED row is left claiming an
+	// asset that no longer exists — and the batch then DEDUPLICATES onto it and
+	// settles instantly against the missing asset instead of rendering. The
+	// queue is not the idempotency mechanism for this certificate (the render
+	// cache is, and its rows are cleared alongside), so there is nothing to
+	// preserve by keeping the terminal rows.
+	const q = `DELETE FROM jobs
+		WHERE type = 'clip.render'
+		  AND correlation_id = ?`
+	removed := 0
+	for _, fingerprint := range fingerprints {
+		res, err := db.ExecContext(context.Background(), q, batchID+":"+fingerprint[:16])
+		require.NoErrorf(t, err, "clear failed certificate job for fingerprint %s", fingerprint[:16])
+		if affected, err := res.RowsAffected(); err == nil {
+			removed += int(affected)
+		}
+	}
+	return removed
+}
+
+// editorialPlateBytesSource builds the canonical content-addressed materializer
+// the plate bootstrap hashes bytes with.
+//
+// The fixture directory is NOT sufficient: only drive-background-01 and
+// drive-background-05 are checked in (deliberately sharing one digest), so a
+// bootstrap limited to local files would register half the catalog and the
+// certificate would "pass" over plates that were never verified. The canonical
+// materializer hashes a registered fixture, a cached copy, or a fresh Drive
+// download, and the bootstrap refuses any digest that is not the certified one.
+func editorialPlateBytesSource(t *testing.T, log *zap.Logger) *drive.CanonicalAssetMaterializer {
+	t.Helper()
+	cfg := liveCertificateConfig(t)
+
+	svc, err := drive.NewDriveServiceFromFiles(context.Background(), cfg)
+	require.NoError(t, err, "the plate bootstrap needs usable Drive credentials to materialize and verify every plate")
+
+	scratch := filepath.Join("..", "..", ".tmp", "e2e-editorial-plates")
+	require.NoError(t, os.MkdirAll(scratch, 0o755))
+	materializer, err := drive.NewCanonicalAssetMaterializer(&drive.Uploader{Service: svc, Log: log}, scratch, log)
+	require.NoError(t, err, "canonical asset materializer construction must succeed")
+	return materializer
+}
+
+// editorialPlateOptions is the bootstrap selection for the certificate: the
+// plate the certificate actually renders over.
+//
+// It is deliberately ONE plate, not the whole catalog. The bootstrap is
+// fail-closed on bytes it cannot read, and four of the six canonical plates
+// (drive-background-02/03/04/06) are no longer reachable: their certified
+// Drive identities return `googleapi: Error 404: File not found`, and their
+// normalized fixtures were never checked into RenderingGen/assets/backgrounds
+// (only 01 and 05 are, deliberately sharing one digest). Asking for the whole
+// catalog therefore fails the certificate on plates it does not use — which is
+// the read-boundary gate working, not a test problem. Registering the full
+// catalog belongs to the operator path (`register-editorial-assets`) once those
+// four source files are restored.
+func editorialPlateOptions() wiringmedia.EditorialAssetsOptions {
+	return wiringmedia.EditorialAssetsOptions{
+		PlateIDs:  []string{editorialBackgroundPlateID},
+		PlatesDir: editorialPlatesDir(),
+	}
+}
+
+// editorialPlatesDir resolves the certified plate fixtures directory. It is an
+// optimization, not the authority: the materializer hashes whatever it finds
+// there and falls through to the content-addressed cache or Drive otherwise.
 func editorialPlatesDir() string {
 	if v := strings.TrimSpace(os.Getenv(wiringmedia.EditorialBackgroundsDirEnv)); v != "" {
 		return v
@@ -347,7 +484,7 @@ func TestLiveClipRenderBatchCertifiesTenLanguageMP4s(t *testing.T) {
 	// A hand-written INSERT used to be the only way to get a plate row; this
 	// bootstrap is the canonical writer, so a clean database becomes renderable
 	// with no manual SQL at all.
-	registrations, err := wiringmedia.EnsureEditorialAssets(ctx, db, editorialPlatesDir(), log)
+	registrations, err := wiringmedia.EnsureEditorialAssets(ctx, db, editorialPlateBytesSource(t, log), editorialPlateOptions(), log)
 	require.NoError(t, err, "register the curated editorial plates")
 	require.NotEmpty(t, registrations)
 	plate, ok := mediaregistry.LookupEditorialBackground(editorialBackgroundPlateID)
@@ -374,6 +511,17 @@ func TestLiveClipRenderBatchCertifiesTenLanguageMP4s(t *testing.T) {
 		fingerprints[i] = fingerprint
 	}
 
+	// Fresh certificate: when the caller asks for a reset, the PREVIOUS run's
+	// outputs and cache rows are gone before the batch is submitted, so every
+	// item below must be QUEUED. Without it a warm cache would serve ten hits
+	// and the render itself would never be certified.
+	fresh := strings.TrimSpace(os.Getenv("VELOX_E2E_RESET_RENDER_STATE")) != ""
+	if fresh {
+		removed := resetRenderCertificateState(t, ctx, db, fingerprints)
+		staleJobs := resetRenderCertificateJobs(t, liveCertificateConfig(t), fingerprints)
+		t.Logf("certificate state reset: %d derived render asset(s) and %d stale clip.render job(s) removed", removed, staleJobs)
+	}
+
 	status, raw := postJSON(t, client, apiURL+"/api/clips/render/batch", adminToken, body)
 	require.Equalf(t, http.StatusAccepted, status, "batch submit must be accepted: %s", string(raw))
 	var batch clipRenderBatchResponse
@@ -390,6 +538,8 @@ func TestLiveClipRenderBatchCertifiesTenLanguageMP4s(t *testing.T) {
 		require.Emptyf(t, item.Error, "batch item %s failed at submit", lang)
 
 		if item.CacheHit {
+			require.Falsef(t, fresh,
+				"language %s reported CACHED although the certificate state was reset: the fresh-render certificate must render", lang)
 			require.Equalf(t, "CACHED", item.Status, "a cache hit must report CACHED for %s", lang)
 			require.NotEmptyf(t, item.AssetID, "a cache hit must name the certified asset for %s", lang)
 			assetByLanguage[lang] = item.AssetID
@@ -507,6 +657,34 @@ func TestLiveClipRenderBatchCertifiesTenLanguageMP4s(t *testing.T) {
 		}
 	}
 
+	// ── 4b. Goal-1 summary: one delivered, GPU, full-length artifact per language.
+	//
+	// These four counts ARE the Goal-1 acceptance line. They are computed from
+	// the durable rows (cache record JOINed to its media asset) rather than from
+	// this process's loop, so a batch the queue deduplicated onto an earlier
+	// identical one still has to prove four real artifacts per language.
+	var derivedCount, gpuCount, fullLengthCount, deliveredCount int
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT COUNT(*),
+		       COUNT(*) FILTER (WHERE c.backend = 'chronon_vulkan'),
+		       COUNT(*) FILTER (WHERE a.duration_ms BETWEEN $2 AND $3),
+		       COUNT(*) FILTER (WHERE COALESCE(a.drive_file_id, '') <> '')
+		FROM clip_render_cache c
+		JOIN media_assets a ON a.id = c.asset_id
+		WHERE c.fingerprint = ANY(string_to_array($1, ','))
+		  AND a.lifecycle_state = 'ACTIVE'
+	`, strings.Join(fingerprints, ","),
+		int64(liveSegmentEnd)*1000-2000, int64(liveSegmentEnd)*1000+2000,
+	).Scan(&derivedCount, &gpuCount, &fullLengthCount, &deliveredCount),
+		"Goal-1 summary query must see the certified render records")
+	want := len(liveLanguages)
+	require.Equalf(t, want, derivedCount, "Goal 1: one certified render per language")
+	require.Equalf(t, want, gpuCount, "Goal 1: every render must be Chronon/Vulkan, never a software fallback")
+	require.Equalf(t, want, fullLengthCount, "Goal 1: every render must cover the full %ds clip", liveSegmentEnd)
+	if realDrive {
+		require.Equalf(t, want, deliveredCount, "Goal 1: every final MP4 must carry a Drive-issued file id")
+	}
+
 	// ── 5. Idempotency: the identical batch is served from the cache. ───
 	// The deterministic render cache is the reason a re-run costs no GPU: every
 	// item must come back as a hit naming the SAME asset, and no new job may be
@@ -523,8 +701,79 @@ func TestLiveClipRenderBatchCertifiesTenLanguageMP4s(t *testing.T) {
 			"repeat run must reuse the certified asset for %s", lang)
 	}
 
-	t.Logf("RENDER CERTIFICATE OK: source=%s plate=%s languages=%d assets=%d",
-		sourceAssetID, editorialBackgroundPlateID, len(liveLanguages), len(assetByLanguage))
+	// ── 6. No phantom location rows in the operational store. ──────────
+	// The clip committer used to write a 'drive' asset_locations row even when
+	// the clip had no Drive file id, producing a primary location with an empty
+	// external_id that pointed at nothing (observed live on this very source
+	// asset). The writer now emits the row only when a Drive identity exists, and
+	// this assertion keeps the operational database honest: a location row must
+	// never be a claim without a referent.
+	var phantomDriveLocations int
+	require.NoErrorf(t, db.QueryRowContext(ctx,
+		`SELECT count(*) FROM asset_locations WHERE location_kind = 'drive' AND COALESCE(external_id, '') = ''`,
+	).Scan(&phantomDriveLocations), "count phantom drive locations")
+	require.Zerof(t, phantomDriveLocations,
+		"the operational store must carry no 'drive' location row without a Drive file id")
+
+	t.Logf("RENDER CERTIFICATE OK: source=%s plate=%s languages=%d assets=%d phantom_drive_locations=%d",
+		sourceAssetID, editorialBackgroundPlateID, len(liveLanguages), len(assetByLanguage), phantomDriveLocations)
+}
+
+// resetRenderCertificateState deletes the derived render assets of a PREVIOUS
+// certificate run together with their deterministic cache rows.
+//
+// It exists so the fresh-render certificate is unambiguous: with a warm cache
+// the batch would answer ten CACHED and prove nothing about rendering (and, as
+// the first Goal-1 run showed, ten CACHED assets that were never delivered to
+// Drive). Deleting only cache rows AND the derived assets they point at keeps
+// the source clip, the text tracks and the editorial plates untouched — the
+// certificate rebuilds its own outputs from state it does not own.
+//
+// The predicate is deliberately narrow (category = 'clip-render' AND
+// source = 'clip.render'): a row the certificate did not derive is never
+// deleted, even if a fingerprint happened to collide.
+func resetRenderCertificateState(t *testing.T, ctx context.Context, db *sql.DB, fingerprints []string) int {
+	t.Helper()
+	removed := 0
+	for _, fingerprint := range fingerprints {
+		var assetID string
+		err := db.QueryRowContext(ctx,
+			`SELECT asset_id FROM clip_render_cache WHERE fingerprint = $1`, fingerprint).Scan(&assetID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("read cache row %s: %v", fingerprint, err)
+		}
+		if _, err := db.ExecContext(ctx,
+			`DELETE FROM clip_render_cache WHERE fingerprint = $1`, fingerprint); err != nil {
+			t.Fatalf("delete cache row %s: %v", fingerprint, err)
+		}
+		if assetID == "" {
+			continue
+		}
+		res, err := db.ExecContext(ctx, `
+			DELETE FROM media_assets
+			WHERE id = $1 AND category = 'clip-render' AND source = 'clip.render'`, assetID)
+		if err != nil {
+			t.Fatalf("delete derived asset %s: %v", assetID, err)
+		}
+		if affected, err := res.RowsAffected(); err == nil && affected > 0 {
+			removed++
+		}
+		// A TERMINAL Drive-delivery row must go with the asset it delivered.
+		// Derived asset ids are content-addressed, so re-rendering the same
+		// request reproduces the SAME id — and the delivery enqueue is then
+		// suppressed as a duplicate of the already-terminal row, leaving the
+		// fresh asset permanently undelivered (drive_file_id empty, no Drive
+		// file) while every gate reports success. The row is only evidence while
+		// the asset it describes exists, which is precisely what the delete above
+		// removes.
+		if _, err := db.ExecContext(ctx, `
+			DELETE FROM outbox_events
+			WHERE aggregate_id = $1
+			  AND event_type = 'clip.render.drive_delivery.requested.v1'`, assetID); err != nil {
+			t.Fatalf("delete terminal Drive-delivery rows for %s: %v", assetID, err)
+		}
+	}
+	return removed
 }
 
 // waitForDriveFileID polls the derived asset until its asynchronous Drive
@@ -554,9 +803,11 @@ func TestEditorialPlateBootstrapIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	log := zaptest.NewLogger(t)
 
-	first, err := wiringmedia.EnsureEditorialAssets(ctx, db, editorialPlatesDir(), log)
+	source := editorialPlateBytesSource(t, log)
+	options := editorialPlateOptions()
+	first, err := wiringmedia.EnsureEditorialAssets(ctx, db, source, options, log)
 	require.NoError(t, err)
-	second, err := wiringmedia.EnsureEditorialAssets(ctx, db, editorialPlatesDir(), log)
+	second, err := wiringmedia.EnsureEditorialAssets(ctx, db, source, options, log)
 	require.NoError(t, err)
 	require.Equal(t, len(first), len(second))
 

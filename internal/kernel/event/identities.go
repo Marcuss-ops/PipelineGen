@@ -114,6 +114,30 @@ const (
 	BindingIndexRequestedV1Schema      = "binding.index.requested.v1"
 )
 
+// AssetIndexRequestedVectorChannels returns the embedding channels an
+// asset.index.requested.v1 envelope asks the indexer to produce.
+//
+// CANONICAL VALUE — owners: the envelope payload of this event family is
+// byte-parity-locked across the PostgreSQL and SQLite adapters ("one
+// envelope, two engine adapters"), so every emitter MUST derive the field from
+// this function instead of repeating a literal that can silently drift.
+//
+// The value is the set of channels the PostgreSQL media index plane actually
+// produces and searches:
+//
+//   - the text channel: postgres/media.PostgresIndexWorker writes
+//     media_embeddings.embedding_type='text' from the asset's live search_text
+//     and postgres/media.MediaSearcher queries that same channel.
+//
+// The former "transcript" channel belonged to the RETIRED SQLite → Qdrant media
+// projection (the Qdrant clipindexer derived a second named vector from the
+// local `*.txt` side-channel). No PostgreSQL media code writes or searches it,
+// so declaring it here would request work the plane cannot perform — the exact
+// kind of phantom-availability declaration godlike/07 forbids.
+func AssetIndexRequestedVectorChannels() []string {
+	return []string{"text"}
+}
+
 // ArtifactStagedV1 is the versioned event name used by the staging →
 // drive-delivery hop (the event name itself carries the v1 suffix, so it is
 // an event name, not a separate schema constant).
