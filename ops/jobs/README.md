@@ -72,6 +72,12 @@ the registry. The original supplied Drive file is a different artifact — it
 carries an ACC audio stream — so uploading it under a plate id would put a
 second audio source beneath the master voiceover/BGM.
 
+The canonical writer is `go run ./cmd/admin register-editorial-assets`
+(`wiring/media.EnsureEditorialAssets`), which derives the id, the certified
+hash and the Drive identity from the registry and is idempotent on
+`media_assets.id`. Do not hand-write the row: an `INSERT` can register
+arbitrary bytes and bypass the identity check below.
+
 That rule is enforced, not merely documented:
 `mediaregistry.ValidateEditorialBackgroundIdentity` is checked by the
 `clip.render` PostgreSQL asset resolver, so a plate registered with the wrong

@@ -94,6 +94,7 @@ var commandRegistry = map[string]commandHandler{
 	"performance-report":             maintenance.RunPerformanceReport,
 	"reachability-graph":             audit.RunReachabilityGraph,
 	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,
+	"register-editorial-assets":      withTimeout(maintenance.RunRegisterEditorialAssets, 2*time.Minute),
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
 	"reindex-qdrant":                 reconcile.RunReindexQdrant,
 	"remove-drive-folder-recursive":  drive.RunRemoveDriveFolderRecursive,

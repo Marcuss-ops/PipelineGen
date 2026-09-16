@@ -60,9 +60,26 @@ rewrite onto a different asset.
 
 1. Upload the **normalized** plate bytes: video-only (`-an`), 1920x1080,
    30 fps, 15 s, zero audio streams.
-2. Register it in the PostgreSQL media SSOT under **`media_assets.id` = the
-   alias** (`drive-background-03`), with `media_type = video` and the `sha256`
-   declared in the registry.
+2. Register them in the PostgreSQL media SSOT **with the canonical command**,
+   which derives every field from the registry:
+
+   ```bash
+   # all six plates, local fixtures under RenderingGen/assets/backgrounds
+   PIPELINEGEN_MEDIA_POSTGRES_DSN=... \
+     go run ./cmd/admin register-editorial-assets \
+       --plates-dir RenderingGen/assets/backgrounds
+   ```
+
+   It writes `media_assets.id` = the alias (`drive-background-03`),
+   `media_type = video`, `content_sha256` = the registry `sha256`, the Drive
+   identity and (when the fixture exists locally) `local_path`. A plate with no
+   local fixture is registered without `local_path` and the canonical
+   materializer fetches it from Drive, verifying the certified hash.
+
+   The command is idempotent: it upserts on `media_assets.id`, so a re-run
+   converges instead of duplicating. It is the ONLY supported writer of a plate
+   row — a hand-written `INSERT` can register arbitrary bytes and silently
+   bypass the check below.
 3. Do **not** register the original supplied Drive file. It carries an AAC
    stream; using it would put a second audio source beneath the master
    voiceover/BGM. That mistake is caught, not merely documented:
@@ -120,3 +137,9 @@ go run ./cmd/archcheck --strict
 Live checks (require Drive + PostgreSQL) — confirm each id above is present in
 `media_assets`, then render a job and confirm its BGM/SFX reach the renderer and
 its plate appears in the output.
+
+The end-to-end render certificate covers exactly this leg:
+`tests/e2e/cliprender_multilingual_live_test.go` bootstraps the plates through
+the command's canonical entry point (`wiring/media.EnsureEditorialAssets`),
+renders the ten languages over `drive-background-01` and fails if the composite
+reports a plate hash other than the certified one.
