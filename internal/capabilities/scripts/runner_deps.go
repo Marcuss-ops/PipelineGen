@@ -474,6 +474,9 @@ func (r *Runner) SetTranslationConcurrency(concurrency int) {
 	if concurrency <= 0 {
 		concurrency = DefaultTranslationConcurrency
 	}
+	if concurrency > MaxTranslationConcurrency {
+		concurrency = MaxTranslationConcurrency
+	}
 	r.translationConcurrency = concurrency
 }
 

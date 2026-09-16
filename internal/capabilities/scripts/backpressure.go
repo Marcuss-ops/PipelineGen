@@ -38,9 +38,13 @@ const DefaultNLPConcurrency = 4
 // job wall 51.2s → 58.2s), so the certified default stays at 4.
 const DefaultTTSConcurrency = 4
 
-// DefaultTranslationConcurrency bounds concurrent scene×language translation
+// MaxTranslationConcurrency caps concurrent scene×language translation
 // calls. Results are applied and checkpointed in canonical order.
-const DefaultTranslationConcurrency = 4
+const MaxTranslationConcurrency = 3
+
+// DefaultTranslationConcurrency is the translation pool width when no
+// explicit value is configured. It intentionally equals the hard cap.
+const DefaultTranslationConcurrency = MaxTranslationConcurrency
 
 // VidRushBackpressure holds the independent concurrency limits for the three
 // VidRush stages. Keeping them separate means a slow stage (e.g. a provider

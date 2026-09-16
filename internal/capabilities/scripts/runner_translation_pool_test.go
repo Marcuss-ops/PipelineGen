@@ -40,6 +40,7 @@ func TestTranslationPhaseFansOutSceneLanguageCalls(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	tracker := &trackingTranslationGenerator{}
 	runner.translator = tracker
+	runner.SetTranslationConcurrency(MaxTranslationConcurrency + 4)
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeNone
 	req.Docs = DocumentsConfig{}
@@ -53,5 +54,6 @@ func TestTranslationPhaseFansOutSceneLanguageCalls(t *testing.T) {
 	require.NotNil(t, run.Result.TranslationMetrics)
 	require.Equal(t, 3, run.Result.TranslationMetrics.Calls)
 	require.GreaterOrEqual(t, tracker.maximum(), 2, "translation calls must overlap")
-	require.Equal(t, DefaultTranslationConcurrency, run.Result.TranslationMetrics.Concurrency)
+	require.LessOrEqual(t, tracker.maximum(), MaxTranslationConcurrency, "translation calls must respect the hard cap")
+	require.Equal(t, MaxTranslationConcurrency, run.Result.TranslationMetrics.Concurrency)
 }
