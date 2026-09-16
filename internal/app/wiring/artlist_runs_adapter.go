@@ -48,10 +48,12 @@ package wiring
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -282,19 +284,64 @@ func artlistCandidateFromRecord(rec *pgmedia.MediaAssetRecord) providerassets.Pr
 // relevance change.
 type artlistMediaSSOTAssetStore struct {
 	artlist.AssetStore
-	store artlistLocalMediaStore
+	store   artlistLocalMediaStore
+	mutator persistence.AssetMutator
 }
 
 var _ artlist.AssetStore = (*artlistMediaSSOTAssetStore)(nil)
 
-// newArtlistMediaSSOTAssetStore wraps delegate so SearchClips/SearchByTerms
-// read the PostgreSQL media SSOT. It returns delegate untouched when either
-// handle is absent (SQLite-only degrade mode).
-func newArtlistMediaSSOTAssetStore(delegate artlist.AssetStore, store artlistLocalMediaStore) artlist.AssetStore {
+// newArtlistMediaSSOTAssetStore wraps delegate so the DB-only search reads
+// (SearchClips/SearchByTerms) resolve against the PostgreSQL media SSOT and the
+// term-corpus write (UpdateSearchTerms) lands on the canonical media writer. It
+// returns delegate untouched when the search handle is absent (SQLite-only
+// degrade mode).
+//
+// mutator may be nil only when the caller could not recover the canonical
+// writer's AssetMutator view; UpdateSearchTerms then FAILS CLOSED rather than
+// writing the operational clip_search_terms mirror.
+func newArtlistMediaSSOTAssetStore(delegate artlist.AssetStore, store artlistLocalMediaStore, mutator persistence.AssetMutator) artlist.AssetStore {
 	if delegate == nil || store == nil {
 		return delegate
 	}
-	return &artlistMediaSSOTAssetStore{AssetStore: delegate, store: store}
+	return &artlistMediaSSOTAssetStore{AssetStore: delegate, store: store, mutator: mutator}
+}
+
+// UpdateSearchTerms re-points the retired SQLite clip_search_terms write at the
+// canonical media SSOT (P2-9, F5 writer half).
+//
+// WHY THIS IS A RE-POINT AND NOT A DELETE. Measured at HEAD: the canonical
+// commit contract (persistence.CommitRequest) has NO search_terms field and
+// detail.DeriveSearchTerms had ZERO production callers, so nothing else writes
+// media_assets.search_terms. Deleting the two Artlist call sites would therefore
+// have dropped the derived term corpus from the SSOT and silently narrowed the
+// PostgreSQL local search to name/search_text. PatchAsset on the canonical
+// committer is the ONLY writer permitted to mutate media_assets, so the terms
+// are derived with the canonical detail.DeriveSearchTerms helper and persisted
+// there in the same self-owned transaction.
+func (s *artlistMediaSSOTAssetStore) UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error {
+	if s == nil {
+		return nil
+	}
+	// FAIL-CLOSED: this wrapper only exists in PostgreSQL media mode, so a
+	// missing mutator is a misconfiguration. It must NOT fall back to the
+	// wrapped store's SQLite clip_search_terms write — that would re-create the
+	// exact split-brain the migration removed. The SQLite-only degrade mode
+	// never reaches this type (newArtlistMediaSSOTAssetStore returns the
+	// unwrapped delegate when the media search handle is absent).
+	if s.mutator == nil {
+		return fmt.Errorf("artlist media SSOT: canonical search-term writer is not wired — refusing to write the operational clip_search_terms mirror")
+	}
+	terms := detail.DeriveSearchTerms(&asset.Asset{ID: clipID, Name: name, Tags: tags, SearchText: searchText})
+	encoded, err := json.Marshal(terms)
+	if err != nil {
+		return fmt.Errorf("artlist media SSOT: encode search terms: %w", err)
+	}
+	encodedTerms := string(encoded)
+	return s.mutator.PatchAsset(ctx, persistence.AssetPatch{
+		AssetID:     clipID,
+		SearchTerms: &encodedTerms,
+		SearchText:  &searchText,
+	})
 }
 
 // SearchClips mirrors the retired SQLite contract exactly: split the term into

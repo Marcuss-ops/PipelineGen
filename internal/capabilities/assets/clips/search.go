@@ -46,6 +46,24 @@ type AssetReader interface {
 	Count(ctx context.Context, filter asset.Filter) (int64, error)
 }
 
+// MediaClipSearcher is the consumer-owned read contract for the ListClips text
+// search branch (`GET /:source/clips?q=...`).
+//
+// P2-9 (September 2026): PostgreSQL + pgvector is the sole authority for the
+// media domain, so this branch MUST resolve against the PostgreSQL media read
+// authority (pgmedia.MediaSearcher.SearchLocal). It previously reached
+// AssetStoreSQLite.SearchClips, whose fast path queried the operational
+// clip_search_terms inverted index and re-hydrated the operational SQLite
+// media_assets mirror — which the canonical PostgreSQL committer never
+// populates. The handler could therefore only ever grade a stale pre-cutover
+// catalog. The port is narrow on purpose: ids + ranking stay canonical.
+type MediaClipSearcher interface {
+	// SearchClipsByTerms returns the clips of source matching EVERY term
+	// (the canonical AND semantics), ranked by the canonical scorer and
+	// capped at limit.
+	SearchClipsByTerms(ctx context.Context, source string, terms []string, limit int) ([]*asset.Asset, error)
+}
+
 // SearchDeps is the constructor bag for SearchHandler. The 4 fields
 // below are exactly the deps the 3 routes touch — no more, no
 // less. Cluster ownership follows the matrix in the Step 5 discovery
@@ -55,6 +73,10 @@ type SearchDeps struct {
 	AssetRepo     AssetReader
 	VoiceoverRepo appclips.VoiceoverRepositoryPort
 	ImagesRepo    appclips.ImageRepositoryPort
+	// MediaSearch answers the ListClips text-search branch from the media
+	// SSOT. Nil means the media plane is closed: the branch fails closed
+	// rather than degrading onto the retired operational index.
+	MediaSearch MediaClipSearcher
 }
 
 // SearchHandler owns the 3 clip-search routes. Receiver-on-pattern-B:
@@ -65,6 +87,7 @@ type SearchHandler struct {
 	assetRepo     AssetReader
 	voiceoverRepo appclips.VoiceoverRepositoryPort
 	imagesRepo    appclips.ImageRepositoryPort
+	mediaSearch   MediaClipSearcher
 }
 
 // NewSearchHandler constructs a SearchHandler with the supplied
@@ -75,6 +98,7 @@ func NewSearchHandler(d SearchDeps) *SearchHandler {
 		assetRepo:     d.AssetRepo,
 		voiceoverRepo: d.VoiceoverRepo,
 		imagesRepo:    d.ImagesRepo,
+		mediaSearch:   d.MediaSearch,
 	}
 }
 
@@ -252,21 +276,30 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 			}
 			allClips = clips
 		} else {
-			// Text search — fall back to legacy clipsRepo (asset.Filter has no search yet).
-			repo := sh.repoForSource(source)
-			if repo == nil {
+			// Text search — resolved against the canonical media read authority
+			// (P2-9). The legacy clipsRepo.ListClipsPaged branch read the
+			// operational clip_search_terms inverted index and re-hydrated the
+			// SQLite media_assets mirror, so a clip committed by the canonical
+			// PostgreSQL committer was invisible here. Fail closed when the
+			// media plane is closed instead of degrading onto that index.
+			if !artifacts.IsClipsSource(source) {
 				apiutil.BadRequest(c, "invalid source: "+source)
 				return
 			}
-			legacyClips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
+			if sh.mediaSearch == nil {
+				apiutil.InternalError(c, fmt.Errorf("clips search unavailable: PostgreSQL media SSOT is not wired"))
+				return
+			}
+			terms := strings.Fields(q)
+			if len(terms) == 0 {
+				terms = []string{q}
+			}
+			clips, err := sh.mediaSearch.SearchClipsByTerms(ctx, source, terms, limit)
 			if err != nil {
 				apiutil.InternalError(c, err)
 				return
 			}
-			allClips = make([]*asset.Asset, len(legacyClips))
-			for i, lc := range legacyClips {
-				allClips[i] = lc
-			}
+			allClips = clips
 		}
 	}
 
@@ -283,17 +316,16 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 			allClips = allClips[offset:end]
 		}
 	} else {
-		repo := sh.repoForSource(source)
-		if repo != nil {
-			if q == "" {
-				n, err := sh.assetRepo.Count(ctx, asset.Filter{Source: source})
-				if err == nil {
-					total = int(n)
-				}
-			} else {
-				// For search, total is len of results for now (since SearchClips isn't paged yet)
-				total = len(allClips)
+		// The search branch is answered by the media SSOT and is not paged
+		// upstream, so its result set IS the total. Only the unfiltered branch
+		// asks assetRepo for a canonical count. The retired clipsRepo gate is
+		// gone with the retired clip_search_terms read path.
+		if q == "" {
+			if n, err := sh.assetRepo.Count(ctx, asset.Filter{Source: source}); err == nil {
+				total = int(n)
 			}
+		} else {
+			total = len(allClips)
 		}
 	}
 

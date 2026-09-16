@@ -112,14 +112,20 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	// future PR9-C+ wave reintroduces ProcessStart, re-add the
 	// assertion in lockstep with the new field.
 
-	// RepoBundle canaries (8 fields).
+	// RepoBundle canaries (7 fields).
+	//
+	// MEDIA-SSOT P2-9 (2026-09-16): the CatalogRepo canary was DELETED with the
+	// field it pinned. RepoBundle.CatalogRepo held the legacy SQLite catalog
+	// reader (*catalog.Repository over media_assets + clip_search_terms) whose
+	// only consumer was the SourceCatalog resolver; that resolver now reads the
+	// PostgreSQL media SSOT (wiring.postgresCatalogPort), so there is no
+	// operational catalog repository left to assert.
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
 	require.NotNil(t, root.Repos.ImageRepo, "root.Repos.ImageRepo")
 	require.NotNil(t, root.Repos.ClipsRepo, "root.Repos.ClipsRepo")
 	require.NotNil(t, root.Repos.Assets, "root.Repos.Assets")
 	require.NotNil(t, root.Repos.MonitorsRepo, "root.Repos.MonitorsRepo")
 	require.NotNil(t, root.Repos.VoiceoverRepo, "root.Repos.VoiceoverRepo")
-	require.NotNil(t, root.Repos.CatalogRepo, "root.Repos.CatalogRepo")
 
 	// MediaAssetStore / MediaAssetReader are the canonical admin+operator asset
 	// read surface. This fixture runs with the media PostgreSQL plane CLOSED, so
@@ -204,7 +210,6 @@ func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	require.NotNil(t, bundle.Assets)
 	require.NotNil(t, bundle.MonitorsRepo)
 	require.NotNil(t, bundle.VoiceoverRepo)
-	require.NotNil(t, bundle.CatalogRepo)
 }
 
 // TestComposition_NilObligatory_BuildSearchBundle tests BuildSearchBundle

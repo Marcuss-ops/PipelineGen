@@ -18,56 +18,16 @@ import (
 // ── SQL receivers (migrated from clips_list.go) ──────────────────────
 
 // ListClips returns clips for a source (or all sources when source is
-// empty / "all" / "unified"). No pagination — callers needing paged
-// reads should use ListClipsPaged instead.
+// empty / "all" / "unified"). No pagination — the paged read variant,
+// ListClipsPaged, was DELETED on 2026-09-16 (P2-9): it was the operational
+// text-search reader (its search branch called SearchClips -> SearchByTerms ->
+// clip_search_terms) and the clips API now reads the PostgreSQL media SSOT.
 func (s *AssetStoreSQLite) ListClips(ctx context.Context, source string) ([]*asset.Asset, error) {
 	query := buildMediaAssetQuery(source)
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
 	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*asset.Asset
-	for rows.Next() {
-		clip, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
-
-// ListClipsPaged returns clips with pagination and optional search.
-// If q is non-empty, performs a search via SearchClips and ignores the
-// pagination input (result still capped at the configured limit).
-func (s *AssetStoreSQLite) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*asset.Asset, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 10000 {
-		limit = 10000
-	}
-	if offset < 0 {
-		offset = 0
-	}
-
-	if strings.TrimSpace(q) != "" {
-		return s.SearchClips(ctx, source, q)
-	}
-
-	query := buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-	args := []any{}
-	if source != "" && source != "all" && source != "unified" {
-		args = append(args, source)
-	}
-	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

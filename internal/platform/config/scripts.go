@@ -161,7 +161,7 @@ type ScriptsConfig struct {
 	TotalWordsTolerancePercent float64 `yaml:"total_words_tolerance_percent" env:"VELOX_SCRIPTS_TOTAL_WORDS_TOLERANCE_PERCENT" default:"10"`
 	// MaxSegmentRegenerationAttempts bounds retries after the initial
 	// generation. Default 1 (at most two provider calls total).
-	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"0"`
+	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"1"`
 
 	// ScriptDocsFolderID is the canonical default Google Drive folder for
 	// script documents (env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Precedence:

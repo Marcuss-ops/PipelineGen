@@ -46,6 +46,94 @@ func TestRouteEntityImageToGenerationOutputIgnoresNonEntityMedia(t *testing.T) {
 	}
 }
 
+// TestRouteClipToGenerationOutput pins the clip family of the run bundle: the
+// provider clips a source.type=clips job actually consumed must be published
+// into <DriveFolderID>/<Title>/<Language>/clips, mirroring entity images.
+func TestRouteClipToGenerationOutput(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:         "Clip Lane Certification",
+		Language:      "en",
+		DriveFolderID: "clip-dir-root",
+	}
+	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
+		AssetID: "yt_iHaK0M-207o_60_70_v1", Provider: scriptpkg.VidRushProviderYouTube,
+	}}
+	got := routeClipToGenerationOutput(plan, artifact)
+	if got.OutputDriveFolderID != "clip-dir-root" {
+		t.Fatalf("output drive folder = %q, want clip-dir-root", got.OutputDriveFolderID)
+	}
+	wantPath := []string{"Clip Lane Certification", "en", "clips"}
+	if !reflect.DeepEqual(got.OutputDriveSubpath, wantPath) {
+		t.Fatalf("output drive subpath = %#v, want %#v", got.OutputDriveSubpath, wantPath)
+	}
+}
+
+func TestRouteClipToGenerationOutputIgnoresImages(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "en", DriveFolderID: "drive-root"}
+	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
+		AssetID: "scene-image", Provider: scriptpkg.VidRushProviderInternetImages,
+	}}
+	got := routeClipToGenerationOutput(plan, artifact)
+	if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
+		t.Fatalf("image was routed into the clips family: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+	}
+}
+
+func TestRouteClipToGenerationOutputFailsClosedWithoutDriveFolder(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "en"}
+	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
+		AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderArtlist,
+	}}
+	got := routeClipToGenerationOutput(plan, artifact)
+	if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
+		t.Fatalf("a plan without an artifact root must not invent a destination: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+	}
+}
+
+// TestRouteGenerationOutputToPlanBundleDispatchesByFamily is the non-vacuity
+// gate for the single dispatch point: each family reaches its own child folder
+// and an unrelated candidate is left untouched.
+func TestRouteGenerationOutputToPlanBundleDispatchesByFamily(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "it", DriveFolderID: "clip-dir-root"}
+	cases := []struct {
+		name      string
+		candidate scriptpkg.SegmentAssetCandidate
+		wantPath  []string
+	}{
+		{
+			name:      "entity image",
+			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "entity-image-mike", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Mike Tyson"},
+			wantPath:  []string{"Run", "it", "images"},
+		},
+		{
+			name:      "youtube clip",
+			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderYouTube},
+			wantPath:  []string{"Run", "it", "clips"},
+		},
+		{
+			name:      "artlist clip",
+			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "artlist_clip", Provider: scriptpkg.VidRushProviderArtlist},
+			wantPath:  []string{"Run", "it", "clips"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := routeGenerationOutputToPlanBundle(plan, scriptports.VerifiedArtifact{Candidate: tc.candidate})
+			if got.OutputDriveFolderID != "clip-dir-root" {
+				t.Fatalf("output drive folder = %q, want clip-dir-root", got.OutputDriveFolderID)
+			}
+			if !reflect.DeepEqual(got.OutputDriveSubpath, tc.wantPath) {
+				t.Fatalf("output drive subpath = %#v, want %#v", got.OutputDriveSubpath, tc.wantPath)
+			}
+		})
+	}
+
+	unrelated := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{AssetID: "plain", Provider: "stock"}}
+	if got := routeGenerationOutputToPlanBundle(plan, unrelated); got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
+		t.Fatalf("unrelated candidate was routed: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+	}
+}
+
 func TestEntityImageOutputRequestedForWarmCatalogHit(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{DriveFolderID: "drive-root"}
 	candidate := scriptpkg.SegmentAssetCandidate{

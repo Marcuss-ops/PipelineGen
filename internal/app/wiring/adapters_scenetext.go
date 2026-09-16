@@ -258,6 +258,13 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 	if workers <= 0 {
 		workers = 1
 	}
+	// An explicit request concurrency is also the ceiling for the outer
+	// segment fan-out. Without this cap, each streaming scene starts its own
+	// Engine call before the Engine's internal concurrency gate can apply the
+	// requested limit, causing avoidable model contention on long scripts.
+	if requested := req.ScriptParams.Concurrency; requested > 0 && workers > requested {
+		workers = requested
+	}
 	if g.Engine != nil && g.Engine.GenerationConcurrency() > 0 && workers > g.Engine.GenerationConcurrency() {
 		workers = g.Engine.GenerationConcurrency()
 	}

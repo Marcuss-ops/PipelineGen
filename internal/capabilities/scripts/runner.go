@@ -359,7 +359,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		// semantic/media portion from losing the folder before the
 		// materializer reaches the finalizer.
 		if strings.TrimSpace(plan.DriveFolderID) == "" {
-			plan.DriveFolderID = firstNonEmpty(req.Docs.FolderID, req.DriveFolderID, req.Render.DriveFolderID)
+			plan.DriveFolderID = firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
 		}
 		if r.log != nil {
 			r.log.Info("VidRush plan resolved", zap.String("run_id", runID), zap.String("drive_folder_id", strings.TrimSpace(plan.DriveFolderID)), zap.String("title", plan.Title), zap.String("language", plan.Language))

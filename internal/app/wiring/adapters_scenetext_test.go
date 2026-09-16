@@ -97,21 +97,67 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 	}
 }
 
-func TestSceneTextGeneratorResolveVidRushPlanCarriesDriveOutputFolder(t *testing.T) {
-	generator := &SceneTextGenerator{}
-	req := scriptgen.GenerateRequest{
-		SourceLanguage: "en",
-		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
-		Title:          "drive-output",
-		DriveFolderID:  "legacy-root",
-		Docs:           scriptgen.DocumentsConfig{FolderID: "canonical-root"},
+func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecedence(t *testing.T) {
+	// The run-scoped artifact root (plan.DriveFolderID) follows the canonical
+	// order already owned by the runner (runner.go) and the voiceover phase
+	// (runner_phase_audio.go):
+	//
+	//	Render.DriveFolderID → DriveFolderID → Docs.FolderID
+	//
+	// Docs.FolderID is deliberately the LAST resort: it owns the DOCUMENT
+	// destination (routing_context.go), not the generated-media bundle that
+	// entity-image materialization and overlay publication are routed into.
+	// This adapter previously resolved Docs-first, which silently disagreed with
+	// the runner for any request that supplied an explicit render root.
+	base := func() scriptgen.GenerateRequest {
+		return scriptgen.GenerateRequest{
+			SourceLanguage: "en",
+			Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
+			Title:          "drive-output",
+		}
 	}
-	plan, err := generator.ResolveVidRushPlan(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name string
+		with func(*scriptgen.GenerateRequest)
+		want string
+	}{
+		{
+			name: "explicit render root wins over the flat field and the docs folder",
+			with: func(req *scriptgen.GenerateRequest) {
+				req.Render = scriptpkg.VideoRenderSpec{DriveFolderID: "render-root"}
+				req.DriveFolderID = "artifact-root"
+				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
+			},
+			want: "render-root",
+		},
+		{
+			name: "flat drive folder wins over the docs folder",
+			with: func(req *scriptgen.GenerateRequest) {
+				req.DriveFolderID = "artifact-root"
+				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
+			},
+			want: "artifact-root",
+		},
+		{
+			name: "docs folder is the last resort",
+			with: func(req *scriptgen.GenerateRequest) {
+				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
+			},
+			want: "docs-root",
+		},
 	}
-	if plan == nil || plan.DriveFolderID != "canonical-root" {
-		t.Fatalf("resolved Drive folder = %q, want canonical-root", plan.DriveFolderID)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := base()
+			tc.with(&req)
+			plan, err := (&SceneTextGenerator{}).ResolveVidRushPlan(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan == nil || plan.DriveFolderID != tc.want {
+				t.Fatalf("resolved Drive folder = %q, want %q", plan.DriveFolderID, tc.want)
+			}
+		})
 	}
 }
 

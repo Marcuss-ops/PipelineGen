@@ -10,7 +10,7 @@
 //	IMPORTANT_PHRASE/QUOTE/CLAIM → apple_v2
 //	IMPORTANT_WORD/NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → apple_v2
 //	PERSON/ORGANIZATION/LOCATION/DATE/TITLE/EVENT → apple_v2
-//	IMAGE_ENTITY → image_fast_fade
+//	IMAGE_ENTITY → image_fade_in
 //
 // The preset ids are owned by Chronon3d's VisualPresetRegistry; this package
 // only references them by string. Adding a semantic role that maps to a new
@@ -28,7 +28,7 @@ const (
 	PresetModernPhrase SemanticPreset = "apple_v2"
 	PresetModernWord   SemanticPreset = "apple_v2"
 	PresetModernName   SemanticPreset = "apple_v2"
-	PresetModernImage  SemanticPreset = "image_fast_fade"
+	PresetModernImage  SemanticPreset = "image_fade_in"
 )
 
 // semanticPresetTable is the frozen semantic_role → preset table. It is the

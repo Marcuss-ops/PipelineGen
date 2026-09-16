@@ -2,8 +2,11 @@ package wiring
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -71,9 +74,10 @@ func TestArtlistLocalSearcher_ReadsPostgresMediaSSOT(t *testing.T) {
 // take over) so a test can assert they are never reached, and answers the
 // remaining methods so delegation is observable.
 type fakeArtlistAssetStore struct {
-	searchClipsCalls int
-	searchTermsCalls int
-	countClipsCalls  int
+	searchClipsCalls       int
+	searchTermsCalls       int
+	countClipsCalls        int
+	updateSearchTermsCalls int
 }
 
 var _ artlist.AssetStore = (*fakeArtlistAssetStore)(nil)
@@ -106,7 +110,93 @@ func (f *fakeArtlistAssetStore) LastUpdatedAtForTerm(context.Context, string) (*
 }
 
 func (f *fakeArtlistAssetStore) UpdateSearchTerms(context.Context, string, string, string, []string, string) error {
+	f.updateSearchTermsCalls++
 	return nil
+}
+
+// fakeArtlistAssetMutator records the canonical media-SSOT patches the Artlist
+// term-corpus write must produce.
+type fakeArtlistAssetMutator struct {
+	patches []persistence.AssetPatch
+}
+
+var _ persistence.AssetMutator = (*fakeArtlistAssetMutator)(nil)
+
+func (m *fakeArtlistAssetMutator) PatchAsset(_ context.Context, patch persistence.AssetPatch) error {
+	m.patches = append(m.patches, patch)
+	return nil
+}
+
+func (m *fakeArtlistAssetMutator) PatchAssetTx(context.Context, persistence.Transaction, persistence.AssetPatch) error {
+	return nil
+}
+
+func (m *fakeArtlistAssetMutator) ReconcileDriveLocations(context.Context, []persistence.DriveLocationPatch) error {
+	return nil
+}
+
+func (m *fakeArtlistAssetMutator) ReconcileDriveLocationsTx(context.Context, persistence.Transaction, []persistence.DriveLocationPatch) error {
+	return nil
+}
+
+// TestArtlistMediaSSOTAssetStore_UpdateSearchTermsWritesCanonicalSSOT pins the
+// P2-9 F5 writer half: the derived term corpus must be written by the canonical
+// media writer (media_assets.search_terms + search_text) and the operational
+// clip_search_terms index must NOT be touched. Without this pin a future change
+// could silently re-point the write back at the SQLite mirror (or drop it, since
+// the commit contract carries no search_terms field).
+func TestArtlistMediaSSOTAssetStore_UpdateSearchTermsWritesCanonicalSSOT(t *testing.T) {
+	delegate := &fakeArtlistAssetStore{}
+	mutator := &fakeArtlistAssetMutator{}
+	sut := newArtlistMediaSSOTAssetStore(delegate, &fakeArtlistLocalStore{}, mutator)
+
+	if err := sut.UpdateSearchTerms(context.Background(), "al-7", "artlist", "Harbour Night", []string{"city"}, "a harbour at night"); err != nil {
+		t.Fatalf("UpdateSearchTerms: %v", err)
+	}
+	if delegate.updateSearchTermsCalls != 0 {
+		t.Fatal("the operational clip_search_terms write must NOT be reached")
+	}
+	if len(mutator.patches) != 1 {
+		t.Fatalf("patches = %d, want 1", len(mutator.patches))
+	}
+	patch := mutator.patches[0]
+	if patch.AssetID != "al-7" {
+		t.Fatalf("AssetID = %q, want al-7", patch.AssetID)
+	}
+	if patch.SearchText == nil || *patch.SearchText != "a harbour at night" {
+		t.Fatalf("SearchText = %v, want the enriched text", patch.SearchText)
+	}
+	if patch.SearchTerms == nil {
+		t.Fatal("SearchTerms must be set on the canonical patch")
+	}
+	var terms []string
+	if err := json.Unmarshal([]byte(*patch.SearchTerms), &terms); err != nil {
+		t.Fatalf("SearchTerms is not a JSON array: %v", err)
+	}
+	if len(terms) == 0 {
+		t.Fatal("expected derived terms")
+	}
+	joined := strings.ToLower(strings.Join(terms, " "))
+	for _, want := range []string{"harbour", "night", "city"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("derived terms %q missing %q (from name/tags)", joined, want)
+		}
+	}
+}
+
+// TestArtlistMediaSSOTAssetStore_UpdateSearchTermsFailsClosedWithoutMutator
+// pins that PostgreSQL media mode never silently falls back to the operational
+// mirror when the canonical writer is missing: an unverifiable write is a
+// refusal, not a second-engine write.
+func TestArtlistMediaSSOTAssetStore_UpdateSearchTermsFailsClosedWithoutMutator(t *testing.T) {
+	delegate := &fakeArtlistAssetStore{}
+	sut := newArtlistMediaSSOTAssetStore(delegate, &fakeArtlistLocalStore{}, nil)
+	if err := sut.UpdateSearchTerms(context.Background(), "al-7", "artlist", "Harbour", nil, ""); err == nil {
+		t.Fatal("expected a fail-closed error without the canonical writer")
+	}
+	if delegate.updateSearchTermsCalls != 0 {
+		t.Fatal("must not fall back to the operational clip_search_terms write")
+	}
 }
 
 // TestArtlistMediaSSOTAssetStore_SearchClipsReadsPostgres pins MEDIA-SSOT P2-9
@@ -119,7 +209,7 @@ func TestArtlistMediaSSOTAssetStore_SearchClipsReadsPostgres(t *testing.T) {
 	store := &fakeArtlistLocalStore{recs: []pgmedia.MediaAssetRecord{{
 		ID: "al-9", Name: "Harbour", Source: "artlist", MediaType: "video",
 	}}}
-	sut := newArtlistMediaSSOTAssetStore(delegate, store)
+	sut := newArtlistMediaSSOTAssetStore(delegate, store, nil)
 	if sut == nil {
 		t.Fatal("expected a decorator for non-nil handles")
 	}
@@ -149,7 +239,7 @@ func TestArtlistMediaSSOTAssetStore_SearchClipsReadsPostgres(t *testing.T) {
 // multi-keyword entry point keeps the caller's limit and the AND semantics.
 func TestArtlistMediaSSOTAssetStore_SearchByTermsHonorsLimit(t *testing.T) {
 	store := &fakeArtlistLocalStore{}
-	sut := newArtlistMediaSSOTAssetStore(&fakeArtlistAssetStore{}, store)
+	sut := newArtlistMediaSSOTAssetStore(&fakeArtlistAssetStore{}, store, nil)
 	if _, err := sut.SearchByTerms(context.Background(), "artlist", []string{" one ", "", "two"}, 5); err != nil {
 		t.Fatalf("SearchByTerms: %v", err)
 	}
@@ -166,7 +256,7 @@ func TestArtlistMediaSSOTAssetStore_SearchByTermsHonorsLimit(t *testing.T) {
 // to the operational store.
 func TestArtlistMediaSSOTAssetStore_DelegatesRemainingMethods(t *testing.T) {
 	delegate := &fakeArtlistAssetStore{}
-	sut := newArtlistMediaSSOTAssetStore(delegate, &fakeArtlistLocalStore{})
+	sut := newArtlistMediaSSOTAssetStore(delegate, &fakeArtlistLocalStore{}, nil)
 	got, err := sut.CountClips(context.Background())
 	if err != nil {
 		t.Fatalf("CountClips: %v", err)
@@ -182,10 +272,10 @@ func TestArtlistMediaSSOTAssetStore_DelegatesRemainingMethods(t *testing.T) {
 // starting to return empty results.
 func TestArtlistMediaSSOTAssetStore_NoStoreKeepsDelegate(t *testing.T) {
 	delegate := &fakeArtlistAssetStore{}
-	if got := newArtlistMediaSSOTAssetStore(delegate, nil); got != artlist.AssetStore(delegate) {
+	if got := newArtlistMediaSSOTAssetStore(delegate, nil, nil); got != artlist.AssetStore(delegate) {
 		t.Fatalf("newArtlistMediaSSOTAssetStore(delegate, nil) = %T, want the delegate unchanged", got)
 	}
-	if got := newArtlistMediaSSOTAssetStore(nil, &fakeArtlistLocalStore{}); got != nil {
+	if got := newArtlistMediaSSOTAssetStore(nil, &fakeArtlistLocalStore{}, nil); got != nil {
 		t.Fatalf("newArtlistMediaSSOTAssetStore(nil, store) = %T, want nil", got)
 	}
 }

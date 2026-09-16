@@ -3,8 +3,10 @@
 //
 // The PURE Go helpers (DeriveSearchTerms/normalizeToken/addNormalized/
 // deriveStripper/mergeSearchTerms) STAY in the domain package — they
-// have no SQL dependencies. The 4 SQL receivers (SearchByTerms/
-// fetchClipsByIDs/UpdateSearchTerms/RebuildSearchTerms) migrate here.
+// have no SQL dependencies. The SQL receivers (SearchByTerms/
+// fetchClipsByIDs/UpdateSearchTerms) migrate here. RebuildSearchTerms was
+// DELETED on 2026-09-16 (P2-9): it had zero callers and only re-populated the
+// legacy clip_search_terms index, which no production reader consults.
 package imagesregistry
 
 import (
@@ -13,8 +15,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	platformlogger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 )
 
 // ── SQL receivers (migrated from search_terms.go) ────────────────────
@@ -193,73 +193,4 @@ func (s *AssetStoreSQLite) UpdateSearchTerms(ctx context.Context, clipID, source
 	}
 
 	return tx.Commit()
-}
-
-// RebuildSearchTerms re-indexes all existing clips' search terms from
-// name, tags, search_text, and the clipindexer search helpers stored
-// in metadata_json. This is used to populate the index for existing
-// data after migration.
-func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string, batchSize int) (int, error) {
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	// After migration 059, search_text is a canonical column; the
-	// rest are still in metadata_json (clipindexer output:
-	// clean_title, hook, topics, etc).
-	query := `
-		SELECT
-			id,
-			COALESCE(name, ''),
-			COALESCE(tags, '[]'),
-			TRIM(
-				COALESCE(search_text, '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clean_title'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clip_summary'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.hook'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.topics'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.speakers'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.mentioned_people'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.people'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text'), '')
-			)
-		FROM media_assets`
-	var args []any
-	if source != "" && source != "all" {
-		query += " WHERE source = ?"
-		args = append(args, source)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return 0, fmt.Errorf("query clips: %w", err)
-	}
-	defer rows.Close()
-
-	var total int
-	for rows.Next() {
-		var id, name, tagsJSON, searchText string
-		if err := rows.Scan(&id, &name, &tagsJSON, &searchText); err != nil {
-			continue
-		}
-
-		var tags []string
-		// A corrupt tags column degrades to an empty tag set during the
-		// rebuild (the row's terms are rebuilt without tags), but never
-		// silently: the shared unmarshal-or-log helper surfaces it.
-		jsonutil.UnmarshalOrLog([]byte(tagsJSON), &tags, "rebuild_search_terms.tags", platformlogger.Get())
-
-		if err := s.UpdateSearchTerms(ctx, id, source, name, tags, searchText); err != nil {
-			continue
-		}
-		total++
-
-		if batchSize > 0 && total >= batchSize {
-			break
-		}
-	}
-
-	return total, rows.Err()
 }

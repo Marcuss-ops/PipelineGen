@@ -58,7 +58,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 
 	"go.uber.org/zap"
 )
@@ -153,46 +152,6 @@ type artlistClipSearchAdapter struct {
 	svc          usecase.ClipServices
 	remoteSearch func(context.Context, providerassets.SearchRequest) (providerassets.SearchResult, error)
 }
-
-// sqliteRealtimeSearchAdapter exposes the canonical SQLite clip catalog to
-// script Artlist phrase search. The removed realtime package must not leave
-// this capability as a silent successful empty result.
-type sqliteRealtimeSearchAdapter struct {
-	repo *sqassets.ClipsRepository
-}
-
-func (a *sqliteRealtimeSearchAdapter) SearchClips(ctx context.Context, query, source, _ string, _ int, _ float64) ([]usecase.RealtimeMatchAsset, error) {
-	if a == nil || a.repo == nil {
-		return nil, fmt.Errorf("sqlite realtime search: clip repository not configured")
-	}
-	if strings.TrimSpace(source) == "" {
-		source = "artlist"
-	}
-	clips, err := a.repo.SearchClips(ctx, source, query)
-	if err != nil {
-		return nil, err
-	}
-	results := make([]usecase.RealtimeMatchAsset, 0, len(clips))
-	for _, clip := range clips {
-		if clip == nil {
-			continue
-		}
-		score := clip.QualityScore()
-		if score <= 0 {
-			score = 1
-		}
-		results = append(results, usecase.RealtimeMatchAsset{
-			ID:        clip.ID,
-			Name:      clip.Name,
-			Source:    string(clip.Source),
-			Score:     score,
-			DriveLink: clip.DriveLink(),
-		})
-	}
-	return results, nil
-}
-
-var _ usecase.RealtimeSearchService = (*sqliteRealtimeSearchAdapter)(nil)
 
 // SearchClips satisfies adapters.ArtlistClipSearcher.
 func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) ([]adapters.ArtlistClipMatch, error) {

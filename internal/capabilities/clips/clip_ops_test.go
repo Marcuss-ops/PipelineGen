@@ -74,13 +74,6 @@ func (r *stubRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset
 	return nil, nil
 }
 func (r *stubRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (r *stubRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
-	if r == nil {
-		return nil, nil
-	}
-	out := make([]*asset.Asset, 0, len(r.clips))
-	return append(out, r.clips...), nil
-}
 func (r *stubRepo) FindClipsByHash(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }

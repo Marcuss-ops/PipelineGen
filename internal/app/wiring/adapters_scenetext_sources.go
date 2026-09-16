@@ -78,16 +78,29 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		if count == 0 {
 			count = 1
 		}
-		// When explicit segments are provided (Mediterranean pre-final), the
-		// authoritative source_text per segment must be preserved verbatim
-		// instead of splitting LLM-generated prose which may hallucinate
-		// promotional prefixes ("Get ready...").
+		// Explicit per-segment source_text remains authoritative when supplied.
+		// Segments without source_text must keep the LLM-authored prose; using
+		// their topic as a fallback silently discarded the generated script.
 		if len(plan.Segments) > 0 {
+			var generated []scriptpkg.SpecScene
+			needsGeneratedText := false
+			for _, segment := range plan.Segments {
+				if strings.TrimSpace(segment.SourceText) == "" {
+					needsGeneratedText = true
+					break
+				}
+			}
+			if needsGeneratedText {
+				generated = scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+				if len(generated) != count {
+					return nil, fmt.Errorf("planned %d text scenes, synthesized %d from generated prose", count, len(generated))
+				}
+			}
 			scenes := make([]scriptgen.Scene, 0, count)
 			for i, seg := range plan.Segments {
 				text := strings.TrimSpace(seg.SourceText)
 				if text == "" {
-					text = strings.TrimSpace(seg.Topic)
+					text = strings.TrimSpace(generated[i].Text)
 				}
 				if text == "" {
 					return nil, fmt.Errorf("text scene %d has empty source_text/topic", i)
@@ -268,12 +281,11 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:    req.IdempotencyKey,
 		Title: title,
-		// DriveFolderID is part of the run-scoped plan consumed by the
-		// incremental VidRush materializer. Keep the canonical Docs folder
-		// precedence while preserving the deprecated flat field for older
-		// callers; otherwise entity images cannot be routed into the job
-		// bundle even though render/docs receive the same folder.
-		DriveFolderID:       firstNonEmpty(req.Docs.FolderID, req.DriveFolderID, req.Render.DriveFolderID),
+		// DriveFolderID is the run-scoped artifact root shared by entity-image
+		// materialization and overlay publication. Keep Docs.FolderID separate:
+		// when both are supplied, generated media belongs under the explicit
+		// render/artifact root, while the document stays in its Docs folder.
+		DriveFolderID:       firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID),
 		Project:             req.Project,
 		Model:               req.Model,
 		Tone:                req.Tone,

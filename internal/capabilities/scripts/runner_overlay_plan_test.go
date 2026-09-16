@@ -319,8 +319,12 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	wordPresets := []string{string(capabilityoverlay.PresetModernWord)}
 	// Image presets keep their own catalog: the runtime image family was not
 	// collapsed with the text family, so the generated plan may name any of its
-	// registered members.
-	imagePresets := []string{string(capabilityoverlay.PresetModernImage), "image_slide_left", "image_slide_right", "modern_rounded_pop", "bottom_card_rise"}
+	// registered members. The member list is READ from its single owner
+	// (overlays.imagePresetCandidates) instead of being copied here: a hardcoded
+	// copy silently drifted the moment the owner's render-safe set changed, and
+	// a test that pins a stale set rejects a plan the planner is entitled to
+	// produce (or, worse, accepts one it must never produce).
+	imagePresets := capabilityoverlay.ImagePresetCandidates()
 
 	require.Contains(t, phrasePresets, itemByID["scene-0-phrase-changed-everything"].PresetID)
 	require.Contains(t, wordPresets, itemByID["scene-0-keyword-apple"].PresetID)

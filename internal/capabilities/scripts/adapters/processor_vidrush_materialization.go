@@ -344,14 +344,13 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
-			// A catalog hit is normally terminal and avoids a second download.
-			// For an entity image in a run with an explicit Drive output root,
-			// the run bundle is also an output contract: reacquire the source so
-			// the common finalizer can publish a copy into this job's images
-			// folder. Without this exception a warm catalog hit would keep only
-			// the old global vidrush link and reproduce the missing-image bug.
-			publishToRunOutput := entityImageOutputRequested(plan, candidate)
-			if readyVidRushCandidate(candidate) && !publishToRunOutput && (!candidate.IsLegacyCandidate() || legacyPersisted) {
+			// A durable catalog hit is terminal even when this run has a Drive
+			// output root. Reacquiring it only to copy it into a per-run images
+			// folder downloaded the same entity image once per scene. Its
+			// canonical DriveLink (and cached LocalPath when still present) is
+			// already a reusable artifact; only new images go through the
+			// run-specific finalization route below.
+			if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
 				materialized = append(materialized, candidate)
 				markReadyImage(candidate)
 				continue
@@ -450,7 +449,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			verified := lifecycle.verified
-			verified = routeEntityImageToGenerationOutput(plan, verified)
+			// One dispatch for every artifact family: entity images land in
+			// <Title>/<Language>/images, the provider clips the run used land in
+			// <Title>/<Language>/clips, both under plan.DriveFolderID.
+			verified = routeGenerationOutputToPlanBundle(plan, verified)
 			cacheKey := vidRushCandidateIdentity(candidate)
 			var persisted scriptpkg.SegmentAssetCandidate
 			err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
@@ -556,5 +558,3 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	updated.Cache.InternetImagesNewUploads = newInternetImageUploads
 	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
 }
-
-// routeEntityImageToGenerationOutput carries the generation destination all

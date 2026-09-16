@@ -184,6 +184,14 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 	}
 	totalMin := int(math.Floor(float64(totalTarget) * (1 - settings.totalTolerancePercent/100)))
 	totalMax := int(math.Ceil(float64(totalTarget) * (1 + settings.totalTolerancePercent/100)))
+	// Streaming generation validates one scene at a time. For that one-scene
+	// plan, the explicit segment bounds already define the complete text
+	// budget; applying the aggregate percentage again can reject a paragraph
+	// that passed its declared min_words/max_words by only one or two words.
+	if len(plan.Segments) == 1 {
+		budget := segmentBudgetFor(plan, 0, settings.segmentTolerancePercent)
+		totalTarget, totalMin, totalMax = budget.Target, budget.Min, budget.Max
+	}
 	actualTotal := 0
 	for _, text := range texts {
 		actualTotal += textutil.CountWords(text)
