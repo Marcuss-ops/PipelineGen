@@ -1,0 +1,85 @@
+{
+ "correlation_id": "intro-v2-cold-open-2026-09-16",
+ "force_refresh": true,
+ "items": [
+  {
+   "audio": {
+    "mode": "NONE"
+   },
+   "docs": {
+    "enabled": false
+   },
+   "id": "intro-v2-cold-open",
+   "intro": {
+    "clip_ids": [
+     "yt_iHaK0M-207o_70_80_v1"
+    ],
+    "title": "Cold open V2",
+    "display_text": "Dal cinema a un altro mondo.",
+    "playback": {
+     "audio_mode": "original_clip"
+    }
+   },
+   "language": "it",
+   "media_mode": "clip_only",
+   "output": {
+    "extract_entities": "disabled",
+    "languages": [
+     "en"
+    ],
+    "render": {
+     "background": {
+      "asset_id": "drive-background-01",
+      "mode": "asset"
+     },
+     "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+     "drive_subfolder_name": "intro-v2",
+     "enabled": true,
+     "foreground_scale_percent": 80,
+     "render_concurrency": 2,
+     "subtitles": {
+      "enabled": true,
+      "mode": "burn",
+      "preset": "impact"
+     }
+    },
+    "save_to_db": true,
+    "voiceover_enabled": false
+   },
+   "project": "intro-v2-cold-open",
+   "script_params": {
+    "target_words": 12,
+    "segments": [
+     {
+      "id": "scene-0",
+      "kind": "clip",
+      "topic": "Body clip",
+      "source_text": "La clip body dopo il cold open.",
+      "clip_ids": [
+       "yt_iHaK0M-207o_60_70_v1"
+      ],
+      "target_words": 12
+     }
+    ]
+   },
+   "source": {
+    "type": "clips",
+    "topic": "Intro V2 cold open + body",
+    "source_text": "Cold open seguito dalla clip body.",
+    "clip_ids": [
+     "yt_iHaK0M-207o_60_70_v1"
+    ],
+    "num_clips": 1,
+    "ordering_strategy": "input_order",
+    "grounding_policy": "clips_primary",
+    "fallback_policy": "strict",
+    "force_refresh": true
+   },
+   "style": "Cold open breve e cinematografico.",
+   "title": "Intro V2 \u2014 cold open con subs",
+   "tone": "cinematografico, essenziale"
+  }
+ ],
+ "preset": "custom",
+ "version": 2
+}
