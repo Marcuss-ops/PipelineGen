@@ -265,6 +265,14 @@ func (e *Engine) generateSegments(
 		if lastErr != nil {
 			validationFailure := validationExhausted || isSegmentValidationExhausted(lastErr)
 			fallbackSource := cleanSegmentSourceText(segment.SourceText)
+			// NON-CLIP plans (text / research) keep the plan-level authoritative
+			// source as a last-resort fallback: segmentReq.SourceText resolves to
+			// "this segment's source, else the plan source" a few lines above, and
+			// for a text plan the plan source IS the authored brief this segment
+			// is generated from. The ClipEvidence guard below excludes clip plans,
+			// whose aggregated evidence blob must never be narrated as if it were
+			// the clip's own description (see the segmentReq.SourceText contract).
+			// Pinned by TestEngineGenerate_UsesGlobalSourceTextFallback.
 			if fallbackSource == "" {
 				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
 			}
@@ -341,10 +349,12 @@ func (e *Engine) generateSegments(
 			if output.index >= 0 && output.index < len(plan.Segments) &&
 				isSegmentValidationExhausted(output.err) {
 				budget := segmentBudgetFor(plan, output.index, settings.segmentTolerancePercent)
+				// Only the segment's OWN source is eligible on this path: it is
+				// reached for EVERY plan shape, including clip plans, so reading
+				// req.SourceText here would narrate the aggregated clip-evidence
+				// blob. A segment without an authored source must stay fail-closed
+				// instead of emitting an unsupported narrative.
 				fallbackSource := plan.Segments[output.index].SourceText
-				if strings.TrimSpace(fallbackSource) == "" {
-					fallbackSource = req.SourceText
-				}
 				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
 				fallbackPlan := *plan
 				fallbackPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[output.index]}

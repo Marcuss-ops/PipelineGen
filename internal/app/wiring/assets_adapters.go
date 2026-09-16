@@ -12,7 +12,6 @@ import (
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
 )
 
 type deliverySignerAdapter struct {
@@ -135,28 +134,6 @@ func (a *diagAssetStatsAdapter) GetStats(ctx context.Context) (*appdiag.AssetSta
 }
 
 // ── Search adapters ────────────────────────────────────────────────────
-
-// searchCatalogAdapter adapts *catalog.Repository to search.LocalCatalogPort.
-type searchCatalogAdapter struct {
-	catalog *catalog.Repository
-}
-
-func (a *searchCatalogAdapter) SearchAll(ctx context.Context, query string) ([]appsearch.CatalogSearchResult, error) {
-	records, err := a.catalog.SearchAll(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]appsearch.CatalogSearchResult, len(records))
-	for i, r := range records {
-		out[i] = appsearch.CatalogSearchResult{
-			ID:    r.ID,
-			Name:  r.Name,
-			Type:  r.MediaType,
-			Score: 0,
-		}
-	}
-	return out, nil
-}
 
 // zapDiagLogAdapter adapts *zap.Logger to diagnostics.Logger.
 type zapDiagLogAdapter struct {

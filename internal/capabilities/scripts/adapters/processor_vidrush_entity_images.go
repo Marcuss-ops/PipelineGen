@@ -14,18 +14,64 @@ import (
 	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
-// second ad-hoc Drive client: the finalizer remains the only publication
-// boundary, while this small projection tells it where this run's image
-// bundle belongs.
+// The run bundle layout below plan.DriveFolderID has ONE owner: this file.
+// Every verified artifact family lands in its own child folder so a run's
+// clips and its entity images can never mix:
+//
+//	<Title>/<Language>/images  — entity images (internet_images, image_generation)
+//	<Title>/<Language>/clips   — provider clips the run actually used (youtube, artlist)
+//
+// This is a projection, not a second Drive client: the finalizer remains the
+// only publication boundary and this code merely tells it where the artifact
+// belongs.
+const (
+	generationImageChildFolder = "images"
+	generationClipChildFolder  = "clips"
+)
+
+// routeGenerationOutputToPlanBundle is the SINGLE dispatch point for the run
+// bundle: every verified artifact passes through it before finalization, so a
+// new artifact family adds a predicate here instead of a second call site.
+// The families are disjoint by construction — an entity image is never a
+// provider clip — so exactly one projection can apply.
+func routeGenerationOutputToPlanBundle(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
+	if isEntityImageCandidate(artifact.Candidate) {
+		return routeEntityImageToGenerationOutput(plan, artifact)
+	}
+	return routeClipToGenerationOutput(plan, artifact)
+}
+
 func routeEntityImageToGenerationOutput(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
 	if plan == nil || strings.TrimSpace(plan.DriveFolderID) == "" || !isEntityImageCandidate(artifact.Candidate) {
 		return artifact
 	}
+	return routeToGenerationBundle(plan, artifact, generationImageChildFolder)
+}
+
+// routeClipToGenerationOutput carries the generation destination for a CLIP
+// the run actually used. A source.type=clips job declares its clips by id and
+// the materialization loop resolves them through the youtube/artlist
+// providers; without this projection those clips were finalized only to their
+// own catalog location and never appeared under the run's folder, so an
+// operator could not see which clips a job consumed. Mirrors
+// routeEntityImageToGenerationOutput exactly, with the clips child folder and
+// the same fail-closed guard on a missing DriveFolderID.
+func routeClipToGenerationOutput(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
+	if plan == nil || strings.TrimSpace(plan.DriveFolderID) == "" || !isGenerationClipCandidate(artifact.Candidate) {
+		return artifact
+	}
+	return routeToGenerationBundle(plan, artifact, generationClipChildFolder)
+}
+
+// routeToGenerationBundle applies the canonical <Title>/<Language>/<family>
+// child path. It is the one place that knows the bundle shape, so every family
+// shares a single path builder.
+func routeToGenerationBundle(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact, family string) scriptports.VerifiedArtifact {
 	artifact.OutputDriveFolderID = strings.TrimSpace(plan.DriveFolderID)
 	artifact.OutputDriveSubpath = []string{
 		filesystem.SafeFolderName(plan.Title),
 		filesystem.SafeFolderName(plan.Language),
-		"images",
+		family,
 	}
 	return artifact
 }
@@ -40,6 +86,19 @@ func isEntityImageCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		return false
 	}
 	return strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")
+}
+
+// isGenerationClipCandidate reports whether a candidate is a provider CLIP —
+// video media the run uses — and therefore belongs in the run's clips child
+// folder. Image providers are deliberately excluded so a still can never be
+// published into the clips family, and a clip can never land in images.
+func isGenerationClipCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
+	switch candidate.Provider {
+	case scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderArtlist:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {

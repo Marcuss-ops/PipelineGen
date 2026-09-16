@@ -39,7 +39,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -62,7 +61,6 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	voiceoverRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 	monitorsRepo := monitors.NewMonitorsRepository(dbs.DualPool.Writer)
 	clipsRepo := imagesregistry.NewClipsRepositoryCanonical(dbs.DualPool.Writer, log, assetsSvc.Repository())
-	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
 	entityImageCatalogRepo := sqentity.NewSQLiteEntityImageCatalogAdapter(dbs.DualPool.Writer)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.DualPool.Writer)
 	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.DualPool.Writer)
@@ -113,9 +111,9 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	return &RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, AssetsStore: assetsStore, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
-		CatalogRepo: catalogRepo, EntityImageCatalog: entityImageCatalogRepo,
-		IdempotencyStore: idempotencyStore,
-		TextTrackRepo:    textTrackRepo, SubtitleArtifactRepo: subArtRepo,
+		EntityImageCatalog: entityImageCatalogRepo,
+		IdempotencyStore:   idempotencyStore,
+		TextTrackRepo:      textTrackRepo, SubtitleArtifactRepo: subArtRepo,
 	}, nil
 }
 

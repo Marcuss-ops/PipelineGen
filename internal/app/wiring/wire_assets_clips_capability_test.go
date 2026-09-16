@@ -24,9 +24,19 @@ func TestClipsCapabilityDeps_IsNarrowTypedBundle(t *testing.T) {
 		}
 	}
 
+	// MediaSearch (5th, P2-9 2026-09-16) is the media SSOT read port for the
+	// ListClips text-search branch. It replaced the retired clipsRepo read of
+	// the operational clip_search_terms index, so it is a media read port and
+	// belongs in this bundle — not a new capability dependency.
 	repos := reflect.TypeOf(ClipsRepositoryDeps{})
-	if repos.NumField() != 4 {
-		t.Fatalf("ClipsRepositoryDeps has %d fields, want 4", repos.NumField())
+	wantRepos := []string{"ClipsRepo", "VoiceoverRepo", "ImageRepo", "AssetRepo", "MediaSearch"}
+	if repos.NumField() != len(wantRepos) {
+		t.Fatalf("ClipsRepositoryDeps has %d fields, want %d", repos.NumField(), len(wantRepos))
+	}
+	for i, name := range wantRepos {
+		if got := repos.Field(i).Name; got != name {
+			t.Fatalf("ClipsRepositoryDeps field %d is %q, want %q", i, got, name)
+		}
 	}
 }
 

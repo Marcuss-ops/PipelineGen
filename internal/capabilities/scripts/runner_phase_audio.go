@@ -413,7 +413,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}
-		driveFolderID := firstNonEmpty(req.Docs.FolderID, req.DriveFolderID, req.Render.DriveFolderID)
+		driveFolderID := firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
 		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas); err != nil {
 			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)

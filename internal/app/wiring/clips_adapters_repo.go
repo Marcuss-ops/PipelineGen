@@ -13,11 +13,17 @@ import (
 )
 
 // clipsRepoAdapter wraps *assets.ClipsRepository to satisfy
-// clips.ClipRepositoryPort. All 8 methods are exact delegations; the
+// clips.ClipRepositoryPort. All 10 methods are exact delegations; the
 // adapter intentionally exposes ONLY the surface the handler uses
 // (Pattern 0). Three instances are wired by the composition root —
 // one per source (artlist, clips, stock) — because the API handler
 // uses three separate repo pointers for its cross-source routes.
+//
+// P2-9 (September 2026): the ListClipsPaged delegation is GONE with the port
+// method. It was the last production entry into
+// AssetStoreSQLite.SearchClips -> SearchByTerms -> clip_search_terms, and the
+// clips API text-search branch now reads the PostgreSQL media SSOT through
+// clips.MediaClipSearcher.
 type clipsRepoAdapter struct {
 	inner *assets.ClipsRepository
 }
@@ -66,10 +72,6 @@ func (a *clipsRepoAdapter) ListByFolderPath(ctx context.Context, folderPath stri
 
 func (a *clipsRepoAdapter) DeleteFolder(ctx context.Context, id string) error {
 	return a.inner.DeleteFolder(ctx, id)
-}
-
-func (a *clipsRepoAdapter) ListClipsPaged(ctx context.Context, source string, limit, offset int, query string) ([]*asset.Asset, error) {
-	return a.inner.ListClipsPaged(ctx, source, limit, offset, query)
 }
 
 func (a *clipsRepoAdapter) FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error) {

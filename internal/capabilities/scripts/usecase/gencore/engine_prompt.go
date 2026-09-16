@@ -114,6 +114,14 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		return ""
 	}
 	var b strings.Builder
+	if style := strings.TrimSpace(plan.Style); style != "" {
+		fmt.Fprintf(&b, "Editorial style for every segment: %s\n", style)
+	}
+	if guidelines := strings.TrimSpace(plan.Guidelines); guidelines != "" {
+		b.WriteString("Editorial guidelines for every segment (follow them; do not include them in the narration):\n")
+		b.WriteString(guidelines)
+		b.WriteByte('\n')
+	}
 	for i, s := range plan.Segments {
 		if i > 0 {
 			b.WriteString("\n\n")
@@ -148,7 +156,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		if segmentSource != "" {
 			b.WriteString("\nSource text:\n")
 			b.WriteString(segmentSource)
-			b.WriteString("\nREWRITE RULE: rewrite this source text as a new playful narrator introduction. Do not copy its wording, do not mention these instructions, and do not add unsupported facts.")
+			b.WriteString("\nREWRITE RULE: rewrite this source text as fresh narration suited to the declared topic and editorial style. Do not copy its wording, do not mention these instructions, and do not add unsupported facts.")
 		}
 		if len(s.ClipIDs) > 0 {
 			b.WriteString("\nAssigned clip_ids (use only these clips for this segment): ")

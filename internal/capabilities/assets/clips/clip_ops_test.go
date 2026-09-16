@@ -50,13 +50,6 @@ func (r *handlerClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*ass
 	return nil, nil
 }
 func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (r *handlerClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
-	if r == nil {
-		return nil, nil
-	}
-	out := make([]*asset.Asset, 0, len(r.clips))
-	return append(out, r.clips...), nil
-}
 func (r *handlerClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }

@@ -17,7 +17,11 @@ var (
 	phrasePresetCandidates         = []string{"apple_v2"}
 	wordPresetCandidates           = []string{"apple_v2"}
 	imagePresetCandidates          = []string{
-		"image_fast_fade", "image_slide_left", "image_slide_right",
+		// Auto-selected images use an entrance long enough to remain visible.
+		// image_fast_fade is an explicit short variant (<1.5 s), so it stays
+		// available for editorial plans but is not picked for generated overlays.
+		"image_focus_in", "image_fade_in", "image_scale_in",
+		"image_slide_left", "image_slide_right",
 		// modern_rounded_pop adds rounded-corner masking. The current strict
 		// Vulkan/NVENC image path rejects that mask and has no legacy fallback;
 		// keep the preset available for explicit certification plans, but never
@@ -36,6 +40,14 @@ var (
 		"word_reveal", "character_cascade", "char_wave", "opacity_wave", "center_expansion",
 	}
 )
+
+// ImagePresetCandidates returns a copy of the render-safe generated-image
+// preset ids in selection order. It is the read-only projection of the SINGLE
+// owner of that list: a consumer (including a structural test) must never keep
+// a second copy that can drift from the ids the planner can actually emit.
+func ImagePresetCandidates() []string {
+	return append([]string(nil), imagePresetCandidates...)
+}
 
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
 	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{

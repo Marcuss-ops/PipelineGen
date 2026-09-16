@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 )
 
@@ -50,7 +49,6 @@ type RepoBundle struct {
 	Assets               *detail.Service                  // legacy detail.Service (SQLite); media hydration via pg MediaSearcher
 	MonitorsRepo         *monitors.MonitorsRepository
 	VoiceoverRepo        *assets.VoiceoversRepository
-	CatalogRepo          *catalog.Repository
 	EntityImageCatalog   entitycatalog.Repository
 	IdempotencyStore     mwidem.IdempotencyStore
 	TextTrackRepo        detail.TextTrackRepository

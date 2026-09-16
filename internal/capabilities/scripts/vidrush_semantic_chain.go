@@ -140,6 +140,10 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
 	entities = deduplicateVisualEntities(entities)
+	// VisualNER and the structured name extractor can each contribute valid
+	// identities. Enforce the caller's per-scene limit after merging so the
+	// emitted image-query fanout and certification see the same bounded list.
+	entities = limitTranslatedVisualEntities(entities, entityLimit)
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	for _, ve := range entities {

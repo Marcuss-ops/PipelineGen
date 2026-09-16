@@ -29,6 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
@@ -223,7 +224,16 @@ func WireArtlist(
 	if bundle.MediaDB != nil {
 		mediaSearcher := pgmedia.NewMediaSearcher(bundle.MediaDB)
 		localSearcher = newArtlistLocalSearcher(mediaSearcher)
-		assetStore = newArtlistMediaSSOTAssetStore(assetStore, mediaSearcher)
+		// P2-9 (F5 writer half): the derived term corpus must be written by the
+		// canonical media writer, never the operational clip_search_terms mirror.
+		// The bundle field is typed as the narrow AssetCommitter, so recover its
+		// AssetMutator view by assertion (the production dynamic type is
+		// *pgmedia.PostgresMediaCommitter). A nil mutator fails the write closed.
+		mutator, _ := bundle.Committer.(assetspersistence.AssetMutator)
+		if mutator == nil {
+			log.Warn("WireArtlist: canonical committer does not expose AssetMutator — search-term write will fail closed (no clip_search_terms mirror)")
+		}
+		assetStore = newArtlistMediaSSOTAssetStore(assetStore, mediaSearcher, mutator)
 	} else {
 		log.Warn("WireArtlist: media PostgreSQL unavailable — local Artlist catalog searcher NOT wired (fail-closed, no SQLite media mirror)")
 	}

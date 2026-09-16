@@ -66,9 +66,16 @@ func WireAssets(
 	// consumer-owned interface, so no caller depends on the SQLite-only
 	// detail.Repository type-switch bridge.
 	var assetRepo clipsapi.AssetReader
+	// MediaSearch answers the ListClips text-search branch the same way: the
+	// PostgreSQL media read authority when the media plane is open, nil (fail
+	// closed) when it is not. The retired SQLite branch read the operational
+	// clip_search_terms index, which the canonical committer never populates.
+	var mediaSearch clipsapi.MediaClipSearcher
 	switch {
 	case deps.MediaPostgres != nil:
-		assetRepo = pgmedia.NewMediaClipAssetReader(pgmedia.NewMediaSearcher(deps.MediaPostgres))
+		mediaSearcher := pgmedia.NewMediaSearcher(deps.MediaPostgres)
+		assetRepo = pgmedia.NewMediaClipAssetReader(mediaSearcher)
+		mediaSearch = newPostgresClipMediaSearch(mediaSearcher)
 	case deps.Core.Services.Assets != nil:
 		assetRepo = deps.Core.Services.Assets.Repository()
 	}
@@ -101,6 +108,7 @@ func WireAssets(
 				VoiceoverRepo: deps.Core.Repositories.VoiceoverRepo,
 				ImageRepo:     deps.Core.Repositories.ImageRepo,
 				AssetRepo:     assetRepo,
+				MediaSearch:   mediaSearch,
 			},
 			ArtifactService:    deps.Core.Services.ArtifactService,
 			AssetTreeService:   deps.Core.Services.AssetTreeService,

@@ -3,7 +3,9 @@
 package wiring
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
@@ -18,10 +20,12 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -43,6 +47,9 @@ type ClipsRepositoryDeps struct {
 	VoiceoverRepo *sqassets.VoiceoversRepository
 	ImageRepo     *imagesrepo.ImagesRepository
 	AssetRepo     clipsapi.AssetReader
+	// MediaSearch answers the ListClips text-search branch from the media
+	// SSOT. Nil when the media plane is closed.
+	MediaSearch clipsapi.MediaClipSearcher
 }
 
 // ClipsCapabilityDeps contains only the concrete ports consumed by the clips
@@ -67,6 +74,69 @@ type buildClipsParams struct {
 	MetaWriter    semantic.MetadataWriterPort
 	DeletionSvc   *deletion.DeletionService
 	IdemHandler   gin.HandlerFunc
+}
+
+// ── clips text-search media SSOT adapter ─────────────────────────────
+
+// clipsMediaSearcher is the narrow read surface the adapter needs. It is
+// satisfied by *pgmedia.MediaSearcher — the single media read authority.
+type clipsMediaSearcher interface {
+	SearchLocal(ctx context.Context, req pgmedia.LocalMediaSearchRequest) ([]pgmedia.MediaAssetRecord, error)
+}
+
+// postgresClipMediaSearch answers the clips ListClips text-search branch
+// (`GET /:source/clips?q=...`) from the PostgreSQL media SSOT.
+//
+// P2-9 (September 2026): the retired branch called
+// imagesregistry.AssetStoreSQLite.SearchClips, whose fast path queried the
+// operational clip_search_terms inverted index and re-hydrated the operational
+// media_assets mirror — which the canonical PostgreSQL committer never
+// populates. The handler could only ever grade a stale pre-cutover catalog.
+// SearchLocal already carries the canonical term corpus (name / search_text /
+// search_terms) with the same per-term AND semantics, so no secondary term
+// table is needed and the ranking stays canonical (detail.ScoreClips).
+type postgresClipMediaSearch struct {
+	searcher clipsMediaSearcher
+}
+
+var _ clipsapi.MediaClipSearcher = (*postgresClipMediaSearch)(nil)
+
+// newPostgresClipMediaSearch returns nil for a nil searcher (or one whose
+// handle is closed) so the handler FAILS CLOSED instead of degrading onto the
+// retired operational index. It never panics on a closed media plane: the
+// caller gates on deps.MediaPostgres, and this guard covers the typed-nil case.
+func newPostgresClipMediaSearch(searcher clipsMediaSearcher) clipsapi.MediaClipSearcher {
+	if searcher == nil {
+		return nil
+	}
+	return &postgresClipMediaSearch{searcher: searcher}
+}
+
+func (p *postgresClipMediaSearch) SearchClipsByTerms(ctx context.Context, source string, terms []string, limit int) ([]*asset.Asset, error) {
+	cleaned := make([]string, 0, len(terms))
+	for _, term := range terms {
+		if trimmed := strings.TrimSpace(term); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	if len(cleaned) == 0 {
+		return []*asset.Asset{}, nil
+	}
+	records, err := p.searcher.SearchLocal(ctx, pgmedia.LocalMediaSearchRequest{
+		AllTerms: cleaned,
+		Source:   source,
+		Limit:    limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	clips := make([]*asset.Asset, 0, len(records))
+	for i := range records {
+		if hydrated := records[i].HydrateAsset(); hydrated != nil {
+			clips = append(clips, hydrated)
+		}
+	}
+	return detail.ScoreClips(clips, cleaned), nil
 }
 
 func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.ClipEnricher, error) {
@@ -179,6 +249,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				AssetRepo:     params.Clips.Repositories.AssetRepo,
 				VoiceoverRepo: newVoiceoverRepoAdapter(params.Clips.Repositories.VoiceoverRepo),
 				ImagesRepo:    params.Clips.Repositories.ImageRepo,
+				MediaSearch:   params.Clips.Repositories.MediaSearch,
 			},
 			Ingest: clipsapi.IngestDeps{
 				Dispatcher:   clipsDispatcherPort,

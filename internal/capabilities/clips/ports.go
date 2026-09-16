@@ -115,10 +115,19 @@ type ClipVoiceoverRecordDTO struct {
 // ── Structural ports (signature-bearing, minimal per Pattern 0) ────────
 
 // ClipRepositoryPort is the canonical clips-side narrowed surface of
-// *assets.ClipsRepository. The 11 methods listed below are exactly
+// *assets.ClipsRepository. The 10 methods listed below are exactly
 // the ones handlers + helpers + worker + clip_ops + clip_action call
 // on the concrete repo. Adapter struct machinery lives in
 // internal/app/clips_adapters.go.
+//
+// P2-9 (September 2026): ListClipsPaged was REMOVED from this port. It was
+// the media TEXT-SEARCH surface (source + limit/offset + free-text query) and
+// its only production caller, the clips API ListClips branch, now resolves
+// through the capability-owned clips.MediaClipSearcher port onto the
+// PostgreSQL media read authority. Keeping it here would have left a port
+// method whose only concrete implementation read the retired operational
+// clip_search_terms inverted index. A media search surface must not reappear
+// on this port: PostgreSQL is the media SSOT (godlike/06).
 //
 // QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
 // from this port. Production callers (clips.ClipOpsService +
@@ -151,7 +160,6 @@ type ClipRepositoryPort interface {
 	ListByFolderID(ctx context.Context, folderID string) ([]*asset.Asset, error)
 	ListByFolderPath(ctx context.Context, folderPath string) ([]*asset.Asset, error)
 	DeleteFolder(ctx context.Context, id string) error
-	ListClipsPaged(ctx context.Context, source string, limit, offset int, query string) ([]*asset.Asset, error)
 	FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error)
 }
 

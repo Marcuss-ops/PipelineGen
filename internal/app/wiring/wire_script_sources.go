@@ -211,8 +211,58 @@ func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string,
 	return out, nil
 }
 
+// catalogSearchLimit bounds one SourceCatalog lexical query. The retired
+// SQLite keyword lookup capped its result set at 50, so this preserves the
+// bound rather than inventing a new one.
+const catalogSearchLimit = 50
+
+// postgresCatalogPort implements search.LocalCatalogPort on the PostgreSQL
+// media SSOT.
+//
+// WHY THIS EXISTS (P2-9 read migration). SourceCatalog used to resolve through
+// *catalog.Repository, whose SearchAll ran keyword SQL against the operational
+// SQLite media_assets + clip_search_terms mirror. PostgreSQL + pgvector is the
+// sole durable media authority and the canonical writer no longer populates
+// that mirror, so the read could only grade a stale catalog. SearchLocal answers
+// the same question on the SSOT with the same keyword semantics the retired
+// clip_search_terms AND-lookup provided (name / search_text / search_terms), so
+// this is a port swap, not a rewrite.
+type postgresCatalogPort struct {
+	searcher *pgmedia.MediaSearcher
+}
+
+func (p *postgresCatalogPort) SearchAll(ctx context.Context, query string) ([]appsearch.CatalogSearchResult, error) {
+	if p == nil || p.searcher == nil {
+		return nil, fmt.Errorf("postgres catalog search: media search dependencies are unavailable")
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []appsearch.CatalogSearchResult{}, nil
+	}
+	records, err := p.searcher.SearchLocal(ctx, pgmedia.LocalMediaSearchRequest{
+		Text:  query,
+		Limit: catalogSearchLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("postgres catalog search: %w", err)
+	}
+	out := make([]appsearch.CatalogSearchResult, 0, len(records))
+	for _, rec := range records {
+		if strings.TrimSpace(rec.ID) == "" {
+			continue
+		}
+		out = append(out, appsearch.CatalogSearchResult{
+			ID:   rec.ID,
+			Name: rec.Name,
+			Type: rec.MediaType,
+		})
+	}
+	return out, nil
+}
+
 var (
 	_ usecase.SemanticSearchPort  = (*postgresSemanticSearchPort)(nil)
 	_ scriptports.AssetSearchPort = (*postgresAssetSearchPort)(nil)
 	_ scriptapi.ClipSearcher      = (*clipsNameSearchAdapter)(nil)
+	_ appsearch.LocalCatalogPort  = (*postgresCatalogPort)(nil)
 )
