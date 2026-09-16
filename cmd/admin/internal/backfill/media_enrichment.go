@@ -33,9 +33,13 @@ import (
 //	  [--limit 0] [--batch-size 100] [--force]
 //	  [--legs features,semantic,visual]
 //
-// Face detection (required by the features leg) is provided by the
-// canonical sidecar (--sidecar-url); the visual leg uses the same
-// sidecar's SigLIP image encoder.
+// The sidecar (--sidecar-url) provides what the derived surfaces actually
+// measure: the SigLIP image encoder for the visual leg and the E5 text
+// encoder for the semantic leg. The features leg needs no model — the
+// dominant colour and the motion score are computed locally by ffmpeg.
+// (Face detection is RETIRED: the endpoint the features leg used to require
+// was never served, which made the whole media_asset_features surface
+// unproducible. See migration 009.)
 func RunMediaEnrichmentBackfill(args []string) error {
 	fs := flag.NewFlagSet("backfill-media-enrichment", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -64,7 +68,7 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	}
 	// Self-bootstrapping schema (idempotent) so a fresh media database
 	// carries the family registry + HNSW indexes before any write.
-	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL} {
+	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL, pgmigration.MediaDropAssetFacesDDL} {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("apply media migrations: %w", err)
 		}
@@ -90,10 +94,10 @@ func RunMediaEnrichmentBackfill(args []string) error {
 		}
 	}
 
-	// Features + visual legs: both need the sidecar (face detector and
-	// SigLIP image encoder respectively) plus the ffmpeg sampler. An
-	// unavailable sidecar with those legs requested = typed fail-closed
-	// error, never a fake has_faces row or zero vector.
+	// Visual leg: needs the sidecar's SigLIP image encoder plus the ffmpeg
+	// sampler. An unavailable sidecar with that leg requested = typed
+	// fail-closed error, never a zero vector. The features leg runs without
+	// any model (ffmpeg only).
 	wantFeatures := cfg.AnalyzeFeatures || (cfg.AnalyzeFeatures == false && cfg.BackfillSemantic == false && cfg.BackfillVisual == false)
 	wantVisual := cfg.BackfillVisual || (cfg.AnalyzeFeatures == false && cfg.BackfillSemantic == false && cfg.BackfillVisual == false)
 	var analyzer *pgmedia.MediaFeatureAnalyzer
@@ -102,14 +106,13 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	if sidecar := strings.TrimSpace(*sidecarURL); sidecar != "" {
 		registry = pgmedia.DefaultVisualEmbeddingModelRegistry()
 		if wantFeatures {
-			faces := pgmedia.NewSidecarFaceDetector(sidecar, 0)
 			probe := pgmedia.NewFFMPEGProbeAdapter("")
 			sampler, serr := pgmedia.NewFFMPEGKeyframeSamplerAdapter("")
 			if serr != nil {
 				return serr
 			}
 			analyzer = pgmedia.NewMediaFeatureAnalyzer(pgmedia.FeatureAnalyzerDeps{
-				Probe: probe, Keyframes: sampler, Faces: faces,
+				Probe: probe, Keyframes: sampler,
 			})
 		}
 		if wantVisual {
@@ -129,8 +132,8 @@ func RunMediaEnrichmentBackfill(args []string) error {
 				return err
 			}
 		}
-	} else if wantFeatures || wantVisual {
-		return fmt.Errorf("--sidecar-url is required when the features or visual leg is requested (no fake availability: faces and visual vectors cannot be fabricated)")
+	} else if wantVisual {
+		return fmt.Errorf("--sidecar-url is required when the visual leg is requested (no fake availability: a visual vector cannot be fabricated)")
 	}
 
 	// Semantic leg: the canonical E5 text embedder over the sidecar

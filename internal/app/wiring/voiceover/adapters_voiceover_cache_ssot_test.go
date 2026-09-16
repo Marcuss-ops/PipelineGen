@@ -17,6 +17,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -87,7 +88,7 @@ VALUES (?, ?, ?, '', '', '')`, id, name, driveFileID)
 func TestVoiceoverCacheSSOT_MissingMediaAssetRowIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-1", "fp-1", "completed", "{}")
@@ -105,7 +106,7 @@ func TestVoiceoverCacheSSOT_MissingMediaAssetRowIsMiss(t *testing.T) {
 func TestVoiceoverCacheSSOT_EmptyDriveFileIDIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-2", "fp-2", "completed", "{}")
@@ -124,7 +125,7 @@ func TestVoiceoverCacheSSOT_EmptyDriveFileIDIsMiss(t *testing.T) {
 func TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-3", "fp-3", "completed", `{"timing_json_link":"https://drive/timing.json"}`)
@@ -145,7 +146,7 @@ func TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData(t *testing.T) {
 func TestVoiceoverCacheSSOT_NonReusableStatusIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-4", "fp-4", "failed", "{}")
@@ -162,7 +163,7 @@ func TestVoiceoverCacheSSOT_NonReusableStatusIsMiss(t *testing.T) {
 func TestVoiceoverCacheSSOT_TimingRequiredButMissingIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-5", "fp-5", "completed", "{}") // no timing_json_link
@@ -196,7 +197,7 @@ func TestVoiceoverCacheSSOT_NilAdapterReturnsNil(t *testing.T) {
 func TestVoiceoverCacheSSOT_MetadataFromMediaAssetsNotCacheRow(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	metaJSON := `{"timing_json_link":"https://drive/timing.json","cleaned_path":"/tmp/cleaned.wav"}`
@@ -221,3 +222,56 @@ func TestVoiceoverCacheSSOT_MetadataFromMediaAssetsNotCacheRow(t *testing.T) {
 // Ensure the package compiles with the unused fmt import if test
 // helpers evolve.
 var _ = fmt.Sprintf
+
+// sqliteVoiceoverMediaReader adapts this file's own SQLite fixture to the
+// VoiceoverMediaReader port.
+//
+// MEDIA-SSOT P2-9 Phase 2: the adapter's media_assets reads now resolve through
+// the port instead of the operational handle, so the cache-SSOT fixtures must
+// supply one. Injecting a reader over the SAME fixture keeps the invariants this
+// file certifies under test — it is the test's own media store — while production
+// resolves the port from the PostgreSQL media SSOT. The two methods mirror the
+// retired SQL exactly, including the absence semantics.
+type sqliteVoiceoverMediaReader struct{ db *sql.DB }
+
+func (r sqliteVoiceoverMediaReader) MediaAssetLocation(ctx context.Context, assetID string) (VoiceoverMediaLocation, bool, error) {
+	var loc VoiceoverMediaLocation
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(drive_file_id, ''), COALESCE(drive_link, ''),
+		       COALESCE(download_link, ''), COALESCE(local_path, ''),
+		       COALESCE(name, '')
+		FROM media_assets WHERE id = ?`, assetID).
+		Scan(&loc.DriveFileID, &loc.DriveLink, &loc.DownloadLink, &loc.LocalPath, &loc.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VoiceoverMediaLocation{}, false, nil
+	}
+	if err != nil {
+		return VoiceoverMediaLocation{}, false, err
+	}
+	return loc, true, nil
+}
+
+func (r sqliteVoiceoverMediaReader) CountByDriveFileID(ctx context.Context, driveFileID, currentID string) (string, int, error) {
+	if driveFileID == "" {
+		return "", 0, nil
+	}
+	var matchedID string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM media_assets WHERE drive_file_id = ? AND id != ? LIMIT 1`,
+		driveFileID, currentID).Scan(&matchedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, nil
+	}
+	if err != nil {
+		return "", 0, err
+	}
+	var count int
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM media_assets WHERE drive_file_id = ? AND id != ?`,
+		driveFileID, currentID).Scan(&count); err != nil {
+		return matchedID, 1, nil
+	}
+	return matchedID, count, nil
+}
+
+var _ VoiceoverMediaReader = sqliteVoiceoverMediaReader{}

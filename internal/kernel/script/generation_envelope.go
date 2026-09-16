@@ -233,9 +233,11 @@ func (p FixedPlaybackPolicy) Valid() bool {
 
 // FixedSection is a protected intro/outro media section that bypasses the
 // LLM and all generated-scene processors. ClipIDs are authoritative media
-// bindings; DisplayText is optional visual/document text and is never sent to
-// translation or TTS. Playback explicitly selects original clip audio and a
-// source window.
+// bindings; DisplayText is optional visual/document text. DisplayText is never
+// sent to TTS or the LLM, but it MAY be translated for subtitle/caption burn
+// (Intro V2: SceneExecutionMode.AllowsDisplayTextTranslation) so localized
+// renders burn translated captions. Playback explicitly selects original clip
+// audio and a source window.
 type FixedSection struct {
 	// ClipIDs is the authoritative clip binding for this section. One or two
 	// clips are allowed (e.g. a section spanning two back-to-back clips).
@@ -243,7 +245,8 @@ type FixedSection struct {
 	// Title is an optional human-readable title for the Docs scene.
 	Title string `json:"title,omitempty"`
 	// DisplayText is optional text shown alongside the fixed media. It is not
-	// narration and is never translated or synthesized.
+	// narration and is never synthesized (no TTS) or sent to the LLM; it may be
+	// translated for subtitle/caption burn (Intro V2).
 	DisplayText string `json:"display_text,omitempty"`
 	// Playback is the authoritative original-audio and source-window policy.
 	Playback FixedPlaybackPolicy `json:"playback"`

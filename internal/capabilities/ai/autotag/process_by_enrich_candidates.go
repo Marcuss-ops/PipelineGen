@@ -43,6 +43,30 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+// EnrichmentCandidateReader is the narrow media-SSOT read behind the VLM sweep
+// selector.
+//
+// CONTRACT: it returns the ids of assets whose canonical enrich_state is PENDING
+// and whose enrich_state_updated_at stamp is older than claimFence, OLDEST FIRST,
+// capped at limit. The PENDING clause is part of the contract, not an
+// implementation detail — the retired selector returned the state alongside each
+// id so the caller could re-check it defensively, and that returned state was
+// always PENDING because the same predicate had already filtered it. Ids are
+// enough, and keeping the return type free of a shared struct is what lets the
+// platform implementation satisfy this port structurally without importing this
+// capability.
+//
+// Declaring the port here — instead of reaching for a *sql.DB — is what keeps
+// this capability from naming an engine. PostgreSQL is the only production
+// implementation (pgmedia.MediaEnrichmentCandidateReader), resolved by the
+// composition root from the canonical committer's handle, which is also what
+// resolves the enrichment state machine: the scan and the claim therefore share
+// one engine by construction. A nil implementation is a media-plane-closed
+// signal and ProcessByEnrichCandidates fails closed.
+type EnrichmentCandidateReader interface {
+	PendingEnrichCandidates(ctx context.Context, claimFence time.Duration, limit int) ([]string, error)
+}
+
 // ProcessByEnrichCandidates scans media_assets for rows whose canonical
 // media_assets.enrich_state column is PENDING AND whose
 // enrich_state_updated_at stamp is older than now()-claimFence (the
@@ -71,53 +95,24 @@ func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, clai
 		limit = 10
 	}
 
-	// Canonical godlike/06 SSOT typed-state filter (migration 123):
-	//   WHERE enrich_state = 'PENDING'
-	//     AND enrich_state_updated_at < datetime('now', ?)
-	//     AND media_type != 'folder'
-	//     AND local_path != ''
-	// ORDER BY enrich_state_updated_at ASC LIMIT ?
-	// The ORDER BY surfaces the OLDEST scrape candidate first so
-	// long-pending rows get processed before brand-new ones.
-	query := `
-		SELECT id, enrich_state FROM media_assets
-		WHERE enrich_state = 'PENDING'
-		  AND enrich_state_updated_at < datetime('now', ?)
-		  AND media_type != 'folder'
-		  AND local_path != ''
-		ORDER BY enrich_state_updated_at ASC
-		LIMIT ?
-	`
-
-	// claimFence is encoded as a relative-time SQL modifier; SQLite
-	// accepts negative seconds offset string. claimFence of 30s
-	// becomes '-30 seconds' which datetime('now', '-30 seconds') reads
-	// as now-30s.
-	fenceMod := fmt.Sprintf("-%d seconds", int(claimFence.Seconds()))
-
-	rows, err := s.db.QueryContext(ctx, query, fenceMod, limit)
+	// MEDIA-SSOT P2-9 Phase 2: the candidate scan reads the media SSOT through
+	// the narrow EnrichmentCandidateReader port, not through s.db (the
+	// operational store). media_assets is owned by PostgreSQL, so the previous
+	// SQLite scan graded — and the sweeper then claimed — rows on a database no
+	// canonical media writer maintains. Read and claim now share one engine by
+	// construction: the claim goes through EnrichStateMachine, whose repository
+	// port is resolved from the same canonical committer (see
+	// wiring.enrichStateStoreFromCommitter).
+	//
+	// A nil reader fails closed rather than silently reporting an empty sweep:
+	// "no candidates" and "cannot see the candidate catalog" are different
+	// facts, and only one of them is safe to act on.
+	if s.enrichCandidates == nil {
+		return 0, fmt.Errorf("enrichment candidate reader is not wired (media SSOT closed)")
+	}
+	candidates, err := s.enrichCandidates.PendingEnrichCandidates(ctx, claimFence, limit)
 	if err != nil {
 		return 0, fmt.Errorf("query enrich candidates: %w", err)
-	}
-	defer rows.Close()
-
-	type candidate struct {
-		id    string
-		state asset.EnrichState
-	}
-	var candidates []candidate
-	for rows.Next() {
-		var c candidate
-		var rawState string
-		if err := rows.Scan(&c.id, &rawState); err != nil {
-			s.log.Warn("scan enrich candidate failed", zap.Error(err))
-			continue
-		}
-		c.state = asset.EnrichState(rawState)
-		candidates = append(candidates, c)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("enrich candidate rows: %w", err)
 	}
 	if len(candidates) == 0 {
 		return 0, nil
@@ -130,49 +125,50 @@ func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, clai
 	// written by TagAsset for dashboard compatibility.
 	s.log.Info("starting typed-state VLM batch (PR-ENRICHMENT-STATE-MACHINE EXPAND)",
 		zap.Int("count", len(candidates)),
-		zap.String("claim_fence", fenceMod))
+		zap.String("claim_fence", claimFence.String()))
 
 	processed := 0
-	for _, c := range candidates {
-		if c.state != asset.EnrichStatePending {
-			s.log.Debug("skipping non-scrape candidate", zap.String("id", c.id), zap.String("state", string(c.state)))
-			continue
-		}
+	for _, candidateID := range candidates {
+		// The PENDING state is guaranteed by the EnrichmentCandidateReader
+		// contract (the selector's own predicate filters it), so the retired
+		// defensive re-check is now an invariant of the port rather than a
+		// branch here. The claim below is the authoritative gate either way: a
+		// row that is not PENDING loses the CAS and is skipped.
 
 		// 1. Atomically claim the row via the typed state machine.
 		// If another worker claimed it concurrently, this will fail
 		// and we move on to the next candidate.
-		if err := s.enrichState.ClaimForEnrichment(ctx, c.id, c.state); err != nil {
+		if err := s.enrichState.ClaimForEnrichment(ctx, candidateID, asset.EnrichStatePending); err != nil {
 			s.log.Debug("failed to claim asset for enrichment (likely already claimed)",
-				zap.String("id", c.id), zap.Error(err))
+				zap.String("id", candidateID), zap.Error(err))
 			continue
 		}
 
 		// 2. Re-fetch the full Asset row (the scan only reads id; TagAsset
 		// needs the full row to drive the tags merge + metadata writes).
-		a, fetchErr := s.repo.Get(ctx, c.id)
+		a, fetchErr := s.repo.Get(ctx, candidateID)
 		if fetchErr != nil {
 			s.log.Warn("failed to fetch asset for enrichment, marking failed",
-				zap.String("id", c.id), zap.Error(fetchErr))
-			_ = s.enrichState.MarkFailed(ctx, c.id)
+				zap.String("id", candidateID), zap.Error(fetchErr))
+			_ = s.enrichState.MarkFailed(ctx, candidateID)
 			continue
 		}
 		if a == nil {
-			_ = s.enrichState.MarkFailed(ctx, c.id)
+			_ = s.enrichState.MarkFailed(ctx, candidateID)
 			continue
 		}
 
 		// 3. Run VLM tagging.
 		if err := s.TagAsset(ctx, a); err != nil {
 			s.log.Warn("failed to tag asset (typed-state sweep), marking failed",
-				zap.String("id", c.id), zap.Error(err))
-			_ = s.enrichState.MarkFailed(ctx, c.id)
+				zap.String("id", candidateID), zap.Error(err))
+			_ = s.enrichState.MarkFailed(ctx, candidateID)
 			continue
 		}
 
 		// 4. Close the success terminal.
-		if err := s.enrichState.MarkEnriched(ctx, c.id); err != nil {
-			s.log.Error("failed to mark asset as enriched", zap.String("id", c.id), zap.Error(err))
+		if err := s.enrichState.MarkEnriched(ctx, candidateID); err != nil {
+			s.log.Error("failed to mark asset as enriched", zap.String("id", candidateID), zap.Error(err))
 			continue
 		}
 

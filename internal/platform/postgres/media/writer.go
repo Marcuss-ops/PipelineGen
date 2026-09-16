@@ -322,11 +322,13 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 		return fmt.Errorf("asset mutator: drive reconciliation asset %q has no source version", change.AssetID)
 	}
 
-	var locationFileID, locationLink string
+	var locationFileID, locationLink, locationMime string
+	var locationSize int64
 	locationErr := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(external_id,''), COALESCE(web_view_link,'')
+		SELECT COALESCE(external_id,''), COALESCE(web_view_link,''),
+		       COALESCE(mime_type,''), COALESCE(file_size_bytes,0)
 		FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, change.AssetID).
-		Scan(&locationFileID, &locationLink)
+		Scan(&locationFileID, &locationLink, &locationMime, &locationSize)
 	if locationErr != nil && locationErr != sql.ErrNoRows {
 		return fmt.Errorf("asset mutator: read drive location %q: %w", change.AssetID, locationErr)
 	}
@@ -338,6 +340,22 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 	}
 	if change.DriveLink != "" && change.DriveFileID == "" {
 		return fmt.Errorf("asset mutator: asset %q has Drive link without Drive file id", change.AssetID)
+	}
+
+	// Same rule as the durable Drive identity above: a caller that does not
+	// attest the byte identity PRESERVES the known one instead of erasing it.
+	// Not every reconciliation source carries the measurement (the image
+	// delivery patch and the script asset-location reconciler only know the
+	// Drive id), and an unknown value written over a known one turns a
+	// recorded fact into a lie — indistinguishable from "nothing was ever
+	// measured". The clip.render consumer DOES attest both (it disk-verifies
+	// req.SizeBytes before uploading), so its reconciliation is the first
+	// writer in this seam that records device-level truth.
+	if change.FileSizeBytes <= 0 {
+		change.FileSizeBytes = locationSize
+	}
+	if change.MimeType == "" {
+		change.MimeType = locationMime
 	}
 
 	nextLifecycle := lifecycle
@@ -365,14 +383,15 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
 			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at,
 			 created_at_ts, updated_at_ts)
-		VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', $6, $7, $8,
-		        NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz)
+		VALUES ($1, 'drive', $2, $3, $4, $5, $6, $7, '', $8, $9, $10,
+		        NULLIF($9, '')::timestamptz, NULLIF($10, '')::timestamptz)
 		ON CONFLICT (asset_id, location_kind) DO UPDATE SET
 			uri=excluded.uri, external_id=excluded.external_id,
 			web_view_link=excluded.web_view_link, download_url=excluded.download_url,
+			mime_type=excluded.mime_type, file_size_bytes=excluded.file_size_bytes,
 			updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`,
 		change.AssetID, uri, change.DriveFileID, change.DriveLink, change.DownloadURL,
-		pgBoolInt(primary), now, now); err != nil {
+		change.MimeType, change.FileSizeBytes, pgBoolInt(primary), now, now); err != nil {
 		return fmt.Errorf("asset mutator: upsert drive location %q: %w", change.AssetID, err)
 	}
 
@@ -404,6 +423,7 @@ func normalizeDriveLocationPatches(changes []persistence.DriveLocationPatch) ([]
 		change.DriveFileID = strings.TrimSpace(change.DriveFileID)
 		change.DriveLink = strings.TrimSpace(change.DriveLink)
 		change.DownloadURL = strings.TrimSpace(change.DownloadURL)
+		change.MimeType = strings.TrimSpace(change.MimeType)
 		if change.AssetID == "" {
 			return nil, fmt.Errorf("asset mutator: drive location asset id is required")
 		}

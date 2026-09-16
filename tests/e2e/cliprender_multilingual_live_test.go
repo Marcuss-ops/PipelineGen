@@ -130,6 +130,7 @@ func openLiveMediaDB(t *testing.T) *sql.DB {
 		pgmigration.MediaTimestampsTimestamptzDDL,
 		pgmigration.MediaAssetVersionsDDL,
 		pgmigration.MediaAssetProcessingDDL,
+		pgmigration.MediaDropAssetFacesDDL,
 	} {
 		_, err := db.ExecContext(ctx, ddl)
 		require.NoErrorf(t, err, "apply media migration %d", i+1)

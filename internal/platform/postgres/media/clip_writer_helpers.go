@@ -101,13 +101,13 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 		StartMs:        int64(clipAsset.Metadata.ClipStartSec * 1000),
 		EndMs:          int64(clipAsset.Metadata.ClipEndSec * 1000),
 		Title:          clipAsset.Metadata.Title,
-		Locations:      clipDriveLocations(clipAsset),
+		Locations:      clipLocations(clipAsset),
 		EmitIndexEvent: true,
 		RequestedAt:    time.Now(),
 	}, nil
 }
 
-// clipDriveLocations projects a clip's Drive identity into asset_locations.
+// clipLocations projects a clip's PHYSICAL identity into asset_locations.
 //
 // A 'drive' location is emitted ONLY when the clip actually carries a Drive
 // file id. The canonical committer upserts on (asset_id, location_kind), so the
@@ -116,18 +116,29 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 // was never published to Drive. A reader that trusts the primary location then
 // resolves an empty Drive id and fails far away from the cause.
 //
-// The ABSENCE of the row is the honest representation of "no Drive identity
-// yet": a later delivery writes it through the same upsert, and no code has to
-// distinguish "no row" from "row with nothing in it".
+// When there is no Drive identity, the clip's bytes are STILL on disk — the
+// extraction cut them and Step 5 measured them — so a 'local' location is the
+// honest record of where the asset's content is. Observed live (2026-09-16): an
+// extraction that asked for no destination (a legitimate outcome: the job
+// completed and the clip was indexed) committed an asset whose artifact was
+// 2,733,575 bytes on disk while asset_locations held ZERO rows. The only record
+// of the bytes was `media_assets.local_path`, the column this schema's own
+// header calls "deprecated in favour of asset_locations", so every consumer
+// that resolves the location surface saw an asset with no content at all.
+//
+// The absence of a row remains the honest representation of "no bytes this
+// commit can point at": a clip with neither a Drive id nor a local path
+// contributes nothing, and a later delivery writes the Drive row through the
+// same upsert.
 // clipDriveMimeType is the canonical media type of the artifact a YouTube clip
 // commit describes: the segment cut always muxes to an MP4 container, and the
 // canonical committer writes this column into asset_locations.
 const clipDriveMimeType = "video/mp4"
 
-func clipDriveLocations(clipAsset youtubetypes.ClipAsset) []persistence.LocationCommit {
+func clipLocations(clipAsset youtubetypes.ClipAsset) []persistence.LocationCommit {
 	fileID := strings.TrimSpace(clipAsset.Drive.FileID)
 	if fileID == "" {
-		return nil
+		return clipLocalLocation(clipAsset)
 	}
 	return []persistence.LocationCommit{
 		{
@@ -145,6 +156,33 @@ func clipDriveLocations(clipAsset youtubetypes.ClipAsset) []persistence.Location
 			// reader must not have to re-probe Drive to learn a known fact.
 			FileSizeBytes: clipAsset.Drive.SizeBytes,
 			MimeType:      clipDriveMimeType,
+			IsPrimary:     true,
+		},
+	}
+}
+
+// clipLocalLocation records the artifact the extraction actually produced when
+// no delivered copy exists.
+//
+// It is PRIMARY by construction: with no Drive identity the local file is the
+// asset's only content, so leaving the row non-primary would mean an asset
+// whose bytes are right there has no primary locator at all. The size is the
+// same measurement Step 5 took on exactly these bytes (`ClipAssetDrive.SizeBytes`
+// carries the measured artifact size, not a Drive-specific fact), and the
+// content digest is the clip's canonical SHA-256.
+func clipLocalLocation(clipAsset youtubetypes.ClipAsset) []persistence.LocationCommit {
+	localPath := strings.TrimSpace(clipAsset.LocalPath)
+	if localPath == "" {
+		return nil
+	}
+	return []persistence.LocationCommit{
+		{
+			Kind:          "local",
+			Provider:      "local",
+			URI:           localPath,
+			MimeType:      clipDriveMimeType,
+			FileSizeBytes: clipAsset.Drive.SizeBytes,
+			LegacyFileMD5: clipAsset.LegacyFileMD5,
 			IsPrimary:     true,
 		},
 	}

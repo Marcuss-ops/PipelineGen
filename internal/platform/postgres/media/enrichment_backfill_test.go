@@ -115,9 +115,9 @@ func TestEnrichmentEngine_BackfillCoverageConverges(t *testing.T) {
 
 	// In-memory fake media file so the resolver succeeds without ffmpeg
 	// pixel legs... but the features leg REQUIRES the analyzer; give the
-	// engine a real analyzer with a real temp source file and deterministic
-	// face observations (real ffmpeg color/motion legs run on the sampled
-	// PNGs).
+	// engine a real analyzer with a real temp source file (the real ffmpeg
+	// color/motion legs run on the sampled PNGs). No face port exists: the
+	// features leg must not depend on one.
 	source := touchMediaSource(t)
 	resolver := func(context.Context, string) (string, error) { return source, nil }
 
@@ -126,7 +126,6 @@ func TestEnrichmentEngine_BackfillCoverageConverges(t *testing.T) {
 	analyzer := pgmedia.NewMediaFeatureAnalyzer(pgmedia.FeatureAnalyzerDeps{
 		Probe:     fakeProbe{dur: 10 * time.Second},
 		Keyframes: fakeSampler{colors: solidRedPalette()},
-		Faces:     fakeFaces{perFrame: []pgmedia.FaceObservation{{FaceCount: 1, LargestRatio: 0.5}}},
 	})
 
 	engine, err := pgmedia.NewEnrichmentEngine(db, vectors, analyzer, visualPipeline, stubSemanticEmbedder{}, "intfloat/multilingual-e5-base")

@@ -55,6 +55,7 @@ func requireRenderCachePostgres(t *testing.T) *sql.DB {
 		pgmigration.MediaTimestampsTimestamptzDDL,
 		pgmigration.MediaAssetVersionsDDL,
 		pgmigration.MediaAssetProcessingDDL,
+		pgmigration.MediaDropAssetFacesDDL,
 	} {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			t.Fatalf("apply media migration %d: %v", i+1, err)

@@ -781,15 +781,18 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 
 	uploads := driveTarget.probe.recorded()
 	// The delivery is IDEMPOTENT and the registry is the PERSISTENT operational
-	// store, so a re-certification run over an already-delivered clip is a
-	// REUSE: each language keeps its recorded Drive reference and nothing is
-	// re-uploaded. Exactly one publication per language (a first delivery) or
-	// none (all ten reused) is correct; a count in between is a partial fan-out
-	// and fails here. Sections 7a/7b are the authority on the delivered state in
-	// BOTH cases, which is why they read the registry rather than this process.
-	require.Containsf(t, []int{0, len(liveLanguages)}, len(uploads),
-		"a delivery is either one publication per language (%d) or a full reuse (0), got %d",
-		len(liveLanguages), len(uploads))
+	// store, so re-certifying over an already-delivered clip REUSES each
+	// language's recorded Drive reference. The upload count is therefore 0..N,
+	// not just "all" or "none": a first delivery publishes every language, a
+	// re-run publishes none, and a language NEWLY added to the canonical set
+	// (e.g. pt-BR replacing the non-canonical pt) publishes only itself while
+	// the already-recorded languages are reused. More than one publication per
+	// language would mean a language was uploaded twice, which the
+	// distinct-filename check below rejects independently. Sections 7a/7b stay
+	// the authority on the delivered state in every case, because they read the
+	// registry rather than this process.
+	require.LessOrEqualf(t, len(uploads), len(liveLanguages),
+		"at most one publication per language (%d) is possible, got %d", len(liveLanguages), len(uploads))
 
 	seenFiles := map[string]bool{}
 	for _, up := range uploads {
@@ -813,6 +816,28 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		require.NotEmptyf(t, art.DriveURL, "artifact %s must record a Drive URL", lang)
 	}
 
+	// …and NO CURRENT artifact may exist for a language this certificate does
+	// not configure. The registry keys "current" on (asset, language, format),
+	// so a run whose VELOX_E2E_LANGUAGES deviates from the canonical set — the
+	// non-canonical `pt` instead of `pt-BR` — leaves a permanently-current row
+	// behind: the registry then advertises an artifact for a language the
+	// product does not deliver, and nothing ever retires it. The canonical
+	// language must be the ONLY current Portuguese artifact.
+	configured := make(map[string]bool, len(liveLanguages))
+	for _, lang := range liveLanguages {
+		configured[lang] = true
+	}
+	allArtifacts, lErr := driveTarget.subRepo.ListByAsset(ctx, clipID)
+	require.NoError(t, lErr)
+	var strayCurrent []string
+	for _, art := range allArtifacts {
+		if art.Format == detail.SubtitleFormatASS && art.IsCurrent && !configured[art.LanguageCode] {
+			strayCurrent = append(strayCurrent, art.LanguageCode)
+		}
+	}
+	require.Emptyf(t, strayCurrent,
+		"the registry holds CURRENT ASS artifacts for languages outside the configured set: %v", strayCurrent)
+
 	// ── 7b. REAL upload mode: the artifacts must EXIST in Drive. ──────
 	//
 	// The contract assertions above prove the delivery ASKED for the right
@@ -826,7 +851,6 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		// database recorded). Both paths end in the same proof — every language
 		// resolves to a readable, non-trashed .ass living in ONE shared folder.
 		published := driveTarget.probe.published()
-		fresh := len(published) == len(liveLanguages)
 
 		type artifactRef struct {
 			filename string
@@ -835,18 +859,24 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 			exact    bool // filename came from the publisher, so Drive must return it verbatim
 		}
 		refs := make([]artifactRef, 0, len(liveLanguages))
+		publishedNames := make(map[string]bool, len(published))
 		for _, res := range published {
+			publishedNames[res.Filename] = true
 			refs = append(refs, artifactRef{filename: res.Filename, fileID: res.FileID, link: res.WebViewLink, exact: true})
 		}
-		if !fresh {
-			require.Emptyf(t, published,
-				"a delivery that did not publish every language must not have published a partial set")
-			for _, lang := range liveLanguages {
-				art, fErr := driveTarget.subRepo.FindCurrent(ctx, clipID, lang, detail.SubtitleFormatASS)
-				require.NoErrorf(t, fErr, "FindCurrent(%s)", lang)
-				require.NotNilf(t, art, "missing ASS artifact row for %s", lang)
-				refs = append(refs, artifactRef{filename: lang + ".ass", fileID: art.DriveFileID, link: art.DriveURL})
+		// Every language resolves to EITHER this run's publication or the
+		// registry row it reused. A partial publication is legitimate — a
+		// language newly added to the canonical set publishes only itself while
+		// the already-recorded languages are reused — so the reuse fallback is
+		// per language rather than all-or-nothing.
+		for _, lang := range liveLanguages {
+			if publishedNames[lang+".ass"] {
+				continue
 			}
+			art, fErr := driveTarget.subRepo.FindCurrent(ctx, clipID, lang, detail.SubtitleFormatASS)
+			require.NoErrorf(t, fErr, "FindCurrent(%s)", lang)
+			require.NotNilf(t, art, "missing ASS artifact row for %s", lang)
+			refs = append(refs, artifactRef{filename: lang + ".ass", fileID: art.DriveFileID, link: art.DriveURL})
 		}
 		require.Lenf(t, refs, len(liveLanguages),
 			"every language must be verifiable in Drive (published now or reused from the registry)")
@@ -895,8 +925,8 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 		require.Contains(t, group.Parents, driveTarget.subtitleRoot,
 			"the artifact tree must hang off the configured subtitle root, not a second tree")
 
-		t.Logf("REAL Drive verified: %d artifacts under %s/%s/%s (published_this_run=%t)",
-			len(refs), driveTarget.subtitleRoot, group.Name, perVideo.Name, fresh)
+		t.Logf("REAL Drive verified: %d artifacts under %s/%s/%s (published_this_run=%d)",
+			len(refs), driveTarget.subtitleRoot, group.Name, perVideo.Name, len(published))
 	}
 
 	// ── 7c. TIMED CUES for translation needs the projection step. ─────

@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -117,9 +119,29 @@ func (h *clipRenderDriveDeliveryHandler) Handle(ctx context.Context, claim *pgme
 	if result == nil || result.FileID == "" {
 		return fmt.Errorf("%w: Drive returned no file id for %s", errClipRenderDrivePayload, req.AssetID)
 	}
+	// The byte identity this delivery already proved travels WITH the patch.
+	// Everything above is a measurement of exactly these bytes: req.SizeBytes
+	// is required to be > 0 by the payload guard, and for a locally staged
+	// artifact it is disk-verified against os.Stat before a single byte is
+	// uploaded. Reconciliating with only the Drive id discarded that proof one
+	// line later, and the writer had no choice but to default the columns —
+	// observed live (2026-09-16) on ten rendered cliprender_* assets whose
+	// drive location named real Drive objects with file_size_bytes=0 and
+	// mime_type=''. The content type is resolved exactly as the uploader
+	// resolves it (explicit request type first, then the filename extension,
+	// then the same octet-stream sentinel), so the row records the content type
+	// the Drive object itself carries rather than a second opinion about it.
+	deliveredMime := strings.TrimSpace(req.ContentType)
+	if deliveredMime == "" {
+		deliveredMime = mime.TypeByExtension(filepath.Ext(req.Filename))
+	}
+	if deliveredMime == "" {
+		deliveredMime = "application/octet-stream"
+	}
 	if err := h.mutator.ReconcileDriveLocations(ctx, []persistence.DriveLocationPatch{{
 		AssetID: req.AssetID, DriveFileID: result.FileID, DriveLink: result.WebViewLink,
-		DownloadURL: result.DownloadLink,
+		DownloadURL:   result.DownloadLink,
+		FileSizeBytes: req.SizeBytes, MimeType: deliveredMime,
 	}}); err != nil {
 		return fmt.Errorf("clip.render Drive reconcile %s: %w", req.AssetID, err)
 	}

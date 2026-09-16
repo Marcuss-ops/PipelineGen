@@ -12,8 +12,11 @@
 // type that the canonical port signatures require (see
 // internal/capabilities/voiceover/ports.go::UpsertVoiceoverProjectionTx
 // and Verify). The actual SQL work happens in
-// Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) and
-// the bare QueryRowContext calls in VoiceoverPostCommitVerifierAdapter.
+// Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) — which is now a
+// fail-closed stub on the retired legacy branch — and in the
+// operational `voiceovers` read in VoiceoverPostCommitVerifierAdapter.
+// The media_assets half of that verification goes through
+// VoiceoverProjectionChecker (MEDIA-SSOT P2-9 Phase 2) instead of raw SQL.
 // Future PR-VO-ADAPTERS-TYPED-PORT (deadline TBD, forward-pointer)
 // will abstract the *sql.Tx parameter into a typed envelope so the
 // import collapses.
@@ -79,25 +82,51 @@ func (a *VoiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Con
 
 var _ voiceover.LifecycleProjectionUpserter = (*VoiceoverProjectionAdapter)(nil)
 
-// ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // PostCommitVerifier adapter (P0.4 Fase 4a, July 2026).
 //
-// Bridges *sql.DB → voiceover.VoiceoverPostCommitVerifier.Verify.
-// Runs two SELECT queries outside any tx (post-commit) to confirm
-// both the voiceovers row and the media_assets projection exist.
-// Returns nil when both rows are present; returns a descriptive
-// error when either is missing.
-// ─────────────────────────────────────────────────────────────────────
+// Bridges the operational handle + a narrow media port →
+// voiceover.VoiceoverPostCommitVerifier.Verify. Runs two SELECTs
+// outside any tx (post-commit) to confirm both the voiceovers row
+// and the media_assets projection exist.
+//
+// MEDIA-SSOT P2-9 Phase 2: the check spans TWO tables on TWO
+// engines — `voiceovers` (operational) and `media_assets`
+// (PostgreSQL media SSOT) — so it now takes TWO handles instead of
+// one. The previous single-handle form read media_assets on the
+// operational store, which holds no committed media rows, so the
+// verifier would have reported a MISSING projection for every asset
+// the canonical writer had just committed. Splitting the reads is
+// the general shape for a two-engine verification: neither engine is
+// chosen for the other's table.
+// ─────────────────────────────────────────────────────────────
+
+// VoiceoverProjectionChecker is the narrow media-SSOT read the verifier needs:
+// whether the canonical voiceover projection of an asset exists. Declaring it
+// here keeps this adapter from naming an engine for the media half;
+// pgmedia.MediaVoiceoverProjectionChecker implements it and the composition root
+// supplies it.
+type VoiceoverProjectionChecker interface {
+	VoiceoverProjectionExists(ctx context.Context, assetID string) (bool, error)
+}
 
 type VoiceoverPostCommitVerifierAdapter struct {
 	db *sql.DB
+	// media is the media-SSOT half of the verification. nil means the media
+	// plane is closed; Verify then reports the projection as unverifiable rather
+	// than silently passing, because both possible outcomes of a failed check map
+	// to the SAME severity (StateCompletedUnverified), and passing would not.
+	media VoiceoverProjectionChecker
 }
 
-func NewVoiceoverPostCommitVerifierAdapter(db *sql.DB) *VoiceoverPostCommitVerifierAdapter {
+func NewVoiceoverPostCommitVerifierAdapter(db *sql.DB, media VoiceoverProjectionChecker) *VoiceoverPostCommitVerifierAdapter {
 	if db == nil {
 		panic("app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: db is required (*sql.DB)")
 	}
-	return &VoiceoverPostCommitVerifierAdapter{db: db}
+	if media == nil {
+		panic("app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: media is required (VoiceoverProjectionChecker; media_assets is PostgreSQL-owned)")
+	}
+	return &VoiceoverPostCommitVerifierAdapter{db: db, media: media}
 }
 
 func (a *VoiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceoverID string) error {
@@ -120,21 +149,27 @@ func (a *VoiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceov
 		return fmt.Errorf("post-commit verification: voiceovers SELECT error for id=%q: %w", voiceoverID, err)
 	}
 
-	// Check media_assets projection.
-	var mediaSource string
-	err = a.db.QueryRowContext(ctx,
-		`SELECT source FROM media_assets WHERE id = ? AND source = 'voiceover'`, voiceoverID,
-	).Scan(&mediaSource)
+	// Check media_assets projection — on the MEDIA SSOT, not on a.db.
+	//
+	// The retired single-handle form returned a bare error in BOTH the missing-row
+	// and the query-error case, so this keeps that shape exactly: the two cases
+	// stay distinguishable in the message but share the severity, which
+	// finalizeStage maps to CompletionState=StateCompletedUnverified (audit P0.5).
+	// Notably, a nil media port must NOT pass the check: an unverifiable
+	// projection is not a verified one.
+	if a.media == nil {
+		return fmt.Errorf("post-commit verification: no media-SSOT projection checker wired for id=%q (media plane closed)", voiceoverID)
+	}
+	exists, err := a.media.VoiceoverProjectionExists(ctx, voiceoverID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// Warn-level divergence: the canonical voiceovers row IS
-			// present (verified above) but the secondary media_assets
-			// projection is missing. Bare error (not wrapping
-			// ErrReconciliationRequired) so finalizeStage maps this to
-			// CompletionState=StateCompletedUnverified (audit P0.5).
-			return fmt.Errorf("post-commit verification: media_assets projection missing for id=%q (source='voiceover')", voiceoverID)
-		}
-		return fmt.Errorf("post-commit verification: media_assets SELECT error for id=%q: %w", voiceoverID, err)
+		return fmt.Errorf("post-commit verification: media_assets lookup error for id=%q: %w", voiceoverID, err)
+	}
+	if !exists {
+		// Warn-level divergence: the canonical voiceovers row IS present (verified
+		// above) but the secondary media_assets projection is missing. Bare error
+		// (not wrapping ErrReconciliationRequired) so finalizeStage maps this to
+		// CompletionState=StateCompletedUnverified (audit P0.5).
+		return fmt.Errorf("post-commit verification: media_assets projection missing for id=%q (source='voiceover')", voiceoverID)
 	}
 
 	return nil

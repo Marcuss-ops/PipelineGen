@@ -37,6 +37,15 @@ type Service struct {
 	enrichState enrichment.EnrichStateMachinePort
 	log         *zap.Logger
 
+	// enrichCandidates is the narrow media-SSOT read behind
+	// ProcessByEnrichCandidates. It is deliberately separate from db above:
+	// the sweep selector reads media_assets, which PostgreSQL owns, while db is
+	// the operational store — conflating the two dependency domains made the
+	// selector grade a database that holds no committed media rows. nil means
+	// the media plane is closed and the sweep fails closed rather than
+	// reporting an empty candidate set.
+	enrichCandidates EnrichmentCandidateReader
+
 	// Optional video analysis ports. When all four are wired, video
 	// assets are analysed with a multi-frame sampler + per-frame VLM +
 	// keyframe embedding + keyframe indexing. When any is nil, video
@@ -57,6 +66,11 @@ type ServiceDeps struct {
 	EnrichState   enrichment.EnrichStateMachinePort
 	Log           *zap.Logger
 	VideoAnalysis VideoAnalysisDeps
+
+	// EnrichCandidates is the media-SSOT sweep selector (MEDIA-SSOT P2-9
+	// Phase 2). It must be resolved from the same engine as EnrichState, so the
+	// scan and the claim cannot operate on different databases.
+	EnrichCandidates EnrichmentCandidateReader
 }
 
 type VideoAnalysisDeps struct {
@@ -79,16 +93,17 @@ type VideoAnalysisDeps struct {
 // single-shot behaviour.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		db:            deps.DB,
-		repo:          deps.Repo,
-		vlmClient:     deps.VLMClient,
-		committer:     deps.Committer,
-		enrichState:   deps.EnrichState,
-		log:           deps.Log,
-		videoSampler:  deps.VideoAnalysis.Sampler,
-		visualVLM:     deps.VideoAnalysis.VLM,
-		imageEmbedder: deps.VideoAnalysis.ImageEmbedder,
-		frameIndexer:  deps.VideoAnalysis.FrameIndexer,
+		db:               deps.DB,
+		repo:             deps.Repo,
+		vlmClient:        deps.VLMClient,
+		committer:        deps.Committer,
+		enrichState:      deps.EnrichState,
+		enrichCandidates: deps.EnrichCandidates,
+		log:              deps.Log,
+		videoSampler:     deps.VideoAnalysis.Sampler,
+		visualVLM:        deps.VideoAnalysis.VLM,
+		imageEmbedder:    deps.VideoAnalysis.ImageEmbedder,
+		frameIndexer:     deps.VideoAnalysis.FrameIndexer,
 	}
 }
 

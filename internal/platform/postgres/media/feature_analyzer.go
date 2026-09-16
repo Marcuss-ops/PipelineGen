@@ -9,7 +9,6 @@
 //	  ↓  per-frame analysis:
 //	       - dominant color  (ffmpeg signalstats DOMINANT or palette sample)
 //	       - motion score    (mean scene-change score across frames, [0,1])
-//	       - face detection  (FaceDetector port; sidecar implementation)
 //	  ↓  VectorSurfaceWriter.UpsertAssetFeatures
 //
 // godlike/06 SSOT: feature PRODUCTION lives here and only here — never in
@@ -17,10 +16,15 @@
 // computed record; this analyzer is the only production caller that
 // computes it.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the analyzer never invents feature
-// values. Face detection is an injected port — when no FaceDetector is
-// wired the analyzer fails closed with a typed error instead of writing
-// has_faces=0 (a silent zero would corrupt downstream has_faces filters).
+// Face descriptors were RETIRED from this surface (2026-09-16). The
+// analyzer used to require a FaceDetector port and fail the whole row
+// without one, while the only production detector called POST
+// /detect_faces — a route no service in this deployment serves (live:
+// HTTP 404). The requirement therefore did not protect a fact; it made the
+// entire derived surface unproducible. Godlike/07 still holds: nothing is
+// written for a dimension that was not measured, so the face columns are
+// gone (migration 009) instead of being defaulted to a fabricated zero.
+//
 // Every ffprobe/ffmpeg failure surfaces wrapped with the asset path.
 package media
 
@@ -52,10 +56,6 @@ type FeatureAnalyzerDeps struct {
 	// returns their absolute paths. Production concrete:
 	// indexing.FFMPEGFrameSampler (percentage cadence).
 	Keyframes KeyframeSamplerPort
-	// Faces is OPTIONAL at the analyzer level but REQUIRED for a
-	// fail-closed has_faces value: nil Faces means the analyzer refuses
-	// to write a feature row (typed error) instead of guessing.
-	Faces FaceDetector
 	// FfmpegBin is the ffmpeg executable used for pixel-level analysis
 	// (dominant color + motion). Empty defaults to "ffmpeg".
 	FfmpegBin string
@@ -94,40 +94,19 @@ type KeyframeSample struct {
 	Percentage float64
 }
 
-// FaceDetector produces per-frame face observations. The sidecar
-// implementation calls the Python embedding server's face endpoint; tests
-// inject deterministic fakes.
-type FaceDetector interface {
-	// DetectFaces returns, per input frame path (order-preserved), the
-	// number of faces and the largest face's area ratio against the
-	// frame area. LargestRatio is 0 when no face is present.
-	DetectFaces(ctx context.Context, framePaths []string) ([]FaceObservation, error)
-}
-
-// FaceObservation is one frame's face surface.
-type FaceObservation struct {
-	FaceCount    int
-	LargestRatio float64
-}
-
 // FeatureAnalysisResult is the machine-readable outcome of one asset run.
 type FeatureAnalysisResult struct {
-	AssetID          string
-	DominantColor    string
-	MotionScore      float64
-	HasFaces         bool
-	FaceCount        int
-	LargestFaceRatio float64
-	FramesAnalyzed   int
-	AnalyzerVersion  string
+	AssetID         string
+	DominantColor   string
+	MotionScore     float64
+	FramesAnalyzed  int
+	AnalyzerVersion string
 }
 
 // Typed sentinel errors (godlike/07).
 var (
 	ErrFeatureAnalyzerUnreadableMedia = errors.New("feature analyzer: media file unreadable")
 	ErrFeatureAnalyzerNoFrames        = errors.New("feature analyzer: keyframe sampling produced no frames")
-	ErrFeatureAnalyzerNoFaceDetector  = errors.New("feature analyzer: no FaceDetector wired (has_faces cannot be produced without one — fail closed, never guess)")
-	ErrFeatureAnalyzerFaceBackend     = errors.New("feature analyzer: face detector failed")
 )
 
 // MediaFeatureAnalyzer computes and persists media_asset_features rows for
@@ -171,14 +150,11 @@ func (a *MediaFeatureAnalyzer) AnalyzeAndStore(ctx context.Context, vectors *Vec
 		return nil, err
 	}
 	rec := AssetFeatureRecord{
-		AssetID:          res.AssetID,
-		DominantColor:    res.DominantColor,
-		MotionScore:      &res.MotionScore,
-		HasFaces:         res.HasFaces,
-		FaceCount:        &res.FaceCount,
-		LargestFaceRatio: &res.LargestFaceRatio,
-		AnalyzedAt:       nowRFC3339(),
-		AnalyzerVersion:  res.AnalyzerVersion,
+		AssetID:         res.AssetID,
+		DominantColor:   res.DominantColor,
+		MotionScore:     &res.MotionScore,
+		AnalyzedAt:      nowRFC3339(),
+		AnalyzerVersion: res.AnalyzerVersion,
 	}
 	if err := vectors.UpsertAssetFeatures(ctx, rec); err != nil {
 		return nil, fmt.Errorf("feature analyzer: store asset %q: %w", assetID, err)
@@ -196,9 +172,6 @@ func (a *MediaFeatureAnalyzer) Analyze(ctx context.Context, assetID, localPath s
 	}
 	if _, err := os.Stat(localPath); err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", ErrFeatureAnalyzerUnreadableMedia, localPath, err)
-	}
-	if a.deps.Faces == nil {
-		return nil, fmt.Errorf("%w (asset %q)", ErrFeatureAnalyzerNoFaceDetector, assetID)
 	}
 
 	// 1. Probe — duration sanity (fail-closed on unreadable media).
@@ -241,33 +214,12 @@ func (a *MediaFeatureAnalyzer) Analyze(ctx context.Context, assetID, localPath s
 		return nil, fmt.Errorf("feature analyzer: motion asset %q: %w", assetID, err)
 	}
 
-	// 3c. Faces — injected detector, order-preserved per frame.
-	observations, err := a.deps.Faces.DetectFaces(ctx, framePaths)
-	if err != nil {
-		return nil, fmt.Errorf("%w: asset %q: %v", ErrFeatureAnalyzerFaceBackend, assetID, err)
-	}
-	if len(observations) != len(framePaths) {
-		return nil, fmt.Errorf("%w: asset %q: detector returned %d observations for %d frames",
-			ErrFeatureAnalyzerFaceBackend, assetID, len(observations), len(framePaths))
-	}
-	var faceCount int
-	var largestRatio float64
-	for _, obs := range observations {
-		faceCount += obs.FaceCount
-		if obs.LargestRatio > largestRatio {
-			largestRatio = obs.LargestRatio
-		}
-	}
-
 	return &FeatureAnalysisResult{
-		AssetID:          assetID,
-		DominantColor:    dominant,
-		MotionScore:      motion,
-		HasFaces:         faceCount > 0,
-		FaceCount:        faceCount,
-		LargestFaceRatio: largestRatio,
-		FramesAnalyzed:   len(frames),
-		AnalyzerVersion:  AnalyzerVersion,
+		AssetID:         assetID,
+		DominantColor:   dominant,
+		MotionScore:     motion,
+		FramesAnalyzed:  len(frames),
+		AnalyzerVersion: AnalyzerVersion,
 	}, nil
 }
 

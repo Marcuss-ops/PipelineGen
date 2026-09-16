@@ -237,6 +237,7 @@ var sqliteMediaReaderGrandfatheredZones = []string{
 //   - internal/capabilities/assets/providers/stock/enrichment/handler_repository.go
 //     was retired the same way on the same day (SQLiteAssetRepository →
 //     PostgresAssetRepository over the media SSOT handle).
+//
 //   - internal/app/wiring/assets/folders.go was DELETED (not migrated) on
 //     2026-09-16: its parent-video folder read moved to
 //     pgmedia.MediaFolderResolver over root.MediaPostgres, and its
@@ -244,6 +245,42 @@ var sqliteMediaReaderGrandfatheredZones = []string{
 //     ported (the SSOT has no drive_folder_id column and 0 rows depended on it).
 //     A deleted file cannot reappear here — the gate would report an unmapped
 //     file if a new SQLite media reader were added to this package.
+//
+//   - BOTH voiceover entries left on 2026-09-16, and they left for different
+//     reasons. internal/app/wiring/voiceover/adapters_voiceover_repo.go was a
+//     genuine live migration: its two media_assets reads
+//     (findVoiceoverMediaAsset, the cross-run cache location lookup, and
+//     CountByDriveFileIDTx, the PR-VO-B3 dedupe gate) now resolve through the
+//     capability-owned VoiceoverMediaReader port over the media SSOT
+//     (pgmedia.MediaVoiceoverMediaReader).
+//     internal/app/wiring/voiceover/adapters_voiceover_projection.go is the more
+//     instructive removal: its media_assets read was in
+//     VoiceoverPostCommitVerifierAdapter.Verify, which has NO production
+//     construction site at all (PostCommitVerifier is never assigned), and the
+//     file's other half feeds the finalizer's explicit "Legacy pre-Cutover path"
+//     whose projection upsert is a fail-closed stub. Rather than delete a
+//     documented optional capability unilaterally, the verifier was made
+//     engine-correct-if-wired: it now takes the operational handle for the
+//     voiceovers check AND a narrow VoiceoverProjectionChecker
+//     (pgmedia.MediaVoiceoverProjectionChecker) for the media half, so the
+//     two-engine check can no longer be satisfied by one handle. Both halves of
+//     a two-engine verification must be named; that is the reusable lesson.
+//
+//   - internal/capabilities/ai/autotag/process_by_enrich_candidates.go was
+//     retired on 2026-09-16, and it is the entry that proves a read-plane
+//     migration can be blocked by a WRITE-plane split: the sweeper selected
+//     PENDING rows from SQLite and then claimed them through the enrichment
+//     state machine, which was ALSO wired to SQLite (repos.ClipsRepo) while
+//     pgmedia's patch path wrote enrich_state on the media SSOT. Migrating the
+//     read alone would have left the sweep reading rows it could never claim.
+//     Both halves moved together: pgmedia.MediaEnrichStateStore (resolved by
+//     wiring.enrichStateStoreFromCommitter) implements the transition port and
+//     completes the migration-004 dual-write of enrich_state_updated_at_ts,
+//     while pgmedia.MediaEnrichmentCandidateReader answers the scan. The
+//     selector's SQLite-only fence encoding (datetime('now', ?) with a relative
+//     modifier) was NOT translated literally — see the reader's package note on
+//     why an empty stamp must keep comparing as OLDER.
+//
 //   - internal/capabilities/scripts/usecase/clip_sampler_gates.go was retired
 //     on 2026-09-16: its subtitle_ready gate read media_assets.source inside a
 //     package-global *sql.DB (usecase.SetSamplerDB, wired from root.DB.DB)
@@ -255,6 +292,7 @@ var sqliteMediaReaderGrandfatheredZones = []string{
 //     media_assets from either engine. The package-global was itself the reason
 //     the engine was invisible, which is why it was removed rather than
 //     re-typed.
+//
 //   - internal/capabilities/mediaregistry/index_eligibility_resolver.go was
 //     retired the same day with the narrow AssetEligibilityReader port. Its
 //     `SELECT ... FROM media_assets WHERE id = ?` ran on whatever handle the
@@ -265,12 +303,36 @@ var sqliteMediaReaderGrandfatheredZones = []string{
 //     via wiring composition (SetMediaEligibilityReader ← same mediaPG handle as
 //     the canonical reindex requester), and a nil reader fails closed instead
 //     of degrading onto a second engine.
-var sqliteMediaReaderGrandfatheredFiles = map[string]bool{
-	"internal/app/wiring/lifecycle_sweepers.go":                        true,
-	"internal/app/wiring/voiceover/adapters_voiceover_projection.go":   true,
-	"internal/app/wiring/voiceover/adapters_voiceover_repo.go":         true,
-	"internal/capabilities/ai/autotag/process_by_enrich_candidates.go": true,
-}
+//
+//   - internal/app/wiring/lifecycle_sweepers.go — THE LAST ENTRY — left on
+//     2026-09-16, and it is the entry that explains why this register had a
+//     tail at all. runDedupSweep scanned media_assets through the OPERATIONAL
+//     handle AND retired the duplicates it found through that same handle
+//     (ClipsRepository.DeleteClip → SoftDelete). So it was never a read-only
+//     debt: a duplicate pair committed by the canonical writer was invisible to
+//     the scan, and the pair the scan DID find was retired on the mirror, so
+//     the SSOT copy stayed live and the sweeper counted it again on every
+//     30-minute tick. Migrating only the read would have kept that loop and made
+//     it quieter. Both halves now resolve from ONE canonical committer
+//     (wiring.mediaDuplicateGroupReaderFromCommitter +
+//     persistence.CanonicalAssetSoftDeleter), the file no longer mentions
+//     media_assets, and runDedupSweep fails closed on a nil reader OR a nil
+//     retirer rather than enumerating one engine while mutating another.
+//
+// THE REGISTER IS NOW EMPTY, AND THAT IS THE POINT. An empty map is the
+// terminal state of this ratchet: the reachable P2-9 Phase 2 read debt is zero.
+// It must be reached by migrating a site, never by widening
+// sqliteMediaReaderDegradeOnlyFiles or sqliteMediaReaderGrandfatheredZones — a
+// new SQLite reader of media_assets is a violation until someone either
+// migrates it or writes down the degrade-path selector that selects it. Deleting
+// a legitimately-degrade-only path's entry back into THIS map would be a
+// category error, which is what TestSQLiteMediaReaderRegistersAreDisjoint
+// guards.
+//
+// The map is declared-but-empty rather than removed because the ratchet pins
+// (exact-path exemption, staleness, union iteration) address it by name; deleting
+// it would delete the pins that keep it empty.
+var sqliteMediaReaderGrandfatheredFiles = map[string]bool{}
 
 // sqliteMediaReaderDegradeOnlyFiles is the second, deliberately separate
 // register: files whose SQLite media read is only ever selected when the

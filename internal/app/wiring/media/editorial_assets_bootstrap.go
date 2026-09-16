@@ -119,7 +119,7 @@ func editorialAssetCommitRequest(plate mediaregistry.EditorialBackgroundAsset, v
 	// of ONE locator; emitting one without the other is a half-written row.
 	//
 	// A plate with no Drive identity contributes NO location at all (the same
-	// rule the YouTube clip writer applies in clipDriveLocations): the absence
+	// rule the YouTube clip writer applies in clipLocations): the absence
 	// of a row is the honest representation of "no Drive identity", and no
 	// reader has to distinguish "no row" from "row with nothing in it".
 	locations := make([]persistence.LocationCommit, 0, 1)
