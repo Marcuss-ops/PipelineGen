@@ -163,13 +163,13 @@ var (
 
 	// Whisper is the canonical ASR model (OPTIONAL, upstream of indexing:
 	// video → audio → Whisper → transcript → E5 → Qdrant). It is MIT-
-	// licensed, accelerates/prunes Whisper large-v3, and covers 99
+	// licensed, lightweight Whisper small build, and covers 99
 	// languages. The transcription bridge
 	// (scripts/bridges/whisper_transcriber.py) defaults to this model and
 	// permits an explicit VELOX_WHISPER_MODEL override. No revision is
 	// pinned.
 	Whisper = Model{
-		ID:         "openai/whisper-large-v3-turbo",
+		ID:         "openai/whisper-small",
 		Revision:   "",
 		Dimensions: 0,
 		License:    "MIT",

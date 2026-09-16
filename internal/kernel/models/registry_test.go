@@ -20,7 +20,7 @@ func TestCanonical_ContainsFiveModelsInStableOrder(t *testing.T) {
 		"BAAI/bge-reranker-v2-m3",
 		"gemma3:1b",
 		"laion/clap-htsat-fused",
-		"openai/whisper-large-v3-turbo",
+		"openai/whisper-small",
 	}
 	for i, want := range wantOrder {
 		if got[i].ID != want {
@@ -58,17 +58,21 @@ func TestSigLIP_AnchoredToRegistryConstants(t *testing.T) {
 }
 
 // TestEnabled_CoreVsOptional pins the CORE/OPTIONAL split: E5 + SigLIP +
-// Reranker + segment understanding are the canonical production set; CLAP +
-// Whisper are optional (audio channel inactive in DefaultV3Schema, ASR upstream of indexing).
+// Reranker are CORE (enabled=true); CLAP + Whisper are OPTIONAL
+// (enabled=false).
 func TestEnabled_CoreVsOptional(t *testing.T) {
-	for _, m := range []Model{E5, SigLIP, Reranker} {
-		if !m.Enabled {
-			t.Errorf("%s (%s) must be enabled (CORE set)", m.ID, m.Role)
-		}
-	}
-	for _, m := range []Model{CLAP, Whisper} {
-		if m.Enabled {
-			t.Errorf("%s (%s) must be disabled (OPTIONAL set)", m.ID, m.Role)
+	for _, m := range Canonical() {
+		switch m.Role {
+		case RoleTextEmbedding, RoleVisualEmbedding, RoleReranker, RoleSegmentUnderstanding:
+			if !m.Enabled {
+				t.Errorf("%s must be enabled (CORE)", m.ID)
+			}
+		case RoleAudioEmbedding, RoleTranscription:
+			if m.Enabled {
+				t.Errorf("%s must be disabled by default (OPTIONAL)", m.ID)
+			}
+		default:
+			t.Errorf("%s: unhandled role %s in test", m.ID, m.Role)
 		}
 	}
 }
@@ -82,7 +86,7 @@ func TestLicenses_Pinned(t *testing.T) {
 		"BAAI/bge-reranker-v2-m3":          "Apache-2.0",
 		"gemma3:1b":                        "unknown",
 		"laion/clap-htsat-fused":           "Apache-2.0",
-		"openai/whisper-large-v3-turbo":    "MIT",
+		"openai/whisper-small":             "MIT",
 	}
 	for _, m := range Canonical() {
 		if got := want[m.ID]; got != m.License {
@@ -101,7 +105,7 @@ func TestDenseDimensions(t *testing.T) {
 		"google/siglip-so400m-patch14-384": 1152,
 		"BAAI/bge-reranker-v2-m3":          0,
 		"laion/clap-htsat-fused":           512,
-		"openai/whisper-large-v3-turbo":    0,
+		"openai/whisper-small":             0,
 	}
 	for _, m := range Canonical() {
 		if m.Dimensions != want[m.ID] {
