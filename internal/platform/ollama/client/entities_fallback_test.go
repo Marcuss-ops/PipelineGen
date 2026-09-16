@@ -63,6 +63,16 @@ func TestIsSentenceStart(t *testing.T) {
 	require.True(t, isSentenceStart("Fine. Tikal domina.", len("Fine. ")))
 }
 
+func TestTypedSpecialNamesGroundTheNameAfterTypePrefix(t *testing.T) {
+	profile := &linguistics.LexiconProfile{StopWords: map[string]struct{}{}}
+	segment := "Mike Tyson fought in Las Vegas."
+	got := filterExactNames(segment, []string{
+		"PERSON: Mike Tyson", "PLACE: Las Vegas", "PERSON: Muhammad Ali",
+	}, profile)
+	got = filterProperNouns(segment, got, profile)
+	require.Equal(t, []string{"PERSON: Mike Tyson", "PLACE: Las Vegas"}, got)
+}
+
 // TestSanitizeEntityExtractionResult_FiltersByLanguage installs the repository
 // lexicon (a process-global) and therefore must run after the lexicon-agnostic
 // tests above; it is also ordered after the client_* test files by filename.

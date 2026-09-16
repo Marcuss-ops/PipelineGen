@@ -107,7 +107,30 @@ func filterExactPhrases(segment string, items []string, profile *linguistics.Lex
 }
 
 func filterExactNames(segment string, items []string, profile *linguistics.LexiconProfile) []string {
-	return filterExactStrings(segment, items, true, profile)
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || isNoisyExtractionCandidate(item) {
+			continue
+		}
+		if entityType, value, ok := splitTypedSpecialName(item); ok {
+			if len(strings.Fields(value)) > 4 || !textutil.ContainsCI(segment, value) {
+				continue
+			}
+			out = append(out, entityType+": "+value)
+			continue
+		}
+		if isNoisyExtractionCandidate(item) || (len(strings.Fields(item)) == 1 && isStopWord(strings.ToLower(item), profile)) {
+			continue
+		}
+		if textutil.ContainsCI(segment, item) {
+			out = append(out, item)
+		}
+	}
+	return uniqueLocalStrings(out)
 }
 
 func filterProperNouns(segment string, items []string, profile *linguistics.LexiconProfile) []string {
@@ -119,6 +142,14 @@ func filterProperNouns(segment string, items []string, profile *linguistics.Lexi
 	for _, item := range items {
 		item = strings.TrimSpace(item)
 		if item == "" {
+			continue
+		}
+		entityType, value, typed := splitTypedSpecialName(item)
+		if typed {
+			if !textutil.ContainsCI(segment, value) || len(strings.Fields(value)) > 4 {
+				continue
+			}
+			out = append(out, entityType+": "+value)
 			continue
 		}
 		words := strings.Fields(item)
@@ -155,6 +186,21 @@ func filterProperNouns(segment string, items []string, profile *linguistics.Lexi
 	skipItem:
 	}
 	return uniqueLocalStrings(out)
+}
+
+func splitTypedSpecialName(item string) (entityType, value string, ok bool) {
+	label, candidate, found := strings.Cut(item, ":")
+	if !found {
+		return "", "", false
+	}
+	label = strings.ToUpper(strings.TrimSpace(label))
+	value = strings.TrimSpace(candidate)
+	switch label {
+	case "PERSON", "PLACE", "LOCATION", "ORGANIZATION", "ORG", "EVENT", "WORK", "PRODUCT", "OTHER":
+		return label, value, value != ""
+	default:
+		return "", "", false
+	}
 }
 
 func isSentenceStartCapitalizedOnly(word string, segLower string, profile *linguistics.LexiconProfile) bool {

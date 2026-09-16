@@ -22,8 +22,10 @@ type translatedNLPWork struct {
 // phrase request can serve many scenes at once; entities stay per scene because
 // VisualNER is a deterministic per-text extractor with a source-span contract.
 type translatedNLPOutcome struct {
-	entities []VisualEntity
-	phrases  []string
+	entities     []VisualEntity
+	phrases      []string
+	words        []string
+	specialNames []string
 }
 
 // runTranslatedNLP extracts grounded names/entities and important phrases from
@@ -45,7 +47,10 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 	extraction := req.MediaPlan.Extraction
 	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities) || extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
 	includePhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-	if !includeEntities && !includePhrases {
+	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
+	includeSpecialNames := extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
+	includeModelNLP := includePhrases || includeWords || includeSpecialNames
+	if !includeEntities && !includeModelNLP {
 		return nil
 	}
 
@@ -84,17 +89,25 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 	if phraseLimit <= 0 {
 		phraseLimit = 3
 	}
+	wordLimit := extraction.MaxImportantWordsPerSegment
+	if wordLimit <= 0 {
+		wordLimit = 3
+	}
+	nlpLimit := max(entityLimit, phraseLimit, wordLimit)
 
 	// ── Phase 1: entities (always per scene) + phrases only when the
 	// configured extractor cannot batch. ─────────────────────────────────
-	var batcher BatchImportantPhraseExtractor
-	canBatch := false
+	var phraseBatcher BatchImportantPhraseExtractor
+	canBatchPhrases := false
 	phraseExtractor := r.vidRushPipeline.PhraseExtractor
 	if includePhrases && phraseExtractor != nil {
 		if candidate, ok := phraseExtractor.(BatchImportantPhraseExtractor); ok {
-			batcher, canBatch = candidate, true
+			phraseBatcher, canBatchPhrases = candidate, true
 		}
 	}
+	detailedExtractor, hasDetailedExtractor := phraseExtractor.(SceneNLPExtractor)
+	detailedBatcher, canBatchDetailed := phraseExtractor.(BatchSceneNLPExtractor)
+	useDetailedBatch := includeModelNLP && hasDetailedExtractor && canBatchDetailed
 
 	workers := DefaultNLPConcurrency
 	if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < workers {
@@ -113,7 +126,14 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 					return extractErr
 				}
 			}
-			if includePhrases && !canBatch && phraseExtractor != nil {
+			if includeModelNLP && hasDetailedExtractor && !useDetailedBatch {
+				var extraction SceneNLPExtraction
+				extraction, extractErr = detailedExtractor.ExtractSceneNLP(measureCtx, item.text, nlpLimit, string(item.lang), req.Model)
+				if extractErr != nil {
+					return extractErr
+				}
+				applyTranslatedNLPExtraction(&outcome, extraction, includePhrases, includeWords, includeSpecialNames, includeEntities)
+			} else if includePhrases && !canBatchPhrases && phraseExtractor != nil {
 				outcome.phrases, extractErr = phraseExtractor.ExtractImportantPhrases(measureCtx, item.text, phraseLimit, string(item.lang), req.Model)
 			}
 			return extractErr
@@ -129,7 +149,47 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 
 	// ── Phase 2: batched phrases, one request per chunk of scenes per
 	// language, in the canonical (scene, language) order. ────────────────
-	if includePhrases && canBatch && batcher != nil {
+	if useDetailedBatch {
+		byLang := make(map[Language][]int, len(langs))
+		for index, item := range work {
+			byLang[item.lang] = append(byLang[item.lang], index)
+		}
+		for _, lang := range langs {
+			indexes := byLang[lang]
+			if len(indexes) == 0 {
+				continue
+			}
+			texts := make([]string, len(indexes))
+			for i, index := range indexes {
+				texts[i] = work[index].text
+			}
+			var extractions []SceneNLPExtraction
+			err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+				Stage: kernobs.StageName("scene_analysis"), Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
+				Provider: string(lang), Items: int64(len(texts)),
+				MetadataJSON: fmt.Sprintf("{\"language\":%q,\"surface\":\"translation_nlp_batch\",\"scenes\":%d}", lang, len(texts)),
+			}, func(measureCtx context.Context) error {
+				var batchErr error
+				extractions, batchErr = detailedBatcher.ExtractSceneNLPBatch(measureCtx, texts, nlpLimit, string(lang), req.Model)
+				return batchErr
+			})
+			if err != nil || len(extractions) != len(indexes) {
+				// The batch path is a cost optimization. A failed or malformed
+				// result falls back to the detailed per-scene contract.
+				for i, index := range indexes {
+					value, singleErr := detailedExtractor.ExtractSceneNLP(ctx, texts[i], nlpLimit, string(lang), req.Model)
+					if singleErr != nil {
+						return fmt.Errorf("translated NLP for scene %s/%s failed after batch fallback: %w", result.Scenes[work[index].sceneIndex].ID, lang, singleErr)
+					}
+					applyTranslatedNLPExtraction(&outcomes[index], value, includePhrases, includeWords, includeSpecialNames, includeEntities)
+				}
+				continue
+			}
+			for i, index := range indexes {
+				applyTranslatedNLPExtraction(&outcomes[index], extractions[i], includePhrases, includeWords, includeSpecialNames, includeEntities)
+			}
+		}
+	} else if !hasDetailedExtractor && includePhrases && canBatchPhrases && phraseBatcher != nil {
 		byLang := make(map[Language][]int, len(langs))
 		for index, item := range work {
 			byLang[item.lang] = append(byLang[item.lang], index)
@@ -150,7 +210,7 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 				MetadataJSON: fmt.Sprintf("{\"language\":%q,\"surface\":\"translation_batch\",\"scenes\":%d}", lang, len(texts)),
 			}, func(measureCtx context.Context) error {
 				var batchErr error
-				phrases, batchErr = batcher.ExtractImportantPhrasesBatch(measureCtx, texts, phraseLimit, string(lang), req.Model)
+				phrases, batchErr = phraseBatcher.ExtractImportantPhrasesBatch(measureCtx, texts, phraseLimit, string(lang), req.Model)
 				return batchErr
 			})
 			if err != nil {
@@ -181,6 +241,8 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 			SegmentID:        result.Scenes[item.sceneIndex].ID,
 			TextHash:         SceneTextHash(item.text),
 			ImportantPhrases: groundedPhrases,
+			ImportantWords:   limitTranslatedNLPStrings(outcomes[index].words, wordLimit),
+			SpecialNames:     limitTranslatedNLPStrings(outcomes[index].specialNames, entityLimit),
 		}
 		for _, entity := range outcomes[index].entities {
 			entityType := entity.Type
@@ -209,4 +271,65 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 		result.Scenes[item.sceneIndex].LocalizedAnnotations[item.lang] = annotation
 	}
 	return nil
+}
+
+func applyTranslatedNLPExtraction(outcome *translatedNLPOutcome, extraction SceneNLPExtraction, includePhrases, includeWords, includeSpecialNames, includeEntities bool) {
+	if outcome == nil {
+		return
+	}
+	if includePhrases {
+		outcome.phrases = append([]string(nil), extraction.ImportantPhrases...)
+	}
+	if includeWords {
+		outcome.words = append([]string(nil), extraction.ImportantWords...)
+	}
+	if includeSpecialNames {
+		outcome.specialNames = append([]string(nil), extraction.SpecialNames...)
+	}
+	if includeEntities {
+		outcome.entities = mergeTranslatedNamedEntities(outcome.entities, extraction.Entities)
+	}
+}
+
+func mergeTranslatedNamedEntities(visual, named []VisualEntity) []VisualEntity {
+	if len(named) == 0 {
+		return visual
+	}
+	out := make([]VisualEntity, 0, len(visual)+len(named))
+	for _, entity := range visual {
+		switch entity.Type {
+		case scriptpkg.EntityTypePerson, scriptpkg.EntityTypeLocation, scriptpkg.EntityTypeOrganization,
+			scriptpkg.EntityTypeEvent, scriptpkg.EntityTypeWork, scriptpkg.EntityTypeProduct:
+			// Typed model names are the language-aware identity source. Drop
+			// heuristic title-case labels when a typed extraction is available.
+			continue
+		}
+		out = append(out, entity)
+	}
+	for _, candidate := range named {
+		if strings.TrimSpace(candidate.Text) == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range out {
+			if existing.Type == candidate.Type && strings.EqualFold(existing.Text, candidate.Text) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func limitTranslatedNLPStrings(values []string, limit int) []string {
+	if limit <= 0 || len(values) == 0 {
+		return nil
+	}
+	if len(values) > limit {
+		values = values[:limit]
+	}
+	return append([]string(nil), values...)
 }

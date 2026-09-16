@@ -125,6 +125,7 @@ func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	}
 	out.Insights.ImportantPhrases = append([]string(nil), in.Insights.ImportantPhrases...)
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
+	out.Insights.SpecialNames = append([]string(nil), in.Insights.SpecialNames...)
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
 	out.Insights.YouTubeQueries = append([]string(nil), in.Insights.YouTubeQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)

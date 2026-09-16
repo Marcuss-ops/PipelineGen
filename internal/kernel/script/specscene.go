@@ -232,6 +232,7 @@ type SceneAnnotations struct {
 	Version           int               `json:"version"`
 	Language          string            `json:"language"`
 	ImportantPhrases  []AnnotationSpan  `json:"important_phrases,omitempty"`
+	SpecialNames      []AnnotationSpan  `json:"special_names,omitempty"`
 	PrimaryEntities   []AnnotatedEntity `json:"primary_entities,omitempty"`
 	SecondaryEntities []AnnotatedEntity `json:"secondary_entities,omitempty"`
 	ImportantWords    []AnnotationSpan  `json:"important_words,omitempty"`

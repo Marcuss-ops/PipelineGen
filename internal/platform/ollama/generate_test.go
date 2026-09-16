@@ -14,6 +14,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
+func TestTranslateLanguageNameSupportsBrazilianPortugueseTag(t *testing.T) {
+	if got := translateLanguageName("pt-BR"); got != "Brazilian Portuguese" {
+		t.Fatalf("translateLanguageName(pt-BR) = %q, want Brazilian Portuguese", got)
+	}
+}
+
 // TestResolveGenerationFormat is the canonical SSOT for the PR-3
 // wire-shape decision tree. It locks the 6 logical cases of the
 // 2x2 grid ({OutputModePlainText, OutputModeScriptV1, ""} x

@@ -24,7 +24,7 @@ type TranslationCache interface {
 var languageNames = map[string]string{
 	"en": "English", "it": "Italian", "es": "Spanish",
 	"fr": "French", "de": "German", "pt": "Portuguese",
-	"nl": "Dutch", "pl": "Polish", "ru": "Russian",
+	"nl": "Dutch", "pl": "Polish", "ru": "Russian", "pt-br": "Brazilian Portuguese",
 	"ja": "Japanese", "ko": "Korean", "zh": "Chinese",
 	"ar": "Arabic", "tr": "Turkish", "sv": "Swedish",
 	"da": "Danish", "fi": "Finnish", "no": "Norwegian",

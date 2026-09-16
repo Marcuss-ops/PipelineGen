@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
@@ -147,6 +148,50 @@ func TestOllamaImportantPhraseExtractorBatch(t *testing.T) {
 		if !found {
 			t.Fatalf("segment %d phrases = %v, want to contain %q (positional alignment across chunks)", i, got, want)
 		}
+	}
+}
+
+func TestOllamaSceneNLPExtractorBatchReturnsWordsAndSpecialNames(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		inputs := batchPromptInputRE.FindAllStringSubmatch(body.Prompt, -1)
+		var blocks strings.Builder
+		for i := range inputs {
+			name, word := "PERSON: Mike Tyson", "discipline"
+			if i == 1 {
+				name, word = "PERSON: Muhammad Ali", "courage"
+			}
+			fmt.Fprintf(&blocks, "### SEGMENT_INDEX: %d\n## frasi_importanti\n- boxing %s\n## entity_senza_testo\n## nomi_speciali\n- %s\n## parole_importanti\n- %s\n## artlist_phrases\n### END_SEGMENT\n", i, word, name, word)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"response": blocks.String()})
+	}))
+	defer server.Close()
+
+	extractor := NewOllamaImportantPhraseExtractor(client.NewClient(server.URL, "test-model", 5)).(scriptgen.BatchSceneNLPExtractor)
+	texts := []string{
+		"Mike Tyson shows boxing discipline in this scene.",
+		"Muhammad Ali teaches boxing courage in this scene.",
+	}
+	got, err := extractor.ExtractSceneNLPBatch(context.Background(), texts, 3, "en", "test-model")
+	if err != nil {
+		t.Fatalf("ExtractSceneNLPBatch: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d NLP results, want 2", len(got))
+	}
+	if len(got[0].ImportantPhrases) == 0 || got[0].ImportantPhrases[0] != "boxing discipline" || len(got[0].ImportantWords) == 0 || got[0].ImportantWords[0] != "discipline" || len(got[0].SpecialNames) == 0 || got[0].SpecialNames[0] != "Mike Tyson" || len(got[0].Entities) != 1 || got[0].Entities[0].Type != scriptpkg.EntityTypePerson {
+		t.Fatalf("first detailed extraction = %+v", got[0])
+	}
+	if len(got[1].ImportantPhrases) == 0 || got[1].ImportantPhrases[0] != "boxing courage" || len(got[1].ImportantWords) == 0 || got[1].ImportantWords[0] != "courage" || len(got[1].SpecialNames) == 0 || got[1].SpecialNames[0] != "Muhammad Ali" || len(got[1].Entities) != 1 || got[1].Entities[0].Type != scriptpkg.EntityTypePerson {
+		t.Fatalf("second detailed extraction = %+v", got[1])
 	}
 }
 
