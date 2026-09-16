@@ -212,3 +212,57 @@ func TestResolveScenesFixedMediaDropsGeneratedAudioAndProtectsOriginalClip(t *te
 		t.Fatalf("resolved fixed audio = %+v, want protected original clip audio", intent)
 	}
 }
+
+// TestFixedRenderLanguagesPinsSourceFirstDedupedOrder certifies the Intro V2
+// fan-out language list: source first, then caller targets, deduplicated.
+func TestFixedRenderLanguagesPinsSourceFirstDedupedOrder(t *testing.T) {
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "en", "it", "", "es"}}
+	scene := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia}
+	got := fixedRenderLanguages(req, scene)
+	want := []Language{"en", "it", "es"}
+	if len(got) != len(want) {
+		t.Fatalf("fixedRenderLanguages = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("fixedRenderLanguages = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestFixedCaptionTextFallsBackToSourceNeverBody certifies per-language fixed
+// captions: translated display text wins, source display text is the fallback,
+// BODY narration never leaks.
+func TestFixedCaptionTextFallsBackToSourceNeverBody(t *testing.T) {
+	scene := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text: map[Language]string{"en": "Welcome", "it": "Benvenuti"}}
+	if got := fixedCaptionText(scene, "en", "it"); got != "Benvenuti" {
+		t.Fatalf("fixedCaptionText(it) = %q, want translated display text", got)
+	}
+	if got := fixedCaptionText(scene, "en", "es"); got != "Welcome" {
+		t.Fatalf("fixedCaptionText(es) = %q, want source fallback", got)
+	}
+	empty := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text: map[Language]string{"en": ""}}
+	if got := fixedCaptionText(empty, "en", "it"); got != "" {
+		t.Fatalf("fixedCaptionText empty = %q, want empty (no BODY fallback)", got)
+	}
+}
+
+// TestExpectedRenderUnitsCountsFixedMultilingualFanout certifies the
+// INCOMPLETE_RENDER_SET denominator: a 2-clip intro with 3 render languages
+// counts 6, a generated scene still counts 1.
+func TestExpectedRenderUnitsCountsFixedMultilingualFanout(t *testing.T) {
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
+	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
+	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,
+		Clip: &ClipReference{ID: "clip-0"}}
+	if got := expectedRenderUnits(req, []Scene{fixed, generated}); got != 7 {
+		t.Fatalf("expectedRenderUnits = %d, want 7 (2 clips x 3 langs + 1 generated)", got)
+	}
+	solo := GenerateRequest{SourceLanguage: "en"}
+	if got := expectedRenderUnits(solo, []Scene{fixed, generated}); got != 3 {
+		t.Fatalf("expectedRenderUnits source-only = %d, want 3", got)
+	}
+}

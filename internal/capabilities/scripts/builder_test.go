@@ -393,10 +393,12 @@ func TestBuildGenerateRequest_AudioIntentFallsBackToOutputAudio(t *testing.T) {
 	}
 }
 
-// TestBuildGenerateRequest_NoAudioIntentsStayEmpty certifies that an absent
-// audio intent block stays empty on the durable request (legacy behavior
-// unchanged).
-func TestBuildGenerateRequest_NoAudioIntentsStayEmpty(t *testing.T) {
+// TestBuildGenerateRequest_NoAudioIntentsGetPolicyDefaults certifies the
+// Intro V2 background-centralizzato contract: an absent BGM block in
+// COMBINED_TIMELINE is filled with the canonical policy default at the single
+// ingress (BuildGenerateRequest); mix policy and SFX stay empty (the policy
+// never invents a mix and never auto-places SFX).
+func TestBuildGenerateRequest_NoAudioIntentsGetPolicyDefaults(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"plain","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
@@ -405,8 +407,11 @@ func TestBuildGenerateRequest_NoAudioIntentsStayEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.MixPolicy != "" || len(got.BackgroundMusic) != 0 || len(got.SoundEffects) != 0 {
-		t.Fatalf("absent audio intents must stay empty, got mix=%q bgm=%d sfx=%d", got.MixPolicy, len(got.BackgroundMusic), len(got.SoundEffects))
+	if got.MixPolicy != "" || len(got.SoundEffects) != 0 {
+		t.Fatalf("mix/sfx must stay empty, got mix=%q sfx=%d", got.MixPolicy, len(got.SoundEffects))
+	}
+	if len(got.BackgroundMusic) != 1 {
+		t.Fatalf("absent BGM in COMBINED_TIMELINE must get the policy default, got bgm=%d", len(got.BackgroundMusic))
 	}
 }
 
