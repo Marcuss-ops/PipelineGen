@@ -369,16 +369,24 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if ttsConcurrency <= 0 {
 		ttsConcurrency = scriptgen.DefaultTTSConcurrency
 	}
-	runner.SetTTSConcurrency(ttsConcurrency)
 	translationConcurrency := cfg.Scripts.TranslationConcurrency
 	if translationConcurrency <= 0 {
 		translationConcurrency = scriptgen.DefaultTranslationConcurrency
 	}
-	runner.SetTranslationConcurrency(translationConcurrency)
+	// SetSerialMode(false) restores package defaults, so apply configured
+	// pool sizes after the mode toggle. Serial mode keeps its single-slot
+	// pools regardless of the configured parallel widths.
+	runner.SetSerialMode(cfg.Scripts.SerialMode)
+	if cfg.Scripts.SerialMode {
+		ttsConcurrency = 1
+		translationConcurrency = 1
+	} else {
+		runner.SetTTSConcurrency(ttsConcurrency)
+		runner.SetTranslationConcurrency(translationConcurrency)
+	}
 	if root.Domains != nil && root.Domains.VoiceoverPublishPool != nil {
 		runner.SetVoiceoverPublishDrainer(root.Domains.VoiceoverPublishPool)
 	}
-	runner.SetSerialMode(cfg.Scripts.SerialMode)
 	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)",
 		zap.Int("nlp_concurrency", nlpConcurrency),
 		zap.Int("script_generation_concurrency", scriptGenerationConcurrency),
