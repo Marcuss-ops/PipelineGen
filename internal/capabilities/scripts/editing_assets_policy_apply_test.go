@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -132,6 +133,84 @@ func TestApplyEditingAssetPolicyFailsClosed(t *testing.T) {
 	if req.Render.Background != nil {
 		t.Errorf("a rejected policy must not have mutated the request: %+v", req.Render.Background)
 	}
+}
+
+// TestBuildGenerateRequest_IntroV2CentralizedBackgroundPlate certifies the
+// Intro V2 "background centralizzato" contract AT THE SINGLE INGRESS both job
+// handlers share: a clip-based script that names no background receives ONE
+// canonical editorial plate (bound to the published video-background-v1
+// contract), the selection is deterministic for a repeated request, and an
+// explicit caller selection is never overridden.
+func TestBuildGenerateRequest_IntroV2CentralizedBackgroundPlate(t *testing.T) {
+	decode := func(payload string) *scriptpkg.GenerationEnvelopeV2 {
+		t.Helper()
+		var env scriptpkg.GenerationEnvelopeV2
+		if err := json.Unmarshal([]byte(payload), &env); err != nil {
+			t.Fatal(err)
+		}
+		return &env
+	}
+	clipScript := func(render string) string {
+		return `{"version":2,"items":[{"title":"intro-v2","project":"test-project","language":"en","source":{"type":"clips","clip_ids":["clip-a"]},"output":{"voiceover_enabled":true` + render + `},"audio":{"mode":"COMBINED_TIMELINE"}}]}`
+	}
+
+	t.Run("a blank background is filled with a canonical plate", func(t *testing.T) {
+		got, err := BuildGenerateRequest(decode(clipScript("")), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Render.Background == nil {
+			t.Fatal("a clip-based script with no background must receive the centralized plate")
+		}
+		if got.Render.Background.Mode != videoBackgroundModeAsset {
+			t.Fatalf("background mode = %q, want %q", got.Render.Background.Mode, videoBackgroundModeAsset)
+		}
+		plate, ok := mediaregistry.LookupEditorialBackground(got.Render.Background.AssetID)
+		if !ok {
+			t.Fatalf("selected background %q is not a canonical editorial plate", got.Render.Background.AssetID)
+		}
+		if plate.SHA256 == "" || plate.DriveFileID == "" {
+			t.Fatalf("canonical plate must carry its certified identity: %+v", plate)
+		}
+	})
+
+	t.Run("the selection is deterministic for the same request", func(t *testing.T) {
+		first, err := BuildGenerateRequest(decode(clipScript("")), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := BuildGenerateRequest(decode(clipScript("")), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.Render.Background == nil || second.Render.Background == nil {
+			t.Fatal("both requests must receive a plate")
+		}
+		if first.Render.Background.AssetID != second.Render.Background.AssetID {
+			t.Fatalf("plate selection is not deterministic: %q vs %q",
+				first.Render.Background.AssetID, second.Render.Background.AssetID)
+		}
+	})
+
+	t.Run("an explicit caller selection is preserved", func(t *testing.T) {
+		got, err := BuildGenerateRequest(decode(clipScript(`,"render":{"background":{"mode":"none"}}`)), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Render.Background == nil || got.Render.Background.Mode != "none" || got.Render.Background.AssetID != "" {
+			t.Fatalf("explicit background selection was overridden: %+v", got.Render.Background)
+		}
+	})
+
+	t.Run("an explicit plate is preserved", func(t *testing.T) {
+		got, err := BuildGenerateRequest(decode(clipScript(`,"render":{"background":{"mode":"asset","asset_id":"drive-background-01"}}`)), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Render.Background == nil || got.Render.Background.AssetID != "drive-background-01" {
+			t.Fatalf("explicit plate was overridden: %+v", got.Render.Background)
+		}
+	})
 }
 
 func containsString(values []string, want string) bool {

@@ -138,7 +138,13 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	// appendClipDetail). The resolved *detail.TextTrack
 	// feeds the 3 new fingerprint fields (via the
 	// resolvedTracks accumulator + buildClipEvidence).
-	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
+	// resolveTranscriptChecked adds the script-language/clip-association check
+	// on top of the strict read: a not-READY track is either materialized and
+	// persisted at runtime (when an ensurer is wired) or surfaced as the typed
+	// *ClipLanguageAssociationError (which still unwraps to
+	// *ErrTextTrackNotReady, so the transcript-fallback policy below is
+	// unchanged).
+	transcript, track, resolveErr := c.resolveTranscriptChecked(ctx, clip.ID, language, clip)
 	if resolveErr != nil {
 		var notReady *ErrTextTrackNotReady
 		if (allowTranscriptFallback || (allowMetadataFallback && (clipHasMetadataEvidence(clip) || strings.TrimSpace(metadataText) != ""))) && errors.As(resolveErr, &notReady) {

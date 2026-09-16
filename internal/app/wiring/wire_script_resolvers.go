@@ -9,11 +9,13 @@ import (
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
@@ -58,6 +60,91 @@ func (c readyASSArtifactCounter) CountReadyASSArtifacts(ctx context.Context, ass
 }
 
 var _ usecase.ReadyASSArtifactCounter = readyASSArtifactCounter{}
+
+// clipTranscriptEnsurer is the scripts-side adapter over the canonical
+// texttracks create-and-persist pipeline.
+//
+// It is the runtime half of the script-language ↔ clip-association check: when
+// a clip bound to a script has no READY transcript in the script's language,
+// the resolver asks this adapter to CREATE the missing track and SAVE it in
+// the media SSOT, reusing the exact same acquire → translate → save pipeline
+// as `asset.text.materialize` and the operator backfill CLI (godlike/06 SSOT:
+// one materialization authority, never a second inline translation path).
+//
+// Fail-closed (godlike/07): the ONLY trustworthy success signal is a re-read
+// that finds a READY track. BackfillService reports per-asset failures in its
+// result rather than as an error, so a nil error alone is not enough.
+type clipTranscriptEnsurer struct {
+	clips          texttracks.MediaAssetLister
+	reader         scriptports.TextTrackReader
+	backfill       clipTextTrackMaterializer
+	sourceLanguage string
+}
+
+// clipTextTrackMaterializer is the narrow surface the ensurer needs from the
+// canonical backfill pipeline. Declaring it here (instead of depending on the
+// concrete *texttracks.BackfillService) keeps the adapter unit-testable and
+// pins the exact contract it relies on: one call, one per-asset result.
+type clipTextTrackMaterializer interface {
+	ProcessAsset(ctx context.Context, assetItem *coreasset.Asset, opts texttracks.BackfillOptions) (texttracks.BackfillAssetResult, error)
+}
+
+var _ scriptports.ClipTextTrackEnsurer = (*clipTranscriptEnsurer)(nil)
+
+func (e *clipTranscriptEnsurer) EnsureReadyTextTrack(ctx context.Context, assetID, languageCode string, kind detail.TextTrackKind) error {
+	if e == nil || e.backfill == nil {
+		return fmt.Errorf("clip transcript ensurer: text-track backfill pipeline is not wired")
+	}
+	if e.clips == nil {
+		return fmt.Errorf("clip transcript ensurer: media SSOT asset lister is not wired")
+	}
+	assetID = strings.TrimSpace(assetID)
+	languageCode = strings.TrimSpace(languageCode)
+	if assetID == "" || languageCode == "" {
+		return fmt.Errorf("clip transcript ensurer: asset_id and language are required")
+	}
+
+	// Idempotent fast path: an already-READY track costs nothing. It also keeps
+	// a repeated run from re-translating and re-uploading an unchanged track.
+	if e.reader != nil {
+		if track, _, err := e.reader.FindReady(ctx, assetID, languageCode, kind); err == nil && track != nil {
+			return nil
+		}
+	}
+
+	assets, err := e.clips.List(ctx, coreasset.Filter{IDs: []string{assetID}, Limit: 1})
+	if err != nil {
+		return fmt.Errorf("clip transcript ensurer: load asset %q: %w", assetID, err)
+	}
+	if len(assets) == 0 || assets[0] == nil {
+		return fmt.Errorf("clip transcript ensurer: asset %q not found in the media SSOT", assetID)
+	}
+
+	sourceLanguage := strings.TrimSpace(e.sourceLanguage)
+	if sourceLanguage == "" {
+		sourceLanguage = languageCode
+	}
+	if _, err := e.backfill.ProcessAsset(ctx, assets[0], texttracks.BackfillOptions{
+		Source:          string(assets[0].Source),
+		SourceLanguage:  sourceLanguage,
+		TargetLanguages: []string{languageCode},
+		TextKind:        kind,
+	}); err != nil {
+		return fmt.Errorf("clip transcript ensurer: materialize %q/%q: %w", assetID, languageCode, err)
+	}
+
+	if e.reader == nil {
+		return fmt.Errorf("clip transcript ensurer: text track reader is not wired — cannot verify %q/%q", assetID, languageCode)
+	}
+	track, _, err := e.reader.FindReady(ctx, assetID, languageCode, kind)
+	if err != nil {
+		return fmt.Errorf("clip transcript ensurer: verify %q/%q: %w", assetID, languageCode, err)
+	}
+	if track == nil {
+		return fmt.Errorf("clip transcript ensurer: %q has no READY %s track for %q after materialization", assetID, string(kind), languageCode)
+	}
+	return nil
+}
 
 // buildScriptSourceResolvers constructs the canonical source-resolution
 // cluster. PostgreSQL + pgvector owns semantic media reads; Qdrant and SQLite
@@ -119,6 +206,19 @@ func buildScriptSourceResolvers(
 			}
 			if root.Repos.SubtitleArtifactRepo != nil {
 				clipSourceBuilder.ConfigureSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
+			}
+			// Script-language ↔ clip-association check: when the media SSOT and
+			// the canonical text-track pipeline are both available, a clip whose
+			// transcript is missing (or associated with another language) is
+			// materialized at runtime — created AND persisted — before the run
+			// fails closed. Unwired stays fail-closed (no silent pass).
+			if root.TextTracks != nil && root.TextTracks.JobHandler != nil && root.TextTracks.JobHandler.Backfill() != nil && root.MediaPostgres != nil && root.Repos.TextTrackRepo != nil {
+				clipSourceBuilder.ConfigureTextTrackEnsurer(&clipTranscriptEnsurer{
+					clips:          newPostgresMediaAssetLister(root.MediaPostgres),
+					reader:         root.Repos.TextTrackRepo,
+					backfill:       root.TextTracks.JobHandler.Backfill(),
+					sourceLanguage: ActiveMultilingualConfig(cfg).SourceLanguage,
+				})
 			}
 		}
 	}
@@ -192,9 +292,15 @@ func buildScriptSourceResolvers(
 	if clipSourceBuilder != nil {
 		sourceReg.Register(scriptpkg.SourceClips, usecase.NewClipsSourceResolver(clipSourceBuilder, log))
 	}
-	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
-		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
-		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, samplerReg, log))
+	// SourceCatalog resolves against the PostgreSQL media SSOT (P2-9 read
+	// migration). The retired *catalog.Repository read the operational SQLite
+	// media_assets + clip_search_terms mirror, which the canonical PostgreSQL
+	// writer never populates, so the resolver could only grade a stale catalog.
+	// A closed media plane leaves SourceCatalog unwired rather than degrading
+	// onto that mirror (godlike/07 fail-closed).
+	if root.MediaPostgres != nil && clipSourceBuilder != nil {
+		catalogPort := &postgresCatalogPort{searcher: pgmedia.NewMediaSearcher(root.MediaPostgres)}
+		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catalogPort, clipSourceBuilder, samplerReg, log))
 	}
 
 	// Query vectors use the same E5 contract that populated PostgreSQL
