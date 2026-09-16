@@ -78,6 +78,12 @@ type ClipSourceBuilder struct {
 	// `metadata_json[\\"clean_transcript\\"]` fallback path.
 	textTrackReader   ports.TextTrackReader
 	subtitleArtifacts detail.SubtitleArtifactRepository
+	// transcriptEnsurer is the OPTIONAL runtime materialization surface: when
+	// a clip's text tracks are not associated with the requested language it
+	// creates AND persists the missing track, then the resolver re-reads.
+	// nil keeps the historical fail-closed behaviour (typed
+	// *ClipLanguageAssociationError, no silent fallback).
+	transcriptEnsurer ports.ClipTextTrackEnsurer
 }
 
 type ClipGenerationOptions struct {
@@ -153,6 +159,16 @@ func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 // used to enrich clip evidence before the Google Doc is rendered.
 func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r detail.SubtitleArtifactRepository) {
 	c.subtitleArtifacts = r
+}
+
+// ConfigureTextTrackEnsurer wires the OPTIONAL runtime materialization
+// surface. When set, a clip whose text tracks are not associated with the
+// requested language has the missing track created and persisted at runtime
+// (ports.ClipTextTrackEnsurer) before the run fails closed. When nil (the
+// default, and every test fixture that does not wire it) the resolver keeps
+// its pre-existing behaviour: a typed *ClipLanguageAssociationError.
+func (c *ClipSourceBuilder) ConfigureTextTrackEnsurer(e ports.ClipTextTrackEnsurer) {
+	c.transcriptEnsurer = e
 }
 
 // BuildClipContext resolves the supplied clip IDs into assets, builds

@@ -55,6 +55,21 @@ func (h *MaterializeJobHandler) WithBackfill(backfill *BackfillService) *Materia
 	return h
 }
 
+// Backfill returns the canonical acquire → translate → save pipeline attached
+// to the handler, or nil when the media plane is not deployed and the
+// automatic backfill was never registered (graceful degrade).
+//
+// It exists so a runtime consumer OUTSIDE a job — the script clip-source
+// resolver, when a clip is not yet associated with the script's language — can
+// reuse the SAME materialization pipeline the `asset.text.materialize` job and
+// the operator CLI use, instead of a second, inline translation path.
+func (h *MaterializeJobHandler) Backfill() *BackfillService {
+	if h == nil {
+		return nil
+	}
+	return h.backfill
+}
+
 type JobRegistrar interface {
 	RegisterHandler(jobType string, h any) error
 }

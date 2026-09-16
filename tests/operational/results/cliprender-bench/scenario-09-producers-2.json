@@ -1,0 +1,498 @@
+{
+  "scenario": "scenario-09-producers-2",
+  "mode": "async",
+  "workers": 4,
+  "waiter_pool": 2,
+  "gpu_lanes": 2,
+  "aggregate_interval_ms": 0,
+  "event_driven": false,
+  "clips": 24,
+  "wall_ms": 147,
+  "clips_per_min": 9753.589051531266,
+  "p50_ms": 86,
+  "p95_ms": 143,
+  "mean_ms": 83,
+  "submit_occupancy_p50_ms": 2,
+  "submit_occupancy_p95_ms": 12,
+  "settle_occupancy_p50_ms": 11,
+  "settle_occupancy_p95_ms": 15,
+  "remote_render_p50_ms": 10,
+  "remote_queue_p95_ms": 0,
+  "parent_finalize_p50_ms": 0,
+  "parent_finalize_p95_ms": 0,
+  "parents_finalized": 0,
+  "gpu_lane_busy_ms": 268,
+  "gpu_lane_utilization_pct": 92.33732869022305,
+  "gpu_lane_idle_pct": 7.662671309776958,
+  "gpu_lane_max_concurrent": 2,
+  "aggregated_fps": 11704.306861837518,
+  "disk_read_bytes": 24576,
+  "disk_write_bytes": 98304,
+  "network_tx_bytes": 98304,
+  "network_rx_bytes": 0,
+  "source_full_hashes": 24,
+  "source_downloads": 24,
+  "submits": 24,
+  "settles": 24,
+  "failures": 0,
+  "started_at": "2026-09-16T16:45:51.464390688Z",
+  "finished_at": "2026-09-16T16:45:51.61206744Z",
+  "clip_runs": [
+    {
+      "index": 0,
+      "run_id": "scenario-09-producers-2-clip-0",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 15,
+        "render_ms": 15,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 16
+      },
+      "e2e_ms": 19,
+      "failed": false
+    },
+    {
+      "index": 1,
+      "run_id": "scenario-09-producers-2-clip-1",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 17,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 20
+      },
+      "e2e_ms": 36,
+      "failed": false
+    },
+    {
+      "index": 2,
+      "run_id": "scenario-09-producers-2-clip-2",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 30,
+      "failed": false
+    },
+    {
+      "index": 3,
+      "run_id": "scenario-09-producers-2-clip-3",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 15,
+        "render_ms": 15,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 17
+      },
+      "e2e_ms": 19,
+      "failed": false
+    },
+    {
+      "index": 4,
+      "run_id": "scenario-09-producers-2-clip-4",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 40,
+      "failed": false
+    },
+    {
+      "index": 5,
+      "run_id": "scenario-09-producers-2-clip-5",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 47,
+      "failed": false
+    },
+    {
+      "index": 6,
+      "run_id": "scenario-09-producers-2-clip-6",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 58,
+      "failed": false
+    },
+    {
+      "index": 7,
+      "run_id": "scenario-09-producers-2-clip-7",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 12,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 53,
+      "failed": false
+    },
+    {
+      "index": 8,
+      "run_id": "scenario-09-producers-2-clip-8",
+      "phases": {
+        "prepare_ms": 12,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 22
+      },
+      "e2e_ms": 75,
+      "failed": false
+    },
+    {
+      "index": 9,
+      "run_id": "scenario-09-producers-2-clip-9",
+      "phases": {
+        "prepare_ms": 12,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 23
+      },
+      "e2e_ms": 69,
+      "failed": false
+    },
+    {
+      "index": 10,
+      "run_id": "scenario-09-producers-2-clip-10",
+      "phases": {
+        "prepare_ms": 12,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 23
+      },
+      "e2e_ms": 64,
+      "failed": false
+    },
+    {
+      "index": 11,
+      "run_id": "scenario-09-producers-2-clip-11",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 13,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 24
+      },
+      "e2e_ms": 81,
+      "failed": false
+    },
+    {
+      "index": 12,
+      "run_id": "scenario-09-producers-2-clip-12",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 98,
+      "failed": false
+    },
+    {
+      "index": 13,
+      "run_id": "scenario-09-producers-2-clip-13",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 86,
+      "failed": false
+    },
+    {
+      "index": 14,
+      "run_id": "scenario-09-producers-2-clip-14",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 92,
+      "failed": false
+    },
+    {
+      "index": 15,
+      "run_id": "scenario-09-producers-2-clip-15",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 109,
+      "failed": false
+    },
+    {
+      "index": 16,
+      "run_id": "scenario-09-producers-2-clip-16",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 120,
+      "failed": false
+    },
+    {
+      "index": 17,
+      "run_id": "scenario-09-producers-2-clip-17",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 114,
+      "failed": false
+    },
+    {
+      "index": 18,
+      "run_id": "scenario-09-producers-2-clip-18",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 103,
+      "failed": false
+    },
+    {
+      "index": 19,
+      "run_id": "scenario-09-producers-2-clip-19",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 11,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 132,
+      "failed": false
+    },
+    {
+      "index": 20,
+      "run_id": "scenario-09-producers-2-clip-20",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 143,
+      "failed": false
+    },
+    {
+      "index": 21,
+      "run_id": "scenario-09-producers-2-clip-21",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 125,
+      "failed": false
+    },
+    {
+      "index": 22,
+      "run_id": "scenario-09-producers-2-clip-22",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 10,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 135,
+      "failed": false
+    },
+    {
+      "index": 23,
+      "run_id": "scenario-09-producers-2-clip-23",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 147,
+      "failed": false
+    }
+  ]
+}

@@ -1,0 +1,992 @@
+{
+  "scenario": "scenario-10-e2e-50-clips",
+  "mode": "async",
+  "workers": 4,
+  "waiter_pool": 64,
+  "gpu_lanes": 8,
+  "aggregate_interval_ms": 0,
+  "event_driven": false,
+  "clips": 50,
+  "wall_ms": 65,
+  "clips_per_min": 45458.074654159514,
+  "p50_ms": 43,
+  "p95_ms": 65,
+  "mean_ms": 43,
+  "submit_occupancy_p50_ms": 2,
+  "submit_occupancy_p95_ms": 12,
+  "settle_occupancy_p50_ms": 13,
+  "settle_occupancy_p95_ms": 21,
+  "remote_render_p50_ms": 7,
+  "remote_queue_p95_ms": 6,
+  "parent_finalize_p50_ms": 0,
+  "parent_finalize_p95_ms": 0,
+  "parents_finalized": 0,
+  "gpu_lane_busy_ms": 402,
+  "gpu_lane_utilization_pct": 80.73976553066025,
+  "gpu_lane_idle_pct": 19.260234469339753,
+  "gpu_lane_max_concurrent": 8,
+  "aggregated_fps": 54549.68958499142,
+  "disk_read_bytes": 51200,
+  "disk_write_bytes": 204800,
+  "network_tx_bytes": 204800,
+  "network_rx_bytes": 0,
+  "source_full_hashes": 50,
+  "source_downloads": 50,
+  "submits": 50,
+  "settles": 50,
+  "failures": 0,
+  "started_at": "2026-09-16T16:45:51.937522532Z",
+  "finished_at": "2026-09-16T16:45:52.003572567Z",
+  "clip_runs": [
+    {
+      "index": 0,
+      "run_id": "scenario-10-e2e-50-clips-clip-0",
+      "phases": {
+        "prepare_ms": 4,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 20,
+        "render_ms": 9,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 24
+      },
+      "e2e_ms": 26,
+      "failed": false
+    },
+    {
+      "index": 1,
+      "run_id": "scenario-10-e2e-50-clips-clip-1",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 21,
+        "render_ms": 10,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 22
+      },
+      "e2e_ms": 26,
+      "failed": false
+    },
+    {
+      "index": 2,
+      "run_id": "scenario-10-e2e-50-clips-clip-2",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 21,
+        "render_ms": 10,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 11,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 23
+      },
+      "e2e_ms": 26,
+      "failed": false
+    },
+    {
+      "index": 3,
+      "run_id": "scenario-10-e2e-50-clips-clip-3",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 21,
+        "render_ms": 9,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 11,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 22
+      },
+      "e2e_ms": 26,
+      "failed": false
+    },
+    {
+      "index": 4,
+      "run_id": "scenario-10-e2e-50-clips-clip-4",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 9,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 25,
+      "failed": false
+    },
+    {
+      "index": 5,
+      "run_id": "scenario-10-e2e-50-clips-clip-5",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 19,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 11,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 20
+      },
+      "e2e_ms": 26,
+      "failed": false
+    },
+    {
+      "index": 6,
+      "run_id": "scenario-10-e2e-50-clips-clip-6",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 8,
+        "render_ms": 7,
+        "artifact_download_ms": 2,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 9
+      },
+      "e2e_ms": 14,
+      "failed": false
+    },
+    {
+      "index": 7,
+      "run_id": "scenario-10-e2e-50-clips-clip-7",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 17,
+        "render_ms": 6,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 25,
+      "failed": false
+    },
+    {
+      "index": 8,
+      "run_id": "scenario-10-e2e-50-clips-clip-8",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 14,
+        "render_ms": 12,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 21
+      },
+      "e2e_ms": 28,
+      "failed": false
+    },
+    {
+      "index": 9,
+      "run_id": "scenario-10-e2e-50-clips-clip-9",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 14,
+        "render_ms": 12,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 21
+      },
+      "e2e_ms": 28,
+      "failed": false
+    },
+    {
+      "index": 10,
+      "run_id": "scenario-10-e2e-50-clips-clip-10",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 14,
+        "render_ms": 12,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 21
+      },
+      "e2e_ms": 28,
+      "failed": false
+    },
+    {
+      "index": 11,
+      "run_id": "scenario-10-e2e-50-clips-clip-11",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 16,
+        "render_ms": 15,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 2,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 28,
+      "failed": false
+    },
+    {
+      "index": 12,
+      "run_id": "scenario-10-e2e-50-clips-clip-12",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 15,
+        "render_ms": 13,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 16
+      },
+      "e2e_ms": 28,
+      "failed": false
+    },
+    {
+      "index": 13,
+      "run_id": "scenario-10-e2e-50-clips-clip-13",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 7,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 9
+      },
+      "e2e_ms": 33,
+      "failed": false
+    },
+    {
+      "index": 14,
+      "run_id": "scenario-10-e2e-50-clips-clip-14",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 7,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 19
+      },
+      "e2e_ms": 34,
+      "failed": false
+    },
+    {
+      "index": 15,
+      "run_id": "scenario-10-e2e-50-clips-clip-15",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 7,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 19
+      },
+      "e2e_ms": 33,
+      "failed": false
+    },
+    {
+      "index": 16,
+      "run_id": "scenario-10-e2e-50-clips-clip-16",
+      "phases": {
+        "prepare_ms": 11,
+        "subtitles_ms": 0,
+        "submit_ms": 12,
+        "settle_ms": 6,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 33,
+      "failed": false
+    },
+    {
+      "index": 17,
+      "run_id": "scenario-10-e2e-50-clips-clip-17",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 6,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 7
+      },
+      "e2e_ms": 34,
+      "failed": false
+    },
+    {
+      "index": 18,
+      "run_id": "scenario-10-e2e-50-clips-clip-18",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 10,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 4,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 38,
+      "failed": false
+    },
+    {
+      "index": 19,
+      "run_id": "scenario-10-e2e-50-clips-clip-19",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 10,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 4,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 38,
+      "failed": false
+    },
+    {
+      "index": 20,
+      "run_id": "scenario-10-e2e-50-clips-clip-20",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 10,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 43,
+      "failed": false
+    },
+    {
+      "index": 21,
+      "run_id": "scenario-10-e2e-50-clips-clip-21",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 9,
+        "render_ms": 7,
+        "artifact_download_ms": 3,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 10
+      },
+      "e2e_ms": 39,
+      "failed": false
+    },
+    {
+      "index": 22,
+      "run_id": "scenario-10-e2e-50-clips-clip-22",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 9,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 2,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 43,
+      "failed": false
+    },
+    {
+      "index": 23,
+      "run_id": "scenario-10-e2e-50-clips-clip-23",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 10,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 40,
+      "failed": false
+    },
+    {
+      "index": 24,
+      "run_id": "scenario-10-e2e-50-clips-clip-24",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 8,
+        "render_ms": 7,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 10
+      },
+      "e2e_ms": 41,
+      "failed": false
+    },
+    {
+      "index": 25,
+      "run_id": "scenario-10-e2e-50-clips-clip-25",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 10,
+        "render_ms": 8,
+        "artifact_download_ms": 3,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 43,
+      "failed": false
+    },
+    {
+      "index": 26,
+      "run_id": "scenario-10-e2e-50-clips-clip-26",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 8,
+        "render_ms": 7,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 10
+      },
+      "e2e_ms": 41,
+      "failed": false
+    },
+    {
+      "index": 27,
+      "run_id": "scenario-10-e2e-50-clips-clip-27",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 8,
+        "render_ms": 7,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 9
+      },
+      "e2e_ms": 43,
+      "failed": false
+    },
+    {
+      "index": 28,
+      "run_id": "scenario-10-e2e-50-clips-clip-28",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 11,
+        "render_ms": 10,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 3,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 46,
+      "failed": false
+    },
+    {
+      "index": 29,
+      "run_id": "scenario-10-e2e-50-clips-clip-29",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 23,
+        "render_ms": 22,
+        "artifact_download_ms": 6,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 5,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 24
+      },
+      "e2e_ms": 57,
+      "failed": false
+    },
+    {
+      "index": 30,
+      "run_id": "scenario-10-e2e-50-clips-clip-30",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 15,
+        "render_ms": 11,
+        "artifact_download_ms": 2,
+        "probe_ms": 0,
+        "publish_ms": 3,
+        "queue_wait_ms": 4,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 16
+      },
+      "e2e_ms": 49,
+      "failed": false
+    },
+    {
+      "index": 31,
+      "run_id": "scenario-10-e2e-50-clips-clip-31",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 22,
+        "render_ms": 16,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 6,
+        "queue_wait_ms": 5,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 23
+      },
+      "e2e_ms": 56,
+      "failed": false
+    },
+    {
+      "index": 32,
+      "run_id": "scenario-10-e2e-50-clips-clip-32",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 9,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 48,
+      "failed": false
+    },
+    {
+      "index": 33,
+      "run_id": "scenario-10-e2e-50-clips-clip-33",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 16,
+        "render_ms": 10,
+        "artifact_download_ms": 3,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 20
+      },
+      "e2e_ms": 56,
+      "failed": false
+    },
+    {
+      "index": 34,
+      "run_id": "scenario-10-e2e-50-clips-clip-34",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 12,
+        "render_ms": 10,
+        "artifact_download_ms": 3,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 13
+      },
+      "e2e_ms": 50,
+      "failed": false
+    },
+    {
+      "index": 35,
+      "run_id": "scenario-10-e2e-50-clips-clip-35",
+      "phases": {
+        "prepare_ms": 4,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 13,
+        "render_ms": 7,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 6,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 17
+      },
+      "e2e_ms": 56,
+      "failed": false
+    },
+    {
+      "index": 36,
+      "run_id": "scenario-10-e2e-50-clips-clip-36",
+      "phases": {
+        "prepare_ms": 4,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 15,
+        "render_ms": 14,
+        "artifact_download_ms": 6,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 2,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 19
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 37,
+      "run_id": "scenario-10-e2e-50-clips-clip-37",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 15,
+        "render_ms": 13,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 3,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 17
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 38,
+      "run_id": "scenario-10-e2e-50-clips-clip-38",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 13,
+        "render_ms": 7,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 6,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 56,
+      "failed": false
+    },
+    {
+      "index": 39,
+      "run_id": "scenario-10-e2e-50-clips-clip-39",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 5,
+        "settle_ms": 13,
+        "render_ms": 12,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 3,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 40,
+      "run_id": "scenario-10-e2e-50-clips-clip-40",
+      "phases": {
+        "prepare_ms": 5,
+        "subtitles_ms": 0,
+        "submit_ms": 5,
+        "settle_ms": 13,
+        "render_ms": 11,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 4,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 41,
+      "run_id": "scenario-10-e2e-50-clips-clip-41",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 5,
+        "settle_ms": 13,
+        "render_ms": 11,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 4,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 42,
+      "run_id": "scenario-10-e2e-50-clips-clip-42",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 14,
+        "render_ms": 13,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 3,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 15
+      },
+      "e2e_ms": 60,
+      "failed": false
+    },
+    {
+      "index": 43,
+      "run_id": "scenario-10-e2e-50-clips-clip-43",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 14,
+        "render_ms": 12,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 6,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 64,
+      "failed": false
+    },
+    {
+      "index": 44,
+      "run_id": "scenario-10-e2e-50-clips-clip-44",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 4,
+        "settle_ms": 15,
+        "render_ms": 14,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 7,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 19
+      },
+      "e2e_ms": 65,
+      "failed": false
+    },
+    {
+      "index": 45,
+      "run_id": "scenario-10-e2e-50-clips-clip-45",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 9,
+        "render_ms": 8,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 12
+      },
+      "e2e_ms": 59,
+      "failed": false
+    },
+    {
+      "index": 46,
+      "run_id": "scenario-10-e2e-50-clips-clip-46",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 15,
+        "render_ms": 14,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 7,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 18
+      },
+      "e2e_ms": 65,
+      "failed": false
+    },
+    {
+      "index": 47,
+      "run_id": "scenario-10-e2e-50-clips-clip-47",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 7,
+        "render_ms": 5,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 65,
+      "failed": false
+    },
+    {
+      "index": 48,
+      "run_id": "scenario-10-e2e-50-clips-clip-48",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 7,
+        "render_ms": 6,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 65,
+      "failed": false
+    },
+    {
+      "index": 49,
+      "run_id": "scenario-10-e2e-50-clips-clip-49",
+      "phases": {
+        "prepare_ms": 7,
+        "subtitles_ms": 0,
+        "submit_ms": 7,
+        "settle_ms": 7,
+        "render_ms": 6,
+        "artifact_download_ms": 1,
+        "probe_ms": 0,
+        "publish_ms": 1,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 14
+      },
+      "e2e_ms": 65,
+      "failed": false
+    }
+  ]
+}
