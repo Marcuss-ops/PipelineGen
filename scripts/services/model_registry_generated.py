@@ -52,7 +52,7 @@ MODEL_REGISTRY = {
         "languages": 0,
         "enabled": False,
     },
-    "openai/whisper-large-v3-turbo": {
+    "openai/whisper-small": {
         "revision": "",
         "checksum": "",
         "dimensions": 0,
@@ -81,6 +81,6 @@ CLAP_MODEL_NAME = "laion/clap-htsat-fused"
 CLAP_MODEL_VERSION = "2026-06-26-v1"
 CLAP_MODEL_DIMENSIONS = 512
 
-WHISPER_MODEL_NAME = "openai/whisper-large-v3-turbo"
+WHISPER_MODEL_NAME = "openai/whisper-small"
 WHISPER_MODEL_VERSION = ""
 
