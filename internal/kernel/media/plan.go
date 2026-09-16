@@ -180,6 +180,7 @@ const (
 	ExtractionIncludeEntities         = "entities"
 	ExtractionIncludeSpecialNames     = "special_names"
 	ExtractionIncludeImportantPhrases = "important_phrases"
+	ExtractionIncludeImportantWords   = "important_words"
 )
 
 // Includes reports whether a semantic surface was explicitly requested. An

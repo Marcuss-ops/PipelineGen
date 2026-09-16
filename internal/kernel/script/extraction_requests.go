@@ -21,6 +21,7 @@ type EntityResult struct {
 	ArtlistPhrases   []string `json:"artlist_phrases,omitempty"`
 	ImportantPhrases []string `json:"important_phrases,omitempty"`
 	ImportantWords   []string `json:"important_words,omitempty"`
+	SpecialNames     []string `json:"special_names,omitempty"`
 	// NounChunks are the source-grounded multi-word noun phrases (e.g.
 	// "latte art", "specialty coffee shop"). They are produced by the
 	// deterministic NLP layer and must survive retrieval like the other

@@ -299,6 +299,9 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if len(src.Insights.ImportantWords) > 0 {
 		out.Insights.ImportantWords = append([]string(nil), src.Insights.ImportantWords...)
 	}
+	if len(src.Insights.SpecialNames) > 0 {
+		out.Insights.SpecialNames = append([]string(nil), src.Insights.SpecialNames...)
+	}
 	if len(src.Insights.ArtlistQueries) > 0 {
 		out.Insights.ArtlistQueries = append([]string(nil), src.Insights.ArtlistQueries...)
 	}

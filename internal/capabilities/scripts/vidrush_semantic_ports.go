@@ -67,6 +67,30 @@ type BatchImportantPhraseExtractor interface {
 	ExtractImportantPhrasesBatch(ctx context.Context, sourceTexts []string, limit int, language, model string) ([][]string, error)
 }
 
+// SceneNLPExtraction is the language-local NLP surface returned by the model.
+// Every value is a candidate copied from that scene's translated text; the
+// runner still applies its own source-span grounding before creating an
+// annotation.
+type SceneNLPExtraction struct {
+	ImportantPhrases []string
+	ImportantWords   []string
+	SpecialNames     []string
+	Entities         []VisualEntity
+}
+
+// SceneNLPExtractor exposes the complete structured extraction for one scene.
+// It is optional so older phrase-only adapters retain their existing contract.
+type SceneNLPExtractor interface {
+	ExtractSceneNLP(ctx context.Context, sourceText string, limit int, language, model string) (SceneNLPExtraction, error)
+}
+
+// BatchSceneNLPExtractor batches the full structured output by language while
+// retaining positional scene alignment.
+type BatchSceneNLPExtractor interface {
+	SceneNLPExtractor
+	ExtractSceneNLPBatch(ctx context.Context, sourceTexts []string, limit int, language, model string) ([]SceneNLPExtraction, error)
+}
+
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
 // stockintelligence.Service is the production implementation; it consults the
 // local Qdrant search + SQLite hydrate first and falls back to the provider

@@ -90,6 +90,8 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities) || extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
 	includeImportantPhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
+	includeImportantWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
+	includeSpecialNames := extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
 	entityCount := extraction.MaxEntitiesPerSegment
 	if entityCount <= 0 {
 		entityCount = 3
@@ -103,6 +105,35 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	if !includeEntities {
 		entities = nil
+	}
+	entityLimit := extraction.MaxEntitiesPerSegment
+	if entityLimit <= 0 {
+		entityLimit = 3
+	}
+	phraseLimit := extraction.MaxImportantPhrasesPerSegment
+	if phraseLimit <= 0 {
+		phraseLimit = 3
+	}
+	wordLimit := extraction.MaxImportantWordsPerSegment
+	if wordLimit <= 0 {
+		wordLimit = 3
+	}
+	var sourceNLP SceneNLPExtraction
+	includeModelNLP := includeImportantPhrases || includeImportantWords || includeSpecialNames
+	if includeModelNLP && e.phraseExtractor != nil {
+		if detailed, ok := e.phraseExtractor.(SceneNLPExtractor); ok {
+			sourceNLP, err = detailed.ExtractSceneNLP(ctx, ir.SourceText, max(entityLimit, phraseLimit, wordLimit), generationPlanLanguage(plan), generationPlanModel(plan))
+		} else if includeImportantPhrases {
+			sourceNLP.ImportantPhrases, err = e.phraseExtractor.ExtractImportantPhrases(
+				ctx, ir.SourceText, phraseLimit, generationPlanLanguage(plan), generationPlanModel(plan),
+			)
+		}
+		if err != nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("scene NLP extract: %w", err)
+		}
+	}
+	if includeEntities && len(sourceNLP.Entities) > 0 {
+		entities = mergeTranslatedNamedEntities(entities, groundNamedVisualEntities(ir.SourceText, sourceNLP.Entities))
 	}
 	if err := validateVisualEntities(ir, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
@@ -147,23 +178,25 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	entityResult := scriptpkg.EntityResult{
 		NounChunks: entitiesToStrings(entities),
 		Concepts:   extractedToConcepts(extractedEntities),
+		ImportantWords: func() []string {
+			if !includeImportantWords {
+				return nil
+			}
+			return limitTranslatedNLPStrings(sourceNLP.ImportantWords, wordLimit)
+		}(),
+	}
+	if includeSpecialNames {
+		entityResult.SpecialNames = limitTranslatedNLPStrings(sourceNLP.SpecialNames, entityLimit)
 	}
 	// Important phrases come from the injected NLP/model extractor. This
 	// runner only validates and grounds its output; it never derives phrases
 	// from the entity list.
-	if includeImportantPhrases && e.phraseExtractor != nil {
-		phrases, phraseErr := e.phraseExtractor.ExtractImportantPhrases(
-			ctx, ir.SourceText, extraction.MaxImportantPhrasesPerSegment,
-			generationPlanLanguage(plan), generationPlanModel(plan),
-		)
-		if phraseErr != nil {
-			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("important phrase extract: %w", phraseErr)
-		}
+	if includeImportantPhrases {
 		// Explicit editorial hints are still passed through the same grounding
 		// gate as model output. This makes a requested phrase deterministic for
 		// a render while preserving the no-invention contract.
 		phraseCandidates := append([]string(nil), extraction.ImportantPhrases...)
-		phraseCandidates = append(phraseCandidates, phrases...)
+		phraseCandidates = append(phraseCandidates, sourceNLP.ImportantPhrases...)
 		entityResult.ImportantPhrases = groundImportantPhrases(ir.SourceText, entities, phraseCandidates, extraction.MaxImportantPhrasesPerSegment)
 	}
 	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
@@ -198,6 +231,18 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 					return nil
 				}
 				return append([]string(nil), ir.Profile.ImportantPhrases...)
+			}(),
+			ImportantWords: func() []string {
+				if !includeImportantWords {
+					return nil
+				}
+				return limitTranslatedNLPStrings(sourceNLP.ImportantWords, wordLimit)
+			}(),
+			SpecialNames: func() []string {
+				if !includeSpecialNames {
+					return nil
+				}
+				return limitTranslatedNLPStrings(sourceNLP.SpecialNames, entityLimit)
 			}(),
 			ArtlistQueries: artlistQueries,
 			ImageQueries:   imageQueries,
@@ -410,6 +455,25 @@ func validateVisualEntities(ir sceneir.SceneIR, entities []VisualEntity) error {
 		}
 	}
 	return nil
+}
+
+func groundNamedVisualEntities(source string, candidates []VisualEntity) []VisualEntity {
+	runes := []rune(source)
+	grounded := make([]VisualEntity, 0, len(candidates))
+	for _, candidate := range candidates {
+		span, ok := findEntitySpan(source, candidate.Text)
+		if !ok || span.StartRune < 0 || span.EndRune > len(runes) {
+			continue
+		}
+		start := len(string(runes[:span.StartRune]))
+		end := len(string(runes[:span.EndRune]))
+		candidate.Text = span.Text
+		candidate.Start = start
+		candidate.End = end
+		candidate.Evidence = source[start:end]
+		grounded = append(grounded, candidate)
+	}
+	return grounded
 }
 
 func entitiesToStrings(entities []VisualEntity) []string {

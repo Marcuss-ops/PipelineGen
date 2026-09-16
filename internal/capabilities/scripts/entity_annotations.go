@@ -49,6 +49,14 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			})
 		}
 	}
+	for _, name := range seg.Insights.SpecialNames {
+		if span, ok := findEntitySpan(text, name); ok {
+			ann.SpecialNames = append(ann.SpecialNames, scriptpkg.AnnotationSpan{
+				Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
+				Score: 0.90, Kind: "SPECIAL_NAME",
+			})
+		}
+	}
 	seen := map[string]bool{}
 	for _, entity := range seg.Insights.Entities {
 		value := strings.TrimSpace(entity.Value)
@@ -112,7 +120,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
 		}
 	}
-	if len(ann.PrimaryEntities)+len(ann.SecondaryEntities)+len(ann.ImportantPhrases)+len(ann.ImportantWords) == 0 {
+	if len(ann.PrimaryEntities)+len(ann.SecondaryEntities)+len(ann.ImportantPhrases)+len(ann.ImportantWords)+len(ann.SpecialNames) == 0 {
 		return nil
 	}
 	return ann

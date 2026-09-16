@@ -18,6 +18,56 @@ func (translatedNLPTestNER) Extract(_ context.Context, text string, _ int) ([]Vi
 	return []VisualEntity{{Text: "Dolly Parton", Type: scriptpkg.EntityTypePerson, Score: 0.99}, {Text: "Tennessee", Type: scriptpkg.EntityTypeLocation, Score: 0.95}, {Text: "Imagination Library", Type: scriptpkg.EntityTypeWork, Score: 0.90}}, nil
 }
 
+type translatedNLPNameNER struct{}
+
+func (translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+	var entities []VisualEntity
+	for _, name := range []string{"Mike Tyson", "Muhammad Ali", "Las Vegas"} {
+		if strings.Contains(text, name) {
+			// Simulate the title-case heuristic's known place/person error;
+			// the translated model extraction must supply the authoritative type.
+			entities = append(entities, VisualEntity{Text: name, Type: scriptpkg.EntityTypePerson, Score: 0.99})
+		}
+	}
+	return entities, nil
+}
+
+type translatedNLPDetailed struct{}
+
+func (p translatedNLPDetailed) ExtractImportantPhrases(ctx context.Context, text string, limit int, language, model string) ([]string, error) {
+	result, err := p.ExtractSceneNLP(ctx, text, limit, language, model)
+	return result.ImportantPhrases, err
+}
+
+func (translatedNLPDetailed) ExtractSceneNLP(_ context.Context, text string, _ int, _, _ string) (SceneNLPExtraction, error) {
+	phrase, word := "Boxen und Disziplin", "Disziplin"
+	if strings.Contains(text, "pugilato") {
+		phrase, word = "pugilato e disciplina", "disciplina"
+	}
+	return SceneNLPExtraction{
+		ImportantPhrases: []string{phrase, "invention not in the source"},
+		ImportantWords:   []string{word, "unmentioned"},
+		SpecialNames:     []string{"Mike Tyson", "Muhammad Ali", "Joe Frazier"},
+		Entities: []VisualEntity{
+			{Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 0.98},
+			{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.97},
+			{Text: "Muhammad Ali", Type: scriptpkg.EntityTypePerson, Score: 0.96},
+		},
+	}, nil
+}
+
+func (p translatedNLPDetailed) ExtractSceneNLPBatch(ctx context.Context, texts []string, limit int, language, model string) ([]SceneNLPExtraction, error) {
+	out := make([]SceneNLPExtraction, len(texts))
+	for i, text := range texts {
+		value, err := p.ExtractSceneNLP(ctx, text, limit, language, model)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = value
+	}
+	return out, nil
+}
+
 type translatedNLPTestPhrases struct{}
 
 func (translatedNLPTestPhrases) ExtractImportantPhrases(_ context.Context, _ string, _ int, _, _ string) ([]string, error) {
@@ -172,6 +222,68 @@ func TestRunTranslatedNLPBatchesPhrasesPerLanguage(t *testing.T) {
 		assertScenePhrase(t, result, i, "de", fmt.Sprintf("szene %d", i))
 		if len(result.Scenes[i].LocalizedAnnotations["it"].PrimaryEntities) == 0 {
 			t.Fatalf("scene %d/it lost its per-scene entities", i)
+		}
+	}
+}
+
+func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{}, PhraseExtractor: translatedNLPDetailed{}}}
+	req := GenerateRequest{
+		SourceLanguage: "en",
+		Languages:      []Language{"it", "de"},
+		Model:          "test-model",
+		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+			Include: []string{
+				mediadomain.ExtractionIncludeEntities,
+				mediadomain.ExtractionIncludeSpecialNames,
+				mediadomain.ExtractionIncludeImportantPhrases,
+				mediadomain.ExtractionIncludeImportantWords,
+			},
+			MaxEntitiesPerSegment: 5, MaxImportantPhrasesPerSegment: 5, MaxImportantWordsPerSegment: 5,
+		}},
+	}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-0", Index: 0,
+		Text: map[Language]string{
+			"en": "Mike Tyson bridges boxing and discipline. Muhammad Ali inspires athletes.",
+			"it": "Mike Tyson lega pugilato e disciplina a Las Vegas. Muhammad Ali ispira molti atleti.",
+			"de": "Mike Tyson verbindet Boxen und Disziplin in Las Vegas. Muhammad Ali inspiriert viele Athleten.",
+		},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	for lang, wantPhrase := range map[Language]string{"it": "pugilato e disciplina", "de": "Boxen und Disziplin"} {
+		annotations := result.Scenes[0].LocalizedAnnotations[lang]
+		if annotations == nil {
+			t.Fatalf("missing %s localized annotations", lang)
+		}
+		if len(annotations.ImportantPhrases) != 1 || annotations.ImportantPhrases[0].Text != wantPhrase {
+			t.Errorf("%s important phrases = %+v, want only grounded %q", lang, annotations.ImportantPhrases, wantPhrase)
+		}
+		wantWord := "disciplina"
+		if lang == "de" {
+			wantWord = "Disziplin"
+		}
+		if len(annotations.ImportantWords) != 1 || annotations.ImportantWords[0].Text != wantWord {
+			t.Errorf("%s important words = %+v, want only grounded %q", lang, annotations.ImportantWords, wantWord)
+		}
+		if len(annotations.SpecialNames) != 2 || annotations.SpecialNames[0].Text != "Mike Tyson" || annotations.SpecialNames[1].Text != "Muhammad Ali" {
+			t.Errorf("%s special names = %+v, want grounded Tyson and Ali only", lang, annotations.SpecialNames)
+		}
+		if len(annotations.PrimaryEntities) != 3 {
+			t.Errorf("%s primary entities = %+v, want Tyson, Ali and Las Vegas", lang, annotations.PrimaryEntities)
+		} else {
+			var hasLocation bool
+			for _, entity := range annotations.PrimaryEntities {
+				if entity.CanonicalName == "Las Vegas" && entity.Type == "GPE" {
+					hasLocation = true
+				}
+			}
+			if !hasLocation {
+				t.Errorf("%s did not classify Las Vegas as a place: %+v", lang, annotations.PrimaryEntities)
+			}
 		}
 	}
 }

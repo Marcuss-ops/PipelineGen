@@ -389,6 +389,7 @@ func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput
 		if sc.Annotations != nil {
 			ann := *sc.Annotations
 			ann.ImportantPhrases = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantPhrases...)
+			ann.SpecialNames = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.SpecialNames...)
 			ann.ImportantWords = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantWords...)
 			ann.Warnings = append([]string(nil), sc.Annotations.Warnings...)
 			ann.PrimaryEntities = cloneAnnotatedEntities(sc.Annotations.PrimaryEntities)
