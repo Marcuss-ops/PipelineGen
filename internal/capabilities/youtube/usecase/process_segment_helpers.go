@@ -107,6 +107,10 @@ func buildClipAsset(
 			FolderPath:  cmd.DriveFolderPath,
 			FileID:      out.Item.DriveFileID,
 			WebViewLink: out.Item.DriveLink,
+			// godlike/06: the measured artifact size travels with the Drive
+			// identity it belongs to. Step 5 stat'ed the file that Step 8
+			// uploaded, so this is a measured fact, not a guess.
+			SizeBytes: out.Item.SizeBytes,
 		},
 		Coordinates: youtubetypes.ClipAssetCoordinates{
 			StartSec: out.Item.StartSeconds,

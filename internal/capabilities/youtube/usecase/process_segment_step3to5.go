@@ -160,12 +160,18 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 			"video pipeline returned empty LocalPath", nil)
 		return "", "", u.fail(out, typed)
 	}
-	if stat, statErr := os.Stat(localPath); statErr != nil || stat.Size() == 0 {
+	stat, statErr := os.Stat(localPath)
+	if statErr != nil || stat.Size() == 0 {
 		typed := NewExtractionError(FailureCodeInvalidLocalArtifact, false,
 			fmt.Sprintf("local artifact %q missing or zero-size (stat_err=%v)", localPath, statErr),
 			statErr)
 		return "", "", u.fail(out, typed)
 	}
+	// This stat is the ONLY size probe on the path, and the bytes it measures
+	// are exactly the bytes Step 8 uploads to Drive: the value is therefore the
+	// canonical Drive object size, not a re-derivation. It is carried to Step 9
+	// so the asset_locations row records it instead of the 0 placeholder.
+	out.Item.SizeBytes = stat.Size()
 	if u.core.Hash != nil {
 		var hashErr error
 		// Canonical content identity: SHA-256 of the actual byte stream.

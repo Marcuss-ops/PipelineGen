@@ -2,8 +2,13 @@
 // for existing media assets.
 //
 // INDEXED_WRITER_SCOPE: clipindexer
-// The terminal INDEXED CAS is exposed here solely as the persistence adapter
-// invoked by the canonical outbox consumer; no workflow writes this state.
+// The terminal INDEXED CAS (SetMediaAssetIndexed) is exposed here as the
+// persistence adapter for callers that pre-flip index_state='INDEXING'. The
+// canonical live consumer is postgres/media.PostgresIndexWorker, which performs
+// the same guarded terminal transition with its own RETIREMENT fence
+// (outbox_index_fence.go) because nothing on the PostgreSQL media plane writes
+// 'INDEXING' — that hop belonged to the retired SQLite → Qdrant clipindexer.
+// Either way, no workflow writes this state.
 //
 // Mirrors the SQLite mutation family (internal/platform/sqlite/assets/
 // imagesregistry/asset_committer.go mutation methods + asset_committer_
@@ -121,7 +126,9 @@ func SetMediaAssetIndexed(ctx context.Context, exec mediaAssetSQLExecutor, asset
 	}
 	result, err := exec.ExecContext(ctx, `
 		UPDATE media_assets
-		SET index_state = 'INDEXED', index_state_updated_at = $1, updated_at = $2,
+		SET index_state = 'INDEXED', index_state_updated_at = $1,
+			index_state_updated_at_ts = NULLIF($1, '')::timestamptz,
+			updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz,
 			metadata_json = jsonb_set(
 				jsonb_set(
 					jsonb_set(
@@ -186,7 +193,7 @@ func (c *PostgresAssetCommitter) ReplaceMetadataJSON(ctx context.Context, assetI
 	// PostgreSQL mirror uses ordinal placeholders (see the set-clause guard
 	// inside updateMediaAssetMetadata).
 	return updateMediaAssetMetadata(ctx, c.db, assetID, metadataJSON,
-		"metadata_json = $1, updated_at = $2", metadataJSON, updatedAt)
+		"metadata_json = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz", metadataJSON, updatedAt)
 }
 
 func updateMediaAssetMetadata(ctx context.Context, exec mediaAssetSQLExecutor, assetID, metadataJSON, setClause string, args ...any) error {
@@ -318,9 +325,9 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var result sql.Result
 	if preserveIdentity {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $1::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE source = 'image' AND legacy_file_md5 = $2`, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $1::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND legacy_file_md5 = $2`, mutation.Status, hash)
 	} else {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = $1, drive_link = $2, download_link = $3, metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $4::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE source = 'image' AND legacy_file_md5 = $5`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = $1, drive_link = $2, download_link = $3, metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $4::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND legacy_file_md5 = $5`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
 	}
 	if err != nil {
 		return fmt.Errorf("asset committer: update Drive delivery: %w", err)
@@ -338,7 +345,7 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 			return fmt.Errorf("asset committer: resolve Drive delivery asset: %w", err)
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, $6, 0, $7, $8) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, legacy_file_md5=excluded.legacy_file_md5, updated_at=excluded.updated_at`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, $6, 0, $7, $8, NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, legacy_file_md5=excluded.legacy_file_md5, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
 			return fmt.Errorf("asset committer: upsert Drive location: %w", err)
 		}
 	}

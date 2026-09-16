@@ -156,7 +156,12 @@ func (c *PostgresMediaCommitter) PatchAssetTx(ctx context.Context, tx persistenc
 		if patch.IndexStateUpdatedAt != nil {
 			updatedAt = patch.IndexStateUpdatedAt.UTC()
 		}
-		sets = append(sets, fmt.Sprintf("index_state_updated_at = $%d", len(args)+1))
+		// Dual-write expand (migration 004): the legacy TEXT sibling and its
+		// typed *_ts mirror are bound to the SAME ordinal, so the mirror cannot
+		// drift from the RFC3339 string it mirrors.
+		sets = append(sets, fmt.Sprintf(
+			"index_state_updated_at = $%d, index_state_updated_at_ts = NULLIF($%d, '')::timestamptz",
+			len(args)+1, len(args)+1))
 		args = append(args, updatedAt.Format(time.RFC3339Nano))
 	}
 
@@ -178,7 +183,9 @@ func (c *PostgresMediaCommitter) PatchAssetTx(ctx context.Context, tx persistenc
 		if patch.UpdatedAt != nil {
 			updatedAt = *patch.UpdatedAt
 		}
-		sets = append(sets, fmt.Sprintf("updated_at = $%d", len(args)+1))
+		sets = append(sets, fmt.Sprintf(
+			"updated_at = $%d, updated_at_ts = NULLIF($%d, '')::timestamptz",
+			len(args)+1, len(args)+1))
 		args = append(args, updatedAt)
 		args = append(args, patch.AssetID)
 		res, err := sqlTx.ExecContext(ctx, "UPDATE media_assets SET "+strings.Join(sets, ", ")+" WHERE id = $"+fmt.Sprintf("%d", len(args)), args...)
@@ -356,12 +363,14 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
-		VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', $6, $7, $8)
+			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at,
+			 created_at_ts, updated_at_ts)
+		VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', $6, $7, $8,
+		        NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz)
 		ON CONFLICT (asset_id, location_kind) DO UPDATE SET
 			uri=excluded.uri, external_id=excluded.external_id,
 			web_view_link=excluded.web_view_link, download_url=excluded.download_url,
-			updated_at=excluded.updated_at`,
+			updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`,
 		change.AssetID, uri, change.DriveFileID, change.DriveLink, change.DownloadURL,
 		pgBoolInt(primary), now, now); err != nil {
 		return fmt.Errorf("asset mutator: upsert drive location %q: %w", change.AssetID, err)

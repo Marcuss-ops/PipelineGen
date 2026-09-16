@@ -39,8 +39,15 @@ type ClipSamplerRegistry struct {
 // startup. The wire_script_resolvers.go factory instance is the
 // canonical caller; tests construct their own per-test fixtures.
 func NewClipSamplerRegistry() *ClipSamplerRegistry {
+	return NewClipSamplerRegistryWithDeps(SamplerGateDeps{})
+}
+
+// NewClipSamplerRegistryWithDeps constructs the registry with the engine-named
+// reads the subtitle_ready gate needs (MEDIA-SSOT P2-9 Phase 2). The
+// dependency-free NewClipSamplerRegistry is retained for isolated tests.
+func NewClipSamplerRegistryWithDeps(deps SamplerGateDeps) *ClipSamplerRegistry {
 	return &ClipSamplerRegistry{
-		sampler: NewDefaultClipSampler(),
+		sampler: NewDefaultClipSamplerWithDeps(deps),
 	}
 }
 

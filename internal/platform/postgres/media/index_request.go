@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
@@ -57,6 +58,39 @@ type IndexRequestCommitResult struct {
 	EventKey       string
 	Inserted       bool
 	ExistingStatus string
+}
+
+// assetIndexRequestedPayload is the canonical payload map for the
+// asset.index.requested envelope on the PostgreSQL media plane.
+//
+// Extracted from CommitIndexRequestTx so the payload CONTRACT — most notably
+// `requested_vectors` — is pinned by a test that needs no database: a fact that
+// is only reachable through a transaction is a fact no gate protects.
+//
+// `requested_vectors` comes from the single canonical source
+// (event.AssetIndexRequestedVectorChannels) rather than a literal list, so the
+// envelope can never declare a channel the plane does not write. The retired
+// "transcript" channel was exactly that kind of phantom declaration: the
+// envelope asked for two vectors while postgres/media wrote only embedding_type
+// 'text', and a consumer honouring the declaration would wait forever for work
+// that no producer performed.
+func assetIndexRequestedPayload(req IndexRequest, eventID, eventKey string) map[string]any {
+	return map[string]any{
+		"schema_version":       ReindexEnvelopeV1Schema,
+		"event_id":             eventID,
+		"asset_id":             req.AssetID,
+		"operation":            indexRequestOperationUpsert,
+		"source_version":       req.SourceVersion,
+		"index_revision":       req.SourceVersion,
+		"target_index_version": collectionVersion,
+		"requested_vectors":    event.AssetIndexRequestedVectorChannels(),
+		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
+		"idempotency_key":      eventKey,
+		"source":               req.Source,
+		"media_type":           req.MediaType,
+		"embedding_model":      coreembedding.ModelIDMultilingualE5,
+		"embedding_version":    coreembedding.ModelRevisionMultilingualE5,
+	}
 }
 
 // CommitIndexRequestTx is the sole production emitter for the canonical
@@ -102,22 +136,7 @@ func CommitIndexRequestTx(
 	if err != nil {
 		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
 	}
-	payloadMap := map[string]any{
-		"schema_version":       ReindexEnvelopeV1Schema,
-		"event_id":             eventID,
-		"asset_id":             req.AssetID,
-		"operation":            indexRequestOperationUpsert,
-		"source_version":       req.SourceVersion,
-		"index_revision":       req.SourceVersion,
-		"target_index_version": collectionVersion,
-		"requested_vectors":    []string{"text", "transcript"},
-		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
-		"idempotency_key":      eventKey,
-		"source":               req.Source,
-		"media_type":           req.MediaType,
-		"embedding_model":      coreembedding.ModelIDMultilingualE5,
-		"embedding_version":    coreembedding.ModelRevisionMultilingualE5,
-	}
+	payloadMap := assetIndexRequestedPayload(req, eventID, eventKey)
 	payload, err = json.Marshal(payloadMap)
 	if err != nil {
 		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)

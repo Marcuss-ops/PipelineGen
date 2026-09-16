@@ -308,6 +308,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			Cfg: cfg,
 			Log: log,
 			DB:  stockDB,
+			// The enrichment read plane is pinned to the PostgreSQL media SSOT
+			// (never the operational SQLite store) — see StockRuntimeDeps.
+			MediaDB: root.MediaPostgres,
 			JobCreator: func() stockpipeline.JobCreator {
 				if root.Jobs == nil {
 					return nil

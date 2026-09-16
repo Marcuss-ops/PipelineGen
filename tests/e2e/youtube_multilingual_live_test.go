@@ -79,7 +79,39 @@ import (
 
 // liveLanguages is the canonical configured translation set (config.yaml
 // media.multilingual.languages with translate_clips: true).
-var liveLanguages = []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
+//
+// VELOX_E2E_LANGUAGES narrows it for the staged rollout (five languages, then
+// the full ten) WITHOUT bending any assertion: every certificate that consumes
+// this set is data-driven, so scaling it never rewrites the checks — the same
+// run that certifies five certifies ten the moment the variable is removed.
+// The order is preserved as given, because the batch position → language
+// mapping the render certificate reports against depends on it.
+var liveLanguages = liveLanguagesFromEnv()
+
+func liveLanguagesFromEnv() []string {
+	const canonical = "it,en,pl,ru,de,es,pt-BR,fr,tr,id"
+	raw := strings.TrimSpace(os.Getenv("VELOX_E2E_LANGUAGES"))
+	if raw == "" {
+		return strings.Split(canonical, ",")
+	}
+	out := make([]string, 0, 10)
+	seen := make(map[string]struct{}, 10)
+	for _, code := range strings.Split(raw, ",") {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		if _, dup := seen[code]; dup {
+			continue
+		}
+		seen[code] = struct{}{}
+		out = append(out, code)
+	}
+	if len(out) == 0 {
+		return strings.Split(canonical, ",")
+	}
+	return out
+}
 
 const (
 	liveDefaultURL    = "https://www.youtube.com/watch?v=iHaK0M-207o"
@@ -105,25 +137,69 @@ func requireLiveE2E(t *testing.T) string {
 	if strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN")) == "" {
 		t.Skip("TEST_POSTGRES_DSN not set; the live E2E needs the PostgreSQL + pgvector test instance")
 	}
+	// ABSOLUTE, not the configured value verbatim. The work directory is
+	// registered on the committed clip asset as its local_path, and the render
+	// worker runs in a DIFFERENT working directory (the server's, `refactored/`,
+	// not the test's `refactored/tests/e2e/`). A relative path therefore points
+	// at two different files: the bytes the certificate downloaded are
+	// unreadable from the process that must render them, and clip.render fails
+	// closed with "neither a local copy nor a Drive source" even though the file
+	// is sitting on disk. Resolving once here makes the registered path mean the
+	// same thing in every process, which is the only thing an ingest can promise
+	// about a local copy.
 	workdir := liveEnv("VELOX_E2E_WORKDIR", filepath.Join(".tmp", "e2e-youtube-live"))
-	require.NoError(t, os.MkdirAll(workdir, 0o755))
-	return workdir
+	absolute, err := filepath.Abs(workdir)
+	require.NoErrorf(t, err, "resolve work directory %q", workdir)
+	require.NoError(t, os.MkdirAll(absolute, 0o755))
+	return absolute
 }
 
-func openLiveDB(t *testing.T) *sql.DB {
+// openLiveDB opens the live PostgreSQL media handle and resets ONLY the rows
+// this certificate owns.
+//
+// It used to run `TRUNCATE media_assets CASCADE` plus the text-track and
+// embedding tables. A table-wide reset is only ever safe when the DSN is a
+// throwaway database — and these certificates cannot use one: they drive the
+// RUNNING service, which is wired to the operational media SSOT, so
+// TEST_POSTGRES_DSN has to point at the database the product actually uses.
+// The unconditional truncate therefore destroyed every unrelated row the
+// pipeline had accumulated — the rendered MP4s and their Drive locations, the
+// editorial plates, other clips — while the certificate still reported PASS.
+// The reset is now scoped by asset id, the same shape
+// resetRenderCertificateState already uses for derived render assets.
+func openLiveDB(t *testing.T, ownedAssetIDs ...string) *sql.DB {
 	t.Helper()
 	db := openLiveMediaDB(t)
-	ctx := context.Background()
-	for _, stmt := range []string{
-		`TRUNCATE asset_text_track_segments, asset_text_tracks`,
-		`TRUNCATE outbox_events`,
-		`TRUNCATE media_embeddings`,
-		`TRUNCATE media_assets CASCADE`,
-	} {
-		_, err := db.ExecContext(ctx, stmt)
-		require.NoErrorf(t, err, "truncate: %s", stmt)
+	if len(ownedAssetIDs) == 0 {
+		t.Fatal("openLiveDB needs the asset ids this certificate owns; a certificate that cannot name its own rows must not reset anything")
 	}
+	resetLiveCertificateOwnedState(t, db, ownedAssetIDs)
 	return db
+}
+
+// resetLiveCertificateOwnedState deletes exactly the rows of the given asset
+// ids. media_assets cascades to asset_locations, asset_processing,
+// asset_versions, media_asset_features and media_embeddings; the tables with no
+// foreign key to media_assets (text tracks, renditions, sources, registry
+// events and the outbox) are removed explicitly, in FK-safe order.
+func resetLiveCertificateOwnedState(t *testing.T, db *sql.DB, assetIDs []string) {
+	t.Helper()
+	ctx := context.Background()
+	for _, assetID := range assetIDs {
+		for _, stmt := range []string{
+			`DELETE FROM asset_text_tracks WHERE asset_id = $1`,
+			`DELETE FROM asset_renditions WHERE asset_id = $1`,
+			`DELETE FROM media_asset_sources WHERE asset_id = $1`,
+			`DELETE FROM registry_events WHERE asset_id = $1`,
+			`DELETE FROM outbox_events WHERE aggregate_id = $1`,
+			`DELETE FROM media_assets WHERE id = $1`,
+		} {
+			if _, err := db.ExecContext(ctx, stmt, assetID); err != nil {
+				t.Fatalf("reset certificate-owned state: %s (%s): %v", stmt, assetID, err)
+			}
+		}
+	}
+	t.Logf("reset certificate-owned state for %v (scoped delete, no table truncation)", assetIDs)
 }
 
 // runYtDlp executes the configured yt-dlp command and returns its stdout.
@@ -288,13 +364,14 @@ func (r *recordingEmbedder) embeddedTexts() []string {
 
 func TestLiveYouTube_TranscriptTranslatedInTenLanguagesAndIndexed(t *testing.T) {
 	workdir := requireLiveE2E(t)
-	db := openLiveDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Minute)
 	defer cancel()
 
 	url := liveEnv("VELOX_E2E_YOUTUBE_URL", liveDefaultURL)
 	videoID := videoIDFromURL(url)
 	require.NotEmpty(t, videoID, "could not resolve a YouTube video id from %q", url)
+	clipID := fmt.Sprintf("yt_%s_%d_%d_v1", videoID, liveSegmentStart, liveSegmentEnd)
+	db := openLiveDB(t, clipID)
 
 	log := zaptest.NewLogger(t, zaptest.Level(zapcore.InfoLevel))
 
@@ -313,7 +390,6 @@ func TestLiveYouTube_TranscriptTranslatedInTenLanguagesAndIndexed(t *testing.T) 
 	t.Logf("source identity: %q by %q", title, channel)
 
 	// ── 3. Canonical PostgreSQL commit (clip + READY transcript). ──────
-	clipID := fmt.Sprintf("yt_%s_%d_%d_v1", videoID, liveSegmentStart, liveSegmentEnd)
 	committer, err := wiringmedia.NewPostgresMediaCommitterFromDB(db, log)
 	require.NoError(t, err)
 

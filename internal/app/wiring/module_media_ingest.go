@@ -135,10 +135,15 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// closed instead of landing on an unnamed database.
 		mediaLocations := assetspersistence.CanonicalAssetLocationWriter(bundle.Committer)
 		mediaProcessing := assetspersistence.CanonicalAssetProcessingWriter(bundle.Committer)
+		// MEDIA-SSOT P2-9 Phase 2: the drive-file-id listing is a MEDIA read, so it
+		// resolves from the canonical committer's engine. bundle.DB is the
+		// operational SQLite store; it holds no committed media rows, so a
+		// listing served from it could never see the SSOT.
+		mediaDriveFileIDs := mediaDriveFileListerFromCommitter(bundle.Committer)
 		clipRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
-		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 		stockRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
-		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp)}, log)
+		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 		var downloader assets.MediaDownloader = downloader.NewMediaDownloader(90 * time.Second)
 		// CAS-backed source-aware downloader (August 2026): optional
 		// enhancement over the plain HTTP downloader; fall back + log when

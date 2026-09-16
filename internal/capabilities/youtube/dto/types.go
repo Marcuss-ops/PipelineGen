@@ -230,15 +230,20 @@ type TopicSearchRequest struct {
 
 // ExtractItem represents a single processed clip from an extraction run.
 type ExtractItem struct {
-	ID              string `json:"id,omitempty"`
-	Name            string `json:"name"`
-	Start           string `json:"start"`
-	End             string `json:"end"`
-	StartSeconds    int    `json:"start_seconds,omitempty"`
-	EndSeconds      int    `json:"end_seconds,omitempty"`
-	Duration        int    `json:"duration_seconds,omitempty"`
-	Filename        string `json:"filename,omitempty"`
-	LegacyFileMD5   string `json:"legacy_file_md5,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name"`
+	Start         string `json:"start"`
+	End           string `json:"end"`
+	StartSeconds  int    `json:"start_seconds,omitempty"`
+	EndSeconds    int    `json:"end_seconds,omitempty"`
+	Duration      int    `json:"duration_seconds,omitempty"`
+	Filename      string `json:"filename,omitempty"`
+	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
+	// SizeBytes is the byte size of the cut artifact, measured by the Step 5
+	// stat of the local file. It is the same byte stream whose SHA-256 is
+	// LegacyFileMD5 and the same artifact Step 8 uploads to Drive, so it is
+	// the canonical size of the Drive object (threaded into asset_locations).
+	SizeBytes       int64  `json:"size_bytes,omitempty"`
 	LocalPath       string `json:"local_path,omitempty"`
 	DriveLink       string `json:"drive_link,omitempty"`
 	DriveFileID     string `json:"drive_file_id,omitempty"`
@@ -409,6 +414,12 @@ type ClipAssetDrive struct {
 	FolderPath  string
 	FileID      string
 	WebViewLink string
+	// SizeBytes is the byte size of the artifact that was actually uploaded to
+	// Drive — the same bytes Step 5 measured and hashed. The canonical
+	// asset_locations row records it so a Drive-backed clip declares a real
+	// object size instead of the 0 placeholder that is indistinguishable from
+	// "never measured".
+	SizeBytes int64
 }
 
 // ClipAssetCoordinates bundles the timestamp-derived fields the

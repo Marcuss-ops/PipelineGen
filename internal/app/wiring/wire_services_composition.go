@@ -43,7 +43,6 @@ import (
 	"fmt"
 	"time"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
@@ -189,7 +188,15 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 			}
 			// RenderingGen overlays resolve their parent video's Drive folder
 			// below the already-resolved video folder (/video/.../overlay/).
-			broker.WithArtifactFolderResolver(assetswiring.NewArtifactFolderResolver(root.DB.DB))
+			// MEDIA-SSOT P2-9 Phase 2: the parent video's folder_id lives on the
+			// PostgreSQL media SSOT, so the resolver reads root.MediaPostgres —
+			// never root.DB (the operational SQLite store, which holds no media
+			// rows). This branch already guarantees a media PostgreSQL handle
+			// (assetCommitter != nil), so the resolver is always engine-correct
+			// here; the legacy drive_folder_id fallback was deleted with the
+			// SQLite resolver (measured: the SSOT has no such column and 0 rows
+			// depended on it).
+			broker.WithArtifactFolderResolver(pgmedia.NewMediaFolderResolver(root.MediaPostgres))
 			log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 		}
 	} else {

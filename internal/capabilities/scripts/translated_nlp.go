@@ -236,13 +236,19 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 
 	// ── Phase 3: grounding + annotation projection (pure CPU). ───────────
 	for index, item := range work {
+		// Treat already-extracted source names as identity hints only. A hint is
+		// copied into the localized annotations only when its name can be found
+		// in this translated scene, so it cannot invent a mention or a phrase.
+		sourceHints := groundLocalizedSourceEntities(item.text, result.Scenes[item.sceneIndex].Annotations)
+		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, sourceHints)
+		outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
 		groundedPhrases := groundImportantPhrases(item.text, outcomes[index].entities, outcomes[index].phrases, phraseLimit)
 		insights := scriptpkg.SegmentInsights{
 			SegmentID:        result.Scenes[item.sceneIndex].ID,
 			TextHash:         SceneTextHash(item.text),
 			ImportantPhrases: groundedPhrases,
 			ImportantWords:   limitTranslatedNLPStrings(outcomes[index].words, wordLimit),
-			SpecialNames:     limitTranslatedNLPStrings(outcomes[index].specialNames, entityLimit),
+			SpecialNames:     translatedSpecialNames(item.text, outcomes[index].specialNames, outcomes[index].entities, entityLimit),
 		}
 		for _, entity := range outcomes[index].entities {
 			entityType := entity.Type
@@ -273,6 +279,154 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 	return nil
 }
 
+func translatedSpecialNames(text string, candidates []string, entities []VisualEntity, limit int) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	appendName := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		key := strings.ToLower(name)
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, name)
+	}
+	// A special name must correspond to a typed, source-grounded entity.
+	// This also replaces partial model spans ("Las", "Vegas") with the
+	// complete localized entity and rejects German common nouns that were
+	// surfaced by capitalization-only fallback.
+	for _, entity := range entities {
+		if !isNamedVisualEntity(entity.Type) {
+			continue
+		}
+		if span, ok := findEntitySpan(text, entity.Text); ok {
+			appendName(span.Text)
+		}
+	}
+	// Keep model candidates only when they overlap a typed entity. The entity
+	// surface is emitted above, so candidates never introduce partial aliases.
+	for _, candidate := range candidates {
+		span, ok := findEntitySpan(text, candidate)
+		if !ok {
+			continue
+		}
+		for _, entity := range entities {
+			if !isNamedVisualEntity(entity.Type) {
+				continue
+			}
+			entitySpan, entityOK := findEntitySpan(text, entity.Text)
+			if entityOK && span.StartRune < entitySpan.EndRune && entitySpan.StartRune < span.EndRune {
+				appendName(entitySpan.Text)
+				break
+			}
+		}
+	}
+	return limitTranslatedNLPStrings(out, limit)
+}
+
+func isNamedVisualEntity(kind scriptpkg.EntityType) bool {
+	switch kind {
+	case scriptpkg.EntityTypePerson, scriptpkg.EntityTypeLocation, scriptpkg.EntityTypeOrganization,
+		scriptpkg.EntityTypeEvent, scriptpkg.EntityTypeWork, scriptpkg.EntityTypeProduct:
+		return true
+	default:
+		return false
+	}
+}
+
+func groundLocalizedSourceEntities(text string, source *scriptpkg.SceneAnnotations) []VisualEntity {
+	if source == nil {
+		return nil
+	}
+	all := append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...)
+	var out []VisualEntity
+	for _, entity := range all {
+		kind := localizedSourceEntityType(entity.Type)
+		if kind == "" {
+			continue
+		}
+		identity := firstNonEmpty(entity.CanonicalName, entity.Text)
+		aliases := []string{identity}
+		if kind == scriptpkg.EntityTypePerson {
+			identity = normalizeVisualPersonName(identity)
+			aliases = []string{identity}
+			// Source mention surfaces can include a role or an editorial lead-in
+			// ("Trainer Cus D’Amato", "Like Muhammad Ali"). Try complete
+			// proper-name suffixes, longest first, against the translated text.
+			for _, run := range personNameRuns(identity) {
+				for start := 1; start < len(run); start++ {
+					aliases = append(aliases, strings.Join(run[start:], " "))
+				}
+			}
+		}
+		for _, alias := range aliases {
+			span, ok := findEntitySpan(text, alias)
+			if !ok || strings.TrimSpace(span.Text) == "" {
+				continue
+			}
+			out = append(out, VisualEntity{Text: span.Text, Type: kind, Score: float32(entity.Confidence)})
+			break
+		}
+	}
+	return out
+}
+
+func localizedSourceEntityType(raw string) scriptpkg.EntityType {
+	switch scriptpkg.NormalizeAnnotationType(raw) {
+	case "PERSON":
+		return scriptpkg.EntityTypePerson
+	case "GPE", "LOCATION":
+		return scriptpkg.EntityTypeLocation
+	case "ORG", "ORGANIZATION":
+		return scriptpkg.EntityTypeOrganization
+	case "EVENT":
+		return scriptpkg.EntityTypeEvent
+	case "WORK":
+		return scriptpkg.EntityTypeWork
+	case "PRODUCT":
+		return scriptpkg.EntityTypeProduct
+	default:
+		return ""
+	}
+}
+
+func limitTranslatedVisualEntities(entities []VisualEntity, limit int) []VisualEntity {
+	if limit <= 0 || len(entities) <= limit {
+		return entities
+	}
+	priority := []scriptpkg.EntityType{
+		scriptpkg.EntityTypePerson, scriptpkg.EntityTypeLocation, scriptpkg.EntityTypeOrganization,
+		scriptpkg.EntityTypeEvent, scriptpkg.EntityTypeWork, scriptpkg.EntityTypeProduct,
+	}
+	out := make([]VisualEntity, 0, limit)
+	used := make([]bool, len(entities))
+	for _, kind := range priority {
+		for i, entity := range entities {
+			if used[i] || entity.Type != kind {
+				continue
+			}
+			out = append(out, entity)
+			used[i] = true
+			if len(out) == limit {
+				return out
+			}
+		}
+	}
+	for i, entity := range entities {
+		if used[i] {
+			continue
+		}
+		out = append(out, entity)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
+}
+
 func applyTranslatedNLPExtraction(outcome *translatedNLPOutcome, extraction SceneNLPExtraction, includePhrases, includeWords, includeSpecialNames, includeEntities bool) {
 	if outcome == nil {
 		return
@@ -298,10 +452,12 @@ func mergeTranslatedNamedEntities(visual, named []VisualEntity) []VisualEntity {
 	out := make([]VisualEntity, 0, len(visual)+len(named))
 	for _, entity := range visual {
 		switch entity.Type {
-		case scriptpkg.EntityTypePerson, scriptpkg.EntityTypeLocation, scriptpkg.EntityTypeOrganization,
+		case scriptpkg.EntityTypePerson, scriptpkg.EntityTypeOrganization,
 			scriptpkg.EntityTypeEvent, scriptpkg.EntityTypeWork, scriptpkg.EntityTypeProduct:
 			// Typed model names are the language-aware identity source. Drop
 			// heuristic title-case labels when a typed extraction is available.
+			// Keep deterministic location hits from VisualNER: structured model
+			// name extraction can omit places even when they occur verbatim.
 			continue
 		}
 		out = append(out, entity)

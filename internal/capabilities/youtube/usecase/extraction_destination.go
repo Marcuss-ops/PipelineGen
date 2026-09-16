@@ -54,6 +54,46 @@ func resolveDestination(req *youtubetypes.ExtractRequest) Destination {
 	}
 }
 
+// validateDriveDestination fails closed when the caller expressed a Drive
+// destination intent that the resolution step could not turn into a root
+// folder id.
+//
+// godlike/07 no-fake-availability. Observed live (2026-09-16): a request
+// carrying `destination.group` + `create_subfolder:true` but no `folder_id`
+// resolved to FolderID == "". The subfolder block in ExtractService.Extract is
+// gated on FolderID != "", so no folder was materialised; Step 8's own gate
+// (`cmd.DriveFolderID != ""`) then skipped the upload; and the job still
+// returned ok / processed with an item carrying no drive_file_id. The caller
+// asked for Drive delivery and got a silent local-only extraction.
+//
+// The rule: a Drive destination is a CONTRACT, not a hint. If any part of the
+// destination expresses Drive intent (a folder path, a subfolder name, or a
+// group that the transport would have turned into a root), the resolved root
+// MUST exist.
+//
+// A nil destination, or a Destination whose fields are all empty, is NOT
+// intent: a local-only extraction stays legitimate.
+//
+// Pure and side-effect free so the rule is testable without a wired Drive
+// resolver (see the package doc of this file).
+func validateDriveDestination(dest Destination, req *youtubetypes.ExtractRequest) error {
+	if req == nil || req.Destination == nil {
+		return nil
+	}
+	if dest.FolderID != "" {
+		return nil
+	}
+	subfolder := strings.TrimSpace(req.Destination.SubfolderName)
+	group := strings.TrimSpace(req.Destination.Group)
+	if strings.TrimSpace(dest.FolderPath) == "" && subfolder == "" && group == "" {
+		// No Drive intent at all: nothing to honour, nothing to refuse.
+		return nil
+	}
+	return fmt.Errorf(
+		"youtube extraction: Drive destination requested but the root folder did not resolve to a folder id (group=%q folder_path=%q subfolder=%q) — refusing to report success for an extraction that would upload nothing",
+		group, strings.TrimSpace(dest.FolderPath), subfolder)
+}
+
 // resolveSubtitleDestination resolves the Drive folder that subtitle
 // sidecars are uploaded into — ONCE per extraction (Sept 2026 N→1
 // contract). Previously every segment called GetOrCreateFolder(videoID)

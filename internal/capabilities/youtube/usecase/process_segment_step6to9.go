@@ -16,9 +16,10 @@
 //     Fase 2.b (July 2026) collapsed legacy Step 9 (clip only) +
 //     Step 9.5 (text tracks separate write) into ONE atomic call
 //     to LocalizedClipWriter.CommitClipTextAndIndexEvent. The
-//     single super-tx writes media_assets + asset_text_tracks +
-//     asset_text_track_segments + outbox_events in ONE
-//     SQLite transaction; any failure rolls back EVERY surface,
+//     single super-tx writes media_assets + asset_locations +
+//     asset_text_tracks + asset_text_track_segments + outbox_events
+//     in ONE PostgreSQL transaction (the media SSOT since the
+//     POSTGRES-MEDIA-CUTOVER); any failure rolls back EVERY surface,
 //     eliminating the Fase 1.a "clip persisted but text-pending"
 //     partial-state window.
 package usecase
@@ -70,7 +71,9 @@ func AsyncEnrichmentEnabled() bool { return isAsyncEnrichmentEnabled() }
 // Step 9.5 commits text tracks separately) is REPLACED by ONE
 // atomic super-tx that writes media_assets +
 // asset_text_tracks + asset_text_track_segments + outbox_events
-// in the SAME SQLite transaction. Failure paths collapse into a
+// in the SAME PostgreSQL transaction (POSTGRES-MEDIA-CUTOVER: the
+// media SSOT is PostgreSQL + pgvector; the former SQLite media
+// writer family is demolished). Failure paths collapse into a
 // single typed error from the writer; the prior
 // "clip persisted but text-pending" partial-state window is now
 // ARCHITECTURALLY IMPOSSIBLE.
@@ -260,7 +263,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// architecturally impossible.
 	//
 	// Append order is INTENTIONALLY PAYLOAD-FIRST, BUNDLE-LAST
-	// (preserved from Fase 1.a): SQLite's ON
+	// (preserved from Fase 1.a): the ON
 	// CONFLICT(asset_id, language_code, text_kind) DO UPDATE is
 	// last-write-wins per-batch, so the chain's selected primary
 	// bundle (priority 1-5 winner) overrides any payload row that

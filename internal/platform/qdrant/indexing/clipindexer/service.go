@@ -70,6 +70,15 @@ type Service struct {
 	// delegates every imperative reindex request to the canonical PG outbox.
 	canonicalIndexRequester CanonicalIndexRequester
 
+	// mediaEligibility is the narrow media-SSOT read behind the eligibility
+	// gate. It is deliberately separate from db above: the eligibility question
+	// is a media question (media_assets is PostgreSQL-owned) while db is the
+	// operational SQLite store, and conflating the two dependency domains is
+	// precisely the Postgres-writer/SQLite-reader split-brain MEDIA-SSOT P2-9
+	// Phase 2 removed. nil means the media plane is closed and Eligibility
+	// fails closed rather than reading a second engine.
+	mediaEligibility capregistry.AssetEligibilityReader
+
 	// projectionAdvancer is the optional checkpoint advancer called after a
 	// successful Qdrant upsert. It is retained only for isolated legacy tests
 	// and non-canonical compatibility code; PostgreSQL media mode never reaches
@@ -105,6 +114,16 @@ func (s *Service) SetCanonicalIndexRequester(requester CanonicalIndexRequester) 
 	}
 }
 
+// SetMediaEligibilityReader wires the media-SSOT taxonomy read behind the
+// eligibility gate (MEDIA-SSOT P2-9 Phase 2). Composition wires this from the
+// canonical media handle; nil leaves Eligibility fail-closed and is only
+// correct for isolated tests that never call it.
+func (s *Service) SetMediaEligibilityReader(reader capregistry.AssetEligibilityReader) {
+	if s != nil {
+		s.mediaEligibility = reader
+	}
+}
+
 // SetAssetMutationCommitter wires the canonical media mutation boundary.
 // Production composition must provide the same AssetCommitter used by ingest;
 // a nil value is retained only for isolated read-only tests.
@@ -118,12 +137,20 @@ func (s *Service) SetAssetMutationCommitter(mutator persistence.AssetMutationCom
 var _ MediaIndexer = (*Service)(nil)
 var _ IndexEligibilityResolver = (*Service)(nil)
 
-// Eligibility resolves the searchability decision for an asset via the
-// canonical mediaregistry resolver. A missing row or an empty taxonomy
-// resolves to REGISTERED (fail-closed: an asset is only SEARCHABLE once
-// explicitly classified as video/image).
+// Eligibility resolves the canonical searchability decision for an asset.
+// A missing row or an empty taxonomy resolves to REGISTERED (fail-closed: an
+// asset is only SEARCHABLE once explicitly classified as video/image).
+//
+// MEDIA-SSOT P2-9 Phase 2: the taxonomy read no longer goes through s.db. The
+// eligibility question is a MEDIA question — media_assets is owned by
+// PostgreSQL — but s.db is the operational SQLite handle, so the gate used to
+// grade a database that holds no committed media rows. The read now resolves
+// through the narrow media-SSOT port (SetMediaEligibilityReader), which the
+// composition root supplies from the canonical media handle. A nil reader is a
+// media-plane-closed signal and fails closed with
+// ErrTaxonomySchemaUnavailable — never a silent SQLite read.
 func (s *Service) Eligibility(ctx context.Context, assetID string) (capregistry.IndexEligibility, error) {
-	return capregistry.ResolveIndexEligibility(ctx, s.db, assetID)
+	return capregistry.ResolveIndexEligibility(ctx, s.mediaEligibility, assetID)
 }
 
 func (s *Service) IsEnabled() bool {

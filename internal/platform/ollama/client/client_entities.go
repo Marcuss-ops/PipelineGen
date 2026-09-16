@@ -15,7 +15,7 @@ import (
 // entityExtractionNumPredict is deliberately scoped to this operation. Entity
 // extraction has a small, structured output contract and must not inherit the
 // much larger generation budget used by script generation.
-const entityExtractionNumPredict = 256
+const entityExtractionNumPredict = 512
 
 // EntityExtractionBatchLimit is the maximum number of segments one batched
 // entity / important-phrase extraction request accepts. It is exported because

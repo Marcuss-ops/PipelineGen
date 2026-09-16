@@ -177,6 +177,30 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	}
 	dest := resolveDestination(request)
 
+	// Drive-delivery intent MUST be honoured or refused — never silently
+	// dropped.
+	//
+	// Observed live (2026-09-16): a request carrying `destination.group` +
+	// `create_subfolder:true` but no `folder_id` resolved to
+	// dest.FolderID == "". The subfolder block below is gated on
+	// dest.FolderID != "", so no folder was materialised, Step 8 skipped the
+	// upload (its own gate is `cmd.DriveFolderID != ""`), and the job still
+	// returned ok / processed with an item carrying no drive_file_id. The
+	// caller asked for Drive delivery and received a silent local-only
+	// extraction — a false success whose asset_locations row (when one was
+	// written at all) could not resolve to any Drive object.
+	//
+	// The sibling checks in this function already fail closed on an
+	// unresolvable subfolder (`destination subfolder requested but drive
+	// resolver not wired`); this guard closes the same hole one level up, and
+	// it is what makes a Drive destination a CONTRACT instead of a hint.
+	//
+	// A request with no destination intent at all (nil, or a zero-value
+	// Destination) remains a legitimate local-only extraction.
+	if err := validateDriveDestination(dest, request); err != nil {
+		return nil, err
+	}
+
 	// Resolve the requested subfolder BEFORE fan-out. The HTTP handler
 	// normalises destination.subfolder_name + create_subfolder into a
 	// folder_path STRING only (no Drive I/O at the transport layer); the

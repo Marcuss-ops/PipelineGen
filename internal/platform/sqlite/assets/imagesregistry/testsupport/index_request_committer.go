@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -106,7 +107,7 @@ func BuildIndexRequestEvent(req IndexRequest) (eventID, eventKey string, payload
 		"source_version":       req.SourceVersion,
 		"index_revision":       req.SourceVersion,
 		"target_index_version": pgmediaTargetIndexVersion,
-		"requested_vectors":    []string{"text", "transcript"},
+		"requested_vectors":    event.AssetIndexRequestedVectorChannels(),
 		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
 		"idempotency_key":      eventKey,
 		"source":               req.Source,

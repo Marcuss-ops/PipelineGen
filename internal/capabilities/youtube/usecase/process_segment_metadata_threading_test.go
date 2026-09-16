@@ -152,3 +152,38 @@ func TestFoldEnrichmentIntoClipAsset_RequestProvidedFieldsLandInMetadata(t *test
 	require.Contains(t, asset.SearchText, "input-speaker", "SearchText must include the threaded speakers")
 	require.Contains(t, asset.SearchText, "input-person", "SearchText must include the threaded mentioned people")
 }
+
+// TestBuildClipAsset_ThreadsMeasuredArtifactSizeIntoDrive pins the Step 5 →
+// Step 9 hand-off of the measured artifact size.
+//
+// Step 5 is the only place on the clip path that stat()s the local artifact
+// (its size doubles as the zero-size fail-closed guard). Before this pin the
+// value was read and discarded, so the canonical asset_locations row recorded
+// file_size_bytes=0 for a real Drive object — observed live on
+// yt_gT0amKtXWdU_0_10_v1, whose Drive artifact is 11,078,716 bytes.
+//
+// Non-vacuity: dropping `SizeBytes: out.Item.SizeBytes` from buildClipAsset
+// fails this assertion.
+func TestBuildClipAsset_ThreadsMeasuredArtifactSizeIntoDrive(t *testing.T) {
+	t.Parallel()
+
+	cmd := threadingSegmentCommand()
+	const measured = int64(11078716)
+	out := youtubetypes.ProcessSegmentResult{
+		Item: youtubetypes.ExtractItem{
+			StartSeconds: 0,
+			EndSeconds:   10,
+			Duration:     10,
+			LocalPath:    "/tmp/clip.mp4",
+			DriveFileID:  "drive-file-1",
+			DriveLink:    "https://drive.example/drive-file-1",
+			SizeBytes:    measured,
+		},
+	}
+
+	asset := buildClipAsset("yt_size_0_10_v1", cmd, out, "sha256:content", "v1")
+
+	require.Equal(t, "drive-file-1", asset.Drive.FileID, "Drive.FileID must carry the uploaded Drive id")
+	require.Equal(t, measured, asset.Drive.SizeBytes,
+		"Drive.SizeBytes must carry the measured artifact size that Step 5 stat'ed; a discarded size forces the asset_locations row to the 0 placeholder")
+}

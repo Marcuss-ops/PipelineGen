@@ -172,10 +172,12 @@ func WaitForAssetDeletion(ctx context.Context, db *sql.DB, assetID string) error
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		var lifecycleState, indexState string
+		var lifecycleState, indexState string // media_assets is owned by the PostgreSQL media SSOT; the $N
+		// placeholder (not the SQLite `?`) is the canonical form for every
+		// read of that table.
 		err := db.QueryRowContext(ctx, `
 			SELECT COALESCE(lifecycle_state, ''), COALESCE(index_state, '')
-			FROM media_assets WHERE id = ?`, assetID).Scan(&lifecycleState, &indexState)
+			FROM media_assets WHERE id = $1`, assetID).Scan(&lifecycleState, &indexState)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}

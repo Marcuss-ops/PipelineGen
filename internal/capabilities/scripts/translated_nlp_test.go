@@ -18,10 +18,12 @@ func (translatedNLPTestNER) Extract(_ context.Context, text string, _ int) ([]Vi
 	return []VisualEntity{{Text: "Dolly Parton", Type: scriptpkg.EntityTypePerson, Score: 0.99}, {Text: "Tennessee", Type: scriptpkg.EntityTypeLocation, Score: 0.95}, {Text: "Imagination Library", Type: scriptpkg.EntityTypeWork, Score: 0.90}}, nil
 }
 
-type translatedNLPNameNER struct{}
+type translatedNLPNameNER struct {
+	always []VisualEntity
+}
 
-func (translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
-	var entities []VisualEntity
+func (n translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+	entities := append([]VisualEntity(nil), n.always...)
 	for _, name := range []string{"Mike Tyson", "Muhammad Ali", "Las Vegas"} {
 		if strings.Contains(text, name) {
 			// Simulate the title-case heuristic's known place/person error;
@@ -269,8 +271,16 @@ func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *test
 		if len(annotations.ImportantWords) != 1 || annotations.ImportantWords[0].Text != wantWord {
 			t.Errorf("%s important words = %+v, want only grounded %q", lang, annotations.ImportantWords, wantWord)
 		}
-		if len(annotations.SpecialNames) != 2 || annotations.SpecialNames[0].Text != "Mike Tyson" || annotations.SpecialNames[1].Text != "Muhammad Ali" {
-			t.Errorf("%s special names = %+v, want grounded Tyson and Ali only", lang, annotations.SpecialNames)
+		if len(annotations.SpecialNames) != 3 {
+			t.Errorf("%s special names = %+v, want grounded Tyson, Las Vegas and Ali", lang, annotations.SpecialNames)
+		} else {
+			names := map[string]bool{}
+			for _, name := range annotations.SpecialNames {
+				names[name.Text] = true
+			}
+			if !names["Mike Tyson"] || !names["Las Vegas"] || !names["Muhammad Ali"] {
+				t.Errorf("%s special names = %+v, missing a complete grounded entity name", lang, annotations.SpecialNames)
+			}
 		}
 		if len(annotations.PrimaryEntities) != 3 {
 			t.Errorf("%s primary entities = %+v, want Tyson, Ali and Las Vegas", lang, annotations.PrimaryEntities)
@@ -285,6 +295,74 @@ func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *test
 				t.Errorf("%s did not classify Las Vegas as a place: %+v", lang, annotations.PrimaryEntities)
 			}
 		}
+	}
+}
+
+func TestMergeTranslatedNamedEntitiesKeepsDeterministicLocations(t *testing.T) {
+	visual := []VisualEntity{
+		{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.95},
+		{Text: "Many Opponents", Type: scriptpkg.EntityTypePerson, Score: 0.72},
+	}
+	named := []VisualEntity{{Text: "Trevor Berbick", Type: scriptpkg.EntityTypePerson, Score: 0.98}}
+
+	got := mergeTranslatedNamedEntities(visual, named)
+	if len(got) != 2 {
+		t.Fatalf("merged entities = %+v, want the model person and VisualNER location", got)
+	}
+	if got[0].Text != "Las Vegas" || got[0].Type != scriptpkg.EntityTypeLocation {
+		t.Fatalf("first merged entity = %+v, want grounded Las Vegas location", got[0])
+	}
+	if got[1].Text != "Trevor Berbick" || got[1].Type != scriptpkg.EntityTypePerson {
+		t.Fatalf("second merged entity = %+v, want typed Trevor Berbick person", got[1])
+	}
+}
+
+func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) {
+	ner := translatedNLPNameNER{}
+	ner.always = []VisualEntity{
+		{Text: "Viele Gegner", Type: scriptpkg.EntityTypePerson, Score: 0.99},
+		{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.95},
+	}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner, PhraseExtractor: &translatedNLPBatchPhrases{}}}
+	req := GenerateRequest{
+		SourceLanguage: "en",
+		Languages:      []Language{"de"},
+		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+			Include:               []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeImportantPhrases},
+			MaxEntitiesPerSegment: 5, MaxImportantPhrasesPerSegment: 3,
+		}},
+	}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-1", Index: 0,
+		Text: map[Language]string{"en": "Mike Tyson’s story continued in Las Vegas.", "de": "Mike Tysons Geschichte führte ihn nach Las Vegas. Viele Gegner sahen zu."},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{Text: "Mike Tyson", CanonicalName: "Mike Tyson’s", Type: "PERSON", Confidence: 0.98},
+			{Text: "Las Vegas", CanonicalName: "Las Vegas", Type: "GPE", Confidence: 0.95},
+		}},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	annotations := result.Scenes[0].LocalizedAnnotations["de"]
+	if annotations == nil {
+		t.Fatal("missing German annotations")
+	}
+	hasTyson, hasLasVegas, hasFalsePerson := false, false, false
+	for _, entity := range annotations.PrimaryEntities {
+		hasTyson = hasTyson || entity.CanonicalName == "Mike Tyson" && entity.Type == "PERSON"
+		hasLasVegas = hasLasVegas || entity.CanonicalName == "Las Vegas" && entity.Type == "GPE"
+		hasFalsePerson = hasFalsePerson || entity.CanonicalName == "Viele Gegner"
+	}
+	if !hasTyson || !hasLasVegas || hasFalsePerson {
+		t.Fatalf("localized primary entities = %+v, want grounded Tyson and Las Vegas with no heuristic German noun as a person", annotations.PrimaryEntities)
+	}
+	names := map[string]bool{}
+	for _, name := range annotations.SpecialNames {
+		names[name.Text] = true
+	}
+	if len(names) != 2 || !names["Mike Tyson"] || !names["Las Vegas"] {
+		t.Fatalf("localized special names = %+v, want complete grounded names only", annotations.SpecialNames)
 	}
 }
 

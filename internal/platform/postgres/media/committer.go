@@ -2,8 +2,10 @@
 // adapter (PR-ASSET-COMMITTER parity, September 2026).
 //
 // INDEXED_WRITER_SCOPE: clipindexer (post-cutover projection owner)
-// The terminal INDEXED CAS is exposed solely as the persistence adapter
-// invoked by the canonical outbox consumer; no workflow writes this state.
+// The terminal INDEXED CAS is exposed as the persistence adapter for callers
+// that pre-flip index_state='INDEXING'; the canonical live consumer
+// (PostgresIndexWorker) applies its own retirement-fenced transition instead
+// (outbox_index_fence.go). Either way, no workflow writes this state.
 //
 // This file is the canonical PostgreSQL implementation of
 // persistence.AssetCommitter. It owns the SQL that writes media_assets,

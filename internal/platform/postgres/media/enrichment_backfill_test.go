@@ -20,6 +20,7 @@ import (
 // so each test that opens a bespoke db handle starts order-independent.
 func truncateMediaSurfaces(t *testing.T, db *sql.DB) {
 	t.Helper()
+	requireDestructiveTestDatabase(t)
 	for _, stmt := range []string{
 		`TRUNCATE asset_text_track_segments, asset_text_tracks`,
 		`TRUNCATE registry_events`,

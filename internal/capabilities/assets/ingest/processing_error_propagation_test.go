@@ -93,7 +93,7 @@ var _ mutations.AssetMutationDispatcher = processingTestDispatcher{}
 func TestClipStoreAdapterUpsertPropagatesProcessingError(t *testing.T) {
 	cause := errors.New("adapter complete failed")
 	processing := &processingErrorRepo{completeErr: cause}
-	adapter := NewClipStoreAdapter(nil, nil, nil, nil, processing, processingTestDispatcher{}).(*clipStoreAdapter)
+	adapter := NewClipStoreAdapter(nil, nil, nil, nil, processing, processingTestDispatcher{}, nil).(*clipStoreAdapter)
 
 	err := adapter.Upsert(context.Background(), &artifacts.MediaRecord{ID: "clip-adapter", Status: "completed"})
 

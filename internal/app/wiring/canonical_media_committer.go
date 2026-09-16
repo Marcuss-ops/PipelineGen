@@ -306,6 +306,35 @@ func mediaDetailsReaderFromCommitter(committer persistence.AssetCommitter) *pgme
 	return pgmedia.NewAssetDetailsReader(pgmedia.NewMediaSearcher(db))
 }
 
+// mediaDriveFileListerFromCommitter resolves the "which assets still have a
+// Drive file id" listing from the canonical committer's own engine.
+//
+// MEDIA-SSOT P2-9 Phase 2: internal/capabilities/assets/ingest previously ran
+// this listing as raw SQL (`SELECT id FROM media_assets WHERE drive_file_id ...`)
+// against the operational SQLite handle it was handed as `db`. PostgreSQL is
+// the media SSOT, so that read could only ever see an empty catalog — a Drive
+// sweep built on it was blind to every committed asset. This helper is the
+// single owner of the engine decision, exactly like
+// mediaDetailsReaderFromCommitter above: the read resolves from the committer
+// that owns the media writes, so the two cannot drift onto different engines.
+//
+// nil means the media plane is closed. The caller MUST pass nil through and let
+// the ingest listing fail closed; there is no SQLite fallback by design.
+func mediaDriveFileListerFromCommitter(committer persistence.AssetCommitter) *pgmedia.MediaDriveFileLister {
+	if committer == nil {
+		return nil
+	}
+	getter, ok := committer.(interface{ DB() *sql.DB })
+	if !ok || getter == nil {
+		return nil
+	}
+	db := getter.DB()
+	if db == nil {
+		return nil
+	}
+	return pgmedia.NewMediaDriveFileLister(db)
+}
+
 // MediaAssetDetailsLookup resolves the single-asset detail lookup for the
 // worker asset-transfer service. It is the SINGLE owner of that decision: the
 // script media preflight consumes this method rather than repeating the engine

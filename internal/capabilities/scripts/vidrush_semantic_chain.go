@@ -9,16 +9,17 @@
 // enricher/resolver, and the coordinator's barrier wraps in MediaCertBarrier
 // so a SUCCEEDED run with CERTIFIED=false fails the job.
 //
-// The port/value contracts live in vidrush_semantic_ports.go and the barrier
-// in vidrush_mediacert_barrier.go (split 2026-09-12 to keep every file under
-// max_lines_per_file_strict=600, godlike/08).
+// The port/value contracts live in vidrush_semantic_ports.go, the barrier in
+// vidrush_mediacert_barrier.go (split 2026-09-12) and the pure grounding /
+// entity fan-out helpers in vidrush_semantic_chain_grounding.go (split
+// 2026-09-16) — both splits exist to keep every file under
+// max_lines_per_file_strict=600 (godlike/08).
 package scriptgeneration
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
@@ -242,140 +243,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 				if !includeSpecialNames {
 					return nil
 				}
-				return limitTranslatedNLPStrings(sourceNLP.SpecialNames, entityLimit)
+				return translatedSpecialNames(ir.SourceText, sourceNLP.SpecialNames, entities, entityLimit)
 			}(),
 			ArtlistQueries: artlistQueries,
 			ImageQueries:   imageQueries,
 		},
 	}
 	return result, nil
-}
-
-func generationPlanLanguage(plan *scriptpkg.ResolvedGenerationPlan) string {
-	if plan == nil {
-		return ""
-	}
-	return plan.Language
-}
-
-func generationPlanModel(plan *scriptpkg.ResolvedGenerationPlan) string {
-	if plan == nil {
-		return ""
-	}
-	return plan.Model
-}
-
-func groundImportantPhrases(source string, entities []VisualEntity, phrases []string, limit int) []string {
-	if limit <= 0 {
-		limit = len(phrases)
-	}
-	out := make([]string, 0, min(limit, len(phrases)))
-	seen := make(map[string]struct{}, len(phrases))
-
-	// Entity spans do not depend on the phrase being tested, so they are
-	// resolved ONCE per segment instead of once per (phrase, entity) pair. The
-	// previous nested resolution made this gate O(phrases × entities × source
-	// length) on every scene.
-	entitySpans := make([]scriptpkg.AnnotationSpan, 0, len(entities))
-	for _, entity := range entities {
-		if entitySpan, entityOK := findEntitySpan(source, entity.Text); entityOK {
-			entitySpans = append(entitySpans, entitySpan)
-		}
-	}
-
-	for _, phrase := range phrases {
-		phrase = strings.TrimSpace(phrase)
-		if len(strings.Fields(phrase)) < 2 {
-			continue
-		}
-		// Keep the phrase surface free of proper-name runs even when the
-		// entity extractor missed a name. This is a validation gate for the
-		// model output, not a phrase generator or a replacement value.
-		if containsProperNamePair(phrase) {
-			continue
-		}
-		span, ok := findEntitySpan(source, phrase)
-		if !ok {
-			continue
-		}
-		// A phrase is editorial text, not an entity-bearing label. Reject
-		// model spans that overlap any extracted named entity, including
-		// partial forms such as "LeBron James and Johann" or "Sebastian
-		// Bach". Those belong to the entity surface only.
-		phraseOverlapsEntity := false
-		for _, entitySpan := range entitySpans {
-			if span.StartRune < entitySpan.EndRune && entitySpan.StartRune < span.EndRune {
-				phraseOverlapsEntity = true
-				break
-			}
-		}
-		if phraseOverlapsEntity {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(span.Text))
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, span.Text)
-		if len(out) >= limit {
-			break
-		}
-	}
-	return out
-}
-
-func containsProperNamePair(value string) bool {
-	previousTitle := false
-	// FieldsSeq iterates without materialising the []string that
-	// strings.Fields would allocate for every candidate phrase.
-	for raw := range strings.FieldsSeq(value) {
-		word := strings.Trim(raw, ".,;:!?\"'’()[]{}")
-		currentTitle := false
-		for _, r := range word {
-			currentTitle = unicode.IsUpper(r)
-			break
-		}
-		if currentTitle && previousTitle {
-			return true
-		}
-		previousTitle = currentTitle
-	}
-	return false
-}
-
-// imageSearchEntities derives the identity surface from the normal NLP
-// entities. PERSON is the canonical named-identity surface for image search;
-// every grounded PERSON is sent to the image provider so each identity can be
-// indexed independently. If no PERSON exists, the historical entity fan-out
-// is preserved.
-func imageSearchEntities(entities []VisualEntity) []VisualEntity {
-	if len(entities) == 0 {
-		return nil
-	}
-	persons := make([]VisualEntity, 0, len(entities))
-	for _, entity := range entities {
-		if !strings.EqualFold(string(entity.Type), string(scriptpkg.EntityTypePerson)) {
-			continue
-		}
-		persons = append(persons, entity)
-	}
-	if len(persons) > 0 {
-		return persons
-	}
-	return append([]VisualEntity(nil), entities...)
-}
-
-func normalizeVisualPersonName(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(value, "While "), "while "))
-	for _, suffix := range []string{"'s", "’s"} {
-		if len(value) > len(suffix) && strings.EqualFold(value[len(value)-len(suffix):], suffix) {
-			value = strings.TrimSpace(value[:len(value)-len(suffix)])
-			break
-		}
-	}
-	return value
 }
 
 // deduplicateVisualEntities collapses grammatical variants of one identity

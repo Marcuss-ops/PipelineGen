@@ -338,6 +338,185 @@ func TestWorker_TerminalErrorDeadLettersImmediately(t *testing.T) {
 	}
 }
 
+// TestWorker_RetirementRaceSupersedesWithoutResurrecting pins the FENCED
+// terminal transition (outbox_index_fence.go): an asset.index.requested event
+// that is claimed and handled AFTER the deletion saga retired the asset must
+// terminate as `superseded`, must NOT flip index_state back to INDEXED, and
+// must NOT write a vector for the deleted asset.
+//
+// Before the fence, the worker ran an unconditional
+// `UPDATE ... SET index_state='INDEXED' WHERE id=$1`, so a stale index request
+// resurrected the row and re-published a deleted asset in semantic search.
+func TestWorker_RetirementRaceSupersedesWithoutResurrecting(t *testing.T) {
+	worker, db, _ := newWorkerFixture(t)
+	ctx := context.Background()
+	metrics := &recordingOutboxStatusMetrics{}
+	worker.WithOutboxStatusMetrics(metrics)
+
+	seedIndexableAsset(t, db, "yt_worker_retired_v1")
+
+	// Claim BEFORE the retirement so the race is exact: the event is already
+	// in flight when the delete saga lands.
+	claim := claimPendingEvent(t, db)
+	if claim == nil {
+		t.Fatal("expected a pending asset.index.requested event")
+	}
+	if _, err := db.Exec(`
+		UPDATE media_assets
+		SET index_state = 'DELETED', lifecycle_state = 'DELETED'
+		WHERE id = 'yt_worker_retired_v1'
+	`); err != nil {
+		t.Fatalf("retire asset: %v", err)
+	}
+
+	// Handling a superseded event is the SUCCESS of handling it: the work can
+	// never become applicable again, so the drain loop must not retry it.
+	if err := worker.Handle(ctx, claim); err != nil {
+		t.Fatalf("worker.Handle on a retired asset must terminate, got: %v", err)
+	}
+
+	var status, lastErr string
+	if err := db.QueryRow(`SELECT status, last_error FROM outbox_events WHERE id = $1`, claim.Event.ID).Scan(&status, &lastErr); err != nil {
+		t.Fatalf("read event: %v", err)
+	}
+	if status != "superseded" {
+		t.Fatalf("event status = %q, want superseded", status)
+	}
+	if lastErr == "" {
+		t.Fatal("a superseded event must record the reason in last_error (never silently dropped)")
+	}
+
+	// No vector may be written for a retired asset.
+	var vectors int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_embeddings WHERE asset_id = 'yt_worker_retired_v1'`).Scan(&vectors); err != nil {
+		t.Fatalf("count embeddings: %v", err)
+	}
+	if vectors != 0 {
+		t.Fatalf("embedding rows = %d for a retired asset, want 0", vectors)
+	}
+
+	// The tombstone survives: the fence never resurrects INDEXED.
+	var state, lifecycle string
+	if err := db.QueryRow(`SELECT index_state, lifecycle_state FROM media_assets WHERE id = 'yt_worker_retired_v1'`).Scan(&state, &lifecycle); err != nil {
+		t.Fatalf("read asset: %v", err)
+	}
+	if state != "DELETED" {
+		t.Fatalf("index_state = %q after handling, want DELETED (no resurrection)", state)
+	}
+	if lifecycle != "DELETED" {
+		t.Fatalf("lifecycle_state = %q after handling, want DELETED", lifecycle)
+	}
+
+	// The supersede is projected on its own counter, never as processed work.
+	if got := metrics.superseded["asset.index.requested"]; got != 1 {
+		t.Fatalf("superseded counter = %d, want 1", got)
+	}
+	if got := metrics.processed["asset.index.requested"]; got != 0 {
+		t.Fatalf("processed counter = %d for a superseded event, want 0", got)
+	}
+
+	// Terminal: the event is no longer claimable.
+	repo := pgmedia.NewOutboxRepository(db)
+	next, err := repo.ClaimNext(ctx, "worker-test", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNext: %v", err)
+	}
+	if next != nil {
+		t.Fatalf("a superseded event must not be reclaimable; got event %d (%s)", next.Event.ID, next.Event.Status)
+	}
+}
+
+// TestWorker_DeletePendingAssetSupersedes pins the in-flight half of the same
+// fence: an asset whose index-delete hop already stamped DELETE_PENDING is
+// being retired, so an index request must not interleave a re-index into it.
+func TestWorker_DeletePendingAssetSupersedes(t *testing.T) {
+	worker, db, _ := newWorkerFixture(t)
+	ctx := context.Background()
+
+	seedIndexableAsset(t, db, "yt_worker_deletepending_v1")
+	claim := claimPendingEvent(t, db)
+	if claim == nil {
+		t.Fatal("expected a pending asset.index.requested event")
+	}
+	if _, err := db.Exec(`UPDATE media_assets SET index_state = 'DELETE_PENDING' WHERE id = 'yt_worker_deletepending_v1'`); err != nil {
+		t.Fatalf("stamp DELETE_PENDING: %v", err)
+	}
+
+	if err := worker.Handle(ctx, claim); err != nil {
+		t.Fatalf("worker.Handle on a retiring asset must terminate, got: %v", err)
+	}
+
+	var status string
+	if err := db.QueryRow(`SELECT status FROM outbox_events WHERE id = $1`, claim.Event.ID).Scan(&status); err != nil {
+		t.Fatalf("read event: %v", err)
+	}
+	if status != "superseded" {
+		t.Fatalf("event status = %q, want superseded", status)
+	}
+	var vectors int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM media_embeddings WHERE asset_id = 'yt_worker_deletepending_v1'`).Scan(&vectors)
+	if vectors != 0 {
+		t.Fatalf("embedding rows = %d while retiring, want 0", vectors)
+	}
+	var state string
+	_ = db.QueryRow(`SELECT index_state FROM media_assets WHERE id = 'yt_worker_deletepending_v1'`).Scan(&state)
+	if state != "DELETE_PENDING" {
+		t.Fatalf("index_state = %q, want DELETE_PENDING (fence must not flip a retiring asset)", state)
+	}
+}
+
+// TestWorker_RestoredAssetStillIndexes pins the fence's negative space: the
+// restore producer stamps index_state=DISCOVERED before re-emitting the index
+// request, so a restored asset is NOT in the retired set and must index
+// normally. Without this the fence would silently break restore.
+func TestWorker_RestoredAssetStillIndexes(t *testing.T) {
+	worker, db, _ := newWorkerFixture(t)
+	ctx := context.Background()
+
+	seedIndexableAsset(t, db, "yt_worker_restored_v1")
+	claim := claimPendingEvent(t, db)
+	if claim == nil {
+		t.Fatal("expected a pending asset.index.requested event")
+	}
+	// Exactly what delete_saga.go::EnqueueAndRestore writes before emitting.
+	if _, err := db.Exec(`UPDATE media_assets SET index_state = 'DISCOVERED' WHERE id = 'yt_worker_restored_v1'`); err != nil {
+		t.Fatalf("stamp DISCOVERED: %v", err)
+	}
+
+	if err := worker.Handle(ctx, claim); err != nil {
+		t.Fatalf("worker.Handle on a restored asset: %v", err)
+	}
+
+	// The terminal transition writes BOTH representations of the same fact
+	// (dual-write expand parity with UpdateMediaAssetIndexState): the legacy
+	// TEXT timestamp and its TIMESTAMPTZ mirror.
+	var state string
+	var updatedAt string
+	var tsSet bool
+	if err := db.QueryRow(`
+		SELECT index_state, COALESCE(index_state_updated_at, ''),
+		       (index_state_updated_at_ts IS NOT NULL)
+		FROM media_assets WHERE id = 'yt_worker_restored_v1'`).Scan(&state, &updatedAt, &tsSet); err != nil {
+		t.Fatalf("read index_state: %v", err)
+	}
+	if state != "INDEXED" {
+		t.Fatalf("restored asset index_state = %q, want INDEXED", state)
+	}
+	if updatedAt == "" {
+		t.Error("index_state_updated_at must be stamped by the terminal transition")
+	}
+	if !tsSet {
+		t.Error("index_state_updated_at_ts must mirror index_state_updated_at (dual-write expand)")
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM outbox_events WHERE id = $1`, claim.Event.ID).Scan(&status); err != nil {
+		t.Fatalf("read event: %v", err)
+	}
+	if status != "completed" {
+		t.Fatalf("event status = %q, want completed", status)
+	}
+}
+
 // TestWorker_FailClosedOnUnknownAsset pins that a referenced-but-missing
 // asset fails the worker (retried, then dead-lettered) rather than
 // writing an orphan vector.

@@ -40,7 +40,17 @@ type defaultClipSampler struct {
 // 10-gate audit pipeline wired in. This is the only
 // constructor; godlike/06 SSOT forbids alternative impls.
 func NewDefaultClipSampler() ports.ClipSampler {
-	return &defaultClipSampler{gates: defaultGates()}
+	return NewDefaultClipSamplerWithDeps(SamplerGateDeps{})
+}
+
+// NewDefaultClipSamplerWithDeps is the composition-root constructor: it wires
+// the engine-named reads the subtitle_ready gate needs (MEDIA-SSOT P2-9
+// Phase 2). NewDefaultClipSampler remains the dependency-free form used by
+// isolated tests and by any composition site that has no media plane; in that
+// form the subtitle gate is vacuous, exactly as it was when the retired
+// package-global SamplerDB was nil.
+func NewDefaultClipSamplerWithDeps(deps SamplerGateDeps) ports.ClipSampler {
+	return &defaultClipSampler{gates: defaultGates(deps)}
 }
 
 // Select applies the canonical dedup + limit + coverage + 10-gate

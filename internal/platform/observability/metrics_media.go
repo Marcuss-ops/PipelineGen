@@ -78,9 +78,23 @@ var (
 		Help: "Total number of asset.index.* handler entries, by event_type",
 	}, []string{"event_type"})
 
+	// MediaIndexSupersededTotal counts asset.index.requested events that the
+	// PostgreSQL media index worker terminated as `superseded` WITHOUT retry
+	// because the work can never become applicable again: the asset is retiring
+	// (index_state=DELETE_PENDING) or already retired (index_state=DELETED), so
+	// the terminal INDEXED transition is fenced off. Writer:
+	// postgres/media.PostgresIndexWorker (via OutboxStatusMetrics.
+	// ObserveOutboxSuperseded) — the retirement fence in outbox_index_fence.go.
+	//
+	// NOTE (2026-09-16): the previous Help text described a source_version
+	// supersede gate. That gate no longer exists on this plane and never needs
+	// to: the worker resolves the vector from the LIVE row (search_text read at
+	// embed time) instead of an event snapshot, so an out-of-order duplicate
+	// re-embeds current content and converges. Retirement is the case that is
+	// genuinely unrepairable.
 	MediaIndexSupersededTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "media_index_superseded_total",
-		Help: "Total number of asset.index.requested events short-circuited by source_version supersede, by event_type",
+		Help: "Total number of media index events terminated as superseded without retry because the asset is retiring or already retired, by event_type",
 	}, []string{"event_type"})
 
 	// MediaIndexSkippedTotal (PR-QDRANT-INDEXCLIP-GUARD, July 2026):

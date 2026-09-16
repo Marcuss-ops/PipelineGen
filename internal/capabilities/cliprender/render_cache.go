@@ -6,9 +6,24 @@
 // certified, staged and committed.
 //
 // Storage is PostgreSQL media path (a new table, not the legacy SQLite
-// sidecar). The cache is bounded by the media row it points at — when
-// the row is deleted/overwritten the entry naturally misses. No extra
-// janitor beyond DB vacuum.
+// sidecar). No extra janitor beyond DB vacuum.
+//
+// STALENESS IS CHECKED, NOT ASSUMED. The comment above used to claim the
+// cache "naturally misses" when the media row is deleted. It did not:
+// clip_render_cache carries no foreign key to media_assets and Get() returned
+// the row without reading the asset at all, so a deleted or overwritten asset
+// still produced a HIT — and the batch handler trusts the record immediately
+// (fingerprint -> asset_id -> status=CACHED), so the product would report a
+// certified artifact that no longer exists. Get() therefore JOINs the media
+// row and requires BOTH identity and content to agree:
+//
+//	cache row + asset exists + same content sha256 + ACTIVE/not-deleted -> HIT
+//	cache row + asset missing                                          -> MISS
+//	cache row + asset sha256 differs (overwritten)                     -> MISS
+//	cache row + asset retired (DELETED / deleted_at set)               -> MISS
+//
+// A MISS is the fail-safe direction: the worker renders a fresh artifact
+// instead of advertising a stale locator.
 //
 // Lookup key: fingerprint hex (64 chars, lower hex). Value is the
 // certified locator and the committed asset id, so the worker can
@@ -74,9 +89,9 @@ var _ RenderCache = (*pgRenderCache)(nil)
 //	);
 //
 // The table lives in the PostgreSQL media database (same DSN as
-// MediaSearcher/MediaCommitter). No trigger, no FK — the entry is
-// a hint that points at a row in media_assets; on miss the worker
-// renders.
+// MediaSearcher/MediaCommitter). No trigger, no FK: the entry is a hint that
+// points at a row in media_assets, and Get() validates that row explicitly
+// (see the staleness contract above) rather than trusting the hint.
 type pgRenderCache struct {
 	db *sql.DB
 }
@@ -128,6 +143,24 @@ func EnsureRenderCacheTable(ctx context.Context, db *sql.DB) error {
 	return ensureRenderCacheTable(ctx, db)
 }
 
+// renderCacheGetQuery resolves a fingerprint to a certified locator, but only
+// while the media row it references still carries the same bytes.
+//
+// The JOIN is the whole point: without it the cache advertised artifacts that
+// had already been deleted or overwritten. `lifecycle_state`/`deleted_at`
+// cover the retirement states media_assets can be left in; a row that is no
+// longer ACTIVE must not be served as a hit.
+const renderCacheGetQuery = `
+		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend
+		FROM clip_render_cache c
+		JOIN media_assets a
+		  ON a.id = c.asset_id
+		 AND a.content_sha256 = c.sha256
+		WHERE c.fingerprint = $1
+		  AND a.lifecycle_state = 'ACTIVE'
+		  AND a.deleted_at = ''`
+
 func (c *pgRenderCache) Get(ctx context.Context, fingerprint string) (*RenderCacheRecord, error) {
 	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
 	if fingerprint == "" {
@@ -136,12 +169,7 @@ func (c *pgRenderCache) Get(ctx context.Context, fingerprint string) (*RenderCac
 	if c == nil || c.db == nil {
 		return nil, fmt.Errorf("clip.render cache: not wired (media DB nil)")
 	}
-	const q = `
-		SELECT fingerprint, asset_id, storage_key, artifact_url, content_type,
-		       sha256, size_bytes, duration_sec, width, height, fps_num, fps_den, backend
-		FROM clip_render_cache
-		WHERE fingerprint = $1`
-	row := c.db.QueryRowContext(ctx, q, fingerprint)
+	row := c.db.QueryRowContext(ctx, renderCacheGetQuery, fingerprint)
 	var r RenderCacheRecord
 	var backend string
 	if err := row.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
@@ -197,6 +225,13 @@ func (c *pgRenderCache) Put(ctx context.Context, rec *RenderCacheRecord) error {
 
 // memoryRenderCache is the in-process fallback for tests and for the
 // media-disabled path. Not used in production.
+//
+// It holds only the records Put into it and has no view of media_assets, so it
+// cannot reproduce the postgres cache's staleness check. That check is pinned
+// against a live PostgreSQL in render_cache_postgres_test.go; keeping the
+// in-process double validation-free is deliberate — a double that pretended to
+// validate would make the hermetic suite pass over the very bug the SQL JOIN
+// exists to prevent.
 type memoryRenderCache struct {
 	m map[string]*RenderCacheRecord
 }

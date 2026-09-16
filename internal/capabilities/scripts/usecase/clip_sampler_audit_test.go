@@ -99,7 +99,7 @@ func TestDefaultGatesCanonicalOrder(t *testing.T) {
 	// the audit-test fixture in lock-step — the order is now
 	// independently observable from the canonical name list.
 	got := []string{}
-	for _, g := range defaultGates() {
+	for _, g := range defaultGates(SamplerGateDeps{}) {
 		got = append(got, g.Name())
 	}
 	want := []string{

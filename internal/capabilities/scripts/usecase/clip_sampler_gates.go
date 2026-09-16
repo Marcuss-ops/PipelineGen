@@ -33,7 +33,6 @@ package usecase
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math"
 	"strings"
@@ -376,42 +375,86 @@ func (formatCompatibleGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 	return true, ""
 }
 
-var SamplerDB *sql.DB
+// ── subtitle_ready gate dependencies ─────────────────────────────────────────
+//
+// MEDIA-SSOT P2-9 Phase 2. The gate previously reached its two facts through a
+// package-global `SamplerDB *sql.DB` (set by
+// wiring.wire_script_resolvers.go::SetSamplerDB) and read them in ONE statement
+// joining media_assets to asset_subtitle_artifacts. Measuring that statement's
+// two tables showed they do not share an engine:
+//
+//	media_assets                → PostgreSQL media SSOT (canonical)
+//	asset_subtitle_artifacts    → SQLite ONLY (no PG table, no PG writer)
+//
+// so the read could not simply be re-pointed at PostgreSQL, and leaving it on
+// SQLite meant the gate graded `media_assets.source` in a database that holds no
+// committed media rows. The facts are now read through two narrow, engine-named
+// ports resolved by the composition root, and the package-global is gone: a
+// hidden global was the reason the engine could not be seen, let alone chosen.
+//
+// A nil port keeps the gate vacuous (it passes), which preserves the historical
+// `SamplerDB == nil` behaviour exactly — a degraded sampler must not start
+// rejecting every candidate because a read surface is unwired.
+type SamplerGateDeps struct {
+	// AssetSource reads the canonical media source for a candidate (media
+	// SSOT). nil ⇒ the gate is vacuous.
+	AssetSource AssetSourceReader
+	// ReadyASSArtifacts counts READY ASS subtitle artifacts for a candidate
+	// (operational plane — the table has no PostgreSQL home yet).
+	// nil ⇒ the gate is vacuous.
+	ReadyASSArtifacts ReadyASSArtifactCounter
+}
 
-func SetSamplerDB(db *sql.DB) {
-	SamplerDB = db
+// AssetSourceReader is the narrow media-SSOT read behind the subtitle gate: the
+// canonical `source` of one asset. It is deliberately one column — the gate only
+// needs the source to decide whether subtitles are required at all.
+type AssetSourceReader interface {
+	AssetSource(ctx context.Context, assetID string) (string, error)
+}
+
+// ReadyASSArtifactCounter counts the READY ASS subtitle artifacts of one asset.
+// This table is operational-only, so this port is NOT a media read and must not
+// be re-pointed at the media SSOT until asset_subtitle_artifacts has a canonical
+// PostgreSQL home.
+type ReadyASSArtifactCounter interface {
+	CountReadyASSArtifacts(ctx context.Context, assetID string) (int, error)
 }
 
 // 11. subtitleReadyGate fails when the asset requires subtitles but does not have a READY ASS artifact.
-type subtitleReadyGate struct{}
+type subtitleReadyGate struct {
+	deps SamplerGateDeps
+}
 
 func (subtitleReadyGate) Name() string { return "subtitle_ready" }
 
-func (subtitleReadyGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
-	if SamplerDB == nil {
+func (g subtitleReadyGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
+	if g.deps.AssetSource == nil || g.deps.ReadyASSArtifacts == nil {
 		return true, ""
 	}
-	var source string
-	var hasReadySubtitle int
-	err := SamplerDB.QueryRowContext(context.Background(), `
-		SELECT COALESCE(source, '') AS source,
-		       (SELECT COUNT(*) FROM asset_subtitle_artifacts
-				WHERE asset_id = media_assets.id
-				  AND format = 'ass'
-				  AND status = 'READY'
-				  AND drive_file_id <> ''
-				  AND drive_url <> ''
-				  AND is_current = 1)
-		FROM media_assets
-		WHERE id = ?`, in.Candidate.ClipID).Scan(&source, &hasReadySubtitle)
-	if err != nil {
-		return false, fmt.Sprintf("database lookup failed for %s: %v", in.Candidate.ClipID, err)
-	}
+	// context.Background() is deliberate and preserves the previous behaviour:
+	// SamplerGate.Evaluate carries no context, so the gate cannot honour caller
+	// cancellation today. Widening the interface is a separate change and must
+	// not be smuggled in with an engine migration.
+	ctx := context.Background()
 
-	if detail.RequiresSubtitles(source) {
-		if hasReadySubtitle == 0 {
-			return false, fmt.Sprintf("clip source %q requires subtitles but no READY ASS artifact exists", source)
-		}
+	source, err := g.deps.AssetSource.AssetSource(ctx, in.Candidate.ClipID)
+	if err != nil {
+		return false, fmt.Sprintf("media source lookup failed for %s: %v", in.Candidate.ClipID, err)
+	}
+	// The artifact count is only meaningful when subtitles are required, so it is
+	// not read otherwise. That is a deliberate tightening of the previous single
+	// statement: the retired query failed the gate on ANY error from the combined
+	// read, including for candidates whose source never required subtitles, i.e.
+	// it could reject a candidate over a fact it was never going to consult.
+	if !detail.RequiresSubtitles(source) {
+		return true, ""
+	}
+	hasReadySubtitle, err := g.deps.ReadyASSArtifacts.CountReadyASSArtifacts(ctx, in.Candidate.ClipID)
+	if err != nil {
+		return false, fmt.Sprintf("subtitle artifact lookup failed for %s: %v", in.Candidate.ClipID, err)
+	}
+	if hasReadySubtitle == 0 {
+		return false, fmt.Sprintf("clip source %q requires subtitles but no READY ASS artifact exists", source)
 	}
 	return true, ""
 }
@@ -419,7 +462,7 @@ func (subtitleReadyGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 // defaultGates returns the canonical 11-gate list in evaluation
 // order. The order is itself part of the audit contract: every
 // sampler run evaluates gates in this sequence (deterministic).
-func defaultGates() []SamplerGate {
+func defaultGates(deps SamplerGateDeps) []SamplerGate {
 	return []SamplerGate{
 		topicRelevanceGate{},
 		sourceAnchorCoverageGate{},
@@ -431,6 +474,6 @@ func defaultGates() []SamplerGate {
 		noDuplicatesAcrossSlotsGate{},
 		transcriptVisualSummaryPresentGate{},
 		formatCompatibleGate{},
-		subtitleReadyGate{},
+		subtitleReadyGate{deps: deps},
 	}
 }

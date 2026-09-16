@@ -104,9 +104,15 @@ type StockSourceCacheDeps struct {
 // StockRuntimeDeps groups the runtime environment the stock bundle
 // needs (Cfg, Log, DB). Field count: 3.
 type StockRuntimeDeps struct {
-	Cfg        *config.Config
-	Log        *zap.Logger
-	DB         *sql.DB // optional (nil → in-memory)
+	Cfg *config.Config
+	Log *zap.Logger
+	DB  *sql.DB // optional (nil → in-memory)
+	// MediaDB is the PostgreSQL media-SSOT handle (root.MediaPostgres). The
+	// stock enrichment read plane MUST use it: reading media_assets from the
+	// operational SQLite store is the Postgres-writer/SQLite-reader
+	// split-brain. nil ⇒ the media plane is closed and enrichment is not
+	// registered (godlike/07 fail-closed; there is no SQLite media fallback).
+	MediaDB    *sql.DB
 	JobCreator stockpipeline.JobCreator
 	StepStore  stocksteps.Store
 }
