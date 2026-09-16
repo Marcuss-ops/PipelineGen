@@ -180,8 +180,81 @@ func (c *sceneReadyCoordinator) submit(scene Scene) {
 	}()
 }
 
+// processFixedDisplayText translates a fixed-media scene's display text into
+// every target language (Intro V2 subtitle surface). It performs translation
+// ONLY: no TTS, no voiceover, no audio intents, no render fan-out. An empty
+// source display text is a legitimate no-op (nothing to caption).
+func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error) {
+	if !out.ExecutionMode.AllowsDisplayTextTranslation() {
+		return out, nil
+	}
+	if out.Text == nil {
+		out.Text = make(map[Language]string)
+	}
+	sourceText := strings.TrimSpace(out.Text[c.req.SourceLanguage])
+	if sourceText == "" {
+		return out, nil
+	}
+	langs := make([]Language, 0, len(c.req.Languages))
+	seen := map[Language]bool{}
+	for _, lang := range c.req.Languages {
+		if lang == "" || lang == c.req.SourceLanguage || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		if out.Text[lang] != "" {
+			continue
+		}
+		langs = append(langs, lang)
+	}
+	work := make([]sceneLanguageWork, 0, len(langs))
+	for _, lang := range langs {
+		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: true})
+	}
+	outcomes, err := concurrent.Map(c.ctx, work, c.translationSlots.Cap(), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
+		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
+		if err != nil {
+			return sceneLanguageOutcome{}, err
+		}
+		return sceneLanguageOutcome{lang: item.lang, text: translated, translated: true}, nil
+	})
+	if err != nil {
+		return Scene{}, err
+	}
+	for _, res := range outcomes {
+		if res.translated {
+			out.Text[res.lang] = res.text
+		}
+	}
+	for _, res := range outcomes {
+		if !res.translated {
+			continue
+		}
+		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
+			OperationID: artifactOperationID(c.exec.Attempt, OperationTranslation, out.ID, string(res.lang)),
+			Kind:        OperationTranslation,
+			SceneID:     out.ID,
+			Language:    res.lang,
+			Status:      "COMPLETED",
+		}); err != nil {
+			return Scene{}, err
+		}
+	}
+	c.mu.Lock()
+	c.transCalls += len(outcomes)
+	c.mu.Unlock()
+	return out, nil
+}
+
 func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	out := scene
+	if out.ExecutionMode.IsFixedMedia() {
+		// Intro V2: fixed media never enters TTS/narration, but its display
+		// text IS a subtitle surface — translate it so localized renders burn
+		// translated captions. No voiceover, no render fan-out here (renders
+		// fan out per language in the localized-render phase).
+		return c.processFixedDisplayText(out)
+	}
 	if !out.ExecutionMode.AllowsTranslation() || !out.ExecutionMode.AllowsTTS() || !out.ExecutionMode.AllowsGeneratedAudio() {
 		return out, nil
 	}

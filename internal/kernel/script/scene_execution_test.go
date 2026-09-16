@@ -40,6 +40,21 @@ func TestSceneExecutionModeFixedMediaBlocksMutatingPipelineWork(t *testing.T) {
 	}
 }
 
+// TestSceneExecutionModeDisplayTextTranslationIsSubtitleOnly pins the Intro V2
+// contract: display text may be translated for subtitle/caption burn in every
+// mode, while narrative translation (LLM/TTS surface) stays blocked for fixed
+// media.
+func TestSceneExecutionModeDisplayTextTranslationIsSubtitleOnly(t *testing.T) {
+	for _, mode := range []SceneExecutionMode{SceneExecutionGenerated, SceneExecutionFixedMedia} {
+		if !mode.AllowsDisplayTextTranslation() {
+			t.Errorf("mode %q must allow display-text translation for subtitle burn", mode)
+		}
+	}
+	if SceneExecutionFixedMedia.AllowsTranslation() {
+		t.Error("fixed_media must never allow narrative translation")
+	}
+}
+
 func TestSceneExecutionModeEmptyIsGeneratedAndUnknownFailsClosed(t *testing.T) {
 	if got := SceneExecutionMode("").Normalize(); got != SceneExecutionGenerated {
 		t.Fatalf("empty mode normalized to %q, want generated", got)

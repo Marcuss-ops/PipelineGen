@@ -36,7 +36,11 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		}
 		work := make([]translationWork, 0, len(result.Scenes)*len(req.Languages))
 		for i := range result.Scenes {
-			if !result.Scenes[i].ExecutionMode.AllowsTranslation() {
+			fixedDisplay := result.Scenes[i].ExecutionMode.IsFixedMedia()
+			if !result.Scenes[i].ExecutionMode.AllowsTranslation() && !fixedDisplay {
+				continue
+			}
+			if fixedDisplay && !result.Scenes[i].ExecutionMode.AllowsDisplayTextTranslation() {
 				continue
 			}
 			for _, lang := range req.Languages {

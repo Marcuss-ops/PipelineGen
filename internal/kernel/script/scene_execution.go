@@ -43,6 +43,13 @@ func (m SceneExecutionMode) IsFixedMedia() bool {
 // AllowsTranslation authorizes changing narrative text for this scene.
 func (m SceneExecutionMode) AllowsTranslation() bool { return !m.IsFixedMedia() }
 
+// AllowsDisplayTextTranslation authorizes translating the fixed display text
+// for subtitle/caption burn (Intro V2). Fixed media never enters the LLM, TTS,
+// or narration pipelines, but its display text IS a subtitle surface: without
+// translation the intro/outro burns source-language captions on every
+// localized render. This is deliberately narrower than AllowsTranslation.
+func (m SceneExecutionMode) AllowsDisplayTextTranslation() bool { return true }
+
 // AllowsTTS authorizes synthesizing generated speech for this scene.
 func (m SceneExecutionMode) AllowsTTS() bool { return !m.IsFixedMedia() }
 

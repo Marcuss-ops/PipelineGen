@@ -192,7 +192,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		soundEffects = item.Output.Audio.SoundEffects
 	}
 
-	return GenerateRequest{
+	req := GenerateRequest{
 		Model:               item.Model,
 		Tone:                item.Tone,
 		Style:               item.Style,
@@ -236,7 +236,17 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		MixPolicy:         mixPolicy,
 		BackgroundMusic:   backgroundMusic,
 		SoundEffects:      soundEffects,
-	}, nil
+	}
+	// Background centralizzato ON (Intro V2): the canonical editorial
+	// selection policy fills the assets the caller left blank (background
+	// plate, BGM in COMBINED_TIMELINE). It NEVER overrides a
+	// caller-provided selection — an explicit mode (including "none") is
+	// preserved — so this is a pure default-fill at the single ingress
+	// point both job handlers share.
+	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
+	}
+	return req, nil
 }
 
 func toLanguages(src []string) []Language {

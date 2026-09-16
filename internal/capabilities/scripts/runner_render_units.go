@@ -112,3 +112,56 @@ func localizedRenderCaptionText(req GenerateRequest, scene Scene) string {
 	}
 	return text
 }
+
+// fixedRenderLanguages returns the ordered language list for a fixed-media
+// scene's localized render fan-out (Intro V2): source first, then caller
+// target order, deduplicated. A language without translated display text
+// still renders — subtitles degrade to the source track downstream — so the
+// list is never filtered by text presence, keeping the expected-render count
+// deterministic before translations complete.
+func fixedRenderLanguages(req GenerateRequest, scene Scene) []Language {
+	_ = scene
+	langs := make([]Language, 0, len(req.Languages)+1)
+	seen := make(map[Language]bool, len(req.Languages)+1)
+	if req.SourceLanguage != "" {
+		langs = append(langs, req.SourceLanguage)
+		seen[req.SourceLanguage] = true
+	}
+	for _, lang := range req.Languages {
+		if lang == "" || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		langs = append(langs, lang)
+	}
+	if len(langs) == 0 {
+		langs = append(langs, req.SourceLanguage)
+	}
+	return langs
+}
+
+// fixedCaptionText resolves the caption for one fixed render unit in the
+// render language, falling back to the source display text. It NEVER falls
+// back to BODY source text (fixed-media firewall).
+func fixedCaptionText(scene Scene, source, lang Language) string {
+	if text := strings.TrimSpace(scene.Text[lang]); text != "" {
+		return text
+	}
+	return strings.TrimSpace(scene.Text[source])
+}
+
+// expectedRenderUnits counts localized renders including the Intro V2 fixed
+// multilingual fan-out (fixed units × render languages). Generated scenes
+// stay source-only in the explicit-clip path.
+func expectedRenderUnits(req GenerateRequest, scenes []Scene) int {
+	total := 0
+	for _, scene := range scenes {
+		units := len(RenderUnitsForScene(scene))
+		if scene.ExecutionMode.IsFixedMedia() {
+			total += units * len(fixedRenderLanguages(req, scene))
+		} else {
+			total += units
+		}
+	}
+	return total
+}
