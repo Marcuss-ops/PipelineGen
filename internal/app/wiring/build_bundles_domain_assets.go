@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 
 	mediamemoryindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
@@ -118,9 +119,23 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		Dispatcher:    params.outbox.Dispatcher,
 	})
 
+	// MEDIA-SSOT P2-9 Phase 2: the enrich_state transition primitive resolves
+	// from the canonical committer's engine, NOT from params.repos.ClipsRepo.
+	// media_assets is owned by PostgreSQL, and the previous wiring made
+	// enrichment a SECOND writer of enrich_state on the operational mirror
+	// while pgmedia (writer.go) wrote the SSOT — the VLM sweeper then read
+	// PENDING rows from the mirror and claimed them there, so the fact and its
+	// transitions lived on a database no canonical writer maintains. A closed
+	// media plane leaves enrichState nil (the sweeper fails closed with
+	// "enrichment state machine is not wired") rather than degrading onto
+	// SQLite.
 	var enrichState enrichment.EnrichStateMachinePort
-	if params.repos.ClipsRepo != nil {
-		esm, err := enrichment.NewEnrichStateMachine(params.repos.ClipsRepo)
+	if store := enrichStateStoreFromCommitter(canonicalCommitter); store != nil {
+		// Compile-time pin: the platform store must satisfy the capability's
+		// port. It is asserted HERE, at the only site that holds both types,
+		// because pgmedia cannot import the capability to declare it.
+		var repo enrichment.EnrichRepositoryPort = store
+		esm, err := enrichment.NewEnrichStateMachine(repo)
 		if err != nil {
 			return fmt.Errorf("compose domains: enrich state machine: %w", err)
 		}
@@ -157,9 +172,20 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		frameIndexer = mediamemoryindexing.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
 	}
 
+	// MEDIA-SSOT P2-9 Phase 2: the VLM sweep SELECTOR resolves from the same
+	// media handle as its CLAIM. autotag.ServiceDeps.DB stays the operational
+	// handle (it still serves the non-media helpers), but media_assets is owned
+	// by PostgreSQL, so the candidate scan reads the SSOT. Passing the same
+	// committer-derived store here as enrichment state means the sweep can never
+	// select candidates on one engine and claim them on another.
+	var enrichCandidates autotag.EnrichmentCandidateReader
+	if store := enrichStateStoreFromCommitter(canonicalCommitter); store != nil {
+		enrichCandidates = pgmedia.NewMediaEnrichmentCandidateReader(store.DB())
+	}
 	autotagSvc := autotag.NewService(autotag.ServiceDeps{
 		DB: params.dbs.DualPool.Writer, Repo: params.repos.Assets.Repository(),
-		VLMClient: params.process.VLMClient, Committer: canonicalCommitter,
+		EnrichCandidates: enrichCandidates,
+		VLMClient:        params.process.VLMClient, Committer: canonicalCommitter,
 		EnrichState: enrichState, Log: params.log,
 		VideoAnalysis: autotag.VideoAnalysisDeps{
 			Sampler: videoSampler, VLM: visualVLM,

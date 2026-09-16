@@ -159,6 +159,9 @@ func applyMediaMigrations(db *sql.DB) error {
 		pgmigration.MediaAssetVersionsDDL,
 		pgmigration.MediaClipFoldersDDL,
 		pgmigration.MediaAssetProcessingDDL,
+		// 009 retires the face descriptor columns: applied last because 002
+		// uses CREATE TABLE IF NOT EXISTS and cannot converge an existing db.
+		pgmigration.MediaDropAssetFacesDDL,
 	}
 	for i, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

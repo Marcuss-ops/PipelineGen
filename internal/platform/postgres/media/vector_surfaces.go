@@ -40,17 +40,19 @@ func NewVectorSurfaceWriter(db *sql.DB) *VectorSurfaceWriter {
 }
 
 // AssetFeatureRecord is one row of media_asset_features: the hard visual
-// descriptors the MediaSampler filters on (duration/motion/faces live
-// alongside the embedding, never inside it).
+// descriptors the MediaSampler filters on (duration/motion live alongside
+// the embedding, never inside it).
+//
+// The face descriptors are RETIRED (2026-09-16): the endpoint that fed
+// them was never served, so requiring them made the whole row
+// unproducible. There is deliberately no field for a dimension nobody
+// measures — a defaulted "no faces" value would be a fabricated fact.
 type AssetFeatureRecord struct {
-	AssetID          string
-	DominantColor    string
-	MotionScore      *float64
-	HasFaces         bool
-	FaceCount        *int
-	LargestFaceRatio *float64
-	AnalyzedAt       string
-	AnalyzerVersion  string
+	AssetID         string
+	DominantColor   string
+	MotionScore     *float64
+	AnalyzedAt      string
+	AnalyzerVersion string
 }
 
 // RegisterEmbeddingFamily registers an allowed (embedding_type, model_id,
@@ -189,23 +191,16 @@ func (w *VectorSurfaceWriter) upsertAssetFeaturesTx(ctx context.Context, tx *sql
 	if strings.TrimSpace(rec.AssetID) == "" {
 		return fmt.Errorf("media features: asset_id is required")
 	}
-	hasFaces := 0
-	if rec.HasFaces {
-		hasFaces = 1
-	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO media_asset_features
-		    (asset_id, dominant_color, motion_score, has_faces, face_count, largest_face_ratio, analyzed_at, analyzer_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		    (asset_id, dominant_color, motion_score, analyzed_at, analyzer_version)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (asset_id) DO UPDATE SET
-		    dominant_color     = EXCLUDED.dominant_color,
-		    motion_score       = EXCLUDED.motion_score,
-		    has_faces          = EXCLUDED.has_faces,
-		    face_count         = EXCLUDED.face_count,
-		    largest_face_ratio = EXCLUDED.largest_face_ratio,
-		    analyzed_at        = EXCLUDED.analyzed_at,
-		    analyzer_version   = EXCLUDED.analyzer_version
-	`, rec.AssetID, rec.DominantColor, rec.MotionScore, hasFaces, rec.FaceCount, rec.LargestFaceRatio, rec.AnalyzedAt, rec.AnalyzerVersion)
+		    dominant_color   = EXCLUDED.dominant_color,
+		    motion_score     = EXCLUDED.motion_score,
+		    analyzed_at      = EXCLUDED.analyzed_at,
+		    analyzer_version = EXCLUDED.analyzer_version
+	`, rec.AssetID, rec.DominantColor, rec.MotionScore, rec.AnalyzedAt, rec.AnalyzerVersion)
 	if err != nil {
 		return fmt.Errorf("media features: upsert asset %q: %w", rec.AssetID, err)
 	}

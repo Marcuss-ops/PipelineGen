@@ -124,7 +124,7 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	// an already-populated media database. 003 registers the canonical
 	// embedding families and creates the production HNSW ANN indexes;
 	// 004 adds TIMESTAMPTZ mirrors for every hot-path TEXT timestamp.
-	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL, pgmigration.MediaTimestampsTimestamptzDDL, pgmigration.MediaAssetVersionsDDL, pgmigration.MediaClipFoldersDDL, pgmigration.MediaAssetProcessingDDL} {
+	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL, pgmigration.MediaTimestampsTimestamptzDDL, pgmigration.MediaAssetVersionsDDL, pgmigration.MediaClipFoldersDDL, pgmigration.MediaAssetProcessingDDL, pgmigration.MediaDropAssetFacesDDL} {
 		if _, err := pg.ExecContext(ctx, ddl); err != nil {
 			return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 		}

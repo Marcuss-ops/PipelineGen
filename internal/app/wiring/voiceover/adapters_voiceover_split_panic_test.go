@@ -89,7 +89,7 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 		// signal to fix the upstream wiring error first.
 		require.PanicsWithValue(t,
 			"app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: repo is required (*sqassets.VoiceoversRepository)",
-			func() { _ = NewUseCaseRepoAdapter(nil, nil) },
+			func() { _ = NewUseCaseRepoAdapter(nil, nil, nil) },
 			"NewUseCaseRepoAdapter must panic with the canonical message when repo is nil (and short-circuit before db-nil guard)")
 	})
 	t.Run("Repo_NilDB_PanicsOnDB", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 		// and for fail-fast composition intent.
 		require.PanicsWithValue(t,
 			"app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: db is required (*sql.DB, used by BeginTx in P1-2)",
-			func() { _ = NewUseCaseRepoAdapter(&sqassets.VoiceoversRepository{}, nil) },
+			func() { _ = NewUseCaseRepoAdapter(&sqassets.VoiceoversRepository{}, nil, nil) },
 			"NewUseCaseRepoAdapter must panic with the canonical db-is-required message when repo is supplied but db is nil")
 	})
 	t.Run("Repo_HappyConstructs", func(t *testing.T) {
@@ -111,7 +111,7 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 		// runtime panic in this test, NOT a hidden production
 		// regression.
 		repo := &sqassets.VoiceoversRepository{}
-		adapter := NewUseCaseRepoAdapter(repo, &sql.DB{})
+		adapter := NewUseCaseRepoAdapter(repo, &sql.DB{}, stubMediaReader{})
 		require.NotNil(t, adapter, "Repo adapter must be non-nil with valid (repo, db) input")
 	})
 	t.Run("DestResolver_NilResolver_Constructs", func(t *testing.T) {
@@ -159,7 +159,41 @@ func TestSplit_ProjectionAdapter_PanicInvariants(t *testing.T) {
 	t.Run("PostCommitVerifier_NilDB_Panics", func(t *testing.T) {
 		require.PanicsWithValue(t,
 			"app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: db is required (*sql.DB)",
-			func() { _ = NewVoiceoverPostCommitVerifierAdapter(nil) },
+			func() { _ = NewVoiceoverPostCommitVerifierAdapter(nil, stubProjectionChecker{}) },
 			"NewVoiceoverPostCommitVerifierAdapter must panic with the canonical message when db is nil")
 	})
+	// MEDIA-SSOT P2-9 Phase 2: the verifier now checks TWO tables on TWO engines,
+	// so the media half is required too. Fail-fast on a missing media checker is
+	// what stops a single-handle construction from silently reappearing and
+	// grading media_assets on the operational store again.
+	t.Run("PostCommitVerifier_NilMediaChecker_Panics", func(t *testing.T) {
+		require.PanicsWithValue(t,
+			"app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: media is required (VoiceoverProjectionChecker; media_assets is PostgreSQL-owned)",
+			func() { _ = NewVoiceoverPostCommitVerifierAdapter(&sql.DB{}, nil) },
+			"NewVoiceoverPostCommitVerifierAdapter must panic when the media-SSOT checker is nil")
+	})
 }
+
+// stubProjectionChecker satisfies VoiceoverProjectionChecker for constructor
+// tests only. It exists so the panic invariants can be exercised without a live
+// media SSOT handle.
+type stubProjectionChecker struct{}
+
+func (stubProjectionChecker) VoiceoverProjectionExists(context.Context, string) (bool, error) {
+	return false, nil
+}
+
+var _ VoiceoverProjectionChecker = stubProjectionChecker{}
+
+// stubMediaReader satisfies VoiceoverMediaReader for constructor tests only.
+type stubMediaReader struct{}
+
+func (stubMediaReader) MediaAssetLocation(context.Context, string) (VoiceoverMediaLocation, bool, error) {
+	return VoiceoverMediaLocation{}, false, nil
+}
+
+func (stubMediaReader) CountByDriveFileID(context.Context, string, string) (string, int, error) {
+	return "", 0, nil
+}
+
+var _ VoiceoverMediaReader = stubMediaReader{}

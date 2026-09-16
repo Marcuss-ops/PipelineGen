@@ -23,7 +23,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -54,16 +53,46 @@ var _ persistence.Repository = (*UseCaseRepoAdapter)(nil)
 type UseCaseRepoAdapter struct {
 	repo *sqassets.VoiceoversRepository
 	db   *sql.DB
+	// media is the media-SSOT read surface for the two media_assets queries this
+	// adapter needs (MEDIA-SSOT P2-9 Phase 2). It is deliberately separate from db
+	// above: the voiceovers table is operational while media_assets is owned by
+	// PostgreSQL, and reading media_assets through the operational handle meant
+	// the cache lookup and the dedupe gate graded a database that holds no
+	// committed media rows.
+	media VoiceoverMediaReader
 }
 
-func NewUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db *sql.DB) *UseCaseRepoAdapter {
+// VoiceoverMediaReader is the narrow media-SSOT read surface this adapter needs.
+// Declaring it here keeps the adapter from naming an engine for the media half;
+// the composition root supplies a PostgreSQL-backed implementation.
+type VoiceoverMediaReader interface {
+	MediaAssetLocation(ctx context.Context, assetID string) (VoiceoverMediaLocation, bool, error)
+	CountByDriveFileID(ctx context.Context, driveFileID, currentID string) (matchedID string, count int, err error)
+}
+
+// VoiceoverMediaLocation mirrors the media-SSOT location projection. It is
+// declared here (rather than aliased) so this package owns its own types; the
+// composition root maps the platform type into it, which keeps the capability
+// free of any platform import.
+type VoiceoverMediaLocation struct {
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	LocalPath    string
+	Name         string
+}
+
+func NewUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db *sql.DB, media VoiceoverMediaReader) *UseCaseRepoAdapter {
 	if repo == nil {
 		panic("app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: repo is required (*sqassets.VoiceoversRepository)")
 	}
 	if db == nil {
 		panic("app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: db is required (*sql.DB, used by BeginTx in P1-2)")
 	}
-	return &UseCaseRepoAdapter{repo: repo, db: db}
+	if media == nil {
+		panic("app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: media is required (VoiceoverMediaReader; media_assets is PostgreSQL-owned)")
+	}
+	return &UseCaseRepoAdapter{repo: repo, db: db, media: media}
 }
 
 // BeginTx opens a new SQLite transaction on the production database.
@@ -107,34 +136,26 @@ func (a *UseCaseRepoAdapter) CountByDriveFileIDTx(
 	if err := ctx.Err(); err != nil {
 		return "", 0, err
 	}
-	// Location/hash facts were moved out of voiceovers by the asset
-	// projection migrations.  Query the canonical media_assets projection;
-	// the old voiceovers columns are absent in the live schema.
-	row := tx.QueryRowContext(ctx, `
-		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(file_hash,'')
-		  FROM media_assets
-		 WHERE drive_file_id = ? AND id != ?
-		 LIMIT 1
-	`, driveFileID, currentID)
-	var matchedID, driveLink, localPath, fileHash string
-	if scanErr := row.Scan(&matchedID, &driveLink, &localPath, &fileHash); scanErr != nil {
-		if errors.Is(scanErr, sql.ErrNoRows) {
-			return "", 0, nil
-		}
-		return "", 0, fmt.Errorf("CountByDriveFileIDTx: scan: %w", scanErr)
+	// MEDIA-SSOT P2-9 Phase 2: location/hash facts live in media_assets, which
+	// PostgreSQL owns, so the dedupe lookup resolves from the media SSOT through
+	// the narrow media port instead of querying media_assets on this tx's engine.
+	//
+	// The tx parameter is intentionally no longer used for the media read. The
+	// retired form ran the query INSIDE the finalizer's operational transaction,
+	// which bought snapshot isolation over a NON-AUTHORITATIVE copy of the table
+	// and could never have extended to the authoritative copy, because
+	// media_assets sits on another engine and cannot join a SQLite transaction. It
+	// was therefore reading the wrong database with stronger isolation. The
+	// verdict is also advisory by contract (DecideDedupe projects the count into
+	// Continue/Reuse/Conflict and the caller falls through on Continue), and no
+	// media_assets write happens in this transaction — the projection step is a
+	// fail-closed stub on the retired legacy branch — so there is no write for the
+	// read to be atomic WITH. Signature retained deliberately: it is a
+	// persistence.Repository port method.
+	if a == nil || a.media == nil {
+		return "", 0, fmt.Errorf("CountByDriveFileIDTx: no media-SSOT reader wired (media SSOT closed)")
 	}
-	var count int
-	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM media_assets WHERE drive_file_id = ? AND id != ?`,
-		driveFileID, currentID,
-	).Scan(&count); err != nil {
-		// Count failed but we DID find the row: degrade to count=1
-		// so the gate still reports the match without ambiguity
-		// inflation (matches the pre-P1-2 applyDedupeByDriveFileID
-		// graceful-degrade contract).
-		return matchedID, 1, nil
-	}
-	return matchedID, count, nil
+	return a.media.CountByDriveFileID(ctx, driveFileID, currentID)
 }
 
 // toInfraRecord converts the application-layer VoiceoverRecord
@@ -266,26 +287,33 @@ type voiceoverMediaAssetLocation struct {
 // findVoiceoverMediaAsset queries media_assets for the location columns
 // needed to build a valid VoiceoverCacheHit. Returns nil when the
 // media_assets row doesn't exist (legacy rows without the projection).
+// findVoiceoverMediaAsset queries the media SSOT for the location columns needed
+// to build a valid VoiceoverCacheHit. Returns nil when the media_assets row does
+// not exist (legacy rows without the projection), which the cache lookup treats
+// as a miss.
+//
+// MEDIA-SSOT P2-9 Phase 2: this used to run on a.db — the operational handle —
+// so a committed voiceover's location could look absent and a real cache hit
+// degraded into a full regeneration. The media fact now resolves from the media
+// SSOT through the media port.
 func (a *UseCaseRepoAdapter) findVoiceoverMediaAsset(ctx context.Context, assetID string) (*voiceoverMediaAssetLocation, error) {
-	if a == nil || a.db == nil {
+	if a == nil || a.media == nil {
 		return nil, nil
 	}
-	row := a.db.QueryRowContext(ctx, `
-		SELECT COALESCE(drive_file_id, ''), COALESCE(drive_link, ''),
-		       COALESCE(download_link, ''), COALESCE(local_path, ''),
-		       COALESCE(name, '')
-		FROM media_assets WHERE id = ?
-	`, assetID)
-
-	var loc voiceoverMediaAssetLocation
-	err := row.Scan(&loc.DriveFileID, &loc.DriveLink, &loc.DownloadLink, &loc.LocalPath, &loc.Name)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+	loc, found, err := a.media.MediaAssetLocation(ctx, assetID)
 	if err != nil {
 		return nil, err
 	}
-	return &loc, nil
+	if !found {
+		return nil, nil
+	}
+	return &voiceoverMediaAssetLocation{
+		DriveFileID:  loc.DriveFileID,
+		DriveLink:    loc.DriveLink,
+		DownloadLink: loc.DownloadLink,
+		LocalPath:    loc.LocalPath,
+		Name:         loc.Name,
+	}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────

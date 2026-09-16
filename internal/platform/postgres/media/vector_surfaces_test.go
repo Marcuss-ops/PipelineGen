@@ -71,7 +71,7 @@ func seedAssetWithEmbedding(t *testing.T, db *sql.DB, assetID string, vec []floa
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	features := pgmedia.AssetFeatureRecord{AssetID: assetID, HasFaces: true}
+	features := pgmedia.AssetFeatureRecord{AssetID: assetID, DominantColor: "#ff0000"}
 	if err := w.UpsertAssetFeaturesTx(ctx, tx, features); err != nil {
 		t.Fatalf("UpsertAssetFeaturesTx: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestCutover_SingleTransactionCommitsAssetLocationFeaturesEmbedding(t *testi
 	if _, err := c.CommitTx(ctx, tx, txCommitRequestFor("yt_tx_all_v1")); err != nil {
 		t.Fatalf("CommitTx: %v", err)
 	}
-	if err := w.UpsertAssetFeaturesTx(ctx, tx, pgmedia.AssetFeatureRecord{AssetID: "yt_tx_all_v1", HasFaces: true}); err != nil {
+	if err := w.UpsertAssetFeaturesTx(ctx, tx, pgmedia.AssetFeatureRecord{AssetID: "yt_tx_all_v1", DominantColor: "#ff0000"}); err != nil {
 		t.Fatalf("features: %v", err)
 	}
 	if err := w.UpsertEmbeddingTx(ctx, tx, "yt_tx_all_v1", "visual", modelID, []float32{0.1, 0.2, 0.3, 0.4}); err != nil {

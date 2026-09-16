@@ -29,6 +29,7 @@ import (
 	"time"
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -187,19 +188,36 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 	// earlier will be re-introduced by Wave 30 BACKFILL with the
 	// canonical scope pinned to composition.go::ProcessBundle).
 
-	if deps.root.Repos.ClipsRepo != nil {
-		cr := deps.root.Repos.ClipsRepo
+	// clip-dedup-sweeper. MEDIA-SSOT (P2-9 read side, final entry): BOTH halves
+	// of this sweep are media_assets operations — the duplicate scan reads it and
+	// the retirement writes it — so the step is gated on the MEDIA SSOT, not on
+	// Repos.ClipsRepo (the operational SQLite store). Gating on the SQLite
+	// repository is what produced the original defect: the scan enumerated
+	// duplicates on a mirror and the retirement landed there too, so a duplicate
+	// was re-counted on every tick while staying live on the SSOT.
+	//
+	// reader and retirer are resolved from ONE committer on purpose. Deriving
+	// them independently would allow a scan on the SSOT with a retirement on the
+	// mirror, which is the same permanent-duplicate loop wearing a new shape.
+	//
+	// Degradation is honest: with the media plane closed the step is not
+	// registered at all (rather than registered and failing every tick).
+	if dedupCommitter, err := canonicalCommitterForRoot(deps.root, deps.log); err != nil {
+		deps.log.Warn("clip dedup sweeper not registered: canonical media committer unavailable", zap.Error(err))
+	} else if dedupReader, dedupRetirer := mediaDuplicateGroupReaderFromCommitter(dedupCommitter), persistence.CanonicalAssetSoftDeleter(dedupCommitter); dedupReader != nil && dedupRetirer != nil {
 		steps = append(steps, StartupStep{
 			Name: "clip-dedup-sweeper", Required: false,
 			Start: func(startCtx context.Context) error {
 				deps.log.Info("clip dedup sweeper starting (interval=30m)")
 				concurrent.SafeGo("clip-dedup-sweeper", func() {
-					startClipDedupSweeper(startCtx, cr, deps.log)
+					startClipDedupSweeper(startCtx, dedupReader, dedupRetirer, deps.log)
 				})
 				return nil
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
+	} else {
+		deps.log.Warn("clip dedup sweeper not registered: media SSOT closed (dedup sweeps media_assets on PostgreSQL only)")
 	}
 
 	if deps.root.Domains.AutotagService != nil {

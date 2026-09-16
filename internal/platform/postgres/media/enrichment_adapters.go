@@ -145,63 +145,22 @@ func (a *FFMPEGKeyframeSamplerAdapter) ExtractPercentageFrames(ctx context.Conte
 	return out, nil
 }
 
-// ── Sidecar face detector ───────────────────────────────────────────────
-
-// SidecarFaceDetector implements FaceDetector against the Python embedding
-// sidecar's canonical face endpoint (/detect_faces). The endpoint accepts
-// {"image_paths": [...]} and returns one {face_count, largest_face_ratio}
-// observation per input path (order-preserved).
-type SidecarFaceDetector struct {
-	serverURL string
-	client    *http.Client
-}
-
-// NewSidecarFaceDetector constructs the detector. An empty server URL is
-// a construction error (no fake availability — faces are load-bearing for
-// has_faces filters).
-func NewSidecarFaceDetector(serverURL string, timeout time.Duration) *SidecarFaceDetector {
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-	return &SidecarFaceDetector{
-		serverURL: strings.TrimRight(serverURL, "/"),
-		client:    &http.Client{Timeout: timeout},
-	}
-}
-
-// DetectFaces calls the sidecar's face endpoint for the frame batch.
-func (d *SidecarFaceDetector) DetectFaces(ctx context.Context, framePaths []string) ([]FaceObservation, error) {
-	if len(framePaths) == 0 {
-		return nil, fmt.Errorf("face detector: no frames supplied")
-	}
-	resp, err := postJSON(ctx, d.client, d.serverURL+"/detect_faces", map[string][]string{"image_paths": framePaths})
-	if err != nil {
-		return nil, fmt.Errorf("face detector: sidecar call: %w", err)
-	}
-	if resp.status == http.StatusNotImplemented {
-		return nil, fmt.Errorf("%w (HTTP 501 — face model not loaded)", ErrVisualSidecarUnavailable)
-	}
-	if resp.status != http.StatusOK {
-		return nil, fmt.Errorf("face detector: sidecar HTTP %d: %s", resp.status, truncateForLog(resp.body))
-	}
-	var parsed struct {
-		Faces []struct {
-			FaceCount        int     `json:"face_count"`
-			LargestFaceRatio float64 `json:"largest_face_ratio"`
-		} `json:"faces"`
-	}
-	if err := json.Unmarshal(resp.body, &parsed); err != nil {
-		return nil, fmt.Errorf("face detector: decode: %w", err)
-	}
-	if len(parsed.Faces) != len(framePaths) {
-		return nil, fmt.Errorf("face detector: %d observations for %d frames", len(parsed.Faces), len(framePaths))
-	}
-	out := make([]FaceObservation, 0, len(parsed.Faces))
-	for _, f := range parsed.Faces {
-		out = append(out, FaceObservation{FaceCount: f.FaceCount, LargestRatio: f.LargestFaceRatio})
-	}
-	return out, nil
-}
+// ── Face detection: RETIRED (2026-09-16) ────────────────────────────────
+//
+// SidecarFaceDetector used to call the Python embedding sidecar's
+// /detect_faces route. That route was declared by this adapter AND by the
+// sidecar's own request model (BatchFaceDetectRequest) but served by
+// neither: the live sidecar answers HTTP 404 for it, and no face-detection
+// library is installed anywhere in the deployment. The consequence was not
+// a missing optional dimension — it was a derived surface that could never
+// be produced, because the feature analyzer refused to write its row
+// without this detector.
+//
+// The face dimension is therefore retired end-to-end (the analyzer no
+// longer requires it, media_asset_features no longer carries it,
+// migration 009 drops the columns). Godlike/07 is preserved: nothing is
+// written for a fact that was never measured, so there is no
+// fabricated "no faces" default to mislead a filter.
 
 // ── Sidecar text embedder adapter ───────────────────────────────────────
 

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
 	"go.uber.org/zap"
@@ -69,7 +69,35 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 // startQdrantHealthMonitor was removed during earlier cleanup. The
 // capability deleted.
 
-func startClipDedupSweeper(ctx context.Context, clipsRepo *assets.ClipsRepository, log *zap.Logger) {
+// mediaYouTubeIDDuplicateReader is the consumer-owned port for the clip-dedup
+// sweeper's media_assets scan.
+//
+// The engine is NOT part of the interface, and that is intentional: the sweeper
+// does not decide which database holds media_assets, the composition root does.
+// The concrete that production passes (pgmedia.MediaDuplicateGroupReader) is
+// resolved from the same canonical committer as the persistence.AssetSoftDeleter
+// beside it, so the scan and the retirement can never name different engines.
+//
+// The retired form took *imagesregistry.ClipsRepository, which made the engine a
+// property of the parameter's type — the operational SQLite store — and that is
+// how a media read got wired to the mirror in the first place.
+type mediaYouTubeIDDuplicateReader interface {
+	// DuplicateYouTubeIDGroups returns up to limit youtube_video_id groups
+	// holding more than one live media asset.
+	DuplicateYouTubeIDGroups(ctx context.Context, limit int) ([]pgmedia.YouTubeIDDuplicateGroup, error)
+
+	// DuplicateAssetIDsByYouTubeID returns the live ids sharing videoID,
+	// newest first, excluding excludeID. The ORDER is load-bearing: the sweep
+	// keeps index 0 and retires the rest.
+	DuplicateAssetIDsByYouTubeID(ctx context.Context, videoID, excludeID string) ([]string, error)
+}
+
+// dedupGroupLimit is the per-tick safety valve on how many duplicate groups one
+// sweep visits. It was 500 in the retired SQLite statement and is preserved: the
+// limit bounds the tick, it is not a contract about which groups get visited.
+const dedupGroupLimit = 500
+
+func startClipDedupSweeper(ctx context.Context, reader mediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) {
 	const (
 		initialDelay = 2 * time.Minute
 		interval     = 30 * time.Minute
@@ -86,7 +114,7 @@ func startClipDedupSweeper(ctx context.Context, clipsRepo *assets.ClipsRepositor
 	sweep := func() {
 		sCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
-		swept, err := runDedupSweep(sCtx, clipsRepo, log)
+		swept, err := runDedupSweep(sCtx, reader, retire, log)
 		if err != nil {
 			log.Warn("clip dedup sweep failed", zap.Error(err))
 			return
@@ -107,47 +135,60 @@ func startClipDedupSweeper(ctx context.Context, clipsRepo *assets.ClipsRepositor
 	}
 }
 
-func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *zap.Logger) (int, error) {
-	rows, err := clipsRepo.DB().QueryContext(ctx, `
-		SELECT json_extract(metadata_json, '$.youtube_video_id') AS vid, COUNT(*) AS n
-		FROM media_assets
-		WHERE `+detail.SoftDeleteFilter()+`
-		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') IS NOT NULL
-		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') != ''
-		GROUP BY vid
-		HAVING n > 1
-		LIMIT 500`)
+// runDedupSweep retires the redundant copies of every live media asset that
+// shares a youtube_video_id with another, keeping the newest of each group.
+//
+// MEDIA-SSOT (P2-9 read side, final entry). This function used to scan
+// media_assets and soft-delete through *imagesregistry.ClipsRepository — the
+// OPERATIONAL SQLite handle — while PostgreSQL owned the table. That was not a
+// read-only debt: the scan enumerated duplicates on the mirror and the
+// retirement landed on the mirror, so a duplicate the scan found stayed live on
+// the SSOT and was counted again on the next tick, forever. Migrating only the
+// read would have kept that loop and made it quieter, which is why the two
+// halves moved together.
+//
+// Both halves now come from the composition root (see
+// mediaDuplicateGroupReaderFromCommitter + persistence.CanonicalAssetSoftDeleter
+// in buildMaintenanceSteps), so the sweep finds duplicates where the canonical
+// writer commits them and retires them where the canonical writer owns them.
+// There is no SQLite path and no direct SQL here: this file no longer mentions
+// media_assets at all, and the archcheck media-reader gate is what keeps it
+// that way.
+//
+// Fail-closed contract. A nil reader or a nil retirer means the media plane is
+// closed; the sweep returns an error instead of degrading onto another engine.
+// The caller's construction site already skips the step in that case, so this
+// is the second line of defence — it is what stops a future caller from
+// re-introducing a sweep that enumerates one database and mutates another.
+//
+// Error policy is preserved from the retired form: a per-group lookup failure
+// logs and continues with the remaining groups (one bad group must not abort a
+// whole tick), while a scan-level failure aborts the tick.
+func runDedupSweep(ctx context.Context, reader mediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) (int, error) {
+	if reader == nil {
+		return 0, fmt.Errorf("dedup sweep: media duplicate reader is not wired (media SSOT closed) — refusing to enumerate media_assets on a second engine")
+	}
+	if retire == nil {
+		return 0, fmt.Errorf("dedup sweep: canonical media soft-deleter is not wired (media SSOT closed) — refusing to retire media_assets on a second engine")
+	}
+
+	groups, err := reader.DuplicateYouTubeIDGroups(ctx, dedupGroupLimit)
 	if err != nil {
 		return 0, fmt.Errorf("dedup sweep query: %w", err)
-	}
-	defer rows.Close()
-
-	type groupRow struct {
-		vid string
-		n   int
-	}
-	var groups []groupRow
-	for rows.Next() {
-		var g groupRow
-		if err := rows.Scan(&g.vid, &g.n); err != nil {
-			log.Warn("dedup sweep scan failed", zap.Error(err))
-			continue
-		}
-		groups = append(groups, g)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("dedup sweep rows: %w", err)
 	}
 
 	swept := 0
 	for _, g := range groups {
-		dupIDs, err := clipsRepo.FindDuplicatesByYouTubeID(ctx, g.vid, "")
+		// excludeID is empty because the sweep retires from the whole group,
+		// not relative to a caller-held asset: index 0 is the newest row, which
+		// is the one kept.
+		dupIDs, err := reader.DuplicateAssetIDsByYouTubeID(ctx, g.YouTubeVideoID, "")
 		if err != nil {
-			log.Warn("FindDuplicatesByYouTubeID failed", zap.String("video_id", g.vid), zap.Error(err))
+			log.Warn("Duplicate asset id lookup failed", zap.String("video_id", g.YouTubeVideoID), zap.Error(err))
 			continue
 		}
 		for i := 1; i < len(dupIDs); i++ {
-			if err := clipsRepo.DeleteClip(ctx, dupIDs[i]); err != nil {
+			if err := retire.SoftDeleteAsset(ctx, dupIDs[i]); err != nil {
 				log.Warn("dedup sweep soft-delete failed",
 					zap.String("clip_id", dupIDs[i]), zap.Error(err))
 				continue

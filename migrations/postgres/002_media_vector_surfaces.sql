@@ -28,21 +28,27 @@
 
 -- ── media_asset_features ────────────────────────────────────────────────
 -- Derived hard features written by PostgresAssetFeatureWriter. One row per
--- asset; largest_face_ratio distinguishes a close-up from a crowd.
+-- asset, carrying the two dimensions the enrichment pipeline actually
+-- measures: the dominant colour and the motion score.
+--
+-- Face descriptors are NOT part of this surface (2026-09-16). The columns
+-- (has_faces/face_count/largest_face_ratio) were declared here while NO
+-- service ever served the face endpoint the enrichment pipeline called,
+-- so the row could not be produced at all: the analyzer failed closed on
+-- the missing detector and media_asset_features stayed empty. The face
+-- dimension is retired (DROP in 009) instead of being guessed — a
+-- fabricated has_faces=0 is indistinguishable from "no face analysis".
 CREATE TABLE IF NOT EXISTS media_asset_features (
     asset_id           TEXT PRIMARY KEY
                        REFERENCES media_assets(id) ON DELETE CASCADE,
     dominant_color     TEXT NOT NULL DEFAULT '',
     motion_score       REAL,
-    has_faces          SMALLINT CHECK (has_faces IN (0, 1)),
-    face_count         INTEGER,
-    largest_face_ratio REAL,
     analyzed_at        TEXT NOT NULL DEFAULT '',
     analyzer_version   TEXT NOT NULL DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_features_faces_motion
-    ON media_asset_features (has_faces, motion_score);
+CREATE INDEX IF NOT EXISTS idx_features_motion
+    ON media_asset_features (motion_score);
 
 -- ── media_embedding_families ────────────────────────────────────────────
 -- Fail-closed registry of allowed embedding families. No producer may

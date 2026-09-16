@@ -74,7 +74,18 @@ E5 embedding sidecar.
   with `TEST_POSTGRES_DSN` pointing at it.
 - A reachable Ollama with the configured model (default `gemma4:e2b`).
 - The E5 embedding sidecar (default `http://127.0.0.1:8001`).
-- `yt-dlp` on `PATH`, or `VELOX_E2E_YTDLP` set to the command.
+- `yt-dlp` on `PATH`, or `VELOX_E2E_YTDLP` set to the command. When the process runs with a
+  `HOME` other than the pipeline user's (agent sandboxes, cron, a CI shell), the bare `yt-dlp`
+  resolves its user `site-packages` against that `HOME` and dies with `No module named 'yt_dlp'`
+  even though the install is present. Point the knob at the canonical wrapper the service itself
+  uses (`YTDLP_PATH` in the service environment):
+
+  ```bash
+  VELOX_E2E_YTDLP='bash scripts/yt-dlp-pipeline'
+  ```
+
+  That wrapper also pins the node runtime and the bgutil POT plugin path, which the bare binary
+  does not: without the provider YouTube answers 403 and the download fails deep inside the run.
 
 ### Run
 
@@ -127,9 +138,13 @@ go test ./tests/e2e/ -run TestLiveYouTube_TranscriptTranslatedInTenLanguagesAndI
 ### Troubleshooting
 
 - `ModuleNotFoundError: No module named 'yt_dlp'` — `yt-dlp` is installed with `pip install --user`
-  and its `site-packages` is not on the Python path of the test process. Prefix the run with
+  and its `site-packages` is not on the Python path of the test process. The canonical fix is to use
+  the repo wrapper (`VELOX_E2E_YTDLP='bash scripts/yt-dlp-pipeline'`), which pins `HOME` to the
+  pipeline user before resolving `yt-dlp` — the same resolution the service uses. The narrower
+  alternative is to prefix the run with
   `PYTHONPATH="$HOME/.local/lib/python3.X/site-packages"` (matching the Python that `yt-dlp`'s
-  shebang uses).
+  shebang uses); it fixes the module path but NOT the node runtime or the POT plugin, so a video that
+  needs a player challenge still fails.
 - `invalid cue (... text_len=0)` — the video's captions carry empty cues; the test filters them.
   If it recurs, the caption track changed shape and the filter needs revisiting.
 

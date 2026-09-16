@@ -78,8 +78,9 @@ Additionally:
 strings:
 
 * `MediaSchemaDDL` → `001_media_schema.sql` — transactional core (`media_assets`, `asset_locations`, `outbox_events`, `media_asset_sources`, `registry_events`, `asset_text_tracks`, `asset_renditions`, `asset_text_track_segments`).
-* `MediaVectorSurfacesDDL` → `002_media_vector_surfaces.sql` — derived surfaces (`media_asset_features`, `media_embedding_families`, `media_embeddings` + `media_embeddings_validate_family()` trigger, GIN + FTS indexes).
+* `MediaVectorSurfacesDDL` → `002_media_vector_surfaces.sql` — derived surfaces (`media_asset_features`, `media_embedding_families`, `media_embeddings` + `media_embeddings_validate_family()` trigger, GIN + FTS indexes). `media_asset_features` carries the two measurables of the enrichment pipeline (`dominant_color`, `motion_score`); the face descriptors it used to declare are RETIRED by `009`.
 * `MediaHNSWIndexesDDL` → `003_media_hnsw_indexes.sql` — production ANN (`media_embedding_families` rows `text/intfloat/multilingual-e5-base 768` + `visual/google/siglip-so400m-patch14-384 1152` + per-family `USING hnsw ((embedding::vector(N)) vector_cosine_ops) WHERE ...` partial indexes).
+* `MediaDropAssetFacesDDL` → `009_drop_media_asset_faces.sql` — retires the face descriptor columns (`has_faces`, `face_count`, `largest_face_ratio`) from `media_asset_features`. It is applied AFTER `002` because the `CREATE TABLE IF NOT EXISTS` there cannot converge a database that already carries the columns. The endpoint the descriptors depended on (`POST /detect_faces`) is served by no service, so requiring it made the whole features row unproducible.
 
 Canonical self-bootstrapping call sites (each `IF NOT EXISTS` so re-exec is
 idempotent):

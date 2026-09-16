@@ -91,3 +91,18 @@ var MediaClipFoldersDDL string
 //
 //go:embed 008_media_asset_processing.sql
 var MediaAssetProcessingDDL string
+
+// MediaDropAssetFacesDDL is the verbatim DDL of
+// migrations/postgres/009_drop_media_asset_faces.sql — the contract
+// retirement of the face descriptors (has_faces / face_count /
+// largest_face_ratio) from media_asset_features.
+//
+// It is applied AFTER MediaVectorSurfacesDDL because 002 uses
+// CREATE TABLE IF NOT EXISTS: on a database that already carries the
+// retired columns, 002 is a no-op and only this DROP converges the shape.
+// The face endpoint those columns depended on was never served by any
+// service in this deployment, so the columns made the whole features row
+// unproducible.
+//
+//go:embed 009_drop_media_asset_faces.sql
+var MediaDropAssetFacesDDL string

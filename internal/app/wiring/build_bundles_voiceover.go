@@ -25,6 +25,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -42,11 +43,66 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
+
+// voiceoverMediaReaderAdapter maps the platform media reader onto the
+// capability-owned VoiceoverMediaReader port.
+//
+// The mapping exists because the two packages declare their own location type on
+// purpose (godlike/06 one-owner-per-fact): the capability must not import the
+// platform, and the platform must not import the capability. The composition root
+// is the only place that holds both, so it is where the translation belongs —
+// the same reason mediaDetailsReaderFromCommitter and
+// enrichStateStoreFromCommitter live here.
+type voiceoverMediaReaderAdapter struct {
+	inner *pgmedia.MediaVoiceoverMediaReader
+}
+
+func (a voiceoverMediaReaderAdapter) MediaAssetLocation(ctx context.Context, assetID string) (vowiring.VoiceoverMediaLocation, bool, error) {
+	loc, found, err := a.inner.MediaAssetLocation(ctx, assetID)
+	if err != nil || !found {
+		return vowiring.VoiceoverMediaLocation{}, found, err
+	}
+	return vowiring.VoiceoverMediaLocation{
+		DriveFileID:  loc.DriveFileID,
+		DriveLink:    loc.DriveLink,
+		DownloadLink: loc.DownloadLink,
+		LocalPath:    loc.LocalPath,
+		Name:         loc.Name,
+	}, true, nil
+}
+
+func (a voiceoverMediaReaderAdapter) CountByDriveFileID(ctx context.Context, driveFileID, currentID string) (string, int, error) {
+	return a.inner.CountByDriveFileID(ctx, driveFileID, currentID)
+}
+
+var _ vowiring.VoiceoverMediaReader = voiceoverMediaReaderAdapter{}
+
+// voiceoverMediaReaderFromCommitter resolves the voiceover media read surface
+// from the canonical committer's own engine, so the voiceover capability reads
+// the same media SSOT the canonical committer writes. nil means the media plane
+// is closed: the caller passes nil through and both adapter call sites fail
+// closed rather than degrading onto the operational mirror, which is exactly the
+// split-brain MEDIA-SSOT P2-9 Phase 2 removes.
+func voiceoverMediaReaderFromCommitter(committer assetspersistence.AssetCommitter) vowiring.VoiceoverMediaReader {
+	if committer == nil {
+		return nil
+	}
+	getter, ok := committer.(interface{ DB() *sql.DB })
+	if !ok || getter == nil {
+		return nil
+	}
+	db := getter.DB()
+	if db == nil {
+		return nil
+	}
+	return voiceoverMediaReaderAdapter{inner: pgmedia.NewMediaVoiceoverMediaReader(db)}
+}
 
 // buildVoiceoverService sets up the voiceover service and its repository.
 //
@@ -94,7 +150,13 @@ func buildVoiceoverPipeline(
 	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
 	// through a canonical port instead of holding a *sql.DB field
 	// (the previous field was removed in P1-2 commit 1).
-	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer)
+	// MEDIA-SSOT P2-9 Phase 2: the adapter's media_assets reads (the cross-run
+	// cache location lookup and the PR-VO-B3 dedupe gate) resolve from the media
+	// SSOT, not from dbs.DualPool.Writer. media_assets is PostgreSQL-owned, so
+	// reading it on the operational handle graded a database that holds no
+	// committed media rows. A closed media plane passes a nil reader, and both
+	// call sites then report explicitly rather than answering from a mirror.
+	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer, voiceoverMediaReaderFromCommitter(committer))
 
 	// Cross-run voiceover cache (August 2026): wraps the existing
 	// FindByFingerprint on the SQLite repository to short-circuit

@@ -70,11 +70,28 @@ type AssetPatch struct {
 // of an existing asset. The canonical writer preserves the durable Drive file
 // identity when DriveFileID is empty, updates asset_locations and media_assets
 // atomically, and emits the indexing request through the same outbox.
+//
+// MimeType + FileSizeBytes carry the byte identity of the object that was
+// delivered. They exist because the patch is the LAST writer of the drive
+// location row, and it used to hardcode ”,0 — so a delivery that provably
+// measured and even disk-verified the artifact size (clip.render's outbox
+// consumer compares os.Stat(path).Size() against req.SizeBytes before
+// uploading) recorded a location that named a real Drive object and said
+// nothing about its bytes. Both fields are optional: an unknown value (""/0)
+// PRESERVES whatever the row already holds instead of erasing a known fact.
 type DriveLocationPatch struct {
 	AssetID     string
 	DriveFileID string
 	DriveLink   string
 	DownloadURL string
+
+	// MimeType is the IANA media type of the delivered object (e.g.
+	// "video/mp4"). Empty means "not attested by this caller".
+	MimeType string
+
+	// FileSizeBytes is the object's real size in bytes. <= 0 means "not
+	// attested by this caller".
+	FileSizeBytes int64
 }
 
 // AssetMutator is the mutation half of the canonical asset writer. Production
