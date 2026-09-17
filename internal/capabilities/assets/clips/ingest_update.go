@@ -91,7 +91,10 @@ func (ih *IngestHandler) UpdateClip(c *gin.Context) {
 		apiutil.Error(c, 503, "clip update unavailable: dispatcher not wired")
 		return
 	}
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the supersede-gate content hash is the BYTE
+	// identity, resolved from the canonical content surfaces (an MD5 can no
+	// longer be forwarded as a content address).
+	contentHash := clip.ContentAddress()
 	if contentHash == "" {
 		contentHash = clipID
 	}

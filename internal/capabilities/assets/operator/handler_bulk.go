@@ -238,7 +238,11 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 
 // reindexAsset updates the asset row and enqueues an outbox reindex event.
 func (h *Handler) reindexAsset(ctx context.Context, a *asset.Asset, before, after map[string]any) bulkChange {
-	contentHash := a.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the reindex commit carries the BYTE identity,
+	// resolved from the canonical content surfaces. LegacyFileMD5() is the
+	// compatibility accessor and may hold an MD5, which must never become the
+	// committed content address.
+	contentHash := a.ContentAddress()
 	if contentHash == "" {
 		contentHash = a.ID
 	}

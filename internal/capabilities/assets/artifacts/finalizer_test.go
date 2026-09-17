@@ -629,6 +629,21 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 	}
 }
 
+// Digests for the metadata_json content address test. The content addresses
+// (v1/v2) and the legacy-column SHA-256 are canonical 64-hex values because
+// asset.ResolveContentAddress admits nothing else.
+const (
+	metaContentSHAv1 = "1111111111111111111111111111111111111111111111111111111111111111"
+	metaContentSHAv2 = "2222222222222222222222222222222222222222222222222222222222222222"
+	// metaLegacySHA is a canonical SHA-256 carried in the legacy column: the
+	// documented migration window, in which that column held the byte identity.
+	metaLegacySHA = "3333333333333333333333333333333333333333333333333333333333333333"
+	// metaLegacyMD5 (32 hex) is an MD5. An MD5 is NOT a content address and must
+	// never reach metadata_json.content_hash.
+	metaLegacyMD5            = "d41d8cd98f00b204e9800998ecf8427e"
+	metaLegacyMD5Republished = "0cc175b9c0f1b6a831c399e269772661"
+)
+
 // TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson pins the
 // supersede-gate fix for the artifacts finalizer: writeMetadataJSON
 // MUST include content_hash in the Extra map so that SourceVersionFor()
@@ -636,11 +651,30 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 // Tier 2 (file_hash from a previous ingest). Without this fix, a
 // republish that changes file_hash would leave metadata_json.$.file_hash
 // stale and the supersede gate would fire incorrectly.
+//
+// MEDIA-IDENTITY (Sept 2026): the Tier-1 key is a CONTENT ADDRESS, so the value
+// written is resolved through asset.ResolveContentAddress — the single owner of
+// "is this a 64-hex SHA-256?". A non-canonical digest (an MD5, an asset id, a
+// fabricated string) is REFUSED and the key stays honestly unknown: the previous
+// behaviour promoted rec.LegacyFileMD5 into content_hash, which let the
+// supersede gate compare a digest that is not the byte identity. That is why the
+// digests below are real 64-hex values, and why the last two cases assert a
+// 32-hex MD5 is never promoted.
 func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "clip.mp4")
 	if err := os.WriteFile(tmpFile, []byte("video"), 0644); err != nil {
 		t.Fatal(err)
+	}
+	// newArtifact gives each standalone case its own directory, so a stale
+	// metadata.json from a previous case cannot leak into the assertion.
+	newArtifact := func(name string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, []byte("video"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return p
 	}
 
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
@@ -652,8 +686,8 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-001",
 		Name:          "Boxing clip",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "fh-001",
-		ContentHash:   "ch-001",
+		LegacyFileMD5: metaLegacyMD5,
+		ContentHash:   metaContentSHAv1,
 		Source:        "artlist",
 		MediaType:     "video",
 		Status:        "processed",
@@ -674,13 +708,13 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 	// Parse the metadata that was persisted on rec.Metadata by writeMetadataJSON
 	meta := parseMetadataJSON(t, rec.Metadata)
 
-	// content_hash MUST be present and equal to ContentHash (Tier 1)
-	if meta["content_hash"] != "ch-001" {
+	// content_hash MUST be present and equal to the canonical ContentHash (Tier 1)
+	if meta["content_hash"] != metaContentSHAv1 {
 		t.Errorf("metadata_json.content_hash = %v, want %q (Tier 1 supersede-gate fix)",
-			meta["content_hash"], "ch-001")
+			meta["content_hash"], metaContentSHAv1)
 	}
-	if meta["file_hash"] != "fh-001" {
-		t.Errorf("metadata_json.file_hash = %v, want %q", meta["file_hash"], "fh-001")
+	if meta["file_hash"] != metaLegacyMD5 {
+		t.Errorf("metadata_json.file_hash = %v, want %q (the compatibility bucket is preserved verbatim)", meta["file_hash"], metaLegacyMD5)
 	}
 
 	// Second finalize (republish): new hashes, content_hash MUST update
@@ -688,8 +722,8 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-001",
 		Name:          "Boxing clip republished",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "fh-002",
-		ContentHash:   "ch-002",
+		LegacyFileMD5: metaLegacyMD5Republished,
+		ContentHash:   metaContentSHAv2,
 		Source:        "artlist",
 		MediaType:     "video",
 		Status:        "processed",
@@ -709,20 +743,22 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 
 	meta2 := parseMetadataJSON(t, rec2.Metadata)
 
-	if meta2["content_hash"] != "ch-002" {
+	if meta2["content_hash"] != metaContentSHAv2 {
 		t.Errorf("metadata_json.content_hash after republish = %v, want %q (supersede gate would fire!)",
-			meta2["content_hash"], "ch-002")
+			meta2["content_hash"], metaContentSHAv2)
 	}
-	if meta2["file_hash"] != "fh-002" {
-		t.Errorf("metadata_json.file_hash after republish = %v, want %q", meta2["file_hash"], "fh-002")
+	if meta2["file_hash"] != metaLegacyMD5Republished {
+		t.Errorf("metadata_json.file_hash after republish = %v, want %q", meta2["file_hash"], metaLegacyMD5Republished)
 	}
 
-	// ContentHash fallback: when ContentHash is empty, falls back to LegacyFileMD5
+	// Migration window: an empty ContentHash whose LEGACY column already holds
+	// a canonical SHA-256 IS admitted as the content address — that is exactly
+	// the promotion mediaregistry/content_link_backfill.go performs server-side.
 	rec3 := &MediaRecord{
 		ID:            "art-002",
-		Name:          "No explicit content hash",
-		LocalPath:     tmpFile,
-		LegacyFileMD5: "fh-fallback",
+		Name:          "Legacy column carrying a SHA-256",
+		LocalPath:     newArtifact("clip3.mp4"),
+		LegacyFileMD5: metaLegacySHA,
 		Source:        "artlist",
 		MediaType:     "video",
 		Status:        "processed",
@@ -737,13 +773,47 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !result3.OK {
-		t.Fatalf("fallback finalize not OK: %s", result3.Error)
+		t.Fatalf("legacy-SHA finalize not OK: %s", result3.Error)
 	}
 
 	meta3 := parseMetadataJSON(t, rec3.Metadata)
-	if meta3["content_hash"] != "fh-fallback" {
-		t.Errorf("metadata_json.content_hash fallback = %v, want %q (empty ContentHash -> LegacyFileMD5)",
-			meta3["content_hash"], "fh-fallback")
+	if meta3["content_hash"] != metaLegacySHA {
+		t.Errorf("metadata_json.content_hash = %v, want %q (a canonical SHA-256 in the legacy column is the migration window)",
+			meta3["content_hash"], metaLegacySHA)
+	}
+
+	// MUTATION-STRENGTH PIN: an MD5 must never reach the Tier-1 key the supersede
+	// gate reads — not from a fabricated/non-canonical ContentHash, and not from
+	// the legacy column. The honest value is "unknown".
+	rec4 := &MediaRecord{
+		ID:            "art-003",
+		Name:          "Legacy MD5 must not become content_hash",
+		LocalPath:     newArtifact("clip4.mp4"),
+		LegacyFileMD5: metaLegacyMD5,
+		ContentHash:   "ch-fabricated",
+		Source:        "artlist",
+		MediaType:     "video",
+		Status:        "processed",
+	}
+
+	result4, err := f.Finalize(context.Background(), rec4, FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		VerifyDB:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result4.OK {
+		t.Fatalf("MD5-refusal finalize not OK: %s", result4.Error)
+	}
+
+	meta4 := parseMetadataJSON(t, rec4.Metadata)
+	if got, _ := meta4["content_hash"].(string); got != "" {
+		t.Errorf("metadata_json.content_hash = %q, want \"\" (unknown): an MD5 must never be promoted into the content address", got)
+	}
+	if meta4["file_hash"] != metaLegacyMD5 {
+		t.Errorf("metadata_json.file_hash = %v, want %q (the compatibility bucket stays readable for diagnostics)", meta4["file_hash"], metaLegacyMD5)
 	}
 }
 

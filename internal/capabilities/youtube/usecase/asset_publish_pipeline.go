@@ -86,6 +86,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -310,10 +311,16 @@ func PublishRenditionsToYouTubeAsset(
 				ChannelID: channelID,
 				Subject:   videoID,
 			},
-			LocalPath:   r.LocalPath,
-			Filename:    r.Filename,
-			AssetID:     assetID,
-			ContentHash: r.LegacyFileMD5,
+			LocalPath: r.LocalPath,
+			Filename:  r.Filename,
+			AssetID:   assetID,
+			// MEDIA-IDENTITY (Sept 2026): the DTO field is named LegacyFileMD5 but
+			// carries the canonical SHA-256 (processor.buildRenditionOutput hashes
+			// the bytes with digest.SHA256File). It is resolved through the
+			// canonical rule instead of forwarded verbatim so that only a real
+			// 64-hex SHA-256 can become the publish's ExpectedSHA256 — the value
+			// that decides whether the uploader verifies the bytes at all.
+			ContentHash: asset.ResolveContentAddress(r.LegacyFileMD5),
 			SizeBytes:   r.SizeBytes,
 		})
 		if reqErr != nil {

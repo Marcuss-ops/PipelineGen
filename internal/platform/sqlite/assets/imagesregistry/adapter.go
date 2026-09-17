@@ -63,9 +63,15 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			m.SetDownloadLink(rec.DownloadLink)
 			m.SetLegacyFileMD5(rec.LegacyFileMD5)
 			m.SetContentHash(rec.ContentHash)
+			// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
+			// identity. The record already carries it (rec.ContentHash); the legacy
+			// digest is only a migration-window fallback while it still holds a
+			// SHA-256. Forwarding rec.LegacyFileMD5 verbatim let an MD5 become the
+			// content address of the media row.
 			_, err := committer.CommitAndIndex(ctx, persistence.CommitRequest{
 				AssetID: m.ID, Source: string(m.Source), Name: m.Name, Filename: m.Filename,
-				MediaType: string(m.MediaType), ContentHash: rec.LegacyFileMD5,
+				MediaType:      string(m.MediaType),
+				ContentHash:    asset.ResolveContentAddress(rec.ContentHash, rec.LegacyFileMD5),
 				LifecycleState: string(m.LifecycleState), EmitIndexEvent: true,
 			})
 			return err

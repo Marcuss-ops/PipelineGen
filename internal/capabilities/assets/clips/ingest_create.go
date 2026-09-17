@@ -72,7 +72,10 @@ func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	// back to clip.ID when the bind-time payload omits it (the dispatcher
 	// rejects empty asset.ID via the EnqueueAndIndex NewDispatcher wiring
 	// pre-flight at outbox/repository.go:243-246).
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the supersede-gate content hash is the BYTE
+	// identity, resolved from the canonical content surfaces (an MD5 can no
+	// longer be forwarded as a content address).
+	contentHash := clip.ContentAddress()
 	if contentHash == "" {
 		contentHash = clip.ID
 	}

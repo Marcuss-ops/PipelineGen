@@ -33,11 +33,11 @@ import (
 // Drive-side JSON manifest was a parallel-struct anti-pattern that has
 // no analogue after the Wave-C consolidation.
 //
-// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): the optional
-// ArtlistDownloader field routes Artlist-clip downloads through the
-// canonical downloader.Resolver. When nil, Artlist clips fall through
-// to yt-dlp (Rule 4). PR-ARTLIST-SCRAPER-RETIRE (July 2026): the
-// legacy downloadViaScraper path is RETIRED.
+// ARTIST-DEMOLITION (September 2026): the optional ArtlistDownloader
+// field + its SetArtlistDownloader setter are RETIRED with the Artlist
+// capability. A source that is not a direct media file or an HLS playlist
+// falls through to yt-dlp, which is what the nil-ArtlistDownloader path
+// already did.
 type Processor struct {
 	dl       YTDLP
 	httpDL   HTTPDownloader
@@ -47,42 +47,15 @@ type Processor struct {
 	tempDir  string
 	videoCfg mediaexec.NormalizeOptions
 	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL field REMOVED.
-	// Artlist downloads now route exclusively through the
-	// ArtlistDownloader port (wired via build_bundles_artlist.go).
-	embeddingURL string
-	registry     artifacts.Registry
-	publisher    delivery.Publisher
-	// ArtlistDownloader is the canonical Resolver-backed Artlist
-	// download path. nil-safe: when nil, downloadStep falls through
-	// to yt-dlp (Rule 4). Wired in build_bundles_artlist.go via an
-	// adapter wrapping downloader.Resolver.Download().
-	artlistDL     ArtlistDownloader
+	// ARTIST-DEMOLITION (September 2026): the ArtlistDownloader field is
+	// REMOVED too; the media processor no longer names any provider.
+	embeddingURL  string
+	registry      artifacts.Registry
+	publisher     delivery.Publisher
 	artifactCache capcache.Cache
 }
 
 var _ detail.Processor = (*Processor)(nil)
-
-// ArtlistDownloader is the narrow port for Artlist-clip downloads
-// routed through the canonical downloader.Resolver. Nil-safe: when
-// nil, the processor falls through to yt-dlp (Rule 4).
-//
-// Wired in build_bundles_artlist.go via an adapter wrapping
-// downloader.Resolver.Download(artapp.DownloadRequest).
-//
-// godlike/06 SSOT: this interface + the Resolver adapter are the
-// SINGLE canonical bridge between the generic media processor and
-// the Artlist-specific download routing.
-type ArtlistDownloader interface {
-	DownloadArtlistClip(ctx context.Context, sourceURL, clipPageURL, clipID, destDir, filename string) (localPath string, err error)
-}
-
-// SetArtlistDownloader injects the Artlist download bridge.
-// Nil-safe (compiles to no-op when dl is nil).
-func (p *Processor) SetArtlistDownloader(dl ArtlistDownloader) {
-	if dl != nil {
-		p.artlistDL = dl
-	}
-}
 
 // SetArtifactCache attaches the shared CAS-backed derived-artifact cache.
 // Cache failures never replace the media processor's fail-closed execution

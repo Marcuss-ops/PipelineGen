@@ -89,12 +89,13 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			// download_link metadata keys via the typed accessors. Keep the
 			// underscored keys as a compatibility fallback for older staged
 			// assets and test fixtures.
-			DownloadLink:  defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
-			DriveLink:     defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
-			DriveFileID:   defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
-			LocalPath:     defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
-			LegacyFileMD5: defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
-			Metadata:      cloneMetadata(clip.Metadata),
+			DownloadLink:    defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
+			DriveLink:       defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
+			DriveFileID:     defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
+			LocalPath:       defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
+			LegacyFileMD5:   defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
+			contentIdentity: runTagContentIdentity{sha256: clip.ContentAddress()},
+			Metadata:        cloneMetadata(clip.Metadata),
 		}
 		// A durable Drive hit is enough to skip reacquisition, but a stale
 		// local_path must never be returned as if the file were still usable.
@@ -368,6 +369,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			arg.w.item.Filename = result.Filename
 			arg.w.item.LocalPath = result.LocalPath
 			arg.w.item.LegacyFileMD5 = result.LegacyFileMD5
+			arg.w.item.contentIdentity.sha256 = result.ContentHash
 			arg.w.item.DriveLink = result.DriveLink
 			arg.w.item.DriveFileID = result.DriveFileID
 			arg.w.item.DownloadLink = result.DownloadLink

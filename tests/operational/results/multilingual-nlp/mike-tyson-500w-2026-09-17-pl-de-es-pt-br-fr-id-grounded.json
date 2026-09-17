@@ -1,0 +1,5371 @@
+{
+  "started_at_utc": "2026-09-17T18:34:31Z",
+  "completed_at_utc": "2026-09-17T18:44:48Z",
+  "source_language": "en",
+  "source_word_count": 500,
+  "source_model": "caller-authored script",
+  "translation_model": "gemma4:e4b",
+  "nlp_model": "gemma4:e4b",
+  "scene_count": 5,
+  "translation_calls": 0,
+  "translation_cache_entries": 30,
+  "translations_reused_from_cache": true,
+  "cached_corpus_translation_wall_ms": 110894,
+  "translation_wall_ms": 0,
+  "source_nlp_wall_ms": 96670,
+  "translated_nlp_wall_ms": 519901,
+  "total_stage_wall_ms": 616571,
+  "translated_ner_scene_calls": 30,
+  "phrase_batches": 7,
+  "languages": [
+    "pl",
+    "de",
+    "es",
+    "pt-BR",
+    "fr",
+    "id"
+  ],
+  "visual_ner_invocations": 35,
+  "expected_visual_ner_invocations": 35,
+  "nlp_model_invocations": 37,
+  "overlay_rendering": false,
+  "clip_rendering": false,
+  "video_rendering": false,
+  "per_language_timing": {
+    "de": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 57866
+    },
+    "es": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 45977
+    },
+    "fr": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 43102
+    },
+    "id": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 36142
+    },
+    "pl": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 58823
+    },
+    "pt-BR": {
+      "translation_calls": 0,
+      "translation_cache_entries": 5,
+      "translation_sum_scene_wall_ms": 35988
+    }
+  },
+  "semantic_checks": {
+    "pl": [
+      "missing PERSON entity in scene 1: Mike Tyson"
+    ]
+  },
+  "all_important_phrases_grounded": true,
+  "all_important_words_grounded": true,
+  "all_special_names_grounded": true,
+  "documents": [
+    {
+      "language": "en",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "In Brooklyn, Mike Tyson’s story began far from championship lights. As a teenager, he found structure in boxing, where practice gave his energy direction. Trainer Cus D’Amato taught him to study distance, defend carefully, and attack with purpose. Tyson’s crouched stance made it easier to slip punches and explode forward with short hooks. The style looked simple from the seats, but it depended on balance, timing, and repetition. His amateur bouts brought attention, yet the lesson was discipline: confidence had to be earned. He learned how pressure could become a tool.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 13,
+                  "end_rune": 23
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 163,
+                  "end_rune": 174
+                }
+              ]
+            },
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 3,
+                  "end_rune": 11
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "structure in boxing",
+              "start_rune": 92,
+              "end_rune": 111,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Mike Tyson",
+              "start_rune": 13,
+              "end_rune": 23,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 163,
+              "end_rune": 174,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "structure in boxing",
+                "start_rune": 92,
+                "end_rune": 111,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Mike Tyson",
+                "start_rune": 13,
+                "end_rune": 23,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 163,
+                "end_rune": 174,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 13,
+                    "end_rune": 23
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 163,
+                    "end_rune": 174
+                  }
+                ]
+              },
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 3,
+                    "end_rune": 11
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson turned professional in 1985 and built a reputation for speed and power. Many opponents were stopped early, so each victory added to the sense that an unstoppable force was approaching. On November 22, 1986, in Las Vegas, he faced Trevor Berbick for the WBC heavyweight title. Tyson won by second-round technical knockout and, at twenty years old, became the youngest heavyweight world champion. The record drew headlines, but the ring offered no guarantee that success would feel easy. A belt could prove achievement; it could not decide how a person handled fame, money, expectation, or the next difficult round.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 216,
+                  "end_rune": 225
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson turned professional",
+              "start_rune": 0,
+              "end_rune": 25,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "built a reputation",
+              "start_rune": 38,
+              "end_rune": 56,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "speed and power",
+              "start_rune": 61,
+              "end_rune": 76,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 216,
+              "end_rune": 225,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "Tyson turned professional",
+                "start_rune": 0,
+                "end_rune": 25,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "built a reputation",
+                "start_rune": 38,
+                "end_rune": 56,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "speed and power",
+                "start_rune": 61,
+                "end_rune": 76,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 216,
+                "end_rune": 225,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 216,
+                    "end_rune": 225
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "During the next years, Tyson united heavyweight titles and became one of boxing’s most recognizable figures. His fights combined forward movement, compact punches, and an ability to make opponents react before they could settle into a plan. In June 1988, he met Michael Spinks in Atlantic City. The bout ended in ninety-one seconds, a striking image of Tyson at his peak. Yet a highlight is only one frame of a career. Behind the quick finish were roadwork, sparring, preparation, and a demanding approach to competition. Inside the ropes, success still depended on choices made one exchange at a time.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 280,
+                  "end_rune": 293
+                }
+              ]
+            },
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 23,
+                  "end_rune": 28
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 353,
+                  "end_rune": 358
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 262,
+                  "end_rune": 276
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "boxing’s most recognizable figures",
+              "start_rune": 73,
+              "end_rune": 107,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 23,
+              "end_rune": 28,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 262,
+              "end_rune": 276,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Atlantic City",
+              "start_rune": 280,
+              "end_rune": 293,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "boxing’s most recognizable figures",
+                "start_rune": 73,
+                "end_rune": 107,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 23,
+                "end_rune": 28,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 262,
+                "end_rune": 276,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Atlantic City",
+                "start_rune": 280,
+                "end_rune": 293,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 280,
+                    "end_rune": 293
+                  }
+                ]
+              },
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 23,
+                    "end_rune": 28
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 353,
+                    "end_rune": 358
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 262,
+                    "end_rune": 276
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "The defining reversal arrived in Tokyo on February 11, 1990. Tyson entered the contest against James “Buster” Douglas as the reigning, unbeaten champion, while Douglas was underestimated. The fight lasted longer than expected. Douglas used his reach, jab, and combinations to keep Tyson from controlling the distance. In the tenth round, he knocked Tyson down and won by knockout. The result became one of boxing’s best-known upsets, and it changed the story people told about invincibility. Tyson’s defeat showed that reputation could not block a punch. It also gave Douglas a place in the sport’s history, earned through resolve.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-james--buster--douglas",
+              "text": "James “Buster” Douglas",
+              "canonical_name": "James “Buster” Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "James “Buster” Douglas",
+                  "start_rune": 95,
+                  "end_rune": 117
+                }
+              ]
+            },
+            {
+              "id": "entity-tokyo",
+              "text": "Tokyo",
+              "canonical_name": "Tokyo",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokyo",
+                  "start_rune": 33,
+                  "end_rune": 38
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson entered the contest",
+              "start_rune": 61,
+              "end_rune": 86,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "James “Buster” Douglas",
+              "start_rune": 95,
+              "end_rune": 117,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tokyo",
+              "start_rune": 33,
+              "end_rune": 38,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "Tyson entered the contest",
+                "start_rune": 61,
+                "end_rune": 86,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "James “Buster” Douglas",
+                "start_rune": 95,
+                "end_rune": 117,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tokyo",
+                "start_rune": 33,
+                "end_rune": 38,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-james--buster--douglas",
+                "text": "James “Buster” Douglas",
+                "canonical_name": "James “Buster” Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "James “Buster” Douglas",
+                    "start_rune": 95,
+                    "end_rune": 117
+                  }
+                ]
+              },
+              {
+                "id": "entity-tokyo",
+                "text": "Tokyo",
+                "canonical_name": "Tokyo",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokyo",
+                    "start_rune": 33,
+                    "end_rune": 38
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Tyson’s later career included returns to the ring, championships, setbacks, and years spent rebuilding his life. Like Muhammad Ali, he became a figure whose fame reached beyond boxing, though their careers were distinct. His record cannot be reduced to one knockout or one defeat. It holds physical talent alongside public controversy and personal struggle, and those parts should be described without turning hardship into spectacle. The lesson is not that discipline makes anyone invulnerable. Skill grows through repeated work, while fame can magnify good decisions and mistakes. Tyson remains a heavyweight figure because his rise, fall, and return invite conversation about ambition, pressure, accountability, and what a second chapter can mean.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 118,
+                  "end_rune": 130
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "spent rebuilding his life",
+              "start_rune": 86,
+              "end_rune": 111,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 118,
+              "end_rune": 130,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "spent rebuilding his life",
+                "start_rune": 86,
+                "end_rune": 111,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 118,
+                "end_rune": 130,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 118,
+                    "end_rune": 130
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "pl",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "W Brooklynie historia Mike’a Tysona zaczęła się daleko od świateł mistrzostwa. Jako nastolatek znalazł strukturę w boksie, gdzie trening nadawał kierunek jego energii. Trener Cus D’Amato nauczył go studiowania dystansu, ostrożnej obrony i atakowania z zamiarem. Przyklęknięta postawa Tysona ułatwiała unikanie ciosów i eksplodowanie do przodu krótkimi hakami. Styl wyglądał na prosty z widowni, ale zależał od równowagi, rytmu i powtórzeń. Jego amatorskie walki przyciągnęły uwagę, lecz lekcją była dyscyplina: pewność siebie musiała być wypracowana. Nauczył się, jak presja może stać się narzędziem.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pl",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "33b710d433841f47c06320a43ad7fc7db01bb1024d70add8aeaa1bb71cd0c7a2",
+            "translation_wall_ms": 18523
+          },
+          "entities": [
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 29,
+                  "end_rune": 34
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 284,
+                  "end_rune": 289
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 175,
+                  "end_rune": 186
+                }
+              ]
+            },
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 2,
+                  "end_rune": 10
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "zaczęła się daleko od",
+              "start_rune": 36,
+              "end_rune": 57,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "świateł mistrzostwa",
+              "start_rune": 58,
+              "end_rune": 77,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 29,
+              "end_rune": 34,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 175,
+              "end_rune": 186,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Brooklyn",
+              "start_rune": 2,
+              "end_rune": 10,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pl",
+            "important_phrases": [
+              {
+                "text": "zaczęła się daleko od",
+                "start_rune": 36,
+                "end_rune": 57,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "świateł mistrzostwa",
+                "start_rune": 58,
+                "end_rune": 77,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 29,
+                "end_rune": 34,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 175,
+                "end_rune": 186,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Brooklyn",
+                "start_rune": 2,
+                "end_rune": 10,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 29,
+                    "end_rune": 34
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 284,
+                    "end_rune": 289
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 175,
+                    "end_rune": 186
+                  }
+                ]
+              },
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 2,
+                    "end_rune": 10
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson został profesjonalistą w 1985 roku i zbudował reputację szybkości i mocy. Wielu przeciwników było zatrzymywanych wcześnie, więc każde zwycięstwo dodawało poczucia zbliżającej się niepowstrzymanej siły. 22 listopada 1986 roku, w Las Vegas, stanął naprzeciwko Trevora Berbicka o tytuł mistrza świata w kategorii ciężkiej WBC. Tyson wygrał przez nokaut techniczny w drugiej rundzie i miał dwadzieścia lat, stając się najmłodszym mistrzem świata w kategorii ciężkiej. Ten rekord przyciągnął nagłówki, ale ringu nie gwarantowało, że sukces będzie łatwy. Pas mógł udowodnić osiągnięcie; nie mógł zdecydować, jak osoba poradzi sobie z sławą, pieniędzmi, oczekiwaniami czy następną trudną rundą.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pl",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "f136185487c360fb020d8e1064efa53077ab846404bc6943420e0da10f174d47",
+            "translation_wall_ms": 8291
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 234,
+                  "end_rune": 243
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson został profesjonalistą w",
+              "start_rune": 0,
+              "end_rune": 30,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "roku i zbudował reputację",
+              "start_rune": 36,
+              "end_rune": 61,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "szybkości i mocy",
+              "start_rune": 62,
+              "end_rune": 78,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 234,
+              "end_rune": 243,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pl",
+            "important_phrases": [
+              {
+                "text": "Tyson został profesjonalistą w",
+                "start_rune": 0,
+                "end_rune": 30,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "roku i zbudował reputację",
+                "start_rune": 36,
+                "end_rune": 61,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "szybkości i mocy",
+                "start_rune": 62,
+                "end_rune": 78,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 234,
+                "end_rune": 243,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 234,
+                    "end_rune": 243
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "W kolejnych latach Tyson zjednoczył tytuły ciężkiej wagi i stał się jedną z najbardziej rozpoznawalnych postaci boksu. Jego walki łączyły ruch naprzód, zwarte ciosy i zdolność do skłonienia przeciwników do reakcji zanim zdążyli zaplanować coś sami. W czerwcu 1988 roku stanął naprzeciw Michaela Spinks’a w Atlantic City. Pojedynek zakończył się w dziewięćdziesięciu jednym sekundzie, uderzającym obrazie Tysona na szczycie formy. Jednak jeden spektakularny moment to tylko jedna klatka kariery. Za szybkim końcem stała praca nad kondycją, sparingi, przygotowania i wymagające podejście do rywalizacji. Wewnątrz liny sukces nadal zależał od wyborów podejmowanych po wymianie ciosu.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pl",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "4b3993798ecf5d1fa3b944cbc4ae930201c9d3a196d183189434c293def05f4a",
+            "translation_wall_ms": 9268
+          },
+          "entities": [
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 19,
+                  "end_rune": 24
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 404,
+                  "end_rune": 409
+                }
+              ]
+            },
+            {
+              "id": "entity-spinks",
+              "text": "Spinks",
+              "canonical_name": "Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Spinks",
+                  "start_rune": 295,
+                  "end_rune": 301
+                }
+              ]
+            },
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 306,
+                  "end_rune": 319
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Jego walki łączyły ruch",
+              "start_rune": 119,
+              "end_rune": 142,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 19,
+              "end_rune": 24,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Spinks",
+              "start_rune": 295,
+              "end_rune": 301,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Atlantic City",
+              "start_rune": 306,
+              "end_rune": 319,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pl",
+            "important_phrases": [
+              {
+                "text": "Jego walki łączyły ruch",
+                "start_rune": 119,
+                "end_rune": 142,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 19,
+                "end_rune": 24,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Spinks",
+                "start_rune": 295,
+                "end_rune": 301,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Atlantic City",
+                "start_rune": 306,
+                "end_rune": 319,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 19,
+                    "end_rune": 24
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 404,
+                    "end_rune": 409
+                  }
+                ]
+              },
+              {
+                "id": "entity-spinks",
+                "text": "Spinks",
+                "canonical_name": "Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Spinks",
+                    "start_rune": 295,
+                    "end_rune": 301
+                  }
+                ]
+              },
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 306,
+                    "end_rune": 319
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "Definitywny zwrot miał miejsce w Tokio 11 lutego 1990 roku. Tyson wszedł do walki z Jamesem „Busterem” Douglasem jako panujący, niepokonany mistrz, podczas gdy Douglas był niedoceniany. Walka trwała dłużej niż oczekiwano. Douglas wykorzystał swój zasięg ręki, jab i kombinacje, aby uniemożliwić Tysonowi kontrolowanie dystansu. W dziesiątej rundzie obalił Tysona i wygrał przez nokaut. Wynik stał się jednym z najlepiej znanych niespodzianek w boksie i zmienił opowieść ludzi o niepokonaniu. Porażka Tysona pokazała, że reputacja nie mogła zablokować ciosu. Dało to Douglasowi również miejsce w historii sportu, zdobyte dzięki determinacji.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pl",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "c5481d8178ce3545b851ffd5d9bfa3efb104acf0bb68fc691281753b57511337",
+            "translation_wall_ms": 11083
+          },
+          "entities": [
+            {
+              "id": "entity-tokio",
+              "text": "Tokio",
+              "canonical_name": "Tokio",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokio",
+                  "start_rune": 33,
+                  "end_rune": 38
+                }
+              ]
+            },
+            {
+              "id": "entity-douglas",
+              "text": "Douglas",
+              "canonical_name": "Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Douglas",
+                  "start_rune": 103,
+                  "end_rune": 110
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 160,
+                  "end_rune": 167
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 222,
+                  "end_rune": 229
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 566,
+                  "end_rune": 573
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson wszedł do walki",
+              "start_rune": 60,
+              "end_rune": 81,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tokio",
+              "start_rune": 33,
+              "end_rune": 38,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Douglas",
+              "start_rune": 103,
+              "end_rune": 110,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pl",
+            "important_phrases": [
+              {
+                "text": "Tyson wszedł do walki",
+                "start_rune": 60,
+                "end_rune": 81,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tokio",
+                "start_rune": 33,
+                "end_rune": 38,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Douglas",
+                "start_rune": 103,
+                "end_rune": 110,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tokio",
+                "text": "Tokio",
+                "canonical_name": "Tokio",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokio",
+                    "start_rune": 33,
+                    "end_rune": 38
+                  }
+                ]
+              },
+              {
+                "id": "entity-douglas",
+                "text": "Douglas",
+                "canonical_name": "Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Douglas",
+                    "start_rune": 103,
+                    "end_rune": 110
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 160,
+                    "end_rune": 167
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 222,
+                    "end_rune": 229
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 566,
+                    "end_rune": 573
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Późniejsza kariera Tysona obejmowała powroty do ringu, mistrzostwa, potknięcia i lata poświęcone odbudowie jego życia. Podobnie jak Muhammad Ali, stał się postacią, której sława wykraczała poza bokserski ring, choć ich kariery były odrębne. Jego rekord nie może zostać zredukowany do jednego nokautu czy jednej porażki. Zawiera on talent fizyczny obok kontrowersji publicznych i osobistej walki, a te elementy powinny być opisane bez zamieniania trudności w spektakl. Lekcja nie polega na tym, że dyscyplina czyni kogoś niewrażliwym. Umiejętność rozwija się poprzez powtarzalną pracę, podczas gdy sława może uwydatniać dobre decyzje i błędy. Tyson pozostaje postacią ciężkiej wagi, ponieważ jego wzrost, upadek i powrót zapraszają do rozmowy o ambicji, presji, odpowiedzialności i to, co może oznaczać drugi rozdział.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pl",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "29866f78b9334c50da56839bfebeefd3ce38b76b210c877707fe9d1bc638f3a8",
+            "translation_wall_ms": 11658
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 132,
+                  "end_rune": 144
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Późniejsza kariera Tysona obejmowała",
+              "start_rune": 0,
+              "end_rune": 36,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "powroty do ringu",
+              "start_rune": 37,
+              "end_rune": 53,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "potknięcia i",
+              "start_rune": 68,
+              "end_rune": 80,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 132,
+              "end_rune": 144,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pl",
+            "important_phrases": [
+              {
+                "text": "Późniejsza kariera Tysona obejmowała",
+                "start_rune": 0,
+                "end_rune": 36,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "powroty do ringu",
+                "start_rune": 37,
+                "end_rune": 53,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "potknięcia i",
+                "start_rune": 68,
+                "end_rune": 80,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 132,
+                "end_rune": 144,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 132,
+                    "end_rune": 144
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "de",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "In Brooklyn begann Mike Tysons Geschichte weit entfernt von den Lichtern des Weltkampfs. Als Teenager fand er im Boxen Struktur, wo das Training seiner Energie eine Richtung gab. Trainer Cus D’Amato lehrte ihn, Distanz zu studieren, vorsichtig zu verteidigen und mit Zielstrebigkeit anzugreifen. Tysons geduckte Haltung erleichterte es ihm, Schläge auszuweichen und mit kurzen Haken nach vorne zu explodieren. Der Stil sah von den Sitzen aus einfach aus, aber er hing von Balance, Timing und Wiederholung ab. Seine Amateurkämpfe erregten Aufmerksamkeit, doch die Lektion war Disziplin: Selbstvertrauen musste verdient werden. Er lernte, wie Druck ein Werkzeug werden konnte.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "de",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "50f97c085edc9c47dd7c9a4ed6d048dff278c4ac674560e685022a4ba3b778b2",
+            "translation_wall_ms": 22912
+          },
+          "entities": [
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 19,
+                  "end_rune": 29
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 187,
+                  "end_rune": 198
+                }
+              ]
+            },
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 3,
+                  "end_rune": 11
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Lichtern des Weltkampfs",
+              "start_rune": 64,
+              "end_rune": 87,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Geschichte weit entfernt",
+              "start_rune": 31,
+              "end_rune": 55,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Teenager fand",
+              "start_rune": 93,
+              "end_rune": 106,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Mike Tyson",
+              "start_rune": 19,
+              "end_rune": 29,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 187,
+              "end_rune": 198,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "de",
+            "important_phrases": [
+              {
+                "text": "Lichtern des Weltkampfs",
+                "start_rune": 64,
+                "end_rune": 87,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Geschichte weit entfernt",
+                "start_rune": 31,
+                "end_rune": 55,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Teenager fand",
+                "start_rune": 93,
+                "end_rune": 106,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Mike Tyson",
+                "start_rune": 19,
+                "end_rune": 29,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 187,
+                "end_rune": 198,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 19,
+                    "end_rune": 29
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 187,
+                    "end_rune": 198
+                  }
+                ]
+              },
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 3,
+                    "end_rune": 11
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson wurde 1985 Profi und baute sich einen Ruf für Geschwindigkeit und Kraft auf. Viele Gegner wurden früh gestoppt, sodass jeder Sieg das Gefühl verstärkte, dass eine unaufhaltsame Kraft herannahte. Am 22. November 1986 traf er in Las Vegas auf Trevor Berbick um den WBC-Schwergewichtstitel. Tyson gewann durch technischen Knockout im zweiten Runde und wurde mit zwanzig Jahren der jüngste Schwergewichtsweltmeister. Der Rekord zog Schlagzeilen, aber der Ring bot keine Garantie dafür, dass Erfolg leicht fühlen würde. Ein Gürtel konnte Leistung beweisen; er konnte nicht entscheiden, wie ein Mensch mit Ruhm, Geld, Erwartungen oder der nächsten schwierigen Runde umging.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "de",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "a3c66e7936e2a469b6e57fd5a38f6c2c69eee7ac821ea46d4931715921661705",
+            "translation_wall_ms": 10150
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 233,
+                  "end_rune": 242
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Ruf für Geschwindigkeit",
+              "start_rune": 44,
+              "end_rune": 67,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "jeder Sieg das Gefühl",
+              "start_rune": 125,
+              "end_rune": 146,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "unaufhaltsame Kraft herannahte",
+              "start_rune": 169,
+              "end_rune": 199,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 233,
+              "end_rune": 242,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "de",
+            "important_phrases": [
+              {
+                "text": "Ruf für Geschwindigkeit",
+                "start_rune": 44,
+                "end_rune": 67,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "jeder Sieg das Gefühl",
+                "start_rune": 125,
+                "end_rune": 146,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "unaufhaltsame Kraft herannahte",
+                "start_rune": 169,
+                "end_rune": 199,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 233,
+                "end_rune": 242,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 233,
+                    "end_rune": 242
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "In den folgenden Jahren vereinte Tyson die Schwergewichts-Titel und wurde zu einer der bekanntesten Figuren des Boxsports. Seine Kämpfe kombinierten Vorwärtsbewegung, kompakte Schläge und die Fähigkeit, Gegner zu provozieren, bevor diese einen Plan entwickeln konnten. Im Juni 1988 traf er Michael Spinks in Atlantic City. Der Kampf endete in neunundneunzig Sekunden, ein prägendes Bild von Tyson auf seinem Höhepunkt. Doch ein Highlight ist nur ein Rahmen einer Karriere. Hinter dem schnellen Sieg standen Trainingsarbeit, Sparring, Vorbereitung und eine anspruchsvolle Herangehensweise an den Wettkampf. Innerhalb des Rings hing der Erfolg immer noch von Entscheidungen ab, die Schlag für Schlag getroffen wurden.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "de",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "0581b38ac5c96a20d12065ac5299556fd4b7158296d9c13f2083d76154579477",
+            "translation_wall_ms": 7685
+          },
+          "entities": [
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 308,
+                  "end_rune": 321
+                }
+              ]
+            },
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 33,
+                  "end_rune": 38
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 391,
+                  "end_rune": 396
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 290,
+                  "end_rune": 304
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "bekanntesten Figuren des Boxsports",
+              "start_rune": 87,
+              "end_rune": 121,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "folgenden Jahren vereinte",
+              "start_rune": 7,
+              "end_rune": 32,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Kämpfe kombinierten Vorwärtsbewegung",
+              "start_rune": 129,
+              "end_rune": 165,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Atlantic City",
+              "start_rune": 308,
+              "end_rune": 321,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tyson",
+              "start_rune": 33,
+              "end_rune": 38,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 290,
+              "end_rune": 304,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "de",
+            "important_phrases": [
+              {
+                "text": "bekanntesten Figuren des Boxsports",
+                "start_rune": 87,
+                "end_rune": 121,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "folgenden Jahren vereinte",
+                "start_rune": 7,
+                "end_rune": 32,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Kämpfe kombinierten Vorwärtsbewegung",
+                "start_rune": 129,
+                "end_rune": 165,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Atlantic City",
+                "start_rune": 308,
+                "end_rune": 321,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tyson",
+                "start_rune": 33,
+                "end_rune": 38,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 290,
+                "end_rune": 304,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 308,
+                    "end_rune": 321
+                  }
+                ]
+              },
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 33,
+                    "end_rune": 38
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 391,
+                    "end_rune": 396
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 290,
+                    "end_rune": 304
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "Die entscheidende Wende ereignete sich in Tokio am 11. Februar 1990. Tyson trat gegen James „Buster“ Douglas als regierender, ungeschlagener Champion an, während Douglas unterschätzt wurde. Der Kampf dauerte länger als erwartet. Douglas nutzte seine Reichweite, den Jab und Kombinationen, um Tyson daran zu hindern, die Distanz zu kontrollieren. In der zehnten Runde ließ er Tyson fallen und gewann durch Knockout. Das Ergebnis wurde zu einem der bekanntesten Überraschungen des Boxsports und veränderte die Geschichte, die die Leute über Unbesiegbarkeit erzählten. Tysons Niederlage zeigte, dass ein Ruf keinen Schlag abwehren konnte. Sie gab Douglas auch einen Platz in der Geschichte des Sports, den er durch Entschlossenheit errang.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "de",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "dc56415aa61a273bacff1dade9ad8506cb903e2fa8d7953bdf2deaf2e496fba9",
+            "translation_wall_ms": 7769
+          },
+          "entities": [
+            {
+              "id": "entity-tokio",
+              "text": "Tokio",
+              "canonical_name": "Tokio",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokio",
+                  "start_rune": 42,
+                  "end_rune": 47
+                }
+              ]
+            },
+            {
+              "id": "entity-douglas",
+              "text": "Douglas",
+              "canonical_name": "Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Douglas",
+                  "start_rune": 101,
+                  "end_rune": 108
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 162,
+                  "end_rune": 169
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 229,
+                  "end_rune": 236
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 644,
+                  "end_rune": 651
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "entscheidende Wende ereignete sich",
+              "start_rune": 4,
+              "end_rune": 38,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Tyson trat",
+              "start_rune": 69,
+              "end_rune": 79,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "ungeschlagener Champion an",
+              "start_rune": 126,
+              "end_rune": 152,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tokio",
+              "start_rune": 42,
+              "end_rune": 47,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Douglas",
+              "start_rune": 101,
+              "end_rune": 108,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "de",
+            "important_phrases": [
+              {
+                "text": "entscheidende Wende ereignete sich",
+                "start_rune": 4,
+                "end_rune": 38,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Tyson trat",
+                "start_rune": 69,
+                "end_rune": 79,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "ungeschlagener Champion an",
+                "start_rune": 126,
+                "end_rune": 152,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tokio",
+                "start_rune": 42,
+                "end_rune": 47,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Douglas",
+                "start_rune": 101,
+                "end_rune": 108,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tokio",
+                "text": "Tokio",
+                "canonical_name": "Tokio",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokio",
+                    "start_rune": 42,
+                    "end_rune": 47
+                  }
+                ]
+              },
+              {
+                "id": "entity-douglas",
+                "text": "Douglas",
+                "canonical_name": "Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Douglas",
+                    "start_rune": 101,
+                    "end_rune": 108
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 162,
+                    "end_rune": 169
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 229,
+                    "end_rune": 236
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 644,
+                    "end_rune": 651
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Tysons spätere Karriere umfasste Rückkehrer ins Ring, Meisterschaften, Rückschläge und Jahre des Wiederaufbaus seines Lebens. Wie Muhammad Ali wurde er zu einer Figur, deren Ruhm über den Boxsport hinausreichte, obwohl ihre Karrieren getrennt waren. Sein Rekord kann nicht auf einen Knockout oder eine Niederlage reduziert werden. Er beinhaltet physisches Talent neben öffentlicher Kontroverse und persönlichem Kampf, und diese Teile sollten beschrieben werden, ohne das Leid zu einem Spektakel zu machen. Die Lektion ist nicht, dass Disziplin jemanden unverwundbar macht. Können wachsen durch wiederholte Arbeit, während Ruhm gute Entscheidungen und Fehler vergrößern kann. Tyson bleibt eine Schwergewichtsfigur, weil sein Aufstieg, Fall und Wiederkehr Gespräche über Ehrgeiz, Druck, Verantwortlichkeit und was ein zweites Kapitel bedeuten kann, anregen.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "de",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "694fd5e655a152fb27293d4abe1e029320a2cfaed208ec0227ce4d6e354fc4ee",
+            "translation_wall_ms": 9350
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 130,
+                  "end_rune": 142
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "spätere Karriere umfasste Rückkehrer",
+              "start_rune": 7,
+              "end_rune": 43,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Jahre des Wiederaufbaus seines",
+              "start_rune": 87,
+              "end_rune": 117,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Ruhm über den Boxsport",
+              "start_rune": 174,
+              "end_rune": 196,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 130,
+              "end_rune": 142,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "de",
+            "important_phrases": [
+              {
+                "text": "spätere Karriere umfasste Rückkehrer",
+                "start_rune": 7,
+                "end_rune": 43,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Jahre des Wiederaufbaus seines",
+                "start_rune": 87,
+                "end_rune": 117,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Ruhm über den Boxsport",
+                "start_rune": 174,
+                "end_rune": 196,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 130,
+                "end_rune": 142,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 130,
+                    "end_rune": 142
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "En Brooklyn, la historia de Mike Tyson comenzó lejos de los focos del campeonato. Como adolescente, encontró estructura en el boxeo, donde la práctica dio dirección a su energía. El entrenador Cus D’Amato le enseñó a estudiar la distancia, defender con cuidado y atacar con propósito. La postura agachada de Tyson facilitaba esquivar golpes y explotar hacia adelante con ganchos cortos. El estilo parecía simple desde los asientos, pero dependía del equilibrio, el ritmo y la repetición. Sus combates amateur atrajeron atención, sin embargo, la lección fue disciplina: la confianza tenía que ganarse. Aprendió cómo la presión podía convertirse en una herramienta.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "es",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "4c12f72ccacc2a68f1f5de99434621d666c4fed9e0f73f2c187dbb7c6dd5a1c8",
+            "translation_wall_ms": 6126
+          },
+          "entities": [
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 3,
+                  "end_rune": 11
+                }
+              ]
+            },
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 28,
+                  "end_rune": 38
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 193,
+                  "end_rune": 204
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "focos del campeonato",
+              "start_rune": 60,
+              "end_rune": 80,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Mike Tyson",
+              "start_rune": 28,
+              "end_rune": 38,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 193,
+              "end_rune": 204,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "es",
+            "important_phrases": [
+              {
+                "text": "focos del campeonato",
+                "start_rune": 60,
+                "end_rune": 80,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Mike Tyson",
+                "start_rune": 28,
+                "end_rune": 38,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 193,
+                "end_rune": 204,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 3,
+                    "end_rune": 11
+                  }
+                ]
+              },
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 28,
+                    "end_rune": 38
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 193,
+                    "end_rune": 204
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson se profesionalizó en 1985 y construyó una reputación de velocidad y poder. Muchos oponentes fueron detenidos temprano, por lo que cada victoria añadía la sensación de que se acercaba una fuerza imparable. El 22 de noviembre de 1986, en Las Vegas, se enfrentó a Trevor Berbick por el título mundial peso pesado del WBC. Tyson ganó por nocaut técnico en el segundo asalto y, a los veinte años, se convirtió en el campeón mundial peso pesado más joven. El récord acaparó titulares, pero el ring no ofrecía garantía de que el éxito se sintiera fácil. Un cinturón podía demostrar un logro; no podía decidir cómo una persona manejaba la fama, el dinero, la expectativa o el siguiente difícil asalto.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "es",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "a000ff69b0596670a8038c5883434469065e07ab177d762d4b9b1789826c2019",
+            "translation_wall_ms": 8383
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 242,
+                  "end_rune": 251
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Muchos oponentes fueron detenidos",
+              "start_rune": 81,
+              "end_rune": 114,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 242,
+              "end_rune": 251,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "es",
+            "important_phrases": [
+              {
+                "text": "Muchos oponentes fueron detenidos",
+                "start_rune": 81,
+                "end_rune": 114,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 242,
+                "end_rune": 251,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 242,
+                    "end_rune": 251
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "Durante los años siguientes, Tyson unificó títulos de peso pesado y se convirtió en una de las figuras más reconocibles del boxeo. Sus peleas combinaban movimiento hacia adelante, golpes compactos y una habilidad para hacer reaccionar a sus oponentes antes de que pudieran establecer un plan. En junio de 1988, se enfrentó a Michael Spinks en Atlantic City. El combate terminó en noventa y un segundos, una imagen impactante de Tyson en su apogeo. Sin embargo, un momento destacado es solo un fotograma de una carrera. Detrás del final rápido había trabajo en carretera, sparring, preparación y un enfoque exigente hacia la competición. Dentro del ring, el éxito todavía dependía de las decisiones tomadas intercambio a intercambio.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "es",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "9d8c549e7c8bdedcdf18079d9403edd17a6b257806512c47b51809e129d5ab6a",
+            "translation_wall_ms": 8943
+          },
+          "entities": [
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 29,
+                  "end_rune": 34
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 428,
+                  "end_rune": 433
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 325,
+                  "end_rune": 339
+                }
+              ]
+            },
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 343,
+                  "end_rune": 356
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Durante los años siguientes",
+              "start_rune": 0,
+              "end_rune": 27,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 29,
+              "end_rune": 34,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 325,
+              "end_rune": 339,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Atlantic City",
+              "start_rune": 343,
+              "end_rune": 356,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "es",
+            "important_phrases": [
+              {
+                "text": "Durante los años siguientes",
+                "start_rune": 0,
+                "end_rune": 27,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 29,
+                "end_rune": 34,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 325,
+                "end_rune": 339,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Atlantic City",
+                "start_rune": 343,
+                "end_rune": 356,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 29,
+                    "end_rune": 34
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 428,
+                    "end_rune": 433
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 325,
+                    "end_rune": 339
+                  }
+                ]
+              },
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 343,
+                    "end_rune": 356
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "El revés definitorio llegó en Tokio el 11 de febrero de 1990. Tyson entró al combate contra James “Buster” Douglas como el campeón reinante e invicto, mientras que Douglas fue subestimado. La pelea duró más de lo esperado. Douglas usó su alcance, jab y combinaciones para evitar que Tyson controlara la distancia. En el décimo asalto, derribó a Tyson y ganó por nocaut. El resultado se convirtió en una de las sorpresas más conocidas del boxeo, y cambió la historia que la gente contaba sobre la invencibilidad. La derrota de Tyson demostró que la reputación no podía bloquear un golpe. También le dio a Douglas un lugar en la historia del deporte, ganado con resolución.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "es",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "f132e8362323be296f76ab103a11cd1d37392ee3f32e9dd611d54cb658dd865b",
+            "translation_wall_ms": 10577
+          },
+          "entities": [
+            {
+              "id": "entity-james--buster--douglas",
+              "text": "James “Buster” Douglas",
+              "canonical_name": "James “Buster” Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "James “Buster” Douglas",
+                  "start_rune": 92,
+                  "end_rune": 114
+                }
+              ]
+            },
+            {
+              "id": "entity-tokio",
+              "text": "Tokio",
+              "canonical_name": "Tokio",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokio",
+                  "start_rune": 30,
+                  "end_rune": 35
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson entró al combate",
+              "start_rune": 62,
+              "end_rune": 84,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "campeón reinante e invicto",
+              "start_rune": 123,
+              "end_rune": 149,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "James “Buster” Douglas",
+              "start_rune": 92,
+              "end_rune": 114,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tokio",
+              "start_rune": 30,
+              "end_rune": 35,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "es",
+            "important_phrases": [
+              {
+                "text": "Tyson entró al combate",
+                "start_rune": 62,
+                "end_rune": 84,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "campeón reinante e invicto",
+                "start_rune": 123,
+                "end_rune": 149,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "James “Buster” Douglas",
+                "start_rune": 92,
+                "end_rune": 114,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tokio",
+                "start_rune": 30,
+                "end_rune": 35,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-james--buster--douglas",
+                "text": "James “Buster” Douglas",
+                "canonical_name": "James “Buster” Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "James “Buster” Douglas",
+                    "start_rune": 92,
+                    "end_rune": 114
+                  }
+                ]
+              },
+              {
+                "id": "entity-tokio",
+                "text": "Tokio",
+                "canonical_name": "Tokio",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokio",
+                    "start_rune": 30,
+                    "end_rune": 35
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "La carrera posterior de Tyson incluyó regresos al ring, campeonatos, contratiempos y años dedicados a reconstruir su vida. Al igual que Muhammad Ali, se convirtió en una figura cuya fama trascendió el boxeo, aunque sus carreras fueron distintas. Su récord no puede reducirse a un nocaut o a una derrota. Contiene talento físico junto con controversia pública y lucha personal, y esas partes deben describirse sin convertir la adversidad en espectáculo. La lección no es que la disciplina hace invulnerable a nadie. La habilidad crece mediante el trabajo repetido, mientras que la fama puede magnificar las buenas decisiones y los errores. Tyson sigue siendo una figura de peso pesado porque su ascenso, caída y regreso invitan a conversar sobre la ambición, la presión, la responsabilidad y lo que puede significar un segundo capítulo.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "es",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "79a31382417f7ea5ccc160844ff1e8a8e53bc68d8a07f7f7e714224ed3c71344",
+            "translation_wall_ms": 11948
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 136,
+                  "end_rune": 148
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "contratiempos y años dedicados",
+              "start_rune": 69,
+              "end_rune": 99,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "reconstruir su vida",
+              "start_rune": 102,
+              "end_rune": 121,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 136,
+              "end_rune": 148,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "es",
+            "important_phrases": [
+              {
+                "text": "contratiempos y años dedicados",
+                "start_rune": 69,
+                "end_rune": 99,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "reconstruir su vida",
+                "start_rune": 102,
+                "end_rune": 121,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 136,
+                "end_rune": 148,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 136,
+                    "end_rune": 148
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "pt-BR",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "Em Brooklyn, a história de Mike Tyson começou longe dos holofotes do campeonato. Como adolescente, ele encontrou estrutura no boxe, onde o treino deu direção à sua energia. O treinador Cus D’Amato ensinou-lhe a estudar a distância, defender com cuidado e atacar com propósito. A postura agachada de Tyson facilitava desviar dos golpes e explodir para frente com ganchos curtos. O estilo parecia simples das arquibancadas, mas dependia de equilíbrio, ritmo e repetição. Seus combates amadores atraíram atenção, mas a lição foi disciplina: a confiança tinha que ser conquistada. Ele aprendeu como a pressão poderia se tornar uma ferramenta.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pt-BR",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "a19d1b5696cdc9a707385df431ba147946a524b21912cf7e8ab0f3d69d49838c",
+            "translation_wall_ms": 6341
+          },
+          "entities": [
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 3,
+                  "end_rune": 11
+                }
+              ]
+            },
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 27,
+                  "end_rune": 37
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 185,
+                  "end_rune": 196
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "holofotes do campeonato",
+              "start_rune": 56,
+              "end_rune": 79,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "encontrou estrutura no boxe",
+              "start_rune": 103,
+              "end_rune": 130,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Mike Tyson",
+              "start_rune": 27,
+              "end_rune": 37,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 185,
+              "end_rune": 196,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pt-BR",
+            "important_phrases": [
+              {
+                "text": "holofotes do campeonato",
+                "start_rune": 56,
+                "end_rune": 79,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "encontrou estrutura no boxe",
+                "start_rune": 103,
+                "end_rune": 130,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Mike Tyson",
+                "start_rune": 27,
+                "end_rune": 37,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 185,
+                "end_rune": 196,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 3,
+                    "end_rune": 11
+                  }
+                ]
+              },
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 27,
+                    "end_rune": 37
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 185,
+                    "end_rune": 196
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson se tornou profissional em 1985 e construiu uma reputação por velocidade e poder. Muitos oponentes foram parados cedo, então cada vitória acrescentava ao sentimento de que uma força imparável estava se aproximando. Em 22 de novembro de 1986, em Las Vegas, ele enfrentou Trevor Berbick pelo título mundial peso-pesado do WBC. Tyson venceu por nocaute técnico no segundo round e, aos vinte anos, tornou-se o mais jovem campeão mundial peso-pesado. O recorde atraiu manchetes, mas o ringue não oferecia garantia de que o sucesso seria fácil. Um cinturão poderia provar a conquista; não podia decidir como uma pessoa lidava com fama, dinheiro, expectativa ou o próximo round difícil.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pt-BR",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "502b20e89c5dd471d1af1141090afcd5cf52ba231a0a4215d6cbeb2e58d153b6",
+            "translation_wall_ms": 7358
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 250,
+                  "end_rune": 259
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson se tornou profissional",
+              "start_rune": 0,
+              "end_rune": 28,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Muitos oponentes foram parados",
+              "start_rune": 87,
+              "end_rune": 117,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 250,
+              "end_rune": 259,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pt-BR",
+            "important_phrases": [
+              {
+                "text": "Tyson se tornou profissional",
+                "start_rune": 0,
+                "end_rune": 28,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Muitos oponentes foram parados",
+                "start_rune": 87,
+                "end_rune": 117,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 250,
+                "end_rune": 259,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 250,
+                    "end_rune": 259
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "Nos anos seguintes, Tyson unificou títulos pesadíssimos e se tornou uma das figuras mais reconhecíveis do boxe. Seus combates combinavam movimento para frente, socos compactos e uma capacidade de fazer os adversários reagirem antes que pudessem traçar um plano. Em junho de 1988, ele enfrentou Michael Spinks em Atlantic City. O combate terminou em noventa e um segundos, uma imagem marcante do Tyson no auge. No entanto, um destaque é apenas um quadro de uma carreira. Por trás do nocaute rápido havia o trabalho de rua, o sparring, a preparação e uma abordagem exigente para a competição. Dentro do ringue, o sucesso ainda dependia das escolhas feitas em cada troca.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pt-BR",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "84205b8054aed3da56105ccc784b83e7ddb850468d1c75e6a86ef60e35d1efa3",
+            "translation_wall_ms": 6708
+          },
+          "entities": [
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 20,
+                  "end_rune": 25
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 395,
+                  "end_rune": 400
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 294,
+                  "end_rune": 308
+                }
+              ]
+            },
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 312,
+                  "end_rune": 325
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "anos seguintes",
+              "start_rune": 4,
+              "end_rune": 18,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 20,
+              "end_rune": 25,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 294,
+              "end_rune": 308,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Atlantic City",
+              "start_rune": 312,
+              "end_rune": 325,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pt-BR",
+            "important_phrases": [
+              {
+                "text": "anos seguintes",
+                "start_rune": 4,
+                "end_rune": 18,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 20,
+                "end_rune": 25,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 294,
+                "end_rune": 308,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Atlantic City",
+                "start_rune": 312,
+                "end_rune": 325,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 20,
+                    "end_rune": 25
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 395,
+                    "end_rune": 400
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 294,
+                    "end_rune": 308
+                  }
+                ]
+              },
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 312,
+                    "end_rune": 325
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "A reviravolta definidora chegou em Tóquio em 11 de fevereiro de 1990. Tyson entrou no combate contra James “Buster” Douglas como o campeão reinante e invicto, enquanto Douglas foi subestimado. A luta durou mais do que o esperado. Douglas usou seu alcance, jab e combinações para impedir que Tyson controlasse a distância. No décimo round, ele derrubou Tyson e venceu por nocaute. O resultado tornou-se um dos maiores upsets da história do boxe, e mudou a narrativa que as pessoas contavam sobre invencibilidade. A derrota de Tyson mostrou que reputação não podia bloquear um soco. Também deu a Douglas um lugar na história do esporte, conquistado através da determinação.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pt-BR",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "6402eed83ec236ec5e5d2297866da0b2115c271b3104cf6b5fc364f31a25570a",
+            "translation_wall_ms": 7311
+          },
+          "entities": [
+            {
+              "id": "entity-james--buster--douglas",
+              "text": "James “Buster” Douglas",
+              "canonical_name": "James “Buster” Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "James “Buster” Douglas",
+                  "start_rune": 101,
+                  "end_rune": 123
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson entrou no combate",
+              "start_rune": 70,
+              "end_rune": 93,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "campeão reinante e invicto",
+              "start_rune": 131,
+              "end_rune": 157,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "enquanto Douglas foi subestimado",
+              "start_rune": 159,
+              "end_rune": 191,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "James “Buster” Douglas",
+              "start_rune": 101,
+              "end_rune": 123,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pt-BR",
+            "important_phrases": [
+              {
+                "text": "Tyson entrou no combate",
+                "start_rune": 70,
+                "end_rune": 93,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "campeão reinante e invicto",
+                "start_rune": 131,
+                "end_rune": 157,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "enquanto Douglas foi subestimado",
+                "start_rune": 159,
+                "end_rune": 191,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "James “Buster” Douglas",
+                "start_rune": 101,
+                "end_rune": 123,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-james--buster--douglas",
+                "text": "James “Buster” Douglas",
+                "canonical_name": "James “Buster” Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "James “Buster” Douglas",
+                    "start_rune": 101,
+                    "end_rune": 123
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "A carreira posterior de Tyson incluiu retornos ao ringue, campeonatos, contratempos e anos gastos reconstruindo sua vida. Assim como Muhammad Ali, ele se tornou uma figura cuja fama ultrapassou o boxe, embora suas carreiras fossem distintas. Seu histórico não pode ser reduzido a um nocaute ou a uma derrota. Ele contém talento físico juntamente com controvérsia pública e luta pessoal, e essas partes devem ser descritas sem transformar dificuldade em espetáculo. A lição não é que a disciplina torna alguém invulnerável. A habilidade cresce através de trabalho repetido, enquanto a fama pode magnificar boas decisões e erros. Tyson permanece uma figura de peso porque sua ascensão, queda e retorno convidam à conversa sobre ambição, pressão, responsabilidade e o que um segundo capítulo pode significar.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "pt-BR",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "3300ed5dbbb379bb0021ba34609c1440c8f59da97e7764b33aef885e32773f02",
+            "translation_wall_ms": 8270
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 133,
+                  "end_rune": 145
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "carreira posterior de Tyson incluiu retornos ao ringue",
+              "start_rune": 2,
+              "end_rune": 56,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 133,
+              "end_rune": 145,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "pt-BR",
+            "important_phrases": [
+              {
+                "text": "carreira posterior de Tyson incluiu retornos ao ringue",
+                "start_rune": 2,
+                "end_rune": 56,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 133,
+                "end_rune": 145,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 133,
+                    "end_rune": 145
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "fr",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "À Brooklyn, l'histoire de Mike Tyson commença loin des lumières du championnat. Adolescent, il trouva une structure dans la boxe, où la pratique donna une direction à son énergie. L'entraîneur Cus D’Amato lui apprit à étudier la distance, à défendre avec soin et à attaquer avec détermination. La posture accroupie de Tyson facilitait l'esquive des coups et l'explosion en avant avec des crochets courts. Le style paraissait simple depuis les gradins, mais il dépendait de l'équilibre, du timing et de la répétition. Ses combats amateurs attirèrent l'attention, mais la leçon fut la discipline : la confiance devait être gagnée. Il apprit comment la pression pouvait devenir un outil.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "fr",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "008062db89c370a5bffe97435b7f6a434d5df3d1af187b4478fb88dcdbced7a5",
+            "translation_wall_ms": 9744
+          },
+          "entities": [
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 26,
+                  "end_rune": 36
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 193,
+                  "end_rune": 204
+                }
+              ]
+            },
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 2,
+                  "end_rune": 10
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "lumières du championnat",
+              "start_rune": 55,
+              "end_rune": 78,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": [
+            {
+              "text": "l'équilibre, du timing et de la répétition",
+              "lemma": "l'équilibre, du timing et de la répétition",
+              "start_rune": 473,
+              "end_rune": 515,
+              "score": 1,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "la discipline : la confiance devait être gagnée",
+              "lemma": "la discipline : la confiance devait être gagnée",
+              "start_rune": 580,
+              "end_rune": 627,
+              "score": 0.6666666666666666,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "Ses combats amateurs attirèrent l'attention",
+              "lemma": "ses combats amateurs attirèrent l'attention",
+              "start_rune": 517,
+              "end_rune": 560,
+              "score": 0.3333333333333333,
+              "kind": "IMPORTANT_WORD"
+            }
+          ],
+          "special_names": [
+            {
+              "text": "Mike Tyson",
+              "start_rune": 26,
+              "end_rune": 36,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 193,
+              "end_rune": 204,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Brooklyn",
+              "start_rune": 2,
+              "end_rune": 10,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "fr",
+            "important_phrases": [
+              {
+                "text": "lumières du championnat",
+                "start_rune": 55,
+                "end_rune": 78,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Mike Tyson",
+                "start_rune": 26,
+                "end_rune": 36,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 193,
+                "end_rune": 204,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Brooklyn",
+                "start_rune": 2,
+                "end_rune": 10,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 26,
+                    "end_rune": 36
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 193,
+                    "end_rune": 204
+                  }
+                ]
+              },
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 2,
+                    "end_rune": 10
+                  }
+                ]
+              }
+            ],
+            "important_words": [
+              {
+                "text": "l'équilibre, du timing et de la répétition",
+                "lemma": "l'équilibre, du timing et de la répétition",
+                "start_rune": 473,
+                "end_rune": 515,
+                "score": 1,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "la discipline : la confiance devait être gagnée",
+                "lemma": "la discipline : la confiance devait être gagnée",
+                "start_rune": 580,
+                "end_rune": 627,
+                "score": 0.6666666666666666,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "Ses combats amateurs attirèrent l'attention",
+                "lemma": "ses combats amateurs attirèrent l'attention",
+                "start_rune": 517,
+                "end_rune": 560,
+                "score": 0.3333333333333333,
+                "kind": "IMPORTANT_WORD"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson est devenu professionnel en 1985 et s'est forgé une réputation de vitesse et de puissance. De nombreux adversaires ont été stoppés tôt, donc chaque victoire ajoutait au sentiment qu'une force imparable approchait. Le 22 novembre 1986, à Las Vegas, il a affronté Trevor Berbick pour le titre mondial des poids lourds WBC. Tyson a gagné par KO technique au deuxième round et, à vingt ans, est devenu le plus jeune champion du monde des poids lourds. Ce record a fait la une des journaux, mais le ring n'offrait aucune garantie que le succès serait facile. Une ceinture pouvait prouver un exploit ; elle ne pouvait pas décider comment une personne gérait la célébrité, l'argent, les attentes ou le prochain round difficile.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "fr",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "6e7086b7134105ae901ff7ec16e4000bae86fcb14bfbeef891d1bb740a16bb89",
+            "translation_wall_ms": 9027
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 243,
+                  "end_rune": 252
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson est devenu professionnel",
+              "start_rune": 0,
+              "end_rune": 30,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": [
+            {
+              "text": "chaque victoire ajoutait au sentiment qu'une force imparable approchait.",
+              "lemma": "chaque victoire ajoutait au sentiment qu'une force imparable approchait.",
+              "start_rune": 147,
+              "end_rune": 219,
+              "score": 1,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "à vingt ans, est devenu le plus jeune champion du monde des poids lourds.",
+              "lemma": "à vingt ans, est devenu le plus jeune champion du monde des poids lourds.",
+              "start_rune": 380,
+              "end_rune": 453,
+              "score": 0.6666666666666666,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "elle ne pouvait pas décider comment une personne gérait la célébrité, l'argent, les attentes ou le prochain round difficile.",
+              "lemma": "elle ne pouvait pas décider comment une personne gérait la célébrité, l'argent, les attentes ou le prochain round difficile.",
+              "start_rune": 602,
+              "end_rune": 726,
+              "score": 0.3333333333333333,
+              "kind": "IMPORTANT_WORD"
+            }
+          ],
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 243,
+              "end_rune": 252,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "fr",
+            "important_phrases": [
+              {
+                "text": "Tyson est devenu professionnel",
+                "start_rune": 0,
+                "end_rune": 30,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 243,
+                "end_rune": 252,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 243,
+                    "end_rune": 252
+                  }
+                ]
+              }
+            ],
+            "important_words": [
+              {
+                "text": "chaque victoire ajoutait au sentiment qu'une force imparable approchait.",
+                "lemma": "chaque victoire ajoutait au sentiment qu'une force imparable approchait.",
+                "start_rune": 147,
+                "end_rune": 219,
+                "score": 1,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "à vingt ans, est devenu le plus jeune champion du monde des poids lourds.",
+                "lemma": "à vingt ans, est devenu le plus jeune champion du monde des poids lourds.",
+                "start_rune": 380,
+                "end_rune": 453,
+                "score": 0.6666666666666666,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "elle ne pouvait pas décider comment une personne gérait la célébrité, l'argent, les attentes ou le prochain round difficile.",
+                "lemma": "elle ne pouvait pas décider comment une personne gérait la célébrité, l'argent, les attentes ou le prochain round difficile.",
+                "start_rune": 602,
+                "end_rune": 726,
+                "score": 0.3333333333333333,
+                "kind": "IMPORTANT_WORD"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "Au cours des années suivantes, Tyson unifia les titres poids lourds et devint l'une des figures les plus reconnaissables de la boxe. Ses combats combinaient le mouvement offensif, des coups compacts et une capacité à faire réagir ses adversaires avant qu'ils ne puissent élaborer un plan. En juin 1988, il affronta Michael Spinks à Atlantic City. Le combat s'est terminé en quatre-vingt-onze secondes, une image frappante de Tyson à son apogée. Pourtant, un moment fort n'est qu'un seul cadre d'une carrière. Derrière le finish rapide se trouvaient les entraînements, les sparring, la préparation et une approche exigeante de la compétition. À l'intérieur des cordes, le succès dépendait toujours des choix faits échange après échange.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "fr",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "75c25ae155226ebd58e0f37635f238ce1c75f90d1e3433a9d494eed4e166773a",
+            "translation_wall_ms": 7409
+          },
+          "entities": [
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 31,
+                  "end_rune": 36
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 425,
+                  "end_rune": 430
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 315,
+                  "end_rune": 329
+                }
+              ]
+            },
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 332,
+                  "end_rune": 345
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "cours des années suivantes",
+              "start_rune": 3,
+              "end_rune": 29,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": [
+            {
+              "text": "le succès dépendait toujours des choix faits échange après échange.",
+              "lemma": "le succès dépendait toujours des choix faits échange après échange.",
+              "start_rune": 668,
+              "end_rune": 735,
+              "score": 1,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "Le combat s'est terminé en quatre-vingt-onze secondes, une image frappante de Tyson à son apogée.",
+              "lemma": "le combat s'est terminé en quatre-vingt-onze secondes, une image frappante de tyson à son apogée.",
+              "start_rune": 347,
+              "end_rune": 444,
+              "score": 0.6666666666666666,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "Derrière le finish rapide se trouvaient les entraînements, les sparring, la préparation et une approche exigeante de la compétition.",
+              "lemma": "derrière le finish rapide se trouvaient les entraînements, les sparring, la préparation et une approche exigeante de la compétition.",
+              "start_rune": 509,
+              "end_rune": 641,
+              "score": 0.3333333333333333,
+              "kind": "IMPORTANT_WORD"
+            }
+          ],
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 31,
+              "end_rune": 36,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 315,
+              "end_rune": 329,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Atlantic City",
+              "start_rune": 332,
+              "end_rune": 345,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "fr",
+            "important_phrases": [
+              {
+                "text": "cours des années suivantes",
+                "start_rune": 3,
+                "end_rune": 29,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 31,
+                "end_rune": 36,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 315,
+                "end_rune": 329,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Atlantic City",
+                "start_rune": 332,
+                "end_rune": 345,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 31,
+                    "end_rune": 36
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 425,
+                    "end_rune": 430
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 315,
+                    "end_rune": 329
+                  }
+                ]
+              },
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 332,
+                    "end_rune": 345
+                  }
+                ]
+              }
+            ],
+            "important_words": [
+              {
+                "text": "le succès dépendait toujours des choix faits échange après échange.",
+                "lemma": "le succès dépendait toujours des choix faits échange après échange.",
+                "start_rune": 668,
+                "end_rune": 735,
+                "score": 1,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "Le combat s'est terminé en quatre-vingt-onze secondes, une image frappante de Tyson à son apogée.",
+                "lemma": "le combat s'est terminé en quatre-vingt-onze secondes, une image frappante de tyson à son apogée.",
+                "start_rune": 347,
+                "end_rune": 444,
+                "score": 0.6666666666666666,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "Derrière le finish rapide se trouvaient les entraînements, les sparring, la préparation et une approche exigeante de la compétition.",
+                "lemma": "derrière le finish rapide se trouvaient les entraînements, les sparring, la préparation et une approche exigeante de la compétition.",
+                "start_rune": 509,
+                "end_rune": 641,
+                "score": 0.3333333333333333,
+                "kind": "IMPORTANT_WORD"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "Le renversement décisif est arrivé à Tokyo le 11 février 1990. Tyson est entré dans le combat contre James « Buster » Douglas en tant que champion régnant et invaincu, tandis que Douglas était sous-estimé. Le combat a duré plus longtemps que prévu. Douglas a utilisé sa portée, son jab et ses combinaisons pour empêcher Tyson de contrôler la distance. Au dixième round, il a mis Tyson au sol et l'a battu par KO. Le résultat est devenu l'un des plus grands upsets de l'histoire du boxage, et cela a changé le récit que les gens racontaient sur l'invincibilité. La défaite de Tyson a montré que la réputation ne pouvait pas bloquer un coup de poing. Cela a également donné à Douglas une place dans l'histoire du sport, gagnée par sa détermination.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "fr",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "bb201d641305098123caf74b777d5f70339124e10faf883fd7c7994f96187071",
+            "translation_wall_ms": 8008
+          },
+          "entities": [
+            {
+              "id": "entity-douglas",
+              "text": "Douglas",
+              "canonical_name": "Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Douglas",
+                  "start_rune": 118,
+                  "end_rune": 125
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 179,
+                  "end_rune": 186
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 249,
+                  "end_rune": 256
+                },
+                {
+                  "text": "Douglas",
+                  "start_rune": 674,
+                  "end_rune": 681
+                }
+              ]
+            },
+            {
+              "id": "entity-tokyo",
+              "text": "Tokyo",
+              "canonical_name": "Tokyo",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokyo",
+                  "start_rune": 37,
+                  "end_rune": 42
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "tant que champion régnant",
+              "start_rune": 129,
+              "end_rune": 154,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "entré dans le combat",
+              "start_rune": 73,
+              "end_rune": 93,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": [
+            {
+              "text": "Le combat a duré plus longtemps que prévu.",
+              "lemma": "le combat a duré plus longtemps que prévu.",
+              "start_rune": 206,
+              "end_rune": 248,
+              "score": 1,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "Au dixième round, il a mis Tyson au sol et l'a battu par KO.",
+              "lemma": "au dixième round, il a mis tyson au sol et l'a battu par ko.",
+              "start_rune": 352,
+              "end_rune": 412,
+              "score": 0.6666666666666666,
+              "kind": "IMPORTANT_WORD"
+            },
+            {
+              "text": "La défaite de Tyson a montré que la réputation ne pouvait pas bloquer un coup de poing.",
+              "lemma": "la défaite de tyson a montré que la réputation ne pouvait pas bloquer un coup de poing.",
+              "start_rune": 561,
+              "end_rune": 648,
+              "score": 0.3333333333333333,
+              "kind": "IMPORTANT_WORD"
+            }
+          ],
+          "special_names": [
+            {
+              "text": "Douglas",
+              "start_rune": 118,
+              "end_rune": 125,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tokyo",
+              "start_rune": 37,
+              "end_rune": 42,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "fr",
+            "important_phrases": [
+              {
+                "text": "tant que champion régnant",
+                "start_rune": 129,
+                "end_rune": 154,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "entré dans le combat",
+                "start_rune": 73,
+                "end_rune": 93,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Douglas",
+                "start_rune": 118,
+                "end_rune": 125,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tokyo",
+                "start_rune": 37,
+                "end_rune": 42,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-douglas",
+                "text": "Douglas",
+                "canonical_name": "Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Douglas",
+                    "start_rune": 118,
+                    "end_rune": 125
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 179,
+                    "end_rune": 186
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 249,
+                    "end_rune": 256
+                  },
+                  {
+                    "text": "Douglas",
+                    "start_rune": 674,
+                    "end_rune": 681
+                  }
+                ]
+              },
+              {
+                "id": "entity-tokyo",
+                "text": "Tokyo",
+                "canonical_name": "Tokyo",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokyo",
+                    "start_rune": 37,
+                    "end_rune": 42
+                  }
+                ]
+              }
+            ],
+            "important_words": [
+              {
+                "text": "Le combat a duré plus longtemps que prévu.",
+                "lemma": "le combat a duré plus longtemps que prévu.",
+                "start_rune": 206,
+                "end_rune": 248,
+                "score": 1,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "Au dixième round, il a mis Tyson au sol et l'a battu par KO.",
+                "lemma": "au dixième round, il a mis tyson au sol et l'a battu par ko.",
+                "start_rune": 352,
+                "end_rune": 412,
+                "score": 0.6666666666666666,
+                "kind": "IMPORTANT_WORD"
+              },
+              {
+                "text": "La défaite de Tyson a montré que la réputation ne pouvait pas bloquer un coup de poing.",
+                "lemma": "la défaite de tyson a montré que la réputation ne pouvait pas bloquer un coup de poing.",
+                "start_rune": 561,
+                "end_rune": 648,
+                "score": 0.3333333333333333,
+                "kind": "IMPORTANT_WORD"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "La carrière tardive de Tyson comprenait des retours au ring, des championnats, des revers et des années passées à reconstruire sa vie. Comme Muhammad Ali, il est devenu une figure dont la renommée dépassait la boxe, bien que leurs carrières fussent distinctes. Son palmarès ne peut être réduit à un KO ou à une défaite. Il contient un talent physique aux côtés de controverses publiques et de luttes personnelles, et ces parties doivent être décrites sans transformer les difficultés en spectacle. La leçon n'est pas que la discipline rend quelqu'un invulnérable. Le talent se développe par un travail répété, tandis que la célébrité peut amplifier les bonnes décisions et les erreurs. Tyson reste une figure de poids lourd parce que son ascension, sa chute et son retour invitent à une conversation sur l'ambition, la pression, la responsabilité et ce que peut signifier un deuxième chapitre.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "fr",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "0cde04adb6c098f908d6bc928ecf4cbd79ce3af45b490b03081b879064e95049",
+            "translation_wall_ms": 8914
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 141,
+                  "end_rune": 153
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "carrière tardive de Tyson comprenait des retours au ring",
+              "start_rune": 3,
+              "end_rune": 59,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": [
+            {
+              "text": "Le talent se développe par un",
+              "lemma": "le talent se développe par un",
+              "start_rune": 564,
+              "end_rune": 593,
+              "score": 0.5,
+              "kind": "IMPORTANT_WORD"
+            }
+          ],
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 141,
+              "end_rune": 153,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "fr",
+            "important_phrases": [
+              {
+                "text": "carrière tardive de Tyson comprenait des retours au ring",
+                "start_rune": 3,
+                "end_rune": 59,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 141,
+                "end_rune": 153,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 141,
+                    "end_rune": 153
+                  }
+                ]
+              }
+            ],
+            "important_words": [
+              {
+                "text": "Le talent se développe par un",
+                "lemma": "le talent se développe par un",
+                "start_rune": 564,
+                "end_rune": 593,
+                "score": 0.5,
+                "kind": "IMPORTANT_WORD"
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "id",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "Di Brooklyn, kisah Mike Tyson dimulai jauh dari sorotan kejuaraan. Sebagai remaja, ia menemukan struktur dalam tinju, di mana latihan memberikan arah energinya. Pelatih Cus D’Amato mengajarinya untuk mempelajari jarak, bertahan dengan hati-hati, dan menyerang dengan tujuan. Sikap jongkok Tyson memudahkan untuk menghindari pukulan dan melesat maju dengan kait pendek. Gaya itu terlihat sederhana dari kursi penonton, tetapi bergantung pada keseimbangan, waktu, dan pengulangan. Pertandingan amatirnya menarik perhatian, namun pelajarannya adalah disiplin: kepercayaan diri harus diperoleh. Ia belajar bagaimana tekanan bisa menjadi alat.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "id",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "264d877c64544f44c47498b9a6f09f2f049cd18a45d9c9a203f0a67a7e866fe2",
+            "translation_wall_ms": 5728
+          },
+          "entities": [
+            {
+              "id": "entity-mike-tyson",
+              "text": "Mike Tyson",
+              "canonical_name": "Mike Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Mike Tyson",
+                  "start_rune": 19,
+                  "end_rune": 29
+                }
+              ]
+            },
+            {
+              "id": "entity-cus-d-amato",
+              "text": "Cus D’Amato",
+              "canonical_name": "Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Cus D’Amato",
+                  "start_rune": 169,
+                  "end_rune": 180
+                }
+              ]
+            },
+            {
+              "id": "entity-brooklyn",
+              "text": "Brooklyn",
+              "canonical_name": "Brooklyn",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Brooklyn",
+                  "start_rune": 3,
+                  "end_rune": 11
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "jauh dari sorotan kejuaraan",
+              "start_rune": 38,
+              "end_rune": 65,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Sebagai remaja",
+              "start_rune": 67,
+              "end_rune": 81,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Mike Tyson",
+              "start_rune": 19,
+              "end_rune": 29,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Cus D’Amato",
+              "start_rune": 169,
+              "end_rune": 180,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "id",
+            "important_phrases": [
+              {
+                "text": "jauh dari sorotan kejuaraan",
+                "start_rune": 38,
+                "end_rune": 65,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Sebagai remaja",
+                "start_rune": 67,
+                "end_rune": 81,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Mike Tyson",
+                "start_rune": 19,
+                "end_rune": 29,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Cus D’Amato",
+                "start_rune": 169,
+                "end_rune": 180,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-mike-tyson",
+                "text": "Mike Tyson",
+                "canonical_name": "Mike Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson",
+                    "start_rune": 19,
+                    "end_rune": 29
+                  }
+                ]
+              },
+              {
+                "id": "entity-cus-d-amato",
+                "text": "Cus D’Amato",
+                "canonical_name": "Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Cus D’Amato",
+                    "start_rune": 169,
+                    "end_rune": 180
+                  }
+                ]
+              },
+              {
+                "id": "entity-brooklyn",
+                "text": "Brooklyn",
+                "canonical_name": "Brooklyn",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Brooklyn",
+                    "start_rune": 3,
+                    "end_rune": 11
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson menjadi profesional pada tahun 1985 dan membangun reputasi akan kecepatan dan kekuatan. Banyak lawan yang dihentikan lebih awal, sehingga setiap kemenangan menambah rasa bahwa sebuah kekuatan tak terhentikan sedang mendekat. Pada tanggal 22 November 1986, di Las Vegas, ia menghadapi Trevor Berbick untuk gelar juara dunia kelas berat WBC. Tyson menang dengan *technical knockout* ronde kedua dan, pada usia dua puluh tahun, menjadi juara dunia kelas berat termuda. Rekor itu menarik perhatian media, tetapi ring tidak memberikan jaminan bahwa kesuksesan akan terasa mudah. Sebuah sabuk bisa membuktikan pencapaian; ia tidak bisa menentukan bagaimana seseorang menghadapi ketenaran, uang, ekspektasi, atau ronde sulit berikutnya.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "id",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "911ebdca0ffa9b2ca310c33c22866f2c9dacbcaac952dfe9fe0e50a3655c8954",
+            "translation_wall_ms": 6946
+          },
+          "entities": [
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 265,
+                  "end_rune": 274
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson menjadi profesional pada",
+              "start_rune": 0,
+              "end_rune": 30,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Las Vegas",
+              "start_rune": 265,
+              "end_rune": 274,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "id",
+            "important_phrases": [
+              {
+                "text": "Tyson menjadi profesional pada",
+                "start_rune": 0,
+                "end_rune": 30,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Las Vegas",
+                "start_rune": 265,
+                "end_rune": 274,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 265,
+                    "end_rune": 274
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "Selama tahun-tahun berikutnya, Tyson menyatukan gelar kelas berat dan menjadi salah satu tokoh paling dikenal dalam dunia tinju. Pertarungannya menggabungkan pergerakan maju, pukulan yang padat, dan kemampuan untuk membuat lawan bereaksi sebelum mereka dapat merencanakan sesuatu. Pada Juni 1988, ia bertemu Michael Spinks di Atlantic City. Pertarungan itu berakhir dalam sembilan puluh satu detik, gambaran mencolok dari Tyson di puncak kejayaannya. Namun, sorotan hanyalah satu bingkai dari sebuah karier. Di balik akhir yang cepat itu terdapat kerja keras, sparring, persiapan, dan pendekatan yang menuntut terhadap kompetisi. Di dalam tali ring, kesuksesan masih bergantung pada pilihan yang dibuat satu pertukaran pada satu waktu.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "id",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "5253cab498a85d9a13fa48301003e97ddf39171bc1596458c19396acb4b6b6f0",
+            "translation_wall_ms": 7470
+          },
+          "entities": [
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 326,
+                  "end_rune": 339
+                }
+              ]
+            },
+            {
+              "id": "entity-tyson",
+              "text": "Tyson",
+              "canonical_name": "Tyson",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tyson",
+                  "start_rune": 31,
+                  "end_rune": 36
+                },
+                {
+                  "text": "Tyson",
+                  "start_rune": 422,
+                  "end_rune": 427
+                }
+              ]
+            },
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 308,
+                  "end_rune": 322
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "menyatukan gelar kelas berat dan menjadi salah satu tokoh paling dikenal dalam dunia tinju",
+              "start_rune": 37,
+              "end_rune": 127,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Atlantic City",
+              "start_rune": 326,
+              "end_rune": 339,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tyson",
+              "start_rune": 31,
+              "end_rune": 36,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael Spinks",
+              "start_rune": 308,
+              "end_rune": 322,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "id",
+            "important_phrases": [
+              {
+                "text": "menyatukan gelar kelas berat dan menjadi salah satu tokoh paling dikenal dalam dunia tinju",
+                "start_rune": 37,
+                "end_rune": 127,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Atlantic City",
+                "start_rune": 326,
+                "end_rune": 339,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tyson",
+                "start_rune": 31,
+                "end_rune": 36,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael Spinks",
+                "start_rune": 308,
+                "end_rune": 322,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 326,
+                    "end_rune": 339
+                  }
+                ]
+              },
+              {
+                "id": "entity-tyson",
+                "text": "Tyson",
+                "canonical_name": "Tyson",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tyson",
+                    "start_rune": 31,
+                    "end_rune": 36
+                  },
+                  {
+                    "text": "Tyson",
+                    "start_rune": 422,
+                    "end_rune": 427
+                  }
+                ]
+              },
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 308,
+                    "end_rune": 322
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "Pembalikan yang menentukan tiba di Tokyo pada 11 Februari 1990. Tyson memasuki kontes melawan James “Buster” Douglas sebagai juara bertahan yang tak terkalahkan, sementara Douglas diremehkan. Pertarungan berlangsung lebih lama dari yang diperkirakan. Douglas menggunakan jangkauan, jab, dan kombinasi untuk mencegah Tyson mengontrol jarak. Di ronde kesepuluh, ia menjatuhkan Tyson dan menang dengan knockout. Hasil itu menjadi salah satu kejutan paling terkenal dalam dunia tinju, dan itu mengubah cerita yang diceritakan orang tentang keabadian. Kekalahan Tyson menunjukkan bahwa reputasi tidak dapat menangkis pukulan. Itu juga memberi Douglas tempat dalam sejarah olahraga tersebut, yang diperoleh melalui tekad.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "id",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "181d591f5c02a68cd6bfc60e6c5bee89346226a173169d3cc9a103d784d9f94e",
+            "translation_wall_ms": 6904
+          },
+          "entities": [
+            {
+              "id": "entity-james--buster--douglas",
+              "text": "James “Buster” Douglas",
+              "canonical_name": "James “Buster” Douglas",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "James “Buster” Douglas",
+                  "start_rune": 94,
+                  "end_rune": 116
+                }
+              ]
+            },
+            {
+              "id": "entity-tokyo",
+              "text": "Tokyo",
+              "canonical_name": "Tokyo",
+              "type": "GPE",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Tokyo",
+                  "start_rune": 35,
+                  "end_rune": 40
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "sebagai juara bertahan yang",
+              "start_rune": 117,
+              "end_rune": 144,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Tyson memasuki kontes",
+              "start_rune": 64,
+              "end_rune": 85,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "James “Buster” Douglas",
+              "start_rune": 94,
+              "end_rune": 116,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tokyo",
+              "start_rune": 35,
+              "end_rune": 40,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "id",
+            "important_phrases": [
+              {
+                "text": "sebagai juara bertahan yang",
+                "start_rune": 117,
+                "end_rune": 144,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Tyson memasuki kontes",
+                "start_rune": 64,
+                "end_rune": 85,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "James “Buster” Douglas",
+                "start_rune": 94,
+                "end_rune": 116,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tokyo",
+                "start_rune": 35,
+                "end_rune": 40,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-james--buster--douglas",
+                "text": "James “Buster” Douglas",
+                "canonical_name": "James “Buster” Douglas",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "James “Buster” Douglas",
+                    "start_rune": 94,
+                    "end_rune": 116
+                  }
+                ]
+              },
+              {
+                "id": "entity-tokyo",
+                "text": "Tokyo",
+                "canonical_name": "Tokyo",
+                "type": "GPE",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Tokyo",
+                    "start_rune": 35,
+                    "end_rune": 40
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Karier akhir Tyson mencakup kembalinya ke ring, kejuaraan, kemunduran, dan tahun-tahun yang dihabiskan untuk membangun kembali hidupnya. Seperti Muhammad Ali, ia menjadi sosok yang ketenarannya melampaui tinju, meskipun karier mereka berbeda. Rekornya tidak dapat direduksi menjadi satu KO atau satu kekalahan. Ia memuat bakat fisik bersama kontroversi publik dan pergulatan pribadi, dan bagian-bagian itu harus digambarkan tanpa mengubah kesulitan menjadi tontonan. Pelajarannya bukanlah bahwa disiplin membuat seseorang kebal. Keahlian tumbuh melalui kerja berulang, sementara ketenaran dapat memperbesar keputusan baik dan kesalahan. Tyson tetap menjadi sosok kelas berat karena kenaikan, kejatuhan, dan kembalinya mengundang pembicaraan tentang ambisi, tekanan, akuntabilitas, dan apa arti babak kedua.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "id",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "749349404dd0e98f22d1beac44d60cc46bb1258c5139be25d0d2c512bccd38ad",
+            "translation_wall_ms": 9094
+          },
+          "entities": [
+            {
+              "id": "entity-muhammad-ali",
+              "text": "Muhammad Ali",
+              "canonical_name": "Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 0.949999988079071,
+              "mentions": [
+                {
+                  "text": "Muhammad Ali",
+                  "start_rune": 145,
+                  "end_rune": 157
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "akhir Tyson mencakup kembalinya ke ring",
+              "start_rune": 7,
+              "end_rune": 46,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad Ali",
+              "start_rune": 145,
+              "end_rune": 157,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "id",
+            "important_phrases": [
+              {
+                "text": "akhir Tyson mencakup kembalinya ke ring",
+                "start_rune": 7,
+                "end_rune": 46,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad Ali",
+                "start_rune": 145,
+                "end_rune": 157,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-muhammad-ali",
+                "text": "Muhammad Ali",
+                "canonical_name": "Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 0.949999988079071,
+                "mentions": [
+                  {
+                    "text": "Muhammad Ali",
+                    "start_rune": 145,
+                    "end_rune": 157
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -60,14 +60,21 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 	}
 
 	return persistence.CommitRequest{
-		AssetID:        clipID,
-		Source:         "youtube",
-		Name:           name,
-		Filename:       filename,
-		MediaType:      "video",
-		Category:       clipAsset.Metadata.Category,
-		DurationMs:     int64(clipAsset.Metadata.ClipDurationSec * 1000),
-		ContentHash:    clipAsset.LegacyFileMD5,
+		AssetID:    clipID,
+		Source:     "youtube",
+		Name:       name,
+		Filename:   filename,
+		MediaType:  "video",
+		Category:   clipAsset.Metadata.Category,
+		DurationMs: int64(clipAsset.Metadata.ClipDurationSec * 1000),
+		// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
+		// identity. The DTO field is named LegacyFileMD5 for historical reasons,
+		// so the value is resolved through the canonical rule rather than
+		// forwarded verbatim: a SHA-256 becomes the content address, an MD5 is
+		// dropped (asset.ResolveContentAddress). The same value still feeds the
+		// source_version label below, where it is a VERSION component rather than
+		// an identity claim.
+		ContentHash:    asset.ResolveContentAddress(clipAsset.LegacyFileMD5),
 		SearchText:     clipAsset.SearchText,
 		Description:    clipAsset.Metadata.Description,
 		LifecycleState: "ACTIVE",

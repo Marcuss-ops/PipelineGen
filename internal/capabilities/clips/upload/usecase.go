@@ -266,7 +266,11 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 			zap.String("clip_id", clip.ID))
 		return nil, ErrDispatcherUnavailable
 	}
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the outbox/index content hash is the BYTE
+	// identity, resolved from the canonical content surfaces. LegacyFileMD5()
+	// is the compatibility accessor and may hold an MD5, which must never be
+	// published as a content address.
+	contentHash := clip.ContentAddress()
 	if contentHash == "" {
 		contentHash = fileHash
 	}

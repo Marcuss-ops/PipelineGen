@@ -343,12 +343,19 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *
 	}
 	_, initIndex := asset.NewIndexableAssetState()
 	return assetspersistence.CommitRequest{
-		AssetID:        cmd.ID,
-		Source:         "voiceover",
-		Name:           textPreview,
-		Filename:       cmd.Filename,
-		MediaType:      "audio",
-		ContentHash:    cmd.LegacyFileMD5,
+		AssetID:   cmd.ID,
+		Source:    "voiceover",
+		Name:      textPreview,
+		Filename:  cmd.Filename,
+		MediaType: "audio",
+		// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
+		// identity (media_assets.content_sha256). cmd.LegacyFileMD5 carries the
+		// SHA-256 of the generated audio on the modern path, but it is the
+		// compatibility accessor and a legacy record can hold an MD5 there, so the
+		// value is RESOLVED through the canonical rule: only a 64-hex SHA-256
+		// becomes the content address, anything else is unknown ("") — never an MD5
+		// posing as a SHA-256.
+		ContentHash:    asset.ResolveContentAddress(cmd.LegacyFileMD5),
 		Description:    textPreview,
 		SearchText:     searchText,
 		LifecycleState: string(asset.StatePublished),
@@ -358,8 +365,13 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *
 		FolderPath:     cmd.FolderPath,
 		Title:          textPreview,
 		Metadata: assetspersistence.TypedMetadata{
-			Title:         textPreview,
-			Description:   textPreview,
+			Title:       textPreview,
+			Description: textPreview,
+			// SourceVersion is a VERSION label (the supersede gate's change
+			// detector), not a content address: it deliberately keeps the raw
+			// digest so a legacy MD5 still marks "the bytes changed" for rows that
+			// predate content addressing. The byte identity rides in ContentHash
+			// above and in the location's legacy_file_md5 bucket.
 			SourceVersion: cmd.LegacyFileMD5,
 			Tags:          semanticMeta.Tags,
 			Extra:         extra,

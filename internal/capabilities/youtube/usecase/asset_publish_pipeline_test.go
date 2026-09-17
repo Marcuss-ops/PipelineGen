@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -79,14 +80,22 @@ func (s *stubRemoveFn) remove(localPath string) error {
 
 // ── test fixtures (canonical 6 renditions layered per Step 9) ───────────────
 
+// renditionDigest builds the CANONICAL digest shape the producer actually
+// writes into this field: `processor.buildRenditionOutput` hashes the bytes with
+// digest.SHA256File, so the value is a 64-hex SHA-256 even though the DTO field
+// is named LegacyFileMD5 (the rename is tracked by
+// PR-MEDIATRANSFORMER-RENAME step 2). A fixture that is not 64-hex would not be
+// resolvable as a content address, and would therefore silently test nothing.
+func renditionDigest(c string) string { return strings.Repeat(c, 64) }
+
 func mkRenditions() []detail.RenditionOutput {
 	return []detail.RenditionOutput{
-		{Kind: detail.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 1024},
-		{Kind: detail.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: "hash_mezz_64chars_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SizeBytes: 1024},
-		{Kind: detail.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 512},
-		{Kind: detail.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: "hash_thumb_64chars_dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", SizeBytes: 64},
-		{Kind: detail.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: "hash_story_64chars_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", SizeBytes: 128},
-		{Kind: detail.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff", SizeBytes: 256},
+		{Kind: detail.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: renditionDigest("a"), SizeBytes: 1024},
+		{Kind: detail.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: renditionDigest("b"), SizeBytes: 1024},
+		{Kind: detail.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: renditionDigest("c"), SizeBytes: 512},
+		{Kind: detail.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: renditionDigest("d"), SizeBytes: 64},
+		{Kind: detail.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: renditionDigest("e"), SizeBytes: 128},
+		{Kind: detail.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: renditionDigest("f"), SizeBytes: 256},
 	}
 }
 
@@ -154,6 +163,20 @@ func TestPublishRenditionsToYouTubeAsset_HappyPath_ThreePublishes_ThreeCleanups(
 	// published-eligible rendition (master + proxy + manifest).
 	if len(pub.calls) != 3 {
 		t.Errorf("publisher calls = %d, want 3", len(pub.calls))
+	}
+
+	// MEDIA-IDENTITY (Sept 2026): the publish carries the BYTE identity the
+	// uploader will verify against (PublishRequest.ContentHash ->
+	// PutFileRequest.ExpectedSHA256), and it is the rendition's canonical
+	// SHA-256 — not a compatibility digest, and not an empty signal that would
+	// switch the post-upload check off.
+	if len(pub.calls) > 0 {
+		if got := pub.calls[0].ContentHash; got != renditionDigest("a") {
+			t.Errorf("first publish ContentHash = %q, want the master's SHA-256 %q", got, renditionDigest("a"))
+		}
+		if got := pub.calls[0].SizeBytes; got != 1024 {
+			t.Errorf("first publish SizeBytes = %d, want the master's byte count 1024", got)
+		}
 	}
 
 	// Filtered kinds are exactly mezzanine/thumbnail/storyboard.
@@ -231,9 +254,9 @@ func TestPublishRenditionsToYouTubeAsset_ThreadsSizeAndContentHash(t *testing.T)
 		sizeBytes int64
 		hash      string
 	}{
-		{detail.RenditionKindMaster, 1024, "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{detail.RenditionKindProxy, 512, "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
-		{detail.RenditionKindManifest, 256, "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+		{detail.RenditionKindMaster, 1024, renditionDigest("a")},
+		{detail.RenditionKindProxy, 512, renditionDigest("c")},
+		{detail.RenditionKindManifest, 256, renditionDigest("f")},
 	}
 	for _, w := range wantCases {
 		got, ok := byKind[w.kind]

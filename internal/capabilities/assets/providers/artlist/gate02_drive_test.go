@@ -82,6 +82,7 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *detail.Process
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
 		LegacyFileMD5: "partial-hash-" + input.ID,
+		ContentHash:   artlistContentHashForTest(input.ID),
 		DownloadLink:  input.SourceURL,
 		Status:        "processed",
 	}
@@ -614,16 +615,11 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		dispatchedHash := outboxSourceVersionFor(db, clipID)
 		assert.NotEmpty(t, dispatchedHash, "clip %s should have been dispatched", clipID)
 
-		// successMediaProcessor sets LegacyFileMD5 = "gate01-hash-" + input.ID
-		// stagePersistResults calls bridge.Dispatch(ctx, clip, clip.LegacyFileMD5())
-		// which passes clip.LegacyFileMD5() as the content hash to EnqueueAndIndex.
-		//
-		// After stagePersistResults hydrates the clip, clip.LegacyFileMD5() should
-		// equal the processor's LegacyFileMD5 ("gate01-hash-<clipID>").
-		// The recording dispatcher sees the hash that EnqueueAndIndex received.
-		expectedHash := "gate01-hash-" + clipID
+		// The dispatcher receives the canonical SHA-256 content address. The
+		// legacy file hash remains a separate compatibility field.
+		expectedHash := artlistContentHashForTest(clipID)
 		assert.Equal(t, expectedHash, dispatchedHash,
-			"clip %s: dispatched content hash must match the processor's LegacyFileMD5", clipID)
+			"clip %s: dispatched content hash must match the processor's ContentHash", clipID)
 	}
 
 	// ── Gate 5: Contract 3 — only dispatched clips are in SQLite ──

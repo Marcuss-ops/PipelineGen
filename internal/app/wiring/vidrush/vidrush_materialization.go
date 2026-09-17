@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
@@ -159,7 +160,15 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 	verified := finalization.VerifiedArtifact{
 		ArtifactID: candidate.AssetID, Kind: kind, Filename: filename,
 		LocalPath: artifact.LocalPath, MIMEType: firstNonEmpty(artifact.MIMEType, "application/octet-stream"),
-		SizeBytes: artifact.SizeBytes, SHA256: artifact.LegacyFileMD5, SourceVersion: 1,
+		SizeBytes: artifact.SizeBytes,
+		// MEDIA-IDENTITY (Sept 2026): VerifiedArtifact.SHA256 is a content-address
+		// slot; the producer field is named LegacyFileMD5 for historical reasons,
+		// so it is RESOLVED through the canonical rule rather than forwarded
+		// verbatim (a legacy MD5 becomes "" = unknown). The idempotency key below
+		// keeps the raw digest on purpose: it is a per-artifact dedup LABEL, not an
+		// identity claim, and must keep matching previously written keys.
+		SHA256:         asset.ResolveContentAddress(artifact.LegacyFileMD5),
+		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementOptional,
 		IdempotencyKey: "vidrush:" + candidate.Provider + ":" + candidate.AssetID + ":" + artifact.LegacyFileMD5,
 		Description:    candidate.Query, Source: candidate.Provider,

@@ -188,14 +188,11 @@ func WireArtlist(
 		Log:              log,
 	})
 
-	// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): inject
-	// the Resolver into the media processor's ArtlistDownloader port
-	// so downloadStep routes Artlist clips through the canonical
-	// Resolver instead of the legacy downloadViaScraper method.
-	// The adapter is the SINGLE translation site between the
-	// processor's narrow ArtlistDownloader interface and the
-	// Resolver's Download(artlist.DownloadRequest) method.
-	wireArtlistProcessorDownloader(log, bundle, providers.ArtlistDownloader)
+	// ARTIST-DEMOLITION (September 2026): the Resolver→media-processor
+	// bridge (wireArtlistProcessorDownloader) is RETIRED. It existed only to
+	// route Artlist clips through the canonical Resolver; the processor no
+	// longer names any provider, and a non-HLS/non-direct source falls
+	// through to yt-dlp.
 
 	// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): the transcriber is
 	// the same adapter used by the YouTube registrar. Reusing it here

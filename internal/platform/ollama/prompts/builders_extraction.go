@@ -36,8 +36,9 @@ not output JSON, markdown fences, commentary, or missing segment blocks.
 Important phrases are editorial fragments from the source, not entity names:
 do not return a person, place, organization, or partial name as a phrase; use
 the meaningful action, claim, event, or description around it instead.
-`, entityCount)
+	`, entityCount)
 	b.WriteString(ImportantPhraseQualityContract())
+	b.WriteString(NamedEntityLanguageContract(language))
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
 	}
@@ -56,10 +57,29 @@ func BuildEntityExtractionPromptForLanguage(text string, entityCount int, langua
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderEntityExtraction(text, entityCount)
 		if err == nil {
-			return rendered + ImportantPhraseQualityContract() + GroundedNounChunkContract(language)
+			return rendered + ImportantPhraseQualityContract() + NamedEntityLanguageContract(language) + GroundedNounChunkContract(language)
 		}
 	}
-	return buildEntityExtractionFallback(text, entityCount) + ImportantPhraseQualityContract() + GroundedNounChunkContract(language)
+	return buildEntityExtractionFallback(text, entityCount) + ImportantPhraseQualityContract() + NamedEntityLanguageContract(language) + GroundedNounChunkContract(language)
+}
+
+// NamedEntityLanguageContract keeps multilingual entity extraction anchored to
+// the translated text's surface forms. In particular, it prevents a model from
+// treating a capitalized phrase or a case-inflected location as a person name.
+func NamedEntityLanguageContract(language string) string {
+	if strings.TrimSpace(language) == "" {
+		language = "infer from the source text"
+	}
+	return fmt.Sprintf(`
+
+NAMED ENTITY CONTRACT (MANDATORY FOR EVERY LANGUAGE):
+- SOURCE_LANGUAGE: %s
+- Scan the entire source segment for explicit people, places, organizations, events, works, and products.
+- Copy each entity's exact contiguous surface form from the source text, including its script, spelling, accents, and grammatical inflection. Never translate an entity or substitute its English name.
+- Classify a person as PERSON only when the span names a person. Classify a city, region, or country as PLACE, even when the localized name has a grammatical case ending.
+- Do not emit sentence fragments, titles, roles, sentence-initial words, or descriptive phrases as named entities.
+- Omit uncertain entities rather than assigning a guessed name or type.
+`, language)
 }
 
 // ImportantPhraseQualityContract keeps phrase extraction useful for editorial

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"go.uber.org/zap"
 )
@@ -78,9 +79,18 @@ func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 	}
 
 	result, err := m.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
-		AssetID:        ref.AssetID,
-		DriveFileID:    ref.DriveFileID,
-		ExpectedSHA256: ref.LegacyFileMD5,
+		AssetID:     ref.AssetID,
+		DriveFileID: ref.DriveFileID,
+		// MEDIA-IDENTITY (Sept 2026): ExpectedSHA256 is a content-address slot
+		// (drive.Materialize verifies the downloaded bytes against it), and the
+		// ref field is named LegacyFileMD5 for historical reasons, so the value is
+		// RESOLVED through the canonical rule: only a 64-hex SHA-256 becomes the
+		// expected address. An EMPTY result here is the honest state — the asset's
+		// byte identity is not known, so the download cannot be verified against
+		// an address and the materializer proceeds unverified rather than being
+		// handed an MD5 to compare as though it were a SHA-256 (which could only
+		// ever mismatch and reject a perfectly good file).
+		ExpectedSHA256: asset.ResolveContentAddress(ref.LegacyFileMD5),
 		Extension:      ext,
 		RegisteredPath: ref.LocalPath,
 	})

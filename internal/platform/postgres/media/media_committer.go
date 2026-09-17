@@ -478,7 +478,13 @@ func (c *PostgresMediaCommitter) discoveryCommitRequest(clip *asset.Asset, lifec
 		return mediacommit.CommitMediaAssetRequest{}, fmt.Errorf("media committer: resolve discovery taxonomy: %w", err)
 	}
 	ref := firstNonEmpty(clip.MetadataSourceVideoID(), firstNonEmpty(clip.SourceURL, clip.ID))
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (media-identity programme, Sept 2026): the commit's
+	// ContentHash is the BYTE identity, so it is resolved from the canonical
+	// content surfaces — and from legacy_file_md5 only while that column still
+	// carries a SHA-256. clip.LegacyFileMD5() is the compatibility accessor and
+	// is documented to be able to hold an MD5; an MD5 must never become the
+	// content address of a media row (see asset.ContentAddress).
+	contentHash := clip.ContentAddress()
 	return mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{
 			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name, Filename: clip.Filename,

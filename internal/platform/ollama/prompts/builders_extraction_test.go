@@ -51,14 +51,23 @@ func TestEntityExtractionBatchPrompt_ConsolidatesPerSceneSections(t *testing.T) 
 }
 
 func TestEntityExtractionPromptsShareLanguageAwareGroundingContract(t *testing.T) {
-	single := BuildEntityExtractionPromptForLanguage("L'astice blu vive nel mare.", 5, "it")
-	batch := BuildEntityExtractionBatchPromptForLanguage([]string{"L'astice blu vive nel mare."}, 5, "it")
+	single := BuildEntityExtractionPromptForLanguage("Лас-Вегас встретил Тайсона.", 5, "ru")
+	batch := BuildEntityExtractionBatchPromptForLanguage([]string{"Лас-Вегас встретил Тайсона."}, 5, "ru")
 	for name, prompt := range map[string]string{"single": single, "batch": batch} {
-		if !strings.Contains(prompt, "SOURCE_LANGUAGE: it") {
+		if !strings.Contains(prompt, "SOURCE_LANGUAGE: ru") {
 			t.Errorf("%s prompt missing source language", name)
 		}
 		if !strings.Contains(prompt, "copied VERBATIM") || !strings.Contains(prompt, "Do not translate") {
 			t.Errorf("%s prompt missing shared verbatim grounding contract", name)
+		}
+		for _, rule := range []string{
+			"exact contiguous surface form",
+			"case ending",
+			"Classify a person as PERSON only",
+		} {
+			if !strings.Contains(prompt, rule) {
+				t.Errorf("%s prompt missing multilingual named-entity rule %q", name, rule)
+			}
 		}
 	}
 }

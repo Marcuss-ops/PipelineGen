@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -52,6 +53,20 @@ func TestParseEntityExtractionResult_AcceptsGroupedSpecialNames(t *testing.T) {
 	require.Equal(t, []string{"PERSON: Ada Lovelace"}, result.NomiSpeciali)
 }
 
+func TestParseEntityExtractionResultStripsListMarkerFromSpecialNames(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{input: "- PLACE: Лас-Вегасе", want: "PLACE: Лас-Вегасе"},
+		{input: "• PERSON: Майка Тайсона", want: "PERSON: Майка Тайсона"},
+	} {
+		result, err := parseEntityExtractionResult(`{"frasi_importanti":[],"entity_senza_testo":{},"nomi_speciali":["`+tc.input+`"],"parole_importanti":[],"artlist_phrases":[],"noun_chunks":[]}`, 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{tc.want}, result.NomiSpeciali)
+	}
+}
+
 func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	var request struct {
 		Prompt  string         `json:"prompt"`
@@ -77,4 +92,35 @@ func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	require.Contains(t, request.Prompt, "SEGMENT_INPUT_1")
 	require.NotContains(t, request.Prompt, "Subject: precise visual search description")
 	require.NotContains(t, request.Prompt, "concrete keyword")
+}
+
+func TestExtractEntitiesFromBatch_FallbackPreservesLanguage(t *testing.T) {
+	var requests atomic.Int64
+	var fallbackPrompt string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Prompt string `json:"prompt"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		w.Header().Set("Content-Type", "application/json")
+		if requests.Add(1) == 1 {
+			// Force ExtractEntitiesFromBatchWithModel through its documented
+			// per-segment fallback path.
+			_, _ = w.Write([]byte(`{"response":"malformed batch response"}`))
+			return
+		}
+		fallbackPrompt = request.Prompt
+		_, _ = w.Write([]byte(`{"response":"## frasi_importanti\n## entity_senza_testo\n## nomi_speciali\n- PLACE: Лас-Вегас\n## parole_importanti\n## artlist_phrases\n## noun_chunks\n- Лас-Вегас"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "gemma4:e4b", 5)
+	results, err := client.ExtractEntitiesFromBatchWithModel(
+		context.Background(), []string{"Лас-Вегас встретил Тайсона."}, 5, "gemma4:e4b", "ru",
+	)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, int64(2), requests.Load())
+	require.Contains(t, fallbackPrompt, "SOURCE_LANGUAGE: ru")
+	require.Contains(t, results[0].NomiSpeciali, "PLACE: Лас-Вегас")
 }
