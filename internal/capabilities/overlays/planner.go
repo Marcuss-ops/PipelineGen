@@ -129,6 +129,7 @@ type TimedAnnotation struct {
 type ImageCandidate struct {
 	AssetID    string
 	URL        string
+	LocalPath  string
 	SHA256     string
 	MediaType  string
 	StartMs    int64
@@ -227,7 +228,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID, PresetID: selectImagePreset(input.PlanID, scene.ID, id),
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, SHA256: image.SHA256, MediaType: image.MediaType}},
+				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, LocalPath: image.LocalPath, SHA256: image.SHA256, MediaType: image.MediaType}},
 				Params: map[string]any{"position": "right", "style": "popup", "priority": image.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
@@ -244,7 +245,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID,
 				Kind: "product", TemplateID: "PRODUCT",
 				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: product.AssetID, URL: product.URL, SHA256: product.SHA256, MediaType: product.MediaType}},
+				AssetRefs: []OverlayAssetRef{{AssetID: product.AssetID, URL: product.URL, LocalPath: product.LocalPath, SHA256: product.SHA256, MediaType: product.MediaType}},
 				Params: map[string]any{"position": "right", "style": "popup", "priority": product.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
@@ -261,7 +262,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID,
 				Kind: "logo", TemplateID: "LOGO",
 				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: logo.AssetID, URL: logo.URL, SHA256: logo.SHA256, MediaType: logo.MediaType}},
+				AssetRefs: []OverlayAssetRef{{AssetID: logo.AssetID, URL: logo.URL, LocalPath: logo.LocalPath, SHA256: logo.SHA256, MediaType: logo.MediaType}},
 				Params: map[string]any{"position": "corner", "style": "logo", "priority": logo.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
@@ -313,12 +314,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if len(phrases) > config.MaxPhrases {
 			phrases = phrases[:config.MaxPhrases]
 		}
-		for ordinal, candidate := range phrases {
+		for _, candidate := range phrases {
 			id := itemID(scene.ID, "phrase", candidate.Text)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
-				MotionID: selectPhraseMotion(input.PlanID, scene.ID, ordinal),
-				Kind:     "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
+				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
@@ -332,6 +332,18 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		plan.Items, _ = ApplyEditorialOverlayBudget(plan.Items)
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudget(plan.Items)
+	}
+	// Assign the phrase motion sequence AFTER run-level ranking and dedupe.
+	// Every admitted phrase gets a distinct, visible catalog motion, even when
+	// phrases span different scenes or the winning candidates were not the
+	// first annotations supplied by NLP.
+	phraseOrdinal := 0
+	for i := range plan.Items {
+		if plan.Items[i].Kind != "text_phrase" {
+			continue
+		}
+		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal)
+		phraseOrdinal++
 	}
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err

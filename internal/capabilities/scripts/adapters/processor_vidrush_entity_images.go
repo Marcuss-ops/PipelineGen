@@ -9,43 +9,94 @@ import (
 	"fmt"
 	"strings"
 
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // The run bundle layout below plan.DriveFolderID has ONE owner: this file.
-// Every verified artifact family lands in its own child folder so a run's
-// clips and its entity images can never mix:
+// Every artifact family that BELONGS TO THE RUN lands in its own child folder
+// so a run's clips can never mix with anything else:
 //
-//	<Title>/<Language>/images  — entity images (internet_images, image_generation)
 //	<Title>/<Language>/clips   — provider clips the run actually used (youtube, artlist)
+//
+// Entity images (internet_images, image_generation) are deliberately NOT part
+// of the run bundle. They belong to the canonical image library
+//
+//	<ImagesRootFolder>/<canonical-entity-slug>/<file>
+//
+// which outlives the run and is reused by every future video: an image is
+// downloaded once and thereafter served from Drive. Routing them under
+// <Title>/<Language>/images made the SAME entity image land once per run (one
+// copy per title/language) instead of once for the library, and a run whose
+// title matched the entity produced the <slug>/<slug>/<file> nesting. The
+// library destination is applied by the finalizer
+// (app/wiring/vidrush::vidRushArtifactFinalizer), which owns the Drive roots;
+// see routeEntityImageToCanonicalLibrary for the half this file owns.
 //
 // This is a projection, not a second Drive client: the finalizer remains the
 // only publication boundary and this code merely tells it where the artifact
 // belongs.
-const (
-	generationImageChildFolder = "images"
-	generationClipChildFolder  = "clips"
-)
+const generationClipChildFolder = "clips"
 
-// routeGenerationOutputToPlanBundle is the SINGLE dispatch point for the run
-// bundle: every verified artifact passes through it before finalization, so a
-// new artifact family adds a predicate here instead of a second call site.
-// The families are disjoint by construction — an entity image is never a
-// provider clip — so exactly one projection can apply.
+// routeGenerationOutputToPlanBundle is the SINGLE dispatch point for every
+// verified artifact, so a new artifact family adds a predicate here instead of
+// a second call site. The families are disjoint by construction — an entity
+// image is never a provider clip — so exactly one projection can apply.
 func routeGenerationOutputToPlanBundle(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
 	if isEntityImageCandidate(artifact.Candidate) {
-		return routeEntityImageToGenerationOutput(plan, artifact)
+		return routeEntityImageToCanonicalLibrary(artifact)
 	}
 	return routeClipToGenerationOutput(plan, artifact)
 }
 
-func routeEntityImageToGenerationOutput(plan *scriptpkg.ResolvedGenerationPlan, artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
-	if plan == nil || strings.TrimSpace(plan.DriveFolderID) == "" || !isEntityImageCandidate(artifact.Candidate) {
-		return artifact
+// routeEntityImageToCanonicalLibrary keeps an entity image OUT of the run
+// bundle. The positive half of the library destination (the dedicated images
+// root plus the canonical-entity SubFolder) is applied by the finalizer, which
+// owns the Drive contract and the root configuration; the half owned here is
+// the negative one — clearing any run-scoped destination a caller may have set,
+// so an entity image can never be published as <Title>/<Language>/images again.
+func routeEntityImageToCanonicalLibrary(artifact scriptports.VerifiedArtifact) scriptports.VerifiedArtifact {
+	artifact.OutputDriveFolderID = ""
+	artifact.OutputDriveSubpath = nil
+	return artifact
+}
+
+// EntityImageDriveLeaf returns the canonical per-image Drive leaf of an entity
+// image — the SINGLE folder level below the images root — or "" when the
+// artifact is not an entity image (or carries no usable entity name).
+//
+// The leaf is derived through the canonical identity chain, never from the
+// plan/job:
+//
+//	"Michael Jordan" → CanonicalizePersonName → "person:michael-jordan"
+//	                 → CanonicalEntitySlug   → "michael-jordan"
+//
+// so casing and whitespace variants converge on ONE folder, and two videos that
+// ask for the same person receive the same image. The finalizer's Drive subpath
+// and the folder name both come from here: one owner, one derivation. A blank
+// result is not an error — the caller falls back to the generic per-image
+// destination, which still yields a single folder level and never the run
+// bundle.
+func EntityImageDriveLeaf(candidate scriptpkg.SegmentAssetCandidate) string {
+	if !isEntityImageCandidate(candidate) {
+		return ""
 	}
-	return routeToGenerationBundle(plan, artifact, generationImageChildFolder)
+	name := strings.TrimSpace(candidate.Entity)
+	if name == "" {
+		return ""
+	}
+	identity, err := entitycatalog.CanonicalizePersonName(name)
+	if err != nil {
+		return ""
+	}
+	leaf := capabilityentities.CanonicalEntitySlug(identity.CanonicalEntityID)
+	if leaf == "" {
+		return ""
+	}
+	return filesystem.SafeFolderName(leaf)
 }
 
 // routeClipToGenerationOutput carries the generation destination for a CLIP
@@ -74,11 +125,6 @@ func routeToGenerationBundle(plan *scriptpkg.ResolvedGenerationPlan, artifact sc
 		family,
 	}
 	return artifact
-}
-
-func entityImageOutputRequested(plan *scriptpkg.ResolvedGenerationPlan, candidate scriptpkg.SegmentAssetCandidate) bool {
-	return plan != nil && strings.TrimSpace(plan.DriveFolderID) != "" &&
-		strings.TrimSpace(candidate.SourceURL) != "" && isEntityImageCandidate(candidate)
 }
 
 func isEntityImageCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {

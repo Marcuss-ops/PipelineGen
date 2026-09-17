@@ -221,3 +221,43 @@ func TestResolveEntityOverlayPlan_EmptyTimelineFailsClosed(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no entity occurrences")
 }
+
+func TestResolveEntityOverlayPlan_DeduplicatesRepeatedEntityWithinScene(t *testing.T) {
+	cusID := StableEntityID("PERSON", "Cus D'Amato")
+	tysonID := StableEntityID("PERSON", "Mike Tyson")
+	occurrence := func(entityID, name string, textStart, wordStart int, startUS int64) EntityOccurrence {
+		return EntityOccurrence{
+			EntityID: entityID, Name: name, Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
+			TextStart: textStart, TextEnd: textStart + len(name), WordStart: wordStart, WordEnd: wordStart + 1,
+			LocalStartUS: startUS, LocalEndUS: startUS + 500_000, AudioStartUS: startUS, AudioEndUS: startUS + 500_000,
+			Confidence: 0.9,
+		}
+	}
+	timeline := EntityTimeline{
+		Version: EntityTimelineVersion, DurationUS: 4_000_000,
+		Scenes: []SceneEntityTimeline{{
+			SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
+			Entities: []EntityOccurrence{
+				occurrence(cusID, "Cus D'Amato", 0, 0, 100_000),
+				occurrence(cusID, "Cus D'Amato", 40, 8, 1_500_000),
+				occurrence(tysonID, "Mike Tyson", 80, 16, 2_500_000),
+			},
+		}},
+	}
+
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-repeat-entity", "video-repeat-entity", "", 1920, 1080, 30, 1)
+	require.NoError(t, err)
+	require.NoError(t, plan.Validate())
+	require.Len(t, plan.Items, 2, "a repeated person is one overlay identity within a scene")
+	cus := findItem(t, plan, "overlay-scene-0-cus-d-amato")
+	require.Equal(t, int64(100), cus.StartMs, "stable equal-rank ties keep the earliest mention")
+	findItem(t, plan, "overlay-scene-0-mike-tyson")
+
+	// The per-scene budget applies to distinct identities, so Cus's repeated
+	// mention cannot consume both slots and exclude Mike Tyson.
+	rankedPlan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-repeat-ranked", "video-repeat-ranked", "", 1920, 1080, 30, 1, RankConfig{MaxEntityOverlaysPerScene: 2})
+	require.NoError(t, err)
+	require.Len(t, rankedPlan.Items, 2)
+	findItem(t, rankedPlan, "overlay-scene-0-cus-d-amato")
+	findItem(t, rankedPlan, "overlay-scene-0-mike-tyson")
+}

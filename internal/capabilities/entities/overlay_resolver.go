@@ -17,12 +17,13 @@ const MinEntityOverlayDurationUS int64 = MaxEntityOverlayDurationUS
 
 // ResolveEntityOverlayPlan is the OverlayResolver: it turns the canonical
 // EntityTimeline into the semantic OverlayPlan the rendering layer consumes.
-// Every entity occurrence becomes one entity_card item whose start/end are
-// the occurrence's certified global audio positions — the resolver never
-// guesses WHEN to show a person, an organization or a place; it shows them
-// exactly while they are being spoken. It is the unlimited variant: every
-// occurrence resolves (see ResolveRankedEntityOverlayPlan for the ranked,
-// per-scene-capped planner path).
+// Every distinct entity in a scene becomes one entity_card item whose
+// start/end are the first ranked occurrence's certified global audio
+// positions — the resolver never guesses WHEN to show a person, an
+// organization or a place. Repeated mentions of the same entity in one scene
+// share the same semantic overlay identity, so only the highest-ranked
+// occurrence is retained. It is the unlimited variant for distinct entities
+// (see ResolveRankedEntityOverlayPlan for the ranked, per-scene-capped path).
 //
 // Times cross the microsecond→millisecond boundary deterministically: the
 // start is floor(us/1000) and the end is ceil(us/1000), so the millisecond
@@ -40,9 +41,9 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 // it is byte-identical to ResolveEntityOverlayPlan (no ranking, no caps).
 //
 // The plan's editorial rule: PipelineGen decides WHO is important — a scene
-// never renders every extracted entity. The top-N occurrences by importance
-// survive per scene (cfg.MaxEntityOverlaysPerScene); the survivors keep
-// their certified timeline positions exactly like the unlimited resolver.
+// never renders every extracted entity. Distinct entities are ranked by their
+// highest-scoring occurrence, then the top-N survive per scene
+// (cfg.MaxEntityOverlaysPerScene) with that occurrence's certified timing.
 func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, cfg RankConfig) (capabilityoverlay.OverlayPlan, error) {
 	if err := timeline.Validate(); err != nil {
 		return capabilityoverlay.OverlayPlan{}, err
@@ -61,9 +62,27 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 
 	var items []capabilityoverlay.OverlayItem
 	for _, scene := range timeline.Scenes {
-		ranked := RankScene(scene.Entities, ctx, cfg)
+		// Apply the resolver's cap after semantic deduplication. Passing it into
+		// RankScene would let repeated mentions of one entity consume several
+		// slots and crowd out distinct people or places in the same scene.
+		rankConfig := cfg
+		rankConfig.MaxEntityOverlaysPerScene = 0
+		ranked := RankScene(scene.Entities, ctx, rankConfig)
+		seenEntityIDs := make(map[string]struct{}, len(ranked))
 		for _, rankedOccurrence := range ranked {
 			occurrence := rankedOccurrence.Occurrence
+			// An entity can be grounded at several word spans in one scene.
+			// The run's image budget and stable overlay identity are semantic,
+			// not mention-count based. Keep the highest-ranked mention (ties
+			// retain RankScene's stable source order) so duplicate mentions do
+			// not produce duplicate IDs or repeated cards in the same scene.
+			if _, duplicate := seenEntityIDs[occurrence.EntityID]; duplicate {
+				continue
+			}
+			if cfg.MaxEntityOverlaysPerScene > 0 && len(seenEntityIDs) >= cfg.MaxEntityOverlaysPerScene {
+				break
+			}
+			seenEntityIDs[occurrence.EntityID] = struct{}{}
 			durationUS := occurrence.AudioEndUS - occurrence.AudioStartUS
 			if durationUS < MinEntityOverlayDurationUS {
 				durationUS = MinEntityOverlayDurationUS

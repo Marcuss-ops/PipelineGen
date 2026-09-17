@@ -110,6 +110,15 @@ type CommitRequest struct {
 	Provider string
 	// SourceVideoID is persisted to media_assets.source_video_id.
 	SourceVideoID string
+	// PolicyVersion is persisted to media_assets.policy_version. It is the
+	// third component of the canonical YouTube clip identity
+	// (`yt_<videoID>_<start>_<end>_<policy>`), so it MUST be persisted
+	// whenever the identity carries one: the DB-level clip-identity index
+	// (ux_media_assets_youtube_clip_identity) compares it, and a row whose
+	// id says v2 while the column says v1 would collide with the v1 asset of
+	// the same window. Empty keeps the schema default ('v1'), which is the
+	// behaviour every pre-2026-09-17 caller already had.
+	PolicyVersion string
 	// StartMs/EndMs are millisecond timestamps persisted to
 	// media_assets.start_ms/end_ms.
 	StartMs int64

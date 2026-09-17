@@ -1,10 +1,56 @@
 package scriptgeneration
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *testing.T) {
+	localPath := filepath.Join(t.TempDir(), "verified-person.jpg")
+	if err := os.WriteFile(localPath, []byte("verified image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := &GenerateResult{
+		Scenes: []Scene{{Annotations: &scriptpkg.SceneAnnotations{
+			PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+				ID: "person-1", Type: "PERSON", CanonicalName: "Ada Lovelace", Confidence: 0.9,
+				Image: &scriptpkg.EntityImageBinding{
+					Status: "resolved", AssetID: "ada-asset", SHA256: "ada-sha",
+					PreviewURL: "https://drive.google.com/uc?export=download&id=ada",
+					MediaType:  "image/jpeg",
+				},
+			},
+			}}}},
+		Segments: []scriptpkg.VidRushSegmentResult{{Assets: scriptpkg.SegmentAssetSelection{
+			Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "ada-asset", LocalPath: localPath}},
+		}}},
+	}
+	media, canonicalByStable := entityCardMediaIndex(result)
+	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
+	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
+		ID: "ada-card", EntityID: stableID, Kind: string(capabilityoverlay.KindEntityCard),
+	}, media, canonicalByStable, "plan-1")
+	if item.Kind != string(capabilityoverlay.KindEntityImage) || len(item.AssetRefs) != 1 {
+		t.Fatalf("entity image = %#v, want resolved image card", item)
+	}
+	if item.AssetRefs[0].LocalPath != localPath {
+		t.Fatalf("local path = %q, want verified producer path", item.AssetRefs[0].LocalPath)
+	}
+	wire, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(wire), localPath) {
+		t.Fatal("producer-local filesystem path leaked into the semantic overlay plan")
+	}
+}
 
 func TestCapEntityImageOverlaysKeepsFiveDistinctIdentities(t *testing.T) {
 	items := make([]capabilityoverlay.OverlayItem, 0, 8)

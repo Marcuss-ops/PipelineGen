@@ -126,7 +126,7 @@ func requireDestructiveTestDatabase(t *testing.T) {
 		t.Fatalf("TEST_POSTGRES_DSN has no resolvable database name; refusing to truncate an unidentified database (fail closed)")
 	}
 	if !strings.HasSuffix(name, "_test") {
-		t.Fatalf("refusing to truncate database %q: this fixture resets media_assets, asset_locations and asset_text_tracks, so it may only run against a *_test database (make test-postgres uses pipelinegen_media_test)", name)
+		t.Fatalf("refusing to run a media fixture against database %q: these fixtures RESET media_assets/asset_locations/asset_text_tracks and commit real `yt_*` fixture assets through the canonical committer, so they may only run against a *_test database (make test-postgres uses pipelinegen_media_test). Contaminating the operational catalog with test rows is exactly what this guard prevents", name)
 	}
 }
 

@@ -108,9 +108,11 @@ drive:
   youtube_subtitles_root_folder: ""
   voiceover_root_folder: ""
   artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"  # canonical Drive root for Artlist output (FOLLOWUP-ARTLIST-ROOT, July 2026)
-  # AI-generated images need a Drive root even when the style preset is empty.
-  # This points the default script image flow at the canonical realistic bucket.
-  images_root_folder: "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X"
+  # Images: per-image SubFolder layout under the dedicated root.
+  # Root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY; each image in
+  # <root>/<SafeFolderName(subject)>/<file>, downloaded once at
+  # runtime then reused permanently from Drive.
+  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
   scripts_root_folder: ""
   overlay_render_root_folder: ""
   video_ai_root_folder: ""

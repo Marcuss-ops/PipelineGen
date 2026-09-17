@@ -62,3 +62,21 @@ func TestEntityExtractionPromptsShareLanguageAwareGroundingContract(t *testing.T
 		}
 	}
 }
+
+func TestEntityExtractionPromptsPrioritizeUsefulVerbatimOverlayPhrases(t *testing.T) {
+	single := BuildEntityExtractionPromptForLanguage("Tokyo ended Tyson's unbeaten run.", 5, "en")
+	batch := BuildEntityExtractionBatchPromptForLanguage([]string{"Tokyo ended Tyson's unbeaten run."}, 5, "en")
+	for name, prompt := range map[string]string{"single": single, "batch": batch} {
+		for _, rule := range []string{
+			"strongest and most screen-worthy first",
+			"self-contained wording",
+			"generic transitions",
+			"exact contiguous span",
+			"Never invent a slogan",
+		} {
+			if !strings.Contains(prompt, rule) {
+				t.Errorf("%s prompt missing editorial phrase rule %q", name, rule)
+			}
+		}
+	}
+}

@@ -14,8 +14,29 @@ package youtube
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
+
+// AtomicClipWriterPort is the OPTIONAL atomic terminal-write surface for the
+// Register pipeline. When the composition root wires it, Register performs
+// media_assets + asset_text_tracks + cue segments + the
+// asset.index.requested outbox event in ONE PostgreSQL transaction instead of
+// the legacy split (saveClipToDB → index event, then a separate
+// textTrackRepo.UpsertBatch).
+//
+// Why this port exists (2026-09-17, identity/atomicity unification):
+// the split path could commit the asset row and emit the index event BEFORE
+// the transcript existed, so an index worker could embed a clip with no
+// transcript and never revisit it. The atomic writer closes that window: the
+// index event and the transcript become visible in the same commit, or not at
+// all.
+//
+// godlike/06 SSOT (one canonical owner per fact): this is a type ALIAS of
+// localized.LocalizedClipWriter — the same interface the canonical extraction
+// path (youtube/usecase.process_segment) consumes. A second, structurally
+// identical interface would be free to drift from the canonical one.
+type AtomicClipWriterPort = localized.LocalizedClipWriter
 
 // IndexDispatcherPort merges the historical IndexDispatcher + AssetTree surface.
 //

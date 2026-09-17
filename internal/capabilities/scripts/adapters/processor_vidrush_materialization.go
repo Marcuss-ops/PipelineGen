@@ -449,9 +449,11 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			verified := lifecycle.verified
-			// One dispatch for every artifact family: entity images land in
-			// <Title>/<Language>/images, the provider clips the run used land in
-			// <Title>/<Language>/clips, both under plan.DriveFolderID.
+			// One dispatch for every artifact family: the provider clips the
+			// run used land in <Title>/<Language>/clips under
+			// plan.DriveFolderID, while entity images are pulled back OUT of the
+			// run bundle and published by the finalizer into the canonical image
+			// library (<ImagesRootFolder>/<canonical-entity-slug>/<file>).
 			verified = routeGenerationOutputToPlanBundle(plan, verified)
 			cacheKey := vidRushCandidateIdentity(candidate)
 			var persisted scriptpkg.SegmentAssetCandidate

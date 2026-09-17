@@ -67,7 +67,7 @@ func (r *EntityAssetResolver) Resolve(ctx context.Context, req EntityAssetReques
 		return capabilityoverlay.BoundAsset{}, fmt.Errorf("entity asset resolver: empty canonical entity identity")
 	}
 	if ref, err := r.local.ResolveBest(canonicalID); err == nil {
-		return capabilityoverlay.BoundAsset{EntityID: canonicalID, AssetID: ref.AssetID, ContentHash: ref.SHA256, SourceURL: ref.URL, Verified: true}, nil
+		return capabilityoverlay.BoundAsset{EntityID: canonicalID, AssetID: ref.AssetID, ContentHash: ref.SHA256, LocalPath: ref.LocalPath, SourceURL: ref.URL, Verified: true}, nil
 	}
 	acquired, err := r.source.Acquire(ctx, EntityAssetRequest{EntityType: req.EntityType, CanonicalName: req.CanonicalName, CanonicalID: canonicalID})
 	if err != nil {
@@ -89,5 +89,5 @@ func (r *EntityAssetResolver) Resolve(ctx context.Context, req EntityAssetReques
 	if err := r.local.index.IndexForCanonicalID(canonicalID, acquired); err != nil {
 		return capabilityoverlay.BoundAsset{}, fmt.Errorf("entity asset resolver: local index: %w", err)
 	}
-	return capabilityoverlay.BoundAsset{EntityID: canonicalID, AssetID: acquired.AssetID, ContentHash: acquired.SHA256, DriveFileID: acquired.DriveFileID, Width: acquired.Width, Height: acquired.Height, SourceURL: acquired.StorageURL, Verified: true}, nil
+	return capabilityoverlay.BoundAsset{EntityID: canonicalID, AssetID: acquired.AssetID, ContentHash: acquired.SHA256, LocalPath: acquired.LocalPath, DriveFileID: acquired.DriveFileID, Width: acquired.Width, Height: acquired.Height, SourceURL: acquired.StorageURL, Verified: true}, nil
 }

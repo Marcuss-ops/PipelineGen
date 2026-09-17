@@ -12,7 +12,7 @@
       },
       "current": {
         "files": 63,
-        "max_loc": 588
+        "max_loc": 589
       },
       "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged.",
       "target_packages": [

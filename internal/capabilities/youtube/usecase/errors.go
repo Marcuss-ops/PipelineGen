@@ -90,6 +90,15 @@ const (
 	// on retry; the caller must re-download.
 	// Audit 2026-07-03 BLOCKER #3 (ffprobe validation).
 	FailureCodeFFProbeValidationFailed FailureCode = "ffprobe_validation_failed"
+
+	// FailureCodeClipIdentityInvalid is returned when the canonical clip
+	// identity cannot be built (kernel/asset/detail.YouTubeClipAssetID
+	// rejects an empty video id or an inverted window). Terminal: a
+	// degenerate identity would otherwise mint an asset id that collides
+	// with every other clip of the same video, so the segment fails closed
+	// instead of writing a wrong primary key.
+	// Identity unification (2026-09-17).
+	FailureCodeClipIdentityInvalid FailureCode = "clip_identity_invalid"
 )
 
 // ExtractionError is the typed error the canonical use case returns

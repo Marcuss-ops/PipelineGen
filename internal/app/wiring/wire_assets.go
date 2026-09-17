@@ -296,7 +296,12 @@ func buildRegisterBundle(
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
 	sourcingClipStore := newSourcingClipStore(deps.MediaPostgres, deps.Core.Repositories.ClipsRepo)
-	registerSvc := newAssetRegisterService(cfg, log, sourcingClipStore, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	// 2026-09-17: the canonical atomic terminal write for the register path is
+	// the same PostgreSQL committer the extraction path uses. Resolved from the
+	// media SSOT handle; nil (media PostgreSQL disabled) leaves the legacy split
+	// path in place, which the register service already treats as its fallback.
+	registerAtomicWriter := canonicalRegisterAtomicWriter(deps.MediaPostgres, log)
+	registerSvc := newAssetRegisterService(cfg, log, sourcingClipStore, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service, registerAtomicWriter)
 
 	driveChecker := func() error {
 		if driveUploader == nil {

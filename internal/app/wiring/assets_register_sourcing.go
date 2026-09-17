@@ -15,7 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/batch"
@@ -65,6 +67,7 @@ func newAssetRegisterService(
 	dispatcher *outbox.Dispatcher,
 	publisher delivery.Publisher,
 	jobsSvc *appjobs.Service,
+	atomicWriter localized.LocalizedClipWriter,
 ) *sourcing.Service {
 	// Build the YouTube sub-service with v2 adapters (June 2026, P0-1 / commit 1).
 	// The 2 v2 adapters absorb 6 legacy ports (IndexDispatcher + AssetTree +
@@ -108,7 +111,14 @@ func newAssetRegisterService(
 		Enrichment:    ytEnrich,
 		Log:           ytadapters.NewZapSourcingLogger(log),
 		TextTrackRepo: textTrackRepo,
-	}).WithRequireDrive(cfg.Features.MediaDriveRequired)
+	}).WithRequireDrive(cfg.Features.MediaDriveRequired).
+		// 2026-09-17 identity/atomicity unification: with the canonical
+		// PostgreSQL committer wired, Register commits media_assets +
+		// asset_text_tracks + the asset.index.requested outbox event in ONE
+		// transaction instead of (asset + index event) followed by a separate
+		// transcript upsert. A nil writer keeps the legacy split path for
+		// composition sites with no media PostgreSQL handle.
+		WithAtomicClipWriter(atomicWriter)
 
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).
 	// The synchronous YouTubeRegistrar loop is replaced with an async
@@ -212,6 +222,45 @@ func newAssetRegisterService(
 	}
 	log.Info("PR-RESOLVER-PORT-EXTRACT: canonical LocationResolverPort wired into sourcing façade (Wave 7 SEMANTIC-LOCATION-API deliverable)")
 	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, ytadapters.NewZapSourcingLogger(log)).WithLocationResolver(resolverAdapter)
+}
+
+// canonicalRegisterAtomicWriter resolves the atomic terminal writer for the
+// sourcing/register YouTube path (2026-09-17 identity/atomicity unification).
+//
+// WHY THE REGISTER PATH NEEDS IT. Register used to write the asset row + its
+// asset.index.requested event in one transaction and then upsert the transcript
+// in a SECOND one. Between the two commits the index worker could claim the
+// event and embed a clip whose transcript did not exist yet — and nothing ever
+// revisited it. Wiring this writer makes asset + text tracks + cue segments +
+// the event ONE super-transaction.
+//
+// ENGINE RULE: it is the SAME PostgreSQL media SSOT committer the canonical
+// extraction path uses (media.NewPostgresMediaCommitterFromDB), resolved from
+// the same media handle passed into this composition site. Never a second
+// writer, never an operational-mirror fallback — a register path committing
+// through a different engine is the split-brain the media cutover removed.
+//
+// Degradation contract (mirrors newCanonicalAssetCommitter): returning nil when
+// the media plane is closed is the honest signal. The register service then
+// keeps its legacy split path, which is real degradation rather than a
+// fabricated atomicity guarantee. A non-nil result is ALWAYS a working
+// committer.
+//
+// It lives in this file rather than a new one because internal/app/wiring is a
+// registered package-count hotspot at its baseline: the factory is meaningful
+// only next to its single consumer anyway.
+func canonicalRegisterAtomicWriter(db *sql.DB, log *zap.Logger) localized.LocalizedClipWriter {
+	if db == nil {
+		return nil
+	}
+	committer, err := mediasub.NewPostgresMediaCommitterFromDB(db, log)
+	if err != nil {
+		if log != nil {
+			log.Warn("register atomic writer: canonical media committer unavailable; register path falls back to the legacy split write", zap.Error(err))
+		}
+		return nil
+	}
+	return committer
 }
 
 // resolverFolderEnsurerAdapter wraps drive.EnsureFolderPath into the

@@ -238,7 +238,15 @@ func TestDriveConfigConvenienceMethods(t *testing.T) {
 
 		t.Run(tt.name+"/empty", func(t *testing.T) {
 			d := DriveConfig{}
-			if got := tt.callMethod(d); got != "" {
+			if tt.name == "ImagesFolder" {
+				// Spec: images always resolve to DefaultImagesRootFolderID
+				// (per-image SubFolder layout) even when nothing is configured,
+				// so an operator never accidentally writes images to ""/MediaRoot.
+				want := DefaultImagesRootFolderID
+				if got := tt.callMethod(d); got != want {
+					t.Errorf("%s() = %q, want %q (DefaultImagesRootFolderID fallback)", tt.name, got, want)
+				}
+			} else if got := tt.callMethod(d); got != "" {
 				t.Errorf("%s() = %q, want %q when nothing is set", tt.name, got, "")
 			}
 		})

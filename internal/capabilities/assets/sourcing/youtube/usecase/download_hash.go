@@ -11,15 +11,21 @@
 // pkg/hashutil directly. Adapters live in the composition root.
 //
 // godlike/06 SSOT (one canonical owner per fact): this file is the canonical
-// owner of YouTube-clip download + hash + clipID derivation for the
-// sourcing/youtube registration pipeline. The clipID format
-// yt_<videoID>_<hash8> is owned here.
+// owner of YouTube-clip download + hash for the sourcing/youtube registration
+// pipeline. It is NOT the owner of the clip identity format: the asset-id
+// format `yt_<videoID>_<startSec>_<endSec>_<policyVersion>` is owned by
+// kernel/asset/detail.YouTubeClipAssetID, the same builder the extraction
+// pipeline uses (2026-09-17 identity unification). The MD5 file hash stays the
+// CONTENT identity (media_assets.legacy_file_md5 + supersede gate), never the
+// logical clip identity.
 package usecase
 
 import (
 	"context"
 	"fmt"
 	"time"
+
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // DownloadAndHashCommand carries every input needed to download a YouTube
@@ -32,6 +38,11 @@ type DownloadAndHashCommand struct {
 	SegmentStart time.Duration // start offset in seconds
 	SegmentEnd   time.Duration // end offset in seconds
 	NoAudio      bool          // when true, strip audio from the fetched clip
+	// PolicyVersion is the clip-identity policy component. Empty falls back to
+	// detail.DefaultYouTubeClipPolicyVersion ("v1"), which is what the
+	// extraction pipeline uses when the caller declares no policy — so the two
+	// ingest paths mint the SAME asset id for the same window.
+	PolicyVersion string
 }
 
 // DownloadAndHashResult is the canonical output of the fetch + hash step.
@@ -45,7 +56,7 @@ type DownloadAndHashResult struct {
 	Bytes         int64             // file size in bytes
 	Metadata      map[string]string // provider metadata (description, uploader, etc.)
 	LegacyFileMD5 string            // MD5 hex digest (empty when hasher is nil or fails)
-	ClipID        string            // canonical yt_<videoID>_<hash8> identifier
+	ClipID        string            // canonical yt_<videoID>_<startSec>_<endSec>_<policyVersion> identifier
 }
 
 // Fetcher is the narrow port for downloading a video from an external
@@ -83,20 +94,22 @@ type FileHasher interface {
 }
 
 // DownloadAndHashClip downloads a YouTube video segment and derives its
-// canonical clipID from the MD5 file hash. It is a thin orchestration
-// function:
+// canonical clipID from the REQUEST WINDOW (videoID + start + end + policy),
+// not from the downloaded bytes. It is a thin orchestration function:
 //
 //  1. nil-fetcher guard → returns typed error (fail-closed)
 //  2. Delegate to fetcher.Fetch with the command fields
 //  3. On fetch failure → wraps error with usecase prefix
 //  4. Compute MD5 hash via hasher (nil-safe: empty hash when hasher is nil)
-//  5. Derive clipID as yt_<videoID>_<hash8> (truncated to 8 hex chars)
+//  5. Derive the canonical identity via detail.YouTubeClipAssetID
 //
-// The hash-is-empty case is intentionally NOT an error — the caller
-// (Register()) logs a warning and proceeds with a best-effort clipID
-// that carries an empty suffix. This mirrors the pre-extraction behavior
-// and preserves backward compatibility for clips with corrupted or
-// inaccessible local files.
+// The hash-is-empty case is still NOT an error: the hash is the CONTENT
+// identity and the caller (Register()) logs a warning and proceeds. It can no
+// longer degrade the clip IDENTITY — before the 2026-09-17 unification an
+// unusable hash produced the degenerate id `yt_<videoID>_`, which collided
+// across every window of the same video (one segment silently overwriting
+// another). The window-derived identity is well-defined even when the bytes
+// cannot be hashed.
 func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher, cmd DownloadAndHashCommand) (*DownloadAndHashResult, error) {
 	if fetcher == nil {
 		return nil, fmt.Errorf("usecase.DownloadAndHashClip: fetcher is nil")
@@ -124,7 +137,10 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 		}
 	}
 
-	clipID := deriveClipID(cmd.VideoID, fileHash)
+	clipID, err := deriveClipID(cmd.VideoID, cmd.SegmentStart, cmd.SegmentEnd, cmd.PolicyVersion)
+	if err != nil {
+		return nil, fmt.Errorf("usecase.DownloadAndHashClip: derive clip id: %w", err)
+	}
 
 	return &DownloadAndHashResult{
 		LocalPath:     fetched.LocalPath,
@@ -138,14 +154,16 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 	}, nil
 }
 
-// deriveClipID builds the canonical clip identifier from the videoID and
-// the first 8 hex characters of the MD5 file hash. When fileHash is empty
-// the suffix is empty, producing yt_<videoID>_ — the caller is responsible
-// for logging the warning.
-func deriveClipID(videoID, fileHash string) string {
-	suffix := fileHash
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	return fmt.Sprintf("yt_%s_%s", videoID, suffix)
+// deriveClipID builds the canonical clip identifier from the videoID, the
+// requested window and the policy version. It delegates the FORMAT to
+// detail.YouTubeClipAssetID so an identical window cannot mint two different
+// asset ids depending on which ingest route handled it.
+//
+// Seconds are truncated to whole seconds (int) because the extraction
+// pipeline parses "HH:MM:SS" into integer seconds: both paths must land on the
+// same integer window to converge on the same primary key.
+func deriveClipID(videoID string, segmentStart, segmentEnd time.Duration, policyVersion string) (string, error) {
+	startSec := int(segmentStart / time.Second)
+	endSec := int(segmentEnd / time.Second)
+	return detail.YouTubeClipAssetID(videoID, startSec, endSec, policyVersion)
 }

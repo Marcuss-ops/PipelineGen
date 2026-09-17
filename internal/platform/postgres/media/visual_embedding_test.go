@@ -98,7 +98,7 @@ func TestVisualPipeline_EmbedAndStoresPooledVector(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestVisualPipeline_SidecarFailClosed(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}

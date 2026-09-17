@@ -38,12 +38,17 @@ type WireRegistry struct {
 // /api/stock-pipeline/run and /api/stock/search-and-run. The convention
 // is to use the SHORTEST stable prefix per capability so a future
 // sub-route variant doesn't accidentally map to a different capability.
+// Each capability carries a list of prefixes: one entry per capability name is
+// the invariant All() relies on (len(knownCapabilities) == number of wire keys),
+// while a capability whose routes are SIBLINGS rather than a parent/child pair
+// (register: /api/media/register-from-youtube + /api/media/register-batch)
+// still gets a single entry.
 var knownCapabilities = []struct {
-	name   string
-	prefix string
+	name     string
+	prefixes []string
 }{
-	{name: "stock", prefix: "/api/stock-pipeline"},
-	{name: "artlist", prefix: "/api/artlist"},
+	{name: "stock", prefixes: []string{"/api/stock-pipeline"}},
+	{name: "artlist", prefixes: []string{"/api/artlist"}},
 	// voiceover mounts via internal/app/wire_assets.go::WireAssets which
 	// wraps the Assets module under prefix "/media" (assetsRouteMod) +
 	// the voiceover capability's own prefix "/voiceover"
@@ -55,23 +60,37 @@ var knownCapabilities = []struct {
 	// godlike/06 SSOT (one canonical owner per fact): the wire
 	// prefix string is owned by this list; the assets aggregate
 	// prefix `/media` is owned by wire_assets.go; both lock together.
-	{name: "voiceover", prefix: "/api/media/voiceover"},
+	{name: "voiceover", prefixes: []string{"/api/media/voiceover"}},
 	// youtube (legacy YouTube clip handler) mounts under /api/clips/*
 	// (see internal/capabilities/assets/youtube/youtube_handlers.go).
-	{name: "youtube", prefix: "/api/clips"},
-	{name: "register", prefix: "/api/register"},
-	{name: "storage", prefix: "/api/storage"},
-	{name: "mediasearch", prefix: "/internal/v1/media"},
-	{name: "qdrant_health", prefix: "/qdrant/"},
-	{name: "admin", prefix: "/api/drive"},
+	{name: "youtube", prefixes: []string{"/api/clips"}},
+	// register (assets/register module: RegisterFromYouTube +
+	// BatchRegisterFromYouTube) mounts beneath the assets module's `/media`
+	// group, so the PUBLIC urls are POST /api/media/register-from-youtube and
+	// POST /api/media/register-batch.
+	//
+	// The pre-2026-09-17 entry was `prefix: "/api/register"`, which matched NO
+	// route in any deployment: /ready reported the capability as NOT_MOUNTED
+	// while both routes answered 401 (mounted, just unauthenticated). A
+	// MOUNTED capability advertised as NOT_MOUNTED is the exact false negative
+	// this registry exists to prevent.
+	//
+	// Two entries for one capability on purpose: prefix matching enforces a `/`
+	// boundary, and the two routes are SIBLINGS ("register-from-youtube" and
+	// "register-batch"), so no single prefix can match both.
+	{name: "register", prefixes: []string{"/api/media/register-from-youtube", "/api/media/register-batch"}},
+	{name: "storage", prefixes: []string{"/api/storage"}},
+	{name: "mediasearch", prefixes: []string{"/internal/v1/media"}},
+	{name: "qdrant_health", prefixes: []string{"/qdrant/"}},
+	{name: "admin", prefixes: []string{"/api/drive"}},
 	// clips (canonical clips capability) mounts under /api/media/clips/*
 	// via the assets module (see internal/app/wire_assets.go and
 	// internal/capabilities/assets/clips/module.go). This includes the new
 	// POST /api/media/clips/ingest/ai-stock endpoint.
-	{name: "clips", prefix: "/api/media/clips"},
+	{name: "clips", prefixes: []string{"/api/media/clips"}},
 	// script mounts under /api/script/* (ScriptFlow module, prefix
 	// "/script" beneath routes.go's `api := engine.Group("/api")`).
-	{name: "script", prefix: "/api/script"},
+	{name: "script", prefixes: []string{"/api/script"}},
 }
 
 // RouteInfo is the minimal projection of a gin RouteInfo the
@@ -100,8 +119,10 @@ func NewWireRegistry(routes []RouteInfo) *WireRegistry {
 	r := &WireRegistry{mounted: make(map[string]bool)}
 	for _, route := range routes {
 		for _, cap := range knownCapabilities {
-			if matchesCapabilityPrefix(route.Path, cap.prefix) {
-				r.mounted[cap.name] = true
+			for _, prefix := range cap.prefixes {
+				if matchesCapabilityPrefix(route.Path, prefix) {
+					r.mounted[cap.name] = true
+				}
 			}
 		}
 	}

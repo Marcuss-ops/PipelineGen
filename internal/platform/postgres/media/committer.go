@@ -197,7 +197,7 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			source_provider, source_video_id, source_url,
 			start_ms, end_ms, title,
 			origin, provider,
-			namespace, asset_kind, source_type, semantic_role,
+			namespace, asset_kind, source_type, semantic_role, policy_version,
 			created_at_ts, updated_at_ts
 		) VALUES (
 			$1, $2, $3, $4, $5,
@@ -212,6 +212,7 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			$32, $33, $34,
 			$35, $36,
 			$37, $38, $39, $40,
+			COALESCE(NULLIF($41, ''), 'v1'),
 			NULLIF($22, '')::timestamptz, NULLIF($23, '')::timestamptz
 		)
 		ON CONFLICT (id) DO UPDATE SET
@@ -252,7 +253,8 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 			namespace = COALESCE(NULLIF(excluded.namespace, ''), media_assets.namespace),
 			asset_kind = COALESCE(NULLIF(excluded.asset_kind, ''), media_assets.asset_kind),
 			source_type = COALESCE(NULLIF(excluded.source_type, ''), media_assets.source_type),
-			semantic_role = COALESCE(NULLIF(excluded.semantic_role, ''), media_assets.semantic_role)
+			semantic_role = COALESCE(NULLIF(excluded.semantic_role, ''), media_assets.semantic_role),
+			policy_version = excluded.policy_version
 	`,
 		req.AssetID, req.Source, name, req.Filename, req.MediaType, req.Category, req.DurationMs,
 		clipTagsJSON(req.Metadata.Tags), clipTagsNorm(req.Metadata.Tags),
@@ -266,6 +268,7 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 		startMs, endMs, title,
 		req.Origin, req.Provider,
 		req.Taxonomy.Namespace, string(req.Taxonomy.AssetKind), req.Taxonomy.SourceType, req.Taxonomy.SemanticRole,
+		req.PolicyVersion,
 	)
 	if err != nil {
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: upsert media_assets: %w", err)

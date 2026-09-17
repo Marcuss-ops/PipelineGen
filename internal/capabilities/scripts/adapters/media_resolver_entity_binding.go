@@ -86,6 +86,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,
 					DriveLink: candidate.DriveLink, Source: candidate.Provider,
+					LocalPath:  candidate.LocalPath,
 					MediaType:  candidate.MIMEType,
 					License:    candidate.RightsBasis,
 					PreviewURL: entityImagePreviewURL(candidate),

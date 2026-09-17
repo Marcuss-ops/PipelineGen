@@ -30,13 +30,18 @@ package youtube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -238,6 +243,134 @@ func (s *Service) saveClipToDB(ctx context.Context, cmd sourcing.RegisterClipCom
 	}
 	s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", true)
 	return nil
+}
+
+// commitClipAtomically is the CANONICAL terminal write of the Register
+// pipeline (2026-09-17 identity/atomicity unification). It replaces the
+// legacy pair
+//
+//	PersistClipAndIndex(...)      // media_assets + asset.index.requested, tx #1
+//	textTrackRepo.UpsertBatch(...) // transcript, tx #2
+//
+// with ONE localized.CommitLocalizedClipCommand handed to the atomic writer,
+// which commits media_assets + asset_text_tracks + cue segments + the outbox
+// event in a single transaction.
+//
+// The defect the split pair opened (and this helper closes): the index event
+// became visible BEFORE the transcript row existed, so an index worker could
+// embed a clip with no transcript and never revisit it — a permanently
+// under-indexed asset with no error anywhere. With the super-tx, the event and
+// the transcript become visible in the same commit, or neither does.
+//
+// The asset identity is the window-derived `yt_<videoID>_<start>_<end>_<policy>`
+// already minted in step 3 by detail.YouTubeClipAssetID; the MD5 file hash is
+// passed as the CONTENT fingerprint (legacy_file_md5 / content_hash), never as
+// the identity. That separation is what keeps a re-cut (same window, different
+// bytes) an UPSERT of the same primary key instead of a second asset.
+func (s *Service) commitClipAtomically(
+	ctx context.Context,
+	cmd sourcing.RegisterClipCommand,
+	clipID string,
+	md *usecase.ResolvedMetadata,
+	driveFilename, fileHash, localPath, targetFolderID string,
+	uploadResult *sourcing.DriveUploadResult,
+	track detail.TextTrack,
+) error {
+	startSec := int(md.StartSec)
+	endSec := int(md.EndSec)
+
+	policyVersion := detail.DefaultYouTubeClipPolicyVersion
+
+	clipAsset := youtubetypes.ClipAsset{
+		ID:            clipID,
+		VideoID:       md.VideoID,
+		LocalPath:     localPath,
+		LegacyFileMD5: fileHash,
+		SearchText:    buildRegisterSearchText(md, cmd),
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: startSec,
+			EndSec:   endSec,
+			Duration: endSec - startSec,
+		},
+		PolicyVersion: policyVersion,
+		Metadata: youtubetypes.CanonicalClipMetadata{
+			ClipID:          clipID,
+			AssetID:         clipID,
+			Title:           md.Name,
+			Summary:         cmd.Summary,
+			Description:     md.Description,
+			SourceURL:       md.RawURL,
+			SourceProvider:  "youtube",
+			VideoID:         md.VideoID,
+			ClipStartSec:    startSec,
+			ClipEndSec:      endSec,
+			ClipDurationSec: endSec - startSec,
+			PolicyVersion:   policyVersion,
+			Category:        cmd.Category,
+			Tags:            cmd.Tags,
+			Topics:          cmd.Topics,
+			Speakers:        cmd.Speakers,
+			MentionedPeople: cmd.MentionedPeople,
+			Hook:            cmd.Hook,
+			CleanTranscript: track.TextContent,
+		},
+	}
+	if uploadResult != nil {
+		clipAsset.Drive = youtubetypes.ClipAssetDrive{
+			FileID:      uploadResult.FileID,
+			WebViewLink: uploadResult.WebViewLink,
+		}
+	}
+	// The Drive folder is recorded on the location row only when the asset
+	// really landed there; clip_writer_helpers.clipLocations emits a Drive
+	// location ONLY for a non-empty file id (a phantom primary location with an
+	// empty external_id used to hide exactly this case).
+	clipAsset.Drive.FolderID = targetFolderID
+	clipAsset.Drive.FolderPath = targetFolderID
+
+	superCmd := localized.CommitLocalizedClipCommand{
+		Clip:       clipAsset,
+		TextTracks: []detail.TextTrack{track},
+		IndexEvent: youtubeports.IndexEventPayload{
+			AggregateID: clipID,
+			CreatedAt:   time.Now().UTC(),
+		},
+	}
+
+	if wErr := s.atomicWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
+		// BLOCKER #4 (audit 2026-07-03) semantics preserved: a terminal outbox
+		// row (dead_letter / superseded) suppresses the index event while the
+		// asset + transcript ARE committed. That is NOT a clean success and NOT
+		// a lost clip, so it must not be reported as "failed registration"
+		// either — the caller sees the typed sentinel and can requeue.
+		if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
+			s.log.Warn("clip + transcript committed but index blocked by a terminal outbox row (BLOCKER #4)",
+				"clip_id", clipID)
+			return fmt.Errorf("save clip atomically (index blocked by terminal outbox row): %w", wErr)
+		}
+		return fmt.Errorf("save clip atomically: %w", wErr)
+	}
+	s.log.Info("saved clip + transcript atomically (single transaction)", "clip_id", clipID)
+	return nil
+}
+
+// buildRegisterSearchText assembles the searchable text blob for a registered
+// clip. It mirrors the enrichment fields the synchronous path folds into the
+// asset so the embedding input is identical whether or not the LLM enrichment
+// step ran.
+func buildRegisterSearchText(md *usecase.ResolvedMetadata, cmd sourcing.RegisterClipCommand) string {
+	parts := []string{md.Name, md.Description, cmd.Summary, cmd.Category}
+	parts = append(parts, cmd.Topics...)
+	parts = append(parts, cmd.Speakers...)
+	parts = append(parts, cmd.MentionedPeople...)
+	parts = append(parts, cmd.Tags...)
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			kept = append(kept, s)
+		}
+	}
+	return strings.Join(kept, " ")
 }
 
 // dispatchEnrichment enqueues the media.enrich job. Returns whether indexing

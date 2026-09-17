@@ -96,6 +96,49 @@ var ErrClipIdentityInvalidTimestamps = errors.New("clip identity: end_sec must b
 
 // ── YouTube builder ─────────────────────────────────────────────────
 
+// DefaultYouTubeClipPolicyVersion is the canonical fallback policy version
+// for a YouTube clip identity. It matches the extraction pipeline's
+// usecase.ProcessSegmentPolicyVersion ("v1") so every ingest path that has
+// no explicit policy produces the SAME asset id for the same window.
+const DefaultYouTubeClipPolicyVersion = "v1"
+
+// YouTubeClipAssetID builds the canonical YouTube clip asset id
+// `yt_<videoID>_<startSec>_<endSec>_<policyVersion>`.
+//
+// godlike/06 SSOT: this function is the SOLE owner of the YouTube asset-id
+// FORMAT. Both ingest paths call it instead of re-deriving the string:
+//
+//   - the canonical extraction path (youtube/usecase/process_segment_step1.go)
+//   - the sourcing registration path
+//     (assets/sourcing/youtube/usecase/download_hash.go::deriveClipID)
+//
+// Keeping ONE owner is what makes the identity — and therefore the
+// media_assets primary key — converge across paths: two ingest routes that
+// compute `yt_<videoID>_<start>_<end>_<policy>` for the same window upsert the
+// SAME row instead of creating a second asset for the same clip.
+//
+// The identity is a pure function of (videoID, window, policyVersion) and
+// deliberately does NOT include any content hash: the bytes are the CONTENT
+// identity (media_assets.legacy_file_md5 / content_hash + the supersede gate),
+// never the logical clip identity. A re-cut with different bytes keeps the same
+// asset id and is handled by the index-event supersede gate.
+//
+// policyVersion == "" falls back to DefaultYouTubeClipPolicyVersion.
+func YouTubeClipAssetID(videoID string, startSec, endSec int, policyVersion string) (string, error) {
+	trimmed := strings.TrimSpace(videoID)
+	if trimmed == "" {
+		return "", ErrClipIdentityEmptyAssetID
+	}
+	if endSec < startSec {
+		return "", ErrClipIdentityInvalidTimestamps
+	}
+	policyVer := strings.TrimSpace(policyVersion)
+	if policyVer == "" {
+		policyVer = DefaultYouTubeClipPolicyVersion
+	}
+	return fmt.Sprintf("yt_%s_%d_%d_%s", trimmed, startSec, endSec, policyVer), nil
+}
+
 // YouTubeClipIdentityParams carries the inputs for NewYouTubeClipIdentity.
 // Grouping them keeps the constructor signature under the archcheck
 // 8-parameter limit while preserving the canonical asset_id format.
@@ -145,14 +188,12 @@ func NewYouTubeClipIdentity(params YouTubeClipIdentityParams) (ClipIdentity, err
 	if contentHash == "" {
 		return ClipIdentity{}, ErrClipIdentityEmptyContentHash
 	}
-	if params.EndSec < params.StartSec {
-		return ClipIdentity{}, ErrClipIdentityInvalidTimestamps
+	// The asset-id FORMAT is owned by YouTubeClipAssetID; this constructor only
+	// adds the content hash + index-event key on top of it.
+	assetID, err := YouTubeClipAssetID(videoID, params.StartSec, params.EndSec, params.PolicyVer)
+	if err != nil {
+		return ClipIdentity{}, err
 	}
-	policyVer := params.PolicyVer
-	if policyVer == "" {
-		policyVer = "v1"
-	}
-	assetID := fmt.Sprintf("yt_%s_%d_%d_%s", videoID, params.StartSec, params.EndSec, policyVer)
 	eventKey := BuildIndexEventKey(assetID, contentHash, params.Model, params.Version, params.Collection)
 	return ClipIdentity{
 		AssetID:       assetID,

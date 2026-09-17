@@ -63,6 +63,32 @@ func CanonicalEntityID(entityType, name string) string {
 	return strings.ToLower(NormalizeType(entityType)) + ":" + slug
 }
 
+// CanonicalEntitySlug returns the slug part of a canonical entity id — the
+// identity without its type namespace:
+//
+//	CanonicalEntitySlug("person:michael-jordan") == "michael-jordan"
+//
+// It is the canonical-owner INVERSE of CanonicalEntityID, so a consumer that
+// needs a filesystem/Drive-safe segment for an entity (the per-image folder of
+// the canonical image library) never re-implements the "type:slug" split. A
+// value carrying no ":" is returned trimmed and unchanged, so a caller may pass
+// either the canonical id or an already-derived slug; a blank input yields "".
+//
+// The result is a slug, not a path segment: callers still pass it through the
+// path builder's SafeFolderName before using it as a folder name. That keeps
+// this function pure (no infrastructure dependency) and leaves folder-name
+// sanitization with its existing single owner.
+func CanonicalEntitySlug(canonicalID string) string {
+	trimmed := strings.TrimSpace(canonicalID)
+	if trimmed == "" {
+		return ""
+	}
+	if idx := strings.LastIndex(trimmed, ":"); idx >= 0 {
+		return strings.TrimSpace(trimmed[idx+1:])
+	}
+	return trimmed
+}
+
 // IsEntityType reports whether a semantic type is a canonical entity type:
 // one that can be linked to a canonical entity record (and its assets).
 //

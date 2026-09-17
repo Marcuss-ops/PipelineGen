@@ -272,6 +272,10 @@ type EntityImageBinding struct {
 	Status      string `json:"status"`
 	AssetID     string `json:"asset_id,omitempty"`
 	DriveFileID string `json:"drive_file_id,omitempty"`
+	// LocalPath is a producer-process hint used to stage the already verified
+	// bytes into RenderingGen's object store. It is intentionally never serialized:
+	// the path is ephemeral and must not become part of the public script contract.
+	LocalPath string `json:"-"`
 	// MediaType is the verified MIME type of the persisted image bytes. It is
 	// carried into the semantic overlay asset ref so a provider URL without an
 	// extension (for example a Drive download URL) gets the right logical path.

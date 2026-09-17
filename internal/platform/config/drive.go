@@ -8,6 +8,15 @@ import "strings"
 // even when the local deployment config is intentionally ignored by Git.
 const DefaultOverlayRenderRootFolderID = "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E"
 
+// DefaultImagesRootFolderID is the canonical Drive root for all image/
+// overlay assets (retrieved + generated). Every image is stored as
+// <DefaultImagesRootFolderID>/<SafeFolderName(subject)>/<file> with
+// ConflictSkip idempotency, so a given image is downloaded once and
+// thereafter served from Drive without re-download.
+// Keeping the default in code guarantees the per-image layout holds
+// even when the local config.yaml is absent or ignored by Git.
+const DefaultImagesRootFolderID = "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+
 // DriveConfig holds Google Drive configuration.
 // MediaRootFolder is the single root for ALL media on Drive.
 type DriveConfig struct {
@@ -127,7 +136,19 @@ func (d DriveConfig) OverlayRenderFolder() string {
 func (d DriveConfig) ScriptsGenFolder() string {
 	return d.resolveSubfolder(d.ScriptsRootFolder, d.ScriptsGenerateFolder)
 }
-func (d DriveConfig) ImagesFolder() string { return d.ResolveFolder(d.ImagesRootFolder) }
+func (d DriveConfig) ImagesFolder() string {
+	if folder := strings.TrimSpace(d.ImagesRootFolder); folder != "" {
+		return folder
+	}
+	// Spec: images always live under DefaultImagesRootFolderID
+	// (per-image SubFolder layout). Ignore MediaRoot fallback for
+	// images so the dedicated root is authoritative even when
+	// MediaRootFolder is configured for other destinations.
+	if folder := strings.TrimSpace(DefaultImagesRootFolderID); folder != "" {
+		return folder
+	}
+	return d.ResolveFolder(d.ImagesRootFolder)
+}
 
 func (d DriveConfig) CopertineFolder() string    { return d.ResolveFolder(d.CopertineRootFolder) }
 func (d DriveConfig) SoundEffectsFolder() string { return d.ResolveFolder(d.SoundEffectsRootFolder) }
