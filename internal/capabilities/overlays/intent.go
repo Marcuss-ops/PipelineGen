@@ -57,11 +57,23 @@ const (
 )
 
 // EntityBinding is the neutral entity identity carried by an OverlayIntent.
-// It carries the NLP entity type and the canonical (normalized) name — never
-// the raw extracted text.
+// It carries the NLP entity type, the canonical (normalized) name — never the
+// raw extracted text — and, when the planner was given one, the canonical
+// entity id ("person:tim-cook") minted by the identity owner the caller came
+// from.
+//
+// CanonicalEntityID is CARRIED, never derived here: this package stays neutral
+// towards the entity domain (dependency direction is entities → overlays), and
+// a consumer that needs the content-addressed machine id derives it through
+// its single owner rather than by matching the display name. It is optional so
+// intents persisted before the field existed keep their fingerprint and stay
+// readable.
 type EntityBinding struct {
 	Type          string `json:"type"`
 	CanonicalName string `json:"canonical_name"`
+	// CanonicalEntityID is the readable, stable identity the downstream
+	// surfaces (image catalog, semantic bundle, media index) join on.
+	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 }
 
 // IntentPayload is the template-specific payload the renderer needs to
@@ -174,6 +186,10 @@ type EntityOverlayInput struct {
 	Name       string
 	Type       string
 	Confidence float64
+	// CanonicalID is the entity's canonical identity supplied verbatim by the
+	// caller (see EntityBinding.CanonicalEntityID). Empty when the caller's
+	// surface carries none; the planner never invents one.
+	CanonicalID string
 }
 
 // SceneEntityInput is one scene's entity bundle for the planner.
@@ -405,8 +421,9 @@ func bindEntityIntent(scene SceneEntityInput, entity EntityOverlayInput, resolve
 		SceneID:    scene.SceneID,
 		SceneIndex: scene.SceneIndex,
 		Entity: EntityBinding{
-			Type:          etype,
-			CanonicalName: name,
+			Type:              etype,
+			CanonicalName:     name,
+			CanonicalEntityID: strings.TrimSpace(entity.CanonicalID),
 		},
 		Kind:        string(kind),
 		TemplateID:  entry.Template,
